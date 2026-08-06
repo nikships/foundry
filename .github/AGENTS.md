@@ -8,7 +8,7 @@ run on the self-hosted Mac Mini. Fork PRs never execute on the Mini.
 | File | Runner | Triggers | What it does |
 |---|---|---|---|
 | `workflows/ci.yml` | **self-hosted `mac-mini`** (own); `macos-latest` (fork PRs) | push/PR to `main` under `apps/desktop/**`, or manual | `npm ci` → typecheck → test → build |
-| `workflows/mac-package.yml` | **self-hosted `mac-mini`** (this repo only) | push to `main`, `v*` tags, or manual | electron-builder arm64 DMG, Developer ID sign, Apple notarize + staple, artifact upload; tag builds publish a GitHub Release |
+| `workflows/mac-package.yml` | **self-hosted `mac-mini`** (this repo only) | push to `main`, `v*` tags, or manual | electron-builder arm64 DMG, Developer ID sign, Apple notarize + staple, artifact upload; **main/manual** → rolling GitHub Release tag `latest`; **`v*` tags** → versioned release |
 
 ## Self-hosted runner (`mac-mini`)
 

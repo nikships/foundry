@@ -219,22 +219,61 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-      - name: Publish GitHub Release (tags only)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Publish GitHub Release
+        # Versioned release on v* tags; rolling "latest" on main / manual dispatch.
+        if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         working-directory: .
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF_NAME}"
-          DMG=$(ls apps/desktop/dist/Foundry-*-arm64.dmg | head -1)
-          test -f "$DMG"
-          shasum -a 256 "$DMG" | tee "${DMG}.sha256"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$DMG" "${DMG}.sha256" --clobber
-          else
-            gh release create "$TAG" "$DMG" "${DMG}.sha256" \
-              --title "Foundry $TAG" \
-              --generate-notes \
-              --notes "Signed with Developer ID and notarized by Apple. Apple Silicon only."
+          SRC=$(ls apps/desktop/dist/Foundry-*-arm64.dmg | head -1)
+          test -f "$SRC"
+          PKG_VERSION=$(node -p "require('./apps/desktop/package.json').version")
+          SHORT_SHA="${GITHUB_SHA::7}"
+          RUN="${{ github.run_number }}"
+
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF_NAME}"
+            TITLE="Foundry $TAG"
+            NOTES="Signed with Developer ID and notarized by Apple. Apple Silicon only."
+            STABLE="apps/desktop/dist/Foundry-${TAG}-arm64.dmg"
+            cp "$SRC" "$STABLE"
+            shasum -a 256 "$STABLE" | tee "${STABLE}.sha256"
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              gh release upload "$TAG" "$STABLE" "${STABLE}.sha256" --clobber
+            else
+              gh release create "$TAG" "$STABLE" "${STABLE}.sha256" \
+                --title "$TITLE" \
+                --generate-notes \
+                --notes "$NOTES" \
+                --latest=false
+            fi
+            echo "Published versioned release $TAG"
+            exit 0
           fi
+
+          # Rolling Latest release (main / workflow_dispatch).
+          # Recreate so the Release page always points at the newest DMG and
+          # GitHub marks this release as Latest.
+          TAG="latest"
+          TITLE="Latest Build v${PKG_VERSION} (${RUN})"
+          NOTES="Continuous build from \`${GITHUB_REF_NAME}\` @ \`${SHORT_SHA}\` (run ${RUN}).
+
+Signed with Developer ID and notarized by Apple. Apple Silicon only.
+
+For a fixed version, push a \`v*\` tag (e.g. \`v${PKG_VERSION}\`)."
+          STABLE="apps/desktop/dist/Foundry-arm64.dmg"
+          cp "$SRC" "$STABLE"
+          shasum -a 256 "$STABLE" | tee "${STABLE}.sha256"
+
+          # Replace any prior rolling release so assets and "Latest" stay current.
+          gh release delete "$TAG" -y 2>/dev/null || true
+          git push origin ":refs/tags/${TAG}" 2>/dev/null || true
+
+          gh release create "$TAG" "$STABLE" "${STABLE}.sha256" \
+            --title "$TITLE" \
+            --notes "$NOTES" \
+            --latest \
+            --target "$GITHUB_SHA"
+          echo "Published rolling latest release (v${PKG_VERSION} run ${RUN})"
