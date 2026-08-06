@@ -43,8 +43,8 @@ retarget or stop runners that belong to other repositories.**
   is invisible (signing step will show `1 valid identities found` instead of `3`).
 - **Notarize:** prefer GitHub secrets
   `APPLE_ID` / `APPLE_TEAM_ID` / `APPLE_APP_SPECIFIC_PASSWORD`. If those are
-  unset, the package job falls back to the Mini keychain profile `gxr-notary`
-  (same machine as interactive releases).
+  incomplete, the package job falls back to the Mini keychain profile
+  `notarytool` (already present on the host for other Mac release jobs).
 - Optional secrets (not required while login keychain works):
   `APPLE_DEVELOPER_CERTIFICATE_P12_BASE64`,
   `APPLE_DEVELOPER_CERTIFICATE_PASSWORD`,

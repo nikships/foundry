@@ -134,6 +134,11 @@ jobs:
           rm -f "$ZIP"
           ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
 
+          # Prefer GitHub secrets when present. Otherwise use the Mini's
+          # interactive notarytool keychain profile (same host as other Mac
+          # release jobs). Unlock login first so profile lookup succeeds.
+          security unlock-keychain -p "" "$HOME/Library/Keychains/login.keychain-db" 2>/dev/null || true
+
           notarize() {
             local artifact="$1"
             if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
@@ -143,9 +148,9 @@ jobs:
                 --team-id "$APPLE_TEAM_ID" \
                 --wait --output-format json
             else
-              echo "Secrets APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID not all set; using Mini keychain profile gxr-notary"
+              echo "Secrets incomplete; using Mini keychain profile notarytool"
               /usr/bin/xcrun notarytool submit "$artifact" \
-                --keychain-profile gxr-notary \
+                --keychain-profile notarytool \
                 --wait --output-format json
             fi
           }
@@ -158,7 +163,7 @@ jobs:
                 --password "$APPLE_APP_SPECIFIC_PASSWORD" \
                 --team-id "$APPLE_TEAM_ID" || true
             else
-              /usr/bin/xcrun notarytool log "$id" --keychain-profile gxr-notary || true
+              /usr/bin/xcrun notarytool log "$id" --keychain-profile notarytool || true
             fi
           }
 
