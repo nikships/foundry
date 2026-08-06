@@ -99,7 +99,7 @@ export class AgentSession {
       onExit: (code) => this.onRpcExit(code),
     });
     client.on('model-warning', (message: string) => {
-      this.agentLog('log', 'model substitution', { message });
+      this.agentLog('log', 'model', { message });
     });
     client.on('protocol-error', (message: string) => {
       this.protocolFailures++;

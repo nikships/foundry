@@ -18,11 +18,15 @@ import type { AvailableModel } from './protocol.js';
 const exec = promisify(execFile);
 
 export interface CustomModelEntry {
+  /** droid writes the id it will accept on the wire; never re-derive one. */
+  id?: string;
   model: string;
   displayName: string;
   baseUrl?: string;
   provider?: string;
   maxOutputTokens?: number;
+  supportedReasoningEfforts?: string[];
+  defaultReasoningEffort?: string;
 }
 
 let cache: { models: ModelInfo[]; at: number } | null = null;
@@ -159,28 +163,40 @@ export function providerOf(id: string, displayName = ''): string {
   return 'openai';
 }
 
+/**
+ * settings.json is a source of metadata for models droid already lists, never a
+ * source of ids. An id derived from the display name (`custom:DroidProxy:-Opus-5-2`
+ * for `custom:droidproxy:opus-5`) is accepted by update_session_settings and then
+ * yields empty turns, which reads as a broken agent rather than a bad id.
+ */
+export function mergeCustomModels(base: ModelInfo[], custom: CustomModelEntry[]): ModelInfo[] {
+  const byId = new Map(base.map((m) => [m.id, m]));
+  for (const c of custom) {
+    const id = c.id?.trim();
+    if (!id) continue;
+    const existing = byId.get(id);
+    // `Model details:` in --help covers built-ins only, so a custom model's
+    // efforts are known only here. Without them every effort looks unsupported
+    // and is dropped before the session settings call.
+    byId.set(id, {
+      id,
+      displayName: c.displayName || existing?.displayName || id,
+      provider: existing?.provider ?? providerOf(c.model, c.displayName),
+      supportedReasoningEfforts:
+        c.supportedReasoningEfforts ?? existing?.supportedReasoningEfforts ?? [],
+      defaultReasoningEffort:
+        c.defaultReasoningEffort ?? existing?.defaultReasoningEffort ?? 'none',
+      isCustom: true,
+      deprecated: existing?.deprecated ?? false,
+    });
+  }
+  return [...byId.values()];
+}
+
 export async function loadCatalog(droidPath: string, force = false): Promise<ModelInfo[]> {
   if (!force && cache && Date.now() - cache.at < CACHE_MS) return cache.models;
 
-  const fromHelp = await modelsFromHelp(droidPath);
-  const custom = await customModels();
-  const byId = new Map(fromHelp.map((m) => [m.id, m]));
-
-  for (const [index, c] of custom.entries()) {
-    const id = `custom:${c.displayName.replace(/\s+/g, '-')}-${index}`;
-    if (byId.has(id)) continue;
-    byId.set(id, {
-      id,
-      displayName: c.displayName,
-      provider: providerOf(c.model, c.displayName),
-      supportedReasoningEfforts: [],
-      defaultReasoningEffort: 'none',
-      isCustom: true,
-      deprecated: false,
-    });
-  }
-
-  const models = [...byId.values()];
+  const models = mergeCustomModels(await modelsFromHelp(droidPath), await customModels());
   cache = { models, at: Date.now() };
   return models;
 }

@@ -182,6 +182,15 @@ export class DroidClient extends EventEmitter {
 
     try {
       await this.call('droid.update_session_settings', withModel, 60_000);
+      // A modelId droid does not know is accepted here and only shows up later
+      // as empty turns, so `availableModels` (droid's own list, not the
+      // catalog) is checked before the first message rather than after.
+      if (wantsModel && this.models.length && !this.models.some((m) => m.id === this.opts.model)) {
+        return {
+          model: this.opts.model,
+          warning: `${this.opts.model} is not in this session's available models; turns may come back empty`,
+        };
+      }
       return { model: this.settings.modelId ?? this.opts.model };
     } catch (e) {
       if (!wantsModel) throw e;
