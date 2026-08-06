@@ -54,6 +54,28 @@ export interface TryCommandResult {
   durationMs: number;
 }
 
+/**
+ * A detected command is a proposal, never a write. `verified` carries the
+ * result of actually running it, so the human confirms evidence rather than a
+ * guess.
+ */
+export interface DetectedCommand {
+  name: string;
+  argv: string[];
+  source: string;
+  verified: boolean;
+  exitCode: number | null;
+  outputTail: string;
+  durationMs: number;
+}
+
+export interface DetectCommandsResult {
+  commands: DetectedCommand[];
+  /** Which path answered, so the UI can say why nothing came back. */
+  via: 'manifest' | 'agent' | 'none';
+  detail: string;
+}
+
 export interface WorktreeAction {
   ok: boolean;
   detail: string;
@@ -71,6 +93,7 @@ export interface FoundryApi {
     remove(id: string): Promise<ProjectDef[]>;
     export(id: string): Promise<string | null>;
     tryCommand(id: string, argv: string[]): Promise<TryCommandResult>;
+    detectCommands(id: string, useAgent?: boolean): Promise<DetectCommandsResult>;
     check(id: string): Promise<DoctorCheck[]>;
     reveal(path: string): Promise<void>;
   };
@@ -142,6 +165,7 @@ export const IPC = {
   projectsRemove: 'projects:remove',
   projectsExport: 'projects:export',
   projectsTryCommand: 'projects:tryCommand',
+  projectsDetectCommands: 'projects:detectCommands',
   projectsCheck: 'projects:check',
   projectsReveal: 'projects:reveal',
   rosterList: 'roster:list',

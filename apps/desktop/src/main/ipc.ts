@@ -22,10 +22,12 @@ import type {
   StartRunInput,
   ValidationIssue,
 } from '@shared/types.js';
-import { IPC, type EventPage, type RunDetail, type SaveResult, type TryCommandResult, type WorktreeAction } from '@shared/ipc-contract.js';
+import { IPC, type DetectCommandsResult, type EventPage, type RunDetail, type SaveResult, type TryCommandResult, type WorktreeAction } from '@shared/ipc-contract.js';
 import { GATE_DESCRIPTIONS } from './engine/gates.js';
 import { TEMPLATE_VARIABLES, renderPrompt } from './engine/prompts.js';
 import { runCommand } from './engine/commands.js';
+import { DETECT_PROMPT, parseDetectReply, sniffCommands } from './engine/detect.js';
+import { OneShotClient } from './droid/oneshot.js';
 import { isRepo } from './engine/git.js';
 import * as worktreeLib from './engine/worktree.js';
 import { validate as validatePipeline } from './store/pipelines.js';
@@ -96,8 +98,18 @@ export function registerIpc(ctx: AppContext): void {
       return null;
     }
     const project = ctx.projects.add(path);
+    // Manifest sniffing is free and needs no run, so a new project arrives with
+    // its commands already filled in. Only a project with none is seeded, so
+    // re-adding a path can never clobber commands the user edited. Nothing is
+    // executed here: the add dialog must not block on a test suite.
+    if (!project.commands.length) {
+      const sniffed = await sniffCommands(project.path);
+      if (sniffed.length) {
+        ctx.projects.save({ ...project, commands: sniffed.map(({ name, argv }) => ({ name, argv })) });
+      }
+    }
     notifySettings();
-    return project;
+    return ctx.projects.get(project.id) ?? project;
   });
 
   handle(IPC.projectsSave, (project: ProjectDef): SaveResult<ProjectDef[]> => {
@@ -130,6 +142,81 @@ export function registerIpc(ctx: AppContext): void {
     });
     return { exitCode, passed, outputTail, durationMs };
   });
+
+  /**
+   * Proposes commands; never writes them. The renderer shows what came back and
+   * the human accepts, so a wrong guess costs a glance rather than a silently
+   * broken test phase.
+   */
+  handle(
+    IPC.projectsDetectCommands,
+    async (id: string, useAgent?: boolean): Promise<DetectCommandsResult> => {
+      const project = projectOf(id);
+      if (!project) return { commands: [], via: 'none', detail: 'project not found' };
+
+      let candidates = await sniffCommands(project.path);
+      let via: DetectCommandsResult['via'] = candidates.length ? 'manifest' : 'none';
+
+      if (!candidates.length && useAgent) {
+        try {
+          const settings = ctx.settings.get();
+          // Read-only autonomy: discovery reads the repo and must not be able
+          // to change it, and this runs against the base checkout, not a
+          // worktree, because no run owns it.
+          const client = new OneShotClient({
+            droidPath: settings.droidPath,
+            cwd: project.path,
+            autonomy: 'low',
+            model: settings.defaultModel,
+            reasoningEffort: settings.defaultReasoningEffort,
+          });
+          const turn = await client.send(DETECT_PROMPT, 300_000);
+          candidates = parseDetectReply(turn.text);
+          if (candidates.length) via = 'agent';
+        } catch (e) {
+          return {
+            commands: [],
+            via: 'none',
+            detail: `could not ask an agent: ${(e as Error).message}`,
+          };
+        }
+      }
+
+      if (!candidates.length) {
+        return {
+          commands: [],
+          via: 'none',
+          detail: useAgent
+            ? 'no command found in the manifests or by reading the repo'
+            : 'no command found in the manifests',
+        };
+      }
+
+      // Running each candidate is the point: a command that passes here is
+      // evidence, while a command merely typed into a field is a hope.
+      const commands = await Promise.all(
+        candidates.map(async (c) => {
+          const result = await runCommand({ argv: c.argv, cwd: project.path, timeoutMs: 300_000 });
+          return {
+            name: c.name,
+            argv: c.argv,
+            source: c.source,
+            verified: result.passed,
+            exitCode: result.exitCode,
+            outputTail: result.outputTail,
+            durationMs: result.durationMs,
+          };
+        }),
+      );
+
+      const passed = commands.filter((c) => c.verified).length;
+      return {
+        commands,
+        via,
+        detail: `${commands.length} found via ${via}, ${passed} verified by running`,
+      };
+    },
+  );
 
   handle(IPC.projectsCheck, async (id: string) => {
     const project = projectOf(id);

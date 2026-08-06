@@ -118,7 +118,7 @@ export async function checkProject(project: ProjectDef): Promise<DoctorCheck[]> 
     ok: hasCommands,
     detail: hasCommands
       ? project.commands.map((c) => c.name).join(', ')
-      : 'none configured: a pipeline with a test phase cannot run, and a placeholder test proves nothing',
+      : 'none configured: a pipeline with a test phase cannot run, and a placeholder test proves nothing. Detect from repo fills these in',
     fix: hasCommands ? undefined : { kind: 'open-settings', value: 'project-commands' },
   });
 

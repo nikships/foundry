@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { DetectCommandsResult } from '@shared/ipc-contract.js';
 import type { ProjectDef } from '@shared/types.js';
 import { api } from '../api.js';
 import { duration } from '../format.js';
@@ -8,6 +9,34 @@ interface TryState { running: boolean; passed?: boolean; exitCode?: number | nul
 export default function ProjectCommands({ project }: { project: ProjectDef }): React.JSX.Element {
   const [results, setResults] = useState<Record<string, TryState>>({});
   const [expanded, setExpanded] = useState('');
+  const [detecting, setDetecting] = useState(false);
+  const [found, setFound] = useState<DetectCommandsResult | null>(null);
+  const [, force] = useState(0);
+
+  // Detection proposes; nothing is written until the human accepts, so a wrong
+  // guess costs a glance rather than a silently broken test phase.
+  const detect = async (useAgent: boolean): Promise<void> => {
+    setDetecting(true);
+    setFound(null);
+    try {
+      setFound(await api.projects.detectCommands(project.id, useAgent));
+    } catch (e) {
+      setFound({ commands: [], via: 'none', detail: (e as Error).message });
+    } finally {
+      setDetecting(false);
+    }
+  };
+
+  const accept = (command: DetectCommandsResult['commands'][number]): void => {
+    const existing = project.commands.findIndex((c) => c.name === command.name);
+    const entry = { name: command.name, argv: command.argv };
+    if (existing < 0) project.commands.push(entry);
+    else project.commands[existing] = entry;
+    setFound((prev) =>
+      prev ? { ...prev, commands: prev.commands.filter((c) => c.name !== command.name) } : prev,
+    );
+    force((n) => n + 1);
+  };
 
   const add = (): void => { project.commands.push({ name: `command-${project.commands.length + 1}`, argv: [] }); };
   const remove = (index: number): void => { project.commands.splice(index, 1); };
@@ -52,9 +81,39 @@ export default function ProjectCommands({ project }: { project: ProjectDef }): R
               </div>
             );
           })}
-          <button className="btn sm" onClick={add}>Add command</button>
+          <div className="row">
+            <button className="btn sm" onClick={add}>Add command</button>
+            <button className="btn sm" disabled={detecting} onClick={() => void detect(false)}>
+              {detecting ? 'Detecting…' : 'Detect from repo'}
+            </button>
+          </div>
         </div>
       </div>
+      {found && (
+        <div className="field">
+          <label>Detected</label>
+          <span className="hint">{found.detail}</span>
+          {found.commands.length > 0 ? (
+            <div className="commands">
+              {found.commands.map((c) => (
+                <div key={c.name} className="row found">
+                  <span className={`mark ${c.verified ? 'ok' : ''}`}>{c.verified ? '✓' : '✕'}</span>
+                  <span className="name">{c.name}</span>
+                  <code className="mono argv">{c.argv.join(' ')}</code>
+                  <span className="faint">
+                    {c.source}, exit {c.exitCode ?? '—'} in {duration(c.durationMs)}
+                  </span>
+                  <button className="btn sm" onClick={() => accept(c)}>Use</button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <button className="btn sm" disabled={detecting} onClick={() => void detect(true)}>
+              {detecting ? 'Reading the repo…' : 'Ask an agent to read the repo'}
+            </button>
+          )}
+        </div>
+      )}
       <style>{`
         .commands { display: flex; flex-direction: column; gap: var(--s3); margin-top: var(--s2); }
         .command { display: flex; flex-direction: column; gap: var(--s2); }
@@ -65,7 +124,10 @@ export default function ProjectCommands({ project }: { project: ProjectDef }): R
         .result.ok { border-color: var(--green-dim); }
         .result-head { display: flex; align-items: center; gap: var(--s2); width: 100%; padding: var(--s2) var(--s3); border: none; background: var(--bg-raised); color: var(--text-dim); font: inherit; font-size: var(--text-xs); text-align: left; cursor: default; }
         .mark { color: var(--red); }
-        .result.ok .mark { color: var(--green); }
+        .mark.ok, .result.ok .mark { color: var(--green); }
+        .found { font-size: var(--text-xs); color: var(--text-dim); }
+        .found .name { width: 80px; flex: none; }
+        .found .argv { flex: 1; color: var(--text); }
         .output { padding: var(--s3); background: var(--bg-void); font-size: var(--text-xs); line-height: var(--leading); white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow-y: auto; color: var(--text-dim); }
       `}</style>
     </>

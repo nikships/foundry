@@ -39,6 +39,7 @@ const api: FoundryApi = {
     remove: (id) => call(IPC.projectsRemove, id),
     export: (id) => call(IPC.projectsExport, id),
     tryCommand: (id, argv) => call(IPC.projectsTryCommand, id, argv),
+    detectCommands: (id, useAgent) => call(IPC.projectsDetectCommands, id, useAgent),
     check: (id) => call(IPC.projectsCheck, id),
     reveal: (path) => call(IPC.projectsReveal, path),
   },
