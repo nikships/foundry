@@ -148,7 +148,7 @@ jobs:
                 --team-id "$APPLE_TEAM_ID" \
                 --wait --output-format json
             else
-              echo "Secrets incomplete; using Mini keychain profile notarytool"
+              echo "Secrets incomplete; using Mini keychain profile notarytool" >&2
               /usr/bin/xcrun notarytool submit "$artifact" \
                 --keychain-profile notarytool \
                 --wait --output-format json
