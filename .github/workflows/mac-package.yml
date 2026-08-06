@@ -96,17 +96,28 @@ jobs:
 
       - name: Package (build + icons + electron-builder)
         env:
-          # electron-builder picks Developer ID from the keychain when CSC is on.
+          # electron-builder rejects the "Developer ID Application:" prefix on
+          # CSC_NAME; bare subject or auto-discovery picks the right cert.
           CSC_IDENTITY_AUTO_DISCOVERY: 'true'
-          CSC_NAME: 'Developer ID Application: Nikhil Anand (NW6B3R27LQ)'
-          # Notarize separately so we can use keychain profile or secrets cleanly.
-          CSC_FOR_PULL_REQUEST: 'true'
+          CSC_NAME: 'Nikhil Anand (NW6B3R27LQ)'
+          # Explicitly disable publish; CI detection would otherwise try GH releases.
+          EP_DRAFT: 'true'
+          # Notarize in the next step (secrets or gxr-notary profile).
         run: |
           set -euo pipefail
-          npm run package
+          npm run build
+          npm run icons
+          npx electron-builder --mac --arm64 --publish never
           APP="dist/mac-arm64/Foundry.app"
           test -d "$APP"
           codesign --verify --deep --strict --verbose=2 "$APP"
+          IDENTITY=$(codesign -dv --verbose=2 "$APP" 2>&1 | grep 'Authority=Developer ID Application' || true)
+          echo "$IDENTITY"
+          echo "$IDENTITY" | grep -q 'Developer ID Application' || {
+            echo "::error::App was not signed with Developer ID Application"
+            codesign -dv --verbose=2 "$APP" 2>&1 || true
+            exit 1
+          }
           codesign -dv --verbose=2 "$APP" 2>&1 | grep -E 'Authority|TeamIdentifier|Identifier|Runtime'
 
       - name: Notarize + staple app and DMG
