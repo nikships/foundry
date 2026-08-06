@@ -158,3 +158,5 @@ sssf.db*
 apps/inkwell/inkwell.db*
 
 *.mov
+# electron-vite build output
+apps/*/out/

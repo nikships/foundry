@@ -1,0 +1,182 @@
+/**
+ * App-wide state: settings, projects, roster, pipelines, and the selected
+ * project. React Context + hooks.
+ */
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import type { AgentDef, AppSettings, PendingInterrupt, PipelineDef, ProjectDef } from '@shared/types.js';
+import { api } from '../api.js';
+
+export interface AppState {
+  settings: AppSettings | null;
+  projects: ProjectDef[];
+  agents: AgentDef[];
+  pipelines: PipelineDef[];
+  interrupts: PendingInterrupt[];
+  selectedProjectId: string;
+  ready: boolean;
+}
+
+export interface AppContextValue extends AppState {
+  project: ProjectDef | null;
+  projectId: string;
+  selectProject: (id: string) => void;
+  refreshScoped: () => Promise<void>;
+  refreshAll: () => Promise<void>;
+  refreshInterrupts: () => Promise<void>;
+  patchSettings: (patch: Partial<AppSettings>) => Promise<string[]>;
+  agentByName: (name: string) => AgentDef | null;
+  pipelineById: (id: string) => PipelineDef | null;
+  agentColor: (name: string | null) => string;
+}
+
+const AppContext = createContext<AppContextValue | null>(null);
+
+export function useApp(): AppContextValue {
+  const ctx = useContext(AppContext);
+  if (!ctx) throw new Error('useApp must be used within AppProvider');
+  return ctx;
+}
+
+export function agentColorFor(agents: AgentDef[], name: string | null): string {
+  if (!name) return 'var(--text-faint)';
+  return agents.find((a) => a.name === name)?.color ?? 'var(--cyan)';
+}
+
+async function loadScoped(projectId: string | undefined): Promise<[AgentDef[], PipelineDef[]]> {
+  return Promise.all([api.roster.list(projectId), api.pipelines.list(projectId)]);
+}
+
+export function AppProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [projects, setProjects] = useState<ProjectDef[]>([]);
+  const [agents, setAgents] = useState<AgentDef[]>([]);
+  const [pipelines, setPipelines] = useState<PipelineDef[]>([]);
+  const [interrupts, setInterrupts] = useState<PendingInterrupt[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(() => localStorage.getItem('foundry.project') ?? '');
+  const [ready, setReady] = useState(false);
+
+  const selectedProjectIdRef = useRef(selectedProjectId);
+  useEffect(() => {
+    selectedProjectIdRef.current = selectedProjectId;
+  }, [selectedProjectId]);
+
+  const project = useMemo(
+    () => projects.find((p) => p.id === selectedProjectId) ?? projects[0] ?? null,
+    [projects, selectedProjectId],
+  );
+  const projectId = project?.id ?? '';
+
+  const refreshScoped = useCallback(async (): Promise<void> => {
+    const id = (project?.id ?? selectedProjectIdRef.current) || undefined;
+    const [nextAgents, nextPipelines] = await loadScoped(id);
+    setAgents(nextAgents);
+    setPipelines(nextPipelines);
+  }, [project?.id]);
+
+  const refreshAll = useCallback(async (): Promise<void> => {
+    const [nextSettings, nextProjects] = await Promise.all([api.settings.get(), api.projects.list()]);
+    setSettings(nextSettings);
+    setProjects(nextProjects);
+
+    let scopeId = selectedProjectIdRef.current;
+    if (!nextProjects.some((p) => p.id === scopeId)) {
+      scopeId = nextProjects[0]?.id ?? '';
+      setSelectedProjectId(scopeId);
+      localStorage.setItem('foundry.project', scopeId);
+    }
+
+    const [nextAgents, nextPipelines] = await loadScoped(scopeId || undefined);
+    setAgents(nextAgents);
+    setPipelines(nextPipelines);
+    setReady(true);
+  }, []);
+
+  const refreshInterrupts = useCallback(async (): Promise<void> => {
+    setInterrupts(await api.interrupts.list());
+  }, []);
+
+  const selectProject = useCallback((id: string): void => {
+    setSelectedProjectId(id);
+    localStorage.setItem('foundry.project', id);
+  }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    void refreshScoped();
+  }, [selectedProjectId, ready, refreshScoped]);
+
+  const patchSettings = useCallback(async (patch: Partial<AppSettings>): Promise<string[]> => {
+    const result = await api.settings.patch(patch);
+    if (result.ok && result.value) setSettings(result.value);
+    return result.issues.map((i) => i.message);
+  }, []);
+
+  const agentByName = useCallback(
+    (name: string): AgentDef | null => agents.find((a) => a.name === name) ?? null,
+    [agents],
+  );
+
+  const pipelineById = useCallback(
+    (id: string): PipelineDef | null => pipelines.find((p) => p.id === id) ?? null,
+    [pipelines],
+  );
+
+  const agentColor = useCallback(
+    (name: string | null): string => agentColorFor(agents, name),
+    [agents],
+  );
+
+  useEffect(() => {
+    void refreshAll();
+    void refreshInterrupts();
+    const offSettings = api.on('settings-changed', () => void refreshAll());
+    const offInterrupts = api.on('interrupts-changed', () => void refreshInterrupts());
+    return () => {
+      offSettings();
+      offInterrupts();
+    };
+  }, [refreshAll, refreshInterrupts]);
+
+  const value = useMemo<AppContextValue>(
+    () => ({
+      settings,
+      projects,
+      agents,
+      pipelines,
+      interrupts,
+      selectedProjectId,
+      ready,
+      project,
+      projectId,
+      selectProject,
+      refreshScoped,
+      refreshAll,
+      refreshInterrupts,
+      patchSettings,
+      agentByName,
+      pipelineById,
+      agentColor,
+    }),
+    [
+      settings,
+      projects,
+      agents,
+      pipelines,
+      interrupts,
+      selectedProjectId,
+      ready,
+      project,
+      projectId,
+      selectProject,
+      refreshScoped,
+      refreshAll,
+      refreshInterrupts,
+      patchSettings,
+      agentByName,
+      pipelineById,
+      agentColor,
+    ],
+  );
+
+  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+}

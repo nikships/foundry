@@ -1,0 +1,157 @@
+/**
+ * Stand-in for `droid exec --input-format stream-jsonrpc`. Frames match the
+ * real CLI (type discriminator, string ids, flat settings params) so the
+ * adapter can be tested against protocol quirks that broke a naive client.
+ */
+
+import { writeFileSync, chmodSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+export type FakeScenario =
+  | 'happy'
+  | 'tool-calls'
+  | 'bad-envelope-then-good'
+  | 'die-on-first-turn'
+  | 'reject-model'
+  | 'ask-permission';
+
+const SCRIPT = String.raw`
+const V = { jsonrpc: '2.0', factoryApiVersion: '1.0.0', factoryProtocolVersion: '1.151.0' };
+const scenario = process.env.FAKE_SCENARIO || 'happy';
+const out = (o) => process.stdout.write(JSON.stringify(o) + '\n');
+const notify = (n, sessionId) =>
+  out({ ...V, type: 'notification', method: 'droid.session_notification', params: { sessionId, notification: n } });
+const reply = (id, result) => out({ ...V, type: 'response', id, result });
+const fail = (id, code, message) => out({ ...V, type: 'response', id, error: { code, message } });
+
+let sessionId = 'fake-session-1';
+let settings = { modelId: 'gpt-fake-default', reasoningEffort: 'high', autonomyLevel: 'high' };
+let turns = 0;
+let buffer = '';
+
+const EFFORTS = ['off', 'low', 'medium', 'high'];
+const MODELS = [
+  { id: 'gpt-fake-default', modelId: 'gpt-fake-default', modelProvider: 'openai', displayName: 'Fake Default', supportedReasoningEfforts: EFFORTS, defaultReasoningEffort: 'high' },
+  { id: 'fake-allowed', modelId: 'fake-allowed', modelProvider: 'anthropic', displayName: 'Fake Allowed', supportedReasoningEfforts: EFFORTS, defaultReasoningEffort: 'medium' },
+];
+
+process.stdin.on('data', (chunk) => {
+  buffer += chunk.toString();
+  let i;
+  while ((i = buffer.indexOf('\n')) >= 0) {
+    const line = buffer.slice(0, i);
+    buffer = buffer.slice(i + 1);
+    if (!line.trim()) continue;
+    let msg;
+    try { msg = JSON.parse(line); } catch { continue; }
+    // Real CLI rejects frames without type:'request' and a string id.
+    if (msg.type !== 'request' || typeof msg.id !== 'string') {
+      out({ ...V, type: 'response', id: null, error: { code: -32700, message: 'Invalid JSON-RPC message' } });
+      continue;
+    }
+    handle(msg);
+  }
+});
+
+function handle(msg) {
+  const { id, method, params = {} } = msg;
+  if (method === 'droid.initialize_session' || method === 'droid.load_session') {
+    if (params.sessionId) sessionId = params.sessionId;
+    notify({ type: 'settings_updated', settings }, sessionId);
+    reply(id, { sessionId, hostId: 'fake-host', settings, availableModels: MODELS });
+    return;
+  }
+  if (method === 'droid.update_session_settings') {
+    if (scenario === 'reject-model' && params.modelId && params.modelId !== 'gpt-fake-default') {
+      fail(id, -32603, 'Model not allowed by organization policy');
+      return;
+    }
+    if (params.modelId) settings = { ...settings, modelId: params.modelId };
+    if (params.reasoningEffort) settings = { ...settings, reasoningEffort: params.reasoningEffort };
+    notify({ type: 'settings_updated', requestId: id, settings }, sessionId);
+    reply(id, {});
+    return;
+  }
+  if (method === 'droid.get_context_stats') {
+    reply(id, { used: 1234, remaining: 98766, limit: 100000, accuracy: 'estimated' });
+    return;
+  }
+  if (method === 'droid.list_tools') {
+    reply(id, { tools: [{ id: 'execute-cli', llmId: 'Execute', displayName: 'Execute', description: 'run a command', category: 'exec', defaultAllowed: true }] });
+    return;
+  }
+  if (method === 'droid.close_session') {
+    reply(id, {});
+    setTimeout(() => process.exit(0), 20);
+    return;
+  }
+  if (method === 'droid.interrupt_session') {
+    reply(id, {});
+    return;
+  }
+  if (method === 'droid.add_user_message') {
+    reply(id, {});
+    runTurn(params.text || '');
+    return;
+  }
+  reply(id, {});
+}
+
+function finalText(text) {
+  const messageId = 'msg-' + Math.random().toString(36).slice(2, 8);
+  for (const piece of text.match(/.{1,12}/gs) || []) {
+    notify({ type: 'assistant_text_delta', messageId, blockIndex: 0, textDelta: piece }, sessionId);
+  }
+  notify({ type: 'assistant_text_complete', messageId, blockIndex: 0 }, sessionId);
+  notify({ type: 'create_message', message: { id: messageId, role: 'assistant', content: [{ type: 'text', text }] } }, sessionId);
+}
+
+function completeTurn() {
+  const usage = { inputTokens: 1000 + turns, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 900, thinkingTokens: 10, factoryCredits: 42 };
+  notify({ type: 'session_token_usage_changed', sessionId, tokenUsage: usage }, sessionId);
+  notify({ type: 'droid_working_state_changed', newState: 'idle' }, sessionId);
+  notify({ type: 'agent_turn_completed', reason: 'completed', turnId: 'turn-' + turns, tokenUsage: usage, cumulativeTokenUsage: usage }, sessionId);
+}
+
+function runTurn(_prompt) {
+  turns++;
+  notify({ type: 'droid_working_state_changed', newState: 'streaming_assistant_message' }, sessionId);
+
+  if (scenario === 'die-on-first-turn' && turns === 1) {
+    setTimeout(() => process.exit(7), 30);
+    return;
+  }
+
+  if (scenario === 'tool-calls') {
+    const callId = 'call_fake_' + turns;
+    // First frame has empty input: arguments stream in on later frames.
+    notify({ type: 'tool_call', toolUse: { type: 'tool_use', id: callId, name: 'Execute', input: {} } }, sessionId);
+    notify({ type: 'tool_call', toolUse: { type: 'tool_use', id: callId, name: 'Execute', input: { command: 'bun test', summary: 'run tests' } } }, sessionId);
+    notify({ type: 'tool_execution_phase_changed', toolUseId: callId, toolName: 'Execute', phase: 'executing' }, sessionId);
+    notify({ type: 'tool_result', toolUseId: callId, messageId: 'm', content: 'ok\n[Process exited with code 0]', isError: false }, sessionId);
+  }
+
+  if (scenario === 'ask-permission' && turns === 1) {
+    out({ ...V, type: 'request', id: 'srv-1', method: 'droid.request_permission', params: { toolName: 'Execute', command: 'rm -rf build' } });
+  }
+
+  const bad = scenario === 'bad-envelope-then-good' && turns === 1;
+  const text = bad
+    ? 'I finished the work but I am going to explain it in prose instead of JSON.'
+    : JSON.stringify({ status: 'success', summary: 'fake did the work', artifacts: [], notes_for_next_agent: 'nothing' });
+  finalText(text);
+  completeTurn();
+}
+`;
+
+/** Writes an executable stand-in and returns its path. */
+export function writeFakeDroid(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'foundry-fake-droid-'));
+  const js = join(dir, 'fake-droid.mjs');
+  writeFileSync(js, SCRIPT);
+  const bin = join(dir, 'droid');
+  writeFileSync(bin, `#!/bin/sh\nexec "${process.execPath}" "${js}" "$@"\n`);
+  chmodSync(bin, 0o755);
+  return bin;
+}
