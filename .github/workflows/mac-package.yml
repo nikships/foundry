@@ -1,0 +1,224 @@
+name: Mac package (sign + notarize)
+
+# Builds the Foundry Electron app on the self-hosted Mac Mini, Developer ID-signs
+# it from the login keychain, notarizes with Apple, staples, and uploads the DMG.
+# Public repo: never runs on pull_request (no fork code on the Mini).
+
+on:
+  # No pull_request: public repo; never execute untrusted fork code on the Mini.
+  # Path filters are intentionally omitted so `v*` tag pushes always package.
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      install_to_applications:
+        description: 'Also copy Foundry.app into /Applications on the Mini'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mac-package
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Build, sign, notarize
+    # Pin to this repo's Mini runner so we never steal another repo's agent.
+    runs-on: [self-hosted, mac-mini, nikships-software-factory]
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/desktop
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode on NVMe
+        working-directory: .
+        run: |
+          set -euo pipefail
+          XCODE_APP="/Volumes/NVMe/Xcode.app"
+          if [ ! -d "$XCODE_APP/Contents/Developer" ]; then
+            echo "::error::Xcode not found at $XCODE_APP — is the NVMe volume mounted?"
+            ls -la /Volumes || true
+            exit 1
+          fi
+          echo "DEVELOPER_DIR=$XCODE_APP/Contents/Developer" >> "$GITHUB_ENV"
+          echo "$XCODE_APP/Contents/Developer/usr/bin" >> "$GITHUB_PATH"
+          sw_vers
+          xcodebuild -version
+          /usr/bin/xcrun --find notarytool
+          /usr/bin/xcrun --find stapler
+          node -v
+          npm -v
+
+      - name: Use Mini login keychain for signing
+        working-directory: .
+        run: |
+          set -euo pipefail
+          # Prefer the Developer ID already in the Mini login keychain. Do not
+          # import a P12 that duplicates it or codesign reports "ambiguous".
+          security delete-keychain signing_temp.keychain 2>/dev/null || true
+          rm -f "$HOME/Library/Keychains/signing_temp.keychain-db" \
+                "$HOME/Library/Keychains/signing_temp.keychain" 2>/dev/null || true
+
+          LOGIN="$HOME/Library/Keychains/login.keychain-db"
+          security list-keychains -d user -s "$LOGIN"
+          security default-keychain -d user -s "$LOGIN"
+          # Mini auto-login uses an empty keychain password (verified on host).
+          security unlock-keychain -p "" "$LOGIN" 2>/dev/null || true
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$LOGIN" 2>/dev/null || true
+
+          echo "Available signing identities:"
+          security find-identity -v -p codesigning "$LOGIN"
+          if ! security find-identity -v -p codesigning "$LOGIN" | grep -q "Developer ID Application"; then
+            echo "::error::No Developer ID Application identity in the Mini login keychain."
+            exit 1
+          fi
+          # Healthy Aqua session shows all identities (typically 3), not 1.
+          COUNT=$(security find-identity -v -p codesigning "$LOGIN" | grep -c 'valid identities found' || true)
+          security find-identity -v -p codesigning "$LOGIN" | tail -1
+
+      - name: Install npm dependencies
+        run: |
+          set -euo pipefail
+          npm ci
+          # better-sqlite3 needs the electron ABI; package rebuilds it, but
+          # fail early if the binding is missing after install scripts.
+          test -d node_modules/electron
+          test -d node_modules/better-sqlite3
+
+      - name: Package (build + icons + electron-builder)
+        env:
+          # electron-builder picks Developer ID from the keychain when CSC is on.
+          CSC_IDENTITY_AUTO_DISCOVERY: 'true'
+          CSC_NAME: 'Developer ID Application: Nikhil Anand (NW6B3R27LQ)'
+          # Notarize separately so we can use keychain profile or secrets cleanly.
+          CSC_FOR_PULL_REQUEST: 'true'
+        run: |
+          set -euo pipefail
+          npm run package
+          APP="dist/mac-arm64/Foundry.app"
+          test -d "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -dv --verbose=2 "$APP" 2>&1 | grep -E 'Authority|TeamIdentifier|Identifier|Runtime'
+
+      - name: Notarize + staple app and DMG
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          APP="dist/mac-arm64/Foundry.app"
+          DMG=$(ls dist/Foundry-*-arm64.dmg | head -1)
+          test -f "$DMG"
+          ZIP="$RUNNER_TEMP/Foundry-notarize.zip"
+          rm -f "$ZIP"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
+
+          notarize() {
+            local artifact="$1"
+            if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
+              /usr/bin/xcrun notarytool submit "$artifact" \
+                --apple-id "$APPLE_ID" \
+                --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+                --team-id "$APPLE_TEAM_ID" \
+                --wait --output-format json
+            else
+              echo "Secrets APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID not all set; using Mini keychain profile gxr-notary"
+              /usr/bin/xcrun notarytool submit "$artifact" \
+                --keychain-profile gxr-notary \
+                --wait --output-format json
+            fi
+          }
+
+          notary_log() {
+            local id="$1"
+            if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
+              /usr/bin/xcrun notarytool log "$id" \
+                --apple-id "$APPLE_ID" \
+                --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+                --team-id "$APPLE_TEAM_ID" || true
+            else
+              /usr/bin/xcrun notarytool log "$id" --keychain-profile gxr-notary || true
+            fi
+          }
+
+          echo "==> Notarizing app zip"
+          OUT=$(notarize "$ZIP")
+          echo "$OUT"
+          STATUS=$(echo "$OUT" | python3 -c "import json,sys; print(json.load(sys.stdin)['status'])")
+          SUB_ID=$(echo "$OUT" | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
+          if [ "$STATUS" != "Accepted" ]; then
+            echo "::error::App notarization failed: $STATUS"
+            notary_log "$SUB_ID"
+            exit 1
+          fi
+          /usr/bin/xcrun stapler staple "$APP"
+          /usr/bin/xcrun stapler validate "$APP"
+          spctl -a -vvv -t install "$APP"
+          rm -f "$ZIP"
+
+          echo "==> Notarizing DMG"
+          OUT=$(notarize "$DMG")
+          echo "$OUT"
+          STATUS=$(echo "$OUT" | python3 -c "import json,sys; print(json.load(sys.stdin)['status'])")
+          SUB_ID=$(echo "$OUT" | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
+          if [ "$STATUS" != "Accepted" ]; then
+            echo "::error::DMG notarization failed: $STATUS"
+            notary_log "$SUB_ID"
+            exit 1
+          fi
+          /usr/bin/xcrun stapler staple "$DMG"
+          /usr/bin/xcrun stapler validate "$DMG"
+          echo "DMG=$DMG" >> "$GITHUB_ENV"
+          ls -lh "$APP" "$DMG"
+
+      - name: Install to /Applications on Mini
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.install_to_applications }}
+        run: |
+          set -euo pipefail
+          APP="dist/mac-arm64/Foundry.app"
+          rm -rf /Applications/Foundry.app
+          ditto "$APP" /Applications/Foundry.app
+          # Keep quarantine off for a local Mini install from our own CI.
+          xattr -cr /Applications/Foundry.app 2>/dev/null || true
+          spctl -a -vvv -t install /Applications/Foundry.app
+          xcrun stapler validate /Applications/Foundry.app
+          echo "Installed /Applications/Foundry.app"
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Foundry-${{ github.run_number }}-arm64
+          path: |
+            apps/desktop/dist/Foundry-*-arm64.dmg
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Publish GitHub Release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: .
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          DMG=$(ls apps/desktop/dist/Foundry-*-arm64.dmg | head -1)
+          test -f "$DMG"
+          shasum -a 256 "$DMG" | tee "${DMG}.sha256"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$DMG" "${DMG}.sha256" --clobber
+          else
+            gh release create "$TAG" "$DMG" "${DMG}.sha256" \
+              --title "Foundry $TAG" \
+              --generate-notes \
+              --notes "Signed with Developer ID and notarized by Apple. Apple Silicon only."
+          fi

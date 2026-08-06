@@ -1,0 +1,66 @@
+name: CI
+
+# Light verification for the Foundry desktop app. Public-repo safety: fork PRs
+# stay on GitHub-hosted macos-latest; own branches/PRs use the Mini.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/desktop/**'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/desktop/**'
+      - '.github/workflows/ci.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: typecheck + test + build
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'macos-latest' || fromJSON('["self-hosted", "mac-mini", "nikships-software-factory"]') }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/desktop
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode on NVMe
+        if: runner.environment == 'self-hosted'
+        working-directory: .
+        run: |
+          set -euo pipefail
+          XCODE_APP="/Volumes/NVMe/Xcode.app"
+          test -d "$XCODE_APP/Contents/Developer"
+          echo "DEVELOPER_DIR=$XCODE_APP/Contents/Developer" >> "$GITHUB_ENV"
+          echo "$XCODE_APP/Contents/Developer/usr/bin" >> "$GITHUB_PATH"
+          node -v
+          npm -v
+
+      - name: Setup Node
+        if: runner.environment == 'github-hosted'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
