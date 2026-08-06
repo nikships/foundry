@@ -258,11 +258,7 @@ jobs:
           # GitHub marks this release as Latest.
           TAG="latest"
           TITLE="Latest Build v${PKG_VERSION} (${RUN})"
-          NOTES="Continuous build from \`${GITHUB_REF_NAME}\` @ \`${SHORT_SHA}\` (run ${RUN}).
-
-Signed with Developer ID and notarized by Apple. Apple Silicon only.
-
-For a fixed version, push a \`v*\` tag (e.g. \`v${PKG_VERSION}\`)."
+          NOTES="Continuous build from \`${GITHUB_REF_NAME}\` @ \`${SHORT_SHA}\` (run ${RUN}). Signed with Developer ID and notarized by Apple. Apple Silicon only. For a fixed version, push a v* tag (e.g. v${PKG_VERSION})."
           STABLE="apps/desktop/dist/Foundry-arm64.dmg"
           cp "$SRC" "$STABLE"
           shasum -a 256 "$STABLE" | tee "${STABLE}.sha256"
