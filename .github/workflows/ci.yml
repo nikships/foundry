@@ -1,7 +1,7 @@
 name: CI
 
 # Agent-ready verification for the Foundry desktop app.
-# Public-repo safety: fork PRs stay on GitHub-hosted macos-latest; own branches/PRs use the Mini.
+# Public repo: free GitHub-hosted minutes. All jobs run on GitHub runners.
 
 on:
   push:
@@ -29,7 +29,7 @@ jobs:
   # ── Quality gates (types / lint / format / dead code / tests / build / audit)
   verify:
     name: verify
-    runs-on: ${{ github.event.pull_request.head.repo.fork && 'macos-latest' || fromJSON('["self-hosted", "mac-mini", "nikships-software-factory"]') }}
+    runs-on: macos-26
     defaults:
       run:
         shell: bash
@@ -37,23 +37,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Select Xcode on NVMe
-        if: runner.environment == 'self-hosted'
-        working-directory: .
-        run: |
-          set -euo pipefail
-          XCODE_APP="/Volumes/NVMe/Xcode.app"
-          test -d "$XCODE_APP/Contents/Developer"
-          echo "DEVELOPER_DIR=$XCODE_APP/Contents/Developer" >> "$GITHUB_ENV"
-          echo "$XCODE_APP/Contents/Developer/usr/bin" >> "$GITHUB_PATH"
-          node -v
-          npm -v
+        uses: actions/checkout@v7
 
       - name: Setup Node
-        if: runner.environment == 'github-hosted'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
@@ -90,22 +77,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Download actionlint
-        # Pin the binary release; the labels ignore list is for this repo's Mini.
         run: |
           set -euo pipefail
-          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) 1.7.7
+          # 1.7.12+ knows macos-26; older pins reject it as an unknown label.
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) 1.7.12
           ./actionlint -version
 
       - name: Lint workflows
         run: |
           set -euo pipefail
-          ./actionlint \
-            -shellcheck= \
-            -ignore 'label "self-hosted"' \
-            -ignore 'label "mac-mini"' \
-            -ignore 'label "nikships-software-factory"' \
-            -ignore 'label "macOS"' \
-            -ignore 'label "ARM64"'
+          ./actionlint -shellcheck=

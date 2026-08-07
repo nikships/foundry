@@ -1,22 +1,15 @@
 name: Mac package (sign + notarize)
 
-# Builds the Foundry Electron app on the self-hosted Mac Mini, Developer ID-signs
-# it from the login keychain, notarizes with Apple, staples, and uploads the DMG.
-# Public repo: never runs on pull_request (no fork code on the Mini).
+# Builds the Foundry Electron app on GitHub-hosted macOS 26, Developer ID-signs
+# from secrets, notarizes with Apple, staples, and uploads the DMG.
+# Public repo: free hosted minutes. No pull_request trigger (release path only).
 
 on:
-  # No pull_request: public repo; never execute untrusted fork code on the Mini.
-  # Path filters are intentionally omitted so `v*` tag pushes always package.
+  # Path filters intentionally omitted so `v*` tag pushes always package.
   push:
     branches: [main]
     tags: ['v*']
   workflow_dispatch:
-    inputs:
-      install_to_applications:
-        description: 'Also copy Foundry.app into /Applications on the Mini'
-        required: false
-        type: boolean
-        default: false
 
 permissions:
   contents: write
@@ -28,8 +21,7 @@ concurrency:
 jobs:
   package:
     name: Build, sign, notarize
-    # Pin to this repo's Mini runner so we never steal another repo's agent.
-    runs-on: [self-hosted, mac-mini, nikships-software-factory]
+    runs-on: macos-26
     defaults:
       run:
         shell: bash
@@ -37,7 +29,14 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
 
       - name: Set rolling release version
         # electron-updater only offers an update when latest-mac.yml's version
@@ -59,51 +58,47 @@ jobs:
           echo "Version (local only): $PREV -> $NEW"
           echo "RELEASE_SHA=${GITHUB_SHA}" >> "$GITHUB_ENV"
 
-      - name: Select Xcode on NVMe
+      - name: Import Developer ID certificate
+        env:
+          MAC_CERTS: ${{ secrets.MAC_CERTS }}
+          CERT_PASSWORD: ${{ secrets.CERT_PASSWORD }}
         working-directory: .
         run: |
           set -euo pipefail
-          XCODE_APP="/Volumes/NVMe/Xcode.app"
-          if [ ! -d "$XCODE_APP/Contents/Developer" ]; then
-            echo "::error::Xcode not found at $XCODE_APP — is the NVMe volume mounted?"
-            ls -la /Volumes || true
+          if [ -z "${MAC_CERTS:-}" ] || [ -z "${CERT_PASSWORD:-}" ]; then
+            echo "::error::MAC_CERTS and CERT_PASSWORD secrets are required for signing."
             exit 1
           fi
-          echo "DEVELOPER_DIR=$XCODE_APP/Contents/Developer" >> "$GITHUB_ENV"
-          echo "$XCODE_APP/Contents/Developer/usr/bin" >> "$GITHUB_PATH"
-          sw_vers
-          xcodebuild -version
-          /usr/bin/xcrun --find notarytool
-          /usr/bin/xcrun --find stapler
-          node -v
-          npm -v
 
-      - name: Use Mini login keychain for signing
-        working-directory: .
-        run: |
-          set -euo pipefail
-          # Prefer the Developer ID already in the Mini login keychain. Do not
-          # import a P12 that duplicates it or codesign reports "ambiguous".
-          security delete-keychain signing_temp.keychain 2>/dev/null || true
-          rm -f "$HOME/Library/Keychains/signing_temp.keychain-db" \
-                "$HOME/Library/Keychains/signing_temp.keychain" 2>/dev/null || true
+          KC="$RUNNER_TEMP/foundry-signing.keychain-db"
+          KC_PASS=$(openssl rand -base64 24)
+          echo "KEYCHAIN_PATH=$KC" >> "$GITHUB_ENV"
+          echo "KEYCHAIN_PASSWORD=$KC_PASS" >> "$GITHUB_ENV"
 
-          LOGIN="$HOME/Library/Keychains/login.keychain-db"
-          security list-keychains -d user -s "$LOGIN"
-          security default-keychain -d user -s "$LOGIN"
-          # Mini auto-login uses an empty keychain password (verified on host).
-          security unlock-keychain -p "" "$LOGIN" 2>/dev/null || true
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$LOGIN" 2>/dev/null || true
+          security create-keychain -p "$KC_PASS" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KC_PASS" "$KC"
+
+          P12="$RUNNER_TEMP/developer-id.p12"
+          echo "$MAC_CERTS" | base64 --decode > "$P12"
+          security import "$P12" -k "$KC" -P "$CERT_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/productsign -A
+          rm -f "$P12"
+
+          # Allow codesign to use the private key without a GUI prompt.
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: -s -k "$KC_PASS" "$KC" >/dev/null
+
+          # Prefer our temp keychain first, keep system certs available.
+          security list-keychains -d user -s "$KC" login.keychain
+          security default-keychain -s "$KC"
 
           echo "Available signing identities:"
-          security find-identity -v -p codesigning "$LOGIN"
-          if ! security find-identity -v -p codesigning "$LOGIN" | grep -q "Developer ID Application"; then
-            echo "::error::No Developer ID Application identity in the Mini login keychain."
+          security find-identity -v -p codesigning "$KC"
+          if ! security find-identity -v -p codesigning "$KC" | grep -q "Developer ID Application"; then
+            echo "::error::No Developer ID Application identity after import."
             exit 1
           fi
-          # Healthy Aqua session shows all identities (typically 3), not 1.
-          COUNT=$(security find-identity -v -p codesigning "$LOGIN" | grep -c 'valid identities found' || true)
-          security find-identity -v -p codesigning "$LOGIN" | tail -1
 
       - name: Install npm dependencies
         run: |
@@ -116,15 +111,21 @@ jobs:
 
       - name: Package (build + icons + electron-builder)
         env:
-          # electron-builder rejects the "Developer ID Application:" prefix on
-          # CSC_NAME; bare subject or auto-discovery picks the right cert.
+          # Hash pins Developer ID Application when the P12 also carries App Store certs.
           CSC_IDENTITY_AUTO_DISCOVERY: 'true'
-          CSC_NAME: 'Nikhil Anand (NW6B3R27LQ)'
+          CSC_NAME: '734BE283C1325CCCBB7EC1BAF93539843702652A'
           # Explicitly disable publish; CI detection would otherwise try GH releases.
           EP_DRAFT: 'true'
-          # Notarize in the next step (secrets or gxr-notary profile).
         run: |
           set -euo pipefail
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          sw_vers
+          xcodebuild -version
+          /usr/bin/xcrun --find notarytool
+          /usr/bin/xcrun --find stapler
+          node -v
+          npm -v
+
           npm run build
           npm run icons
           npx electron-builder --mac --arm64 --publish never
@@ -147,6 +148,11 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
+          if [ -z "${APPLE_ID:-}" ] || [ -z "${APPLE_APP_SPECIFIC_PASSWORD:-}" ] || [ -z "${APPLE_TEAM_ID:-}" ]; then
+            echo "::error::APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, and APPLE_TEAM_ID are required."
+            exit 1
+          fi
+
           APP="dist/mac-arm64/Foundry.app"
           DMG=$(ls dist/Foundry-*-arm64.dmg | head -1)
           test -f "$DMG"
@@ -154,37 +160,21 @@ jobs:
           rm -f "$ZIP"
           ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
 
-          # Prefer GitHub secrets when present. Otherwise use the Mini's
-          # interactive notarytool keychain profile (same host as other Mac
-          # release jobs). Unlock login first so profile lookup succeeds.
-          security unlock-keychain -p "" "$HOME/Library/Keychains/login.keychain-db" 2>/dev/null || true
-
           notarize() {
             local artifact="$1"
-            if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
-              /usr/bin/xcrun notarytool submit "$artifact" \
-                --apple-id "$APPLE_ID" \
-                --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-                --team-id "$APPLE_TEAM_ID" \
-                --wait --output-format json
-            else
-              echo "Secrets incomplete; using Mini keychain profile notarytool" >&2
-              /usr/bin/xcrun notarytool submit "$artifact" \
-                --keychain-profile notarytool \
-                --wait --output-format json
-            fi
+            /usr/bin/xcrun notarytool submit "$artifact" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --wait --output-format json
           }
 
           notary_log() {
             local id="$1"
-            if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
-              /usr/bin/xcrun notarytool log "$id" \
-                --apple-id "$APPLE_ID" \
-                --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-                --team-id "$APPLE_TEAM_ID" || true
-            else
-              /usr/bin/xcrun notarytool log "$id" --keychain-profile notarytool || true
-            fi
+            /usr/bin/xcrun notarytool log "$id" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" || true
           }
 
           echo "==> Notarizing app zip"
@@ -217,21 +207,8 @@ jobs:
           echo "DMG=$DMG" >> "$GITHUB_ENV"
           ls -lh "$APP" "$DMG"
 
-      - name: Install to /Applications on Mini
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.install_to_applications }}
-        run: |
-          set -euo pipefail
-          APP="dist/mac-arm64/Foundry.app"
-          rm -rf /Applications/Foundry.app
-          ditto "$APP" /Applications/Foundry.app
-          # Keep quarantine off for a local Mini install from our own CI.
-          xattr -cr /Applications/Foundry.app 2>/dev/null || true
-          spctl -a -vvv -t install /Applications/Foundry.app
-          xcrun stapler validate /Applications/Foundry.app
-          echo "Installed /Applications/Foundry.app"
-
       - name: Upload DMG artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Foundry-${{ github.run_number }}-arm64
           path: |
@@ -255,7 +232,6 @@ jobs:
           test -d "$APP"
 
           PKG_VERSION=$(node -p "require('./apps/desktop/package.json').version")
-          # The bump step pushed a new commit; tag the commit actually built.
           RELEASE_REF="${RELEASE_SHA:-$GITHUB_SHA}"
           SHORT_SHA="${RELEASE_REF::7}"
           RUN="${{ github.run_number }}"
@@ -333,3 +309,13 @@ jobs:
             --latest \
             --target "$RELEASE_REF"
           echo "Published rolling latest release (v${PKG_VERSION} run ${RUN})"
+
+      - name: Cleanup signing keychain
+        if: always()
+        working-directory: .
+        run: |
+          set -euo pipefail
+          if [ -n "${KEYCHAIN_PATH:-}" ]; then
+            security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
+          fi
+          rm -f "$RUNNER_TEMP"/developer-id.p12 "$RUNNER_TEMP"/Foundry-notarize.zip 2>/dev/null || true
