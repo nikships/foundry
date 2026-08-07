@@ -542,7 +542,9 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                 <ModelPicker
                   value={settings.defaultModel}
                   models={models}
+                  emptyHint={`No models from ${settings.defaultCli}. Install and sign in under Agent CLIs, then refresh.`}
                   onChange={(v) => void set({ defaultModel: v })}
+                  onRefresh={() => void refreshModels()}
                 />
               </div>
               <div className="field">

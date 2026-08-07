@@ -50,8 +50,11 @@ export default function PhaseDrawer({
   const { projectId } = useApp();
   const [tab, setTab] = useState<Tab>('timeline');
   const [liveTail, setLiveTail] = useState('');
+  const [liveTailError, setLiveTailError] = useState('');
   const [openEvents, setOpenEvents] = useState<Set<string>>(new Set());
   const [prompt, setPrompt] = useState('');
+  const [promptError, setPromptError] = useState('');
+  const [promptLoading, setPromptLoading] = useState(false);
 
   const usage = useMemo(() => usageFor(events), [events]);
   const model = useMemo(() => modelFor(events), [events]);
@@ -69,8 +72,16 @@ export default function PhaseDrawer({
   useEffect(() => {
     let timer: number | null = null;
     setLiveTail('');
+    setLiveTailError('');
     if (!live || phase.status !== 'running') return;
-    const poll = async (): Promise<void> => setLiveTail(await api.runs.liveTail(phase.phaseId));
+    const poll = async (): Promise<void> => {
+      try {
+        setLiveTail(await api.runs.liveTail(phase.phaseId));
+        setLiveTailError('');
+      } catch (e) {
+        setLiveTailError((e as Error).message);
+      }
+    };
     void poll();
     timer = window.setInterval(() => void poll(), 600);
     return () => {
@@ -80,7 +91,27 @@ export default function PhaseDrawer({
 
   useEffect(() => {
     if (tab !== 'prompt') return;
-    void api.runs.promptFor(projectId, phase.phaseId).then(setPrompt);
+    let cancelled = false;
+    setPromptLoading(true);
+    setPromptError('');
+    void api.runs
+      .promptFor(projectId, phase.phaseId)
+      .then((text) => {
+        if (!cancelled) {
+          setPrompt(text);
+          setPromptLoading(false);
+        }
+      })
+      .catch((e: Error) => {
+        if (!cancelled) {
+          setPrompt('');
+          setPromptError(e.message);
+          setPromptLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [tab, phase.phaseId, projectId]);
 
   const toggle = (id: string): void => {
@@ -128,6 +159,11 @@ export default function PhaseDrawer({
         <div className="body scroll">
           {tab === 'timeline' && (
             <>
+              {liveTailError && (
+                <p className="inline-err" role="alert">
+                  Live tail: {liveTailError}
+                </p>
+              )}
               {liveTail && (
                 <pre className="live selectable mono">
                   {liveTail}
@@ -156,7 +192,7 @@ export default function PhaseDrawer({
                   </li>
                 ))}
               </ol>
-              {!events.length && !liveTail && (
+              {!events.length && !liveTail && !liveTailError && (
                 <p className="faint pad">Nothing recorded for this phase yet.</p>
               )}
             </>
@@ -211,9 +247,16 @@ export default function PhaseDrawer({
           )}
           {tab === 'prompt' && (
             <>
-              {prompt ? (
+              {promptLoading && <p className="faint pad">Loading prompt…</p>}
+              {promptError && (
+                <p className="inline-err pad" role="alert">
+                  {promptError}
+                </p>
+              )}
+              {!promptLoading && !promptError && prompt ? (
                 <pre className="raw selectable">{prompt}</pre>
-              ) : (
+              ) : null}
+              {!promptLoading && !promptError && !prompt && (
                 <p className="faint pad">
                   {phase.kind === 'agent'
                     ? 'No prompt was recorded for this phase.'
@@ -226,6 +269,8 @@ export default function PhaseDrawer({
       </div>
       <style>{`
         .drawer { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--bg-panel); border-left: 1px solid var(--line); }
+        .inline-err { margin: 0 var(--s5) var(--s3); padding: var(--s2) var(--s3); border-radius: var(--r-sm); background: var(--red-dim); color: var(--red); font-size: var(--text-xs); line-height: var(--leading); }
+        .inline-err.pad { margin-top: var(--s3); }
         .head { display: flex; gap: var(--s3); padding: var(--s4) var(--s5) var(--s2); }
         .title h2 { font-size: var(--text-lg); font-weight: 600; }
         .title .row { display: flex; align-items: center; gap: var(--s2); }
