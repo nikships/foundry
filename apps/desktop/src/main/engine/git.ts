@@ -46,21 +46,34 @@ function stripQuotes(p: string): string {
   return p.startsWith('"') && p.endsWith('"') ? p.slice(1, -1) : p;
 }
 
-/** `git status --porcelain`, parsed. Renames report the destination path. */
-export async function status(cwd: string): Promise<StatusEntry[]> {
-  const r = await git(cwd, ['status', '--porcelain', '--untracked-files=all']);
-  if (!r.ok) return [];
+/**
+ * A porcelain v1 row is two status columns and a space. Anything else git
+ * prints is chatter, not a path: runCommand merges stderr into the capture,
+ * so an fsmonitor warning like `error: could not read IPC response` would
+ * otherwise parse as a changed file named `or: could not read IPC response`
+ * and fail gates on a path that does not exist.
+ */
+const STATUS_LINE = /^[ MADRCU?!]{2} /;
 
+export function parseStatus(text: string): StatusEntry[] {
   const out: StatusEntry[] = [];
-  for (const line of r.stdout.split('\n')) {
-    if (line.trim().length < 4) continue;
+  for (const line of text.split('\n')) {
+    if (!STATUS_LINE.test(line)) continue;
     const code = line.slice(0, 2);
     let path = line.slice(3).trim();
+    if (!path) continue;
     const arrow = path.indexOf(' -> ');
     if (arrow >= 0) path = path.slice(arrow + 4);
     out.push({ path: stripQuotes(path), code });
   }
   return out;
+}
+
+/** `git status --porcelain`, parsed. Renames report the destination path. */
+export async function status(cwd: string): Promise<StatusEntry[]> {
+  const r = await git(cwd, ['status', '--porcelain', '--untracked-files=all']);
+  if (!r.ok) return [];
+  return parseStatus(r.stdout);
 }
 
 export async function changedPaths(cwd: string): Promise<string[]> {
