@@ -1,13 +1,21 @@
 import type { DoctorCheck } from '@shared/types.js';
 import { api } from '../api.js';
 
-export default function DoctorList({ checks, onRecheck }: { checks: DoctorCheck[]; onRecheck: () => void }): React.JSX.Element {
+export default function DoctorList({
+  checks,
+  onRecheck,
+}: {
+  checks: DoctorCheck[];
+  onRecheck: () => void;
+}): React.JSX.Element {
   return (
     <>
       <section className="doctor">
         <div className="spread head">
           <h3>Checks</h3>
-          <button className="btn sm ghost" onClick={onRecheck}>Re-check</button>
+          <button className="btn sm ghost" onClick={onRecheck}>
+            Re-check
+          </button>
         </div>
         <ul>
           {checks.map((check) => (
@@ -18,7 +26,12 @@ export default function DoctorList({ checks, onRecheck }: { checks: DoctorCheck[
                 <em className="faint">{check.detail}</em>
               </span>
               {check.fix?.kind === 'open-url' && (
-                <button className="btn sm" onClick={() => void api.app.openExternal(check.fix!.value as string)}>Open docs</button>
+                <button
+                  className="btn sm"
+                  onClick={() => void api.app.openExternal(check.fix!.value as string)}
+                >
+                  Open docs
+                </button>
               )}
             </li>
           ))}

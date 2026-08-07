@@ -3,7 +3,11 @@ import type { PendingInterrupt } from '@shared/types.js';
 import { api } from '../api.js';
 import { useApp } from '../stores/app.js';
 
-export default function InterruptSheet({ interrupt }: { interrupt: PendingInterrupt }): React.JSX.Element {
+export default function InterruptSheet({
+  interrupt,
+}: {
+  interrupt: PendingInterrupt;
+}): React.JSX.Element {
   const { refreshInterrupts } = useApp();
   const [notes, setNotes] = useState('');
   const [remember, setRemember] = useState(false);
@@ -53,7 +57,11 @@ export default function InterruptSheet({ interrupt }: { interrupt: PendingInterr
           </label>
           {interrupt.command && (
             <label className="remember">
-              <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={(e) => setRemember(e.target.checked)}
+              />
               Always allow this command in this project
             </label>
           )}
@@ -62,7 +70,11 @@ export default function InterruptSheet({ interrupt }: { interrupt: PendingInterr
               {isEngineer ? 'Reject' : 'Deny'}
             </button>
             <div className="grow" />
-            <button className="btn primary" disabled={sending} onClick={() => void answer('approve')}>
+            <button
+              className="btn primary"
+              disabled={sending}
+              onClick={() => void answer('approve')}
+            >
               {isEngineer ? 'Approve' : 'Allow'}
             </button>
           </footer>

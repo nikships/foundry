@@ -141,9 +141,7 @@ const diff_matches_claims: GateFn = async (envelope, ctx) => {
     };
   });
 
-  const unclaimed = ctx.changedPaths.filter(
-    (c) => !claimed.some((f) => pathsMatch(f, c)),
-  );
+  const unclaimed = ctx.changedPaths.filter((c) => !claimed.some((f) => pathsMatch(f, c)));
   if (unclaimed.length) {
     checks.push({
       item: '(unclaimed changes)',
@@ -167,7 +165,8 @@ const verdict_consistent: GateFn = async (envelope) => {
 
   let approvedVsFindings: string;
   if (!unmet.length) approvedVsFindings = 'every requirement met';
-  else if (approved) approvedVsFindings = `${unmet.length} unmet requirement(s) while approved=true`;
+  else if (approved)
+    approvedVsFindings = `${unmet.length} unmet requirement(s) while approved=true`;
   else approvedVsFindings = `${unmet.length} unmet requirement(s), not approved`;
 
   const rejectionSupported = approved || blocking.length > 0 || unmet.length > 0;

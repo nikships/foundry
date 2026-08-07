@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Acceptance, DryRunPrompt, PhaseDef, PipelineDef, ValidationIssue } from '@shared/types.js';
+import type {
+  Acceptance,
+  DryRunPrompt,
+  PhaseDef,
+  PipelineDef,
+  ValidationIssue,
+} from '@shared/types.js';
 import { api, plain } from '../api.js';
 import { useApp } from '../stores/app.js';
 import PhaseEditor from '../components/PhaseEditor.js';
@@ -15,8 +21,14 @@ export default function PipelinesScreen(): React.JSX.Element {
   const [saving, setSaving] = useState(false);
   const [dryRun, setDryRun] = useState<DryRunPrompt[] | null>(null);
 
-  const selected = useMemo(() => pipelines.find((p) => p.id === selectedId) ?? null, [pipelines, selectedId]);
-  const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(selected), [draft, selected]);
+  const selected = useMemo(
+    () => pipelines.find((p) => p.id === selectedId) ?? null,
+    [pipelines, selectedId],
+  );
+  const dirty = useMemo(
+    () => JSON.stringify(draft) !== JSON.stringify(selected),
+    [draft, selected],
+  );
   const commandNames = useMemo(() => project?.commands.map((c) => c.name) ?? [], [project]);
   const errors = useMemo(() => issues.filter((i) => i.level === 'error'), [issues]);
   const warnings = useMemo(() => issues.filter((i) => i.level === 'warning'), [issues]);
@@ -31,7 +43,10 @@ export default function PipelinesScreen(): React.JSX.Element {
   }, [selected]);
 
   useEffect(() => {
-    if (!draft) { setIssues([]); return; }
+    if (!draft) {
+      setIssues([]);
+      return;
+    }
     void api.pipelines.validate(draft, projectId || undefined).then(setIssues);
   }, [draft, projectId]);
 
@@ -117,7 +132,13 @@ export default function PipelinesScreen(): React.JSX.Element {
     setOpenPhase(Math.max(0, index - 1));
   };
   const createPipeline = async (): Promise<void> => {
-    const fresh: PipelineDef = { id: `pipeline-${Date.now().toString(36)}`, name: 'New pipeline', description: 'Say what this pipeline is for and when to reach for it.', acceptance: { kind: 'all_phases_pass' }, phases: [] };
+    const fresh: PipelineDef = {
+      id: `pipeline-${Date.now().toString(36)}`,
+      name: 'New pipeline',
+      description: 'Say what this pipeline is for and when to reach for it.',
+      acceptance: { kind: 'all_phases_pass' },
+      phases: [],
+    };
     setDraft(fresh);
     setSelectedId('');
     setIssues([]);
@@ -136,7 +157,9 @@ export default function PipelinesScreen(): React.JSX.Element {
   const preview = async (): Promise<void> => {
     if (!draft || !projectId) return;
     if (dirty) await save();
-    setDryRun(await api.pipelines.dryRun(draft.id, projectId, 'Add rate limiting to the public API'));
+    setDryRun(
+      await api.pipelines.dryRun(draft.id, projectId, 'Add rate limiting to the public API'),
+    );
   };
 
   return (
@@ -145,11 +168,17 @@ export default function PipelinesScreen(): React.JSX.Element {
         <aside className="list">
           <header className="list-head">
             <h1>Pipelines</h1>
-            <button className="btn sm" onClick={() => void createPipeline()}>New</button>
+            <button className="btn sm" onClick={() => void createPipeline()}>
+              New
+            </button>
           </header>
           <div className="scroll items">
             {pipelines.map((p) => (
-              <button key={p.id} className={`item ${p.id === selectedId ? 'active' : ''}`} onClick={() => setSelectedId(p.id)}>
+              <button
+                key={p.id}
+                className={`item ${p.id === selectedId ? 'active' : ''}`}
+                onClick={() => setSelectedId(p.id)}
+              >
                 <span className="name">{p.name}</span>
                 <span className="faint count">{p.phases.length} phases</span>
               </button>
@@ -160,42 +189,97 @@ export default function PipelinesScreen(): React.JSX.Element {
           <div className="editor scroll">
             <header className="edit-head">
               <div className="grow">
-                <input className="title-input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
-                <input className="desc-input" value={draft.description} placeholder="What is this pipeline for?" onChange={(e) => setDraft({ ...draft, description: e.target.value })} />
+                <input
+                  className="title-input"
+                  value={draft.name}
+                  onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                />
+                <input
+                  className="desc-input"
+                  value={draft.description}
+                  placeholder="What is this pipeline for?"
+                  onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                />
               </div>
-              <button className="btn sm" disabled={!projectId} onClick={() => void preview()}>Dry run</button>
-              {selected && <button className="btn sm" onClick={() => void duplicate()}>Duplicate</button>}
-              {selected && !selected.builtin && <button className="btn sm danger" onClick={() => void remove()}>Delete</button>}
+              <button className="btn sm" disabled={!projectId} onClick={() => void preview()}>
+                Dry run
+              </button>
+              {selected && (
+                <button className="btn sm" onClick={() => void duplicate()}>
+                  Duplicate
+                </button>
+              )}
+              {selected && !selected.builtin && (
+                <button className="btn sm danger" onClick={() => void remove()}>
+                  Delete
+                </button>
+              )}
             </header>
             <PipelineGraph pipeline={draft} selected={openPhase} onSelect={setOpenPhase} />
             <section className="phases">
               {draft.phases.map((phase, i) => (
-                <PhaseEditor key={i} phase={phase} index={i} open={openPhase === i} phases={draft.phases} agents={agents} commands={commandNames} onToggle={() => setOpenPhase(openPhase === i ? -1 : i)} onMove={(d) => movePhase(i, d)} onRemove={() => removePhase(i)} />
+                <PhaseEditor
+                  key={i}
+                  phase={phase}
+                  index={i}
+                  open={openPhase === i}
+                  phases={draft.phases}
+                  agents={agents}
+                  commands={commandNames}
+                  onToggle={() => setOpenPhase(openPhase === i ? -1 : i)}
+                  onMove={(d) => movePhase(i, d)}
+                  onRemove={() => removePhase(i)}
+                />
               ))}
               <div className="add">
                 <span className="faint">Add a phase:</span>
-                <button className="btn sm" onClick={() => addPhase('agent')}>Agent</button>
-                <button className="btn sm" onClick={() => addPhase('code')}>Command</button>
-                <button className="btn sm" onClick={() => addPhase('engineer')}>Checkpoint</button>
+                <button className="btn sm" onClick={() => addPhase('agent')}>
+                  Agent
+                </button>
+                <button className="btn sm" onClick={() => addPhase('code')}>
+                  Command
+                </button>
+                <button className="btn sm" onClick={() => addPhase('engineer')}>
+                  Checkpoint
+                </button>
               </div>
             </section>
             <section className="acceptance card">
               <h3>Acceptance</h3>
-              <p className="faint hint">What has to be true for this run to count as accepted. A run where every phase passed is not automatically a run that did what was asked.</p>
+              <p className="faint hint">
+                What has to be true for this run to count as accepted. A run where every phase
+                passed is not automatically a run that did what was asked.
+              </p>
               <div className="row">
-                <select className="select" value={draft.acceptance.kind} onChange={(e) => setAcceptanceKind(e.target.value as Acceptance['kind'])}>
+                <select
+                  className="select"
+                  value={draft.acceptance.kind}
+                  onChange={(e) => setAcceptanceKind(e.target.value as Acceptance['kind'])}
+                >
                   <option value="all_phases_pass">Every phase passed</option>
                   <option value="last_phase_pass">The last phase passed</option>
                   <option value="envelope_status">A phase's envelope reports success</option>
                   <option value="phase_flag">A phase's envelope sets a flag</option>
                 </select>
                 {acceptancePhase !== null && (
-                  <select className="select" value={acceptancePhase} onChange={(e) => setAcceptancePhase(e.target.value)}>
-                    {draft.phases.map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
+                  <select
+                    className="select"
+                    value={acceptancePhase}
+                    onChange={(e) => setAcceptancePhase(e.target.value)}
+                  >
+                    {draft.phases.map((p) => (
+                      <option key={p.name} value={p.name}>
+                        {p.name}
+                      </option>
+                    ))}
                   </select>
                 )}
                 {draft.acceptance.kind === 'phase_flag' && (
-                  <select className="select flag" value={(draft.acceptance as { flag: string }).flag} onChange={(e) => setAcceptanceFlag(e.target.value as 'passed' | 'approved')}>
+                  <select
+                    className="select flag"
+                    value={(draft.acceptance as { flag: string }).flag}
+                    onChange={(e) => setAcceptanceFlag(e.target.value as 'passed' | 'approved')}
+                  >
                     <option value="passed">passed</option>
                     <option value="approved">approved</option>
                   </select>
@@ -204,8 +288,17 @@ export default function PipelinesScreen(): React.JSX.Element {
             </section>
             <section className="options card">
               <label className="opt">
-                <input type="checkbox" checked={draft.isolation !== false} onChange={(e) => setDraft({ ...draft, isolation: e.target.checked })} />
-                <span>Run in an isolated git worktree<em className="faint">Recommended. Without it, phases write directly into your checkout.</em></span>
+                <input
+                  type="checkbox"
+                  checked={draft.isolation !== false}
+                  onChange={(e) => setDraft({ ...draft, isolation: e.target.checked })}
+                />
+                <span>
+                  Run in an isolated git worktree
+                  <em className="faint">
+                    Recommended. Without it, phases write directly into your checkout.
+                  </em>
+                </span>
               </label>
             </section>
           </div>
@@ -213,19 +306,33 @@ export default function PipelinesScreen(): React.JSX.Element {
         {draft && (
           <aside className="rail">
             <h3>Validation</h3>
-            {!issues.length ? <p className="ok">This pipeline is ready to run.</p> : (
+            {!issues.length ? (
+              <p className="ok">This pipeline is ready to run.</p>
+            ) : (
               <ul className="issues">
                 {[...errors, ...warnings].map((issue, i) => (
                   <li key={i} className={issue.level}>
                     <span className="mark">{issue.level === 'error' ? '✕' : '!'}</span>
-                    <span><strong>{issue.where}</strong> {issue.message}</span>
+                    <span>
+                      <strong>{issue.where}</strong> {issue.message}
+                    </span>
                   </li>
                 ))}
               </ul>
             )}
             <footer className="rail-foot">
-              <button className="btn primary" disabled={!dirty || saving || errors.length > 0} onClick={() => void save()}>{errors.length ? 'Fix errors to save' : 'Save pipeline'}</button>
-              {dirty && selected && <button className="btn" onClick={revert}>Revert</button>}
+              <button
+                className="btn primary"
+                disabled={!dirty || saving || errors.length > 0}
+                onClick={() => void save()}
+              >
+                {errors.length ? 'Fix errors to save' : 'Save pipeline'}
+              </button>
+              {dirty && selected && (
+                <button className="btn" onClick={revert}>
+                  Revert
+                </button>
+              )}
             </footer>
           </aside>
         )}

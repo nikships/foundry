@@ -32,7 +32,21 @@ const EVENT_CLASS: Partial<Record<EventRow['type'], string>> = {
   gate_pass: 'good',
 };
 
-export default function PhaseDrawer({ phase, events, envelopes, gates, live, now }: { phase: PhaseRow; events: EventRow[]; envelopes: EnvelopeRow[]; gates: GateResultRow[]; live: boolean; now: number }): React.JSX.Element {
+export default function PhaseDrawer({
+  phase,
+  events,
+  envelopes,
+  gates,
+  live,
+  now,
+}: {
+  phase: PhaseRow;
+  events: EventRow[];
+  envelopes: EnvelopeRow[];
+  gates: GateResultRow[];
+  live: boolean;
+  now: number;
+}): React.JSX.Element {
   const { projectId } = useApp();
   const [tab, setTab] = useState<Tab>('timeline');
   const [liveTail, setLiveTail] = useState('');
@@ -42,12 +56,15 @@ export default function PhaseDrawer({ phase, events, envelopes, gates, live, now
   const usage = useMemo(() => usageFor(events), [events]);
   const model = useMemo(() => modelFor(events), [events]);
   const elapsed = useMemo(() => phaseDuration(phase, now), [phase, now]);
-  const tabs = useMemo(() => [
-    { id: 'timeline' as Tab, label: 'Timeline', count: events.length },
-    { id: 'envelope' as Tab, label: 'Envelope', count: envelopes.length },
-    { id: 'gates' as Tab, label: 'Gates', count: gates.length },
-    { id: 'prompt' as Tab, label: 'Prompt' },
-  ], [events.length, envelopes.length, gates.length]);
+  const tabs = useMemo(
+    () => [
+      { id: 'timeline' as Tab, label: 'Timeline', count: events.length },
+      { id: 'envelope' as Tab, label: 'Envelope', count: envelopes.length },
+      { id: 'gates' as Tab, label: 'Gates', count: gates.length },
+      { id: 'prompt' as Tab, label: 'Prompt' },
+    ],
+    [events.length, envelopes.length, gates.length],
+  );
 
   useEffect(() => {
     let timer: number | null = null;
@@ -56,7 +73,9 @@ export default function PhaseDrawer({ phase, events, envelopes, gates, live, now
     const poll = async (): Promise<void> => setLiveTail(await api.runs.liveTail(phase.phaseId));
     void poll();
     timer = window.setInterval(() => void poll(), 600);
-    return () => { if (timer !== null) window.clearInterval(timer); };
+    return () => {
+      if (timer !== null) window.clearInterval(timer);
+    };
   }, [phase.phaseId, live, phase.status]);
 
   useEffect(() => {
@@ -67,7 +86,8 @@ export default function PhaseDrawer({ phase, events, envelopes, gates, live, now
   const toggle = (id: string): void => {
     setOpenEvents((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
@@ -84,7 +104,10 @@ export default function PhaseDrawer({ phase, events, envelopes, gates, live, now
               {phase.attempt > 1 && <span className="badge attempts">attempt {phase.attempt}</span>}
             </div>
             <p className="faint sub mono">
-              {phase.kind}{phase.owner ? ` · ${phase.owner}` : ''}{model ? ` · ${model}` : ''} · {duration(elapsed)}{usage.reported ? ` · ${tokens(usage.totalTokens)} tok` : ''}
+              {phase.kind}
+              {phase.owner ? ` · ${phase.owner}` : ''}
+              {model ? ` · ${model}` : ''} · {duration(elapsed)}
+              {usage.reported ? ` · ${tokens(usage.totalTokens)} tok` : ''}
             </p>
           </div>
         </header>
@@ -92,15 +115,25 @@ export default function PhaseDrawer({ phase, events, envelopes, gates, live, now
         {phase.error && <p className="error-banner selectable">{phase.error}</p>}
         <nav className="tabs">
           {tabs.map((t) => (
-            <button key={t.id} className={`tab ${tab === t.id ? 'active' : ''}`} onClick={() => setTab(t.id)}>
-              {t.label}{t.count ? <span className="count">{t.count}</span> : null}
+            <button
+              key={t.id}
+              className={`tab ${tab === t.id ? 'active' : ''}`}
+              onClick={() => setTab(t.id)}
+            >
+              {t.label}
+              {t.count ? <span className="count">{t.count}</span> : null}
             </button>
           ))}
         </nav>
         <div className="body scroll">
           {tab === 'timeline' && (
             <>
-              {liveTail && <pre className="live selectable mono">{liveTail}<span className="caret" /></pre>}
+              {liveTail && (
+                <pre className="live selectable mono">
+                  {liveTail}
+                  <span className="caret" />
+                </pre>
+              )}
               <ol className="events">
                 {events.map((event) => (
                   <li key={event.eventId} className={EVENT_CLASS[event.type] ?? ''}>
@@ -108,14 +141,24 @@ export default function PhaseDrawer({ phase, events, envelopes, gates, live, now
                       <span className="icon">{EVENT_ICON[event.type] ?? '·'}</span>
                       <span className="ev-name">{event.name}</span>
                       <span className="grow" />
-                      {event.endedAt && <span className="mono faint dur">{duration(new Date(event.endedAt).getTime() - new Date(event.startedAt).getTime())}</span>}
+                      {event.endedAt && (
+                        <span className="mono faint dur">
+                          {duration(
+                            new Date(event.endedAt).getTime() - new Date(event.startedAt).getTime(),
+                          )}
+                        </span>
+                      )}
                       <span className="mono faint ts">{clockTime(event.startedAt)}</span>
                     </button>
-                    {openEvents.has(event.eventId) && Object.keys(event.payload).length > 0 && <JsonView value={event.payload} />}
+                    {openEvents.has(event.eventId) && Object.keys(event.payload).length > 0 && (
+                      <JsonView value={event.payload} />
+                    )}
                   </li>
                 ))}
               </ol>
-              {!events.length && !liveTail && <p className="faint pad">Nothing recorded for this phase yet.</p>}
+              {!events.length && !liveTail && (
+                <p className="faint pad">Nothing recorded for this phase yet.</p>
+              )}
             </>
           )}
           {tab === 'envelope' && (
@@ -123,13 +166,20 @@ export default function PhaseDrawer({ phase, events, envelopes, gates, live, now
               {envelopes.map((envelope) => (
                 <div key={envelope.envelopeId} className="block-card">
                   <div className="spread block-head">
-                    <span className="mono faint">attempt {envelope.attempt} · {envelope.schemaKind}</span>
-                    <StatusBadge status={envelope.valid ? 'success' : 'fail'} label={envelope.valid ? 'parsed' : 'did not parse'} />
+                    <span className="mono faint">
+                      attempt {envelope.attempt} · {envelope.schemaKind}
+                    </span>
+                    <StatusBadge
+                      status={envelope.valid ? 'success' : 'fail'}
+                      label={envelope.valid ? 'parsed' : 'did not parse'}
+                    />
                   </div>
                   <JsonView value={envelope.payload} />
                 </div>
               ))}
-              {!envelopes.length && <p className="faint pad">This phase did not return an envelope.</p>}
+              {!envelopes.length && (
+                <p className="faint pad">This phase did not return an envelope.</p>
+              )}
             </>
           )}
           {tab === 'gates' && (
@@ -151,7 +201,9 @@ export default function PhaseDrawer({ phase, events, envelopes, gates, live, now
                       </li>
                     ))}
                   </ul>
-                  {!gate.checks.length && <p className="faint">This gate recorded no individual checks.</p>}
+                  {!gate.checks.length && (
+                    <p className="faint">This gate recorded no individual checks.</p>
+                  )}
                 </div>
               ))}
               {!gates.length && <p className="faint pad">No gates ran on this phase.</p>}
@@ -159,7 +211,15 @@ export default function PhaseDrawer({ phase, events, envelopes, gates, live, now
           )}
           {tab === 'prompt' && (
             <>
-              {prompt ? <pre className="raw selectable">{prompt}</pre> : <p className="faint pad">{phase.kind === 'agent' ? 'No prompt was recorded for this phase.' : 'Only agent phases have prompts.'}</p>}
+              {prompt ? (
+                <pre className="raw selectable">{prompt}</pre>
+              ) : (
+                <p className="faint pad">
+                  {phase.kind === 'agent'
+                    ? 'No prompt was recorded for this phase.'
+                    : 'Only agent phases have prompts.'}
+                </p>
+              )}
             </>
           )}
         </div>

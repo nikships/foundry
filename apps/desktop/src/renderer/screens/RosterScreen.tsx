@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { AgentDef, CliDescriptor, CliVendor, ModelInfo, ValidationIssue } from '@shared/types.js';
+import type {
+  AgentDef,
+  CliDescriptor,
+  CliVendor,
+  ModelInfo,
+  ValidationIssue,
+} from '@shared/types.js';
 import { api, plain } from '../api.js';
 import { useApp } from '../stores/app.js';
 import { modelLabel } from '../format.js';
@@ -21,8 +27,14 @@ export default function RosterScreen(): React.JSX.Element {
   const [saving, setSaving] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
 
-  const selected = useMemo(() => agents.find((a) => a.name === selectedName) ?? null, [agents, selectedName]);
-  const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(selected), [draft, selected]);
+  const selected = useMemo(
+    () => agents.find((a) => a.name === selectedName) ?? null,
+    [agents, selectedName],
+  );
+  const dirty = useMemo(
+    () => JSON.stringify(draft) !== JSON.stringify(selected),
+    [draft, selected],
+  );
 
   useEffect(() => {
     if (!agents.some((a) => a.name === selectedName)) setSelectedName(agents[0]?.name ?? '');
@@ -33,13 +45,17 @@ export default function RosterScreen(): React.JSX.Element {
     setIssues([]);
   }, [selected]);
 
-  useEffect(() => { void api.catalog.clis().then(setClis); }, []);
+  useEffect(() => {
+    void api.catalog.clis().then(setClis);
+  }, []);
 
   // Each CLI answers for its own models, so switching an agent's CLI reloads the
   // list. Without this the picker keeps offering ids the new CLI cannot resolve,
   // which fails on the first turn instead of here.
   const draftCli = draft?.cli ?? 'droid';
-  useEffect(() => { void api.catalog.models(draftCli).then(setModels); }, [draftCli]);
+  useEffect(() => {
+    void api.catalog.models(draftCli).then(setModels);
+  }, [draftCli]);
 
   const revert = (): void => setDraft(selected ? plain({ ...selected }) : null);
   const save = async (): Promise<void> => {
@@ -97,11 +113,17 @@ export default function RosterScreen(): React.JSX.Element {
         <aside className="list">
           <header className="list-head">
             <h1>Roster</h1>
-            <button className="btn sm" onClick={() => void createAgent()}>New</button>
+            <button className="btn sm" onClick={() => void createAgent()}>
+              New
+            </button>
           </header>
           <div className="scroll agents">
             {agents.map((agent) => (
-              <button key={agent.name} className={`agent ${agent.name === selectedName ? 'active' : ''}`} onClick={() => setSelectedName(agent.name)}>
+              <button
+                key={agent.name}
+                className={`agent ${agent.name === selectedName ? 'active' : ''}`}
+                onClick={() => setSelectedName(agent.name)}
+              >
                 <AgentAvatar name={agent.name} size={34} />
                 <span className="who">
                   <span className="name">{agent.name}</span>
@@ -118,20 +140,41 @@ export default function RosterScreen(): React.JSX.Element {
               <AgentAvatar name={draft.name} size={44} />
               <div className="grow">
                 <h2>{draft.name}</h2>
-                <p className="faint sub">{draft.builtin ? 'Shipped with Foundry, editable' : 'Custom agent'}</p>
+                <p className="faint sub">
+                  {draft.builtin ? 'Shipped with Foundry, editable' : 'Custom agent'}
+                </p>
               </div>
-              <button className="btn sm" onClick={() => setShowPreview(true)}>Preview prompt</button>
-              <button className="btn sm" onClick={() => void duplicate()}>Duplicate</button>
-              {!draft.builtin && <button className="btn sm danger" onClick={() => void remove()}>Delete</button>}
+              <button className="btn sm" onClick={() => setShowPreview(true)}>
+                Preview prompt
+              </button>
+              <button className="btn sm" onClick={() => void duplicate()}>
+                Duplicate
+              </button>
+              {!draft.builtin && (
+                <button className="btn sm danger" onClick={() => void remove()}>
+                  Delete
+                </button>
+              )}
             </header>
             <div className="field">
               <label>Name</label>
-              <input className="input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
-              <span className="hint">Pipelines refer to an agent by this name. Renaming breaks a pipeline that points here.</span>
+              <input
+                className="input"
+                value={draft.name}
+                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+              />
+              <span className="hint">
+                Pipelines refer to an agent by this name. Renaming breaks a pipeline that points
+                here.
+              </span>
             </div>
             <div className="field">
               <label>Purpose</label>
-              <input className="input" value={draft.purpose} onChange={(e) => setDraft({ ...draft, purpose: e.target.value })} />
+              <input
+                className="input"
+                value={draft.purpose}
+                onChange={(e) => setDraft({ ...draft, purpose: e.target.value })}
+              />
               <span className="hint">One line, shown wherever this agent appears.</span>
             </div>
             <div className="field">
@@ -139,78 +182,151 @@ export default function RosterScreen(): React.JSX.Element {
               <select
                 className="select"
                 value={draftCli}
-                onChange={(e) => setDraft({ ...draft, cli: e.target.value as CliVendor, model: 'inherit' })}
+                onChange={(e) =>
+                  setDraft({ ...draft, cli: e.target.value as CliVendor, model: 'inherit' })
+                }
               >
                 {clis.map((cli) => (
-                  <option key={cli.id} value={cli.id}>{cli.label}</option>
+                  <option key={cli.id} value={cli.id}>
+                    {cli.label}
+                  </option>
                 ))}
               </select>
-              <span className="hint">Which binary runs this agent's phases. Changing it resets the model, because model ids do not carry across CLIs.</span>
+              <span className="hint">
+                Which binary runs this agent's phases. Changing it resets the model, because model
+                ids do not carry across CLIs.
+              </span>
               {(clis.find((c) => c.id === draftCli)?.caveats ?? []).map((caveat) => (
-                <span key={caveat} className="hint caveat">{caveat}</span>
+                <span key={caveat} className="hint caveat">
+                  {caveat}
+                </span>
               ))}
             </div>
             <div className="two">
               <div className="field">
                 <label>Model</label>
-                <ModelPicker value={draft.model} models={models} allowInherit onChange={(value) => setDraft({ ...draft, model: value })} />
+                <ModelPicker
+                  value={draft.model}
+                  models={models}
+                  allowInherit
+                  onChange={(value) => setDraft({ ...draft, model: value })}
+                />
                 <span className="hint">“Inherit” uses this CLI's own default.</span>
               </div>
               <div className="field">
                 <label>Reasoning effort</label>
-                <select className="select" value={draft.reasoningEffort} onChange={(e) => setDraft({ ...draft, reasoningEffort: e.target.value as AgentDef['reasoningEffort'] })}>
+                <select
+                  className="select"
+                  value={draft.reasoningEffort}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      reasoningEffort: e.target.value as AgentDef['reasoningEffort'],
+                    })
+                  }
+                >
                   <option value="off">Off</option>
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
                   <option value="high">High</option>
                 </select>
-                <span className="hint">Higher effort costs more thinking tokens and takes longer.</span>
+                <span className="hint">
+                  Higher effort costs more thinking tokens and takes longer.
+                </span>
               </div>
             </div>
             <div className="field">
               <label>Colour</label>
               <div className="swatches">
                 {COLORS.map((c) => (
-                  <button key={c} className={`swatch ${draft.color === c ? 'on' : ''}`} style={{ background: c }} onClick={() => setDraft({ ...draft, color: c })} />
+                  <button
+                    key={c}
+                    className={`swatch ${draft.color === c ? 'on' : ''}`}
+                    style={{ background: c }}
+                    onClick={() => setDraft({ ...draft, color: c })}
+                  />
                 ))}
               </div>
               <span className="hint">Used for this agent's lane in the waterfall.</span>
             </div>
             <div className="field">
               <label>System prompt</label>
-              <textarea className="textarea" value={draft.systemPrompt} rows={7} onChange={(e) => setDraft({ ...draft, systemPrompt: e.target.value })} />
-              <span className="hint">The agent's standing instructions. Sent once, at the start of its session.</span>
+              <textarea
+                className="textarea"
+                value={draft.systemPrompt}
+                rows={7}
+                onChange={(e) => setDraft({ ...draft, systemPrompt: e.target.value })}
+              />
+              <span className="hint">
+                The agent's standing instructions. Sent once, at the start of its session.
+              </span>
             </div>
             <div className="field">
               <label>User prompt template</label>
-              <textarea className="textarea" value={draft.userPrompt} rows={6} onChange={(e) => setDraft({ ...draft, userPrompt: e.target.value })} />
-              <span className="hint">Supports {TEMPLATE_TOKENS.map((token) => <code key={token}>{token}</code>)} Declared inputs not referenced here are appended to the prompt automatically.</span>
+              <textarea
+                className="textarea"
+                value={draft.userPrompt}
+                rows={6}
+                onChange={(e) => setDraft({ ...draft, userPrompt: e.target.value })}
+              />
+              <span className="hint">
+                Supports{' '}
+                {TEMPLATE_TOKENS.map((token) => (
+                  <code key={token}>{token}</code>
+                ))}{' '}
+                Declared inputs not referenced here are appended to the prompt automatically.
+              </span>
             </div>
             <div className="field">
               <label>Envelope</label>
-              <select className="select" value={draft.envelope} onChange={(e) => setDraft({ ...draft, envelope: e.target.value as AgentDef['envelope'] })}>
-                {ENVELOPE_KINDS.map((kind) => <option key={kind} value={kind}>{kind}</option>)}
+              <select
+                className="select"
+                value={draft.envelope}
+                onChange={(e) =>
+                  setDraft({ ...draft, envelope: e.target.value as AgentDef['envelope'] })
+                }
+              >
+                {ENVELOPE_KINDS.map((kind) => (
+                  <option key={kind} value={kind}>
+                    {kind}
+                  </option>
+                ))}
               </select>
-              <span className="hint">The typed reply this agent must return. Parsed and validated on every turn.</span>
+              <span className="hint">
+                The typed reply this agent must return. Parsed and validated on every turn.
+              </span>
             </div>
             <div className="field">
               <label>Write boundary</label>
-              <BoundaryEditor value={draft.writes} onChange={(value) => setDraft({ ...draft, writes: value })} />
+              <BoundaryEditor
+                value={draft.writes}
+                onChange={(value) => setDraft({ ...draft, writes: value })}
+              />
             </div>
             {issues.length > 0 && (
               <ul className="issues">
-                {issues.map((issue, i) => <li key={i} className={issue.level}><strong>{issue.where}</strong> {issue.message}</li>)}
+                {issues.map((issue, i) => (
+                  <li key={i} className={issue.level}>
+                    <strong>{issue.where}</strong> {issue.message}
+                  </li>
+                ))}
               </ul>
             )}
             <footer className={`save-bar ${dirty ? 'show' : ''}`}>
               <span className="faint">Unsaved changes</span>
               <div className="grow" />
-              <button className="btn" onClick={revert}>Revert</button>
-              <button className="btn primary" disabled={saving} onClick={() => void save()}>Save agent</button>
+              <button className="btn" onClick={revert}>
+                Revert
+              </button>
+              <button className="btn primary" disabled={saving} onClick={() => void save()}>
+                Save agent
+              </button>
             </footer>
           </div>
         )}
-        {showPreview && draft && <PromptPreview agent={draft} onClose={() => setShowPreview(false)} />}
+        {showPreview && draft && (
+          <PromptPreview agent={draft} onClose={() => setShowPreview(false)} />
+        )}
       </div>
       <style>{`
         .screen { display: grid; grid-template-columns: 300px minmax(0, 1fr); height: 100%; min-height: 0; }

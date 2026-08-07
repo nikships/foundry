@@ -66,7 +66,9 @@ export async function runCommand(input: RunCommandInput): Promise<CommandResult>
         stdio: ['ignore', 'pipe', 'pipe'],
       });
     } catch (e) {
-      resolvePromise(failedResult(name, command, started, `could not spawn: ${(e as Error).message}`));
+      resolvePromise(
+        failedResult(name, command, started, `could not spawn: ${(e as Error).message}`),
+      );
       return;
     }
 

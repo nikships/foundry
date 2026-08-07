@@ -70,7 +70,9 @@ export class ProjectStore {
     return project;
   }
 
-  save(project: ProjectDef): { ok: true; projects: ProjectDef[] } | { ok: false; issues: ValidationIssue[] } {
+  save(
+    project: ProjectDef,
+  ): { ok: true; projects: ProjectDef[] } | { ok: false; issues: ValidationIssue[] } {
     const parsed = projectSchema.safeParse(project);
     if (!parsed.success) {
       return {

@@ -58,7 +58,8 @@ const api: FoundryApi = {
     remove: (id, projectId) => call(IPC.pipelinesRemove, id, projectId),
     duplicate: (id, projectId) => call(IPC.pipelinesDuplicate, id, projectId),
     validate: (pipeline, projectId) => call(IPC.pipelinesValidate, pipeline, projectId),
-    dryRun: (pipelineId, projectId, request) => call(IPC.pipelinesDryRun, pipelineId, projectId, request),
+    dryRun: (pipelineId, projectId, request) =>
+      call(IPC.pipelinesDryRun, pipelineId, projectId, request),
     reset: () => call(IPC.pipelinesReset),
   },
   catalog: {

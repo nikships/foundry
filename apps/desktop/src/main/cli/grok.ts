@@ -214,7 +214,7 @@ export const grokAdapter: CliAdapter = {
   noisyStderr: /worker quit|UnexpectedContentType/i,
   stream: streamFactory,
   caveats: [
-    'The binary name is shared with the community grok-cli. Foundry expects xAI\'s own build, which authenticates with XAI_API_KEY.',
+    "The binary name is shared with the community grok-cli. Foundry expects xAI's own build, which authenticates with XAI_API_KEY.",
   ],
 
   turn: (req) => {

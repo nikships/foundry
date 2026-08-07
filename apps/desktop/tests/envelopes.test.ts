@@ -9,7 +9,8 @@ import {
 
 describe('envelope extraction', () => {
   it('takes the last balanced object when prose surrounds it', () => {
-    const text = 'Here is my thinking {"draft": true} and my answer:\n{"status":"success","summary":"done"}';
+    const text =
+      'Here is my thinking {"draft": true} and my answer:\n{"status":"success","summary":"done"}';
     expect(extractJson(text)).toBe('{"status":"success","summary":"done"}');
   });
 
@@ -82,7 +83,9 @@ describe('generated examples', () => {
     for (const kind of kinds) {
       const example = JSON.parse(exampleFor(kind));
       // Example must satisfy its schema so an agent can copy it literally.
-      expect(schemaFor(kind).safeParse(example).success, `${kind} example must validate`).toBe(true);
+      expect(schemaFor(kind).safeParse(example).success, `${kind} example must validate`).toBe(
+        true,
+      );
     }
   });
 

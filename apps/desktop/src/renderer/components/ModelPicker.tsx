@@ -3,7 +3,17 @@ import type { ModelInfo } from '@shared/types.js';
 import { api } from '../api.js';
 import { modelLabel } from '../format.js';
 
-export default function ModelPicker({ value, models, allowInherit, onChange }: { value: string; models: ModelInfo[]; allowInherit?: boolean; onChange: (value: string) => void }): React.JSX.Element {
+export default function ModelPicker({
+  value,
+  models,
+  allowInherit,
+  onChange,
+}: {
+  value: string;
+  models: ModelInfo[];
+  allowInherit?: boolean;
+  onChange: (value: string) => void;
+}): React.JSX.Element {
   const groups = useMemo(() => {
     const map = new Map<string, ModelInfo[]>();
     for (const model of models) {
@@ -16,7 +26,12 @@ export default function ModelPicker({ value, models, allowInherit, onChange }: {
 
   const [icons, setIcons] = useState<Record<string, string>>({});
   useEffect(() => {
-    void Promise.all(groups.map(async ([provider]) => [provider, await api.app.assetUrl(`providers/${provider}.png`)] as const)).then((entries) => setIcons(Object.fromEntries(entries)));
+    void Promise.all(
+      groups.map(
+        async ([provider]) =>
+          [provider, await api.app.assetUrl(`providers/${provider}.png`)] as const,
+      ),
+    ).then((entries) => setIcons(Object.fromEntries(entries)));
   }, [groups]);
 
   const current = useMemo(() => models.find((m) => m.id === value) ?? null, [models, value]);
@@ -29,13 +44,19 @@ export default function ModelPicker({ value, models, allowInherit, onChange }: {
           {groups.map(([provider, list]) => (
             <optgroup key={provider} label={provider}>
               {list.map((model) => (
-                <option key={model.id} value={model.id}>{model.displayName || modelLabel(model.id)}</option>
+                <option key={model.id} value={model.id}>
+                  {model.displayName || modelLabel(model.id)}
+                </option>
               ))}
             </optgroup>
           ))}
-          {value !== 'inherit' && !current && <option value={value}>{modelLabel(value)} (not in the current catalog)</option>}
+          {value !== 'inherit' && !current && (
+            <option value={value}>{modelLabel(value)} (not in the current catalog)</option>
+          )}
         </select>
-        {current && icons[current.provider] && <img src={icons[current.provider]} alt={current.provider} />}
+        {current && icons[current.provider] && (
+          <img src={icons[current.provider]} alt={current.provider} />
+        )}
       </div>
       <style>{`
         .picker { position: relative; display: flex; align-items: center; gap: var(--s2); }

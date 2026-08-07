@@ -121,7 +121,9 @@ function short(path: string): string {
 
 /** A capped string plus the flag that says the cap bit. */
 function capped(text: string, cap: number): { text: string; truncated: boolean } {
-  return text.length > cap ? { text: text.slice(0, cap), truncated: true } : { text, truncated: false };
+  return text.length > cap
+    ? { text: text.slice(0, cap), truncated: true }
+    : { text, truncated: false };
 }
 
 export function toUsageBreakdown(usage: TokenUsage | null | undefined): UsageBreakdown {
@@ -256,7 +258,12 @@ export class EventFolder {
         const d = n as { messageId?: string; blockIndex?: number; textDelta?: string };
         if (d.textDelta) this.ctx.onText?.(d.textDelta);
         if (d.messageId !== undefined && d.textDelta) {
-          this.growText(`text:${d.messageId}:${d.blockIndex ?? 0}`, 'assistant_text', 'assistant', d.textDelta);
+          this.growText(
+            `text:${d.messageId}:${d.blockIndex ?? 0}`,
+            'assistant_text',
+            'assistant',
+            d.textDelta,
+          );
         }
         return;
       }
@@ -290,7 +297,12 @@ export class EventFolder {
    * patching the row at most once per TEXT_FLUSH_MS. The full text always
    * lands on close, so a throttled-away delta is a display lag, never a gap.
    */
-  private growText(key: string, type: 'thinking' | 'assistant_text', name: string, delta: string): void {
+  private growText(
+    key: string,
+    type: 'thinking' | 'assistant_text',
+    name: string,
+    delta: string,
+  ): void {
     let open = this.openTexts.get(key);
     if (!open) {
       // A whole message can arrive as one delta (the one-shot normalisers do

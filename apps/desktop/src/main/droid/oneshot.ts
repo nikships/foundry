@@ -80,7 +80,11 @@ export class OneShotClient {
     timeoutMs: number,
     onStreamLine?: (line: unknown) => void,
   ): Promise<TurnResult> {
-    let { stdout, stderr, code, timedOut } = await this.exec(this.argsFor(text, true), timeoutMs, onStreamLine);
+    let { stdout, stderr, code, timedOut } = await this.exec(
+      this.argsFor(text, true),
+      timeoutMs,
+      onStreamLine,
+    );
 
     // A model the org forbids must not cost the turn: retry on the CLI's own
     // default and report the substitution rather than failing the phase.
@@ -88,7 +92,11 @@ export class OneShotClient {
       this.opts.onStderr?.(
         `${this.opts.model} was refused; this turn runs on ${this.adapter.label}'s default model`,
       );
-      ({ stdout, stderr, code, timedOut } = await this.exec(this.argsFor(text, false), timeoutMs, onStreamLine));
+      ({ stdout, stderr, code, timedOut } = await this.exec(
+        this.argsFor(text, false),
+        timeoutMs,
+        onStreamLine,
+      ));
     }
 
     this.reportStderr(stderr);

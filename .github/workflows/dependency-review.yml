@@ -1,0 +1,34 @@
+name: Dependency review
+
+# Blocks PRs that introduce vulnerable or disallowed dependency changes.
+# Only runs on pull_request (needs a base..head diff). Complements npm audit
+# in ci.yml, which also covers push-to-main.
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: dependency-review-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  dependency-review:
+    name: dependency-review
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          # Comment a summary on the PR so agents and humans see the delta.
+          comment-summary-in-pr: on-failure
+          # Deny known-bad licenses for an app distributed as a binary.
+          deny-licenses: GPL-2.0, GPL-3.0, AGPL-1.0, AGPL-3.0, SSPL-1.0

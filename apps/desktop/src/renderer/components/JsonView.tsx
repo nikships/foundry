@@ -1,6 +1,9 @@
 import { useMemo } from 'react';
 
-interface Token { text: string; cls: string; }
+interface Token {
+  text: string;
+  cls: string;
+}
 
 function tokenize(value: unknown, indent = 0, key: string | null = null): Token[] {
   const pad = '  '.repeat(indent);
@@ -36,12 +39,20 @@ function tokenize(value: unknown, indent = 0, key: string | null = null): Token[
 
 export default function JsonView({ value }: { value: unknown }): React.JSX.Element {
   const tokens = useMemo(() => {
-    try { return tokenize(value); } catch { return [{ text: String(value), cls: 'p' }]; }
+    try {
+      return tokenize(value);
+    } catch {
+      return [{ text: String(value), cls: 'p' }];
+    }
   }, [value]);
   return (
     <>
       <pre className="json selectable">
-        {tokens.map((t, i) => <span key={i} className={t.cls}>{t.text}</span>)}
+        {tokens.map((t, i) => (
+          <span key={i} className={t.cls}>
+            {t.text}
+          </span>
+        ))}
       </pre>
       <style>{`
         .json {

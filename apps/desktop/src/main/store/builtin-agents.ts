@@ -10,7 +10,7 @@
 import type { AgentDef } from '@shared/types.js';
 
 const SHELL_NOTE = [
-  'You inherit the operator\'s shell environment: PATH, toolchains, and credentials are already live.',
+  "You inherit the operator's shell environment: PATH, toolchains, and credentials are already live.",
   'Call tools by bare name (bun, uv, pytest); never hunt for a binary or fall back to an absolute path.',
   'Judge any command you run by its exit status, never by scanning output for words. The text "error" inside passing output is text, not a failure.',
 ].join('\n');

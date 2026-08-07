@@ -139,7 +139,12 @@ function streamLine(line: unknown): DroidNotification[] {
     message.content.forEach((block, i) => {
       if (block.type === 'text' && block.text) {
         out.push(
-          { type: 'assistant_text_delta', messageId: message.id!, blockIndex: i, textDelta: block.text },
+          {
+            type: 'assistant_text_delta',
+            messageId: message.id!,
+            blockIndex: i,
+            textDelta: block.text,
+          },
           { type: 'assistant_text_complete', messageId: message.id!, blockIndex: i },
         );
       } else if (block.type === 'thinking' && block.thinking) {

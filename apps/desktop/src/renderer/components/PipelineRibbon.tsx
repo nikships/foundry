@@ -15,7 +15,11 @@ export default function PipelineRibbon({ pipeline }: { pipeline: PipelineDef }):
           const color = colorFor(phase);
           let connector: React.ReactNode = null;
           if (phase.feedbackTo) {
-            connector = <span className="loop" title={`sends failures back to ${phase.feedbackTo}`}>↩</span>;
+            connector = (
+              <span className="loop" title={`sends failures back to ${phase.feedbackTo}`}>
+                ↩
+              </span>
+            );
           } else if (i < pipeline.phases.length - 1) {
             connector = <span className="arrow">→</span>;
           }

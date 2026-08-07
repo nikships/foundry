@@ -189,7 +189,9 @@ async function main(): Promise<void> {
     }
   }
   console.log(`events:  ${tracer.eventsAfter(runId, 0, 10_000).length}`);
-  const head = sh(outcome.worktreePath ?? repo, ['git', 'log', '--oneline']).trim().split('\n')[0];
+  const head = sh(outcome.worktreePath ?? repo, ['git', 'log', '--oneline'])
+    .trim()
+    .split('\n')[0];
   console.log(`git log: ${head}`);
   process.exit(outcome.status === 'accepted' ? 0 : 1);
 }
@@ -216,7 +218,9 @@ async function sweepDemo(tracer: Tracer, appSupport: string, project: ProjectDef
     pid: victim.pid!,
     command: 'sleep 300',
   });
-  console.log(`recorded pid ${victim.pid} (row ${rowId}), run status = ${tracer.run(runId)?.status}`);
+  console.log(
+    `recorded pid ${victim.pid} (row ${rowId}), run status = ${tracer.run(runId)?.status}`,
+  );
   victim.kill('SIGKILL');
   await sleep(400);
 

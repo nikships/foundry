@@ -41,8 +41,10 @@ function client(
 }
 
 type PermMethod = 'droid.request_permission' | 'droid.ask_user';
-const perm = (params: Record<string, unknown>, method: PermMethod = 'droid.request_permission') =>
-  ({ method, params });
+const perm = (
+  params: Record<string, unknown>,
+  method: PermMethod = 'droid.request_permission',
+) => ({ method, params });
 
 describe('session lifecycle', () => {
   it('initialises, learns its session id, and reads the catalog', async () => {
@@ -133,7 +135,12 @@ describe('turns', () => {
 describe('tool-call labelling', () => {
   it('names a shell call by its command', () => {
     expect(
-      labelToolCall({ type: 'tool_use', id: '1', name: 'Execute', input: { command: 'bun test\nmore' } }),
+      labelToolCall({
+        type: 'tool_use',
+        id: '1',
+        name: 'Execute',
+        input: { command: 'bun test\nmore' },
+      }),
     ).toBe('bash: bun test');
   });
 

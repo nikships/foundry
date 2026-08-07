@@ -48,7 +48,9 @@ export interface ExecutorDeps {
   runId: string;
   engineer: string;
   /** Raises the interrupt sheet and resolves with what the human chose. */
-  askHuman: (req: InterruptRequest) => Promise<{ approve: boolean; text?: string; remember?: boolean }>;
+  askHuman: (
+    req: InterruptRequest,
+  ) => Promise<{ approve: boolean; text?: string; remember?: boolean }>;
   onLiveText?: (phaseId: string, text: string) => void;
   onCommandRemembered?: (command: string) => void;
   onRunFinished?: (status: RunStatus) => void;
@@ -64,9 +66,7 @@ export interface RunOutcome {
 }
 
 type PhaseJump =
-  | { kind: 'next' }
-  | { kind: 'goto'; phase: string }
-  | { kind: 'abort'; detail: string };
+  { kind: 'next' } | { kind: 'goto'; phase: string } | { kind: 'abort'; detail: string };
 
 type CommandResolution =
   | { ok: true; argv: string[]; skip?: false }
@@ -548,11 +548,22 @@ export class Executor {
           name: `feedback to ${phase.feedbackTo}`,
           payload: { attempt: used + 1, budget, exitCode: result.exitCode },
         });
-        tracer.closePhase(phaseId, 'fail', `exit ${result.exitCode}: sent back to ${phase.feedbackTo}`);
+        tracer.closePhase(
+          phaseId,
+          'fail',
+          `exit ${result.exitCode}: sent back to ${phase.feedbackTo}`,
+        );
         return { kind: 'goto', phase: phase.feedbackTo };
       }
-      tracer.closePhase(phaseId, 'fail', `exit ${result.exitCode} after ${budget} repair attempt(s)`);
-      return { kind: 'abort', detail: `${phase.name} still fails after ${budget} repair attempt(s)` };
+      tracer.closePhase(
+        phaseId,
+        'fail',
+        `exit ${result.exitCode} after ${budget} repair attempt(s)`,
+      );
+      return {
+        kind: 'abort',
+        detail: `${phase.name} still fails after ${budget} repair attempt(s)`,
+      };
     }
 
     tracer.closePhase(phaseId, 'fail', `exit ${result.exitCode}`);
@@ -590,7 +601,11 @@ export class Executor {
   /** `git commit` fails on an empty index, so staging is part of the phase. */
   private gitCommitArgv(message: string): string[] {
     const subject = message.split('\n')[0]?.trim() || 'foundry: run changes';
-    return ['sh', '-c', `git add -A && git diff --cached --quiet || git commit -m ${shellQuote(subject)}`];
+    return [
+      'sh',
+      '-c',
+      `git add -A && git diff --cached --quiet || git commit -m ${shellQuote(subject)}`,
+    ];
   }
 
   private async runEngineerPhase(phase: PhaseDef): Promise<PhaseJump> {
@@ -747,7 +762,10 @@ export class Executor {
           if (!result) return { accepted: true, reason: `phase "${phase.name}" passed` };
           return result.passed
             ? { accepted: true, reason: `"${phase.name}" exited 0` }
-            : { accepted: false, reason: `"${phase.name}" exited ${result.exitCode ?? 'abnormally'}` };
+            : {
+                accepted: false,
+                reason: `"${phase.name}" exited ${result.exitCode ?? 'abnormally'}`,
+              };
         }
         const envelope = this.envelopes.get(acceptance.phase);
         return envelope?.approved === true

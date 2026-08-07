@@ -80,8 +80,7 @@ async function fromPackageJson(root: string): Promise<CommandCandidate[]> {
     if (!script) continue;
     // `npm` needs `run` for everything but its own built-in verbs; yarn, pnpm,
     // and bun accept a bare script name.
-    const argv =
-      runner === 'npm' && script !== 'test' ? [runner, 'run', script] : [runner, script];
+    const argv = runner === 'npm' && script !== 'test' ? [runner, 'run', script] : [runner, script];
     out.push({ name: role, argv, source: 'package.json' });
   }
   return out;
@@ -133,7 +132,11 @@ async function fromGo(root: string): Promise<CommandCandidate[]> {
 
 async function fromGradle(root: string): Promise<CommandCandidate[]> {
   const wrapper = existsSync(join(root, 'gradlew'));
-  if (!wrapper && !existsSync(join(root, 'build.gradle')) && !existsSync(join(root, 'build.gradle.kts'))) {
+  if (
+    !wrapper &&
+    !existsSync(join(root, 'build.gradle')) &&
+    !existsSync(join(root, 'build.gradle.kts'))
+  ) {
     return [];
   }
   const cmd = wrapper ? './gradlew' : 'gradle';

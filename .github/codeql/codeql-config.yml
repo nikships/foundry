@@ -1,0 +1,12 @@
+name: Foundry CodeQL
+
+paths:
+  - apps/desktop
+
+paths-ignore:
+  - apps/desktop/out
+  - apps/desktop/dist
+  - apps/desktop/node_modules
+  - apps/desktop/assets
+  - '**/*.test.ts'
+  - apps/desktop/tests/fake-droid.ts

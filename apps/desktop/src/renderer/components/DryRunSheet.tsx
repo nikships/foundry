@@ -3,7 +3,13 @@ import type { DryRunPrompt } from '@shared/types.js';
 import { modelLabel } from '../format.js';
 import AgentAvatar from './AgentAvatar.js';
 
-export default function DryRunSheet({ prompts, onClose }: { prompts: DryRunPrompt[]; onClose: () => void }): React.JSX.Element {
+export default function DryRunSheet({
+  prompts,
+  onClose,
+}: {
+  prompts: DryRunPrompt[];
+  onClose: () => void;
+}): React.JSX.Element {
   const [selected, setSelected] = useState(0);
   const current = prompts[selected];
 
@@ -14,14 +20,23 @@ export default function DryRunSheet({ prompts, onClose }: { prompts: DryRunPromp
           <header className="spread">
             <div>
               <h2>Dry run</h2>
-              <p className="faint sub">Exactly what each agent would receive, rendered against a sample request. Nothing was sent and nothing was spent.</p>
+              <p className="faint sub">
+                Exactly what each agent would receive, rendered against a sample request. Nothing
+                was sent and nothing was spent.
+              </p>
             </div>
-            <button className="btn sm ghost" onClick={onClose}>Close</button>
+            <button className="btn sm ghost" onClick={onClose}>
+              Close
+            </button>
           </header>
           <div className="split">
             <nav className="steps">
               {prompts.map((prompt, i) => (
-                <button key={i} className={`step ${selected === i ? 'on' : ''}`} onClick={() => setSelected(i)}>
+                <button
+                  key={i}
+                  className={`step ${selected === i ? 'on' : ''}`}
+                  onClick={() => setSelected(i)}
+                >
                   <AgentAvatar name={prompt.agent} size={26} />
                   <span className="step-name">{prompt.phase}</span>
                   <span className="faint mono step-model">{modelLabel(prompt.model)}</span>

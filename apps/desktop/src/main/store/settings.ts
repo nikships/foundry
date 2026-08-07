@@ -111,7 +111,9 @@ export class SettingsStore {
   }
 
   /** Returns the accepted settings, or the validation issues that blocked them. */
-  patch(patch: Partial<AppSettings>): { ok: true; settings: AppSettings } | { ok: false; issues: string[] } {
+  patch(
+    patch: Partial<AppSettings>,
+  ): { ok: true; settings: AppSettings } | { ok: false; issues: string[] } {
     const merged = { ...this.get(), ...patch };
     const parsed = appSettingsSchema.safeParse(merged);
     if (!parsed.success) {

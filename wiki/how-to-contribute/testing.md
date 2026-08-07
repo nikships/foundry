@@ -8,6 +8,7 @@ Foundry tests run with **vitest** from `apps/desktop/`. They use real git reposi
 cd apps/desktop
 npm test           # vitest run
 npm run test:watch # watch mode
+npm run check      # full agent-ready gate (includes test + lint + knip + build)
 ```
 
 Config: `vitest.config.ts` (node environment, `tests/**/*.test.ts`, 30s timeout, forks pool).

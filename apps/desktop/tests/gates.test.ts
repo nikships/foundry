@@ -137,11 +137,9 @@ describe('command_passes', () => {
   });
 
   it('fails on non-zero and keeps the output as evidence', async () => {
-    const checks = await GATES.command_passes!(
-      base,
-      ctx(),
-      { argv: ['sh', '-c', 'echo boom >&2; exit 3'] },
-    );
+    const checks = await GATES.command_passes!(base, ctx(), {
+      argv: ['sh', '-c', 'echo boom >&2; exit 3'],
+    });
     expect(checks[0]!.ok).toBe(false);
     expect(checks[0]!.note).toContain('exit 3');
     expect(checks[0]!.note).toContain('boom');

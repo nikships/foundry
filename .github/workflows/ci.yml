@@ -1,28 +1,33 @@
 name: CI
 
-# Light verification for the Foundry desktop app. Public-repo safety: fork PRs
-# stay on GitHub-hosted macos-latest; own branches/PRs use the Mini.
+# Agent-ready verification for the Foundry desktop app.
+# Public-repo safety: fork PRs stay on GitHub-hosted macos-latest; own branches/PRs use the Mini.
 
 on:
   push:
     branches: [main]
     paths:
       - 'apps/desktop/**'
-      - '.github/workflows/ci.yml'
+      - '.github/workflows/**'
   pull_request:
     branches: [main]
     paths:
       - 'apps/desktop/**'
-      - '.github/workflows/ci.yml'
+      - '.github/workflows/**'
   workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
+  # ── Quality gates (types / lint / format / dead code / tests / build / audit)
   verify:
-    name: typecheck + test + build
+    name: verify
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'macos-latest' || fromJSON('["self-hosted", "mac-mini", "nikships-software-factory"]') }}
     defaults:
       run:
@@ -59,8 +64,47 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Lint
+        run: npm run lint
+
+      - name: Format
+        run: npm run format:check
+
+      - name: Dead code (knip)
+        run: npm run knip
+
       - name: Test
         run: npm test
 
       - name: Build
         run: npm run build
+
+      - name: Dependency audit
+        # Fails on high/critical only so moderate noise does not block PRs.
+        run: npm run audit:deps
+
+  # ── Workflow hygiene ───────────────────────────────────────────────────────
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download actionlint
+        # Pin the binary release; the labels ignore list is for this repo's Mini.
+        run: |
+          set -euo pipefail
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) 1.7.7
+          ./actionlint -version
+
+      - name: Lint workflows
+        run: |
+          set -euo pipefail
+          ./actionlint \
+            -shellcheck= \
+            -ignore 'label "self-hosted"' \
+            -ignore 'label "mac-mini"' \
+            -ignore 'label "nikships-software-factory"' \
+            -ignore 'label "macOS"' \
+            -ignore 'label "ARM64"'

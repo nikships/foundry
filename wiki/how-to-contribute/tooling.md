@@ -24,10 +24,24 @@ Path aliases: `@shared`, `@main`, `@renderer`.
 | `npm run build` | Production bundles to `out/` |
 | `npm start` | Preview built app |
 | `npm run typecheck` | `tsc --noEmit` |
+| `npm run lint` | ESLint, zero warnings allowed |
+| `npm run format` / `format:check` | Prettier write / check |
+| `npm run knip` | Dead code and unused dependency scan |
+| `npm run audit:deps` | `npm audit` at high severity |
 | `npm test` | vitest |
+| `npm run check` | typecheck + lint + format + knip + test + build + audit |
 | `npm run engine:demo` | `tsx scripts/engine-demo.ts` |
 | `npm run icons` | `scripts/make-icns.sh` |
 | `npm run package` | build + icons + electron-builder mac arm64 |
+
+## Quality tooling
+
+| Tool | Config | Role |
+|---|---|---|
+| TypeScript | `tsconfig.json` | Types; `noUnusedLocals` / `noUnusedParameters` |
+| ESLint 9 (flat) | `eslint.config.js` | JS/TS/React correctness; Prettier disables style fights |
+| Prettier | `.prettierrc.json` | Deterministic formatting for agents |
+| Knip | `knip.json` | Unused files and dependencies (exports off by design) |
 
 ## electron-builder
 
@@ -54,4 +68,13 @@ Single `tsconfig.json` for the app; renderer is plain TSX so `tsc` covers it. No
 
 ## CI
 
-No project-local GitHub Actions workflow is required for the core loop; verification is the three local commands (typecheck, test, build). Packaging is manual via `npm run package`.
+GitHub Actions under `.github/workflows/`:
+
+| Workflow | Gates |
+|---|---|
+| `ci.yml` | typecheck, lint, format, knip, test, build, audit, actionlint |
+| `dependency-review.yml` | vulnerable / denied-license dependency diffs on PRs |
+| `codeql.yml` | CodeQL security-and-quality on `apps/desktop` |
+| `mac-package.yml` | signed/notarized DMG (not on pull requests) |
+
+Local parity: `npm run check`. Packaging remains `npm run package` or the Mac package workflow.

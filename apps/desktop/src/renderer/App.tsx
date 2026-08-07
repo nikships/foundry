@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api, menu } from './api.js';
 import { AppProvider, useApp } from './stores/app.js';
 import Sidebar from './components/Sidebar.js';
@@ -36,23 +36,23 @@ function AppInner(): React.JSX.Element {
     setView('runs');
   };
 
-  const go = (next: View): void => {
+  const go = useCallback((next: View): void => {
     setView(next);
     if (next !== 'runs') setOpenRunId('');
     // Navigating to the Inspector bare means "follow whatever is live"; only
     // a deep link from a run pins it to one run.
     if (next === 'inspector') setInspectorRunId('');
-  };
+  }, []);
 
   const openInspector = (runId: string): void => {
     setInspectorRunId(runId);
     setView('inspector');
   };
 
-  const addProject = async (): Promise<void> => {
+  const addProject = useCallback(async (): Promise<void> => {
     const added = await api.projects.add();
     if (added) await refreshAll();
-  };
+  }, [refreshAll]);
 
   const finishOnboarding = async (): Promise<void> => {
     await api.settings.patch({ onboarded: true });
@@ -73,12 +73,17 @@ function AppInner(): React.JSX.Element {
         void addProject();
       }
     });
-  }, []);
+  }, [go, addProject]);
 
   let main: React.JSX.Element | null = null;
   if (view === 'runs' && openRunId) {
     main = (
-      <RunDetailScreen key={openRunId} runId={openRunId} onBack={() => setOpenRunId('')} onOpenInspector={openInspector} />
+      <RunDetailScreen
+        key={openRunId}
+        runId={openRunId}
+        onBack={() => setOpenRunId('')}
+        onOpenInspector={openInspector}
+      />
     );
   } else if (view === 'runs') {
     main = <RunsScreen onOpen={openRun} />;

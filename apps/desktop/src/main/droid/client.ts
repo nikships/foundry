@@ -26,8 +26,7 @@ export interface PermissionAsk {
 }
 
 export type PermissionDecision =
-  | { outcome: 'allow'; remember?: boolean }
-  | { outcome: 'deny'; reason?: string };
+  { outcome: 'allow'; remember?: boolean } | { outcome: 'deny'; reason?: string };
 
 export interface DroidClientOptions {
   droidPath: string;
@@ -129,7 +128,9 @@ export class DroidClient extends EventEmitter {
       this.exited = true;
       for (const [id, p] of this.pending) {
         if (p.timer) clearTimeout(p.timer);
-        p.reject(new DroidProtocolError(`droid exited (code ${code}) with request ${id} in flight`));
+        p.reject(
+          new DroidProtocolError(`droid exited (code ${code}) with request ${id} in flight`),
+        );
       }
       this.pending.clear();
       // Turn completion is a notification, so a mid-turn exit must fail here.
@@ -433,8 +434,9 @@ class TurnCollector {
         this.text += String((n as { textDelta?: string }).textDelta ?? '');
         break;
       case 'create_message': {
-        const message = (n as { message?: { role?: string; content?: { type: string; text?: string }[] } })
-          .message;
+        const message = (
+          n as { message?: { role?: string; content?: { type: string; text?: string }[] } }
+        ).message;
         if (message?.role !== 'assistant') break;
         const joined = (message.content ?? [])
           .filter((c) => c.type === 'text' && typeof c.text === 'string')

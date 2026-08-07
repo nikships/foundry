@@ -9,9 +9,14 @@ import { parseStatus } from '../src/main/engine/git.js';
 
 describe('parseStatus', () => {
   it('parses rows of every status flavour', () => {
-    const text = [' M src/a.ts', 'M  staged.ts', '?? new file.txt', 'A  added.ts', '!! ignored.bin', 'D  gone.ts'].join(
-      '\n',
-    );
+    const text = [
+      ' M src/a.ts',
+      'M  staged.ts',
+      '?? new file.txt',
+      'A  added.ts',
+      '!! ignored.bin',
+      'D  gone.ts',
+    ].join('\n');
     expect(parseStatus(text)).toEqual([
       { path: 'src/a.ts', code: ' M' },
       { path: 'staged.ts', code: 'M ' },
@@ -25,13 +30,20 @@ describe('parseStatus', () => {
   it('drops git chatter that is not a status row', () => {
     // The fsmonitor failure mode that prompted the parser: the warning merges
     // into the capture and used to surface as a file named after the message.
-    const text = ['error: could not read IPC response', 'hint: some advice', '?? made.txt', ''].join('\n');
+    const text = [
+      'error: could not read IPC response',
+      'hint: some advice',
+      '?? made.txt',
+      '',
+    ].join('\n');
     expect(parseStatus(text)).toEqual([{ path: 'made.txt', code: '??' }]);
   });
 
   it('reports the destination of a rename and strips quoting', () => {
     expect(parseStatus('R  old.ts -> new.ts')).toEqual([{ path: 'new.ts', code: 'R ' }]);
-    expect(parseStatus('?? "dir with space/f.ts"')).toEqual([{ path: 'dir with space/f.ts', code: '??' }]);
+    expect(parseStatus('?? "dir with space/f.ts"')).toEqual([
+      { path: 'dir with space/f.ts', code: '??' },
+    ]);
   });
 
   it('ignores blank lines and truncated fragments', () => {

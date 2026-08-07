@@ -47,7 +47,10 @@ describe('mergeCustomModels', () => {
 
   it('carries reasoning efforts that --help omits for custom models', () => {
     const models = mergeCustomModels(fromHelp, [
-      entry({ supportedReasoningEfforts: ['low', 'high', 'xhigh'], defaultReasoningEffort: 'xhigh' }),
+      entry({
+        supportedReasoningEfforts: ['low', 'high', 'xhigh'],
+        defaultReasoningEffort: 'xhigh',
+      }),
     ]);
     expect(models[0]!.supportedReasoningEfforts).toEqual(['low', 'high', 'xhigh']);
     expect(models[0]!.defaultReasoningEffort).toBe('xhigh');

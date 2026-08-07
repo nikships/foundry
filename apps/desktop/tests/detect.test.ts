@@ -18,7 +18,12 @@ const argvFor = async (dir: string, role: string): Promise<string[] | undefined>
 describe('sniffCommands: node', () => {
   it('finds test, lint, typecheck, and build from package.json scripts', async () => {
     const dir = repo({
-      'package.json': pkg({ test: 'vitest run', lint: 'eslint .', typecheck: 'tsc --noEmit', build: 'vite build' }),
+      'package.json': pkg({
+        test: 'vitest run',
+        lint: 'eslint .',
+        typecheck: 'tsc --noEmit',
+        build: 'vite build',
+      }),
     });
     const found = await sniffCommands(dir);
     expect(found.map((c) => c.name)).toEqual(['test', 'lint', 'typecheck', 'build']);
@@ -38,9 +43,18 @@ describe('sniffCommands: node', () => {
 
   it('switches runner on the lockfile, since npm can resolve a different tree', async () => {
     const scripts = pkg({ test: 'vitest run' });
-    expect(await argvFor(repo({ 'package.json': scripts, 'pnpm-lock.yaml': '' }), 'test')).toEqual(['pnpm', 'test']);
-    expect(await argvFor(repo({ 'package.json': scripts, 'yarn.lock': '' }), 'test')).toEqual(['yarn', 'test']);
-    expect(await argvFor(repo({ 'package.json': scripts, 'bun.lockb': '' }), 'test')).toEqual(['bun', 'test']);
+    expect(await argvFor(repo({ 'package.json': scripts, 'pnpm-lock.yaml': '' }), 'test')).toEqual([
+      'pnpm',
+      'test',
+    ]);
+    expect(await argvFor(repo({ 'package.json': scripts, 'yarn.lock': '' }), 'test')).toEqual([
+      'yarn',
+      'test',
+    ]);
+    expect(await argvFor(repo({ 'package.json': scripts, 'bun.lockb': '' }), 'test')).toEqual([
+      'bun',
+      'test',
+    ]);
   });
 
   it('accepts an aliased script name', async () => {
@@ -60,8 +74,15 @@ describe('sniffCommands: node', () => {
 
 describe('sniffCommands: other ecosystems', () => {
   it('reads cargo, go, gradle, and swift manifests', async () => {
-    expect(await argvFor(repo({ 'Cargo.toml': '[package]\nname="x"\n' }), 'test')).toEqual(['cargo', 'test']);
-    expect(await argvFor(repo({ 'go.mod': 'module x\n' }), 'test')).toEqual(['go', 'test', './...']);
+    expect(await argvFor(repo({ 'Cargo.toml': '[package]\nname="x"\n' }), 'test')).toEqual([
+      'cargo',
+      'test',
+    ]);
+    expect(await argvFor(repo({ 'go.mod': 'module x\n' }), 'test')).toEqual([
+      'go',
+      'test',
+      './...',
+    ]);
     expect(await argvFor(repo({ 'build.gradle': '' }), 'test')).toEqual(['gradle', 'test']);
     expect(await argvFor(repo({ 'Package.swift': '' }), 'test')).toEqual(['swift', 'test']);
   });
@@ -72,7 +93,9 @@ describe('sniffCommands: other ecosystems', () => {
   });
 
   it('prefixes pytest with uv run only when uv manages the environment', async () => {
-    expect(await argvFor(repo({ 'pyproject.toml': '[project]\nname="x"\n' }), 'test')).toEqual(['pytest']);
+    expect(await argvFor(repo({ 'pyproject.toml': '[project]\nname="x"\n' }), 'test')).toEqual([
+      'pytest',
+    ]);
     const managed = repo({ 'pyproject.toml': '[project]\nname="x"\n', 'uv.lock': '' });
     expect(await argvFor(managed, 'test')).toEqual(['uv', 'run', 'pytest']);
   });
@@ -88,7 +111,10 @@ describe('sniffCommands: other ecosystems', () => {
   });
 
   it('lets package.json win over an incidental Makefile', async () => {
-    const dir = repo({ 'package.json': pkg({ test: 'vitest run' }), Makefile: 'test:\n\techo no\n' });
+    const dir = repo({
+      'package.json': pkg({ test: 'vitest run' }),
+      Makefile: 'test:\n\techo no\n',
+    });
     expect(await argvFor(dir, 'test')).toEqual(['npm', 'test']);
   });
 
@@ -108,7 +134,9 @@ describe('parseDetectReply', () => {
   });
 
   it('drops a command carrying a shell operator, since the argv is executed later', () => {
-    expect(parseDetectReply(reply([{ name: 'test', argv: ['npm', 'test', '&&', 'lint'] }]))).toEqual([]);
+    expect(
+      parseDetectReply(reply([{ name: 'test', argv: ['npm', 'test', '&&', 'lint'] }])),
+    ).toEqual([]);
     expect(parseDetectReply(reply([{ name: 'test', argv: ['cd', 'sub'] }]))).toEqual([]);
     expect(parseDetectReply(reply([{ name: 'test', argv: ['sh', '-c', 'a | b'] }]))).toEqual([]);
   });

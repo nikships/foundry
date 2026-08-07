@@ -84,7 +84,10 @@ export async function modelsFromHelp(droidPath: string): Promise<ModelInfo[]> {
     const detail = line.match(EFFORT_RE);
     if (detail) {
       efforts.set(detail[1]!.trim(), {
-        supported: detail[3]!.split(',').map((s) => s.trim()).filter(Boolean),
+        supported: detail[3]!
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
         def: detail[4]!.trim(),
       });
       continue;

@@ -4,7 +4,13 @@ import type { ProjectDef } from '@shared/types.js';
 import { api } from '../api.js';
 import { duration } from '../format.js';
 
-interface TryState { running: boolean; passed?: boolean; exitCode?: number | null; output?: string; durationMs?: number; }
+interface TryState {
+  running: boolean;
+  passed?: boolean;
+  exitCode?: number | null;
+  output?: string;
+  durationMs?: number;
+}
 
 export default function ProjectCommands({ project }: { project: ProjectDef }): React.JSX.Element {
   const [results, setResults] = useState<Record<string, TryState>>({});
@@ -38,22 +44,40 @@ export default function ProjectCommands({ project }: { project: ProjectDef }): R
     force((n) => n + 1);
   };
 
-  const add = (): void => { project.commands.push({ name: `command-${project.commands.length + 1}`, argv: [] }); };
-  const remove = (index: number): void => { project.commands.splice(index, 1); };
+  const add = (): void => {
+    project.commands.push({ name: `command-${project.commands.length + 1}`, argv: [] });
+  };
+  const remove = (index: number): void => {
+    project.commands.splice(index, 1);
+  };
   const argvText = (index: number): string => project.commands[index]!.argv.join(' ');
-  const setArgv = (index: number, value: string): void => { project.commands[index]!.argv = value.split(/\s+/).filter(Boolean); };
+  const setArgv = (index: number, value: string): void => {
+    project.commands[index]!.argv = value.split(/\s+/).filter(Boolean);
+  };
   const tryIt = async (name: string, argv: string[]): Promise<void> => {
     setResults((prev) => ({ ...prev, [name]: { running: true } }));
     setExpanded(name);
     const result = await api.projects.tryCommand(project.id, argv);
-    setResults((prev) => ({ ...prev, [name]: { running: false, passed: result.passed, exitCode: result.exitCode, output: result.outputTail, durationMs: result.durationMs } }));
+    setResults((prev) => ({
+      ...prev,
+      [name]: {
+        running: false,
+        passed: result.passed,
+        exitCode: result.exitCode,
+        output: result.outputTail,
+        durationMs: result.durationMs,
+      },
+    }));
   };
 
   return (
     <>
       <div className="field">
         <label>Commands</label>
-        <span className="hint">Named commands a pipeline can reference, so the same pipeline works in every repo. Run each one once here so you know it works before a phase depends on it.</span>
+        <span className="hint">
+          Named commands a pipeline can reference, so the same pipeline works in every repo. Run
+          each one once here so you know it works before a phase depends on it.
+        </span>
         <div className="commands">
           {project.commands.map((command, i) => {
             const result = results[command.name];
@@ -61,16 +85,37 @@ export default function ProjectCommands({ project }: { project: ProjectDef }): R
             return (
               <div key={i} className="command">
                 <div className="row">
-                  <input className="input name" value={command.name} onChange={(e) => { command.name = e.target.value; }} placeholder="test" />
-                  <input className="input mono argv" value={argvText(i)} placeholder="npm test" onChange={(e) => setArgv(i, e.target.value)} />
-                  <button className="btn sm" disabled={!command.argv.length || result?.running} onClick={() => void tryIt(command.name, command.argv)}>
+                  <input
+                    className="input name"
+                    value={command.name}
+                    onChange={(e) => {
+                      command.name = e.target.value;
+                    }}
+                    placeholder="test"
+                  />
+                  <input
+                    className="input mono argv"
+                    value={argvText(i)}
+                    placeholder="npm test"
+                    onChange={(e) => setArgv(i, e.target.value)}
+                  />
+                  <button
+                    className="btn sm"
+                    disabled={!command.argv.length || result?.running}
+                    onClick={() => void tryIt(command.name, command.argv)}
+                  >
                     {result?.running ? 'Running…' : 'Try it'}
                   </button>
-                  <button className="btn sm ghost" onClick={() => remove(i)}>✕</button>
+                  <button className="btn sm ghost" onClick={() => remove(i)}>
+                    ✕
+                  </button>
                 </div>
                 {result && !result.running && (
                   <div className={`result ${result.passed ? 'ok' : ''}`}>
-                    <button className="result-head" onClick={() => setExpanded(isOpen ? '' : command.name)}>
+                    <button
+                      className="result-head"
+                      onClick={() => setExpanded(isOpen ? '' : command.name)}
+                    >
                       <span className="mark">{result.passed ? '✓' : '✕'}</span>
                       exit {result.exitCode ?? '—'} in {duration(result.durationMs)}
                       <span className="faint">{isOpen ? 'hide output' : 'show output'}</span>
@@ -82,7 +127,9 @@ export default function ProjectCommands({ project }: { project: ProjectDef }): R
             );
           })}
           <div className="row">
-            <button className="btn sm" onClick={add}>Add command</button>
+            <button className="btn sm" onClick={add}>
+              Add command
+            </button>
             <button className="btn sm" disabled={detecting} onClick={() => void detect(false)}>
               {detecting ? 'Detecting…' : 'Detect from repo'}
             </button>
@@ -103,7 +150,9 @@ export default function ProjectCommands({ project }: { project: ProjectDef }): R
                   <span className="faint">
                     {c.source}, exit {c.exitCode ?? '—'} in {duration(c.durationMs)}
                   </span>
-                  <button className="btn sm" onClick={() => accept(c)}>Use</button>
+                  <button className="btn sm" onClick={() => accept(c)}>
+                    Use
+                  </button>
                 </div>
               ))}
             </div>

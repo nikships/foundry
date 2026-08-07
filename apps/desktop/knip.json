@@ -1,0 +1,35 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "src/main/main.ts",
+    "src/preload/bridge.ts",
+    "src/renderer/main.tsx",
+    "scripts/**/*.ts",
+    "tests/**/*.ts",
+    "electron.vite.config.ts"
+  ],
+  "project": ["src/**/*.{ts,tsx}", "scripts/**/*.ts", "tests/**/*.ts"],
+  "paths": {
+    "@shared/*": ["src/shared/*"],
+    "@main/*": ["src/main/*"],
+    "@renderer/*": ["src/renderer/*"]
+  },
+  "ignoreIssues": {
+    "package.json": ["unresolved"]
+  },
+  "rules": {
+    "files": "error",
+    "dependencies": "error",
+    "devDependencies": "error",
+    "optionalPeerDependencies": "error",
+    "unlisted": "error",
+    "binaries": "error",
+    "unresolved": "error",
+    "exports": "off",
+    "nsExports": "off",
+    "types": "off",
+    "nsTypes": "off",
+    "enumMembers": "off",
+    "duplicates": "off"
+  }
+}

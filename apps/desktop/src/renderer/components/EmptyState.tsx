@@ -1,10 +1,23 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 
-export default function EmptyState({ art, title, body, children }: { art?: string; title: string; body: string; children?: React.ReactNode }): React.JSX.Element {
+export default function EmptyState({
+  art,
+  title,
+  body,
+  children,
+}: {
+  art?: string;
+  title: string;
+  body: string;
+  children?: React.ReactNode;
+}): React.JSX.Element {
   const [src, setSrc] = useState('');
   useEffect(() => {
-    if (!art) { setSrc(''); return; }
+    if (!art) {
+      setSrc('');
+      return;
+    }
     void api.app.assetUrl(art).then(setSrc);
   }, [art]);
   return (

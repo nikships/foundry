@@ -38,7 +38,11 @@ describe('the vendor registry', () => {
   });
 
   it('claims RPC for droid alone, because it is the only one with a client', () => {
-    expect(allAdapters().filter((a) => a.supportsRpc).map((a) => a.id)).toEqual(['droid']);
+    expect(
+      allAdapters()
+        .filter((a) => a.supportsRpc)
+        .map((a) => a.id),
+    ).toEqual(['droid']);
   });
 
   it('names a caveat for every vendor that cannot trace mid-turn tool calls', () => {
@@ -70,7 +74,9 @@ describe('the vendor registry', () => {
 
   it('returns null from parse when the CLI printed nothing parseable', () => {
     for (const id of CLI_VENDOR_IDS) {
-      expect(adapterFor(id).parse({ stdout: 'command not found', stderr: '', code: 127 })).toBeNull();
+      expect(
+        adapterFor(id).parse({ stdout: 'command not found', stderr: '', code: 127 }),
+      ).toBeNull();
     }
   });
 
@@ -92,11 +98,17 @@ describe('droid', () => {
   });
 
   it('resumes with --session-id', () => {
-    expect(valueOf(droid.turn({ ...baseTurn, sessionId: 'sess-1' }).argv, '--session-id')).toBe('sess-1');
+    expect(valueOf(droid.turn({ ...baseTurn, sessionId: 'sess-1' }).argv, '--session-id')).toBe(
+      'sess-1',
+    );
   });
 
   it('pairs reasoning effort with the model and drops both on inherit', () => {
-    const withModel = droid.turn({ ...baseTurn, model: 'claude-opus-5', reasoningEffort: 'high' }).argv;
+    const withModel = droid.turn({
+      ...baseTurn,
+      model: 'claude-opus-5',
+      reasoningEffort: 'high',
+    }).argv;
     expect(valueOf(withModel, '-m')).toBe('claude-opus-5');
     expect(valueOf(withModel, '-r')).toBe('high');
     expect(droid.turn(baseTurn).argv).not.toContain('-r');
@@ -117,9 +129,15 @@ describe('claude code', () => {
   const claude = adapterFor('claude');
 
   it('maps autonomy onto a permission mode rather than onto a prompt', () => {
-    expect(valueOf(claude.turn({ ...baseTurn, autonomy: 'low' }).argv, '--permission-mode')).toBe('default');
-    expect(valueOf(claude.turn({ ...baseTurn, autonomy: 'medium' }).argv, '--permission-mode')).toBe('acceptEdits');
-    expect(valueOf(claude.turn({ ...baseTurn, autonomy: 'high' }).argv, '--permission-mode')).toBe('bypassPermissions');
+    expect(valueOf(claude.turn({ ...baseTurn, autonomy: 'low' }).argv, '--permission-mode')).toBe(
+      'default',
+    );
+    expect(
+      valueOf(claude.turn({ ...baseTurn, autonomy: 'medium' }).argv, '--permission-mode'),
+    ).toBe('acceptEdits');
+    expect(valueOf(claude.turn({ ...baseTurn, autonomy: 'high' }).argv, '--permission-mode')).toBe(
+      'bypassPermissions',
+    );
   });
 
   it('asks for print mode and streaming json, the pair that makes a turn watchable', () => {
@@ -143,7 +161,11 @@ describe('claude code', () => {
   });
 
   it('scopes tools with allow and deny lists', () => {
-    const argv = claude.turn({ ...baseTurn, restrictTools: ['Read', 'Edit'], disabledTools: ['WebFetch'] }).argv;
+    const argv = claude.turn({
+      ...baseTurn,
+      restrictTools: ['Read', 'Edit'],
+      disabledTools: ['WebFetch'],
+    }).argv;
     expect(valueOf(argv, '--allowedTools')).toBe('Read,Edit');
     expect(valueOf(argv, '--disallowedTools')).toBe('WebFetch');
   });
@@ -175,7 +197,12 @@ describe('claude code', () => {
   });
 
   it('reports an errored turn as an error rather than as an empty answer', () => {
-    const stdout = JSON.stringify({ type: 'result', subtype: 'error_max_turns', is_error: true, session_id: 'cc-2' });
+    const stdout = JSON.stringify({
+      type: 'result',
+      subtype: 'error_max_turns',
+      is_error: true,
+      session_id: 'cc-2',
+    });
     expect(claude.parse({ stdout, stderr: '', code: 1 })).toMatchObject({
       isError: true,
       reason: 'error_max_turns',
@@ -187,8 +214,12 @@ describe('codex', () => {
   const codex = adapterFor('codex');
 
   it('maps autonomy onto a sandbox and never asks for approval', () => {
-    expect(valueOf(codex.turn({ ...baseTurn, autonomy: 'low' }).argv, '--sandbox')).toBe('read-only');
-    expect(valueOf(codex.turn({ ...baseTurn, autonomy: 'medium' }).argv, '--sandbox')).toBe('workspace-write');
+    expect(valueOf(codex.turn({ ...baseTurn, autonomy: 'low' }).argv, '--sandbox')).toBe(
+      'read-only',
+    );
+    expect(valueOf(codex.turn({ ...baseTurn, autonomy: 'medium' }).argv, '--sandbox')).toBe(
+      'workspace-write',
+    );
     for (const autonomy of ['low', 'medium', 'high'] as const) {
       const argv = codex.turn({ ...baseTurn, autonomy }).argv;
       expect(valueOf(argv, '--ask-for-approval')).toBe('never');
@@ -227,7 +258,11 @@ describe('codex', () => {
       '{"type":"turn.completed","usage":{"input_tokens":24763,"cached_input_tokens":24448,"output_tokens":122,"reasoning_output_tokens":9}}',
     ].join('\n');
     const parsed = codex.parse({ stdout, stderr: '', code: 0 });
-    expect(parsed).toMatchObject({ text: 'the answer', sessionId: '01999ce5-f229-7661', isError: false });
+    expect(parsed).toMatchObject({
+      text: 'the answer',
+      sessionId: '01999ce5-f229-7661',
+      isError: false,
+    });
     expect(parsed?.usage).toMatchObject({
       inputTokens: 24763,
       cacheReadTokens: 24448,
@@ -278,16 +313,41 @@ describe('junie', () => {
     // Real json-stream output: the id is on the opening session line, and the
     // usage rows ride the result line under the misnamed errorCode key.
     const stdout = [
-      JSON.stringify({ type: 'session', timestamp: 1786076788625, sessionId: 'session-260807-002628-i9s8' }),
-      JSON.stringify({ type: 'step', timestamp: 1786076796849, name: 'Found "**/*" ', details: 'a.txt\n' }),
+      JSON.stringify({
+        type: 'session',
+        timestamp: 1786076788625,
+        sessionId: 'session-260807-002628-i9s8',
+      }),
+      JSON.stringify({
+        type: 'step',
+        timestamp: 1786076796849,
+        name: 'Found "**/*" ',
+        details: 'a.txt\n',
+      }),
       JSON.stringify({
         type: 'result',
         timestamp: 1786076805204,
         result: 'fixed',
         changes: [],
         errorCode: [
-          { model: 'a', calls: 1, cost: 0.003, inputTokens: 5476, cacheInputTokens: 2, cacheCreateTokens: 3, outputTokens: 126 },
-          { model: 'b', calls: 1, cost: 0.001, inputTokens: 554, cacheInputTokens: 4, cacheCreateTokens: 5, outputTokens: 84 },
+          {
+            model: 'a',
+            calls: 1,
+            cost: 0.003,
+            inputTokens: 5476,
+            cacheInputTokens: 2,
+            cacheCreateTokens: 3,
+            outputTokens: 126,
+          },
+          {
+            model: 'b',
+            calls: 1,
+            cost: 0.001,
+            inputTokens: 554,
+            cacheInputTokens: 4,
+            cacheCreateTokens: 5,
+            outputTokens: 84,
+          },
         ],
       }),
     ].join('\n');
@@ -328,8 +388,12 @@ describe('grok', () => {
   const grok = adapterFor('grok');
 
   it('maps autonomy onto a sandbox profile and stops it asking', () => {
-    expect(valueOf(grok.turn({ ...baseTurn, autonomy: 'low' }).argv, '--sandbox')).toBe('read-only');
-    expect(valueOf(grok.turn({ ...baseTurn, autonomy: 'medium' }).argv, '--sandbox')).toBe('workspace');
+    expect(valueOf(grok.turn({ ...baseTurn, autonomy: 'low' }).argv, '--sandbox')).toBe(
+      'read-only',
+    );
+    expect(valueOf(grok.turn({ ...baseTurn, autonomy: 'medium' }).argv, '--sandbox')).toBe(
+      'workspace',
+    );
     expect(valueOf(grok.turn({ ...baseTurn, autonomy: 'high' }).argv, '--sandbox')).toBe('off');
     expect(grok.turn(baseTurn).argv).toContain('--always-approve');
   });
@@ -346,11 +410,17 @@ describe('grok', () => {
   });
 
   it('resumes with -r', () => {
-    expect(valueOf(grok.turn({ ...baseTurn, sessionId: 'grok-sess' }).argv, '-r')).toBe('grok-sess');
+    expect(valueOf(grok.turn({ ...baseTurn, sessionId: 'grok-sess' }).argv, '-r')).toBe(
+      'grok-sess',
+    );
   });
 
   it('writes one allow or deny flag per tool', () => {
-    const argv = grok.turn({ ...baseTurn, restrictTools: ['read', 'bash'], disabledTools: ['webfetch'] }).argv;
+    const argv = grok.turn({
+      ...baseTurn,
+      restrictTools: ['read', 'bash'],
+      disabledTools: ['webfetch'],
+    }).argv;
     expect(argv.filter((a) => a === '--allow')).toHaveLength(2);
     expect(valueOf(argv, '--deny')).toBe('webfetch');
   });
@@ -372,12 +442,21 @@ describe('grok', () => {
         type: 'end',
         stopReason: 'end_turn',
         sessionId: '0199a213-81c0-7800',
-        usage: { input_tokens: 12, output_tokens: 3, cache_read_input_tokens: 1, reasoning_tokens: 2 },
+        usage: {
+          input_tokens: 12,
+          output_tokens: 3,
+          cache_read_input_tokens: 1,
+          reasoning_tokens: 2,
+        },
         total_cost_usd: 0.01,
       }),
     ].join('\n');
     const parsed = grok.parse({ stdout, stderr: '', code: 0 });
-    expect(parsed).toMatchObject({ text: 'grok did it', sessionId: '0199a213-81c0-7800', isError: false });
+    expect(parsed).toMatchObject({
+      text: 'grok did it',
+      sessionId: '0199a213-81c0-7800',
+      isError: false,
+    });
     expect(parsed?.usage).toMatchObject({
       inputTokens: 12,
       outputTokens: 3,
@@ -422,11 +501,20 @@ describe('stream normalisers', () => {
       item: { id: 'cmd-1', type: 'command_execution', command: 'bun test' },
     });
     expect(started).toEqual([
-      { type: 'tool_call', toolUse: { type: 'tool_use', id: 'cmd-1', name: 'Execute', input: { command: 'bun test' } } },
+      {
+        type: 'tool_call',
+        toolUse: { type: 'tool_use', id: 'cmd-1', name: 'Execute', input: { command: 'bun test' } },
+      },
     ]);
     const completed = normalise({
       type: 'item.completed',
-      item: { id: 'cmd-1', type: 'command_execution', command: 'bun test', aggregated_output: '3 pass', exit_code: 0 },
+      item: {
+        id: 'cmd-1',
+        type: 'command_execution',
+        command: 'bun test',
+        aggregated_output: '3 pass',
+        exit_code: 0,
+      },
     });
     // The completed side re-announces the call, so a build that only emits
     // completions still produces the span.
@@ -443,18 +531,31 @@ describe('stream normalisers', () => {
     const normalise = adapterFor('codex').stream!();
     const completed = normalise({
       type: 'item.completed',
-      item: { id: 'cmd-2', type: 'command_execution', command: 'bun test', aggregated_output: '1 fail', exit_code: 1 },
+      item: {
+        id: 'cmd-2',
+        type: 'command_execution',
+        command: 'bun test',
+        aggregated_output: '1 fail',
+        exit_code: 1,
+      },
     });
     expect(completed[1]).toMatchObject({ isError: true });
   });
 
   it('codex folds reasoning and the answer into thinking and text', () => {
     const normalise = adapterFor('codex').stream!();
-    expect(normalise({ type: 'item.completed', item: { id: 'r1', type: 'reasoning', text: 'hmm' } })).toEqual([
+    expect(
+      normalise({ type: 'item.completed', item: { id: 'r1', type: 'reasoning', text: 'hmm' } }),
+    ).toEqual([
       { type: 'thinking_text_delta', messageId: 'codex-r1', textDelta: 'hmm' },
       { type: 'thinking_text_complete', messageId: 'codex-r1' },
     ]);
-    expect(normalise({ type: 'item.completed', item: { id: 'm1', type: 'agent_message', text: 'done' } })).toEqual([
+    expect(
+      normalise({
+        type: 'item.completed',
+        item: { id: 'm1', type: 'agent_message', text: 'done' },
+      }),
+    ).toEqual([
       { type: 'assistant_text_delta', messageId: 'codex-m1', blockIndex: 0, textDelta: 'done' },
       { type: 'assistant_text_complete', messageId: 'codex-m1', blockIndex: 0 },
     ]);
@@ -466,8 +567,15 @@ describe('stream normalisers', () => {
       type: 'item.completed',
       item: { id: 'f1', type: 'file_change', changes: [{ path: 'src/a.ts', kind: 'update' }] },
     });
-    expect(out[0]).toMatchObject({ type: 'tool_call', toolUse: { name: 'Edit', input: { file_path: 'src/a.ts' } } });
-    expect(out[1]).toMatchObject({ type: 'tool_result', toolUseId: 'f1', content: 'update src/a.ts' });
+    expect(out[0]).toMatchObject({
+      type: 'tool_call',
+      toolUse: { name: 'Edit', input: { file_path: 'src/a.ts' } },
+    });
+    expect(out[1]).toMatchObject({
+      type: 'tool_result',
+      toolUseId: 'f1',
+      content: 'update src/a.ts',
+    });
   });
 
   it('claude folds an assistant message block by block', () => {
@@ -490,7 +598,10 @@ describe('stream normalisers', () => {
       { type: 'assistant_text_delta', messageId: 'msg_1', blockIndex: 1, textDelta: 'the answer' },
       { type: 'assistant_text_complete', messageId: 'msg_1', blockIndex: 1 },
       // Bash is renamed at the boundary so the shared folder labels it a command.
-      { type: 'tool_call', toolUse: { type: 'tool_use', id: 'toolu_1', name: 'Execute', input: { command: 'ls' } } },
+      {
+        type: 'tool_call',
+        toolUse: { type: 'tool_use', id: 'toolu_1', name: 'Execute', input: { command: 'ls' } },
+      },
     ]);
   });
 
@@ -499,13 +610,32 @@ describe('stream normalisers', () => {
     expect(
       normalise({
         type: 'user',
-        message: { id: 'u1', role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: 'file list', is_error: false }] },
+        message: {
+          id: 'u1',
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: 'toolu_1', content: 'file list', is_error: false },
+          ],
+        },
       }),
-    ).toEqual([{ type: 'tool_result', toolUseId: 'toolu_1', content: 'file list', isError: false }]);
+    ).toEqual([
+      { type: 'tool_result', toolUseId: 'toolu_1', content: 'file list', isError: false },
+    ]);
     expect(
       normalise({
         type: 'user',
-        message: { id: 'u2', role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_2', content: [{ type: 'text', text: 'boom' }], is_error: true }] },
+        message: {
+          id: 'u2',
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'toolu_2',
+              content: [{ type: 'text', text: 'boom' }],
+              is_error: true,
+            },
+          ],
+        },
       }),
     ).toEqual([{ type: 'tool_result', toolUseId: 'toolu_2', content: 'boom', isError: true }]);
   });
@@ -528,8 +658,16 @@ describe('stream normalisers', () => {
     ]);
     // A second thought segment is a new block, not a continuation of the first.
     const second = normalise({ type: 'thought', data: 'again' });
-    expect(second[0]).toEqual({ type: 'assistant_text_complete', messageId: 'grok-text-2', blockIndex: 0 });
-    expect(second[1]).toEqual({ type: 'thinking_text_delta', messageId: 'grok-thought-3', textDelta: 'again' });
+    expect(second[0]).toEqual({
+      type: 'assistant_text_complete',
+      messageId: 'grok-text-2',
+      blockIndex: 0,
+    });
+    expect(second[1]).toEqual({
+      type: 'thinking_text_delta',
+      messageId: 'grok-thought-3',
+      textDelta: 'again',
+    });
   });
 
   it('grok folds a tool call and its terminal update into a span', () => {
@@ -543,17 +681,24 @@ describe('stream normalisers', () => {
       rawInput: { target_directory: '.' },
     });
     expect(call).toEqual([
-      { type: 'tool_call', toolUse: { type: 'tool_use', id: 'call-1', name: 'LS', input: { target_directory: '.' } } },
+      {
+        type: 'tool_call',
+        toolUse: { type: 'tool_use', id: 'call-1', name: 'LS', input: { target_directory: '.' } },
+      },
     ]);
     // A null status is a progress ping, not a result.
-    expect(normalise({ type: 'tool_call_update', toolCallId: 'call-1', status: null, rawOutput: null })).toEqual([]);
+    expect(
+      normalise({ type: 'tool_call_update', toolCallId: 'call-1', status: null, rawOutput: null }),
+    ).toEqual([]);
     const done = normalise({
       type: 'tool_call_update',
       toolCallId: 'call-1',
       status: 'completed',
       rawOutput: { type: 'ListDir', Content: { content: '- a.txt' } },
     });
-    expect(done).toEqual([{ type: 'tool_result', toolUseId: 'call-1', content: '- a.txt', isError: false }]);
+    expect(done).toEqual([
+      { type: 'tool_result', toolUseId: 'call-1', content: '- a.txt', isError: false },
+    ]);
   });
 
   it('grok keeps two turns on one adapter independent', () => {
@@ -569,18 +714,43 @@ describe('stream normalisers', () => {
 
   it('junie folds a step into a completed span and skips the TASK RESULT echo', () => {
     const normalise = adapterFor('junie').stream!();
-    const out = normalise({ type: 'step', timestamp: 1786076796849, name: 'Found "**/*" ', details: 'a.txt\nsrc/b.txt\n' });
+    const out = normalise({
+      type: 'step',
+      timestamp: 1786076796849,
+      name: 'Found "**/*" ',
+      details: 'a.txt\nsrc/b.txt\n',
+    });
     expect(out).toEqual([
-      { type: 'tool_call', toolUse: { type: 'tool_use', id: 'junie-step-1786076796849', name: 'step', input: { summary: 'Found "**/*"' } } },
-      { type: 'tool_result', toolUseId: 'junie-step-1786076796849', content: 'a.txt\nsrc/b.txt\n', isError: false },
+      {
+        type: 'tool_call',
+        toolUse: {
+          type: 'tool_use',
+          id: 'junie-step-1786076796849',
+          name: 'step',
+          input: { summary: 'Found "**/*"' },
+        },
+      },
+      {
+        type: 'tool_result',
+        toolUseId: 'junie-step-1786076796849',
+        content: 'a.txt\nsrc/b.txt\n',
+        isError: false,
+      },
     ]);
-    expect(normalise({ type: 'step', timestamp: 1, name: 'TASK RESULT', details: 'the answer' })).toEqual([]);
+    expect(
+      normalise({ type: 'step', timestamp: 1, name: 'TASK RESULT', details: 'the answer' }),
+    ).toEqual([]);
   });
 
   it('junie lands the result line as the assistant text', () => {
     const normalise = adapterFor('junie').stream!();
     expect(normalise({ type: 'result', result: 'all done' })).toEqual([
-      { type: 'assistant_text_delta', messageId: 'junie-result', blockIndex: 0, textDelta: 'all done' },
+      {
+        type: 'assistant_text_delta',
+        messageId: 'junie-result',
+        blockIndex: 0,
+        textDelta: 'all done',
+      },
       { type: 'assistant_text_complete', messageId: 'junie-result', blockIndex: 0 },
     ]);
     expect(normalise({ type: 'session', sessionId: 's' })).toEqual([]);
