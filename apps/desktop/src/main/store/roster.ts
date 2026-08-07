@@ -46,6 +46,17 @@ export const agentSchema = z.object({
   builtin: z.boolean().optional(),
 });
 
+/** Edit-time rail: same rules save uses, so the designer learns before clicking Save. */
+export function validate(agent: AgentDef): ValidationIssue[] {
+  const parsed = agentSchema.safeParse(agent);
+  if (parsed.success) return [];
+  return parsed.error.issues.map((i) => ({
+    level: 'error' as const,
+    where: i.path.join('.') || agent.name || 'agent',
+    message: i.message,
+  }));
+}
+
 export class RosterStore {
   private readonly appStore: JsonStore<AgentDef[]>;
   private readonly projectStores = new Map<string, JsonStore<AgentDef[]>>();
@@ -95,18 +106,9 @@ export class RosterStore {
     agent: AgentDef,
     opts: { projectId?: string; ownRoster?: boolean } = {},
   ): { ok: true; agents: AgentDef[] } | { ok: false; issues: ValidationIssue[] } {
-    const parsed = agentSchema.safeParse(agent);
-    if (!parsed.success) {
-      return {
-        ok: false,
-        issues: parsed.error.issues.map((i) => ({
-          level: 'error' as const,
-          where: i.path.join('.') || agent.name,
-          message: i.message,
-        })),
-      };
-    }
-    const value = parsed.data as AgentDef;
+    const issues = validate(agent);
+    if (issues.length) return { ok: false, issues };
+    const value = agentSchema.parse(agent) as AgentDef;
     const next = this.storeFor(opts).update((current) =>
       upsertBy(current, (a) => a.name === value.name, value),
     );

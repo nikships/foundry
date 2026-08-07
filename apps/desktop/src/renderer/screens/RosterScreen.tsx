@@ -23,6 +23,7 @@ export default function RosterScreen(): React.JSX.Element {
   const [selectedName, setSelectedName] = useState('');
   const [draft, setDraft] = useState<AgentDef | null>(null);
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
+  const [actionError, setActionError] = useState('');
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [clis, setClis] = useState<CliDescriptor[]>([]);
   const [saving, setSaving] = useState(false);
@@ -36,6 +37,7 @@ export default function RosterScreen(): React.JSX.Element {
     () => JSON.stringify(draft) !== JSON.stringify(selected),
     [draft, selected],
   );
+  const errors = useMemo(() => issues.filter((i) => i.level === 'error'), [issues]);
 
   useEffect(() => {
     if (!agents.some((a) => a.name === selectedName)) setSelectedName(agents[0]?.name ?? '');
@@ -44,11 +46,28 @@ export default function RosterScreen(): React.JSX.Element {
   useEffect(() => {
     setDraft(selected ? plain({ ...selected }) : null);
     setIssues([]);
+    setActionError('');
   }, [selected]);
 
   useEffect(() => {
     void api.catalog.clis().then(setClis);
   }, []);
+
+  // Live validation, same rail save uses, so a bad name or empty prompt is
+  // obvious before the user hits Save and wonders why nothing happened.
+  useEffect(() => {
+    if (!draft) {
+      setIssues([]);
+      return;
+    }
+    let cancelled = false;
+    void api.roster.validate(draft).then((next) => {
+      if (!cancelled) setIssues(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [draft]);
 
   // Each CLI answers for its own models, so switching an agent's CLI reloads the
   // list. Without this the picker keeps offering ids the new CLI cannot resolve,
@@ -58,10 +77,24 @@ export default function RosterScreen(): React.JSX.Element {
     void api.catalog.models(draftCli).then(setModels);
   }, [draftCli]);
 
-  const revert = (): void => setDraft(selected ? plain({ ...selected }) : null);
+  const selectAgent = (name: string): void => {
+    if (name === selectedName) return;
+    if (dirty) {
+      const discard = window.confirm('Discard unsaved changes to this agent?');
+      if (!discard) return;
+    }
+    setSelectedName(name);
+  };
+
+  const revert = (): void => {
+    setDraft(selected ? plain({ ...selected }) : null);
+    setActionError('');
+  };
+
   const save = async (): Promise<void> => {
-    if (!draft || saving) return;
+    if (!draft || saving || errors.length > 0) return;
     setSaving(true);
+    setActionError('');
     try {
       const result = await api.roster.save(draft, projectId || undefined);
       setIssues(result.issues);
@@ -75,18 +108,44 @@ export default function RosterScreen(): React.JSX.Element {
       setSaving(false);
     }
   };
+
   const duplicate = async (): Promise<void> => {
     if (!selected) return;
-    const copy = await api.roster.duplicate(selected.name, projectId || undefined);
-    await refreshScoped();
-    if (copy) setSelectedName(copy.name);
+    if (dirty) {
+      const discard = window.confirm('Discard unsaved changes and duplicate the saved agent?');
+      if (!discard) return;
+    }
+    setActionError('');
+    try {
+      const copy = await api.roster.duplicate(selected.name, projectId || undefined);
+      await refreshScoped();
+      if (copy) setSelectedName(copy.name);
+      else setActionError('Could not duplicate that agent.');
+    } catch (e) {
+      setActionError((e as Error).message);
+    }
   };
+
   const remove = async (): Promise<void> => {
-    if (!selected) return;
-    await api.roster.remove(selected.name, projectId || undefined);
-    await refreshScoped();
+    if (!selected || selected.builtin) return;
+    if (!window.confirm(`Delete agent “${selected.name}”? Pipelines that name it will break.`)) {
+      return;
+    }
+    setActionError('');
+    try {
+      await api.roster.remove(selected.name, projectId || undefined);
+      await refreshScoped();
+    } catch (e) {
+      setActionError((e as Error).message);
+    }
   };
+
   const createAgent = async (): Promise<void> => {
+    if (dirty) {
+      const discard = window.confirm('Discard unsaved changes and create a new agent?');
+      if (!discard) return;
+    }
+    setActionError('');
     const fresh: AgentDef = {
       name: `agent-${agents.length + 1}`,
       purpose: 'Describe what this agent is for in one line.',
@@ -99,10 +158,17 @@ export default function RosterScreen(): React.JSX.Element {
       envelope: 'build',
       color: '#5ad2dd',
     };
-    const result = await api.roster.save(fresh, projectId || undefined);
-    if (result.ok) {
-      await refreshScoped();
-      setSelectedName(fresh.name);
+    try {
+      const result = await api.roster.save(fresh, projectId || undefined);
+      if (result.ok) {
+        await refreshScoped();
+        setSelectedName(fresh.name);
+      } else {
+        setIssues(result.issues);
+        setActionError(result.issues.map((i) => i.message).join(' '));
+      }
+    } catch (e) {
+      setActionError((e as Error).message);
     }
   };
 
@@ -123,7 +189,7 @@ export default function RosterScreen(): React.JSX.Element {
               <button
                 key={agent.name}
                 className={`agent ${agent.name === selectedName ? 'active' : ''}`}
-                onClick={() => setSelectedName(agent.name)}
+                onClick={() => selectAgent(agent.name)}
               >
                 <AgentAvatar name={agent.name} size={34} />
                 <span className="who">
@@ -167,8 +233,9 @@ export default function RosterScreen(): React.JSX.Element {
                 onChange={(e) => setDraft({ ...draft, name: e.target.value })}
               />
               <span className="hint">
-                Pipelines refer to an agent by this name. Renaming breaks a pipeline that points
-                here.
+                Pipelines refer to an agent by this name. Renaming creates a new agent under the new
+                name and leaves the old one in place, so pipelines keep pointing at the old name
+                until you update them.
               </span>
             </div>
             <div className="field">
@@ -318,14 +385,28 @@ export default function RosterScreen(): React.JSX.Element {
                 ))}
               </ul>
             )}
+            {actionError && <p className="action-err">{actionError}</p>}
             <footer className={`save-bar ${dirty ? 'show' : ''}`}>
-              <span className="faint">Unsaved changes</span>
+              <span className="faint">
+                {errors.length ? 'Fix errors to save' : dirty ? 'Unsaved changes' : 'No changes'}
+              </span>
               <div className="grow" />
               <button className="btn" onClick={revert}>
                 Revert
               </button>
-              <button className="btn primary" disabled={saving} onClick={() => void save()}>
-                Save agent
+              <button
+                className="btn primary"
+                disabled={saving || !dirty || errors.length > 0}
+                title={
+                  errors.length
+                    ? 'Fix validation errors first'
+                    : !dirty
+                      ? 'No changes to save'
+                      : undefined
+                }
+                onClick={() => void save()}
+              >
+                {saving ? 'Saving…' : errors.length ? 'Fix errors to save' : 'Save agent'}
               </button>
             </footer>
           </div>
@@ -363,9 +444,10 @@ export default function RosterScreen(): React.JSX.Element {
         .swatch { width: 26px; height: 26px; border: 2px solid transparent; border-radius: var(--r-full); cursor: default; }
         .swatch.on { border-color: var(--text); }
         .field code { font-family: var(--font-mono); font-size: 11px; padding: 1px 4px; border-radius: 4px; background: var(--bg-raised); color: var(--cyan); }
-        .issues { list-style: none; padding: var(--s3); border-radius: var(--r-sm); background: var(--red-dim); font-size: var(--text-sm); margin-top: var(--s3); }
+        .issues { list-style: none; padding: var(--s3); border-radius: var(--r-sm); background: var(--red-dim); font-size: var(--text-sm); margin-top: var(--s3); display: flex; flex-direction: column; gap: var(--s2); }
         .issues .warning { color: var(--amber); }
         .issues .error { color: var(--red); }
+        .action-err { margin-top: var(--s3); padding: var(--s3); border-radius: var(--r-sm); background: var(--red-dim); color: var(--red); font-size: var(--text-sm); }
         .save-bar { position: sticky; bottom: var(--s4); display: flex; align-items: center; gap: var(--s3); margin-top: var(--s6); padding: var(--s3) var(--s4); border: 1px solid var(--line-strong); border-radius: var(--r-lg); background: var(--bg-raised); box-shadow: var(--shadow); opacity: 0; transform: translateY(8px); pointer-events: none; transition: opacity var(--normal) var(--ease), transform var(--normal) var(--ease); }
         .save-bar.show { opacity: 1; transform: none; pointer-events: auto; }
         .scroll { overflow-y: auto; }
