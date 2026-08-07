@@ -211,7 +211,11 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                   its own in the Roster.
                 </span>
               </div>
-              <DoctorList checks={checks} onRecheck={() => void api.doctor.run().then(setChecks)} />
+              <DoctorList
+                checks={checks}
+                onRecheck={() => void api.doctor.run().then(setChecks)}
+                onOpenSettings={(next) => setPane(next as Pane)}
+              />
               <h3>Notifications</h3>
               {(Object.keys(NOTIFY_LABELS) as Array<keyof typeof NOTIFY_LABELS>).map((key) => (
                 <label key={key} className="toggle">
@@ -370,7 +374,11 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                   </div>
                 );
               })}
-              <DoctorList checks={checks} onRecheck={() => void api.doctor.run().then(setChecks)} />
+              <DoctorList
+                checks={checks}
+                onRecheck={() => void api.doctor.run().then(setChecks)}
+                onOpenSettings={(next) => setPane(next as Pane)}
+              />
             </>
           )}
           {pane === 'defaults' && (
@@ -498,6 +506,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                     onRecheck={() =>
                       void api.projects.check(projectDraft!.id).then(setProjectChecks)
                     }
+                    onOpenSettings={(next) => setPane(next as Pane)}
                   />
                   <div className="two">
                     <div className="field">
@@ -529,7 +538,10 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                       </select>
                     </div>
                   </div>
-                  <ProjectCommands project={projectDraft} />
+                  <ProjectCommands
+                    project={projectDraft}
+                    onChange={(commands) => setProjectDraft({ ...projectDraft, commands })}
+                  />
                   <div className="field">
                     <label>Protected paths</label>
                     <textarea

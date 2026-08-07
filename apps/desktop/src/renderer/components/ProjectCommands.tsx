@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { DetectCommandsResult } from '@shared/ipc-contract.js';
-import type { ProjectDef } from '@shared/types.js';
+import type { ProjectCommand, ProjectDef } from '@shared/types.js';
 import { api } from '../api.js';
 import { duration } from '../format.js';
 
@@ -12,12 +12,19 @@ interface TryState {
   durationMs?: number;
 }
 
-export default function ProjectCommands({ project }: { project: ProjectDef }): React.JSX.Element {
+export default function ProjectCommands({
+  project,
+  onChange,
+}: {
+  project: ProjectDef;
+  onChange: (commands: ProjectCommand[]) => void;
+}): React.JSX.Element {
   const [results, setResults] = useState<Record<string, TryState>>({});
   const [expanded, setExpanded] = useState('');
   const [detecting, setDetecting] = useState(false);
   const [found, setFound] = useState<DetectCommandsResult | null>(null);
-  const [, force] = useState(0);
+
+  const setCommands = (commands: ProjectCommand[]): void => onChange(commands);
 
   // Detection proposes; nothing is written until the human accepts, so a wrong
   // guess costs a glance rather than a silently broken test phase.
@@ -36,23 +43,36 @@ export default function ProjectCommands({ project }: { project: ProjectDef }): R
   const accept = (command: DetectCommandsResult['commands'][number]): void => {
     const existing = project.commands.findIndex((c) => c.name === command.name);
     const entry = { name: command.name, argv: command.argv };
-    if (existing < 0) project.commands.push(entry);
-    else project.commands[existing] = entry;
+    const next =
+      existing < 0
+        ? [...project.commands, entry]
+        : project.commands.map((c, i) => (i === existing ? entry : c));
+    setCommands(next);
     setFound((prev) =>
       prev ? { ...prev, commands: prev.commands.filter((c) => c.name !== command.name) } : prev,
     );
-    force((n) => n + 1);
   };
 
   const add = (): void => {
-    project.commands.push({ name: `command-${project.commands.length + 1}`, argv: [] });
+    const hasTest = project.commands.some((c) => c.name === 'test');
+    setCommands([
+      ...project.commands,
+      {
+        name: hasTest ? `command-${project.commands.length + 1}` : 'test',
+        argv: [],
+      },
+    ]);
   };
   const remove = (index: number): void => {
-    project.commands.splice(index, 1);
+    setCommands(project.commands.filter((_, i) => i !== index));
   };
   const argvText = (index: number): string => project.commands[index]!.argv.join(' ');
+  const setName = (index: number, name: string): void => {
+    setCommands(project.commands.map((c, i) => (i === index ? { ...c, name } : c)));
+  };
   const setArgv = (index: number, value: string): void => {
-    project.commands[index]!.argv = value.split(/\s+/).filter(Boolean);
+    const argv = value.split(/\s+/).filter(Boolean);
+    setCommands(project.commands.map((c, i) => (i === index ? { ...c, argv } : c)));
   };
   const tryIt = async (name: string, argv: string[]): Promise<void> => {
     setResults((prev) => ({ ...prev, [name]: { running: true } }));
@@ -88,9 +108,7 @@ export default function ProjectCommands({ project }: { project: ProjectDef }): R
                   <input
                     className="input name"
                     value={command.name}
-                    onChange={(e) => {
-                      command.name = e.target.value;
-                    }}
+                    onChange={(e) => setName(i, e.target.value)}
                     placeholder="test"
                   />
                   <input
@@ -133,6 +151,9 @@ export default function ProjectCommands({ project }: { project: ProjectDef }): R
             <button className="btn sm" disabled={detecting} onClick={() => void detect(false)}>
               {detecting ? 'Detecting…' : 'Detect from repo'}
             </button>
+            <button className="btn sm" disabled={detecting} onClick={() => void detect(true)}>
+              {detecting ? 'Reading the repo…' : 'Ask AI to find commands'}
+            </button>
           </div>
         </div>
       </div>
@@ -157,9 +178,9 @@ export default function ProjectCommands({ project }: { project: ProjectDef }): R
               ))}
             </div>
           ) : (
-            <button className="btn sm" disabled={detecting} onClick={() => void detect(true)}>
-              {detecting ? 'Reading the repo…' : 'Ask an agent to read the repo'}
-            </button>
+            <p className="faint empty">
+              Nothing usable yet. Try the other detector, or type the argv by hand.
+            </p>
           )}
         </div>
       )}
@@ -177,6 +198,7 @@ export default function ProjectCommands({ project }: { project: ProjectDef }): R
         .found { font-size: var(--text-xs); color: var(--text-dim); }
         .found .name { width: 80px; flex: none; }
         .found .argv { flex: 1; color: var(--text); }
+        .empty { font-size: var(--text-xs); margin-top: var(--s2); }
         .output { padding: var(--s3); background: var(--bg-void); font-size: var(--text-xs); line-height: var(--leading); white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow-y: auto; color: var(--text-dim); }
       `}</style>
     </>
