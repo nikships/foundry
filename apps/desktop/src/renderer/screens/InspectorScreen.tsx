@@ -119,9 +119,12 @@ export default function InspectorScreen({
             setFocusedPhaseId('');
           }}
         >
-          <option value="">Follow live run</option>
+          <option value="">
+            {runs.some((r) => r.status === 'running') ? 'Follow live run' : 'Follow latest run'}
+          </option>
           {runs.map((r) => (
             <option key={r.runId} value={r.runId}>
+              {r.status === 'running' ? '* ' : ''}
               {r.pipelineName} · {r.status} · {clockTime(r.startedAt)} · {since(r.startedAt)}
             </option>
           ))}
@@ -129,6 +132,7 @@ export default function InspectorScreen({
         {view.run && (
           <>
             <StatusBadge status={view.run.status} />
+            {view.live && <span className="insp-live">Live</span>}
             <span className="insp-request" title={view.run.request}>
               {truncate(view.run.request, 80)}
             </span>
@@ -218,6 +222,7 @@ function InspStyle(): React.JSX.Element {
       .insp-head h1 { font-size: 17px; font-weight: 600; margin: 0; }
       .insp-head .select { max-width: 300px; }
       .insp-request { font-size: 12px; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+      .insp-live { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; padding: 2px 7px; border-radius: var(--r-full); background: var(--cyan-dim); color: var(--cyan); }
       .insp-controls { margin-left: auto; display: flex; align-items: center; gap: 10px; flex: none; }
       .insp-filter { display: flex; border: 1px solid var(--line); border-radius: var(--r-sm); overflow: hidden; }
       .insp-filter-btn { border: none; background: transparent; color: var(--text-faint); font: inherit; font-size: 11.5px; padding: 4px 12px; cursor: pointer; }
