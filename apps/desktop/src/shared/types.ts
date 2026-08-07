@@ -12,6 +12,31 @@ export type ReasoningEffort = 'off' | 'low' | 'medium' | 'high';
 export type AutonomyLevel = 'low' | 'medium' | 'high';
 export type EnvelopeKind = 'generic' | 'plan' | 'build' | 'scout' | 'review' | 'document';
 
+/**
+ * Which agent CLI drives a phase. Chosen per agent, so one pipeline can plan on
+ * one vendor and build on another.
+ */
+export type CliVendor = 'droid' | 'claude' | 'codex' | 'junie' | 'grok';
+
+export const CLI_VENDOR_IDS: CliVendor[] = ['droid', 'claude', 'codex', 'junie', 'grok'];
+
+/**
+ * What the renderer is allowed to know about a CLI. The adapter itself stays in
+ * the main process, because it holds functions and argv, neither of which
+ * survives the structured-clone bridge.
+ */
+export interface CliDescriptor {
+  id: CliVendor;
+  label: string;
+  binary: string;
+  docsUrl: string;
+  authEnvVars: string[];
+  /** True only for droid, the one vendor with mid-turn tool visibility. */
+  supportsRpc: boolean;
+  /** What this CLI cannot do that droid can, shown next to the picker. */
+  caveats: string[];
+}
+
 /** How a code phase names the process it runs. */
 export type CommandSpec =
   | { ref: string }
@@ -89,6 +114,8 @@ export type WriteBoundary = string[] | null;
 export interface AgentDef {
   name: string;
   purpose: string;
+  /** Absent on rosters written before multi-CLI support; read as `droid`. */
+  cli?: CliVendor;
   model: string;
   reasoningEffort: ReasoningEffort;
   systemPrompt: string;
@@ -106,8 +133,22 @@ export interface AgentDef {
 
 // ── Settings ─────────────────────────────────────────────────────────────────
 
+export interface CliConfig {
+  /** Absolute path or bare name; resolved once per install by a PATH lookup. */
+  path: string;
+  /**
+   * Flags appended verbatim to every turn for this CLI. The escape hatch for a
+   * vendor that grows an option Foundry does not model yet, so an operator is
+   * never blocked on a release of this app.
+   */
+  extraArgs: string[];
+}
+
 export interface AppSettings {
-  droidPath: string;
+  /** One entry per vendor. An agent names the vendor; this says where it lives. */
+  clis: Record<CliVendor, CliConfig>;
+  /** The vendor a newly created agent starts on. */
+  defaultCli: CliVendor;
   /** Recorded on every run so a trace says who asked for it. */
   engineerName: string;
   defaultAutonomy: AutonomyLevel;
@@ -252,6 +293,8 @@ export interface AgentSessionRow {
   agent: string;
   model: string;
   reasoningEffort: string;
+  cli: CliVendor;
+  /** The vendor's own session id, whatever it calls one. */
   droidSessionId: string | null;
   mode: 'rpc' | 'oneshot';
   color: string;
@@ -315,6 +358,12 @@ export interface DoctorCheck {
   label: string;
   ok: boolean;
   detail: string;
+  /**
+   * A failure that stops onboarding. Only the default CLI and git qualify: an
+   * uninstalled fourth CLI is a fact about the machine, not a broken setup, and
+   * blocking on one would make the app unusable to anyone who wants a subset.
+   */
+  blocking?: boolean;
   fix?: { kind: 'open-url' | 'open-settings' | 'run'; value: string };
 }
 

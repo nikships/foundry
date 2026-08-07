@@ -6,8 +6,9 @@
  * agent's first phase.
  */
 
-import type { AgentDef, AutonomyLevel, UsageBreakdown } from '@shared/types.js';
+import type { AgentDef, AutonomyLevel, CliVendor, UsageBreakdown } from '@shared/types.js';
 import type { Tracer } from '../trace/tracer.js';
+import { adapterFor } from '../cli/index.js';
 import {
   DroidClient,
   type PermissionAsk,
@@ -36,7 +37,10 @@ export interface InterruptRequest {
 }
 
 export interface AgentSessionDeps {
-  droidPath: string;
+  /** Path to the binary this agent's CLI lives at. */
+  cliPath: string;
+  /** Flags the operator added for this CLI, appended to every turn. */
+  cliExtraArgs?: string[];
   runId: string;
   worktree: string;
   autonomy: AutonomyLevel;
@@ -74,7 +78,17 @@ export class AgentSession {
   constructor(
     private readonly agent: AgentDef,
     private readonly deps: AgentSessionDeps,
-  ) {}
+  ) {
+    // Only droid has a JSON-RPC client. Every other vendor starts in one-shot
+    // rather than discovering it by failing a handshake twice, which would cost
+    // two turns and file two protocol errors against a CLI doing nothing wrong.
+    if (!adapterFor(this.vendor).supportsRpc) this.mode = 'oneshot';
+  }
+
+  /** A roster written before agents could pick a CLI means droid. */
+  private get vendor(): CliVendor {
+    return this.agent.cli ?? 'droid';
+  }
 
   get currentMode(): Mode {
     return this.mode;
@@ -93,7 +107,8 @@ export class AgentSession {
     if (this.rpc?.alive) return;
 
     const client = new DroidClient({
-      ...this.sharedClientOpts(),
+      droidPath: this.deps.cliPath,
+      ...this.turnOpts(),
       onPermission: (ask) => this.decide(ask),
       onNotification: (n) => this.currentFolder?.absorb(n),
       onExit: (code) => this.onRpcExit(code),
@@ -123,15 +138,15 @@ export class AgentSession {
         kind: 'droid',
         name: this.agent.name,
         pid: client.pid,
-        command: `${this.deps.droidPath} ${client.spawnArgs().join(' ')}`,
+        command: `${this.deps.cliPath} ${client.spawnArgs().join(' ')}`,
       });
     }
     this.persistSession();
   }
 
-  private sharedClientOpts() {
+  /** What both transports need to describe one turn's settings. */
+  private turnOpts() {
     return {
-      droidPath: this.deps.droidPath,
       cwd: this.deps.worktree,
       autonomy: this.deps.autonomy,
       model: this.agent.model,
@@ -143,7 +158,12 @@ export class AgentSession {
   }
 
   private buildOneShot(): OneShotClient {
-    const client = new OneShotClient(this.sharedClientOpts());
+    const client = new OneShotClient({
+      vendor: this.vendor,
+      cliPath: this.deps.cliPath,
+      extraArgs: this.deps.cliExtraArgs,
+      ...this.turnOpts(),
+    });
     client.adopt(this.droidSessionId);
     return client;
   }
@@ -199,6 +219,7 @@ export class AgentSession {
       agent: this.agent.name,
       model: this.agent.model,
       reasoningEffort: this.agent.reasoningEffort,
+      cli: this.vendor,
       droidSessionId: this.droidSessionId,
       mode: this.mode,
       color: this.agent.color,

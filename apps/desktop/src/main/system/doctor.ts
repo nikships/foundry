@@ -5,38 +5,70 @@
 
 import { existsSync } from 'node:fs';
 import { release } from 'node:os';
-import type { DoctorCheck, ProjectDef } from '@shared/types.js';
-import { droidVersion } from '../droid/catalog.js';
+import type { AppSettings, CliVendor, DoctorCheck, ProjectDef } from '@shared/types.js';
+import { CLI_VENDOR_IDS } from '@shared/types.js';
+import { adapterFor } from '../cli/index.js';
+import { cliVersion } from '../droid/catalog.js';
 import { isRepo, refExists, listWorktrees } from '../engine/git.js';
 import { runCommand } from '../engine/commands.js';
 
-export async function runDoctor(droidPath: string): Promise<DoctorCheck[]> {
+/**
+ * One pair of checks per CLI: is the binary there, and can it reach a model.
+ * Every vendor is reported rather than only the configured ones, because "Junie
+ * is not installed" is the answer to why Junie is missing from the roster's
+ * picker, and a check that silently omits itself cannot give it.
+ */
+async function checkCli(
+  vendor: CliVendor,
+  settings: AppSettings,
+  isDefault: boolean,
+): Promise<DoctorCheck[]> {
+  const adapter = adapterFor(vendor);
+  const path = settings.clis[vendor]?.path ?? adapter.binary;
+  const version = await cliVersion(path, adapter.versionArgs);
+  const found: DoctorCheck = {
+    id: `cli:${vendor}`,
+    label: `${adapter.label} CLI`,
+    ok: !!version,
+    detail: version ? `found ${version} at ${path}` : `not runnable at ${path}`,
+    blocking: isDefault && !version,
+    fix: version ? undefined : { kind: 'open-url', value: adapter.docsUrl },
+  };
+  if (!version) return [found];
+
+  // Auth lives in each CLI's own config; a key in the environment is the
+  // override. Foundry never reads either, it only reports which one is present.
+  const envKey = adapter.authEnvVars.find((name) => !!process.env[name]);
+  const configPath = adapter.authPaths().find((p) => existsSync(p));
+  const authed = !!envKey || !!configPath;
+  let detail = `no credentials found: ${adapter.label} cannot reach a model`;
+  if (envKey) detail = `${envKey} is set in the environment`;
+  else if (configPath) detail = `signed in, config at ${configPath}`;
+
+  return [
+    found,
+    {
+      id: `auth:${vendor}`,
+      label: `${adapter.label} authentication`,
+      ok: authed,
+      detail,
+      blocking: isDefault && !authed,
+      fix: authed ? undefined : { kind: 'open-url', value: adapter.authUrl },
+    },
+  ];
+}
+
+export async function runDoctor(settings: AppSettings): Promise<DoctorCheck[]> {
   const checks: DoctorCheck[] = [];
 
-  const version = await droidVersion(droidPath);
-  checks.push({
-    id: 'droid',
-    label: 'droid CLI',
-    ok: !!version,
-    detail: version ? `found ${version} at ${droidPath}` : `not runnable at ${droidPath}`,
-    fix: version ? undefined : { kind: 'open-url', value: 'https://docs.factory.ai/droid-cli/quickstart' },
-  });
-
-  // Auth lives in droid's own config; a key in the environment is the override.
-  const hasKey = !!process.env.FACTORY_API_KEY;
-  const settingsPath = `${process.env.HOME ?? ''}/.factory/settings.json`;
-  const hasConfig = existsSync(settingsPath);
-  const authed = hasKey || hasConfig;
-  let authDetail = 'no API key and no droid config: droid cannot reach a model';
-  if (hasKey) authDetail = 'FACTORY_API_KEY is set in the environment';
-  else if (hasConfig) authDetail = `droid config found at ${settingsPath}`;
-  checks.push({
-    id: 'auth',
-    label: 'Factory authentication',
-    ok: authed,
-    detail: authDetail,
-    fix: authed ? undefined : { kind: 'open-url', value: 'https://app.factory.ai/settings/api-keys' },
-  });
+  // The default CLI leads, because it is the one whose failure blocks a run.
+  const order = [
+    settings.defaultCli,
+    ...CLI_VENDOR_IDS.filter((v) => v !== settings.defaultCli),
+  ];
+  for (const vendor of order) {
+    checks.push(...(await checkCli(vendor, settings, vendor === settings.defaultCli)));
+  }
 
   const git = await runCommand({ argv: ['git', '--version'], cwd: process.cwd(), timeoutMs: 10_000 });
   checks.push({
@@ -44,7 +76,27 @@ export async function runDoctor(droidPath: string): Promise<DoctorCheck[]> {
     label: 'git',
     ok: git.passed,
     detail: git.passed ? git.outputTail.trim() : 'git is not on PATH',
+    blocking: !git.passed,
   });
+
+  // Junie takes its autonomy from a file rather than from argv, so an unattended
+  // phase on Junie stalls on an approval prompt unless this exists. Reported only
+  // when Junie is actually installed, so it is not noise for everyone else.
+  if (await cliVersion(settings.clis.junie?.path ?? 'junie', ['--version'])) {
+    const allowlist = `${process.env.HOME ?? ''}/.junie/allowlist.json`;
+    const hasAllowlist = existsSync(allowlist);
+    checks.push({
+      id: 'junie:allowlist',
+      label: 'Junie action allowlist',
+      ok: hasAllowlist,
+      detail: hasAllowlist
+        ? `found at ${allowlist}`
+        : 'missing: Junie asks before acting, and an unattended phase has nobody to answer',
+      fix: hasAllowlist
+        ? undefined
+        : { kind: 'open-url', value: 'https://junie.jetbrains.com/docs/action-allowlist-junie-cli.html' },
+    });
+  }
 
   // macOS 26 is the floor; the version conveniences are verified only there.
   const major = Number(release().split('.')[0] ?? 0);

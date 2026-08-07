@@ -40,6 +40,7 @@ graph LR
 | Page | What it owns |
 |---|---|
 | [Engine](engine.md) | Deterministic pipeline runner: phases, envelopes, gates, write boundaries, worktrees |
+| [Agent CLIs](clis.md) | The five-vendor adapter seam: argv, parse, autonomy tiers, per-CLI config |
 | [Droid harness](droid.md) | Long-lived `droid exec` client, protocol quirks, event folding, catalog |
 | [Trace](trace.md) | Per-project SQLite (WAL), single writer, rowid cursor poll, run file mirror |
 | [Store](store.md) | JSON config: settings, roster, pipelines, projects; builtins as seeds |
@@ -50,7 +51,7 @@ graph LR
 ## How the systems fit a run
 
 1. **Store** supplies the pipeline, agents, and project commands for a start request.
-2. **Engine** sequences phases; **droid** (or code commands) do the work inside one phase.
+2. **Engine** sequences phases; the agent's **CLI** (or code commands) do the work inside one phase.
 3. **Trace** records every start, tool span, envelope, gate check, and finish.
 4. **System** services notify on outcomes, track child PIDs, and heal orphans on relaunch.
 5. **IPC / preload** expose a fixed API; the **renderer** polls the same event query for live view and history.

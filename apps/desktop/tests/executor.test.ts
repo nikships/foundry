@@ -13,7 +13,8 @@ import { openDb, projectDbPath, projectRunsDir } from '../src/main/trace/db.js';
 import { Tracer } from '../src/main/trace/tracer.js';
 import { Executor } from '../src/main/engine/executor.js';
 import { defaultProject } from '../src/main/store/projects.js';
-import type { AgentDef, CommandSpec, PhaseDef, PipelineDef, ProjectDef } from '../src/shared/types.js';
+import type { AgentDef, CliConfig, CliVendor, CommandSpec, PhaseDef, PipelineDef, ProjectDef } from '../src/shared/types.js';
+import { CLI_VENDOR_IDS } from '../src/shared/types.js';
 
 function sh(cwd: string, argv: string[]): string {
   return execFileSync(argv[0]!, argv.slice(1), { cwd, encoding: 'utf8' });
@@ -190,9 +191,15 @@ function run(input: {
   gateRetries?: number;
 }): Promise<{ status: string; runId: string }> {
   const runId = `run_${Math.random().toString(36).slice(2, 8)}`;
+  // These tests exercise droid, so every vendor points at the same stub: an
+  // agent that names another CLI would otherwise spawn a binary the test
+  // environment does not have.
+  const path = input.droidPath ?? 'droid-not-used';
+  const clis = {} as Record<CliVendor, CliConfig>;
+  for (const vendor of CLI_VENDOR_IDS) clis[vendor] = { path, extraArgs: [] };
   const executor = new Executor({
     tracer: h.tracer,
-    droidPath: input.droidPath ?? 'droid-not-used',
+    clis,
     autonomy: 'medium',
     turnTimeoutMs: input.turnTimeoutMs ?? 30_000,
     envelopeRetries: input.envelopeRetries ?? 2,

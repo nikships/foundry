@@ -8,10 +8,11 @@ Stored via electron-store / JSON under Application Support (`src/main/store/sett
 
 | Setting | Default (conceptually) | Role |
 |---|---|---|
-| `droidPath` | auto PATH | Binary used to spawn agents |
+| `clis` | auto PATH per vendor | `{ path, extraArgs }` for each of `droid`, `claude`, `codex`, `junie`, `grok`. See [Agent CLIs](../systems/clis.md) |
+| `defaultCli` | `droid` | Vendor a new agent starts on, and the one repo command detection uses |
 | `engineerName` | — | Recorded on every run |
-| `defaultAutonomy` | medium | Maps to droid `--auto` |
-| `defaultModel` / `defaultReasoningEffort` | droid default | Roster inheritance |
+| `defaultAutonomy` | medium | droid `--auto`; a sandbox tier for every other CLI |
+| `defaultModel` / `defaultReasoningEffort` | droid default | Defaults pane; model ids do not carry across vendors |
 | `pollCadenceMs` | 500 | Renderer poll interval |
 | `turnTimeoutMs` | 20 min class | Per-turn timeout |
 | `envelopeRetries` / `gateRetries` | 3 / 2 class | Correction budgets |
@@ -22,6 +23,8 @@ Stored via electron-store / JSON under Application Support (`src/main/store/sett
 | `onboarded` | false until done | Skips onboarding |
 
 Exact defaults live in the settings store implementation; treat this table as the map of knobs, not a substitute for the code.
+
+A settings file written before multi-CLI support carries a single `droidPath`. `migrate()` in the settings store folds it into `clis.droid.path` on read, so a custom droid location survives an upgrade.
 
 ## Project settings
 

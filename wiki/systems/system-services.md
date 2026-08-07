@@ -29,14 +29,17 @@ Callers: `main.ts` (relaunch sweep trigger, quit kill-all), `context.ts` (outcom
 
 ### Doctor (`doctor.ts`)
 
-**App-level** `runDoctor(droidPath)`:
+**App-level** `runDoctor(settings)`:
 
 | Check | Meaning |
 |---|---|
-| `droid` | CLI runnable at configured path; fix opens droid quickstart docs |
-| `auth` | `FACTORY_API_KEY` or `~/.factory/settings.json` present |
+| `cli:<vendor>` | One per CLI. Binary runnable at its configured path; fix opens that vendor's install docs |
+| `auth:<vendor>` | One per installed CLI. Its API key env var or its own config file is present |
+| `junie:allowlist` | Only when Junie is installed. `~/.junie/allowlist.json` exists, without which an unattended Junie phase waits on an approval prompt |
 | `git` | `git --version` on PATH |
 | `macos` | Darwin major version at or above the supported floor (macOS 26 family check in code) |
+
+Every vendor is reported, installed or not, because "Junie is not installed" is the answer to why Junie is missing from the roster picker. Only the **default** CLI and `git` set `blocking: true`, which is what onboarding refuses to continue past: an uninstalled fourth CLI is a fact about the machine, not a broken setup.
 
 **Project-level** `checkProject(project)`:
 

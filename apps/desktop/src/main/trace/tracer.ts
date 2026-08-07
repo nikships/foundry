@@ -14,6 +14,7 @@ import { randomBytes } from 'node:crypto';
 import type { Db } from './db.js';
 import type {
   AgentSessionRow,
+  CliVendor,
   EnvelopeRow,
   EventRow,
   EventType,
@@ -459,16 +460,18 @@ export class Tracer {
     agent: string;
     model: string;
     reasoningEffort: string;
+    cli: CliVendor;
     droidSessionId: string | null;
     mode: 'rpc' | 'oneshot';
     color: string;
   }): void {
     this.db
       .prepare(
-        `INSERT INTO agent_sessions (run_id, agent, model, reasoning_effort, droid_session_id, mode, color, created_at, last_used_at)
-         VALUES (?,?,?,?,?,?,?,?,?)
+        `INSERT INTO agent_sessions (run_id, agent, model, reasoning_effort, cli, droid_session_id, mode, color, created_at, last_used_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?)
          ON CONFLICT(run_id, agent) DO UPDATE SET
            model = excluded.model, reasoning_effort = excluded.reasoning_effort,
+           cli = excluded.cli,
            droid_session_id = excluded.droid_session_id, mode = excluded.mode,
            last_used_at = excluded.last_used_at`,
       )
@@ -477,6 +480,7 @@ export class Tracer {
         input.agent,
         input.model,
         input.reasoningEffort,
+        input.cli,
         input.droidSessionId,
         input.mode,
         input.color,
@@ -506,6 +510,8 @@ export class Tracer {
       agent: r.agent,
       model: r.model,
       reasoningEffort: r.reasoning_effort,
+      // Rows written before agents could pick a CLI were all droid.
+      cli: (r.cli as CliVendor) ?? 'droid',
       droidSessionId: r.droid_session_id,
       mode: (r.mode as 'rpc' | 'oneshot') ?? 'rpc',
       color: r.color,
@@ -733,6 +739,7 @@ interface RawAgentSession {
   agent: string;
   model: string;
   reasoning_effort: string;
+  cli: string | null;
   droid_session_id: string | null;
   mode: string | null;
   color: string;
