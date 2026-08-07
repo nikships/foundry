@@ -78,5 +78,5 @@ graph LR
 |---|---|
 | `apps/desktop/src/main/` | Privileged process: engine, droid, trace, store, system, ipc |
 | `apps/desktop/src/preload/bridge.ts` | Context-isolated named bridge |
-| `apps/desktop/src/renderer/` | React 18 UI |
+| `apps/desktop/src/renderer/` | React 19 UI |
 | `apps/desktop/src/shared/` | Types and IPC channel names shared by both sides |

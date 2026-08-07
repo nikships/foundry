@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import type { ModelInfo } from '@shared/types.js';
-import { api } from '../api.js';
 import { modelLabel } from '../format.js';
+import { ProviderIcon } from './BrandIcon.js';
 
 export default function ModelPicker({
   value,
@@ -24,16 +24,6 @@ export default function ModelPicker({
     return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [models]);
 
-  const [icons, setIcons] = useState<Record<string, string>>({});
-  useEffect(() => {
-    void Promise.all(
-      groups.map(
-        async ([provider]) =>
-          [provider, await api.app.assetUrl(`providers/${provider}.png`)] as const,
-      ),
-    ).then((entries) => setIcons(Object.fromEntries(entries)));
-  }, [groups]);
-
   const current = useMemo(() => models.find((m) => m.id === value) ?? null, [models, value]);
 
   return (
@@ -54,14 +44,11 @@ export default function ModelPicker({
             <option value={value}>{modelLabel(value)} (not in the current catalog)</option>
           )}
         </select>
-        {current && icons[current.provider] && (
-          <img src={icons[current.provider]} alt={current.provider} />
-        )}
+        {current && <ProviderIcon provider={current.provider} size={18} />}
       </div>
       <style>{`
-        .picker { position: relative; display: flex; align-items: center; gap: var(--s2); }
+        .picker { display: flex; align-items: center; gap: var(--s2); }
         .picker .select { flex: 1; }
-        .picker img { width: 18px; height: 18px; object-fit: contain; flex: none; opacity: 0.9; }
       `}</style>
     </>
   );

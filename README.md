@@ -9,7 +9,7 @@
 Everyone can get an agent to write code once. Almost nobody gets the same result twice. Foundry fixes that by moving the control plane out of the prompt and into code. The engine owns sequencing, retries, and acceptance. Agents work inside named, bounded phases. Typed envelopes carry context across the seams. Gates decide what "done" means, with evidence. **Agent proposes, code disposes.**
 
 > [!NOTE]
-> **This repo holds two things.** `apps/desktop/` is Foundry, the active codebase (Electron, TypeScript, React 18). `.claude/skills/sssf/` is the original Python "super simple software factory" skill the ideas came from: phases, envelopes, gates, the trace db, agent-proposes-code-disposes. It is **reference only**. Nothing under `.claude/` is imported, executed, or linked, and there is no Python in the app. [`PLAN.md`](PLAN.md) is the product spec.
+> **This repo holds two things.** `apps/desktop/` is Foundry, the active codebase (Electron, TypeScript, React 19). `.claude/skills/sssf/` is the original Python "super simple software factory" skill the ideas came from: phases, envelopes, gates, the trace db, agent-proposes-code-disposes. It is **reference only**. Nothing under `.claude/` is imported, executed, or linked, and there is no Python in the app. [`PLAN.md`](PLAN.md) is the product spec.
 
 ---
 
@@ -182,7 +182,7 @@ apps/desktop/
 │   ├── store/      JSON-backed config: agents, pipelines, projects, settings
 │   └── system/     process control, doctor checks, notifications
 ├── src/preload/    named-invoke bridge, no generic escape hatch
-├── src/renderer/   React 18: Onboarding, Runs, Run detail, Pipelines, Roster, Settings
+├── src/renderer/   React 19: Onboarding, Runs, Run detail, Pipelines, Roster, Settings
 ├── src/shared/     types.ts (the contract) + ipc-contract.ts (the channels)
 └── tests/          vitest: real git temp repos, scripted droid stub, no network
 ```

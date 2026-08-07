@@ -11,6 +11,7 @@ import type {
 import { api, plain } from '../api.js';
 import { useApp } from '../stores/app.js';
 import ModelPicker from '../components/ModelPicker.js';
+import { CliIcon } from '../components/BrandIcon.js';
 import DoctorList from '../components/DoctorList.js';
 import ProjectCommands from '../components/ProjectCommands.js';
 
@@ -169,17 +170,20 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
               </div>
               <div className="field">
                 <label>Default agent CLI</label>
-                <select
-                  className="select"
-                  value={settings.defaultCli}
-                  onChange={(e) => void set({ defaultCli: e.target.value as CliVendor })}
-                >
-                  {clis.map((cli) => (
-                    <option key={cli.id} value={cli.id}>
-                      {cli.label}
-                    </option>
-                  ))}
-                </select>
+                <div className="cli-picker">
+                  <select
+                    className="select"
+                    value={settings.defaultCli}
+                    onChange={(e) => void set({ defaultCli: e.target.value as CliVendor })}
+                  >
+                    {clis.map((cli) => (
+                      <option key={cli.id} value={cli.id}>
+                        {cli.label}
+                      </option>
+                    ))}
+                  </select>
+                  <CliIcon vendor={settings.defaultCli} size={18} />
+                </div>
                 <span className="hint">
                   What a new agent starts on, and what command detection uses. Each agent can choose
                   its own in the Roster.
@@ -280,7 +284,10 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                 return (
                   <div key={cli.id} className="cli-card">
                     <div className="spread">
-                      <h3>{cli.label}</h3>
+                      <h3 className="cli-title">
+                        <CliIcon vendor={cli.id} size={18} />
+                        {cli.label}
+                      </h3>
                       {found && (
                         <span className={`cli-state ${found.ok ? 'ok' : 'off'}`}>
                           {found.ok ? 'found' : 'not found'}
@@ -692,6 +699,9 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
         .row { display: flex; gap: var(--s3); }
         .cli-card { border: 1px solid var(--line); border-radius: var(--r-sm); padding: var(--s4); margin-bottom: var(--s4); }
         .cli-card h3 { margin: 0 0 var(--s3); }
+        .cli-title { display: flex; align-items: center; gap: var(--s2); }
+        .cli-picker { display: flex; align-items: center; gap: var(--s2); }
+        .cli-picker .select { flex: 1; }
         .cli-state { font-size: var(--text-xs); padding: 1px 6px; border-radius: 4px; }
         .cli-state.ok { background: var(--green-dim); color: var(--green); }
         .cli-state.off { background: var(--red-dim); color: var(--red); }

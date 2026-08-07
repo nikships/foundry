@@ -8,7 +8,7 @@ Two unrelated things. Know which one you are touching.
 
 | Path | What it is | Status |
 |---|---|---|
-| `apps/desktop/` | **Foundry**, a native macOS Electron app. TypeScript + React 18. | The active codebase. |
+| `apps/desktop/` | **Foundry**, a native macOS Electron app. TypeScript + React 19. | The active codebase. |
 | `.claude/skills/sssf/` | The original Python "super simple software factory" skill. | **Reference only.** |
 
 `.claude/skills/sssf/` is where Foundry's *ideas* come from (phases, envelopes, gates,
@@ -59,7 +59,7 @@ src/main/       Node. Owns everything: git, disk, agent CLIs, sqlite.
   store/        JSON-backed config: agents, pipelines, projects, settings.
   system/       Process control, doctor checks, notifications.
 src/preload/    Named-invoke bridge. No generic escape hatch.
-src/renderer/   React 18. Polls; never touches disk, git, or droid.
+src/renderer/   React 19. Polls; never touches disk, git, or droid.
 src/shared/     types.ts (the contract) + ipc-contract.ts (the channels).
 ```
 
@@ -152,6 +152,26 @@ that says there is nothing to show until the process exits.
   same shape as `droid/client.ts`, so a later PR can turn that on per vendor
   without the engine noticing.
 
+### Brand marks
+
+Vendor and provider logos come from `@lobehub/icons`, mapped in
+`src/renderer/components/BrandIcon.tsx`.
+
+- **The map is written out, not inferred.** lobehub's own `ProviderIcon` resolves a
+  name against a keyword list with no entry for kimi, zai, junie, codex, grok or
+  droid, and draws an anonymous placeholder for whatever it misses. That would give
+  five of six vendors the same glyph. A name `BrandIcon` does not know draws
+  nothing, which is the same honest gap the old PNG lookup left.
+- **Import the variant, never the brand's default export.** Each brand's index
+  assigns an `Avatar` onto the icon, and that assignment is a use no bundler can
+  shake out, so the default export drags `@lobehub/ui`, antd, and emoji-mart into
+  the renderer. `.../components/Color.js` and `.../components/Mono.js` pull react
+  and nothing else.
+- Factory publishes no mark in the collection, so droid's lives in that file as an
+  inline SVG. Without it the default CLI would be the only blank one.
+- The package is a `devDependency`: vite bundles it, nothing resolves it at
+  runtime, and electron-builder copies production dependencies into the asar.
+
 `tests/cli-vendors.test.ts` pins each adapter's argv, parse, and stream normaliser
 against the output shapes those CLIs actually print, including Codex's two
 spellings of its item discriminator. Fixtures come from real captured output
@@ -191,6 +211,7 @@ tests/transcript.test.ts    13   text folding, throttling, caps, the change_id c
 tests/catalog.test.ts        8   model/tool catalogs per vendor
 tests/detect.test.ts        21   project command detection
 tests/updater.test.ts        5   in-app update state machine
+tests/brand-icons.test.ts    9   a mark per vendor and provider, nothing for the rest
 ```
 
 Tests use real git repositories in `mkdtemp` directories and a scripted droid stub.

@@ -10,6 +10,7 @@ import { api, plain } from '../api.js';
 import { useApp } from '../stores/app.js';
 import { modelLabel } from '../format.js';
 import AgentAvatar from '../components/AgentAvatar.js';
+import { CliIcon } from '../components/BrandIcon.js';
 import ModelPicker from '../components/ModelPicker.js';
 import BoundaryEditor from '../components/BoundaryEditor.js';
 import PromptPreview from '../components/PromptPreview.js';
@@ -129,6 +130,7 @@ export default function RosterScreen(): React.JSX.Element {
                   <span className="name">{agent.name}</span>
                   <span className="faint purpose">{agent.purpose}</span>
                 </span>
+                <CliIcon vendor={agent.cli ?? 'droid'} size={14} />
                 <span className="faint mono model">{modelLabel(agent.model)}</span>
               </button>
             ))}
@@ -144,6 +146,7 @@ export default function RosterScreen(): React.JSX.Element {
                   {draft.builtin ? 'Shipped with Foundry, editable' : 'Custom agent'}
                 </p>
               </div>
+              <CliIcon vendor={draftCli} size={20} />
               <button className="btn sm" onClick={() => setShowPreview(true)}>
                 Preview prompt
               </button>
@@ -179,19 +182,22 @@ export default function RosterScreen(): React.JSX.Element {
             </div>
             <div className="field">
               <label>CLI</label>
-              <select
-                className="select"
-                value={draftCli}
-                onChange={(e) =>
-                  setDraft({ ...draft, cli: e.target.value as CliVendor, model: 'inherit' })
-                }
-              >
-                {clis.map((cli) => (
-                  <option key={cli.id} value={cli.id}>
-                    {cli.label}
-                  </option>
-                ))}
-              </select>
+              <div className="cli-picker">
+                <select
+                  className="select"
+                  value={draftCli}
+                  onChange={(e) =>
+                    setDraft({ ...draft, cli: e.target.value as CliVendor, model: 'inherit' })
+                  }
+                >
+                  {clis.map((cli) => (
+                    <option key={cli.id} value={cli.id}>
+                      {cli.label}
+                    </option>
+                  ))}
+                </select>
+                <CliIcon vendor={draftCli} size={18} />
+              </div>
               <span className="hint">
                 Which binary runs this agent's phases. Changing it resets the model, because model
                 ids do not carry across CLIs.
@@ -341,6 +347,8 @@ export default function RosterScreen(): React.JSX.Element {
         .agent .name { font-size: var(--text-sm); font-weight: 500; }
         .purpose, .model { font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .model { flex: none; max-width: 76px; }
+        .cli-picker { display: flex; align-items: center; gap: var(--s2); }
+        .cli-picker .select { flex: 1; }
         .editor { min-height: 0; padding: calc(var(--titlebar-h) + var(--s2)) var(--s8) var(--s16); max-width: 900px; overflow-y: auto; }
         .edit-head { display: flex; align-items: center; gap: var(--s3); margin-bottom: var(--s6); }
         .edit-head h2 { font-size: var(--text-xl); font-weight: 600; }

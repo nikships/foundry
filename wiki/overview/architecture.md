@@ -1,6 +1,6 @@
 # Architecture
 
-Foundry is a single Electron process tree: a privileged **main** process (Node), a sandboxed **preload** bridge, and a **renderer** (React 18). The factory engine, droid harness, SQLite tracer, and config stores live only in main. The UI never touches disk, git, or droid directly.
+Foundry is a single Electron process tree: a privileged **main** process (Node), a sandboxed **preload** bridge, and a **renderer** (React 19). The factory engine, droid harness, SQLite tracer, and config stores live only in main. The UI never touches disk, git, or droid directly.
 
 ## Process topology
 
@@ -9,7 +9,7 @@ graph TB
   subgraph Foundry["Foundry.app"]
     Main["Main process<br/>engine · droid · trace · store · system · ipc"]
     Preload["Preload bridge.cjs<br/>named invoke only"]
-    Renderer["Renderer React 18<br/>polls via IPC"]
+    Renderer["Renderer React 19<br/>polls via IPC"]
     Main <-->|typed IPC| Preload
     Preload <--> Renderer
   end
