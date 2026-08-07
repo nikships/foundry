@@ -402,24 +402,44 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                   <div>
                     <strong>Foundry {version ? `v${version}` : ''}</strong>
                     {updateStatus.message && <p className="hint">{updateStatus.message}</p>}
+                    {updateStatus.stage === 'available' && updateStatus.version && (
+                      <p className="hint">
+                        Foundry v{updateStatus.version} is available, download it when ready.
+                      </p>
+                    )}
                   </div>
                   <span
                     className={`cli-state ${updateStatus.stage === 'ready' || updateStatus.stage === 'available' ? 'ok' : updateStatus.stage === 'error' ? 'off' : ''}`}
                   >
-                    {updateStatus.stage === 'idle' ? 'up to date' : updateStatus.stage}
+                    {updateStatus.stage === 'idle'
+                      ? 'up to date'
+                      : updateStatus.stage === 'downloading'
+                        ? `downloading ${Math.round(updateStatus.percent ?? 0)}%`
+                        : updateStatus.stage}
                   </span>
                 </div>
-                {updateStatus.stage === 'downloading' && (
-                  <div className="field" style={{ marginTop: 'var(--s3)' }}>
-                    <div className="spread">
-                      <span className="hint">Downloading update…</span>
-                      <span className="hint">{updateStatus.percent ?? 0}%</span>
+                {(updateStatus.stage === 'downloading' || updateStatus.stage === 'ready') && (
+                  <div
+                    className="update-progress"
+                    aria-label={
+                      updateStatus.stage === 'downloading'
+                        ? `Downloading ${Math.round(updateStatus.percent ?? 0)} percent`
+                        : 'Update ready to install'
+                    }
+                  >
+                    <div className="update-track">
+                      <div
+                        className={`update-fill ${updateStatus.stage === 'ready' ? 'ready' : ''}`}
+                        style={{
+                          width: `${updateStatus.stage === 'ready' ? 100 : Math.max(0, Math.min(100, updateStatus.percent ?? 0))}%`,
+                        }}
+                      />
                     </div>
-                    <progress
-                      value={updateStatus.percent ?? 0}
-                      max={100}
-                      style={{ width: '100%', marginTop: '4px' }}
-                    />
+                    <span className="mono faint update-pct">
+                      {updateStatus.stage === 'ready'
+                        ? 'ready'
+                        : `${Math.round(updateStatus.percent ?? 0)}%`}
+                    </span>
                   </div>
                 )}
                 <div
@@ -428,18 +448,20 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                 >
                   {updateStatus.stage === 'ready' ? (
                     <button className="btn primary sm" onClick={() => void installUpdate()}>
-                      Install and relaunch
+                      Restart to install
                     </button>
                   ) : updateStatus.stage === 'available' ? (
                     <button className="btn primary sm" onClick={() => void downloadUpdate()}>
                       Download update
                     </button>
+                  ) : updateStatus.stage === 'downloading' ? (
+                    <span className="hint">
+                      Installing after the download finishes, you will be asked to restart.
+                    </span>
                   ) : (
                     <button
                       className="btn sm"
-                      disabled={
-                        updateStatus.stage === 'checking' || updateStatus.stage === 'downloading'
-                      }
+                      disabled={updateStatus.stage === 'checking'}
                       onClick={() => void checkForUpdates()}
                     >
                       {updateStatus.stage === 'checking'
@@ -951,6 +973,11 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
         .cli-state.off { background: var(--red-dim); color: var(--red); }
         .caveats { list-style: none; margin: 0 0 var(--s3); padding: 0; display: flex; flex-direction: column; gap: var(--s1); }
         .caveats li { font-size: var(--text-xs); color: var(--text-faint); padding-left: var(--s3); border-left: 2px solid var(--line); }
+        .update-progress { display: flex; align-items: center; gap: var(--s3); margin-top: var(--s3); }
+        .update-track { flex: 1; height: 6px; border-radius: var(--r-full); background: var(--bg-void); border: 1px solid var(--line-faint); overflow: hidden; }
+        .update-fill { height: 100%; background: var(--cyan); border-radius: var(--r-full); transition: width 220ms var(--ease); }
+        .update-fill.ready { background: var(--green); }
+        .update-pct { font-size: var(--text-xs); min-width: 44px; text-align: right; }
       `}</style>
     </>
   );
