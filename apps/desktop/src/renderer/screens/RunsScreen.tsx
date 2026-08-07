@@ -29,7 +29,12 @@ export default function RunsScreen({
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
   const [preflight, setPreflight] = useState<ValidationIssue[]>([]);
 
-  const { runs, loading, error: listError } = useRunList(projectId, includeArchived);
+  const {
+    runs,
+    loading,
+    error: listError,
+    refresh: refreshList,
+  } = useRunList(projectId, includeArchived);
 
   const pipeline = useMemo(
     () => pipelines.find((p) => p.id === selectedPipeline) ?? pipelines[0] ?? null,
@@ -238,9 +243,12 @@ export default function RunsScreen({
         ) : (
           <div className="list scroll">
             {listError && (
-              <p className="list-err" role="alert">
-                Could not load runs: {listError}
-              </p>
+              <div className="list-err" role="alert">
+                <span>Could not load runs: {listError}</span>
+                <button className="btn sm" onClick={() => void refreshList()}>
+                  Retry
+                </button>
+              </div>
             )}
             {loading && !runs.length && !listError && (
               <p className="list-loading faint">Loading runs…</p>
@@ -296,7 +304,7 @@ export default function RunsScreen({
         .issues.warn { background: var(--amber-dim); color: var(--amber); }
         .fix { margin-top: var(--s2); }
         .list { flex: 1; min-height: 0; padding: 0 var(--s6) var(--s8); display: flex; flex-direction: column; gap: var(--s2); overflow-y: auto; }
-        .list-err { padding: var(--s3); border-radius: var(--r-sm); background: var(--red-dim); color: var(--red); font-size: var(--text-sm); line-height: var(--leading); }
+        .list-err { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); padding: var(--s3); border-radius: var(--r-sm); background: var(--red-dim); color: var(--red); font-size: var(--text-sm); line-height: var(--leading); }
         .list-loading { padding: var(--s6) var(--s3); font-size: var(--text-sm); text-align: center; }
         .run { display: flex; align-items: center; gap: var(--s4); width: 100%; padding: var(--s3) var(--s4); border: 1px solid var(--line); border-radius: var(--r); background: var(--bg-panel); color: inherit; font: inherit; text-align: left; cursor: default; transition: background var(--fast) var(--ease), border-color var(--fast) var(--ease); }
         .run:hover { background: var(--bg-hover); border-color: var(--line-strong); }

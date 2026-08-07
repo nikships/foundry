@@ -11,6 +11,7 @@ import { api } from '../api.js';
 import { useApp } from '../stores/app.js';
 import { useRun, useRunList } from '../stores/run.js';
 import StatusBadge from '../components/StatusBadge.js';
+import EmptyState from '../components/EmptyState.js';
 import TranscriptLane from '../components/inspector/TranscriptLane.js';
 import { clockTime, since, truncate } from '../format.js';
 
@@ -28,16 +29,26 @@ export default function InspectorScreen({
   pinnedRunId: string;
 }): React.JSX.Element {
   const { projectId, project } = useApp();
-  const { runs } = useRunList(projectId, false);
+  const {
+    runs,
+    loading: listLoading,
+    error: listError,
+    refresh: refreshList,
+  } = useRunList(projectId, false);
   const [pickedRunId, setPickedRunId] = useState('');
   const [filter, setFilter] = useState<LaneFilter>('all');
   const [focusedPhaseId, setFocusedPhaseId] = useState('');
   const [now, setNow] = useState(Date.now());
+  const [filesError, setFilesError] = useState('');
 
   // A deep link from the run detail screen pins the picker to that run.
   useEffect(() => {
     if (pinnedRunId) setPickedRunId(pinnedRunId);
   }, [pinnedRunId]);
+
+  useEffect(() => {
+    setFilesError('');
+  }, [pickedRunId, projectId]);
 
   // Auto-follow: the live run wins; with nothing live, the most recent run.
   const autoRunId = useMemo(() => {
@@ -46,7 +57,7 @@ export default function InspectorScreen({
   }, [runs]);
 
   const runId = pickedRunId && runs.some((r) => r.runId === pickedRunId) ? pickedRunId : autoRunId;
-  const { view, eventsByPhase, envelopesByPhase } = useRun(projectId, runId);
+  const { view, eventsByPhase, envelopesByPhase, refresh: refreshRun } = useRun(projectId, runId);
 
   const live = view.live;
   useEffect(() => {
@@ -66,10 +77,32 @@ export default function InspectorScreen({
 
   const visibleLanes = focusedPhaseId ? lanes.filter((p) => p.phaseId === focusedPhaseId) : lanes;
 
+  const revealFiles = async (): Promise<void> => {
+    setFilesError('');
+    try {
+      await api.runs.revealFiles(projectId, runId);
+    } catch (e) {
+      setFilesError((e as Error).message);
+    }
+  };
+
+  const retry = async (): Promise<void> => {
+    await refreshList();
+    if (runId) await refreshRun();
+  };
+
   if (!project) {
     return (
-      <div className="insp-empty">
-        <p>Add a project to inspect its runs.</p>
+      <div className="insp">
+        <header className="insp-head">
+          <h1>Inspector</h1>
+        </header>
+        <EmptyState
+          art="scenes/empty-state.png"
+          title="No project yet"
+          body="Add a git repository from the sidebar. The Inspector follows that project's runs."
+        />
+        <InspStyle />
       </div>
     );
   }
@@ -114,23 +147,44 @@ export default function InspectorScreen({
             ))}
           </div>
           {view.run && (
-            <button className="btn sm" onClick={() => void api.runs.revealFiles(projectId, runId)}>
+            <button className="btn sm" onClick={() => void revealFiles()}>
               Raw files
             </button>
           )}
         </div>
       </header>
 
-      {view.loading && <div className="insp-empty">Loading…</div>}
-      {!view.loading && view.error && <div className="insp-empty">{view.error}</div>}
-      {!view.loading && !view.error && !runId && (
-        <div className="insp-empty">
-          <p>No runs yet for this project.</p>
-          <p className="faint">Start a run from the Runs screen, then watch it here.</p>
+      {(listError || view.error || filesError) && (
+        <div className="insp-banner" role="alert">
+          <span>{listError || view.error || filesError}</span>
+          {(listError || view.error) && (
+            <button className="btn sm" onClick={() => void retry()}>
+              Retry
+            </button>
+          )}
         </div>
       )}
+
+      {listLoading && !runs.length && !listError && (
+        <div className="insp-empty faint">Loading runs…</div>
+      )}
+      {view.loading && runId && !view.error && <div className="insp-empty faint">Loading run…</div>}
+      {!listLoading && !view.loading && !listError && !view.error && !runId && (
+        <EmptyState
+          art="scenes/empty-state.png"
+          title="No runs yet"
+          body="Start a run from the Runs screen. The Inspector follows the live run automatically, or pick one above."
+        />
+      )}
       {!view.loading && !view.error && runId && lanes.length === 0 && (
-        <div className="insp-empty faint">No phases match this filter.</div>
+        <div className="insp-empty">
+          <p className="faint">No phases match this filter.</p>
+          {filter !== 'all' && (
+            <button className="btn sm" onClick={() => setFilter('all')}>
+              Show all phases
+            </button>
+          )}
+        </div>
       )}
       {!view.loading && runId && visibleLanes.length > 0 && (
         <div className={`insp-grid lanes-${Math.min(visibleLanes.length, 3)}`}>
@@ -151,23 +205,30 @@ export default function InspectorScreen({
         </div>
       )}
 
-      <style>{`
-        .insp { display: flex; flex-direction: column; height: 100%; min-height: 0; padding: var(--s4, 16px); gap: 12px; }
-        .insp-head { display: flex; align-items: center; gap: 10px; flex: none; }
-        .insp-head h1 { font-size: 17px; font-weight: 600; margin: 0; }
-        .insp-head .select { max-width: 300px; }
-        .insp-request { font-size: 12px; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-        .insp-controls { margin-left: auto; display: flex; align-items: center; gap: 10px; flex: none; }
-        .insp-filter { display: flex; border: 1px solid var(--line); border-radius: var(--r-sm); overflow: hidden; }
-        .insp-filter-btn { border: none; background: transparent; color: var(--text-faint); font: inherit; font-size: 11.5px; padding: 4px 12px; cursor: pointer; }
-        .insp-filter-btn + .insp-filter-btn { border-left: 1px solid var(--line); }
-        .insp-filter-btn.active { background: var(--bg-raised); color: var(--text); }
-        .insp-grid { flex: 1; min-height: 0; overflow-y: auto; display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); grid-auto-rows: minmax(280px, 1fr); }
-        .insp-grid.lanes-1 { grid-template-columns: 1fr; }
-        .insp-grid.lanes-2 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); }
-        .insp-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--text-dim); font-size: 13px; }
-        .insp-empty .faint { color: var(--text-faint); font-size: 12px; }
-      `}</style>
+      <InspStyle />
     </div>
+  );
+}
+
+function InspStyle(): React.JSX.Element {
+  return (
+    <style>{`
+      .insp { display: flex; flex-direction: column; height: 100%; min-height: 0; padding: calc(var(--titlebar-h) + var(--s2)) var(--s5) var(--s4); gap: 12px; }
+      .insp-head { display: flex; align-items: center; gap: 10px; flex: none; flex-wrap: wrap; }
+      .insp-head h1 { font-size: 17px; font-weight: 600; margin: 0; }
+      .insp-head .select { max-width: 300px; }
+      .insp-request { font-size: 12px; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+      .insp-controls { margin-left: auto; display: flex; align-items: center; gap: 10px; flex: none; }
+      .insp-filter { display: flex; border: 1px solid var(--line); border-radius: var(--r-sm); overflow: hidden; }
+      .insp-filter-btn { border: none; background: transparent; color: var(--text-faint); font: inherit; font-size: 11.5px; padding: 4px 12px; cursor: pointer; }
+      .insp-filter-btn + .insp-filter-btn { border-left: 1px solid var(--line); }
+      .insp-filter-btn.active { background: var(--bg-raised); color: var(--text); }
+      .insp-banner { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); padding: var(--s3); border-radius: var(--r-sm); background: var(--red-dim); color: var(--red); font-size: var(--text-sm); line-height: var(--leading); }
+      .insp-grid { flex: 1; min-height: 0; overflow-y: auto; display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); grid-auto-rows: minmax(280px, 1fr); }
+      .insp-grid.lanes-1 { grid-template-columns: 1fr; }
+      .insp-grid.lanes-2 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); }
+      .insp-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text-dim); font-size: 13px; }
+      .insp-empty .faint { color: var(--text-faint); font-size: 12px; }
+    `}</style>
   );
 }
