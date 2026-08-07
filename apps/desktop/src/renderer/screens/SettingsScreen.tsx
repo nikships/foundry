@@ -212,6 +212,18 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
     }
   };
   const applyRetention = async (): Promise<void> => {
+    const days = settings?.retentionDays;
+    if (days == null) {
+      setErrors(['Set a retention window before applying. Forever means nothing is deleted.']);
+      return;
+    }
+    if (
+      !window.confirm(
+        `Apply retention now? This permanently deletes run history older than ${days} day${days === 1 ? '' : 's'}. Trace data cannot be restored.`,
+      )
+    ) {
+      return;
+    }
     try {
       const report = await api.maintenance.applyRetention();
       setMaintenanceNote(

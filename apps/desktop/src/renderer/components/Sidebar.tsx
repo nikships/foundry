@@ -13,16 +13,20 @@ export default function Sidebar({
   openRunId: _openRunId,
   onNavigate,
   onAddProject,
-  onOpenSettings: _onOpenSettings,
+  onOpenSettings,
+  onOpenInterruptRun,
 }: {
   view: View;
   openRunId: string;
   onNavigate: (view: View) => void;
   onAddProject: () => void;
   onOpenSettings: (pane: string) => void;
+  /** Jump to the run that is waiting so the interrupt sheet has context behind it. */
+  onOpenInterruptRun?: (runId: string) => void;
 }): React.JSX.Element {
   const { projects, project, interrupts, selectProject } = useApp();
   const pendingCount = interrupts.length;
+  const firstWaiting = interrupts[0] ?? null;
 
   // CSS ellipsis truncates the wrong end of a path, and the `direction: rtl`
   // workaround visually relocates the leading slash. Eliding the middle keeps
@@ -74,14 +78,19 @@ export default function Sidebar({
           ))}
         </nav>
         <div className="spacer" />
-        {pendingCount > 0 && (
-          <div className="pending">
+        {pendingCount > 0 && firstWaiting && (
+          <button
+            type="button"
+            className="pending"
+            title="Open the run waiting for you"
+            onClick={() => onOpenInterruptRun?.(firstWaiting.runId)}
+          >
             {pendingCount} {pendingCount === 1 ? 'run needs' : 'runs need'} you
-          </div>
+          </button>
         )}
         <button
           className={`nav-item settings ${view === 'settings' ? 'active' : ''}`}
-          onClick={() => onNavigate('settings')}
+          onClick={() => onOpenSettings('general')}
         >
           <span>Settings</span>
           <kbd>⌘,</kbd>
@@ -99,7 +108,8 @@ export default function Sidebar({
         .nav-item.active { background: var(--bg-active); color: var(--text); font-weight: 500; }
         .nav-item kbd { font-family: var(--font); font-size: var(--text-xs); color: var(--text-ghost); }
         .spacer { flex: 1; }
-        .pending { margin-bottom: var(--s2); padding: var(--s2) var(--s3); border-radius: var(--r-sm); background: var(--amber-dim); color: var(--amber); font-size: var(--text-xs); animation: pulse 2s var(--ease) infinite; }
+        .pending { display: block; width: 100%; margin-bottom: var(--s2); padding: var(--s2) var(--s3); border: none; border-radius: var(--r-sm); background: var(--amber-dim); color: var(--amber); font: inherit; font-size: var(--text-xs); text-align: left; animation: pulse 2s var(--ease) infinite; }
+        .pending:hover { filter: brightness(1.08); }
       `}</style>
     </>
   );

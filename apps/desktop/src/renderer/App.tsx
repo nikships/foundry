@@ -123,6 +123,7 @@ function AppInner(): React.JSX.Element {
               setSettingsPane(pane);
               go('settings');
             }}
+            onOpenInterruptRun={openRun}
           />
           <main className="content">{main}</main>
         </>
