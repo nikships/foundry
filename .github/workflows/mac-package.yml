@@ -256,7 +256,7 @@ jobs:
               const sha512 = crypto.createHash("sha512").update(content).digest("base64");
               const size = content.length;
               const releaseDate = new Date().toISOString();
-              const yaml = `version: ${version}\nfiles:\n  - url: ${zipName}\n    sha512: ${sha512}\n    size: ${size}\npath: ${zipName}\nsha512: ${sha512}\nreleaseDate: '\''${releaseDate}'\''\n`;
+              const yaml = `version: ${version}\nfiles:\n  - url: ${zipName}\n    sha512: ${sha512}\n    size: ${size}\npath: ${zipName}\nsha512: ${sha512}\nreleaseDate: '${releaseDate}'\n`;
               fs.writeFileSync(ymlPath, yaml, "utf8");
           NODE
           }
