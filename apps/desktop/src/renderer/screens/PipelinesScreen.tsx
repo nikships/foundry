@@ -170,8 +170,13 @@ export default function PipelinesScreen(): React.JSX.Element {
     setIssues([]);
   };
   const selectPipeline = (id: string): void => {
-    if (creating && dirty) {
-      const discard = window.confirm('Discard the new pipeline that has not been saved?');
+    if (id === selectedId && !creating) return;
+    if (dirty) {
+      const discard = window.confirm(
+        creating
+          ? 'Discard the new pipeline that has not been saved?'
+          : 'Discard unsaved changes to this pipeline?',
+      );
       if (!discard) return;
     }
     setCreating(false);
@@ -179,6 +184,10 @@ export default function PipelinesScreen(): React.JSX.Element {
   };
   const duplicate = async (): Promise<void> => {
     if (!selected) return;
+    if (dirty) {
+      const discard = window.confirm('Discard unsaved changes and duplicate the saved pipeline?');
+      if (!discard) return;
+    }
     const copy = await api.pipelines.duplicate(selected.id, projectId || undefined);
     await refreshScoped();
     if (copy) {

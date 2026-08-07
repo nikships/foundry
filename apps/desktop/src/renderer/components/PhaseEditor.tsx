@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { AgentDef, PhaseDef } from '@shared/types.js';
+import type { AgentDef, EnvelopeKind, PhaseDef } from '@shared/types.js';
 import { api } from '../api.js';
 import { useApp } from '../stores/app.js';
 import AgentAvatar from './AgentAvatar.js';
 import { CliIcon } from './BrandIcon.js';
 
 const KIND_COLOR: Record<string, string> = { code: 'var(--blue)', engineer: 'var(--amber)' };
+const ENVELOPE_KINDS: EnvelopeKind[] = ['plan', 'build', 'review', 'scout', 'document', 'generic'];
 
 export default function PhaseEditor({
   phase,
@@ -146,7 +147,15 @@ export default function PhaseEditor({
                   <select
                     className="select"
                     value={phase.agent ?? ''}
-                    onChange={(e) => patch({ agent: e.target.value })}
+                    onChange={(e) => {
+                      const agent = agents.find((a) => a.name === e.target.value);
+                      // Default the phase envelope to the agent's so a reviewer
+                      // phase is not left on build after the agent is swapped.
+                      patch({
+                        agent: e.target.value,
+                        envelope: agent?.envelope ?? phase.envelope ?? 'build',
+                      });
+                    }}
                   >
                     {agents.map((a) => (
                       <option key={a.name} value={a.name}>
@@ -157,6 +166,26 @@ export default function PhaseEditor({
                 </div>
               )}
             </div>
+            {phase.kind === 'agent' && (
+              <div className="field">
+                <label>Envelope</label>
+                <select
+                  className="select"
+                  value={phase.envelope ?? owner?.envelope ?? 'build'}
+                  onChange={(e) => patch({ envelope: e.target.value as EnvelopeKind })}
+                >
+                  {ENVELOPE_KINDS.map((kind) => (
+                    <option key={kind} value={kind}>
+                      {kind}
+                    </option>
+                  ))}
+                </select>
+                <span className="hint">
+                  Typed reply this phase must return. Defaults from the agent; override when the
+                  same agent wears different hats.
+                </span>
+              </div>
+            )}
             <div className="field">
               <label>Description</label>
               <input
