@@ -242,6 +242,9 @@ export default function RunsScreen({
                 Could not load runs: {listError}
               </p>
             )}
+            {loading && !runs.length && !listError && (
+              <p className="list-loading faint">Loading runs…</p>
+            )}
             {!loading && !listError && runs.length === 0 && (
               <EmptyState
                 art="scenes/empty-state.png"
@@ -294,6 +297,7 @@ export default function RunsScreen({
         .fix { margin-top: var(--s2); }
         .list { flex: 1; min-height: 0; padding: 0 var(--s6) var(--s8); display: flex; flex-direction: column; gap: var(--s2); overflow-y: auto; }
         .list-err { padding: var(--s3); border-radius: var(--r-sm); background: var(--red-dim); color: var(--red); font-size: var(--text-sm); line-height: var(--leading); }
+        .list-loading { padding: var(--s6) var(--s3); font-size: var(--text-sm); text-align: center; }
         .run { display: flex; align-items: center; gap: var(--s4); width: 100%; padding: var(--s3) var(--s4); border: 1px solid var(--line); border-radius: var(--r); background: var(--bg-panel); color: inherit; font: inherit; text-align: left; cursor: default; transition: background var(--fast) var(--ease), border-color var(--fast) var(--ease); }
         .run:hover { background: var(--bg-hover); border-color: var(--line-strong); }
         .run-main { flex: 1; min-width: 0; }
