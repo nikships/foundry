@@ -5,18 +5,11 @@ name: CodeQL
 # and similar classes before merge.
 
 on:
+  # No path filters: this check is required on main, so it must report on every PR.
   push:
     branches: [main]
-    paths:
-      - 'apps/desktop/**'
-      - '.github/workflows/codeql.yml'
-      - '.github/codeql/codeql-config.yml'
   pull_request:
     branches: [main]
-    paths:
-      - 'apps/desktop/**'
-      - '.github/workflows/codeql.yml'
-      - '.github/codeql/codeql-config.yml'
   schedule:
     # Weekly full scan even without code changes.
     - cron: '17 4 * * 1'
