@@ -9,11 +9,12 @@ on:
     paths:
       - 'apps/desktop/**'
       - '.github/workflows/**'
+  # No paths filter here, on purpose. verify and actionlint are required checks
+  # on main, and a required check that never starts is never satisfied: a PR
+  # touching only docs or assets is then blocked forever, and even an admin
+  # merge is refused. Both jobs are cheap enough to run on every PR.
   pull_request:
     branches: [main]
-    paths:
-      - 'apps/desktop/**'
-      - '.github/workflows/**'
   workflow_dispatch:
 
 concurrency:
