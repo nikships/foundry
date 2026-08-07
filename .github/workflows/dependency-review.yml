@@ -25,7 +25,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Dependency Review
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: high
           # Comment a summary on the PR so agents and humans see the delta.
