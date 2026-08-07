@@ -232,6 +232,15 @@ export default function PipelinesScreen(): React.JSX.Element {
           : 'This pipeline is ready to save. Select a project to run it.'
       : null;
 
+  // Every disabled state should be explainable on hover, or the user assumes the button is broken.
+  let saveDisabledReason = '';
+  if (saving) saveDisabledReason = 'Saving…';
+  else if (errors.length > 0) saveDisabledReason = 'Fix validation errors first';
+  else if (!dirty) saveDisabledReason = 'No changes to save';
+  let saveLabel = 'Save pipeline';
+  if (saving) saveLabel = 'Saving…';
+  else if (errors.length > 0) saveLabel = 'Fix errors to save';
+
   return (
     <>
       <div className="screen">
@@ -406,9 +415,10 @@ export default function PipelinesScreen(): React.JSX.Element {
               <button
                 className="btn primary"
                 disabled={!dirty || saving || errors.length > 0}
+                title={saveDisabledReason || undefined}
                 onClick={() => void save()}
               >
-                {errors.length ? 'Fix errors to save' : 'Save pipeline'}
+                {saveLabel}
               </button>
               {dirty && (selected || creating) && (
                 <button className="btn" onClick={revert}>
