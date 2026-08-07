@@ -28,12 +28,17 @@ Run everything from `apps/desktop/`.
 npm run dev         # electron-vite dev
 npm run build       # required before `npm start`; emits out/{main,preload,renderer}
 npm run typecheck   # tsc --noEmit
+npm run lint        # ESLint (max-warnings 0)
+npm run format:check # Prettier --check
+npm run knip        # unused files + dependencies
 npm test            # vitest run
+npm run check       # all of the above + build + npm audit (high+)
 npm run engine:demo # headless run of the engine, no UI
 ```
 
-**Before you finish any change, all three must pass:** `npm run typecheck`, `npm test`,
-`npm run build`. The renderer is plain TSX, so `tsc` covers it.
+**Before you finish any change, `npm run check` must pass** (typecheck, lint, format,
+knip, test, build, audit). CI enforces the same gates on PRs. The renderer is plain
+TSX, so `tsc` covers it.
 
 ### Environment notes
 

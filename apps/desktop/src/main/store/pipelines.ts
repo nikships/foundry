@@ -27,7 +27,12 @@ const phaseSchema = z.object({
   agent: z.string().optional(),
   envelope: z.enum(['generic', 'plan', 'build', 'scout', 'review', 'document']).optional(),
   gates: z
-    .array(z.union([z.string(), z.object({ gate: z.string(), config: z.record(z.unknown()).optional() })]))
+    .array(
+      z.union([
+        z.string(),
+        z.object({ gate: z.string(), config: z.record(z.unknown()).optional() }),
+      ]),
+    )
     .optional(),
   prompt: z.object({ template: z.string(), inputs: z.array(z.string()) }).optional(),
   command: commandSchema.optional(),
@@ -44,7 +49,11 @@ export const pipelineSchema = z.object({
   name: z.string().min(1),
   description: z.string().min(1),
   acceptance: z.union([
-    z.object({ kind: z.literal('phase_flag'), phase: z.string(), flag: z.enum(['passed', 'approved']) }),
+    z.object({
+      kind: z.literal('phase_flag'),
+      phase: z.string(),
+      flag: z.enum(['passed', 'approved']),
+    }),
     z.object({ kind: z.literal('all_phases_pass') }),
     z.object({ kind: z.literal('last_phase_pass') }),
     z.object({ kind: z.literal('envelope_status'), phase: z.string() }),
@@ -85,7 +94,9 @@ export class PipelineStore {
     return store;
   }
 
-  private storeFor(opts: { projectId?: string; ownPipelines?: boolean } = {}): JsonStore<PipelineDef[]> {
+  private storeFor(
+    opts: { projectId?: string; ownPipelines?: boolean } = {},
+  ): JsonStore<PipelineDef[]> {
     return opts.projectId && opts.ownPipelines ? this.projectStore(opts.projectId) : this.appStore;
   }
 
@@ -115,7 +126,10 @@ export class PipelineStore {
     return this.storeFor(opts).update((current) => current.filter((p) => p.id !== id));
   }
 
-  duplicate(id: string, opts: { projectId?: string; ownPipelines?: boolean } = {}): PipelineDef | null {
+  duplicate(
+    id: string,
+    opts: { projectId?: string; ownPipelines?: boolean } = {},
+  ): PipelineDef | null {
     const source = this.get(id, opts);
     if (!source) return null;
     const existing = new Set(this.list(opts).map((p) => p.id));
@@ -188,10 +202,16 @@ export function validate(
       });
     }
 
-    if (phase.kind === 'agent') validateAgentPhase(phase, index, where, agentNames, pipeline, issues);
-    if (phase.kind === 'code') validateCodePhase(phase, index, where, commandNames, pipeline, issues);
+    if (phase.kind === 'agent')
+      validateAgentPhase(phase, index, where, agentNames, pipeline, issues);
+    if (phase.kind === 'code')
+      validateCodePhase(phase, index, where, commandNames, pipeline, issues);
     if (phase.kind === 'engineer' && !phase.question) {
-      issues.push({ level: 'warning', where, message: 'an engineer phase with no question shows an empty sheet' });
+      issues.push({
+        level: 'warning',
+        where,
+        message: 'an engineer phase with no question shows an empty sheet',
+      });
     }
   });
 
@@ -204,7 +224,11 @@ export function validate(
         where: 'acceptance',
         message: `acceptance names phase "${acceptance.phase}", which does not exist`,
       });
-    } else if (acceptance.kind === 'phase_flag' && acceptance.flag === 'approved' && target.envelope !== 'review') {
+    } else if (
+      acceptance.kind === 'phase_flag' &&
+      acceptance.flag === 'approved' &&
+      target.envelope !== 'review'
+    ) {
       issues.push({
         level: 'warning',
         where: 'acceptance',
@@ -226,7 +250,11 @@ function validateAgentPhase(
   if (!phase.agent) {
     issues.push({ level: 'error', where, message: 'an agent phase needs an agent' });
   } else if (!agentNames.has(phase.agent)) {
-    issues.push({ level: 'error', where, message: `no agent named "${phase.agent}" in the roster` });
+    issues.push({
+      level: 'error',
+      where,
+      message: `no agent named "${phase.agent}" in the roster`,
+    });
   }
   if (!phase.prompt) {
     issues.push({ level: 'error', where, message: 'an agent phase needs a prompt spec' });
@@ -239,7 +267,11 @@ function validateAgentPhase(
     if (gate === 'command_passes') {
       const argv = typeof raw === 'string' ? undefined : (raw.config?.argv as string[] | undefined);
       if (!argv?.length) {
-        issues.push({ level: 'error', where, message: 'command_passes needs a configured command' });
+        issues.push({
+          level: 'error',
+          where,
+          message: 'command_passes needs a configured command',
+        });
       }
     }
   }

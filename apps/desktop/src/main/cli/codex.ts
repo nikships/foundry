@@ -158,7 +158,12 @@ function streamLine(line: unknown): DroidNotification[] {
   }
   if (kind === 'agent_message' || kind === 'assistant_message') {
     return [
-      { type: 'assistant_text_delta', messageId: `codex-${id}`, blockIndex: 0, textDelta: item.text ?? '' },
+      {
+        type: 'assistant_text_delta',
+        messageId: `codex-${id}`,
+        blockIndex: 0,
+        textDelta: item.text ?? '',
+      },
       { type: 'assistant_text_complete', messageId: `codex-${id}`, blockIndex: 0 },
     ];
   }
@@ -194,7 +199,15 @@ export const codexAdapter: CliAdapter = {
     const argv = ['exec'];
     // Resume is a subcommand and has to precede the flags it applies to.
     if (req.sessionId) argv.push('resume', req.sessionId);
-    argv.push('--json', '--cd', req.cwd, '--sandbox', SANDBOX[req.autonomy], '--ask-for-approval', 'never');
+    argv.push(
+      '--json',
+      '--cd',
+      req.cwd,
+      '--sandbox',
+      SANDBOX[req.autonomy],
+      '--ask-for-approval',
+      'never',
+    );
     if (req.autonomy === 'high') argv.push('-c', 'sandbox_workspace_write.network_access=true');
     if (req.model && req.model !== 'inherit') argv.push('-m', req.model);
     if (req.reasoningEffort !== 'off') {

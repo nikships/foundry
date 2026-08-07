@@ -9,20 +9,30 @@ import StatusBadge from '../components/StatusBadge.js';
 import PipelineRibbon from '../components/PipelineRibbon.js';
 import EmptyState from '../components/EmptyState.js';
 
-export default function RunsScreen({ onOpen }: { onOpen: (runId: string) => void }): React.JSX.Element {
+export default function RunsScreen({
+  onOpen,
+}: {
+  onOpen: (runId: string) => void;
+}): React.JSX.Element {
   const { pipelines, project, projectId } = useApp();
   const [request, setRequest] = useState('');
-  const [selectedPipeline, setSelectedPipeline] = useState(() => localStorage.getItem('foundry.pipeline') ?? '');
+  const [selectedPipeline, setSelectedPipeline] = useState(
+    () => localStorage.getItem('foundry.pipeline') ?? '',
+  );
   const [includeArchived, setIncludeArchived] = useState(false);
   const [starting, setStarting] = useState(false);
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
 
   const { runs, loading } = useRunList(projectId, includeArchived);
 
-  const pipeline = useMemo(() => pipelines.find((p) => p.id === selectedPipeline) ?? pipelines[0] ?? null, [pipelines, selectedPipeline]);
+  const pipeline = useMemo(
+    () => pipelines.find((p) => p.id === selectedPipeline) ?? pipelines[0] ?? null,
+    [pipelines, selectedPipeline],
+  );
 
   useEffect(() => {
-    if (!pipelines.some((p) => p.id === selectedPipeline)) setSelectedPipeline(pipelines[0]?.id ?? '');
+    if (!pipelines.some((p) => p.id === selectedPipeline))
+      setSelectedPipeline(pipelines[0]?.id ?? '');
   }, [pipelines, selectedPipeline]);
 
   useEffect(() => {
@@ -36,8 +46,15 @@ export default function RunsScreen({ onOpen }: { onOpen: (runId: string) => void
     setStarting(true);
     setIssues([]);
     try {
-      const result = await api.runs.start({ projectId, pipelineId: pipeline!.id, request: request.trim() });
-      if (!result.ok) { setIssues(result.issues); return; }
+      const result = await api.runs.start({
+        projectId,
+        pipelineId: pipeline!.id,
+        request: request.trim(),
+      });
+      if (!result.ok) {
+        setIssues(result.issues);
+        return;
+      }
       setRequest('');
       if (result.runId) onOpen(result.runId);
     } finally {
@@ -58,20 +75,43 @@ export default function RunsScreen({ onOpen }: { onOpen: (runId: string) => void
         <header className="head">
           <h1>Runs</h1>
           <label className="archived faint">
-            <input type="checkbox" checked={includeArchived} onChange={(e) => setIncludeArchived(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={includeArchived}
+              onChange={(e) => setIncludeArchived(e.target.checked)}
+            />
             Show archived
           </label>
         </header>
         {project ? (
           <section className="composer card">
-            <textarea className="textarea request" value={request} onChange={(e) => setRequest(e.target.value)} rows={3} placeholder="What should the factory build? Be specific: the request is the whole brief." onKeyDown={onKeydown} />
+            <textarea
+              className="textarea request"
+              value={request}
+              onChange={(e) => setRequest(e.target.value)}
+              rows={3}
+              placeholder="What should the factory build? Be specific: the request is the whole brief."
+              onKeyDown={onKeydown}
+            />
             <div className="controls">
-              <select className="select pipeline" value={selectedPipeline} onChange={(e) => setSelectedPipeline(e.target.value)}>
-                {pipelines.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              <select
+                className="select pipeline"
+                value={selectedPipeline}
+                onChange={(e) => setSelectedPipeline(e.target.value)}
+              >
+                {pipelines.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
               </select>
               {pipeline && <PipelineRibbon pipeline={pipeline} />}
               <div className="grow" />
-              <button className="btn primary" disabled={!canStart || starting} onClick={() => void start()}>
+              <button
+                className="btn primary"
+                disabled={!canStart || starting}
+                onClick={() => void start()}
+              >
                 {starting ? 'Starting…' : 'Start run'}
                 {canStart && !starting && <kbd>⌘↵</kbd>}
               </button>
@@ -79,16 +119,30 @@ export default function RunsScreen({ onOpen }: { onOpen: (runId: string) => void
             {pipeline && <p className="desc faint">{pipeline.description}</p>}
             {issues.length > 0 && (
               <ul className="issues">
-                {issues.map((issue, i) => <li key={i}><strong>{issue.where}</strong> {issue.message}</li>)}
+                {issues.map((issue, i) => (
+                  <li key={i}>
+                    <strong>{issue.where}</strong> {issue.message}
+                  </li>
+                ))}
               </ul>
             )}
           </section>
         ) : null}
         {!project ? (
-          <EmptyState art="scenes/empty-state.png" title="No project yet" body="Foundry runs against a git repository. Add one to get started." />
+          <EmptyState
+            art="scenes/empty-state.png"
+            title="No project yet"
+            body="Foundry runs against a git repository. Add one to get started."
+          />
         ) : (
           <div className="list scroll">
-            {!loading && runs.length === 0 && <EmptyState art="scenes/empty-state.png" title="Nothing has run yet" body="Describe a change above and pick a pipeline. Every run is isolated in its own git worktree." />}
+            {!loading && runs.length === 0 && (
+              <EmptyState
+                art="scenes/empty-state.png"
+                title="Nothing has run yet"
+                body="Describe a change above and pick a pipeline. Every run is isolated in its own git worktree."
+              />
+            )}
             {runs.map((run) => (
               <button key={run.runId} className="run" onClick={() => onOpen(run.runId)}>
                 <div className="run-main">
@@ -100,7 +154,11 @@ export default function RunsScreen({ onOpen }: { onOpen: (runId: string) => void
                   <p className="req">{truncate(run.request, 160)}</p>
                 </div>
                 <div className="run-meta mono faint">
-                  {run.branch && <span className="branch" title={run.branch}>{run.branch.replace('foundry/', '')}</span>}
+                  {run.branch && (
+                    <span className="branch" title={run.branch}>
+                      {run.branch.replace('foundry/', '')}
+                    </span>
+                  )}
                   <span>{duration(runDuration(run))}</span>
                   {run.totalTokens ? <span>{tokens(run.totalTokens)} tok</span> : null}
                 </div>

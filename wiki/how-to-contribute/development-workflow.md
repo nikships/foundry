@@ -16,14 +16,13 @@ node node_modules/electron/install.js
 1. **Branch** from `main` (default branch).
 2. **Edit** the smallest set of files. Prefer shared types first when crossing the IPC boundary.
 3. **Run** `npm run dev` to exercise UI changes, or `npm run engine:demo` for headless engine smoke.
-4. **Verify** before finish:
+4. **Verify** before finish (same gates as PR CI):
    ```bash
-   npm run typecheck
-   npm test
-   npm run build
+   npm run check
    ```
+   Equivalent to typecheck, lint, format:check, knip, test, build, and audit.
 5. **Commit** with a clear message. Keep app changes separate from skill-only docs when possible.
-6. **PR** against `main` with what changed and how you verified.
+6. **PR** against `main` with what changed and how you verified. CI must stay green.
 
 ## Where code goes
 

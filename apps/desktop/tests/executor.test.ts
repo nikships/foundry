@@ -13,7 +13,15 @@ import { openDb, projectDbPath, projectRunsDir } from '../src/main/trace/db.js';
 import { Tracer } from '../src/main/trace/tracer.js';
 import { Executor } from '../src/main/engine/executor.js';
 import { defaultProject } from '../src/main/store/projects.js';
-import type { AgentDef, CliConfig, CliVendor, CommandSpec, PhaseDef, PipelineDef, ProjectDef } from '../src/shared/types.js';
+import type {
+  AgentDef,
+  CliConfig,
+  CliVendor,
+  CommandSpec,
+  PhaseDef,
+  PipelineDef,
+  ProjectDef,
+} from '../src/shared/types.js';
 import { CLI_VENDOR_IDS } from '../src/shared/types.js';
 
 function sh(cwd: string, argv: string[]): string {
@@ -222,14 +230,25 @@ function events(runId: string) {
 describe('code phases', () => {
   it('accepts a run whose phases all pass', async () => {
     const outcome = await run({
-      pipeline: pipe([
-        codePhase('one', { argv: ['sh', '-c', 'echo hi > a.txt'] }, {
-          description: 'Write a file the second phase can see.',
-        }),
-        codePhase('two', { argv: ['test', '-f', 'a.txt'] }, {
-          description: 'Confirm the file the first phase wrote is there.',
-        }),
-      ], { description: 'two passing commands' }),
+      pipeline: pipe(
+        [
+          codePhase(
+            'one',
+            { argv: ['sh', '-c', 'echo hi > a.txt'] },
+            {
+              description: 'Write a file the second phase can see.',
+            },
+          ),
+          codePhase(
+            'two',
+            { argv: ['test', '-f', 'a.txt'] },
+            {
+              description: 'Confirm the file the first phase wrote is there.',
+            },
+          ),
+        ],
+        { description: 'two passing commands' },
+      ),
     });
     expect(outcome.status).toBe('accepted');
     expect(h.tracer.phases(outcome.runId).map((p) => p.status)).toEqual(['success', 'success']);
@@ -237,11 +256,18 @@ describe('code phases', () => {
 
   it('rejects a run when a command fails, and keeps the output as evidence', async () => {
     const outcome = await run({
-      pipeline: pipe([
-        codePhase('boom', { argv: ['sh', '-c', 'echo detail >&2; exit 4'] }, {
-          description: 'Fail on purpose to prove failure is recorded.',
-        }),
-      ], { description: 'one failing command' }),
+      pipeline: pipe(
+        [
+          codePhase(
+            'boom',
+            { argv: ['sh', '-c', 'echo detail >&2; exit 4'] },
+            {
+              description: 'Fail on purpose to prove failure is recorded.',
+            },
+          ),
+        ],
+        { description: 'one failing command' },
+      ),
     });
     expect(outcome.status).toBe('rejected');
     const phase = h.tracer.phases(outcome.runId)[0]!;
@@ -251,12 +277,19 @@ describe('code phases', () => {
 
   it('lets an optional phase fail without failing the run', async () => {
     const outcome = await run({
-      pipeline: pipe([
-        codePhase('lint', { argv: ['sh', '-c', 'exit 1'] }, {
-          optional: true,
-          description: 'Report style problems without blocking the run.',
-        }),
-      ], { description: 'an optional failure' }),
+      pipeline: pipe(
+        [
+          codePhase(
+            'lint',
+            { argv: ['sh', '-c', 'exit 1'] },
+            {
+              optional: true,
+              description: 'Report style problems without blocking the run.',
+            },
+          ),
+        ],
+        { description: 'an optional failure' },
+      ),
     });
     expect(outcome.status).toBe('accepted');
     expect(h.tracer.phases(outcome.runId)[0]!.status).toBe('skipped');
@@ -264,11 +297,18 @@ describe('code phases', () => {
 
   it('fails a phase whose project command is not configured, naming the fix', async () => {
     const outcome = await run({
-      pipeline: pipe([
-        codePhase('test', { ref: 'test' }, {
-          description: 'Run the project test command that was never set.',
-        }),
-      ], { description: 'refers to a missing project command' }),
+      pipeline: pipe(
+        [
+          codePhase(
+            'test',
+            { ref: 'test' },
+            {
+              description: 'Run the project test command that was never set.',
+            },
+          ),
+        ],
+        { description: 'refers to a missing project command' },
+      ),
     });
     expect(outcome.status).toBe('rejected');
     expect(h.tracer.phases(outcome.runId)[0]!.error).toContain('is not configured');
@@ -276,11 +316,18 @@ describe('code phases', () => {
 
   it('runs inside a worktree on its own branch by default', async () => {
     const outcome = await run({
-      pipeline: pipe([
-        codePhase('write', { argv: ['sh', '-c', 'echo isolated > only-in-worktree.txt'] }, {
-          description: 'Write a file so the test can see which tree it landed in.',
-        }),
-      ], { description: 'writes a file to prove where it ran' }),
+      pipeline: pipe(
+        [
+          codePhase(
+            'write',
+            { argv: ['sh', '-c', 'echo isolated > only-in-worktree.txt'] },
+            {
+              description: 'Write a file so the test can see which tree it landed in.',
+            },
+          ),
+        ],
+        { description: 'writes a file to prove where it ran' },
+      ),
     });
     const run1 = h.tracer.run(outcome.runId)!;
     expect(run1.branch).toBe(`foundry/${outcome.runId}`);
@@ -291,14 +338,21 @@ describe('code phases', () => {
 
   it('honours a pipeline that opts out of isolation', async () => {
     const outcome = await run({
-      pipeline: pipe([
-        codePhase('write', { argv: ['sh', '-c', 'echo direct > in-repo.txt'] }, {
-          description: 'Write directly into the checkout to prove isolation is off.',
-        }),
-      ], {
-        description: 'docs-only chain that does not need a branch',
-        isolation: false,
-      }),
+      pipeline: pipe(
+        [
+          codePhase(
+            'write',
+            { argv: ['sh', '-c', 'echo direct > in-repo.txt'] },
+            {
+              description: 'Write directly into the checkout to prove isolation is off.',
+            },
+          ),
+        ],
+        {
+          description: 'docs-only chain that does not need a branch',
+          isolation: false,
+        },
+      ),
     });
     expect(h.tracer.run(outcome.runId)!.worktreePath).toBeNull();
     expect(existsSync(join(h.repo, 'in-repo.txt'))).toBe(true);
@@ -310,15 +364,18 @@ describe('agent phases', () => {
     const droid = scriptedDroid([buildEnvelope({ changed_files: ['made.txt'] })], ['made.txt']);
     const outcome = await run({
       droidPath: droid,
-      pipeline: pipe([
-        agentPhase('build', {
-          description: 'Have the scripted agent make a file and claim it.',
-          gates: ['diff_matches_claims'],
-        }),
-      ], {
-        description: 'one agent phase with a claims gate',
-        acceptance: { kind: 'envelope_status', phase: 'build' },
-      }),
+      pipeline: pipe(
+        [
+          agentPhase('build', {
+            description: 'Have the scripted agent make a file and claim it.',
+            gates: ['diff_matches_claims'],
+          }),
+        ],
+        {
+          description: 'one agent phase with a claims gate',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
     });
     expect(outcome.status).toBe('accepted');
     const envelopes = h.tracer.envelopes(outcome.runId);
@@ -333,14 +390,17 @@ describe('agent phases', () => {
     const droid = scriptedDroid(['I will explain in prose instead of JSON.', buildEnvelope()]);
     const outcome = await run({
       droidPath: droid,
-      pipeline: pipe([
-        agentPhase('build', {
-          description: 'Prove a parse failure costs one message, not a restart.',
-        }),
-      ], {
-        description: 'first reply is prose, second is an envelope',
-        acceptance: { kind: 'envelope_status', phase: 'build' },
-      }),
+      pipeline: pipe(
+        [
+          agentPhase('build', {
+            description: 'Prove a parse failure costs one message, not a restart.',
+          }),
+        ],
+        {
+          description: 'first reply is prose, second is an envelope',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
     });
     expect(outcome.status).toBe('accepted');
     const correction = events(outcome.runId).find((e) => e.type === 'correction');
@@ -353,12 +413,13 @@ describe('agent phases', () => {
     const droid = scriptedDroid(['never json']);
     const outcome = await run({
       droidPath: droid,
-      pipeline: pipe([
-        agentPhase('build', { description: 'Prove success is earned, never assumed.' }),
-      ], {
-        description: 'the agent never produces an envelope',
-        acceptance: { kind: 'envelope_status', phase: 'build' },
-      }),
+      pipeline: pipe(
+        [agentPhase('build', { description: 'Prove success is earned, never assumed.' })],
+        {
+          description: 'the agent never produces an envelope',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
     });
     expect(outcome.status).toBe('rejected');
     expect(h.tracer.phases(outcome.runId)[0]!.status).toBe('fail');
@@ -368,12 +429,13 @@ describe('agent phases', () => {
     const droid = scriptedDroid([buildEnvelope({ status: 'fail', summary: 'could not do it' })]);
     const outcome = await run({
       droidPath: droid,
-      pipeline: pipe([
-        agentPhase('build', { description: 'Prove a self-reported failure is not overridden.' }),
-      ], {
-        description: 'the agent reports its own failure',
-        acceptance: { kind: 'envelope_status', phase: 'build' },
-      }),
+      pipeline: pipe(
+        [agentPhase('build', { description: 'Prove a self-reported failure is not overridden.' })],
+        {
+          description: 'the agent reports its own failure',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
     });
     expect(outcome.status).toBe('rejected');
     expect(h.tracer.phases(outcome.runId)[0]!.error).toContain('could not do it');
@@ -387,15 +449,18 @@ describe('agent phases', () => {
     const outcome = await run({
       droidPath: droid,
       agents: [buildAgent({ writes: ['allowed/'] })],
-      pipeline: pipe([
-        agentPhase('build', {
-          retries: 1,
-          description: 'Prove the boundary is enforced in code, not by asking.',
-        }),
-      ], {
-        description: 'the agent writes outside its boundary',
-        acceptance: { kind: 'envelope_status', phase: 'build' },
-      }),
+      pipeline: pipe(
+        [
+          agentPhase('build', {
+            retries: 1,
+            description: 'Prove the boundary is enforced in code, not by asking.',
+          }),
+        ],
+        {
+          description: 'the agent writes outside its boundary',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
     });
     expect(outcome.status).toBe('rejected');
     const worktree = h.tracer.run(outcome.runId)!.worktreePath!;
@@ -413,14 +478,17 @@ describe('agent phases', () => {
     const outcome = await run({
       droidPath: droid,
       agents: [buildAgent({ writes: ['allowed/'] })],
-      pipeline: pipe([
-        agentPhase('build', {
-          description: 'Prove an in-boundary write survives enforcement.',
-        }),
-      ], {
-        description: 'the agent writes inside its boundary',
-        acceptance: { kind: 'envelope_status', phase: 'build' },
-      }),
+      pipeline: pipe(
+        [
+          agentPhase('build', {
+            description: 'Prove an in-boundary write survives enforcement.',
+          }),
+        ],
+        {
+          description: 'the agent writes inside its boundary',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
     });
     expect(outcome.status).toBe('accepted');
     const worktree = h.tracer.run(outcome.runId)!.worktreePath!;
@@ -430,21 +498,27 @@ describe('agent phases', () => {
   it('retries a gate failure as a correction into the same session', async () => {
     // First turn claims a file it never wrote; second turn tells the truth.
     const droid = scriptedDroid(
-      [buildEnvelope({ changed_files: ['ghost.txt'] }), buildEnvelope({ changed_files: ['real.txt'] })],
+      [
+        buildEnvelope({ changed_files: ['ghost.txt'] }),
+        buildEnvelope({ changed_files: ['real.txt'] }),
+      ],
       [null, 'real.txt'],
     );
     const outcome = await run({
       droidPath: droid,
-      pipeline: pipe([
-        agentPhase('build', {
-          retries: 1,
-          description: 'Prove a gate failure costs one message inside the live session.',
-          gates: ['diff_matches_claims'],
-        }),
-      ], {
-        description: 'a claims gate rejects the first attempt',
-        acceptance: { kind: 'envelope_status', phase: 'build' },
-      }),
+      pipeline: pipe(
+        [
+          agentPhase('build', {
+            retries: 1,
+            description: 'Prove a gate failure costs one message inside the live session.',
+            gates: ['diff_matches_claims'],
+          }),
+        ],
+        {
+          description: 'a claims gate rejects the first attempt',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
     });
     expect(outcome.status).toBe('accepted');
     const gates = h.tracer.gateResults(outcome.runId);
@@ -468,11 +542,15 @@ describe('the repair loop', () => {
     pipe(
       [
         agentPhase('build', { description: 'Implement the change the request asks for.' }),
-        codePhase('test', { ref: 'test' }, {
-          description: 'Run the project check and hand any failure back to the builder.',
-          feedbackTo: 'build',
-          feedbackRetries,
-        }),
+        codePhase(
+          'test',
+          { ref: 'test' },
+          {
+            description: 'Run the project check and hand any failure back to the builder.',
+            feedbackTo: 'build',
+            feedbackRetries,
+          },
+        ),
       ],
       {
         description: 'build, test, repair',
@@ -514,11 +592,15 @@ describe('the repair loop', () => {
           agentPhase('build', {
             description: 'Attempt the change that cannot satisfy the check.',
           }),
-          codePhase('test', { ref: 'test' }, {
-            description: 'Run the check that always fails and stop after the budget.',
-            feedbackTo: 'build',
-            feedbackRetries: 1,
-          }),
+          codePhase(
+            'test',
+            { ref: 'test' },
+            {
+              description: 'Run the check that always fails and stop after the budget.',
+              feedbackTo: 'build',
+              feedbackRetries: 1,
+            },
+          ),
         ],
         {
           description: 'a check that can never pass',
@@ -641,19 +723,20 @@ describe('engineer phases', () => {
 
 describe('the trace record', () => {
   it('writes prompts, envelopes, and events to disk as the raw record', async () => {
-    const droid = scriptedDroid([
-      buildEnvelope({ summary: 'ok', commit_message: 'x' }),
-    ]);
+    const droid = scriptedDroid([buildEnvelope({ summary: 'ok', commit_message: 'x' })]);
     const outcome = await run({
       droidPath: droid,
-      pipeline: pipe([
-        agentPhase('build', {
-          description: 'Produce a record on disk as well as in the db.',
-        }),
-      ], {
-        description: 'one agent phase',
-        acceptance: { kind: 'envelope_status', phase: 'build' },
-      }),
+      pipeline: pipe(
+        [
+          agentPhase('build', {
+            description: 'Produce a record on disk as well as in the db.',
+          }),
+        ],
+        {
+          description: 'one agent phase',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
     });
     const dir = h.tracer.runDir(outcome.runId);
     expect(existsSync(join(dir, 'request.md'))).toBe(true);
@@ -668,14 +751,25 @@ describe('the trace record', () => {
 
   it('queues every phase up front so the waterfall can draw what has not run', async () => {
     const outcome = await run({
-      pipeline: pipe([
-        codePhase('first', { argv: ['false'] }, {
-          description: 'Fail immediately so later phases never start.',
-        }),
-        codePhase('second', { argv: ['true'] }, {
-          description: 'Never run, and stay visible as queued in the trace.',
-        }),
-      ], { description: 'stops early on purpose' }),
+      pipeline: pipe(
+        [
+          codePhase(
+            'first',
+            { argv: ['false'] },
+            {
+              description: 'Fail immediately so later phases never start.',
+            },
+          ),
+          codePhase(
+            'second',
+            { argv: ['true'] },
+            {
+              description: 'Never run, and stay visible as queued in the trace.',
+            },
+          ),
+        ],
+        { description: 'stops early on purpose' },
+      ),
     });
     const phases = h.tracer.phases(outcome.runId);
     expect(phases.map((p) => p.status)).toEqual(['fail', 'queued']);

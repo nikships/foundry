@@ -2,7 +2,14 @@
  * Live view of one run, plus the project run list. Polling is deliberate.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { EnvelopeRow, EventRow, GateResultRow, PhaseRow, RunRow, AgentSessionRow } from '@shared/types.js';
+import type {
+  EnvelopeRow,
+  EventRow,
+  GateResultRow,
+  PhaseRow,
+  RunRow,
+  AgentSessionRow,
+} from '@shared/types.js';
 import { api } from '../api.js';
 import { useApp } from './app.js';
 
@@ -44,7 +51,10 @@ function groupByPhaseId<T extends { phaseId: string }>(rows: T[]): Map<string, T
   return map;
 }
 
-export function useRun(projectId: string, runId: string): {
+export function useRun(
+  projectId: string,
+  runId: string,
+): {
   view: RunView;
   refresh: () => Promise<void>;
   eventsByPhase: Map<string, EventRow[]>;
@@ -62,12 +72,14 @@ export function useRun(projectId: string, runId: string): {
   const timerRef = useRef<number | null>(null);
   const inFlightRef = useRef(false);
   const disposedRef = useRef(false);
+  // Ref breaks the schedule <-> tick cycle without stale timeouts.
+  const tickRef = useRef<() => Promise<void>>(async () => {});
 
   const schedule = useCallback(() => {
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     if (disposedRef.current) return;
     const cadence = viewRef.current.live ? (settings?.pollCadenceMs ?? 500) : 3000;
-    timerRef.current = window.setTimeout(() => void tick(), cadence);
+    timerRef.current = window.setTimeout(() => void tickRef.current(), cadence);
   }, [settings?.pollCadenceMs]);
 
   const tick = useCallback(async (): Promise<void> => {
@@ -118,6 +130,10 @@ export function useRun(projectId: string, runId: string): {
   }, [projectId, runId, schedule]);
 
   useEffect(() => {
+    tickRef.current = tick;
+  }, [tick]);
+
+  useEffect(() => {
     disposedRef.current = false;
     const reset = emptyView();
     setView(reset);
@@ -148,7 +164,10 @@ export function useRun(projectId: string, runId: string): {
 }
 
 /** The runs list for a project, polled while any run is live. */
-export function useRunList(projectId: string, includeArchived: boolean): {
+export function useRunList(
+  projectId: string,
+  includeArchived: boolean,
+): {
   runs: RunRow[];
   loading: boolean;
   error: string;
@@ -161,6 +180,7 @@ export function useRunList(projectId: string, includeArchived: boolean): {
   const inFlightRef = useRef(false);
   const disposedRef = useRef(false);
   const runsRef = useRef(runs);
+  const tickRef = useRef<() => Promise<void>>(async () => {});
   useEffect(() => {
     runsRef.current = runs;
   }, [runs]);
@@ -169,7 +189,7 @@ export function useRunList(projectId: string, includeArchived: boolean): {
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     if (disposedRef.current) return;
     const anyLive = runsRef.current.some((r) => r.status === 'running');
-    timerRef.current = window.setTimeout(() => void tick(), anyLive ? 800 : 4000);
+    timerRef.current = window.setTimeout(() => void tickRef.current(), anyLive ? 800 : 4000);
   }, []);
 
   const tick = useCallback(async (): Promise<void> => {
@@ -191,6 +211,10 @@ export function useRunList(projectId: string, includeArchived: boolean): {
       schedule();
     }
   }, [projectId, includeArchived, schedule]);
+
+  useEffect(() => {
+    tickRef.current = tick;
+  }, [tick]);
 
   useEffect(() => {
     disposedRef.current = false;

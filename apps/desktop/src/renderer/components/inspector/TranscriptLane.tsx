@@ -7,7 +7,7 @@
  * stale view.
  */
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AgentSessionRow, EnvelopeRow, EventRow, PhaseRow } from '@shared/types.js';
 import AgentAvatar from '../AgentAvatar.js';
 import StatusBadge from '../StatusBadge.js';
@@ -15,12 +15,19 @@ import { duration, modelLabel, tokens } from '../../format.js';
 import { usageFor } from '../../derive.js';
 import { TranscriptEntry, transcriptStyles } from './entries.js';
 
-function ContextBar({ session }: { session: AgentSessionRow | undefined }): React.JSX.Element | null {
+function ContextBar({
+  session,
+}: {
+  session: AgentSessionRow | undefined;
+}): React.JSX.Element | null {
   if (!session || !session.contextWindow) return null;
   const used = session.contextTokens ?? 0;
   const pct = Math.min(100, Math.round((used / session.contextWindow) * 100));
   return (
-    <span className="lane-context" title={`${used.toLocaleString()} of ${session.contextWindow.toLocaleString()} context tokens`}>
+    <span
+      className="lane-context"
+      title={`${used.toLocaleString()} of ${session.contextWindow.toLocaleString()} context tokens`}
+    >
       <span className="lane-context-bar">
         <span className="lane-context-fill" style={{ width: `${pct}%` }} />
       </span>
@@ -36,7 +43,9 @@ function EnvelopeCard({ envelope }: { envelope: EnvelopeRow }): React.JSX.Elemen
       <div className="lane-envelope-head">
         <span className="te-tag">envelope</span>
         <span className="lane-envelope-status">{envelope.valid ? 'accepted' : 'invalid'}</span>
-        {envelope.attempt > 1 && <span className="lane-envelope-attempt">attempt {envelope.attempt}</span>}
+        {envelope.attempt > 1 && (
+          <span className="lane-envelope-attempt">attempt {envelope.attempt}</span>
+        )}
       </div>
       {summary && <div className="lane-envelope-summary">{summary}</div>}
     </div>
@@ -63,12 +72,16 @@ export default function TranscriptLane({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const atBottomRef = useRef(true);
   const [showJump, setShowJump] = useState(false);
-  const lastEventKey = events.length ? `${events[events.length - 1]!.eventId}:${events.length}` : '';
+  const lastEventKey = events.length
+    ? `${events[events.length - 1]!.eventId}:${events.length}`
+    : '';
 
   const session = sessions.find((s) => s.agent === phase.owner);
   const cli = session?.cli ?? 'droid';
   const model = modelLabel(session?.model);
-  const elapsed = phase.startedAt ? new Date(phase.endedAt ?? now).getTime() - new Date(phase.startedAt).getTime() : null;
+  const elapsed = phase.startedAt
+    ? new Date(phase.endedAt ?? now).getTime() - new Date(phase.startedAt).getTime()
+    : null;
   const usage = usageFor(events);
   const tokenCount = usage.reported ? usage.totalTokens : null;
 
@@ -80,23 +93,22 @@ export default function TranscriptLane({
     setShowJump(!atBottom);
   };
 
-  const jumpToLatest = (): void => {
+  const jumpToLatest = useCallback((): void => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
     atBottomRef.current = true;
     setShowJump(false);
-  };
+  }, []);
 
   // Follow the tail only while the reader is already there.
   useLayoutEffect(() => {
     if (atBottomRef.current) jumpToLatest();
     else setShowJump(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastEventKey]);
+  }, [lastEventKey, jumpToLatest]);
 
   useEffect(() => {
     jumpToLatest();
-  }, []);
+  }, [jumpToLatest]);
 
   return (
     <section className={`lane ${phase.status} ${focused ? 'focused' : ''}`}>
@@ -111,11 +123,17 @@ export default function TranscriptLane({
           </span>
         </div>
         <div className="lane-stats">
-          {tokenCount != null && tokenCount > 0 && <span className="lane-tokens">{tokens(tokenCount)} tok</span>}
+          {tokenCount != null && tokenCount > 0 && (
+            <span className="lane-tokens">{tokens(tokenCount)} tok</span>
+          )}
           <ContextBar session={session} />
           {elapsed != null && <span className="lane-elapsed">{duration(elapsed)}</span>}
           <StatusBadge status={phase.status} />
-          <button className="lane-focus" onClick={onToggleFocus} title={focused ? 'Back to all lanes' : 'Focus this lane'}>
+          <button
+            className="lane-focus"
+            onClick={onToggleFocus}
+            title={focused ? 'Back to all lanes' : 'Focus this lane'}
+          >
             {focused ? '✕' : '⤢'}
           </button>
         </div>

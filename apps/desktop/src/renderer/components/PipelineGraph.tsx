@@ -7,7 +7,15 @@ const GAP = 28;
 const ARC_H = 34;
 const KIND_COLOR: Record<string, string> = { code: 'var(--blue)', engineer: 'var(--amber)' };
 
-export default function PipelineGraph({ pipeline, selected, onSelect }: { pipeline: PipelineDef; selected: number; onSelect: (index: number) => void }): React.JSX.Element {
+export default function PipelineGraph({
+  pipeline,
+  selected,
+  onSelect,
+}: {
+  pipeline: PipelineDef;
+  selected: number;
+  onSelect: (index: number) => void;
+}): React.JSX.Element {
   const { agentColor } = useApp();
   const color = (index: number): string => {
     const phase = pipeline.phases[index]!;
@@ -37,21 +45,48 @@ export default function PipelineGraph({ pipeline, selected, onSelect }: { pipeli
       <div className="graph">
         <svg className="arcs" width={width} height={ARC_H} viewBox={`0 0 ${width} ${ARC_H}`}>
           <defs>
-            <marker id="fb-arrow" viewBox="0 0 8 8" refX={4} refY={4} markerWidth={6} markerHeight={6} orient="auto">
+            <marker
+              id="fb-arrow"
+              viewBox="0 0 8 8"
+              refX={4}
+              refY={4}
+              markerWidth={6}
+              markerHeight={6}
+              orient="auto"
+            >
               <path d="M 0 0 L 8 4 L 0 8 z" fill="var(--amber)" />
             </marker>
           </defs>
           {feedback.map((edge, i) => (
-            <path key={i} d={arcPath(edge.from, edge.to)} fill="none" stroke="var(--amber)" strokeWidth={1.5} strokeDasharray="4 3" markerEnd="url(#fb-arrow)" opacity={0.8} />
+            <path
+              key={i}
+              d={arcPath(edge.from, edge.to)}
+              fill="none"
+              stroke="var(--amber)"
+              strokeWidth={1.5}
+              strokeDasharray="4 3"
+              markerEnd="url(#fb-arrow)"
+              opacity={0.8}
+            />
           ))}
         </svg>
         <div className="nodes" style={{ width: `${width}px` }}>
           {pipeline.phases.map((phase, i) => (
-            <div key={i} className="node-wrap" style={{ width: `${NODE_W}px`, marginRight: `${GAP}px` }}>
-              <button className={`node ${selected === i ? 'on' : ''}`} style={{ borderColor: `color-mix(in srgb, ${color(i)} 50%, transparent)` }} onClick={() => onSelect(i)}>
+            <div
+              key={i}
+              className="node-wrap"
+              style={{ width: `${NODE_W}px`, marginRight: `${GAP}px` }}
+            >
+              <button
+                className={`node ${selected === i ? 'on' : ''}`}
+                style={{ borderColor: `color-mix(in srgb, ${color(i)} 50%, transparent)` }}
+                onClick={() => onSelect(i)}
+              >
                 <span className="dot" style={{ background: color(i) }} />
                 <span className="node-name">{phase.name}</span>
-                <span className="faint node-kind">{phase.kind === 'engineer' ? 'checkpoint' : phase.kind}</span>
+                <span className="faint node-kind">
+                  {phase.kind === 'engineer' ? 'checkpoint' : phase.kind}
+                </span>
                 {phase.optional && <span className="faint opt">optional</span>}
               </button>
               {i < pipeline.phases.length - 1 && <span className="edge">→</span>}

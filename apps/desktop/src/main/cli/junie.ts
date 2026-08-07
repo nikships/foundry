@@ -115,7 +115,12 @@ function streamLine(line: unknown): DroidNotification[] {
   }
   if (e.type === 'result' && typeof e.result === 'string' && e.result.trim()) {
     return [
-      { type: 'assistant_text_delta', messageId: 'junie-result', blockIndex: 0, textDelta: e.result },
+      {
+        type: 'assistant_text_delta',
+        messageId: 'junie-result',
+        blockIndex: 0,
+        textDelta: e.result,
+      },
       { type: 'assistant_text_complete', messageId: 'junie-result', blockIndex: 0 },
     ];
   }

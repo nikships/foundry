@@ -4,21 +4,38 @@ import { credits, tokens } from '../format.js';
 import { modelFor, usageFor } from '../derive.js';
 import AgentAvatar from './AgentAvatar.js';
 
-export default function CostTable({ phases, eventsByPhase }: { phases: PhaseRow[]; eventsByPhase: Map<string, EventRow[]> }): React.JSX.Element {
-  const rows = useMemo(() =>
-    phases.filter((p) => p.kind === 'agent' && p.startedAt).map((phase) => {
-      const events = eventsByPhase.get(phase.phaseId) ?? [];
-      return { phase, usage: usageFor(events), model: modelFor(events) };
-    }), [phases, eventsByPhase]);
+export default function CostTable({
+  phases,
+  eventsByPhase,
+}: {
+  phases: PhaseRow[];
+  eventsByPhase: Map<string, EventRow[]>;
+}): React.JSX.Element {
+  const rows = useMemo(
+    () =>
+      phases
+        .filter((p) => p.kind === 'agent' && p.startedAt)
+        .map((phase) => {
+          const events = eventsByPhase.get(phase.phaseId) ?? [];
+          return { phase, usage: usageFor(events), model: modelFor(events) };
+        }),
+    [phases, eventsByPhase],
+  );
 
-  const totals = useMemo(() =>
-    rows.reduce((acc, { usage }) => ({
-      input: acc.input + usage.inputTokens,
-      output: acc.output + usage.outputTokens,
-      cacheRead: acc.cacheRead + usage.cacheReadTokens,
-      thinking: acc.thinking + usage.thinkingTokens,
-      credits: acc.credits + usage.credits,
-    }), { input: 0, output: 0, cacheRead: 0, thinking: 0, credits: 0 }), [rows]);
+  const totals = useMemo(
+    () =>
+      rows.reduce(
+        (acc, { usage }) => ({
+          input: acc.input + usage.inputTokens,
+          output: acc.output + usage.outputTokens,
+          cacheRead: acc.cacheRead + usage.cacheReadTokens,
+          thinking: acc.thinking + usage.thinkingTokens,
+          credits: acc.credits + usage.credits,
+        }),
+        { input: 0, output: 0, cacheRead: 0, thinking: 0, credits: 0 },
+      ),
+    [rows],
+  );
 
   return (
     <>
@@ -56,7 +73,9 @@ export default function CostTable({ phases, eventsByPhase }: { phases: PhaseRow[
                     <td className="mono">{credits(row.usage.credits)}</td>
                   </>
                 ) : (
-                  <td colSpan={5} className="faint unreported">the model did not report usage</td>
+                  <td colSpan={5} className="faint unreported">
+                    the model did not report usage
+                  </td>
                 )}
               </tr>
             ))}

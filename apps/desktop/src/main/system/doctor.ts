@@ -62,15 +62,16 @@ export async function runDoctor(settings: AppSettings): Promise<DoctorCheck[]> {
   const checks: DoctorCheck[] = [];
 
   // The default CLI leads, because it is the one whose failure blocks a run.
-  const order = [
-    settings.defaultCli,
-    ...CLI_VENDOR_IDS.filter((v) => v !== settings.defaultCli),
-  ];
+  const order = [settings.defaultCli, ...CLI_VENDOR_IDS.filter((v) => v !== settings.defaultCli)];
   for (const vendor of order) {
     checks.push(...(await checkCli(vendor, settings, vendor === settings.defaultCli)));
   }
 
-  const git = await runCommand({ argv: ['git', '--version'], cwd: process.cwd(), timeoutMs: 10_000 });
+  const git = await runCommand({
+    argv: ['git', '--version'],
+    cwd: process.cwd(),
+    timeoutMs: 10_000,
+  });
   checks.push({
     id: 'git',
     label: 'git',
@@ -94,7 +95,10 @@ export async function runDoctor(settings: AppSettings): Promise<DoctorCheck[]> {
         : 'missing: Junie asks before acting, and an unattended phase has nobody to answer',
       fix: hasAllowlist
         ? undefined
-        : { kind: 'open-url', value: 'https://junie.jetbrains.com/docs/action-allowlist-junie-cli.html' },
+        : {
+            kind: 'open-url',
+            value: 'https://junie.jetbrains.com/docs/action-allowlist-junie-cli.html',
+          },
     });
   }
 

@@ -199,11 +199,7 @@ export class AgentSession {
     this.agentLog('log', 'stderr', { text: trimmed.slice(-2000) });
   }
 
-  private agentLog(
-    type: 'log' | 'error',
-    suffix: string,
-    payload: Record<string, unknown>,
-  ): void {
+  private agentLog(type: 'log' | 'error', suffix: string, payload: Record<string, unknown>): void {
     this.deps.tracer.event({
       runId: this.deps.runId,
       phaseId: this.currentPhaseId,
@@ -335,7 +331,11 @@ export class AgentSession {
     return rpc.send(prompt, this.deps.turnTimeoutMs);
   }
 
-  private async sendOneShot(prompt: string, phaseId: string, folder: EventFolder): Promise<TurnResult> {
+  private async sendOneShot(
+    prompt: string,
+    phaseId: string,
+    folder: EventFolder,
+  ): Promise<TurnResult> {
     const oneshot = (this.oneshot ??= this.buildOneShot());
     // A vendor with a stream normaliser gets its mid-turn events folded into
     // real trace rows; one without keeps the single honest span that says
@@ -349,7 +349,10 @@ export class AgentSession {
           phaseId,
           type: 'tool_call',
           name: `${this.agent.name}: one-shot turn`,
-          payload: { mode: 'oneshot', note: 'mid-turn tool visibility is unavailable for this CLI' },
+          payload: {
+            mode: 'oneshot',
+            note: 'mid-turn tool visibility is unavailable for this CLI',
+          },
         });
     const normalise = streamFactory?.();
     const result = await oneshot.send(

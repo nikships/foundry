@@ -3,11 +3,40 @@
 Workflows live in `workflows/`. Heavy Mac packaging and own-branch verification
 run on the self-hosted Mac Mini. Fork PRs never execute on the Mini.
 
+## Agent-ready gates
+
+PR merges should stay blocked until these are green. Local equivalent from
+`apps/desktop/`:
+
+```bash
+npm run check   # typecheck + lint + format + knip + test + build + audit
+```
+
+| Gate | Tool | Where |
+|---|---|---|
+| Types | `tsc --noEmit` | `ci.yml` verify |
+| Lint | ESLint (flat config) | `ci.yml` verify |
+| Format | Prettier `--check` | `ci.yml` verify |
+| Dead code / unused deps | Knip | `ci.yml` verify |
+| Unit tests | Vitest | `ci.yml` verify |
+| Production build | electron-vite | `ci.yml` verify |
+| Dependency CVEs | `npm audit --audit-level=high` | `ci.yml` verify |
+| Workflow syntax | actionlint | `ci.yml` actionlint |
+| Supply-chain PR diff | dependency-review-action | `dependency-review.yml` |
+| SAST | CodeQL (js/ts) | `codeql.yml` |
+| Signed package | electron-builder + notary | `mac-package.yml` (not on PRs) |
+
+Knip fails on unused files and dependencies. Unused exports are off for now
+(internal modules export more than tests import on purpose); do not flip that
+on without a cleanup pass.
+
 ## Workflows
 
 | File | Runner | Triggers | What it does |
 |---|---|---|---|
-| `workflows/ci.yml` | **self-hosted `mac-mini`** (own); `macos-latest` (fork PRs) | push/PR to `main` under `apps/desktop/**`, or manual | `npm ci` → typecheck → test → build |
+| `workflows/ci.yml` | **self-hosted `mac-mini`** (own); `macos-latest` (fork PRs); actionlint on `ubuntu-latest` | push/PR to `main` under `apps/desktop/**` or `.github/workflows/**`, or manual | `npm ci` → typecheck → lint → format → knip → test → build → audit; plus actionlint |
+| `workflows/dependency-review.yml` | `ubuntu-latest` | pull_request to `main` | Blocks high+ severity dependency changes and denied licenses |
+| `workflows/codeql.yml` | `ubuntu-latest` | push/PR under app paths, weekly cron, manual | CodeQL security-and-quality on `apps/desktop` |
 | `workflows/mac-package.yml` | **self-hosted `mac-mini`** (this repo only) | push to `main`, `v*` tags, or manual | electron-builder arm64 DMG, Developer ID sign, Apple notarize + staple, artifact upload; **main/manual** → bump patch version, commit it back (a `GITHUB_TOKEN` push cannot retrigger workflows), then rolling GitHub Release tag `latest`; **`v*` tags** → versioned release (no bump) |
 
 ## Self-hosted runner (`mac-mini`)
@@ -26,12 +55,13 @@ retarget or stop runners that belong to other repositories.**
 
 **Routed here:**
 
-- CI typecheck/test/build for non-fork events
+- CI verify (typecheck/lint/format/knip/test/build/audit) for non-fork events
 - Mac package / sign / notarize (`mac-package`)
 
 **Not routed here:**
 
 - Fork pull requests (`ci.yml` falls back to `macos-latest`)
+- actionlint, dependency-review, CodeQL (`ubuntu-latest`)
 - Light docs-only work (no workflow)
 
 ### Signing and notarization

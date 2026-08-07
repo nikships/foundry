@@ -26,7 +26,8 @@ function commitPlanPhase(): PhaseDef {
   return {
     name: 'commit_plan',
     kind: 'code',
-    description: 'Record the spec as its own commit so the plan has a history separate from the work.',
+    description:
+      'Record the spec as its own commit so the plan has a history separate from the work.',
     command: { builtin: 'git_commit', messageFrom: 'envelope:plan.commit_message' },
   };
 }
@@ -44,7 +45,9 @@ function buildPhase(): PhaseDef {
   };
 }
 
-function commitBuildPhase(description = 'Commit the implementation using the message the builder proposed for it.'): PhaseDef {
+function commitBuildPhase(
+  description = 'Commit the implementation using the message the builder proposed for it.',
+): PhaseDef {
   return {
     name: 'commit_build',
     kind: 'code',
@@ -136,7 +139,8 @@ export const BUILTIN_PIPELINES: PipelineDef[] = [
   {
     id: 'plan-build-test',
     name: 'Plan → Build → Test',
-    description: "The standard chain: spec first, implement, then prove it with the project's own tests.",
+    description:
+      "The standard chain: spec first, implement, then prove it with the project's own tests.",
     acceptance: { kind: 'phase_flag', phase: 'test', flag: 'passed' },
     builtin: true,
     phases: [
@@ -165,14 +169,17 @@ export const BUILTIN_PIPELINES: PipelineDef[] = [
       planPhase(),
       commitPlanPhase(),
       buildPhase(),
-      testPhase("Run the project's test command and send failures back to the builder as evidence."),
+      testPhase(
+        "Run the project's test command and send failures back to the builder as evidence.",
+      ),
       commitBuildPhase('Commit the implementation once its tests are green.'),
       reviewPhase(),
       {
         name: 'document',
         kind: 'agent',
         agent: 'documenter',
-        description: "Write down what changed for the reader who arrives without this run's context.",
+        description:
+          "Write down what changed for the reader who arrives without this run's context.",
         envelope: 'document',
         gates: ['artifacts_exist', 'files_non_empty'],
         prompt: { template: 'user', inputs: ['request', 'envelope:build'] },
@@ -180,7 +187,8 @@ export const BUILTIN_PIPELINES: PipelineDef[] = [
       {
         name: 'commit_docs',
         kind: 'code',
-        description: 'Commit the documentation separately so docs churn stays out of the code diff.',
+        description:
+          'Commit the documentation separately so docs churn stays out of the code diff.',
         command: { builtin: 'git_commit', messageFrom: 'envelope:document.summary' },
       },
     ],

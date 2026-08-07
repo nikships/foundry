@@ -2,8 +2,22 @@
  * App-wide state: settings, projects, roster, pipelines, and the selected
  * project. React Context + hooks.
  */
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import type { AgentDef, AppSettings, PendingInterrupt, PipelineDef, ProjectDef } from '@shared/types.js';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import type {
+  AgentDef,
+  AppSettings,
+  PendingInterrupt,
+  PipelineDef,
+  ProjectDef,
+} from '@shared/types.js';
 import { api } from '../api.js';
 
 export interface AppState {
@@ -52,7 +66,9 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
   const [agents, setAgents] = useState<AgentDef[]>([]);
   const [pipelines, setPipelines] = useState<PipelineDef[]>([]);
   const [interrupts, setInterrupts] = useState<PendingInterrupt[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState<string>(() => localStorage.getItem('foundry.project') ?? '');
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(
+    () => localStorage.getItem('foundry.project') ?? '',
+  );
   const [ready, setReady] = useState(false);
 
   const selectedProjectIdRef = useRef(selectedProjectId);
@@ -74,7 +90,10 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
   }, [project?.id]);
 
   const refreshAll = useCallback(async (): Promise<void> => {
-    const [nextSettings, nextProjects] = await Promise.all([api.settings.get(), api.projects.list()]);
+    const [nextSettings, nextProjects] = await Promise.all([
+      api.settings.get(),
+      api.projects.list(),
+    ]);
     setSettings(nextSettings);
     setProjects(nextProjects);
 

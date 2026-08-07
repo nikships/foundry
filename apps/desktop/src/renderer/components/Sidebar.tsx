@@ -40,7 +40,11 @@ export default function Sidebar({
         <div className="project-picker">
           <label className="faint">Project</label>
           {projects.length > 0 && (
-            <select className="select" value={project?.id ?? ''} onChange={(e) => selectProject(e.target.value)}>
+            <select
+              className="select"
+              value={project?.id ?? ''}
+              onChange={(e) => selectProject(e.target.value)}
+            >
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}

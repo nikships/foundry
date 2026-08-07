@@ -21,7 +21,7 @@ export class UpdaterService {
   constructor(
     broadcaster?: UpdaterBroadcaster,
     customAutoUpdater?: typeof pkg.autoUpdater,
-    isPackagedOverride?: boolean
+    isPackagedOverride?: boolean,
   ) {
     this.broadcaster = broadcaster;
     this.isPackaged = isPackagedOverride ?? (app ? app.isPackaged : false);
@@ -111,7 +111,10 @@ export class UpdaterService {
   public async check(options?: { interactive?: boolean }): Promise<UpdateStatus> {
     const isInteractive = options?.interactive ?? false;
     if (!this.isPackaged || !this.updater) {
-      const status: UpdateStatus = { stage: 'idle', message: 'Updates are disabled in unpackaged builds' };
+      const status: UpdateStatus = {
+        stage: 'idle',
+        message: 'Updates are disabled in unpackaged builds',
+      };
       if (isInteractive) {
         await this.showDialogForStatus(status);
       }
@@ -145,7 +148,8 @@ export class UpdaterService {
       const detailMsg =
         status.message && status.message !== 'No update available'
           ? status.message
-          : `Foundry ${versionStr ? `v${versionStr}` : ''}`.trim() + ' is currently the newest version available.';
+          : `Foundry ${versionStr ? `v${versionStr}` : ''}`.trim() +
+            ' is currently the newest version available.';
 
       await dialog.showMessageBox(window!, {
         type: 'info',
@@ -158,7 +162,9 @@ export class UpdaterService {
       await dialog.showMessageBox(window!, {
         type: 'info',
         title: 'Update Available',
-        message: status.version ? `Foundry v${status.version} is available!` : 'An update is available!',
+        message: status.version
+          ? `Foundry v${status.version} is available!`
+          : 'An update is available!',
         detail: 'The update is downloading in the background.',
         buttons: ['OK'],
       });
@@ -166,7 +172,9 @@ export class UpdaterService {
       const res = await dialog.showMessageBox(window!, {
         type: 'info',
         title: 'Update Ready',
-        message: status.version ? `Foundry v${status.version} is ready to install.` : 'An update is ready to install.',
+        message: status.version
+          ? `Foundry v${status.version} is ready to install.`
+          : 'An update is ready to install.',
         detail: 'Would you like to restart Foundry now to apply the update?',
         buttons: ['Restart and Install', 'Later'],
         defaultId: 0,

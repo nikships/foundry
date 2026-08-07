@@ -26,7 +26,10 @@ export const TEMPLATE_VARIABLES = [
   { token: '{{worktree}}', description: 'Absolute path of the worktree this run works in.' },
   { token: '{{handoff_dir}}', description: 'Directory for files passed between phases.' },
   { token: '{{handoff_files}}', description: 'Listing of files earlier phases handed off.' },
-  { token: '{{feedback}}', description: 'Failure evidence from a code phase that looped back here.' },
+  {
+    token: '{{feedback}}',
+    description: 'Failure evidence from a code phase that looped back here.',
+  },
   { token: '{{envelope:plan}}', description: "A prior phase's envelope as pretty JSON." },
   { token: '{{envelope:plan.summary}}', description: 'One field from a prior envelope.' },
 ];
@@ -122,11 +125,7 @@ function appendMissingInputs(
  * already reference them, so an input listed in the pipeline is never silently
  * dropped because someone edited the prompt.
  */
-export function renderPrompt(
-  agent: AgentDef,
-  phase: PhaseDef,
-  ctx: RenderContext,
-): RenderedPrompt {
+export function renderPrompt(agent: AgentDef, phase: PhaseDef, ctx: RenderContext): RenderedPrompt {
   const system = renderTemplate(agent.systemPrompt, ctx);
   let user = renderTemplate(agent.userPrompt, ctx);
   user = appendMissingInputs(agent, phase, ctx, user);

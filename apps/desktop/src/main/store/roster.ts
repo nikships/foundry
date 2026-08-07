@@ -16,7 +16,10 @@ export const agentSchema = z.object({
   name: z
     .string()
     .min(1)
-    .regex(/^[a-z][a-z0-9_-]*$/, 'lowercase letters, digits, dash, underscore; must start with a letter'),
+    .regex(
+      /^[a-z][a-z0-9_-]*$/,
+      'lowercase letters, digits, dash, underscore; must start with a letter',
+    ),
   purpose: z.string().min(1, 'one line on what this agent is for'),
   model: z.string().min(1),
   reasoningEffort: z.enum(['off', 'low', 'medium', 'high']),
@@ -102,7 +105,9 @@ export class RosterStore {
       };
     }
     const value = parsed.data as AgentDef;
-    const next = this.storeFor(opts).update((current) => upsertBy(current, (a) => a.name === value.name, value));
+    const next = this.storeFor(opts).update((current) =>
+      upsertBy(current, (a) => a.name === value.name, value),
+    );
     return { ok: true, agents: next };
   }
 

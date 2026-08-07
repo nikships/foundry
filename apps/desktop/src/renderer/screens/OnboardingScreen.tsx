@@ -19,7 +19,10 @@ export default function OnboardingScreen({ onDone }: { onDone: () => void }): Re
   useEffect(() => {
     void api.app.assetUrl('scenes/onboarding-hero.png').then(setHero);
     setName(settings?.engineerName ?? '');
-    void api.doctor.run().then((c) => { setChecks(c); setChecking(false); });
+    void api.doctor.run().then((c) => {
+      setChecks(c);
+      setChecking(false);
+    });
   }, [settings?.engineerName]);
 
   const recheck = async (): Promise<void> => {
@@ -44,38 +47,73 @@ export default function OnboardingScreen({ onDone }: { onDone: () => void }): Re
           {step === 0 && (
             <>
               <h1>Foundry</h1>
-              <p className="lead">A software factory you can watch work. You describe a change, a pipeline of agents carries it out in an isolated git worktree, and every phase leaves evidence you can read.</p>
+              <p className="lead">
+                A software factory you can watch work. You describe a change, a pipeline of agents
+                carries it out in an isolated git worktree, and every phase leaves evidence you can
+                read.
+              </p>
               <ul className="points">
-                <li><strong>Pipelines are data.</strong> Reorder phases, add a reviewer, change a model, without writing code.</li>
-                <li><strong>Every phase is judged.</strong> Typed replies, gates that produce evidence, write boundaries that are enforced.</li>
-                <li><strong>Nothing is hidden.</strong> Prompts, tool calls, corrections, and cost are all on the record.</li>
+                <li>
+                  <strong>Pipelines are data.</strong> Reorder phases, add a reviewer, change a
+                  model, without writing code.
+                </li>
+                <li>
+                  <strong>Every phase is judged.</strong> Typed replies, gates that produce
+                  evidence, write boundaries that are enforced.
+                </li>
+                <li>
+                  <strong>Nothing is hidden.</strong> Prompts, tool calls, corrections, and cost are
+                  all on the record.
+                </li>
               </ul>
               <footer>
                 <div className="grow" />
-                <button className="btn primary" onClick={() => setStep(1)}>Get started</button>
+                <button className="btn primary" onClick={() => setStep(1)}>
+                  Get started
+                </button>
               </footer>
             </>
           )}
           {step === 1 && (
             <>
               <h1>Check the environment</h1>
-              <p className="lead">Foundry drives Factory's droid CLI for every agent phase, and git for isolation. Both need to work before a pipeline can run.</p>
+              <p className="lead">
+                Foundry drives Factory's droid CLI for every agent phase, and git for isolation.
+                Both need to work before a pipeline can run.
+              </p>
               <DoctorList checks={checks} onRecheck={() => void recheck()} />
-              {blocking.length > 0 && <p className="warn">Fix the items above and press Re-check. Foundry can be configured now, but a run will fail until droid and git both work.</p>}
+              {blocking.length > 0 && (
+                <p className="warn">
+                  Fix the items above and press Re-check. Foundry can be configured now, but a run
+                  will fail until droid and git both work.
+                </p>
+              )}
               <footer>
-                <button className="btn ghost" onClick={() => setStep(0)}>Back</button>
+                <button className="btn ghost" onClick={() => setStep(0)}>
+                  Back
+                </button>
                 <div className="grow" />
-                <button className="btn primary" disabled={checking} onClick={() => setStep(2)}>Continue</button>
+                <button className="btn primary" disabled={checking} onClick={() => setStep(2)}>
+                  Continue
+                </button>
               </footer>
             </>
           )}
           {step === 2 && (
             <>
               <h1>Add your first project</h1>
-              <p className="lead">A project is a git repository. Each run gets its own worktree and branch, so your checkout is never touched until you merge.</p>
+              <p className="lead">
+                A project is a git repository. Each run gets its own worktree and branch, so your
+                checkout is never touched until you merge.
+              </p>
               <div className="field">
                 <label>Your name</label>
-                <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="who is asking" />
+                <input
+                  className="input"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="who is asking"
+                />
                 <span className="hint">Recorded on every run.</span>
               </div>
               {projects.length ? (
@@ -87,12 +125,18 @@ export default function OnboardingScreen({ onDone }: { onDone: () => void }): Re
                   </div>
                 </div>
               ) : (
-                <button className="btn" onClick={() => void addProject()}>Choose a repository…</button>
+                <button className="btn" onClick={() => void addProject()}>
+                  Choose a repository…
+                </button>
               )}
               <footer>
-                <button className="btn ghost" onClick={() => setStep(1)}>Back</button>
+                <button className="btn ghost" onClick={() => setStep(1)}>
+                  Back
+                </button>
                 <div className="grow" />
-                <button className="btn primary" onClick={() => void finish()}>{projects.length ? 'Start using Foundry' : 'Skip for now'}</button>
+                <button className="btn primary" onClick={() => void finish()}>
+                  {projects.length ? 'Start using Foundry' : 'Skip for now'}
+                </button>
               </footer>
             </>
           )}

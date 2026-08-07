@@ -28,7 +28,9 @@ export default function RunDetailScreen({
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    const id = window.setInterval(() => { if (view.live) setNow(Date.now()); }, 250);
+    const id = window.setInterval(() => {
+      if (view.live) setNow(Date.now());
+    }, 250);
     return () => window.clearInterval(id);
   }, [view.live]);
 
@@ -39,8 +41,18 @@ export default function RunDetailScreen({
     setSelectedPhaseId((running ?? failed ?? view.phases[0])?.phaseId ?? '');
   }, [view.phases, selectedPhaseId]);
 
-  const selectedPhase = useMemo(() => view.phases.find((p) => p.phaseId === selectedPhaseId) ?? null, [view.phases, selectedPhaseId]);
-  const totalCredits = useMemo(() => view.phases.reduce((sum, phase) => sum + usageFor(eventsByPhase.get(phase.phaseId) ?? []).credits, 0), [view.phases, eventsByPhase]);
+  const selectedPhase = useMemo(
+    () => view.phases.find((p) => p.phaseId === selectedPhaseId) ?? null,
+    [view.phases, selectedPhaseId],
+  );
+  const totalCredits = useMemo(
+    () =>
+      view.phases.reduce(
+        (sum, phase) => sum + usageFor(eventsByPhase.get(phase.phaseId) ?? []).credits,
+        0,
+      ),
+    [view.phases, eventsByPhase],
+  );
 
   const kill = async (): Promise<void> => {
     await api.runs.kill(projectId, runId);
@@ -54,18 +66,30 @@ export default function RunDetailScreen({
       setWorktreeBusy(false);
     }
   };
-  const mergeWorktree = (): Promise<void> => withWorktree(() => api.runs.mergeWorktree(projectId, runId));
-  const discardWorktree = (): Promise<void> => withWorktree(() => api.runs.discardWorktree(projectId, runId));
+  const mergeWorktree = (): Promise<void> =>
+    withWorktree(() => api.runs.mergeWorktree(projectId, runId));
+  const discardWorktree = (): Promise<void> =>
+    withWorktree(() => api.runs.discardWorktree(projectId, runId));
 
   return (
     <>
       <div className="screen">
         <header className="head">
-          <button className="btn ghost sm back" onClick={onBack}>← Runs</button>
-          <button className="btn ghost sm" onClick={() => onOpenInspector(runId)}>Inspector</button>
+          <button className="btn ghost sm back" onClick={onBack}>
+            ← Runs
+          </button>
+          <button className="btn ghost sm" onClick={() => onOpenInspector(runId)}>
+            Inspector
+          </button>
           <div className="grow" />
-          {view.live && <button className="btn danger sm" onClick={() => void kill()}>Kill run</button>}
-          <button className="btn ghost sm" onClick={() => setShowCost(!showCost)}>{showCost ? 'Hide cost' : 'Cost'}</button>
+          {view.live && (
+            <button className="btn danger sm" onClick={() => void kill()}>
+              Kill run
+            </button>
+          )}
+          <button className="btn ghost sm" onClick={() => setShowCost(!showCost)}>
+            {showCost ? 'Hide cost' : 'Cost'}
+          </button>
         </header>
         {view.run && (
           <div className="run-head">
@@ -79,17 +103,40 @@ export default function RunDetailScreen({
               <span>{duration(runDuration(view.run, now))}</span>
               {view.run.totalTokens ? <span>{tokens(view.run.totalTokens)} tokens</span> : null}
               {totalCredits ? <span>{credits(totalCredits)} credits</span> : null}
-              {view.run.branch && <button className="link" onClick={() => void api.runs.openWorktree(projectId, runId)}>{view.run.branch}</button>}
+              {view.run.branch && (
+                <button
+                  className="link"
+                  onClick={() => void api.runs.openWorktree(projectId, runId)}
+                >
+                  {view.run.branch}
+                </button>
+              )}
             </div>
           </div>
         )}
         {view.run && view.run.status !== 'running' && (
-          <OutcomeBanner run={view.run} phases={view.phases} worktreeBusy={worktreeBusy} worktreeMessage={worktreeMessage} onMerge={() => void mergeWorktree()} onDiscard={() => void discardWorktree()} />
+          <OutcomeBanner
+            run={view.run}
+            phases={view.phases}
+            worktreeBusy={worktreeBusy}
+            worktreeMessage={worktreeMessage}
+            onMerge={() => void mergeWorktree()}
+            onDiscard={() => void discardWorktree()}
+          />
         )}
         {showCost && <CostTable phases={view.phases} eventsByPhase={eventsByPhase} />}
         <div className="split">
           <div className="left scroll">
-            {view.run && <Waterfall run={view.run} phases={view.phases} eventsByPhase={eventsByPhase} selectedPhaseId={selectedPhaseId} now={now} onSelect={setSelectedPhaseId} />}
+            {view.run && (
+              <Waterfall
+                run={view.run}
+                phases={view.phases}
+                eventsByPhase={eventsByPhase}
+                selectedPhaseId={selectedPhaseId}
+                now={now}
+                onSelect={setSelectedPhaseId}
+              />
+            )}
           </div>
           <div className="right">
             {selectedPhase && (

@@ -23,7 +23,15 @@ import type {
   StartRunInput,
   ValidationIssue,
 } from '@shared/types.js';
-import { IPC, type DetectCommandsResult, type EventPage, type RunDetail, type SaveResult, type TryCommandResult, type WorktreeAction } from '@shared/ipc-contract.js';
+import {
+  IPC,
+  type DetectCommandsResult,
+  type EventPage,
+  type RunDetail,
+  type SaveResult,
+  type TryCommandResult,
+  type WorktreeAction,
+} from '@shared/ipc-contract.js';
 import { GATE_DESCRIPTIONS } from './engine/gates.js';
 import { TEMPLATE_VARIABLES, renderPrompt } from './engine/prompts.js';
 import { runCommand } from './engine/commands.js';
@@ -71,7 +79,10 @@ export function registerIpc(ctx: AppContext): void {
   handle(IPC.settingsPatch, (patch: Partial<AppSettings>): SaveResult<AppSettings> => {
     const result = ctx.settings.patch(patch);
     if (!result.ok) {
-      return { ok: false, issues: result.issues.map((m) => ({ level: 'error', where: 'settings', message: m })) };
+      return {
+        ok: false,
+        issues: result.issues.map((m) => ({ level: 'error', where: 'settings', message: m })),
+      };
     }
     // A new droid path can mean a different model table.
     if (patch.clis) invalidateCatalog();
@@ -108,7 +119,10 @@ export function registerIpc(ctx: AppContext): void {
     if (!project.commands.length) {
       const sniffed = await sniffCommands(project.path);
       if (sniffed.length) {
-        ctx.projects.save({ ...project, commands: sniffed.map(({ name, argv }) => ({ name, argv })) });
+        ctx.projects.save({
+          ...project,
+          commands: sniffed.map(({ name, argv }) => ({ name, argv })),
+        });
       }
     }
     notifySettings();
@@ -272,17 +286,20 @@ export function registerIpc(ctx: AppContext): void {
 
   handle(IPC.pipelinesList, (projectId?: string) => ctx.pipelinesFor(projectId));
 
-  handle(IPC.pipelinesSave, (pipeline: PipelineDef, projectId?: string): SaveResult<PipelineDef[]> => {
-    const result = ctx.pipelines.save(
-      pipeline,
-      ctx.rosterFor(projectId),
-      ctx.commandNames(projectId),
-      ctx.pipelineScope(projectId),
-    );
-    if (!result.ok) return { ok: false, issues: result.issues };
-    notifySettings();
-    return { ok: true, issues: noIssues, value: result.pipelines };
-  });
+  handle(
+    IPC.pipelinesSave,
+    (pipeline: PipelineDef, projectId?: string): SaveResult<PipelineDef[]> => {
+      const result = ctx.pipelines.save(
+        pipeline,
+        ctx.rosterFor(projectId),
+        ctx.commandNames(projectId),
+        ctx.pipelineScope(projectId),
+      );
+      if (!result.ok) return { ok: false, issues: result.issues };
+      notifySettings();
+      return { ok: true, issues: noIssues, value: result.pipelines };
+    },
+  );
 
   handle(IPC.pipelinesRemove, (id: string, projectId?: string) => {
     const pipelines = ctx.pipelines.remove(id, ctx.pipelineScope(projectId));
@@ -299,46 +316,49 @@ export function registerIpc(ctx: AppContext): void {
   );
 
   /** Renders exactly what a run would send, without spending a token. */
-  handle(IPC.pipelinesDryRun, (pipelineId: string, projectId: string, request: string): DryRunPrompt[] => {
-    const project = projectOf(projectId);
-    const pipeline = ctx.pipelines.get(pipelineId, ctx.pipelineScope(projectId));
-    if (!project || !pipeline) return [];
-    const agents = ctx.rosterFor(projectId);
-    const worktree = join(project.path, '.foundry-worktrees', 'run_dryrun');
-    const out: DryRunPrompt[] = [];
-    const envelopes = new Map<string, Record<string, unknown>>();
-    for (const phase of pipeline.phases) {
-      if (phase.kind !== 'agent') continue;
-      const agent = agents.find((a) => a.name === phase.agent);
-      if (!agent) continue;
-      const rendered = renderPrompt(agent, phase, {
-        request,
-        runId: 'run_dryrun',
-        worktree,
-        handoffDir: join(worktree, '.foundry-handoff'),
-        handoffFiles: [],
-        // Earlier phases are stood in for with a placeholder envelope, so a
-        // later prompt shows its real shape instead of "(not available)".
-        envelopes: envelopes as never,
-      });
-      out.push({
-        phase: phase.name,
-        agent: agent.name,
-        model: agent.model,
-        systemPrompt: rendered.system,
-        userPrompt: rendered.user,
-      });
-      envelopes.set(phase.name, {
-        status: 'success',
-        summary: `[${phase.name} envelope from a previous phase]`,
-        artifacts: [],
-        notes_for_next_agent: '',
-        commit_message: `[${phase.name} commit message]`,
-        changed_files: [],
-      });
-    }
-    return out;
-  });
+  handle(
+    IPC.pipelinesDryRun,
+    (pipelineId: string, projectId: string, request: string): DryRunPrompt[] => {
+      const project = projectOf(projectId);
+      const pipeline = ctx.pipelines.get(pipelineId, ctx.pipelineScope(projectId));
+      if (!project || !pipeline) return [];
+      const agents = ctx.rosterFor(projectId);
+      const worktree = join(project.path, '.foundry-worktrees', 'run_dryrun');
+      const out: DryRunPrompt[] = [];
+      const envelopes = new Map<string, Record<string, unknown>>();
+      for (const phase of pipeline.phases) {
+        if (phase.kind !== 'agent') continue;
+        const agent = agents.find((a) => a.name === phase.agent);
+        if (!agent) continue;
+        const rendered = renderPrompt(agent, phase, {
+          request,
+          runId: 'run_dryrun',
+          worktree,
+          handoffDir: join(worktree, '.foundry-handoff'),
+          handoffFiles: [],
+          // Earlier phases are stood in for with a placeholder envelope, so a
+          // later prompt shows its real shape instead of "(not available)".
+          envelopes: envelopes as never,
+        });
+        out.push({
+          phase: phase.name,
+          agent: agent.name,
+          model: agent.model,
+          systemPrompt: rendered.system,
+          userPrompt: rendered.user,
+        });
+        envelopes.set(phase.name, {
+          status: 'success',
+          summary: `[${phase.name} envelope from a previous phase]`,
+          artifacts: [],
+          notes_for_next_agent: '',
+          commit_message: `[${phase.name} commit message]`,
+          changed_files: [],
+        });
+      }
+      return out;
+    },
+  );
 
   handle(IPC.pipelinesReset, () => {
     const pipelines = ctx.pipelines.resetToBuiltins();
@@ -432,7 +452,9 @@ export function registerIpc(ctx: AppContext): void {
     const scoped = tracerOf(projectId);
     if (!scoped) return '';
     const phase = scoped.tracer.phase(phaseId);
-    return phase ? scoped.tracer.readPrompt(phase.runId, phase.owner, phase.name, phase.attempt) : '';
+    return phase
+      ? scoped.tracer.readPrompt(phase.runId, phase.owner, phase.name, phase.attempt)
+      : '';
   });
 
   handle(IPC.runsKill, (projectId: string, runId: string) => {
@@ -447,41 +469,59 @@ export function registerIpc(ctx: AppContext): void {
     notifyRuns();
   });
 
-  handle(IPC.runsMergeWorktree, async (projectId: string, runId: string): Promise<WorktreeAction> => {
-    const scoped = tracerOf(projectId);
-    if (!scoped) return { ok: false, detail: 'project not found' };
-    const { project, tracer } = scoped;
-    const run = tracer.run(runId);
-    if (!run?.worktreePath || !run.branch) return { ok: false, detail: 'this run has no worktree' };
-    const outcome = await worktreeLib.merge(project.path, {
-      path: run.worktreePath,
-      branch: run.branch,
-      baseRef: run.baseRef ?? project.baseRef,
-      branchPointSha: run.branchPointSha ?? '',
-    });
-    if (outcome.merged) tracer.setMerged(runId, true);
-    tracer.event({ runId, type: 'log', name: 'worktree merge', payload: { detail: outcome.detail } });
-    notifyRuns();
-    return { ok: outcome.merged, detail: outcome.detail };
-  });
+  handle(
+    IPC.runsMergeWorktree,
+    async (projectId: string, runId: string): Promise<WorktreeAction> => {
+      const scoped = tracerOf(projectId);
+      if (!scoped) return { ok: false, detail: 'project not found' };
+      const { project, tracer } = scoped;
+      const run = tracer.run(runId);
+      if (!run?.worktreePath || !run.branch)
+        return { ok: false, detail: 'this run has no worktree' };
+      const outcome = await worktreeLib.merge(project.path, {
+        path: run.worktreePath,
+        branch: run.branch,
+        baseRef: run.baseRef ?? project.baseRef,
+        branchPointSha: run.branchPointSha ?? '',
+      });
+      if (outcome.merged) tracer.setMerged(runId, true);
+      tracer.event({
+        runId,
+        type: 'log',
+        name: 'worktree merge',
+        payload: { detail: outcome.detail },
+      });
+      notifyRuns();
+      return { ok: outcome.merged, detail: outcome.detail };
+    },
+  );
 
-  handle(IPC.runsDiscardWorktree, async (projectId: string, runId: string): Promise<WorktreeAction> => {
-    const scoped = tracerOf(projectId);
-    if (!scoped) return { ok: false, detail: 'project not found' };
-    const { project, tracer } = scoped;
-    const run = tracer.run(runId);
-    if (!run?.worktreePath || !run.branch) return { ok: false, detail: 'this run has no worktree' };
-    const outcome = await worktreeLib.discard(project.path, {
-      path: run.worktreePath,
-      branch: run.branch,
-      baseRef: run.baseRef ?? project.baseRef,
-      branchPointSha: run.branchPointSha ?? '',
-    });
-    tracer.setWorktree(runId, null, run.branch);
-    tracer.event({ runId, type: 'log', name: 'worktree discard', payload: { detail: outcome.detail } });
-    notifyRuns();
-    return { ok: outcome.removed, detail: outcome.detail };
-  });
+  handle(
+    IPC.runsDiscardWorktree,
+    async (projectId: string, runId: string): Promise<WorktreeAction> => {
+      const scoped = tracerOf(projectId);
+      if (!scoped) return { ok: false, detail: 'project not found' };
+      const { project, tracer } = scoped;
+      const run = tracer.run(runId);
+      if (!run?.worktreePath || !run.branch)
+        return { ok: false, detail: 'this run has no worktree' };
+      const outcome = await worktreeLib.discard(project.path, {
+        path: run.worktreePath,
+        branch: run.branch,
+        baseRef: run.baseRef ?? project.baseRef,
+        branchPointSha: run.branchPointSha ?? '',
+      });
+      tracer.setWorktree(runId, null, run.branch);
+      tracer.event({
+        runId,
+        type: 'log',
+        name: 'worktree discard',
+        payload: { detail: outcome.detail },
+      });
+      notifyRuns();
+      return { ok: outcome.removed, detail: outcome.detail };
+    },
+  );
 
   handle(IPC.runsOpenWorktree, (projectId: string, runId: string) => {
     const scoped = tracerOf(projectId);
@@ -520,18 +560,21 @@ export function registerIpc(ctx: AppContext): void {
     return out;
   });
 
-  handle(IPC.maintenanceRemoveWorktree, async (projectId: string, path: string): Promise<WorktreeAction> => {
-    const project = projectOf(projectId);
-    if (!project) return { ok: false, detail: 'project not found' };
-    const runId = path.split('/').pop() ?? '';
-    const outcome = await worktreeLib.discard(project.path, {
-      path,
-      branch: worktreeLib.branchNameFor(runId),
-      baseRef: project.baseRef,
-      branchPointSha: '',
-    });
-    return { ok: outcome.removed, detail: outcome.detail };
-  });
+  handle(
+    IPC.maintenanceRemoveWorktree,
+    async (projectId: string, path: string): Promise<WorktreeAction> => {
+      const project = projectOf(projectId);
+      if (!project) return { ok: false, detail: 'project not found' };
+      const runId = path.split('/').pop() ?? '';
+      const outcome = await worktreeLib.discard(project.path, {
+        path,
+        branch: worktreeLib.branchNameFor(runId),
+        baseRef: project.baseRef,
+        branchPointSha: '',
+      });
+      return { ok: outcome.removed, detail: outcome.detail };
+    },
+  );
 
   handle(IPC.maintenanceRetention, (): MaintenanceReport => {
     const days = ctx.settings.get().retentionDays;

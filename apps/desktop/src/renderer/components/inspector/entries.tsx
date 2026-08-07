@@ -34,7 +34,8 @@ function inferKind(event: EventRow): string {
   const head = event.name.split(':', 1)[0]!.toLowerCase();
   if (head === 'bash' || head === 'execute') return 'command';
   if (head === 'read') return 'read';
-  if (head === 'edit' || head === 'create' || head === 'write' || head === 'multiedit') return 'edit';
+  if (head === 'edit' || head === 'create' || head === 'write' || head === 'multiedit')
+    return 'edit';
   if (head === 'grep' || head === 'glob' || head === 'ls' || head === 'search') return 'search';
   return 'other';
 }
@@ -147,18 +148,27 @@ function EditBlock({ event }: { event: EventRow }): React.JSX.Element {
   );
 }
 
-function ReadBlock({ event, verb }: { event: EventRow; verb: 'read' | 'search' }): React.JSX.Element {
+function ReadBlock({
+  event,
+  verb,
+}: {
+  event: EventRow;
+  verb: 'read' | 'search';
+}): React.JSX.Element {
   const [expanded, setExpanded] = useState(false);
   const open = event.endedAt == null;
   const a = args(event);
-  const target = str(a.file_path) || str(a.pattern) || str(a.query) || str(a.path) || nameSummary(event);
+  const target =
+    str(a.file_path) || str(a.pattern) || str(a.query) || str(a.path) || nameSummary(event);
   const result = str(event.payload.result);
   return (
     <div className={`te read ${open ? 'open' : ''}`}>
       <button className="te-row-head" onClick={() => setExpanded((v) => !v)}>
         <span className="te-tag read">{verb}</span>
         <span className="te-path mono">{target}</span>
-        {open && <span className="te-exec running">{str(event.payload.execPhase) || 'running'}</span>}
+        {open && (
+          <span className="te-exec running">{str(event.payload.execPhase) || 'running'}</span>
+        )}
         <Time iso={event.startedAt} />
       </button>
       {expanded && result && <pre className="te-output mono">{result}</pre>}
@@ -180,7 +190,9 @@ function GenericToolBlock({ event }: { event: EventRow }): React.JSX.Element {
       <button className="te-row-head" onClick={() => setExpanded((v) => !v)}>
         <span className="te-tag tool">{toolName}</span>
         <span className="te-path mono">{summary === '{}' ? '' : summary}</span>
-        {open && <span className="te-exec running">{str(event.payload.execPhase) || 'running'}</span>}
+        {open && (
+          <span className="te-exec running">{str(event.payload.execPhase) || 'running'}</span>
+        )}
         <Time iso={event.startedAt} />
       </button>
       {expanded && result && <pre className="te-output mono">{result}</pre>}
@@ -220,7 +232,9 @@ function Banner({ event }: { event: EventRow }): React.JSX.Element {
   const detail =
     str(p.detail) ||
     str(p.question) ||
-    (event.type === 'correction' ? `retry ${String(p.attempt ?? '')} of ${String(p.budget ?? '')}` : '') ||
+    (event.type === 'correction'
+      ? `retry ${String(p.attempt ?? '')} of ${String(p.budget ?? '')}`
+      : '') ||
     str(p.to) ||
     str(p.gate);
   return (
@@ -233,7 +247,11 @@ function Banner({ event }: { event: EventRow }): React.JSX.Element {
 }
 
 function LogRow({ event }: { event: EventRow }): React.JSX.Element {
-  const detail = str(event.payload.detail) || str(event.payload.skipped) || str(event.payload.text) || str(event.payload.message);
+  const detail =
+    str(event.payload.detail) ||
+    str(event.payload.skipped) ||
+    str(event.payload.text) ||
+    str(event.payload.message);
   return (
     <div className="te logrow">
       <span className="te-log-name">{event.name}</span>

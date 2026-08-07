@@ -159,7 +159,9 @@ export default function PhaseEditor({
                   phase.description = e.target.value;
                 }}
               />
-              <span className="hint">Shown in the run view. A phase nobody can explain is a phase nobody should run.</span>
+              <span className="hint">
+                Shown in the run view. A phase nobody can explain is a phase nobody should run.
+              </span>
             </div>
             {phase.kind === 'agent' && (
               <>
@@ -183,7 +185,8 @@ export default function PhaseEditor({
                     </button>
                   </div>
                   <span className="hint">
-                    Selected envelopes are appended to the prompt unless the agent's template already references them.
+                    Selected envelopes are appended to the prompt unless the agent's template
+                    already references them.
                   </span>
                 </div>
                 <div className="field">
@@ -203,7 +206,9 @@ export default function PhaseEditor({
                       </label>
                     ))}
                   </div>
-                  <span className="hint">Gates produce evidence. A failed gate is sent back to the agent as a correction.</span>
+                  <span className="hint">
+                    Gates produce evidence. A failed gate is sent back to the agent as a correction.
+                  </span>
                 </div>
               </>
             )}
@@ -211,10 +216,16 @@ export default function PhaseEditor({
               <div className="field">
                 <label>Command</label>
                 <div className="modes">
-                  <button className={`mode ${!usesArgv ? 'on' : ''}`} onClick={() => setCommandMode('ref')}>
+                  <button
+                    className={`mode ${!usesArgv ? 'on' : ''}`}
+                    onClick={() => setCommandMode('ref')}
+                  >
                     Project command
                   </button>
-                  <button className={`mode ${usesArgv ? 'on' : ''}`} onClick={() => setCommandMode('argv')}>
+                  <button
+                    className={`mode ${usesArgv ? 'on' : ''}`}
+                    onClick={() => setCommandMode('argv')}
+                  >
                     Literal
                   </button>
                 </div>
@@ -276,7 +287,9 @@ export default function PhaseEditor({
                     </option>
                   ))}
                 </select>
-                <span className="hint">The failure output is handed to that phase as a repair request.</span>
+                <span className="hint">
+                  The failure output is handed to that phase as a repair request.
+                </span>
               </div>
               {phase.feedbackTo && (
                 <div className="field">
@@ -289,7 +302,9 @@ export default function PhaseEditor({
                     value={phase.feedbackRetries ?? 1}
                     onChange={(e) => patchPhase(phase, { feedbackRetries: Number(e.target.value) })}
                   />
-                  <span className="hint">After this many attempts the run stops rather than looping.</span>
+                  <span className="hint">
+                    After this many attempts the run stops rather than looping.
+                  </span>
                 </div>
               )}
             </div>
@@ -301,7 +316,9 @@ export default function PhaseEditor({
               />
               <span>
                 Optional
-                <em className="faint">A failure here is recorded and skipped instead of ending the run.</em>
+                <em className="faint">
+                  A failure here is recorded and skipped instead of ending the run.
+                </em>
               </span>
             </label>
           </div>

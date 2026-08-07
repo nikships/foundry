@@ -39,9 +39,7 @@ export interface CliDescriptor {
 
 /** How a code phase names the process it runs. */
 export type CommandSpec =
-  | { ref: string }
-  | { builtin: BuiltinCommand; messageFrom?: string }
-  | { argv: string[] };
+  { ref: string } | { builtin: BuiltinCommand; messageFrom?: string } | { argv: string[] };
 
 export type BuiltinCommand = 'git_commit' | 'git_status' | 'noop';
 

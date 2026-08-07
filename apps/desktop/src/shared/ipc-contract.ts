@@ -128,7 +128,9 @@ export interface FoundryApi {
     templateVariables(): Promise<{ token: string; description: string }[]>;
   };
   runs: {
-    start(input: StartRunInput): Promise<{ ok: boolean; runId?: string; issues: ValidationIssue[] }>;
+    start(
+      input: StartRunInput,
+    ): Promise<{ ok: boolean; runId?: string; issues: ValidationIssue[] }>;
     list(projectId: string, includeArchived: boolean): Promise<RunRow[]>;
     detail(projectId: string, runId: string): Promise<RunDetail>;
     events(projectId: string, runId: string, afterChangeId: number): Promise<EventPage>;
@@ -170,7 +172,7 @@ export interface FoundryApi {
   /** Push channels are deliberately few: everything else is polled. */
   on(
     channel: 'runs-changed' | 'interrupts-changed' | 'settings-changed' | 'updater-status',
-    handler: (data?: unknown) => void
+    handler: (data?: unknown) => void,
   ): () => void;
 }
 

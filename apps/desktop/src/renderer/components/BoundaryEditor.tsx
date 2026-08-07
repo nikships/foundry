@@ -1,6 +1,12 @@
 type Mode = 'anywhere' | 'nowhere' | 'paths';
 
-export default function BoundaryEditor({ value, onChange }: { value: string[] | null; onChange: (value: string[] | null) => void }): React.JSX.Element {
+export default function BoundaryEditor({
+  value,
+  onChange,
+}: {
+  value: string[] | null;
+  onChange: (value: string[] | null) => void;
+}): React.JSX.Element {
   const mode: Mode = value === null ? 'anywhere' : value.length ? 'paths' : 'nowhere';
 
   const setMode = (next: Mode): void => {
@@ -26,25 +32,64 @@ export default function BoundaryEditor({ value, onChange }: { value: string[] | 
     <>
       <div className="boundary">
         <div className="modes">
-          <button className={`mode ${mode === 'anywhere' ? 'on' : ''}`} onClick={() => setMode('anywhere')}>Anywhere in the worktree</button>
-          <button className={`mode ${mode === 'paths' ? 'on' : ''}`} onClick={() => setMode('paths')}>Only these paths</button>
-          <button className={`mode ${mode === 'nowhere' ? 'on' : ''}`} onClick={() => setMode('nowhere')}>Read-only</button>
+          <button
+            className={`mode ${mode === 'anywhere' ? 'on' : ''}`}
+            onClick={() => setMode('anywhere')}
+          >
+            Anywhere in the worktree
+          </button>
+          <button
+            className={`mode ${mode === 'paths' ? 'on' : ''}`}
+            onClick={() => setMode('paths')}
+          >
+            Only these paths
+          </button>
+          <button
+            className={`mode ${mode === 'nowhere' ? 'on' : ''}`}
+            onClick={() => setMode('nowhere')}
+          >
+            Read-only
+          </button>
         </div>
         {mode === 'paths' && (
           <>
             {(value ?? []).map((pattern, i) => (
               <div key={i} className="pattern">
-                <input className="input mono" value={pattern} placeholder="src/**" onChange={(e) => update(i, e.target.value)} />
-                <button className="btn sm ghost" onClick={() => remove(i)}>✕</button>
+                <input
+                  className="input mono"
+                  value={pattern}
+                  placeholder="src/**"
+                  onChange={(e) => update(i, e.target.value)}
+                />
+                <button className="btn sm ghost" onClick={() => remove(i)}>
+                  ✕
+                </button>
               </div>
             ))}
-            <button className="btn sm" onClick={add}>Add pattern</button>
+            <button className="btn sm" onClick={add}>
+              Add pattern
+            </button>
           </>
         )}
         <p className="hint">
-          {mode === 'anywhere' && <>Anything this agent writes inside its worktree is kept. Files outside the worktree are always reverted.</>}
-          {mode === 'nowhere' && <>Every write is reverted after the phase, with the paths recorded as evidence. Use this for reviewers and scouts.</>}
-          {mode === 'paths' && <><code>*</code> matches within a path segment, <code>**</code> matches across segments. Writes outside these patterns are reverted after the phase and the phase fails.</>}
+          {mode === 'anywhere' && (
+            <>
+              Anything this agent writes inside its worktree is kept. Files outside the worktree are
+              always reverted.
+            </>
+          )}
+          {mode === 'nowhere' && (
+            <>
+              Every write is reverted after the phase, with the paths recorded as evidence. Use this
+              for reviewers and scouts.
+            </>
+          )}
+          {mode === 'paths' && (
+            <>
+              <code>*</code> matches within a path segment, <code>**</code> matches across segments.
+              Writes outside these patterns are reverted after the phase and the phase fails.
+            </>
+          )}
         </p>
       </div>
       <style>{`

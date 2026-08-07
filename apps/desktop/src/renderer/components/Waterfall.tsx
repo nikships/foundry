@@ -7,14 +7,32 @@ import AgentAvatar from './AgentAvatar.js';
 
 const KIND_COLOR: Record<string, string> = { code: 'var(--blue)', engineer: 'var(--amber)' };
 const MARK_CLASS: Partial<Record<EventRow['type'], string>> = {
-  tool_call: 'tool', correction: 'correction', gate_pass: 'gate', gate_fail: 'gate-fail', interrupt: 'interrupt',
+  tool_call: 'tool',
+  correction: 'correction',
+  gate_pass: 'gate',
+  gate_fail: 'gate-fail',
+  interrupt: 'interrupt',
 };
 const MARKED = new Set(Object.keys(MARK_CLASS));
 
-export default function Waterfall({ run, phases, eventsByPhase, selectedPhaseId, now, onSelect }: { run: RunRow; phases: PhaseRow[]; eventsByPhase: Map<string, EventRow[]>; selectedPhaseId: string; now: number; onSelect: (phaseId: string) => void }): React.JSX.Element {
+export default function Waterfall({
+  run,
+  phases,
+  eventsByPhase,
+  selectedPhaseId,
+  now,
+  onSelect,
+}: {
+  run: RunRow;
+  phases: PhaseRow[];
+  eventsByPhase: Map<string, EventRow[]>;
+  selectedPhaseId: string;
+  now: number;
+  onSelect: (phaseId: string) => void;
+}): React.JSX.Element {
   const { agentColor } = useApp();
   const laneColor = (phase: PhaseRow): string =>
-    phase.kind === 'agent' ? agentColor(phase.owner) : KIND_COLOR[phase.kind] ?? 'var(--cyan)';
+    phase.kind === 'agent' ? agentColor(phase.owner) : (KIND_COLOR[phase.kind] ?? 'var(--cyan)');
   const t0 = useMemo(() => new Date(run.startedAt).getTime(), [run.startedAt]);
   const span = useMemo(() => {
     const end = run.endedAt ? new Date(run.endedAt).getTime() : now;
@@ -32,14 +50,19 @@ export default function Waterfall({ run, phases, eventsByPhase, selectedPhaseId,
   };
 
   /** Place duration inside wide bars; beside short bars, flipping left near the right edge. */
-  const labelFor = (bar: { left: number; width: number }): { inside: boolean; style: React.CSSProperties } => {
+  const labelFor = (bar: {
+    left: number;
+    width: number;
+  }): { inside: boolean; style: React.CSSProperties } => {
     if (bar.width > 6) return { inside: true, style: {} };
     const end = bar.left + bar.width;
     if (end > 88) return { inside: false, style: { right: `calc(${100 - bar.left}% + 6px)` } };
     return { inside: false, style: { left: `calc(${end}% + 6px)` } };
   };
 
-  const marksFor = (phase: PhaseRow): { left: number; width: number; kind: string; label: string }[] => {
+  const marksFor = (
+    phase: PhaseRow,
+  ): { left: number; width: number; kind: string; label: string }[] => {
     const events = eventsByPhase.get(phase.phaseId) ?? [];
     return events
       .filter((event) => MARKED.has(event.type))

@@ -143,8 +143,7 @@ function pickString(params: Record<string, unknown>, keys: string[]): string | u
 
 function nestedFields(params: Record<string, unknown>): Record<string, unknown> | undefined {
   const nested = (params.toolUse ?? params.input ?? params.tool_input) as
-    | Record<string, unknown>
-    | undefined;
+    Record<string, unknown> | undefined;
   if (!nested) return undefined;
   return (nested.input ?? nested) as Record<string, unknown>;
 }

@@ -1,0 +1,32 @@
+# Keep CI actions and the desktop app dependencies on a weekly cadence.
+# Agents benefit from small, automated update PRs that still run the full gate set.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /apps/desktop
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      dev-lint-format:
+        patterns:
+          - 'eslint*'
+          - 'prettier'
+          - 'typescript-eslint'
+          - '@eslint/*'
+          - 'knip'
+          - 'globals'
+      vite-electron:
+        patterns:
+          - 'vite'
+          - 'electron-vite'
+          - '@vitejs/*'
+          - 'vitest'
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5

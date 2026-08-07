@@ -45,7 +45,14 @@ beforeEach(() => {
     baseRef: 'main',
     mode: 'rpc',
   });
-  phaseId = tracer.openPhase({ runId, seq: 0, name: 'build', kind: 'agent', owner: 'builder', description: 'd' });
+  phaseId = tracer.openPhase({
+    runId,
+    seq: 0,
+    name: 'build',
+    kind: 'agent',
+    owner: 'builder',
+    description: 'd',
+  });
   now = 1_000_000;
 });
 
@@ -99,7 +106,12 @@ describe('text folding', () => {
 
   it('caps a huge block and says so, pointing at the raw stream for the rest', () => {
     const f = folder();
-    f.absorb({ type: 'assistant_text_delta', messageId: 'm1', blockIndex: 0, textDelta: 'x'.repeat(70_000) });
+    f.absorb({
+      type: 'assistant_text_delta',
+      messageId: 'm1',
+      blockIndex: 0,
+      textDelta: 'x'.repeat(70_000),
+    });
     f.absorb({ type: 'assistant_text_complete', messageId: 'm1', blockIndex: 0 });
     const row = eventsOf('assistant_text')[0]!;
     expect((row.payload.text as string).length).toBe(64_000);
@@ -110,7 +122,10 @@ describe('text folding', () => {
 describe('tool call folding', () => {
   it('caps a long result and marks it truncated', () => {
     const f = folder();
-    f.absorb({ type: 'tool_call', toolUse: { type: 'tool_use', id: 't1', name: 'Execute', input: { command: 'bun test' } } });
+    f.absorb({
+      type: 'tool_call',
+      toolUse: { type: 'tool_use', id: 't1', name: 'Execute', input: { command: 'bun test' } },
+    });
     f.absorb({ type: 'tool_result', toolUseId: 't1', content: 'y'.repeat(40_000), isError: false });
     const row = eventsOf('tool_call')[0]!;
     expect((row.payload.result as string).length).toBe(32_000);
@@ -121,14 +136,25 @@ describe('tool call folding', () => {
 
   it('records the execution phase on the open span', () => {
     const f = folder();
-    f.absorb({ type: 'tool_call', toolUse: { type: 'tool_use', id: 't1', name: 'Read', input: { file_path: '/a/b.ts' } } });
-    f.absorb({ type: 'tool_execution_phase_changed', toolUseId: 't1', toolName: 'Read', phase: 'running' });
+    f.absorb({
+      type: 'tool_call',
+      toolUse: { type: 'tool_use', id: 't1', name: 'Read', input: { file_path: '/a/b.ts' } },
+    });
+    f.absorb({
+      type: 'tool_execution_phase_changed',
+      toolUseId: 't1',
+      toolName: 'Read',
+      phase: 'running',
+    });
     expect(eventsOf('tool_call')[0]!.payload.execPhase).toBe('running');
   });
 
   it('closes dangling calls and texts when a turn dies mid-stream', () => {
     const f = folder();
-    f.absorb({ type: 'tool_call', toolUse: { type: 'tool_use', id: 't1', name: 'Execute', input: { command: 'x' } } });
+    f.absorb({
+      type: 'tool_call',
+      toolUse: { type: 'tool_use', id: 't1', name: 'Execute', input: { command: 'x' } },
+    });
     f.absorb({ type: 'thinking_text_delta', messageId: 'm1', textDelta: 'half a thought' });
     f.closeDangling('turn ended before this call reported a result');
     const call = eventsOf('tool_call')[0]!;
@@ -153,7 +179,10 @@ describe('the raw stream file', () => {
   it('appends every notification verbatim at structural points', () => {
     const f = folder();
     f.absorb({ type: 'thinking_text_delta', messageId: 'm1', textDelta: 'raw' });
-    f.absorb({ type: 'tool_call', toolUse: { type: 'tool_use', id: 't1', name: 'Execute', input: { command: 'ls' } } });
+    f.absorb({
+      type: 'tool_call',
+      toolUse: { type: 'tool_use', id: 't1', name: 'Execute', input: { command: 'ls' } },
+    });
     const lines = readFileSync(join(runsDir, runId, 'builder', 'stream.jsonl'), 'utf8')
       .trim()
       .split('\n')

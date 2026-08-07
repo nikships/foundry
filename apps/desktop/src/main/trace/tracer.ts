@@ -169,8 +169,7 @@ export class Tracer {
 
   run(runId: string): RunRow | null {
     const row = this.db.prepare('SELECT * FROM runs WHERE run_id = ?').get(runId) as
-      | RawRun
-      | undefined;
+      RawRun | undefined;
     return row ? mapRun(row) : null;
   }
 
@@ -193,14 +192,18 @@ export class Tracer {
     );
     return rows.map((r) => ({
       ...mapRun(r),
-      phaseSummary: summary.all(r.run_id) as { name: string; status: PhaseStatus; kind: PhaseKind }[],
+      phaseSummary: summary.all(r.run_id) as {
+        name: string;
+        status: PhaseStatus;
+        kind: PhaseKind;
+      }[],
     }));
   }
 
   activeRunIds(): string[] {
-    const rows = this.db
-      .prepare("SELECT run_id FROM runs WHERE status = 'running'")
-      .all() as { run_id: string }[];
+    const rows = this.db.prepare("SELECT run_id FROM runs WHERE status = 'running'").all() as {
+      run_id: string;
+    }[];
     return rows.map((r) => r.run_id);
   }
 
@@ -263,10 +266,15 @@ export class Tracer {
   }
 
   private rawPhase(phaseId: string): RawPhase | undefined {
-    return this.db.prepare('SELECT * FROM phases WHERE phase_id = ?').get(phaseId) as RawPhase | undefined;
+    return this.db.prepare('SELECT * FROM phases WHERE phase_id = ?').get(phaseId) as
+      RawPhase | undefined;
   }
 
-  private insertPhase(input: PhaseInput, status: 'running' | 'queued', startedAt: string | null): string {
+  private insertPhase(
+    input: PhaseInput,
+    status: 'running' | 'queued',
+    startedAt: string | null,
+  ): string {
     const phaseId = `ph_${newId()}`;
     this.db
       .prepare(
@@ -346,7 +354,9 @@ export class Tracer {
       .get(eventId) as { payload_json: string; tokens: number } | undefined;
     if (!existing) return;
     this.db
-      .prepare('UPDATE events SET ended_at = ?, payload_json = ?, tokens = ?, change_id = ? WHERE event_id = ?')
+      .prepare(
+        'UPDATE events SET ended_at = ?, payload_json = ?, tokens = ?, change_id = ? WHERE event_id = ?',
+      )
       .run(
         nowIso(),
         mergePayloadJson(existing.payload_json, payloadPatch),
@@ -369,7 +379,12 @@ export class Tracer {
     if (!existing) return;
     this.db
       .prepare('UPDATE events SET name = ?, payload_json = ?, change_id = ? WHERE event_id = ?')
-      .run(name, mergePayloadJson(existing.payload_json, payloadPatch), this.nextChangeId(), eventId);
+      .run(
+        name,
+        mergePayloadJson(existing.payload_json, payloadPatch),
+        this.nextChangeId(),
+        eventId,
+      );
   }
 
   /**
@@ -540,7 +555,12 @@ export class Tracer {
    * Context occupancy after the agent's last turn, not a running sum: this is
    * what the lane's context bar measures against the window.
    */
-  setAgentContext(runId: string, agent: string, contextTokens: number, contextWindow: number): void {
+  setAgentContext(
+    runId: string,
+    agent: string,
+    contextTokens: number,
+    contextWindow: number,
+  ): void {
     this.db
       .prepare(
         'UPDATE agent_sessions SET context_tokens = ?, context_window = ?, last_used_at = ? WHERE run_id = ? AND agent = ?',

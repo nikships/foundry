@@ -22,7 +22,11 @@ const FILTERS: { id: LaneFilter; label: string }[] = [
   { id: 'failed', label: 'Failed' },
 ];
 
-export default function InspectorScreen({ pinnedRunId }: { pinnedRunId: string }): React.JSX.Element {
+export default function InspectorScreen({
+  pinnedRunId,
+}: {
+  pinnedRunId: string;
+}): React.JSX.Element {
   const { projectId, project } = useApp();
   const { runs } = useRunList(projectId, false);
   const [pickedRunId, setPickedRunId] = useState('');
@@ -139,7 +143,9 @@ export default function InspectorScreen({ pinnedRunId }: { pinnedRunId: string }
               sessions={view.sessions}
               now={now}
               focused={focusedPhaseId === phase.phaseId}
-              onToggleFocus={() => setFocusedPhaseId((id) => (id === phase.phaseId ? '' : phase.phaseId))}
+              onToggleFocus={() =>
+                setFocusedPhaseId((id) => (id === phase.phaseId ? '' : phase.phaseId))
+              }
             />
           ))}
         </div>

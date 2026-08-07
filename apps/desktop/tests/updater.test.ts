@@ -23,11 +23,17 @@ describe('UpdaterService', () => {
     const updaterService = new UpdaterService(broadcaster, mockUpdater as never, false);
 
     const checkStatus = await updaterService.check();
-    expect(checkStatus).toEqual({ stage: 'idle', message: 'Updates are disabled in unpackaged builds' });
+    expect(checkStatus).toEqual({
+      stage: 'idle',
+      message: 'Updates are disabled in unpackaged builds',
+    });
     expect(mockUpdater.checkForUpdates).not.toHaveBeenCalled();
 
     const downloadStatus = await updaterService.download();
-    expect(downloadStatus).toEqual({ stage: 'idle', message: 'Updates are disabled in unpackaged builds' });
+    expect(downloadStatus).toEqual({
+      stage: 'idle',
+      message: 'Updates are disabled in unpackaged builds',
+    });
     expect(mockUpdater.downloadUpdate).not.toHaveBeenCalled();
 
     await updaterService.quitAndInstall();
@@ -64,7 +70,10 @@ describe('UpdaterService', () => {
       percent: 43,
     });
 
-    mockUpdater.emit('update-downloaded', { version: '1.2.0', releaseDate: '2026-08-07T00:00:00Z' });
+    mockUpdater.emit('update-downloaded', {
+      version: '1.2.0',
+      releaseDate: '2026-08-07T00:00:00Z',
+    });
     expect(updaterService.getStatus()).toEqual({
       stage: 'ready',
       version: '1.2.0',
