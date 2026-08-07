@@ -51,6 +51,7 @@ export default function OutcomeBanner({
   phases,
   worktreeBusy,
   worktreeMessage,
+  worktreeError = false,
   onMerge,
   onDiscard,
 }: {
@@ -58,6 +59,7 @@ export default function OutcomeBanner({
   phases: PhaseRow[];
   worktreeBusy: boolean;
   worktreeMessage: string;
+  worktreeError?: boolean;
   onMerge: () => void;
   onDiscard: () => void;
 }): React.JSX.Element {
@@ -82,14 +84,35 @@ export default function OutcomeBanner({
         <div className="text">
           <h2 style={{ color }}>{headlineFor(run.status)}</h2>
           <p>{explanationFor(run, phases)}</p>
-          {worktreeMessage && <p className="faint note mono">{worktreeMessage}</p>}
+          {worktreeMessage && (
+            <p
+              className={`note mono ${worktreeError ? 'bad' : 'faint'}`}
+              role={worktreeError ? 'alert' : undefined}
+            >
+              {worktreeBusy ? 'Working… ' : ''}
+              {worktreeMessage}
+            </p>
+          )}
+          {worktreeBusy && !worktreeMessage && (
+            <p className="faint note">Working on the worktree…</p>
+          )}
         </div>
         {hasWorktree ? (
           <div className="actions">
-            <button className="btn sm" disabled={worktreeBusy} onClick={onMerge}>
-              Merge branch
+            <button
+              className="btn sm"
+              disabled={worktreeBusy}
+              title="Merge the run branch into the project base ref"
+              onClick={onMerge}
+            >
+              {worktreeBusy ? 'Working…' : 'Merge branch'}
             </button>
-            <button className="btn sm danger" disabled={worktreeBusy} onClick={onDiscard}>
+            <button
+              className="btn sm danger"
+              disabled={worktreeBusy}
+              title="Delete the run worktree and branch"
+              onClick={onDiscard}
+            >
               Discard
             </button>
           </div>
@@ -104,6 +127,7 @@ export default function OutcomeBanner({
         .banner h2 { font-size: var(--text-base); font-weight: 600; margin-bottom: 2px; }
         .banner p { font-size: var(--text-sm); color: var(--text-dim); line-height: var(--leading); }
         .banner .note { font-size: var(--text-xs); margin-top: var(--s2); }
+        .banner .note.bad { color: var(--red); }
         .actions { display: flex; gap: var(--s2); flex: none; }
         .merged { background: var(--green-dim); color: var(--green); padding: 2px 8px; border-radius: var(--r-full); font-size: var(--text-xs); }
       `}</style>
