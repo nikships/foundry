@@ -132,20 +132,18 @@ export class UpdaterService {
       return status;
     }
 
-    if (!this.checkInFlight) {
-      const operation = this.performCheck();
-      this.checkInFlight = operation;
-      void operation.finally(() => {
-        if (this.checkInFlight === operation) this.checkInFlight = undefined;
-      });
+    const operation = this.checkInFlight ?? this.performCheck();
+    this.checkInFlight = operation;
+    try {
+      await operation;
+      const finalStatus = this.getStatus();
+      if (isInteractive) {
+        await this.showDialogForStatus(finalStatus);
+      }
+      return finalStatus;
+    } finally {
+      this.checkInFlight = undefined;
     }
-
-    await this.checkInFlight;
-    const finalStatus = this.getStatus();
-    if (isInteractive) {
-      await this.showDialogForStatus(finalStatus);
-    }
-    return finalStatus;
   }
 
   private async performCheck(): Promise<UpdateStatus> {
@@ -239,7 +237,7 @@ export class UpdaterService {
     try {
       return await operation;
     } finally {
-      if (this.downloadInFlight === operation) this.downloadInFlight = undefined;
+      this.downloadInFlight = undefined;
     }
   }
 
