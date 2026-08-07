@@ -15,6 +15,7 @@ const EVENT_CHANNELS = {
   'runs-changed': IPC.eventRunsChanged,
   'interrupts-changed': IPC.eventInterruptsChanged,
   'settings-changed': IPC.eventSettingsChanged,
+  'updater-status': IPC.eventUpdaterStatus,
 } as const;
 
 /** One-way menu commands; the renderer decides what to show. */
@@ -97,9 +98,15 @@ const api: FoundryApi = {
     assetUrl: (relPath) => call(IPC.appAssetUrl, relPath),
     version: () => call(IPC.appVersion),
   },
+  updater: {
+    check: () => call(IPC.updaterCheck),
+    download: () => call(IPC.updaterDownload),
+    quitAndInstall: () => call(IPC.updaterQuitAndInstall),
+    getStatus: () => call(IPC.updaterGetStatus),
+  },
   on: (channel, handler) => {
     const ipcChannel = EVENT_CHANNELS[channel];
-    const listener = (): void => handler();
+    const listener = (_event: unknown, data?: unknown): void => handler(data);
     ipcRenderer.on(ipcChannel, listener);
     return () => ipcRenderer.removeListener(ipcChannel, listener);
   },

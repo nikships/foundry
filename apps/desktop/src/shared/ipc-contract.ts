@@ -26,6 +26,7 @@ import type {
   RunRow,
   StartRunInput,
   ToolInfo,
+  UpdateStatus,
   ValidationIssue,
 } from './types.js';
 
@@ -157,8 +158,17 @@ export interface FoundryApi {
     assetUrl(relPath: string): Promise<string>;
     version(): Promise<string>;
   };
+  updater: {
+    check(): Promise<UpdateStatus>;
+    download(): Promise<UpdateStatus>;
+    quitAndInstall(): Promise<void>;
+    getStatus(): Promise<UpdateStatus>;
+  };
   /** Push channels are deliberately few: everything else is polled. */
-  on(channel: 'runs-changed' | 'interrupts-changed' | 'settings-changed', handler: () => void): () => void;
+  on(
+    channel: 'runs-changed' | 'interrupts-changed' | 'settings-changed' | 'updater-status',
+    handler: (data?: unknown) => void
+  ): () => void;
 }
 
 export const IPC = {
@@ -211,7 +221,12 @@ export const IPC = {
   appOpenExternal: 'app:openExternal',
   appAssetUrl: 'app:assetUrl',
   appVersion: 'app:version',
+  updaterCheck: 'updater:check',
+  updaterDownload: 'updater:download',
+  updaterQuitAndInstall: 'updater:quitAndInstall',
+  updaterGetStatus: 'updater:getStatus',
   eventRunsChanged: 'event:runs-changed',
   eventInterruptsChanged: 'event:interrupts-changed',
   eventSettingsChanged: 'event:settings-changed',
+  eventUpdaterStatus: 'event:updater-status',
 } as const;

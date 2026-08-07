@@ -69,6 +69,10 @@ function buildMenu(): void {
             label: app.name,
             submenu: [
               { role: 'about' },
+              {
+                label: 'Check for Updates…',
+                click: () => void ctx?.updater.check(),
+              },
               { type: 'separator' },
               {
                 label: 'Settings…',

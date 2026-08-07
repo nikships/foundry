@@ -419,3 +419,15 @@ export interface ValidationIssue {
   where: string;
   message: string;
 }
+
+// ── Updater ──────────────────────────────────────────────────────────────────
+
+export type UpdateStage = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error';
+
+export interface UpdateStatus {
+  stage: UpdateStage;
+  version?: string;
+  percent?: number;
+  message?: string;
+  releaseDate?: string;
+}

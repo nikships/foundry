@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { CliDescriptor, CliVendor, DoctorCheck, ModelInfo, OrphanWorktree, ProjectDef } from '@shared/types.js';
+import type { CliDescriptor, CliVendor, DoctorCheck, ModelInfo, OrphanWorktree, ProjectDef, UpdateStatus } from '@shared/types.js';
 import { api, plain } from '../api.js';
 import { useApp } from '../stores/app.js';
 import ModelPicker from '../components/ModelPicker.js';
@@ -34,6 +34,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
   const [orphans, setOrphans] = useState<OrphanWorktree[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [version, setVersion] = useState('');
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ stage: 'idle' });
   const [projectDraft, setProjectDraft] = useState<ProjectDef | null>(null);
   const [maintenanceNote, setMaintenanceNote] = useState('');
 
@@ -42,10 +43,14 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
   }, [initialPane]);
 
   useEffect(() => {
-    void Promise.all([api.catalog.clis(), api.doctor.run(), api.app.version()]).then(([l, c, v]) => {
+    void Promise.all([api.catalog.clis(), api.doctor.run(), api.app.version(), api.updater.getStatus()]).then(([l, c, v, u]) => {
       setClis(l);
       setChecks(c);
       setVersion(v);
+      setUpdateStatus(u);
+    });
+    return api.on('updater-status', (data) => {
+      if (data) setUpdateStatus(data as UpdateStatus);
     });
   }, []);
 
@@ -149,6 +154,46 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                 <input type="checkbox" checked={settings.dockBadge} onChange={(e) => void set({ dockBadge: e.target.checked })} />
                 <span>Show the number of live runs on the dock icon</span>
               </label>
+              <h3>Software updates</h3>
+              <div className="cli-card">
+                <div className="spread">
+                  <div>
+                    <strong>Foundry {version ? `v${version}` : ''}</strong>
+                    {updateStatus.message && <p className="hint">{updateStatus.message}</p>}
+                  </div>
+                  <span className={`cli-state ${updateStatus.stage === 'ready' || updateStatus.stage === 'available' ? 'ok' : updateStatus.stage === 'error' ? 'off' : ''}`}>
+                    {updateStatus.stage === 'idle' ? 'up to date' : updateStatus.stage}
+                  </span>
+                </div>
+                {updateStatus.stage === 'downloading' && (
+                  <div className="field" style={{ marginTop: 'var(--s3)' }}>
+                    <div className="spread">
+                      <span className="hint">Downloading update…</span>
+                      <span className="hint">{updateStatus.percent ?? 0}%</span>
+                    </div>
+                    <progress value={updateStatus.percent ?? 0} max={100} style={{ width: '100%', marginTop: '4px' }} />
+                  </div>
+                )}
+                <div className="actions" style={{ marginTop: 'var(--s3)', paddingTop: 'var(--s3)' }}>
+                  {updateStatus.stage === 'ready' ? (
+                    <button className="btn primary sm" onClick={() => void api.updater.quitAndInstall()}>
+                      Restart to update
+                    </button>
+                  ) : updateStatus.stage === 'available' ? (
+                    <button className="btn primary sm" onClick={() => void api.updater.download()}>
+                      Download update
+                    </button>
+                  ) : (
+                    <button
+                      className="btn sm"
+                      disabled={updateStatus.stage === 'checking' || updateStatus.stage === 'downloading'}
+                      onClick={() => void api.updater.check()}
+                    >
+                      {updateStatus.stage === 'checking' ? 'Checking for updates…' : 'Check for updates'}
+                    </button>
+                  )}
+                </div>
+              </div>
             </>
           )}
           {pane === 'clis' && (

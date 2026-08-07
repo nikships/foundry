@@ -16,6 +16,7 @@ import { ProjectStore } from './store/projects.js';
 import { RosterStore } from './store/roster.js';
 import { PipelineStore } from './store/pipelines.js';
 import { RunRegistry } from './engine/registry.js';
+import { UpdaterService } from './updater.js';
 import { notifyNeedsInput, notifyOutcome, setDockBadge } from './system/notify.js';
 
 export interface Scope {
@@ -30,6 +31,7 @@ export class AppContext {
   readonly roster: RosterStore;
   readonly pipelines: PipelineStore;
   readonly registry: RunRegistry;
+  readonly updater: UpdaterService;
   readonly version: string;
 
   constructor(
@@ -41,6 +43,7 @@ export class AppContext {
     this.roster = new RosterStore(supportDir);
     this.pipelines = new PipelineStore(supportDir);
     this.version = app.getVersion();
+    this.updater = new UpdaterService((channel, payload) => this.broadcast(channel, payload));
 
     this.registry = new RunRegistry({
       appSupportDir: supportDir,
@@ -78,9 +81,9 @@ export class AppContext {
     return BrowserWindow.getAllWindows()[0] ?? null;
   }
 
-  broadcast(channel: string): void {
+  broadcast(channel: string, payload?: unknown): void {
     for (const window of BrowserWindow.getAllWindows()) {
-      if (!window.isDestroyed()) window.webContents.send(channel);
+      if (!window.isDestroyed()) window.webContents.send(channel, payload);
     }
   }
 

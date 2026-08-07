@@ -216,6 +216,8 @@ jobs:
           name: Foundry-${{ github.run_number }}-arm64
           path: |
             apps/desktop/dist/Foundry-*-arm64.dmg
+            apps/desktop/dist/*.zip
+            apps/desktop/dist/latest-mac.yml
           retention-days: 30
           if-no-files-found: error
 
@@ -227,23 +229,55 @@ jobs:
         working-directory: .
         run: |
           set -euo pipefail
-          SRC=$(ls apps/desktop/dist/Foundry-*-arm64.dmg | head -1)
-          test -f "$SRC"
+          SRC_DMG=$(ls apps/desktop/dist/Foundry-*-arm64.dmg | head -1)
+          test -f "$SRC_DMG"
+          APP="apps/desktop/dist/mac-arm64/Foundry.app"
+          test -d "$APP"
+
           PKG_VERSION=$(node -p "require('./apps/desktop/package.json').version")
           SHORT_SHA="${GITHUB_SHA::7}"
           RUN="${{ github.run_number }}"
+
+          update_latest_mac_yml() {
+            local zip_path="$1"
+            local zip_name="$2"
+            local version="$3"
+            local yml_path="$4"
+            node -e '
+              const fs = require("fs");
+              const crypto = require("crypto");
+              const zipPath = process.argv[1];
+              const zipName = process.argv[2];
+              const version = process.argv[3];
+              const ymlPath = process.argv[4];
+              const content = fs.readFileSync(zipPath);
+              const sha512 = crypto.createHash("sha512").update(content).digest("base64");
+              const size = content.length;
+              const releaseDate = new Date().toISOString();
+              const yaml = `version: ${version}\nfiles:\n  - url: ${zipName}\n    sha512: ${sha512}\n    size: ${size}\npath: ${zipName}\nsha512: ${sha512}\nreleaseDate: '\''${releaseDate}'\''\n`;
+              fs.writeFileSync(ymlPath, yaml, "utf8");
+            ' "$zip_path" "$zip_name" "$version" "$yml_path"
+          }
 
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             TAG="${GITHUB_REF_NAME}"
             TITLE="Foundry $TAG"
             NOTES="Signed with Developer ID and notarized by Apple. Apple Silicon only."
-            STABLE="apps/desktop/dist/Foundry-${TAG}-arm64.dmg"
-            cp "$SRC" "$STABLE"
-            shasum -a 256 "$STABLE" | tee "${STABLE}.sha256"
+            STABLE_DMG="apps/desktop/dist/Foundry-${TAG}-arm64.dmg"
+            STABLE_ZIP="apps/desktop/dist/Foundry-${TAG}-arm64-mac.zip"
+            YML="apps/desktop/dist/latest-mac.yml"
+
+            cp "$SRC_DMG" "$STABLE_DMG"
+            shasum -a 256 "$STABLE_DMG" | tee "${STABLE_DMG}.sha256"
+
+            ditto -c -k --sequesterRsrc --keepParent "$APP" "$STABLE_ZIP"
+            VERSION_NUM="${TAG#v}"
+            update_latest_mac_yml "$STABLE_ZIP" "Foundry-${TAG}-arm64-mac.zip" "$VERSION_NUM" "$YML"
+
             if gh release view "$TAG" >/dev/null 2>&1; then
-              gh release upload "$TAG" "$STABLE" "${STABLE}.sha256" --clobber
+              gh release upload "$TAG" "$STABLE_DMG" "${STABLE_DMG}.sha256" "$STABLE_ZIP" "$YML" --clobber
             else
-              gh release create "$TAG" "$STABLE" "${STABLE}.sha256" \
+              gh release create "$TAG" "$STABLE_DMG" "${STABLE_DMG}.sha256" "$STABLE_ZIP" "$YML" \
                 --title "$TITLE" \
                 --generate-notes \
                 --notes "$NOTES" \
@@ -254,20 +288,24 @@ jobs:
           fi
 
           # Rolling Latest release (main / workflow_dispatch).
-          # Recreate so the Release page always points at the newest DMG and
-          # GitHub marks this release as Latest.
           TAG="latest"
           TITLE="Latest Build v${PKG_VERSION} (${RUN})"
           NOTES="Continuous build from \`${GITHUB_REF_NAME}\` @ \`${SHORT_SHA}\` (run ${RUN}). Signed with Developer ID and notarized by Apple. Apple Silicon only. For a fixed version, push a v* tag (e.g. v${PKG_VERSION})."
-          STABLE="apps/desktop/dist/Foundry-arm64.dmg"
-          cp "$SRC" "$STABLE"
-          shasum -a 256 "$STABLE" | tee "${STABLE}.sha256"
+          STABLE_DMG="apps/desktop/dist/Foundry-arm64.dmg"
+          STABLE_ZIP="apps/desktop/dist/Foundry-arm64-mac.zip"
+          YML="apps/desktop/dist/latest-mac.yml"
+
+          cp "$SRC_DMG" "$STABLE_DMG"
+          shasum -a 256 "$STABLE_DMG" | tee "${STABLE_DMG}.sha256"
+
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "$STABLE_ZIP"
+          update_latest_mac_yml "$STABLE_ZIP" "Foundry-arm64-mac.zip" "$PKG_VERSION" "$YML"
 
           # Replace any prior rolling release so assets and "Latest" stay current.
           gh release delete "$TAG" -y 2>/dev/null || true
           git push origin ":refs/tags/${TAG}" 2>/dev/null || true
 
-          gh release create "$TAG" "$STABLE" "${STABLE}.sha256" \
+          gh release create "$TAG" "$STABLE_DMG" "${STABLE_DMG}.sha256" "$STABLE_ZIP" "$YML" \
             --title "$TITLE" \
             --notes "$NOTES" \
             --latest \

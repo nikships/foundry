@@ -544,4 +544,11 @@ export function registerIpc(ctx: AppContext): void {
   });
   handle(IPC.appAssetUrl, (relPath: string) => ctx.assetUrl(relPath));
   handle(IPC.appVersion, () => ctx.version);
+
+  // ── updater ───────────────────────────────────────────────────────────────
+
+  handle(IPC.updaterCheck, () => ctx.updater.check());
+  handle(IPC.updaterDownload, () => ctx.updater.download());
+  handle(IPC.updaterQuitAndInstall, () => ctx.updater.quitAndInstall());
+  handle(IPC.updaterGetStatus, () => ctx.updater.getStatus());
 }

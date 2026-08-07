@@ -1,5 +1,10 @@
 appId: com.foundry.app
 productName: Foundry
+publish:
+  provider: github
+  owner: nikships
+  repo: software-factory
+
 directories:
   buildResources: assets
 
@@ -25,6 +30,9 @@ mac:
   gatekeeperAssess: false
   target:
     - target: dmg
+      arch:
+        - arm64
+    - target: zip
       arch:
         - arm64
 
