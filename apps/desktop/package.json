@@ -1,6 +1,6 @@
 {
   "name": "foundry",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A native macOS software factory: deterministic pipelines, bounded agent phases, live traces.",
   "main": "out/main/main.js",
   "author": "Foundry",
