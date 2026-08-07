@@ -62,6 +62,9 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ stage: 'idle' });
   const [projectDraft, setProjectDraft] = useState<ProjectDef | null>(null);
   const [maintenanceNote, setMaintenanceNote] = useState('');
+  const [nameDraft, setNameDraft] = useState('');
+  const [nameHint, setNameHint] = useState('');
+  const [maintenanceBusy, setMaintenanceBusy] = useState(false);
 
   useEffect(() => {
     setPane((initialPane as Pane) ?? 'general');
@@ -98,6 +101,13 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
     if (project) void api.projects.check(project.id).then(setProjectChecks);
     else setProjectChecks([]);
   }, [project]);
+
+  // Local draft so clearing the field for a rewrite does not POST an empty
+  // engineerName that Zod rejects and paints a sticky settings error.
+  useEffect(() => {
+    setNameDraft(settings?.engineerName ?? '');
+    setNameHint('');
+  }, [settings?.engineerName]);
 
   const projectDirty = JSON.stringify(projectDraft) !== JSON.stringify(project);
   const set = async (patch: Parameters<typeof patchSettings>[0]): Promise<void> => {
@@ -211,7 +221,27 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
       setErrors([(e as Error).message]);
     }
   };
+  const commitName = async (): Promise<void> => {
+    const next = nameDraft.trim();
+    if (!next) {
+      setNameHint('Name cannot be empty. Recorded on every run.');
+      setNameDraft(settings?.engineerName ?? '');
+      return;
+    }
+    if (next === settings?.engineerName) {
+      setNameHint('');
+      return;
+    }
+    if (next.length > 80) {
+      setNameHint('Keep it under 80 characters.');
+      return;
+    }
+    setNameHint('');
+    await set({ engineerName: next });
+  };
+
   const applyRetention = async (): Promise<void> => {
+    if (maintenanceBusy) return;
     const days = settings?.retentionDays;
     if (days == null) {
       setErrors(['Set a retention window before applying. Forever means nothing is deleted.']);
@@ -224,6 +254,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
     ) {
       return;
     }
+    setMaintenanceBusy(true);
     try {
       const report = await api.maintenance.applyRetention();
       setMaintenanceNote(
@@ -232,15 +263,28 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
       setErrors([]);
     } catch (e) {
       setErrors([(e as Error).message]);
+    } finally {
+      setMaintenanceBusy(false);
     }
   };
   const compact = async (): Promise<void> => {
+    if (maintenanceBusy) return;
+    if (
+      !window.confirm(
+        'Compact trace databases now? This rewrites SQLite files and can take a moment; leave Foundry open until it finishes.',
+      )
+    ) {
+      return;
+    }
+    setMaintenanceBusy(true);
     try {
       await api.maintenance.compact();
       setMaintenanceNote('Trace databases compacted.');
       setErrors([]);
     } catch (e) {
       setErrors([(e as Error).message]);
+    } finally {
+      setMaintenanceBusy(false);
     }
   };
   useEffect(() => {
@@ -272,12 +316,24 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                 <label>Your name</label>
                 <input
                   className="input"
-                  value={settings.engineerName}
-                  onChange={(e) => void set({ engineerName: e.target.value })}
+                  value={nameDraft}
+                  onChange={(e) => {
+                    setNameDraft(e.target.value);
+                    setNameHint('');
+                  }}
+                  onBlur={() => void commitName()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      (e.target as HTMLInputElement).blur();
+                    }
+                  }}
                 />
                 <span className="hint">
-                  Recorded on every run, so a trace says who asked for it.
+                  Recorded on every run, so a trace says who asked for it. Saved when you leave the
+                  field.
                 </span>
+                {nameHint && <span className="field-warn">{nameHint}</span>}
               </div>
               <div className="field">
                 <label>Default agent CLI</label>
@@ -759,11 +815,15 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                 </span>
               </div>
               <div className="row">
-                <button className="btn" onClick={() => void applyRetention()}>
-                  Apply retention now
+                <button
+                  className="btn"
+                  disabled={maintenanceBusy}
+                  onClick={() => void applyRetention()}
+                >
+                  {maintenanceBusy ? 'Working…' : 'Apply retention now'}
                 </button>
-                <button className="btn" onClick={() => void compact()}>
-                  Compact trace databases
+                <button className="btn" disabled={maintenanceBusy} onClick={() => void compact()}>
+                  {maintenanceBusy ? 'Working…' : 'Compact trace databases'}
                 </button>
               </div>
               <h3>Leftover worktrees</h3>
@@ -862,6 +922,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
         .about dt { color: var(--text-faint); }
         .about-actions { display: flex; flex-wrap: wrap; gap: var(--s2); margin-bottom: var(--s2); }
         .empty-project { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s3); margin-top: var(--s4); }
+        .field-warn { font-size: var(--text-xs); color: var(--amber); }
         .errors { margin-top: var(--s4); padding: var(--s3); border-radius: var(--r-sm); background: var(--red-dim); color: var(--red); font-size: var(--text-sm); list-style: none; }
         .scroll { overflow-y: auto; }
         .row { display: flex; gap: var(--s3); }
