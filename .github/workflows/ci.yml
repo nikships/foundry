@@ -82,7 +82,8 @@ jobs:
       - name: Download actionlint
         run: |
           set -euo pipefail
-          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) 1.7.7
+          # 1.7.12+ knows macos-26; older pins reject it as an unknown label.
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) 1.7.12
           ./actionlint -version
 
       - name: Lint workflows
