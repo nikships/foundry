@@ -3,6 +3,7 @@ import type { AgentDef, PhaseDef } from '@shared/types.js';
 import { api } from '../api.js';
 import { useApp } from '../stores/app.js';
 import AgentAvatar from './AgentAvatar.js';
+import { CliIcon } from './BrandIcon.js';
 
 const KIND_COLOR: Record<string, string> = { code: 'var(--blue)', engineer: 'var(--amber)' };
 
@@ -67,6 +68,11 @@ export default function PhaseEditor({
     });
   };
 
+  // The CLI is the agent's, not the phase's, so a phase head can say which
+  // harness will actually run it without opening the Roster.
+  const owner =
+    phase.kind === 'agent' ? (agents.find((a) => a.name === phase.agent) ?? null) : null;
+
   const commandRef = phase.command && 'ref' in phase.command ? phase.command.ref : '';
   const argvText = phase.command && 'argv' in phase.command ? phase.command.argv.join(' ') : '';
 
@@ -77,6 +83,7 @@ export default function PhaseEditor({
           <span className="dot" style={{ background: color }} />
           {phase.kind === 'agent' && <AgentAvatar name={phase.agent ?? null} size={26} />}
           <span className="pname">{phase.name}</span>
+          {owner && <CliIcon vendor={owner.cli ?? 'droid'} size={14} />}
           <span
             className="badge kind"
             style={{ color, background: `color-mix(in srgb, ${color} 14%, transparent)` }}

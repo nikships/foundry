@@ -28,7 +28,7 @@ Foundry.app (Electron, macOS 26+)
 │   └── ipc.ts      entire typed invoke/handle surface
 ├── Preload (bridge.cjs)
 │   └── named invoke only; sandboxed, no generic escape hatch
-└── Renderer (React 18)
+└── Renderer (React 19)
     └── screens + polling stores; never touches disk, git, or droid
 ```
 

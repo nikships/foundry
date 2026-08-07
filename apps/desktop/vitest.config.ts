@@ -14,5 +14,11 @@ export default defineConfig({
     environment: 'node',
     testTimeout: 30_000,
     pool: 'forks',
+    server: {
+      // @lobehub/icons ships bare directory specifiers, which the bundler
+      // resolves and node's ESM loader refuses. Inlining hands them to vite,
+      // so the icon registry is testable without a browser environment.
+      deps: { inline: [/@lobehub\/icons/] },
+    },
   },
 });

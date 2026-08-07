@@ -4,7 +4,7 @@ Active contributors: Foundry core (`src/renderer/`)
 
 ## Purpose
 
-The renderer is a **React 18 shell** for operators: start and watch runs, edit roster and pipelines, configure projects, and inspect phase evidence. It never opens SQLite, never shells out to git, and never talks to droid. Every privileged action goes through the named [IPC bridge](ipc-and-preload.md). Transport is **poll, not push**: run detail and event history share one rowid cursor query.
+The renderer is a **React 19 shell** for operators: start and watch runs, edit roster and pipelines, configure projects, and inspect phase evidence. It never opens SQLite, never shells out to git, and never talks to droid. Every privileged action goes through the named [IPC bridge](ipc-and-preload.md). Transport is **poll, not push**: run detail and event history share one rowid cursor query.
 
 ## Layout
 
