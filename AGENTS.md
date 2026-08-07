@@ -28,7 +28,7 @@ Run everything from `apps/desktop/`.
 npm run dev         # electron-vite dev
 npm run build       # required before `npm start`; emits out/{main,preload,renderer}
 npm run typecheck   # tsc --noEmit
-npm test            # vitest run, 164 tests
+npm test            # vitest run, 163 tests
 npm run engine:demo # headless run of the engine, no UI
 ```
 
