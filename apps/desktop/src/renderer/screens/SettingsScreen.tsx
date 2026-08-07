@@ -110,6 +110,18 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
   }, [settings?.engineerName]);
 
   const projectDirty = JSON.stringify(projectDraft) !== JSON.stringify(project);
+  // Like PipelinesScreen, don't silently throw away an unsaved project edit when
+  // the user clicks another settings pane — ask first so the draft isn't lost.
+  const trySetPane = (next: Pane): void => {
+    if (pane === 'project' && projectDirty && next !== 'project') {
+      const ok = window.confirm('Discard unsaved project changes?');
+      if (!ok) return;
+      // User accepted discard: revert the draft so returning to Project shows the saved state again,
+      // not a stale JSON diff against what they just chose to throw away.
+      setProjectDraft(project ? plain({ ...project }) : null);
+    }
+    setPane(next);
+  };
   const set = async (patch: Parameters<typeof patchSettings>[0]): Promise<void> => {
     // Always replace the banner: a successful patch must clear a prior failure.
     setErrors(await patchSettings(patch));
@@ -302,7 +314,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
             <button
               key={p.id}
               className={`pane-btn ${pane === p.id ? 'on' : ''}`}
-              onClick={() => setPane(p.id)}
+              onClick={() => trySetPane(p.id)}
             >
               {p.label}
             </button>
@@ -359,7 +371,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
               <DoctorList
                 checks={checks}
                 onRecheck={() => void api.doctor.run().then(setChecks)}
-                onOpenSettings={(next) => setPane(next as Pane)}
+                onOpenSettings={(next) => trySetPane(next as Pane)}
               />
               <h3>Notifications</h3>
               {(Object.keys(NOTIFY_LABELS) as Array<keyof typeof NOTIFY_LABELS>).map((key) => (
@@ -522,7 +534,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
               <DoctorList
                 checks={checks}
                 onRecheck={() => void api.doctor.run().then(setChecks)}
-                onOpenSettings={(next) => setPane(next as Pane)}
+                onOpenSettings={(next) => trySetPane(next as Pane)}
               />
             </>
           )}
@@ -669,7 +681,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                     onRecheck={() =>
                       void api.projects.check(projectDraft!.id).then(setProjectChecks)
                     }
-                    onOpenSettings={(next) => setPane(next as Pane)}
+                    onOpenSettings={(next) => trySetPane(next as Pane)}
                   />
                   <div className="two">
                     <div className="field">
@@ -778,6 +790,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                     <button
                       className="btn primary"
                       disabled={!projectDirty}
+                      title={!projectDirty ? 'No changes to save' : undefined}
                       onClick={() => void saveProject()}
                     >
                       Save project
