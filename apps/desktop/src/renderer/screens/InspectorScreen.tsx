@@ -170,9 +170,19 @@ export default function InspectorScreen({
       )}
 
       {listLoading && !runs.length && !listError && (
-        <div className="insp-empty faint">Loading runs…</div>
+        <div className="insp-skeleton" aria-hidden>
+          <div className="skel-row" />
+          <div className="skel-row" />
+          <div className="skel-row" />
+        </div>
       )}
-      {view.loading && runId && !view.error && <div className="insp-empty faint">Loading run…</div>}
+      {view.loading && runId && !view.error && (
+        <div className="insp-skeleton" aria-hidden>
+          <div className="skel-row" />
+          <div className="skel-row" />
+          <div className="skel-row" />
+        </div>
+      )}
       {!listLoading && !view.loading && !listError && !view.error && !runId && (
         <EmptyState
           art="scenes/empty-state.png"
@@ -234,6 +244,9 @@ function InspStyle(): React.JSX.Element {
       .insp-grid.lanes-2 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); }
       .insp-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text-dim); font-size: 13px; }
       .insp-empty .faint { color: var(--text-faint); font-size: 12px; }
+      .insp-skeleton { flex: 1; display: flex; flex-direction: column; gap: 10px; padding: var(--s4); }
+      .skel-row { height: 120px; border-radius: var(--r-sm); background: linear-gradient(90deg, var(--bg-raised) 25%, var(--bg-hover) 50%, var(--bg-raised) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
+      @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
     `}</style>
   );
 }

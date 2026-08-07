@@ -155,7 +155,7 @@ export default function RunDetailScreen({
             <button
               className="btn danger sm"
               disabled={killing}
-              title="Stop the run without deleting its branch"
+              title={killing ? 'Killing…' : 'Stop the run without deleting its branch'}
               onClick={() => void kill()}
             >
               {killing ? 'Killing…' : 'Kill run'}
