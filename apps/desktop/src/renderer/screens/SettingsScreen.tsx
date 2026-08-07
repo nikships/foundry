@@ -87,6 +87,28 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
   const set = async (patch: Parameters<typeof patchSettings>[0]): Promise<void> => {
     setErrors(await patchSettings(patch));
   };
+  const runAppAction = async (action: () => Promise<void>): Promise<void> => {
+    try {
+      await action();
+    } catch (e) {
+      setErrors([(e as Error).message]);
+    }
+  };
+  const checkForUpdates = async (): Promise<void> => {
+    await runAppAction(async () => setUpdateStatus(await api.updater.check()));
+  };
+  const downloadUpdate = async (): Promise<void> => {
+    await runAppAction(async () => setUpdateStatus(await api.updater.download()));
+  };
+  const installUpdate = async (): Promise<void> => {
+    await runAppAction(() => api.updater.quitAndInstall());
+  };
+  const quitApp = async (): Promise<void> => {
+    await runAppAction(() => api.app.quit());
+  };
+  const relaunchApp = async (): Promise<void> => {
+    await runAppAction(() => api.app.relaunch());
+  };
   const saveProject = async (): Promise<void> => {
     if (!projectDraft) return;
     try {
@@ -244,14 +266,11 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                   style={{ marginTop: 'var(--s3)', paddingTop: 'var(--s3)' }}
                 >
                   {updateStatus.stage === 'ready' ? (
-                    <button
-                      className="btn primary sm"
-                      onClick={() => void api.updater.quitAndInstall()}
-                    >
-                      Restart to update
+                    <button className="btn primary sm" onClick={() => void installUpdate()}>
+                      Install and relaunch
                     </button>
                   ) : updateStatus.stage === 'available' ? (
-                    <button className="btn primary sm" onClick={() => void api.updater.download()}>
+                    <button className="btn primary sm" onClick={() => void downloadUpdate()}>
                       Download update
                     </button>
                   ) : (
@@ -260,13 +279,29 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                       disabled={
                         updateStatus.stage === 'checking' || updateStatus.stage === 'downloading'
                       }
-                      onClick={() => void api.updater.check()}
+                      onClick={() => void checkForUpdates()}
                     >
                       {updateStatus.stage === 'checking'
                         ? 'Checking for updates…'
-                        : 'Check for updates'}
+                        : updateStatus.stage === 'error'
+                          ? 'Try again'
+                          : 'Check for updates'}
                     </button>
                   )}
+                </div>
+              </div>
+              <h3>Application</h3>
+              <div className="cli-card">
+                <p className="hint">
+                  Restart Foundry after changing settings or installing an update.
+                </p>
+                <div className="actions" style={{ marginTop: 'var(--s3)' }}>
+                  <button className="btn sm" onClick={() => void relaunchApp()}>
+                    Relaunch Foundry
+                  </button>
+                  <button className="btn sm" onClick={() => void quitApp()}>
+                    Quit Foundry
+                  </button>
                 </div>
               </div>
             </>

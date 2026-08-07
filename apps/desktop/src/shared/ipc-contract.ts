@@ -162,6 +162,8 @@ export interface FoundryApi {
     openExternal(url: string): Promise<void>;
     assetUrl(relPath: string): Promise<string>;
     version(): Promise<string>;
+    quit(): Promise<void>;
+    relaunch(): Promise<void>;
   };
   updater: {
     check(): Promise<UpdateStatus>;
@@ -227,6 +229,8 @@ export const IPC = {
   appOpenExternal: 'app:openExternal',
   appAssetUrl: 'app:assetUrl',
   appVersion: 'app:version',
+  appQuit: 'app:quit',
+  appRelaunch: 'app:relaunch',
   updaterCheck: 'updater:check',
   updaterDownload: 'updater:download',
   updaterQuitAndInstall: 'updater:quitAndInstall',

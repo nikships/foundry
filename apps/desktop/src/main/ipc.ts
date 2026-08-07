@@ -7,7 +7,7 @@
  * stream, which is why live view and history are the same query.
  */
 
-import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type {
@@ -599,6 +599,11 @@ export function registerIpc(ctx: AppContext): void {
   });
   handle(IPC.appAssetUrl, (relPath: string) => ctx.assetUrl(relPath));
   handle(IPC.appVersion, () => ctx.version);
+  handle(IPC.appQuit, () => app.quit());
+  handle(IPC.appRelaunch, () => {
+    app.relaunch();
+    app.quit();
+  });
 
   // ── updater ───────────────────────────────────────────────────────────────
 

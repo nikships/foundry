@@ -49,7 +49,7 @@ describe('UpdaterService', () => {
 
     const updaterService = new UpdaterService(broadcaster, mockUpdater as never, true);
 
-    expect(mockUpdater.autoDownload).toBe(true);
+    expect(mockUpdater.autoDownload).toBe(false);
     expect(mockUpdater.autoInstallOnAppQuit).toBe(true);
     expect(updaterService.getStatus()).toEqual({ stage: 'idle' });
 
@@ -101,7 +101,7 @@ describe('UpdaterService', () => {
     expect(mockUpdater.downloadUpdate).toHaveBeenCalled();
 
     await updaterService.quitAndInstall();
-    expect(mockUpdater.quitAndInstall).toHaveBeenCalled();
+    expect(mockUpdater.quitAndInstall).toHaveBeenCalledWith(false, true);
   });
 
   it('ensures UpdateStatus payloads survive structured-clone across IPC', () => {

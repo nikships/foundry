@@ -17,6 +17,8 @@ export class UpdaterService {
   private broadcaster?: UpdaterBroadcaster;
   private updater?: typeof pkg.autoUpdater;
   private isPackaged: boolean;
+  private checkInFlight?: Promise<UpdateStatus>;
+  private downloadInFlight?: Promise<UpdateStatus>;
 
   constructor(
     broadcaster?: UpdaterBroadcaster,
@@ -59,7 +61,10 @@ export class UpdaterService {
   private initUpdater(): void {
     if (!this.updater) return;
     try {
-      this.updater.autoDownload = true;
+      // The renderer owns the explicit download action, so an available
+      // update cannot disappear into a background transfer before the user
+      // sees how to install it.
+      this.updater.autoDownload = false;
       this.updater.autoInstallOnAppQuit = true;
 
       this.updater.on('checking-for-update', () => {
@@ -115,23 +120,41 @@ export class UpdaterService {
         stage: 'idle',
         message: 'Updates are disabled in unpackaged builds',
       };
+      this.setStatus(status);
       if (isInteractive) {
         await this.showDialogForStatus(status);
       }
       return status;
     }
+    if (this.status.stage === 'downloading' || this.status.stage === 'ready') {
+      const status = this.getStatus();
+      if (isInteractive) await this.showDialogForStatus(status);
+      return status;
+    }
+
+    const operation = this.checkInFlight ?? this.performCheck();
+    this.checkInFlight = operation;
+    try {
+      await operation;
+      const finalStatus = this.getStatus();
+      if (isInteractive) {
+        await this.showDialogForStatus(finalStatus);
+      }
+      return finalStatus;
+    } finally {
+      this.checkInFlight = undefined;
+    }
+  }
+
+  private async performCheck(): Promise<UpdateStatus> {
     try {
       this.setStatus({ stage: 'checking' });
-      await this.updater.checkForUpdates();
+      await this.updater?.checkForUpdates();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       this.setStatus({ stage: 'error', message: msg });
     }
-    const finalStatus = this.getStatus();
-    if (isInteractive) {
-      await this.showDialogForStatus(finalStatus);
-    }
-    return finalStatus;
+    return this.getStatus();
   }
 
   private async showDialogForStatus(status: UpdateStatus): Promise<void> {
@@ -165,7 +188,10 @@ export class UpdaterService {
         message: status.version
           ? `Foundry v${status.version} is available!`
           : 'An update is available!',
-        detail: 'The update is downloading in the background.',
+        detail:
+          status.stage === 'available'
+            ? 'Open Settings to download and install it.'
+            : 'The update is downloading in the background.',
         buttons: ['OK'],
       });
     } else if (status.stage === 'ready') {
@@ -196,11 +222,29 @@ export class UpdaterService {
 
   public async download(): Promise<UpdateStatus> {
     if (!this.isPackaged || !this.updater) {
-      return { stage: 'idle', message: 'Updates are disabled in unpackaged builds' };
+      const status: UpdateStatus = {
+        stage: 'idle',
+        message: 'Updates are disabled in unpackaged builds',
+      };
+      this.setStatus(status);
+      return status;
     }
+    if (this.status.stage === 'ready') return this.getStatus();
+    if (this.downloadInFlight) return this.downloadInFlight;
+
+    const operation = this.performDownload();
+    this.downloadInFlight = operation;
+    try {
+      return await operation;
+    } finally {
+      this.downloadInFlight = undefined;
+    }
+  }
+
+  private async performDownload(): Promise<UpdateStatus> {
     try {
       this.setStatus({ stage: 'downloading', percent: 0 });
-      await this.updater.downloadUpdate();
+      await this.updater?.downloadUpdate();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       this.setStatus({ stage: 'error', message: msg });
@@ -212,6 +256,6 @@ export class UpdaterService {
     if (!this.isPackaged || !this.updater) {
       return;
     }
-    this.updater.quitAndInstall();
+    this.updater.quitAndInstall(false, true);
   }
 }

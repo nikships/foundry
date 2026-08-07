@@ -100,6 +100,8 @@ const api: FoundryApi = {
     openExternal: (url) => call(IPC.appOpenExternal, url),
     assetUrl: (relPath) => call(IPC.appAssetUrl, relPath),
     version: () => call(IPC.appVersion),
+    quit: () => call(IPC.appQuit),
+    relaunch: () => call(IPC.appRelaunch),
   },
   updater: {
     check: () => call(IPC.updaterCheck),
