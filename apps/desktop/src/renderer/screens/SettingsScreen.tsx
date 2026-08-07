@@ -33,6 +33,22 @@ const NOTIFY_LABELS: Record<'accepted' | 'rejected' | 'failed' | 'needsInput', s
   needsInput: 'A run is waiting on me',
 };
 
+/**
+ * Number inputs fire on every keystroke. Clearing a field yields `Number('') === 0`
+ * in some browsers and `NaN` for partial junk; neither should be written into
+ * settings and then round-tripped back into the controlled value.
+ */
+function readBoundedInt(
+  raw: string,
+  opts: { min: number; max: number; emptyAs?: number },
+): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return opts.emptyAs ?? null;
+  const n = Number(trimmed);
+  if (!Number.isFinite(n)) return null;
+  return Math.min(opts.max, Math.max(opts.min, Math.round(n)));
+}
+
 export default function SettingsScreen({ pane: initialPane }: { pane: string }): React.JSX.Element {
   const { settings, project, projects, refreshAll, patchSettings } = useApp();
   const [pane, setPane] = useState<Pane>((initialPane as Pane) ?? 'general');
@@ -85,11 +101,22 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
 
   const projectDirty = JSON.stringify(projectDraft) !== JSON.stringify(project);
   const set = async (patch: Parameters<typeof patchSettings>[0]): Promise<void> => {
+    // Always replace the banner: a successful patch must clear a prior failure.
     setErrors(await patchSettings(patch));
+  };
+  const setInt = async (
+    raw: string,
+    bounds: { min: number; max: number; emptyAs?: number },
+    apply: (value: number) => Parameters<typeof patchSettings>[0],
+  ): Promise<void> => {
+    const value = readBoundedInt(raw, bounds);
+    if (value == null) return;
+    await set(apply(value));
   };
   const runAppAction = async (action: () => Promise<void>): Promise<void> => {
     try {
       await action();
+      setErrors([]);
     } catch (e) {
       setErrors([(e as Error).message]);
     }
@@ -114,6 +141,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
     try {
       const result = await api.projects.save(projectDraft);
       if (result.ok) {
+        setErrors([]);
         await refreshAll();
         setProjectChecks(await api.projects.check(projectDraft.id));
       } else {
@@ -125,8 +153,32 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
   };
   const removeProject = async (): Promise<void> => {
     if (!project) return;
-    await api.projects.remove(project.id);
-    await refreshAll();
+    if (
+      !window.confirm(
+        `Remove project “${project.name}” from Foundry? The git repo on disk is not deleted.`,
+      )
+    ) {
+      return;
+    }
+    try {
+      await api.projects.remove(project.id);
+      setErrors([]);
+      await refreshAll();
+    } catch (e) {
+      setErrors([(e as Error).message]);
+    }
+  };
+  const replayIntro = async (): Promise<void> => {
+    await runAppAction(async () => {
+      await api.settings.patch({ onboarded: false });
+      await refreshAll();
+    });
+  };
+  const addProject = async (): Promise<void> => {
+    await runAppAction(async () => {
+      await api.projects.add();
+      await refreshAll();
+    });
   };
   const refreshModels = async (): Promise<void> => {
     if (!settings) return;
@@ -438,7 +490,11 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                     min={0}
                     max={5}
                     value={settings.envelopeRetries}
-                    onChange={(e) => void set({ envelopeRetries: Number(e.target.value) })}
+                    onChange={(e) =>
+                      void setInt(e.target.value, { min: 0, max: 5 }, (envelopeRetries) => ({
+                        envelopeRetries,
+                      }))
+                    }
                   />
                   <span className="hint">
                     Correction messages sent when a reply will not parse.
@@ -452,7 +508,11 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                     min={0}
                     max={5}
                     value={settings.gateRetries}
-                    onChange={(e) => void set({ gateRetries: Number(e.target.value) })}
+                    onChange={(e) =>
+                      void setInt(e.target.value, { min: 0, max: 5 }, (gateRetries) => ({
+                        gateRetries,
+                      }))
+                    }
                   />
                   <span className="hint">
                     Attempts to fix a gate violation before the phase fails.
@@ -468,7 +528,11 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                     min={5}
                     max={60}
                     value={Math.round(settings.turnTimeoutMs / 60000)}
-                    onChange={(e) => void set({ turnTimeoutMs: Number(e.target.value) * 60000 })}
+                    onChange={(e) =>
+                      void setInt(e.target.value, { min: 5, max: 60 }, (minutes) => ({
+                        turnTimeoutMs: minutes * 60_000,
+                      }))
+                    }
                   />
                 </div>
                 <div className="field">
@@ -480,7 +544,11 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                     max={2000}
                     step={50}
                     value={settings.pollCadenceMs}
-                    onChange={(e) => void set({ pollCadenceMs: Number(e.target.value) })}
+                    onChange={(e) =>
+                      void setInt(e.target.value, { min: 250, max: 2000 }, (pollCadenceMs) => ({
+                        pollCadenceMs,
+                      }))
+                    }
                   />
                   <span className="hint">How often a live run's view refreshes.</span>
                 </div>
@@ -622,7 +690,12 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                   </footer>
                 </>
               ) : (
-                <p className="faint">No project selected.</p>
+                <div className="empty-project">
+                  <p className="faint">No project selected. Add a git repository to configure.</p>
+                  <button className="btn primary" onClick={() => void addProject()}>
+                    Add a project…
+                  </button>
+                </div>
               )}
             </>
           )}
@@ -694,18 +767,27 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                 <dt>Projects</dt>
                 <dd className="mono">{projects.length}</dd>
               </dl>
-              <button
-                className="btn sm"
-                onClick={() =>
-                  void api.app.openExternal('https://docs.factory.ai/droid-exec/overview')
-                }
-              >
-                droid CLI documentation
-              </button>
+              <div className="about-actions">
+                <button
+                  className="btn sm"
+                  onClick={() =>
+                    void api.app.openExternal('https://docs.factory.ai/droid-exec/overview')
+                  }
+                >
+                  droid CLI documentation
+                </button>
+                <button className="btn sm" onClick={() => void replayIntro()}>
+                  Replay intro
+                </button>
+              </div>
+              <p className="hint">
+                Replay intro walks the cinematic onboarding again: agents, CLIs, environment checks,
+                and your first project.
+              </p>
             </>
           )}
           {errors.length > 0 && (
-            <ul className="errors">
+            <ul className="errors" role="alert">
               {errors.map((error, i) => (
                 <li key={i}>{error}</li>
               ))}
@@ -741,6 +823,8 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
         .note { margin-top: var(--s4); padding: var(--s3); border-radius: var(--r-sm); background: var(--green-dim); color: var(--green); font-size: var(--text-sm); }
         .about { display: grid; grid-template-columns: 140px 1fr; gap: var(--s2) var(--s4); margin: var(--s5) 0; font-size: var(--text-sm); }
         .about dt { color: var(--text-faint); }
+        .about-actions { display: flex; flex-wrap: wrap; gap: var(--s2); margin-bottom: var(--s2); }
+        .empty-project { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s3); margin-top: var(--s4); }
         .errors { margin-top: var(--s4); padding: var(--s3); border-radius: var(--r-sm); background: var(--red-dim); color: var(--red); font-size: var(--text-sm); list-style: none; }
         .scroll { overflow-y: auto; }
         .row { display: flex; gap: var(--s3); }
