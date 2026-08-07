@@ -37,36 +37,27 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          # Full history so the version-bump commit below can rebase onto a
-          # main that moved while this run was queued or building.
-          fetch-depth: 0
+        uses: actions/checkout@v7
 
-      - name: Bump version for rolling release
+      - name: Set rolling release version
         # electron-updater only offers an update when latest-mac.yml's version
-        # is newer than the installed app's, so a rolling release that reuses
-        # package.json's version reads as "no update". Bump patch on every
-        # automatic release and commit it back; a GITHUB_TOKEN push does not
-        # retrigger workflows, so this cannot loop.
+        # is newer than the installed app. Reusing package.json's version reads
+        # as "no update". Stamp major.minor from package.json and the run number
+        # as patch (always increasing) in the working tree only. Do not push
+        # back to main: branch protection requires PRs + status checks, and
+        # GITHUB_TOKEN cannot bypass that on a user-owned repo.
         if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
         working-directory: .
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           PREV=$(node -p "require('./apps/desktop/package.json').version")
-          (cd apps/desktop && npm version patch --no-git-tag-version)
-          NEW=$(node -p "require('./apps/desktop/package.json').version")
-          echo "Version: $PREV -> $NEW"
-          git add apps/desktop/package.json apps/desktop/package-lock.json
-          git commit -m "chore(release): bump Foundry to $NEW"
-          # Rebase so the push is a fast-forward even if main moved mid-run.
-          # A real conflict fails the run honestly rather than clobbering.
-          git fetch origin "${GITHUB_REF_NAME}"
-          git rebase "origin/${GITHUB_REF_NAME}"
-          git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"
-          echo "RELEASE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          NEW=$(node -p "
+            const [maj, min] = require('./apps/desktop/package.json').version.split('.');
+            maj + '.' + min + '.' + process.env.GITHUB_RUN_NUMBER
+          ")
+          (cd apps/desktop && npm version "$NEW" --no-git-tag-version --allow-same-version)
+          echo "Version (local only): $PREV -> $NEW"
+          echo "RELEASE_SHA=${GITHUB_SHA}" >> "$GITHUB_ENV"
 
       - name: Select Xcode on NVMe
         working-directory: .
@@ -240,7 +231,7 @@ jobs:
           echo "Installed /Applications/Foundry.app"
 
       - name: Upload DMG artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Foundry-${{ github.run_number }}-arm64
           path: |

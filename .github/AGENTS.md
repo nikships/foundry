@@ -37,7 +37,7 @@ on without a cleanup pass.
 | `workflows/ci.yml` | **self-hosted `mac-mini`** (own); `macos-latest` (fork PRs); actionlint on `ubuntu-latest` | push/PR to `main` under `apps/desktop/**` or `.github/workflows/**`, or manual | `npm ci` → typecheck → lint → format → knip → test → build → audit; plus actionlint |
 | `workflows/dependency-review.yml` | `ubuntu-latest` | pull_request to `main` | Blocks high+ severity dependency changes and denied licenses |
 | `workflows/codeql.yml` | `ubuntu-latest` | push/PR under app paths, weekly cron, manual | CodeQL security-and-quality on `apps/desktop` |
-| `workflows/mac-package.yml` | **self-hosted `mac-mini`** (this repo only) | push to `main`, `v*` tags, or manual | electron-builder arm64 DMG, Developer ID sign, Apple notarize + staple, artifact upload; **main/manual** → bump patch version, commit it back (a `GITHUB_TOKEN` push cannot retrigger workflows), then rolling GitHub Release tag `latest`; **`v*` tags** → versioned release (no bump) |
+| `workflows/mac-package.yml` | **self-hosted `mac-mini`** (this repo only) | push to `main`, `v*` tags, or manual | electron-builder arm64 DMG, Developer ID sign, Apple notarize + staple, artifact upload; **main/manual** → local-only version `major.minor.<run_number>` (no push to `main`; keeps branch protection intact), then rolling GitHub Release tag `latest`; **`v*` tags** → versioned release (package.json as tagged) |
 
 ## Self-hosted runner (`mac-mini`)
 

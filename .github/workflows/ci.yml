@@ -9,11 +9,12 @@ on:
     paths:
       - 'apps/desktop/**'
       - '.github/workflows/**'
+  # No paths filter here, on purpose. verify and actionlint are required checks
+  # on main, and a required check that never starts is never satisfied: a PR
+  # touching only docs or assets is then blocked forever, and even an admin
+  # merge is refused. Both jobs are cheap enough to run on every PR.
   pull_request:
     branches: [main]
-    paths:
-      - 'apps/desktop/**'
-      - '.github/workflows/**'
   workflow_dispatch:
 
 concurrency:
@@ -36,7 +37,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Select Xcode on NVMe
         if: runner.environment == 'self-hosted'
@@ -52,7 +53,7 @@ jobs:
 
       - name: Setup Node
         if: runner.environment == 'github-hosted'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
@@ -89,7 +90,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Download actionlint
         # Pin the binary release; the labels ignore list is for this repo's Mini.
