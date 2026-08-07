@@ -282,7 +282,9 @@ export default function RosterScreen(): React.JSX.Element {
                   value={draft.model}
                   models={models}
                   allowInherit
+                  emptyHint={`No models from ${draftCli}. Check Agent CLIs in Settings, or use Inherit.`}
                   onChange={(value) => setDraft({ ...draft, model: value })}
+                  onRefresh={() => void api.catalog.models(draftCli, true).then(setModels)}
                 />
                 <span className="hint">“Inherit” uses this CLI's own default.</span>
               </div>
