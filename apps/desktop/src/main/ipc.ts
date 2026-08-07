@@ -36,6 +36,7 @@ import { GATE_DESCRIPTIONS } from './engine/gates.js';
 import { TEMPLATE_VARIABLES, renderPrompt } from './engine/prompts.js';
 import { runCommand } from './engine/commands.js';
 import { DETECT_PROMPT, parseDetectReply, sniffCommands } from './engine/detect.js';
+import { ensureMissingCommands, missingCommandRefs, preflightForRun } from './engine/preflight.js';
 import { OneShotClient } from './droid/oneshot.js';
 import { isRepo } from './engine/git.js';
 import * as worktreeLib from './engine/worktree.js';
@@ -396,16 +397,51 @@ export function registerIpc(ctx: AppContext): void {
 
   // ── runs ──────────────────────────────────────────────────────────────────
 
-  handle(IPC.runsStart, (input: StartRunInput) => {
-    const project = projectOf(input.projectId);
+  handle(IPC.runsStart, async (input: StartRunInput) => {
+    let project = projectOf(input.projectId);
     if (!project) return startError('project', 'project not found');
     const pipeline = ctx.pipelines.get(input.pipelineId, ctx.pipelineScope(input.projectId));
     if (!pipeline) return startError('pipeline', 'pipeline not found');
     if (!input.request.trim()) return startError('request', 'a run needs a request');
     const agents = ctx.rosterFor(input.projectId);
-    // Blocking errors are surfaced before a run starts, not discovered mid-phase.
-    const issues = validatePipeline(pipeline, agents, ctx.commandNames(input.projectId)).filter(
-      (i) => i.level === 'error',
+
+    // Missing project commands are a deterministic fail mid-run. Fill them from
+    // manifests (free), then the default CLI, before refusing to start.
+    const missing = missingCommandRefs(pipeline, project);
+    if (missing.length) {
+      const projectPath = project.path;
+      const ensured = await ensureMissingCommands(project, missing, {
+        useAgent: true,
+        detectWithAgent: async () => {
+          const settings = ctx.settings.get();
+          const vendor = settings.defaultCli;
+          const cli = settings.clis[vendor];
+          const client = new OneShotClient({
+            vendor,
+            cliPath: cli.path,
+            extraArgs: cli.extraArgs,
+            cwd: projectPath,
+            autonomy: 'low',
+            model: vendor === 'droid' ? settings.defaultModel : 'inherit',
+            reasoningEffort: vendor === 'droid' ? settings.defaultReasoningEffort : 'off',
+          });
+          const turn = await client.send(DETECT_PROMPT, 300_000);
+          return parseDetectReply(turn.text);
+        },
+        save: (next) => {
+          const result = ctx.projects.save(next);
+          if (!result.ok) return next;
+          notifySettings();
+          return ctx.projects.get(next.id) ?? next;
+        },
+      });
+      project = ensured.project;
+    }
+
+    const issues = preflightForRun(
+      pipeline,
+      agents,
+      project.commands.map((c) => c.name),
     );
     if (issues.length) return { ok: false, issues };
     const runId = ctx.registry.start({ project, pipeline, agents, request: input.request });

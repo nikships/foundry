@@ -7,11 +7,6 @@ import { CliIcon } from './BrandIcon.js';
 
 const KIND_COLOR: Record<string, string> = { code: 'var(--blue)', engineer: 'var(--amber)' };
 
-/** Phase objects are mutated in place; the parent re-renders on its own draft updates. */
-function patchPhase(phase: PhaseDef, patch: Record<string, unknown>): void {
-  Object.assign(phase, patch);
-}
-
 export default function PhaseEditor({
   phase,
   index,
@@ -19,6 +14,7 @@ export default function PhaseEditor({
   phases,
   agents,
   commands,
+  onChange,
   onToggle,
   onMove,
   onRemove,
@@ -29,6 +25,7 @@ export default function PhaseEditor({
   phases: PhaseDef[];
   agents: AgentDef[];
   commands: string[];
+  onChange: (phase: PhaseDef) => void;
   onToggle: () => void;
   onMove: (delta: number) => void;
   onRemove: () => void;
@@ -47,23 +44,29 @@ export default function PhaseEditor({
   const earlier = useMemo(() => phases.slice(0, index).map((p) => p.name), [phases, index]);
   const usesArgv = phase.kind === 'code' && !!phase.command && 'argv' in phase.command;
 
+  const patch = (next: Partial<PhaseDef>): void => onChange({ ...phase, ...next });
+
   const toggleGate = (id: string): void => {
     const current = phase.gates ?? [];
-    patchPhase(phase, {
+    patch({
       gates: current.includes(id) ? current.filter((g) => g !== id) : [...current, id],
     });
   };
 
   const toggleInput = (name: string): void => {
     const prompt = phase.prompt ?? { template: 'user' as const, inputs: [] as string[] };
-    if (!phase.prompt) patchPhase(phase, { prompt });
     const current = prompt.inputs ?? [];
-    prompt.inputs = current.includes(name) ? current.filter((i) => i !== name) : [...current, name];
+    patch({
+      prompt: {
+        ...prompt,
+        inputs: current.includes(name) ? current.filter((i) => i !== name) : [...current, name],
+      },
+    });
   };
 
   const setCommandMode = (mode: 'ref' | 'argv'): void => {
     if (phase.kind !== 'code') return;
-    patchPhase(phase, {
+    patch({
       command: mode === 'ref' ? { ref: commands[0] ?? '' } : { argv: ['echo', 'hello'] },
     });
   };
@@ -133,9 +136,7 @@ export default function PhaseEditor({
                 <input
                   className="input"
                   value={phase.name}
-                  onChange={(e) => {
-                    phase.name = e.target.value;
-                  }}
+                  onChange={(e) => patch({ name: e.target.value })}
                 />
                 <span className="hint">Other phases refer to this one by name.</span>
               </div>
@@ -145,7 +146,7 @@ export default function PhaseEditor({
                   <select
                     className="select"
                     value={phase.agent ?? ''}
-                    onChange={(e) => patchPhase(phase, { agent: e.target.value })}
+                    onChange={(e) => patch({ agent: e.target.value })}
                   >
                     {agents.map((a) => (
                       <option key={a.name} value={a.name}>
@@ -162,9 +163,7 @@ export default function PhaseEditor({
                 className="input"
                 value={phase.description}
                 placeholder="What this phase is for, in one line."
-                onChange={(e) => {
-                  phase.description = e.target.value;
-                }}
+                onChange={(e) => patch({ description: e.target.value })}
               />
               <span className="hint">
                 Shown in the run view. A phase nobody can explain is a phase nobody should run.
@@ -199,19 +198,23 @@ export default function PhaseEditor({
                 <div className="field">
                   <label>Gates</label>
                   <div className="gates">
-                    {gates.map((gate) => (
-                      <label key={gate.id} className="gate">
-                        <input
-                          type="checkbox"
-                          checked={phase.gates?.includes(gate.id) ?? false}
-                          onChange={() => toggleGate(gate.id)}
-                        />
-                        <span>
-                          <code>{gate.id}</code>
-                          <em className="faint">{gate.description}</em>
-                        </span>
-                      </label>
-                    ))}
+                    {gates
+                      // command_passes needs a configured argv the editor cannot
+                      // yet set, so offering it only produces a save-blocking error.
+                      .filter((gate) => gate.id !== 'command_passes')
+                      .map((gate) => (
+                        <label key={gate.id} className="gate">
+                          <input
+                            type="checkbox"
+                            checked={phase.gates?.includes(gate.id) ?? false}
+                            onChange={() => toggleGate(gate.id)}
+                          />
+                          <span>
+                            <code>{gate.id}</code>
+                            <em className="faint">{gate.description}</em>
+                          </span>
+                        </label>
+                      ))}
                   </div>
                   <span className="hint">
                     Gates produce evidence. A failed gate is sent back to the agent as a correction.
@@ -237,24 +240,31 @@ export default function PhaseEditor({
                   </button>
                 </div>
                 {!usesArgv ? (
-                  <select
-                    className="select"
-                    value={commandRef}
-                    onChange={(e) => patchPhase(phase, { command: { ref: e.target.value } })}
-                  >
-                    {commands.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
+                  commands.length ? (
+                    <select
+                      className="select"
+                      value={commandRef}
+                      onChange={(e) => patch({ command: { ref: e.target.value } })}
+                    >
+                      {commands.map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="hint empty-cmds">
+                      No project commands yet. Switch to Literal, or detect them in Settings →
+                      Project.
+                    </p>
+                  )
                 ) : (
                   <input
                     className="input mono"
                     value={argvText}
                     placeholder="npm test"
                     onChange={(e) =>
-                      patchPhase(phase, {
+                      patch({
                         command: { argv: e.target.value.split(/\s+/).filter(Boolean) },
                       })
                     }
@@ -262,7 +272,7 @@ export default function PhaseEditor({
                 )}
                 <span className="hint">
                   {!usesArgv
-                    ? 'Runs the command configured for the project, so the same pipeline works across repos.'
+                    ? 'Runs the command configured for the project, so the same pipeline works across repos. Detect or ask an agent from Settings → Project.'
                     : 'Runs exactly these arguments, with no shell.'}
                 </span>
               </div>
@@ -274,7 +284,7 @@ export default function PhaseEditor({
                   className="textarea"
                   value={phase.question ?? ''}
                   rows={2}
-                  onChange={(e) => patchPhase(phase, { question: e.target.value })}
+                  onChange={(e) => patch({ question: e.target.value })}
                 />
                 <span className="hint">The run pauses here until someone answers.</span>
               </div>
@@ -285,7 +295,7 @@ export default function PhaseEditor({
                 <select
                   className="select"
                   value={phase.feedbackTo ?? ''}
-                  onChange={(e) => patchPhase(phase, { feedbackTo: e.target.value || undefined })}
+                  onChange={(e) => patch({ feedbackTo: e.target.value || undefined })}
                 >
                   <option value="">Nowhere: a failure ends the run</option>
                   {earlier.map((name) => (
@@ -307,7 +317,7 @@ export default function PhaseEditor({
                     min={1}
                     max={5}
                     value={phase.feedbackRetries ?? 1}
-                    onChange={(e) => patchPhase(phase, { feedbackRetries: Number(e.target.value) })}
+                    onChange={(e) => patch({ feedbackRetries: Number(e.target.value) })}
                   />
                   <span className="hint">
                     After this many attempts the run stops rather than looping.
@@ -319,7 +329,7 @@ export default function PhaseEditor({
               <input
                 type="checkbox"
                 checked={!!phase.optional}
-                onChange={(e) => patchPhase(phase, { optional: e.target.checked })}
+                onChange={(e) => patch({ optional: e.target.checked })}
               />
               <span>
                 Optional
@@ -358,6 +368,7 @@ export default function PhaseEditor({
         .modes { display: flex; gap: var(--s1); padding: 3px; border-radius: var(--r-sm); background: var(--bg-input); border: 1px solid var(--line); width: fit-content; margin-bottom: var(--s2); }
         .mode { padding: var(--s1) var(--s3); border: none; border-radius: 5px; background: transparent; color: var(--text-faint); font: inherit; font-size: var(--text-xs); cursor: default; }
         .mode.on { background: var(--bg-active); color: var(--text); }
+        .empty-cmds { margin: var(--s2) 0; padding: var(--s2) var(--s3); border: 1px dashed var(--line); border-radius: var(--r-sm); }
         .opt-line { display: flex; gap: var(--s2); font-size: var(--text-sm); margin-top: var(--s3); }
         .opt-line em { display: block; font-style: normal; font-size: var(--text-xs); margin-top: 1px; }
       `}</style>

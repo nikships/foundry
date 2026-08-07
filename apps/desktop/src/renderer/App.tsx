@@ -86,7 +86,16 @@ function AppInner(): React.JSX.Element {
       />
     );
   } else if (view === 'runs') {
-    main = <RunsScreen onOpen={openRun} />;
+    main = (
+      <RunsScreen
+        onOpen={openRun}
+        onAddProject={() => void addProject()}
+        onOpenSettings={(pane) => {
+          setSettingsPane(pane);
+          go('settings');
+        }}
+      />
+    );
   } else if (view === 'inspector') {
     main = <InspectorScreen pinnedRunId={inspectorRunId} />;
   } else if (view === 'pipelines') {

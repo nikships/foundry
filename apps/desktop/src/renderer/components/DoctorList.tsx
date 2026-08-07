@@ -4,10 +4,25 @@ import { api } from '../api.js';
 export default function DoctorList({
   checks,
   onRecheck,
+  onOpenSettings,
 }: {
   checks: DoctorCheck[];
   onRecheck: () => void;
+  onOpenSettings?: (pane: string) => void;
 }): React.JSX.Element {
+  const openFix = (check: DoctorCheck): void => {
+    if (!check.fix) return;
+    if (check.fix.kind === 'open-url') {
+      void api.app.openExternal(check.fix.value);
+      return;
+    }
+    if (check.fix.kind === 'open-settings') {
+      // project-commands is a deep link into the Project pane.
+      const pane = check.fix.value === 'project-commands' ? 'project' : check.fix.value;
+      onOpenSettings?.(pane);
+    }
+  };
+
   return (
     <>
       <section className="doctor">
@@ -25,12 +40,9 @@ export default function DoctorList({
                 <strong>{check.label}</strong>
                 <em className="faint">{check.detail}</em>
               </span>
-              {check.fix?.kind === 'open-url' && (
-                <button
-                  className="btn sm"
-                  onClick={() => void api.app.openExternal(check.fix!.value as string)}
-                >
-                  Open docs
+              {!check.ok && check.fix && (check.fix.kind === 'open-url' || onOpenSettings) && (
+                <button className="btn sm" onClick={() => openFix(check)}>
+                  {check.fix.kind === 'open-url' ? 'Open docs' : 'Fix'}
                 </button>
               )}
             </li>

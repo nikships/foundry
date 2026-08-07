@@ -16,10 +16,14 @@ export default function PipelinesScreen(): React.JSX.Element {
   const { pipelines, project, projectId, agents, refreshScoped } = useApp();
   const [selectedId, setSelectedId] = useState('');
   const [draft, setDraft] = useState<PipelineDef | null>(null);
+  // Creating keeps the draft alive while selectedId is empty; without it the
+  // "pick first pipeline" effect wipes a brand-new pipeline immediately.
+  const [creating, setCreating] = useState(false);
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
   const [openPhase, setOpenPhase] = useState(0);
   const [saving, setSaving] = useState(false);
   const [dryRun, setDryRun] = useState<DryRunPrompt[] | null>(null);
+  const [dryRunError, setDryRunError] = useState('');
 
   const selected = useMemo(
     () => pipelines.find((p) => p.id === selectedId) ?? null,
@@ -34,13 +38,15 @@ export default function PipelinesScreen(): React.JSX.Element {
   const warnings = useMemo(() => issues.filter((i) => i.level === 'warning'), [issues]);
 
   useEffect(() => {
+    if (creating) return;
     if (!pipelines.some((p) => p.id === selectedId)) setSelectedId(pipelines[0]?.id ?? '');
-  }, [pipelines, selectedId]);
+  }, [pipelines, selectedId, creating]);
 
   useEffect(() => {
+    if (creating) return;
     setDraft(selected ? plain({ ...selected }) : null);
     setOpenPhase(0);
-  }, [selected]);
+  }, [selected, creating]);
 
   useEffect(() => {
     if (!draft) {
@@ -67,28 +73,32 @@ export default function PipelinesScreen(): React.JSX.Element {
   };
   const setAcceptancePhase = (phase: string): void => {
     if (!draft?.acceptance || !('phase' in draft.acceptance)) return;
-    (draft.acceptance as { phase: string }).phase = phase;
-    setDraft({ ...draft });
+    setDraft({ ...draft, acceptance: { ...draft.acceptance, phase } });
   };
   const setAcceptanceFlag = (flag: 'passed' | 'approved'): void => {
     if (draft?.acceptance?.kind !== 'phase_flag') return;
-    (draft.acceptance as { flag: string }).flag = flag;
-    setDraft({ ...draft });
+    setDraft({ ...draft, acceptance: { ...draft.acceptance, flag } });
   };
-  const revert = (): void => setDraft(selected ? plain({ ...selected }) : null);
-  const save = async (): Promise<void> => {
-    if (!draft || saving) return;
+  const revert = (): void => {
+    setCreating(false);
+    setDraft(selected ? plain({ ...selected }) : null);
+  };
+  const save = async (): Promise<boolean> => {
+    if (!draft || saving) return false;
     setSaving(true);
     try {
       const result = await api.pipelines.save(draft, projectId || undefined);
       if (result.ok) {
+        setCreating(false);
         setSelectedId(draft.id);
         await refreshScoped();
-      } else {
-        setIssues(result.issues);
+        return true;
       }
+      setIssues(result.issues);
+      return false;
     } catch (e) {
       setIssues([{ level: 'error', where: 'save', message: (e as Error).message }]);
+      return false;
     } finally {
       setSaving(false);
     }
@@ -103,11 +113,18 @@ export default function PipelinesScreen(): React.JSX.Element {
         ...base,
         kind,
         agent: agents[0]?.name ?? '',
-        envelope: 'build',
+        envelope: agents[0]?.envelope ?? 'build',
         prompt: { template: 'user', inputs: ['request'] },
       } as PhaseDef;
     } else if (kind === 'code') {
-      phase = { ...base, kind, command: { ref: commandNames[0] ?? 'test' } } as PhaseDef;
+      // Prefer a real project command; fall back to a literal the user must edit
+      // rather than inventing a `{ref:'test'}` that cannot resolve.
+      phase = {
+        ...base,
+        kind,
+        description: 'Run a project command and fail the phase if it exits non-zero.',
+        command: commandNames[0] ? { ref: commandNames[0] } : { argv: ['echo', 'configure-me'] },
+      } as PhaseDef;
     } else {
       phase = { ...base, kind, question: 'Approve this?' } as PhaseDef;
     }
@@ -131,6 +148,13 @@ export default function PipelinesScreen(): React.JSX.Element {
     setDraft({ ...draft, phases });
     setOpenPhase(Math.max(0, index - 1));
   };
+  const updatePhase = (index: number, phase: PhaseDef): void => {
+    if (!draft) return;
+    setDraft({
+      ...draft,
+      phases: draft.phases.map((p, i) => (i === index ? phase : p)),
+    });
+  };
   const createPipeline = async (): Promise<void> => {
     const fresh: PipelineDef = {
       id: `pipeline-${Date.now().toString(36)}`,
@@ -139,28 +163,65 @@ export default function PipelinesScreen(): React.JSX.Element {
       acceptance: { kind: 'all_phases_pass' },
       phases: [],
     };
-    setDraft(fresh);
+    setCreating(true);
     setSelectedId('');
+    setDraft(fresh);
+    setOpenPhase(0);
     setIssues([]);
+  };
+  const selectPipeline = (id: string): void => {
+    if (creating && dirty) {
+      const discard = window.confirm('Discard the new pipeline that has not been saved?');
+      if (!discard) return;
+    }
+    setCreating(false);
+    setSelectedId(id);
   };
   const duplicate = async (): Promise<void> => {
     if (!selected) return;
     const copy = await api.pipelines.duplicate(selected.id, projectId || undefined);
     await refreshScoped();
-    if (copy) setSelectedId(copy.id);
+    if (copy) {
+      setCreating(false);
+      setSelectedId(copy.id);
+    }
   };
   const remove = async (): Promise<void> => {
     if (!selected) return;
+    if (!window.confirm(`Delete pipeline "${selected.name}"? This cannot be undone.`)) return;
     await api.pipelines.remove(selected.id, projectId || undefined);
     await refreshScoped();
   };
   const preview = async (): Promise<void> => {
     if (!draft || !projectId) return;
-    if (dirty) await save();
-    setDryRun(
-      await api.pipelines.dryRun(draft.id, projectId, 'Add rate limiting to the public API'),
+    setDryRunError('');
+    if (dirty) {
+      const ok = await save();
+      if (!ok) {
+        setDryRunError('Fix save errors before dry-running.');
+        return;
+      }
+    }
+    const prompts = await api.pipelines.dryRun(
+      draft.id,
+      projectId,
+      'Add rate limiting to the public API',
     );
+    if (!prompts.length) {
+      setDryRunError('Dry run returned no agent prompts. Add an agent phase first.');
+      return;
+    }
+    setDryRun(prompts);
   };
+
+  const readyCopy =
+    errors.length === 0
+      ? warnings.length
+        ? `Ready to save, with ${warnings.length} warning${warnings.length === 1 ? '' : 's'}.`
+        : projectId
+          ? 'This pipeline is ready to run.'
+          : 'This pipeline is ready to save. Select a project to run it.'
+      : null;
 
   return (
     <>
@@ -173,11 +234,17 @@ export default function PipelinesScreen(): React.JSX.Element {
             </button>
           </header>
           <div className="scroll items">
+            {creating && draft && (
+              <button className="item active" type="button">
+                <span className="name">{draft.name || 'New pipeline'}</span>
+                <span className="faint count">unsaved</span>
+              </button>
+            )}
             {pipelines.map((p) => (
               <button
                 key={p.id}
-                className={`item ${p.id === selectedId ? 'active' : ''}`}
-                onClick={() => setSelectedId(p.id)}
+                className={`item ${!creating && p.id === selectedId ? 'active' : ''}`}
+                onClick={() => selectPipeline(p.id)}
               >
                 <span className="name">{p.name}</span>
                 <span className="faint count">{p.phases.length} phases</span>
@@ -201,15 +268,20 @@ export default function PipelinesScreen(): React.JSX.Element {
                   onChange={(e) => setDraft({ ...draft, description: e.target.value })}
                 />
               </div>
-              <button className="btn sm" disabled={!projectId} onClick={() => void preview()}>
+              <button
+                className="btn sm"
+                disabled={!projectId}
+                title={!projectId ? 'Select a project first' : undefined}
+                onClick={() => void preview()}
+              >
                 Dry run
               </button>
-              {selected && (
+              {selected && !creating && (
                 <button className="btn sm" onClick={() => void duplicate()}>
                   Duplicate
                 </button>
               )}
-              {selected && !selected.builtin && (
+              {selected && !selected.builtin && !creating && (
                 <button className="btn sm danger" onClick={() => void remove()}>
                   Delete
                 </button>
@@ -226,6 +298,7 @@ export default function PipelinesScreen(): React.JSX.Element {
                   phases={draft.phases}
                   agents={agents}
                   commands={commandNames}
+                  onChange={(next) => updatePhase(i, next)}
                   onToggle={() => setOpenPhase(openPhase === i ? -1 : i)}
                   onMove={(d) => movePhase(i, d)}
                   onRemove={() => removePhase(i)}
@@ -306,9 +379,8 @@ export default function PipelinesScreen(): React.JSX.Element {
         {draft && (
           <aside className="rail">
             <h3>Validation</h3>
-            {!issues.length ? (
-              <p className="ok">This pipeline is ready to run.</p>
-            ) : (
+            {readyCopy && <p className="ok">{readyCopy}</p>}
+            {issues.length > 0 && (
               <ul className="issues">
                 {[...errors, ...warnings].map((issue, i) => (
                   <li key={i} className={issue.level}>
@@ -320,6 +392,7 @@ export default function PipelinesScreen(): React.JSX.Element {
                 ))}
               </ul>
             )}
+            {dryRunError && <p className="dry-err">{dryRunError}</p>}
             <footer className="rail-foot">
               <button
                 className="btn primary"
@@ -328,9 +401,9 @@ export default function PipelinesScreen(): React.JSX.Element {
               >
                 {errors.length ? 'Fix errors to save' : 'Save pipeline'}
               </button>
-              {dirty && selected && (
+              {dirty && (selected || creating) && (
                 <button className="btn" onClick={revert}>
-                  Revert
+                  {creating ? 'Discard' : 'Revert'}
                 </button>
               )}
             </footer>
@@ -367,6 +440,7 @@ export default function PipelinesScreen(): React.JSX.Element {
         .opt em { display: block; font-style: normal; font-size: var(--text-xs); margin-top: 2px; }
         .rail { display: flex; flex-direction: column; min-height: 0; padding: calc(var(--titlebar-h) + var(--s2)) var(--s4) var(--s4); border-left: 1px solid var(--line); background: var(--bg-panel); }
         .ok { font-size: var(--text-sm); color: var(--green); }
+        .dry-err { margin-top: var(--s3); font-size: var(--text-xs); color: var(--red); }
         .issues { flex: 1; overflow-y: auto; list-style: none; display: flex; flex-direction: column; gap: var(--s2); }
         .issues li { display: flex; gap: var(--s2); font-size: var(--text-xs); line-height: var(--leading); }
         .issues .error { color: var(--red); }

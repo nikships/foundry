@@ -15,7 +15,7 @@ import ModelPicker from '../components/ModelPicker.js';
 import BoundaryEditor from '../components/BoundaryEditor.js';
 import PromptPreview from '../components/PromptPreview.js';
 
-const ENVELOPE_KINDS = ['plan', 'build', 'review', 'scout', 'document', 'custom'] as const;
+const ENVELOPE_KINDS = ['plan', 'build', 'review', 'scout', 'document', 'generic'] as const;
 const COLORS = ['#5ad2dd', '#c89bff', '#e8b64a', '#4ade80', '#ff6f67', '#6aa8ff'];
 
 export default function RosterScreen(): React.JSX.Element {

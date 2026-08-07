@@ -11,17 +11,23 @@ import EmptyState from '../components/EmptyState.js';
 
 export default function RunsScreen({
   onOpen,
+  onAddProject,
+  onOpenSettings,
 }: {
   onOpen: (runId: string) => void;
+  onAddProject?: () => void;
+  onOpenSettings?: (pane: string) => void;
 }): React.JSX.Element {
-  const { pipelines, project, projectId } = useApp();
+  const { pipelines, project, projectId, refreshAll } = useApp();
   const [request, setRequest] = useState('');
   const [selectedPipeline, setSelectedPipeline] = useState(
     () => localStorage.getItem('foundry.pipeline') ?? '',
   );
   const [includeArchived, setIncludeArchived] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [startNote, setStartNote] = useState('');
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
+  const [preflight, setPreflight] = useState<ValidationIssue[]>([]);
 
   const { runs, loading } = useRunList(projectId, includeArchived);
 
@@ -39,12 +45,57 @@ export default function RunsScreen({
     if (selectedPipeline) localStorage.setItem('foundry.pipeline', selectedPipeline);
   }, [selectedPipeline]);
 
-  const canStart = !!project && !!pipeline && request.trim().length > 0;
+  // Live preflight so missing commands and broken refs show before Start is hit.
+  useEffect(() => {
+    if (!pipeline) {
+      setPreflight([]);
+      return;
+    }
+    let cancelled = false;
+    void api.pipelines.validate(pipeline, projectId || undefined).then((next) => {
+      if (!cancelled) setPreflight(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [pipeline, projectId, project?.commands]);
+
+  const missingCommands = useMemo(
+    () =>
+      preflight.filter(
+        (i) =>
+          i.level === 'warning' &&
+          i.message.includes('project command') &&
+          i.message.includes('not configured'),
+      ),
+    [preflight],
+  );
+  const blockingPreflight = useMemo(
+    () => preflight.filter((i) => i.level === 'error'),
+    [preflight],
+  );
+
+  const requestOk = request.trim().length > 0;
+  const canStart = !!project && !!pipeline && requestOk && blockingPreflight.length === 0;
+  const startDisabledReason = !project
+    ? 'Add a project first'
+    : !pipeline
+      ? 'No pipeline available'
+      : !requestOk
+        ? 'Describe what to build'
+        : blockingPreflight.length
+          ? 'Fix pipeline errors first'
+          : '';
 
   const start = async (): Promise<void> => {
     if (!canStart || starting) return;
     setStarting(true);
     setIssues([]);
+    setStartNote(
+      missingCommands.length
+        ? 'Checking project commands (detecting from the repo if needed)…'
+        : '',
+    );
     try {
       const result = await api.runs.start({
         projectId,
@@ -53,10 +104,18 @@ export default function RunsScreen({
       });
       if (!result.ok) {
         setIssues(result.issues);
+        setStartNote('');
+        // Project commands may have been partially filled; refresh so Settings matches.
+        await refreshAll();
         return;
       }
       setRequest('');
+      setStartNote('');
+      await refreshAll();
       if (result.runId) onOpen(result.runId);
+    } catch (e) {
+      setIssues([{ level: 'error', where: 'start', message: (e as Error).message }]);
+      setStartNote('');
     } finally {
       setStarting(false);
     }
@@ -68,6 +127,8 @@ export default function RunsScreen({
       void start();
     }
   };
+
+  const openProjectCommands = (): void => onOpenSettings?.('project');
 
   return (
     <>
@@ -110,13 +171,42 @@ export default function RunsScreen({
               <button
                 className="btn primary"
                 disabled={!canStart || starting}
+                title={startDisabledReason || undefined}
                 onClick={() => void start()}
               >
                 {starting ? 'Starting…' : 'Start run'}
                 {canStart && !starting && <kbd>⌘↵</kbd>}
               </button>
             </div>
+            {!canStart && startDisabledReason && (
+              <p className="hint-line faint">{startDisabledReason}</p>
+            )}
             {pipeline && <p className="desc faint">{pipeline.description}</p>}
+            {missingCommands.length > 0 && (
+              <div className="notice">
+                <p>
+                  This pipeline needs project command
+                  {missingCommands.length === 1 ? '' : 's'} that are not configured yet
+                  {missingCommands.length === 1
+                    ? ` (${missingCommands[0]!.message.match(/"([^"]+)"/)?.[1] ?? 'test'})`
+                    : ''}
+                  . Starting will detect them from the repo (and ask an agent if needed).
+                </p>
+                <button className="btn sm" onClick={openProjectCommands}>
+                  Configure commands
+                </button>
+              </div>
+            )}
+            {blockingPreflight.length > 0 && (
+              <ul className="issues warn">
+                {blockingPreflight.map((issue, i) => (
+                  <li key={i}>
+                    <strong>{issue.where}</strong> {issue.message}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {startNote && <p className="hint-line faint">{startNote}</p>}
             {issues.length > 0 && (
               <ul className="issues">
                 {issues.map((issue, i) => (
@@ -126,6 +216,11 @@ export default function RunsScreen({
                 ))}
               </ul>
             )}
+            {issues.some((i) => i.message.includes('project command')) && (
+              <button className="btn sm fix" onClick={openProjectCommands}>
+                Open project commands
+              </button>
+            )}
           </section>
         ) : null}
         {!project ? (
@@ -133,14 +228,20 @@ export default function RunsScreen({
             art="scenes/empty-state.png"
             title="No project yet"
             body="Foundry runs against a git repository. Add one to get started."
-          />
+          >
+            {onAddProject && (
+              <button className="btn primary" onClick={onAddProject}>
+                Add a project…
+              </button>
+            )}
+          </EmptyState>
         ) : (
           <div className="list scroll">
             {!loading && runs.length === 0 && (
               <EmptyState
                 art="scenes/empty-state.png"
                 title="Nothing has run yet"
-                body="Describe a change above and pick a pipeline. Every run is isolated in its own git worktree."
+                body="Describe a change above and pick a pipeline. Every run is isolated in its own git worktree. Missing test commands are detected automatically when you start."
               />
             )}
             {runs.map((run) => (
@@ -180,7 +281,12 @@ export default function RunsScreen({
         .grow { flex: 1; }
         .controls kbd { font-family: var(--font); font-size: var(--text-xs); opacity: 0.65; margin-left: var(--s2); }
         .desc { margin-top: var(--s3); font-size: var(--text-sm); line-height: var(--leading); }
+        .hint-line { margin-top: var(--s2); font-size: var(--text-xs); }
+        .notice { margin-top: var(--s3); padding: var(--s3); border-radius: var(--r-sm); background: var(--amber-dim); color: var(--amber); font-size: var(--text-sm); display: flex; align-items: center; gap: var(--s3); justify-content: space-between; }
+        .notice p { margin: 0; line-height: var(--leading); }
         .issues { margin-top: var(--s3); padding: var(--s3); border-radius: var(--r-sm); background: var(--red-dim); color: var(--red); font-size: var(--text-sm); list-style: none; }
+        .issues.warn { background: var(--amber-dim); color: var(--amber); }
+        .fix { margin-top: var(--s2); }
         .list { flex: 1; min-height: 0; padding: 0 var(--s6) var(--s8); display: flex; flex-direction: column; gap: var(--s2); overflow-y: auto; }
         .run { display: flex; align-items: center; gap: var(--s4); width: 100%; padding: var(--s3) var(--s4); border: 1px solid var(--line); border-radius: var(--r); background: var(--bg-panel); color: inherit; font: inherit; text-align: left; cursor: default; transition: background var(--fast) var(--ease), border-color var(--fast) var(--ease); }
         .run:hover { background: var(--bg-hover); border-color: var(--line-strong); }

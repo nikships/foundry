@@ -1,12 +1,20 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseDetectReply, sniffCommands } from '../src/main/engine/detect.js';
+import {
+  mergeCommandsFillMissing,
+  parseDetectReply,
+  sniffCommands,
+} from '../src/main/engine/detect.js';
 
 function repo(files: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), 'foundry-detect-'));
-  for (const [name, body] of Object.entries(files)) writeFileSync(join(dir, name), body);
+  for (const [name, body] of Object.entries(files)) {
+    const full = join(dir, name);
+    mkdirSync(dirname(full), { recursive: true });
+    writeFileSync(full, body);
+  }
   return dir;
 }
 
@@ -84,7 +92,47 @@ describe('sniffCommands: other ecosystems', () => {
       './...',
     ]);
     expect(await argvFor(repo({ 'build.gradle': '' }), 'test')).toEqual(['gradle', 'test']);
-    expect(await argvFor(repo({ 'Package.swift': '' }), 'test')).toEqual(['swift', 'test']);
+    // A bare Package.swift with no testTarget uses build as the test gate.
+    expect(await argvFor(repo({ 'Package.swift': 'import PackageDescription\n' }), 'test')).toEqual(
+      ['swift', 'build'],
+    );
+    expect(
+      await argvFor(
+        repo({
+          'Package.swift':
+            'import PackageDescription\nlet package = Package(name:"x", targets:[.testTarget(name:"t")])\n',
+        }),
+        'test',
+      ),
+    ).toEqual(['swift', 'test']);
+  });
+
+  it('finds a nested Swift package one directory down (mcp-panel shape)', async () => {
+    const dir = repo({
+      'MCPServerManager/Package.swift':
+        'import PackageDescription\nlet package = Package(name:"App", targets:[.executableTarget(name:"App")])\n',
+      'MCPServerManager.xcodeproj/project.pbxproj': '',
+      '.swiftlint.yml': 'disabled_rules: []\n',
+    });
+    const found = await sniffCommands(dir);
+    const byName = Object.fromEntries(found.map((c) => [c.name, c]));
+    expect(byName.test?.argv).toEqual(['swift', 'build', '--package-path', 'MCPServerManager']);
+    expect(byName.build?.argv[0]).toBe('swift');
+    expect(byName.lint?.argv).toEqual(['swiftlint', 'lint', '--strict']);
+  });
+
+  it('merges fill-missing without clobbering existing names', () => {
+    const next = mergeCommandsFillMissing(
+      [{ name: 'test', argv: ['custom'] }],
+      [
+        { name: 'test', argv: ['npm', 'test'], source: 'package.json' },
+        { name: 'lint', argv: ['npm', 'run', 'lint'], source: 'package.json' },
+      ],
+    );
+    expect(next).toEqual([
+      { name: 'test', argv: ['custom'] },
+      { name: 'lint', argv: ['npm', 'run', 'lint'] },
+    ]);
   });
 
   it('prefers the gradle wrapper over a bare gradle on PATH', async () => {
