@@ -120,6 +120,13 @@ export default function ProjectCommands({
                   <button
                     className="btn sm"
                     disabled={!command.argv.length || result?.running}
+                    title={
+                      !command.argv.length
+                        ? 'Enter an argv first (e.g. npm test)'
+                        : result?.running
+                          ? 'Running…'
+                          : undefined
+                    }
                     onClick={() => void tryIt(command.name, command.argv)}
                   >
                     {result?.running ? 'Running…' : 'Try it'}
@@ -148,10 +155,20 @@ export default function ProjectCommands({
             <button className="btn sm" onClick={add}>
               Add command
             </button>
-            <button className="btn sm" disabled={detecting} onClick={() => void detect(false)}>
+            <button
+              className="btn sm"
+              disabled={detecting}
+              title={detecting ? 'Detection in progress…' : undefined}
+              onClick={() => void detect(false)}
+            >
               {detecting ? 'Detecting…' : 'Detect from repo'}
             </button>
-            <button className="btn sm" disabled={detecting} onClick={() => void detect(true)}>
+            <button
+              className="btn sm"
+              disabled={detecting}
+              title={detecting ? 'Detection in progress…' : undefined}
+              onClick={() => void detect(true)}
+            >
               {detecting ? 'Reading the repo…' : 'Ask AI to find commands'}
             </button>
           </div>
