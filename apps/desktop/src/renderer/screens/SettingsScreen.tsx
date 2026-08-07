@@ -194,17 +194,42 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
   const loadOrphans = async (): Promise<void> =>
     setOrphans(await api.maintenance.orphanWorktrees());
   const removeOrphan = async (orphan: OrphanWorktree): Promise<void> => {
-    const result = await api.maintenance.removeWorktree(orphan.projectId, orphan.path);
-    setMaintenanceNote(result.detail);
-    await loadOrphans();
+    if (
+      !window.confirm(
+        `Remove leftover worktree at ${orphan.path}? Its branch and any uncommitted work in it are deleted.`,
+      )
+    ) {
+      return;
+    }
+    try {
+      const result = await api.maintenance.removeWorktree(orphan.projectId, orphan.path);
+      setMaintenanceNote(result.detail);
+      if (result.ok === false) setErrors([result.detail]);
+      else setErrors([]);
+      await loadOrphans();
+    } catch (e) {
+      setErrors([(e as Error).message]);
+    }
   };
   const applyRetention = async (): Promise<void> => {
-    const report = await api.maintenance.applyRetention();
-    setMaintenanceNote(`Deleted ${report.runsDeleted} run${report.runsDeleted === 1 ? '' : 's'}.`);
+    try {
+      const report = await api.maintenance.applyRetention();
+      setMaintenanceNote(
+        `Deleted ${report.runsDeleted} run${report.runsDeleted === 1 ? '' : 's'}.`,
+      );
+      setErrors([]);
+    } catch (e) {
+      setErrors([(e as Error).message]);
+    }
   };
   const compact = async (): Promise<void> => {
-    await api.maintenance.compact();
-    setMaintenanceNote('Trace databases compacted.');
+    try {
+      await api.maintenance.compact();
+      setMaintenanceNote('Trace databases compacted.');
+      setErrors([]);
+    } catch (e) {
+      setErrors([(e as Error).message]);
+    }
   };
   useEffect(() => {
     if (pane === 'maintenance') void loadOrphans();

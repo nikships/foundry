@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { DryRunPrompt } from '@shared/types.js';
 import { modelLabel } from '../format.js';
 import AgentAvatar from './AgentAvatar.js';
@@ -13,19 +13,35 @@ export default function DryRunSheet({
   const [selected, setSelected] = useState(0);
   const current = prompts[selected];
 
+  // Match InterruptSheet: Esc dismisses a read-only preview without a decision to preserve.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
     <>
       <div className="scrim" onClick={(e) => e.target === e.currentTarget && onClose()}>
-        <section className="sheet card">
+        <section
+          className="sheet card"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="dry-run-title"
+        >
           <header className="spread">
             <div>
-              <h2>Dry run</h2>
+              <h2 id="dry-run-title">Dry run</h2>
               <p className="faint sub">
                 Exactly what each agent would receive, rendered against a sample request. Nothing
                 was sent and nothing was spent.
               </p>
             </div>
-            <button className="btn sm ghost" onClick={onClose}>
+            <button className="btn sm ghost" onClick={onClose} title="Close (Esc)">
               Close
             </button>
           </header>
@@ -53,6 +69,7 @@ export default function DryRunSheet({
               </div>
             )}
           </div>
+          <p className="esc-hint faint">Esc to close</p>
         </section>
       </div>
       <style>{`
@@ -73,6 +90,7 @@ export default function DryRunSheet({
         .detail h3:first-child { margin-top: 0; }
         .block { padding: var(--s3); border-radius: var(--r-sm); background: var(--bg-void); font-family: var(--font-mono); font-size: var(--text-xs); line-height: var(--leading); white-space: pre-wrap; word-break: break-word; color: var(--text-dim); }
         .none { font-size: var(--text-sm); padding: var(--s3); }
+        .esc-hint { margin-top: var(--s3); font-size: var(--text-xs); text-align: right; }
         .scroll { overflow-y: auto; }
         .card { background: var(--bg-panel); border: 1px solid var(--line); border-radius: var(--r-lg); }
       `}</style>
