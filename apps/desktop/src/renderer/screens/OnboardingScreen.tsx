@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import type { DoctorCheck } from '@shared/types.js';
+import { useEffect, useMemo, useState } from 'react';
+import type { CliDescriptor, DoctorCheck } from '@shared/types.js';
 import { api } from '../api.js';
 import { useApp } from '../stores/app.js';
 import DoctorList from '../components/DoctorList.js';
@@ -8,35 +8,72 @@ export default function OnboardingScreen({ onDone }: { onDone: () => void }): Re
   const { projects, settings, refreshAll } = useApp();
   const [step, setStep] = useState(0);
   const [checks, setChecks] = useState<DoctorCheck[]>([]);
+  const [clis, setClis] = useState<CliDescriptor[]>([]);
   const [hero, setHero] = useState('');
   const [name, setName] = useState('');
   const [checking, setChecking] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
 
   // The doctor decides what blocks: with five CLIs, only the default one and git
   // do, and a hardcoded id here would have gone stale the moment a CLI was added.
-  const blocking = checks.filter((c) => !c.ok && c.blocking);
+  const blocking = useMemo(() => checks.filter((c) => !c.ok && c.blocking), [checks]);
+  const defaultCli = settings?.defaultCli ?? 'droid';
+  const defaultCliLabel = clis.find((c) => c.id === defaultCli)?.label ?? defaultCli;
+  // Continue must not walk past a machine that cannot run a phase: that only
+  // postpones the failure until the first Start click.
+  const canContinue = !checking && blocking.length === 0;
+  const continueHint = checking
+    ? 'Still checking the environment…'
+    : blocking.length
+      ? `Fix ${blocking.length === 1 ? 'the blocking check' : `${blocking.length} blocking checks`} above, then Re-check.`
+      : '';
 
   useEffect(() => {
     void api.app.assetUrl('scenes/onboarding-hero.png').then(setHero);
     setName(settings?.engineerName ?? '');
-    void api.doctor.run().then((c) => {
-      setChecks(c);
+    void Promise.all([api.doctor.run(), api.catalog.clis()]).then(([nextChecks, nextClis]) => {
+      setChecks(nextChecks);
+      setClis(nextClis);
       setChecking(false);
     });
   }, [settings?.engineerName]);
 
   const recheck = async (): Promise<void> => {
     setChecking(true);
-    setChecks(await api.doctor.run());
-    setChecking(false);
+    setError('');
+    try {
+      setChecks(await api.doctor.run());
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setChecking(false);
+    }
   };
   const addProject = async (): Promise<void> => {
-    await api.projects.add();
-    await refreshAll();
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api.projects.add();
+      await refreshAll();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
   };
   const finish = async (): Promise<void> => {
-    if (name.trim()) await api.settings.patch({ engineerName: name.trim() });
-    onDone();
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      if (name.trim()) await api.settings.patch({ engineerName: name.trim() });
+      onDone();
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(false);
+    }
   };
 
   return (
@@ -78,25 +115,41 @@ export default function OnboardingScreen({ onDone }: { onDone: () => void }): Re
             <>
               <h1>Check the environment</h1>
               <p className="lead">
-                Foundry drives Factory's droid CLI for every agent phase, and git for isolation.
-                Both need to work before a pipeline can run.
+                Foundry drives agent CLIs (droid, Claude Code, Codex, Junie, Grok) and git for
+                isolation. Your default CLI is <strong>{defaultCliLabel}</strong>: it and git must
+                both work before a pipeline can run. Other CLIs are optional until a roster agent
+                picks them.
               </p>
               <DoctorList checks={checks} onRecheck={() => void recheck()} />
               {blocking.length > 0 && (
                 <p className="warn">
-                  Fix the items above and press Re-check. Foundry can be configured now, but a run
-                  will fail until droid and git both work.
+                  {blocking.length === 1
+                    ? 'One check is blocking'
+                    : `${blocking.length} checks are blocking`}
+                  : {blocking.map((c) => c.label).join(', ')}. Fix{' '}
+                  {blocking.length === 1 ? 'it' : 'them'} and press Re-check. Continuing now would
+                  only fail on the first run.
                 </p>
               )}
+              {error && <p className="err">{error}</p>}
               <footer>
                 <button className="btn ghost" onClick={() => setStep(0)}>
                   Back
                 </button>
                 <div className="grow" />
-                <button className="btn primary" disabled={checking} onClick={() => setStep(2)}>
-                  Continue
+                <button
+                  className="btn primary"
+                  disabled={!canContinue}
+                  title={continueHint || undefined}
+                  onClick={() => {
+                    setError('');
+                    setStep(2);
+                  }}
+                >
+                  {checking ? 'Checking…' : 'Continue'}
                 </button>
               </footer>
+              {!canContinue && continueHint && <p className="hint-line faint">{continueHint}</p>}
             </>
           )}
           {step === 2 && (
@@ -104,7 +157,8 @@ export default function OnboardingScreen({ onDone }: { onDone: () => void }): Re
               <h1>Add your first project</h1>
               <p className="lead">
                 A project is a git repository. Each run gets its own worktree and branch, so your
-                checkout is never touched until you merge.
+                checkout is never touched until you merge. You can add one later from the sidebar if
+                you skip now.
               </p>
               <div className="field">
                 <label>Your name</label>
@@ -125,17 +179,18 @@ export default function OnboardingScreen({ onDone }: { onDone: () => void }): Re
                   </div>
                 </div>
               ) : (
-                <button className="btn" onClick={() => void addProject()}>
-                  Choose a repository…
+                <button className="btn" disabled={busy} onClick={() => void addProject()}>
+                  {busy ? 'Opening…' : 'Choose a repository…'}
                 </button>
               )}
+              {error && <p className="err">{error}</p>}
               <footer>
-                <button className="btn ghost" onClick={() => setStep(1)}>
+                <button className="btn ghost" disabled={busy} onClick={() => setStep(1)}>
                   Back
                 </button>
                 <div className="grow" />
-                <button className="btn primary" onClick={() => void finish()}>
-                  {projects.length ? 'Start using Foundry' : 'Skip for now'}
+                <button className="btn primary" disabled={busy} onClick={() => void finish()}>
+                  {busy ? 'Saving…' : projects.length ? 'Start using Foundry' : 'Skip for now'}
                 </button>
               </footer>
             </>
@@ -148,10 +203,13 @@ export default function OnboardingScreen({ onDone }: { onDone: () => void }): Re
         .hero { width: 260px; height: 260px; object-fit: contain; align-self: center; margin-bottom: var(--s5); }
         .panel h1 { font-size: var(--text-3xl); font-weight: 600; letter-spacing: -0.03em; margin-bottom: var(--s3); }
         .lead { font-size: var(--text-base); color: var(--text-dim); line-height: var(--leading-loose); margin-bottom: var(--s5); }
+        .lead strong { color: var(--text); font-weight: 600; }
         .points { list-style: none; display: flex; flex-direction: column; gap: var(--s3); margin-bottom: var(--s6); }
         .points li { font-size: var(--text-sm); color: var(--text-dim); line-height: var(--leading); padding-left: var(--s4); border-left: 2px solid var(--cyan-dim); }
         .points strong { color: var(--text); }
         .warn { padding: var(--s3); border-radius: var(--r-sm); background: var(--amber-dim); color: var(--amber); font-size: var(--text-sm); line-height: var(--leading); }
+        .err { margin-top: var(--s3); padding: var(--s3); border-radius: var(--r-sm); background: var(--red-dim); color: var(--red); font-size: var(--text-sm); line-height: var(--leading); }
+        .hint-line { margin-top: var(--s2); font-size: var(--text-xs); }
         .added { display: flex; align-items: center; gap: var(--s3); padding: var(--s3); border: 1px solid var(--green-dim); border-radius: var(--r-sm); background: var(--green-dim); font-size: var(--text-sm); }
         .added .mark { color: var(--green); }
         .added em { display: block; font-style: normal; font-size: var(--text-xs); }
