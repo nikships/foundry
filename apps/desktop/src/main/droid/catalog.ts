@@ -1,10 +1,16 @@
 /**
- * Model and tool discovery. The catalog is advisory and droid is authoritative:
- * an unknown-but-typed model id is allowed with a warning; failure (if any)
- * surfaces on the first turn, in the trace, attributed to its phase.
+ * Droid's model and tool discovery. The catalog is advisory and the CLI is
+ * authoritative: an unknown-but-typed model id is allowed with a warning;
+ * failure (if any) surfaces on the first turn, in the trace, attributed to its
+ * phase.
  *
  * Sources, cheapest first: `droid exec --help`, a session's `availableModels`,
  * and `~/.factory/settings.json` customModels for BYOK badges.
+ *
+ * Only droid publishes a table this rich. Every other vendor answers through its
+ * own adapter in `cli/`, which is why the exported names here say droid: the
+ * cache below is keyed to nothing, so a shared name would serve one CLI's models
+ * to another.
  */
 
 import { execFile } from 'node:child_process';
@@ -40,10 +46,15 @@ export function invalidateCatalog(): void {
   cache = null;
 }
 
-export async function droidVersion(droidPath: string): Promise<string | null> {
+/** A CLI's own version string, or null when the binary is not runnable. */
+export async function cliVersion(
+  binPath: string,
+  args: string[] = ['--version'],
+): Promise<string | null> {
   try {
-    const { stdout } = await exec(droidPath, ['--version'], { timeout: 20_000 });
-    return stdout.trim();
+    const { stdout } = await exec(binPath, args, { timeout: 20_000 });
+    // Some CLIs print a banner under the version; the first line is the version.
+    return stdout.trim().split('\n')[0]?.trim() || null;
   } catch {
     return null;
   }
@@ -193,7 +204,7 @@ export function mergeCustomModels(base: ModelInfo[], custom: CustomModelEntry[])
   return [...byId.values()];
 }
 
-export async function loadCatalog(droidPath: string, force = false): Promise<ModelInfo[]> {
+export async function loadDroidCatalog(droidPath: string, force = false): Promise<ModelInfo[]> {
   if (!force && cache && Date.now() - cache.at < CACHE_MS) return cache.models;
 
   const models = mergeCustomModels(await modelsFromHelp(droidPath), await customModels());
@@ -201,7 +212,7 @@ export async function loadCatalog(droidPath: string, force = false): Promise<Mod
   return models;
 }
 
-export async function loadTools(droidPath: string, model?: string): Promise<ToolInfo[]> {
+export async function loadDroidTools(droidPath: string, model?: string): Promise<ToolInfo[]> {
   const args = ['exec', '--list-tools', '--output-format', 'json'];
   if (model) args.push('-m', model);
   try {

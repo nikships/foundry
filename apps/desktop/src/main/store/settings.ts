@@ -3,15 +3,26 @@
  * a value that cannot round-trip is rejected where the user typed it.
  */
 
-import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
-import type { AppSettings } from '@shared/types.js';
+import { type AppSettings, type CliConfig, type CliVendor, CLI_VENDOR_IDS } from '@shared/types.js';
+import { defaultCliConfig } from '../cli/index.js';
 import { JsonStore } from './json-store.js';
 
+const cliConfigSchema = z.object({
+  path: z.string().min(1),
+  extraArgs: z.array(z.string()),
+});
+
 export const appSettingsSchema = z.object({
-  droidPath: z.string().min(1),
+  clis: z.object({
+    droid: cliConfigSchema,
+    claude: cliConfigSchema,
+    codex: cliConfigSchema,
+    junie: cliConfigSchema,
+    grok: cliConfigSchema,
+  }),
+  defaultCli: z.enum(['droid', 'claude', 'codex', 'junie', 'grok']),
   engineerName: z.string().min(1).max(80),
   defaultAutonomy: z.enum(['low', 'medium', 'high']),
   defaultModel: z.string().min(1),
@@ -32,26 +43,21 @@ export const appSettingsSchema = z.object({
   onboarded: z.boolean(),
 });
 
-/** PATH lookup so a fresh machine needs no configuration to find droid. */
-export function findDroid(): string {
-  try {
-    const which = execFileSync('/usr/bin/which', ['droid'], { encoding: 'utf8' }).trim();
-    if (which) return which;
-  } catch {
-    // Fall through to the well-known install locations.
-  }
-  const candidates = [
-    join(process.env.HOME ?? '', '.npm-global/bin/droid'),
-    '/opt/homebrew/bin/droid',
-    '/usr/local/bin/droid',
-    join(process.env.HOME ?? '', '.local/bin/droid'),
-  ];
-  return candidates.find((c) => existsSync(c)) ?? 'droid';
+/**
+ * Every vendor gets a resolved path at first launch, whether or not it is
+ * installed, so choosing a CLI in the roster never requires a trip to Settings
+ * first. An absent binary resolves to its bare name and the doctor explains it.
+ */
+function defaultClis(): Record<CliVendor, CliConfig> {
+  const clis = {} as Record<CliVendor, CliConfig>;
+  for (const vendor of CLI_VENDOR_IDS) clis[vendor] = defaultCliConfig(vendor);
+  return clis;
 }
 
 export function defaultSettings(): AppSettings {
   return {
-    droidPath: findDroid(),
+    clis: defaultClis(),
+    defaultCli: 'droid',
     engineerName: process.env.USER || 'engineer',
     defaultAutonomy: 'medium',
     defaultModel: 'claude-opus-5',
@@ -68,6 +74,27 @@ export function defaultSettings(): AppSettings {
   };
 }
 
+/**
+ * Settings files written before multi-CLI support carry a single `droidPath`.
+ * Carrying it over matters: a user who pointed Foundry at a non-standard droid
+ * build would otherwise silently get whatever is on PATH after an update.
+ */
+export function migrate(raw: unknown): AppSettings {
+  const base = defaultSettings();
+  const stored = (raw ?? {}) as Partial<AppSettings> & { droidPath?: string };
+  const clis = { ...base.clis };
+  for (const vendor of CLI_VENDOR_IDS) {
+    const kept = stored.clis?.[vendor];
+    if (kept?.path) clis[vendor] = { path: kept.path, extraArgs: kept.extraArgs ?? [] };
+  }
+  if (stored.droidPath && !stored.clis?.droid) {
+    clis.droid = { path: stored.droidPath, extraArgs: clis.droid.extraArgs };
+  }
+  const merged = { ...base, ...stored, clis };
+  delete (merged as { droidPath?: string }).droidPath;
+  return merged;
+}
+
 export class SettingsStore {
   private readonly store: JsonStore<AppSettings>;
 
@@ -75,7 +102,7 @@ export class SettingsStore {
     this.store = new JsonStore<AppSettings>(
       join(appSupportDir, 'settings.json'),
       defaultSettings,
-      (raw) => ({ ...defaultSettings(), ...(raw as Partial<AppSettings>) }),
+      (raw) => migrate(raw),
     );
   }
 

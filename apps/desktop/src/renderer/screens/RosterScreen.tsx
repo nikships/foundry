@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { AgentDef, ModelInfo, ValidationIssue } from '@shared/types.js';
+import type { AgentDef, CliDescriptor, CliVendor, ModelInfo, ValidationIssue } from '@shared/types.js';
 import { api, plain } from '../api.js';
 import { useApp } from '../stores/app.js';
 import { modelLabel } from '../format.js';
@@ -12,11 +12,12 @@ const ENVELOPE_KINDS = ['plan', 'build', 'review', 'scout', 'document', 'custom'
 const COLORS = ['#5ad2dd', '#c89bff', '#e8b64a', '#4ade80', '#ff6f67', '#6aa8ff'];
 
 export default function RosterScreen(): React.JSX.Element {
-  const { agents, projectId, refreshScoped } = useApp();
+  const { agents, projectId, settings, refreshScoped } = useApp();
   const [selectedName, setSelectedName] = useState('');
   const [draft, setDraft] = useState<AgentDef | null>(null);
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
   const [models, setModels] = useState<ModelInfo[]>([]);
+  const [clis, setClis] = useState<CliDescriptor[]>([]);
   const [saving, setSaving] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
 
@@ -32,7 +33,13 @@ export default function RosterScreen(): React.JSX.Element {
     setIssues([]);
   }, [selected]);
 
-  useEffect(() => { void api.catalog.models().then(setModels); }, []);
+  useEffect(() => { void api.catalog.clis().then(setClis); }, []);
+
+  // Each CLI answers for its own models, so switching an agent's CLI reloads the
+  // list. Without this the picker keeps offering ids the new CLI cannot resolve,
+  // which fails on the first turn instead of here.
+  const draftCli = draft?.cli ?? 'droid';
+  useEffect(() => { void api.catalog.models(draftCli).then(setModels); }, [draftCli]);
 
   const revert = (): void => setDraft(selected ? plain({ ...selected }) : null);
   const save = async (): Promise<void> => {
@@ -66,6 +73,7 @@ export default function RosterScreen(): React.JSX.Element {
     const fresh: AgentDef = {
       name: `agent-${agents.length + 1}`,
       purpose: 'Describe what this agent is for in one line.',
+      cli: settings?.defaultCli ?? 'droid',
       model: 'inherit',
       reasoningEffort: 'medium',
       systemPrompt: 'You are a careful engineer. State what you did and what you did not do.',
@@ -126,11 +134,27 @@ export default function RosterScreen(): React.JSX.Element {
               <input className="input" value={draft.purpose} onChange={(e) => setDraft({ ...draft, purpose: e.target.value })} />
               <span className="hint">One line, shown wherever this agent appears.</span>
             </div>
+            <div className="field">
+              <label>CLI</label>
+              <select
+                className="select"
+                value={draftCli}
+                onChange={(e) => setDraft({ ...draft, cli: e.target.value as CliVendor, model: 'inherit' })}
+              >
+                {clis.map((cli) => (
+                  <option key={cli.id} value={cli.id}>{cli.label}</option>
+                ))}
+              </select>
+              <span className="hint">Which binary runs this agent's phases. Changing it resets the model, because model ids do not carry across CLIs.</span>
+              {(clis.find((c) => c.id === draftCli)?.caveats ?? []).map((caveat) => (
+                <span key={caveat} className="hint caveat">{caveat}</span>
+              ))}
+            </div>
             <div className="two">
               <div className="field">
                 <label>Model</label>
                 <ModelPicker value={draft.model} models={models} allowInherit onChange={(value) => setDraft({ ...draft, model: value })} />
-                <span className="hint">“Inherit” uses the default from Settings.</span>
+                <span className="hint">“Inherit” uses this CLI's own default.</span>
               </div>
               <div className="field">
                 <label>Reasoning effort</label>
@@ -210,6 +234,7 @@ export default function RosterScreen(): React.JSX.Element {
         .field { display: flex; flex-direction: column; gap: var(--s1); margin-bottom: var(--s4); }
         .field label { font-size: var(--text-sm); font-weight: 500; }
         .hint { font-size: var(--text-xs); color: var(--text-faint); }
+        .caveat { color: var(--amber, var(--text-faint)); }
         .swatches { display: flex; gap: var(--s2); }
         .swatch { width: 26px; height: 26px; border: 2px solid transparent; border-radius: var(--r-full); cursor: default; }
         .swatch.on { border-color: var(--text); }

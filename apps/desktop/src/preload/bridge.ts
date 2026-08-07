@@ -60,8 +60,9 @@ const api: FoundryApi = {
     reset: () => call(IPC.pipelinesReset),
   },
   catalog: {
-    models: (force) => call(IPC.catalogModels, force),
-    tools: (model) => call(IPC.catalogTools, model),
+    models: (vendor, force) => call(IPC.catalogModels, vendor, force),
+    tools: (vendor, model) => call(IPC.catalogTools, vendor, model),
+    clis: () => call(IPC.catalogClis),
     gates: () => call(IPC.catalogGates),
     templateVariables: () => call(IPC.catalogTemplateVariables),
   },

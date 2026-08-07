@@ -6,6 +6,8 @@ Foundry maintainers
 
 ## Purpose
 
+> Foundry drives five agent CLIs. This page covers droid's own JSON-RPC transport and the harness around it. The vendor-neutral seam that lets an agent pick Claude Code, Codex, Junie, or Grok instead is documented in [Agent CLIs](clis.md).
+
 The droid harness is Foundry's adapter over Factory's coding-agent CLI (`droid`). It turns a long-lived `droid exec` process into a stable contract for the engine:
 
 ```
@@ -26,8 +28,8 @@ All paths under `apps/desktop/src/main/droid/`:
 | [`client.ts`](../../apps/desktop/src/main/droid/client.ts) | Long-lived `droid exec` child; JSON-RPC over stdio; turn collector |
 | [`agent.ts`](../../apps/desktop/src/main/droid/agent.ts) | Per-agent session lifecycle; RPC vs oneshot mode; policy → human interrupt |
 | [`events.ts`](../../apps/desktop/src/main/droid/events.ts) | Folds notification stream into trace rows (one span per `toolUseId`) |
-| [`oneshot.ts`](../../apps/desktop/src/main/droid/oneshot.ts) | Fallback: one `droid exec -o json` process per turn |
-| [`catalog.ts`](../../apps/desktop/src/main/droid/catalog.ts) | Model and tool discovery for the UI and roster editors |
+| [`oneshot.ts`](../../apps/desktop/src/main/droid/oneshot.ts) | One process per turn, driven by a [`cli/`](clis.md) adapter. Droid's RPC fallback, and the only path for every other vendor |
+| [`catalog.ts`](../../apps/desktop/src/main/droid/catalog.ts) | Droid's model and tool discovery, plus the shared `cliVersion` probe |
 | [`permissions.ts`](../../apps/desktop/src/main/droid/permissions.ts) | Policy for `droid.request_permission` and `droid.ask_user` |
 
 Tests that encode the real CLI's quirks:
@@ -152,7 +154,7 @@ Advisory discovery; droid remains authoritative at turn time.
 | `~/.factory/settings.json` `customModels` | BYOK badges in the picker |
 | `droid exec --list-tools -o json` | Tool list for the roster editor |
 
-`loadCatalog` caches for 60 seconds. `invalidateCatalog` runs when the user changes `droidPath` in settings. IPC exposes `catalogModels` and `catalogTools`.
+`loadDroidCatalog` caches for 60 seconds. `invalidateCatalog` runs when the user changes a CLI path in settings. IPC exposes `catalogModels(vendor)` and `catalogTools(vendor)`, both dispatched through the [vendor registry](clis.md); only droid returns a tool list.
 
 ### Permission policy (`permissions.ts`)
 

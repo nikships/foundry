@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS agent_sessions (
   agent            TEXT NOT NULL,
   model            TEXT,
   reasoning_effort TEXT,
+  cli              TEXT DEFAULT 'droid',
   droid_session_id TEXT,
   mode             TEXT DEFAULT 'rpc',
   color            TEXT,
@@ -128,6 +129,9 @@ const COLUMN_MIGRATIONS: [table: string, column: string, decl: string][] = [
   // Recorded so a later merge can still tell whether the base has moved.
   ['runs', 'branch_point_sha', 'TEXT'],
   ['runs', 'outcome_detail', 'TEXT'],
+  // Which CLI drove the agent. Older rows predate the choice and were all droid,
+  // so the default backfills them correctly rather than leaving them blank.
+  ['agent_sessions', 'cli', "TEXT DEFAULT 'droid'"],
 ];
 
 export function projectHash(projectPath: string): string {

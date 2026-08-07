@@ -108,7 +108,7 @@ export class RunRegistry extends EventEmitter {
 
     const executor = new Executor({
       tracer,
-      droidPath: settings.droidPath,
+      clis: settings.clis,
       autonomy: settings.defaultAutonomy,
       turnTimeoutMs: settings.turnTimeoutMs,
       envelopeRetries: settings.envelopeRetries,

@@ -15,6 +15,8 @@ import { join, relative } from 'node:path';
 import type {
   AgentDef,
   AutonomyLevel,
+  CliConfig,
+  CliVendor,
   CommandResult,
   PhaseDef,
   PipelineDef,
@@ -33,7 +35,8 @@ import * as worktreeLib from './worktree.js';
 
 export interface ExecutorDeps {
   tracer: Tracer;
-  droidPath: string;
+  /** Where each CLI lives and how it is invoked. Agents name the vendor. */
+  clis: Record<CliVendor, CliConfig>;
   autonomy: AutonomyLevel;
   turnTimeoutMs: number;
   envelopeRetries: number;
@@ -639,8 +642,11 @@ export class Executor {
     const existing = this.sessions.get(agent.name);
     if (existing) return existing;
 
+    const vendor = agent.cli ?? 'droid';
+    const cli = this.deps.clis[vendor] ?? this.deps.clis.droid;
     const session = new AgentSession(agent, {
-      droidPath: this.deps.droidPath,
+      cliPath: cli.path,
+      cliExtraArgs: cli.extraArgs,
       runId: this.deps.runId,
       worktree: this.cwd,
       autonomy: this.deps.autonomy,

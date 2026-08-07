@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import type {
   AgentDef,
   AppSettings,
+  CliVendor,
   DryRunPrompt,
   InterruptAnswer,
   MaintenanceReport,
@@ -31,7 +32,8 @@ import { OneShotClient } from './droid/oneshot.js';
 import { isRepo } from './engine/git.js';
 import * as worktreeLib from './engine/worktree.js';
 import { validate as validatePipeline } from './store/pipelines.js';
-import { loadCatalog, loadTools, invalidateCatalog } from './droid/catalog.js';
+import { invalidateCatalog } from './droid/catalog.js';
+import { adapterFor, allAdapters } from './cli/index.js';
 import { checkProject, runDoctor } from './system/doctor.js';
 import type { AppContext } from './context.js';
 
@@ -71,7 +73,8 @@ export function registerIpc(ctx: AppContext): void {
     if (!result.ok) {
       return { ok: false, issues: result.issues.map((m) => ({ level: 'error', where: 'settings', message: m })) };
     }
-    if (patch.droidPath) invalidateCatalog();
+    // A new droid path can mean a different model table.
+    if (patch.clis) invalidateCatalog();
     notifySettings();
     return { ok: true, issues: noIssues, value: result.settings };
   });
@@ -163,12 +166,23 @@ export function registerIpc(ctx: AppContext): void {
           // Read-only autonomy: discovery reads the repo and must not be able
           // to change it, and this runs against the base checkout, not a
           // worktree, because no run owns it.
+          // Discovery runs on the default CLI: it is the one the operator has
+          // certainly authenticated, and this is not a phase anyone chose an
+          // agent for. Read-only autonomy, against the base checkout rather
+          // than a worktree, because no run owns it.
+          const vendor = settings.defaultCli;
+          const cli = settings.clis[vendor];
           const client = new OneShotClient({
-            droidPath: settings.droidPath,
+            vendor,
+            cliPath: cli.path,
+            extraArgs: cli.extraArgs,
             cwd: project.path,
             autonomy: 'low',
-            model: settings.defaultModel,
-            reasoningEffort: settings.defaultReasoningEffort,
+            // A model id is meaningful only to the CLI that published it, and
+            // defaultModel is droid's. Any other vendor gets its own default
+            // rather than a droid id it would reject on the first turn.
+            model: vendor === 'droid' ? settings.defaultModel : 'inherit',
+            reasoningEffort: vendor === 'droid' ? settings.defaultReasoningEffort : 'off',
           });
           const turn = await client.send(DETECT_PROMPT, 300_000);
           candidates = parseDetectReply(turn.text);
@@ -334,8 +348,27 @@ export function registerIpc(ctx: AppContext): void {
 
   // ── catalog ───────────────────────────────────────────────────────────────
 
-  handle(IPC.catalogModels, (force?: boolean) => loadCatalog(ctx.settings.get().droidPath, !!force));
-  handle(IPC.catalogTools, (model?: string) => loadTools(ctx.settings.get().droidPath, model));
+  handle(IPC.catalogModels, (vendor: CliVendor, force?: boolean) => {
+    if (force) invalidateCatalog();
+    return adapterFor(vendor).models(ctx.settings.get().clis[vendor].path);
+  });
+  handle(IPC.catalogTools, (vendor: CliVendor, model?: string) => {
+    const adapter = adapterFor(vendor);
+    // Only droid enumerates tools; the rest scope them by sandbox, so an empty
+    // list is the honest answer rather than a failed call.
+    return adapter.tools?.(ctx.settings.get().clis[vendor].path, model) ?? Promise.resolve([]);
+  });
+  handle(IPC.catalogClis, () =>
+    allAdapters().map((a) => ({
+      id: a.id,
+      label: a.label,
+      binary: a.binary,
+      docsUrl: a.docsUrl,
+      authEnvVars: a.authEnvVars,
+      supportsRpc: a.supportsRpc,
+      caveats: a.caveats,
+    })),
+  );
   handle(IPC.catalogGates, () =>
     Object.entries(GATE_DESCRIPTIONS).map(([id, description]) => ({ id, description })),
   );
@@ -459,7 +492,7 @@ export function registerIpc(ctx: AppContext): void {
 
   // ── doctor and maintenance ────────────────────────────────────────────────
 
-  handle(IPC.doctorRun, () => runDoctor(ctx.settings.get().droidPath));
+  handle(IPC.doctorRun, () => runDoctor(ctx.settings.get()));
 
   handle(IPC.maintenanceOrphans, async (): Promise<OrphanWorktree[]> => {
     const out: OrphanWorktree[] = [];

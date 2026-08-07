@@ -1,0 +1,148 @@
+/**
+ * Anthropic's Claude Code, driven through `claude -p --output-format json`.
+ *
+ * The closest fit of the four additions: its `json` result object is nearly
+ * droid's, down to `result` / `session_id` / `is_error`, so the parse is a rename
+ * rather than a translation.
+ *
+ * Two details are load-bearing:
+ *
+ *  1. There is no `--cwd`. The working directory is the spawned process's cwd,
+ *     which the harness already sets, and `--add-dir` is passed as well so a
+ *     worktree outside the launch directory stays readable.
+ *  2. `--session-id` takes a UUID and only starts a session; resuming the same
+ *     conversation is `--resume <id>`. Passing `--session-id` twice starts two
+ *     unrelated sessions, which reads as an agent with no memory.
+ *
+ * `stream-json` would give mid-turn tool visibility and would need `--verbose`
+ * to emit anything per-token, but it is a second parser for the same answer, so
+ * it waits for the PR that turns on RPC mode per vendor.
+ */
+
+import { randomUUID } from 'node:crypto';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import type { AutonomyLevel, ModelInfo } from '@shared/types.js';
+import type { TokenUsage } from '../droid/protocol.js';
+import { lastJsonObject, type CliAdapter, type ParsedTurn, type ProcessOutput } from './types.js';
+
+/**
+ * Autonomy is a permission mode. `default` is not "ask" here the way it is in a
+ * terminal: with no `--permission-prompt-tool` wired up, a headless run denies
+ * what it would have asked about instead of hanging, which is the right reading
+ * of low autonomy for a scout or reviewer that should not be writing anyway.
+ */
+const PERMISSION_MODE: Record<AutonomyLevel, string> = {
+  low: 'default',
+  medium: 'acceptEdits',
+  high: 'bypassPermissions',
+};
+
+/**
+ * Claude Code publishes no model list command, so these are its documented
+ * aliases and nothing else. An alias keeps resolving after a model is retired,
+ * which a pinned id does not.
+ */
+const ALIASES: { id: string; displayName: string }[] = [
+  { id: 'inherit', displayName: 'Claude Code default' },
+  { id: 'opus', displayName: 'Opus (alias)' },
+  { id: 'sonnet', displayName: 'Sonnet (alias)' },
+  { id: 'haiku', displayName: 'Haiku (alias)' },
+];
+
+interface ClaudeUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+}
+
+interface ClaudeResult {
+  type?: string;
+  subtype?: string;
+  is_error?: boolean;
+  result?: string;
+  session_id?: string;
+  total_cost_usd?: number;
+  usage?: ClaudeUsage;
+}
+
+function toTokenUsage(u: ClaudeUsage | undefined, costUsd: number | undefined): TokenUsage | null {
+  if (!u) return null;
+  return {
+    inputTokens: u.input_tokens ?? 0,
+    outputTokens: u.output_tokens ?? 0,
+    cacheCreationTokens: u.cache_creation_input_tokens ?? 0,
+    cacheReadTokens: u.cache_read_input_tokens ?? 0,
+    thinkingTokens: 0,
+    // Claude Code reports dollars, and the trace's cost column is dollars for
+    // every vendor but droid, whose "credits" are its own unit.
+    factoryCredits: costUsd ?? 0,
+  };
+}
+
+export const claudeAdapter: CliAdapter = {
+  id: 'claude',
+  label: 'Claude Code',
+  binary: 'claude',
+  installPaths: () => [
+    join(homedir(), '.local/bin/claude'),
+    join(homedir(), '.claude/local/claude'),
+    join(homedir(), '.npm-global/bin/claude'),
+    '/opt/homebrew/bin/claude',
+    '/usr/local/bin/claude',
+  ],
+  docsUrl: 'https://docs.anthropic.com/en/docs/claude-code/setup',
+  authEnvVars: ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'],
+  authPaths: () => [join(homedir(), '.claude', 'settings.json'), join(homedir(), '.claude.json')],
+  authUrl: 'https://docs.anthropic.com/en/docs/claude-code/authentication',
+  supportsRpc: false,
+  versionArgs: ['--version'],
+  caveats: [
+    'Mid-turn tool calls are not traced: a turn is one span, as in droid one-shot mode.',
+    'Permission asks are settled by --permission-mode, so the interrupt sheet does not open for this CLI.',
+  ],
+
+  turn: (req) => {
+    const argv = ['-p', '--output-format', 'json', '--permission-mode', PERMISSION_MODE[req.autonomy]];
+    if (req.model && req.model !== 'inherit') argv.push('--model', req.model);
+    if (req.reasoningEffort !== 'off') argv.push('--effort', req.reasoningEffort);
+    if (req.restrictTools?.length) argv.push('--allowedTools', req.restrictTools.join(','));
+    if (req.disabledTools?.length) argv.push('--disallowedTools', req.disabledTools.join(','));
+    // The worktree is the process cwd; --add-dir is what makes it writable when
+    // the launch directory and the worktree differ, which they always do here.
+    argv.push('--add-dir', req.cwd);
+    if (req.sessionId) argv.push('--resume', req.sessionId);
+    else argv.push('--session-id', randomUUID());
+    if (req.extraArgs?.length) argv.push(...req.extraArgs);
+    argv.push(req.prompt);
+    return { argv };
+  },
+
+  parse: (out: ProcessOutput): ParsedTurn | null => {
+    const parsed = lastJsonObject<ClaudeResult>(
+      out.stdout,
+      (v) => v.type === 'result' || v.result !== undefined,
+    );
+    if (!parsed) return null;
+    return {
+      text: (parsed.result ?? '').trim(),
+      usage: toTokenUsage(parsed.usage, parsed.total_cost_usd),
+      sessionId: parsed.session_id ?? null,
+      reason: parsed.is_error ? (parsed.subtype ?? 'error') : (parsed.subtype ?? 'completed'),
+      isError: !!parsed.is_error,
+    };
+  },
+
+  models: async (): Promise<ModelInfo[]> =>
+    ALIASES.map(({ id, displayName }) => ({
+      id,
+      displayName,
+      provider: 'claude',
+      // Claude Code's own effort levels; `off` means the flag is omitted.
+      supportedReasoningEfforts: id === 'inherit' ? [] : ['low', 'medium', 'high'],
+      defaultReasoningEffort: id === 'inherit' ? 'none' : 'medium',
+      isCustom: false,
+      deprecated: false,
+    })),
+};

@@ -28,7 +28,7 @@ Run everything from `apps/desktop/`.
 npm run dev         # electron-vite dev
 npm run build       # required before `npm start`; emits out/{main,preload,renderer}
 npm run typecheck   # tsc --noEmit
-npm test            # vitest run, 94 tests
+npm test            # vitest run, 163 tests
 npm run engine:demo # headless run of the engine, no UI
 ```
 
@@ -46,9 +46,10 @@ npm run engine:demo # headless run of the engine, no UI
 ## Architecture
 
 ```
-src/main/       Node. Owns everything: git, disk, droid, sqlite.
+src/main/       Node. Owns everything: git, disk, agent CLIs, sqlite.
   engine/       The deterministic pipeline runner.
-  droid/        The agent harness over `droid exec --input-format stream-jsonrpc`.
+  cli/          One adapter per agent CLI: argv in, parsed turn out.
+  droid/        The agent harness: droid's JSON-RPC client plus the shared one-shot runner.
   trace/        SQLite (WAL). Single writer.
   store/        JSON-backed config: agents, pipelines, projects, settings.
   system/       Process control, doctor checks, notifications.
@@ -95,6 +96,51 @@ visible. Do not add a denormalised `total_tokens` column to `phases`.
 State lives at `~/Library/Application Support/foundry/`, sharded per project by a hash
 of the project path (`projects/<hash>/trace.db`).
 
+## Agent CLIs
+
+Foundry drives five: `droid`, `claude` (Claude Code), `codex`, `junie`, and `grok`
+(xAI's Grok Build). An agent picks one in `AgentDef.cli`; absent means `droid`, so
+rosters written before this existed still load.
+
+```
+src/main/cli/types.ts   The CliAdapter interface and the shared parse helpers.
+src/main/cli/<vendor>.ts One adapter each: argv, parse, models, auth, caveats.
+src/main/cli/index.ts   The registry, PATH lookup, and per-vendor defaults.
+```
+
+An adapter is two functions worth caring about. `turn(req)` builds one turn's
+argv; `parse(out)` folds whatever the process printed into `{ text, usage,
+sessionId, reason, isError }`. `droid/oneshot.ts` owns process mechanics (spawn,
+timeout, kill, stderr) and knows no vendor's flags, so **adding a sixth CLI is one
+file plus one registry entry** and touches nothing in `engine/`.
+
+### Invariants for adapters
+
+- **Autonomy is a sandbox tier, never an approval prompt.** Nothing watches a
+  phase, so a CLI left in its default "ask the human" mode blocks on a stdin
+  nobody types into. Every adapter but droid disables approvals and confines the
+  agent instead. The write boundary still diffs git afterwards, so a sandbox wider
+  than the agent's `writes` is caught and reverted as before.
+- **Never invent a flag.** Junie publishes no headless autonomy flag, so its
+  adapter emits none and the doctor checks for `~/.junie/allowlist.json` instead.
+  A guessed flag fails on builds that lack it, and the failure reads as a broken
+  agent. The per-CLI extra arguments field in Settings is the escape hatch.
+- **Never invent a model id.** A vendor that publishes no list returns only its
+  documented aliases plus `inherit`. A wrong id is accepted and then yields empty
+  turns, which reads far worse than a short list.
+- **Unreported usage stays unreported.** Codex reports no cost and Grok's usage
+  field names are unpublished, so both can return `null` rather than a zero that
+  claims a turn was free.
+- Only droid sets `supportsRpc`. Junie (`--acp true`), Grok (`grok agent stdio`),
+  and Codex (`codex app-server`) all speak ACP or JSON-RPC over stdio, which is the
+  same shape as `droid/client.ts`, so a later PR can turn that on per vendor
+  without the engine noticing.
+
+`tests/cli-vendors.test.ts` pins each adapter's argv and parse against the output
+shapes those CLIs actually print, including Codex's two spellings of its item
+discriminator. Fixtures come from real documented output, not from shapes the
+parser finds convenient.
+
 ## The droid protocol
 
 `src/main/droid/protocol.ts` encodes findings observed against the real CLI, not the
@@ -122,6 +168,7 @@ tests/ipc-clone.test.ts      6   payloads survive the structured-clone bridge
 tests/gates.test.ts         19   each gate's evidence, unknown-gate failure
 tests/droid-client.test.ts  24   the wire protocol against fake-droid
 tests/executor.test.ts      21   the run loop against real git temp repos
+tests/cli-vendors.test.ts   40   each vendor's argv and parse, per real CLI output
 ```
 
 Tests use real git repositories in `mkdtemp` directories and a scripted droid stub.

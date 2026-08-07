@@ -12,7 +12,9 @@ export default function OnboardingScreen({ onDone }: { onDone: () => void }): Re
   const [name, setName] = useState('');
   const [checking, setChecking] = useState(true);
 
-  const blocking = checks.filter((c) => !c.ok && (c.id === 'droid' || c.id === 'git'));
+  // The doctor decides what blocks: with five CLIs, only the default one and git
+  // do, and a hardcoded id here would have gone stale the moment a CLI was added.
+  const blocking = checks.filter((c) => !c.ok && c.blocking);
 
   useEffect(() => {
     void api.app.assetUrl('scenes/onboarding-hero.png').then(setHero);

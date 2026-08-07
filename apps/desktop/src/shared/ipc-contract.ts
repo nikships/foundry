@@ -8,6 +8,8 @@ import type {
   AgentDef,
   AgentSessionRow,
   AppSettings,
+  CliDescriptor,
+  CliVendor,
   DoctorCheck,
   DryRunPrompt,
   EnvelopeRow,
@@ -115,8 +117,11 @@ export interface FoundryApi {
     reset(): Promise<PipelineDef[]>;
   };
   catalog: {
-    models(force?: boolean): Promise<ModelInfo[]>;
-    tools(model?: string): Promise<ToolInfo[]>;
+    /** Models the given CLI can reach. Each vendor answers for itself. */
+    models(vendor: CliVendor, force?: boolean): Promise<ModelInfo[]>;
+    tools(vendor: CliVendor, model?: string): Promise<ToolInfo[]>;
+    /** What each CLI is, where it lives, and what it cannot do. */
+    clis(): Promise<CliDescriptor[]>;
     gates(): Promise<{ id: string; description: string }[]>;
     templateVariables(): Promise<{ token: string; description: string }[]>;
   };
@@ -181,6 +186,7 @@ export const IPC = {
   pipelinesDryRun: 'pipelines:dryRun',
   pipelinesReset: 'pipelines:reset',
   catalogModels: 'catalog:models',
+  catalogClis: 'catalog:clis',
   catalogTools: 'catalog:tools',
   catalogGates: 'catalog:gates',
   catalogTemplateVariables: 'catalog:templateVariables',

@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
-import type { DoctorCheck, ModelInfo, OrphanWorktree, ProjectDef } from '@shared/types.js';
+import type { CliDescriptor, CliVendor, DoctorCheck, ModelInfo, OrphanWorktree, ProjectDef } from '@shared/types.js';
 import { api, plain } from '../api.js';
 import { useApp } from '../stores/app.js';
 import ModelPicker from '../components/ModelPicker.js';
 import DoctorList from '../components/DoctorList.js';
 import ProjectCommands from '../components/ProjectCommands.js';
 
-type Pane = 'general' | 'defaults' | 'project' | 'maintenance' | 'about';
+type Pane = 'general' | 'clis' | 'defaults' | 'project' | 'maintenance' | 'about';
 
 const PANES: { id: Pane; label: string }[] = [
   { id: 'general', label: 'General' },
+  { id: 'clis', label: 'Agent CLIs' },
   { id: 'defaults', label: 'Agent defaults' },
   { id: 'project', label: 'Project' },
   { id: 'maintenance', label: 'Maintenance' },
@@ -27,6 +28,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
   const { settings, project, projects, refreshAll, patchSettings } = useApp();
   const [pane, setPane] = useState<Pane>((initialPane as Pane) ?? 'general');
   const [models, setModels] = useState<ModelInfo[]>([]);
+  const [clis, setClis] = useState<CliDescriptor[]>([]);
   const [checks, setChecks] = useState<DoctorCheck[]>([]);
   const [projectChecks, setProjectChecks] = useState<DoctorCheck[]>([]);
   const [orphans, setOrphans] = useState<OrphanWorktree[]>([]);
@@ -40,12 +42,21 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
   }, [initialPane]);
 
   useEffect(() => {
-    void Promise.all([api.catalog.models(), api.doctor.run(), api.app.version()]).then(([m, c, v]) => {
-      setModels(m);
+    void Promise.all([api.catalog.clis(), api.doctor.run(), api.app.version()]).then(([l, c, v]) => {
+      setClis(l);
       setChecks(c);
       setVersion(v);
     });
   }, []);
+
+  // The defaults pane offers the models of whichever CLI is the default, so
+  // switching the default CLI has to reload the list rather than leave a stale
+  // one that names models this CLI has never heard of.
+  const defaultCli = settings?.defaultCli;
+  useEffect(() => {
+    if (!defaultCli) return;
+    void api.catalog.models(defaultCli).then(setModels);
+  }, [defaultCli]);
 
   useEffect(() => {
     setProjectDraft(project ? plain({ ...project }) : null);
@@ -76,7 +87,14 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
     await api.projects.remove(project.id);
     await refreshAll();
   };
-  const refreshModels = async (): Promise<void> => setModels(await api.catalog.models(true));
+  const refreshModels = async (): Promise<void> => {
+    if (!settings) return;
+    setModels(await api.catalog.models(settings.defaultCli, true));
+  };
+  const setCli = async (vendor: CliVendor, patch: { path?: string; extraArgs?: string[] }): Promise<void> => {
+    if (!settings) return;
+    await set({ clis: { ...settings.clis, [vendor]: { ...settings.clis[vendor], ...patch } } });
+  };
   const loadOrphans = async (): Promise<void> => setOrphans(await api.maintenance.orphanWorktrees());
   const removeOrphan = async (orphan: OrphanWorktree): Promise<void> => {
     const result = await api.maintenance.removeWorktree(orphan.projectId, orphan.path);
@@ -111,9 +129,13 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                 <span className="hint">Recorded on every run, so a trace says who asked for it.</span>
               </div>
               <div className="field">
-                <label>droid executable</label>
-                <input className="input mono" value={settings.droidPath} onChange={(e) => void set({ droidPath: e.target.value })} />
-                <span className="hint">Foundry drives this binary for every agent phase.</span>
+                <label>Default agent CLI</label>
+                <select className="select" value={settings.defaultCli} onChange={(e) => void set({ defaultCli: e.target.value as CliVendor })}>
+                  {clis.map((cli) => (
+                    <option key={cli.id} value={cli.id}>{cli.label}</option>
+                  ))}
+                </select>
+                <span className="hint">What a new agent starts on, and what command detection uses. Each agent can choose its own in the Roster.</span>
               </div>
               <DoctorList checks={checks} onRecheck={() => void api.doctor.run().then(setChecks)} />
               <h3>Notifications</h3>
@@ -127,6 +149,48 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                 <input type="checkbox" checked={settings.dockBadge} onChange={(e) => void set({ dockBadge: e.target.checked })} />
                 <span>Show the number of live runs on the dock icon</span>
               </label>
+            </>
+          )}
+          {pane === 'clis' && (
+            <>
+              <h2>Agent CLIs</h2>
+              <p className="lead faint">Foundry drives one of these per agent phase. A path is filled in from your PATH at first launch; correct it here if you keep a CLI somewhere unusual.</p>
+              {clis.map((cli) => {
+                const config = settings.clis[cli.id];
+                const found = checks.find((c) => c.id === `cli:${cli.id}`);
+                return (
+                  <div key={cli.id} className="cli-card">
+                    <div className="spread">
+                      <h3>{cli.label}</h3>
+                      {found && <span className={`cli-state ${found.ok ? 'ok' : 'off'}`}>{found.ok ? 'found' : 'not found'}</span>}
+                    </div>
+                    <div className="field">
+                      <label>Executable</label>
+                      <input className="input mono" value={config.path} onChange={(e) => void setCli(cli.id, { path: e.target.value })} />
+                      {found && <span className="hint">{found.detail}</span>}
+                    </div>
+                    <div className="field">
+                      <label>Extra arguments</label>
+                      <input
+                        className="input mono"
+                        value={config.extraArgs.join(' ')}
+                        placeholder="appended to every turn"
+                        onChange={(e) => void setCli(cli.id, { extraArgs: e.target.value.split(/\s+/).filter(Boolean) })}
+                      />
+                      <span className="hint">For an option this release does not model yet. Passed through verbatim.</span>
+                    </div>
+                    {cli.caveats.length > 0 && (
+                      <ul className="caveats">
+                        {cli.caveats.map((caveat) => (
+                          <li key={caveat}>{caveat}</li>
+                        ))}
+                      </ul>
+                    )}
+                    <button className="btn sm" onClick={() => void api.app.openExternal(cli.docsUrl)}>Install docs</button>
+                  </div>
+                );
+              })}
+              <DoctorList checks={checks} onRecheck={() => void api.doctor.run().then(setChecks)} />
             </>
           )}
           {pane === 'defaults' && (
@@ -329,6 +393,13 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
         .errors { margin-top: var(--s4); padding: var(--s3); border-radius: var(--r-sm); background: var(--red-dim); color: var(--red); font-size: var(--text-sm); list-style: none; }
         .scroll { overflow-y: auto; }
         .row { display: flex; gap: var(--s3); }
+        .cli-card { border: 1px solid var(--line); border-radius: var(--r-sm); padding: var(--s4); margin-bottom: var(--s4); }
+        .cli-card h3 { margin: 0 0 var(--s3); }
+        .cli-state { font-size: var(--text-xs); padding: 1px 6px; border-radius: 4px; }
+        .cli-state.ok { background: var(--green-dim); color: var(--green); }
+        .cli-state.off { background: var(--red-dim); color: var(--red); }
+        .caveats { list-style: none; margin: 0 0 var(--s3); padding: 0; display: flex; flex-direction: column; gap: var(--s1); }
+        .caveats li { font-size: var(--text-xs); color: var(--text-faint); padding-left: var(--s3); border-left: 2px solid var(--line); }
       `}</style>
     </>
   );
