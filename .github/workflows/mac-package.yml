@@ -8,7 +8,7 @@ on:
   # Path filters intentionally omitted so `v*` tag pushes always package.
   push:
     branches: [main]
-    tags: ['v*']
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
@@ -34,7 +34,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: "22"
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
 
@@ -112,10 +112,10 @@ jobs:
       - name: Package (build + icons + electron-builder)
         env:
           # Hash pins Developer ID Application when the P12 also carries App Store certs.
-          CSC_IDENTITY_AUTO_DISCOVERY: 'true'
-          CSC_NAME: '734BE283C1325CCCBB7EC1BAF93539843702652A'
+          CSC_IDENTITY_AUTO_DISCOVERY: "true"
+          CSC_NAME: "734BE283C1325CCCBB7EC1BAF93539843702652A"
           # Explicitly disable publish; CI detection would otherwise try GH releases.
-          EP_DRAFT: 'true'
+          EP_DRAFT: "true"
         run: |
           set -euo pipefail
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
@@ -154,7 +154,7 @@ jobs:
           fi
 
           APP="dist/mac-arm64/Foundry.app"
-          DMG=$(ls dist/Foundry-*-arm64.dmg | head -1)
+          DMG=$(find dist -maxdepth 1 -type f -name 'Foundry-*-arm64.dmg' -print -quit)
           test -f "$DMG"
           ZIP="$RUNNER_TEMP/Foundry-notarize.zip"
           rm -f "$ZIP"
@@ -219,14 +219,18 @@ jobs:
           if-no-files-found: error
 
       - name: Publish GitHub Release
-        # Versioned release on v* tags; rolling "latest" on main / manual dispatch.
+        # Tagged pushes publish the requested release without changing Latest.
+        # Main and manual builds publish a new version and promote it to Latest.
         if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # github.token is the workflow token whose contents: write permission
+          # is declared above. Using the context value avoids an empty or
+          # repository-defined secret shadowing the token used by gh.
+          GH_TOKEN: ${{ github.token }}
         working-directory: .
         run: |
           set -euo pipefail
-          SRC_DMG=$(ls apps/desktop/dist/Foundry-*-arm64.dmg | head -1)
+          SRC_DMG=$(find apps/desktop/dist -maxdepth 1 -type f -name 'Foundry-*-arm64.dmg' -print -quit)
           test -f "$SRC_DMG"
           APP="apps/desktop/dist/mac-arm64/Foundry.app"
           test -d "$APP"
@@ -241,20 +245,20 @@ jobs:
             local zip_name="$2"
             local version="$3"
             local yml_path="$4"
-            node -e '
+            node - "$zip_path" "$zip_name" "$version" "$yml_path" <<'NODE'
               const fs = require("fs");
               const crypto = require("crypto");
-              const zipPath = process.argv[1];
-              const zipName = process.argv[2];
-              const version = process.argv[3];
-              const ymlPath = process.argv[4];
+              const zipPath = process.argv[2];
+              const zipName = process.argv[3];
+              const version = process.argv[4];
+              const ymlPath = process.argv[5];
               const content = fs.readFileSync(zipPath);
               const sha512 = crypto.createHash("sha512").update(content).digest("base64");
               const size = content.length;
               const releaseDate = new Date().toISOString();
               const yaml = `version: ${version}\nfiles:\n  - url: ${zipName}\n    sha512: ${sha512}\n    size: ${size}\npath: ${zipName}\nsha512: ${sha512}\nreleaseDate: '\''${releaseDate}'\''\n`;
               fs.writeFileSync(ymlPath, yaml, "utf8");
-            ' "$zip_path" "$zip_name" "$version" "$yml_path"
+          NODE
           }
 
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
@@ -285,30 +289,48 @@ jobs:
             exit 0
           fi
 
-          # Rolling Latest release (main / workflow_dispatch).
-          TAG="latest"
-          TITLE="Latest Build v${PKG_VERSION} (${RUN})"
-          NOTES="Continuous build from \`${GITHUB_REF_NAME}\` @ \`${SHORT_SHA}\` (run ${RUN}). Signed with Developer ID and notarized by Apple. Apple Silicon only. For a fixed version, push a v* tag (e.g. v${PKG_VERSION})."
-          STABLE_DMG="apps/desktop/dist/Foundry-arm64.dmg"
-          STABLE_ZIP="apps/desktop/dist/Foundry-arm64-mac.zip"
+          # Main and manual builds get a unique semver release. GitHub's
+          # Latest marker then points electron-updater at this release without
+          # destroying the previous working update channel first.
+          TAG="v${PKG_VERSION}"
+          TITLE="Foundry ${TAG}"
+          NOTES="Continuous build from \`${GITHUB_REF_NAME}\` @ \`${SHORT_SHA}\` (run ${RUN}). Signed with Developer ID and notarized by Apple. Apple Silicon only."
+          STABLE_DMG="apps/desktop/dist/Foundry-${TAG}-arm64.dmg"
+          STABLE_ZIP="apps/desktop/dist/Foundry-${TAG}-arm64-mac.zip"
           YML="apps/desktop/dist/latest-mac.yml"
 
           cp "$SRC_DMG" "$STABLE_DMG"
           shasum -a 256 "$STABLE_DMG" | tee "${STABLE_DMG}.sha256"
 
           ditto -c -k --sequesterRsrc --keepParent "$APP" "$STABLE_ZIP"
-          update_latest_mac_yml "$STABLE_ZIP" "Foundry-arm64-mac.zip" "$PKG_VERSION" "$YML"
+          ZIP_NAME="$(basename "$STABLE_ZIP")"
+          update_latest_mac_yml "$STABLE_ZIP" "$ZIP_NAME" "$PKG_VERSION" "$YML"
 
-          # Replace any prior rolling release so assets and "Latest" stay current.
-          gh release delete "$TAG" -y 2>/dev/null || true
-          git push origin ":refs/tags/${TAG}" 2>/dev/null || true
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # A rerun can reuse the same run number. Keep the release in place
+            # while replacing its assets, so a failed upload never removes it.
+            gh release upload "$TAG" "$STABLE_DMG" "${STABLE_DMG}.sha256" "$STABLE_ZIP" "$YML" --clobber
+            gh release edit "$TAG" \
+              --title "$TITLE" \
+              --notes "$NOTES" \
+              --draft=false \
+              --latest \
+              --target "$RELEASE_REF"
+          else
+            gh release create "$TAG" "$STABLE_DMG" "${STABLE_DMG}.sha256" "$STABLE_ZIP" "$YML" \
+              --title "$TITLE" \
+              --notes "$NOTES" \
+              --latest \
+              --target "$RELEASE_REF"
+          fi
 
-          gh release create "$TAG" "$STABLE_DMG" "${STABLE_DMG}.sha256" "$STABLE_ZIP" "$YML" \
-            --title "$TITLE" \
-            --notes "$NOTES" \
-            --latest \
-            --target "$RELEASE_REF"
-          echo "Published rolling latest release (v${PKG_VERSION} run ${RUN})"
+          # Fail the run if GitHub did not leave the exact updater manifest
+          # attached to the release that was just promoted to Latest.
+          gh release view "$TAG" --json isDraft,isPrerelease,assets \
+            --jq 'select(.isDraft == false and .isPrerelease == false) | .assets[].name' \
+            | grep -Fxq 'latest-mac.yml'
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.tag_name')" = "$TAG"
+          echo "Published ${TAG} and promoted it to Latest (run ${RUN})"
 
       - name: Cleanup signing keychain
         if: always()

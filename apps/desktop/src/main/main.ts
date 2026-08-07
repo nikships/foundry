@@ -166,6 +166,10 @@ if (!app.requestSingleInstanceLock()) {
 
     createWindow();
 
+    // A packaged app should discover updates without requiring the user to
+    // find the menu item first. The service is a no-op in development builds.
+    void ctx.updater.check();
+
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
