@@ -3,7 +3,7 @@
  * app.isPackaged guards, and status broadcasting to the renderer.
  */
 
-import { app } from 'electron';
+import { app, BrowserWindow, dialog } from 'electron';
 import pkg from 'electron-updater';
 import type { UpdateStatus } from '../shared/types.js';
 import { IPC } from '../shared/ipc-contract.js';
@@ -108,9 +108,14 @@ export class UpdaterService {
     }
   }
 
-  public async check(): Promise<UpdateStatus> {
+  public async check(options?: { interactive?: boolean }): Promise<UpdateStatus> {
+    const isInteractive = options?.interactive ?? false;
     if (!this.isPackaged || !this.updater) {
-      return { stage: 'idle', message: 'Updates are disabled in unpackaged builds' };
+      const status: UpdateStatus = { stage: 'idle', message: 'Updates are disabled in unpackaged builds' };
+      if (isInteractive) {
+        await this.showDialogForStatus(status);
+      }
+      return status;
     }
     try {
       this.setStatus({ stage: 'checking' });
@@ -119,7 +124,66 @@ export class UpdaterService {
       const msg = err instanceof Error ? err.message : String(err);
       this.setStatus({ stage: 'error', message: msg });
     }
-    return this.getStatus();
+    const finalStatus = this.getStatus();
+    if (isInteractive) {
+      await this.showDialogForStatus(finalStatus);
+    }
+    return finalStatus;
+  }
+
+  private async showDialogForStatus(status: UpdateStatus): Promise<void> {
+    if (typeof dialog?.showMessageBox !== 'function') return;
+    const window =
+      (typeof BrowserWindow?.getFocusedWindow === 'function' && BrowserWindow.getFocusedWindow()) ||
+      (typeof BrowserWindow?.getAllWindows === 'function' && BrowserWindow.getAllWindows()[0]) ||
+      undefined;
+
+    if (status.stage === 'idle') {
+      const isUnpackagedMsg = status.message === 'Updates are disabled in unpackaged builds';
+      const currentVer = typeof app?.getVersion === 'function' ? app.getVersion() : '';
+      const versionStr = status.version || currentVer;
+      const detailMsg =
+        status.message && status.message !== 'No update available'
+          ? status.message
+          : `Foundry ${versionStr ? `v${versionStr}` : ''}`.trim() + ' is currently the newest version available.';
+
+      await dialog.showMessageBox(window!, {
+        type: 'info',
+        title: 'Check for Updates',
+        message: isUnpackagedMsg ? 'Check for Updates' : "You're up to date!",
+        detail: detailMsg,
+        buttons: ['OK'],
+      });
+    } else if (status.stage === 'available' || status.stage === 'downloading') {
+      await dialog.showMessageBox(window!, {
+        type: 'info',
+        title: 'Update Available',
+        message: status.version ? `Foundry v${status.version} is available!` : 'An update is available!',
+        detail: 'The update is downloading in the background.',
+        buttons: ['OK'],
+      });
+    } else if (status.stage === 'ready') {
+      const res = await dialog.showMessageBox(window!, {
+        type: 'info',
+        title: 'Update Ready',
+        message: status.version ? `Foundry v${status.version} is ready to install.` : 'An update is ready to install.',
+        detail: 'Would you like to restart Foundry now to apply the update?',
+        buttons: ['Restart and Install', 'Later'],
+        defaultId: 0,
+        cancelId: 1,
+      });
+      if (res.response === 0) {
+        await this.quitAndInstall();
+      }
+    } else if (status.stage === 'error') {
+      await dialog.showMessageBox(window!, {
+        type: 'warning',
+        title: 'Check for Updates',
+        message: 'Update Check Failed',
+        detail: status.message || 'An error occurred while checking for updates.',
+        buttons: ['OK'],
+      });
+    }
   }
 
   public async download(): Promise<UpdateStatus> {

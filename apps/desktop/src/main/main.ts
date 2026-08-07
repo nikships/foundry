@@ -71,7 +71,7 @@ function buildMenu(): void {
               { role: 'about' },
               {
                 label: 'Check for Updates…',
-                click: () => void ctx?.updater.check(),
+                click: () => void ctx?.updater.check({ interactive: true }),
               },
               { type: 'separator' },
               {

@@ -547,7 +547,7 @@ export function registerIpc(ctx: AppContext): void {
 
   // ── updater ───────────────────────────────────────────────────────────────
 
-  handle(IPC.updaterCheck, () => ctx.updater.check());
+  handle(IPC.updaterCheck, () => ctx.updater.check({ interactive: true }));
   handle(IPC.updaterDownload, () => ctx.updater.download());
   handle(IPC.updaterQuitAndInstall, () => ctx.updater.quitAndInstall());
   handle(IPC.updaterGetStatus, () => ctx.updater.getStatus());

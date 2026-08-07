@@ -111,4 +111,16 @@ describe('UpdaterService', () => {
       expect(cloned).toEqual(status);
     }
   });
+
+  it('triggers interactive dialog when check({ interactive: true }) is called', async () => {
+    const mockUpdater = new MockAutoUpdater();
+    mockUpdater.checkForUpdates.mockImplementation(async () => {
+      mockUpdater.emit('update-not-available', { version: '0.1.0' });
+    });
+    const updaterService = new UpdaterService(undefined, mockUpdater as never, true);
+
+    const status = await updaterService.check({ interactive: true });
+    expect(status.stage).toBe('idle');
+    expect(mockUpdater.checkForUpdates).toHaveBeenCalled();
+  });
 });
