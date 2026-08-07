@@ -38,6 +38,35 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Full history so the version-bump commit below can rebase onto a
+          # main that moved while this run was queued or building.
+          fetch-depth: 0
+
+      - name: Bump version for rolling release
+        # electron-updater only offers an update when latest-mac.yml's version
+        # is newer than the installed app's, so a rolling release that reuses
+        # package.json's version reads as "no update". Bump patch on every
+        # automatic release and commit it back; a GITHUB_TOKEN push does not
+        # retrigger workflows, so this cannot loop.
+        if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+        working-directory: .
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          PREV=$(node -p "require('./apps/desktop/package.json').version")
+          (cd apps/desktop && npm version patch --no-git-tag-version)
+          NEW=$(node -p "require('./apps/desktop/package.json').version")
+          echo "Version: $PREV -> $NEW"
+          git add apps/desktop/package.json apps/desktop/package-lock.json
+          git commit -m "chore(release): bump Foundry to $NEW"
+          # Rebase so the push is a fast-forward even if main moved mid-run.
+          # A real conflict fails the run honestly rather than clobbering.
+          git fetch origin "${GITHUB_REF_NAME}"
+          git rebase "origin/${GITHUB_REF_NAME}"
+          git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"
+          echo "RELEASE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Select Xcode on NVMe
         working-directory: .
@@ -235,7 +264,9 @@ jobs:
           test -d "$APP"
 
           PKG_VERSION=$(node -p "require('./apps/desktop/package.json').version")
-          SHORT_SHA="${GITHUB_SHA::7}"
+          # The bump step pushed a new commit; tag the commit actually built.
+          RELEASE_REF="${RELEASE_SHA:-$GITHUB_SHA}"
+          SHORT_SHA="${RELEASE_REF::7}"
           RUN="${{ github.run_number }}"
 
           update_latest_mac_yml() {
@@ -309,5 +340,5 @@ jobs:
             --title "$TITLE" \
             --notes "$NOTES" \
             --latest \
-            --target "$GITHUB_SHA"
+            --target "$RELEASE_REF"
           echo "Published rolling latest release (v${PKG_VERSION} run ${RUN})"
