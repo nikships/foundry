@@ -47,6 +47,7 @@ export interface RunDetail {
 
 export interface EventPage {
   events: EventRow[];
+  /** Walks EventRow.changeId, so updated rows are re-served, not just new ones. */
   cursor: number;
 }
 
@@ -130,7 +131,7 @@ export interface FoundryApi {
     start(input: StartRunInput): Promise<{ ok: boolean; runId?: string; issues: ValidationIssue[] }>;
     list(projectId: string, includeArchived: boolean): Promise<RunRow[]>;
     detail(projectId: string, runId: string): Promise<RunDetail>;
-    events(projectId: string, runId: string, afterRowid: number): Promise<EventPage>;
+    events(projectId: string, runId: string, afterChangeId: number): Promise<EventPage>;
     liveTail(phaseId: string): Promise<string>;
     /** The prompt as sent, read from the run's files rather than the event stream. */
     promptFor(projectId: string, phaseId: string): Promise<string>;
@@ -139,6 +140,8 @@ export interface FoundryApi {
     mergeWorktree(projectId: string, runId: string): Promise<WorktreeAction>;
     discardWorktree(projectId: string, runId: string): Promise<WorktreeAction>;
     openWorktree(projectId: string, runId: string): Promise<void>;
+    /** Opens the run's folder of raw records (prompts, stream.jsonl, logs). */
+    revealFiles(projectId: string, runId: string): Promise<void>;
   };
   interrupts: {
     list(): Promise<PendingInterrupt[]>;
@@ -211,6 +214,7 @@ export const IPC = {
   runsMergeWorktree: 'runs:mergeWorktree',
   runsDiscardWorktree: 'runs:discardWorktree',
   runsOpenWorktree: 'runs:openWorktree',
+  runsRevealFiles: 'runs:revealFiles',
   interruptsList: 'interrupts:list',
   interruptsAnswer: 'interrupts:answer',
   doctorRun: 'doctor:run',

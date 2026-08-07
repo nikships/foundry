@@ -107,6 +107,7 @@ function buildMenu(): void {
         { label: 'Runs', accelerator: 'Cmd+1', click: menuClick('menu:view-runs') },
         { label: 'Pipelines', accelerator: 'Cmd+2', click: menuClick('menu:view-pipelines') },
         { label: 'Roster', accelerator: 'Cmd+3', click: menuClick('menu:view-roster') },
+        { label: 'Inspector', accelerator: 'Cmd+4', click: menuClick('menu:view-inspector') },
         { type: 'separator' },
         { role: 'reload' },
         { role: 'toggleDevTools' },

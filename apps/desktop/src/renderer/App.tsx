@@ -4,17 +4,19 @@ import { AppProvider, useApp } from './stores/app.js';
 import Sidebar from './components/Sidebar.js';
 import RunsScreen from './screens/RunsScreen.js';
 import RunDetailScreen from './screens/RunDetailScreen.js';
+import InspectorScreen from './screens/InspectorScreen.js';
 import PipelinesScreen from './screens/PipelinesScreen.js';
 import RosterScreen from './screens/RosterScreen.js';
 import SettingsScreen from './screens/SettingsScreen.js';
 import OnboardingScreen from './screens/OnboardingScreen.js';
 import InterruptSheet from './components/InterruptSheet.js';
 
-export type View = 'runs' | 'pipelines' | 'roster' | 'settings';
+export type View = 'runs' | 'inspector' | 'pipelines' | 'roster' | 'settings';
 
 const MENU_VIEWS: Record<string, View> = {
   'menu:settings': 'settings',
   'menu:view-runs': 'runs',
+  'menu:view-inspector': 'inspector',
   'menu:view-pipelines': 'pipelines',
   'menu:view-roster': 'roster',
 };
@@ -23,6 +25,7 @@ function AppInner(): React.JSX.Element {
   const { ready, settings, interrupts, refreshAll } = useApp();
   const [view, setView] = useState<View>('runs');
   const [openRunId, setOpenRunId] = useState('');
+  const [inspectorRunId, setInspectorRunId] = useState('');
   const [settingsPane, setSettingsPane] = useState('general');
 
   const needsOnboarding = ready && settings != null && !settings.onboarded;
@@ -36,6 +39,14 @@ function AppInner(): React.JSX.Element {
   const go = (next: View): void => {
     setView(next);
     if (next !== 'runs') setOpenRunId('');
+    // Navigating to the Inspector bare means "follow whatever is live"; only
+    // a deep link from a run pins it to one run.
+    if (next === 'inspector') setInspectorRunId('');
+  };
+
+  const openInspector = (runId: string): void => {
+    setInspectorRunId(runId);
+    setView('inspector');
   };
 
   const addProject = async (): Promise<void> => {
@@ -66,9 +77,13 @@ function AppInner(): React.JSX.Element {
 
   let main: React.JSX.Element | null = null;
   if (view === 'runs' && openRunId) {
-    main = <RunDetailScreen key={openRunId} runId={openRunId} onBack={() => setOpenRunId('')} />;
+    main = (
+      <RunDetailScreen key={openRunId} runId={openRunId} onBack={() => setOpenRunId('')} onOpenInspector={openInspector} />
+    );
   } else if (view === 'runs') {
     main = <RunsScreen onOpen={openRun} />;
+  } else if (view === 'inspector') {
+    main = <InspectorScreen pinnedRunId={inspectorRunId} />;
   } else if (view === 'pipelines') {
     main = <PipelinesScreen />;
   } else if (view === 'roster') {

@@ -1,5 +1,5 @@
 /**
- * xAI's Grok Build, driven through `grok -p --output-format json`.
+ * xAI's Grok Build, driven through `grok -p --output-format streaming-json`.
  *
  * "Grok build CLI" is xAI's own tool, whose binary is `grok`; it is not the
  * community `@vibe-kit/grok-cli`, which shares the binary name but authenticates
@@ -8,22 +8,24 @@
  * wrong one otherwise fails on the first turn with an auth error that reads like
  * a missing subscription.
  *
+ * The streaming format is one JSON object per line, captured against the real
+ * CLI and pinned in tests: `thought` and `text` carry per-token deltas,
+ * `tool_call` / `tool_call_update` span a call, `usage` reports per request,
+ * and one `end` object closes the turn with the session id, cumulative usage,
+ * and cost. `available_commands` lines are noise and are ignored everywhere.
+ *
  * Grok prints `ERROR worker quit ... UnexpectedContentType` to stderr on runs
  * that succeed, so `noisyStderr` keeps that line out of the trace. Success is
  * judged by exit status and a parsed result, never by stderr being empty.
- *
- * Its JSON usage block is documented as present but its field names are not
- * published, so the parse reads several spellings and reports usage as
- * unreported when it finds none, which is the honest outcome rather than a zero.
  */
 
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { AutonomyLevel, ModelInfo } from '@shared/types.js';
-import type { TokenUsage } from '../droid/protocol.js';
+import type { DroidNotification, TokenUsage } from '../droid/protocol.js';
 import {
   inheritModel,
-  lastJsonObject,
+  jsonLines,
   type CliAdapter,
   type ParsedTurn,
   type ProcessOutput,
@@ -43,47 +45,152 @@ const SANDBOX: Record<AutonomyLevel, string> = {
 };
 
 interface GrokUsage {
-  inputTokens?: number;
   input_tokens?: number;
-  outputTokens?: number;
   output_tokens?: number;
-  cachedInputTokens?: number;
-  cached_input_tokens?: number;
-  reasoningTokens?: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
   reasoning_tokens?: number;
-  cost?: number;
 }
 
-interface GrokResult {
-  text?: string;
+/** One line of the streaming-json format, as captured from the real CLI. */
+interface GrokStreamLine {
+  type?: string;
+  /** thought and text lines carry their delta here. */
+  data?: string;
+  toolCallId?: string;
+  title?: string;
+  toolName?: string;
+  status?: string | null;
+  rawInput?: Record<string, unknown>;
+  rawOutput?: unknown;
+  content?: unknown;
   stopReason?: string;
   sessionId?: string;
-  requestId?: string;
-  thought?: string;
   usage?: GrokUsage;
-  cost?: number;
+  total_cost_usd?: number;
 }
 
-function pick(...values: (number | undefined)[]): number | undefined {
-  return values.find((v) => typeof v === 'number');
-}
-
-function toTokenUsage(u: GrokUsage | undefined, cost: number | undefined): TokenUsage | null {
+function toTokenUsage(u: GrokUsage | undefined, costUsd: number | undefined): TokenUsage | null {
   if (!u) return null;
-  const input = pick(u.inputTokens, u.input_tokens);
-  const output = pick(u.outputTokens, u.output_tokens);
-  const cached = pick(u.cachedInputTokens, u.cached_input_tokens);
-  const reasoning = pick(u.reasoningTokens, u.reasoning_tokens);
-  // An object with none of the token keys we know is not a usage report; saying
-  // so beats reporting a turn that cost nothing.
-  if (input === undefined && output === undefined) return null;
+  if (u.input_tokens === undefined && u.output_tokens === undefined) return null;
   return {
-    inputTokens: input ?? 0,
-    outputTokens: output ?? 0,
-    cacheCreationTokens: 0,
-    cacheReadTokens: cached ?? 0,
-    thinkingTokens: reasoning ?? 0,
-    factoryCredits: pick(u.cost, cost) ?? 0,
+    inputTokens: u.input_tokens ?? 0,
+    outputTokens: u.output_tokens ?? 0,
+    cacheCreationTokens: u.cache_creation_input_tokens ?? 0,
+    cacheReadTokens: u.cache_read_input_tokens ?? 0,
+    thinkingTokens: u.reasoning_tokens ?? 0,
+    // Grok reports dollars on the end object, like Claude Code does.
+    factoryCredits: costUsd ?? 0,
+  };
+}
+
+/** Grok's tool names map onto the canonical ones the folder labels by. */
+const TOOL_NAME: Record<string, string> = {
+  run_terminal_command: 'Execute',
+  read_file: 'Read',
+  write: 'Create',
+  search_replace: 'Edit',
+  list_dir: 'LS',
+  grep: 'Grep',
+};
+
+/**
+ * rawOutput is a per-tool envelope (`{type:'ListDir', Content:{content:…}}`);
+ * the displayable text lives one level down when it exists at all.
+ */
+function toolOutputText(line: GrokStreamLine): string {
+  const raw = line.rawOutput as { Content?: { content?: unknown }; content?: unknown } | null;
+  if (raw && typeof raw === 'object') {
+    const content = raw.Content?.content ?? raw.content;
+    if (typeof content === 'string') return content;
+    return JSON.stringify(raw);
+  }
+  if (Array.isArray(line.content)) {
+    return (line.content as { text?: string }[])
+      .map((b) => b?.text ?? '')
+      .filter(Boolean)
+      .join('\n');
+  }
+  return '';
+}
+
+/**
+ * Folds one streaming-json line into droid-shaped notifications. Stateful on
+ * purpose: grok emits thought and text as bare deltas with no message id, so
+ * consecutive deltas of one kind form one block, and a line of the other kind
+ * (or a tool call) closes it. Hence the factory: two runs sharing the adapter
+ * must not share segment counters.
+ */
+function streamFactory(): (line: unknown) => DroidNotification[] {
+  let segment = 0;
+  let openThought: string | null = null;
+  let openText: string | null = null;
+
+  const closeThought = (): DroidNotification[] => {
+    if (!openThought) return [];
+    const out: DroidNotification[] = [{ type: 'thinking_text_complete', messageId: openThought }];
+    openThought = null;
+    return out;
+  };
+  const closeText = (): DroidNotification[] => {
+    if (!openText) return [];
+    const out: DroidNotification[] = [
+      { type: 'assistant_text_complete', messageId: openText, blockIndex: 0 },
+    ];
+    openText = null;
+    return out;
+  };
+
+  return (line) => {
+    const e = line as GrokStreamLine;
+    switch (e.type) {
+      case 'thought': {
+        const out = closeText();
+        if (!openThought) openThought = `grok-thought-${++segment}`;
+        out.push({ type: 'thinking_text_delta', messageId: openThought, textDelta: e.data ?? '' });
+        return out;
+      }
+      case 'text': {
+        const out = closeThought();
+        if (!openText) openText = `grok-text-${++segment}`;
+        out.push({
+          type: 'assistant_text_delta',
+          messageId: openText,
+          blockIndex: 0,
+          textDelta: e.data ?? '',
+        });
+        return out;
+      }
+      case 'tool_call': {
+        const out = [...closeThought(), ...closeText()];
+        if (!e.toolCallId) return out;
+        const rawName = e.toolName ?? e.title ?? 'tool';
+        out.push({
+          type: 'tool_call',
+          toolUse: {
+            type: 'tool_use',
+            id: e.toolCallId,
+            name: TOOL_NAME[rawName] ?? rawName,
+            input: e.rawInput ?? {},
+          },
+        });
+        return out;
+      }
+      case 'tool_call_update': {
+        // status null means "still running"; only a terminal status closes the span.
+        if (!e.toolCallId || (e.status !== 'completed' && e.status !== 'failed')) return [];
+        return [
+          {
+            type: 'tool_result',
+            toolUseId: e.toolCallId,
+            content: toolOutputText(e),
+            isError: e.status !== 'completed',
+          },
+        ];
+      }
+      default:
+        return [];
+    }
   };
 }
 
@@ -105,14 +212,13 @@ export const grokAdapter: CliAdapter = {
   supportsRpc: false,
   versionArgs: ['--version'],
   noisyStderr: /worker quit|UnexpectedContentType/i,
+  stream: streamFactory,
   caveats: [
-    'Mid-turn tool calls are not traced: a turn is one span, as in droid one-shot mode.',
-    'Token usage field names are unpublished, so a turn Grok reports differently reads as unreported rather than as zero.',
     'The binary name is shared with the community grok-cli. Foundry expects xAI\'s own build, which authenticates with XAI_API_KEY.',
   ],
 
   turn: (req) => {
-    const argv = ['-p', req.prompt, '--output-format', 'json', '--cwd', req.cwd];
+    const argv = ['-p', req.prompt, '--output-format', 'streaming-json', '--cwd', req.cwd];
     argv.push('--sandbox', SANDBOX[req.autonomy], '--always-approve');
     if (req.model && req.model !== 'inherit') argv.push('-m', req.model);
     if (req.reasoningEffort !== 'off') argv.push('--effort', req.reasoningEffort);
@@ -131,16 +237,20 @@ export const grokAdapter: CliAdapter = {
   },
 
   parse: (out: ProcessOutput): ParsedTurn | null => {
-    const parsed = lastJsonObject<GrokResult>(
-      out.stdout,
-      (v) => v.text !== undefined || v.sessionId !== undefined,
-    );
-    if (!parsed) return null;
-    const stop = parsed.stopReason ?? 'completed';
+    const lines = jsonLines<GrokStreamLine>(out.stdout);
+    // The end object is the turn's summary; the answer is the text deltas
+    // folded in order, which is exactly what the live transcript showed.
+    const end = [...lines].reverse().find((l) => l.type === 'end');
+    if (!end) return null;
+    const text = lines
+      .filter((l) => l.type === 'text')
+      .map((l) => l.data ?? '')
+      .join('');
+    const stop = end.stopReason ?? 'completed';
     return {
-      text: (parsed.text ?? '').trim(),
-      usage: toTokenUsage(parsed.usage, parsed.cost),
-      sessionId: parsed.sessionId ?? null,
+      text: text.trim(),
+      usage: toTokenUsage(end.usage, end.total_cost_usd),
+      sessionId: end.sessionId ?? null,
       reason: stop,
       isError: /error|fail/i.test(stop),
     };

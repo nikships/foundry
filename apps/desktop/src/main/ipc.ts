@@ -412,11 +412,16 @@ export function registerIpc(ctx: AppContext): void {
     };
   });
 
-  handle(IPC.runsEvents, (projectId: string, runId: string, afterRowid: number): EventPage => {
+  handle(IPC.runsEvents, (projectId: string, runId: string, afterChangeId: number): EventPage => {
     const scoped = tracerOf(projectId);
-    if (!scoped) return { events: [], cursor: afterRowid };
-    const events = scoped.tracer.eventsAfter(runId, afterRowid);
-    const cursor = events.length ? events[events.length - 1]!.rowid : afterRowid;
+    if (!scoped) return { events: [], cursor: afterChangeId };
+    const events = scoped.tracer.eventsAfter(runId, afterChangeId);
+    // Rows arrive in creation order, so the next cursor is the max revision
+    // served, not the last row's: a page boundary must not skip a row whose
+    // update landed out of rowid order.
+    const cursor = events.length
+      ? Math.max(afterChangeId, ...events.map((e) => e.changeId))
+      : afterChangeId;
     return { events, cursor };
   });
 
@@ -483,6 +488,13 @@ export function registerIpc(ctx: AppContext): void {
     if (!scoped) return;
     const run = scoped.tracer.run(runId);
     if (run?.worktreePath && existsSync(run.worktreePath)) shell.openPath(run.worktreePath);
+  });
+
+  handle(IPC.runsRevealFiles, (projectId: string, runId: string) => {
+    const scoped = tracerOf(projectId);
+    if (!scoped) return;
+    const dir = scoped.tracer.runDir(runId);
+    if (existsSync(dir)) shell.openPath(dir);
   });
 
   // ── interrupts ────────────────────────────────────────────────────────────

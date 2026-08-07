@@ -132,7 +132,14 @@ const COLUMN_MIGRATIONS: [table: string, column: string, decl: string][] = [
   // Which CLI drove the agent. Older rows predate the choice and were all droid,
   // so the default backfills them correctly rather than leaving them blank.
   ['agent_sessions', 'cli', "TEXT DEFAULT 'droid'"],
+  // Per-row revision the poll cursor walks. Backfilled from rowid below, so a
+  // pre-existing db answers the change query exactly as it answered the rowid
+  // one until new writes land.
+  ['events', 'change_id', 'INTEGER'],
 ];
+
+/** Indexes for columns added after the initial schema, created once present. */
+const LATE_INDEXES = ['CREATE INDEX IF NOT EXISTS idx_events_change ON events(run_id, change_id)'];
 
 export function projectHash(projectPath: string): string {
   return createHash('sha256').update(projectPath).digest('hex').slice(0, 16);
@@ -157,6 +164,10 @@ function migrate(db: Db): void {
       db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
     }
   }
+  // A NULL change_id means the row predates revisions; its rowid is the truth
+  // about when it appeared, so the cursor ordering is preserved.
+  db.exec('UPDATE events SET change_id = rowid WHERE change_id IS NULL');
+  for (const sql of LATE_INDEXES) db.exec(sql);
   db.prepare('INSERT OR IGNORE INTO migrations (version, applied_at) VALUES (?, ?)').run(
     SCHEMA_VERSION,
     new Date().toISOString(),

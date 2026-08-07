@@ -70,8 +70,17 @@ export class OneShotClient {
     this.sessionId = sessionId;
   }
 
-  async send(text: string, timeoutMs: number): Promise<TurnResult> {
-    let { stdout, stderr, code, timedOut } = await this.exec(this.argsFor(text, true), timeoutMs);
+  /**
+   * `onStreamLine` receives each complete stdout line that parses as JSON, as
+   * it arrives rather than at exit. Only wired when the vendor's adapter has a
+   * stream normaliser; what the listener does with a line is its own business.
+   */
+  async send(
+    text: string,
+    timeoutMs: number,
+    onStreamLine?: (line: unknown) => void,
+  ): Promise<TurnResult> {
+    let { stdout, stderr, code, timedOut } = await this.exec(this.argsFor(text, true), timeoutMs, onStreamLine);
 
     // A model the org forbids must not cost the turn: retry on the CLI's own
     // default and report the substitution rather than failing the phase.
@@ -79,7 +88,7 @@ export class OneShotClient {
       this.opts.onStderr?.(
         `${this.opts.model} was refused; this turn runs on ${this.adapter.label}'s default model`,
       );
-      ({ stdout, stderr, code, timedOut } = await this.exec(this.argsFor(text, false), timeoutMs));
+      ({ stdout, stderr, code, timedOut } = await this.exec(this.argsFor(text, false), timeoutMs, onStreamLine));
     }
 
     this.reportStderr(stderr);
@@ -136,7 +145,11 @@ export class OneShotClient {
     }).argv;
   }
 
-  private exec(args: string[], timeoutMs: number): Promise<ExecResult> {
+  private exec(
+    args: string[],
+    timeoutMs: number,
+    onStreamLine?: (line: unknown) => void,
+  ): Promise<ExecResult> {
     return new Promise((resolve) => {
       const child = spawn(this.opts.cliPath, args, {
         cwd: this.opts.cwd,
@@ -147,9 +160,29 @@ export class OneShotClient {
       let stdout = '';
       let stderr = '';
       let timedOut = false;
+      let lineBuffer = '';
+
+      const dispatchLine = (line: string): void => {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('{')) return;
+        try {
+          onStreamLine?.(JSON.parse(trimmed));
+        } catch {
+          // A partial or interleaved line is not fatal; parse() sees the whole
+          // stdout at exit either way, so a missed line costs one live row.
+        }
+      };
 
       child.stdout?.on('data', (c: Buffer) => {
-        stdout += c.toString();
+        const text = c.toString();
+        stdout += text;
+        if (!onStreamLine) return;
+        lineBuffer += text;
+        let idx: number;
+        while ((idx = lineBuffer.indexOf('\n')) >= 0) {
+          dispatchLine(lineBuffer.slice(0, idx));
+          lineBuffer = lineBuffer.slice(idx + 1);
+        }
       });
       child.stderr?.on('data', (c: Buffer) => {
         stderr += c.toString();
@@ -162,6 +195,8 @@ export class OneShotClient {
 
       child.on('close', (code) => {
         clearTimeout(timer);
+        // A final line with no trailing newline still carries a JSON object.
+        if (lineBuffer.trim()) dispatchLine(lineBuffer);
         resolve({ stdout, stderr, code, timedOut });
       });
       child.on('error', (e) => {

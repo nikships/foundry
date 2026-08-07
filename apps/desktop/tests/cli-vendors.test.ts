@@ -122,10 +122,12 @@ describe('claude code', () => {
     expect(valueOf(claude.turn({ ...baseTurn, autonomy: 'high' }).argv, '--permission-mode')).toBe('bypassPermissions');
   });
 
-  it('asks for print mode and json, the pair that makes a turn scriptable', () => {
+  it('asks for print mode and streaming json, the pair that makes a turn watchable', () => {
     const argv = claude.turn(baseTurn).argv;
     expect(argv).toContain('-p');
-    expect(valueOf(argv, '--output-format')).toBe('json');
+    expect(valueOf(argv, '--output-format')).toBe('stream-json');
+    // stream-json in print mode emits nothing per message without it.
+    expect(argv).toContain('--verbose');
   });
 
   it('starts a session with a uuid and resumes with --resume, never --session-id twice', () => {
@@ -260,7 +262,7 @@ describe('junie', () => {
   it('scopes the run with --project and skips the update check', () => {
     const argv = junie.turn(baseTurn).argv;
     expect(valueOf(argv, '--project')).toBe('/tmp/wt');
-    expect(valueOf(argv, '--output-format')).toBe('json');
+    expect(valueOf(argv, '--output-format')).toBe('json-stream');
     expect(argv).toContain('--skip-update-check');
   });
 
@@ -273,18 +275,24 @@ describe('junie', () => {
   });
 
   it('sums the per-model usage rows, since a turn can bill two models', () => {
-    const stdout = JSON.stringify({
-      sessionId: 'session-260408-000616-51s5',
-      taskName: 'Fix the tests',
-      result: 'fixed',
-      changes: [],
-      llmUsage: [
-        { model: 'a', calls: 1, cost: 0.003, inputTokens: 5476, cacheInputTokens: 2, cacheCreateTokens: 3, outputTokens: 126 },
-        { model: 'b', calls: 1, cost: 0.001, inputTokens: 554, cacheInputTokens: 4, cacheCreateTokens: 5, outputTokens: 84 },
-      ],
-    });
+    // Real json-stream output: the id is on the opening session line, and the
+    // usage rows ride the result line under the misnamed errorCode key.
+    const stdout = [
+      JSON.stringify({ type: 'session', timestamp: 1786076788625, sessionId: 'session-260807-002628-i9s8' }),
+      JSON.stringify({ type: 'step', timestamp: 1786076796849, name: 'Found "**/*" ', details: 'a.txt\n' }),
+      JSON.stringify({
+        type: 'result',
+        timestamp: 1786076805204,
+        result: 'fixed',
+        changes: [],
+        errorCode: [
+          { model: 'a', calls: 1, cost: 0.003, inputTokens: 5476, cacheInputTokens: 2, cacheCreateTokens: 3, outputTokens: 126 },
+          { model: 'b', calls: 1, cost: 0.001, inputTokens: 554, cacheInputTokens: 4, cacheCreateTokens: 5, outputTokens: 84 },
+        ],
+      }),
+    ].join('\n');
     const parsed = junie.parse({ stdout, stderr: '', code: 0 });
-    expect(parsed).toMatchObject({ text: 'fixed', sessionId: 'session-260408-000616-51s5' });
+    expect(parsed).toMatchObject({ text: 'fixed', sessionId: 'session-260807-002628-i9s8' });
     expect(parsed?.usage).toMatchObject({
       inputTokens: 6030,
       outputTokens: 210,
@@ -294,8 +302,24 @@ describe('junie', () => {
     expect(parsed?.usage?.factoryCredits).toBeCloseTo(0.004);
   });
 
+  it('still reads the plain json format, which names the usage rows llmUsage', () => {
+    const stdout = JSON.stringify({
+      sessionId: 'session-260408-000616-51s5',
+      taskName: 'Fix the tests',
+      result: 'fixed',
+      changes: [],
+      llmUsage: [{ model: 'a', calls: 1, cost: 0.003, inputTokens: 10, outputTokens: 2 }],
+    });
+    const parsed = junie.parse({ stdout, stderr: '', code: 0 });
+    expect(parsed).toMatchObject({ text: 'fixed', sessionId: 'session-260408-000616-51s5' });
+    expect(parsed?.usage?.inputTokens).toBe(10);
+  });
+
   it('reports usage as absent rather than as zero when Junie sent none', () => {
-    const stdout = JSON.stringify({ sessionId: 's', result: 'ok' });
+    const stdout = [
+      JSON.stringify({ type: 'session', sessionId: 's' }),
+      JSON.stringify({ type: 'result', result: 'ok', changes: [] }),
+    ].join('\n');
     expect(junie.parse({ stdout, stderr: '', code: 0 })?.usage).toBeNull();
   });
 });
@@ -331,33 +355,234 @@ describe('grok', () => {
     expect(valueOf(argv, '--deny')).toBe('webfetch');
   });
 
-  it('reads the result object', () => {
-    const stdout = JSON.stringify({
-      text: 'grok did it',
-      stopReason: 'end_turn',
-      sessionId: '0199a213-81c0-7800',
-      usage: { inputTokens: 12, outputTokens: 3, cachedInputTokens: 1, cost: 0.01 },
-    });
+  it('asks for the streaming format, which is where the transcript lives', () => {
+    expect(valueOf(grok.turn(baseTurn).argv, '--output-format')).toBe('streaming-json');
+  });
+
+  it('folds the answer out of the text deltas and reads the end object', () => {
+    // Real streaming-json output, captured from the CLI: thought and text are
+    // per-token deltas, and one end object carries session, usage, and cost.
+    const stdout = [
+      JSON.stringify({ type: 'available_commands', tools: [], commands: [] }),
+      JSON.stringify({ type: 'thought', data: 'The' }),
+      JSON.stringify({ type: 'thought', data: ' user' }),
+      JSON.stringify({ type: 'text', data: 'grok' }),
+      JSON.stringify({ type: 'text', data: ' did it' }),
+      JSON.stringify({
+        type: 'end',
+        stopReason: 'end_turn',
+        sessionId: '0199a213-81c0-7800',
+        usage: { input_tokens: 12, output_tokens: 3, cache_read_input_tokens: 1, reasoning_tokens: 2 },
+        total_cost_usd: 0.01,
+      }),
+    ].join('\n');
     const parsed = grok.parse({ stdout, stderr: '', code: 0 });
     expect(parsed).toMatchObject({ text: 'grok did it', sessionId: '0199a213-81c0-7800', isError: false });
-    expect(parsed?.usage).toMatchObject({ inputTokens: 12, outputTokens: 3, cacheReadTokens: 1 });
-  });
-
-  it('accepts snake_case token names too, since the schema is unpublished', () => {
-    const stdout = JSON.stringify({ text: 'ok', usage: { input_tokens: 5, output_tokens: 1 } });
-    expect(grok.parse({ stdout, stderr: '', code: 0 })?.usage).toMatchObject({
-      inputTokens: 5,
-      outputTokens: 1,
+    expect(parsed?.usage).toMatchObject({
+      inputTokens: 12,
+      outputTokens: 3,
+      cacheReadTokens: 1,
+      thinkingTokens: 2,
+      factoryCredits: 0.01,
     });
   });
 
-  it('reports usage as absent when the block carries no token names it knows', () => {
-    const stdout = JSON.stringify({ text: 'ok', usage: { somethingElse: 3 } });
+  it('reports usage as absent when the end object carries no token counts', () => {
+    const stdout = [
+      JSON.stringify({ type: 'text', data: 'ok' }),
+      JSON.stringify({ type: 'end', stopReason: 'end_turn', sessionId: 's', usage: {} }),
+    ].join('\n');
     expect(grok.parse({ stdout, stderr: '', code: 0 })?.usage).toBeNull();
   });
 
   it('treats the stderr line it prints on success as noise, not as an error', () => {
     expect(grok.noisyStderr?.test('ERROR worker quit: UnexpectedContentType')).toBe(true);
     expect(grok.noisyStderr?.test('fatal: could not read config')).toBe(false);
+  });
+});
+
+/**
+ * The stream normalisers, fed line by line exactly as the one-shot harness
+ * feeds them. Every fixture is a line the real CLI printed (captured during
+ * development), because a normaliser tested against a convenient shape parses
+ * nothing at all.
+ */
+describe('stream normalisers', () => {
+  it('every streaming vendor exposes a factory, and droid does not need one', () => {
+    expect(adapterFor('droid').stream).toBeUndefined();
+    for (const id of ['claude', 'codex', 'junie', 'grok'] as const) {
+      expect(typeof adapterFor(id).stream).toBe('function');
+    }
+  });
+
+  it('codex folds a command execution into a spanning bash row', () => {
+    const normalise = adapterFor('codex').stream!();
+    const started = normalise({
+      type: 'item.started',
+      item: { id: 'cmd-1', type: 'command_execution', command: 'bun test' },
+    });
+    expect(started).toEqual([
+      { type: 'tool_call', toolUse: { type: 'tool_use', id: 'cmd-1', name: 'Execute', input: { command: 'bun test' } } },
+    ]);
+    const completed = normalise({
+      type: 'item.completed',
+      item: { id: 'cmd-1', type: 'command_execution', command: 'bun test', aggregated_output: '3 pass', exit_code: 0 },
+    });
+    // The completed side re-announces the call, so a build that only emits
+    // completions still produces the span.
+    expect(completed[0]).toMatchObject({ type: 'tool_call' });
+    expect(completed[1]).toEqual({
+      type: 'tool_result',
+      toolUseId: 'cmd-1',
+      content: '3 pass',
+      isError: false,
+    });
+  });
+
+  it('codex marks a non-zero exit as an errored result', () => {
+    const normalise = adapterFor('codex').stream!();
+    const completed = normalise({
+      type: 'item.completed',
+      item: { id: 'cmd-2', type: 'command_execution', command: 'bun test', aggregated_output: '1 fail', exit_code: 1 },
+    });
+    expect(completed[1]).toMatchObject({ isError: true });
+  });
+
+  it('codex folds reasoning and the answer into thinking and text', () => {
+    const normalise = adapterFor('codex').stream!();
+    expect(normalise({ type: 'item.completed', item: { id: 'r1', type: 'reasoning', text: 'hmm' } })).toEqual([
+      { type: 'thinking_text_delta', messageId: 'codex-r1', textDelta: 'hmm' },
+      { type: 'thinking_text_complete', messageId: 'codex-r1' },
+    ]);
+    expect(normalise({ type: 'item.completed', item: { id: 'm1', type: 'agent_message', text: 'done' } })).toEqual([
+      { type: 'assistant_text_delta', messageId: 'codex-m1', blockIndex: 0, textDelta: 'done' },
+      { type: 'assistant_text_complete', messageId: 'codex-m1', blockIndex: 0 },
+    ]);
+  });
+
+  it('codex folds a file change into an edit span naming the touched paths', () => {
+    const normalise = adapterFor('codex').stream!();
+    const out = normalise({
+      type: 'item.completed',
+      item: { id: 'f1', type: 'file_change', changes: [{ path: 'src/a.ts', kind: 'update' }] },
+    });
+    expect(out[0]).toMatchObject({ type: 'tool_call', toolUse: { name: 'Edit', input: { file_path: 'src/a.ts' } } });
+    expect(out[1]).toMatchObject({ type: 'tool_result', toolUseId: 'f1', content: 'update src/a.ts' });
+  });
+
+  it('claude folds an assistant message block by block', () => {
+    const normalise = adapterFor('claude').stream!();
+    const out = normalise({
+      type: 'assistant',
+      message: {
+        id: 'msg_1',
+        role: 'assistant',
+        content: [
+          { type: 'thinking', thinking: 'let me think' },
+          { type: 'text', text: 'the answer' },
+          { type: 'tool_use', id: 'toolu_1', name: 'Bash', input: { command: 'ls' } },
+        ],
+      },
+    });
+    expect(out).toEqual([
+      { type: 'thinking_text_delta', messageId: 'msg_1:0', textDelta: 'let me think' },
+      { type: 'thinking_text_complete', messageId: 'msg_1:0' },
+      { type: 'assistant_text_delta', messageId: 'msg_1', blockIndex: 1, textDelta: 'the answer' },
+      { type: 'assistant_text_complete', messageId: 'msg_1', blockIndex: 1 },
+      // Bash is renamed at the boundary so the shared folder labels it a command.
+      { type: 'tool_call', toolUse: { type: 'tool_use', id: 'toolu_1', name: 'Execute', input: { command: 'ls' } } },
+    ]);
+  });
+
+  it('claude folds tool results from user messages, string or block content', () => {
+    const normalise = adapterFor('claude').stream!();
+    expect(
+      normalise({
+        type: 'user',
+        message: { id: 'u1', role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: 'file list', is_error: false }] },
+      }),
+    ).toEqual([{ type: 'tool_result', toolUseId: 'toolu_1', content: 'file list', isError: false }]);
+    expect(
+      normalise({
+        type: 'user',
+        message: { id: 'u2', role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_2', content: [{ type: 'text', text: 'boom' }], is_error: true }] },
+      }),
+    ).toEqual([{ type: 'tool_result', toolUseId: 'toolu_2', content: 'boom', isError: true }]);
+  });
+
+  it('claude ignores lines that are not conversation, like system and result', () => {
+    const normalise = adapterFor('claude').stream!();
+    expect(normalise({ type: 'system', subtype: 'init', session_id: 's' })).toEqual([]);
+    expect(normalise({ type: 'result', subtype: 'success', result: 'x' })).toEqual([]);
+  });
+
+  it('grok segments thoughts and text around a tool call', () => {
+    const normalise = adapterFor('grok').stream!();
+    expect(normalise({ type: 'thought', data: 'The' })).toEqual([
+      { type: 'thinking_text_delta', messageId: 'grok-thought-1', textDelta: 'The' },
+    ]);
+    // A text line closes the open thought block before opening the text block.
+    expect(normalise({ type: 'text', data: 'ok' })).toEqual([
+      { type: 'thinking_text_complete', messageId: 'grok-thought-1' },
+      { type: 'assistant_text_delta', messageId: 'grok-text-2', blockIndex: 0, textDelta: 'ok' },
+    ]);
+    // A second thought segment is a new block, not a continuation of the first.
+    const second = normalise({ type: 'thought', data: 'again' });
+    expect(second[0]).toEqual({ type: 'assistant_text_complete', messageId: 'grok-text-2', blockIndex: 0 });
+    expect(second[1]).toEqual({ type: 'thinking_text_delta', messageId: 'grok-thought-3', textDelta: 'again' });
+  });
+
+  it('grok folds a tool call and its terminal update into a span', () => {
+    const normalise = adapterFor('grok').stream!();
+    const call = normalise({
+      type: 'tool_call',
+      toolCallId: 'call-1',
+      title: 'list_dir',
+      status: 'pending',
+      toolName: 'list_dir',
+      rawInput: { target_directory: '.' },
+    });
+    expect(call).toEqual([
+      { type: 'tool_call', toolUse: { type: 'tool_use', id: 'call-1', name: 'LS', input: { target_directory: '.' } } },
+    ]);
+    // A null status is a progress ping, not a result.
+    expect(normalise({ type: 'tool_call_update', toolCallId: 'call-1', status: null, rawOutput: null })).toEqual([]);
+    const done = normalise({
+      type: 'tool_call_update',
+      toolCallId: 'call-1',
+      status: 'completed',
+      rawOutput: { type: 'ListDir', Content: { content: '- a.txt' } },
+    });
+    expect(done).toEqual([{ type: 'tool_result', toolUseId: 'call-1', content: '- a.txt', isError: false }]);
+  });
+
+  it('grok keeps two turns on one adapter independent', () => {
+    const adapter = adapterFor('grok');
+    const first = adapter.stream!();
+    const second = adapter.stream!();
+    first({ type: 'thought', data: 'turn one' });
+    // The second turn's normaliser starts its own segment count.
+    expect(second({ type: 'thought', data: 'turn two' })).toEqual([
+      { type: 'thinking_text_delta', messageId: 'grok-thought-1', textDelta: 'turn two' },
+    ]);
+  });
+
+  it('junie folds a step into a completed span and skips the TASK RESULT echo', () => {
+    const normalise = adapterFor('junie').stream!();
+    const out = normalise({ type: 'step', timestamp: 1786076796849, name: 'Found "**/*" ', details: 'a.txt\nsrc/b.txt\n' });
+    expect(out).toEqual([
+      { type: 'tool_call', toolUse: { type: 'tool_use', id: 'junie-step-1786076796849', name: 'step', input: { summary: 'Found "**/*"' } } },
+      { type: 'tool_result', toolUseId: 'junie-step-1786076796849', content: 'a.txt\nsrc/b.txt\n', isError: false },
+    ]);
+    expect(normalise({ type: 'step', timestamp: 1, name: 'TASK RESULT', details: 'the answer' })).toEqual([]);
+  });
+
+  it('junie lands the result line as the assistant text', () => {
+    const normalise = adapterFor('junie').stream!();
+    expect(normalise({ type: 'result', result: 'all done' })).toEqual([
+      { type: 'assistant_text_delta', messageId: 'junie-result', blockIndex: 0, textDelta: 'all done' },
+      { type: 'assistant_text_complete', messageId: 'junie-result', blockIndex: 0 },
+    ]);
+    expect(normalise({ type: 'session', sessionId: 's' })).toEqual([]);
   });
 });

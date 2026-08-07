@@ -1,6 +1,6 @@
 /**
  * JetBrains Junie, driven through its headless one-shot form with
- * `--output-format json`.
+ * `--output-format json-stream`.
  *
  * Junie is the one vendor whose autonomy Foundry cannot set from argv. Its
  * approval behaviour lives in brave mode, which is documented only as an
@@ -10,16 +10,22 @@
  * check rather than as a phase that hangs waiting on a prompt. An operator whose
  * build does take a flag can add it through the per-CLI extra arguments field.
  *
- * Its usage report is per-model rather than per-turn, so the parse sums the
- * `llmUsage` rows: a Junie turn can legitimately bill two models, one for the
- * work and a cheaper one for its own routing.
+ * The stream format is one JSON object per line, captured against the real CLI
+ * and pinned in tests: a `session` line carries the id, `step` lines report
+ * actions as they complete (a name plus free-text details, no structured input
+ * or output), and the closing `result` line carries the answer, the changes
+ * list, and — under the misnomer `errorCode` — the per-model usage rows that
+ * the plain `json` format calls `llmUsage`. Both spellings are read, because
+ * both are in the wild. Usage is summed across rows: a Junie turn can
+ * legitimately bill two models, one for the work and a cheaper one for its own
+ * routing.
  */
 
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { ModelInfo } from '@shared/types.js';
-import type { TokenUsage } from '../droid/protocol.js';
-import { lastJsonObject, type CliAdapter, type ParsedTurn, type ProcessOutput } from './types.js';
+import type { DroidNotification, TokenUsage } from '../droid/protocol.js';
+import { jsonLines, type CliAdapter, type ParsedTurn, type ProcessOutput } from './types.js';
 
 /**
  * Junie's documented aliases. They are aliases rather than ids on purpose: the
@@ -46,12 +52,18 @@ interface JunieUsageRow {
   outputTokens?: number;
 }
 
-interface JunieResult {
+/** One line of the json-stream format, as captured from the real CLI. */
+interface JunieStreamLine {
+  type?: string;
+  timestamp?: number;
   sessionId?: string;
-  taskName?: string;
+  name?: string;
+  details?: string;
   result?: string;
   changes?: unknown[];
   llmUsage?: JunieUsageRow[];
+  /** json-stream's result line carries the usage rows under this key instead. */
+  errorCode?: JunieUsageRow[] | unknown;
 }
 
 function sumUsage(rows: JunieUsageRow[] | undefined): TokenUsage | null {
@@ -74,6 +86,42 @@ function sumUsage(rows: JunieUsageRow[] | undefined): TokenUsage | null {
   return total;
 }
 
+function usageRowsOf(line: JunieStreamLine): JunieUsageRow[] | undefined {
+  if (Array.isArray(line.llmUsage)) return line.llmUsage;
+  // errorCode is an array of usage rows on the streaming result line, despite
+  // the name; anything else under that key is not usage and stays unreported.
+  if (Array.isArray(line.errorCode)) return line.errorCode as JunieUsageRow[];
+  return undefined;
+}
+
+/**
+ * Steps have no structured input or output, just a human-readable name and
+ * details, so each becomes a completed generic span: the folder labels unknown
+ * tools by their summary, which is exactly the step name. `TASK RESULT`
+ * duplicates the result line's text and is skipped here; the result itself
+ * lands as the assistant text so the lane ends with the answer.
+ */
+function streamLine(line: unknown): DroidNotification[] {
+  const e = line as JunieStreamLine;
+  if (e.type === 'step' && e.name && e.name.trim() !== 'TASK RESULT') {
+    const id = `junie-step-${e.timestamp ?? e.name}`;
+    return [
+      {
+        type: 'tool_call',
+        toolUse: { type: 'tool_use', id, name: 'step', input: { summary: e.name.trim() } },
+      },
+      { type: 'tool_result', toolUseId: id, content: e.details ?? '', isError: false },
+    ];
+  }
+  if (e.type === 'result' && typeof e.result === 'string' && e.result.trim()) {
+    return [
+      { type: 'assistant_text_delta', messageId: 'junie-result', blockIndex: 0, textDelta: e.result },
+      { type: 'assistant_text_complete', messageId: 'junie-result', blockIndex: 0 },
+    ];
+  }
+  return [];
+}
+
 export const junieAdapter: CliAdapter = {
   id: 'junie',
   label: 'JetBrains Junie',
@@ -90,14 +138,15 @@ export const junieAdapter: CliAdapter = {
   authUrl: 'https://junie.jetbrains.com/cli',
   supportsRpc: false,
   versionArgs: ['--version'],
+  stream: () => streamLine,
   caveats: [
-    'Mid-turn tool calls are not traced: a turn is one span, as in droid one-shot mode.',
+    'Steps stream as they complete, but the answer text arrives only at turn end: Junie publishes no per-token stream.',
     'Autonomy is not settable from argv. Junie takes it from ~/.junie/allowlist.json, so an unattended run needs that file.',
     'Session resume is best effort: Junie has reported the id in its JSON output and the id in its session index disagreeing.',
   ],
 
   turn: (req) => {
-    const argv = ['--output-format', 'json', '--project', req.cwd];
+    const argv = ['--output-format', 'json-stream', '--project', req.cwd];
     if (req.model && req.model !== 'inherit') argv.push('--model', req.model);
     if (req.reasoningEffort !== 'off') argv.push('--effort', req.reasoningEffort);
     if (req.sessionId) argv.push('--session-id', req.sessionId);
@@ -109,15 +158,19 @@ export const junieAdapter: CliAdapter = {
   },
 
   parse: (out: ProcessOutput): ParsedTurn | null => {
-    const parsed = lastJsonObject<JunieResult>(
-      out.stdout,
-      (v) => v.result !== undefined || v.sessionId !== undefined,
-    );
-    if (!parsed) return null;
+    const lines = jsonLines<JunieStreamLine>(out.stdout);
+    // The result line is the turn's summary. The plain json format printed the
+    // same object without a type discriminator, so both spellings are accepted.
+    const result = [...lines]
+      .reverse()
+      .find((l) => l.type === 'result' || (l.type === undefined && l.result !== undefined));
+    if (!result) return null;
+    // json-stream moves the session id to its own opening line.
+    const session = lines.find((l) => l.type === 'session' && l.sessionId);
     return {
-      text: (parsed.result ?? '').trim(),
-      usage: sumUsage(parsed.llmUsage),
-      sessionId: parsed.sessionId ?? null,
+      text: (result.result ?? '').trim(),
+      usage: sumUsage(usageRowsOf(result)),
+      sessionId: session?.sessionId ?? result.sessionId ?? null,
       reason: 'completed',
       isError: false,
     };

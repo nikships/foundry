@@ -35,7 +35,7 @@ import type {
   ReasoningEffort,
   ToolInfo,
 } from '@shared/types.js';
-import type { TokenUsage } from '../droid/protocol.js';
+import type { DroidNotification, TokenUsage } from '../droid/protocol.js';
 
 // Re-exported so everything under cli/ has one import for the vendor seam, but
 // defined in the shared contract: the renderer names vendors too, and two
@@ -110,6 +110,17 @@ export interface CliAdapter {
   noisyStderr?: RegExp;
   turn: (req: TurnRequest) => Invocation;
   parse: (out: ProcessOutput) => ParsedTurn | null;
+  /**
+   * Returns the normaliser for one turn: folds one parsed stdout line into
+   * droid-shaped notifications, so the shared EventFolder traces this vendor's
+   * stream exactly as if droid had sent it. A factory rather than a bare
+   * function because folding can be stateful (grok opens a new thinking block
+   * per segment), and two runs may share the adapter object concurrently.
+   * Absent on vendors whose format has no mid-turn events; their turn stays
+   * one span and the caveat list says so. Shapes are pinned in tests against
+   * real CLI output, never invented.
+   */
+  stream?: () => (line: unknown) => DroidNotification[];
   /**
    * The model list, however this CLI allows it to be discovered. A vendor that
    * publishes no list returns its documented aliases and nothing more: an

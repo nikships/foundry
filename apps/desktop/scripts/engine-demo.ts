@@ -149,13 +149,13 @@ async function main(): Promise<void> {
     onLiveText: () => undefined,
   });
 
-  // Poll with a rowid cursor the same way the renderer will.
+  // Poll with a change_id cursor the same way the renderer will.
   let cursor = 0;
   const poll = setInterval(() => {
     for (const e of tracer.eventsAfter(runId, cursor)) {
-      cursor = e.rowid;
+      cursor = Math.max(cursor, e.changeId);
       const label = e.name ? `${e.type} ${e.name}` : e.type;
-      console.log(`  [${String(e.rowid).padStart(3)}] ${label}`);
+      console.log(`  [${String(e.changeId).padStart(3)}] ${label}`);
     }
   }, 250);
 

@@ -4,8 +4,8 @@
  * never disagree: `finishRun` settles all three in one call.
  *
  * Every insert is one small transaction and lands as it happens — the renderer
- * polls `eventsAfter` with a rowid cursor, so live view and history are the
- * same query.
+ * polls `eventsAfter` with a change_id cursor, so live view and history are
+ * the same query — and a row patched in place reflows instead of going stale.
  */
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -59,11 +59,27 @@ export interface PhaseInput {
 }
 
 export class Tracer {
+  /**
+   * Hands out change_ids. In-memory because the db has a single writer (the
+   * main process); seeded from the stored max so a reopened db continues the
+   * sequence instead of restarting it.
+   */
+  private changeCounter: number;
+
   constructor(
     private readonly db: Db,
     /** Files stay the raw record: runs/{runId}/… under the project dir. */
     private readonly runsDir: string,
-  ) {}
+  ) {
+    const row = this.db
+      .prepare('SELECT COALESCE(MAX(change_id), 0) AS max_change FROM events')
+      .get() as { max_change: number };
+    this.changeCounter = row.max_change;
+  }
+
+  private nextChangeId(): number {
+    return ++this.changeCounter;
+  }
 
   // ── runs ──────────────────────────────────────────────────────────────────
 
@@ -292,8 +308,8 @@ export class Tracer {
     const startedAt = input.startedAt ?? nowIso();
     this.db
       .prepare(
-        `INSERT INTO events (event_id, run_id, phase_id, parent_id, type, name, payload_json, tokens, started_at, ended_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?)`,
+        `INSERT INTO events (event_id, run_id, phase_id, parent_id, type, name, payload_json, tokens, started_at, ended_at, change_id)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         eventId,
@@ -306,6 +322,7 @@ export class Tracer {
         input.tokens ?? 0,
         startedAt,
         input.endedAt ?? null,
+        this.nextChangeId(),
       );
     this.appendJsonl(input.runId, {
       event_id: eventId,
@@ -329,8 +346,14 @@ export class Tracer {
       .get(eventId) as { payload_json: string; tokens: number } | undefined;
     if (!existing) return;
     this.db
-      .prepare('UPDATE events SET ended_at = ?, payload_json = ?, tokens = ? WHERE event_id = ?')
-      .run(nowIso(), mergePayloadJson(existing.payload_json, payloadPatch), tokens ?? existing.tokens, eventId);
+      .prepare('UPDATE events SET ended_at = ?, payload_json = ?, tokens = ?, change_id = ? WHERE event_id = ?')
+      .run(
+        nowIso(),
+        mergePayloadJson(existing.payload_json, payloadPatch),
+        tokens ?? existing.tokens,
+        this.nextChangeId(),
+        eventId,
+      );
   }
 
   /**
@@ -345,16 +368,40 @@ export class Tracer {
       .get(eventId) as { payload_json: string } | undefined;
     if (!existing) return;
     this.db
-      .prepare('UPDATE events SET name = ?, payload_json = ? WHERE event_id = ?')
-      .run(name, mergePayloadJson(existing.payload_json, payloadPatch), eventId);
+      .prepare('UPDATE events SET name = ?, payload_json = ?, change_id = ? WHERE event_id = ?')
+      .run(name, mergePayloadJson(existing.payload_json, payloadPatch), this.nextChangeId(), eventId);
   }
 
-  eventsAfter(runId: string, afterRowid: number, limit = 500): EventRow[] {
+  /**
+   * Grows a still-open row's payload without renaming or closing it. Streaming
+   * text (assistant replies, thinking) lands this way: one row per message
+   * block, patched as deltas arrive, so the transcript is one continuous
+   * paragraph rather than a confetti of delta rows.
+   */
+  patchEvent(eventId: string, payloadPatch: Record<string, unknown>): void {
+    const existing = this.db
+      .prepare('SELECT payload_json FROM events WHERE event_id = ?')
+      .get(eventId) as { payload_json: string } | undefined;
+    if (!existing) return;
+    this.db
+      .prepare('UPDATE events SET payload_json = ?, change_id = ? WHERE event_id = ?')
+      .run(mergePayloadJson(existing.payload_json, payloadPatch), this.nextChangeId(), eventId);
+  }
+
+  /**
+   * The cursor walks change_id, not rowid: an in-place update (a tool result
+   * landing, a thinking block growing) re-serves the row, so live view and
+   * history stay the same query. Rows still arrive in rowid (creation) order,
+   * so a fresh read of a much-patched run matches the order the live view
+   * built up; the caller's next cursor is the MAX change_id seen, not the
+   * last row's. Callers replace rows by event_id.
+   */
+  eventsAfter(runId: string, afterChangeId: number, limit = 500): EventRow[] {
     const rows = this.db
       .prepare(
-        'SELECT rowid, * FROM events WHERE run_id = ? AND rowid > ? ORDER BY rowid LIMIT ?',
+        'SELECT rowid, * FROM events WHERE run_id = ? AND change_id > ? ORDER BY rowid LIMIT ?',
       )
-      .all(runId, afterRowid, limit) as RawEvent[];
+      .all(runId, afterChangeId, limit) as RawEvent[];
     return rows.map(mapEvent);
   }
 
@@ -709,6 +756,7 @@ interface RawEvent {
   tokens: number;
   started_at: string;
   ended_at: string | null;
+  change_id: number | null;
 }
 
 interface RawEnvelope {
@@ -818,6 +866,9 @@ function mapPhase(r: RawPhase): PhaseRow {
 function mapEvent(r: RawEvent): EventRow {
   return {
     rowid: r.rowid,
+    // Rows written before revisions existed were backfilled from rowid at open,
+    // so the fallback only guards a row inserted by a crashed older build.
+    changeId: r.change_id ?? r.rowid,
     eventId: r.event_id,
     runId: r.run_id,
     phaseId: r.phase_id,

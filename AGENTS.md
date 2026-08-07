@@ -28,7 +28,7 @@ Run everything from `apps/desktop/`.
 npm run dev         # electron-vite dev
 npm run build       # required before `npm start`; emits out/{main,preload,renderer}
 npm run typecheck   # tsc --noEmit
-npm test            # vitest run, 163 tests
+npm test            # vitest run
 npm run engine:demo # headless run of the engine, no UI
 ```
 
@@ -83,11 +83,17 @@ needs something new, add a channel there first, then a handler in `src/main/ipc.
 One data path: the main process writes SQLite, the renderer polls SQLite.
 
 ```sql
-select * from events where run_id = ? and rowid > ? order by rowid limit 500;
+select * from events where run_id = ? and change_id > ? order by rowid limit 500;
 ```
 
 That cursor query is the whole transport. No websocket, no push, no replay path. Live
 view and history differ only in cadence. WAL is on, so reads never block a run.
+
+The cursor is `change_id`, not `rowid`, because rows are patched in place: a tool
+call's result lands on the span that opened it, and a thinking block grows as deltas
+stream in. Every insert and update stamps a fresh `change_id`, so the poll re-serves
+a patched row and the renderer merges by `eventId`. Ordering stays `rowid` (creation
+order); the cursor only decides what is new enough to send.
 
 Keep the schema normalised. Per-phase cost, duration, and model are **derived** from
 events in `src/renderer/derive.ts`, not stored as columns, so a retry's real cost stays
@@ -108,11 +114,16 @@ src/main/cli/<vendor>.ts One adapter each: argv, parse, models, auth, caveats.
 src/main/cli/index.ts   The registry, PATH lookup, and per-vendor defaults.
 ```
 
-An adapter is two functions worth caring about. `turn(req)` builds one turn's
+An adapter is three functions worth caring about. `turn(req)` builds one turn's
 argv; `parse(out)` folds whatever the process printed into `{ text, usage,
-sessionId, reason, isError }`. `droid/oneshot.ts` owns process mechanics (spawn,
-timeout, kill, stderr) and knows no vendor's flags, so **adding a sixth CLI is one
-file plus one registry entry** and touches nothing in `engine/`.
+sessionId, reason, isError }`; `stream()` (optional) returns a per-turn normaliser
+that maps each streaming-JSON line the CLI prints mid-turn into droid-shaped
+notifications, which the shared EventFolder folds into trace rows exactly as
+droid's own RPC stream. `droid/oneshot.ts` owns process mechanics (spawn,
+timeout, kill, stderr, incremental line splitting) and knows no vendor's flags,
+so **adding a sixth CLI is one file plus one registry entry** and touches nothing
+in `engine/`. A vendor without `stream` still works: its turn is one honest span
+that says there is nothing to show until the process exits.
 
 ### Invariants for adapters
 
@@ -136,10 +147,11 @@ file plus one registry entry** and touches nothing in `engine/`.
   same shape as `droid/client.ts`, so a later PR can turn that on per vendor
   without the engine noticing.
 
-`tests/cli-vendors.test.ts` pins each adapter's argv and parse against the output
-shapes those CLIs actually print, including Codex's two spellings of its item
-discriminator. Fixtures come from real documented output, not from shapes the
-parser finds convenient.
+`tests/cli-vendors.test.ts` pins each adapter's argv, parse, and stream normaliser
+against the output shapes those CLIs actually print, including Codex's two
+spellings of its item discriminator. Fixtures come from real captured output
+(`--output-format stream-json` for claude, `--json` for codex, `streaming-json`
+for grok, `json-stream` for junie), not from shapes the parser finds convenient.
 
 ## The droid protocol
 
@@ -166,9 +178,14 @@ tests/envelopes.test.ts     12   zod seams, extraction, correction messages
 tests/boundary.test.ts      12   glob matching, three-state allow, revert
 tests/ipc-clone.test.ts      6   payloads survive the structured-clone bridge
 tests/gates.test.ts         19   each gate's evidence, unknown-gate failure
+tests/git.test.ts            4   the porcelain parser ignores git's stderr chatter
 tests/droid-client.test.ts  24   the wire protocol against fake-droid
 tests/executor.test.ts      21   the run loop against real git temp repos
-tests/cli-vendors.test.ts   40   each vendor's argv and parse, per real CLI output
+tests/cli-vendors.test.ts   54   argv, parse, and stream folding per real CLI output
+tests/transcript.test.ts    13   text folding, throttling, caps, the change_id cursor
+tests/catalog.test.ts        8   model/tool catalogs per vendor
+tests/detect.test.ts        21   project command detection
+tests/updater.test.ts        5   in-app update state machine
 ```
 
 Tests use real git repositories in `mkdtemp` directories and a scripted droid stub.

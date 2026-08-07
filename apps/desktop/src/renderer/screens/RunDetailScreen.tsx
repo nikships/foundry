@@ -10,7 +10,15 @@ import StatusBadge from '../components/StatusBadge.js';
 import CostTable from '../components/CostTable.js';
 import OutcomeBanner from '../components/OutcomeBanner.js';
 
-export default function RunDetailScreen({ runId, onBack }: { runId: string; onBack: () => void }): React.JSX.Element {
+export default function RunDetailScreen({
+  runId,
+  onBack,
+  onOpenInspector,
+}: {
+  runId: string;
+  onBack: () => void;
+  onOpenInspector: (runId: string) => void;
+}): React.JSX.Element {
   const { projectId } = useApp();
   const { view, eventsByPhase, envelopesByPhase, gatesByPhase } = useRun(projectId, runId);
   const [selectedPhaseId, setSelectedPhaseId] = useState('');
@@ -54,6 +62,7 @@ export default function RunDetailScreen({ runId, onBack }: { runId: string; onBa
       <div className="screen">
         <header className="head">
           <button className="btn ghost sm back" onClick={onBack}>← Runs</button>
+          <button className="btn ghost sm" onClick={() => onOpenInspector(runId)}>Inspector</button>
           <div className="grow" />
           {view.live && <button className="btn danger sm" onClick={() => void kill()}>Kill run</button>}
           <button className="btn ghost sm" onClick={() => setShowCost(!showCost)}>{showCost ? 'Hide cost' : 'Cost'}</button>

@@ -322,7 +322,7 @@ export class AgentSession {
       }
     }
 
-    return this.sendOneShot(prompt, ctx.phaseId);
+    return this.sendOneShot(prompt, ctx.phaseId, folder);
   }
 
   /** Drop the dead RPC child, restart, and attempt the turn once more. */
@@ -335,19 +335,31 @@ export class AgentSession {
     return rpc.send(prompt, this.deps.turnTimeoutMs);
   }
 
-  private async sendOneShot(prompt: string, phaseId: string): Promise<TurnResult> {
+  private async sendOneShot(prompt: string, phaseId: string, folder: EventFolder): Promise<TurnResult> {
     const oneshot = (this.oneshot ??= this.buildOneShot());
-    const spanId = this.deps.tracer.event({
-      runId: this.deps.runId,
-      phaseId,
-      type: 'tool_call',
-      name: `${this.agent.name}: one-shot turn`,
-      payload: { mode: 'oneshot', note: 'mid-turn tool visibility is unavailable in fallback mode' },
-    });
-    const result = await oneshot.send(prompt, this.deps.turnTimeoutMs);
+    // A vendor with a stream normaliser gets its mid-turn events folded into
+    // real trace rows; one without keeps the single honest span that says
+    // there is nothing to show until the turn ends. The normaliser is built
+    // per turn: folding can carry state, and sessions share the adapter.
+    const streamFactory = adapterFor(this.vendor).stream;
+    const spanId = streamFactory
+      ? null
+      : this.deps.tracer.event({
+          runId: this.deps.runId,
+          phaseId,
+          type: 'tool_call',
+          name: `${this.agent.name}: one-shot turn`,
+          payload: { mode: 'oneshot', note: 'mid-turn tool visibility is unavailable for this CLI' },
+        });
+    const normalise = streamFactory?.();
+    const result = await oneshot.send(
+      prompt,
+      this.deps.turnTimeoutMs,
+      normalise ? (line) => folder.absorbAll(normalise(line)) : undefined,
+    );
     this.droidSessionId = oneshot.id ?? this.droidSessionId;
     this.persistSession();
-    this.deps.tracer.endEvent(spanId, { reason: result.reason });
+    if (spanId) this.deps.tracer.endEvent(spanId, { reason: result.reason });
     return result;
   }
 

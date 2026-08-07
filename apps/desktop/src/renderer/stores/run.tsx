@@ -79,7 +79,23 @@ export function useRun(projectId: string, runId: string): {
         api.runs.events(projectId, runId, viewRef.current.cursor),
       ]);
       setView((prev) => {
-        const nextEvents = page.events.length ? [...prev.events, ...page.events] : prev.events;
+        // The cursor re-serves rows patched in place (tool results, growing
+        // text), so merge by eventId rather than append: new rows land in
+        // order, updated rows replace their earlier selves.
+        let nextEvents = prev.events;
+        if (page.events.length) {
+          const indexById = new Map(prev.events.map((e, i) => [e.eventId, i]));
+          nextEvents = [...prev.events];
+          for (const event of page.events) {
+            const at = indexById.get(event.eventId);
+            if (at === undefined) {
+              indexById.set(event.eventId, nextEvents.length);
+              nextEvents.push(event);
+            } else {
+              nextEvents[at] = event;
+            }
+          }
+        }
         return {
           run: detail.run,
           phases: detail.phases,

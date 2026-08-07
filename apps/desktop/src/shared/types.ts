@@ -237,6 +237,8 @@ export type EventType =
   | 'agent_start'
   | 'agent_end'
   | 'tool_call'
+  | 'assistant_text'
+  | 'thinking'
   | 'handoff'
   | 'gate_pass'
   | 'gate_fail'
@@ -247,6 +249,13 @@ export type EventType =
 
 export interface EventRow {
   rowid: number;
+  /**
+   * Monotonic per-row revision, bumped on every insert and in-place update.
+   * The poll cursor walks this (not rowid), so a patched row — a tool result
+   * landing, a thinking block growing — reflows to the renderer live instead
+   * of only on reopen.
+   */
+  changeId: number;
   eventId: string;
   runId: string;
   phaseId: string | null;

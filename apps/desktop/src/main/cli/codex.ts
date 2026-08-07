@@ -19,7 +19,7 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { AutonomyLevel, ModelInfo } from '@shared/types.js';
-import type { TokenUsage } from '../droid/protocol.js';
+import type { DroidNotification, TokenUsage } from '../droid/protocol.js';
 import {
   inheritModel,
   jsonLines,
@@ -57,6 +57,12 @@ interface CodexItem {
   item_type?: string;
   text?: string;
   message?: string;
+  /** command_execution items: the shell line and, on completion, its output. */
+  command?: string;
+  aggregated_output?: string;
+  exit_code?: number | null;
+  /** file_change items: one entry per touched path. */
+  changes?: { path?: string; kind?: string }[];
 }
 
 interface CodexEvent {
@@ -86,6 +92,79 @@ function toTokenUsage(u: CodexUsage | undefined): TokenUsage | null {
   };
 }
 
+/**
+ * Folds one JSONL event into droid-shaped notifications, so the shared folder
+ * traces a codex turn exactly like a droid one. `--json` already streams, so
+ * this costs no argv change. Items arrive as started/completed pairs; the
+ * completed side re-announces the call as well, because a build that only
+ * emits completions must still produce the span. Stateless, so the factory
+ * returns the same function every time.
+ */
+function streamLine(line: unknown): DroidNotification[] {
+  const event = line as CodexEvent;
+  const item = event.item;
+  if (!item?.id) return [];
+  const kind = itemKind(item);
+  const id = item.id;
+
+  if (kind === 'command_execution') {
+    if (event.type === 'item.started' || event.type === 'item.completed') {
+      const call: DroidNotification = {
+        type: 'tool_call',
+        toolUse: { type: 'tool_use', id, name: 'Execute', input: { command: item.command ?? '' } },
+      };
+      if (event.type === 'item.started') return [call];
+      const exitCode = typeof item.exit_code === 'number' ? item.exit_code : null;
+      return [
+        call,
+        {
+          type: 'tool_result',
+          toolUseId: id,
+          content: item.aggregated_output ?? '',
+          isError: exitCode !== null ? exitCode !== 0 : false,
+        },
+      ];
+    }
+    return [];
+  }
+
+  if (kind === 'file_change') {
+    if (event.type !== 'item.completed') return [];
+    const changes = item.changes ?? [];
+    const summary = changes.map((c) => `${c.kind ?? 'edit'} ${c.path ?? '?'}`).join('\n');
+    return [
+      {
+        type: 'tool_call',
+        toolUse: {
+          type: 'tool_use',
+          id,
+          name: 'Edit',
+          input: { file_path: changes[0]?.path ?? '', changes },
+        },
+      },
+      { type: 'tool_result', toolUseId: id, content: summary, isError: false },
+    ];
+  }
+
+  // Reasoning and the answer arrive whole at completion, so each is one delta
+  // followed by its close: the folder's growing-row machinery is for droid's
+  // per-token stream, not needed here.
+  if (event.type !== 'item.completed') return [];
+  if (kind === 'reasoning') {
+    return [
+      { type: 'thinking_text_delta', messageId: `codex-${id}`, textDelta: item.text ?? '' },
+      { type: 'thinking_text_complete', messageId: `codex-${id}` },
+    ];
+  }
+  if (kind === 'agent_message' || kind === 'assistant_message') {
+    return [
+      { type: 'assistant_text_delta', messageId: `codex-${id}`, blockIndex: 0, textDelta: item.text ?? '' },
+      { type: 'assistant_text_complete', messageId: `codex-${id}`, blockIndex: 0 },
+    ];
+  }
+  return [];
+}
+
 export const codexAdapter: CliAdapter = {
   id: 'codex',
   label: 'OpenAI Codex',
@@ -105,8 +184,8 @@ export const codexAdapter: CliAdapter = {
   authUrl: 'https://developers.openai.com/codex/cli',
   supportsRpc: false,
   versionArgs: ['--version'],
+  stream: () => streamLine,
   caveats: [
-    'Mid-turn tool calls are not traced: a turn is one span, as in droid one-shot mode.',
     'Per-agent tool restrictions are ignored: Codex scopes tools by sandbox, not by an allow list.',
     'Cost is not reported, only tokens, so the run cost reads as unreported for this CLI.',
   ],
