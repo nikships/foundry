@@ -106,6 +106,7 @@ export interface FoundryApi {
     save(agent: AgentDef, projectId?: string): Promise<SaveResult<AgentDef[]>>;
     remove(name: string, projectId?: string): Promise<AgentDef[]>;
     duplicate(name: string, projectId?: string): Promise<AgentDef | null>;
+    validate(agent: AgentDef): Promise<ValidationIssue[]>;
     reset(): Promise<AgentDef[]>;
   };
   pipelines: {
@@ -194,6 +195,7 @@ export const IPC = {
   rosterSave: 'roster:save',
   rosterRemove: 'roster:remove',
   rosterDuplicate: 'roster:duplicate',
+  rosterValidate: 'roster:validate',
   rosterReset: 'roster:reset',
   pipelinesList: 'pipelines:list',
   pipelinesSave: 'pipelines:save',

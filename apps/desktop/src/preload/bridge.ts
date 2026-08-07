@@ -50,6 +50,7 @@ const api: FoundryApi = {
     save: (agent, projectId) => call(IPC.rosterSave, agent, projectId),
     remove: (name, projectId) => call(IPC.rosterRemove, name, projectId),
     duplicate: (name, projectId) => call(IPC.rosterDuplicate, name, projectId),
+    validate: (agent) => call(IPC.rosterValidate, agent),
     reset: () => call(IPC.rosterReset),
   },
   pipelines: {

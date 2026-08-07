@@ -41,6 +41,7 @@ import { OneShotClient } from './droid/oneshot.js';
 import { isRepo } from './engine/git.js';
 import * as worktreeLib from './engine/worktree.js';
 import { validate as validatePipeline } from './store/pipelines.js';
+import { validate as validateAgent } from './store/roster.js';
 import { invalidateCatalog } from './droid/catalog.js';
 import { adapterFor, allAdapters } from './cli/index.js';
 import { checkProject, runDoctor } from './system/doctor.js';
@@ -276,6 +277,8 @@ export function registerIpc(ctx: AppContext): void {
   handle(IPC.rosterDuplicate, (name: string, projectId?: string) =>
     ctx.roster.duplicate(name, ctx.rosterScope(projectId)),
   );
+
+  handle(IPC.rosterValidate, (agent: AgentDef) => validateAgent(agent));
 
   handle(IPC.rosterReset, () => {
     const agents = ctx.roster.resetToBuiltins();
