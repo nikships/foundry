@@ -1,5 +1,5 @@
 {
-  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "$schema": "https://unpkg.com/knip@6/schema.json",
   "entry": [
     "src/main/main.ts",
     "src/preload/bridge.ts",
@@ -31,5 +31,6 @@
     "nsTypes": "off",
     "enumMembers": "off",
     "duplicates": "off"
-  }
+  },
+  "ignoreBinaries": ["pgrep"]
 }
