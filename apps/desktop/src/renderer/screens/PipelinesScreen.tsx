@@ -8,6 +8,7 @@ import type {
 } from '@shared/types.js';
 import { api, plain } from '../api.js';
 import { useApp } from '../stores/app.js';
+import EmptyState from '../components/EmptyState.js';
 import PhaseEditor from '../components/PhaseEditor.js';
 import PipelineGraph from '../components/PipelineGraph.js';
 import DryRunSheet from '../components/DryRunSheet.js';
@@ -428,6 +429,23 @@ export default function PipelinesScreen(): React.JSX.Element {
             </footer>
           </aside>
         )}
+        {!draft && (
+          <div className="empty-wrap">
+            <EmptyState
+              art="scenes/empty-state.png"
+              title={pipelines.length ? 'No pipeline selected' : 'No pipelines yet'}
+              body={
+                pipelines.length
+                  ? 'Pick a pipeline from the list or create a new one. Pipelines are data — reorder phases, swap agents, and save.'
+                  : 'This workspace has no pipelines. Create one to define how agents should work together.'
+              }
+            >
+              <button className="btn primary" onClick={() => void createPipeline()}>
+                New pipeline
+              </button>
+            </EmptyState>
+          </div>
+        )}
         {dryRun && <DryRunSheet prompts={dryRun} onClose={() => setDryRun(null)} />}
       </div>
       <style>{`
@@ -466,6 +484,7 @@ export default function PipelinesScreen(): React.JSX.Element {
         .issues .warning { color: var(--amber); }
         .mark { flex: none; }
         .rail-foot { display: flex; flex-direction: column; gap: var(--s2); margin-top: auto; padding-top: var(--s4); }
+        .empty-wrap { grid-column: 2 / -1; display: grid; place-items: center; padding: var(--s8); min-height: 0; }
         .scroll { overflow-y: auto; }
         .card { border: 1px solid var(--line); border-radius: var(--r-lg); }
       `}</style>
