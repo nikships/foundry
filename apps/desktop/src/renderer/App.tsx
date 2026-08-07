@@ -84,25 +84,13 @@ function AppInner(): React.JSX.Element {
     setView('runs');
   };
 
-  const go = useCallback(
-    (next: View): void => {
-      // Leaving a screen with an unsaved draft must not be silent. Ask once,
-      // matching the intra-screen guards Pipelines and Roster already have.
-      if (next !== view && (view === 'pipelines' || view === 'roster')) {
-        const label = view === 'pipelines' ? 'pipeline' : 'agent';
-        const ok = window.confirm(
-          `Leave ${view === 'pipelines' ? 'Pipelines' : 'Roster'} with unsaved changes? The ${label} draft will be discarded.`,
-        );
-        if (!ok) return;
-      }
-      setView(next);
-      if (next !== 'runs') setOpenRunId('');
-      // Navigating to the Inspector bare means "follow whatever is live"; only
-      // a deep link from a run pins it to one run.
-      if (next === 'inspector') setInspectorRunId('');
-    },
-    [view],
-  );
+  const go = useCallback((next: View): void => {
+    setView(next);
+    if (next !== 'runs') setOpenRunId('');
+    // Navigating to the Inspector bare means "follow whatever is live"; only
+    // a deep link from a run pins it to one run.
+    if (next === 'inspector') setInspectorRunId('');
+  }, []);
 
   const openInspector = (runId: string): void => {
     setInspectorRunId(runId);

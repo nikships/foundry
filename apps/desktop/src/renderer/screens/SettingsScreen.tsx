@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type {
   CliDescriptor,
   CliVendor,
@@ -96,11 +96,61 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
     void api.catalog.models(defaultCli).then(setModels);
   }, [defaultCli]);
 
+  const projectSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const projectDraftRef = useRef<ProjectDef | null>(null);
+  projectDraftRef.current = projectDraft;
+  const projectRef = useRef<ProjectDef | null>(null);
+  projectRef.current = project;
+  const lastProjectSyncedIdRef = useRef<string | null>(null);
+
   useEffect(() => {
-    setProjectDraft(project ? plain({ ...project }) : null);
-    if (project) void api.projects.check(project.id).then(setProjectChecks);
-    else setProjectChecks([]);
+    if (!project) {
+      setProjectDraft(null);
+      setProjectChecks([]);
+      lastProjectSyncedIdRef.current = null;
+      return;
+    }
+    if (lastProjectSyncedIdRef.current !== project.id) {
+      setProjectDraft(plain({ ...project }));
+      lastProjectSyncedIdRef.current = project.id;
+      void api.projects.check(project.id).then(setProjectChecks);
+      return;
+    }
+    void api.projects.check(project.id).then(setProjectChecks);
   }, [project]);
+
+  // Live auto-save for the Project pane. Visual state is the source of truth,
+  // no Save button. Debounced so typing does not spam disk and refreshAll.
+  useEffect(() => {
+    if (!projectDraft) return;
+    const persisted = projectRef.current;
+    if (!persisted) return;
+    if (JSON.stringify(projectDraft) === JSON.stringify(persisted)) return;
+    if (projectSaveTimer.current) clearTimeout(projectSaveTimer.current);
+    projectSaveTimer.current = setTimeout(() => {
+      const cur = projectDraftRef.current;
+      const base = projectRef.current;
+      if (!cur || !base) return;
+      if (JSON.stringify(cur) === JSON.stringify(base)) return;
+      void (async () => {
+        try {
+          const result = await api.projects.save(cur);
+          if (result.ok) {
+            setErrors([]);
+            await refreshAll();
+            void api.projects.check(cur.id).then(setProjectChecks);
+          } else {
+            setErrors(result.issues.map((i) => `${i.where}: ${i.message}`));
+          }
+        } catch (e) {
+          setErrors([(e as Error).message]);
+        }
+      })();
+    }, 400);
+    return () => {
+      if (projectSaveTimer.current) clearTimeout(projectSaveTimer.current);
+    };
+  }, [projectDraft, project, refreshAll]);
 
   // Local draft so clearing the field for a rewrite does not POST an empty
   // engineerName that Zod rejects and paints a sticky settings error.
@@ -109,19 +159,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
     setNameHint('');
   }, [settings?.engineerName]);
 
-  const projectDirty = JSON.stringify(projectDraft) !== JSON.stringify(project);
-  // Like PipelinesScreen, don't silently throw away an unsaved project edit when
-  // the user clicks another settings pane — ask first so the draft isn't lost.
-  const trySetPane = (next: Pane): void => {
-    if (pane === 'project' && projectDirty && next !== 'project') {
-      const ok = window.confirm('Discard unsaved project changes?');
-      if (!ok) return;
-      // User accepted discard: revert the draft so returning to Project shows the saved state again,
-      // not a stale JSON diff against what they just chose to throw away.
-      setProjectDraft(project ? plain({ ...project }) : null);
-    }
-    setPane(next);
-  };
+  const setPaneLive = (next: Pane): void => setPane(next);
   const set = async (patch: Parameters<typeof patchSettings>[0]): Promise<void> => {
     // Always replace the banner: a successful patch must clear a prior failure.
     setErrors(await patchSettings(patch));
@@ -157,21 +195,6 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
   };
   const relaunchApp = async (): Promise<void> => {
     await runAppAction(() => api.app.relaunch());
-  };
-  const saveProject = async (): Promise<void> => {
-    if (!projectDraft) return;
-    try {
-      const result = await api.projects.save(projectDraft);
-      if (result.ok) {
-        setErrors([]);
-        await refreshAll();
-        setProjectChecks(await api.projects.check(projectDraft.id));
-      } else {
-        setErrors(result.issues.map((i) => `${i.where}: ${i.message}`));
-      }
-    } catch (e) {
-      setErrors([(e as Error).message]);
-    }
   };
   const removeProject = async (): Promise<void> => {
     if (!project) return;
@@ -314,7 +337,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
             <button
               key={p.id}
               className={`pane-btn ${pane === p.id ? 'on' : ''}`}
-              onClick={() => trySetPane(p.id)}
+              onClick={() => setPaneLive(p.id)}
             >
               {p.label}
             </button>
@@ -371,7 +394,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
               <DoctorList
                 checks={checks}
                 onRecheck={() => void api.doctor.run().then(setChecks)}
-                onOpenSettings={(next) => trySetPane(next as Pane)}
+                onOpenSettings={(next) => setPaneLive(next as Pane)}
               />
               <h3>Notifications</h3>
               {(Object.keys(NOTIFY_LABELS) as Array<keyof typeof NOTIFY_LABELS>).map((key) => (
@@ -556,7 +579,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
               <DoctorList
                 checks={checks}
                 onRecheck={() => void api.doctor.run().then(setChecks)}
-                onOpenSettings={(next) => trySetPane(next as Pane)}
+                onOpenSettings={(next) => setPaneLive(next as Pane)}
               />
             </>
           )}
@@ -703,7 +726,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                     onRecheck={() =>
                       void api.projects.check(projectDraft!.id).then(setProjectChecks)
                     }
-                    onOpenSettings={(next) => trySetPane(next as Pane)}
+                    onOpenSettings={(next) => setPaneLive(next as Pane)}
                   />
                   <div className="two">
                     <div className="field">
@@ -804,20 +827,13 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                       </span>
                     </label>
                   </div>
-                  <footer className="actions">
+                  <div className="actions">
                     <button className="btn danger" onClick={() => void removeProject()}>
                       Remove project
                     </button>
                     <div className="grow" />
-                    <button
-                      className="btn primary"
-                      disabled={!projectDirty}
-                      title={!projectDirty ? 'No changes to save' : undefined}
-                      onClick={() => void saveProject()}
-                    >
-                      Save project
-                    </button>
-                  </footer>
+                    <span className="hint">Changes save automatically.</span>
+                  </div>
                 </>
               ) : (
                 <div className="empty-project">
