@@ -25,6 +25,9 @@ export default function RunDetailScreen({
   const [showCost, setShowCost] = useState(false);
   const [worktreeBusy, setWorktreeBusy] = useState(false);
   const [worktreeMessage, setWorktreeMessage] = useState('');
+  const [worktreeError, setWorktreeError] = useState(false);
+  const [killing, setKilling] = useState(false);
+  const [actionError, setActionError] = useState('');
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
@@ -41,6 +44,15 @@ export default function RunDetailScreen({
     setSelectedPhaseId((running ?? failed ?? view.phases[0])?.phaseId ?? '');
   }, [view.phases, selectedPhaseId]);
 
+  // A different run must not inherit the last one's kill/worktree toast.
+  useEffect(() => {
+    setWorktreeMessage('');
+    setWorktreeError(false);
+    setActionError('');
+    setKilling(false);
+    setWorktreeBusy(false);
+  }, [runId]);
+
   const selectedPhase = useMemo(
     () => view.phases.find((p) => p.phaseId === selectedPhaseId) ?? null,
     [view.phases, selectedPhaseId],
@@ -55,21 +67,78 @@ export default function RunDetailScreen({
   );
 
   const kill = async (): Promise<void> => {
-    await api.runs.kill(projectId, runId);
+    if (killing) return;
+    if (
+      !window.confirm('Kill this run? In-flight agent turns stop; the worktree branch is kept.')
+    ) {
+      return;
+    }
+    setKilling(true);
+    setActionError('');
+    try {
+      const ok = await api.runs.kill(projectId, runId);
+      if (!ok) setActionError('Could not kill the run. It may have already finished.');
+    } catch (e) {
+      setActionError((e as Error).message);
+    } finally {
+      setKilling(false);
+    }
   };
 
-  const withWorktree = async (action: () => Promise<{ detail: string }>): Promise<void> => {
+  const withWorktree = async (
+    label: string,
+    action: () => Promise<{ ok?: boolean; detail: string }>,
+  ): Promise<void> => {
     setWorktreeBusy(true);
+    setWorktreeError(false);
+    setWorktreeMessage('');
+    setActionError('');
     try {
-      setWorktreeMessage((await action()).detail);
+      const result = await action();
+      setWorktreeMessage(result.detail || label);
+      setWorktreeError(result.ok === false);
+    } catch (e) {
+      setWorktreeMessage((e as Error).message);
+      setWorktreeError(true);
     } finally {
       setWorktreeBusy(false);
     }
   };
-  const mergeWorktree = (): Promise<void> =>
-    withWorktree(() => api.runs.mergeWorktree(projectId, runId));
-  const discardWorktree = (): Promise<void> =>
-    withWorktree(() => api.runs.discardWorktree(projectId, runId));
+
+  const mergeWorktree = async (): Promise<void> => {
+    if (worktreeBusy) return;
+    if (
+      !window.confirm(
+        'Merge this run’s branch into the project base ref? Uncommitted work in the worktree is included only if the merge path commits it first.',
+      )
+    ) {
+      return;
+    }
+    await withWorktree('Merged.', () => api.runs.mergeWorktree(projectId, runId));
+  };
+
+  const discardWorktree = async (): Promise<void> => {
+    if (worktreeBusy) return;
+    if (
+      !window.confirm(
+        'Discard this run’s worktree and branch? Uncommitted work in it is deleted and cannot be undone.',
+      )
+    ) {
+      return;
+    }
+    await withWorktree('Discarded.', () => api.runs.discardWorktree(projectId, runId));
+  };
+
+  const openWorktree = async (): Promise<void> => {
+    setActionError('');
+    try {
+      await api.runs.openWorktree(projectId, runId);
+    } catch (e) {
+      setActionError((e as Error).message);
+    }
+  };
+
+  const bannerError = actionError || view.error;
 
   return (
     <>
@@ -83,14 +152,24 @@ export default function RunDetailScreen({
           </button>
           <div className="grow" />
           {view.live && (
-            <button className="btn danger sm" onClick={() => void kill()}>
-              Kill run
+            <button
+              className="btn danger sm"
+              disabled={killing}
+              title="Stop the run without deleting its branch"
+              onClick={() => void kill()}
+            >
+              {killing ? 'Killing…' : 'Kill run'}
             </button>
           )}
           <button className="btn ghost sm" onClick={() => setShowCost(!showCost)}>
             {showCost ? 'Hide cost' : 'Cost'}
           </button>
         </header>
+        {bannerError && (
+          <p className="action-err" role="alert">
+            {bannerError}
+          </p>
+        )}
         {view.run && (
           <div className="run-head">
             <div className="row">
@@ -104,10 +183,7 @@ export default function RunDetailScreen({
               {view.run.totalTokens ? <span>{tokens(view.run.totalTokens)} tokens</span> : null}
               {totalCredits ? <span>{credits(totalCredits)} credits</span> : null}
               {view.run.branch && (
-                <button
-                  className="link"
-                  onClick={() => void api.runs.openWorktree(projectId, runId)}
-                >
+                <button className="link" onClick={() => void openWorktree()}>
                   {view.run.branch}
                 </button>
               )}
@@ -120,6 +196,7 @@ export default function RunDetailScreen({
             phases={view.phases}
             worktreeBusy={worktreeBusy}
             worktreeMessage={worktreeMessage}
+            worktreeError={worktreeError}
             onMerge={() => void mergeWorktree()}
             onDiscard={() => void discardWorktree()}
           />
@@ -157,6 +234,7 @@ export default function RunDetailScreen({
         .screen { display: flex; flex-direction: column; height: 100%; min-height: 0; }
         .head { display: flex; align-items: center; gap: var(--s2); padding: calc(var(--titlebar-h) - 8px) var(--s5) 0; }
         .grow { flex: 1; }
+        .action-err { margin: var(--s3) var(--s6) 0; padding: var(--s3); border-radius: var(--r-sm); background: var(--red-dim); color: var(--red); font-size: var(--text-sm); line-height: var(--leading); }
         .run-head { padding: var(--s3) var(--s6) var(--s4); border-bottom: 1px solid var(--line-faint); }
         .run-head .row { display: flex; align-items: center; gap: var(--s3); }
         .run-head h1 { font-size: var(--text-xl); font-weight: 600; letter-spacing: -0.01em; }
