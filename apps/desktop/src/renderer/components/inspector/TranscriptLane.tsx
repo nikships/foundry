@@ -12,7 +12,7 @@ import type { AgentSessionRow, EnvelopeRow, EventRow, PhaseRow } from '@shared/t
 import AgentAvatar from '../AgentAvatar.js';
 import StatusBadge from '../StatusBadge.js';
 import { duration, modelLabel, tokens } from '../../format.js';
-import { usageFor } from '../../derive.js';
+import { usageFor, phaseDuration } from '../../derive.js';
 import { TranscriptEntry, transcriptStyles } from './entries.js';
 
 function ContextBar({
@@ -79,9 +79,7 @@ export default function TranscriptLane({
   const session = sessions.find((s) => s.agent === phase.owner);
   const cli = session?.cli ?? 'droid';
   const model = modelLabel(session?.model);
-  const elapsed = phase.startedAt
-    ? new Date(phase.endedAt ?? now).getTime() - new Date(phase.startedAt).getTime()
-    : null;
+  const elapsed = phaseDuration(phase, now);
   const usage = usageFor(events);
   const tokenCount = usage.reported ? usage.totalTokens : null;
 
