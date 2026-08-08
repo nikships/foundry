@@ -439,7 +439,9 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                     Murmur
                   </button>
                   <span className="brand-active faint mono">
-                    {brandBusy ? 'Switching…' : BRAND_LABELS[settings.brand as BrandId] ?? settings.brand}
+                    {brandBusy
+                      ? 'Switching…'
+                      : (BRAND_LABELS[settings.brand as BrandId] ?? settings.brand)}
                   </span>
                 </div>
                 <span className="hint">
@@ -450,9 +452,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                 {brandNote && <span className="field-note ok">{brandNote}</span>}
                 {needsRelaunch && (
                   <div className="brand-relaunch">
-                    <span className="hint">
-                      Dock icon did not update. Relaunch to refresh it.
-                    </span>
+                    <span className="hint">Dock icon did not update. Relaunch to refresh it.</span>
                     <button className="btn sm" onClick={() => void relaunchApp()}>
                       Relaunch Foundry
                     </button>

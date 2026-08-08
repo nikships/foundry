@@ -96,7 +96,10 @@ export class AppContext {
       normalized.startsWith('scenes/') ||
       normalized.startsWith('icon/');
     if (needsBrand && (brand === 'prism' || brand === 'murmur')) {
-      return [join(this.assetsRoot, 'brands', brand, normalized), join(this.assetsRoot, normalized)];
+      return [
+        join(this.assetsRoot, 'brands', brand, normalized),
+        join(this.assetsRoot, normalized),
+      ];
     }
     return [join(this.assetsRoot, normalized)];
   }

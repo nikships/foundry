@@ -94,7 +94,10 @@ export function migrate(raw: unknown): AppSettings {
   }
   const merged: AppSettings = { ...base, ...stored, clis } as AppSettings;
   // Existing installs won't have brand; default to prism.
-  if ((merged as unknown as { brand?: string }).brand !== 'prism' && (merged as unknown as { brand?: string }).brand !== 'murmur') {
+  if (
+    (merged as unknown as { brand?: string }).brand !== 'prism' &&
+    (merged as unknown as { brand?: string }).brand !== 'murmur'
+  ) {
     (merged as AppSettings).brand = 'prism';
   }
   delete (merged as { droidPath?: string }).droidPath;
