@@ -24,4 +24,6 @@ jobs:
           use_single_comment: "true"
           prompt: "code-review"
           junie_version: "latest"
-          model: "gpt-5.2-2025-12-11"
+          # The action has no reasoning-effort input, but it interpolates `model`
+          # unquoted into the Junie flag list, so the effort flag rides along.
+          model: "grok-4.5 --effort=high"
