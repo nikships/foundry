@@ -82,25 +82,108 @@ export default function PhaseEditor({
 
   return (
     <>
-      <div className={`phase card ${open ? 'open' : ''}`}>
-        <button className="row head" onClick={onToggle}>
-          <span className="dot" style={{ background: color }} />
-          {phase.kind === 'agent' && <AgentAvatar name={phase.agent ?? null} size={26} />}
-          <span className="pname">{phase.name}</span>
-          {owner && <CliIcon vendor={owner.cli ?? 'droid'} size={14} />}
-          <span
-            className="badge kind"
-            style={{ color, background: `color-mix(in srgb, ${color} 14%, transparent)` }}
-          >
-            {phase.kind === 'engineer' ? 'checkpoint' : phase.kind}
-          </span>
-          {phase.feedbackTo && <span className="badge loop">↩ {phase.feedbackTo}</span>}
-          {phase.optional && <span className="badge optional">optional</span>}
-          <span className="grow" />
+      <div className={`phase ${open ? 'open' : ''}`} style={{ ['--hue' as string]: color }}>
+        {open && <span className="phase-edge" aria-hidden />}
+        <div className="row-wrap">
+          <button className="row head" onClick={onToggle} aria-expanded={open}>
+            <span className="num">{String(index + 1).padStart(2, '0')}</span>
+            <span className="glyph" style={{ color }}>
+              {phase.kind === 'agent' ? (
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 14 14"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                  aria-hidden
+                >
+                  <rect x="2.5" y="4" width="9" height="7" rx="1.5" />
+                  <path d="M7 4V1.8" />
+                  <circle cx="7" cy="1.4" r="0.9" fill="currentColor" stroke="none" />
+                  <circle cx="5.2" cy="7.2" r="0.7" fill="currentColor" stroke="none" />
+                  <circle cx="8.8" cy="7.2" r="0.7" fill="currentColor" stroke="none" />
+                </svg>
+              ) : phase.kind === 'code' ? (
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 14 14"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M3 3.5 6 6.5 3 9.5" />
+                  <path d="M7 10.5h4.5" />
+                </svg>
+              ) : (
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 14 14"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M3 12.5v-11" />
+                  <path d="M3 2.2c1.6-1 3.2 1 4.8 0s3-0.6 3.4-0.2v5.6c-0.4-0.4-1.8-0.8-3.4 0.2s-3.2 1-4.8 0" />
+                </svg>
+              )}
+            </span>
+            {phase.kind === 'agent' && <AgentAvatar name={phase.agent ?? null} size={20} />}
+            <span className="pname">{phase.name}</span>
+            <span className="kind">{phase.kind === 'engineer' ? 'checkpoint' : phase.kind}</span>
+            <span className="summary">
+              {phase.kind === 'agent' && (
+                <>
+                  {owner && <CliIcon vendor={owner.cli ?? 'droid'} size={12} />}
+                  <span className="sum-strong">{phase.agent}</span>
+                  <span className="sum-dim"> · envelope </span>
+                  <span className="sum-strong">{phase.envelope ?? owner?.envelope ?? 'build'}</span>
+                </>
+              )}
+              {phase.kind === 'code' && (
+                <>
+                  <span className="sum-dim">$ </span>
+                  <span className="sum-strong">
+                    {phase.command && 'ref' in phase.command
+                      ? phase.command.ref
+                      : phase.command && 'argv' in phase.command
+                        ? phase.command.argv.join(' ')
+                        : ''}
+                  </span>
+                </>
+              )}
+              {phase.kind === 'engineer' && <span className="sum-strong">{phase.question}</span>}
+              {phase.optional && <span className="sum-dim"> · optional</span>}
+            </span>
+            {phase.feedbackTo && <span className="badge loop">↩ {phase.feedbackTo}</span>}
+            <svg
+              className={`chev ${open ? 'up' : ''}`}
+              width="12"
+              height="12"
+              viewBox="0 0 14 14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M3.5 5.5 7 9l3.5-3.5" />
+            </svg>
+          </button>
           <span className="controls">
             <button
-              className="btn sm ghost"
+              className="ctl"
               disabled={index === 0}
+              title="Move earlier"
               onClick={(e) => {
                 e.stopPropagation();
                 onMove(-1);
@@ -109,8 +192,9 @@ export default function PhaseEditor({
               ↑
             </button>
             <button
-              className="btn sm ghost"
+              className="ctl"
               disabled={index === phases.length - 1}
+              title="Move later"
               onClick={(e) => {
                 e.stopPropagation();
                 onMove(1);
@@ -119,7 +203,8 @@ export default function PhaseEditor({
               ↓
             </button>
             <button
-              className="btn sm ghost danger"
+              className="ctl danger"
+              title="Remove phase"
               onClick={(e) => {
                 e.stopPropagation();
                 onRemove();
@@ -128,7 +213,7 @@ export default function PhaseEditor({
               ✕
             </button>
           </span>
-        </button>
+        </div>
         {open && (
           <div className="body">
             <div className="two">
@@ -371,18 +456,46 @@ export default function PhaseEditor({
         )}
       </div>
       <style>{`
-        .phase { overflow: hidden; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg-panel); }
-        .phase.open { border-color: var(--line-strong); }
-        .phase .head { width: 100%; padding: var(--s3) var(--s4); border: none; background: transparent; color: inherit; font: inherit; cursor: default; text-align: left; display: flex; align-items: center; gap: var(--s2); }
-        .phase .head:hover { background: var(--bg-hover); }
-        .dot { width: 8px; height: 8px; border-radius: var(--r-full); flex: none; }
-        .pname { font-size: var(--text-sm); font-weight: 500; }
-        .grow { flex: 1; }
-        .kind { text-transform: lowercase; padding: 2px 6px; border-radius: var(--r-sm); font-size: var(--text-xs); }
-        .loop { background: var(--amber-dim); color: var(--amber); padding: 2px 6px; border-radius: var(--r-sm); font-size: var(--text-xs); }
-        .optional { background: var(--bg-raised); color: var(--text-faint); padding: 2px 6px; border-radius: var(--r-sm); font-size: var(--text-xs); }
-        .controls { display: flex; gap: 2px; }
-        .phase .body { padding: var(--s4); border-top: 1px solid var(--line-faint); animation: fade-in var(--fast) var(--ease); }
+        /* Flat row in one continuous list — hairlines only, no card. */
+        .phase { position: relative; border-bottom: 1px solid var(--line); }
+        .phase-edge { position: absolute; left: 0; top: 0; bottom: 0; width: 1px; background: var(--hue); }
+        .row-wrap { display: flex; align-items: center; padding-right: var(--s6); }
+        .row-wrap:hover { background: color-mix(in srgb, #ffffff 1.8%, transparent); }
+        .phase .head {
+          flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--s3);
+          padding: 13px 0 13px var(--s6);
+          border: none; background: transparent; color: inherit; font: inherit;
+          cursor: default; text-align: left;
+        }
+        .num { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em; color: var(--text-faint); width: 22px; flex: none; }
+        .glyph { display: flex; align-items: center; flex: none; }
+        .pname { font-size: var(--text-sm); font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; flex: none; }
+        .kind {
+          font-family: var(--font-mono); font-size: 10px; text-transform: uppercase;
+          letter-spacing: 0.16em; color: var(--hue); flex: none;
+        }
+        .summary {
+          flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px;
+          font-family: var(--font-mono); font-size: 11.5px;
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .summary .sum-strong { color: var(--text-dim); }
+        .summary .sum-dim { color: var(--text-faint); }
+        .badge.loop { background: var(--amber-dim); color: var(--amber); padding: 2px 6px; border-radius: var(--r-sm); font-size: var(--text-xs); flex: none; }
+        .chev { color: var(--text-faint); flex: none; transition: transform var(--fast) var(--ease); transform: rotate(-90deg); }
+        .chev.up { transform: rotate(0deg); }
+        .controls { display: flex; gap: 2px; flex: none; opacity: 0; transition: opacity var(--fast) var(--ease); }
+        .row-wrap:hover .controls, .phase.open .controls { opacity: 1; }
+        .ctl {
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 26px; height: 26px; border: none; border-radius: var(--r-sm);
+          background: transparent; color: var(--text-faint); font: inherit; font-size: 11px;
+          cursor: default; transition: color var(--fast) var(--ease), background var(--fast) var(--ease);
+        }
+        .ctl:hover:not(:disabled) { color: var(--text); background: var(--bg-hover); }
+        .ctl:disabled { opacity: 0.3; }
+        .ctl.danger:hover { color: var(--red); }
+        .phase .body { padding: var(--s4) var(--s6) var(--s5) calc(var(--s6) + 22px + var(--s3)); border-top: 1px solid var(--line); animation: fade-in var(--fast) var(--ease); }
         .two { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s4); }
         .field { display: flex; flex-direction: column; gap: var(--s1); margin-bottom: var(--s3); }
         .field label { font-size: var(--text-sm); font-weight: 500; }

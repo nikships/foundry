@@ -1,6 +1,5 @@
 import AgentAvatar from '../../components/AgentAvatar.js';
-import { useOnboarding } from './OnboardingContext.js';
-import { BUILTIN_AGENTS } from './shared.js';
+import { BUILTIN_AGENTS, StepFooter } from './shared.js';
 
 const HINTS: Record<string, string> = {
   planner: 'Breaks a prompt into an ordered, reviewable task list.',
@@ -19,7 +18,6 @@ const ACCENTS: Record<string, string> = {
 };
 
 export default function RosterScreen(): React.JSX.Element {
-  const { next, back } = useOnboarding();
   return (
     <div className="rs">
       <div className="rs-body">
@@ -27,8 +25,8 @@ export default function RosterScreen(): React.JSX.Element {
           <p className="ob-eyebrow">03 — The roster</p>
           <h1 className="ob-title">Meet the crew</h1>
           <p className="ob-lead">
-            Built-in agents cover plan, build, scout, review, and docs. Edit them, or bring your own. Each
-            one can ride a different CLI.
+            Built-in agents cover plan, build, scout, review, and docs. Edit them, or bring your
+            own. Each one can ride a different CLI.
           </p>
           <div className="rs-rule" aria-hidden />
           <p className="rs-stat">Five specialists. One request. Isolated git worktrees.</p>
@@ -43,8 +41,8 @@ export default function RosterScreen(): React.JSX.Element {
             ))}
           </div>
           <p className="rs-clarify">
-            Pipelines wire them in sequence — each phase runs in order, leaves a typed envelope, and is
-            judged by code before the next begins.
+            Pipelines wire them in sequence — each phase runs in order, leaves a typed envelope, and
+            is judged by code before the next begins.
           </p>
         </div>
 
@@ -80,28 +78,24 @@ export default function RosterScreen(): React.JSX.Element {
                   <span className="rs-hint">{HINTS[agent.name]}</span>
                 </span>
                 <span className="rs-cli">
-                  <span className="rs-dot" style={{ background: ACCENTS[agent.name] }} aria-hidden />
+                  <span
+                    className="rs-dot"
+                    style={{ background: ACCENTS[agent.name] }}
+                    aria-hidden
+                  />
                   any CLI
                 </span>
               </li>
             ))}
           </ol>
           <p className="rs-footnote">
-            Tune names, prompts, and harnesses in the Roster after setup. The factory runs whatever you
-            wire — these five are just a sharp default.
+            Tune names, prompts, and harnesses in the Roster after setup. The factory runs whatever
+            you wire — these five are just a sharp default.
           </p>
         </div>
       </div>
 
-      <div className="ob-foot">
-        <button type="button" className="btn ghost" onClick={back}>
-          Back
-        </button>
-        <span className="ob-grow" />
-        <button type="button" className="btn primary" onClick={next}>
-          Continue
-        </button>
-      </div>
+      <StepFooter />
 
       <style>{`
         .rs{

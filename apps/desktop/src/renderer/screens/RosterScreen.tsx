@@ -8,7 +8,6 @@ import type {
 } from '@shared/types.js';
 import { api, plain } from '../api.js';
 import { useApp } from '../stores/app.js';
-import { modelLabel } from '../format.js';
 import AgentAvatar from '../components/AgentAvatar.js';
 import { CliIcon } from '../components/BrandIcon.js';
 import ModelPicker from '../components/ModelPicker.js';
@@ -215,219 +214,306 @@ export default function RosterScreen(): React.JSX.Element {
 
   return (
     <>
-      <div className="screen">
-        <aside className="list">
-          <header className="list-head">
-            <h1>Roster</h1>
-            <button className="btn sm" onClick={() => void createAgent()}>
-              New
-            </button>
-          </header>
-          <div className="scroll agents">
-            {agents.map((agent) => (
+      <div className="ro-screen">
+        {/* ── agent strip: the whole roster, one horizontal band ── */}
+        <div className="ro-strip" role="tablist" aria-label="Agents">
+          {agents.map((agent) => {
+            const isActive = agent.name === selectedName;
+            return (
               <button
                 key={agent.name}
-                className={`agent ${agent.name === selectedName ? 'active' : ''}`}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                className={`ro-cell ${isActive ? 'on' : ''}`}
+                style={{ ['--hue' as string]: agent.color ?? 'var(--cyan)' }}
                 onClick={() => selectAgent(agent.name)}
               >
-                <AgentAvatar name={agent.name} size={34} />
-                <span className="who">
-                  <span className="name">{agent.name}</span>
-                  <span className="faint purpose">{agent.purpose}</span>
+                <AgentAvatar name={agent.name} size={30} />
+                <span className="ro-cell-who">
+                  <span className="ro-cell-name">{agent.name}</span>
+                  <span className="ro-cell-role">{agent.purpose}</span>
+                  <span className="ro-cell-cli">
+                    <CliIcon vendor={agent.cli ?? 'droid'} size={11} />
+                    {agent.cli ?? 'droid'}
+                  </span>
                 </span>
-                <CliIcon vendor={agent.cli ?? 'droid'} size={14} />
-                <span className="faint mono model">{modelLabel(agent.model)}</span>
+                {isActive && <span className="ro-cell-rule" aria-hidden />}
               </button>
-            ))}
-          </div>
-        </aside>
+            );
+          })}
+          <button type="button" className="ro-new" onClick={() => void createAgent()}>
+            + New agent
+          </button>
+        </div>
+
         {draft && (
-          <div className="editor scroll">
-            <header className="edit-head">
-              <AgentAvatar name={draft.name} size={44} />
-              <div className="grow">
-                <h2>{draft.name}</h2>
-                <p className="faint sub">
-                  {draft.builtin ? 'Shipped with Foundry, editable' : 'Custom agent'}
-                </p>
+          <div className="ro-scroll">
+            <div className="ro-page">
+              {/* ── title row ── */}
+              <div className="ro-head">
+                <div className="ro-head-main">
+                  <div className="ro-head-titlerow">
+                    <h1 className="ro-title" style={{ color: draft.color ?? 'var(--cyan)' }}>
+                      {draft.name}
+                    </h1>
+                    <span className="ro-head-meta">
+                      <CliIcon vendor={draftCli} size={13} />
+                      {draftCli} · {draft.envelope}
+                    </span>
+                  </div>
+                  <p className="ro-head-sub">
+                    {draft.purpose || 'No purpose yet.'}{' '}
+                    <span className="ro-head-tag">
+                      {draft.builtin ? 'Shipped with Foundry, editable' : 'Custom agent'}
+                    </span>
+                  </p>
+                </div>
+                <div className="ro-head-actions">
+                  <button type="button" className="ro-action" onClick={() => setShowPreview(true)}>
+                    Preview prompt
+                  </button>
+                  <button type="button" className="ro-action" onClick={() => void duplicate()}>
+                    Duplicate
+                  </button>
+                  {!draft.builtin && (
+                    <button
+                      type="button"
+                      className="ro-action danger"
+                      onClick={() => void remove()}
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
               </div>
-              <CliIcon vendor={draftCli} size={20} />
-              <button className="btn sm" onClick={() => setShowPreview(true)}>
-                Preview prompt
-              </button>
-              <button className="btn sm" onClick={() => void duplicate()}>
-                Duplicate
-              </button>
-              {!draft.builtin && (
-                <button className="btn sm danger" onClick={() => void remove()}>
-                  Delete
-                </button>
-              )}
-            </header>
-            <div className="field">
-              <label>Name</label>
-              <input
-                className="input"
-                value={draft.name}
-                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-              />
-              <span className="hint">
-                Pipelines refer to an agent by this name. Renaming creates a new agent under the new
-                name and leaves the old one in place, so pipelines keep pointing at the old name
-                until you update them.
-              </span>
-            </div>
-            <div className="field">
-              <label>Purpose</label>
-              <input
-                className="input"
-                value={draft.purpose}
-                onChange={(e) => setDraft({ ...draft, purpose: e.target.value })}
-              />
-              <span className="hint">One line, shown wherever this agent appears.</span>
-            </div>
-            <div className="field">
-              <label>CLI</label>
-              <div className="cli-picker">
-                <select
-                  className="select"
-                  value={draftCli}
-                  onChange={(e) =>
-                    setDraft({ ...draft, cli: e.target.value as CliVendor, model: 'inherit' })
-                  }
-                >
-                  {clis.map((cli) => (
-                    <option key={cli.id} value={cli.id}>
-                      {cli.label}
-                    </option>
-                  ))}
-                </select>
-                <CliIcon vendor={draftCli} size={18} />
-              </div>
-              <span className="hint">
-                Which binary runs this agent's phases. Changing it resets the model, because model
-                ids do not carry across CLIs.
-              </span>
-              {(clis.find((c) => c.id === draftCli)?.caveats ?? []).map((caveat) => (
-                <span key={caveat} className="hint caveat">
-                  {caveat}
-                </span>
-              ))}
-            </div>
-            <div className="two">
-              <div className="field">
-                <label>Model</label>
-                <ModelPicker
-                  value={draft.model}
-                  models={models}
-                  allowInherit
-                  emptyHint={`No models from ${draftCli}. Check Agent CLIs in Settings, or use Inherit.`}
-                  onChange={(value) => setDraft({ ...draft, model: value })}
-                  onRefresh={() => void api.catalog.models(draftCli, true).then(setModels)}
+
+              {/* ── identity ── */}
+              <section className="ro-section">
+                <div className="ro-section-label">
+                  <h2>Identity</h2>
+                  <p>How this agent is referenced in pipelines and run logs.</p>
+                </div>
+                <div className="ro-fields">
+                  <div className="field">
+                    <label>Name</label>
+                    <input
+                      className="input mono"
+                      value={draft.name}
+                      onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                    />
+                    <span className="hint">
+                      Renaming creates a new agent under the new name and leaves the old one in
+                      place, so pipelines keep pointing at the old name until you update them.
+                    </span>
+                  </div>
+                  <div className="field">
+                    <label>Purpose</label>
+                    <input
+                      className="input"
+                      value={draft.purpose}
+                      onChange={(e) => setDraft({ ...draft, purpose: e.target.value })}
+                    />
+                    <span className="hint">One line, shown wherever this agent appears.</span>
+                  </div>
+                  <div className="field span2">
+                    <label>Accent</label>
+                    <div className="swatches">
+                      {COLORS.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          className={`swatch ${draft.color === c ? 'on' : ''}`}
+                          aria-label={`Accent ${c}`}
+                          aria-pressed={draft.color === c}
+                          onClick={() => setDraft({ ...draft, color: c })}
+                        >
+                          <span className="swatch-dot" style={{ background: c }} />
+                        </button>
+                      ))}
+                      <span className="swatch-hex">{draft.color}</span>
+                    </div>
+                    <span className="hint">Used for this agent's lane in the waterfall.</span>
+                  </div>
+                </div>
+              </section>
+
+              {/* ── execution ── */}
+              <section className="ro-section">
+                <div className="ro-section-label">
+                  <h2>Execution</h2>
+                  <p>Which CLI runs this agent, and how hard it thinks.</p>
+                </div>
+                <div className="ro-fields">
+                  <div className="field">
+                    <label>CLI vendor</label>
+                    <div className="cli-picker">
+                      <select
+                        className="select mono"
+                        value={draftCli}
+                        onChange={(e) =>
+                          setDraft({ ...draft, cli: e.target.value as CliVendor, model: 'inherit' })
+                        }
+                      >
+                        {clis.map((cli) => (
+                          <option key={cli.id} value={cli.id}>
+                            {cli.label}
+                          </option>
+                        ))}
+                      </select>
+                      <CliIcon vendor={draftCli} size={18} />
+                    </div>
+                    <span className="hint">
+                      Which binary runs this agent's phases. Changing it resets the model, because
+                      model ids do not carry across CLIs.
+                    </span>
+                    {(clis.find((c) => c.id === draftCli)?.caveats ?? []).map((caveat) => (
+                      <span key={caveat} className="hint caveat">
+                        {caveat}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="field">
+                    <label>Model</label>
+                    <ModelPicker
+                      value={draft.model}
+                      models={models}
+                      allowInherit
+                      emptyHint={`No models from ${draftCli}. Check Agent CLIs in Settings, or use Inherit.`}
+                      onChange={(value) => setDraft({ ...draft, model: value })}
+                      onRefresh={() => void api.catalog.models(draftCli, true).then(setModels)}
+                    />
+                    <span className="hint">“Inherit” uses this CLI's own default.</span>
+                  </div>
+                  <div className="field">
+                    <label>Reasoning effort</label>
+                    <div className="ro-seg" role="radiogroup" aria-label="Reasoning effort">
+                      {(['off', 'low', 'medium', 'high'] as const).map((level) => (
+                        <button
+                          key={level}
+                          type="button"
+                          role="radio"
+                          aria-checked={draft.reasoningEffort === level}
+                          className={`ro-seg-btn ${draft.reasoningEffort === level ? 'on' : ''}`}
+                          onClick={() =>
+                            setDraft({
+                              ...draft,
+                              reasoningEffort: level as AgentDef['reasoningEffort'],
+                            })
+                          }
+                        >
+                          {level}
+                        </button>
+                      ))}
+                    </div>
+                    <span className="hint">
+                      Higher effort costs more thinking tokens and takes longer.
+                    </span>
+                  </div>
+                  <div className="field">
+                    <label>Envelope kind</label>
+                    <select
+                      className="select mono"
+                      value={draft.envelope}
+                      onChange={(e) =>
+                        setDraft({ ...draft, envelope: e.target.value as AgentDef['envelope'] })
+                      }
+                    >
+                      {ENVELOPE_KINDS.map((kind) => (
+                        <option key={kind} value={kind}>
+                          {kind}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="hint">
+                      The typed reply this agent must return. Parsed and validated on every turn.
+                    </span>
+                  </div>
+                </div>
+              </section>
+
+              {/* ── prompts ── */}
+              <section className="ro-section">
+                <div className="ro-section-label">
+                  <h2>Prompts</h2>
+                  <p>The system prompt is fixed per agent; the template is filled per phase.</p>
+                </div>
+                <div className="ro-stack">
+                  <div className="field">
+                    <label>System prompt</label>
+                    <textarea
+                      className="textarea"
+                      value={draft.systemPrompt}
+                      rows={7}
+                      onChange={(e) => setDraft({ ...draft, systemPrompt: e.target.value })}
+                    />
+                    <span className="hint">
+                      The agent's standing instructions. Sent once, at the start of its session.
+                    </span>
+                  </div>
+                  <div className="field">
+                    <label>User prompt template</label>
+                    <textarea
+                      className="textarea"
+                      value={draft.userPrompt}
+                      rows={6}
+                      onChange={(e) => setDraft({ ...draft, userPrompt: e.target.value })}
+                    />
+                    <span className="hint">
+                      Supports{' '}
+                      {TEMPLATE_TOKENS.map((token) => (
+                        <code key={token}>{token}</code>
+                      ))}{' '}
+                      Declared inputs not referenced here are appended to the prompt automatically.
+                    </span>
+                  </div>
+                </div>
+              </section>
+
+              {/* ── write boundary ── */}
+              <section className="ro-section">
+                <div className="ro-section-label">
+                  <h2>Write boundary</h2>
+                  <p>Paths this agent may modify. Everything else is refused at the tool layer.</p>
+                </div>
+                <BoundaryEditor
+                  value={draft.writes}
+                  onChange={(value) => setDraft({ ...draft, writes: value })}
                 />
-                <span className="hint">“Inherit” uses this CLI's own default.</span>
+              </section>
+
+              {/* ── validation + autosave ── */}
+              <div className="ro-statusbar">
+                {issues.length > 0 ? (
+                  <ul className="issues">
+                    {issues.map((issue, i) => (
+                      <li key={i} className={issue.level}>
+                        <strong>{issue.where}</strong> {issue.message}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <span className="ro-status-ok">
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 14 14"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                    >
+                      <path d="M2.5 7.5 5.5 10.5 11.5 3.5" />
+                    </svg>
+                    No validation issues
+                  </span>
+                )}
+                {actionError && <p className="action-err">{actionError}</p>}
+                <span className="ro-autosave">Changes save automatically</span>
               </div>
-              <div className="field">
-                <label>Reasoning effort</label>
-                <select
-                  className="select"
-                  value={draft.reasoningEffort}
-                  onChange={(e) =>
-                    setDraft({
-                      ...draft,
-                      reasoningEffort: e.target.value as AgentDef['reasoningEffort'],
-                    })
-                  }
-                >
-                  <option value="off">Off</option>
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                </select>
-                <span className="hint">
-                  Higher effort costs more thinking tokens and takes longer.
-                </span>
-              </div>
             </div>
-            <div className="field">
-              <label>Colour</label>
-              <div className="swatches">
-                {COLORS.map((c) => (
-                  <button
-                    key={c}
-                    className={`swatch ${draft.color === c ? 'on' : ''}`}
-                    style={{ background: c }}
-                    onClick={() => setDraft({ ...draft, color: c })}
-                  />
-                ))}
-              </div>
-              <span className="hint">Used for this agent's lane in the waterfall.</span>
-            </div>
-            <div className="field">
-              <label>System prompt</label>
-              <textarea
-                className="textarea"
-                value={draft.systemPrompt}
-                rows={7}
-                onChange={(e) => setDraft({ ...draft, systemPrompt: e.target.value })}
-              />
-              <span className="hint">
-                The agent's standing instructions. Sent once, at the start of its session.
-              </span>
-            </div>
-            <div className="field">
-              <label>User prompt template</label>
-              <textarea
-                className="textarea"
-                value={draft.userPrompt}
-                rows={6}
-                onChange={(e) => setDraft({ ...draft, userPrompt: e.target.value })}
-              />
-              <span className="hint">
-                Supports{' '}
-                {TEMPLATE_TOKENS.map((token) => (
-                  <code key={token}>{token}</code>
-                ))}{' '}
-                Declared inputs not referenced here are appended to the prompt automatically.
-              </span>
-            </div>
-            <div className="field">
-              <label>Envelope</label>
-              <select
-                className="select"
-                value={draft.envelope}
-                onChange={(e) =>
-                  setDraft({ ...draft, envelope: e.target.value as AgentDef['envelope'] })
-                }
-              >
-                {ENVELOPE_KINDS.map((kind) => (
-                  <option key={kind} value={kind}>
-                    {kind}
-                  </option>
-                ))}
-              </select>
-              <span className="hint">
-                The typed reply this agent must return. Parsed and validated on every turn.
-              </span>
-            </div>
-            <div className="field">
-              <label>Write boundary</label>
-              <BoundaryEditor
-                value={draft.writes}
-                onChange={(value) => setDraft({ ...draft, writes: value })}
-              />
-            </div>
-            {issues.length > 0 && (
-              <ul className="issues">
-                {issues.map((issue, i) => (
-                  <li key={i} className={issue.level}>
-                    <strong>{issue.where}</strong> {issue.message}
-                  </li>
-                ))}
-              </ul>
-            )}
-            {actionError && <p className="action-err">{actionError}</p>}
-            <p className="faint live-hint">Changes save automatically.</p>
           </div>
         )}
         {showPreview && draft && (
@@ -435,40 +521,139 @@ export default function RosterScreen(): React.JSX.Element {
         )}
       </div>
       <style>{`
-        .screen { display: grid; grid-template-columns: 300px minmax(0, 1fr); height: 100%; min-height: 0; }
-        .list { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); background: var(--bg-panel); }
-        .list-head { display: flex; align-items: center; justify-content: space-between; padding: calc(var(--titlebar-h) + var(--s2)) var(--s4) var(--s3); }
-        .list-head h1 { font-size: var(--text-xl); font-weight: 600; }
-        .agents { flex: 1; min-height: 0; padding: 0 var(--s2) var(--s4); overflow-y: auto; }
-        .agent { display: flex; align-items: center; gap: var(--s3); width: 100%; padding: var(--s2) var(--s3); border: none; border-radius: var(--r-sm); background: transparent; color: inherit; font: inherit; text-align: left; cursor: default; }
-        .agent:hover { background: var(--bg-hover); }
-        .agent.active { background: var(--bg-active); }
-        .who { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-        .agent .name { font-size: var(--text-sm); font-weight: 500; }
-        .purpose, .model { font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .model { flex: none; max-width: 76px; }
-        .cli-picker { display: flex; align-items: center; gap: var(--s2); }
-        .cli-picker .select { flex: 1; }
-        .editor { min-height: 0; padding: calc(var(--titlebar-h) + var(--s2)) var(--s8) var(--s16); max-width: 900px; overflow-y: auto; }
-        .edit-head { display: flex; align-items: center; gap: var(--s3); margin-bottom: var(--s6); }
-        .edit-head h2 { font-size: var(--text-xl); font-weight: 600; }
-        .sub { font-size: var(--text-xs); }
-        .grow { flex: 1; }
-        .two { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s5); }
-        .field { display: flex; flex-direction: column; gap: var(--s1); margin-bottom: var(--s4); }
+        /* One continuous surface — structure from hairlines + type, never tinted columns. */
+        .ro-screen { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--bg-base); }
+
+        /* strip */
+        .ro-strip {
+          flex: none; display: flex; align-items: stretch;
+          padding: calc(var(--titlebar-h)) var(--s6) 0;
+          border-bottom: 1px solid var(--line);
+          overflow-x: auto;
+        }
+        .ro-cell {
+          position: relative; flex: 1 1 0; min-width: 170px;
+          display: flex; align-items: center; gap: var(--s3);
+          padding: var(--s4) var(--s5) var(--s4) var(--s4);
+          border: none; border-right: 1px solid var(--line);
+          background: transparent; color: inherit; font: inherit; text-align: left; cursor: default;
+          transition: background var(--fast) var(--ease);
+        }
+        .ro-cell:first-child { padding-left: 0; }
+        .ro-cell:hover { background: color-mix(in srgb, #ffffff 2%, transparent); }
+        .ro-cell-who { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+        .ro-cell-name {
+          font-size: var(--text-sm); font-weight: 500; color: var(--text);
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .ro-cell.on .ro-cell-name { color: var(--hue); }
+        .ro-cell-role {
+          font-size: 11px; color: var(--text-dim);
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .ro-cell-cli {
+          display: flex; align-items: center; gap: 5px; margin-top: 3px;
+          font-family: var(--font-mono); font-size: 10px; text-transform: uppercase;
+          letter-spacing: 0.14em; color: var(--text-faint);
+        }
+        .ro-cell-rule { position: absolute; left: 0; right: 0; bottom: -1px; height: 1px; background: var(--hue); }
+        .ro-new {
+          flex: none; align-self: center; margin-left: var(--s4);
+          padding: 6px 10px; border: none; border-radius: var(--r-sm);
+          background: transparent; color: var(--text-faint);
+          font: inherit; font-size: var(--text-xs); cursor: default; white-space: nowrap;
+          transition: color var(--fast) var(--ease);
+        }
+        .ro-new:hover { color: var(--text); }
+
+        /* page */
+        .ro-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+        .ro-page { max-width: 1160px; padding: 0 var(--s6) var(--s16); }
+
+        .ro-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--s6); padding: var(--s8) 0; }
+        .ro-head-main { min-width: 0; }
+        .ro-head-titlerow { display: flex; align-items: baseline; gap: var(--s3); }
+        .ro-title { font-size: 26px; font-weight: 600; letter-spacing: -0.01em; line-height: 1; }
+        .ro-head-meta {
+          display: inline-flex; align-items: center; gap: 6px;
+          font-family: var(--font-mono); font-size: 11px; text-transform: uppercase;
+          letter-spacing: 0.16em; color: var(--text-faint); white-space: nowrap;
+        }
+        .ro-head-sub { margin-top: 10px; font-size: var(--text-sm); color: var(--text-dim); }
+        .ro-head-tag { color: var(--text-faint); font-size: var(--text-xs); }
+        .ro-head-actions { flex: none; display: flex; gap: var(--s2); }
+        .ro-action {
+          display: inline-flex; align-items: center; height: 32px; padding: 0 var(--s3);
+          border: 1px solid var(--line-strong); border-radius: var(--r-sm);
+          background: transparent; color: var(--text-dim);
+          font: inherit; font-size: var(--text-xs); cursor: default; white-space: nowrap;
+          transition: color var(--fast) var(--ease), border-color var(--fast) var(--ease);
+        }
+        .ro-action:hover { color: var(--text); border-color: var(--text-faint); }
+        .ro-action.danger:hover { color: var(--red); border-color: color-mix(in srgb, var(--red) 50%, transparent); }
+
+        .ro-section {
+          display: grid; grid-template-columns: 220px minmax(0, 1fr);
+          gap: var(--s4) var(--s12, 48px);
+          border-top: 1px solid var(--line);
+          padding: var(--s8) 0;
+        }
+        .ro-section-label h2 {
+          font-family: var(--font-mono); font-size: 10px; font-weight: 500;
+          text-transform: uppercase; letter-spacing: 0.22em; color: var(--text-dim);
+        }
+        .ro-section-label p { margin-top: var(--s2); font-size: var(--text-xs); line-height: var(--leading); color: var(--text-faint); max-width: 24ch; }
+        .ro-fields { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s5) var(--s8); }
+        .ro-fields .span2 { grid-column: span 2; }
+        .ro-stack { display: flex; flex-direction: column; gap: var(--s6); }
+
+        .swatches { display: flex; align-items: center; gap: var(--s2); }
+        .swatch {
+          display: flex; align-items: center; justify-content: center;
+          width: 32px; height: 32px; border: 1px solid var(--line); border-radius: var(--r-sm);
+          background: transparent; cursor: default;
+          transition: border-color var(--fast) var(--ease);
+        }
+        .swatch:hover { border-color: var(--line-strong); }
+        .swatch.on { border-color: var(--text-dim); }
+        .swatch-dot { width: 12px; height: 12px; border-radius: var(--r-full); }
+        .swatch-hex { margin-left: var(--s2); font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); }
+
+        .ro-seg { display: flex; height: 34px; border: 1px solid var(--line); border-radius: var(--r-sm); overflow: hidden; }
+        .ro-seg-btn {
+          flex: 1; border: none; border-right: 1px solid var(--line);
+          background: transparent; color: var(--text-faint);
+          font-family: var(--font-mono); font-size: 11px; text-transform: uppercase;
+          letter-spacing: 0.12em; cursor: default;
+          transition: color var(--fast) var(--ease), background var(--fast) var(--ease);
+        }
+        .ro-seg-btn:last-child { border-right: none; }
+        .ro-seg-btn:hover { color: var(--text-dim); }
+        .ro-seg-btn.on { color: var(--text); background: color-mix(in srgb, #ffffff 4.5%, transparent); }
+
+        .ro-statusbar {
+          display: flex; align-items: center; gap: var(--s4);
+          border-top: 1px solid var(--line); padding-top: var(--s5);
+        }
+        .ro-status-ok { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-xs); color: var(--green); }
+        .ro-statusbar .issues { margin: 0; }
+        .ro-autosave {
+          margin-left: auto; flex: none;
+          font-family: var(--font-mono); font-size: 10px; text-transform: uppercase;
+          letter-spacing: 0.18em; color: var(--text-faint);
+        }
+
+        .field { display: flex; flex-direction: column; gap: var(--s1); }
         .field label { font-size: var(--text-sm); font-weight: 500; }
         .hint { font-size: var(--text-xs); color: var(--text-faint); }
         .caveat { color: var(--amber, var(--text-faint)); }
-        .swatches { display: flex; gap: var(--s2); }
-        .swatch { width: 26px; height: 26px; border: 2px solid transparent; border-radius: var(--r-full); cursor: default; }
-        .swatch.on { border-color: var(--text); }
+        .cli-picker { display: flex; align-items: center; gap: var(--s2); }
+        .cli-picker .select { flex: 1; }
         .field code { font-family: var(--font-mono); font-size: 11px; padding: 1px 4px; border-radius: 4px; background: var(--bg-raised); color: var(--cyan); }
-        .issues { list-style: none; padding: var(--s3); border-radius: var(--r-sm); background: var(--red-dim); font-size: var(--text-sm); margin-top: var(--s3); display: flex; flex-direction: column; gap: var(--s2); }
+        .issues { list-style: none; padding: var(--s3); border-radius: var(--r-sm); background: var(--red-dim); font-size: var(--text-sm); display: flex; flex-direction: column; gap: var(--s2); }
         .issues .warning { color: var(--amber); }
         .issues .error { color: var(--red); }
-        .action-err { margin-top: var(--s3); padding: var(--s3); border-radius: var(--r-sm); background: var(--red-dim); color: var(--red); font-size: var(--text-sm); }
-        .live-hint { margin-top: var(--s6); font-size: var(--text-xs); }
-        .scroll { overflow-y: auto; }
+        .action-err { margin: 0; padding: var(--s2) var(--s3); border-radius: var(--r-sm); background: var(--red-dim); color: var(--red); font-size: var(--text-xs); }
       `}</style>
     </>
   );

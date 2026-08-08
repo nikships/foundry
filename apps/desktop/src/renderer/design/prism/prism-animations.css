@@ -13,10 +13,9 @@
 }
 
 /*
- * The WebGL field and the flock already unmount under reduced motion (they
- * render a static fallback instead), so what is left to silence is the CSS:
- * the header sweep, the rim fades, and the press burst. Blur is dropped too,
- * because a moving backdrop behind a blur is the part that induces nausea.
+ * What reduced motion has to silence here is the CSS: the header sweep, the
+ * rim fades, and the press burst. Blur is dropped too, because a moving
+ * backdrop behind a blur is the part that induces nausea.
  */
 @media (prefers-reduced-motion: reduce) {
   [data-brand='prism'] .prism-header-rule {
@@ -37,8 +36,5 @@
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     background: var(--bg-panel);
-  }
-  .prism-field {
-    transition: none;
   }
 }

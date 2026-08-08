@@ -1,10 +1,18 @@
 import type { FoundryApi } from '@shared/ipc-contract.js';
+import { installMockFoundryIfNeeded } from './mockFoundry.js';
 
 declare global {
   interface Window {
     foundry: FoundryApi;
     foundryMenu: { on(handler: (command: string) => void): () => void };
+    __foundryWebMockInstalled?: boolean;
   }
+}
+
+// In a plain browser (vite web) there is no Electron preload, so provide a
+// mocked FoundryApi that lets the UI render and navigate.
+if (typeof window !== 'undefined' && !window.foundry && !window.__foundryWebMockInstalled) {
+  installMockFoundryIfNeeded();
 }
 
 /**

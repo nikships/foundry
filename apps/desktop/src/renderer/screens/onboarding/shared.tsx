@@ -1,4 +1,5 @@
 import { useBrandedAsset } from '../../hooks/useBrandedAsset.js';
+import { useOnboarding } from './OnboardingContext.js';
 
 export type StepId = 'welcome' | 'factory' | 'roster' | 'clis' | 'doctor' | 'project';
 
@@ -20,9 +21,21 @@ export const BUILTIN_AGENTS: { name: string; role: string }[] = [
 ];
 
 export const CONCEPTS: { art: string; title: string; body: string }[] = [
-  { art: 'concepts/pipeline.png', title: 'Pipelines are data', body: 'Reorder phases, swap agents, add a reviewer. No scripts to rewrite.' },
-  { art: 'concepts/envelope.png', title: 'Typed envelopes', body: 'Every agent reply is structured. Code decides if it counts.' },
-  { art: 'concepts/gate.png', title: 'Gates leave evidence', body: 'A green gate says what it checked, not only that it passed.' },
+  {
+    art: 'concepts/pipeline.png',
+    title: 'Pipelines are data',
+    body: 'Reorder phases, swap agents, add a reviewer. No scripts to rewrite.',
+  },
+  {
+    art: 'concepts/envelope.png',
+    title: 'Typed envelopes',
+    body: 'Every agent reply is structured. Code decides if it counts.',
+  },
+  {
+    art: 'concepts/gate.png',
+    title: 'Gates leave evidence',
+    body: 'A green gate says what it checked, not only that it passed.',
+  },
 ];
 
 export function sceneForStep(step: StepId): string {
@@ -34,10 +47,75 @@ export function sceneForStep(step: StepId): string {
   return 'scenes/pipeline-designer.png';
 }
 
-export function SceneArt({ path, className }: { path: string; className?: string }): React.JSX.Element {
+export function SceneArt({
+  path,
+  className,
+}: {
+  path: string;
+  className?: string;
+}): React.JSX.Element {
   const src = useBrandedAsset(path);
   if (!src) return <div className={`scene-art placeholder ${className ?? ''}`} />;
   return <img className={`scene-art ${className ?? ''}`} src={src} alt="" />;
+}
+
+const CHEVRON = (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+    <path
+      d="M4 3 L9 7 L4 11"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+/**
+ * The one footer every onboarding screen renders. Back sits far left, the
+ * primary action sits far right, both pinned to the bottom of the shell via
+ * `margin-top: auto` so they never move between steps. The slot between is
+ * for step-specific status text only — never buttons.
+ */
+export function StepFooter({
+  nextLabel = 'Continue',
+  onNext,
+  nextDisabled = false,
+  nextTitle,
+  busy = false,
+  hint,
+  showBack = true,
+}: {
+  nextLabel?: string;
+  onNext?: () => void;
+  nextDisabled?: boolean;
+  nextTitle?: string;
+  busy?: boolean;
+  hint?: string;
+  showBack?: boolean;
+}): React.JSX.Element {
+  const { next, back } = useOnboarding();
+  return (
+    <div className="ob-foot">
+      {showBack ? (
+        <button type="button" className="btn ghost" disabled={busy} onClick={back}>
+          Back
+        </button>
+      ) : null}
+      <span className="ob-grow" />
+      {hint ? <span className="ob-foot-hint">{hint}</span> : null}
+      <button
+        type="button"
+        className="btn primary"
+        disabled={nextDisabled || busy}
+        title={nextTitle}
+        onClick={onNext ?? next}
+      >
+        {busy ? 'Saving…' : nextLabel}
+        {!busy ? CHEVRON : null}
+      </button>
+    </div>
+  );
 }
 
 export function Stepper({

@@ -64,7 +64,8 @@ export function OnboardingProvider({
   setStepIndex: (n: number) => void;
   onDone: () => void;
 }): React.JSX.Element {
-  const { projects, settings, refreshAll, patchSettings, selectProject, selectedProjectId } = useApp();
+  const { projects, settings, refreshAll, patchSettings, selectProject, selectedProjectId } =
+    useApp();
   const [checks, setChecks] = useState<DoctorCheck[]>([]);
   const [clis, setClis] = useState<CliDescriptor[]>([]);
   const [name, setName] = useState('');
@@ -72,7 +73,9 @@ export function OnboardingProvider({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [entered, setEntered] = useState(false);
-  const [selectedId, setSelectedId] = useState<string>(() => selectedProjectId || projects[0]?.id || '');
+  const [selectedId, setSelectedId] = useState<string>(
+    () => selectedProjectId || projects[0]?.id || '',
+  );
   const [nameDrafts, setNameDrafts] = useState<Record<string, string>>(() =>
     Object.fromEntries(projects.map((p) => [p.id, p.name])),
   );
@@ -115,14 +118,18 @@ export function OnboardingProvider({
         next[p.id] = p.name;
       }
       for (const id of Object.keys(next)) if (!projects.some((p) => p.id === id)) delete next[id];
-      const pk = Object.keys(prev), nk = Object.keys(next);
+      const pk = Object.keys(prev),
+        nk = Object.keys(next);
       if (pk.length === nk.length && nk.every((k) => prev[k] === next[k])) return prev;
       return next;
     });
   }, [projects, renamingId]);
 
   useEffect(() => {
-    if (!projects.length) { if (selectedId) setSelectedId(''); return; }
+    if (!projects.length) {
+      if (selectedId) setSelectedId('');
+      return;
+    }
     const stillThere = projects.some((p) => p.id === selectedId);
     if (!selectedId || !stillThere) {
       const preferred = selectedProjectId || projects[0]!.id;
@@ -135,74 +142,185 @@ export function OnboardingProvider({
     if (step !== 'doctor') return;
     let cancelled = false;
     setChecking(true);
-    void api.doctor.run().then((next) => { if (!cancelled) { setChecks(next); setChecking(false); } });
-    return () => { cancelled = true; };
+    void api.doctor.run().then((next) => {
+      if (!cancelled) {
+        setChecks(next);
+        setChecking(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [step]);
 
-  const go = (next: number): void => { setError(''); setStepIndex(Math.max(0, Math.min(STEPS.length - 1, next))); };
+  const go = (next: number): void => {
+    setError('');
+    setStepIndex(Math.max(0, Math.min(STEPS.length - 1, next)));
+  };
   const next = (): void => go(stepIndex + 1);
   const back = (): void => go(stepIndex - 1);
 
   const recheck = async (): Promise<void> => {
-    setChecking(true); setError('');
-    try { setChecks(await api.doctor.run()); } catch (e) { setError((e as Error).message); } finally { setChecking(false); }
+    setChecking(true);
+    setError('');
+    try {
+      setChecks(await api.doctor.run());
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setChecking(false);
+    }
   };
   const pickCli = async (vendor: CliVendor): Promise<void> => {
     setError('');
     try {
       const issues = await patchSettings({ defaultCli: vendor });
       if (issues.length) setError(issues.join(' '));
-    } catch (e) { setError((e as Error).message); }
+    } catch (e) {
+      setError((e as Error).message);
+    }
   };
   const addProject = async (): Promise<void> => {
-    if (busy) return; setBusy(true); setError('');
-    try { const added = await api.projects.add(); await refreshAll(); if (added) { setSelectedId(added.id); selectProject(added.id); } }
-    catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      const added = await api.projects.add();
+      await refreshAll();
+      if (added) {
+        setSelectedId(added.id);
+        selectProject(added.id);
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
   };
   const removeProject = async (id: string): Promise<void> => {
     if (busy) return;
-    const target = projects.find((p) => p.id === id); if (!target) return;
-    if (!window.confirm(`Remove project "${target.name}" from Foundry? The git repo on disk is not deleted.`)) return;
-    setBusy(true); setError('');
+    const target = projects.find((p) => p.id === id);
+    if (!target) return;
+    if (
+      !window.confirm(
+        `Remove project "${target.name}" from Foundry? The git repo on disk is not deleted.`,
+      )
+    )
+      return;
+    setBusy(true);
+    setError('');
     try {
-      await api.projects.remove(id); await refreshAll();
+      await api.projects.remove(id);
+      await refreshAll();
       if (selectedId === id) {
         const remaining = projects.filter((p) => p.id !== id);
-        const nxt = remaining[0]?.id ?? ''; setSelectedId(nxt); if (nxt) selectProject(nxt);
+        const nxt = remaining[0]?.id ?? '';
+        setSelectedId(nxt);
+        if (nxt) selectProject(nxt);
       }
-    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
   };
   const commitProjectRename = async (id: string): Promise<void> => {
     const draft = (nameDrafts[id] ?? '').trim();
-    const project = projects.find((p) => p.id === id); if (!project) return;
-    if (!draft) { setError('Project name cannot be empty.'); setNameDrafts((prev) => ({ ...prev, [id]: project.name })); setRenamingId(null); return; }
-    if (draft.length > 80) { setError('Keep the project name under 80 characters.'); return; }
-    if (draft === project.name) { setRenamingId(null); return; }
-    setRenamingId(null); setError('');
+    const project = projects.find((p) => p.id === id);
+    if (!project) return;
+    if (!draft) {
+      setError('Project name cannot be empty.');
+      setNameDrafts((prev) => ({ ...prev, [id]: project.name }));
+      setRenamingId(null);
+      return;
+    }
+    if (draft.length > 80) {
+      setError('Keep the project name under 80 characters.');
+      return;
+    }
+    if (draft === project.name) {
+      setRenamingId(null);
+      return;
+    }
+    setRenamingId(null);
+    setError('');
     try {
       const result = await api.projects.save({ ...project, name: draft });
-      if (!result.ok) { setError(result.issues.map((i) => `${i.where}: ${i.message}`).join(' ')); setNameDrafts((prev) => ({ ...prev, [id]: project.name })); return; }
+      if (!result.ok) {
+        setError(result.issues.map((i) => `${i.where}: ${i.message}`).join(' '));
+        setNameDrafts((prev) => ({ ...prev, [id]: project.name }));
+        return;
+      }
       await refreshAll();
-    } catch (e) { setError((e as Error).message); setNameDrafts((prev) => ({ ...prev, [id]: project.name })); }
+    } catch (e) {
+      setError((e as Error).message);
+      setNameDrafts((prev) => ({ ...prev, [id]: project.name }));
+    }
   };
   const canEnterProject = useMemo(() => {
-    if (busy) return false; if (!projects.length) return false; if (!selectedId) return false;
+    if (busy) return false;
+    if (!projects.length) return false;
+    if (!selectedId) return false;
     return projects.some((p) => p.id === selectedId);
   }, [busy, projects, selectedId]);
-  const projectBlockingHint = !projects.length ? 'Pick a project or add a repository to continue.' : !selectedId ? 'Select a project to continue.' : '';
+  const projectBlockingHint = !projects.length
+    ? 'Pick a project or add a repository to continue.'
+    : !selectedId
+      ? 'Select a project to continue.'
+      : '';
   const finish = async (): Promise<void> => {
     if (busy) return;
-    if (!canEnterProject) { setError(projectBlockingHint || 'Pick a project or add a repository to continue.'); return; }
-    setBusy(true); setError('');
-    try { if (name.trim()) await api.settings.patch({ engineerName: name.trim() }); if (selectedId) selectProject(selectedId); onDone(); }
-    catch (e) { setError((e as Error).message); setBusy(false); }
+    if (!canEnterProject) {
+      setError(projectBlockingHint || 'Pick a project or add a repository to continue.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      if (name.trim()) await api.settings.patch({ engineerName: name.trim() });
+      if (selectedId) selectProject(selectedId);
+      onDone();
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(false);
+    }
   };
 
   const value: OnboardingContextValue = {
-    stepIndex, step, go, next, back, entered,
-    checks, clis, checking, recheck, blockingCount: blocking.length, canLeaveDoctor, doctorHint, defaultCli, defaultCliLabel, pickCli,
-    name, setName, selectedId, setSelectedId, nameDrafts, setNameDrafts, renamingId, setRenamingId,
-    busy, error, setError, addProject, removeProject, commitProjectRename, canEnterProject, projectBlockingHint, finish, onDone,
+    stepIndex,
+    step,
+    go,
+    next,
+    back,
+    entered,
+    checks,
+    clis,
+    checking,
+    recheck,
+    blockingCount: blocking.length,
+    canLeaveDoctor,
+    doctorHint,
+    defaultCli,
+    defaultCliLabel,
+    pickCli,
+    name,
+    setName,
+    selectedId,
+    setSelectedId,
+    nameDrafts,
+    setNameDrafts,
+    renamingId,
+    setRenamingId,
+    busy,
+    error,
+    setError,
+    addProject,
+    removeProject,
+    commitProjectRename,
+    canEnterProject,
+    projectBlockingHint,
+    finish,
+    onDone,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

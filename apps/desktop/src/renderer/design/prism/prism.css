@@ -106,21 +106,6 @@
   opacity: 0.7;
 }
 
-/* ── hero prism ─────────────────────────────────────────────────────────
- * A transparent stage centred in the cinema frame; the shader draws the
- * prism's own silhouette and halo, so the container carries no chrome of
- * its own — a ring or border here would fight the rotating shape.
- */
-[data-brand='prism'] .prism-hero-frame {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: min(96%, 560px);
-  aspect-ratio: 1;
-  filter: drop-shadow(0 0 44px rgba(90, 210, 221, 0.25));
-}
-
 /* ── button press chromatic burst ───────────────────────────────────────
  * Red and cyan split by a pixel and a half on press, the same trick the field
  * shader uses for refraction, so the chrome and the field share a vocabulary.
@@ -144,59 +129,6 @@
 [data-brand='prism'] :focus-visible {
   outline-color: var(--prism-neon-cyan);
   box-shadow: 0 0 0 4px var(--prism-neon-cyan-dim);
-}
-
-/* ── field containers ───────────────────────────────────────────────────── */
-.prism-field {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity var(--slow) var(--ease);
-}
-.prism-field.ready {
-  opacity: 1;
-}
-.prism-field.background {
-  filter: blur(18px) saturate(1.1);
-}
-.prism-field canvas,
-.prism-hero canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.prism-hero {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-/* Reduced motion, no WebGL2, or a lost context all land here: the same
- * spectral composition, painted once and never animated. */
-.prism-fallback {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(ellipse at 30% 20%, rgba(90, 210, 221, 0.18), transparent 55%),
-    radial-gradient(ellipse at 80% 70%, rgba(123, 92, 255, 0.16), transparent 60%),
-    radial-gradient(ellipse at 50% 90%, rgba(255, 59, 154, 0.1), transparent 65%),
-    linear-gradient(180deg, #000000 0%, #05070a 100%);
-}
-
-/* Static stand-in keeps the prism silhouette rather than a disc. */
-.prism-fallback.hero {
-  clip-path: polygon(50% 7%, 93% 86%, 7% 86%);
-}
-
-/* The field supersedes the generic onboarding backdrop. */
-[data-brand='prism'] .onboarding .orb,
-[data-brand='prism'] .onboarding .grid {
-  display: none;
 }
 
 /* ── fallback when backdrop-filter is unavailable ───────────────────────── */

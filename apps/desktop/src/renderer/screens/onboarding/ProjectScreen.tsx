@@ -1,10 +1,10 @@
 import { useApp } from '../../stores/app.js';
 import { useOnboarding } from './OnboardingContext.js';
+import { StepFooter } from './shared.js';
 
 export default function ProjectScreen(): React.JSX.Element {
   const { projects } = useApp();
   const {
-    back,
     name,
     setName,
     selectedId,
@@ -59,17 +59,43 @@ export default function ProjectScreen(): React.JSX.Element {
               strokeDasharray="2 5"
             />
             {[40, 92, 188, 284, 376, 470].map((y) => (
-              <circle key={y} cx="42" cy={y} r="3" fill="var(--bg-void)" stroke="var(--line-strong)" />
+              <circle
+                key={y}
+                cx="42"
+                cy={y}
+                r="3"
+                fill="var(--bg-void)"
+                stroke="var(--line-strong)"
+              />
             ))}
             <circle cx="168" cy="120" r="4.5" fill="var(--cyan)" className="ob-project-node" />
-            <circle cx="232" cy="224" r="6" fill="var(--cyan)" className="ob-project-node ob-project-node-lg" />
+            <circle
+              cx="232"
+              cy="224"
+              r="6"
+              fill="var(--cyan)"
+              className="ob-project-node ob-project-node-lg"
+            />
             <circle cx="168" cy="320" r="4.5" fill="var(--cyan)" className="ob-project-node" />
             <circle cx="148" cy="410" r="3.5" fill="var(--bg-void)" stroke="var(--line-strong)" />
             <circle cx="356" cy="150" r="3.5" fill="var(--bg-void)" stroke="var(--line-strong)" />
-            <text x="58" y="44" fill="var(--text-faint)" fontFamily="var(--font-mono)" fontSize="10" letterSpacing="0.06em">
+            <text
+              x="58"
+              y="44"
+              fill="var(--text-faint)"
+              fontFamily="var(--font-mono)"
+              fontSize="10"
+              letterSpacing="0.06em"
+            >
               main
             </text>
-            <text x="176" y="124" fill="var(--text-faint)" fontFamily="var(--font-mono)" fontSize="10">
+            <text
+              x="176"
+              y="124"
+              fill="var(--text-faint)"
+              fontFamily="var(--font-mono)"
+              fontSize="10"
+            >
               run_8f2c1a
             </text>
             <text x="240" y="228" fill="var(--cyan)" fontFamily="var(--font-mono)" fontSize="10">
@@ -128,14 +154,9 @@ export default function ProjectScreen(): React.JSX.Element {
             at a repo.
           </h1>
           <p className="ob-project-lead">
-            Foundry runs every change in an isolated git worktree and leaves the evidence behind — prompts, tools,
-            gates, cost. Choose the repository it should start with.
+            Foundry runs every change in an isolated git worktree and leaves the evidence behind —
+            prompts, tools, gates, cost. Choose the repository it should start with.
           </p>
-          <div className="ob-project-dots" aria-hidden="true">
-            {[0, 1, 2, 3, 4, 5].map((i) => (
-              <span key={i} className={i === 5 ? 'ob-project-dot ob-project-dot-on' : 'ob-project-dot'} />
-            ))}
-          </div>
         </header>
 
         {/* engineer */}
@@ -257,8 +278,8 @@ export default function ProjectScreen(): React.JSX.Element {
               </svg>
               <p className="ob-project-empty-title">No repositories yet</p>
               <p className="ob-project-empty-body">
-                Pick a folder with a <code>.git</code> directory. Foundry never writes to your working tree — only to
-                worktrees it creates.
+                Pick a folder with a <code>.git</code> directory. Foundry never writes to your
+                working tree — only to worktrees it creates.
               </p>
             </div>
           )}
@@ -280,7 +301,11 @@ export default function ProjectScreen(): React.JSX.Element {
             >
               <path d="M7 2.5v9M2.5 7h9" />
             </svg>
-            {busy ? 'Opening…' : projects.length ? 'Add another repository…' : 'Choose a repository…'}
+            {busy
+              ? 'Opening…'
+              : projects.length
+                ? 'Add another repository…'
+                : 'Choose a repository…'}
           </button>
         </section>
 
@@ -302,51 +327,14 @@ export default function ProjectScreen(): React.JSX.Element {
           </div>
         ) : null}
 
-        <footer className="ob-project-bar">
-          <button type="button" className="ob-project-back" disabled={busy} onClick={back}>
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 14 14"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.7"
-              aria-hidden="true"
-            >
-              <path d="M8.2 3 4.7 7l3.5 4" />
-              <path d="M4.7 7H11.2" />
-            </svg>
-            Back
-          </button>
-          <div className="ob-project-bar-spacer">
-            {!canEnterProject && projectBlockingHint ? (
-              <span className="ob-project-gate">{projectBlockingHint}</span>
-            ) : null}
-          </div>
-          <button
-            type="button"
-            className="ob-project-cta"
-            disabled={!canEnterProject}
-            title={projectBlockingHint || undefined}
-            onClick={() => void finish()}
-          >
-            {busy ? 'Saving…' : 'Enter Foundry'}
-            {!busy ? (
-              <svg
-                width="15"
-                height="15"
-                viewBox="0 0 14 14"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                aria-hidden="true"
-              >
-                <path d="M5.8 3 9.3 7l-3.5 4" />
-                <path d="M9.3 7H2.8" />
-              </svg>
-            ) : null}
-          </button>
-        </footer>
+        <StepFooter
+          nextLabel="Enter Foundry"
+          onNext={() => void finish()}
+          nextDisabled={!canEnterProject}
+          nextTitle={projectBlockingHint || undefined}
+          busy={busy}
+          hint={!canEnterProject ? projectBlockingHint : undefined}
+        />
       </main>
 
       <style>{`
@@ -481,18 +469,6 @@ export default function ProjectScreen(): React.JSX.Element {
           font-size: var(--text-base); line-height: var(--leading-loose);
           color: var(--text-dim);
         }
-        .ob-project-dots{
-          display:flex; gap: var(--s2); margin-top: var(--s6);
-        }
-        .ob-project-dot{
-          width: 18px; height: 2px; border-radius: var(--r-full);
-          background: var(--line-strong);
-        }
-        .ob-project-dot-on{
-          background: var(--cyan);
-          box-shadow: 0 0 12px color-mix(in srgb, var(--cyan) 65%, transparent);
-        }
-
         .ob-project-section{
           margin-top: var(--s6); padding-top: var(--s6);
           border-top: 1px solid var(--line);
@@ -655,37 +631,7 @@ export default function ProjectScreen(): React.JSX.Element {
           line-height: var(--leading);
         }
 
-        .ob-project-bar{
-          margin-top:auto; padding-top: var(--s6);
-          border-top: 1px solid var(--line);
-          display:flex; align-items:center; gap: var(--s3);
-        }
-        .ob-project-bar-spacer{ flex:1 1 auto; min-width:0; text-align:right; }
-        .ob-project-gate{ font-size: var(--text-xs); color: var(--text-faint); }
-        .ob-project-back{
-          display:inline-flex; align-items:center; gap: var(--s2);
-          background: transparent; border:0; cursor:pointer;
-          color: var(--text-faint); font-family: var(--font); font-size: var(--text-sm);
-          padding: var(--s2) var(--s3) var(--s2) 0;
-          transition: color 160ms var(--ease);
-        }
-        .ob-project-back:hover:not(:disabled){ color: var(--text); }
-        .ob-project-back:disabled{ opacity:0.4; cursor:not-allowed; }
-        .ob-project-cta{
-          display:inline-flex; align-items:center; gap: var(--s2);
-          background: var(--cyan); color: #04212a; cursor:pointer;
-          border:0; border-radius: var(--r-sm);
-          padding: var(--s3) var(--s5);
-          font-family: var(--font); font-size: var(--text-sm); font-weight: 600;
-          letter-spacing: 0.01em;
-          box-shadow: var(--glow-cyan);
-          transition: transform 160ms var(--ease), box-shadow 200ms var(--ease), opacity 160ms var(--ease);
-        }
-        .ob-project-cta:hover:not(:disabled){
-          transform: translateY(-1px);
-          box-shadow: 0 0 0 1px var(--cyan), 0 0 34px color-mix(in srgb, var(--cyan) 38%, transparent);
-        }
-        .ob-project-cta:disabled{ opacity:0.34; box-shadow:none; cursor:not-allowed; }
+        /* footer is the shared .ob-foot bar from OnboardingShell */
 
         @media (max-width: 960px){
           .ob-project{ grid-template-columns: 1fr; }
@@ -697,10 +643,6 @@ export default function ProjectScreen(): React.JSX.Element {
           .ob-project-tree{ max-width: 360px; margin: var(--s6) 0 var(--s4); }
           .ob-project-form{ padding: var(--s6) var(--s6) var(--s6); overflow: visible; }
           .ob-project-title{ font-size: 1.85rem; }
-        }
-        @media (max-width: 520px){
-          .ob-project-bar{ flex-wrap:wrap; }
-          .ob-project-bar-spacer{ flex-basis:100%; order:3; text-align:left; margin-top: var(--s2); }
         }
       `}</style>
     </div>

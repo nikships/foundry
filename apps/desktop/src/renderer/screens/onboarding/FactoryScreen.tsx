@@ -1,4 +1,4 @@
-import { useOnboarding } from './OnboardingContext.js';
+import { StepFooter } from './shared.js';
 
 /* ── diagrams ────────────────────────────────────────────────────────── */
 
@@ -341,8 +341,6 @@ function GateDiagram(): React.JSX.Element {
 /* ── screen ─────────────────────────────────────────────────────────── */
 
 export default function FactoryScreen(): React.JSX.Element {
-  const { next, back } = useOnboarding();
-
   return (
     <div className="ob-factory">
       <div className="ob-factory-scroll">
@@ -446,36 +444,7 @@ export default function FactoryScreen(): React.JSX.Element {
         </div>
       </div>
 
-      <div className="ob-fac-foot">
-        <div className="ob-fac-progress" aria-label="Step 2 of 6">
-          <div className="ob-fac-ticks">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <span
-                key={i}
-                className={`ob-fac-tick ${i === 1 ? 'on' : ''} ${i < 1 ? 'done' : ''}`}
-              />
-            ))}
-          </div>
-          <span className="ob-fac-progress-label mono">Factory floor</span>
-        </div>
-        <div className="ob-fac-actions">
-          <button type="button" className="btn ghost" onClick={back}>
-            Back
-          </button>
-          <button type="button" className="btn primary" onClick={next}>
-            Continue
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
-              <path
-                d="M4 3 L9 7 L4 11"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
-        </div>
-      </div>
+      <StepFooter />
 
       <style>{`
         .ob-factory {
@@ -633,34 +602,7 @@ export default function FactoryScreen(): React.JSX.Element {
         .ob-fac-dash-slow { stroke-dasharray: 4 6; animation: ob-fac-flow 1.8s linear infinite; }
         .ob-fac-roller { transform-box: fill-box; transform-origin: center; animation: ob-fac-spin 2.2s linear infinite; }
 
-        /* footer */
-        .ob-fac-foot {
-          flex: 0 0 auto;
-          display: flex; align-items: center; justify-content: space-between;
-          gap: var(--s4);
-          padding: var(--s4) var(--s6);
-          border-top: 1px solid var(--line);
-          background: color-mix(in srgb, var(--bg-panel) 92%, transparent);
-          backdrop-filter: blur(8px);
-        }
-        .ob-fac-progress {
-          display: flex; align-items: center; gap: var(--s3);
-          min-width: 0;
-        }
-        .ob-fac-ticks { display: flex; align-items: center; gap: 6px; }
-        .ob-fac-tick {
-          display: block; height: 2px; width: 18px; border-radius: 999px;
-          background: var(--line-strong);
-          transition: background var(--fast) var(--ease), width var(--fast) var(--ease);
-        }
-        .ob-fac-tick.done { background: var(--line-strong); opacity: 0.9; }
-        .ob-fac-tick.on { width: 32px; background: var(--cyan); box-shadow: 0 0 10px var(--cyan-dim); }
-        .ob-fac-progress-label {
-          font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
-          color: var(--text-faint);
-          white-space: nowrap;
-        }
-        .ob-fac-actions { display: flex; align-items: center; gap: var(--s2); }
+        /* footer is the shared .ob-foot bar from OnboardingShell */
 
         @keyframes ob-fac-in {
           from { opacity: 0; transform: translateY(10px); }
@@ -697,10 +639,6 @@ export default function FactoryScreen(): React.JSX.Element {
           .ob-fac-fig:first-child { border-top: 1px solid var(--line); }
           .ob-fac-accent { height: 44px; }
           .ob-fac-h2 { font-size: 16.5px; }
-        }
-        @media (max-width: 560px) {
-          .ob-fac-foot { flex-wrap: wrap; }
-          .ob-fac-progress-label { display: none; }
         }
       `}</style>
     </div>

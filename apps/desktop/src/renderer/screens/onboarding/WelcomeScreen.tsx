@@ -1,5 +1,5 @@
 import { useBrand } from '../../hooks/useBrand.js';
-import { useOnboarding } from './OnboardingContext.js';
+import { StepFooter } from './shared.js';
 
 type Proof = {
   title: string;
@@ -46,7 +46,6 @@ const PROOFS: Proof[] = [
 ];
 
 export default function WelcomeScreen(): React.JSX.Element {
-  const { next } = useOnboarding();
   const brand = useBrand();
 
   return (
@@ -68,10 +67,22 @@ export default function WelcomeScreen(): React.JSX.Element {
               role="img"
               aria-label="Pipeline trace"
             >
-              <path className="fdy-pipeline__rail" d="M40 60 h150 a24 24 0 0 1 24 24 v152 a24 24 0 0 0 24 24 h122" />
-              <path className="fdy-pipeline__rail" d="M40 160 h96 a24 24 0 0 1 24 24 v52 a24 24 0 0 0 24 24 h176" />
-              <path className="fdy-pipeline__rail fdy-pipeline__rail--dim" d="M40 260 h56 a24 24 0 0 0 24-24 V84 a24 24 0 0 1 24-24 h216" />
-              <path className="fdy-pipeline__pulse" d="M40 60 h150 a24 24 0 0 1 24 24 v152 a24 24 0 0 0 24 24 h122" />
+              <path
+                className="fdy-pipeline__rail"
+                d="M40 60 h150 a24 24 0 0 1 24 24 v152 a24 24 0 0 0 24 24 h122"
+              />
+              <path
+                className="fdy-pipeline__rail"
+                d="M40 160 h96 a24 24 0 0 1 24 24 v52 a24 24 0 0 0 24 24 h176"
+              />
+              <path
+                className="fdy-pipeline__rail fdy-pipeline__rail--dim"
+                d="M40 260 h56 a24 24 0 0 0 24-24 V84 a24 24 0 0 1 24-24 h216"
+              />
+              <path
+                className="fdy-pipeline__pulse"
+                d="M40 60 h150 a24 24 0 0 1 24 24 v152 a24 24 0 0 0 24 24 h122"
+              />
               <g className="fdy-pipeline__nodes">
                 <circle cx="40" cy="60" r="3.5" />
                 <circle cx="40" cy="160" r="3.5" />
@@ -86,15 +97,24 @@ export default function WelcomeScreen(): React.JSX.Element {
         {/* editorial */}
         <section className="fdy-editorial">
           <div className="fdy-editorial__inner">
-            <p className="fdy-eyebrow fdy-rise" style={{ ['--d' as string]: '0ms' } as React.CSSProperties}>
+            <p
+              className="fdy-eyebrow fdy-rise"
+              style={{ ['--d' as string]: '0ms' } as React.CSSProperties}
+            >
               Introducing
             </p>
-            <h1 className="fdy-wordmark fdy-rise" style={{ ['--d' as string]: '60ms' } as React.CSSProperties}>
+            <h1
+              className="fdy-wordmark fdy-rise"
+              style={{ ['--d' as string]: '60ms' } as React.CSSProperties}
+            >
               Foundry
             </h1>
-            <p className="fdy-lead fdy-rise" style={{ ['--d' as string]: '120ms' } as React.CSSProperties}>
-              Describe a change. A pipeline of agents carries it out in an isolated worktree. Every phase
-              leaves evidence you can read: prompts, tools, gates, and cost.
+            <p
+              className="fdy-lead fdy-rise"
+              style={{ ['--d' as string]: '120ms' } as React.CSSProperties}
+            >
+              Describe a change. A pipeline of agents carries it out in an isolated worktree. Every
+              phase leaves evidence you can read: prompts, tools, gates, and cost.
             </p>
 
             <ul className="fdy-proof">
@@ -114,32 +134,11 @@ export default function WelcomeScreen(): React.JSX.Element {
                 </li>
               ))}
             </ul>
-
-            <footer className="fdy-footer fdy-rise" style={{ ['--d' as string]: '440ms' } as React.CSSProperties}>
-              <p className="fdy-step">
-                <span className="fdy-step__ticks" aria-hidden="true">
-                  {[0, 1, 2, 3, 4, 5].map((n) => (
-                    <span key={n} className="fdy-step__tick" data-active={n === 0 ? 'true' : 'false'} />
-                  ))}
-                </span>
-                Step 1 of 6
-              </p>
-              <button type="button" className="fdy-cta" onClick={next}>
-                Begin
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                  <path
-                    d="M4 3 L9 7 L4 11"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
-            </footer>
           </div>
         </section>
       </div>
+
+      <StepFooter nextLabel="Begin" showBack={false} />
 
       <style>{`
         .fdy-welcome {
@@ -147,7 +146,6 @@ export default function WelcomeScreen(): React.JSX.Element {
           --fdy-glow-a: var(--cyan);
           --fdy-glow-b: var(--purple);
           --fdy-glow-c: var(--prism-neon-magenta, var(--purple));
-          --fdy-cta-fg: #04212a;
           --fdy-grain: 0;
           position: relative;
           flex: 1;
@@ -164,7 +162,6 @@ export default function WelcomeScreen(): React.JSX.Element {
           --fdy-glow-a: var(--murmur-ember, var(--cyan));
           --fdy-glow-b: var(--murmur-clay, var(--purple));
           --fdy-glow-c: var(--amber);
-          --fdy-cta-fg: #2b1206;
           --fdy-grain: 0.06;
         }
 
@@ -418,78 +415,7 @@ export default function WelcomeScreen(): React.JSX.Element {
           transition: color 200ms var(--ease);
         }
 
-        /* footer */
-        .fdy-footer {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: var(--s6);
-          flex-wrap: wrap;
-          margin-top: clamp(28px, 4vw, 52px);
-          padding-top: var(--s6);
-          border-top: 1px solid var(--line);
-        }
-        .fdy-step {
-          display: flex;
-          align-items: center;
-          gap: var(--s3);
-          margin: 0;
-          font-size: 11px;
-          letter-spacing: 0.14em;
-          text-transform: uppercase;
-          color: var(--text-faint);
-          font-family: var(--font-mono);
-        }
-        .fdy-step__ticks {
-          display: flex;
-          gap: 5px;
-        }
-        .fdy-step__tick {
-          width: 14px;
-          height: 2px;
-          border-radius: var(--r-full);
-          background: var(--line-strong);
-          transition: background 200ms var(--ease), width 200ms var(--ease), box-shadow 200ms var(--ease);
-        }
-        .fdy-step__tick[data-active='true'] {
-          width: 22px;
-          background: var(--fdy-accent);
-          box-shadow: 0 0 10px color-mix(in srgb, var(--fdy-accent) 30%, transparent);
-        }
-        .fdy-cta {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          gap: var(--s2);
-          padding: 13px 30px;
-          border: 0;
-          border-radius: var(--r-full);
-          background: var(--fdy-accent);
-          color: var(--fdy-cta-fg);
-          font: inherit;
-          font-size: var(--text-sm);
-          font-weight: 650;
-          letter-spacing: -0.015em;
-          cursor: default;
-          transition:
-            transform 160ms var(--ease),
-            box-shadow 240ms var(--ease),
-            filter 160ms var(--ease);
-          white-space: nowrap;
-        }
-        .fdy-cta:hover {
-          filter: brightness(1.08);
-          box-shadow:
-            0 0 0 1px color-mix(in srgb, var(--fdy-accent) 42%, transparent),
-            0 12px 36px color-mix(in srgb, var(--fdy-accent) 26%, transparent);
-        }
-        .fdy-cta:active {
-          transform: translateY(1px);
-        }
-        .fdy-cta:focus-visible {
-          outline: 2px solid var(--fdy-accent);
-          outline-offset: 3px;
-        }
+        /* footer is the shared .ob-foot bar from OnboardingShell */
 
         /* entrance */
         .fdy-rise {
@@ -544,9 +470,6 @@ export default function WelcomeScreen(): React.JSX.Element {
           .fdy-pipeline__pulse {
             stroke-dasharray: none;
             opacity: 0.55;
-          }
-          .fdy-cta {
-            transition: none;
           }
         }
       `}</style>

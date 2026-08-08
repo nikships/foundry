@@ -2,10 +2,14 @@ import { CLI_VENDOR_IDS } from '@shared/types.js';
 import type { CliDescriptor, CliVendor } from '@shared/types.js';
 import { CliIcon } from '../../components/BrandIcon.js';
 import { useOnboarding } from './OnboardingContext.js';
+import { StepFooter } from './shared.js';
 
 type Tone = 'ok' | 'warn' | 'bad' | 'idle';
 
-function statusFor(vendor: CliVendor, checks: ReturnType<typeof useOnboarding>['checks']): { label: string; tone: Tone } {
+function statusFor(
+  vendor: CliVendor,
+  checks: ReturnType<typeof useOnboarding>['checks'],
+): { label: string; tone: Tone } {
   const ok = checks.find((c) => c.id === `cli:${vendor}`)?.ok;
   const authed = checks.find((c) => c.id === `auth:${vendor}`)?.ok;
   if (ok === false) return { label: 'Not installed', tone: 'bad' };
@@ -15,11 +19,11 @@ function statusFor(vendor: CliVendor, checks: ReturnType<typeof useOnboarding>['
 }
 
 export default function CliScreen(): React.JSX.Element {
-  const { next, back, clis, checks, defaultCli, pickCli, error } = useOnboarding();
+  const { clis, checks, defaultCli, pickCli, error } = useOnboarding();
 
   const descriptors: CliDescriptor[] = clis.length
     ? clis
-    : (CLI_VENDOR_IDS.map((id) => ({ id, label: id } as CliDescriptor)));
+    : CLI_VENDOR_IDS.map((id) => ({ id, label: id }) as CliDescriptor);
 
   const ordered: CliDescriptor[] = CLI_VENDOR_IDS.map(
     (id) => descriptors.find((d) => d.id === id) ?? ({ id, label: id } as CliDescriptor),
@@ -27,7 +31,8 @@ export default function CliScreen(): React.JSX.Element {
 
   const readyCount = ordered.filter((d) => checks.find((c) => c.id === `cli:${d.id}`)?.ok).length;
   const selectedDesc =
-    ordered.find((d) => d.id === defaultCli) ?? ({ id: defaultCli, label: defaultCli } as CliDescriptor);
+    ordered.find((d) => d.id === defaultCli) ??
+    ({ id: defaultCli, label: defaultCli } as CliDescriptor);
 
   return (
     <div className="ob-cli">
@@ -35,8 +40,8 @@ export default function CliScreen(): React.JSX.Element {
         <p className="ob-eyebrow">Agent CLIs</p>
         <h1 className="ob-title">Choose your default harness</h1>
         <p className="ob-lead">
-          Foundry drives five CLIs. The default is what new agents and command detection use. You can
-          still mix vendors per agent in the Roster.
+          Foundry drives five CLIs. The default is what new agents and command detection use. You
+          can still mix vendors per agent in the Roster.
         </p>
       </div>
 
@@ -76,7 +81,11 @@ export default function CliScreen(): React.JSX.Element {
                 </span>
 
                 <span className="ob-harness-tail">
-                  {selected ? <span className="ob-badge">Default</span> : <span className="ob-pick">Set default</span>}
+                  {selected ? (
+                    <span className="ob-badge">Default</span>
+                  ) : (
+                    <span className="ob-pick">Set default</span>
+                  )}
                 </span>
               </button>
             );
@@ -88,8 +97,14 @@ export default function CliScreen(): React.JSX.Element {
         <div className="ob-facts-row">
           <span className="ob-facts-k">Default</span>
           <span className="ob-facts-v mono">{selectedDesc.binary ?? selectedDesc.id}</span>
-          {selectedDesc.supportsRpc ? <span className="ob-pill ok">RPC — live tool stream</span> : <span className="ob-pill">One-shot</span>}
-          {selectedDesc.docsUrl ? <span className="ob-docs mono">{selectedDesc.docsUrl}</span> : null}
+          {selectedDesc.supportsRpc ? (
+            <span className="ob-pill ok">RPC — live tool stream</span>
+          ) : (
+            <span className="ob-pill">One-shot</span>
+          )}
+          {selectedDesc.docsUrl ? (
+            <span className="ob-docs mono">{selectedDesc.docsUrl}</span>
+          ) : null}
         </div>
 
         <div className="ob-facts-row">
@@ -133,15 +148,7 @@ export default function CliScreen(): React.JSX.Element {
 
       {error && <p className="ob-err">{error}</p>}
 
-      <div className="ob-foot">
-        <button className="btn ghost" onClick={back} type="button">
-          Back
-        </button>
-        <span className="ob-grow" />
-        <button className="btn primary" onClick={next} type="button">
-          Continue
-        </button>
-      </div>
+      <StepFooter />
 
       <style>{`
         .ob-cli{
