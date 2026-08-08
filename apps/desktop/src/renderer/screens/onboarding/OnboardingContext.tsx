@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import type { CliDescriptor, DoctorCheck, ProjectState } from '@shared/types.js';
+import type { CliDescriptor, DoctorCheck } from '@shared/types.js';
 import type { StepId } from './shared.js';
 import { STEPS } from './shared.js';
 import { api } from '../../api.js';
@@ -199,7 +199,7 @@ export function OnboardingProvider({
     }
   };
 
-  const removeProject = useConfirmAction(
+  const removeProjectConfirm = useConfirmAction(
     (id: string) => {
       const target = projects.find((p) => p.id === id);
       return `Remove project "${target?.name}" from Foundry? The git repo on disk is not deleted.`;
@@ -226,6 +226,10 @@ export function OnboardingProvider({
       }
     },
   );
+
+  const removeProject = async (id: string): Promise<void> => {
+    await removeProjectConfirm(id);
+  };
   const commitProjectRename = async (id: string): Promise<void> => {
     const draft = (nameDrafts[id] ?? '').trim();
     const project = projects.find((p) => p.id === id);
