@@ -1,3 +1,5 @@
+import styles from './BoundaryEditor.module.css';
+
 type Mode = 'anywhere' | 'nowhere' | 'paths';
 
 export default function BoundaryEditor({
@@ -30,22 +32,22 @@ export default function BoundaryEditor({
 
   return (
     <>
-      <div className="boundary">
-        <div className="modes">
+      <div className={styles.boundary}>
+        <div className={styles.modes}>
           <button
-            className={`mode ${mode === 'anywhere' ? 'on' : ''}`}
+            className={`${styles.mode} ${mode === 'anywhere' ? styles.on : ''}`}
             onClick={() => setMode('anywhere')}
           >
             Anywhere in the worktree
           </button>
           <button
-            className={`mode ${mode === 'paths' ? 'on' : ''}`}
+            className={`${styles.mode} ${mode === 'paths' ? styles.on : ''}`}
             onClick={() => setMode('paths')}
           >
             Only these paths
           </button>
           <button
-            className={`mode ${mode === 'nowhere' ? 'on' : ''}`}
+            className={`${styles.mode} ${mode === 'nowhere' ? styles.on : ''}`}
             onClick={() => setMode('nowhere')}
           >
             Read-only
@@ -54,7 +56,7 @@ export default function BoundaryEditor({
         {mode === 'paths' && (
           <>
             {(value ?? []).map((pattern, i) => (
-              <div key={i} className="pattern">
+              <div key={i} className={styles.pattern}>
                 <input
                   className="input mono"
                   value={pattern}
@@ -71,7 +73,7 @@ export default function BoundaryEditor({
             </button>
           </>
         )}
-        <p className="hint">
+        <p className={styles.hint}>
           {mode === 'anywhere' && (
             <>
               Anything this agent writes inside its worktree is kept. Files outside the worktree are
@@ -92,16 +94,6 @@ export default function BoundaryEditor({
           )}
         </p>
       </div>
-      <style>{`
-        .boundary { display: flex; flex-direction: column; gap: var(--s2); }
-        .modes { display: flex; gap: var(--s1); padding: 3px; border-radius: var(--r-sm); background: var(--bg-input); border: 1px solid var(--line); width: fit-content; }
-        .mode { padding: var(--s1) var(--s3); border: none; border-radius: 5px; background: transparent; color: var(--text-faint); font: inherit; font-size: var(--text-xs); cursor: default; }
-        .mode:hover { color: var(--text); }
-        .mode.on { background: var(--bg-active); color: var(--text); }
-        .pattern { display: flex; gap: var(--s2); }
-        .hint { font-size: var(--text-xs); color: var(--text-faint); line-height: var(--leading); }
-        .hint code { font-family: var(--font-mono); padding: 1px 4px; border-radius: 4px; background: var(--bg-raised); color: var(--cyan); }
-      `}</style>
     </>
   );
 }

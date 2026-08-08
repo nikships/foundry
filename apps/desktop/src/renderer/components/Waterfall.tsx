@@ -4,6 +4,7 @@ import { useApp } from '../stores/app.js';
 import { duration } from '../format.js';
 import { phaseDuration, phaseKindColor } from '../derive.js';
 import AgentAvatar from './AgentAvatar.js';
+import styles from './Waterfall.module.css';
 
 const MARK_CLASS: Partial<Record<EventRow['type'], string>> = {
   tool_call: 'tool',
@@ -89,107 +90,98 @@ export default function Waterfall({
     return out;
   }, [span]);
 
+  const markStyleFor = (kind: string): string => {
+    const map: Record<string, string> = {
+      tool: styles.tool,
+      correction: styles.correction,
+      gate: styles.gate,
+      'gate-fail': styles.gateFail,
+      interrupt: styles.interrupt,
+    };
+    return map[kind] ?? '';
+  };
+
+  const barStatusStyle = (status: string): string => {
+    const map: Record<string, string> = {
+      queued: styles.queued,
+      running: styles.running,
+      success: styles.success,
+      fail: styles.fail,
+      skipped: styles.skipped,
+    };
+    return map[status] ?? '';
+  };
+
   return (
-    <>
-      <div className="waterfall">
-        <div className="axis">
-          {ticks.map((tick) => (
-            <span key={tick.left} className="tick" style={{ left: `${tick.left}%` }}>
-              <i />
-              <em className="mono">{tick.label}</em>
-            </span>
-          ))}
-        </div>
-        {phases.map((phase) => {
-          const bar = barFor(phase);
-          const label = bar ? labelFor(bar) : null;
-          const elapsed = duration(phaseDuration(phase, now));
-          return (
-            <button
-              key={phase.phaseId}
-              className={`lane ${phase.phaseId === selectedPhaseId ? 'selected' : ''} ${phase.status === 'queued' ? 'queued' : ''}`}
-              onClick={() => onSelect(phase.phaseId)}
-            >
-              <div className="lane-label">
-                {phase.kind === 'agent' ? (
-                  <AgentAvatar name={phase.owner} size={26} />
-                ) : (
-                  <span className="kind-dot" style={{ background: laneColor(phase) }} />
-                )}
-                <span className="lane-name">{phase.name}</span>
-                {phase.attempt > 1 && (
-                  <span className="attempt mono" title={`attempt ${phase.attempt}`}>
-                    ×{phase.attempt}
-                  </span>
-                )}
-              </div>
-              <div className="track">
-                {bar && label ? (
-                  <>
-                    <div
-                      className={`bar ${phase.status} ${bar.running ? 'running' : ''}`}
-                      style={{
-                        left: `${bar.left}%`,
-                        width: `${bar.width}%`,
-                        ['--lane-color' as string]: laneColor(phase) as string,
-                      }}
-                    >
-                      {label.inside && <span className="bar-time mono">{elapsed}</span>}
-                    </div>
-                    {!label.inside && (
-                      <span className="bar-time outside mono" style={label.style}>
-                        {elapsed}
-                      </span>
-                    )}
-                    {marksFor(phase).map((mark, i) => (
-                      <span
-                        key={i}
-                        className={`mark ${mark.kind}`}
-                        style={{ left: `${mark.left}%`, width: `${mark.width}%` }}
-                        title={mark.label}
-                      />
-                    ))}
-                  </>
-                ) : (
-                  <span className="not-started faint">queued</span>
-                )}
-              </div>
-            </button>
-          );
-        })}
+    <div className={styles.waterfall}>
+      <div className={styles.axis}>
+        {ticks.map((tick) => (
+          <span key={tick.left} className={styles.tick} style={{ left: `${tick.left}%` }}>
+            <i />
+            <em className="mono">{tick.label}</em>
+          </span>
+        ))}
       </div>
-      <style>{`
-        .waterfall { position: relative; display: flex; flex-direction: column; gap: var(--lane-gap); padding: var(--s5) var(--s6) var(--s4); }
-        .axis { position: absolute; inset: var(--s5) var(--s6) var(--s4); left: calc(var(--s6) + 168px); pointer-events: none; }
-        .tick { position: absolute; top: 0; bottom: 0; }
-        .tick i { position: absolute; top: 14px; bottom: 0; width: 1px; background: var(--line-faint); }
-        .tick em { position: absolute; top: 0; left: 4px; font-size: 10px; font-style: normal; color: var(--text-ghost); }
-        .lane { display: flex; align-items: center; gap: var(--s3); height: var(--lane-h); padding: 0 var(--s2); border: 1px solid transparent; border-radius: var(--r-sm); background: transparent; color: inherit; font: inherit; cursor: default; text-align: left; transition: background var(--fast) var(--ease); }
-        .lane:hover { background: var(--bg-hover); }
-        .lane.selected { background: var(--bg-active); border-color: var(--cyan-dim); }
-        .lane.queued { opacity: 0.5; }
-        .lane-label { display: flex; align-items: center; gap: var(--s2); width: 160px; flex: none; min-width: 0; }
-        .kind-dot { width: 10px; height: 10px; border-radius: var(--r-full); flex: none; }
-        .lane-name { font-size: var(--text-sm); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-        .attempt { font-size: 10px; color: var(--amber); }
-        /* Not overflow:hidden — a short phase renders its duration label
-           outside the bar, which must stay legible. */
-        .track { flex: 1; position: relative; height: 28px; background: var(--bg-input); border-radius: var(--r-sm); }
-        .bar { position: absolute; top: 4px; bottom: 4px; border-radius: 4px; background: var(--lane-color); opacity: 0.9; display: flex; align-items: center; padding: 0 6px; }
-        .bar.running { animation: pulse 1.4s var(--ease) infinite; }
-        .bar.success { background: var(--green); }
-        .bar.fail { background: var(--red); }
-        .bar.queued { background: transparent; }
-        .bar-time { font-size: 10px; color: white; white-space: nowrap; }
-        .bar-time.outside { position: absolute; top: 50%; transform: translateY(-50%); color: var(--text-dim); pointer-events: none; }
-        .mark { position: absolute; top: 0; bottom: 0; width: 3px; border-radius: 1px; }
-        .mark.tool { background: var(--blue); opacity: 0.7; }
-        .mark.correction { background: var(--amber); }
-        .mark.gate { background: var(--green); }
-        .mark.gate-fail { background: var(--red); }
-        .mark.interrupt { background: var(--purple); }
-        .not-started { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); font-size: var(--text-xs); }
-      `}</style>
-    </>
+      {phases.map((phase) => {
+        const bar = barFor(phase);
+        const label = bar ? labelFor(bar) : null;
+        const elapsed = duration(phaseDuration(phase, now));
+        return (
+          <button
+            key={phase.phaseId}
+            className={`${styles.lane} ${phase.phaseId === selectedPhaseId ? styles.selected : ''} ${phase.status === 'queued' ? styles.queued : ''}`}
+            onClick={() => onSelect(phase.phaseId)}
+          >
+            <div className={styles.laneLabel}>
+              {phase.kind === 'agent' ? (
+                <AgentAvatar name={phase.owner} size={26} />
+              ) : (
+                <span className={styles.kindDot} style={{ background: laneColor(phase) }} />
+              )}
+              <span className={styles.laneName}>{phase.name}</span>
+              {phase.attempt > 1 && (
+                <span className={`${styles.attempt} mono`} title={`attempt ${phase.attempt}`}>
+                  ×{phase.attempt}
+                </span>
+              )}
+            </div>
+            <div className={styles.track}>
+              {bar && label ? (
+                <>
+                  <div
+                    className={`${styles.bar} ${barStatusStyle(phase.status)} ${bar.running ? styles.running : ''}`}
+                    style={{
+                      left: `${bar.left}%`,
+                      width: `${bar.width}%`,
+                      ['--lane-color' as string]: laneColor(phase) as string,
+                    }}
+                  >
+                    {label.inside && <span className={`${styles.barTime} mono`}>{elapsed}</span>}
+                  </div>
+                  {!label.inside && (
+                    <span
+                      className={`${styles.barTime} ${styles.outside} mono`}
+                      style={label.style}
+                    >
+                      {elapsed}
+                    </span>
+                  )}
+                  {marksFor(phase).map((mark, i) => (
+                    <span
+                      key={i}
+                      className={`${styles.mark} ${markStyleFor(mark.kind)}`}
+                      style={{ left: `${mark.left}%`, width: `${mark.width}%` }}
+                      title={mark.label}
+                    />
+                  ))}
+                </>
+              ) : (
+                <span className={`${styles.notStarted} faint`}>queued</span>
+              )}
+            </div>
+          </button>
+        );
+      })}
+    </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import styles from './JsonView.module.css';
 
 interface Token {
   text: string;
@@ -46,35 +47,12 @@ export default function JsonView({ value }: { value: unknown }): React.JSX.Eleme
     }
   }, [value]);
   return (
-    <>
-      <pre className="json selectable">
-        {tokens.map((t, i) => (
-          <span key={i} className={t.cls}>
-            {t.text}
-          </span>
-        ))}
-      </pre>
-      <style>{`
-        .json {
-          padding: var(--s3);
-          border-radius: var(--r-sm);
-          background: var(--bg-void);
-          font-family: var(--font-mono);
-          font-size: var(--text-xs);
-          line-height: var(--leading);
-          overflow-x: auto;
-          max-height: 420px;
-          overflow-y: auto;
-          white-space: pre-wrap;
-          word-break: break-word;
-        }
-        .json .k { color: var(--cyan); }
-        .json .str { color: var(--green); }
-        .json .num { color: var(--amber); }
-        .json .bool { color: var(--purple); }
-        .json .null { color: var(--text-faint); }
-        .json .p { color: var(--text-faint); }
-      `}</style>
-    </>
+    <pre className={`${styles.json} selectable`}>
+      {tokens.map((t, i) => (
+        <span key={i} className={styles[t.cls]}>
+          {t.text}
+        </span>
+      ))}
+    </pre>
   );
 }

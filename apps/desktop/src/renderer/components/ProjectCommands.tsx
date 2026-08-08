@@ -17,6 +17,7 @@ import { duration } from '../format.js';
 import { CliIcon } from './BrandIcon.js';
 import ModelPicker from './ModelPicker.js';
 import DetectionPanel from './DetectionPanel.js';
+import styles from './ProjectCommands.module.css';
 
 interface TryState {
   running: boolean;
@@ -207,21 +208,21 @@ export default function ProjectCommands({
           Named commands a pipeline can reference, so the same pipeline works in every repo. Run
           each one once here so you know it works before a phase depends on it.
         </span>
-        <div className="commands">
+        <div className={styles.commands}>
           {project.commands.map((command, i) => {
             const result = results[command.name];
             const isOpen = expanded === command.name;
             return (
-              <div key={i} className="command">
+              <div key={i} className={styles.command}>
                 <div className="row">
                   <input
-                    className="input name"
+                    className={`input ${styles.name}`}
                     value={command.name}
                     onChange={(e) => setName(i, e.target.value)}
                     placeholder="test"
                   />
                   <input
-                    className="input mono argv"
+                    className={`input mono ${styles.argv}`}
                     value={argvText(i)}
                     placeholder="npm test"
                     onChange={(e) => setArgv(i, e.target.value)}
@@ -245,16 +246,18 @@ export default function ProjectCommands({
                   </button>
                 </div>
                 {result && !result.running && (
-                  <div className={`result ${result.passed ? 'ok' : ''}`}>
+                  <div className={`${styles.result} ${result.passed ? styles.ok : ''}`}>
                     <button
-                      className="result-head"
+                      className={styles.resultHead}
                       onClick={() => setExpanded(isOpen ? '' : command.name)}
                     >
-                      <span className="mark">{result.passed ? '✓' : '✕'}</span>
+                      <span className={styles.mark}>{result.passed ? '✓' : '✕'}</span>
                       exit {result.exitCode ?? '—'} in {duration(result.durationMs)}
                       <span className="faint">{isOpen ? 'hide output' : 'show output'}</span>
                     </button>
-                    {isOpen && <pre className="output selectable mono">{result.output}</pre>}
+                    {isOpen && (
+                      <pre className={`${styles.output} selectable mono`}>{result.output}</pre>
+                    )}
                   </div>
                 )}
               </div>
@@ -289,8 +292,8 @@ export default function ProjectCommands({
         <span className="hint">
           Detection reads the repo read-only, against your checkout rather than a worktree.
         </span>
-        <div className="two detect-picker">
-          <div className="cli-pick">
+        <div className={`${styles.two} ${styles.detectPicker}`}>
+          <div className={styles.cliPick}>
             <select
               className="select"
               value={detectCli}
@@ -319,7 +322,7 @@ export default function ProjectCommands({
 
       {detectError && (
         <div className="field">
-          <span className="detect-error">{detectError}</span>
+          <span className={styles.detectError}>{detectError}</span>
         </div>
       )}
 
@@ -338,12 +341,14 @@ export default function ProjectCommands({
           <label>Detected</label>
           <span className="hint">{found.detail}</span>
           {found.commands.length > 0 ? (
-            <div className="commands">
+            <div className={styles.commands}>
               {found.commands.map((c) => (
-                <div key={c.name} className="row found">
-                  <span className={`mark ${c.verified ? 'ok' : ''}`}>{c.verified ? '✓' : '✕'}</span>
-                  <span className="name">{c.name}</span>
-                  <code className="mono argv">{c.argv.join(' ')}</code>
+                <div key={c.name} className={`row ${styles.found}`}>
+                  <span className={`${styles.mark} ${c.verified ? styles.ok : ''}`}>
+                    {c.verified ? '✓' : '✕'}
+                  </span>
+                  <span className={styles.name}>{c.name}</span>
+                  <code className={`mono ${styles.argv}`}>{c.argv.join(' ')}</code>
                   <span className="faint">
                     {c.source}, exit {c.exitCode ?? '—'} in {duration(c.durationMs)}
                   </span>
@@ -354,33 +359,12 @@ export default function ProjectCommands({
               ))}
             </div>
           ) : (
-            <p className="faint empty">
+            <p className={`faint ${styles.empty}`}>
               Nothing in the manifests. Ask AI to read the repo, or type the argv by hand.
             </p>
           )}
         </div>
       )}
-      <style>{`
-        .commands { display: flex; flex-direction: column; gap: var(--s3); margin-top: var(--s2); }
-        .command { display: flex; flex-direction: column; gap: var(--s2); }
-        .row { display: flex; gap: var(--s2); align-items: center; }
-        .name { width: 140px; flex: none; }
-        .argv { flex: 1; }
-        .result { border: 1px solid var(--red-dim); border-radius: var(--r-sm); overflow: hidden; }
-        .result.ok { border-color: var(--green-dim); }
-        .result-head { display: flex; align-items: center; gap: var(--s2); width: 100%; padding: var(--s2) var(--s3); border: none; background: var(--bg-raised); color: var(--text-dim); font: inherit; font-size: var(--text-xs); text-align: left; cursor: default; }
-        .mark { color: var(--red); }
-        .mark.ok, .result.ok .mark { color: var(--green); }
-        .found { font-size: var(--text-xs); color: var(--text-dim); }
-        .found .name { width: 80px; flex: none; }
-        .found .argv { flex: 1; color: var(--text); }
-        .empty { font-size: var(--text-xs); margin-top: var(--s2); }
-        .detect-picker { margin-top: var(--s2); }
-        .cli-pick { display: flex; align-items: center; gap: var(--s2); }
-        .cli-pick .select { flex: 1; }
-        .detect-error { font-size: var(--text-xs); color: var(--red); }
-        .output { padding: var(--s3); background: var(--bg-void); font-size: var(--text-xs); line-height: var(--leading); white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow-y: auto; color: var(--text-dim); }
-      `}</style>
     </>
   );
 }

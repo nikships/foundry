@@ -14,6 +14,7 @@ import StatusBadge from '../components/StatusBadge.js';
 import EmptyState from '../components/EmptyState.js';
 import TranscriptLane from '../components/inspector/TranscriptLane.js';
 import { clockTime, since, truncate } from '../format.js';
+import styles from './InspectorScreen.module.css';
 
 type LaneFilter = 'all' | 'running' | 'failed';
 
@@ -93,8 +94,8 @@ export default function InspectorScreen({
 
   if (!project) {
     return (
-      <div className="insp">
-        <header className="insp-head">
+      <div className={styles.insp}>
+        <header className={styles.inspHead}>
           <h1>Inspector</h1>
         </header>
         <EmptyState
@@ -102,14 +103,21 @@ export default function InspectorScreen({
           title="No project yet"
           body="Add a git repository from the sidebar. The Inspector follows that project's runs."
         />
-        <InspStyle />
       </div>
     );
   }
 
+  // Map visible count to the corresponding lane-count modifier class
+  const lanesClass = (() => {
+    const n = Math.min(visibleLanes.length, 3);
+    if (n === 1) return styles.lanes1;
+    if (n === 2) return styles.lanes2;
+    return '';
+  })();
+
   return (
-    <div className="insp">
-      <header className="insp-head">
+    <div className={styles.insp}>
+      <header className={styles.inspHead}>
         <h1>Inspector</h1>
         <select
           className="select"
@@ -132,18 +140,18 @@ export default function InspectorScreen({
         {view.run && (
           <>
             <StatusBadge status={view.run.status} />
-            {view.live && <span className="insp-live">Live</span>}
-            <span className="insp-request" title={view.run.request}>
+            {view.live && <span className={styles.inspLive}>Live</span>}
+            <span className={styles.inspRequest} title={view.run.request}>
               {truncate(view.run.request, 80)}
             </span>
           </>
         )}
-        <div className="insp-controls">
-          <div className="insp-filter">
+        <div className={styles.inspControls}>
+          <div className={styles.inspFilter}>
             {FILTERS.map((f) => (
               <button
                 key={f.id}
-                className={`insp-filter-btn ${filter === f.id ? 'active' : ''}`}
+                className={`${styles.inspFilterBtn} ${filter === f.id ? styles.active : ''}`}
                 onClick={() => setFilter(f.id)}
               >
                 {f.label}
@@ -159,7 +167,7 @@ export default function InspectorScreen({
       </header>
 
       {(listError || view.error || filesError) && (
-        <div className="insp-banner" role="alert">
+        <div className={styles.inspBanner} role="alert">
           <span>{listError || view.error || filesError}</span>
           {(listError || view.error) && (
             <button className="btn sm" onClick={() => void retry()}>
@@ -170,17 +178,17 @@ export default function InspectorScreen({
       )}
 
       {listLoading && !runs.length && !listError && (
-        <div className="insp-skeleton" aria-hidden>
-          <div className="skel-row" />
-          <div className="skel-row" />
-          <div className="skel-row" />
+        <div className={styles.inspSkeleton} aria-hidden>
+          <div className={styles.skelRow} />
+          <div className={styles.skelRow} />
+          <div className={styles.skelRow} />
         </div>
       )}
       {view.loading && runId && !view.error && (
-        <div className="insp-skeleton" aria-hidden>
-          <div className="skel-row" />
-          <div className="skel-row" />
-          <div className="skel-row" />
+        <div className={styles.inspSkeleton} aria-hidden>
+          <div className={styles.skelRow} />
+          <div className={styles.skelRow} />
+          <div className={styles.skelRow} />
         </div>
       )}
       {!listLoading && !view.loading && !listError && !view.error && !runId && (
@@ -191,7 +199,7 @@ export default function InspectorScreen({
         />
       )}
       {!view.loading && !view.error && runId && lanes.length === 0 && (
-        <div className="insp-empty">
+        <div className={styles.inspEmpty}>
           <p className="faint">No phases match this filter.</p>
           {filter !== 'all' && (
             <button className="btn sm" onClick={() => setFilter('all')}>
@@ -201,7 +209,7 @@ export default function InspectorScreen({
         </div>
       )}
       {!view.loading && runId && visibleLanes.length > 0 && (
-        <div className={`insp-grid lanes-${Math.min(visibleLanes.length, 3)}`}>
+        <div className={`${styles.inspGrid} ${lanesClass}`}>
           {visibleLanes.map((phase) => (
             <TranscriptLane
               key={phase.phaseId}
@@ -218,35 +226,6 @@ export default function InspectorScreen({
           ))}
         </div>
       )}
-
-      <InspStyle />
     </div>
-  );
-}
-
-function InspStyle(): React.JSX.Element {
-  return (
-    <style>{`
-      .insp { display: flex; flex-direction: column; height: 100%; min-height: 0; padding: calc(var(--titlebar-h) + var(--s2)) var(--s5) var(--s4); gap: 12px; }
-      .insp-head { display: flex; align-items: center; gap: 10px; flex: none; flex-wrap: wrap; }
-      .insp-head h1 { font-size: 17px; font-weight: 600; margin: 0; }
-      .insp-head .select { max-width: 300px; }
-      .insp-request { font-size: 12px; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-      .insp-live { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; padding: 2px 7px; border-radius: var(--r-full); background: var(--cyan-dim); color: var(--cyan); }
-      .insp-controls { margin-left: auto; display: flex; align-items: center; gap: 10px; flex: none; }
-      .insp-filter { display: flex; border: 1px solid var(--line); border-radius: var(--r-sm); overflow: hidden; }
-      .insp-filter-btn { border: none; background: transparent; color: var(--text-faint); font: inherit; font-size: 11.5px; padding: 4px 12px; cursor: pointer; }
-      .insp-filter-btn + .insp-filter-btn { border-left: 1px solid var(--line); }
-      .insp-filter-btn.active { background: var(--bg-raised); color: var(--text); }
-      .insp-banner { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); padding: var(--s3); border-radius: var(--r-sm); background: var(--red-dim); color: var(--red); font-size: var(--text-sm); line-height: var(--leading); }
-      .insp-grid { flex: 1; min-height: 0; overflow-y: auto; display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); grid-auto-rows: minmax(280px, 1fr); }
-      .insp-grid.lanes-1 { grid-template-columns: 1fr; }
-      .insp-grid.lanes-2 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); }
-      .insp-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text-dim); font-size: 13px; }
-      .insp-empty .faint { color: var(--text-faint); font-size: 12px; }
-      .insp-skeleton { flex: 1; display: flex; flex-direction: column; gap: 10px; padding: var(--s4); }
-      .skel-row { height: 120px; border-radius: var(--r-sm); background: linear-gradient(90deg, var(--bg-raised) 25%, var(--bg-hover) 50%, var(--bg-raised) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
-      @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-    `}</style>
   );
 }

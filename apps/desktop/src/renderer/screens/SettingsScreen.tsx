@@ -14,6 +14,7 @@ import ModelPicker from '../components/ModelPicker.js';
 import { CliIcon } from '../components/BrandIcon.js';
 import DoctorList from '../components/DoctorList.js';
 import ProjectCommands from '../components/ProjectCommands.js';
+import styles from './SettingsScreen.module.css';
 
 type Pane = 'general' | 'clis' | 'defaults' | 'project' | 'maintenance' | 'about';
 
@@ -60,12 +61,12 @@ function Section({
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <section className="set-section">
-      <div className="set-section-label">
+    <section className={styles.setSection}>
+      <div className={styles.setSectionLabel}>
         <h2>{label}</h2>
         {note && <p>{note}</p>}
       </div>
-      <div className="set-body">{children}</div>
+      <div className={styles.setBody}>{children}</div>
     </section>
   );
 }
@@ -83,14 +84,14 @@ function Toggle({
   hint?: string;
 }): React.JSX.Element {
   return (
-    <label className="set-toggle">
+    <label className={styles.setToggle}>
       <input
         type="checkbox"
-        className="set-switch"
+        className={styles.setSwitch}
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
       />
-      <span className="set-toggle-text">
+      <span className={styles.setToggleText}>
         {label}
         {hint && <em>{hint}</em>}
       </span>
@@ -376,7 +377,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
     if (pane === 'maintenance') void loadOrphans();
   }, [pane]);
 
-  if (!settings) return <div className="set-screen" />;
+  if (!settings) return <div className={styles.setScreen} />;
 
   const updateTone =
     updateStatus.stage === 'error'
@@ -393,29 +394,29 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
 
   return (
     <>
-      <div className="set-screen">
+      <div className={styles.setScreen}>
         {/* ── section strip: equal cells spanning the full window width ── */}
-        <div className="set-strip" role="tablist" aria-label="Settings sections">
+        <div className={styles.setStrip} role="tablist" aria-label="Settings sections">
           {PANES.map((p) => (
             <button
               key={p.id}
               type="button"
               role="tab"
               aria-selected={pane === p.id}
-              className={`set-tab ${pane === p.id ? 'on' : ''}`}
+              className={`${styles.setTab} ${pane === p.id ? styles.on : ''}`}
               onClick={() => setPaneLive(p.id)}
             >
-              <span className="set-tab-label">{p.label}</span>
+              <span className={styles.setTabLabel}>{p.label}</span>
             </button>
           ))}
         </div>
 
-        <div className="set-scroll">
-          <div className="set-page">
+        <div className={styles.setScroll}>
+          <div className={styles.setPage}>
             {pane === 'general' && (
               <>
                 <Section label="Identity" note="Attached to every run, so a trace says who asked.">
-                  <div className="set-fields">
+                  <div className={styles.setFields}>
                     <div className="field">
                       <label>Your name</label>
                       <input
@@ -433,15 +434,15 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                           }
                         }}
                       />
-                      <span className="hint">
+                      <span className={styles.hint}>
                         Recorded on every run, so a trace says who asked for it. Saved when you
                         leave the field.
                       </span>
-                      {nameHint && <span className="set-warn">{nameHint}</span>}
+                      {nameHint && <span className={styles.setWarn}>{nameHint}</span>}
                     </div>
                     <div className="field">
                       <label>Default agent CLI</label>
-                      <div className="cli-picker">
+                      <div className={styles.cliPicker}>
                         <select
                           className="select"
                           value={settings.defaultCli}
@@ -455,7 +456,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                         </select>
                         <CliIcon vendor={settings.defaultCli} size={18} />
                       </div>
-                      <span className="hint">
+                      <span className={styles.hint}>
                         What a new agent starts on, and what command detection uses. Each agent can
                         choose its own in the Roster.
                       </span>
@@ -473,7 +474,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                 </Section>
 
                 <Section label="Notifications" note="Only the moments that need you.">
-                  <div className="set-toggles">
+                  <div className={styles.setToggles}>
                     {(Object.keys(NOTIFY_LABELS) as Array<keyof typeof NOTIFY_LABELS>).map(
                       (key) => (
                         <Toggle
@@ -497,43 +498,51 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                 </Section>
 
                 <Section label="Software updates" note="Foundry checks only when you ask it to.">
-                  <div className="set-spread">
+                  <div className={styles.setSpread}>
                     <div className="field">
-                      <strong className="set-strong">Foundry {version ? `v${version}` : ''}</strong>
-                      {updateStatus.message && <span className="hint">{updateStatus.message}</span>}
+                      <strong className={styles.setStrong}>
+                        Foundry {version ? `v${version}` : ''}
+                      </strong>
+                      {updateStatus.message && (
+                        <span className={styles.hint}>{updateStatus.message}</span>
+                      )}
                       {updateStatus.stage === 'available' && updateStatus.version && (
-                        <span className="hint">
+                        <span className={styles.hint}>
                           Foundry v{updateStatus.version} is available, download it when ready.
                         </span>
                       )}
                     </div>
-                    <span className={`set-pill ${updateTone}`}>{updateText}</span>
+                    <span
+                      className={`${styles.setPill} ${updateTone === 'ok' ? styles.ok : updateTone === 'bad' ? styles.bad : styles.info}`}
+                    >
+                      {updateText}
+                    </span>
                   </div>
                   {(updateStatus.stage === 'downloading' || updateStatus.stage === 'ready') && (
                     <div
-                      className="set-progress"
+                      className={styles.setProgress}
                       aria-label={
                         updateStatus.stage === 'downloading'
                           ? `Downloading ${Math.round(updateStatus.percent ?? 0)} percent`
                           : 'Update ready to install'
                       }
                     >
-                      <div className="set-track">
+                      <div className={styles.setTrack}>
                         <div
-                          className={`set-fill ${updateStatus.stage === 'ready' ? 'ready' : ''}`}
+                          className={`${styles.setFill} ${updateStatus.stage === 'ready' ? styles.ready : ''}`}
                           style={{
                             width: `${updateStatus.stage === 'ready' ? 100 : Math.max(0, Math.min(100, updateStatus.percent ?? 0))}%`,
                           }}
                         />
                       </div>
-                      <span className="mono faint set-pct">
+                      <span className={`mono faint ${styles.setPct}`}>
                         {updateStatus.stage === 'ready'
                           ? 'ready'
                           : `${Math.round(updateStatus.percent ?? 0)}%`}
                       </span>
                     </div>
                   )}
-                  <div className="set-subrow">
+                  <div className={styles.setSubrow}>
                     {updateStatus.stage === 'ready' ? (
                       <button className="btn primary sm" onClick={() => void installUpdate()}>
                         Restart to install
@@ -543,7 +552,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                         Download update
                       </button>
                     ) : updateStatus.stage === 'downloading' ? (
-                      <span className="hint">
+                      <span className={styles.hint}>
                         Installing after the download finishes, you will be asked to restart.
                       </span>
                     ) : (
@@ -566,10 +575,10 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                   label="Application"
                   note="Restart after changing settings or installing an update."
                 >
-                  <p className="hint">
+                  <p className={styles.hint}>
                     Restart Foundry after changing settings or installing an update.
                   </p>
-                  <div className="set-btnrow">
+                  <div className={styles.setBtnrow}>
                     <button className="btn sm" onClick={() => void relaunchApp()}>
                       Relaunch Foundry
                     </button>
@@ -583,7 +592,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
             {pane === 'clis' && (
               <>
                 <Section label="Agent CLIs" note="One per agent phase.">
-                  <p className="set-lead">
+                  <p className={styles.setLead}>
                     Foundry drives one of these per agent phase. A path is filled in from your PATH
                     at first launch; correct it here if you keep a CLI somewhere unusual.
                   </p>
@@ -603,16 +612,18 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                           : 'Checking…'
                       }
                     >
-                      <div className="set-cli-head">
+                      <div className={styles.setCliHead}>
                         <CliIcon vendor={cli.id} size={18} />
                         <h3>{cli.label}</h3>
                         {found && (
-                          <span className={`set-pill ${found.ok ? 'ok' : 'bad'}`}>
+                          <span
+                            className={`${styles.setPill} ${found.ok ? styles.ok : styles.bad}`}
+                          >
                             {found.ok ? 'found' : 'not found'}
                           </span>
                         )}
                       </div>
-                      <div className="set-fields">
+                      <div className={styles.setFields}>
                         <div className="field">
                           <label>Executable</label>
                           <input
@@ -620,7 +631,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                             value={config.path}
                             onChange={(e) => void setCli(cli.id, { path: e.target.value })}
                           />
-                          {found && <span className="hint">{found.detail}</span>}
+                          {found && <span className={styles.hint}>{found.detail}</span>}
                         </div>
                         <div className="field">
                           <label>Extra arguments</label>
@@ -634,13 +645,13 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                               })
                             }
                           />
-                          <span className="hint">
+                          <span className={styles.hint}>
                             For an option this release does not model yet. Passed through verbatim.
                           </span>
                         </div>
                       </div>
                       {cli.caveats.length > 0 && (
-                        <ul className="caveats">
+                        <ul className={styles.caveats}>
                           {cli.caveats.map((caveat) => (
                             <li key={caveat}>{caveat}</li>
                           ))}
@@ -670,8 +681,8 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
             {pane === 'defaults' && (
               <>
                 <Section label="Agent defaults" note="What an agent set to inherit gets.">
-                  <div className="set-spread">
-                    <p className="set-lead">
+                  <div className={styles.setSpread}>
+                    <p className={styles.setLead}>
                       Used by any agent set to inherit. A per-agent choice always wins.
                     </p>
                     <button className="btn sm" onClick={() => void refreshModels()}>
@@ -680,7 +691,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                   </div>
                 </Section>
                 <Section label="Model" note="Offered by whichever CLI is the default.">
-                  <div className="set-fields">
+                  <div className={styles.setFields}>
                     <div className="field">
                       <label>Default model</label>
                       <ModelPicker
@@ -722,14 +733,14 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                       </option>
                       <option value="high">High: run unattended within the worktree</option>
                     </select>
-                    <span className="hint">
+                    <span className={styles.hint}>
                       Foundry always reverts writes outside an agent's boundary, at every level.
                       Autonomy only decides what it stops to ask about first.
                     </span>
                   </div>
                 </Section>
                 <Section label="Limits" note="How hard Foundry tries before a phase fails.">
-                  <div className="set-fields">
+                  <div className={styles.setFields}>
                     <div className="field">
                       <label>Envelope retries</label>
                       <input
@@ -744,7 +755,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                           }))
                         }
                       />
-                      <span className="hint">
+                      <span className={styles.hint}>
                         Correction messages sent when a reply will not parse.
                       </span>
                     </div>
@@ -762,7 +773,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                           }))
                         }
                       />
-                      <span className="hint">
+                      <span className={styles.hint}>
                         Attempts to fix a gate violation before the phase fails.
                       </span>
                     </div>
@@ -796,7 +807,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                           }))
                         }
                       />
-                      <span className="hint">How often a live run's view refreshes.</span>
+                      <span className={styles.hint}>How often a live run's view refreshes.</span>
                     </div>
                   </div>
                 </Section>
@@ -817,12 +828,12 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                           }
                           placeholder="My project"
                         />
-                        <span className="hint">
+                        <span className={styles.hint}>
                           Just for you — rename freely. The path is where Foundry runs.
                         </span>
                       </div>
-                      <div className="set-subrow">
-                        <span className="mono faint set-path">{projectDraft.path}</span>
+                      <div className={styles.setSubrow}>
+                        <span className={`mono faint ${styles.setPath}`}>{projectDraft.path}</span>
                         <button
                           className="btn sm ghost"
                           onClick={() => void api.projects.reveal(projectDraft.path)}
@@ -842,7 +853,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                       />
                     </Section>
                     <Section label="Git" note="Every run branches from the base ref.">
-                      <div className="set-fields">
+                      <div className={styles.setFields}>
                         <div className="field">
                           <label>Base ref</label>
                           <input
@@ -852,7 +863,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                               setProjectDraft({ ...projectDraft, baseRef: e.target.value })
                             }
                           />
-                          <span className="hint">Every run branches from here.</span>
+                          <span className={styles.hint}>Every run branches from here.</span>
                         </div>
                         <div className="field">
                           <label>Merge policy</label>
@@ -896,7 +907,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                             })
                           }
                         />
-                        <span className="hint">
+                        <span className={styles.hint}>
                           One pattern per line. No agent may write these, whatever its own boundary
                           says. <code>.git/</code>, CI config, and lockfiles are always protected.
                         </span>
@@ -914,13 +925,13 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                             })
                           }
                         />
-                        <span className="hint">
+                        <span className={styles.hint}>
                           Commands agents may run without stopping to ask. Prefix matching.
                         </span>
                       </div>
                     </Section>
                     <Section label="Scope" note="Keep configuration local to this project.">
-                      <div className="set-fields">
+                      <div className={styles.setFields}>
                         <Toggle
                           label="Use a project-specific roster"
                           hint="Starts as a copy of the global roster; changes stay in this project."
@@ -939,15 +950,15 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                         />
                       </div>
                     </Section>
-                    <div className="set-foot">
+                    <div className={styles.setFoot}>
                       <button className="btn danger" onClick={() => void removeProject()}>
                         Remove project
                       </button>
-                      <span className="set-autosave">Changes save automatically</span>
+                      <span className={styles.setAutosave}>Changes save automatically</span>
                     </div>
                   </>
                 ) : (
-                  <div className="set-empty">
+                  <div className={styles.setEmpty}>
                     <p className="faint">No project selected. Add a git repository to configure.</p>
                     <button className="btn primary" onClick={() => void addProject()}>
                       Add a project…
@@ -959,7 +970,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
             {pane === 'maintenance' && (
               <>
                 <Section label="Retention" note="Nothing is deleted behind your back.">
-                  <div className="field set-narrow">
+                  <div className={`field ${styles.setNarrow}`}>
                     <label>Keep run history for</label>
                     <select
                       className="select"
@@ -974,12 +985,12 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                       <option value="90">90 days</option>
                       <option value="365">A year</option>
                     </select>
-                    <span className="hint">
+                    <span className={styles.hint}>
                       Applies when you press the button below. Nothing is deleted behind your back.
                     </span>
                   </div>
-                  <div className="set-subrow">
-                    <div className="set-btnrow">
+                  <div className={styles.setSubrow}>
+                    <div className={styles.setBtnrow}>
                       <button
                         className="btn"
                         disabled={maintenanceBusy}
@@ -998,15 +1009,15 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                   </div>
                 </Section>
                 <Section label="Leftover worktrees" note="Left behind by a crashed or killed run.">
-                  <p className="hint">
+                  <p className={styles.hint}>
                     A worktree left behind by a crashed or killed run. Removing one deletes its
                     branch and any uncommitted work in it.
                   </p>
                   {orphans.length ? (
-                    <ul className="set-orphans">
+                    <ul className={styles.setOrphans}>
                       {orphans.map((orphan) => (
                         <li key={orphan.path}>
-                          <span className="mono path">{orphan.path}</span>
+                          <span className={`mono ${styles.path}`}>{orphan.path}</span>
                           <span className="mono faint">{orphan.branch}</span>
                           <button
                             className="btn sm danger"
@@ -1021,7 +1032,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                     <p className="faint">None found.</p>
                   )}
                   {maintenanceNote && (
-                    <p className="set-note">
+                    <p className={styles.setNote}>
                       <svg
                         width="12"
                         height="12"
@@ -1044,29 +1055,29 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
             {pane === 'about' && (
               <>
                 <Section label="Foundry" note="A software factory you can watch.">
-                  <p className="set-lead">
+                  <p className={styles.setLead}>
                     A software factory you can watch. Pipelines are data, agents are configuration,
                     and every phase leaves evidence you can read.
                   </p>
                 </Section>
                 <Section label="Build" note="What this copy of Foundry is running.">
-                  <dl className="set-facts">
-                    <div className="set-fact">
+                  <dl className={styles.setFacts}>
+                    <div className={styles.setFact}>
                       <dt>Version</dt>
                       <dd className="mono">{version}</dd>
                     </div>
-                    <div className="set-fact">
+                    <div className={styles.setFact}>
                       <dt>Agent harness</dt>
                       <dd className="mono">droid CLI over stream JSON-RPC</dd>
                     </div>
-                    <div className="set-fact">
+                    <div className={styles.setFact}>
                       <dt>Projects</dt>
                       <dd className="mono">{projects.length}</dd>
                     </div>
                   </dl>
                 </Section>
                 <Section label="Elsewhere" note="Docs and the cinematic intro.">
-                  <div className="set-btnrow">
+                  <div className={styles.setBtnrow}>
                     <button
                       className="btn sm"
                       onClick={() =>
@@ -1079,7 +1090,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                       Replay intro
                     </button>
                   </div>
-                  <p className="hint">
+                  <p className={styles.hint}>
                     Replay intro walks the cinematic onboarding again: agents, CLIs, environment
                     checks, and your first project.
                   </p>
@@ -1087,7 +1098,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
               </>
             )}
             {errors.length > 0 && (
-              <ul className="set-errors" role="alert">
+              <ul className={styles.setErrors} role="alert">
                 {errors.map((error, i) => (
                   <li key={i}>{error}</li>
                 ))}
@@ -1096,142 +1107,6 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
           </div>
         </div>
       </div>
-      <style>{`
-        /* One continuous surface — structure from hairlines + type, never tinted columns. */
-        .set-screen { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--bg-base); }
-
-        /* strip — equal flex cells span the full window width and rescale with it */
-        .set-strip {
-          flex: none; display: flex; align-items: stretch;
-          padding: var(--titlebar-h) var(--s4) 0;
-          border-bottom: 1px solid var(--line); background: var(--bg-base);
-        }
-        .set-tab {
-          flex: 1 1 0; min-width: 0; display: flex; justify-content: center;
-          padding: var(--s3) var(--s2) 0; border: none; background: transparent;
-          font: inherit; font-size: var(--text-sm); color: var(--text-faint);
-          cursor: default; white-space: nowrap;
-          transition: color var(--fast) var(--ease);
-        }
-        .set-tab:hover { color: var(--text-dim); }
-        .set-tab.on { color: var(--cyan); }
-        .set-tab-label {
-          position: relative; max-width: 100%;
-          overflow: hidden; text-overflow: ellipsis; padding-bottom: var(--s3);
-        }
-        .set-tab.on .set-tab-label::after {
-          content: ''; position: absolute; left: -2px; right: -2px; bottom: -1px;
-          height: 2px; background: var(--cyan);
-        }
-
-        /* page — single centered column */
-        .set-scroll { flex: 1; min-height: 0; overflow-y: auto; }
-        .set-page { max-width: 860px; margin: 0 auto; padding: 0 var(--s6) var(--s16); }
-        .set-section {
-          display: grid; grid-template-columns: 220px minmax(0, 1fr);
-          gap: var(--s4) var(--s12);
-          border-top: 1px solid var(--line); padding: var(--s8) 0;
-        }
-        .set-section:first-child { border-top: none; }
-        .set-section-label h2 {
-          margin: 0; font-family: var(--font-mono); font-size: 10px; font-weight: 500;
-          text-transform: uppercase; letter-spacing: 0.22em; color: var(--text-dim);
-        }
-        .set-section-label p {
-          margin: var(--s2) 0 0; font-size: var(--text-xs);
-          line-height: var(--leading); color: var(--text-faint); max-width: 24ch;
-        }
-        .set-body { min-width: 0; display: flex; flex-direction: column; gap: var(--s5); }
-        .set-body p { margin: 0; }
-        .set-fields { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s5) var(--s8); }
-        .two { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s4); }
-
-        .field { display: flex; flex-direction: column; gap: var(--s1); }
-        .field label { font-size: var(--text-sm); font-weight: 500; }
-        .hint { font-size: var(--text-xs); color: var(--text-faint); line-height: var(--leading); }
-        .set-lead { margin: 0; font-size: var(--text-sm); line-height: var(--leading); color: var(--text-dim); max-width: 62ch; }
-        .set-spread { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s4); }
-        .set-subrow {
-          display: flex; align-items: center; justify-content: space-between; gap: var(--s4);
-          padding-top: var(--s4); border-top: 1px solid var(--line-faint);
-        }
-        .set-btnrow { display: flex; gap: var(--s3); }
-        .set-narrow { max-width: 280px; }
-        .field code { font-family: var(--font-mono); font-size: 11px; padding: 1px 4px; border-radius: 4px; background: var(--bg-raised); color: var(--cyan); }
-
-        /* switch — a real checkbox under the paint, so rows stay click-to-toggle */
-        .set-toggles { display: flex; flex-direction: column; gap: var(--s4); }
-        .set-toggle { display: flex; align-items: flex-start; gap: var(--s3); cursor: default; }
-        .set-switch {
-          appearance: none; -webkit-appearance: none;
-          position: relative; flex: none; width: 28px; height: 16px; margin: 2px 0 0; padding: 0;
-          border-radius: 999px; border: 1px solid var(--line-strong); background: transparent;
-          cursor: default;
-          transition: background var(--fast) var(--ease), border-color var(--fast) var(--ease);
-        }
-        .set-switch::after {
-          content: ''; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px;
-          border-radius: 999px; background: var(--text-faint);
-          transition: left var(--fast) var(--ease), background var(--fast) var(--ease);
-        }
-        .set-switch:checked { background: var(--cyan); border-color: var(--cyan); }
-        .set-switch:checked::after { left: 14px; background: var(--bg-void); }
-        .set-toggle-text { min-width: 0; font-size: var(--text-sm); color: var(--text); }
-        .set-toggle-text em {
-          display: block; font-style: normal; margin-top: 1px;
-          font-size: var(--text-xs); color: var(--text-faint); line-height: var(--leading);
-        }
-
-        /* status pill */
-        .set-pill {
-          flex: none; font-family: var(--font-mono); font-size: 10px;
-          letter-spacing: 0.08em; text-transform: uppercase;
-          padding: 1px 8px; border-radius: 999px;
-        }
-        .set-pill.ok { color: var(--green); background: var(--green-dim); }
-        .set-pill.bad { color: var(--red); background: var(--red-dim); }
-        .set-pill.info { color: var(--cyan); background: var(--cyan-dim); }
-        .set-pill.plain { color: var(--text-faint); border: 1px solid var(--line); }
-
-        /* cli blocks */
-        .set-cli-head { display: flex; align-items: center; gap: var(--s2); }
-        .set-cli-head h3 { margin: 0; font-size: var(--text-sm); font-weight: 600; }
-        .set-cli-head .set-pill { margin-left: auto; }
-        .caveats { list-style: none; display: flex; flex-direction: column; gap: var(--s1); }
-        .caveats li { font-size: var(--text-xs); color: var(--text-faint); padding-left: var(--s3); border-left: 2px solid var(--line); }
-        .cli-picker { display: flex; align-items: center; gap: var(--s2); }
-        .cli-picker .select { flex: 1; }
-
-        .set-warn { font-size: var(--text-xs); color: var(--amber); }
-
-        /* updates */
-        .set-strong { display: block; font-size: var(--text-sm); font-weight: 600; }
-        .set-progress { display: flex; align-items: center; gap: var(--s3); }
-        .set-track { flex: 1; height: 6px; border-radius: 999px; background: var(--bg-void); border: 1px solid var(--line-faint); overflow: hidden; }
-        .set-fill { height: 100%; background: var(--cyan); border-radius: 999px; transition: width 220ms var(--ease); }
-        .set-fill.ready { background: var(--green); }
-        .set-pct { font-size: var(--text-xs); min-width: 44px; text-align: right; }
-
-        /* maintenance */
-        .set-orphans { list-style: none; }
-        .set-orphans li { display: flex; align-items: center; gap: var(--s4); border-top: 1px solid var(--line-faint); padding: var(--s2) 0; font-size: var(--text-xs); }
-        .set-orphans .path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); }
-        .set-note { display: flex; align-items: center; gap: var(--s2); font-size: var(--text-xs); color: var(--green); }
-
-        /* about */
-        .set-facts { margin: 0; }
-        .set-fact { display: flex; align-items: baseline; gap: var(--s6); border-top: 1px solid var(--line-faint); padding: var(--s2) 0; }
-        .set-fact dt { width: 140px; flex: none; font-size: var(--text-sm); color: var(--text-faint); }
-        .set-fact dd { margin: 0; font-size: var(--text-xs); }
-
-        /* project footer / empty / errors */
-        .set-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--s4); border-top: 1px solid var(--line); padding: var(--s6) 0; }
-        .set-autosave { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.18em; color: var(--text-faint); }
-        .set-empty { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s3); padding-top: var(--s8); }
-        .set-empty p { margin: 0; }
-        .set-path { font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-        .set-errors { margin: var(--s5) 0 0; padding: var(--s3); border-radius: var(--r-sm); background: var(--red-dim); color: var(--red); font-size: var(--text-sm); list-style: none; }
-      `}</style>
     </>
   );
 }

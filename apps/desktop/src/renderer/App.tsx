@@ -12,6 +12,7 @@ import OnboardingShell from './screens/onboarding/OnboardingShell.js';
 import InterruptSheet from './components/InterruptSheet.js';
 import UpdateBanner from './components/UpdateBanner.js';
 import type { UpdateStatus } from '@shared/types.js';
+import styles from './App.module.css';
 
 export type View = 'runs' | 'inspector' | 'pipelines' | 'roster' | 'settings';
 
@@ -155,8 +156,8 @@ function AppInner(): React.JSX.Element {
   }
 
   return (
-    <div className="shell">
-      <div className="titlebar">
+    <div className={styles.shell}>
+      <div className={styles.titlebar}>
         <div className="prism-header-rule" aria-hidden />
       </div>
 
@@ -175,11 +176,11 @@ function AppInner(): React.JSX.Element {
             }}
             onOpenInterruptRun={openRun}
           />
-          <main className="content">{main}</main>
+          <main className={styles.content}>{main}</main>
         </>
       ) : (
-        <div className="booting">
-          <span className="spinner" />
+        <div className={styles.booting}>
+          <span className={styles.spinner} />
         </div>
       )}
 
@@ -194,64 +195,10 @@ function AppInner(): React.JSX.Element {
         />
       )}
       {toast && (
-        <div className="toast" role="status" aria-live="polite">
+        <div className={styles.toast} role="status" aria-live="polite">
           {toast}
         </div>
       )}
-      <style>{`
-        .toast {
-          position: fixed;
-          bottom: 22px;
-          left: 50%;
-          transform: translateX(-50%);
-          padding: var(--s2) var(--s4);
-          background: var(--bg-raised);
-          border: 1px solid var(--line);
-          border-radius: var(--r-full);
-          color: var(--text);
-          font-size: var(--text-sm);
-          box-shadow: var(--shadow);
-          z-index: 80;
-          animation: fade-in 140ms var(--ease);
-        }
-        .shell {
-          position: relative;
-          display: flex;
-          height: 100%;
-          background: var(--bg-base);
-        }
-        .titlebar {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          height: var(--titlebar-h);
-          -webkit-app-region: drag;
-          z-index: 50;
-          pointer-events: none;
-        }
-        .content {
-          flex: 1;
-          min-width: 0;
-          display: flex;
-          flex-direction: column;
-          background: var(--bg-base);
-          border-left: 1px solid var(--line);
-        }
-        .booting {
-          flex: 1;
-          display: grid;
-          place-items: center;
-        }
-        .spinner {
-          width: 22px;
-          height: 22px;
-          border: 2px solid var(--line-strong);
-          border-top-color: var(--cyan);
-          border-radius: var(--r-full);
-          animation: spin 700ms linear infinite;
-        }
-      `}</style>
     </div>
   );
 }

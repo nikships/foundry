@@ -1,0 +1,20 @@
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-full);
+  border: 1px solid;
+  overflow: hidden;
+  flex: none;
+  font-weight: 600;
+}
+.avatar.emblem {
+  box-shadow:
+    0 0 0 1px var(--bg-void),
+    var(--shadow-sm);
+}
+.avatar img {
+  width: 118%;
+  height: 118%;
+  object-fit: cover;
+}

@@ -87,6 +87,7 @@ import ZAIMono from '@lobehub/icons/es/ZAI/components/Mono.js';
 import ZeroOneColor from '@lobehub/icons/es/ZeroOne/components/Color.js';
 import ZhipuColor from '@lobehub/icons/es/Zhipu/components/Color.js';
 import type { CliVendor } from '@shared/types.js';
+import styles from './BrandIcon.module.css';
 
 export interface MarkProps {
   size?: number;
@@ -234,13 +235,12 @@ export function CliIcon({
   return (
     <span
       aria-label={vendor}
-      className="brand-mark"
+      className={styles.brandMark}
       role="img"
       style={{ width: size, height: size }}
       title={vendor}
     >
       <Icon size={size} />
-      <BrandStyle />
     </span>
   );
 }
@@ -258,28 +258,12 @@ export function ProviderIcon({
   return (
     <span
       aria-label={provider}
-      className="brand-mark"
+      className={styles.brandMark}
       role="img"
       style={{ width: size, height: size }}
       title={provider}
     >
       <Icon size={size} />
-      <BrandStyle />
     </span>
-  );
-}
-
-function BrandStyle(): React.JSX.Element {
-  return (
-    <style>{`
-      .brand-mark {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        flex: none;
-        color: var(--text-dim);
-      }
-      .brand-mark svg { display: block; }
-    `}</style>
   );
 }

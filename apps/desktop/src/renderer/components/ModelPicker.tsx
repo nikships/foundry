@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import type { ModelInfo } from '@shared/types.js';
 import { modelLabel } from '../format.js';
 import { ProviderIcon } from './BrandIcon.js';
+import styles from './ModelPicker.module.css';
 
 export default function ModelPicker({
   value,
@@ -35,7 +36,7 @@ export default function ModelPicker({
 
   return (
     <>
-      <div className="picker">
+      <div className={styles.picker}>
         <select
           className="select"
           value={value}
@@ -64,13 +65,13 @@ export default function ModelPicker({
         {current && <ProviderIcon provider={current.provider} size={18} />}
       </div>
       {catalogEmpty && (
-        <p className="picker-empty">
+        <p className={styles.pickerEmpty}>
           {emptyHint ??
             'No models in the catalog. Install and sign in to this CLI, then refresh the list.'}
           {onRefresh && (
             <>
               {' '}
-              <button type="button" className="linkish" onClick={onRefresh}>
+              <button type="button" className={styles.linkish} onClick={onRefresh}>
                 Refresh
               </button>
             </>
@@ -78,19 +79,10 @@ export default function ModelPicker({
         </p>
       )}
       {unknownSelected && !catalogEmpty && (
-        <p className="picker-empty">
+        <p className={styles.pickerEmpty}>
           This model id is not in the current CLI catalog. Pick another or switch CLI.
         </p>
       )}
-      <style>{`
-        .picker { display: flex; align-items: center; gap: var(--s2); }
-        .picker .select { flex: 1; }
-        .picker-empty { margin-top: var(--s1); font-size: var(--text-xs); color: var(--amber); line-height: var(--leading); }
-        .linkish {
-          border: none; background: none; padding: 0; font: inherit; font-size: inherit;
-          color: var(--cyan); text-decoration: underline; cursor: default;
-        }
-      `}</style>
     </>
   );
 }

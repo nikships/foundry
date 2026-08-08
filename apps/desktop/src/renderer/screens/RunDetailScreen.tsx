@@ -9,6 +9,7 @@ import PhaseDrawer from '../components/PhaseDrawer.js';
 import StatusBadge from '../components/StatusBadge.js';
 import CostTable from '../components/CostTable.js';
 import OutcomeBanner from '../components/OutcomeBanner.js';
+import styles from './RunDetailScreen.module.css';
 
 export default function RunDetailScreen({
   runId,
@@ -141,112 +142,93 @@ export default function RunDetailScreen({
   const bannerError = actionError || view.error;
 
   return (
-    <>
-      <div className="screen">
-        <header className="head">
-          <button className="btn ghost sm back" onClick={onBack}>
-            ← Runs
+    <div className={styles.screen}>
+      <header className={styles.head}>
+        <button className="btn ghost sm back" onClick={onBack}>
+          ← Runs
+        </button>
+        <button className="btn ghost sm" onClick={() => onOpenInspector(runId)}>
+          Inspector
+        </button>
+        <div className={styles.grow} />
+        {view.live && (
+          <button
+            className="btn danger sm"
+            disabled={killing}
+            title={killing ? 'Killing…' : 'Stop the run without deleting its branch'}
+            onClick={() => void kill()}
+          >
+            {killing ? 'Killing…' : 'Kill run'}
           </button>
-          <button className="btn ghost sm" onClick={() => onOpenInspector(runId)}>
-            Inspector
-          </button>
-          <div className="grow" />
-          {view.live && (
-            <button
-              className="btn danger sm"
-              disabled={killing}
-              title={killing ? 'Killing…' : 'Stop the run without deleting its branch'}
-              onClick={() => void kill()}
-            >
-              {killing ? 'Killing…' : 'Kill run'}
-            </button>
-          )}
-          <button className="btn ghost sm" onClick={() => setShowCost(!showCost)}>
-            {showCost ? 'Hide cost' : 'Cost'}
-          </button>
-        </header>
-        {bannerError && (
-          <p className="action-err" role="alert">
-            {bannerError}
-          </p>
         )}
-        {view.run && (
-          <div className="run-head">
-            <div className="row">
-              <StatusBadge status={view.run.status} />
-              <h1>{view.run.pipelineName}</h1>
-              <span className="faint mono when">{clockTime(view.run.startedAt)}</span>
-            </div>
-            <p className="request selectable">{view.run.request}</p>
-            <div className="facts mono faint">
-              <span>{duration(runDuration(view.run, now))}</span>
-              {view.run.totalTokens ? <span>{tokens(view.run.totalTokens)} tokens</span> : null}
-              {totalCredits ? <span>{credits(totalCredits)} credits</span> : null}
-              {view.run.branch && (
-                <button className="link" onClick={() => void openWorktree()}>
-                  {view.run.branch}
-                </button>
-              )}
-            </div>
+        <button className="btn ghost sm" onClick={() => setShowCost(!showCost)}>
+          {showCost ? 'Hide cost' : 'Cost'}
+        </button>
+      </header>
+      {bannerError && (
+        <p className={styles.actionErr} role="alert">
+          {bannerError}
+        </p>
+      )}
+      {view.run && (
+        <div className={styles.runHead}>
+          <div className="row">
+            <StatusBadge status={view.run.status} />
+            <h1>{view.run.pipelineName}</h1>
+            <span className={`faint mono ${styles.when}`}>{clockTime(view.run.startedAt)}</span>
           </div>
-        )}
-        {view.run && view.run.status !== 'running' && (
-          <OutcomeBanner
-            run={view.run}
-            phases={view.phases}
-            worktreeBusy={worktreeBusy}
-            worktreeMessage={worktreeMessage}
-            worktreeError={worktreeError}
-            onMerge={() => void mergeWorktree()}
-            onDiscard={() => void discardWorktree()}
-          />
-        )}
-        {showCost && <CostTable phases={view.phases} eventsByPhase={eventsByPhase} />}
-        <div className="split">
-          <div className="left scroll">
-            {view.run && (
-              <Waterfall
-                run={view.run}
-                phases={view.phases}
-                eventsByPhase={eventsByPhase}
-                selectedPhaseId={selectedPhaseId}
-                now={now}
-                onSelect={setSelectedPhaseId}
-              />
-            )}
-          </div>
-          <div className="right">
-            {selectedPhase && (
-              <PhaseDrawer
-                key={selectedPhase.phaseId}
-                phase={selectedPhase}
-                events={eventsByPhase.get(selectedPhase.phaseId) ?? []}
-                envelopes={envelopesByPhase.get(selectedPhase.phaseId) ?? []}
-                gates={gatesByPhase.get(selectedPhase.phaseId) ?? []}
-                live={view.live}
-                now={now}
-              />
+          <p className={`${styles.request} selectable`}>{view.run.request}</p>
+          <div className={`${styles.facts} mono faint`}>
+            <span>{duration(runDuration(view.run, now))}</span>
+            {view.run.totalTokens ? <span>{tokens(view.run.totalTokens)} tokens</span> : null}
+            {totalCredits ? <span>{credits(totalCredits)} credits</span> : null}
+            {view.run.branch && (
+              <button className={styles.link} onClick={() => void openWorktree()}>
+                {view.run.branch}
+              </button>
             )}
           </div>
         </div>
+      )}
+      {view.run && view.run.status !== 'running' && (
+        <OutcomeBanner
+          run={view.run}
+          phases={view.phases}
+          worktreeBusy={worktreeBusy}
+          worktreeMessage={worktreeMessage}
+          worktreeError={worktreeError}
+          onMerge={() => void mergeWorktree()}
+          onDiscard={() => void discardWorktree()}
+        />
+      )}
+      {showCost && <CostTable phases={view.phases} eventsByPhase={eventsByPhase} />}
+      <div className={styles.split}>
+        <div className={`${styles.left} scroll`}>
+          {view.run && (
+            <Waterfall
+              run={view.run}
+              phases={view.phases}
+              eventsByPhase={eventsByPhase}
+              selectedPhaseId={selectedPhaseId}
+              now={now}
+              onSelect={setSelectedPhaseId}
+            />
+          )}
+        </div>
+        <div className={styles.right}>
+          {selectedPhase && (
+            <PhaseDrawer
+              key={selectedPhase.phaseId}
+              phase={selectedPhase}
+              events={eventsByPhase.get(selectedPhase.phaseId) ?? []}
+              envelopes={envelopesByPhase.get(selectedPhase.phaseId) ?? []}
+              gates={gatesByPhase.get(selectedPhase.phaseId) ?? []}
+              live={view.live}
+              now={now}
+            />
+          )}
+        </div>
       </div>
-      <style>{`
-        .screen { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-        .head { display: flex; align-items: center; gap: var(--s2); padding: calc(var(--titlebar-h) - 8px) var(--s5) 0; }
-        .grow { flex: 1; }
-        .action-err { margin: var(--s3) var(--s6) 0; padding: var(--s3); border-radius: var(--r-sm); background: var(--red-dim); color: var(--red); font-size: var(--text-sm); line-height: var(--leading); }
-        .run-head { padding: var(--s3) var(--s6) var(--s4); border-bottom: 1px solid var(--line-faint); }
-        .run-head .row { display: flex; align-items: center; gap: var(--s3); }
-        .run-head h1 { font-size: var(--text-xl); font-weight: 600; letter-spacing: -0.01em; }
-        .when { font-size: var(--text-xs); }
-        .request { margin-top: var(--s2); font-size: var(--text-sm); color: var(--text-dim); line-height: var(--leading); max-width: 90ch; }
-        .facts { display: flex; gap: var(--s4); margin-top: var(--s3); font-size: var(--text-xs); }
-        .link { border: none; background: transparent; color: var(--cyan); font: inherit; font-size: var(--text-xs); cursor: default; padding: 0; }
-        .link:hover { text-decoration: underline; }
-        .split { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(380px, 42%); }
-        .left { min-width: 0; overflow-y: auto; }
-        .right { min-width: 0; min-height: 0; }
-      `}</style>
-    </>
+    </div>
   );
 }

@@ -52,6 +52,7 @@ const api: FoundryApi = {
   roster: {
     list: (projectId) => call(IPC.rosterList, projectId),
     save: (agent, projectId) => call(IPC.rosterSave, agent, projectId),
+    rename: (from, to, projectId) => call(IPC.rosterRename, from, to, projectId),
     remove: (name, projectId) => call(IPC.rosterRemove, name, projectId),
     duplicate: (name, projectId) => call(IPC.rosterDuplicate, name, projectId),
     validate: (agent) => call(IPC.rosterValidate, agent),

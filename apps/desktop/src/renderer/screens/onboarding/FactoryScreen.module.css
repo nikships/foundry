@@ -1,0 +1,291 @@
+.ob-factory {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+.ob-factory-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.ob-factory-inner {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: var(--s6) var(--s6) var(--s10);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s6);
+}
+
+/* headline */
+.ob-fac-head {
+  max-width: 760px;
+  animation: ob-fac-in 520ms var(--ease) both;
+}
+.ob-fac-kicker {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-bottom: var(--s4);
+}
+.ob-fac-rule {
+  width: 28px;
+  height: 1px;
+  background: var(--cyan);
+  flex: 0 0 28px;
+}
+.ob-fac-eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--cyan);
+}
+.ob-fac-step {
+  margin-left: auto;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--text-faint);
+}
+.ob-fac-title {
+  font-size: clamp(1.9rem, 3.4vw, 2.9rem);
+  font-weight: 620;
+  letter-spacing: -0.032em;
+  line-height: 1.06;
+  color: var(--text);
+  text-wrap: balance;
+}
+.ob-fac-title-accent {
+  font-weight: 400;
+  color: var(--text-faint);
+  letter-spacing: -0.02em;
+}
+.ob-fac-lead {
+  margin-top: var(--s4);
+  font-size: clamp(14px, 1.55vw, 17px);
+  line-height: 1.72;
+  color: var(--text-dim);
+  max-width: 62ch;
+}
+.ob-fac-lead em {
+  font-style: normal;
+  color: var(--text);
+  font-weight: 500;
+  border-bottom: 1px solid var(--line-strong);
+  padding-bottom: 1px;
+}
+
+/* assembly track */
+.ob-fac-track {
+  position: relative;
+  height: 36px;
+  margin: var(--s1) 0 calc(-1 * var(--s4));
+  animation: ob-fac-in 520ms var(--ease) 120ms both;
+}
+.ob-fac-track-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: var(--line);
+}
+.ob-fac-track-dot {
+  position: absolute;
+  top: 50%;
+  margin-top: -2px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--cyan);
+  box-shadow: 0 0 10px var(--cyan);
+  animation: ob-fac-dot 7s linear infinite;
+}
+.ob-fac-track-nodes {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  align-items: center;
+}
+.ob-fac-node {
+  width: 7px;
+  height: 7px;
+  transform: rotate(45deg);
+  background: var(--bg-void);
+  border: 1px solid var(--line-strong);
+  margin-left: -3px;
+}
+.ob-fac-node:first-child {
+  margin-left: -1px;
+}
+
+/* figures — open, flat, diagram first */
+.ob-fac-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  border-top: 1px solid var(--line);
+  animation: ob-fac-in 560ms var(--ease) 200ms both;
+}
+.ob-fac-fig {
+  position: relative;
+  padding: var(--s6) var(--s6) var(--s2) var(--s5);
+  border-left: 1px solid var(--line);
+  border-bottom: 1px solid transparent;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ob-fac-fig:first-child {
+  border-left-color: transparent;
+}
+.ob-fac-accent {
+  position: absolute;
+  left: -1px;
+  top: 0;
+  width: 1px;
+  height: 56px;
+  background: var(--accent);
+  opacity: 0.95;
+}
+.ob-fac-fig:first-child .ob-fac-accent {
+  left: 0;
+}
+.ob-fac-meta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  margin-bottom: var(--s4);
+}
+.ob-fac-index {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  font-weight: 600;
+  color: var(--accent);
+}
+.ob-fac-caption {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.ob-fac-art {
+  margin-bottom: var(--s4);
+  border-bottom: 1px solid var(--line-faint);
+  padding-bottom: var(--s4);
+}
+.ob-fac-diagram {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.ob-fac-mono {
+  font-family: var(--font-mono);
+}
+.ob-fac-h2 {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.018em;
+  color: var(--text);
+  padding-bottom: var(--s2);
+  border-bottom: 1px solid var(--line);
+}
+.ob-fac-body {
+  margin-top: var(--s3);
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--text-dim);
+  max-width: 32ch;
+}
+
+/* motion details */
+.ob-fac-dash {
+  stroke-dasharray: 4 6;
+  animation: ob-fac-flow 1.4s linear infinite;
+}
+.ob-fac-dash-slow {
+  stroke-dasharray: 4 6;
+  animation: ob-fac-flow 1.8s linear infinite;
+}
+.ob-fac-roller {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ob-fac-spin 2.2s linear infinite;
+}
+
+@keyframes ob-fac-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes ob-fac-dot {
+  from {
+    left: 0;
+  }
+  to {
+    left: calc(100% - 4px);
+  }
+}
+@keyframes ob-fac-flow {
+  to {
+    stroke-dashoffset: -20;
+  }
+}
+@keyframes ob-fac-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ob-fac-head,
+  .ob-fac-track,
+  .ob-fac-grid {
+    animation: none !important;
+  }
+  .ob-fac-dash,
+  .ob-fac-dash-slow,
+  .ob-fac-roller,
+  .ob-fac-track-dot {
+    animation: none !important;
+  }
+}
+
+@media (max-width: 960px) {
+  .ob-factory-inner {
+    padding: var(--s4) var(--s4) var(--s8);
+  }
+  .ob-fac-track {
+    display: none;
+  }
+  .ob-fac-grid {
+    grid-template-columns: 1fr;
+    border-top: none;
+  }
+  .ob-fac-fig {
+    border-left: 1px solid var(--line) !important;
+    border-bottom: 1px solid var(--line);
+    padding: var(--s5) var(--s4) var(--s5) var(--s5);
+  }
+  .ob-fac-fig:first-child {
+    border-top: 1px solid var(--line);
+  }
+  .ob-fac-accent {
+    height: 44px;
+  }
+  .ob-fac-h2 {
+    font-size: 16.5px;
+  }
+}

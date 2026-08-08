@@ -69,7 +69,13 @@ export class RosterStore {
         const list = Array.isArray(raw) ? (raw as AgentDef[]) : [];
         // A roster missing a shipped agent would break the built-in pipelines
         // that name it, so absent built-ins are restored rather than assumed.
-        const byName = new Map(list.map((a) => [a.name, a]));
+        const shipped = new Set(BUILTIN_AGENTS.map((a) => a.name));
+        // An agent forked off a built-in used to inherit `builtin: true`, which
+        // hides its own Delete button. The flag says where an agent came from,
+        // so a name that was never shipped cannot legitimately carry it.
+        const byName = new Map(
+          list.map((a) => [a.name, shipped.has(a.name) ? a : { ...a, builtin: false }]),
+        );
         for (const builtin of BUILTIN_AGENTS) {
           if (!byName.has(builtin.name)) byName.set(builtin.name, { ...builtin });
         }
@@ -113,6 +119,56 @@ export class RosterStore {
       upsertBy(current, (a) => a.name === value.name, value),
     );
     return { ok: true, agents: next };
+  }
+
+  /**
+   * A rename is not a save under a new key: `save` upserts by name, so it would
+   * append a second agent and leave the original behind.
+   *
+   * A shipped agent forks instead of moving, because `migrate` restores any
+   * absent built-in on the next read — renaming one in place would bring the
+   * old name back on the next launch, silently, as a duplicate.
+   */
+  rename(
+    from: string,
+    to: string,
+    opts: { projectId?: string; ownRoster?: boolean } = {},
+  ): { ok: true; agents: AgentDef[]; forked: boolean } | { ok: false; issues: ValidationIssue[] } {
+    const source = this.get(from, opts);
+    if (!source) {
+      return {
+        ok: false,
+        issues: [{ level: 'error', where: 'name', message: `no agent named "${from}"` }],
+      };
+    }
+    if (to === from) return { ok: true, agents: this.list(opts), forked: false };
+
+    const named = agentSchema.shape.name.safeParse(to);
+    if (!named.success) {
+      return {
+        ok: false,
+        issues: named.error.issues.map((i) => ({
+          level: 'error' as const,
+          where: 'name',
+          message: i.message,
+        })),
+      };
+    }
+    if (this.get(to, opts)) {
+      return {
+        ok: false,
+        issues: [
+          { level: 'error', where: 'name', message: `an agent named "${to}" already exists` },
+        ],
+      };
+    }
+
+    const forked = source.builtin === true;
+    const renamed: AgentDef = { ...source, name: to, builtin: false };
+    const agents = this.storeFor(opts).update((current) =>
+      forked ? [...current, renamed] : current.map((a) => (a.name === from ? renamed : a)),
+    );
+    return { ok: true, agents, forked };
   }
 
   remove(name: string, opts: { projectId?: string; ownRoster?: boolean } = {}): AgentDef[] {

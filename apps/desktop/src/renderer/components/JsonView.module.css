@@ -1,0 +1,31 @@
+.json {
+  padding: var(--s3);
+  border-radius: var(--r-sm);
+  background: var(--bg-void);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: var(--leading);
+  overflow-x: auto;
+  max-height: 420px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.json .k {
+  color: var(--cyan);
+}
+.json .str {
+  color: var(--green);
+}
+.json .num {
+  color: var(--amber);
+}
+.json .bool {
+  color: var(--purple);
+}
+.json .null {
+  color: var(--text-faint);
+}
+.json .p {
+  color: var(--text-faint);
+}

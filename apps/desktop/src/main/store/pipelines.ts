@@ -122,6 +122,28 @@ export class PipelineStore {
     return { ok: true, pipelines: next };
   }
 
+  /**
+   * Phases name their agent by string, so an agent renamed out from under them
+   * fails validation with "no agent named X in the roster". Repointing here
+   * keeps the roster edit from breaking pipelines the user never touched.
+   */
+  renameAgentRefs(
+    from: string,
+    to: string,
+    opts: { projectId?: string; ownPipelines?: boolean } = {},
+  ): PipelineDef[] {
+    return this.storeFor(opts).update((current) =>
+      current.map((pipeline) =>
+        pipeline.phases.some((p) => p.agent === from)
+          ? {
+              ...pipeline,
+              phases: pipeline.phases.map((p) => (p.agent === from ? { ...p, agent: to } : p)),
+            }
+          : pipeline,
+      ),
+    );
+  }
+
   remove(id: string, opts: { projectId?: string; ownPipelines?: boolean } = {}): PipelineDef[] {
     return this.storeFor(opts).update((current) => current.filter((p) => p.id !== id));
   }

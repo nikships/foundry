@@ -36,6 +36,18 @@ export interface SaveResult<T> {
   value?: T;
 }
 
+/**
+ * Renaming a shipped agent forks rather than renames: the roster restores any
+ * absent built-in on read, so an in-place rename would resurrect the old name
+ * on the next launch. `forked` tells the caller which of the two happened.
+ */
+export interface RenameResult {
+  ok: boolean;
+  issues: ValidationIssue[];
+  agents?: AgentDef[];
+  forked?: boolean;
+}
+
 export interface RunDetail {
   run: RunRow | null;
   phases: PhaseRow[];
@@ -158,6 +170,11 @@ export interface FoundryApi {
   roster: {
     list(projectId?: string): Promise<AgentDef[]>;
     save(agent: AgentDef, projectId?: string): Promise<SaveResult<AgentDef[]>>;
+    /**
+     * A name change is its own operation, not a save under a new key: `save`
+     * upserts by name, so renaming through it appends rather than renames.
+     */
+    rename(from: string, to: string, projectId?: string): Promise<RenameResult>;
     remove(name: string, projectId?: string): Promise<AgentDef[]>;
     duplicate(name: string, projectId?: string): Promise<AgentDef | null>;
     validate(agent: AgentDef): Promise<ValidationIssue[]>;
@@ -260,6 +277,7 @@ export const IPC = {
   projectsReveal: 'projects:reveal',
   rosterList: 'roster:list',
   rosterSave: 'roster:save',
+  rosterRename: 'roster:rename',
   rosterRemove: 'roster:remove',
   rosterDuplicate: 'roster:duplicate',
   rosterValidate: 'roster:validate',

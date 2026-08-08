@@ -1,4 +1,5 @@
 import { StepFooter } from './shared.js';
+import styles from './FactoryScreen.module.css';
 
 /* ── diagrams ────────────────────────────────────────────────────────── */
 
@@ -6,7 +7,7 @@ function PipelineDiagram(): React.JSX.Element {
   return (
     <svg
       viewBox="0 0 240 118"
-      className="ob-fac-diagram"
+      className={styles.obFacDiagram}
       role="img"
       aria-label="Conveyor of pipeline phases being reordered"
     >
@@ -17,13 +18,13 @@ function PipelineDiagram(): React.JSX.Element {
         stroke="var(--cyan)"
         strokeWidth="1"
         opacity="0.7"
-        className="ob-fac-dash"
+        className={styles.obFacDash}
       />
       <path d="M118 30 l -4 -6 l 8 0 z" fill="var(--cyan)" opacity="0.82" />
       <text
         x="60"
         y="12"
-        className="ob-fac-mono"
+        className={styles.obFacMono}
         fill="var(--text-faint)"
         fontSize="6.5"
         letterSpacing="1.4"
@@ -51,7 +52,7 @@ function PipelineDiagram(): React.JSX.Element {
           <text
             x={b.x + 10}
             y={53}
-            className="ob-fac-mono"
+            className={styles.obFacMono}
             fill="var(--text)"
             fontSize="7"
             letterSpacing="1.1"
@@ -86,7 +87,7 @@ function PipelineDiagram(): React.JSX.Element {
         stroke="var(--cyan)"
         strokeWidth="1"
         opacity="0.42"
-        className="ob-fac-dash-slow"
+        className={styles.obFacDashSlow}
       />
       {[18, 58, 98, 138, 178, 218].map((cx) => (
         <g key={cx}>
@@ -98,7 +99,7 @@ function PipelineDiagram(): React.JSX.Element {
             y2={89}
             stroke="var(--text-faint)"
             strokeWidth="1"
-            className="ob-fac-roller"
+            className={styles.obFacRoller}
           />
         </g>
       ))}
@@ -119,7 +120,7 @@ function EnvelopeDiagram(): React.JSX.Element {
   return (
     <svg
       viewBox="0 0 240 118"
-      className="ob-fac-diagram"
+      className={styles.obFacDiagram}
       role="img"
       aria-label="Typed envelope wired into schema"
     >
@@ -150,7 +151,7 @@ function EnvelopeDiagram(): React.JSX.Element {
       <text
         x="10"
         y="24"
-        className="ob-fac-mono"
+        className={styles.obFacMono}
         fill="var(--text-faint)"
         fontSize="6.5"
         letterSpacing="1.35"
@@ -171,13 +172,13 @@ function EnvelopeDiagram(): React.JSX.Element {
             opacity="0.62"
           />
           <circle cx={132} cy={f.y} r="2" fill={f.c} />
-          <text x={140} y={f.y + 2.6} className="ob-fac-mono" fill="var(--text)" fontSize="7">
+          <text x={140} y={f.y + 2.6} className={styles.obFacMono} fill="var(--text)" fontSize="7">
             {f.k}
           </text>
           <text
             x={140}
             y={f.y + 2.6}
-            className="ob-fac-mono"
+            className={styles.obFacMono}
             fill="var(--text-faint)"
             fontSize="7"
             dx="34"
@@ -191,7 +192,7 @@ function EnvelopeDiagram(): React.JSX.Element {
       <text
         x="140"
         y="98"
-        className="ob-fac-mono"
+        className={styles.obFacMono}
         fill="var(--green)"
         fontSize="6.5"
         letterSpacing="1.35"
@@ -201,7 +202,7 @@ function EnvelopeDiagram(): React.JSX.Element {
       <text
         x="10"
         y="98"
-        className="ob-fac-mono"
+        className={styles.obFacMono}
         fill="var(--text-faint)"
         fontSize="6.5"
         letterSpacing="1.35"
@@ -234,7 +235,7 @@ function GateDiagram(): React.JSX.Element {
   return (
     <svg
       viewBox="0 0 240 118"
-      className="ob-fac-diagram"
+      className={styles.obFacDiagram}
       role="img"
       aria-label="Gate checkpoint with evidence ledger"
     >
@@ -277,14 +278,14 @@ function GateDiagram(): React.JSX.Element {
             strokeLinecap="round"
             strokeLinejoin="round"
           />
-          <text x={128} y={r.y + 1} className="ob-fac-mono" fill="var(--text)" fontSize="7">
+          <text x={128} y={r.y + 1} className={styles.obFacMono} fill="var(--text)" fontSize="7">
             {r.k}
           </text>
           <text
             x={228}
             y={r.y + 1}
             textAnchor="end"
-            className="ob-fac-mono"
+            className={styles.obFacMono}
             fill="var(--text-dim)"
             fontSize="7"
           >
@@ -307,7 +308,7 @@ function GateDiagram(): React.JSX.Element {
         <text
           x={119}
           y={27}
-          className="ob-fac-mono"
+          className={styles.obFacMono}
           fill="var(--green)"
           fontSize="7"
           letterSpacing={1.6}
@@ -318,7 +319,7 @@ function GateDiagram(): React.JSX.Element {
       <text
         x={180}
         y={27}
-        className="ob-fac-mono"
+        className={styles.obFacMono}
         fill="var(--text-faint)"
         fontSize="6.5"
         letterSpacing={1.2}
@@ -342,23 +343,23 @@ function GateDiagram(): React.JSX.Element {
 
 export default function FactoryScreen(): React.JSX.Element {
   return (
-    <div className="ob-factory">
-      <div className="ob-factory-scroll">
-        <div className="ob-factory-inner">
+    <div className={styles.obFactory}>
+      <div className={styles.obFactoryScroll}>
+        <div className={styles.obFactoryInner}>
           {/* headline */}
-          <div className="ob-fac-head">
-            <div className="ob-fac-kicker">
-              <span className="ob-fac-rule" aria-hidden />
-              <span className="ob-fac-eyebrow">How it works</span>
-              <span className="ob-fac-step mono" aria-label="Step 2 of 6">
+          <div className={styles.obFacHead}>
+            <div className={styles.obFacKicker}>
+              <span className={styles.obFacRule} aria-hidden />
+              <span className={styles.obFacEyebrow}>How it works</span>
+              <span className={`${styles.obFacStep} mono`} aria-label="Step 2 of 6">
                 02 / 06
               </span>
             </div>
-            <h1 className="ob-fac-title">
+            <h1 className={styles.obFacTitle}>
               The factory floor
-              <span className="ob-fac-title-accent"> — a run is a pipeline of phases.</span>
+              <span className={styles.obFacTitleAccent}> — a run is a pipeline of phases.</span>
             </h1>
-            <p className="ob-fac-lead">
+            <p className={styles.obFacLead}>
               Agents propose; code disposes. Every phase hands a <em>typed envelope</em> to the next
               station, and <em>gates leave evidence</em> you can read later. Reorder the line
               without rewriting scripts.
@@ -366,77 +367,77 @@ export default function FactoryScreen(): React.JSX.Element {
           </div>
 
           {/* assembly track */}
-          <div className="ob-fac-track" aria-hidden>
-            <div className="ob-fac-track-line" />
-            <span className="ob-fac-track-dot" />
-            <div className="ob-fac-track-nodes">
-              <span className="ob-fac-node" style={{ borderColor: 'var(--cyan)' }} />
-              <span className="ob-fac-node" style={{ borderColor: 'var(--purple)' }} />
-              <span className="ob-fac-node" style={{ borderColor: 'var(--green)' }} />
+          <div className={styles.obFacTrack} aria-hidden>
+            <div className={styles.obFacTrackLine} />
+            <span className={styles.obFacTrackDot} />
+            <div className={styles.obFacTrackNodes}>
+              <span className={styles.obFacNode} style={{ borderColor: 'var(--cyan)' }} />
+              <span className={styles.obFacNode} style={{ borderColor: 'var(--purple)' }} />
+              <span className={styles.obFacNode} style={{ borderColor: 'var(--green)' }} />
             </div>
           </div>
 
           {/* concepts — flat open figures, not cards */}
-          <div className="ob-fac-grid">
+          <div className={styles.obFacGrid}>
             <article
-              className="ob-fac-fig"
+              className={styles.obFacFig}
               style={{
                 ['--accent' as string]: 'var(--cyan)',
                 ['--accent-dim' as string]: 'var(--cyan-dim)',
               }}
             >
-              <span className="ob-fac-accent" aria-hidden />
-              <div className="ob-fac-meta">
-                <span className="ob-fac-index">01</span>
-                <span className="ob-fac-caption mono">RUN.PHASES[] · EDITABLE</span>
+              <span className={styles.obFacAccent} aria-hidden />
+              <div className={styles.obFacMeta}>
+                <span className={styles.obFacIndex}>01</span>
+                <span className={`${styles.obFacCaption} mono`}>RUN.PHASES[] · EDITABLE</span>
               </div>
-              <div className="ob-fac-art">
+              <div className={styles.obFacArt}>
                 <PipelineDiagram />
               </div>
-              <h2 className="ob-fac-h2">Pipelines are data</h2>
-              <p className="ob-fac-body">
+              <h2 className={styles.obFacH2}>Pipelines are data</h2>
+              <p className={styles.obFacBody}>
                 Reorder phases, swap agents, add a reviewer. No scripts to rewrite.
               </p>
             </article>
 
             <article
-              className="ob-fac-fig"
+              className={styles.obFacFig}
               style={{
                 ['--accent' as string]: 'var(--purple)',
                 ['--accent-dim' as string]: 'var(--purple-dim)',
               }}
             >
-              <span className="ob-fac-accent" aria-hidden />
-              <div className="ob-fac-meta">
-                <span className="ob-fac-index">02</span>
-                <span className="ob-fac-caption mono">ENVELOPE&lt;T&gt; · VALIDATED</span>
+              <span className={styles.obFacAccent} aria-hidden />
+              <div className={styles.obFacMeta}>
+                <span className={styles.obFacIndex}>02</span>
+                <span className={`${styles.obFacCaption} mono`}>ENVELOPE&lt;T&gt; · VALIDATED</span>
               </div>
-              <div className="ob-fac-art">
+              <div className={styles.obFacArt}>
                 <EnvelopeDiagram />
               </div>
-              <h2 className="ob-fac-h2">Typed envelopes</h2>
-              <p className="ob-fac-body">
+              <h2 className={styles.obFacH2}>Typed envelopes</h2>
+              <p className={styles.obFacBody}>
                 Every agent reply is structured. Code decides if it counts.
               </p>
             </article>
 
             <article
-              className="ob-fac-fig"
+              className={styles.obFacFig}
               style={{
                 ['--accent' as string]: 'var(--green)',
                 ['--accent-dim' as string]: 'var(--green-dim)',
               }}
             >
-              <span className="ob-fac-accent" aria-hidden />
-              <div className="ob-fac-meta">
-                <span className="ob-fac-index">03</span>
-                <span className="ob-fac-caption mono">GATE.REPORT · AUDITABLE</span>
+              <span className={styles.obFacAccent} aria-hidden />
+              <div className={styles.obFacMeta}>
+                <span className={styles.obFacIndex}>03</span>
+                <span className={`${styles.obFacCaption} mono`}>GATE.REPORT · AUDITABLE</span>
               </div>
-              <div className="ob-fac-art">
+              <div className={styles.obFacArt}>
                 <GateDiagram />
               </div>
-              <h2 className="ob-fac-h2">Gates leave evidence</h2>
-              <p className="ob-fac-body">
+              <h2 className={styles.obFacH2}>Gates leave evidence</h2>
+              <p className={styles.obFacBody}>
                 A green gate says what it checked, not only that it passed.
               </p>
             </article>
@@ -445,202 +446,6 @@ export default function FactoryScreen(): React.JSX.Element {
       </div>
 
       <StepFooter />
-
-      <style>{`
-        .ob-factory {
-          flex: 1; min-height: 0;
-          display: flex; flex-direction: column;
-          overflow: hidden;
-          position: relative;
-        }
-        .ob-factory-scroll {
-          flex: 1; min-height: 0;
-          overflow-y: auto;
-          overflow-x: hidden;
-        }
-        .ob-factory-inner {
-          width: 100%;
-          max-width: 1180px;
-          margin: 0 auto;
-          padding: var(--s6) var(--s6) var(--s10);
-          display: flex; flex-direction: column;
-          gap: var(--s6);
-        }
-
-        /* headline */
-        .ob-fac-head {
-          max-width: 760px;
-          animation: ob-fac-in 520ms var(--ease) both;
-        }
-        .ob-fac-kicker {
-          display: flex; align-items: center; gap: var(--s3);
-          margin-bottom: var(--s4);
-        }
-        .ob-fac-rule {
-          width: 28px; height: 1px; background: var(--cyan); flex: 0 0 28px;
-        }
-        .ob-fac-eyebrow {
-          font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
-          font-weight: 600; color: var(--cyan);
-        }
-        .ob-fac-step {
-          margin-left: auto;
-          font-size: 11px; letter-spacing: 0.14em; color: var(--text-faint);
-        }
-        .ob-fac-title {
-          font-size: clamp(1.9rem, 3.4vw, 2.9rem);
-          font-weight: 620; letter-spacing: -0.032em; line-height: 1.06;
-          color: var(--text);
-          text-wrap: balance;
-        }
-        .ob-fac-title-accent {
-          font-weight: 400; color: var(--text-faint);
-          letter-spacing: -0.02em;
-        }
-        .ob-fac-lead {
-          margin-top: var(--s4);
-          font-size: clamp(14px, 1.55vw, 17px);
-          line-height: 1.72; color: var(--text-dim);
-          max-width: 62ch;
-        }
-        .ob-fac-lead em {
-          font-style: normal; color: var(--text); font-weight: 500;
-          border-bottom: 1px solid var(--line-strong);
-          padding-bottom: 1px;
-        }
-
-        /* assembly track */
-        .ob-fac-track {
-          position: relative;
-          height: 36px;
-          margin: var(--s1) 0 calc(-1 * var(--s4));
-          animation: ob-fac-in 520ms var(--ease) 120ms both;
-        }
-        .ob-fac-track-line {
-          position: absolute; left: 0; right: 0; top: 50%;
-          height: 1px; background: var(--line);
-        }
-        .ob-fac-track-dot {
-          position: absolute; top: 50%; margin-top: -2px;
-          width: 4px; height: 4px; border-radius: 50%;
-          background: var(--cyan);
-          box-shadow: 0 0 10px var(--cyan);
-          animation: ob-fac-dot 7s linear infinite;
-        }
-        .ob-fac-track-nodes {
-          position: absolute; inset: 0;
-          display: grid; grid-template-columns: repeat(3, 1fr);
-          align-items: center;
-        }
-        .ob-fac-node {
-          width: 7px; height: 7px; transform: rotate(45deg);
-          background: var(--bg-void);
-          border: 1px solid var(--line-strong);
-          margin-left: -3px;
-        }
-        .ob-fac-node:first-child { margin-left: -1px; }
-
-        /* figures — open, flat, diagram first */
-        .ob-fac-grid {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 0;
-          border-top: 1px solid var(--line);
-          animation: ob-fac-in 560ms var(--ease) 200ms both;
-        }
-        .ob-fac-fig {
-          position: relative;
-          padding: var(--s6) var(--s6) var(--s2) var(--s5);
-          border-left: 1px solid var(--line);
-          border-bottom: 1px solid transparent;
-          display: flex; flex-direction: column;
-          min-width: 0;
-        }
-        .ob-fac-fig:first-child { border-left-color: transparent; }
-        .ob-fac-accent {
-          position: absolute; left: -1px; top: 0;
-          width: 1px; height: 56px; background: var(--accent);
-          opacity: 0.95;
-        }
-        .ob-fac-fig:first-child .ob-fac-accent { left: 0; }
-        .ob-fac-meta {
-          display: flex; align-items: baseline; gap: var(--s2);
-          margin-bottom: var(--s4);
-        }
-        .ob-fac-index {
-          font-family: var(--font-mono);
-          font-size: 11px; letter-spacing: 0.18em; font-weight: 600;
-          color: var(--accent);
-        }
-        .ob-fac-caption {
-          font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
-          color: var(--text-faint);
-        }
-        .ob-fac-art {
-          margin-bottom: var(--s4);
-          border-bottom: 1px solid var(--line-faint);
-          padding-bottom: var(--s4);
-        }
-        .ob-fac-diagram {
-          width: 100%; height: auto; display: block;
-        }
-        .ob-fac-mono { font-family: var(--font-mono); }
-        .ob-fac-h2 {
-          font-size: 17px; font-weight: 600; letter-spacing: -0.018em;
-          color: var(--text);
-          padding-bottom: var(--s2);
-          border-bottom: 1px solid var(--line);
-        }
-        .ob-fac-body {
-          margin-top: var(--s3);
-          font-size: 13.5px; line-height: 1.6; color: var(--text-dim);
-          max-width: 32ch;
-        }
-
-        /* motion details */
-        .ob-fac-dash { stroke-dasharray: 4 6; animation: ob-fac-flow 1.4s linear infinite; }
-        .ob-fac-dash-slow { stroke-dasharray: 4 6; animation: ob-fac-flow 1.8s linear infinite; }
-        .ob-fac-roller { transform-box: fill-box; transform-origin: center; animation: ob-fac-spin 2.2s linear infinite; }
-
-        /* footer is the shared .ob-foot bar from OnboardingShell */
-
-        @keyframes ob-fac-in {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: none; }
-        }
-        @keyframes ob-fac-dot {
-          from { left: 0; }
-          to { left: calc(100% - 4px); }
-        }
-        @keyframes ob-fac-flow {
-          to { stroke-dashoffset: -20; }
-        }
-        @keyframes ob-fac-spin {
-          to { transform: rotate(360deg); }
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-          .ob-fac-head, .ob-fac-track, .ob-fac-grid { animation: none !important; }
-          .ob-fac-dash, .ob-fac-dash-slow, .ob-fac-roller, .ob-fac-track-dot { animation: none !important; }
-        }
-
-        @media (max-width: 960px) {
-          .ob-factory-inner { padding: var(--s4) var(--s4) var(--s8); }
-          .ob-fac-track { display: none; }
-          .ob-fac-grid {
-            grid-template-columns: 1fr;
-            border-top: none;
-          }
-          .ob-fac-fig {
-            border-left: 1px solid var(--line) !important;
-            border-bottom: 1px solid var(--line);
-            padding: var(--s5) var(--s4) var(--s5) var(--s5);
-          }
-          .ob-fac-fig:first-child { border-top: 1px solid var(--line); }
-          .ob-fac-accent { height: 44px; }
-          .ob-fac-h2 { font-size: 16.5px; }
-        }
-      `}</style>
     </div>
   );
 }

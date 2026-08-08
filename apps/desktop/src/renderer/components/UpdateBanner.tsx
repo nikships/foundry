@@ -1,4 +1,5 @@
 import type { UpdateStatus } from '@shared/types.js';
+import styles from './UpdateBanner.module.css';
 
 interface Props {
   status: UpdateStatus;
@@ -46,116 +47,80 @@ export default function UpdateBanner({
     tone = 'red';
   }
 
+  const toneClass =
+    tone === 'green'
+      ? styles.toneGreen
+      : tone === 'cyan'
+        ? styles.toneCyan
+        : tone === 'red'
+          ? styles.toneRed
+          : '';
+
   return (
-    <>
-      <div className={`banner tone-${tone}`} role="status" aria-live="polite">
-        <div className="head">
-          <div className="title-row">
-            {status.stage === 'checking' ? <span className="spinner sm" aria-hidden /> : null}
-            <strong className="title">{title}</strong>
-          </div>
-          <button className="dismiss" onClick={onDismiss} aria-label="Dismiss update banner">
-            ✕
-          </button>
+    <div className={`${styles.banner} ${toneClass}`} role="status" aria-live="polite">
+      <div className={styles.head}>
+        <div className={styles.titleRow}>
+          {status.stage === 'checking' ? (
+            <span className={`${styles.spinner} ${styles.sm}`} aria-hidden />
+          ) : null}
+          <strong className={styles.title}>{title}</strong>
         </div>
-        <p className="detail">{detail}</p>
-
-        {status.stage === 'downloading' && (
-          <div className="progress" aria-label={`Download ${status.percent ?? 0} percent`}>
-            <div className="track">
-              <div
-                className="fill"
-                style={{ width: `${Math.min(100, Math.max(0, status.percent ?? 0))}%` }}
-              />
-            </div>
-            <span className="pct mono">{Math.round(status.percent ?? 0)}%</span>
-          </div>
-        )}
-
-        <div className="actions">
-          {status.stage === 'available' && (
-            <>
-              <button className="btn primary sm" onClick={onDownload}>
-                Download
-              </button>
-              <button className="btn sm ghost" onClick={onDismiss}>
-                Later
-              </button>
-            </>
-          )}
-          {status.stage === 'downloading' && (
-            <span className="hint faint">Keep Foundry open until the download finishes.</span>
-          )}
-          {status.stage === 'ready' && (
-            <>
-              <button className="btn primary sm" onClick={onRestart}>
-                Restart to install
-              </button>
-              <button className="btn sm ghost" onClick={onDismiss}>
-                Later
-              </button>
-            </>
-          )}
-          {status.stage === 'error' && (
-            <>
-              <button className="btn primary sm" onClick={onRetry}>
-                Try again
-              </button>
-              <button className="btn sm ghost" onClick={onDismiss}>
-                Dismiss
-              </button>
-            </>
-          )}
-          {status.stage === 'checking' && (
-            <span className="hint faint">This usually takes a few seconds.</span>
-          )}
-        </div>
+        <button className={styles.dismiss} onClick={onDismiss} aria-label="Dismiss update banner">
+          ✕
+        </button>
       </div>
-      <style>{`
-        .banner {
-          position: fixed;
-          bottom: 18px;
-          left: 50%;
-          transform: translateX(-50%);
-          width: min(460px, calc(100vw - 32px));
-          padding: var(--s4);
-          border-radius: var(--r-lg);
-          background: var(--bg-raised);
-          border: 1px solid var(--line);
-          box-shadow: var(--shadow-lg);
-          z-index: 80;
-          animation: fade-in 180ms var(--ease);
-        }
-        .head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s3); margin-bottom: var(--s1); }
-        .title-row { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
-        .title { font-size: var(--text-sm); font-weight: 600; line-height: var(--leading-tight); }
-        .dismiss {
-          flex: none;
-          width: 24px; height: 24px;
-          display: grid; place-items: center;
-          border: none; border-radius: var(--r-sm);
-          background: transparent; color: var(--text-faint);
-          font-size: 13px; cursor: default;
-        }
-        .dismiss:hover { background: var(--bg-hover); color: var(--text); }
-        .detail { font-size: var(--text-xs); color: var(--text-dim); line-height: var(--leading); margin-bottom: var(--s3); }
-        .progress { display: flex; align-items: center; gap: var(--s3); margin-bottom: var(--s3); }
-        .track {
-          flex: 1; height: 6px; border-radius: var(--r-full);
-          background: var(--bg-void); border: 1px solid var(--line-faint);
-          overflow: hidden;
-        }
-        .fill { height: 100%; background: var(--cyan); border-radius: var(--r-full); transition: width 260ms var(--ease); }
-        .tone-green .fill { background: var(--green); }
-        .tone-red .fill { background: var(--red); }
-        .pct { font-size: var(--text-xs); color: var(--text-dim); min-width: 36px; text-align: right; }
-        .actions { display: flex; align-items: center; gap: var(--s2); }
-        .actions .hint { font-size: var(--text-xs); }
-        .spinner.sm { width: 14px; height: 14px; border: 2px solid var(--line-strong); border-top-color: var(--cyan); border-radius: var(--r-full); animation: spin 700ms linear infinite; flex: none; }
-        .tone-green { border-color: var(--green-dim); }
-        .tone-cyan { border-color: var(--cyan-dim); }
-        .tone-red { border-color: var(--red-dim); }
-      `}</style>
-    </>
+      <p className={styles.detail}>{detail}</p>
+
+      {status.stage === 'downloading' && (
+        <div className={styles.progress} aria-label={`Download ${status.percent ?? 0} percent`}>
+          <div className={styles.track}>
+            <div
+              className={styles.fill}
+              style={{ width: `${Math.min(100, Math.max(0, status.percent ?? 0))}%` }}
+            />
+          </div>
+          <span className={`${styles.pct} mono`}>{Math.round(status.percent ?? 0)}%</span>
+        </div>
+      )}
+
+      <div className={styles.actions}>
+        {status.stage === 'available' && (
+          <>
+            <button className="btn primary sm" onClick={onDownload}>
+              Download
+            </button>
+            <button className="btn sm ghost" onClick={onDismiss}>
+              Later
+            </button>
+          </>
+        )}
+        {status.stage === 'downloading' && (
+          <span className="hint faint">Keep Foundry open until the download finishes.</span>
+        )}
+        {status.stage === 'ready' && (
+          <>
+            <button className="btn primary sm" onClick={onRestart}>
+              Restart to install
+            </button>
+            <button className="btn sm ghost" onClick={onDismiss}>
+              Later
+            </button>
+          </>
+        )}
+        {status.stage === 'error' && (
+          <>
+            <button className="btn primary sm" onClick={onRetry}>
+              Try again
+            </button>
+            <button className="btn sm ghost" onClick={onDismiss}>
+              Dismiss
+            </button>
+          </>
+        )}
+        {status.stage === 'checking' && (
+          <span className="hint faint">This usually takes a few seconds.</span>
+        )}
+      </div>
+    </div>
   );
 }

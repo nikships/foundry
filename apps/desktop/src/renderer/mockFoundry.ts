@@ -283,6 +283,12 @@ export function createMockFoundryApi(): FoundryApi {
         issues: [],
         value: BUILTIN_AGENTS.map((a) => (a.name === agent.name ? agent : a)),
       }),
+      rename: async (from, to) => ({
+        ok: true,
+        issues: [],
+        agents: BUILTIN_AGENTS.map((a) => (a.name === from ? { ...a, name: to } : a)),
+        forked: false,
+      }),
       remove: async (name) => BUILTIN_AGENTS.filter((a) => a.name !== name),
       duplicate: async (name) => {
         const found = BUILTIN_AGENTS.find((a) => a.name === name) ?? null;

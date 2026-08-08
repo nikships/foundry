@@ -1,0 +1,9 @@
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-full);
+  flex: none;
+}
+.dot.spinning {
+  animation: pulse 1.4s var(--ease) infinite;
+}

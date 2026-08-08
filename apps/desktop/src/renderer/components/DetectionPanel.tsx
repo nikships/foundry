@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { DetectionState, DetectionProposal } from '@shared/ipc-contract.js';
 import { duration } from '../format.js';
+import styles from './DetectionPanel.module.css';
 
 const TOOL_ICON: Record<string, string> = {
   command: '⚙',
@@ -19,10 +20,12 @@ const STATUS_LABEL: Record<DetectionState['status'], string> = {
 };
 
 function VerifyMark({ proposal }: { proposal: DetectionProposal }): React.JSX.Element {
-  if (proposal.verify === 'pending') return <span className="mark wait">·</span>;
-  if (proposal.verify === 'running') return <span className="mark wait">◌</span>;
-  if (proposal.verify === 'pass') return <span className="mark ok">✓</span>;
-  return <span className="mark bad">✕</span>;
+  if (proposal.verify === 'pending')
+    return <span className={`${styles.mark} ${styles.wait}`}>·</span>;
+  if (proposal.verify === 'running')
+    return <span className={`${styles.mark} ${styles.wait}`}>◌</span>;
+  if (proposal.verify === 'pass') return <span className={`${styles.mark} ${styles.ok}`}>✓</span>;
+  return <span className={`${styles.mark} ${styles.bad}`}>✕</span>;
 }
 
 /**
@@ -61,10 +64,10 @@ export default function DetectionPanel({
   const usable = state.proposals.filter((p) => p.verify !== 'running');
 
   return (
-    <div className="field detection">
+    <div className={`field ${styles.detection}`}>
       <label>
         {STATUS_LABEL[state.status]}
-        <span className="faint cli">
+        <span className={`faint ${styles.cli}`}>
           {' '}
           · {state.cli}
           {state.model === 'inherit' ? '' : ` · ${state.model}`}
@@ -72,23 +75,27 @@ export default function DetectionPanel({
       </label>
       <span className="hint">{state.detail}</span>
 
-      <div className="transcript scroll" ref={tailRef}>
+      <div className={`${styles.transcript} scroll`} ref={tailRef}>
         {state.entries.map((entry) => (
-          <div key={entry.id} className={`line ${entry.kind}`}>
+          <div key={entry.id} className={`${styles.line} ${styles[entry.kind] ?? ''}`}>
             {entry.kind === 'tool' && (
-              <span className={`ticon ${entry.done ? (entry.failed ? 'bad' : 'ok') : 'wait'}`}>
+              <span
+                className={`${styles.ticon} ${entry.done ? (entry.failed ? styles.bad : styles.ok) : styles.wait}`}
+              >
                 {TOOL_ICON[entry.toolKind ?? 'other'] ?? '·'}
               </span>
             )}
-            <span className="ltext">{entry.text}</span>
+            <span className={styles.ltext}>{entry.text}</span>
           </div>
         ))}
-        {live && <div className="line note pulse">…</div>}
-        {!state.entries.length && !live && <div className="line note">Nothing was reported.</div>}
+        {live && <div className={`${styles.line} ${styles.note} ${styles.pulse}`}>…</div>}
+        {!state.entries.length && !live && (
+          <div className={`${styles.line} ${styles.note}`}>Nothing was reported.</div>
+        )}
       </div>
 
       {live && (
-        <div className="row actions">
+        <div className={`row ${styles.actions}`}>
           <button className="btn sm ghost" onClick={onCancel}>
             Cancel
           </button>
@@ -96,13 +103,13 @@ export default function DetectionPanel({
       )}
 
       {state.proposals.length > 0 && (
-        <div className="commands proposals">
+        <div className={`commands ${styles.proposals}`}>
           {state.proposals.map((p) => (
-            <div key={p.name} className="row found">
+            <div key={p.name} className={`row ${styles.found}`}>
               <VerifyMark proposal={p} />
-              <span className="name">{p.name}</span>
-              <code className="mono argv">{p.argv.join(' ')}</code>
-              <span className="faint why">
+              <span className={styles.name}>{p.name}</span>
+              <code className={`mono ${styles.argv}`}>{p.argv.join(' ')}</code>
+              <span className={`faint ${styles.why}`}>
                 {p.source}
                 {p.verify === 'pass' && `, exit 0 in ${duration(p.durationMs)}`}
                 {p.verify === 'fail' &&
@@ -131,9 +138,9 @@ export default function DetectionPanel({
       )}
 
       {state.rejected.length > 0 && (
-        <div className="rejected">
+        <div className={styles.rejected}>
           {state.rejected.map((r, i) => (
-            <div key={i} className="line note">
+            <div key={i} className={`${styles.line} ${styles.note}`}>
               Ignored: {r.reason}
             </div>
           ))}
@@ -142,41 +149,12 @@ export default function DetectionPanel({
 
       {state.rawReply && (
         <>
-          <button className="linkish raw-toggle" onClick={onToggleRaw}>
+          <button className={`linkish ${styles.rawToggle}`} onClick={onToggleRaw}>
             {showRaw ? 'Hide raw reply' : 'Show raw reply'}
           </button>
-          {showRaw && <pre className="output selectable mono">{state.rawReply}</pre>}
+          {showRaw && <pre className={`${styles.output} selectable mono`}>{state.rawReply}</pre>}
         </>
       )}
-
-      <style>{`
-        .detection { margin-top: var(--s3); }
-        .cli { font-size: var(--text-xs); }
-        .transcript { margin-top: var(--s2); padding: var(--s2) var(--s3); background: var(--bg-void); border: 1px solid var(--line); border-radius: var(--r-sm); max-height: 220px; overflow-y: auto; font-size: var(--text-xs); line-height: var(--leading); }
-        .line { display: flex; gap: var(--s2); align-items: baseline; padding: 1px 0; color: var(--text-dim); }
-        .line.text { color: var(--text); white-space: pre-wrap; word-break: break-word; }
-        .line.error { color: var(--red); }
-        .line.note { color: var(--text-faint); }
-        .ticon { flex: none; width: 1em; color: var(--text-faint); }
-        .ticon.ok { color: var(--green); }
-        .ticon.bad { color: var(--red); }
-        .ticon.wait { color: var(--amber); }
-        .ltext { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-        .pulse { opacity: 0.6; }
-        .actions { margin-top: var(--s2); }
-        .proposals { margin-top: var(--s3); }
-        .found { font-size: var(--text-xs); color: var(--text-dim); }
-        .found .name { width: 80px; flex: none; }
-        .found .argv { flex: 1; color: var(--text); }
-        .found .why { flex: none; }
-        .mark { flex: none; width: 1em; }
-        .mark.ok { color: var(--green); }
-        .mark.bad { color: var(--red); }
-        .mark.wait { color: var(--amber); }
-        .rejected { margin-top: var(--s2); font-size: var(--text-xs); }
-        .raw-toggle { display: inline-block; margin-top: var(--s2); border: none; background: none; padding: 0; font: inherit; font-size: var(--text-xs); color: var(--cyan); text-decoration: underline; cursor: default; }
-        .output { margin-top: var(--s2); padding: var(--s3); background: var(--bg-void); font-size: var(--text-xs); line-height: var(--leading); white-space: pre-wrap; word-break: break-word; max-height: 220px; overflow-y: auto; color: var(--text-dim); }
-      `}</style>
     </div>
   );
 }

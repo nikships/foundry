@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   AgentDef,
   CliDescriptor,
@@ -13,6 +13,7 @@ import { CliIcon } from '../components/BrandIcon.js';
 import ModelPicker from '../components/ModelPicker.js';
 import BoundaryEditor from '../components/BoundaryEditor.js';
 import PromptPreview from '../components/PromptPreview.js';
+import styles from './RosterScreen.module.css';
 
 const ENVELOPE_KINDS = ['plan', 'build', 'review', 'scout', 'document', 'generic'] as const;
 const COLORS = ['#5ad2dd', '#c89bff', '#e8b64a', '#4ade80', '#ff6f67', '#6aa8ff'];
@@ -21,6 +22,9 @@ export default function RosterScreen(): React.JSX.Element {
   const { agents, projectId, settings, refreshScoped } = useApp();
   const [selectedName, setSelectedName] = useState('');
   const [draft, setDraft] = useState<AgentDef | null>(null);
+  /** Kept out of `draft`: a name is committed on blur or Enter, not per keystroke. */
+  const [nameDraft, setNameDraft] = useState('');
+  const [renameError, setRenameError] = useState('');
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
   const [actionError, setActionError] = useState('');
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -58,6 +62,8 @@ export default function RosterScreen(): React.JSX.Element {
     }
     if (lastSyncedNameRef.current !== selected.name) {
       setDraft(plain({ ...selected }));
+      setNameDraft(selected.name);
+      setRenameError('');
       setIssues([]);
       setActionError('');
       lastSyncedNameRef.current = selected.name;
@@ -87,71 +93,94 @@ export default function RosterScreen(): React.JSX.Element {
     void api.catalog.models(draftCli).then(setModels);
   }, [draftCli]);
 
+  /**
+   * Writes the pending snapshot now. Kept off the debounce effect's cleanup:
+   * that cleanup runs on every `draft` change, so saving from it would persist
+   * a write per keystroke rather than one per pause.
+   */
+  const flush = useCallback(async (): Promise<void> => {
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    const toSave = pendingRef.current;
+    pendingRef.current = null;
+    if (!toSave) return;
+    const persisted = agentsRef.current.find((a) => a.name === toSave.name) ?? null;
+    if (JSON.stringify(toSave) === JSON.stringify(persisted)) return;
+    const pid = projectIdRef.current;
+    try {
+      const found = await api.roster.validate(toSave);
+      if (found.some((i) => i.level === 'error')) {
+        setIssues(found);
+        return;
+      }
+      const result = await api.roster.save(toSave, pid || undefined);
+      if (!result.ok) {
+        setIssues(result.issues);
+        return;
+      }
+      setIssues([]);
+      await refreshScoped();
+    } catch (e) {
+      setIssues([{ level: 'error', where: 'save', message: (e as Error).message }]);
+    }
+  }, [refreshScoped]);
+
+  const flushRef = useRef(flush);
+  flushRef.current = flush;
+
   // Live auto-save: every valid edit persists shortly after typing stops.
-  // Visual truth is the source of truth. Pending edits flush when switching agents.
+  // Visual truth is the source of truth.
   useEffect(() => {
     if (!draft) return;
     if (errors.length > 0) return;
     const persisted = agentsRef.current.find((a) => a.name === draft.name) ?? null;
     if (JSON.stringify(draft) === JSON.stringify(persisted)) return;
-    const snapshot = plain({ ...draft });
-    pendingRef.current = snapshot;
+    pendingRef.current = plain({ ...draft });
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      const toSave = pendingRef.current;
-      pendingRef.current = null;
-      saveTimer.current = null;
-      if (!toSave) return;
-      const curPersisted = agentsRef.current.find((a) => a.name === toSave.name) ?? null;
-      if (JSON.stringify(toSave) === JSON.stringify(curPersisted)) return;
-      const pid = projectIdRef.current;
-      void api.roster.validate(toSave).then((v) => {
-        if (v.some((i) => i.level === 'error')) {
-          setIssues(v);
-          return;
-        }
-        void (async () => {
-          try {
-            const result = await api.roster.save(toSave, pid || undefined);
-            if (result.ok) {
-              if (toSave.name !== lastSyncedNameRef.current) {
-                setSelectedName(toSave.name);
-                lastSyncedNameRef.current = toSave.name;
-              }
-              setIssues([]);
-              await refreshScoped();
-            } else setIssues(result.issues);
-          } catch (e) {
-            setIssues([{ level: 'error', where: 'save', message: (e as Error).message }]);
-          }
-        })();
-      });
-    }, 350);
+    saveTimer.current = setTimeout(() => void flushRef.current(), 350);
     return () => {
-      if (saveTimer.current) {
-        clearTimeout(saveTimer.current);
-        saveTimer.current = null;
-        const toSave = pendingRef.current;
-        pendingRef.current = null;
-        if (toSave) {
-          const curPersisted = agentsRef.current.find((a) => a.name === toSave.name) ?? null;
-          if (JSON.stringify(toSave) !== JSON.stringify(curPersisted)) {
-            const pid = projectIdRef.current;
-            void api.roster.validate(toSave).then((v) => {
-              if (v.some((i) => i.level === 'error')) return;
-              void api.roster.save(toSave, pid || undefined).then((r) => {
-                if (r.ok) void refreshScoped();
-              });
-            });
-          }
-        }
-      }
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = null;
     };
-  }, [draft, errors, refreshScoped]);
+  }, [draft, errors]);
+
+  // An unmount is the last chance to persist; a switch flushes explicitly.
+  useEffect(() => () => void flushRef.current(), []);
 
   const selectAgent = (name: string): void => {
     if (name === selectedName) return;
+    void flushRef.current();
     setSelectedName(name);
+  };
+
+  /**
+   * A rename is a separate operation from a save: `save` upserts by name, so
+   * persisting a half-typed name would append an agent per keystroke.
+   */
+  const commitName = async (): Promise<void> => {
+    if (!draft || !selected) return;
+    const next = nameDraft.trim();
+    if (!next || next === selected.name) {
+      setNameDraft(selected.name);
+      setRenameError('');
+      return;
+    }
+    await flushRef.current();
+    try {
+      const result = await api.roster.rename(selected.name, next, projectId || undefined);
+      if (!result.ok) {
+        setRenameError(result.issues.map((i) => i.message).join(' '));
+        return;
+      }
+      setRenameError('');
+      lastSyncedNameRef.current = null;
+      setSelectedName(next);
+      await refreshScoped();
+    } catch (e) {
+      setRenameError((e as Error).message);
+    }
   };
 
   const duplicate = async (): Promise<void> => {
@@ -173,6 +202,10 @@ export default function RosterScreen(): React.JSX.Element {
       return;
     }
     setActionError('');
+    // A queued save for this agent would re-create it moments after the delete.
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = null;
+    pendingRef.current = null;
     try {
       await api.roster.remove(selected.name, projectId || undefined);
       await refreshScoped();
@@ -183,8 +216,13 @@ export default function RosterScreen(): React.JSX.Element {
 
   const createAgent = async (): Promise<void> => {
     setActionError('');
+    // Counting agents collides after any delete, and save upserts by name, so a
+    // collision would silently overwrite an existing agent instead of adding one.
+    const taken = new Set(agents.map((a) => a.name));
+    let n = agents.length + 1;
+    while (taken.has(`agent-${n}`)) n += 1;
     const fresh: AgentDef = {
-      name: `agent-${agents.length + 1}`,
+      name: `agent-${n}`,
       purpose: 'Describe what this agent is for in one line.',
       cli: settings?.defaultCli ?? 'droid',
       model: 'inherit',
@@ -214,10 +252,10 @@ export default function RosterScreen(): React.JSX.Element {
 
   return (
     <>
-      <div className="ro-screen">
+      <div className={styles.roScreen}>
         {/* ── agent strip: the whole roster, one horizontal band ── */}
-        <div className="ro-strip" role="tablist" aria-label="Agents">
-          <div className="ro-strip-inner">
+        <div className={styles.roStrip} role="tablist" aria-label="Agents">
+          <div className={styles.roStripInner}>
             {agents.map((agent) => {
               const isActive = agent.name === selectedName;
               return (
@@ -226,62 +264,70 @@ export default function RosterScreen(): React.JSX.Element {
                   type="button"
                   role="tab"
                   aria-selected={isActive}
-                  className={`ro-cell ${isActive ? 'on' : ''}`}
+                  className={`${styles.roCell} ${isActive ? styles.on : ''}`}
                   style={{ ['--hue' as string]: agent.color ?? 'var(--cyan)' }}
                   onClick={() => selectAgent(agent.name)}
                 >
                   <AgentAvatar name={agent.name} size={30} />
-                  <span className="ro-cell-who">
-                    <span className="ro-cell-name">{agent.name}</span>
-                    <span className="ro-cell-role">{agent.purpose}</span>
-                    <span className="ro-cell-cli">
+                  <span className={styles.roCellWho}>
+                    <span className={styles.roCellName}>{agent.name}</span>
+                    <span className={styles.roCellRole}>{agent.purpose}</span>
+                    <span className={styles.roCellCli}>
                       <CliIcon vendor={agent.cli ?? 'droid'} size={11} />
                       {agent.cli ?? 'droid'}
                     </span>
                   </span>
-                  {isActive && <span className="ro-cell-rule" aria-hidden />}
+                  {isActive && <span className={styles.roCellRule} aria-hidden />}
                 </button>
               );
             })}
-            <button type="button" className="ro-new" onClick={() => void createAgent()}>
+            <button type="button" className={styles.roNew} onClick={() => void createAgent()}>
               + New agent
             </button>
           </div>
         </div>
 
         {draft && (
-          <div className="ro-scroll">
-            <div className="ro-page">
+          <div className={styles.roScroll}>
+            <div className={styles.roPage}>
               {/* ── title row ── */}
-              <div className="ro-head">
-                <div className="ro-head-main">
-                  <div className="ro-head-titlerow">
-                    <h1 className="ro-title" style={{ color: draft.color ?? 'var(--cyan)' }}>
+              <div className={styles.roHead}>
+                <div className={styles.roHeadMain}>
+                  <div className={styles.roHeadTitlerow}>
+                    <h1 className={styles.roTitle} style={{ color: draft.color ?? 'var(--cyan)' }}>
                       {draft.name}
                     </h1>
-                    <span className="ro-head-meta">
+                    <span className={styles.roHeadMeta}>
                       <CliIcon vendor={draftCli} size={13} />
                       {draftCli} · {draft.envelope}
                     </span>
                   </div>
-                  <p className="ro-head-sub">
+                  <p className={styles.roHeadSub}>
                     {draft.purpose || 'No purpose yet.'}{' '}
-                    <span className="ro-head-tag">
+                    <span className={styles.roHeadTag}>
                       {draft.builtin ? 'Shipped with Foundry, editable' : 'Custom agent'}
                     </span>
                   </p>
                 </div>
-                <div className="ro-head-actions">
-                  <button type="button" className="ro-action" onClick={() => setShowPreview(true)}>
+                <div className={styles.roHeadActions}>
+                  <button
+                    type="button"
+                    className={styles.roAction}
+                    onClick={() => setShowPreview(true)}
+                  >
                     Preview prompt
                   </button>
-                  <button type="button" className="ro-action" onClick={() => void duplicate()}>
+                  <button
+                    type="button"
+                    className={styles.roAction}
+                    onClick={() => void duplicate()}
+                  >
                     Duplicate
                   </button>
                   {!draft.builtin && (
                     <button
                       type="button"
-                      className="ro-action danger"
+                      className={`${styles.roAction} ${styles.danger}`}
                       onClick={() => void remove()}
                     >
                       Delete
@@ -291,23 +337,37 @@ export default function RosterScreen(): React.JSX.Element {
               </div>
 
               {/* ── identity ── */}
-              <section className="ro-section">
-                <div className="ro-section-label">
+              <section className={styles.roSection}>
+                <div className={styles.roSectionLabel}>
                   <h2>Identity</h2>
                   <p>How this agent is referenced in pipelines and run logs.</p>
                 </div>
-                <div className="ro-fields">
+                <div className={styles.roFields}>
                   <div className="field">
                     <label>Name</label>
                     <input
                       className="input mono"
-                      value={draft.name}
-                      onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                      value={nameDraft}
+                      onChange={(e) => {
+                        setNameDraft(e.target.value);
+                        setRenameError('');
+                      }}
+                      onBlur={() => void commitName()}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') e.currentTarget.blur();
+                        if (e.key === 'Escape') {
+                          setNameDraft(draft.name);
+                          setRenameError('');
+                          e.currentTarget.blur();
+                        }
+                      }}
                     />
-                    <span className="hint">
-                      Renaming creates a new agent under the new name and leaves the old one in
-                      place, so pipelines keep pointing at the old name until you update them.
+                    <span className={styles.hint}>
+                      {draft.builtin
+                        ? 'Renaming a shipped agent copies it under the new name and leaves the original in place, so pipelines keep working.'
+                        : 'Applied when you leave the field. Pipeline phases naming this agent are repointed for you.'}
                     </span>
+                    {renameError && <span className={styles.hint}>{renameError}</span>}
                   </div>
                   <div className="field">
                     <label>Purpose</label>
@@ -316,40 +376,44 @@ export default function RosterScreen(): React.JSX.Element {
                       value={draft.purpose}
                       onChange={(e) => setDraft({ ...draft, purpose: e.target.value })}
                     />
-                    <span className="hint">One line, shown wherever this agent appears.</span>
+                    <span className={styles.hint}>
+                      One line, shown wherever this agent appears.
+                    </span>
                   </div>
-                  <div className="field span2">
+                  <div className={`field ${styles.span2}`}>
                     <label>Accent</label>
-                    <div className="swatches">
+                    <div className={styles.swatches}>
                       {COLORS.map((c) => (
                         <button
                           key={c}
                           type="button"
-                          className={`swatch ${draft.color === c ? 'on' : ''}`}
+                          className={`${styles.swatch} ${draft.color === c ? styles.on : ''}`}
                           aria-label={`Accent ${c}`}
                           aria-pressed={draft.color === c}
                           onClick={() => setDraft({ ...draft, color: c })}
                         >
-                          <span className="swatch-dot" style={{ background: c }} />
+                          <span className={styles.swatchDot} style={{ background: c }} />
                         </button>
                       ))}
-                      <span className="swatch-hex">{draft.color}</span>
+                      <span className={styles.swatchHex}>{draft.color}</span>
                     </div>
-                    <span className="hint">Used for this agent's lane in the waterfall.</span>
+                    <span className={styles.hint}>
+                      Used for this agent's lane in the waterfall.
+                    </span>
                   </div>
                 </div>
               </section>
 
               {/* ── execution ── */}
-              <section className="ro-section">
-                <div className="ro-section-label">
+              <section className={styles.roSection}>
+                <div className={styles.roSectionLabel}>
                   <h2>Execution</h2>
                   <p>Which CLI runs this agent, and how hard it thinks.</p>
                 </div>
-                <div className="ro-fields">
+                <div className={styles.roFields}>
                   <div className="field">
                     <label>CLI vendor</label>
-                    <div className="cli-picker">
+                    <div className={styles.cliPicker}>
                       <select
                         className="select mono"
                         value={draftCli}
@@ -365,12 +429,12 @@ export default function RosterScreen(): React.JSX.Element {
                       </select>
                       <CliIcon vendor={draftCli} size={18} />
                     </div>
-                    <span className="hint">
+                    <span className={styles.hint}>
                       Which binary runs this agent's phases. Changing it resets the model, because
                       model ids do not carry across CLIs.
                     </span>
                     {(clis.find((c) => c.id === draftCli)?.caveats ?? []).map((caveat) => (
-                      <span key={caveat} className="hint caveat">
+                      <span key={caveat} className={`${styles.hint} ${styles.caveat}`}>
                         {caveat}
                       </span>
                     ))}
@@ -385,18 +449,18 @@ export default function RosterScreen(): React.JSX.Element {
                       onChange={(value) => setDraft({ ...draft, model: value })}
                       onRefresh={() => void api.catalog.models(draftCli, true).then(setModels)}
                     />
-                    <span className="hint">“Inherit” uses this CLI's own default.</span>
+                    <span className={styles.hint}>“Inherit” uses this CLI's own default.</span>
                   </div>
                   <div className="field">
                     <label>Reasoning effort</label>
-                    <div className="ro-seg" role="radiogroup" aria-label="Reasoning effort">
+                    <div className={styles.roSeg} role="radiogroup" aria-label="Reasoning effort">
                       {(['off', 'low', 'medium', 'high'] as const).map((level) => (
                         <button
                           key={level}
                           type="button"
                           role="radio"
                           aria-checked={draft.reasoningEffort === level}
-                          className={`ro-seg-btn ${draft.reasoningEffort === level ? 'on' : ''}`}
+                          className={`${styles.roSegBtn} ${draft.reasoningEffort === level ? styles.on : ''}`}
                           onClick={() =>
                             setDraft({
                               ...draft,
@@ -408,7 +472,7 @@ export default function RosterScreen(): React.JSX.Element {
                         </button>
                       ))}
                     </div>
-                    <span className="hint">
+                    <span className={styles.hint}>
                       Higher effort costs more thinking tokens and takes longer.
                     </span>
                   </div>
@@ -427,7 +491,7 @@ export default function RosterScreen(): React.JSX.Element {
                         </option>
                       ))}
                     </select>
-                    <span className="hint">
+                    <span className={styles.hint}>
                       The typed reply this agent must return. Parsed and validated on every turn.
                     </span>
                   </div>
@@ -435,12 +499,12 @@ export default function RosterScreen(): React.JSX.Element {
               </section>
 
               {/* ── prompts ── */}
-              <section className="ro-section">
-                <div className="ro-section-label">
+              <section className={styles.roSection}>
+                <div className={styles.roSectionLabel}>
                   <h2>Prompts</h2>
                   <p>The system prompt is fixed per agent; the template is filled per phase.</p>
                 </div>
-                <div className="ro-stack">
+                <div className={styles.roStack}>
                   <div className="field">
                     <label>System prompt</label>
                     <textarea
@@ -449,7 +513,7 @@ export default function RosterScreen(): React.JSX.Element {
                       rows={7}
                       onChange={(e) => setDraft({ ...draft, systemPrompt: e.target.value })}
                     />
-                    <span className="hint">
+                    <span className={styles.hint}>
                       The agent's standing instructions. Sent once, at the start of its session.
                     </span>
                   </div>
@@ -461,7 +525,7 @@ export default function RosterScreen(): React.JSX.Element {
                       rows={6}
                       onChange={(e) => setDraft({ ...draft, userPrompt: e.target.value })}
                     />
-                    <span className="hint">
+                    <span className={styles.hint}>
                       Supports{' '}
                       {TEMPLATE_TOKENS.map((token) => (
                         <code key={token}>{token}</code>
@@ -473,8 +537,8 @@ export default function RosterScreen(): React.JSX.Element {
               </section>
 
               {/* ── write boundary ── */}
-              <section className="ro-section">
-                <div className="ro-section-label">
+              <section className={styles.roSection}>
+                <div className={styles.roSectionLabel}>
                   <h2>Write boundary</h2>
                   <p>Paths this agent may modify. Everything else is refused at the tool layer.</p>
                 </div>
@@ -485,9 +549,9 @@ export default function RosterScreen(): React.JSX.Element {
               </section>
 
               {/* ── validation + autosave ── */}
-              <div className="ro-statusbar">
+              <div className={styles.roStatusbar}>
                 {issues.length > 0 ? (
-                  <ul className="issues">
+                  <ul className={styles.issues}>
                     {issues.map((issue, i) => (
                       <li key={i} className={issue.level}>
                         <strong>{issue.where}</strong> {issue.message}
@@ -495,7 +559,7 @@ export default function RosterScreen(): React.JSX.Element {
                     ))}
                   </ul>
                 ) : (
-                  <span className="ro-status-ok">
+                  <span className={styles.roStatusOk}>
                     <svg
                       width="12"
                       height="12"
@@ -512,8 +576,8 @@ export default function RosterScreen(): React.JSX.Element {
                     No validation issues
                   </span>
                 )}
-                {actionError && <p className="action-err">{actionError}</p>}
-                <span className="ro-autosave">Changes save automatically</span>
+                {actionError && <p className={styles.actionErr}>{actionError}</p>}
+                <span className={styles.roAutosave}>Changes save automatically</span>
               </div>
             </div>
           </div>
@@ -522,155 +586,6 @@ export default function RosterScreen(): React.JSX.Element {
           <PromptPreview agent={draft} onClose={() => setShowPreview(false)} />
         )}
       </div>
-      <style>{`
-        /* One continuous surface — structure from hairlines + type, never tinted columns. */
-        .ro-screen { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--bg-base); }
-
-        /* strip — outer chrome holds titlebar spacer + bottom rule; inner is the scroll row */
-        .ro-strip {
-          flex: none;
-          display: flex;
-          padding-top: var(--titlebar-h);
-          border-bottom: 1px solid var(--line);
-          background: var(--bg-base);
-          min-width: 0;
-          overflow: hidden;
-        }
-        .ro-strip-inner {
-          flex: 1;
-          min-width: 0;
-          display: flex;
-          align-items: stretch;
-          overflow-x: auto;
-          overflow-y: hidden;
-          padding: 0 var(--s6);
-          scrollbar-width: thin;
-          scrollbar-color: var(--line-strong) transparent;
-        }
-        .ro-cell {
-          position: relative; flex: 1 1 0; min-width: 170px;
-          display: flex; align-items: center; gap: var(--s3);
-          padding: var(--s4) var(--s5);
-          border: none; border-right: 1px solid var(--line);
-          background: transparent; color: inherit; font: inherit; text-align: left; cursor: default;
-          transition: background var(--fast) var(--ease);
-        }
-        .ro-cell:last-of-type { border-right: none; }
-        .ro-cell:hover { background: color-mix(in srgb, #ffffff 2%, transparent); }
-        .ro-cell-who { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-        .ro-cell-name {
-          font-size: var(--text-sm); font-weight: 500; color: var(--text);
-          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-        }
-        .ro-cell.on .ro-cell-name { color: var(--hue); }
-        .ro-cell-role {
-          font-size: 11px; color: var(--text-dim);
-          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-        }
-        .ro-cell-cli {
-          display: flex; align-items: center; gap: 5px; margin-top: 3px;
-          font-family: var(--font-mono); font-size: 10px; text-transform: uppercase;
-          letter-spacing: 0.14em; color: var(--text-faint);
-        }
-        .ro-cell-rule { position: absolute; left: 0; right: 0; bottom: -1px; height: 1px; background: var(--hue); }
-        .ro-new {
-          flex: none; align-self: center; margin-left: var(--s4);
-          padding: 6px 10px; border: none; border-radius: var(--r-sm);
-          background: transparent; color: var(--text-faint);
-          font: inherit; font-size: var(--text-xs); cursor: default; white-space: nowrap;
-          transition: color var(--fast) var(--ease);
-        }
-        .ro-new:hover { color: var(--text); }
-
-        /* page */
-        .ro-scroll { flex: 1; min-height: 0; overflow-y: auto; }
-        .ro-page { max-width: 1160px; padding: 0 var(--s6) var(--s16); }
-
-        .ro-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--s6); padding: var(--s8) 0; }
-        .ro-head-main { min-width: 0; }
-        .ro-head-titlerow { display: flex; align-items: baseline; gap: var(--s3); }
-        .ro-title { font-size: 26px; font-weight: 600; letter-spacing: -0.01em; line-height: 1; }
-        .ro-head-meta {
-          display: inline-flex; align-items: center; gap: 6px;
-          font-family: var(--font-mono); font-size: 11px; text-transform: uppercase;
-          letter-spacing: 0.16em; color: var(--text-faint); white-space: nowrap;
-        }
-        .ro-head-sub { margin-top: 10px; font-size: var(--text-sm); color: var(--text-dim); }
-        .ro-head-tag { color: var(--text-faint); font-size: var(--text-xs); }
-        .ro-head-actions { flex: none; display: flex; gap: var(--s2); }
-        .ro-action {
-          display: inline-flex; align-items: center; height: 32px; padding: 0 var(--s3);
-          border: 1px solid var(--line-strong); border-radius: var(--r-sm);
-          background: transparent; color: var(--text-dim);
-          font: inherit; font-size: var(--text-xs); cursor: default; white-space: nowrap;
-          transition: color var(--fast) var(--ease), border-color var(--fast) var(--ease);
-        }
-        .ro-action:hover { color: var(--text); border-color: var(--text-faint); }
-        .ro-action.danger:hover { color: var(--red); border-color: color-mix(in srgb, var(--red) 50%, transparent); }
-
-        .ro-section {
-          display: grid; grid-template-columns: 220px minmax(0, 1fr);
-          gap: var(--s4) var(--s12, 48px);
-          border-top: 1px solid var(--line);
-          padding: var(--s8) 0;
-        }
-        .ro-section-label h2 {
-          font-family: var(--font-mono); font-size: 10px; font-weight: 500;
-          text-transform: uppercase; letter-spacing: 0.22em; color: var(--text-dim);
-        }
-        .ro-section-label p { margin-top: var(--s2); font-size: var(--text-xs); line-height: var(--leading); color: var(--text-faint); max-width: 24ch; }
-        .ro-fields { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s5) var(--s8); }
-        .ro-fields .span2 { grid-column: span 2; }
-        .ro-stack { display: flex; flex-direction: column; gap: var(--s6); }
-
-        .swatches { display: flex; align-items: center; gap: var(--s2); }
-        .swatch {
-          display: flex; align-items: center; justify-content: center;
-          width: 32px; height: 32px; border: 1px solid var(--line); border-radius: var(--r-sm);
-          background: transparent; cursor: default;
-          transition: border-color var(--fast) var(--ease);
-        }
-        .swatch:hover { border-color: var(--line-strong); }
-        .swatch.on { border-color: var(--text-dim); }
-        .swatch-dot { width: 12px; height: 12px; border-radius: var(--r-full); }
-        .swatch-hex { margin-left: var(--s2); font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); }
-
-        .ro-seg { display: flex; height: 34px; border: 1px solid var(--line); border-radius: var(--r-sm); overflow: hidden; }
-        .ro-seg-btn {
-          flex: 1; border: none; border-right: 1px solid var(--line);
-          background: transparent; color: var(--text-faint);
-          font-family: var(--font-mono); font-size: 11px; text-transform: uppercase;
-          letter-spacing: 0.12em; cursor: default;
-          transition: color var(--fast) var(--ease), background var(--fast) var(--ease);
-        }
-        .ro-seg-btn:last-child { border-right: none; }
-        .ro-seg-btn:hover { color: var(--text-dim); }
-        .ro-seg-btn.on { color: var(--text); background: color-mix(in srgb, #ffffff 4.5%, transparent); }
-
-        .ro-statusbar {
-          display: flex; align-items: center; gap: var(--s4);
-          border-top: 1px solid var(--line); padding-top: var(--s5);
-        }
-        .ro-status-ok { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-xs); color: var(--green); }
-        .ro-statusbar .issues { margin: 0; }
-        .ro-autosave {
-          margin-left: auto; flex: none;
-          font-family: var(--font-mono); font-size: 10px; text-transform: uppercase;
-          letter-spacing: 0.18em; color: var(--text-faint);
-        }
-
-        .field { display: flex; flex-direction: column; gap: var(--s1); }
-        .field label { font-size: var(--text-sm); font-weight: 500; }
-        .hint { font-size: var(--text-xs); color: var(--text-faint); }
-        .caveat { color: var(--amber, var(--text-faint)); }
-        .cli-picker { display: flex; align-items: center; gap: var(--s2); }
-        .cli-picker .select { flex: 1; }
-        .field code { font-family: var(--font-mono); font-size: 11px; padding: 1px 4px; border-radius: 4px; background: var(--bg-raised); color: var(--cyan); }
-        .issues { list-style: none; padding: var(--s3); border-radius: var(--r-sm); background: var(--red-dim); font-size: var(--text-sm); display: flex; flex-direction: column; gap: var(--s2); }
-        .issues .warning { color: var(--amber); }
-        .issues .error { color: var(--red); }
-        .action-err { margin: 0; padding: var(--s2) var(--s3); border-radius: var(--r-sm); background: var(--red-dim); color: var(--red); font-size: var(--text-xs); }
-      `}</style>
     </>
   );
 }

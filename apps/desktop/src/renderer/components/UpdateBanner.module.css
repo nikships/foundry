@@ -1,0 +1,110 @@
+.banner {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(460px, calc(100vw - 32px));
+  padding: var(--s4);
+  border-radius: var(--r-lg);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-lg);
+  z-index: 80;
+  animation: fade-in 180ms var(--ease);
+}
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin-bottom: var(--s1);
+}
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+}
+.title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: var(--leading-tight);
+}
+.dismiss {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 13px;
+  cursor: default;
+}
+.dismiss:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.detail {
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+  line-height: var(--leading);
+  margin-bottom: var(--s3);
+}
+.progress {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-bottom: var(--s3);
+}
+.track {
+  flex: 1;
+  height: 6px;
+  border-radius: var(--r-full);
+  background: var(--bg-void);
+  border: 1px solid var(--line-faint);
+  overflow: hidden;
+}
+.fill {
+  height: 100%;
+  background: var(--cyan);
+  border-radius: var(--r-full);
+  transition: width 260ms var(--ease);
+}
+.tone-green .fill {
+  background: var(--green);
+}
+.tone-red .fill {
+  background: var(--red);
+}
+.pct {
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+  min-width: 36px;
+  text-align: right;
+}
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+.spinner.sm {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--cyan);
+  border-radius: var(--r-full);
+  animation: spin 700ms linear infinite;
+  flex: none;
+}
+.tone-green {
+  border-color: var(--green-dim);
+}
+.tone-cyan {
+  border-color: var(--cyan-dim);
+}
+.tone-red {
+  border-color: var(--red-dim);
+}

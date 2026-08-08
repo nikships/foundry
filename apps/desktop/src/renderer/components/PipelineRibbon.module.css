@@ -1,0 +1,22 @@
+.ribbon {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  overflow: hidden;
+  min-width: 0;
+}
+.chip {
+  padding: 2px var(--s2);
+  border: 1px solid;
+  border-radius: var(--r-sm);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.arrow,
+.loop {
+  color: var(--text-ghost);
+  font-size: var(--text-xs);
+}
+.loop {
+  color: var(--amber);
+}

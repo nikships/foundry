@@ -1,0 +1,49 @@
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  margin: var(--s4) var(--s6) 0;
+  padding: var(--s3) var(--s4);
+  border: 1px solid;
+  border-radius: var(--r-lg);
+  animation: fade-in var(--normal) var(--ease);
+}
+.banner img {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  flex: none;
+}
+.banner .text {
+  flex: 1;
+  min-width: 0;
+}
+.banner h2 {
+  font-size: var(--text-base);
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.banner p {
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+  line-height: var(--leading);
+}
+.banner .note {
+  font-size: var(--text-xs);
+  margin-top: var(--s2);
+}
+.banner .note.bad {
+  color: var(--red);
+}
+.actions {
+  display: flex;
+  gap: var(--s2);
+  flex: none;
+}
+.merged {
+  background: var(--green-dim);
+  color: var(--green);
+  padding: 2px 8px;
+  border-radius: var(--r-full);
+  font-size: var(--text-xs);
+}

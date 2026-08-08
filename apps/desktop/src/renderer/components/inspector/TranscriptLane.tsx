@@ -14,6 +14,7 @@ import StatusBadge from '../StatusBadge.js';
 import { duration, modelLabel, tokens } from '../../format.js';
 import { usageFor, phaseDuration } from '../../derive.js';
 import { TranscriptEntry, transcriptStyles } from './entries.js';
+import styles from './TranscriptLane.module.css';
 
 function ContextBar({
   session,
@@ -25,13 +26,13 @@ function ContextBar({
   const pct = Math.min(100, Math.round((used / session.contextWindow) * 100));
   return (
     <span
-      className="lane-context"
+      className={styles.laneContext}
       title={`${used.toLocaleString()} of ${session.contextWindow.toLocaleString()} context tokens`}
     >
-      <span className="lane-context-bar">
-        <span className="lane-context-fill" style={{ width: `${pct}%` }} />
+      <span className={styles.laneContextBar}>
+        <span className={styles.laneContextFill} style={{ width: `${pct}%` }} />
       </span>
-      <span className="lane-context-label">{pct}%</span>
+      <span className={styles.laneContextLabel}>{pct}%</span>
     </span>
   );
 }
@@ -39,15 +40,15 @@ function ContextBar({
 function EnvelopeCard({ envelope }: { envelope: EnvelopeRow }): React.JSX.Element {
   const summary = typeof envelope.payload.summary === 'string' ? envelope.payload.summary : '';
   return (
-    <div className={`lane-envelope ${envelope.valid ? 'ok' : 'fail'}`}>
-      <div className="lane-envelope-head">
+    <div className={`${styles.laneEnvelope} ${envelope.valid ? 'ok' : 'fail'}`}>
+      <div className={styles.laneEnvelopeHead}>
         <span className="te-tag">envelope</span>
-        <span className="lane-envelope-status">{envelope.valid ? 'accepted' : 'invalid'}</span>
+        <span className={styles.laneEnvelopeStatus}>{envelope.valid ? 'accepted' : 'invalid'}</span>
         {envelope.attempt > 1 && (
-          <span className="lane-envelope-attempt">attempt {envelope.attempt}</span>
+          <span className={styles.laneEnvelopeAttempt}>attempt {envelope.attempt}</span>
         )}
       </div>
-      {summary && <div className="lane-envelope-summary">{summary}</div>}
+      {summary && <div className={styles.laneEnvelopeSummary}>{summary}</div>}
     </div>
   );
 }
@@ -109,26 +110,26 @@ export default function TranscriptLane({
   }, [jumpToLatest]);
 
   return (
-    <section className={`lane ${phase.status} ${focused ? 'focused' : ''}`}>
-      <header className="lane-head">
+    <section className={`${styles.lane} ${phase.status} ${focused ? 'focused' : ''}`}>
+      <header className={styles.laneHead}>
         <AgentAvatar name={phase.owner} size={26} />
-        <div className="lane-title">
-          <span className="lane-phase">{phase.name}</span>
-          <span className="lane-agent">
+        <div className={styles.laneTitle}>
+          <span className={styles.lanePhase}>{phase.name}</span>
+          <span className={styles.laneAgent}>
             {phase.owner ?? 'code'}
-            <span className="lane-cli">{cli}</span>
-            <span className="lane-model">{model}</span>
+            <span className={styles.laneCli}>{cli}</span>
+            <span className={styles.laneModel}>{model}</span>
           </span>
         </div>
-        <div className="lane-stats">
+        <div className={styles.laneStats}>
           {tokenCount != null && tokenCount > 0 && (
-            <span className="lane-tokens">{tokens(tokenCount)} tok</span>
+            <span className={styles.laneTokens}>{tokens(tokenCount)} tok</span>
           )}
           <ContextBar session={session} />
-          {elapsed != null && <span className="lane-elapsed">{duration(elapsed)}</span>}
+          {elapsed != null && <span className={styles.laneElapsed}>{duration(elapsed)}</span>}
           <StatusBadge status={phase.status} />
           <button
-            className="lane-focus"
+            className={styles.laneFocus}
             onClick={onToggleFocus}
             title={focused ? 'Back to all lanes' : 'Focus this lane'}
           >
@@ -136,50 +137,18 @@ export default function TranscriptLane({
           </button>
         </div>
       </header>
-      <div className="lane-scroll" ref={scrollRef} onScroll={onScroll}>
-        {events.length === 0 && <div className="lane-empty">nothing recorded yet</div>}
+      <div className={styles.laneScroll} ref={scrollRef} onScroll={onScroll}>
+        {events.length === 0 && <div className={styles.laneEmpty}>nothing recorded yet</div>}
         {events.map((event) => (
           <TranscriptEntry key={event.eventId} event={event} />
         ))}
         {envelope && <EnvelopeCard envelope={envelope} />}
       </div>
       {showJump && (
-        <button className="lane-jump" onClick={jumpToLatest}>
+        <button className={styles.laneJump} onClick={jumpToLatest}>
           ↓ latest
         </button>
       )}
-      <style>{`
-        .lane { position: relative; display: flex; flex-direction: column; min-height: 0; background: var(--bg-panel); border: 1px solid var(--line-faint); border-radius: var(--r-md, 10px); overflow: hidden; }
-        .lane.running { border-color: color-mix(in srgb, var(--cyan) 28%, transparent); }
-        .lane.fail { border-color: color-mix(in srgb, var(--red) 30%, transparent); }
-        .lane-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line-faint); background: var(--bg-raised); flex: none; }
-        .lane-title { display: flex; flex-direction: column; min-width: 0; }
-        .lane-phase { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .lane-agent { display: flex; gap: 6px; align-items: baseline; font-size: 11px; color: var(--text-faint); white-space: nowrap; overflow: hidden; }
-        .lane-cli { padding: 0 5px; border: 1px solid var(--line); border-radius: var(--r-full); font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.06em; }
-        .lane-model { overflow: hidden; text-overflow: ellipsis; }
-        .lane-stats { margin-left: auto; display: flex; align-items: center; gap: 10px; flex: none; }
-        .lane-tokens, .lane-elapsed { font-size: 11px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
-        .lane-context { display: flex; align-items: center; gap: 5px; }
-        .lane-context-bar { width: 44px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
-        .lane-context-fill { display: block; height: 100%; background: var(--cyan); }
-        .lane-context-label { font-size: 10px; color: var(--text-faint); }
-        .lane-focus { border: none; background: none; color: var(--text-faint); font-size: 13px; padding: 2px 6px; border-radius: var(--r-sm); cursor: pointer; }
-        .lane-focus:hover { background: var(--bg-hover, var(--line-faint)); color: var(--text); }
-        .lane-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 12px 14px; }
-        .lane-empty { padding: 18px 0; text-align: center; font-size: 12px; color: var(--text-faint); }
-        .lane-jump { position: absolute; right: 14px; bottom: 12px; border: 1px solid var(--line-strong); background: var(--bg-raised); color: var(--text-dim); font-size: 11px; padding: 3px 10px; border-radius: var(--r-full); cursor: pointer; box-shadow: var(--shadow-sm, 0 2px 8px rgba(0,0,0,0.4)); }
-        .lane-jump:hover { color: var(--text); }
-        .lane-envelope { margin-top: 10px; padding: 8px 10px; border-radius: var(--r-sm); border: 1px solid var(--line); }
-        .lane-envelope.ok { border-color: color-mix(in srgb, var(--green) 35%, transparent); }
-        .lane-envelope.fail { border-color: color-mix(in srgb, var(--red) 35%, transparent); }
-        .lane-envelope-head { display: flex; gap: 8px; align-items: baseline; }
-        .lane-envelope-status { font-size: 11px; font-weight: 600; }
-        .lane-envelope-attempt { font-size: 10px; color: var(--text-faint); }
-        .lane-envelope.ok .lane-envelope-status { color: var(--green); }
-        .lane-envelope.fail .lane-envelope-status { color: var(--red); }
-        .lane-envelope-summary { margin-top: 4px; font-size: 12px; color: var(--text-dim); white-space: pre-wrap; }
-      `}</style>
       <style>{transcriptStyles()}</style>
     </section>
   );

@@ -1,0 +1,10 @@
+.brandMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  color: var(--text-dim);
+}
+.brandMark svg {
+  display: block;
+}

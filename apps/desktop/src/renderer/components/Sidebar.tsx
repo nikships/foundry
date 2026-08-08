@@ -1,5 +1,6 @@
 import type { View } from '../App.js';
 import { useApp } from '../stores/app.js';
+import styles from './Sidebar.module.css';
 
 const items: { id: View; label: string; key: string }[] = [
   { id: 'runs', label: 'Runs', key: '1' },
@@ -38,79 +39,62 @@ export default function Sidebar({
   })(project?.path);
 
   return (
-    <>
-      <aside className="sidebar">
-        <div className="drag-pad" />
-        <div className="project-picker">
-          <label className="faint">Project</label>
-          {projects.length > 0 && (
-            <select
-              className="select"
-              value={project?.id ?? ''}
-              onChange={(e) => selectProject(e.target.value)}
-            >
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          )}
-          <button className="btn sm" onClick={onAddProject}>
-            {projects.length ? 'Add another project…' : 'Add a project…'}
-          </button>
-          {project && (
-            <p className="path mono faint" title={project.path}>
-              {shortPath}
-            </p>
-          )}
-        </div>
-        <nav>
-          {items.map((item) => (
-            <button
-              key={item.id}
-              className={`nav-item ${view === item.id ? 'active' : ''}`}
-              onClick={() => onNavigate(item.id)}
-            >
-              <span>{item.label}</span>
-              <kbd>⌘{item.key}</kbd>
-            </button>
-          ))}
-        </nav>
-        <div className="spacer" />
-        {pendingCount > 0 && firstWaiting && (
-          <button
-            type="button"
-            className="pending"
-            title="Open the run waiting for you"
-            onClick={() => onOpenInterruptRun?.(firstWaiting.runId)}
+    <aside className={styles.sidebar}>
+      <div className={styles.dragPad} />
+      <div className={styles.projectPicker}>
+        <label className="faint">Project</label>
+        {projects.length > 0 && (
+          <select
+            className="select"
+            value={project?.id ?? ''}
+            onChange={(e) => selectProject(e.target.value)}
           >
-            {pendingCount} {pendingCount === 1 ? 'run needs' : 'runs need'} you
-          </button>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
         )}
-        <button
-          className={`nav-item settings ${view === 'settings' ? 'active' : ''}`}
-          onClick={() => onOpenSettings('general')}
-        >
-          <span>Settings</span>
-          <kbd>⌘,</kbd>
+        <button className="btn sm" onClick={onAddProject}>
+          {projects.length ? 'Add another project…' : 'Add a project…'}
         </button>
-      </aside>
-      <style>{`
-        .sidebar { width: var(--sidebar-w); flex: none; display: flex; flex-direction: column; padding: 0 var(--s3) var(--s3); background: var(--bg-sidebar); }
-        .drag-pad { height: var(--titlebar-h); flex: none; }
-        .project-picker { display: flex; flex-direction: column; gap: var(--s2); padding: var(--s2) var(--s2) var(--s4); }
-        .project-picker label { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.08em; }
-        .path { font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .sidebar nav { display: flex; flex-direction: column; gap: 2px; }
-        .nav-item { display: flex; align-items: center; justify-content: space-between; height: 34px; padding: 0 var(--s3); border: none; border-radius: var(--r-sm); background: transparent; color: var(--text-dim); font: inherit; font-size: var(--text-sm); cursor: default; transition: background var(--fast) var(--ease), color var(--fast) var(--ease); }
-        .nav-item:hover { background: var(--bg-hover); color: var(--text); }
-        .nav-item.active { background: var(--bg-active); color: var(--text); font-weight: 500; }
-        .nav-item kbd { font-family: var(--font); font-size: var(--text-xs); color: var(--text-ghost); }
-        .spacer { flex: 1; }
-        .pending { display: block; width: 100%; margin-bottom: var(--s2); padding: var(--s2) var(--s3); border: none; border-radius: var(--r-sm); background: var(--amber-dim); color: var(--amber); font: inherit; font-size: var(--text-xs); text-align: left; animation: pulse 2s var(--ease) infinite; }
-        .pending:hover { filter: brightness(1.08); }
-      `}</style>
-    </>
+        {project && (
+          <p className={`${styles.path} mono faint`} title={project.path}>
+            {shortPath}
+          </p>
+        )}
+      </div>
+      <nav>
+        {items.map((item) => (
+          <button
+            key={item.id}
+            className={`${styles.navItem} ${view === item.id ? styles.active : ''}`}
+            onClick={() => onNavigate(item.id)}
+          >
+            <span>{item.label}</span>
+            <kbd>⌘{item.key}</kbd>
+          </button>
+        ))}
+      </nav>
+      <div className={styles.spacer} />
+      {pendingCount > 0 && firstWaiting && (
+        <button
+          type="button"
+          className={styles.pending}
+          title="Open the run waiting for you"
+          onClick={() => onOpenInterruptRun?.(firstWaiting.runId)}
+        >
+          {pendingCount} {pendingCount === 1 ? 'run needs' : 'runs need'} you
+        </button>
+      )}
+      <button
+        className={`${styles.navItem} settings ${view === 'settings' ? styles.active : ''}`}
+        onClick={() => onOpenSettings('general')}
+      >
+        <span>Settings</span>
+        <kbd>⌘,</kbd>
+      </button>
+    </aside>
   );
 }

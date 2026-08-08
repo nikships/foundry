@@ -26,7 +26,8 @@
     "engine:demo": "tsx scripts/engine-demo.ts",
     "icons": "bash scripts/make-icns.sh",
     "package": "npm run build && npm run icons && electron-builder --mac --arm64",
-    "check": "npm run typecheck && npm run lint && npm run format:check && npm run knip && npm test && npm run build && npm run audit:deps"
+    "check:css": "node scripts/check-css-collisions.mjs",
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm run knip && npm test && npm run build && npm run check:css && npm run audit:deps"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",

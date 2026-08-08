@@ -7,6 +7,7 @@ import { modelFor, phaseDuration, usageFor } from '../derive.js';
 import StatusBadge from './StatusBadge.js';
 import AgentAvatar from './AgentAvatar.js';
 import JsonView from './JsonView.js';
+import styles from './PhaseDrawer.module.css';
 
 type Tab = 'timeline' | 'envelope' | 'gates' | 'prompt';
 
@@ -26,10 +27,10 @@ const EVENT_ICON: Record<string, string> = {
 };
 
 const EVENT_CLASS: Partial<Record<EventRow['type'], string>> = {
-  gate_fail: 'bad',
-  error: 'bad',
-  correction: 'warn',
-  gate_pass: 'good',
+  gate_fail: styles.bad,
+  error: styles.bad,
+  correction: styles.warn,
+  gate_pass: styles.good,
 };
 
 export default function PhaseDrawer({
@@ -125,16 +126,18 @@ export default function PhaseDrawer({
 
   return (
     <>
-      <div className="drawer">
-        <header className="head">
+      <div className={styles.drawer}>
+        <header className={styles.head}>
           {phase.kind === 'agent' && <AgentAvatar name={phase.owner} size={34} />}
-          <div className="title">
+          <div className={styles.title}>
             <div className="row">
               <h2>{phase.name}</h2>
               <StatusBadge status={phase.status} />
-              {phase.attempt > 1 && <span className="badge attempts">attempt {phase.attempt}</span>}
+              {phase.attempt > 1 && (
+                <span className={`badge ${styles.attempts}`}>attempt {phase.attempt}</span>
+              )}
             </div>
-            <p className="faint sub mono">
+            <p className={`faint ${styles.sub} mono`}>
               {phase.kind}
               {phase.owner ? ` · ${phase.owner}` : ''}
               {model ? ` · ${model}` : ''} · {duration(elapsed)}
@@ -142,49 +145,51 @@ export default function PhaseDrawer({
             </p>
           </div>
         </header>
-        {phase.description && <p className="desc faint">{phase.description}</p>}
-        {phase.error && <p className="error-banner selectable">{phase.error}</p>}
-        <nav className="tabs">
+        {phase.description && <p className={`${styles.desc} faint`}>{phase.description}</p>}
+        {phase.error && <p className={`${styles.errorBanner} selectable`}>{phase.error}</p>}
+        <nav className={styles.tabs}>
           {tabs.map((t) => (
             <button
               key={t.id}
-              className={`tab ${tab === t.id ? 'active' : ''}`}
+              className={`${styles.tab} ${tab === t.id ? styles.active : ''}`}
               onClick={() => setTab(t.id)}
             >
               {t.label}
-              {t.count ? <span className="count">{t.count}</span> : null}
+              {t.count ? <span className={styles.count}>{t.count}</span> : null}
             </button>
           ))}
         </nav>
-        <div className="body scroll">
+        <div className={`${styles.body} scroll`}>
           {tab === 'timeline' && (
             <>
               {liveTailError && (
-                <p className="inline-err" role="alert">
+                <p className={styles.inlineErr} role="alert">
                   Live tail: {liveTailError}
                 </p>
               )}
               {liveTail && (
-                <pre className="live selectable mono">
+                <pre className={`${styles.live} selectable mono`}>
                   {liveTail}
-                  <span className="caret" />
+                  <span className={styles.caret} />
                 </pre>
               )}
-              <ol className="events">
+              <ol className={styles.events}>
                 {events.map((event) => (
                   <li key={event.eventId} className={EVENT_CLASS[event.type] ?? ''}>
-                    <button className="event" onClick={() => toggle(event.eventId)}>
-                      <span className="icon">{EVENT_ICON[event.type] ?? '·'}</span>
-                      <span className="ev-name">{event.name}</span>
-                      <span className="grow" />
+                    <button className={styles.event} onClick={() => toggle(event.eventId)}>
+                      <span className={styles.icon}>{EVENT_ICON[event.type] ?? '·'}</span>
+                      <span className={styles.evName}>{event.name}</span>
+                      <span className={styles.grow} />
                       {event.endedAt && (
-                        <span className="mono faint dur">
+                        <span className={`mono faint ${styles.dur}`}>
                           {duration(
                             new Date(event.endedAt).getTime() - new Date(event.startedAt).getTime(),
                           )}
                         </span>
                       )}
-                      <span className="mono faint ts">{clockTime(event.startedAt)}</span>
+                      <span className={`mono faint ${styles.ts}`}>
+                        {clockTime(event.startedAt)}
+                      </span>
                     </button>
                     {openEvents.has(event.eventId) && Object.keys(event.payload).length > 0 && (
                       <JsonView value={event.payload} />
@@ -193,15 +198,15 @@ export default function PhaseDrawer({
                 ))}
               </ol>
               {!events.length && !liveTail && !liveTailError && (
-                <p className="faint pad">Nothing recorded for this phase yet.</p>
+                <p className={`faint ${styles.pad}`}>Nothing recorded for this phase yet.</p>
               )}
             </>
           )}
           {tab === 'envelope' && (
             <>
               {envelopes.map((envelope) => (
-                <div key={envelope.envelopeId} className="block-card">
-                  <div className="spread block-head">
+                <div key={envelope.envelopeId} className={styles.blockCard}>
+                  <div className={`spread ${styles.blockHead}`}>
                     <span className="mono faint">
                       attempt {envelope.attempt} · {envelope.schemaKind}
                     </span>
@@ -214,24 +219,24 @@ export default function PhaseDrawer({
                 </div>
               ))}
               {!envelopes.length && (
-                <p className="faint pad">This phase did not return an envelope.</p>
+                <p className={`faint ${styles.pad}`}>This phase did not return an envelope.</p>
               )}
             </>
           )}
           {tab === 'gates' && (
             <>
               {gates.map((gate) => (
-                <div key={gate.id} className="block-card">
-                  <div className="spread block-head">
-                    <span className="gate-name mono">{gate.gate}</span>
+                <div key={gate.id} className={styles.blockCard}>
+                  <div className={`spread ${styles.blockHead}`}>
+                    <span className={`${styles.gateName} mono`}>{gate.gate}</span>
                     <StatusBadge status={gate.passed ? 'success' : 'fail'} />
                   </div>
-                  <ul className="checks">
+                  <ul className={styles.checks}>
                     {gate.checks.map((check, i) => (
-                      <li key={i} className={check.ok ? '' : 'bad'}>
-                        <span className="mark">{check.ok ? '✓' : '✕'}</span>
-                        <span className="check-body">
-                          <span className="mono item">{check.item}</span>
+                      <li key={i} className={check.ok ? '' : styles.bad}>
+                        <span className={styles.mark}>{check.ok ? '✓' : '✕'}</span>
+                        <span className={styles.checkBody}>
+                          <span className={`mono ${styles.item}`}>{check.item}</span>
                           <em className="faint">{check.note}</em>
                         </span>
                       </li>
@@ -242,22 +247,24 @@ export default function PhaseDrawer({
                   )}
                 </div>
               ))}
-              {!gates.length && <p className="faint pad">No gates ran on this phase.</p>}
+              {!gates.length && (
+                <p className={`faint ${styles.pad}`}>No gates ran on this phase.</p>
+              )}
             </>
           )}
           {tab === 'prompt' && (
             <>
-              {promptLoading && <p className="faint pad">Loading prompt…</p>}
+              {promptLoading && <p className={`faint ${styles.pad}`}>Loading prompt…</p>}
               {promptError && (
-                <p className="inline-err pad" role="alert">
+                <p className={`${styles.inlineErr} ${styles.pad}`} role="alert">
                   {promptError}
                 </p>
               )}
               {!promptLoading && !promptError && prompt ? (
-                <pre className="raw selectable">{prompt}</pre>
+                <pre className={`${styles.raw} selectable`}>{prompt}</pre>
               ) : null}
               {!promptLoading && !promptError && !prompt && (
-                <p className="faint pad">
+                <p className={`faint ${styles.pad}`}>
                   {phase.kind === 'agent'
                     ? 'No prompt was recorded for this phase.'
                     : 'Only agent phases have prompts.'}
@@ -267,49 +274,6 @@ export default function PhaseDrawer({
           )}
         </div>
       </div>
-      <style>{`
-        .drawer { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--bg-panel); border-left: 1px solid var(--line); }
-        .inline-err { margin: 0 var(--s5) var(--s3); padding: var(--s2) var(--s3); border-radius: var(--r-sm); background: var(--red-dim); color: var(--red); font-size: var(--text-xs); line-height: var(--leading); }
-        .inline-err.pad { margin-top: var(--s3); }
-        .head { display: flex; gap: var(--s3); padding: var(--s4) var(--s5) var(--s2); }
-        .title h2 { font-size: var(--text-lg); font-weight: 600; }
-        .title .row { display: flex; align-items: center; gap: var(--s2); }
-        .sub { font-size: var(--text-xs); margin-top: 2px; }
-        .attempts { background: var(--amber-dim); color: var(--amber); padding: 2px 6px; border-radius: var(--r-full); font-size: 10px; }
-        .desc { padding: 0 var(--s5) var(--s3); font-size: var(--text-xs); line-height: var(--leading); }
-        .error-banner { margin: 0 var(--s5) var(--s3); padding: var(--s3); border-radius: var(--r-sm); background: var(--red-dim); color: var(--red); font-size: var(--text-sm); line-height: var(--leading); white-space: pre-wrap; }
-        .tabs { display: flex; gap: var(--s1); padding: 0 var(--s5); border-bottom: 1px solid var(--line-faint); }
-        .tab { padding: var(--s2) var(--s3); border: none; border-bottom: 2px solid transparent; background: transparent; color: var(--text-faint); font: inherit; font-size: var(--text-sm); cursor: default; }
-        .tab:hover { color: var(--text); }
-        .tab.active { color: var(--text); border-bottom-color: var(--cyan); }
-        .count { margin-left: var(--s1); font-size: 10px; opacity: 0.6; }
-        .body { flex: 1; min-height: 0; padding: var(--s3) var(--s5) var(--s8); overflow-y: auto; }
-        .pad { padding: var(--s5) 0; font-size: var(--text-sm); }
-        .live { padding: var(--s3); margin-bottom: var(--s3); border-radius: var(--r-sm); background: var(--bg-void); border: 1px solid var(--cyan-dim); font-size: var(--text-xs); line-height: var(--leading); white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow-y: auto; color: var(--text-dim); }
-        .caret { display: inline-block; width: 7px; height: 13px; background: var(--cyan); vertical-align: text-bottom; animation: pulse 1s steps(2) infinite; }
-        .events { list-style: none; }
-        .event { display: flex; align-items: center; gap: var(--s2); width: 100%; padding: var(--s2); border: none; border-radius: var(--r-sm); background: transparent; color: inherit; font: inherit; font-size: var(--text-sm); text-align: left; cursor: default; }
-        .event:hover { background: var(--bg-hover); }
-        .icon { width: 16px; text-align: center; color: var(--text-faint); flex: none; }
-        .warn .icon { color: var(--amber); }
-        .bad .icon { color: var(--red); }
-        .good .icon { color: var(--green); }
-        .ev-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .grow { flex: 1; }
-        .dur, .ts { font-size: 10px; flex: none; }
-        .block-card { margin-bottom: var(--s4); padding: var(--s3); border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--bg-raised); }
-        .block-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--s2); }
-        .spread { display: flex; justify-content: space-between; align-items: center; }
-        .gate-name { font-size: var(--text-sm); }
-        .checks { list-style: none; display: flex; flex-direction: column; gap: var(--s2); }
-        .checks li { display: flex; gap: var(--s2); font-size: var(--text-xs); line-height: var(--leading); }
-        .checks .mark { color: var(--green); flex: none; }
-        .checks li.bad .mark { color: var(--red); }
-        .check-body { min-width: 0; }
-        .item { display: block; word-break: break-all; }
-        .check-body em { font-style: normal; color: var(--text-faint); }
-        .raw { padding: var(--s3); border-radius: var(--r-sm); background: var(--bg-void); font-family: var(--font-mono); font-size: var(--text-xs); line-height: var(--leading); white-space: pre-wrap; word-break: break-word; color: var(--text-dim); }
-      `}</style>
     </>
   );
 }
