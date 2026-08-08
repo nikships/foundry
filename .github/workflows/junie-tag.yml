@@ -36,6 +36,7 @@ jobs:
         uses: JetBrains/junie-github-action@main
         with:
           junie_api_key: ${{ secrets.JUNIE_API_KEY }}
+          trigger_phrase: "@junie"
           assignee_trigger: "junie-agent"
           use_single_comment: true
           junie_version: "latest"
