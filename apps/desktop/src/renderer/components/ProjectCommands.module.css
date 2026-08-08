@@ -9,12 +9,30 @@
   flex-direction: column;
   gap: var(--s2);
 }
-.name {
+
+.command :global(.row) {
+  flex-wrap: wrap;
+}
+
+.command .name {
   width: 140px;
+  min-width: 90px;
+  flex: 0 1 140px;
+}
+
+.command .argv {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.commandActions {
+  display: flex;
+  gap: var(--s2);
   flex: none;
 }
-.argv {
-  flex: 1;
+
+.commandActions .btn {
+  flex: none;
 }
 .result {
   border: 1px solid var(--red-dim);
@@ -83,4 +101,33 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--s4);
+}
+
+.commandActionsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+@media (max-width: 1120px) {
+  .two {
+    grid-template-columns: 1fr;
+  }
+  .command .name {
+    flex-basis: 110px;
+    width: auto;
+  }
+}
+
+.command .input,
+.command :global(.input) {
+  min-width: 0;
+}
+
+.detectPicker {
+  min-width: 0;
+}
+
+.detectPicker .cliPick {
+  min-width: 0;
 }

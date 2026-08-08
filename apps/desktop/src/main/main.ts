@@ -26,10 +26,13 @@ let ctx: AppContext | null = null;
 const WINDOW_BACKGROUND = '#000000';
 
 function createWindow(): BrowserWindow {
+  const rawWidth = (process.env.FOUNDRY_WIDTH ?? '').trim();
+  const requestedWidth = rawWidth ? Number(rawWidth) : NaN;
+  const width = Number.isFinite(requestedWidth) && requestedWidth >= 600 ? requestedWidth : 1440;
   const window = new BrowserWindow({
-    width: 1440,
+    width,
     height: 940,
-    minWidth: 1080,
+    minWidth: 600,
     minHeight: 720,
     show: false,
     title: 'Foundry',

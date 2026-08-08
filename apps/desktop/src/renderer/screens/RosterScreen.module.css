@@ -130,6 +130,7 @@
   justify-content: space-between;
   gap: var(--s6);
   padding: var(--s8) 0;
+  flex-wrap: wrap;
 }
 .ro-head-main {
   min-width: 0;
@@ -138,6 +139,8 @@
   display: flex;
   align-items: baseline;
   gap: var(--s3);
+  flex-wrap: wrap;
+  min-width: 0;
 }
 .ro-title {
   font-size: 26px;
@@ -168,6 +171,7 @@
 .ro-head-actions {
   flex: none;
   display: flex;
+  flex-wrap: wrap;
   gap: var(--s2);
 }
 .ro-action {
@@ -238,6 +242,14 @@
   .ro-fields .span2 {
     grid-column: span 1;
   }
+}
+
+.ro-page :global(.field) {
+  min-width: 0;
+}
+
+.ro-page :global(.input) {
+  min-width: 0;
 }
 .ro-stack {
   display: flex;

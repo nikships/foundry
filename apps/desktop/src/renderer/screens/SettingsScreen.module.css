@@ -15,10 +15,13 @@
   padding: var(--titlebar-h) var(--s4) 0;
   border-bottom: 1px solid var(--line);
   background: var(--bg-base);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
 }
 .set-tab {
   flex: 1 1 0;
-  min-width: 0;
+  min-width: 56px;
   display: flex;
   justify-content: center;
   padding: var(--s3) var(--s2) 0;

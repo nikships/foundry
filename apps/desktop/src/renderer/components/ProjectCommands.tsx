@@ -230,23 +230,25 @@ export default function ProjectCommands({
                     placeholder="npm test"
                     onChange={(e) => setArgv(i, e.target.value)}
                   />
-                  <Button
-                    size="sm"
-                    disabled={!command.argv.length || result?.running}
-                    title={
-                      !command.argv.length
-                        ? 'Enter an argv first (e.g. npm test)'
-                        : result?.running
-                          ? 'Running…'
-                          : undefined
-                    }
-                    onClick={() => void tryIt(command.name, command.argv)}
-                  >
-                    {result?.running ? 'Running…' : 'Try it'}
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => remove(i)}>
-                    ✕
-                  </Button>
+                  <div className={styles.commandActions}>
+                    <Button
+                      size="sm"
+                      disabled={!command.argv.length || result?.running}
+                      title={
+                        !command.argv.length
+                          ? 'Enter an argv first (e.g. npm test)'
+                          : result?.running
+                            ? 'Running…'
+                            : undefined
+                      }
+                      onClick={() => void tryIt(command.name, command.argv)}
+                    >
+                      {result?.running ? 'Running…' : 'Try it'}
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => remove(i)}>
+                      ✕
+                    </Button>
+                  </div>
                 </div>
                 {result && !result.running && (
                   <div className={`${styles.result} ${result.passed ? styles.ok : ''}`}>
@@ -268,7 +270,7 @@ export default function ProjectCommands({
               </div>
             );
           })}
-          <div className="row">
+          <div className={styles.commandActionsRow}>
             <Button size="sm" onClick={add}>
               Add command
             </Button>

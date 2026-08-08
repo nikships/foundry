@@ -289,6 +289,7 @@
   align-items: flex-start;
   gap: var(--s10);
   padding: var(--s7, 28px) var(--s6) var(--s6);
+  flex-wrap: wrap;
 }
 .pl-identity-main {
   flex: 1;
@@ -328,6 +329,16 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+@media (max-width: 900px) {
+  .pl-identity {
+    flex-direction: column;
+    gap: var(--s4);
+  }
+  .pl-identity-meta {
+    text-align: left;
+  }
 }
 .pl-identity-meta .pl-mono {
   color: var(--text-faint);

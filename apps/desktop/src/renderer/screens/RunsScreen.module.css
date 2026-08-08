@@ -51,20 +51,31 @@
   padding-top: var(--s3);
   border-top: 1px solid var(--line-faint);
   min-width: 0;
+  flex-wrap: wrap;
 }
 .pipeline {
   width: auto;
   max-width: 220px;
-  min-width: 160px;
-  flex: 0 0 auto;
+  min-width: 110px;
+  flex: 0 1 140px;
 }
 .grow {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 100px;
+  min-width: 60px;
 }
 .start-button {
   flex: none;
   flex-shrink: 0;
+}
+
+@media (max-width: 760px) {
+  .controls {
+    gap: var(--s2);
+  }
+  .pipeline {
+    flex-basis: 120px;
+    max-width: 160px;
+  }
 }
 .controls kbd {
   font-family: var(--font);
