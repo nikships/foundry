@@ -312,14 +312,12 @@ vec4 prism(vec2 p) {
   vec3 roW = vec3(0.0, 0.0, 2.15);
   vec3 rdW = normalize(vec3(p, -2.4));
   // The only motion is the slow horizontal turn around the vertical axis.
-  // The camera sits at a fixed slight top-down tilt (negative pitch keeps
-  // the base face hidden) — no wobble, no roll, no bob.
+  // The camera views the prism dead straight-on (no pitch): the base is
+  // edge-on and hidden — no wobble, no roll, no bob.
   float yaw = uSpin * 0.55;
-  float pitch = -0.3;
   vec3 ro = roW;
   vec3 rd = rdW;
   ro.xz *= rot2(yaw);  rd.xz *= rot2(yaw);
-  ro.yz *= rot2(pitch); rd.yz *= rot2(pitch);
 
   float tr = 0.0;
   float glow = 0.0;
@@ -348,7 +346,6 @@ vec4 prism(vec2 p) {
 
   // World-space normal for the light rig, so facet flashes sweep as it turns.
   vec3 nW = n;
-  nW.yz *= rot2(-pitch);
   nW.xz *= rot2(-yaw);
 
   // Galaxy on a virtual inner sphere, seen through the entry refraction.
