@@ -5,10 +5,10 @@
  */
 
 /* ── stacking ────────────────────────────────────────────────────────────
- * The field is a sibling of the sidebar and content, which both paint their
- * own backgrounds and would otherwise cover it. The shell opens a stacking
- * context, the field sits at its floor, and the content is thinned just enough
- * for the wash to read through without costing legibility.
+ * The shell floor is a flat OLED void — nothing is painted behind the sidebar
+ * and content. The stacking context and the z-index on those two are kept so
+ * anything added at the shell's floor later lands below the chrome rather
+ * than on top of it.
  */
 [data-brand='prism'] .shell {
   position: relative;
