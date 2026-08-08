@@ -9,7 +9,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdirSync } from 'node:fs';
 import { AppContext } from './context.js';
-import { registerIpc } from './ipc.js';
+import { registerIpc } from './ipc/index.js';
 import { killAll } from './system/procs.js';
 
 const here = dirname(fileURLToPath(import.meta.url));

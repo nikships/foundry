@@ -18,7 +18,7 @@ graph LR
     Trace[trace]
     Store[store]
     System[system]
-    IPC[ipc.ts]
+    IPC[ipc/]
   end
   Preload[preload/bridge.ts]
   Renderer[renderer]
@@ -68,7 +68,7 @@ graph LR
 | Concern | Start here |
 |---|---|
 | App bootstrap | `apps/desktop/src/main/main.ts` |
-| Handler wiring | `apps/desktop/src/main/ipc.ts` |
+| Handler wiring | `apps/desktop/src/main/ipc/` |
 | Shared contract | `apps/desktop/src/shared/ipc-contract.ts`, `types.ts` |
 | UI shell | `apps/desktop/src/renderer/App.tsx` |
 

@@ -52,7 +52,7 @@ Rough ratio: source is about **8×** the test suite by lines. Tests punch above 
 | Shared contract | `src/shared/` | 559 |
 | System | `src/main/system/` | 290 |
 | Preload | `src/preload/` | 119 |
-| IPC + bootstrap | `src/main/ipc.ts`, `main.ts`, `context.ts` | remainder of main |
+| IPC + bootstrap | `src/main/ipc/`, `main.ts`, `context.ts` | remainder of main |
 
 The UI is the single largest subtree. The factory spine (engine + droid + trace) is comparable in aggregate and carries most of the behavioural complexity. Preload stays deliberately thin: named invoke only, no generic escape hatch.
 
@@ -73,7 +73,7 @@ Largest TypeScript files in Foundry (line counts from the 2026-08-06 tree):
 | `src/main/engine/executor.ts` | 841 | Full run loop: phases, retries, corrections, acceptance, `finish()` |
 | `src/main/trace/tracer.ts` | 825 | Single writer for runs, phases, events, envelopes, gates, sessions |
 | `src/main/droid/client.ts` | 465 | Long-lived stream-JSON-RPC session over stdio |
-| `src/main/ipc.ts` | 427 | Entire renderer capability surface (invoke handlers) |
+| `src/main/ipc/` | ~650 | Renderer capability surface (invoke handlers, split by domain) |
 
 Average size is uneven. Trace is two files that own the whole write path (~500 lines each on average). Engine spreads across nine modules; droid across seven. Renderer spreads across many small screens and components under `components/` and `screens/`, so directory averages there understate any one file.
 
