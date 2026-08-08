@@ -1,12 +1,11 @@
 import type { PipelineDef } from '@shared/types.js';
 import { useApp } from '../stores/app.js';
-
-const KIND_COLOR: Record<string, string> = { code: 'var(--blue)', engineer: 'var(--amber)' };
+import { phaseKindColor } from '../derive.js';
 
 export default function PipelineRibbon({ pipeline }: { pipeline: PipelineDef }): React.JSX.Element {
   const { agentColor } = useApp();
   const colorFor = (phase: PipelineDef['phases'][number]): string =>
-    phase.kind === 'agent' ? agentColor(phase.agent ?? null) : KIND_COLOR[phase.kind]!;
+    phaseKindColor(phase.kind, agentColor(phase.agent ?? null));
 
   return (
     <>

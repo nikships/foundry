@@ -8,6 +8,7 @@ import type {
 } from '@shared/types.js';
 import { api, plain } from '../api.js';
 import { useApp } from '../stores/app.js';
+import { phaseKindColor } from '../derive.js';
 import EmptyState from '../components/EmptyState.js';
 import PhaseEditor from '../components/PhaseEditor.js';
 import { CliIcon } from '../components/BrandIcon.js';
@@ -15,7 +16,6 @@ import DryRunSheet from '../components/DryRunSheet.js';
 
 /* ── phase track ─────────────────────────────────────────────────────── */
 
-const KIND_HUE: Record<string, string> = { code: 'var(--amber)', engineer: 'var(--blue)' };
 const KIND_LABEL: Record<string, string> = {
   agent: 'agent',
   code: 'command',
@@ -99,7 +99,7 @@ function PhaseTrack({
 }): React.JSX.Element {
   const { agents, agentColor } = useApp();
   const hue = (phase: PhaseDef): string =>
-    phase.kind === 'agent' ? agentColor(phase.agent ?? null) : KIND_HUE[phase.kind]!;
+    phaseKindColor(phase.kind, agentColor(phase.agent ?? null));
   const meta = (phase: PhaseDef): React.ReactNode => {
     if (phase.kind === 'agent') {
       const owner = agents.find((a) => a.name === phase.agent) ?? null;

@@ -63,3 +63,13 @@ export function modelFor(events: EventRow[]): string | null {
   const start = events.find((e) => e.type === 'agent_start');
   return (start?.payload.model as string | undefined) ?? null;
 }
+
+/**
+ * Phase-kind hues. `agent` is per-agent, so callers pass the resolved owner
+ * colour; `code` and `engineer` are fixed. Unknown kinds fall back to cyan.
+ */
+const KIND_COLOR: Record<string, string> = { code: 'var(--blue)', engineer: 'var(--amber)' };
+
+export function phaseKindColor(kind: string, ownerColor: string): string {
+  return kind === 'agent' ? ownerColor : (KIND_COLOR[kind] ?? 'var(--cyan)');
+}

@@ -2,10 +2,9 @@ import { useMemo } from 'react';
 import type { EventRow, PhaseRow, RunRow } from '@shared/types.js';
 import { useApp } from '../stores/app.js';
 import { duration } from '../format.js';
-import { phaseDuration } from '../derive.js';
+import { phaseDuration, phaseKindColor } from '../derive.js';
 import AgentAvatar from './AgentAvatar.js';
 
-const KIND_COLOR: Record<string, string> = { code: 'var(--blue)', engineer: 'var(--amber)' };
 const MARK_CLASS: Partial<Record<EventRow['type'], string>> = {
   tool_call: 'tool',
   correction: 'correction',
@@ -32,7 +31,7 @@ export default function Waterfall({
 }): React.JSX.Element {
   const { agentColor } = useApp();
   const laneColor = (phase: PhaseRow): string =>
-    phase.kind === 'agent' ? agentColor(phase.owner) : (KIND_COLOR[phase.kind] ?? 'var(--cyan)');
+    phaseKindColor(phase.kind, agentColor(phase.owner));
   const t0 = useMemo(() => new Date(run.startedAt).getTime(), [run.startedAt]);
   const span = useMemo(() => {
     const end = run.endedAt ? new Date(run.endedAt).getTime() : now;

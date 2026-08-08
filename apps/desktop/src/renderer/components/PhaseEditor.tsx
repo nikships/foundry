@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import type { AgentDef, EnvelopeKind, PhaseDef } from '@shared/types.js';
 import { api } from '../api.js';
 import { useApp } from '../stores/app.js';
+import { phaseKindColor } from '../derive.js';
 import AgentAvatar from './AgentAvatar.js';
 import { CliIcon } from './BrandIcon.js';
 
-const KIND_COLOR: Record<string, string> = { code: 'var(--blue)', engineer: 'var(--amber)' };
 const ENVELOPE_KINDS: EnvelopeKind[] = ['plan', 'build', 'review', 'scout', 'document', 'generic'];
 
 export default function PhaseEditor({
@@ -39,7 +39,7 @@ export default function PhaseEditor({
   }, []);
 
   const color = useMemo(
-    () => (phase.kind === 'agent' ? agentColor(phase.agent ?? null) : KIND_COLOR[phase.kind]!),
+    () => phaseKindColor(phase.kind, agentColor(phase.agent ?? null)),
     [phase.kind, phase.agent, agentColor],
   );
   const earlier = useMemo(() => phases.slice(0, index).map((p) => p.name), [phases, index]);
