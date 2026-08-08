@@ -181,6 +181,10 @@
   gap: 2px;
   overflow-x: auto;
   min-width: 0;
+  scrollbar-width: none;
+}
+.pl-tabs::-webkit-scrollbar {
+  display: none;
 }
 .pl-tab {
   position: relative;

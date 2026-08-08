@@ -110,6 +110,17 @@
   grid-template-columns: 1fr 1fr;
   gap: var(--s4);
 }
+
+@media (max-width: 1120px) {
+  .set-section {
+    grid-template-columns: 1fr;
+    gap: var(--s4);
+  }
+  .set-fields,
+  .two {
+    grid-template-columns: 1fr;
+  }
+}
 .hint {
   font-size: var(--text-xs);
   color: var(--text-faint);

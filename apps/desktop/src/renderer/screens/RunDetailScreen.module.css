@@ -66,6 +66,12 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(380px, 42%);
 }
+@media (max-width: 960px) {
+  .split {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+}
 .left {
   min-width: 0;
   overflow-y: auto;

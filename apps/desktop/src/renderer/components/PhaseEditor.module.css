@@ -147,6 +147,11 @@
   grid-template-columns: 1fr 1fr;
   gap: var(--s4);
 }
+@media (max-width: 1120px) {
+  .two {
+    grid-template-columns: 1fr;
+  }
+}
 .chips {
   display: flex;
   flex-wrap: wrap;

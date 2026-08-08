@@ -22,6 +22,12 @@
   gap: var(--s4);
   margin-top: var(--s4);
 }
+@media (max-width: 960px) {
+  .split {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+}
 .steps {
   display: flex;
   flex-direction: column;

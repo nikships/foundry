@@ -226,6 +226,19 @@
 .ro-fields .span2 {
   grid-column: span 2;
 }
+
+@media (max-width: 1120px) {
+  .ro-section {
+    grid-template-columns: 1fr;
+    gap: var(--s4);
+  }
+  .ro-fields {
+    grid-template-columns: 1fr;
+  }
+  .ro-fields .span2 {
+    grid-column: span 1;
+  }
+}
 .ro-stack {
   display: flex;
   flex-direction: column;
