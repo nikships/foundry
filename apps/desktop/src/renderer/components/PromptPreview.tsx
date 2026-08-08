@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import type { AgentDef } from '@shared/types.js';
+import { useEscapeToClose } from '../hooks/useEscapeToClose.js';
 
 const SAMPLE = {
   request: 'Add rate limiting to the public API',
@@ -14,6 +15,7 @@ export default function PromptPreview({
   agent: AgentDef;
   onClose: () => void;
 }): React.JSX.Element {
+  useEscapeToClose(onClose);
   const rendered = useMemo(
     () =>
       agent.userPrompt

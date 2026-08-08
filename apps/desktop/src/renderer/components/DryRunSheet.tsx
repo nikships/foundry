@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { DryRunPrompt } from '@shared/types.js';
 import { modelLabel } from '../format.js';
+import { useEscapeToClose } from '../hooks/useEscapeToClose.js';
 import AgentAvatar from './AgentAvatar.js';
 
 export default function DryRunSheet({
@@ -14,15 +15,7 @@ export default function DryRunSheet({
   const current = prompts[selected];
 
   // Match InterruptSheet: Esc dismisses a read-only preview without a decision to preserve.
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  useEscapeToClose(onClose);
 
   return (
     <>
