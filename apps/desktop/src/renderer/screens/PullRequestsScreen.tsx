@@ -160,7 +160,14 @@ export default function PullRequestsScreen({
   const [notes, setNotes] = useState<Record<number, { text: string; error: boolean }>>({});
 
   const refresh = useCallback(async (): Promise<void> => {
-    if (!projectId) return;
+    if (!projectId) {
+      // A removed project must not strand `loading` at its initial true.
+      setGh(null);
+      setPrs([]);
+      setListError('');
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setListError('');
     try {

@@ -112,16 +112,27 @@ export function register(ctx: Ctx, handle: Handle): void {
         }
       }
 
+      // The PR merged either way; everything below is local/remote cleanup,
+      // and a skipped or failed step must say so rather than pass silently.
       const remote = await preferredRemote(project.path);
-      if (remote) {
+      if (!remote) {
+        notes.push('no git remote found: skipped branch cleanup and base fast-forward');
+      } else {
         // Only foundry branches are Foundry's to clean up on the remote.
-        if (isFoundryBranch && branch) await deleteRemoteBranch(project.path, remote, branch);
+        if (isFoundryBranch && branch) {
+          const del = await deleteRemoteBranch(project.path, remote, branch);
+          if (!del.ok) {
+            notes.push(
+              `could not delete remote ${branch}: ${del.stdout.trim().split('\n')[0] || 'see git'}`,
+            );
+          }
+        }
         const baseRef = merged.baseRefName || project.baseRef;
         const ff = await fastForwardBase(project.path, remote, baseRef);
         notes.push(
           ff.ok
             ? `${baseRef} fast-forwarded`
-            : `could not fast-forward ${baseRef}: ${ff.stdout.trim().split('\n')[0] ?? 'see git'}`,
+            : `could not fast-forward ${baseRef}: ${ff.stdout.trim().split('\n')[0] || 'see git'}`,
         );
       }
 
