@@ -4,6 +4,7 @@
   gap: var(--s1);
   overflow: hidden;
   min-width: 0;
+  flex: 0 1 auto;
 }
 .chip {
   padding: 2px var(--s2);

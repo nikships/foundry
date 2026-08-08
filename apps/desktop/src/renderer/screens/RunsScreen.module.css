@@ -58,6 +58,7 @@
 }
 .grow {
   flex: 1;
+  min-width: 0;
 }
 .controls kbd {
   font-family: var(--font);

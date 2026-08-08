@@ -147,6 +147,7 @@ textarea,
   font-size: var(--text-sm);
   cursor: default;
   white-space: nowrap;
+  flex-shrink: 0;
   transition:
     background var(--fast) var(--ease),
     border-color var(--fast) var(--ease);
