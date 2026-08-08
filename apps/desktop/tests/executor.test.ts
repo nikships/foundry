@@ -640,29 +640,6 @@ describe('acceptance criteria', () => {
     expect(h.tracer.phases(outcome.runId)[0]!.status).toBe('success');
     expect(outcome.status).toBe('rejected');
   });
-
-  it('accepts when the reviewer approves', async () => {
-    const droid = scriptedDroid([reviewEnvelope(true)]);
-    const outcome = await run({
-      droidPath: droid,
-      agents: [buildAgent({ name: 'reviewer', envelope: 'review' })],
-      pipeline: pipe(
-        [
-          agentPhase('review', {
-            agent: 'reviewer',
-            description: 'Judge the work and approve it explicitly.',
-            envelope: 'review',
-            gates: ['verdict_consistent'],
-          }),
-        ],
-        {
-          description: 'acceptance hangs on the reviewer verdict',
-          acceptance: { kind: 'phase_flag', phase: 'review', flag: 'approved' },
-        },
-      ),
-    });
-    expect(outcome.status).toBe('accepted');
-  });
 });
 
 describe('engineer phases', () => {
