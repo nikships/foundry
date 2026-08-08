@@ -1,0 +1,44 @@
+/*
+ * prism-animations.css — keyframes for Prism chrome, plus the reduced-motion
+ * kill switch. Imported only in a Prism window.
+ */
+
+@keyframes spectral-sweep {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 200% 50%;
+  }
+}
+
+/*
+ * The WebGL field and the flock already unmount under reduced motion (they
+ * render a static fallback instead), so what is left to silence is the CSS:
+ * the header sweep, the rim fades, and the press burst. Blur is dropped too,
+ * because a moving backdrop behind a blur is the part that induces nausea.
+ */
+@media (prefers-reduced-motion: reduce) {
+  [data-brand='prism'] .prism-header-rule {
+    animation: none;
+  }
+  [data-brand='prism'] .glass::after,
+  [data-brand='prism'] .cinema .frame::after {
+    transition: none;
+  }
+  [data-brand='prism'] .btn:active:not(:disabled),
+  [data-brand='prism'] .btn.primary:active:not(:disabled) {
+    transform: none;
+    transition: none;
+  }
+  [data-brand='prism'] .glass,
+  [data-brand='prism'] .sheet,
+  [data-brand='prism'] .cinema .frame {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: var(--bg-panel);
+  }
+  .prism-field {
+    transition: none;
+  }
+}

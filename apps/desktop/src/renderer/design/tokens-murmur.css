@@ -1,0 +1,213 @@
+/*
+ * tokens-murmur.css — Murmur warm dark communal theme.
+ * Loaded only when brand=murmur (see main.tsx brand gate). Prism never loads this.
+ * Warm hearth palette: #1A1410 base, cream #FFFBF0 text, ember #FF7A3D primary.
+ * Includes grain via tiled PNG base64, warm glass, and ember pulse.
+ */
+
+/* Bare :root is included so the palette is complete even in the instant
+ * between this sheet resolving and main.tsx setting data-brand. This sheet is
+ * never loaded in a Prism window, so it cannot leak. */
+:root,
+:root[data-brand='murmur'] {
+  /* ── surfaces ──────────────────────────────────────────────────────── */
+  --bg-void: #0e0b08;
+  --bg-base: #1a1410;
+  --bg-panel: #241e19;
+  --bg-raised: #2e261e;
+  --bg-hover: #3a2f24;
+  --bg-active: #463a2d;
+  --bg-input: #0e0b08;
+  --bg-sidebar: rgba(26, 20, 16, 0.88);
+  --bg-titlebar: rgba(14, 11, 8, 0.92);
+
+  /* ── lines ──────────────────────────────────────────────────────────── */
+  --line-faint: rgba(255, 248, 235, 0.06);
+  --line: rgba(255, 248, 235, 0.11);
+  --line-strong: rgba(255, 248, 235, 0.18);
+
+  /* ── text ──────────────────────────────────────────────────────────── */
+  --text: #fffbf0;
+  --text-dim: #d7cbb6;
+  --text-faint: #9a8c7a;
+  --text-ghost: #6b5e4a80;
+
+  /* ── accents (semantic names kept, hues shift warm) ──────────────── */
+  --cyan: #ff7a3d;
+  --cyan-dim: #ff7a3d28;
+  --purple: #c97a5a;
+  --purple-dim: #c97a5a28;
+  --amber: #e8b64a;
+  --amber-dim: #e8b64a2a;
+  --green: #8aa899;
+  --green-dim: #8aa8992e;
+  --red: #b85c38;
+  --red-dim: #b85c3828;
+  --blue: #d4a373;
+  --blue-dim: #d4a37328;
+
+  /* ── status ────────────────────────────────────────────────────────── */
+  --status-queued: var(--text-faint);
+  --status-running: var(--cyan);
+  --status-success: var(--green);
+  --status-fail: var(--red);
+  --status-skipped: var(--text-faint);
+  --status-accepted: var(--green);
+  --status-rejected: var(--amber);
+  --status-failed: var(--red);
+  --status-killed: var(--text-faint);
+
+  /* ── depth ─────────────────────────────────────────────────────────── */
+  --shadow-sm: 0 1px 3px rgba(20, 12, 8, 0.35);
+  --shadow: 0 4px 16px rgba(20, 12, 8, 0.42);
+  --shadow-lg: 0 16px 48px rgba(20, 12, 8, 0.58);
+  --glow-cyan: 0 0 0 1px var(--cyan-dim), 0 0 22px -6px var(--cyan);
+
+  /* ── murmur additive — the warm hues that have no semantic slot ──── */
+  --murmur-ember: #ff7a3d;
+  --murmur-ember-dim: #ff7a3d28;
+  --murmur-ember-glow: 0 0 0 1px var(--murmur-ember-dim), 0 0 22px -6px var(--murmur-ember);
+  --murmur-clay: #c97a5a;
+  --murmur-paper: #fff5e1;
+  --murmur-burnt: #b85c38;
+  --grain-opacity: 0.035;
+  /* The tile is 64px square. Anything larger upscales it and the grain turns
+   * into blotches instead of paper. */
+  --grain-size: 64px;
+  --grain-blend: soft-light;
+  --grain-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAO+klEQVR4nG3b164kNwyEYb3/gzlne51z2F3vOmdfjfE38B0UBr4YTE+3WqIoslikNOenr965ffvBS7enn7x26/qHL966fffhy9f1H08+vP359KPbk49fvT3//M3b95++fvv3h8+u3z9//e513fN/nn96+/vZJ1cfjz965fpdHz2rTb9/++79q7/a1c837794PTPGL9+8d30at9+1+/HLt69x//r+4+ta/8nbd2P0vL569/fHH1z3mwP5e6/72jZmsnSv904T6UEvdW3yCVCnv3776OqkSfS86757liAJ20AppXv10wRNtP56t7ZfP3rhQTjK7N3G6HfXfRKsiTTx7tdv/aeAftdP18nRp3cor/uNpa+eN+H6TNb6bL4W5zRQDXugs4Svs7TUYL1Qxz2rs4TovTppQl3Xtvdq8+yzNx6U16c29VOfjZGAXddX4/ahTPJQsr5SQMpsjPpqvOToU5v6anF6xsK6rp+eN1ljNk73andanT40TcOE6BkT6lkdWAEuU2cJyB2614QSKEF6p/spI2X6rn3fjdXz2jZO36ymsZPL+43dNSuyODuH2jVh7sCiurbylHV6yNd6sY677jthEo7ZJlArwKzqtO867J2ed02BCZVwDWp1WQJLavzea6ye156vN3n4BBMoxQR6ltzutRBZFPeqf4vad8+4bZ+TMN2sgZUBLHVaR90Hhl0njAkAr36nqPrSpnfrA6jx9b4bvMmkJP6eJfVhor1jYrVPVm0ojDtSLMzyPrl73ndtm1vtUt7xQsL3ApMBbA1EQUANOLnXdwPWeR/I3QRFi3Wtvvlz7VLCtuma2QPJ7nOnxZrG6F79cUW+b0G63xzrk8XX5nKBbgImK0XLCdDzBDIA7VHEavQeMIW0Pk2u+/XRe1ZXxKjtWgL3qg0cALyU1PPG5S71VT9AMrn63YThVe/Vf3O+QJApAgYAY5WZci8IIwmzkxLixP4Gqi8glTC4BGzhj8DKhOtPewju3a65Ab4CR6x898gj5LFoIX+t9jRoH8CWQCZvsnCgSQE8K5uwSE73u8YHmDYgA7JMGJAmSM8I2Hf96oOJ10/tRAzEBwlL3toJv6JM7RsDKFLgZQE1SHtMrUnySysijuoMRwBOWB2EBqQUo58GFHFSUt9NoAn3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');
+}
+
+/* ── warm type tweak ────────────────────────────────────────────────── */
+[data-brand='murmur'] h1,
+[data-brand='murmur'] h2,
+[data-brand='murmur'] .eyebrow {
+  letter-spacing: -0.015em;
+}
+[data-brand='murmur'] .eyebrow {
+  letter-spacing: 0.1em;
+}
+
+/* ── warm glass (paper + soft walnut shadow, no refraction) ─────────── */
+[data-brand='murmur'] .panel,
+[data-brand='murmur'] .cinema .frame,
+[data-brand='murmur'] .card,
+[data-brand='murmur'] .sidebar {
+  background: color-mix(in srgb, var(--bg-panel) 94%, var(--murmur-paper) 6%);
+  border-color: color-mix(in srgb, var(--line) 70%, var(--murmur-clay) 30%);
+  box-shadow:
+    var(--shadow),
+    0 1px 0 rgba(255, 248, 235, 0.04) inset;
+}
+[data-brand='murmur'] .sidebar {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+[data-brand='murmur'] .frame {
+  box-shadow: var(--shadow-lg), var(--murmur-ember-glow);
+}
+
+/* ── grain overlay ──────────────────────────────────────────────────────
+ * One full-bleed tiled layer over the whole shell rather than a pseudo-element
+ * per surface. Per-surface grain would collide with the ::after several cards
+ * already use, and would re-tile at every card boundary, which reads as a seam
+ * rather than as paper.
+ */
+[data-brand='murmur'] .shell {
+  position: relative;
+}
+[data-brand='murmur'] .shell::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background-image: var(--grain-image);
+  background-size: var(--grain-size) var(--grain-size);
+  background-repeat: repeat;
+  opacity: var(--grain-opacity);
+  mix-blend-mode: var(--grain-blend);
+  pointer-events: none;
+}
+
+/* ── flock canvas ───────────────────────────────────────────────────── */
+.murmur-flock {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ── warm re-tint of primitives ─────────────────────────────────────── */
+[data-brand='murmur'] .btn.primary {
+  background: var(--murmur-ember);
+  border-color: var(--murmur-ember);
+  color: #2b1206;
+}
+[data-brand='murmur'] .btn.primary:hover:not(:disabled) {
+  background: #ff8a52;
+  border-color: #ff8a52;
+}
+[data-brand='murmur'] .btn.primary:active:not(:disabled) {
+  background: #e86a2e;
+  border-color: #e86a2e;
+}
+[data-brand='murmur'] .btn.danger {
+  color: var(--murmur-burnt);
+  border-color: var(--murmur-burnt);
+}
+[data-brand='murmur'] .input:focus,
+[data-brand='murmur'] .select:focus,
+[data-brand='murmur'] .textarea:focus {
+  border-color: var(--murmur-ember);
+  box-shadow: 0 0 0 3px var(--murmur-ember-dim);
+}
+[data-brand='murmur'] :focus-visible {
+  outline-color: var(--murmur-ember);
+}
+
+/* ── warm orbs (cinema) ─────────────────────────────────────────────── */
+[data-brand='murmur'] .orb-a {
+  background: color-mix(in srgb, var(--murmur-ember) 30%, transparent);
+}
+[data-brand='murmur'] .orb-b {
+  background: color-mix(in srgb, var(--murmur-clay) 24%, transparent);
+}
+[data-brand='murmur'] .orb-c {
+  background: color-mix(in srgb, var(--amber) 16%, transparent);
+}
+[data-brand='murmur'] .grid {
+  opacity: 0.22;
+}
+
+/* ── ember pulse ────────────────────────────────────────────────────── */
+@keyframes murmur-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow:
+      0 0 0 1px var(--murmur-ember-dim),
+      0 0 16px -8px var(--murmur-ember);
+  }
+  50% {
+    transform: scale(1.015);
+    box-shadow:
+      0 0 0 1px var(--murmur-ember-dim),
+      0 0 22px -6px var(--murmur-ember);
+  }
+}
+[data-brand='murmur'] .pending,
+[data-brand='murmur'] .banner.accepted {
+  animation: murmur-pulse 3.2s var(--ease) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-brand='murmur'] .orb {
+    animation: none !important;
+  }
+  [data-brand='murmur'] .pending,
+  [data-brand='murmur'] .banner.accepted {
+    animation: none !important;
+  }
+}

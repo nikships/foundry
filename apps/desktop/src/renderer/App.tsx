@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { api, menu } from './api.js';
 import { AppProvider, useApp } from './stores/app.js';
 import Sidebar from './components/Sidebar.js';
@@ -11,7 +11,10 @@ import SettingsScreen from './screens/SettingsScreen.js';
 import OnboardingScreen from './screens/OnboardingScreen.js';
 import InterruptSheet from './components/InterruptSheet.js';
 import UpdateBanner from './components/UpdateBanner.js';
+import { useBrand } from './hooks/useBrand.js';
 import type { UpdateStatus } from '@shared/types.js';
+
+const PrismField = lazy(() => import('./components/prism/PrismField.js'));
 
 export type View = 'runs' | 'inspector' | 'pipelines' | 'roster' | 'settings';
 
@@ -123,6 +126,9 @@ function AppInner(): React.JSX.Element {
     });
   }, [go, addProject]);
 
+  const brand = useBrand();
+  const isPrism = brand === 'prism';
+
   let main: React.JSX.Element | null = null;
   if (view === 'runs' && openRunId) {
     main = (
@@ -156,7 +162,12 @@ function AppInner(): React.JSX.Element {
 
   return (
     <div className="shell">
-      <div className="titlebar" />
+      {isPrism && (
+        <Suspense fallback={null}>
+          <PrismField variant="background" />
+        </Suspense>
+      )}
+      <div className="titlebar">{isPrism && <div className="prism-header-rule" aria-hidden />}</div>
 
       {needsOnboarding ? (
         <OnboardingScreen onDone={finishOnboarding} />

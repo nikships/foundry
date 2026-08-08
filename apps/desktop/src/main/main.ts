@@ -8,8 +8,10 @@ import { app, BrowserWindow, Menu, shell } from 'electron';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdirSync } from 'node:fs';
+import type { BrandId } from '@shared/types.js';
 import { AppContext } from './context.js';
 import { registerIpc } from './ipc/index.js';
+import { readBrandSync } from './store/settings.js';
 import { killAll } from './system/procs.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -17,7 +19,18 @@ const DEV_URL = process.env.ELECTRON_RENDERER_URL;
 
 let ctx: AppContext | null = null;
 
-function createWindow(): BrowserWindow {
+/**
+ * The window's own backgroundColor is what the user sees between the frame
+ * appearing and the first paint, so it has to be the brand's base colour.
+ * Neither brand uses vibrancy: both paint an opaque base (Prism's OLED void,
+ * Murmur's warm hearth) and desktop bleed-through would wash them out.
+ */
+const BRAND_BACKGROUND: Record<BrandId, string> = {
+  prism: '#000000',
+  murmur: '#1A1410',
+};
+
+function createWindow(brand: BrandId): BrowserWindow {
   const window = new BrowserWindow({
     width: 1440,
     height: 940,
@@ -27,9 +40,7 @@ function createWindow(): BrowserWindow {
     title: 'Foundry',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 18, y: 22 },
-    vibrancy: 'under-window',
-    visualEffectState: 'followWindow',
-    backgroundColor: '#06080f',
+    backgroundColor: BRAND_BACKGROUND[brand],
     webPreferences: {
       preload: join(here, '../preload/bridge.cjs'),
       contextIsolation: true,
@@ -49,9 +60,9 @@ function createWindow(): BrowserWindow {
   });
 
   if (DEV_URL) {
-    void window.loadURL(DEV_URL);
+    void window.loadURL(`${DEV_URL}?brand=${brand}`);
   } else {
-    void window.loadFile(join(here, '../renderer/index.html'));
+    void window.loadFile(join(here, '../renderer/index.html'), { query: { brand } });
   }
   return window;
 }
@@ -149,6 +160,11 @@ if (!app.requestSingleInstanceLock()) {
     const supportDir = join(app.getPath('userData'), 'foundry');
     mkdirSync(supportDir, { recursive: true });
 
+    // The brand has to be known before the window exists, so the frame is
+    // already the right colour and the renderer can be told which palette to
+    // load. `ctx` (and with it SettingsStore) is only built further down.
+    const brand: BrandId = readBrandSync(supportDir);
+
     // Packaged, assets sit beside the app resources; in dev they are in-repo.
     const assetsRoot = app.isPackaged
       ? join(process.resourcesPath, 'assets')
@@ -170,14 +186,14 @@ if (!app.requestSingleInstanceLock()) {
       console.warn(`finalised ${swept.runsFinalised.length} run(s) orphaned by a previous launch`);
     }
 
-    createWindow();
+    createWindow(brand);
 
     // A packaged app should discover updates without requiring the user to
     // find the menu item first. The service is a no-op in development builds.
     void ctx.updater.check();
 
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      if (BrowserWindow.getAllWindows().length === 0) createWindow(brand);
     });
   });
 

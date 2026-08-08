@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import type { CliDescriptor, CliVendor, DoctorCheck } from '@shared/types.js';
 import { CLI_VENDOR_IDS } from '@shared/types.js';
 import { api } from '../api.js';
@@ -6,7 +6,11 @@ import { useApp } from '../stores/app.js';
 import AgentAvatar from '../components/AgentAvatar.js';
 import { CliIcon } from '../components/BrandIcon.js';
 import DoctorList from '../components/DoctorList.js';
+import { useBrand } from '../hooks/useBrand.js';
 import { useBrandedAsset } from '../hooks/useBrandedAsset.js';
+
+const MurmurFlock = lazy(() => import('../components/MurmurFlock.js'));
+const PrismField = lazy(() => import('../components/prism/PrismField.js'));
 
 type StepId = 'welcome' | 'factory' | 'roster' | 'clis' | 'doctor' | 'project';
 
@@ -70,7 +74,9 @@ export default function OnboardingScreen({ onDone }: { onDone: () => void }): Re
   );
   const [renamingId, setRenamingId] = useState<string | null>(null);
 
+  const brand = useBrand();
   const step = STEPS[stepIndex]!.id;
+  const isWelcome = step === 'welcome';
   const blocking = useMemo(() => checks.filter((c) => !c.ok && c.blocking), [checks]);
   const defaultCli = settings?.defaultCli ?? 'droid';
   const defaultCliLabel = clis.find((c) => c.id === defaultCli)?.label ?? defaultCli;
@@ -339,8 +345,23 @@ export default function OnboardingScreen({ onDone }: { onDone: () => void }): Re
         <div className="layout" key={step}>
           <aside className="cinema">
             <div className="frame">
-              <SceneArt path={sceneForStep()} className="hero-shot" />
-              {step === 'welcome' && (
+              {/* The welcome step is the one place a brand gets a moving
+                  surface of its own; every later step is back to scene art. */}
+              {isWelcome && brand === 'prism' ? (
+                <Suspense fallback={<SceneArt path={sceneForStep()} className="hero-shot" />}>
+                  <div className="prism-hero-frame">
+                    <PrismField variant="hero" />
+                  </div>
+                </Suspense>
+              ) : (
+                <SceneArt path={sceneForStep()} className="hero-shot" />
+              )}
+              {isWelcome && brand === 'murmur' && (
+                <Suspense fallback={null}>
+                  <MurmurFlock />
+                </Suspense>
+              )}
+              {isWelcome && brand === 'murmur' && (
                 <div className="orbit">
                   {BUILTIN_AGENTS.map((agent, i) => (
                     <span

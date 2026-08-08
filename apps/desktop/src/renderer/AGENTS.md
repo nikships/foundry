@@ -17,4 +17,10 @@ push channels only (`runs-changed`, `interrupts-changed`, `settings-changed`,
   Droid's mark is an inline SVG; lobehub's `ProviderIcon` misses kimi/zai/
   junie/codex/grok/droid and would show the same placeholder for all. The map
   is written out, not inferred.
-- Design tokens in `design/tokens.css`. No emoji in UI copy.
+- Structural tokens in `design/tokens-base.css`, colours in
+  `design/tokens-{prism,murmur}.css`. Exactly one brand sheet is imported, in
+  `main.tsx`, chosen from `?brand=` which main puts on the URL before the
+  window exists. Never import a brand sheet from a component: a Prism build
+  must not ship Murmur's palette. No emoji in UI copy.
+- Brand is fixed per window (switching requires a relaunch). Read it with
+  `useBrand()`, never from settings, which lags the window by a restart.

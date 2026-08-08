@@ -338,18 +338,14 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
       setBrandBusy(false);
       return;
     }
-    // Patch already tried to hot-swap the dock icon in main. Confirm it and
-    // fall back to a relaunch prompt if the OS ignored the swap (common on mac
-    // if the app is not focused or the icon file is missing).
     try {
-      const res = await api.brand.applyDockIcon();
-      if (!res.applied) setNeedsRelaunch(true);
-      else setBrandNote(`Switched to ${BRAND_LABELS[brand]} — visuals updated instantly.`);
+      await api.brand.applyDockIcon();
     } catch {
-      setNeedsRelaunch(true);
-    } finally {
-      setBrandBusy(false);
+      // Best-effort only, never blocks brand switch.
     }
+    setBrandNote(`Switched to ${BRAND_LABELS[brand]}. Relaunch to apply theme.`);
+    setNeedsRelaunch(true);
+    setBrandBusy(false);
   };
 
   useEffect(() => {
@@ -445,14 +441,13 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                   </span>
                 </div>
                 <span className="hint">
-                  Switches the app icon, agent glyphs, concept icons, and scenes between the two
-                  packs in <code>assets/brands/prism</code> and <code>assets/brands/murmur</code>.
-                  In-app visuals update instantly; the dock icon hot-swaps when possible.
+                  Switches the app icon and theme between Prism (OLED spectral) and Murmur (warm
+                  hearth). Theme applies after relaunch.
                 </span>
                 {brandNote && <span className="field-note ok">{brandNote}</span>}
                 {needsRelaunch && (
                   <div className="brand-relaunch">
-                    <span className="hint">Dock icon did not update. Relaunch to refresh it.</span>
+                    <span className="hint">Theme change needs a relaunch to take effect.</span>
                     <button className="btn sm" onClick={() => void relaunchApp()}>
                       Relaunch Foundry
                     </button>

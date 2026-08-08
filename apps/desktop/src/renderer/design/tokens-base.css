@@ -1,67 +1,15 @@
 /*
- * The visual contract. Every colour, size, and motion value in the app comes
- * from here, so a phase colour in the waterfall and the same phase's badge in a
- * list cannot drift apart.
- *
- * The palette is dark by construction: this is a tool for watching machines
- * work, and the status colours have to be the brightest thing on screen.
+ * tokens-base.css — structural tokens only (no colors).
+ * Color tokens live in tokens-prism.css / tokens-murmur.css.
+ * Every spacing, radius, type, motion, and layout value is here so a
+ * brand file never needs to re-declare them.
  */
 
 :root {
-  /* ── surfaces ─────────────────────────────────────────────────────────── */
-  --bg-void: #06080f;
-  --bg-base: #0a0e18;
-  --bg-panel: #0f1420;
-  --bg-raised: #141a28;
-  --bg-hover: #1a2232;
-  --bg-active: #212b3d;
-  --bg-input: #080b13;
-
-  /* Vibrancy shows through where the window is translucent. */
-  --bg-sidebar: rgba(10, 14, 24, 0.72);
-  --bg-titlebar: rgba(6, 8, 15, 0.6);
-
-  /* ── lines ────────────────────────────────────────────────────────────── */
-  --line-faint: rgba(255, 255, 255, 0.05);
-  --line: rgba(255, 255, 255, 0.09);
-  --line-strong: rgba(255, 255, 255, 0.16);
-
-  /* ── text ─────────────────────────────────────────────────────────────── */
-  --text: #e8ecf4;
-  --text-dim: #9aa6bd;
-  --text-faint: #6b7689;
-  --text-ghost: #47506180;
-
-  /* ── accents ──────────────────────────────────────────────────────────── */
-  --cyan: #5ad2dd;
-  --cyan-dim: #5ad2dd28;
-  --purple: #c89bff;
-  --purple-dim: #c89bff28;
-  --amber: #e8b64a;
-  --amber-dim: #e8b64a28;
-  --green: #4ade80;
-  --green-dim: #4ade8028;
-  --red: #ff6f67;
-  --red-dim: #ff6f6728;
-  --blue: #6aa8ff;
-  --blue-dim: #6aa8ff28;
-
-  /* ── status ───────────────────────────────────────────────────────────── */
-  --status-queued: var(--text-faint);
-  --status-running: var(--cyan);
-  --status-success: var(--green);
-  --status-fail: var(--red);
-  --status-skipped: var(--text-faint);
-  --status-accepted: var(--green);
-  --status-rejected: var(--amber);
-  --status-failed: var(--red);
-  --status-killed: var(--text-faint);
-
   /* ── type ─────────────────────────────────────────────────────────────── */
   --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
   --font-mono: 'SF Mono', ui-monospace, 'JetBrains Mono', Menlo, monospace;
 
-  /* 16px is the floor: this app is read for hours at a time. */
   --text-xs: 12px;
   --text-sm: 14px;
   --text-base: 16px;
@@ -92,12 +40,6 @@
   --r-lg: 14px;
   --r-xl: 20px;
   --r-full: 999px;
-
-  /* ── depth ────────────────────────────────────────────────────────────── */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
-  --shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
-  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.6);
-  --glow-cyan: 0 0 0 1px var(--cyan-dim), 0 0 24px -6px var(--cyan);
 
   /* ── motion ───────────────────────────────────────────────────────────── */
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
@@ -141,7 +83,6 @@ body {
   line-height: var(--leading);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  /* The chrome is the app's own; text selection is for content only. */
   user-select: none;
   cursor: default;
 }

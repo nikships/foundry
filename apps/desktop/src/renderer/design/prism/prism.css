@@ -1,0 +1,222 @@
+/*
+ * prism.css — Prism chrome. Loaded only in a Prism window, so every rule here
+ * is still scoped to [data-brand='prism'] purely to keep the selectors honest
+ * when the two sheets are read side by side.
+ */
+
+/* ── stacking ────────────────────────────────────────────────────────────
+ * The field is a sibling of the sidebar and content, which both paint their
+ * own backgrounds and would otherwise cover it. The shell opens a stacking
+ * context, the field sits at its floor, and the content is thinned just enough
+ * for the wash to read through without costing legibility.
+ */
+[data-brand='prism'] .shell {
+  position: relative;
+  isolation: isolate;
+  background: var(--bg-void);
+}
+[data-brand='prism'] .sidebar,
+[data-brand='prism'] .content {
+  position: relative;
+  z-index: 1;
+}
+[data-brand='prism'] .content {
+  background: color-mix(in srgb, var(--bg-base) 92%, transparent);
+}
+
+/* ── header spectral rule ───────────────────────────────────────────────
+ * A single hairline is the only always-on brand mark in the chrome. The sweep
+ * is slow enough to read as light moving through glass rather than animation.
+ */
+[data-brand='prism'] .prism-header-rule {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--prism-spectrum);
+  background-size: 200% 100%;
+  opacity: 0.5;
+  pointer-events: none;
+  animation: spectral-sweep 32s linear infinite;
+}
+
+/* ── glass ──────────────────────────────────────────────────────────────
+ * Opt-in via .glass, plus the two surfaces that carry the brand: modal sheets
+ * and the onboarding cinema frame. Deliberately not every .card — a dozen
+ * simultaneous backdrop-filter layers costs more than it buys.
+ */
+[data-brand='prism'] .glass,
+[data-brand='prism'] .sheet,
+[data-brand='prism'] .cinema .frame {
+  position: relative;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border);
+  box-shadow:
+    var(--shadow),
+    inset 0 1px 0 var(--glass-highlight);
+  isolation: isolate;
+}
+
+[data-brand='prism'] .glass {
+  border-radius: var(--glass-radius);
+  overflow: hidden;
+}
+
+[data-brand='prism'] .glass-strong,
+[data-brand='prism'] .sheet {
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-saturate));
+  border-color: var(--glass-border-strong);
+}
+
+/* Chromatic rim: a 1px spectral edge drawn as a masked gradient border, so it
+ * sits on whatever radius the element already has. Not applied to .sheet: that
+ * scrolls its own content, and an absolutely positioned rim would scroll with
+ * it rather than staying on the edge. */
+[data-brand='prism'] .glass::after,
+[data-brand='prism'] .cinema .frame::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    var(--prism-neon-cyan),
+    var(--prism-neon-violet),
+    var(--prism-neon-magenta)
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity var(--normal) var(--ease);
+  pointer-events: none;
+}
+
+[data-brand='prism'] .glass:hover::after,
+[data-brand='prism'] .glass:focus-within::after,
+[data-brand='prism'] .cinema .frame::after {
+  opacity: 0.7;
+}
+
+/* ── hero disc ──────────────────────────────────────────────────────────
+ * Centred in the cinema frame rather than filling it, so the frame's own
+ * padding still reads and the disc stays circular at any window width.
+ */
+[data-brand='prism'] .prism-hero-frame {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(74%, 320px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  padding: 2px;
+  background: var(--prism-spectrum);
+  box-shadow:
+    var(--shadow-lg),
+    0 0 40px -12px var(--prism-neon-cyan);
+}
+
+[data-brand='prism'] .prism-hero-frame::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  pointer-events: none;
+}
+
+/* ── button press chromatic burst ───────────────────────────────────────
+ * Red and cyan split by a pixel and a half on press, the same trick the field
+ * shader uses for refraction, so the chrome and the field share a vocabulary.
+ */
+[data-brand='prism'] .btn:active:not(:disabled) {
+  transform: scale(0.985);
+}
+
+[data-brand='prism'] .btn.primary:active:not(:disabled) {
+  transform: scale(0.98);
+  box-shadow:
+    var(--prism-chroma-offset) 0 0 rgba(255, 59, 154, 0.35),
+    calc(-1 * var(--prism-chroma-offset)) 0 0 rgba(90, 210, 221, 0.35),
+    var(--prism-glow-cyan);
+  transition:
+    transform var(--fast) ease-out,
+    box-shadow var(--fast) ease-out;
+}
+
+/* ── focus ring picks up the spectrum ───────────────────────────────────── */
+[data-brand='prism'] :focus-visible {
+  outline-color: var(--prism-neon-cyan);
+  box-shadow: 0 0 0 4px var(--prism-neon-cyan-dim);
+}
+
+/* ── field containers ───────────────────────────────────────────────────── */
+.prism-field {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--slow) var(--ease);
+}
+.prism-field.ready {
+  opacity: 1;
+}
+.prism-field.background {
+  filter: blur(18px) saturate(1.1);
+}
+.prism-field canvas,
+.prism-hero canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.prism-hero {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+/* Reduced motion, no WebGL2, or a lost context all land here: the same
+ * spectral composition, painted once and never animated. */
+.prism-fallback {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(90, 210, 221, 0.18), transparent 55%),
+    radial-gradient(ellipse at 80% 70%, rgba(123, 92, 255, 0.16), transparent 60%),
+    radial-gradient(ellipse at 50% 90%, rgba(255, 59, 154, 0.1), transparent 65%),
+    linear-gradient(180deg, #000000 0%, #05070a 100%);
+}
+
+.prism-fallback.hero {
+  border-radius: 50%;
+}
+
+/* The field supersedes the generic onboarding backdrop. */
+[data-brand='prism'] .onboarding .orb,
+[data-brand='prism'] .onboarding .grid {
+  display: none;
+}
+
+/* ── fallback when backdrop-filter is unavailable ───────────────────────── */
+@supports not (backdrop-filter: blur(1px)) {
+  [data-brand='prism'] .glass,
+  [data-brand='prism'] .sheet,
+  [data-brand='prism'] .cinema .frame {
+    background: var(--bg-panel);
+  }
+}
