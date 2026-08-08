@@ -13,6 +13,7 @@ import EmptyState from '../components/EmptyState.js';
 import PhaseEditor from '../components/PhaseEditor.js';
 import { CliIcon } from '../components/BrandIcon.js';
 import DryRunSheet from '../components/DryRunSheet.js';
+import styles from './PipelinesScreen.module.css';
 
 /* ── phase track ─────────────────────────────────────────────────────── */
 
@@ -107,7 +108,7 @@ function PhaseTrack({
         <>
           {owner && <CliIcon vendor={owner.cli ?? 'droid'} size={11} />}
           <span>{phase.agent}</span>
-          <span className="pl-tr-meta-dim">·</span>
+          <span className={styles.plTrMetaDim}>·</span>
           <span>{phase.envelope ?? owner?.envelope ?? 'build'}</span>
         </>
       );
@@ -124,36 +125,36 @@ function PhaseTrack({
     return <span>yes / no</span>;
   };
   return (
-    <div className="pl-track-wrap">
-      <div className="pl-track">
+    <div className={styles.plTrackWrap}>
+      <div className={styles.plTrack}>
         {pipeline.phases.map((phase, i) => (
-          <div key={i} className="pl-tr-cell" role="presentation">
-            {i > 0 && <span className="pl-tr-link" aria-hidden />}
+          <div key={i} className={styles.plTrCell} role="presentation">
+            {i > 0 && <span className={styles.plTrLink} aria-hidden />}
             <button
               type="button"
-              className={`pl-tr-node ${selected === i ? 'on' : ''}`}
+              className={`${styles.plTrNode} ${selected === i ? styles.on : ''}`}
               style={{ ['--hue' as string]: hue(phase) }}
               onClick={() => onSelect(i)}
               aria-pressed={selected === i}
             >
-              <span className="pl-tr-num">{String(i + 1).padStart(2, '0')}</span>
-              <span className="pl-tr-box">
-                <span className="pl-tr-icon">
+              <span className={styles.plTrNum}>{String(i + 1).padStart(2, '0')}</span>
+              <span className={styles.plTrBox}>
+                <span className={styles.plTrIcon}>
                   <PhaseGlyph kind={phase.kind} />
                 </span>
-                <span className="pl-tr-name">{phase.name}</span>
+                <span className={styles.plTrName}>{phase.name}</span>
               </span>
-              <span className="pl-tr-kind">{KIND_LABEL[phase.kind]}</span>
-              <span className="pl-tr-meta">{meta(phase)}</span>
+              <span className={styles.plTrKind}>{KIND_LABEL[phase.kind]}</span>
+              <span className={styles.plTrMeta}>{meta(phase)}</span>
             </button>
           </div>
         ))}
-        <span className="pl-tr-link pl-tr-link-tail" aria-hidden />
-        <div className="pl-tr-add">
-          <span className="pl-tr-add-label">add</span>
+        <span className={`styles.plTrLink styles.plTrLinkTail`} aria-hidden />
+        <div className={styles.plTrAdd}>
+          <span className={styles.plTrAddLabel}>add</span>
           <button
             type="button"
-            className="pl-tr-addbtn"
+            className={styles.plTrAddbtn}
             style={{ ['--hue' as string]: 'var(--purple)' }}
             onClick={() => onAdd('agent')}
           >
@@ -161,7 +162,7 @@ function PhaseTrack({
           </button>
           <button
             type="button"
-            className="pl-tr-addbtn"
+            className={styles.plTrAddbtn}
             style={{ ['--hue' as string]: 'var(--amber)' }}
             onClick={() => onAdd('code')}
           >
@@ -169,7 +170,7 @@ function PhaseTrack({
           </button>
           <button
             type="button"
-            className="pl-tr-addbtn"
+            className={styles.plTrAddbtn}
             style={{ ['--hue' as string]: 'var(--blue)' }}
             onClick={() => onAdd('engineer')}
           >
@@ -177,54 +178,6 @@ function PhaseTrack({
           </button>
         </div>
       </div>
-      <style>{`
-        .pl-track-wrap { border-top: 1px solid var(--line); }
-        .pl-track {
-          display: flex; align-items: flex-start;
-          padding: var(--s6) var(--s6) var(--s7, 28px);
-          overflow-x: auto;
-        }
-        .pl-tr-cell { display: contents; }
-        .pl-tr-link { flex: 1 1 18px; min-width: 18px; height: 1px; background: var(--line-strong); margin-top: 25px; }
-        .pl-tr-link-tail { background: var(--line); }
-        .pl-tr-node {
-          flex: none; width: 150px; display: flex; flex-direction: column; align-items: flex-start;
-          border: none; background: transparent; color: inherit; font: inherit;
-          text-align: left; cursor: default;
-        }
-        .pl-tr-num { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em; color: var(--text-faint); margin-bottom: 8px; }
-        .pl-tr-box {
-          display: flex; align-items: center; gap: var(--s2);
-          width: 100%; height: 36px; padding: 0 10px;
-          border: 1px solid var(--line-strong); border-radius: 3px;
-          background: transparent;
-          transition: border-color var(--fast) var(--ease), background var(--fast) var(--ease);
-        }
-        .pl-tr-node:hover .pl-tr-box { border-color: color-mix(in srgb, var(--hue) 55%, transparent); }
-        .pl-tr-node.on .pl-tr-box { border-color: var(--hue); background: color-mix(in srgb, var(--hue) 6%, transparent); }
-        .pl-tr-icon { color: var(--hue); display: flex; align-items: center; flex: none; }
-        .pl-tr-name { font-size: var(--text-sm); color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: color var(--fast) var(--ease); }
-        .pl-tr-node:hover .pl-tr-name, .pl-tr-node.on .pl-tr-name { color: var(--text); }
-        .pl-tr-kind { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--hue); margin-top: 8px; }
-        .pl-tr-meta {
-          display: flex; align-items: center; gap: 5px; max-width: 100%;
-          margin-top: 4px; font-family: var(--font-mono); font-size: 11px; color: var(--text-faint);
-          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-        }
-        .pl-tr-meta-dim { opacity: 0.6; }
-        .pl-tr-add { flex: none; display: flex; align-items: center; gap: 6px; margin-top: 21px; }
-        .pl-tr-add-label { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--text-faint); margin-right: 2px; }
-        .pl-tr-addbtn {
-          display: inline-flex; align-items: center; gap: 6px;
-          height: 32px; padding: 0 10px;
-          border: 1px dashed var(--line-strong); border-radius: 3px;
-          background: transparent; color: var(--text-dim);
-          font: inherit; font-size: var(--text-xs); cursor: default; white-space: nowrap;
-          transition: color var(--fast) var(--ease), border-color var(--fast) var(--ease);
-        }
-        .pl-tr-addbtn svg { color: var(--hue); }
-        .pl-tr-addbtn:hover { color: var(--text); border-color: color-mix(in srgb, var(--hue) 55%, transparent); }
-      `}</style>
     </div>
   );
 }
@@ -502,48 +455,52 @@ export default function PipelinesScreen(): React.JSX.Element {
 
   return (
     <>
-      <div className="pl-screen">
+      <div className={styles.plScreen}>
         {/* ── switcher strip: pipelines as tabs, actions at the right ── */}
-        <div className="pl-switcher">
-          <span className="pl-mono pl-switcher-label">Pipelines</span>
-          <div className="pl-tabs" role="tablist" aria-label="Pipelines">
+        <div className={styles.plSwitcher}>
+          <span className={`styles.plMono styles.plSwitcherLabel`}>Pipelines</span>
+          <div className={styles.plTabs} role="tablist" aria-label="Pipelines">
             {pipelines.map((p) => (
               <button
                 key={p.id}
                 type="button"
                 role="tab"
                 aria-selected={p.id === selectedId}
-                className={`pl-tab ${p.id === selectedId ? 'on' : ''}`}
+                className={`${styles.plTab} ${p.id === selectedId ? styles.on : ''}`}
                 onClick={() => selectPipeline(p.id)}
               >
-                <span className="pl-tab-name">{p.name}</span>
-                <span className="pl-tab-count">{p.phases.length}</span>
-                {p.id === selectedId && <span className="pl-tab-rule" aria-hidden />}
+                <span className={styles.plTabName}>{p.name}</span>
+                <span className={styles.plTabCount}>{p.phases.length}</span>
+                {p.id === selectedId && <span className={styles.plTabRule} aria-hidden />}
               </button>
             ))}
-            <button type="button" className="pl-newtab" onClick={() => void createPipeline()}>
+            <button type="button" className={styles.plNewtab} onClick={() => void createPipeline()}>
               + New pipeline
             </button>
           </div>
           {draft && (
-            <div className="pl-actions">
+            <div className={styles.plActions}>
               <button
                 type="button"
-                className="pl-action"
+                className={styles.plAction}
                 disabled={!projectId}
                 title={!projectId ? 'Select a project first' : undefined}
                 onClick={() => void preview()}
               >
                 Dry run
               </button>
-              <span className="pl-action-sep" aria-hidden />
+              <span className={styles.plActionSep} aria-hidden />
               {selected && (
-                <button type="button" className="pl-action" onClick={() => void duplicate()}>
+                <button type="button" className={styles.plAction} onClick={() => void duplicate()}>
                   Duplicate
                 </button>
               )}
               {selected && !selected.builtin && (
-                <button type="button" className="pl-action danger" onClick={() => void remove()}>
+                <button
+                  type="button"
+                  className={`styles.plAction styles.danger`}
+                  onClick={() => void remove()}
+                >
                   Delete
                 </button>
               )}
@@ -552,28 +509,28 @@ export default function PipelinesScreen(): React.JSX.Element {
         </div>
 
         {draft && (
-          <div className="pl-scroll">
-            <div className="pl-page">
+          <div className={styles.plScroll}>
+            <div className={styles.plPage}>
               {/* ── identity ── */}
-              <div className="pl-identity">
-                <div className="pl-identity-main">
+              <div className={styles.plIdentity}>
+                <div className={styles.plIdentityMain}>
                   <input
-                    className="pl-title"
+                    className={styles.plTitle}
                     aria-label="Pipeline name"
                     value={draft.name}
                     onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                   />
                   <input
-                    className="pl-desc"
+                    className={styles.plDesc}
                     aria-label="Pipeline description"
                     value={draft.description}
                     placeholder="What is this pipeline for?"
                     onChange={(e) => setDraft({ ...draft, description: e.target.value })}
                   />
                 </div>
-                <div className="pl-identity-meta">
-                  <span className="pl-mono">Phases</span>
-                  <span className="pl-identity-count">{draft.phases.length}</span>
+                <div className={styles.plIdentityMeta}>
+                  <span className={styles.plMono}>Phases</span>
+                  <span className={styles.plIdentityCount}>{draft.phases.length}</span>
                 </div>
               </div>
 
@@ -586,12 +543,12 @@ export default function PipelinesScreen(): React.JSX.Element {
               />
 
               {/* ── phase rows ── */}
-              <section className="pl-phases" aria-label="Phases">
-                <div className="pl-section-head">
-                  <h2 className="pl-mono">Phases</h2>
-                  <span className="pl-section-count">{draft.phases.length} steps</span>
+              <section className={styles.plPhases} aria-label="Phases">
+                <div className={styles.plSectionHead}>
+                  <h2 className={styles.plMono}>Phases</h2>
+                  <span className={styles.plSectionCount}>{draft.phases.length} steps</span>
                 </div>
-                <div className="pl-phase-list">
+                <div className={styles.plPhaseList}>
                   {draft.phases.map((phase, i) => (
                     <PhaseEditor
                       key={i}
@@ -611,17 +568,17 @@ export default function PipelinesScreen(): React.JSX.Element {
               </section>
 
               {/* ── acceptance ── */}
-              <section className="pl-acceptance" aria-label="Acceptance">
-                <div className="pl-section-head">
-                  <h2 className="pl-mono">Acceptance</h2>
-                  <span className="pl-section-count">evaluated when the run settles</span>
+              <section className={styles.plAcceptance} aria-label="Acceptance">
+                <div className={styles.plSectionHead}>
+                  <h2 className={styles.plMono}>Acceptance</h2>
+                  <span className={styles.plSectionCount}>evaluated when the run settles</span>
                 </div>
-                <div className="pl-acceptance-row">
-                  <div className="pl-field">
-                    <span className="pl-field-label">A run counts as accepted when</span>
-                    <span className="pl-field-control">
+                <div className={styles.plAcceptanceRow}>
+                  <div className={styles.plField}>
+                    <span className={styles.plFieldLabel}>A run counts as accepted when</span>
+                    <span className={styles.plFieldControl}>
                       <select
-                        className="pl-select"
+                        className={styles.plSelect}
                         value={draft.acceptance.kind}
                         onChange={(e) => setAcceptanceKind(e.target.value as Acceptance['kind'])}
                       >
@@ -631,17 +588,17 @@ export default function PipelinesScreen(): React.JSX.Element {
                         <option value="phase_flag">A phase's envelope sets a flag</option>
                       </select>
                     </span>
-                    <span className="pl-field-hint">
+                    <span className={styles.plFieldHint}>
                       A run where every phase passed is not automatically a run that did what was
                       asked.
                     </span>
                   </div>
                   {acceptancePhase !== null && (
-                    <div className="pl-field">
-                      <span className="pl-field-label">Phase</span>
-                      <span className="pl-field-control">
+                    <div className={styles.plField}>
+                      <span className={styles.plFieldLabel}>Phase</span>
+                      <span className={styles.plFieldControl}>
                         <select
-                          className="pl-select"
+                          className={styles.plSelect}
                           value={acceptancePhase}
                           onChange={(e) => setAcceptancePhase(e.target.value)}
                         >
@@ -655,11 +612,11 @@ export default function PipelinesScreen(): React.JSX.Element {
                     </div>
                   )}
                   {draft.acceptance.kind === 'phase_flag' && (
-                    <div className="pl-field pl-field-narrow">
-                      <span className="pl-field-label">Flag</span>
-                      <span className="pl-field-control">
+                    <div className={`styles.plField styles.plFieldNarrow`}>
+                      <span className={styles.plFieldLabel}>Flag</span>
+                      <span className={styles.plFieldControl}>
                         <select
-                          className="pl-select"
+                          className={styles.plSelect}
                           value={(draft.acceptance as { flag: string }).flag}
                           onChange={(e) =>
                             setAcceptanceFlag(e.target.value as 'passed' | 'approved')
@@ -671,15 +628,15 @@ export default function PipelinesScreen(): React.JSX.Element {
                       </span>
                     </div>
                   )}
-                  <label className="pl-worktree">
+                  <label className={styles.plWorktree}>
                     <input
                       type="checkbox"
                       checked={draft.isolation !== false}
                       onChange={(e) => setDraft({ ...draft, isolation: e.target.checked })}
                     />
                     <span>
-                      <span className="pl-worktree-title">Isolated git worktree</span>
-                      <span className="pl-field-hint">
+                      <span className={styles.plWorktreeTitle}>Isolated git worktree</span>
+                      <span className={styles.plFieldHint}>
                         Each run gets its own checkout, so phases never touch your working tree.
                       </span>
                     </span>
@@ -691,30 +648,30 @@ export default function PipelinesScreen(): React.JSX.Element {
         )}
 
         {draft && (
-          <div className="pl-validation">
-            <span className="pl-mono">Validation</span>
-            <div className="pl-validation-items">
+          <div className={styles.plValidation}>
+            <span className={styles.plMono}>Validation</span>
+            <div className={styles.plValidationItems}>
               {readyCopy && (
                 <span
-                  className={`pl-val-item ${errors.length === 0 && warnings.length === 0 ? 'ok' : ''}`}
+                  className={`${styles.plValItem} ${errors.length === 0 && warnings.length === 0 ? 'ok' : ''}`}
                 >
                   {readyCopy}
                 </span>
               )}
               {[...errors, ...warnings].map((issue, i) => (
-                <span key={i} className={`pl-val-item ${issue.level}`}>
-                  <span className="pl-val-mark">{issue.level === 'error' ? '✕' : '!'}</span>
+                <span key={i} className={`${styles.plValItem} ${issue.level}`}>
+                  <span className={styles.plValMark}>{issue.level === 'error' ? '✕' : '!'}</span>
                   <strong>{issue.where}</strong> {issue.message}
                 </span>
               ))}
-              {dryRunError && <span className="pl-val-item error">{dryRunError}</span>}
+              {dryRunError && <span className={`styles.plValItem error`}>{dryRunError}</span>}
             </div>
-            <span className="pl-autosave">Changes save automatically</span>
+            <span className={styles.plAutosave}>Changes save automatically</span>
           </div>
         )}
 
         {!draft && (
-          <div className="pl-empty">
+          <div className={styles.plEmpty}>
             <EmptyState
               art="scenes/empty-state.png"
               title={pipelines.length ? 'No pipeline selected' : 'No pipelines yet'}
@@ -732,129 +689,6 @@ export default function PipelinesScreen(): React.JSX.Element {
         )}
         {dryRun && <DryRunSheet prompts={dryRun} onClose={() => setDryRun(null)} />}
       </div>
-      <style>{`
-        /* One continuous surface — structure from hairlines + type, never tinted columns. */
-        .pl-screen {
-          display: flex; flex-direction: column; height: 100%; min-height: 0;
-          background: var(--bg-base);
-        }
-        .pl-mono {
-          font-family: var(--font-mono); font-size: 10px; font-weight: 500;
-          text-transform: uppercase; letter-spacing: 0.16em; color: var(--text-dim);
-        }
-
-        /* switcher */
-        .pl-switcher {
-          flex: none; display: flex; align-items: center; gap: var(--s6);
-          padding: calc(var(--titlebar-h)) var(--s6) 0;
-          border-bottom: 1px solid var(--line);
-        }
-        .pl-switcher-label { color: var(--text-faint); padding-bottom: var(--s3); }
-        .pl-tabs { display: flex; align-items: stretch; gap: 2px; overflow-x: auto; min-width: 0; }
-        .pl-tab {
-          position: relative; display: flex; align-items: baseline; gap: 6px;
-          padding: var(--s2) var(--s3) var(--s3);
-          border: none; background: transparent; color: var(--text-faint);
-          font: inherit; font-size: var(--text-sm); cursor: default; white-space: nowrap;
-          transition: color var(--fast) var(--ease);
-        }
-        .pl-tab:hover { color: var(--text-dim); }
-        .pl-tab.on { color: var(--text); }
-        .pl-tab-count { font-family: var(--font-mono); font-size: 10px; color: var(--text-faint); }
-        .pl-tab-rule { position: absolute; left: var(--s2); right: var(--s2); bottom: -1px; height: 1px; background: var(--cyan); }
-        .pl-newtab {
-          border: none; background: transparent; color: var(--text-faint);
-          font: inherit; font-size: var(--text-xs); cursor: default; white-space: nowrap;
-          padding: var(--s2) var(--s3) var(--s3);
-          transition: color var(--fast) var(--ease);
-        }
-        .pl-newtab:hover { color: var(--text); }
-        .pl-actions { margin-left: auto; display: flex; align-items: center; gap: 2px; padding-bottom: var(--s2); flex: none; }
-        .pl-action {
-          display: inline-flex; align-items: center; gap: 6px;
-          padding: 4px 8px; border: none; border-radius: var(--r-sm);
-          background: transparent; color: var(--text-dim);
-          font: inherit; font-size: var(--text-xs); cursor: default; white-space: nowrap;
-          transition: color var(--fast) var(--ease);
-        }
-        .pl-action:hover:not(:disabled) { color: var(--text); }
-        .pl-action:disabled { opacity: 0.4; }
-        .pl-action.danger:hover { color: var(--red); }
-        .pl-action-sep { width: 1px; height: 14px; background: var(--line); margin: 0 4px; }
-
-        /* page */
-        .pl-scroll { flex: 1; min-height: 0; overflow-y: auto; }
-        .pl-page { display: flex; flex-direction: column; }
-
-        .pl-identity {
-          display: flex; align-items: flex-start; gap: var(--s10);
-          padding: var(--s7, 28px) var(--s6) var(--s6);
-        }
-        .pl-identity-main { flex: 1; min-width: 0; }
-        .pl-title, .pl-desc {
-          display: block; width: 100%; border: none; background: transparent;
-          color: inherit; font: inherit; padding: 2px 0;
-        }
-        .pl-title { font-size: 22px; font-weight: 600; letter-spacing: -0.015em; max-width: 36ch; }
-        .pl-desc { margin-top: var(--s2); font-size: var(--text-sm); color: var(--text-dim); max-width: 64ch; }
-        .pl-title:focus, .pl-desc:focus { outline: none; box-shadow: 0 1px 0 var(--line-strong); }
-        .pl-identity-meta { flex: none; padding-top: 10px; text-align: right; display: flex; flex-direction: column; gap: 6px; }
-        .pl-identity-meta .pl-mono { color: var(--text-faint); }
-        .pl-identity-count { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text-dim); }
-
-        .pl-section-head {
-          display: flex; align-items: baseline; gap: var(--s3);
-          padding: 0 var(--s6) var(--s3);
-        }
-        .pl-section-count { font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); }
-
-        .pl-phases { padding-top: var(--s5); }
-        .pl-phase-list { border-top: 1px solid var(--line); }
-
-        /* acceptance */
-        .pl-acceptance { border-top: 1px solid var(--line); padding: var(--s6) 0 var(--s8); }
-        .pl-acceptance-row {
-          display: flex; align-items: flex-start; gap: var(--s10); flex-wrap: wrap;
-          padding: 0 var(--s6);
-        }
-        .pl-field { display: flex; flex-direction: column; gap: 6px; min-width: 240px; max-width: 360px; }
-        .pl-field-narrow { min-width: 140px; }
-        .pl-field-label {
-          font-family: var(--font-mono); font-size: 10px; text-transform: uppercase;
-          letter-spacing: 0.14em; color: var(--text-faint);
-        }
-        .pl-field-control { border-bottom: 1px solid var(--line); padding-bottom: 6px; }
-        .pl-field-control:focus-within { border-bottom-color: var(--line-strong); }
-        .pl-select {
-          width: 100%; appearance: none; border: none; background: transparent;
-          color: var(--text); font: inherit; font-size: var(--text-sm); outline: none;
-        }
-        .pl-select option { background: var(--bg-base); color: var(--text); }
-        .pl-field-hint { font-size: 11px; line-height: 1.5; color: var(--text-faint); }
-        .pl-worktree { display: flex; gap: var(--s3); align-items: flex-start; padding-top: 18px; max-width: 300px; }
-        .pl-worktree input { margin-top: 2px; accent-color: var(--cyan); }
-        .pl-worktree-title { display: block; font-size: var(--text-sm); color: var(--text); margin-bottom: 4px; }
-
-        /* validation strip */
-        .pl-validation {
-          flex: none; display: flex; align-items: center; gap: var(--s6);
-          min-height: 40px; padding: var(--s2) var(--s6);
-          border-top: 1px solid var(--line);
-        }
-        .pl-validation .pl-mono { color: var(--text-faint); flex: none; }
-        .pl-validation-items {
-          flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--s6);
-          overflow-x: auto; white-space: nowrap;
-        }
-        .pl-val-item { font-size: var(--text-xs); color: var(--text-dim); display: inline-flex; align-items: center; gap: 6px; }
-        .pl-val-item.ok { color: var(--green); }
-        .pl-val-item.error { color: var(--red); }
-        .pl-val-item.warning { color: var(--amber); }
-        .pl-val-mark { flex: none; }
-        .pl-autosave { flex: none; font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.18em; color: var(--text-faint); }
-
-        .pl-empty { flex: 1; display: grid; place-items: center; padding: var(--s8); min-height: 0; }
-      `}</style>
     </>
   );
 }
