@@ -15,7 +15,7 @@ src/main/system/
   procs.ts     # spawn registry, kill tree, pid/command match
 ```
 
-Callers: `main.ts` (relaunch sweep trigger, quit kill-all), `context.ts` (outcome + badge + needs-input), `ipc.ts` (doctor and maintenance), `engine/registry.ts` (sweep and kill using procs helpers).
+Callers: `main.ts` (relaunch sweep trigger, quit kill-all), `context.ts` (outcome + badge + needs-input), `ipc/maintenance.ts` (doctor and maintenance), `engine/registry.ts` (sweep and kill using procs helpers).
 
 ## Key abstractions
 
@@ -108,7 +108,7 @@ Separately, **orphan worktrees** (disk) are listed and removed through maintenan
 |---|---|
 | [Trace](trace.md) | `processes` table; `finishRun` during sweep |
 | [Engine](engine.md) / registry | register children, kill run, sweep, live count for badge |
-| [IPC](ipc-and-preload.md) | `doctor.run`, maintenance orphans/retention/compact |
+| [IPC](ipc-and-preload.md) | `doctor.run`, maintenance orphans/retention/compact via `ipc/maintenance.ts` |
 | [Store](store.md) | Notification flags, retention days, droid path |
 | [Renderer](renderer.md) | DoctorList, settings notification toggles, interrupt sheet |
 
@@ -132,7 +132,7 @@ Separately, **orphan worktrees** (disk) are listed and removed through maintenan
 | `apps/desktop/src/main/engine/registry.ts` | Relaunch sweep, kill run, live set |
 | `apps/desktop/src/main/main.ts` | Sweep on ready; `killAll` on quit |
 | `apps/desktop/src/main/context.ts` | Wires notify + badge to run events |
-| `apps/desktop/src/main/ipc.ts` | Doctor and maintenance handlers |
+| `apps/desktop/src/main/ipc/maintenance.ts` | Doctor and maintenance handlers |
 
 ## Related
 

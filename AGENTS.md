@@ -64,7 +64,7 @@ src/shared/     types.ts (the contract) + ipc-contract.ts (the channels).
 ```
 
 The renderer's entire capability surface is `src/shared/ipc-contract.ts`. If the UI
-needs something new, add a channel there first, then a handler in `src/main/ipc.ts`.
+needs something new, add a channel there first, then a handler in the matching router under `src/main/ipc/`.
 
 ### Invariants worth not breaking
 

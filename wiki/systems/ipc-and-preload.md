@@ -12,7 +12,7 @@ Almost everything is request/response. A handful of **broadcast** events tell th
 
 ```
 src/shared/ipc-contract.ts   # channel names + FoundryApi types
-src/main/ipc.ts              # ipcMain.handle for every channel
+src/main/ipc/                # domain routers + index (ipcMain.handle per channel)
 src/preload/bridge.ts        # contextBridge → window.foundry
 src/renderer/api.ts          # plain() wrapper around window.foundry
 ```
@@ -61,11 +61,11 @@ Electron IPC uses the structured clone algorithm. Proxies, class instances, and 
 
 1. Declare the method and payload types on `FoundryApi` in `ipc-contract.ts`.
 2. Add the channel string to `IPC`.
-3. Implement `ipcMain.handle` in `ipc.ts` using `AppContext`.
+3. Implement `ipcMain.handle` in the matching router under `src/main/ipc/` using `AppContext`.
 4. Wire the same name on the preload `api` object.
 5. Call it from the renderer only through `api` from `api.ts`.
 
-### Handler patterns in `ipc.ts`
+### Handler patterns in `src/main/ipc/`
 
 - Handlers receive plain arguments and return plain data (or small result objects with `ok` / `issues`).
 - Project-scoped trace access goes through `tracerOf(projectId)` so missing projects return empty pages, not throws.
@@ -113,7 +113,7 @@ Window bootstrap in `main.ts` loads the preload path, enables `contextIsolation`
 | Symbol | File |
 |---|---|
 | `FoundryApi`, `IPC` | `apps/desktop/src/shared/ipc-contract.ts` |
-| `registerIpc` | `apps/desktop/src/main/ipc.ts` |
+| `registerIpc` | `apps/desktop/src/main/ipc/index.ts` |
 | `contextBridge.exposeInMainWorld('foundry', api)` | `apps/desktop/src/preload/bridge.ts` |
 | `export const api = guard(window.foundry)` | `apps/desktop/src/renderer/api.ts` |
 | `AppContext.broadcast` | `apps/desktop/src/main/context.ts` |
@@ -124,7 +124,7 @@ Window bootstrap in `main.ts` loads the preload path, enables `contextIsolation`
 |---|---|
 | `apps/desktop/src/shared/ipc-contract.ts` | Contract: channels, API types, page shapes |
 | `apps/desktop/src/shared/types.ts` | Domain types carried over IPC |
-| `apps/desktop/src/main/ipc.ts` | All invoke handlers |
+| `apps/desktop/src/main/ipc/` | Domain routers (one per channel namespace) |
 | `apps/desktop/src/main/context.ts` | Shared dependencies and broadcast |
 | `apps/desktop/src/main/main.ts` | Window + preload path + `registerIpc` |
 | `apps/desktop/src/preload/bridge.ts` | Sandboxed bridge |

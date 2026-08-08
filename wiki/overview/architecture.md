@@ -45,19 +45,19 @@ The SSSF skill (Python, Vue visualizer templates) lives under `.claude/skills/ss
 | `src/main/trace/` | better-sqlite3 schema + `Tracer` (only writer of run state) |
 | `src/main/store/` | JSON-backed settings, roster, pipelines, projects; builtins as seeds |
 | `src/main/system/` | Process registry, doctor checks, native notifications |
-| `src/main/ipc.ts` | Full invoke/handle surface for the renderer |
+| `src/main/ipc/` | Invoke/handle routers per domain for the renderer |
 | `src/main/main.ts` | Window lifecycle, menu, app bootstrap |
 
 ## Shared contract
 
-`src/shared/types.ts` and `src/shared/ipc-contract.ts` are the contract both processes import. If the UI needs a new capability, the channel is added there first, then a handler in `ipc.ts`, then the preload bridge.
+`src/shared/types.ts` and `src/shared/ipc-contract.ts` are the contract both processes import. If the UI needs a new capability, the channel is added there first, then a handler in the matching router under `src/main/ipc/`, then the preload bridge.
 
 ## Run data flow
 
 ```mermaid
 sequenceDiagram
   participant UI as Renderer
-  participant IPC as ipc.ts
+  participant IPC as ipc/index.ts + routers
   participant Ex as Executor
   participant Dr as Droid client
   participant Tr as Tracer / SQLite
