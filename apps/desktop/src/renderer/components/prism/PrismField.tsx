@@ -2,7 +2,8 @@
  * PrismField — the Prism brand's living surface. Raw WebGL2, no library.
  *
  * Two variants share one shader: `background` is a blurred full-bleed wash
- * behind the whole shell, `hero` is a crisp disc in the onboarding frame.
+ * behind the whole shell, `hero` is a raymarched black-glass prism turning
+ * in the onboarding frame.
  * Any failure path (no WebGL2, shader refuses to compile, context lost, OS
  * reduced-motion) renders the same static gradient, so the brand still reads
  * on a machine that cannot run the shader.
@@ -31,7 +32,7 @@ const SEED_KEY = 'foundry:prismSeed';
  * nothing to render it well under native resolution. */
 const MAX_PIXELS: Record<Variant, { w: number; h: number }> = {
   background: { w: 1024, h: 1024 },
-  hero: { w: 512, h: 512 },
+  hero: { w: 1280, h: 1280 },
 };
 
 /**
@@ -197,6 +198,8 @@ function PrismCanvas({
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       if (resizeCanvasToDisplaySize(canvas, dpr, maxW, maxH)) {
         gl.viewport(0, 0, canvas.width, canvas.height);
+        // The starfield fades grain/star detail in by resolution.
+        if (uniforms.uRes) gl.uniform2f(uniforms.uRes, canvas.width, canvas.height);
       }
       if (uniforms.uTime) gl.uniform1f(uniforms.uTime, t);
       if (uniforms.uAudio) gl.uniform1f(uniforms.uAudio, motion.audioSmooth);

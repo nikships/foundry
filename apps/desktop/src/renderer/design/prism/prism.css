@@ -106,32 +106,19 @@
   opacity: 0.7;
 }
 
-/* ── hero disc ──────────────────────────────────────────────────────────
- * Centred in the cinema frame rather than filling it, so the frame's own
- * padding still reads and the disc stays circular at any window width.
+/* ── hero prism ─────────────────────────────────────────────────────────
+ * A transparent stage centred in the cinema frame; the shader draws the
+ * prism's own silhouette and halo, so the container carries no chrome of
+ * its own — a ring or border here would fight the rotating shape.
  */
 [data-brand='prism'] .prism-hero-frame {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: min(74%, 320px);
+  width: min(96%, 560px);
   aspect-ratio: 1;
-  border-radius: 50%;
-  padding: 2px;
-  background: var(--prism-spectrum);
-  box-shadow:
-    var(--shadow-lg),
-    0 0 40px -12px var(--prism-neon-cyan);
-}
-
-[data-brand='prism'] .prism-hero-frame::after {
-  content: '';
-  position: absolute;
-  inset: 2px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  pointer-events: none;
+  filter: drop-shadow(0 0 44px rgba(90, 210, 221, 0.25));
 }
 
 /* ── button press chromatic burst ───────────────────────────────────────
@@ -184,8 +171,7 @@
 .prism-hero {
   position: absolute;
   inset: 0;
-  border-radius: 50%;
-  overflow: hidden;
+  pointer-events: none;
 }
 
 /* Reduced motion, no WebGL2, or a lost context all land here: the same
@@ -202,8 +188,9 @@
     linear-gradient(180deg, #000000 0%, #05070a 100%);
 }
 
+/* Static stand-in keeps the prism silhouette rather than a disc. */
 .prism-fallback.hero {
-  border-radius: 50%;
+  clip-path: polygon(50% 7%, 93% 86%, 7% 86%);
 }
 
 /* The field supersedes the generic onboarding backdrop. */
