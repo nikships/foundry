@@ -2,9 +2,15 @@
   display: flex;
   align-items: center;
   gap: var(--s1);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   min-width: 0;
-  flex: 0 1 auto;
+  flex: 1 1 0%;
+  padding-right: var(--s3);
+  scrollbar-width: none;
+}
+.ribbon::-webkit-scrollbar {
+  display: none;
 }
 .chip {
   padding: 2px var(--s2);

@@ -16,6 +16,7 @@
   font: inherit;
   font-size: var(--text-xs);
   cursor: default;
+  white-space: nowrap;
 }
 .mode:hover {
   color: var(--text);

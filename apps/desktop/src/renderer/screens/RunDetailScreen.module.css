@@ -12,6 +12,7 @@
 }
 .grow {
   flex: 1;
+  min-width: 0;
 }
 .action-err {
   margin: var(--s3) var(--s6) 0;

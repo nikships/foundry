@@ -152,7 +152,7 @@ function PhaseTrack({
             </button>
           </div>
         ))}
-        <span className={`styles.plTrLink styles.plTrLinkTail`} aria-hidden />
+        <span className={`${styles.plTrLink} ${styles.plTrLinkTail}`} aria-hidden />
         <div className={styles.plTrAdd}>
           <span className={styles.plTrAddLabel}>add</span>
           <button
@@ -425,7 +425,7 @@ export default function PipelinesScreen(): React.JSX.Element {
       <div className={styles.plScreen}>
         {/* ── switcher strip: pipelines as tabs, actions at the right ── */}
         <div className={styles.plSwitcher}>
-          <span className={`styles.plMono styles.plSwitcherLabel`}>Pipelines</span>
+          <span className={`${styles.plMono} ${styles.plSwitcherLabel}`}>Pipelines</span>
           <div className={styles.plTabs} role="tablist" aria-label="Pipelines">
             {pipelines.map((p) => (
               <button
@@ -465,7 +465,7 @@ export default function PipelinesScreen(): React.JSX.Element {
               {selected && !selected.builtin && (
                 <button
                   type="button"
-                  className={`styles.plAction styles.danger`}
+                  className={`${styles.plAction} ${styles.danger}`}
                   onClick={() => void remove()}
                 >
                   Delete
@@ -579,7 +579,7 @@ export default function PipelinesScreen(): React.JSX.Element {
                     </div>
                   )}
                   {draft.acceptance.kind === 'phase_flag' && (
-                    <div className={`styles.plField styles.plFieldNarrow`}>
+                    <div className={`${styles.plField} ${styles.plFieldNarrow}`}>
                       <span className={styles.plFieldLabel}>Flag</span>
                       <span className={styles.plFieldControl}>
                         <select
@@ -631,7 +631,7 @@ export default function PipelinesScreen(): React.JSX.Element {
                   <strong>{issue.where}</strong> {issue.message}
                 </span>
               ))}
-              {dryRunError && <span className={`styles.plValItem error`}>{dryRunError}</span>}
+              {dryRunError && <span className={`${styles.plValItem} error`}>{dryRunError}</span>}
             </div>
             <span className={styles.plAutosave}>Changes save automatically</span>
           </div>

@@ -173,9 +173,9 @@ export default function RunsScreen({
               ))}
             </select>
             {pipeline && <PipelineRibbon pipeline={pipeline} />}
-            <div className={styles.grow} />
             <Button
               variant="primary"
+              className={styles.startButton}
               disabled={!canStart || starting}
               title={startDisabledReason || undefined}
               onClick={() => void start()}

@@ -50,15 +50,21 @@
   margin-top: var(--s3);
   padding-top: var(--s3);
   border-top: 1px solid var(--line-faint);
+  min-width: 0;
 }
 .pipeline {
   width: auto;
-  min-width: 190px;
-  flex: none;
+  max-width: 220px;
+  min-width: 160px;
+  flex: 0 0 auto;
 }
 .grow {
   flex: 1;
   min-width: 0;
+}
+.start-button {
+  flex: none;
+  flex-shrink: 0;
 }
 .controls kbd {
   font-family: var(--font);

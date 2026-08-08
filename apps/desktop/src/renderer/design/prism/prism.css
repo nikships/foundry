@@ -35,7 +35,7 @@
   flex: none;
   background: var(--prism-spectrum-v);
   background-size: 100% 200%;
-  opacity: 0.5;
+  opacity: 0.2;
   pointer-events: none;
   animation: spectral-sweep-v 32s linear infinite;
 }
