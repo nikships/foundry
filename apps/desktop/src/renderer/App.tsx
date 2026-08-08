@@ -8,7 +8,7 @@ import InspectorScreen from './screens/InspectorScreen.js';
 import PipelinesScreen from './screens/PipelinesScreen.js';
 import RosterScreen from './screens/RosterScreen.js';
 import SettingsScreen from './screens/SettingsScreen.js';
-import OnboardingScreen from './screens/OnboardingScreen.js';
+import OnboardingShell from './screens/onboarding/OnboardingShell.js';
 import InterruptSheet from './components/InterruptSheet.js';
 import UpdateBanner from './components/UpdateBanner.js';
 import { useBrand } from './hooks/useBrand.js';
@@ -170,7 +170,7 @@ function AppInner(): React.JSX.Element {
       <div className="titlebar">{isPrism && <div className="prism-header-rule" aria-hidden />}</div>
 
       {needsOnboarding ? (
-        <OnboardingScreen onDone={finishOnboarding} />
+        <OnboardingShell onDone={finishOnboarding} />
       ) : ready ? (
         <>
           <Sidebar
