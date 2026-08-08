@@ -18,6 +18,7 @@ import { CliIcon } from './BrandIcon.js';
 import ModelPicker from './ModelPicker.js';
 import DetectionPanel from './DetectionPanel.js';
 import { Field, Select, TextInput } from './ui/Field.js';
+import { Button } from './ui/Button.js';
 import styles from './ProjectCommands.module.css';
 
 interface TryState {
@@ -228,8 +229,8 @@ export default function ProjectCommands({
                     placeholder="npm test"
                     onChange={(e) => setArgv(i, e.target.value)}
                   />
-                  <button
-                    className="btn sm"
+                  <Button
+                    size="sm"
                     disabled={!command.argv.length || result?.running}
                     title={
                       !command.argv.length
@@ -241,10 +242,10 @@ export default function ProjectCommands({
                     onClick={() => void tryIt(command.name, command.argv)}
                   >
                     {result?.running ? 'Running…' : 'Try it'}
-                  </button>
-                  <button className="btn sm ghost" onClick={() => remove(i)}>
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => remove(i)}>
                     ✕
-                  </button>
+                  </Button>
                 </div>
                 {result && !result.running && (
                   <div className={`${styles.result} ${result.passed ? styles.ok : ''}`}>
@@ -265,25 +266,25 @@ export default function ProjectCommands({
             );
           })}
           <div className="row">
-            <button className="btn sm" onClick={add}>
+            <Button size="sm" onClick={add}>
               Add command
-            </button>
-            <button
-              className="btn sm"
+            </Button>
+            <Button
+              size="sm"
               disabled={sniffing}
               title="Reads the repo's manifests. Free, no model."
               onClick={() => void sniff()}
             >
               {sniffing ? 'Reading manifests…' : 'Detect from manifests'}
-            </button>
-            <button
-              className="btn sm"
+            </Button>
+            <Button
+              size="sm"
               disabled={starting || detectionLive}
               title={`Asks ${effectiveCli} to read the repo and propose commands.`}
               onClick={() => void askAgent()}
             >
               {starting || detectionLive ? 'Asking AI…' : 'Ask AI to find commands'}
-            </button>
+            </Button>
           </div>
         </div>
       </Field>
@@ -347,9 +348,9 @@ export default function ProjectCommands({
                   <span className="faint">
                     {c.source}, exit {c.exitCode ?? '—'} in {duration(c.durationMs)}
                   </span>
-                  <button className="btn sm" onClick={() => accept(c)}>
+                  <Button size="sm" onClick={() => accept(c)}>
                     Use
-                  </button>
+                  </Button>
                 </div>
               ))}
             </div>

@@ -1,5 +1,6 @@
 import type { View } from '../App.js';
 import { useApp } from '../stores/app.js';
+import { Button } from './ui/Button.js';
 import styles from './Sidebar.module.css';
 
 const items: { id: View; label: string; key: string }[] = [
@@ -56,9 +57,9 @@ export default function Sidebar({
             ))}
           </select>
         )}
-        <button className="btn sm" onClick={onAddProject}>
+        <Button size="sm" onClick={onAddProject}>
           {projects.length ? 'Add another project…' : 'Add a project…'}
-        </button>
+        </Button>
         {project && (
           <p className={`${styles.path} mono faint`} title={project.path}>
             {shortPath}

@@ -9,6 +9,7 @@ import PhaseDrawer from '../components/PhaseDrawer.js';
 import StatusBadge from '../components/StatusBadge.js';
 import CostTable from '../components/CostTable.js';
 import OutcomeBanner from '../components/OutcomeBanner.js';
+import { Button } from '../components/ui/Button.js';
 import styles from './RunDetailScreen.module.css';
 
 export default function RunDetailScreen({
@@ -144,26 +145,27 @@ export default function RunDetailScreen({
   return (
     <div className={styles.screen}>
       <header className={styles.head}>
-        <button className="btn ghost sm back" onClick={onBack}>
+        <Button variant="ghost" size="sm" className="back" onClick={onBack}>
           ← Runs
-        </button>
-        <button className="btn ghost sm" onClick={() => onOpenInspector(runId)}>
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => onOpenInspector(runId)}>
           Inspector
-        </button>
+        </Button>
         <div className={styles.grow} />
         {view.live && (
-          <button
-            className="btn danger sm"
+          <Button
+            variant="danger"
+            size="sm"
             disabled={killing}
             title={killing ? 'Killing…' : 'Stop the run without deleting its branch'}
             onClick={() => void kill()}
           >
             {killing ? 'Killing…' : 'Kill run'}
-          </button>
+          </Button>
         )}
-        <button className="btn ghost sm" onClick={() => setShowCost(!showCost)}>
+        <Button variant="ghost" size="sm" onClick={() => setShowCost(!showCost)}>
           {showCost ? 'Hide cost' : 'Cost'}
-        </button>
+        </Button>
       </header>
       {bannerError && (
         <p className={styles.actionErr} role="alert">

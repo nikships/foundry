@@ -3,6 +3,7 @@ import { CliIcon } from '../../components/BrandIcon.js';
 import DoctorList from '../../components/DoctorList.js';
 import { useOnboarding } from './OnboardingContext.js';
 import { StepFooter } from './shared.js';
+import { Button } from '../../components/ui/Button.js';
 import styles from './DoctorScreen.module.css';
 
 export default function DoctorScreen(): React.JSX.Element {
@@ -149,9 +150,11 @@ export default function DoctorScreen(): React.JSX.Element {
               <span className={styles.obDocPanelTitle}>
                 Diagnostics <em>· {checks.length} checks</em>
               </span>
-              <button
+              <Button
                 type="button"
-                className={`btn sm ghost ${styles.obDocRecheck}`}
+                variant="ghost"
+                size="sm"
+                className={styles.obDocRecheck}
                 onClick={() => void recheck()}
                 disabled={checking}
                 aria-label="Re-check environment"
@@ -179,7 +182,7 @@ export default function DoctorScreen(): React.JSX.Element {
                   />
                 </svg>
                 {checking ? 'Checking…' : 'Re-check'}
-              </button>
+              </Button>
             </div>
 
             <DoctorList checks={checks} onRecheck={() => void recheck()} />

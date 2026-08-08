@@ -8,6 +8,7 @@ import { runDuration } from '../derive.js';
 import StatusBadge from '../components/StatusBadge.js';
 import PipelineRibbon from '../components/PipelineRibbon.js';
 import EmptyState from '../components/EmptyState.js';
+import { Button } from '../components/ui/Button.js';
 import styles from './RunsScreen.module.css';
 
 export default function RunsScreen({
@@ -173,15 +174,15 @@ export default function RunsScreen({
             </select>
             {pipeline && <PipelineRibbon pipeline={pipeline} />}
             <div className={styles.grow} />
-            <button
-              className="btn primary"
+            <Button
+              variant="primary"
               disabled={!canStart || starting}
               title={startDisabledReason || undefined}
               onClick={() => void start()}
             >
               {starting ? 'Starting…' : 'Start run'}
               {canStart && !starting && <kbd>⌘↵</kbd>}
-            </button>
+            </Button>
           </div>
           {!canStart && startDisabledReason && (
             <p className={`${styles.hintLine} faint`}>{startDisabledReason}</p>
@@ -197,9 +198,9 @@ export default function RunsScreen({
                   : ''}
                 . Starting will detect them from the repo (and ask an agent if needed).
               </p>
-              <button className="btn sm" onClick={openProjectCommands}>
+              <Button size="sm" onClick={openProjectCommands}>
                 Configure commands
-              </button>
+              </Button>
             </div>
           )}
           {blockingPreflight.length > 0 && (
@@ -222,9 +223,9 @@ export default function RunsScreen({
             </ul>
           )}
           {issues.some((i) => i.message.includes('project command')) && (
-            <button className={`btn sm ${styles.fix}`} onClick={openProjectCommands}>
+            <Button size="sm" className={styles.fix} onClick={openProjectCommands}>
               Open project commands
-            </button>
+            </Button>
           )}
         </section>
       ) : null}
@@ -234,9 +235,9 @@ export default function RunsScreen({
           body="Foundry runs against a git repository. Add one to get started."
         >
           {onAddProject && (
-            <button className="btn primary" onClick={onAddProject}>
+            <Button variant="primary" onClick={onAddProject}>
               Add a project…
-            </button>
+            </Button>
           )}
         </EmptyState>
       ) : (
@@ -244,9 +245,9 @@ export default function RunsScreen({
           {listError && (
             <div className={styles.listErr} role="alert">
               <span>Could not load runs: {listError}</span>
-              <button className="btn sm" onClick={() => void refreshList()}>
+              <Button size="sm" onClick={() => void refreshList()}>
                 Retry
-              </button>
+              </Button>
             </div>
           )}
           {loading && !runs.length && !listError && (

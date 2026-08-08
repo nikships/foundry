@@ -1,5 +1,6 @@
 import type { DoctorCheck } from '@shared/types.js';
 import { api } from '../api.js';
+import { Button } from './ui/Button.js';
 import styles from './DoctorList.module.css';
 
 export default function DoctorList({
@@ -31,9 +32,9 @@ export default function DoctorList({
     <section className={styles.doctor}>
       <div className={`spread ${styles.head}`}>
         <h3>{title}</h3>
-        <button className="btn sm ghost" onClick={onRecheck}>
+        <Button variant="ghost" size="sm" onClick={onRecheck}>
           Re-check
-        </button>
+        </Button>
       </div>
       <ul>
         {checks.map((check) => (
@@ -44,9 +45,9 @@ export default function DoctorList({
               <em className="faint">{check.detail}</em>
             </span>
             {!check.ok && check.fix && (check.fix.kind === 'open-url' || onOpenSettings) && (
-              <button className="btn sm" onClick={() => openFix(check)}>
+              <Button size="sm" onClick={() => openFix(check)}>
                 {check.fix.kind === 'open-url' ? 'Open docs' : 'Fix'}
-              </button>
+              </Button>
             )}
           </li>
         ))}

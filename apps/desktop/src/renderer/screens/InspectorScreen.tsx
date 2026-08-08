@@ -14,6 +14,7 @@ import StatusBadge from '../components/StatusBadge.js';
 import EmptyState from '../components/EmptyState.js';
 import TranscriptLane from '../components/inspector/TranscriptLane.js';
 import { clockTime, since, truncate } from '../format.js';
+import { Button } from '../components/ui/Button.js';
 import styles from './InspectorScreen.module.css';
 
 type LaneFilter = 'all' | 'running' | 'failed';
@@ -159,9 +160,9 @@ export default function InspectorScreen({
             ))}
           </div>
           {view.run && (
-            <button className="btn sm" onClick={() => void revealFiles()}>
+            <Button size="sm" onClick={() => void revealFiles()}>
               Raw files
-            </button>
+            </Button>
           )}
         </div>
       </header>
@@ -170,9 +171,9 @@ export default function InspectorScreen({
         <div className={styles.inspBanner} role="alert">
           <span>{listError || view.error || filesError}</span>
           {(listError || view.error) && (
-            <button className="btn sm" onClick={() => void retry()}>
+            <Button size="sm" onClick={() => void retry()}>
               Retry
-            </button>
+            </Button>
           )}
         </div>
       )}
@@ -202,9 +203,9 @@ export default function InspectorScreen({
         <div className={styles.inspEmpty}>
           <p className="faint">No phases match this filter.</p>
           {filter !== 'all' && (
-            <button className="btn sm" onClick={() => setFilter('all')}>
+            <Button size="sm" onClick={() => setFilter('all')}>
               Show all phases
-            </button>
+            </Button>
           )}
         </div>
       )}

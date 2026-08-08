@@ -1,3 +1,4 @@
+import { Button } from './ui/Button.js';
 import styles from './BoundaryEditor.module.css';
 
 type Mode = 'anywhere' | 'nowhere' | 'paths';
@@ -63,14 +64,14 @@ export default function BoundaryEditor({
                   placeholder="src/**"
                   onChange={(e) => update(i, e.target.value)}
                 />
-                <button className="btn sm ghost" onClick={() => remove(i)}>
+                <Button variant="ghost" size="sm" onClick={() => remove(i)}>
                   ✕
-                </button>
+                </Button>
               </div>
             ))}
-            <button className="btn sm" onClick={add}>
+            <Button size="sm" onClick={add}>
               Add pattern
-            </button>
+            </Button>
           </>
         )}
         <p className={styles.hint}>

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { PendingInterrupt } from '@shared/types.js';
 import { api } from '../api.js';
 import { useApp } from '../stores/app.js';
+import { Button } from './ui/Button.js';
 import styles from './InterruptSheet.module.css';
 
 export default function InterruptSheet({
@@ -130,24 +131,23 @@ export default function InterruptSheet({
           </p>
         )}
         <footer>
-          <button
-            className="btn"
+          <Button
             disabled={sending}
             onClick={() => void answer('reject')}
             title={`${rejectLabel} (Esc)`}
           >
             {sending ? 'Sending…' : rejectLabel}
-          </button>
+          </Button>
           <div className={styles.grow} />
           <span className={`${styles.esc} faint`}>Esc {rejectLabel.toLowerCase()}</span>
-          <button
+          <Button
             ref={approveRef}
-            className="btn primary"
+            variant="primary"
             disabled={sending}
             onClick={() => void answer('approve')}
           >
             {sending ? 'Sending…' : approveLabel}
-          </button>
+          </Button>
         </footer>
       </section>
     </div>

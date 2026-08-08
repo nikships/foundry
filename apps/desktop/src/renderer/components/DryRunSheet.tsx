@@ -3,6 +3,7 @@ import type { DryRunPrompt } from '@shared/types.js';
 import { modelLabel } from '../format.js';
 import { useEscapeToClose } from '../hooks/useEscapeToClose.js';
 import AgentAvatar from './AgentAvatar.js';
+import { Button } from './ui/Button.js';
 import styles from './DryRunSheet.module.css';
 
 export default function DryRunSheet({
@@ -34,9 +35,9 @@ export default function DryRunSheet({
               sent and nothing was spent.
             </p>
           </div>
-          <button className="btn sm ghost" onClick={onClose} title="Close (Esc)">
+          <Button variant="ghost" size="sm" onClick={onClose} title="Close (Esc)">
             Close
-          </button>
+          </Button>
         </header>
         <div className={styles.split}>
           <nav className={styles.steps}>

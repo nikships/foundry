@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { AgentDef } from '@shared/types.js';
 import { useEscapeToClose } from '../hooks/useEscapeToClose.js';
+import { Button } from './ui/Button.js';
 import styles from './PromptPreview.module.css';
 
 const SAMPLE = {
@@ -32,9 +33,9 @@ export default function PromptPreview({
       <section className={`card ${styles.sheet}`}>
         <header className="spread">
           <h2>Prompt preview: {agent.name}</h2>
-          <button className="btn sm ghost" onClick={onClose}>
+          <Button variant="ghost" size="sm" onClick={onClose}>
             Close
-          </button>
+          </Button>
         </header>
         <div className={`scroll ${styles.body}`}>
           <h3>System</h3>

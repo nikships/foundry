@@ -1,4 +1,5 @@
 import type { UpdateStatus } from '@shared/types.js';
+import { Button } from './ui/Button.js';
 import styles from './UpdateBanner.module.css';
 
 interface Props {
@@ -86,12 +87,12 @@ export default function UpdateBanner({
       <div className={styles.actions}>
         {status.stage === 'available' && (
           <>
-            <button className="btn primary sm" onClick={onDownload}>
+            <Button variant="primary" size="sm" onClick={onDownload}>
               Download
-            </button>
-            <button className="btn sm ghost" onClick={onDismiss}>
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onDismiss}>
               Later
-            </button>
+            </Button>
           </>
         )}
         {status.stage === 'downloading' && (
@@ -99,22 +100,22 @@ export default function UpdateBanner({
         )}
         {status.stage === 'ready' && (
           <>
-            <button className="btn primary sm" onClick={onRestart}>
+            <Button variant="primary" size="sm" onClick={onRestart}>
               Restart to install
-            </button>
-            <button className="btn sm ghost" onClick={onDismiss}>
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onDismiss}>
               Later
-            </button>
+            </Button>
           </>
         )}
         {status.stage === 'error' && (
           <>
-            <button className="btn primary sm" onClick={onRetry}>
+            <Button variant="primary" size="sm" onClick={onRetry}>
               Try again
-            </button>
-            <button className="btn sm ghost" onClick={onDismiss}>
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onDismiss}>
               Dismiss
-            </button>
+            </Button>
           </>
         )}
         {status.stage === 'checking' && (

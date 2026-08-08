@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { DetectionState, DetectionProposal } from '@shared/ipc-contract.js';
 import { duration } from '../format.js';
+import { Button } from './ui/Button.js';
 import styles from './DetectionPanel.module.css';
 
 const TOOL_ICON: Record<string, string> = {
@@ -96,9 +97,9 @@ export default function DetectionPanel({
 
       {live && (
         <div className={`row ${styles.actions}`}>
-          <button className="btn sm ghost" onClick={onCancel}>
+          <Button variant="ghost" size="sm" onClick={onCancel}>
             Cancel
-          </button>
+          </Button>
         </div>
       )}
 
@@ -118,20 +119,16 @@ export default function DetectionPanel({
                     : `, exit ${p.exitCode ?? '—'} in ${duration(p.durationMs)}`)}
                 {p.verify === 'running' && ', running…'}
               </span>
-              <button
-                className="btn sm"
-                disabled={p.verify === 'running'}
-                onClick={() => onAccept(p)}
-              >
+              <Button size="sm" disabled={p.verify === 'running'} onClick={() => onAccept(p)}>
                 Use
-              </button>
+              </Button>
             </div>
           ))}
           {usable.length > 1 && (
             <div className="row">
-              <button className="btn sm" onClick={onAcceptAll}>
+              <Button size="sm" onClick={onAcceptAll}>
                 Use all {usable.length}
-              </button>
+              </Button>
             </div>
           )}
         </div>

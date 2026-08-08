@@ -1,5 +1,6 @@
 import type { PhaseRow, RunRow } from '@shared/types.js';
 import { useBrandedAsset } from '../hooks/useBrandedAsset.js';
+import { Button } from './ui/Button.js';
 import styles from './OutcomeBanner.module.css';
 
 function headlineFor(status: RunRow['status']): string {
@@ -94,22 +95,23 @@ export default function OutcomeBanner({
       </div>
       {hasWorktree ? (
         <div className={styles.actions}>
-          <button
-            className="btn sm"
+          <Button
+            size="sm"
             disabled={worktreeBusy}
             title="Merge the run branch into the project base ref"
             onClick={onMerge}
           >
             {worktreeBusy ? 'Working…' : 'Merge branch'}
-          </button>
-          <button
-            className="btn sm danger"
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
             disabled={worktreeBusy}
             title="Delete the run worktree and branch"
             onClick={onDiscard}
           >
             Discard
-          </button>
+          </Button>
         </div>
       ) : run.merged ? (
         <span className={`badge ${styles.merged}`}>merged</span>

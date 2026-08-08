@@ -15,6 +15,7 @@ import { CliIcon } from '../components/BrandIcon.js';
 import DoctorList from '../components/DoctorList.js';
 import ProjectCommands from '../components/ProjectCommands.js';
 import { Field, Select, TextInput, Textarea } from '../components/ui/Field.js';
+import { Button } from '../components/ui/Button.js';
 import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
 import styles from './SettingsScreen.module.css';
 
@@ -527,20 +528,20 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                   )}
                   <div className={styles.setSubrow}>
                     {updateStatus.stage === 'ready' ? (
-                      <button className="btn primary sm" onClick={() => void installUpdate()}>
+                      <Button variant="primary" size="sm" onClick={() => void installUpdate()}>
                         Restart to install
-                      </button>
+                      </Button>
                     ) : updateStatus.stage === 'available' ? (
-                      <button className="btn primary sm" onClick={() => void downloadUpdate()}>
+                      <Button variant="primary" size="sm" onClick={() => void downloadUpdate()}>
                         Download update
-                      </button>
+                      </Button>
                     ) : updateStatus.stage === 'downloading' ? (
                       <span className={styles.hint}>
                         Installing after the download finishes, you will be asked to restart.
                       </span>
                     ) : (
-                      <button
-                        className="btn sm"
+                      <Button
+                        size="sm"
                         disabled={updateStatus.stage === 'checking'}
                         onClick={() => void checkForUpdates()}
                       >
@@ -549,7 +550,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                           : updateStatus.stage === 'error'
                             ? 'Try again'
                             : 'Check for updates'}
-                      </button>
+                      </Button>
                     )}
                   </div>
                 </Section>
@@ -562,12 +563,12 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                     Restart Foundry after changing settings or installing an update.
                   </p>
                   <div className={styles.setBtnrow}>
-                    <button className="btn sm" onClick={() => void relaunchApp()}>
+                    <Button size="sm" onClick={() => void relaunchApp()}>
                       Relaunch Foundry
-                    </button>
-                    <button className="btn sm" onClick={() => void quitApp()}>
+                    </Button>
+                    <Button size="sm" onClick={() => void quitApp()}>
                       Quit Foundry
-                    </button>
+                    </Button>
                   </div>
                 </Section>
               </>
@@ -639,12 +640,9 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                         </ul>
                       )}
                       <div>
-                        <button
-                          className="btn sm"
-                          onClick={() => void api.app.openExternal(cli.docsUrl)}
-                        >
+                        <Button size="sm" onClick={() => void api.app.openExternal(cli.docsUrl)}>
                           Install docs
-                        </button>
+                        </Button>
                       </div>
                     </Section>
                   );
@@ -666,9 +664,9 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                     <p className={styles.setLead}>
                       Used by any agent set to inherit. A per-agent choice always wins.
                     </p>
-                    <button className="btn sm" onClick={() => void refreshModels()}>
+                    <Button size="sm" onClick={() => void refreshModels()}>
                       Refresh models
-                    </button>
+                    </Button>
                   </div>
                 </Section>
                 <Section label="Model" note="Offered by whichever CLI is the default.">
@@ -801,12 +799,13 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                       </Field>
                       <div className={styles.setSubrow}>
                         <span className={`mono faint ${styles.setPath}`}>{projectDraft.path}</span>
-                        <button
-                          className="btn sm ghost"
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           onClick={() => void api.projects.reveal(projectDraft.path)}
                         >
                           Reveal in Finder
-                        </button>
+                        </Button>
                       </div>
                     </Section>
                     <Section label="Checks" note="Run against this repository.">
@@ -915,18 +914,18 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                       </div>
                     </Section>
                     <div className={styles.setFoot}>
-                      <button className="btn danger" onClick={() => void removeProject()}>
+                      <Button variant="danger" onClick={() => void removeProject()}>
                         Remove project
-                      </button>
+                      </Button>
                       <span className={styles.setAutosave}>Changes save automatically</span>
                     </div>
                   </>
                 ) : (
                   <div className={styles.setEmpty}>
                     <p className="faint">No project selected. Add a git repository to configure.</p>
-                    <button className="btn primary" onClick={() => void addProject()}>
+                    <Button variant="primary" onClick={() => void addProject()}>
                       Add a project…
-                    </button>
+                    </Button>
                   </div>
                 )}
               </>
@@ -954,20 +953,12 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                   </Field>
                   <div className={styles.setSubrow}>
                     <div className={styles.setBtnrow}>
-                      <button
-                        className="btn"
-                        disabled={maintenanceBusy}
-                        onClick={() => void applyRetention()}
-                      >
+                      <Button disabled={maintenanceBusy} onClick={() => void applyRetention()}>
                         {maintenanceBusy ? 'Working…' : 'Apply retention now'}
-                      </button>
-                      <button
-                        className="btn"
-                        disabled={maintenanceBusy}
-                        onClick={() => void compact()}
-                      >
+                      </Button>
+                      <Button disabled={maintenanceBusy} onClick={() => void compact()}>
                         {maintenanceBusy ? 'Working…' : 'Compact trace databases'}
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 </Section>
@@ -982,12 +973,13 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                         <li key={orphan.path}>
                           <span className={`mono ${styles.path}`}>{orphan.path}</span>
                           <span className="mono faint">{orphan.branch}</span>
-                          <button
-                            className="btn sm danger"
+                          <Button
+                            variant="danger"
+                            size="sm"
                             onClick={() => void removeOrphan(orphan)}
                           >
                             Remove
-                          </button>
+                          </Button>
                         </li>
                       ))}
                     </ul>
@@ -1041,17 +1033,17 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                 </Section>
                 <Section label="Elsewhere" note="Docs and the cinematic intro.">
                   <div className={styles.setBtnrow}>
-                    <button
-                      className="btn sm"
+                    <Button
+                      size="sm"
                       onClick={() =>
                         void api.app.openExternal('https://docs.factory.ai/droid-exec/overview')
                       }
                     >
                       droid CLI documentation
-                    </button>
-                    <button className="btn sm" onClick={() => void replayIntro()}>
+                    </Button>
+                    <Button size="sm" onClick={() => void replayIntro()}>
                       Replay intro
-                    </button>
+                    </Button>
                   </div>
                   <p className={styles.hint}>
                     Replay intro walks the cinematic onboarding again: agents, CLIs, environment

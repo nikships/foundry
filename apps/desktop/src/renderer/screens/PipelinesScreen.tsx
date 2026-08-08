@@ -14,6 +14,7 @@ import PhaseEditor from '../components/PhaseEditor.js';
 import { CliIcon } from '../components/BrandIcon.js';
 import DryRunSheet from '../components/DryRunSheet.js';
 import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
+import { Button } from '../components/ui/Button.js';
 import styles from './PipelinesScreen.module.css';
 
 /* ── phase track ─────────────────────────────────────────────────────── */
@@ -644,9 +645,9 @@ export default function PipelinesScreen(): React.JSX.Element {
                   : 'This workspace has no pipelines. Create one to define how agents should work together.'
               }
             >
-              <button className="btn primary" onClick={() => void createPipeline()}>
+              <Button variant="primary" onClick={() => void createPipeline()}>
                 New pipeline
-              </button>
+              </Button>
             </EmptyState>
           </div>
         )}

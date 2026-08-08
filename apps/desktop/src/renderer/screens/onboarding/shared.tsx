@@ -1,5 +1,6 @@
 import { useBrandedAsset } from '../../hooks/useBrandedAsset.js';
 import { useOnboarding } from './OnboardingContext.js';
+import { Button } from '../../components/ui/Button.js';
 
 export type StepId = 'welcome' | 'factory' | 'roster' | 'clis' | 'doctor' | 'project';
 
@@ -98,22 +99,22 @@ export function StepFooter({
   return (
     <div className="ob-foot">
       {showBack ? (
-        <button type="button" className="btn ghost" disabled={busy} onClick={back}>
+        <Button type="button" variant="ghost" disabled={busy} onClick={back}>
           Back
-        </button>
+        </Button>
       ) : null}
       <span className="ob-grow" />
       {hint ? <span className="ob-foot-hint">{hint}</span> : null}
-      <button
+      <Button
         type="button"
-        className="btn primary"
+        variant="primary"
         disabled={nextDisabled || busy}
         title={nextTitle}
         onClick={onNext ?? next}
       >
         {busy ? 'Saving…' : nextLabel}
         {!busy ? CHEVRON : null}
-      </button>
+      </Button>
     </div>
   );
 }
