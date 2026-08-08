@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, menu } from './api.js';
+import { useGlobalShortcuts } from './hooks/useGlobalShortcuts.js';
 import { AppProvider, useApp } from './stores/app.js';
 import Sidebar from './components/Sidebar.js';
 import RunsScreen from './screens/RunsScreen.js';
@@ -107,6 +108,17 @@ function AppInner(): React.JSX.Element {
     await api.settings.patch({ onboarded: true });
     await refreshAll();
   };
+
+  // Escape walks back up one level: run detail → the runs list.
+  const escapeBack = useCallback((): void => {
+    setOpenRunId('');
+  }, []);
+
+  useGlobalShortcuts({
+    onNavigate: go,
+    onEscape: escapeBack,
+    enabled: ready && !needsOnboarding,
+  });
 
   useEffect(() => {
     return menu.on((command) => {

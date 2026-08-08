@@ -15,6 +15,7 @@ import { CliIcon } from '../components/BrandIcon.js';
 import DryRunSheet from '../components/DryRunSheet.js';
 import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
+import { useTablistNav } from '../hooks/useTablistNav.js';
 import { Button } from '../components/ui/Button.js';
 import styles from './PipelinesScreen.module.css';
 
@@ -376,6 +377,7 @@ export default function PipelinesScreen(): React.JSX.Element {
     void flush();
     setSelectedId(id);
   };
+  const onTablistKey = useTablistNav();
   const duplicate = async (): Promise<void> => {
     if (!selected) return;
     const copy = await api.pipelines.duplicate(selected.id, projectId || undefined);
@@ -426,13 +428,19 @@ export default function PipelinesScreen(): React.JSX.Element {
         {/* ── switcher strip: pipelines as tabs, actions at the right ── */}
         <div className={styles.plSwitcher}>
           <span className={`${styles.plMono} ${styles.plSwitcherLabel}`}>Pipelines</span>
-          <div className={styles.plTabs} role="tablist" aria-label="Pipelines">
+          <div
+            className={styles.plTabs}
+            role="tablist"
+            aria-label="Pipelines"
+            onKeyDown={onTablistKey}
+          >
             {pipelines.map((p) => (
               <button
                 key={p.id}
                 type="button"
                 role="tab"
                 aria-selected={p.id === selectedId}
+                tabIndex={p.id === selectedId ? 0 : -1}
                 className={`${styles.plTab} ${p.id === selectedId ? styles.on : ''}`}
                 onClick={() => selectPipeline(p.id)}
               >
