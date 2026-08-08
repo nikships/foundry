@@ -21,20 +21,9 @@
   [data-brand='prism'] .prism-header-rule {
     animation: none;
   }
-  [data-brand='prism'] .glass::after,
-  [data-brand='prism'] .cinema .frame::after {
-    transition: none;
-  }
   [data-brand='prism'] .btn:active:not(:disabled),
   [data-brand='prism'] .btn.primary:active:not(:disabled) {
     transform: none;
     transition: none;
-  }
-  [data-brand='prism'] .glass,
-  [data-brand='prism'] .sheet,
-  [data-brand='prism'] .cinema .frame {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    background: var(--bg-panel);
   }
 }

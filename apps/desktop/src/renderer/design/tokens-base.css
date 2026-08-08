@@ -128,9 +128,6 @@ textarea,
   font-variant-numeric: tabular-nums;
 }
 
-.dim {
-  color: var(--text-dim);
-}
 .faint {
   color: var(--text-faint);
 }

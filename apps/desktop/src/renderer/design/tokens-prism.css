@@ -83,16 +83,6 @@
     var(--prism-neon-ice)
   );
 
-  /* ── glass ─────────────────────────────────────────────────────────── */
-  --glass-bg: rgba(12, 16, 32, 0.42);
-  --glass-bg-strong: rgba(12, 16, 32, 0.62);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-border-strong: rgba(255, 255, 255, 0.12);
-  --glass-highlight: rgba(255, 255, 255, 0.06);
-  --glass-blur: 18px;
-  --glass-blur-strong: 26px;
-  --glass-saturate: 1.35;
-  --glass-radius: var(--r-lg);
   /* How far red and cyan split on a press. Matches the shader's uLens feel. */
   --prism-chroma-offset: 1.4px;
   --prism-glow-cyan: var(--glow-cyan);
