@@ -1,67 +1,554 @@
-import { Suspense, lazy } from 'react';
 import { useBrand } from '../../hooks/useBrand.js';
 import { useOnboarding } from './OnboardingContext.js';
-import { BUILTIN_AGENTS, SceneArt, sceneForStep } from './shared.js';
-import AgentAvatar from '../../components/AgentAvatar.js';
-const PrismField = lazy(() => import('../../components/prism/PrismField.js'));
-const MurmurFlock = lazy(() => import('../../components/MurmurFlock.js'));
+
+type Proof = {
+  title: string;
+  desc: string;
+  glyph: React.JSX.Element;
+};
+
+const PROOFS: Proof[] = [
+  {
+    title: 'Watch it work',
+    desc: 'Live transcripts, not a black box.',
+    glyph: (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M3 12 h4 l2.5-6 3 12 L15 9 l2 3 h4" />
+      </svg>
+    ),
+  },
+  {
+    title: 'Judge every phase',
+    desc: 'Envelopes and gates decide success, not the agent.',
+    glyph: (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M12 3 v18" />
+        <path d="M5 7 h14" />
+        <path d="M8 7 l-3 6 h6 Z" />
+        <path d="M16 7 l-3 6 h6 Z" />
+      </svg>
+    ),
+  },
+  {
+    title: 'Stay in control',
+    desc: 'Write boundaries, checkpoints, and merge on your terms.',
+    glyph: (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle cx="7" cy="6" r="2.2" />
+        <circle cx="7" cy="18" r="2.2" />
+        <circle cx="17" cy="12" r="2.2" />
+        <path d="M7 8.4 v7.2" />
+        <path d="M9.2 6 h4.2 a1.6 1.6 0 0 1 1.6 1.6 v2.2" />
+        <path d="M9.2 18 h4.2 a1.6 1.6 0 0 0 1.6-1.6 v-2.8" />
+      </svg>
+    ),
+  },
+];
 
 export default function WelcomeScreen(): React.JSX.Element {
   const { next } = useOnboarding();
   const brand = useBrand();
+
   return (
-    <div className="ob-welcome">
-      <div className="ob-welcome-media">
-        <div className="ob-welcome-frame">
-          {brand === 'prism' ? (
-            <Suspense fallback={<SceneArt path={sceneForStep('welcome')} className="ob-hero-shot" />}> 
-              <div className="ob-prism-hero"><PrismField variant="hero" /></div>
-            </Suspense>
-          ) : (
-            <SceneArt path={sceneForStep('welcome')} className="ob-hero-shot" />
-          )}
-          {brand === 'murmur' && (
-            <Suspense fallback={null}><MurmurFlock /></Suspense>
-          )}
-          {brand === 'murmur' && (
-            <div className="ob-orbit">
-              {BUILTIN_AGENTS.map((a, i) => (
-                <span key={a.name} className="ob-orbit-item" style={{ ['--i' as string]: String(i) }}>
-                  <AgentAvatar name={a.name} size={44} />
-                </span>
+    <div className="fdy-welcome" data-brand={brand}>
+      <div className="fdy-split">
+        {/* stage */}
+        <section className="fdy-stage" aria-hidden="true">
+          <div className="fdy-stage__grid" />
+          <div className="fdy-stage__grain" />
+          <div className="fdy-stage__frame" />
+          <div className="fdy-stage__field">
+            <span className="fdy-orb fdy-orb--a" />
+            <span className="fdy-orb fdy-orb--b" />
+            <span className="fdy-orb fdy-orb--c" />
+            <svg
+              className="fdy-pipeline"
+              viewBox="0 0 400 320"
+              preserveAspectRatio="xMidYMid meet"
+              role="img"
+              aria-label="Pipeline trace"
+            >
+              <path className="fdy-pipeline__rail" d="M40 60 h150 a24 24 0 0 1 24 24 v152 a24 24 0 0 0 24 24 h122" />
+              <path className="fdy-pipeline__rail" d="M40 160 h96 a24 24 0 0 1 24 24 v52 a24 24 0 0 0 24 24 h176" />
+              <path className="fdy-pipeline__rail fdy-pipeline__rail--dim" d="M40 260 h56 a24 24 0 0 0 24-24 V84 a24 24 0 0 1 24-24 h216" />
+              <path className="fdy-pipeline__pulse" d="M40 60 h150 a24 24 0 0 1 24 24 v152 a24 24 0 0 0 24 24 h122" />
+              <g className="fdy-pipeline__nodes">
+                <circle cx="40" cy="60" r="3.5" />
+                <circle cx="40" cy="160" r="3.5" />
+                <circle cx="40" cy="260" r="3.5" />
+                <circle cx="360" cy="260" r="3.5" />
+              </g>
+            </svg>
+          </div>
+          <p className="fdy-stage__caption">A software factory you can watch work.</p>
+        </section>
+
+        {/* editorial */}
+        <section className="fdy-editorial">
+          <div className="fdy-editorial__inner">
+            <p className="fdy-eyebrow fdy-rise" style={{ ['--d' as string]: '0ms' } as React.CSSProperties}>
+              Introducing
+            </p>
+            <h1 className="fdy-wordmark fdy-rise" style={{ ['--d' as string]: '60ms' } as React.CSSProperties}>
+              Foundry
+            </h1>
+            <p className="fdy-lead fdy-rise" style={{ ['--d' as string]: '120ms' } as React.CSSProperties}>
+              Describe a change. A pipeline of agents carries it out in an isolated worktree. Every phase
+              leaves evidence you can read: prompts, tools, gates, and cost.
+            </p>
+
+            <ul className="fdy-proof">
+              {PROOFS.map((p, i) => (
+                <li
+                  key={p.title}
+                  className="fdy-proof__row fdy-rise"
+                  style={{ ['--d' as string]: `${200 + i * 70}ms` } as React.CSSProperties}
+                >
+                  <span className="fdy-proof__glyph" aria-hidden="true">
+                    {p.glyph}
+                  </span>
+                  <span className="fdy-proof__text">
+                    <span className="fdy-proof__title">{p.title}</span>
+                    <span className="fdy-proof__desc">{p.desc}</span>
+                  </span>
+                </li>
               ))}
-            </div>
-          )}
-        </div>
-        <p className="ob-caption faint">A software factory you can watch work.</p>
+            </ul>
+
+            <footer className="fdy-footer fdy-rise" style={{ ['--d' as string]: '440ms' } as React.CSSProperties}>
+              <p className="fdy-step">
+                <span className="fdy-step__ticks" aria-hidden="true">
+                  {[0, 1, 2, 3, 4, 5].map((n) => (
+                    <span key={n} className="fdy-step__tick" data-active={n === 0 ? 'true' : 'false'} />
+                  ))}
+                </span>
+                Step 1 of 6
+              </p>
+              <button type="button" className="fdy-cta" onClick={next}>
+                Begin
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                  <path
+                    d="M4 3 L9 7 L4 11"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+            </footer>
+          </div>
+        </section>
       </div>
-      <div className="ob-welcome-copy">
-        <p className="ob-eyebrow">Introducing</p>
-        <h1 className="ob-title">Foundry</h1>
-        <p className="ob-lead">Describe a change. A pipeline of agents carries it out in an isolated worktree. Every phase leaves evidence you can read: prompts, tools, gates, and cost.</p>
-        <ul className="ob-bullets">
-          <li><strong>Watch it work</strong><span>Live transcripts, not a black box.</span></li>
-          <li><strong>Judge every phase</strong><span>Envelopes and gates decide success, not the agent.</span></li>
-          <li><strong>Stay in control</strong><span>Write boundaries, checkpoints, and merge on your terms.</span></li>
-        </ul>
-        <div className="ob-foot"><span /><span className="ob-grow" /><button className="btn primary" onClick={next}>Begin</button></div>
-      </div>
+
       <style>{`
-        .ob-welcome { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(280px,0.95fr) minmax(340px,1.05fr); gap: var(--s6); padding: var(--s3) var(--s6) var(--s6); }
-        .ob-welcome-media { display: flex; flex-direction: column; gap: var(--s3); min-width: 0; }
-        .ob-welcome-frame { position: relative; flex: 1; min-height: 280px; border-radius: calc(var(--r-lg) + 4px); border: 1px solid var(--line); background: color-mix(in srgb, var(--bg-void) 80%, transparent); overflow: hidden; box-shadow: var(--shadow-lg), var(--glow-cyan); }
-        .ob-hero-shot { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0.92; }
-        .ob-prism-hero { width: 100%; height: 100%; }
-        .ob-caption { font-size: var(--text-sm); line-height: var(--leading); max-width: 42ch; }
-        .ob-orbit { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
-        .ob-orbit-item { position: absolute; top: 50%; left: 50%; --angle: calc(var(--i) * 72deg); transform: translate(-50%,-50%) rotate(var(--angle)) translateY(-108px) rotate(calc(-1 * var(--angle))); animation: ob-float 5.5s ease-in-out infinite; animation-delay: calc(var(--i) * -0.7s); filter: drop-shadow(0 8px 18px rgba(0,0,0,0.35)); }
-        .ob-welcome-copy { display: flex; flex-direction: column; min-width: 0; padding: var(--s1) 0; }
-        .ob-bullets { list-style: none; display: flex; flex-direction: column; gap: var(--s3); margin-bottom: var(--s4); }
-        .ob-bullets li { display: grid; gap: 2px; padding: var(--s3) var(--s4); border-radius: var(--r); border: 1px solid var(--line); background: var(--bg-raised); }
-        .ob-bullets strong { font-size: var(--text-sm); }
-        .ob-bullets span { font-size: var(--text-xs); color: var(--text-faint); line-height: var(--leading); }
-        @keyframes ob-float { 0%,100%{ translate:0 0; } 50%{ translate:0 -6px; } }
-        @media (max-width: 960px){ .ob-welcome{ grid-template-columns: 1fr; } }
+        .fdy-welcome {
+          --fdy-accent: var(--cyan);
+          --fdy-glow-a: var(--cyan);
+          --fdy-glow-b: var(--purple);
+          --fdy-glow-c: var(--prism-neon-magenta, var(--purple));
+          --fdy-cta-fg: #04212a;
+          --fdy-grain: 0;
+          position: relative;
+          flex: 1;
+          min-height: 0;
+          display: flex;
+          flex-direction: column;
+          background: var(--bg-void);
+          color: var(--text);
+          font-family: var(--font);
+          overflow: hidden;
+        }
+        .fdy-welcome[data-brand='murmur'] {
+          --fdy-accent: var(--murmur-ember, var(--cyan));
+          --fdy-glow-a: var(--murmur-ember, var(--cyan));
+          --fdy-glow-b: var(--murmur-clay, var(--purple));
+          --fdy-glow-c: var(--amber);
+          --fdy-cta-fg: #2b1206;
+          --fdy-grain: 0.06;
+        }
+
+        .fdy-split {
+          flex: 1;
+          min-height: 0;
+          display: grid;
+          grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+          width: 100%;
+        }
+
+        /* ── stage ── */
+        .fdy-stage {
+          position: relative;
+          overflow: hidden;
+          background: var(--bg-base);
+          display: flex;
+          align-items: flex-end;
+          padding: clamp(22px, 4.8vw, 64px);
+          isolation: isolate;
+        }
+        .fdy-stage::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background:
+            radial-gradient(120% 80% at 20% 15%, color-mix(in srgb, var(--fdy-glow-a) 13%, transparent), transparent 60%),
+            radial-gradient(90% 70% at 85% 85%, color-mix(in srgb, var(--fdy-glow-b) 15%, transparent), transparent 66%);
+          z-index: -1;
+        }
+        .fdy-stage__grid {
+          position: absolute;
+          inset: -1px;
+          background-image:
+            linear-gradient(to right, var(--line) 1px, transparent 1px),
+            linear-gradient(to bottom, var(--line) 1px, transparent 1px);
+          background-size: 72px 72px;
+          opacity: 0.34;
+          mask-image: radial-gradient(70% 60% at 45% 45%, #000 20%, transparent 100%);
+          -webkit-mask-image: radial-gradient(70% 60% at 45% 45%, #000 20%, transparent 100%);
+        }
+        .fdy-stage__grain {
+          position: absolute;
+          inset: 0;
+          opacity: var(--fdy-grain);
+          pointer-events: none;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+        }
+        .fdy-stage__frame {
+          position: absolute;
+          inset: clamp(14px, 2.2vw, 28px);
+          border: 1px solid var(--line);
+          border-radius: var(--r);
+          pointer-events: none;
+          opacity: 0.72;
+        }
+        .fdy-stage__field {
+          position: absolute;
+          inset: 0;
+          display: grid;
+          place-items: center;
+          pointer-events: none;
+        }
+        .fdy-orb {
+          position: absolute;
+          border-radius: var(--r-full);
+          filter: blur(52px);
+          animation: fdy-drift 26s ease-in-out infinite alternate;
+        }
+        .fdy-orb--a {
+          width: 46%;
+          aspect-ratio: 1;
+          top: 8%;
+          left: 4%;
+          background: color-mix(in srgb, var(--fdy-glow-a) 42%, transparent);
+        }
+        .fdy-orb--b {
+          width: 38%;
+          aspect-ratio: 1;
+          bottom: 6%;
+          right: 2%;
+          background: color-mix(in srgb, var(--fdy-glow-b) 44%, transparent);
+          animation-duration: 34s;
+          animation-delay: -8s;
+        }
+        .fdy-orb--c {
+          width: 22%;
+          aspect-ratio: 1;
+          top: 46%;
+          left: 52%;
+          background: color-mix(in srgb, var(--fdy-glow-c) 34%, transparent);
+          animation-duration: 21s;
+          animation-delay: -14s;
+        }
+        @keyframes fdy-drift {
+          from { transform: translate3d(0, 0, 0) scale(1); }
+          to { transform: translate3d(6%, -7%, 0) scale(1.14); }
+        }
+        .fdy-pipeline {
+          position: relative;
+          width: min(78%, 520px);
+          height: auto;
+          fill: none;
+          stroke-linecap: round;
+          filter: drop-shadow(0 0 0 transparent);
+        }
+        .fdy-pipeline__rail {
+          stroke: color-mix(in srgb, var(--text) 26%, transparent);
+          stroke-width: 1;
+        }
+        .fdy-pipeline__rail--dim {
+          stroke: color-mix(in srgb, var(--text) 13%, transparent);
+        }
+        .fdy-pipeline__pulse {
+          stroke: var(--fdy-accent);
+          stroke-width: 1.45;
+          stroke-dasharray: 46 620;
+          filter: drop-shadow(0 0 7px color-mix(in srgb, var(--fdy-accent) 72%, transparent));
+          animation: fdy-trace 7s linear infinite;
+        }
+        @keyframes fdy-trace {
+          from { stroke-dashoffset: 666; }
+          to { stroke-dashoffset: 0; }
+        }
+        .fdy-pipeline__nodes circle {
+          fill: var(--bg-base);
+          stroke: color-mix(in srgb, var(--fdy-accent) 70%, transparent);
+          stroke-width: 1;
+        }
+        .fdy-stage__caption {
+          position: relative;
+          max-width: 22ch;
+          margin: 0;
+          font-size: var(--text-sm);
+          line-height: var(--leading);
+          color: var(--text-faint);
+          padding-left: var(--s4);
+          border-left: 1px solid var(--line);
+        }
+
+        /* ── editorial ── */
+        .fdy-editorial {
+          display: flex;
+          align-items: center;
+          padding: clamp(32px, 5.6vw, 88px) clamp(24px, 5.4vw, 88px);
+          background: var(--bg-void);
+          min-width: 0;
+          overflow: auto;
+        }
+        .fdy-editorial__inner {
+          width: 100%;
+          max-width: 600px;
+        }
+        .fdy-eyebrow {
+          margin: 0 0 var(--s6);
+          font-size: var(--text-xs);
+          font-weight: 600;
+          letter-spacing: 0.14em;
+          text-transform: uppercase;
+          color: var(--fdy-accent);
+          line-height: 1;
+        }
+        .fdy-wordmark {
+          margin: 0;
+          font-size: clamp(56px, 8.2vw, 124px);
+          font-weight: 680;
+          letter-spacing: -0.045em;
+          line-height: 0.9;
+          color: var(--text);
+        }
+        .fdy-lead {
+          margin: clamp(18px, 2.4vw, 28px) 0 0;
+          max-width: 52ch;
+          font-size: clamp(14px, 1.18vw, 17px);
+          line-height: 1.7;
+          color: var(--text-dim);
+        }
+
+        /* proof rows — flat, hairline only */
+        .fdy-proof {
+          list-style: none;
+          margin: clamp(28px, 4vw, 52px) 0 0;
+          padding: 0;
+        }
+        .fdy-proof__row {
+          display: flex;
+          align-items: flex-start;
+          gap: var(--s4);
+          padding: var(--s4) 0;
+          border-top: 1px solid var(--line);
+          transition: background 160ms var(--ease);
+        }
+        .fdy-proof__row:last-child {
+          border-bottom: 1px solid var(--line);
+        }
+        .fdy-proof__row:hover {
+          background: color-mix(in srgb, var(--bg-raised) 45%, transparent);
+        }
+        .fdy-proof__row:hover .fdy-proof__glyph {
+          color: var(--fdy-accent);
+          border-color: color-mix(in srgb, var(--fdy-accent) 28%, var(--line));
+          background: color-mix(in srgb, var(--fdy-accent) 10%, var(--bg-raised));
+        }
+        .fdy-proof__row:hover .fdy-proof__desc {
+          color: var(--text-dim);
+        }
+        .fdy-proof__glyph {
+          flex: none;
+          width: 28px;
+          height: 28px;
+          display: grid;
+          place-items: center;
+          border: 1px solid var(--line);
+          border-radius: var(--r-sm);
+          background: var(--bg-raised);
+          color: var(--text-faint);
+          margin-top: 1px;
+          transition:
+            color 220ms var(--ease),
+            border-color 220ms var(--ease),
+            background 220ms var(--ease);
+        }
+        .fdy-proof__glyph svg {
+          width: 16px;
+          height: 16px;
+          fill: none;
+          stroke: currentColor;
+          stroke-width: 1.35;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+        }
+        .fdy-proof__text {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: baseline;
+          gap: var(--s2) var(--s3);
+          min-width: 0;
+          padding-top: 2px;
+        }
+        .fdy-proof__title {
+          font-size: var(--text-sm);
+          font-weight: 600;
+          letter-spacing: -0.01em;
+          color: var(--text);
+          white-space: nowrap;
+        }
+        .fdy-proof__desc {
+          font-size: var(--text-sm);
+          line-height: 1.5;
+          color: var(--text-faint);
+          transition: color 200ms var(--ease);
+        }
+
+        /* footer */
+        .fdy-footer {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: var(--s6);
+          flex-wrap: wrap;
+          margin-top: clamp(28px, 4vw, 52px);
+          padding-top: var(--s6);
+          border-top: 1px solid var(--line);
+        }
+        .fdy-step {
+          display: flex;
+          align-items: center;
+          gap: var(--s3);
+          margin: 0;
+          font-size: 11px;
+          letter-spacing: 0.14em;
+          text-transform: uppercase;
+          color: var(--text-faint);
+          font-family: var(--font-mono);
+        }
+        .fdy-step__ticks {
+          display: flex;
+          gap: 5px;
+        }
+        .fdy-step__tick {
+          width: 14px;
+          height: 2px;
+          border-radius: var(--r-full);
+          background: var(--line-strong);
+          transition: background 200ms var(--ease), width 200ms var(--ease), box-shadow 200ms var(--ease);
+        }
+        .fdy-step__tick[data-active='true'] {
+          width: 22px;
+          background: var(--fdy-accent);
+          box-shadow: 0 0 10px color-mix(in srgb, var(--fdy-accent) 30%, transparent);
+        }
+        .fdy-cta {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: var(--s2);
+          padding: 13px 30px;
+          border: 0;
+          border-radius: var(--r-full);
+          background: var(--fdy-accent);
+          color: var(--fdy-cta-fg);
+          font: inherit;
+          font-size: var(--text-sm);
+          font-weight: 650;
+          letter-spacing: -0.015em;
+          cursor: default;
+          transition:
+            transform 160ms var(--ease),
+            box-shadow 240ms var(--ease),
+            filter 160ms var(--ease);
+          white-space: nowrap;
+        }
+        .fdy-cta:hover {
+          filter: brightness(1.08);
+          box-shadow:
+            0 0 0 1px color-mix(in srgb, var(--fdy-accent) 42%, transparent),
+            0 12px 36px color-mix(in srgb, var(--fdy-accent) 26%, transparent);
+        }
+        .fdy-cta:active {
+          transform: translateY(1px);
+        }
+        .fdy-cta:focus-visible {
+          outline: 2px solid var(--fdy-accent);
+          outline-offset: 3px;
+        }
+
+        /* entrance */
+        .fdy-rise {
+          opacity: 0;
+          transform: translateY(12px);
+          animation: fdy-rise 680ms cubic-bezier(0.22, 0.9, 0.24, 1) forwards;
+          animation-delay: var(--d, 0ms);
+        }
+        @keyframes fdy-rise {
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @media (max-width: 960px) {
+          .fdy-welcome {
+            overflow: auto;
+          }
+          .fdy-split {
+            grid-template-columns: 1fr;
+          }
+          .fdy-stage {
+            min-height: 42vh;
+            padding: 28px 24px 22px;
+          }
+          .fdy-stage__frame {
+            inset: 12px;
+          }
+          .fdy-pipeline {
+            width: min(84%, 440px);
+          }
+          .fdy-editorial {
+            padding: 28px 24px 32px;
+            overflow: visible;
+          }
+          .fdy-wordmark {
+            font-size: clamp(48px, 14vw, 84px);
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .fdy-rise {
+            animation: none;
+            opacity: 1;
+            transform: none;
+          }
+          .fdy-orb,
+          .fdy-pipeline__pulse {
+            animation: none;
+          }
+          .fdy-pipeline__pulse {
+            stroke-dasharray: none;
+            opacity: 0.55;
+          }
+          .fdy-cta {
+            transition: none;
+          }
+        }
       `}</style>
     </div>
   );
