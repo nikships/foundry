@@ -16,6 +16,7 @@ import DoctorList from '../components/DoctorList.js';
 import ProjectCommands from '../components/ProjectCommands.js';
 import { Field, Select, TextInput, Textarea } from '../components/ui/Field.js';
 import { Button } from '../components/ui/Button.js';
+import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
 import styles from './SettingsScreen.module.css';
 
@@ -233,25 +234,21 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
   const relaunchApp = async (): Promise<void> => {
     await runAppAction(() => api.app.relaunch());
   };
-  const removeProject = async (): Promise<void> => {
-    if (!project) return;
-    if (
-      !window.confirm(
-        `Remove project “${project.name}” from Foundry? The git repo on disk is not deleted.`,
-      )
-    ) {
-      return;
-    }
-    // A queued save for this project would re-create it moments after the remove.
-    cancelProjectSave();
-    try {
-      await api.projects.remove(project.id);
-      setErrors([]);
-      await refreshAll();
-    } catch (e) {
-      setErrors([(e as Error).message]);
-    }
-  };
+  const removeProject = useConfirmAction(
+    () => `Remove project “${project?.name}” from Foundry? The git repo on disk is not deleted.`,
+    async (): Promise<void> => {
+      if (!project) return;
+      // A queued save for this project would re-create it moments after the remove.
+      cancelProjectSave();
+      try {
+        await api.projects.remove(project.id);
+        setErrors([]);
+        await refreshAll();
+      } catch (e) {
+        setErrors([(e as Error).message]);
+      }
+    },
+  );
   const replayIntro = async (): Promise<void> => {
     await runAppAction(async () => {
       await api.settings.patch({ onboarded: false });
@@ -277,24 +274,21 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
   };
   const loadOrphans = async (): Promise<void> =>
     setOrphans(await api.maintenance.orphanWorktrees());
-  const removeOrphan = async (orphan: OrphanWorktree): Promise<void> => {
-    if (
-      !window.confirm(
-        `Remove leftover worktree at ${orphan.path}? Its branch and any uncommitted work in it are deleted.`,
-      )
-    ) {
-      return;
-    }
-    try {
-      const result = await api.maintenance.removeWorktree(orphan.projectId, orphan.path);
-      setMaintenanceNote(result.detail);
-      if (result.ok === false) setErrors([result.detail]);
-      else setErrors([]);
-      await loadOrphans();
-    } catch (e) {
-      setErrors([(e as Error).message]);
-    }
-  };
+  const removeOrphan = useConfirmAction(
+    (orphan: OrphanWorktree) =>
+      `Remove leftover worktree at ${orphan.path}? Its branch and any uncommitted work in it are deleted.`,
+    async (orphan: OrphanWorktree): Promise<void> => {
+      try {
+        const result = await api.maintenance.removeWorktree(orphan.projectId, orphan.path);
+        setMaintenanceNote(result.detail);
+        if (result.ok === false) setErrors([result.detail]);
+        else setErrors([]);
+        await loadOrphans();
+      } catch (e) {
+        setErrors([(e as Error).message]);
+      }
+    },
+  );
   const commitName = async (): Promise<void> => {
     const next = nameDraft.trim();
     if (!next) {
@@ -314,6 +308,27 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
     await set({ engineerName: next });
   };
 
+  const applyRetentionAction = useConfirmAction(
+    () => {
+      const days = settings?.retentionDays;
+      return `Apply retention now? This permanently deletes run history older than ${days} day${days === 1 ? '' : 's'}. Trace data cannot be restored.`;
+    },
+    async (): Promise<void> => {
+      setMaintenanceBusy(true);
+      try {
+        const report = await api.maintenance.applyRetention();
+        setMaintenanceNote(
+          `Deleted ${report.runsDeleted} run${report.runsDeleted === 1 ? '' : 's'}.`,
+        );
+        setErrors([]);
+      } catch (e) {
+        setErrors([(e as Error).message]);
+      } finally {
+        setMaintenanceBusy(false);
+      }
+    },
+  );
+
   const applyRetention = async (): Promise<void> => {
     if (maintenanceBusy) return;
     const days = settings?.retentionDays;
@@ -321,46 +336,25 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
       setErrors(['Set a retention window before applying. Forever means nothing is deleted.']);
       return;
     }
-    if (
-      !window.confirm(
-        `Apply retention now? This permanently deletes run history older than ${days} day${days === 1 ? '' : 's'}. Trace data cannot be restored.`,
-      )
-    ) {
-      return;
-    }
-    setMaintenanceBusy(true);
-    try {
-      const report = await api.maintenance.applyRetention();
-      setMaintenanceNote(
-        `Deleted ${report.runsDeleted} run${report.runsDeleted === 1 ? '' : 's'}.`,
-      );
-      setErrors([]);
-    } catch (e) {
-      setErrors([(e as Error).message]);
-    } finally {
-      setMaintenanceBusy(false);
-    }
+    await applyRetentionAction();
   };
-  const compact = async (): Promise<void> => {
-    if (maintenanceBusy) return;
-    if (
-      !window.confirm(
-        'Compact trace databases now? This rewrites SQLite files and can take a moment; leave Foundry open until it finishes.',
-      )
-    ) {
-      return;
-    }
-    setMaintenanceBusy(true);
-    try {
-      await api.maintenance.compact();
-      setMaintenanceNote('Trace databases compacted.');
-      setErrors([]);
-    } catch (e) {
-      setErrors([(e as Error).message]);
-    } finally {
-      setMaintenanceBusy(false);
-    }
-  };
+
+  const compact = useConfirmAction(
+    'Compact trace databases now? This rewrites SQLite files and can take a moment; leave Foundry open until it finishes.',
+    async (): Promise<void> => {
+      if (maintenanceBusy) return;
+      setMaintenanceBusy(true);
+      try {
+        await api.maintenance.compact();
+        setMaintenanceNote('Trace databases compacted.');
+        setErrors([]);
+      } catch (e) {
+        setErrors([(e as Error).message]);
+      } finally {
+        setMaintenanceBusy(false);
+      }
+    },
+  );
 
   useEffect(() => {
     if (pane === 'maintenance') void loadOrphans();

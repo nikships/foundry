@@ -14,6 +14,7 @@ import ModelPicker from '../components/ModelPicker.js';
 import BoundaryEditor from '../components/BoundaryEditor.js';
 import PromptPreview from '../components/PromptPreview.js';
 import { Field, Select, TextInput, Textarea } from '../components/ui/Field.js';
+import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
 import styles from './RosterScreen.module.css';
 
@@ -158,21 +159,21 @@ export default function RosterScreen(): React.JSX.Element {
     }
   };
 
-  const remove = async (): Promise<void> => {
-    if (!selected || selected.builtin) return;
-    if (!window.confirm(`Delete agent “${selected.name}”? Pipelines that name it will break.`)) {
-      return;
-    }
-    setActionError('');
-    // A queued save for this agent would re-create it moments after the delete.
-    cancel();
-    try {
-      await api.roster.remove(selected.name, projectId || undefined);
-      await refreshScoped();
-    } catch (e) {
-      setActionError((e as Error).message);
-    }
-  };
+  const remove = useConfirmAction(
+    () => `Delete agent “${selected?.name}”? Pipelines that name it will break.`,
+    async (): Promise<void> => {
+      if (!selected || selected.builtin) return;
+      setActionError('');
+      // A queued save for this agent would re-create it moments after the delete.
+      cancel();
+      try {
+        await api.roster.remove(selected.name, projectId || undefined);
+        await refreshScoped();
+      } catch (e) {
+        setActionError((e as Error).message);
+      }
+    },
+  );
 
   const createAgent = async (): Promise<void> => {
     setActionError('');

@@ -13,6 +13,7 @@ import EmptyState from '../components/EmptyState.js';
 import PhaseEditor from '../components/PhaseEditor.js';
 import { CliIcon } from '../components/BrandIcon.js';
 import DryRunSheet from '../components/DryRunSheet.js';
+import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
 import { Button } from '../components/ui/Button.js';
 import styles from './PipelinesScreen.module.css';
@@ -381,14 +382,16 @@ export default function PipelinesScreen(): React.JSX.Element {
     await refreshScoped();
     if (copy) setSelectedId(copy.id);
   };
-  const remove = async (): Promise<void> => {
-    if (!selected) return;
-    if (!window.confirm(`Delete pipeline "${selected.name}"? This cannot be undone.`)) return;
-    // A queued save for this pipeline would re-create it moments after the delete.
-    cancel();
-    await api.pipelines.remove(selected.id, projectId || undefined);
-    await refreshScoped();
-  };
+  const remove = useConfirmAction(
+    () => `Delete pipeline "${selected?.name}"? This cannot be undone.`,
+    async (): Promise<void> => {
+      if (!selected) return;
+      // A queued save for this pipeline would re-create it moments after the delete.
+      cancel();
+      await api.pipelines.remove(selected.id, projectId || undefined);
+      await refreshScoped();
+    },
+  );
   const preview = async (): Promise<void> => {
     if (!draft || !projectId) return;
     setDryRunError('');

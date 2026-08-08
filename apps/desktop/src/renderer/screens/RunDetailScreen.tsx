@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
+import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useApp } from '../stores/app.js';
 import { useRun } from '../stores/run.js';
 import { clockTime, credits, duration, tokens } from '../format.js';
@@ -68,24 +69,22 @@ export default function RunDetailScreen({
     [view.phases, eventsByPhase],
   );
 
-  const kill = async (): Promise<void> => {
-    if (killing) return;
-    if (
-      !window.confirm('Kill this run? In-flight agent turns stop; the worktree branch is kept.')
-    ) {
-      return;
-    }
-    setKilling(true);
-    setActionError('');
-    try {
-      const ok = await api.runs.kill(projectId, runId);
-      if (!ok) setActionError('Could not kill the run. It may have already finished.');
-    } catch (e) {
-      setActionError((e as Error).message);
-    } finally {
-      setKilling(false);
-    }
-  };
+  const kill = useConfirmAction(
+    'Kill this run? In-flight agent turns stop; the worktree branch is kept.',
+    async (): Promise<void> => {
+      if (killing) return;
+      setKilling(true);
+      setActionError('');
+      try {
+        const ok = await api.runs.kill(projectId, runId);
+        if (!ok) setActionError('Could not kill the run. It may have already finished.');
+      } catch (e) {
+        setActionError((e as Error).message);
+      } finally {
+        setKilling(false);
+      }
+    },
+  );
 
   const withWorktree = async (
     label: string,
@@ -107,29 +106,21 @@ export default function RunDetailScreen({
     }
   };
 
-  const mergeWorktree = async (): Promise<void> => {
-    if (worktreeBusy) return;
-    if (
-      !window.confirm(
-        'Merge this run’s branch into the project base ref? Uncommitted work in the worktree is included only if the merge path commits it first.',
-      )
-    ) {
-      return;
-    }
-    await withWorktree('Merged.', () => api.runs.mergeWorktree(projectId, runId));
-  };
+  const mergeWorktree = useConfirmAction(
+    'Merge this run’s branch into the project base ref? Uncommitted work in the worktree is included only if the merge path commits it first.',
+    async (): Promise<void> => {
+      if (worktreeBusy) return;
+      await withWorktree('Merged.', () => api.runs.mergeWorktree(projectId, runId));
+    },
+  );
 
-  const discardWorktree = async (): Promise<void> => {
-    if (worktreeBusy) return;
-    if (
-      !window.confirm(
-        'Discard this run’s worktree and branch? Uncommitted work in it is deleted and cannot be undone.',
-      )
-    ) {
-      return;
-    }
-    await withWorktree('Discarded.', () => api.runs.discardWorktree(projectId, runId));
-  };
+  const discardWorktree = useConfirmAction(
+    'Discard this run’s worktree and branch? Uncommitted work in it is deleted and cannot be undone.',
+    async (): Promise<void> => {
+      if (worktreeBusy) return;
+      await withWorktree('Discarded.', () => api.runs.discardWorktree(projectId, runId));
+    },
+  );
 
   const openWorktree = async (): Promise<void> => {
     setActionError('');

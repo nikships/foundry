@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import type { CliDescriptor, DoctorCheck } from '@shared/types.js';
+import type { CliDescriptor, DoctorCheck, ProjectState } from '@shared/types.js';
 import type { StepId } from './shared.js';
 import { STEPS } from './shared.js';
 import { api } from '../../api.js';
+import { useConfirmAction } from '../../hooks/useConfirmAction.js';
 import { useApp } from '../../stores/app.js';
 import type { CliVendor } from '@shared/types.js';
 
@@ -197,33 +198,34 @@ export function OnboardingProvider({
       setBusy(false);
     }
   };
-  const removeProject = async (id: string): Promise<void> => {
-    if (busy) return;
-    const target = projects.find((p) => p.id === id);
-    if (!target) return;
-    if (
-      !window.confirm(
-        `Remove project "${target.name}" from Foundry? The git repo on disk is not deleted.`,
-      )
-    )
-      return;
-    setBusy(true);
-    setError('');
-    try {
-      await api.projects.remove(id);
-      await refreshAll();
-      if (selectedId === id) {
-        const remaining = projects.filter((p) => p.id !== id);
-        const nxt = remaining[0]?.id ?? '';
-        setSelectedId(nxt);
-        if (nxt) selectProject(nxt);
+
+  const removeProject = useConfirmAction(
+    (id: string) => {
+      const target = projects.find((p) => p.id === id);
+      return `Remove project "${target?.name}" from Foundry? The git repo on disk is not deleted.`;
+    },
+    async (id: string): Promise<void> => {
+      if (busy) return;
+      const target = projects.find((p) => p.id === id);
+      if (!target) return;
+      setBusy(true);
+      setError('');
+      try {
+        await api.projects.remove(id);
+        await refreshAll();
+        if (selectedId === id) {
+          const remaining = projects.filter((p) => p.id !== id);
+          const nxt = remaining[0]?.id ?? '';
+          setSelectedId(nxt);
+          if (nxt) selectProject(nxt);
+        }
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        setBusy(false);
       }
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
+    },
+  );
   const commitProjectRename = async (id: string): Promise<void> => {
     const draft = (nameDrafts[id] ?? '').trim();
     const project = projects.find((p) => p.id === id);
