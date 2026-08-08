@@ -13,6 +13,7 @@ import { AppContext } from './context.js';
 import { registerIpc } from './ipc/index.js';
 import { readBrandSync } from './store/settings.js';
 import { killAll } from './system/procs.js';
+import { resolveEnv } from './system/env.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DEV_URL = process.env.ELECTRON_RENDERER_URL;
@@ -156,9 +157,16 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
 
-  void app.whenReady().then(() => {
+  void app.whenReady().then(async () => {
     const supportDir = join(app.getPath('userData'), 'foundry');
     mkdirSync(supportDir, { recursive: true });
+
+    // Must finish before anything spawns. A GUI launch inherits launchd's PATH
+    // (`/usr/bin:/bin:/usr/sbin:/sbin`), where node, npm, cargo, go, uv and
+    // every agent CLI are invisible — so the first CLI lookup would resolve
+    // against the wrong PATH and cache a wrong answer for the whole session.
+    const env = await resolveEnv();
+    if (env.via === 'fallback') console.warn(`[env] PATH from fallback: ${env.detail ?? ''}`);
 
     // The brand has to be known before the window exists, so the frame is
     // already the right colour and the renderer can be told which palette to

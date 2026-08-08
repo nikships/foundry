@@ -147,6 +147,13 @@ export interface AppSettings {
   clis: Record<CliVendor, CliConfig>;
   /** The vendor a newly created agent starts on. */
   defaultCli: CliVendor;
+  /**
+   * Which CLI answers "Ask AI to find commands". `default` follows `defaultCli`,
+   * so an operator who never opens this setting still gets a working button.
+   */
+  detectCli: CliVendor | 'default';
+  /** Model for detection. `inherit` lets the chosen CLI pick its own. */
+  detectModel: string;
   /** Recorded on every run so a trace says who asked for it. */
   engineerName: string;
   defaultAutonomy: AutonomyLevel;

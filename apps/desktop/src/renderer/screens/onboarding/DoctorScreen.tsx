@@ -407,6 +407,7 @@ export default function DoctorScreen(): React.JSX.Element {
         }
         .ob-doc-panel .doctor li{
           padding: var(--s3) var(--s4) var(--s3) calc(var(--s4) - 2px);
+          border-top: 0;
           border-bottom: 1px solid var(--line);
           border-left: 2px solid transparent;
           gap: var(--s3);

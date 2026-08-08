@@ -123,6 +123,92 @@ describe('droid', () => {
     expect(parsed).toMatchObject({ text: 'done', sessionId: 'sess-9', isError: false });
     expect(parsed?.usage?.inputTokens).toBe(10);
   });
+
+  it('streams, so a detection or phase can be watched rather than awaited blind', () => {
+    expect(valueOf(droid.turn(baseTurn).argv, '--output-format')).toBe('stream-json');
+  });
+
+  /**
+   * Captured from `droid exec -o stream-json`. The terminal line is
+   * `completion`/`finalText`, not the `result`/`result` that `-o json` prints:
+   * parsing only the latter would leave every streamed turn with empty text.
+   */
+  it('reads the completion envelope stream-json ends with', () => {
+    const stdout = [
+      '{"type":"system","subtype":"init","session_id":"5457fcb9","model":"claude-opus-5"}',
+      '{"type":"message","role":"assistant","id":"bf54","text":"DONE","session_id":"5457fcb9"}',
+      '{"type":"completion","finalText":"DONE","numTurns":2,"durationMs":3264,"session_id":"5457fcb9","usage":{"input_tokens":21200,"output_tokens":145,"cache_read_input_tokens":7,"cache_creation_input_tokens":3}}',
+    ].join('\n');
+    const parsed = droid.parse({ stdout, stderr: '', code: 0 });
+    expect(parsed).toMatchObject({ text: 'DONE', sessionId: '5457fcb9', isError: false });
+    // droid exec prints snake_case; the engine reads camelCase. Passing the
+    // wire object through unmapped reported every one-shot turn as free.
+    expect(parsed?.usage?.inputTokens).toBe(21200);
+    expect(parsed?.usage?.outputTokens).toBe(145);
+    expect(parsed?.usage?.cacheReadTokens).toBe(7);
+    expect(parsed?.usage?.cacheCreationTokens).toBe(3);
+  });
+
+  it('folds an assistant message into one delta and its close', () => {
+    const normalise = droid.stream!();
+    expect(
+      normalise({
+        type: 'message',
+        role: 'assistant',
+        id: '1523',
+        text: 'Listing files as requested.',
+      }),
+    ).toEqual([
+      {
+        type: 'assistant_text_delta',
+        messageId: '1523',
+        blockIndex: 0,
+        textDelta: 'Listing files as requested.',
+      },
+      { type: 'assistant_text_complete', messageId: '1523', blockIndex: 0 },
+    ]);
+  });
+
+  it('maps a tool call and its result onto the same id, so the row spans', () => {
+    const normalise = droid.stream!();
+    expect(
+      normalise({
+        type: 'tool_call',
+        id: 'call_019f',
+        toolId: 'LS',
+        toolName: 'LS',
+        parameters: { directory_path: '/tmp/probe' },
+      }),
+    ).toEqual([
+      {
+        type: 'tool_call',
+        toolUse: {
+          type: 'tool_use',
+          id: 'call_019f',
+          name: 'LS',
+          input: { directory_path: '/tmp/probe' },
+        },
+      },
+    ]);
+    expect(
+      normalise({
+        type: 'tool_result',
+        id: 'call_019f',
+        toolId: 'LS',
+        isError: false,
+        value: 'total 8',
+      }),
+    ).toEqual([
+      { type: 'tool_result', toolUseId: 'call_019f', content: 'total 8', isError: false },
+    ]);
+  });
+
+  it('ignores the init and user lines, which carry no mid-turn event', () => {
+    const normalise = droid.stream!();
+    expect(normalise({ type: 'system', subtype: 'init', session_id: 'x' })).toEqual([]);
+    expect(normalise({ type: 'message', role: 'user', id: 'u1', text: 'hi' })).toEqual([]);
+    expect(normalise({ type: 'completion', finalText: 'done' })).toEqual([]);
+  });
 });
 
 describe('claude code', () => {
@@ -487,9 +573,8 @@ describe('grok', () => {
  * nothing at all.
  */
 describe('stream normalisers', () => {
-  it('every streaming vendor exposes a factory, and droid does not need one', () => {
-    expect(adapterFor('droid').stream).toBeUndefined();
-    for (const id of ['claude', 'codex', 'junie', 'grok'] as const) {
+  it('every vendor exposes a stream factory', () => {
+    for (const id of CLI_VENDOR_IDS) {
       expect(typeof adapterFor(id).stream).toBe('function');
     }
   });

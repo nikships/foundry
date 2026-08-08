@@ -52,19 +52,23 @@ export function register(ctx: Ctx, handle: Handle): void {
         useAgent: true,
         detectWithAgent: async () => {
           const settings = ctx.settings.get();
-          const vendor = settings.defaultCli;
+          // Start-time fill honours the operator's detection choice, so the
+          // CLI that answers here is the one the Project pane says it will be.
+          const vendor =
+            settings.detectCli === 'default' ? settings.defaultCli : settings.detectCli;
           const cli = settings.clis[vendor];
+          const model = settings.detectModel || 'inherit';
           const client = new OneShotClient({
             vendor,
             cliPath: cli.path,
             extraArgs: cli.extraArgs,
             cwd: projectPath,
             autonomy: 'low',
-            model: vendor === 'droid' ? settings.defaultModel : 'inherit',
-            reasoningEffort: vendor === 'droid' ? settings.defaultReasoningEffort : 'off',
+            model,
+            reasoningEffort: model === 'inherit' ? 'off' : settings.defaultReasoningEffort,
           });
           const turn = await client.send(DETECT_PROMPT, 300_000);
-          return parseDetectReply(turn.text);
+          return parseDetectReply(turn.text).commands;
         },
         save: (next) => {
           const result = ctx.projects.save(next);

@@ -20,8 +20,21 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import type { ModelInfo, ToolInfo } from '@shared/types.js';
 import type { AvailableModel } from './protocol.js';
+import { spawnEnv } from '../system/env.js';
 
-const exec = promisify(execFile);
+const execFileAsync = promisify(execFile);
+
+/**
+ * Every discovery call goes through the resolved PATH: a GUI launch cannot see
+ * a CLI installed under ~/.npm-global, and a catalog that comes back empty
+ * reads as an unauthenticated CLI rather than an unreachable one.
+ */
+const exec = (
+  file: string,
+  args: string[],
+  options: { timeout?: number; maxBuffer?: number } = {},
+): Promise<{ stdout: string; stderr: string }> =>
+  execFileAsync(file, args, { ...options, encoding: 'utf8', env: spawnEnv() });
 
 export interface CustomModelEntry {
   /** droid writes the id it will accept on the wire; never re-derive one. */

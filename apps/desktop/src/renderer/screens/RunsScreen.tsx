@@ -230,7 +230,6 @@ export default function RunsScreen({
         ) : null}
         {!project ? (
           <EmptyState
-            art="scenes/empty-state.png"
             title="No project yet"
             body="Foundry runs against a git repository. Add one to get started."
           >
@@ -255,7 +254,6 @@ export default function RunsScreen({
             )}
             {!loading && !listError && runs.length === 0 && (
               <EmptyState
-                art="scenes/empty-state.png"
                 title="Nothing has run yet"
                 body="Describe a change above and pick a pipeline. Every run is isolated in its own git worktree. Missing test commands are detected automatically when you start."
               />

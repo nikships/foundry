@@ -8,18 +8,19 @@ import {
   type TryCommandResult,
 } from '@shared/ipc-contract.js';
 import { runCommand } from '../engine/commands.js';
-import { DETECT_PROMPT, parseDetectReply, sniffCommands } from '../engine/detect.js';
-import { OneShotClient } from '../droid/oneshot.js';
+import { sniffCommands } from '../engine/detect.js';
+import { adapterFor } from '../cli/index.js';
 import { isRepo } from '../engine/git.js';
 import { checkProject } from '../system/doctor.js';
 import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
 import { noIssues, notifySettings } from './shared.js';
 
-type Ctx = Pick<AppContext, 'projects' | 'settings' | 'window' | 'broadcast'>;
+type Ctx = Pick<AppContext, 'projects' | 'settings' | 'window' | 'broadcast' | 'detections'>;
 
 export function register(ctx: Ctx, handle: Handle): void {
   const projectOf = (projectId: string) => ctx.projects.get(projectId);
+  const detections = ctx.detections;
 
   handle(IPC.projectsList, () => ctx.projects.list());
 
@@ -90,90 +91,90 @@ export function register(ctx: Ctx, handle: Handle): void {
   });
 
   /**
-   * Proposes commands; never writes them. The renderer shows what came back and
-   * the human accepts, so a wrong guess costs a glance rather than a silently
-   * broken test phase.
+   * Manifest sniffing only: free, no model, no child process. Proposes
+   * commands and never writes them, so a wrong guess costs a glance rather
+   * than a silently broken test phase.
+   */
+  handle(IPC.projectsSniffCommands, async (id: string): Promise<DetectCommandsResult> => {
+    const project = projectOf(id);
+    if (!project) return { commands: [], via: 'none', detail: 'project not found' };
+
+    const candidates = await sniffCommands(project.path);
+    if (!candidates.length) {
+      return { commands: [], via: 'none', detail: 'no command found in the manifests' };
+    }
+
+    // Running each candidate is the point: a command that passes here is
+    // evidence, while a command merely typed into a field is a hope.
+    const commands = await Promise.all(
+      candidates.map(async (c) => {
+        const result = await runCommand({ argv: c.argv, cwd: project.path, timeoutMs: 300_000 });
+        return {
+          name: c.name,
+          argv: c.argv,
+          source: c.source,
+          verified: result.passed,
+          exitCode: result.exitCode,
+          outputTail: result.outputTail,
+          durationMs: result.durationMs,
+        };
+      }),
+    );
+
+    const passed = commands.filter((c) => c.verified).length;
+    return {
+      commands,
+      via: 'manifest',
+      detail: `${commands.length} found in the manifests, ${passed} verified by running`,
+    };
+  });
+
+  /**
+   * Always asks an agent. Manifest results are handed to it as context to
+   * confirm or correct, never used as a reason to skip it: a button labelled
+   * "Ask AI" that quietly returned a manifest guess is indistinguishable from
+   * a broken one.
+   *
+   * Returns as soon as the session exists so the click is never left awaiting
+   * a five-minute turn; progress arrives on `detection-progress`.
    */
   handle(
-    IPC.projectsDetectCommands,
-    async (id: string, useAgent?: boolean): Promise<DetectCommandsResult> => {
+    IPC.projectsAskAgentCommands,
+    async (id: string): Promise<{ detectionId: string } | { error: string }> => {
       const project = projectOf(id);
-      if (!project) return { commands: [], via: 'none', detail: 'project not found' };
+      if (!project) return { error: 'project not found' };
 
-      let candidates = await sniffCommands(project.path);
-      let via: DetectCommandsResult['via'] = candidates.length ? 'manifest' : 'none';
+      const settings = ctx.settings.get();
+      const vendor = settings.detectCli === 'default' ? settings.defaultCli : settings.detectCli;
+      const cli = settings.clis[vendor];
+      if (!cli) return { error: `no CLI configured for ${vendor}` };
 
-      if (!candidates.length && useAgent) {
-        try {
-          const settings = ctx.settings.get();
-          // Read-only autonomy: discovery reads the repo and must not be able
-          // to change it, and this runs against the base checkout, not a
-          // worktree, because no run owns it.
-          // Discovery runs on the default CLI: it is the one the operator has
-          // certainly authenticated, and this is not a phase anyone chose an
-          // agent for. Read-only autonomy, against the base checkout rather
-          // than a worktree, because no run owns it.
-          const vendor = settings.defaultCli;
-          const cli = settings.clis[vendor];
-          const client = new OneShotClient({
-            vendor,
-            cliPath: cli.path,
-            extraArgs: cli.extraArgs,
-            cwd: project.path,
-            autonomy: 'low',
-            // A model id is meaningful only to the CLI that published it, and
-            // defaultModel is droid's. Any other vendor gets its own default
-            // rather than a droid id it would reject on the first turn.
-            model: vendor === 'droid' ? settings.defaultModel : 'inherit',
-            reasoningEffort: vendor === 'droid' ? settings.defaultReasoningEffort : 'off',
-          });
-          const turn = await client.send(DETECT_PROMPT, 300_000);
-          candidates = parseDetectReply(turn.text);
-          if (candidates.length) via = 'agent';
-        } catch (e) {
-          return {
-            commands: [],
-            via: 'none',
-            detail: `could not ask an agent: ${(e as Error).message}`,
-          };
-        }
+      // A model id is meaningful only to the CLI that published it. An id
+      // chosen while another vendor was selected would be rejected on the
+      // first turn, so it is dropped rather than sent.
+      let model = settings.detectModel || 'inherit';
+      if (model !== 'inherit') {
+        const known = await adapterFor(vendor)
+          .models(cli.path)
+          .catch(() => []);
+        if (known.length && !known.some((m) => m.id === model)) model = 'inherit';
       }
 
-      if (!candidates.length) {
-        return {
-          commands: [],
-          via: 'none',
-          detail: useAgent
-            ? 'no command found in the manifests or by reading the repo'
-            : 'no command found in the manifests',
-        };
-      }
-
-      // Running each candidate is the point: a command that passes here is
-      // evidence, while a command merely typed into a field is a hope.
-      const commands = await Promise.all(
-        candidates.map(async (c) => {
-          const result = await runCommand({ argv: c.argv, cwd: project.path, timeoutMs: 300_000 });
-          return {
-            name: c.name,
-            argv: c.argv,
-            source: c.source,
-            verified: result.passed,
-            exitCode: result.exitCode,
-            outputTail: result.outputTail,
-            durationMs: result.durationMs,
-          };
-        }),
-      );
-
-      const passed = commands.filter((c) => c.verified).length;
-      return {
-        commands,
-        via,
-        detail: `${commands.length} found via ${via}, ${passed} verified by running`,
-      };
+      const session = detections.start({
+        projectId: project.id,
+        projectPath: project.path,
+        existingCommands: project.commands.map((c) => c.name),
+        settings,
+        vendor,
+        model,
+      });
+      return { detectionId: session.detectionId };
     },
   );
+
+  handle(IPC.projectsCancelDetection, (detectionId: string) => detections.cancel(detectionId));
+
+  handle(IPC.projectsDetection, (detectionId: string) => detections.get(detectionId));
 
   handle(IPC.projectsCheck, async (id: string) => {
     const project = projectOf(id);

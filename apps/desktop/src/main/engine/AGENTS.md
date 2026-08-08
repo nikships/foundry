@@ -22,3 +22,27 @@ inside one phase and never decide if they succeeded.
   stays in `worktree.ts`. `git.ts` porcelain parser ignores git's stderr chatter.
 - New `PhaseKind` or gate: add to `src/shared/types.ts`, wire runner/registry,
   add a test against real git temp repos (see `tests/executor.test.ts`).
+
+## Command detection (`detect.ts`, `detect-session.ts`, `detections.ts`)
+
+Two separate paths, and conflating them is the bug this design exists to
+prevent:
+
+- `sniffCommands()` reads manifests. Free, no model, no child process.
+- `DetectSession` **always** spawns an agent. Manifest results are passed into
+  the prompt as context to confirm or correct — never as a reason to skip the
+  agent. A button labelled "Ask AI" that quietly returns a manifest guess is
+  indistinguishable from a broken one.
+
+A detection is not a run: no worktree, no phase, no tracer, so it lives in
+`detections.ts` rather than `RunRegistry`, and progress is **pushed**
+(`detection-progress`) because there are no trace rows and therefore no
+`change_id` cursor to poll. The IPC handler returns a `detectionId` immediately
+and never awaits the turn.
+
+`parseDetectReply` returns `{commands, rejected, rawReply, parseError}`. Every
+rejection carries a reason and the raw reply is always kept: silent filtering
+made a correct answer read as "no command found". Names are free-form
+(`ProjectCommand.name` is a string); the four pipeline roles just sort first.
+Shell metacharacters in argv are still refused — argv is executed without a
+shell.

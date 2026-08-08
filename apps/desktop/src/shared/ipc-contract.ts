@@ -80,6 +80,51 @@ export interface DetectCommandsResult {
   detail: string;
 }
 
+/** One line of an agent detection's live transcript. */
+export interface DetectionEntry {
+  id: string;
+  kind: 'text' | 'tool' | 'note' | 'error';
+  text: string;
+  toolKind?: 'command' | 'read' | 'edit' | 'search' | 'other';
+  done?: boolean;
+  failed?: boolean;
+  at: number;
+}
+
+/**
+ * A command the agent proposed. Verification is streamed, so `verify` moves
+ * `pending → running → pass|fail` while the panel is open.
+ */
+export interface DetectionProposal {
+  name: string;
+  argv: string[];
+  source: string;
+  verify: 'pending' | 'running' | 'pass' | 'fail';
+  exitCode?: number | null;
+  outputTail?: string;
+  durationMs?: number;
+  /** The binary was not found, which is a PATH problem, not a failing command. */
+  notFound?: boolean;
+}
+
+export interface DetectionState {
+  detectionId: string;
+  projectId: string;
+  status: 'running' | 'verifying' | 'done' | 'cancelled' | 'failed';
+  /** Which CLI and model actually ran, which may differ from what was asked. */
+  cli: CliVendor;
+  model: string;
+  entries: DetectionEntry[];
+  proposals: DetectionProposal[];
+  /** Proposals that were not usable, each with the reason it was dropped. */
+  rejected: { raw: unknown; reason: string }[];
+  /** The agent's reply verbatim, so an unparseable answer stays diagnosable. */
+  rawReply: string;
+  detail: string;
+  startedAt: number;
+  endedAt?: number;
+}
+
 export interface WorktreeAction {
   ok: boolean;
   detail: string;
@@ -97,7 +142,16 @@ export interface FoundryApi {
     remove(id: string): Promise<ProjectDef[]>;
     export(id: string): Promise<string | null>;
     tryCommand(id: string, argv: string[]): Promise<TryCommandResult>;
-    detectCommands(id: string, useAgent?: boolean): Promise<DetectCommandsResult>;
+    /** Manifest sniffing only: free, no model, no process. */
+    sniffCommands(id: string): Promise<DetectCommandsResult>;
+    /**
+     * Always spawns an agent. Returns as soon as the session exists; progress
+     * arrives on `detection-progress` and the final state is in `detection`.
+     */
+    askAgentCommands(id: string): Promise<{ detectionId: string } | { error: string }>;
+    cancelDetection(detectionId: string): Promise<boolean>;
+    /** The current state of a detection, for a panel reopened mid-run. */
+    detection(detectionId: string): Promise<DetectionState | null>;
     check(id: string): Promise<DoctorCheck[]>;
     reveal(path: string): Promise<void>;
   };
@@ -175,9 +229,19 @@ export interface FoundryApi {
     quitAndInstall(): Promise<void>;
     getStatus(): Promise<UpdateStatus>;
   };
-  /** Push channels are deliberately few: everything else is polled. */
+  /**
+   * Push channels are deliberately few: everything else is polled.
+   *
+   * `detection-progress` is pushed rather than polled because a detection is
+   * not a run: it has no trace rows and therefore no `change_id` cursor to walk.
+   */
   on(
-    channel: 'runs-changed' | 'interrupts-changed' | 'settings-changed' | 'updater-status',
+    channel:
+      | 'runs-changed'
+      | 'interrupts-changed'
+      | 'settings-changed'
+      | 'updater-status'
+      | 'detection-progress',
     handler: (data?: unknown) => void,
   ): () => void;
 }
@@ -191,7 +255,10 @@ export const IPC = {
   projectsRemove: 'projects:remove',
   projectsExport: 'projects:export',
   projectsTryCommand: 'projects:tryCommand',
-  projectsDetectCommands: 'projects:detectCommands',
+  projectsSniffCommands: 'projects:sniffCommands',
+  projectsAskAgentCommands: 'projects:askAgentCommands',
+  projectsCancelDetection: 'projects:cancelDetection',
+  projectsDetection: 'projects:detection',
   projectsCheck: 'projects:check',
   projectsReveal: 'projects:reveal',
   rosterList: 'roster:list',
@@ -245,4 +312,5 @@ export const IPC = {
   eventInterruptsChanged: 'event:interrupts-changed',
   eventSettingsChanged: 'event:settings-changed',
   eventUpdaterStatus: 'event:updater-status',
+  eventDetectionProgress: 'event:detection-progress',
 } as const;

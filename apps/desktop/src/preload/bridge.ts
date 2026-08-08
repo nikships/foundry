@@ -16,6 +16,7 @@ const EVENT_CHANNELS = {
   'interrupts-changed': IPC.eventInterruptsChanged,
   'settings-changed': IPC.eventSettingsChanged,
   'updater-status': IPC.eventUpdaterStatus,
+  'detection-progress': IPC.eventDetectionProgress,
 } as const;
 
 /** One-way menu commands; the renderer decides what to show. */
@@ -41,7 +42,10 @@ const api: FoundryApi = {
     remove: (id) => call(IPC.projectsRemove, id),
     export: (id) => call(IPC.projectsExport, id),
     tryCommand: (id, argv) => call(IPC.projectsTryCommand, id, argv),
-    detectCommands: (id, useAgent) => call(IPC.projectsDetectCommands, id, useAgent),
+    sniffCommands: (id) => call(IPC.projectsSniffCommands, id),
+    askAgentCommands: (id) => call(IPC.projectsAskAgentCommands, id),
+    cancelDetection: (detectionId) => call(IPC.projectsCancelDetection, detectionId),
+    detection: (detectionId) => call(IPC.projectsDetection, detectionId),
     check: (id) => call(IPC.projectsCheck, id),
     reveal: (path) => call(IPC.projectsReveal, path),
   },

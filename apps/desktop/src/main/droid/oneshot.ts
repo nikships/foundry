@@ -16,6 +16,7 @@
 import { spawn } from 'node:child_process';
 import type { AutonomyLevel, ReasoningEffort } from '@shared/types.js';
 import { adapterFor, type CliAdapter, type CliVendor } from '../cli/index.js';
+import { spawnEnv } from '../system/env.js';
 import type { TokenUsage } from './protocol.js';
 import type { TurnResult } from './client.js';
 
@@ -161,7 +162,7 @@ export class OneShotClient {
     return new Promise((resolve) => {
       const child = spawn(this.opts.cliPath, args, {
         cwd: this.opts.cwd,
-        env: process.env,
+        env: spawnEnv(),
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       this.lastPid = child.pid;

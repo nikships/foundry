@@ -1,8 +1,22 @@
-import { useState } from 'react';
-import type { DetectCommandsResult } from '@shared/ipc-contract.js';
-import type { ProjectCommand, ProjectDef } from '@shared/types.js';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type {
+  DetectCommandsResult,
+  DetectionProposal,
+  DetectionState,
+} from '@shared/ipc-contract.js';
+import type {
+  CliVendor,
+  CliDescriptor,
+  ModelInfo,
+  ProjectCommand,
+  ProjectDef,
+} from '@shared/types.js';
 import { api } from '../api.js';
+import { useApp } from '../stores/app.js';
 import { duration } from '../format.js';
+import { CliIcon } from './BrandIcon.js';
+import ModelPicker from './ModelPicker.js';
+import DetectionPanel from './DetectionPanel.js';
 
 interface TryState {
   running: boolean;
@@ -19,37 +33,132 @@ export default function ProjectCommands({
   project: ProjectDef;
   onChange: (commands: ProjectCommand[]) => void;
 }): React.JSX.Element {
+  const { settings, patchSettings } = useApp();
   const [results, setResults] = useState<Record<string, TryState>>({});
   const [expanded, setExpanded] = useState('');
-  const [detecting, setDetecting] = useState(false);
+  const [sniffing, setSniffing] = useState(false);
   const [found, setFound] = useState<DetectCommandsResult | null>(null);
+  const [detection, setDetection] = useState<DetectionState | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [detectError, setDetectError] = useState('');
+  const [showRaw, setShowRaw] = useState(false);
+  const [clis, setClis] = useState<CliDescriptor[]>([]);
+  const [models, setModels] = useState<ModelInfo[]>([]);
+
+  // Which detection this component is showing. A stale session's progress must
+  // not paint over a newer one the user just started.
+  const detectionIdRef = useRef<string>('');
+
+  const detectCli = settings?.detectCli ?? 'default';
+  const detectModel = settings?.detectModel ?? 'inherit';
+  const effectiveCli: CliVendor =
+    detectCli === 'default' ? (settings?.defaultCli ?? 'droid') : detectCli;
+
+  useEffect(() => {
+    void api.catalog.clis().then(setClis);
+  }, []);
+
+  // The model list belongs to whichever CLI will answer, so switching the CLI
+  // has to reload it rather than leave ids this vendor never published.
+  useEffect(() => {
+    void api.catalog
+      .models(effectiveCli)
+      .then(setModels)
+      .catch(() => setModels([]));
+  }, [effectiveCli]);
+
+  useEffect(() => {
+    return api.on('detection-progress', (data) => {
+      const state = data as DetectionState | undefined;
+      if (!state || state.detectionId !== detectionIdRef.current) return;
+      setDetection(state);
+    });
+  }, []);
 
   const setCommands = (commands: ProjectCommand[]): void => onChange(commands);
 
-  // Detection proposes; nothing is written until the human accepts, so a wrong
-  // guess costs a glance rather than a silently broken test phase.
-  const detect = async (useAgent: boolean): Promise<void> => {
-    setDetecting(true);
+  // Manifest sniffing: free, no model, no agent. Proposes; never writes.
+  const sniff = async (): Promise<void> => {
+    setSniffing(true);
     setFound(null);
     try {
-      setFound(await api.projects.detectCommands(project.id, useAgent));
+      setFound(await api.projects.sniffCommands(project.id));
     } catch (e) {
       setFound({ commands: [], via: 'none', detail: (e as Error).message });
     } finally {
-      setDetecting(false);
+      setSniffing(false);
     }
   };
 
+  /**
+   * Always spawns an agent. The panel appears immediately: this awaits the
+   * session id, not the turn, so the button can never look like it did nothing.
+   */
+  const askAgent = async (): Promise<void> => {
+    setStarting(true);
+    setDetectError('');
+    setFound(null);
+    setDetection(null);
+    setShowRaw(false);
+    try {
+      const started = await api.projects.askAgentCommands(project.id);
+      if ('error' in started) {
+        setDetectError(started.error);
+        return;
+      }
+      detectionIdRef.current = started.detectionId;
+      // The first progress event may already have fired before this returned.
+      const current = await api.projects.detection(started.detectionId);
+      if (current && current.detectionId === detectionIdRef.current) setDetection(current);
+    } catch (e) {
+      setDetectError((e as Error).message);
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  const cancelDetection = (): void => {
+    if (!detectionIdRef.current) return;
+    void api.projects.cancelDetection(detectionIdRef.current);
+  };
+
+  const setDetectCli = (value: string): void => {
+    // `inherit` is the only model id every vendor accepts, so switching CLI
+    // resets it rather than carrying an id the new vendor would reject.
+    void patchSettings({ detectCli: value as CliVendor | 'default', detectModel: 'inherit' });
+  };
+
+  const upsert = useCallback((list: ProjectCommand[], entry: ProjectCommand): ProjectCommand[] => {
+    const existing = list.findIndex((c) => c.name === entry.name);
+    return existing < 0 ? [...list, entry] : list.map((c, i) => (i === existing ? entry : c));
+  }, []);
+
   const accept = (command: DetectCommandsResult['commands'][number]): void => {
-    const existing = project.commands.findIndex((c) => c.name === command.name);
-    const entry = { name: command.name, argv: command.argv };
-    const next =
-      existing < 0
-        ? [...project.commands, entry]
-        : project.commands.map((c, i) => (i === existing ? entry : c));
-    setCommands(next);
+    setCommands(upsert(project.commands, { name: command.name, argv: command.argv }));
     setFound((prev) =>
       prev ? { ...prev, commands: prev.commands.filter((c) => c.name !== command.name) } : prev,
+    );
+  };
+
+  const acceptProposal = (proposal: DetectionProposal): void => {
+    setCommands(upsert(project.commands, { name: proposal.name, argv: proposal.argv }));
+    setDetection((prev) =>
+      prev ? { ...prev, proposals: prev.proposals.filter((p) => p.name !== proposal.name) } : prev,
+    );
+  };
+
+  const detectionLive = detection?.status === 'running' || detection?.status === 'verifying';
+
+  const acceptAllProposals = (): void => {
+    if (!detection) return;
+    let next = project.commands;
+    for (const p of detection.proposals) {
+      if (p.verify === 'running') continue;
+      next = upsert(next, { name: p.name, argv: p.argv });
+    }
+    setCommands(next);
+    setDetection((prev) =>
+      prev ? { ...prev, proposals: prev.proposals.filter((p) => p.verify === 'running') } : prev,
     );
   };
 
@@ -157,23 +266,73 @@ export default function ProjectCommands({
             </button>
             <button
               className="btn sm"
-              disabled={detecting}
-              title={detecting ? 'Detection in progress…' : undefined}
-              onClick={() => void detect(false)}
+              disabled={sniffing}
+              title="Reads the repo's manifests. Free, no model."
+              onClick={() => void sniff()}
             >
-              {detecting ? 'Detecting…' : 'Detect from repo'}
+              {sniffing ? 'Reading manifests…' : 'Detect from manifests'}
             </button>
             <button
               className="btn sm"
-              disabled={detecting}
-              title={detecting ? 'Detection in progress…' : undefined}
-              onClick={() => void detect(true)}
+              disabled={starting || detectionLive}
+              title={`Asks ${effectiveCli} to read the repo and propose commands.`}
+              onClick={() => void askAgent()}
             >
-              {detecting ? 'Reading the repo…' : 'Ask AI to find commands'}
+              {starting || detectionLive ? 'Asking AI…' : 'Ask AI to find commands'}
             </button>
           </div>
         </div>
       </div>
+
+      <div className="field">
+        <label>Who answers “Ask AI”</label>
+        <span className="hint">
+          Detection reads the repo read-only, against your checkout rather than a worktree.
+        </span>
+        <div className="two detect-picker">
+          <div className="cli-pick">
+            <select
+              className="select"
+              value={detectCli}
+              onChange={(e) => setDetectCli(e.target.value)}
+            >
+              <option value="default">
+                Follow the default CLI ({settings?.defaultCli ?? 'droid'})
+              </option>
+              {clis.map((cli) => (
+                <option key={cli.id} value={cli.id}>
+                  {cli.label}
+                </option>
+              ))}
+            </select>
+            <CliIcon vendor={effectiveCli} size={18} />
+          </div>
+          <ModelPicker
+            value={detectModel}
+            models={models}
+            allowInherit
+            emptyHint={`No models listed for ${effectiveCli}. Install and sign in to it, or leave this on inherit.`}
+            onChange={(model) => void patchSettings({ detectModel: model })}
+          />
+        </div>
+      </div>
+
+      {detectError && (
+        <div className="field">
+          <span className="detect-error">{detectError}</span>
+        </div>
+      )}
+
+      {detection && (
+        <DetectionPanel
+          state={detection}
+          onCancel={cancelDetection}
+          onAccept={acceptProposal}
+          onAcceptAll={acceptAllProposals}
+          showRaw={showRaw}
+          onToggleRaw={() => setShowRaw((v) => !v)}
+        />
+      )}
       {found && (
         <div className="field">
           <label>Detected</label>
@@ -196,7 +355,7 @@ export default function ProjectCommands({
             </div>
           ) : (
             <p className="faint empty">
-              Nothing usable yet. Try the other detector, or type the argv by hand.
+              Nothing in the manifests. Ask AI to read the repo, or type the argv by hand.
             </p>
           )}
         </div>
@@ -216,6 +375,10 @@ export default function ProjectCommands({
         .found .name { width: 80px; flex: none; }
         .found .argv { flex: 1; color: var(--text); }
         .empty { font-size: var(--text-xs); margin-top: var(--s2); }
+        .detect-picker { margin-top: var(--s2); }
+        .cli-pick { display: flex; align-items: center; gap: var(--s2); }
+        .cli-pick .select { flex: 1; }
+        .detect-error { font-size: var(--text-xs); color: var(--red); }
         .output { padding: var(--s3); background: var(--bg-void); font-size: var(--text-xs); line-height: var(--leading); white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow-y: auto; color: var(--text-dim); }
       `}</style>
     </>

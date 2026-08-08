@@ -47,6 +47,8 @@ export const appSettingsSchema = z.object({
     grok: cliConfigSchema,
   }),
   defaultCli: z.enum(['droid', 'claude', 'codex', 'junie', 'grok']),
+  detectCli: z.enum(['default', 'droid', 'claude', 'codex', 'junie', 'grok']),
+  detectModel: z.string().min(1),
   engineerName: z.string().min(1).max(80),
   defaultAutonomy: z.enum(['low', 'medium', 'high']),
   defaultModel: z.string().min(1),
@@ -83,6 +85,8 @@ export function defaultSettings(): AppSettings {
   return {
     clis: defaultClis(),
     defaultCli: 'droid',
+    detectCli: 'default',
+    detectModel: 'inherit',
     engineerName: process.env.USER || 'engineer',
     defaultAutonomy: 'medium',
     defaultModel: 'claude-opus-5',
@@ -117,6 +121,10 @@ export function migrate(raw: unknown): AppSettings {
     clis.droid = { path: stored.droidPath, extraArgs: clis.droid.extraArgs };
   }
   const merged: AppSettings = { ...base, ...stored, clis } as AppSettings;
+  // Settings files written before detection was configurable have neither
+  // field, and an empty string would fail the schema on the next patch.
+  if (!merged.detectCli) merged.detectCli = base.detectCli;
+  if (!merged.detectModel) merged.detectModel = base.detectModel;
   // Existing installs won't have brand; default to prism.
   if (
     (merged as unknown as { brand?: string }).brand !== 'prism' &&

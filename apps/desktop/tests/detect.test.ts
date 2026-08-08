@@ -174,54 +174,88 @@ describe('sniffCommands: other ecosystems', () => {
 describe('parseDetectReply', () => {
   const reply = (commands: unknown): string => JSON.stringify({ commands });
 
-  it('reads commands out of a reply wrapped in prose', async () => {
+  it('reads commands out of a reply wrapped in prose', () => {
     const text = `Here is what I found:\n${reply([{ name: 'test', argv: ['npm', 'test'], source: 'package.json' }])}\nHope that helps.`;
-    expect(parseDetectReply(text)).toEqual([
+    expect(parseDetectReply(text).commands).toEqual([
       { name: 'test', argv: ['npm', 'test'], source: 'package.json' },
     ]);
   });
 
   it('drops a command carrying a shell operator, since the argv is executed later', () => {
-    expect(
-      parseDetectReply(reply([{ name: 'test', argv: ['npm', 'test', '&&', 'lint'] }])),
-    ).toEqual([]);
-    expect(parseDetectReply(reply([{ name: 'test', argv: ['cd', 'sub'] }]))).toEqual([]);
-    expect(parseDetectReply(reply([{ name: 'test', argv: ['sh', '-c', 'a | b'] }]))).toEqual([]);
+    for (const argv of [
+      ['npm', 'test', '&&', 'lint'],
+      ['cd', 'sub'],
+      ['sh', '-c', 'a | b'],
+    ]) {
+      const out = parseDetectReply(reply([{ name: 'test', argv }]));
+      expect(out.commands).toEqual([]);
+      // Silently dropping these is what made a real answer read as "nothing
+      // found"; the reason has to travel back to the UI.
+      expect(out.rejected).toHaveLength(1);
+      expect(out.rejected[0]!.reason).toMatch(/shell token/);
+    }
   });
 
-  it('drops a role no pipeline can reference', () => {
-    expect(parseDetectReply(reply([{ name: 'deploy', argv: ['./deploy.sh'] }]))).toEqual([]);
+  it('accepts a name outside the four pipeline roles, since a command name is free-form', () => {
+    const out = parseDetectReply(reply([{ name: 'e2e', argv: ['npm', 'run', 'e2e'] }]));
+    expect(out.commands).toEqual([{ name: 'e2e', argv: ['npm', 'run', 'e2e'], source: 'agent' }]);
+    expect(out.rejected).toEqual([]);
   });
 
-  it('keeps the first entry when a role is repeated', () => {
+  it('rejects a name that could not survive into a project command', () => {
+    const out = parseDetectReply(reply([{ name: 'not a name!', argv: ['x'] }]));
+    expect(out.commands).toEqual([]);
+    expect(out.rejected[0]!.reason).toMatch(/not usable as a command name/);
+  });
+
+  it('keeps the first entry when a name is repeated, and says the duplicate was dropped', () => {
     const out = parseDetectReply(
       reply([
         { name: 'test', argv: ['npm', 'test'] },
         { name: 'test', argv: ['make', 'test'] },
       ]),
     );
-    expect(out).toEqual([{ name: 'test', argv: ['npm', 'test'], source: 'agent' }]);
+    expect(out.commands).toEqual([{ name: 'test', argv: ['npm', 'test'], source: 'agent' }]);
+    expect(out.rejected[0]!.reason).toMatch(/duplicate/);
   });
 
-  it('drops an entry with an empty or non-string argv', () => {
-    expect(parseDetectReply(reply([{ name: 'test', argv: [] }]))).toEqual([]);
-    expect(parseDetectReply(reply([{ name: 'test', argv: ['npm', 7] }]))).toEqual([]);
-    expect(parseDetectReply(reply([{ name: 'test' }]))).toEqual([]);
+  it('drops an entry with an empty or non-string argv, with a reason each time', () => {
+    for (const item of [
+      { name: 'test', argv: [] },
+      { name: 'test', argv: ['npm', 7] },
+      { name: 'test' },
+    ]) {
+      const out = parseDetectReply(reply([item]));
+      expect(out.commands).toEqual([]);
+      expect(out.rejected).toHaveLength(1);
+    }
   });
 
-  it('treats an empty list and unparseable prose alike, as no answer', () => {
-    expect(parseDetectReply(reply([]))).toEqual([]);
-    expect(parseDetectReply('I could not find any test command.')).toEqual([]);
-    expect(parseDetectReply('{ definitely not json')).toEqual([]);
+  it('distinguishes an empty answer from one that could not be read', () => {
+    const empty = parseDetectReply(reply([]));
+    expect(empty.commands).toEqual([]);
+    expect(empty.parseError).toBeUndefined();
+
+    expect(parseDetectReply('I could not find any test command.').parseError).toMatch(/no JSON/);
+    // No closing brace at all, so there is nothing to even attempt to parse.
+    expect(parseDetectReply('{ definitely not json').parseError).toMatch(/no JSON/);
+    expect(parseDetectReply('{ definitely: not json }').parseError).toMatch(/not valid JSON/);
+    expect(parseDetectReply('{"other":1}').parseError).toMatch(/no "commands" array/);
   });
 
-  it('returns roles in pipeline order regardless of the order the agent listed them', () => {
+  it('always retains the raw reply, so an unusable answer stays diagnosable', () => {
+    const text = 'the repo has no tests';
+    expect(parseDetectReply(text).rawReply).toBe(text);
+  });
+
+  it('returns the four roles first, then anything else the agent proposed', () => {
     const out = parseDetectReply(
       reply([
+        { name: 'e2e', argv: ['npm', 'run', 'e2e'] },
         { name: 'build', argv: ['npm', 'run', 'build'] },
         { name: 'test', argv: ['npm', 'test'] },
       ]),
     );
-    expect(out.map((c) => c.name)).toEqual(['test', 'build']);
+    expect(out.commands.map((c) => c.name)).toEqual(['test', 'build', 'e2e']);
   });
 });

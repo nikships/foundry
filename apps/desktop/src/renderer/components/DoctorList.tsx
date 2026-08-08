@@ -5,10 +5,13 @@ export default function DoctorList({
   checks,
   onRecheck,
   onOpenSettings,
+  title = 'Checks',
 }: {
   checks: DoctorCheck[];
   onRecheck: () => void;
   onOpenSettings?: (pane: string) => void;
+  /** Head row label; settings panes pass a more specific one. */
+  title?: string;
 }): React.JSX.Element {
   const openFix = (check: DoctorCheck): void => {
     if (!check.fix) return;
@@ -27,7 +30,7 @@ export default function DoctorList({
     <>
       <section className="doctor">
         <div className="spread head">
-          <h3>Checks</h3>
+          <h3>{title}</h3>
           <button className="btn sm ghost" onClick={onRecheck}>
             Re-check
           </button>
@@ -50,17 +53,11 @@ export default function DoctorList({
         </ul>
       </section>
       <style>{`
-        .doctor {
-          margin: var(--s5) 0;
-          padding: var(--s3) var(--s4);
-          border: 1px solid var(--line);
-          border-radius: var(--r-lg);
-          background: var(--bg-panel);
-        }
+        /* Flat: hairline-separated rows on the shared surface, no boxed card. */
         .doctor .head { margin-bottom: var(--s2); }
-        .doctor h3 { font-size: var(--text-sm); font-weight: 600; margin: 0; }
-        .doctor ul { list-style: none; display: flex; flex-direction: column; gap: var(--s2); }
-        .doctor li { display: flex; align-items: flex-start; gap: var(--s3); font-size: var(--text-sm); }
+        .doctor h3 { font-size: var(--text-sm); font-weight: 500; margin: 0; }
+        .doctor ul { list-style: none; display: flex; flex-direction: column; }
+        .doctor li { display: flex; align-items: flex-start; gap: var(--s3); font-size: var(--text-sm); padding: var(--s2) 0; border-top: 1px solid var(--line-faint); }
         .doctor .mark { color: var(--green); flex: none; width: 14px; }
         .doctor li.bad .mark { color: var(--red); }
         .doctor .text { flex: 1; min-width: 0; }

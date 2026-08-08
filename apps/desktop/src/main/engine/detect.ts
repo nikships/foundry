@@ -19,8 +19,13 @@ import { basename, join, relative } from 'node:path';
 export type CommandRole = 'test' | 'lint' | 'typecheck' | 'build';
 
 export interface CommandCandidate {
-  /** The name a pipeline references, so `{ref: 'test'}` resolves. */
-  name: CommandRole;
+  /**
+   * The name a pipeline references, so `{ref: 'test'}` resolves. The four roles
+   * are the ones pipelines are built around, but `ProjectCommand.name` is a
+   * free-form string and an agent may propose others (`e2e`, `format`, `bench`)
+   * — a repo's real verification story is not always four commands.
+   */
+  name: string;
   argv: string[];
   /** Which file said so, shown to the human who confirms. */
   source: string;
@@ -321,7 +326,7 @@ export async function sniffCommands(root: string): Promise<CommandCandidate[]> {
     fromXcode(root),
   ]);
 
-  const byRole = new Map<CommandRole, CommandCandidate>();
+  const byRole = new Map<string, CommandCandidate>();
   for (const candidate of groups.flat()) {
     if (!byRole.has(candidate.name)) byRole.set(candidate.name, candidate);
   }
@@ -347,7 +352,7 @@ export function mergeCommandsFillMissing(
   return [...existing, ...extra.map(({ name, argv }) => ({ name, argv }))];
 }
 
-export const DETECT_PROMPT = `Identify the shell commands this repository uses for tests, linting, type checking, and building.
+export const DETECT_PROMPT = `Identify the shell commands this repository uses to verify itself: tests, linting, type checking, and building.
 
 Read the build and dependency manifests (including one directory down from the git root), CI workflow files, and contributor docs (AGENTS.md, README, CONTRIBUTING). Report only commands the repository itself documents or configures.
 
@@ -358,51 +363,132 @@ Reply with a single JSON object and nothing else:
 {"commands":[{"name":"test","argv":["swift","build","--package-path","App"],"source":"App/Package.swift"}]}
 
 Rules for the reply:
-- "name" is one of: test, lint, typecheck, build. At most one entry per name.
+- Prefer these names where they apply: test, lint, typecheck, build. Other names are allowed when the repo really has that command (for example e2e, format, bench). At most one entry per name.
 - "argv" is the command already split into arguments. No shell operators, no pipes, no "&&", no "cd".
 - Prefer flags that keep cwd at the git root (for example --package-path, --prefix, -C, -p).
 - "source" is the file that told you, so a human can check.
-- Omit a role entirely rather than supplying a placeholder. An empty list is a valid answer only when the repo truly has no verifiable command.`;
+- Omit a command entirely rather than supplying a placeholder. An empty list is a valid answer only when the repo truly has no verifiable command.`;
 
 const ARGV_SHELL_TOKENS = /[|&;><$`(){}]|^cd$/;
 
+/** Names must survive into `ProjectCommand.name` and a pipeline `{ref}`. */
+const NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9:_-]{0,39}$/;
+
+/** One entry the agent proposed that was not accepted, and why. */
+export interface RejectedCandidate {
+  /** Echoed back as the agent wrote it, so a human sees what was dropped. */
+  raw: unknown;
+  reason: string;
+}
+
+export interface DetectReply {
+  commands: CommandCandidate[];
+  /** Never silently empty: a dropped proposal is reported with its reason. */
+  rejected: RejectedCandidate[];
+  /**
+   * The agent's reply as received. A parse that yields nothing is otherwise
+   * indistinguishable from a repo with no commands, which is the single most
+   * confusing outcome this flow can produce.
+   */
+  rawReply: string;
+  /** Set when the reply as a whole could not be read. */
+  parseError?: string;
+}
+
 /**
  * The agent's reply is parsed defensively: a detected command is written into
- * project config and later executed, so a shell operator or an unknown role is
- * dropped rather than trusted.
+ * project config and later executed, so a shell operator is never accepted.
+ *
+ * Every rejection is reported rather than dropped. Silent filtering here is
+ * what made a correct answer look like "no command found".
  */
-export function parseDetectReply(text: string): CommandCandidate[] {
+export function parseDetectReply(text: string): DetectReply {
+  const rawReply = text;
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
-  if (start < 0 || end <= start) return [];
+  if (start < 0 || end <= start) {
+    return {
+      commands: [],
+      rejected: [],
+      rawReply,
+      parseError: 'the reply contained no JSON object',
+    };
+  }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(text.slice(start, end + 1));
-  } catch {
-    return [];
+  } catch (e) {
+    return {
+      commands: [],
+      rejected: [],
+      rawReply,
+      parseError: `the reply was not valid JSON: ${(e as Error).message}`,
+    };
   }
 
   const list = (parsed as { commands?: unknown })?.commands;
-  if (!Array.isArray(list)) return [];
+  if (!Array.isArray(list)) {
+    return {
+      commands: [],
+      rejected: [],
+      rawReply,
+      parseError: 'the JSON object had no "commands" array',
+    };
+  }
 
-  const byRole = new Map<CommandRole, CommandCandidate>();
+  const byName = new Map<string, CommandCandidate>();
+  const rejected: RejectedCandidate[] = [];
+
   for (const raw of list) {
     const item = raw as { name?: unknown; argv?: unknown; source?: unknown };
-    const name = item.name as CommandRole;
-    if (!ROLES.includes(name) || byRole.has(name)) continue;
-    if (!Array.isArray(item.argv) || !item.argv.length) continue;
+    const name = typeof item.name === 'string' ? item.name.trim() : '';
+
+    if (!name) {
+      rejected.push({ raw, reason: 'no name' });
+      continue;
+    }
+    if (!NAME_RE.test(name)) {
+      rejected.push({
+        raw,
+        reason: `"${name}" is not usable as a command name (letters, digits, : _ - only)`,
+      });
+      continue;
+    }
+    if (byName.has(name)) {
+      rejected.push({ raw, reason: `duplicate name "${name}"` });
+      continue;
+    }
+    if (!Array.isArray(item.argv) || !item.argv.length) {
+      rejected.push({ raw, reason: `"${name}" has no argv` });
+      continue;
+    }
     const argv = item.argv.filter((a): a is string => typeof a === 'string' && a.trim().length > 0);
-    if (argv.length !== item.argv.length) continue;
-    if (argv.some((a) => ARGV_SHELL_TOKENS.test(a))) continue;
-    byRole.set(name, {
+    if (argv.length !== item.argv.length) {
+      rejected.push({ raw, reason: `"${name}" has a non-string or empty argv entry` });
+      continue;
+    }
+    const shellToken = argv.find((a) => ARGV_SHELL_TOKENS.test(a));
+    if (shellToken) {
+      rejected.push({
+        raw,
+        reason: `"${name}" uses the shell token "${shellToken}"; commands run without a shell`,
+      });
+      continue;
+    }
+    byName.set(name, {
       name,
       argv,
       source: typeof item.source === 'string' && item.source ? item.source : 'agent',
     });
   }
-  return ROLES.flatMap((role) => {
-    const hit = byRole.get(role);
+
+  // The four pipeline roles lead, in their canonical order, then anything else
+  // the agent proposed in the order it proposed it.
+  const roleHits = ROLES.flatMap((role) => {
+    const hit = byName.get(role);
     return hit ? [hit] : [];
   });
+  const extras = [...byName.values()].filter((c) => !ROLES.includes(c.name as CommandRole));
+  return { commands: [...roleHits, ...extras], rejected, rawReply };
 }

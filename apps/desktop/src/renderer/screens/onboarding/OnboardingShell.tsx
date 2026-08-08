@@ -62,8 +62,10 @@ function OnboardingShellInner(): React.JSX.Element {
         .ob-grid { position: absolute; inset: 0; background-image: linear-gradient(color-mix(in srgb, var(--line) 55%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--line) 55%, transparent) 1px, transparent 1px); background-size: 48px 48px; mask-image: radial-gradient(ellipse at center, black 20%, transparent 72%); opacity: 0.35; }
         /* Header fills the titlebar strip itself, so the prism spectral rule
            (pinned to the bottom of the 52px titlebar) lands exactly under the
-           brand row + stepper, separating it from the page content below. */
-        .ob-top { position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: var(--s4); height: var(--titlebar-h); padding: 0 var(--s6); flex: none; }
+           brand row + stepper, separating it from the page content below.
+           80px left pad clears macOS traffic lights (hiddenInset at x:18
+           occupies ~70px) so the droid mark + "Foundry" never collides. */
+        .ob-top { position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: var(--s4); height: var(--titlebar-h); padding: 0 var(--s6) 0 80px; flex: none; }
         .ob-brand { display: flex; align-items: center; gap: var(--s2); font-weight: 600; letter-spacing: -0.02em; }
         .ob-stepper { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
         .ob-step-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: var(--r-full); border: 1px solid transparent; background: transparent; color: var(--text-faint); font: inherit; font-size: var(--text-xs); }

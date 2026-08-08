@@ -1,9 +1,10 @@
 # AGENTS.md — src/renderer
 
 React 19, unprivileged. Never touches disk, git, or CLIs — everything goes
-through `src/shared/ipc-contract.ts` + preload bridge. Polls trace; four
+through `src/shared/ipc-contract.ts` + preload bridge. Polls trace; five
 push channels only (`runs-changed`, `interrupts-changed`, `settings-changed`,
-`updater-status`).
+`updater-status`, `detection-progress` — the last because a command detection
+has no trace rows and so no `change_id` cursor to poll).
 
 ## Invariants
 

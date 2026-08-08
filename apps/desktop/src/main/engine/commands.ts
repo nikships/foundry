@@ -8,6 +8,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import type { CommandResult } from '@shared/types.js';
 import { register, unregister, killTree } from '../system/procs.js';
+import { spawnEnv } from '../system/env.js';
 
 const TAIL_CHARS = 4000;
 
@@ -62,7 +63,7 @@ export async function runCommand(input: RunCommandInput): Promise<CommandResult>
     try {
       child = spawn(cmd, args, {
         cwd: input.cwd,
-        env: { ...process.env, ...input.env },
+        env: spawnEnv(input.env),
         stdio: ['ignore', 'pipe', 'pipe'],
       });
     } catch (e) {

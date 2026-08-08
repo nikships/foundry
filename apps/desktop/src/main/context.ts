@@ -16,6 +16,7 @@ import { ProjectStore } from './store/projects.js';
 import { RosterStore } from './store/roster.js';
 import { PipelineStore } from './store/pipelines.js';
 import { RunRegistry } from './engine/registry.js';
+import { Detections } from './engine/detections.js';
 import { UpdaterService } from './updater.js';
 import { notifyNeedsInput, notifyOutcome, setDockBadge } from './system/notify.js';
 
@@ -31,6 +32,7 @@ export class AppContext {
   readonly roster: RosterStore;
   readonly pipelines: PipelineStore;
   readonly registry: RunRegistry;
+  readonly detections: Detections;
   readonly updater: UpdaterService;
   readonly version: string;
 
@@ -44,6 +46,7 @@ export class AppContext {
     this.pipelines = new PipelineStore(supportDir);
     this.version = app.getVersion();
     this.updater = new UpdaterService((channel, payload) => this.broadcast(channel, payload));
+    this.detections = new Detections((state) => this.broadcast(IPC.eventDetectionProgress, state));
 
     this.registry = new RunRegistry({
       appSupportDir: supportDir,
@@ -180,5 +183,6 @@ export class AppContext {
 
   dispose(): void {
     this.registry.closeAll();
+    this.detections.cancelAll();
   }
 }

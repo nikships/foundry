@@ -19,6 +19,7 @@ import {
   request,
   response,
 } from './protocol.js';
+import { spawnEnv } from '../system/env.js';
 
 export interface PermissionAsk {
   method: 'droid.request_permission' | 'droid.ask_user';
@@ -118,7 +119,7 @@ export class DroidClient extends EventEmitter {
   async start(existingSessionId?: string | null): Promise<void> {
     const child = spawn(this.opts.droidPath, this.spawnArgs(), {
       cwd: this.opts.cwd,
-      env: process.env,
+      env: spawnEnv(),
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     this.child = child;

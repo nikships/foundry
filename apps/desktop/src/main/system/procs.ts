@@ -6,6 +6,7 @@
  */
 
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { spawnEnv } from './env.js';
 
 interface Entry {
   pid: number;
@@ -95,7 +96,7 @@ export function spawnTracked(input: {
   if (!cmd) throw new Error('spawnTracked: empty argv');
   const child = spawn(cmd, args, {
     cwd: input.cwd,
-    env: { ...process.env, ...input.env },
+    env: spawnEnv(input.env),
     stdio: ['pipe', 'pipe', 'pipe'],
     detached: false,
   });

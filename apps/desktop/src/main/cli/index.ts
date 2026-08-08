@@ -6,6 +6,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import type { CliConfig, CliVendor } from '@shared/types.js';
+import { spawnEnv } from '../system/env.js';
 import { claudeAdapter } from './claude.js';
 import { codexAdapter } from './codex.js';
 import { droidAdapter } from './droid.js';
@@ -48,6 +49,10 @@ export function findCli(vendor: CliVendor): string {
       // vendor at first launch. Inheriting that prints five lines about CLIs the
       // user never asked for, so the answer is taken from stdout alone.
       stdio: ['ignore', 'pipe', 'ignore'],
+      // A GUI launch inherits launchd's PATH, where none of these CLIs live.
+      // Without the resolved PATH every vendor falls through to its hardcoded
+      // install list, and one installed anywhere else reads as missing.
+      env: spawnEnv(),
     }).trim();
     if (which) return which;
   } catch {

@@ -17,6 +17,13 @@ droid-shaped notifications.
   are accepted then yield empty turns.
 - Unreported usage stays `null`, not `0`. Codex and Grok both return `null`.
 - Only droid sets `supportsRpc`.
+- droid's two output formats end differently: `-o json` prints
+  `{"type":"result","result":...}`, `-o stream-json` prints
+  `{"type":"completion","finalText":...}`. `parse()` accepts both — matching
+  only the first leaves every streamed turn with empty text.
+- `droid exec` prints usage in snake_case (`input_tokens`) while its RPC
+  surface sends camelCase (`inputTokens`). Passing the wire object straight
+  through reports every one-shot turn as free.
 
 Fixtures in `tests/cli-vendors.test.ts` come from real captured output
 (`--output-format stream-json`, `--json`, `streaming-json`, `json-stream`),

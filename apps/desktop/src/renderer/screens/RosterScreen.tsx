@@ -217,34 +217,36 @@ export default function RosterScreen(): React.JSX.Element {
       <div className="ro-screen">
         {/* ── agent strip: the whole roster, one horizontal band ── */}
         <div className="ro-strip" role="tablist" aria-label="Agents">
-          {agents.map((agent) => {
-            const isActive = agent.name === selectedName;
-            return (
-              <button
-                key={agent.name}
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                className={`ro-cell ${isActive ? 'on' : ''}`}
-                style={{ ['--hue' as string]: agent.color ?? 'var(--cyan)' }}
-                onClick={() => selectAgent(agent.name)}
-              >
-                <AgentAvatar name={agent.name} size={30} />
-                <span className="ro-cell-who">
-                  <span className="ro-cell-name">{agent.name}</span>
-                  <span className="ro-cell-role">{agent.purpose}</span>
-                  <span className="ro-cell-cli">
-                    <CliIcon vendor={agent.cli ?? 'droid'} size={11} />
-                    {agent.cli ?? 'droid'}
+          <div className="ro-strip-inner">
+            {agents.map((agent) => {
+              const isActive = agent.name === selectedName;
+              return (
+                <button
+                  key={agent.name}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  className={`ro-cell ${isActive ? 'on' : ''}`}
+                  style={{ ['--hue' as string]: agent.color ?? 'var(--cyan)' }}
+                  onClick={() => selectAgent(agent.name)}
+                >
+                  <AgentAvatar name={agent.name} size={30} />
+                  <span className="ro-cell-who">
+                    <span className="ro-cell-name">{agent.name}</span>
+                    <span className="ro-cell-role">{agent.purpose}</span>
+                    <span className="ro-cell-cli">
+                      <CliIcon vendor={agent.cli ?? 'droid'} size={11} />
+                      {agent.cli ?? 'droid'}
+                    </span>
                   </span>
-                </span>
-                {isActive && <span className="ro-cell-rule" aria-hidden />}
-              </button>
-            );
-          })}
-          <button type="button" className="ro-new" onClick={() => void createAgent()}>
-            + New agent
-          </button>
+                  {isActive && <span className="ro-cell-rule" aria-hidden />}
+                </button>
+              );
+            })}
+            <button type="button" className="ro-new" onClick={() => void createAgent()}>
+              + New agent
+            </button>
+          </div>
         </div>
 
         {draft && (
@@ -524,22 +526,36 @@ export default function RosterScreen(): React.JSX.Element {
         /* One continuous surface — structure from hairlines + type, never tinted columns. */
         .ro-screen { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--bg-base); }
 
-        /* strip */
+        /* strip — outer chrome holds titlebar spacer + bottom rule; inner is the scroll row */
         .ro-strip {
-          flex: none; display: flex; align-items: stretch;
-          padding: calc(var(--titlebar-h)) var(--s6) 0;
+          flex: none;
+          display: flex;
+          padding-top: var(--titlebar-h);
           border-bottom: 1px solid var(--line);
+          background: var(--bg-base);
+          min-width: 0;
+          overflow: hidden;
+        }
+        .ro-strip-inner {
+          flex: 1;
+          min-width: 0;
+          display: flex;
+          align-items: stretch;
           overflow-x: auto;
+          overflow-y: hidden;
+          padding: 0 var(--s6);
+          scrollbar-width: thin;
+          scrollbar-color: var(--line-strong) transparent;
         }
         .ro-cell {
           position: relative; flex: 1 1 0; min-width: 170px;
           display: flex; align-items: center; gap: var(--s3);
-          padding: var(--s4) var(--s5) var(--s4) var(--s4);
+          padding: var(--s4) var(--s5);
           border: none; border-right: 1px solid var(--line);
           background: transparent; color: inherit; font: inherit; text-align: left; cursor: default;
           transition: background var(--fast) var(--ease);
         }
-        .ro-cell:first-child { padding-left: 0; }
+        .ro-cell:last-of-type { border-right: none; }
         .ro-cell:hover { background: color-mix(in srgb, #ffffff 2%, transparent); }
         .ro-cell-who { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
         .ro-cell-name {

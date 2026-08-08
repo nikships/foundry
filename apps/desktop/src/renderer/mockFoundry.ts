@@ -160,6 +160,8 @@ function defaultMockSettings(brand: BrandId): AppSettings {
       grok: { path: 'grok', extraArgs: [] },
     },
     defaultCli: 'droid',
+    detectCli: 'default',
+    detectModel: 'inherit',
     engineerName: 'web-preview',
     defaultAutonomy: 'medium',
     defaultModel: 'claude-opus-5',
@@ -265,7 +267,10 @@ export function createMockFoundryApi(): FoundryApi {
         outputTail: '(web preview)',
         durationMs: 42,
       }),
-      detectCommands: async () => ({ commands: [], via: 'none', detail: '(web preview)' }),
+      sniffCommands: async () => ({ commands: [], via: 'none', detail: '(web preview)' }),
+      askAgentCommands: async () => ({ error: 'no agent CLI in the web preview' }),
+      cancelDetection: async () => false,
+      detection: async () => null,
       check: async (): Promise<DoctorCheck[]> => [
         {
           id: 'project:git',

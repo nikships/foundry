@@ -12,6 +12,14 @@ import { adapterFor } from '../cli/index.js';
 import { cliVersion } from '../droid/catalog.js';
 import { isRepo, refExists, listWorktrees } from '../engine/git.js';
 import { runCommand } from '../engine/commands.js';
+import { resolvedEnv } from './env.js';
+
+/** Runners a detected project command is most likely to need. */
+const TOOLCHAIN_BINARIES = ['node', 'npm', 'pnpm', 'yarn', 'bun', 'cargo', 'go', 'uv', 'swift'];
+
+function onPath(binary: string, path: string): boolean {
+  return path.split(':').some((dir) => dir && existsSync(join(dir, binary)));
+}
 
 /**
  * One pair of checks per CLI: is the binary there, and can it reach a model.
@@ -67,6 +75,22 @@ export async function runDoctor(settings: AppSettings): Promise<DoctorCheck[]> {
   for (const vendor of order) {
     checks.push(...(await checkCli(vendor, settings, vendor === settings.defaultCli)));
   }
+
+  // A GUI launch inherits launchd's PATH, which contains no developer tooling
+  // at all. That failure is invisible in every other check: a detected `npm
+  // test` simply exits "No such file or directory" and reads as a wrong
+  // command. Reporting the resolved PATH is what tells those two apart.
+  const env = resolvedEnv();
+  const reachable = TOOLCHAIN_BINARIES.filter((bin) => onPath(bin, env.path));
+  checks.push({
+    id: 'toolchain-path',
+    label: 'Toolchain PATH',
+    ok: env.via === 'login-shell',
+    detail:
+      env.via === 'login-shell'
+        ? `resolved from your login shell; ${reachable.length ? `found ${reachable.join(', ')}` : 'no known build tool found on it'}`
+        : `${env.detail ?? 'could not ask your login shell'} — project commands may not find node, npm, cargo, go or uv`,
+  });
 
   const git = await runCommand({
     argv: ['git', '--version'],
