@@ -2,11 +2,12 @@ name: Code Review
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, labeled]
     branches: [main]
 
 jobs:
   review:
+    if: contains(github.event.pull_request.labels.*.name, 'junie-review')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -17,9 +18,10 @@ jobs:
         with:
           fetch-depth: 1
 
-      - uses: JetBrains/junie-github-action@v0
+      - uses: JetBrains/junie-github-action@main
         with:
           junie_api_key: ${{ secrets.JUNIE_API_KEY }}
           use_single_comment: "true"
           prompt: "code-review"
-          # model: "claude-opus-4-5-20251101"  # Optional: specify which model to use
+          junie_version: "latest"
+          model: "gpt-5.2-2025-12-11"
