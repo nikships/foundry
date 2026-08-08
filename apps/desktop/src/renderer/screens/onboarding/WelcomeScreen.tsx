@@ -1,4 +1,3 @@
-import { useBrand } from '../../hooks/useBrand.js';
 import { StepFooter } from './shared.js';
 
 type Proof = {
@@ -46,10 +45,8 @@ const PROOFS: Proof[] = [
 ];
 
 export default function WelcomeScreen(): React.JSX.Element {
-  const brand = useBrand();
-
   return (
-    <div className="fdy-welcome" data-brand={brand}>
+    <div className="fdy-welcome">
       <div className="fdy-split">
         {/* stage */}
         <section className="fdy-stage" aria-hidden="true">
@@ -156,13 +153,6 @@ export default function WelcomeScreen(): React.JSX.Element {
           color: var(--text);
           font-family: var(--font);
           overflow: hidden;
-        }
-        .fdy-welcome[data-brand='murmur'] {
-          --fdy-accent: var(--murmur-ember, var(--cyan));
-          --fdy-glow-a: var(--murmur-ember, var(--cyan));
-          --fdy-glow-b: var(--murmur-clay, var(--purple));
-          --fdy-glow-c: var(--amber);
-          --fdy-grain: 0.06;
         }
 
         .fdy-split {

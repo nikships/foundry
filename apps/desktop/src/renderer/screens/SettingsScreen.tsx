@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import type {
-  BrandId,
   CliDescriptor,
   CliVendor,
   DoctorCheck,
@@ -9,7 +8,6 @@ import type {
   ProjectDef,
   UpdateStatus,
 } from '@shared/types.js';
-import { BRAND_LABELS } from '@shared/types.js';
 import { api, plain } from '../api.js';
 import { useApp } from '../stores/app.js';
 import ModelPicker from '../components/ModelPicker.js';
@@ -116,9 +114,6 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
   const [nameDraft, setNameDraft] = useState('');
   const [nameHint, setNameHint] = useState('');
   const [maintenanceBusy, setMaintenanceBusy] = useState(false);
-  const [brandBusy, setBrandBusy] = useState(false);
-  const [brandNote, setBrandNote] = useState('');
-  const [needsRelaunch, setNeedsRelaunch] = useState(false);
 
   useEffect(() => {
     setPane((initialPane as Pane) ?? 'general');
@@ -376,26 +371,6 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
       setMaintenanceBusy(false);
     }
   };
-  const applyBrand = async (brand: BrandId): Promise<void> => {
-    if (!settings || brandBusy || settings.brand === brand) return;
-    setBrandBusy(true);
-    setBrandNote('');
-    setNeedsRelaunch(false);
-    const issues = await patchSettings({ brand });
-    if (issues.length) {
-      setErrors(issues);
-      setBrandBusy(false);
-      return;
-    }
-    try {
-      await api.brand.applyDockIcon();
-    } catch {
-      // Best-effort only, never blocks brand switch.
-    }
-    setBrandNote(`Switched to ${BRAND_LABELS[brand]}. Relaunch to apply theme.`);
-    setNeedsRelaunch(true);
-    setBrandBusy(false);
-  };
 
   useEffect(() => {
     if (pane === 'maintenance') void loadOrphans();
@@ -486,50 +461,6 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                       </span>
                     </div>
                   </div>
-                </Section>
-
-                <Section
-                  label="Brand"
-                  note="App icon and theme. The theme applies after a relaunch."
-                >
-                  <div className="field">
-                    <label>Brand</label>
-                    <div className="set-brand">
-                      <div className="set-seg" role="radiogroup" aria-label="Brand">
-                        {(['prism', 'murmur'] as const).map((brand) => (
-                          <button
-                            key={brand}
-                            type="button"
-                            role="radio"
-                            aria-checked={settings.brand === brand}
-                            className={`set-seg-btn ${settings.brand === brand ? 'on' : ''}`}
-                            disabled={brandBusy}
-                            onClick={() => void applyBrand(brand)}
-                          >
-                            {brand}
-                          </button>
-                        ))}
-                      </div>
-                      <span className="set-brand-active mono faint">
-                        {brandBusy
-                          ? 'Switching…'
-                          : (BRAND_LABELS[settings.brand as BrandId] ?? settings.brand)}
-                      </span>
-                    </div>
-                    <span className="hint">
-                      Switches the app icon and theme between Prism (OLED spectral) and Murmur (warm
-                      hearth). Theme applies after relaunch.
-                    </span>
-                    {brandNote && <span className="set-ok">{brandNote}</span>}
-                  </div>
-                  {needsRelaunch && (
-                    <div className="set-subrow">
-                      <span className="hint">Theme change needs a relaunch to take effect.</span>
-                      <button className="btn sm" onClick={() => void relaunchApp()}>
-                        Relaunch Foundry
-                      </button>
-                    </div>
-                  )}
                 </Section>
 
                 <Section label="Checks" note="What Foundry found on this machine at launch.">
@@ -1271,22 +1202,6 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
         .cli-picker { display: flex; align-items: center; gap: var(--s2); }
         .cli-picker .select { flex: 1; }
 
-        /* brand segmented control */
-        .set-brand { display: flex; align-items: center; gap: var(--s3); }
-        .set-seg { display: inline-flex; height: 30px; border: 1px solid var(--line); border-radius: var(--r-sm); overflow: hidden; }
-        .set-seg-btn {
-          padding: 0 var(--s4); border: none; border-right: 1px solid var(--line);
-          background: transparent; color: var(--text-faint);
-          font-family: var(--font-mono); font-size: 11px; text-transform: uppercase;
-          letter-spacing: 0.14em; cursor: default;
-          transition: color var(--fast) var(--ease), background var(--fast) var(--ease);
-        }
-        .set-seg-btn:last-child { border-right: none; }
-        .set-seg-btn:hover:not(:disabled) { color: var(--text-dim); }
-        .set-seg-btn.on { color: var(--text); background: color-mix(in srgb, #ffffff 4.5%, transparent); }
-        .set-seg-btn:disabled { opacity: 0.6; }
-        .set-brand-active { font-size: 11px; }
-        .set-ok { font-size: var(--text-xs); color: var(--green); }
         .set-warn { font-size: var(--text-xs); color: var(--amber); }
 
         /* updates */

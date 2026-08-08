@@ -4,34 +4,10 @@
  */
 
 import { join } from 'node:path';
-import { readFileSync } from 'node:fs';
 import { z } from 'zod';
-import {
-  type AppSettings,
-  type BrandId,
-  type CliConfig,
-  type CliVendor,
-  CLI_VENDOR_IDS,
-} from '@shared/types.js';
+import { type AppSettings, type CliConfig, type CliVendor, CLI_VENDOR_IDS } from '@shared/types.js';
 import { defaultCliConfig } from '../cli/index.js';
 import { JsonStore } from './json-store.js';
-
-/**
- * The window's background colour and the renderer's token sheet both have to be
- * the right brand before anything paints, and `SettingsStore` is only readable
- * after `AppContext` exists. This reads the one field directly, synchronously,
- * so `createWindow` can be called with it.
- */
-export function readBrandSync(supportDir: string): BrandId {
-  try {
-    const raw = readFileSync(join(supportDir, 'settings.json'), 'utf8');
-    const stored = JSON.parse(raw) as { brand?: unknown };
-    if (stored.brand === 'murmur' || stored.brand === 'prism') return stored.brand;
-  } catch {
-    // First launch, or a settings file the store will repair on load.
-  }
-  return 'prism';
-}
 
 const cliConfigSchema = z.object({
   path: z.string().min(1),
@@ -67,7 +43,6 @@ export const appSettingsSchema = z.object({
   appearance: z.enum(['system', 'dark']),
   retentionDays: z.number().int().min(1).max(3650).nullable(),
   onboarded: z.boolean(),
-  brand: z.enum(['prism', 'murmur']),
 });
 
 /**
@@ -100,7 +75,6 @@ export function defaultSettings(): AppSettings {
     appearance: 'system',
     retentionDays: null,
     onboarded: false,
-    brand: 'prism',
   };
 }
 
@@ -125,13 +99,6 @@ export function migrate(raw: unknown): AppSettings {
   // field, and an empty string would fail the schema on the next patch.
   if (!merged.detectCli) merged.detectCli = base.detectCli;
   if (!merged.detectModel) merged.detectModel = base.detectModel;
-  // Existing installs won't have brand; default to prism.
-  if (
-    (merged as unknown as { brand?: string }).brand !== 'prism' &&
-    (merged as unknown as { brand?: string }).brand !== 'murmur'
-  ) {
-    (merged as AppSettings).brand = 'prism';
-  }
   delete (merged as { droidPath?: string }).droidPath;
   return merged;
 }

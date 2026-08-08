@@ -108,9 +108,6 @@ const api: FoundryApi = {
     quit: () => call(IPC.appQuit),
     relaunch: () => call(IPC.appRelaunch),
   },
-  brand: {
-    applyDockIcon: () => call(IPC.brandApplyDockIcon),
-  },
   updater: {
     check: () => call(IPC.updaterCheck),
     download: () => call(IPC.updaterDownload),

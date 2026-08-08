@@ -1,6 +1,6 @@
 /*
  * tokens-base.css — structural tokens only (no colors).
- * Color tokens live in tokens-prism.css / tokens-murmur.css.
+ * Color tokens live in tokens-prism.css.
  * Every spacing, radius, type, motion, and layout value is here so a
  * brand file never needs to re-declare them.
  */

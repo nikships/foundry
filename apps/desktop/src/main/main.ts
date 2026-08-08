@@ -8,10 +8,8 @@ import { app, BrowserWindow, Menu, shell } from 'electron';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdirSync } from 'node:fs';
-import type { BrandId } from '@shared/types.js';
 import { AppContext } from './context.js';
 import { registerIpc } from './ipc/index.js';
-import { readBrandSync } from './store/settings.js';
 import { killAll } from './system/procs.js';
 import { resolveEnv } from './system/env.js';
 
@@ -22,16 +20,12 @@ let ctx: AppContext | null = null;
 
 /**
  * The window's own backgroundColor is what the user sees between the frame
- * appearing and the first paint, so it has to be the brand's base colour.
- * Neither brand uses vibrancy: both paint an opaque base (Prism's OLED void,
- * Murmur's warm hearth) and desktop bleed-through would wash them out.
+ * appearing and the first paint, so it has to match the renderer's base colour.
+ * Prism paints an opaque OLED void; desktop bleed-through would wash it out.
  */
-const BRAND_BACKGROUND: Record<BrandId, string> = {
-  prism: '#000000',
-  murmur: '#1A1410',
-};
+const WINDOW_BACKGROUND = '#000000';
 
-function createWindow(brand: BrandId): BrowserWindow {
+function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1440,
     height: 940,
@@ -41,7 +35,7 @@ function createWindow(brand: BrandId): BrowserWindow {
     title: 'Foundry',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 18, y: 22 },
-    backgroundColor: BRAND_BACKGROUND[brand],
+    backgroundColor: WINDOW_BACKGROUND,
     webPreferences: {
       preload: join(here, '../preload/bridge.cjs'),
       contextIsolation: true,
@@ -61,9 +55,9 @@ function createWindow(brand: BrandId): BrowserWindow {
   });
 
   if (DEV_URL) {
-    void window.loadURL(`${DEV_URL}?brand=${brand}`);
+    void window.loadURL(DEV_URL);
   } else {
-    void window.loadFile(join(here, '../renderer/index.html'), { query: { brand } });
+    void window.loadFile(join(here, '../renderer/index.html'));
   }
   return window;
 }
@@ -168,11 +162,6 @@ if (!app.requestSingleInstanceLock()) {
     const env = await resolveEnv();
     if (env.via === 'fallback') console.warn(`[env] PATH from fallback: ${env.detail ?? ''}`);
 
-    // The brand has to be known before the window exists, so the frame is
-    // already the right colour and the renderer can be told which palette to
-    // load. `ctx` (and with it SettingsStore) is only built further down.
-    const brand: BrandId = readBrandSync(supportDir);
-
     // Packaged, assets sit beside the app resources; in dev they are in-repo.
     const assetsRoot = app.isPackaged
       ? join(process.resourcesPath, 'assets')
@@ -181,12 +170,6 @@ if (!app.requestSingleInstanceLock()) {
     ctx = new AppContext(supportDir, assetsRoot);
     registerIpc(ctx);
     buildMenu();
-    // Apply the saved brand's dock icon on launch (best-effort, no-op if packs missing).
-    try {
-      ctx.applyBrandDockIcon();
-    } catch {
-      // Swallow: icon availability must never block app launch.
-    }
 
     // A run whose engine died with the app can never finish on its own.
     const swept = ctx.registry.sweep(ctx.projects.list());
@@ -194,14 +177,14 @@ if (!app.requestSingleInstanceLock()) {
       console.warn(`finalised ${swept.runsFinalised.length} run(s) orphaned by a previous launch`);
     }
 
-    createWindow(brand);
+    createWindow();
 
     // A packaged app should discover updates without requiring the user to
     // find the menu item first. The service is a no-op in development builds.
     void ctx.updater.check();
 
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow(brand);
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
   });
 

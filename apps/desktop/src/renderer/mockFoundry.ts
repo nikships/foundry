@@ -8,7 +8,6 @@
 import type {
   AgentDef,
   AppSettings,
-  BrandId,
   CliDescriptor,
   DoctorCheck,
   ModelInfo,
@@ -27,9 +26,6 @@ import { BUILTIN_PIPELINES } from '../main/store/builtin-pipelines.js';
 function nowIso(offsetMs = 0): string {
   return new Date(Date.now() + offsetMs).toISOString();
 }
-
-const BRAND: BrandId =
-  new URLSearchParams(location.search).get('brand') === 'murmur' ? 'murmur' : 'prism';
 
 const MOCK_PROJECTS: ProjectDef[] = [
   {
@@ -150,7 +146,7 @@ const MOCK_PHASES: Record<string, PhaseRow[]> = {
   ],
 };
 
-function defaultMockSettings(brand: BrandId): AppSettings {
+function defaultMockSettings(): AppSettings {
   return {
     clis: {
       droid: { path: 'droid', extraArgs: [] },
@@ -175,11 +171,10 @@ function defaultMockSettings(brand: BrandId): AppSettings {
     appearance: 'system',
     retentionDays: null,
     onboarded: true,
-    brand,
   };
 }
 
-let mockSettings = defaultMockSettings(BRAND);
+let mockSettings = defaultMockSettings();
 let onboardingDone = true;
 
 const CLIS: CliDescriptor[] = [
@@ -415,15 +410,11 @@ export function createMockFoundryApi(): FoundryApi {
       assetUrl: async (relPath) => {
         const p = relPath.replace(/^\/+/, '');
         // In web, Vite serves from /assets if present; fall back to string so img can 404 visibly.
-        // Try brand-first path hint for parity with main.
         return `/assets/${p}`;
       },
       version: async () => '0.1.1-web',
       quit: async () => {},
       relaunch: async () => {},
-    },
-    brand: {
-      applyDockIcon: async () => ({ applied: false }),
     },
     updater: {
       check: async (): Promise<UpdateStatus> => ({ stage: 'idle' }),

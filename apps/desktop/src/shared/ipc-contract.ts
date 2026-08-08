@@ -220,9 +220,6 @@ export interface FoundryApi {
     quit(): Promise<void>;
     relaunch(): Promise<void>;
   };
-  brand: {
-    applyDockIcon(): Promise<{ applied: boolean }>;
-  };
   updater: {
     check(): Promise<UpdateStatus>;
     download(): Promise<UpdateStatus>;
@@ -303,7 +300,6 @@ export const IPC = {
   appVersion: 'app:version',
   appQuit: 'app:quit',
   appRelaunch: 'app:relaunch',
-  brandApplyDockIcon: 'brand:applyDockIcon',
   updaterCheck: 'updater:check',
   updaterDownload: 'updater:download',
   updaterQuitAndInstall: 'updater:quitAndInstall',

@@ -1,14 +1,12 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
-import { useApp } from '../stores/app.js';
 
 /**
- * Resolves an asset path through main's brand-aware `assetUrl`, re-resolving
- * whenever the brand flips so in-app visuals swap without a restart.
+ * Resolves an asset path through main's `assetUrl`. The returned URL is a
+ * `file://` (packaged) or `/assets/...` (web preview) string; empty until the
+ * async resolve lands.
  */
 export function useBrandedAsset(relPath: string | null): string {
-  const { settings } = useApp();
-  const brand = settings?.brand;
   const [src, setSrc] = useState('');
 
   useEffect(() => {
@@ -23,7 +21,7 @@ export function useBrandedAsset(relPath: string | null): string {
     return () => {
       cancelled = true;
     };
-  }, [relPath, brand]);
+  }, [relPath]);
 
   return src;
 }
