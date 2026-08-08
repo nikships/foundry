@@ -6,6 +6,7 @@ import { useApp } from '../stores/app.js';
 import AgentAvatar from '../components/AgentAvatar.js';
 import { CliIcon } from '../components/BrandIcon.js';
 import DoctorList from '../components/DoctorList.js';
+import { useBrandedAsset } from '../hooks/useBrandedAsset.js';
 
 type StepId = 'welcome' | 'factory' | 'roster' | 'clis' | 'doctor' | 'project';
 
@@ -44,26 +45,8 @@ const CONCEPTS: { art: string; title: string; body: string }[] = [
   },
 ];
 
-function useAsset(path: string | null): string {
-  const [src, setSrc] = useState('');
-  useEffect(() => {
-    if (!path) {
-      setSrc('');
-      return;
-    }
-    let cancelled = false;
-    void api.app.assetUrl(path).then((url) => {
-      if (!cancelled) setSrc(url);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [path]);
-  return src;
-}
-
 function SceneArt({ path, className }: { path: string; className?: string }): React.JSX.Element {
-  const src = useAsset(path);
+  const src = useBrandedAsset(path);
   if (!src) return <div className={`scene-art placeholder ${className ?? ''}`} />;
   return <img className={`scene-art ${className ?? ''}`} src={src} alt="" />;
 }

@@ -41,6 +41,7 @@ export const appSettingsSchema = z.object({
   appearance: z.enum(['system', 'dark']),
   retentionDays: z.number().int().min(1).max(3650).nullable(),
   onboarded: z.boolean(),
+  brand: z.enum(['prism', 'murmur']),
 });
 
 /**
@@ -71,6 +72,7 @@ export function defaultSettings(): AppSettings {
     appearance: 'system',
     retentionDays: null,
     onboarded: false,
+    brand: 'prism',
   };
 }
 
@@ -90,7 +92,14 @@ export function migrate(raw: unknown): AppSettings {
   if (stored.droidPath && !stored.clis?.droid) {
     clis.droid = { path: stored.droidPath, extraArgs: clis.droid.extraArgs };
   }
-  const merged = { ...base, ...stored, clis };
+  const merged: AppSettings = { ...base, ...stored, clis } as AppSettings;
+  // Existing installs won't have brand; default to prism.
+  if (
+    (merged as unknown as { brand?: string }).brand !== 'prism' &&
+    (merged as unknown as { brand?: string }).brand !== 'murmur'
+  ) {
+    (merged as AppSettings).brand = 'prism';
+  }
   delete (merged as { droidPath?: string }).droidPath;
   return merged;
 }

@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react';
-import { api } from '../api.js';
+import { useBrandedAsset } from '../hooks/useBrandedAsset.js';
 import { useApp } from '../stores/app.js';
 
 export default function AgentAvatar({
@@ -10,17 +9,9 @@ export default function AgentAvatar({
   size?: number;
 }): React.JSX.Element {
   const { agentColor } = useApp();
-  const [src, setSrc] = useState('');
+  const src = useBrandedAsset(name ? `agents/${name}.png` : null);
   const color = agentColor(name);
   const initial = (name ?? '?').slice(0, 1).toUpperCase();
-
-  useEffect(() => {
-    if (!name) {
-      setSrc('');
-      return;
-    }
-    void api.app.assetUrl(`agents/${name}.png`).then(setSrc);
-  }, [name]);
 
   return (
     <>
