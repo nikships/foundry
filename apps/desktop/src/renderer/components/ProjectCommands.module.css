@@ -79,18 +79,23 @@
   font-size: var(--text-xs);
   margin-top: var(--s2);
 }
-.detect-picker {
+.detectPicker {
   margin-top: var(--s2);
+  min-width: 0;
 }
-.cli-pick {
+.cliPick {
   display: flex;
   align-items: center;
   gap: var(--s2);
+  min-width: 0;
+  flex-wrap: nowrap;
 }
-.cli-pick :global(.select) {
-  flex: 1;
+.cliPick :global(.select) {
+  width: auto;
+  flex: 1 1 0;
+  min-width: 0;
 }
-.detect-error {
+.detectError {
   font-size: var(--text-xs);
   color: var(--red);
 }
@@ -121,20 +126,5 @@
 
 .command .input,
 .command :global(.input) {
-  min-width: 0;
-}
-
-.detectPicker {
-  min-width: 0;
-}
-
-.detectPicker .cliPick {
-  min-width: 0;
-  flex-wrap: nowrap;
-}
-
-.detectPicker .cliPick :global(.select) {
-  width: auto;
-  flex: 1 1 0;
   min-width: 0;
 }
