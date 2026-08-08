@@ -1,23 +1,8 @@
-.scrim {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: grid;
-  place-items: center;
-  background: rgba(4, 6, 12, 0.72);
-  backdrop-filter: blur(8px);
-  animation: fade-in var(--fast) var(--ease);
-}
 .sheet {
   width: min(620px, calc(100vw - 96px));
   max-height: calc(100vh - 120px);
   overflow-y: auto;
   padding: var(--s6);
-  box-shadow: var(--shadow-lg);
-  background: var(--bg-panel);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  outline: none;
 }
 .sheet header {
   display: flex;

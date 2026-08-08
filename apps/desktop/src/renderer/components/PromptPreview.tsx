@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { AgentDef } from '@shared/types.js';
-import { useEscapeToClose } from '../hooks/useEscapeToClose.js';
 import { Button } from './ui/Button.js';
+import { ModalShell } from './ui/ModalShell.js';
 import styles from './PromptPreview.module.css';
 
 const SAMPLE = {
@@ -17,7 +17,6 @@ export default function PromptPreview({
   agent: AgentDef;
   onClose: () => void;
 }): React.JSX.Element {
-  useEscapeToClose(onClose);
   const rendered = useMemo(
     () =>
       agent.userPrompt
@@ -29,27 +28,25 @@ export default function PromptPreview({
   );
 
   return (
-    <div className={styles.scrim} onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <section className={`card ${styles.sheet}`}>
-        <header className="spread">
-          <h2>Prompt preview: {agent.name}</h2>
-          <Button variant="ghost" size="sm" onClick={onClose}>
-            Close
-          </Button>
-        </header>
-        <div className={`scroll ${styles.body}`}>
-          <h3>System</h3>
-          <pre className={`selectable ${styles.block}`}>{agent.systemPrompt}</pre>
-          <h3>User</h3>
-          <pre className={`selectable ${styles.block}`}>{rendered}</pre>
-          <h3>Appended by the engine</h3>
-          <p className={`faint ${styles.note}`}>
-            The declared inputs for the phase, then the exact JSON shape of the{' '}
-            <strong>{agent.envelope}</strong> envelope, generated from the schema the reply is
-            validated against.
-          </p>
-        </div>
-      </section>
-    </div>
+    <ModalShell onClose={onClose} className={styles.sheet}>
+      <header className="spread">
+        <h2>Prompt preview: {agent.name}</h2>
+        <Button variant="ghost" size="sm" onClick={onClose}>
+          Close
+        </Button>
+      </header>
+      <div className={`scroll ${styles.body}`}>
+        <h3>System</h3>
+        <pre className={`selectable ${styles.block}`}>{agent.systemPrompt}</pre>
+        <h3>User</h3>
+        <pre className={`selectable ${styles.block}`}>{rendered}</pre>
+        <h3>Appended by the engine</h3>
+        <p className={`faint ${styles.note}`}>
+          The declared inputs for the phase, then the exact JSON shape of the{' '}
+          <strong>{agent.envelope}</strong> envelope, generated from the schema the reply is
+          validated against.
+        </p>
+      </div>
+    </ModalShell>
   );
 }

@@ -3,6 +3,7 @@ import type { PendingInterrupt } from '@shared/types.js';
 import { api } from '../api.js';
 import { useApp } from '../stores/app.js';
 import { Button } from './ui/Button.js';
+import { ModalShell } from './ui/ModalShell.js';
 import styles from './InterruptSheet.module.css';
 
 export default function InterruptSheet({
@@ -74,82 +75,73 @@ export default function InterruptSheet({
   ].filter(Boolean);
 
   return (
-    <div
-      className={styles.scrim}
-      role="presentation"
-      onMouseDown={(e) => {
-        // Clicks on the dimmed backdrop must not dismiss: the run is waiting.
-        if (e.target === e.currentTarget) sheetRef.current?.focus();
-      }}
+    <ModalShell
+      dismissible={false}
+      highPriority
+      ariaLabelledBy="interrupt-title"
+      sheetRef={sheetRef}
+      tabIndex={-1}
+      className={styles.sheet}
     >
-      <section
-        ref={sheetRef}
-        className={`${styles.sheet} card`}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="interrupt-title"
-        tabIndex={-1}
-      >
-        <header>
-          <span className={`badge ${styles.kind}`}>{isEngineer ? 'checkpoint' : 'permission'}</span>
-          <h2 id="interrupt-title">{interrupt.title}</h2>
-        </header>
-        {contextBits.length > 0 && (
-          <p className={`${styles.context} mono faint`}>{contextBits.join(' · ')}</p>
-        )}
-        <p className={`${styles.body} selectable`}>{interrupt.body}</p>
-        {interrupt.command && (
-          <pre className={`${styles.command} selectable mono`}>{interrupt.command}</pre>
-        )}
-        <label className="field">
-          <span>
-            Notes for the agent <em className="faint">(optional)</em>
-          </span>
-          <textarea
-            className="textarea"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={3}
+      <header>
+        <span className={`badge ${styles.kind}`}>{isEngineer ? 'checkpoint' : 'permission'}</span>
+        <h2 id="interrupt-title">{interrupt.title}</h2>
+      </header>
+      {contextBits.length > 0 && (
+        <p className={`${styles.context} mono faint`}>{contextBits.join(' · ')}</p>
+      )}
+      <p className={`${styles.body} selectable`}>{interrupt.body}</p>
+      {interrupt.command && (
+        <pre className={`${styles.command} selectable mono`}>{interrupt.command}</pre>
+      )}
+      <label className="field">
+        <span>
+          Notes for the agent <em className="faint">(optional)</em>
+        </span>
+        <textarea
+          className="textarea"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          rows={3}
+          disabled={sending}
+          placeholder="Anything you add here is sent to the agent as part of your answer."
+        />
+      </label>
+      {interrupt.command && (
+        <label className={styles.remember}>
+          <input
+            type="checkbox"
+            checked={remember}
             disabled={sending}
-            placeholder="Anything you add here is sent to the agent as part of your answer."
+            onChange={(e) => setRemember(e.target.checked)}
           />
+          Always allow this command in this project
         </label>
-        {interrupt.command && (
-          <label className={styles.remember}>
-            <input
-              type="checkbox"
-              checked={remember}
-              disabled={sending}
-              onChange={(e) => setRemember(e.target.checked)}
-            />
-            Always allow this command in this project
-          </label>
-        )}
-        {error && (
-          <p className={styles.err} role="alert">
-            {error}
-          </p>
-        )}
-        <footer>
-          <Button
-            disabled={sending}
-            onClick={() => void answer('reject')}
-            title={`${rejectLabel} (Esc)`}
-          >
-            {sending ? 'Sending…' : rejectLabel}
-          </Button>
-          <div className={styles.grow} />
-          <span className={`${styles.esc} faint`}>Esc {rejectLabel.toLowerCase()}</span>
-          <Button
-            ref={approveRef}
-            variant="primary"
-            disabled={sending}
-            onClick={() => void answer('approve')}
-          >
-            {sending ? 'Sending…' : approveLabel}
-          </Button>
-        </footer>
-      </section>
-    </div>
+      )}
+      {error && (
+        <p className={styles.err} role="alert">
+          {error}
+        </p>
+      )}
+      <footer>
+        <Button
+          disabled={sending}
+          onClick={() => void answer('reject')}
+          title={`${rejectLabel} (Esc)`}
+        >
+          {sending ? 'Sending…' : rejectLabel}
+        </Button>
+        <div className={styles.grow} />
+        <span className={`${styles.esc} faint`}>Esc {rejectLabel.toLowerCase()}</span>
+        <Button
+          ref={approveRef}
+          variant="primary"
+          disabled={sending}
+          onClick={() => void answer('approve')}
+        >
+          {sending ? 'Sending…' : approveLabel}
+        </Button>
+      </footer>
+    </ModalShell>
   );
 }
