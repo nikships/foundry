@@ -52,7 +52,10 @@ TSX, so `tsc` covers it.
 
 ```
 src/main/       Node. Owns everything: git, disk, agent CLIs, sqlite.
-  engine/       The deterministic pipeline runner.
+  engine/       The deterministic pipeline runner. One file per phase kind:
+                executor.ts (the walk), acceptance.ts (pure verdict),
+                phase-context.ts (RunContext/PhaseRunner seam),
+                runners/agent.ts, runners/code.ts, runners/engineer.ts.
   cli/          One adapter per agent CLI: argv in, parsed turn out.
   droid/        The agent harness: droid's JSON-RPC client plus the shared one-shot runner.
   trace/        SQLite (WAL). Single writer.
@@ -205,7 +208,8 @@ tests/ipc-clone.test.ts      6   payloads survive the structured-clone bridge
 tests/gates.test.ts         19   each gate's evidence, unknown-gate failure
 tests/git.test.ts            4   the porcelain parser ignores git's stderr chatter
 tests/droid-client.test.ts  24   the wire protocol against fake-droid
-tests/executor.test.ts      21   the run loop against real git temp repos
+tests/executor.test.ts      20   the run loop against real git temp repos
+tests/acceptance.test.ts    22   every acceptance criterion, table-driven
 tests/cli-vendors.test.ts   54   argv, parse, and stream folding per real CLI output
 tests/transcript.test.ts    13   text folding, throttling, caps, the change_id cursor
 tests/catalog.test.ts        8   model/tool catalogs per vendor
