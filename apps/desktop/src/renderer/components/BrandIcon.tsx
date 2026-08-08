@@ -22,27 +22,69 @@
  */
 
 import type { ComponentType, CSSProperties } from 'react';
+import Ai21Mono from '@lobehub/icons/es/Ai21/components/Mono.js';
+import AlibabaCloudColor from '@lobehub/icons/es/AlibabaCloud/components/Color.js';
+import AlibabaColor from '@lobehub/icons/es/Alibaba/components/Color.js';
 import AnthropicMono from '@lobehub/icons/es/Anthropic/components/Mono.js';
+import AppleMono from '@lobehub/icons/es/Apple/components/Mono.js';
+import AwsColor from '@lobehub/icons/es/Aws/components/Color.js';
+import BaichuanColor from '@lobehub/icons/es/Baichuan/components/Color.js';
+import BedrockColor from '@lobehub/icons/es/Bedrock/components/Color.js';
+import ByteDanceColor from '@lobehub/icons/es/ByteDance/components/Color.js';
+import CerebrasColor from '@lobehub/icons/es/Cerebras/components/Color.js';
 import ChatGLMColor from '@lobehub/icons/es/ChatGLM/components/Color.js';
-import ClaudeColor from '@lobehub/icons/es/Claude/components/Color.js';
 import ClaudeCodeColor from '@lobehub/icons/es/ClaudeCode/components/Color.js';
+import ClaudeColor from '@lobehub/icons/es/Claude/components/Color.js';
 import CodexColor from '@lobehub/icons/es/Codex/components/Color.js';
+import CohereColor from '@lobehub/icons/es/Cohere/components/Color.js';
+import DbrxColor from '@lobehub/icons/es/Dbrx/components/Color.js';
+import DeepMindColor from '@lobehub/icons/es/DeepMind/components/Color.js';
 import DeepSeekColor from '@lobehub/icons/es/DeepSeek/components/Color.js';
+import DoubaoColor from '@lobehub/icons/es/Doubao/components/Color.js';
+import FireworksColor from '@lobehub/icons/es/Fireworks/components/Color.js';
+import GemmaColor from '@lobehub/icons/es/Gemma/components/Color.js';
 import GeminiColor from '@lobehub/icons/es/Gemini/components/Color.js';
 import GoogleColor from '@lobehub/icons/es/Google/components/Color.js';
 import GrokMono from '@lobehub/icons/es/Grok/components/Mono.js';
+import GroqMono from '@lobehub/icons/es/Groq/components/Mono.js';
+import HuggingFaceColor from '@lobehub/icons/es/HuggingFace/components/Color.js';
+import HunyuanColor from '@lobehub/icons/es/Hunyuan/components/Color.js';
+import IFlyTekCloudColor from '@lobehub/icons/es/IFlyTekCloud/components/Color.js';
+import InflectionMono from '@lobehub/icons/es/Inflection/components/Mono.js';
+import InternLMColor from '@lobehub/icons/es/InternLM/components/Color.js';
 import JunieColor from '@lobehub/icons/es/Junie/components/Color.js';
 import KimiColor from '@lobehub/icons/es/Kimi/components/Color.js';
+import LmStudioMono from '@lobehub/icons/es/LmStudio/components/Mono.js';
 import MetaColor from '@lobehub/icons/es/Meta/components/Color.js';
+import MicrosoftColor from '@lobehub/icons/es/Microsoft/components/Color.js';
 import MinimaxColor from '@lobehub/icons/es/Minimax/components/Color.js';
 import MistralColor from '@lobehub/icons/es/Mistral/components/Color.js';
 import MoonshotMono from '@lobehub/icons/es/Moonshot/components/Mono.js';
+import NousResearchMono from '@lobehub/icons/es/NousResearch/components/Mono.js';
+import NovaColor from '@lobehub/icons/es/Nova/components/Color.js';
+import NvidiaColor from '@lobehub/icons/es/Nvidia/components/Color.js';
 import OllamaMono from '@lobehub/icons/es/Ollama/components/Mono.js';
 import OpenAIMono from '@lobehub/icons/es/OpenAI/components/Mono.js';
 import OpenRouterColor from '@lobehub/icons/es/OpenRouter/components/Color.js';
+import PaLMColor from '@lobehub/icons/es/PaLM/components/Color.js';
+import PerplexityColor from '@lobehub/icons/es/Perplexity/components/Color.js';
 import QwenColor from '@lobehub/icons/es/Qwen/components/Color.js';
+import ReplitColor from '@lobehub/icons/es/Replit/components/Color.js';
+import RwkvColor from '@lobehub/icons/es/Rwkv/components/Color.js';
+import SenseNovaColor from '@lobehub/icons/es/SenseNova/components/Color.js';
+import SnowflakeColor from '@lobehub/icons/es/Snowflake/components/Color.js';
+import SparkColor from '@lobehub/icons/es/Spark/components/Color.js';
+import StepfunMono from '@lobehub/icons/es/Stepfun/components/Mono.js';
+import TIIColor from '@lobehub/icons/es/TII/components/Color.js';
+import TencentColor from '@lobehub/icons/es/Tencent/components/Color.js';
+import TogetherColor from '@lobehub/icons/es/Together/components/Color.js';
+import UpstageColor from '@lobehub/icons/es/Upstage/components/Color.js';
+import VolcengineColor from '@lobehub/icons/es/Volcengine/components/Color.js';
+import WenxinColor from '@lobehub/icons/es/Wenxin/components/Color.js';
 import XAIMono from '@lobehub/icons/es/XAI/components/Mono.js';
+import YiColor from '@lobehub/icons/es/Yi/components/Color.js';
 import ZAIMono from '@lobehub/icons/es/ZAI/components/Mono.js';
+import ZeroOneColor from '@lobehub/icons/es/ZeroOne/components/Color.js';
 import ZhipuColor from '@lobehub/icons/es/Zhipu/components/Color.js';
 import type { CliVendor } from '@shared/types.js';
 
@@ -99,28 +141,76 @@ export const CLI_MARKS: Record<CliVendor, Mark> = {
  * free to say `kimi` where another says `moonshot` and neither is wrong.
  */
 const PROVIDER_MARKS: Record<string, Mark> = {
+  ai21: Ai21Mono,
+  alibaba: AlibabaColor,
+  alibabacloud: AlibabaCloudColor,
   anthropic: AnthropicMono,
+  apple: AppleMono,
+  aws: AwsColor,
+  baichuan: BaichuanColor,
+  bedrock: BedrockColor,
+  bytedance: ByteDanceColor,
+  cerebras: CerebrasColor,
   chatglm: ChatGLMColor,
   claude: ClaudeColor,
   codex: CodexColor,
+  cohere: CohereColor,
+  dbrx: DbrxColor,
+  deepmind: DeepMindColor,
   deepseek: DeepSeekColor,
   droid: FactoryDroid,
+  doubao: DoubaoColor,
+  // Ernie is Baidu's Wenxin model family; the Wenxin mark covers both names.
+  ernie: WenxinColor,
+  fireworks: FireworksColor,
   gemini: GeminiColor,
+  gemma: GemmaColor,
   glm: ChatGLMColor,
   google: GoogleColor,
   grok: GrokMono,
+  groq: GroqMono,
+  huggingface: HuggingFaceColor,
+  hunyuan: HunyuanColor,
+  // iFlyTek's model family is Spark; both names resolve to the same mark.
+  iflytek: IFlyTekCloudColor,
+  inflection: InflectionMono,
+  internlm: InternLMColor,
   junie: JunieColor,
   kimi: KimiColor,
+  lmstudio: LmStudioMono,
   meta: MetaColor,
+  microsoft: MicrosoftColor,
   minimax: MinimaxColor,
   mistral: MistralColor,
   moonshot: MoonshotMono,
+  nous: NousResearchMono,
+  nova: NovaColor,
+  nvidia: NvidiaColor,
   ollama: OllamaMono,
   openai: OpenAIMono,
   openrouter: OpenRouterColor,
+  palm: PaLMColor,
+  perplexity: PerplexityColor,
   qwen: QwenColor,
+  replit: ReplitColor,
+  rwkv: RwkvColor,
+  sensenova: SenseNovaColor,
+  snowflake: SnowflakeColor,
+  spark: SparkColor,
+  stepfun: StepfunMono,
+  tii: TIIColor,
+  // Hunyuan is Tencent's; the Tencent mark covers the corporate alias too.
+  tencent: TencentColor,
+  together: TogetherColor,
+  upstage: UpstageColor,
+  // Doubao is served on ByteDance's Volcengine; the Volcengine mark covers it.
+  volcengine: VolcengineColor,
+  wenxin: WenxinColor,
   xai: XAIMono,
+  // Yi is 01.AI, whose English brand is ZeroOne; both names resolve here.
+  yi: YiColor,
   zai: ZAIMono,
+  zeroone: ZeroOneColor,
   zhipu: ZhipuColor,
 };
 

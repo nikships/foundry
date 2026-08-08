@@ -11,6 +11,7 @@ import SettingsScreen from './screens/SettingsScreen.js';
 import OnboardingShell from './screens/onboarding/OnboardingShell.js';
 import InterruptSheet from './components/InterruptSheet.js';
 import UpdateBanner from './components/UpdateBanner.js';
+import MurmurFlock from './components/MurmurFlock.js';
 import { useBrand } from './hooks/useBrand.js';
 import type { UpdateStatus } from '@shared/types.js';
 
@@ -160,6 +161,10 @@ function AppInner(): React.JSX.Element {
 
   return (
     <div className="shell">
+      {/* The Murmur brand's living surface: a starling murmuration drifting
+          over the app. Prism gets no flock — its surface is the raymarched
+          prism hero, not a canvas. pointer-events:none keeps it out of input. */}
+      {!isPrism && <MurmurFlock />}
       <div className="titlebar">{isPrism && <div className="prism-header-rule" aria-hidden />}</div>
 
       {needsOnboarding ? (
@@ -217,6 +222,7 @@ function AppInner(): React.JSX.Element {
           animation: fade-in 140ms var(--ease);
         }
         .shell {
+          position: relative;
           display: flex;
           height: 100%;
           background: var(--bg-base);

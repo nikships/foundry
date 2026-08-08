@@ -91,6 +91,6 @@ describe('mergeSessionModels', () => {
 describe('providerOf', () => {
   it('reads the provider out of a custom id that carries the family name', () => {
     expect(providerOf('custom:droidproxy:opus-5', 'DroidProxy: Opus 5')).toBe('claude');
-    expect(providerOf('custom:droidproxy:grok-4.5', 'DroidProxy: Grok 4.5')).toBe('openai');
+    expect(providerOf('custom:droidproxy:grok-4.5', 'DroidProxy: Grok 4.5')).toBe('grok');
   });
 });

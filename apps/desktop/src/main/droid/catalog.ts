@@ -172,8 +172,20 @@ export function providerOf(id: string, displayName = ''): string {
   }
   if (s.includes('gpt') || s.includes('codex') || s.includes('openai')) return 'openai';
   if (s.includes('gemini')) return 'gemini';
+  if (s.includes('gemma')) return 'gemma';
+  if (s.includes('palm')) return 'palm';
   if (s.includes('kimi') || s.includes('moonshot')) return 'kimi';
-  if (s.includes('glm') || s.includes('zai') || s.includes('z.ai')) return 'zai';
+  if (s.includes('glm') || s.includes('zai') || s.includes('z.ai') || s.includes('zhipu')) {
+    return 'zai';
+  }
+  if (s.includes('deepseek')) return 'deepseek';
+  if (s.includes('minimax')) return 'minimax';
+  if (s.includes('nemotron')) return 'nvidia';
+  if (s.includes('grok')) return 'grok';
+  if (s.includes('meta') || s.includes('llama')) return 'meta';
+  // Inkling and Auto are Factory's own Droid-Core models, not a third lab, so
+  // they take the Factory mark rather than the OpenAI fallback below.
+  if (s.includes('inkling') || s.includes('auto model')) return 'droid';
   return 'openai';
 }
 

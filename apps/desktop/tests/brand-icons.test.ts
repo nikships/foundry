@@ -32,6 +32,12 @@ describe('provider marks', () => {
     'gemini-2.5-pro',
     'kimi-k2',
     'glm-4.6',
+    'deepseek-v4-pro',
+    'minimax-m3',
+    'nemotron-3-ultra',
+    'grok-4.5',
+    'custom:meta:muse-spark-1.2',
+    'inkling',
     'something-nobody-has-heard-of',
   ];
 

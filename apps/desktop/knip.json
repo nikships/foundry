@@ -1,14 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": [
-    "src/main/main.ts",
-    "src/preload/bridge.ts",
-    "src/renderer/main.tsx",
-    "scripts/**/*.ts",
-    "tests/**/*.ts",
-    "electron.vite.config.ts",
-    "src/renderer/components/prism/PrismField.tsx"
-  ],
+  "entry": ["scripts/**/*.ts", "tests/**/*.ts"],
   "project": ["src/**/*.{ts,tsx}", "scripts/**/*.ts", "tests/**/*.ts"],
   "paths": {
     "@shared/*": ["src/shared/*"],
