@@ -3,11 +3,11 @@
  * `--output-format json-stream`.
  *
  * Junie is the one vendor whose autonomy Foundry cannot set from argv. Its
- * approval behaviour lives in brave mode, which is documented only as an
- * interactive toggle, and in `~/.junie/allowlist.json`. Rather than emit a flag
- * that may not exist on the operator's build, this adapter emits none and the
- * doctor checks for the allowlist instead, so the failure shows up as a setup
- * check rather than as a phase that hangs waiting on a prompt. An operator whose
+ * approval behaviour lives in brave mode (ON bypasses all approvals) and in
+ * `~/.junie/allowlist.json`. Rather than emit a flag that may not exist on the
+ * operator's build, this adapter emits none and the doctor checks for brave
+ * mode ON or the allowlist instead, so the failure shows up as a setup check
+ * rather than as a phase that hangs waiting on a prompt. An operator whose
  * build does take a flag can add it through the per-CLI extra arguments field.
  *
  * The stream format is one JSON object per line, captured against the real CLI
@@ -146,7 +146,7 @@ export const junieAdapter: CliAdapter = {
   stream: () => streamLine,
   caveats: [
     'Steps stream as they complete, but the answer text arrives only at turn end: Junie publishes no per-token stream.',
-    'Autonomy is not settable from argv. Junie takes it from ~/.junie/allowlist.json, so an unattended run needs that file.',
+    'Autonomy is not settable from argv. Junie takes it from brave mode (ON) or ~/.junie/allowlist.json, so an unattended run needs one of them.',
     'Session resume is best effort: Junie has reported the id in its JSON output and the id in its session index disagreeing.',
   ],
 

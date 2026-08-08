@@ -34,10 +34,11 @@ Doctor is also available later from Settings (general / about style panes).
 ### Step 2 — First project
 
 - Optional **engineer name** (stored on settings, recorded on every run).
-- **Choose a repository…** → `projects.add()` folder picker; path must be usable as a project (git repo expected; project Doctor goes deeper after add).
-- Finish: patch name if set, call onDone → `settings.onboarded = true`, land on **Runs**.
-
-Skip is allowed if no project was added; Runs then shows the empty-state prompt to add one.
+- **Project manager** (full): all existing projects as a radio list, each with an inline rename input (prefilled from folder basename but free-form — type whatever you want) and a **Remove** button. One project is selected at a time (defaults to the current `selectedProjectId` or the first project); the selection is the one onboarding will activate.
+- **Choose a repository…** / **Add another repository…** → `projects.add()` folder picker (always visible, including on replay with existing projects); path must be a git repo (`projects:add` shows a warning and returns `null` for a non-repo). Newly added projects are auto-selected and the list updates via `refreshAll()`.
+- **Blocking**: `Enter Foundry` is disabled until at least one project exists and one is selected. There is no `Skip for now` bypass. On replay, the same rules apply — the user is never forced into a single default (`foundry-demo-repo` or `projects[0]` alone); all projects are visible and the picker is always there. The old "green card for `projects[0]`" is gone.
+- Rename commits on blur/enter (escape reverts); empty or >80 chars shows an error and reverts. Save goes through `projects:save` and `projectSchema`; `name` is the display name only, `id` stays `hash(path)`.
+- Finish: patch `engineerName` if non-empty, `selectProject(selectedId)` to set `localStorage "foundry.project"`, call `onDone` → `settings.onboarded = true`, land on **Runs**.
 
 ### Project Doctor (after add)
 

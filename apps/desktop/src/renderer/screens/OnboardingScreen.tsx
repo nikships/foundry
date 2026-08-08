@@ -69,7 +69,8 @@ function SceneArt({ path, className }: { path: string; className?: string }): Re
 }
 
 export default function OnboardingScreen({ onDone }: { onDone: () => void }): React.JSX.Element {
-  const { projects, settings, refreshAll, patchSettings } = useApp();
+  const { projects, settings, refreshAll, patchSettings, selectProject, selectedProjectId } =
+    useApp();
   const [stepIndex, setStepIndex] = useState(0);
   const [checks, setChecks] = useState<DoctorCheck[]>([]);
   const [clis, setClis] = useState<CliDescriptor[]>([]);
@@ -78,6 +79,13 @@ export default function OnboardingScreen({ onDone }: { onDone: () => void }): Re
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [entered, setEntered] = useState(false);
+  const [selectedId, setSelectedId] = useState<string>(
+    () => selectedProjectId || projects[0]?.id || '',
+  );
+  const [nameDrafts, setNameDrafts] = useState<Record<string, string>>(() =>
+    Object.fromEntries(projects.map((p) => [p.id, p.name])),
+  );
+  const [renamingId, setRenamingId] = useState<string | null>(null);
 
   const step = STEPS[stepIndex]!.id;
   const blocking = useMemo(() => checks.filter((c) => !c.ok && c.blocking), [checks]);
@@ -103,6 +111,47 @@ export default function OnboardingScreen({ onDone }: { onDone: () => void }): Re
       setChecking(false);
     });
   }, [settings?.engineerName]);
+
+  // Keep name drafts in sync with persisted projects, without clobbering a live edit.
+  useEffect(() => {
+    setNameDrafts((prev) => {
+      const next: Record<string, string> = { ...prev };
+      for (const p of projects) {
+        if (renamingId === p.id) {
+          if (!(p.id in next)) next[p.id] = p.name;
+          continue;
+        }
+        next[p.id] = p.name;
+      }
+      for (const id of Object.keys(next)) {
+        if (!projects.some((p) => p.id === id)) delete next[id];
+      }
+      const prevKeys = Object.keys(prev);
+      const nextKeys = Object.keys(next);
+      if (
+        prevKeys.length === nextKeys.length &&
+        nextKeys.every((k) => prev[k] === next[k]) &&
+        nextKeys.length === prevKeys.length
+      ) {
+        return prev;
+      }
+      return next;
+    });
+  }, [projects, renamingId]);
+
+  // Seed or repair selection whenever the project list changes.
+  useEffect(() => {
+    if (!projects.length) {
+      if (selectedId) setSelectedId('');
+      return;
+    }
+    const stillThere = projects.some((p) => p.id === selectedId);
+    if (!selectedId || !stillThere) {
+      const preferred = selectedProjectId || projects[0]!.id;
+      const exists = projects.some((p) => p.id === preferred);
+      setSelectedId(exists ? preferred : projects[0]!.id);
+    }
+  }, [projects, selectedProjectId, selectedId]);
 
   // Re-run the doctor when the user lands on that step so a fix they made while
   // browsing earlier is already reflected without an extra click.
@@ -152,8 +201,12 @@ export default function OnboardingScreen({ onDone }: { onDone: () => void }): Re
     setBusy(true);
     setError('');
     try {
-      await api.projects.add();
+      const added = await api.projects.add();
       await refreshAll();
+      if (added) {
+        setSelectedId(added.id);
+        selectProject(added.id);
+      }
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -161,12 +214,94 @@ export default function OnboardingScreen({ onDone }: { onDone: () => void }): Re
     }
   };
 
+  const removeProject = async (id: string): Promise<void> => {
+    if (busy) return;
+    const target = projects.find((p) => p.id === id);
+    if (!target) return;
+    if (
+      !window.confirm(
+        `Remove project "${target.name}" from Foundry? The git repo on disk is not deleted.`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      await api.projects.remove(id);
+      await refreshAll();
+      // Selection fallback is handled by the projects sync effect, but clear immediately
+      // if the removed project was selected so the button disables without waiting for refresh.
+      if (selectedId === id) {
+        const remaining = projects.filter((p) => p.id !== id);
+        const next = remaining[0]?.id ?? '';
+        setSelectedId(next);
+        if (next) selectProject(next);
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const commitProjectRename = async (id: string): Promise<void> => {
+    const draft = (nameDrafts[id] ?? '').trim();
+    const project = projects.find((p) => p.id === id);
+    if (!project) return;
+    if (!draft) {
+      setError('Project name cannot be empty.');
+      setNameDrafts((prev) => ({ ...prev, [id]: project.name }));
+      setRenamingId(null);
+      return;
+    }
+    if (draft.length > 80) {
+      setError('Keep the project name under 80 characters.');
+      return;
+    }
+    if (draft === project.name) {
+      setRenamingId(null);
+      return;
+    }
+    setRenamingId(null);
+    setError('');
+    try {
+      const result = await api.projects.save({ ...project, name: draft });
+      if (!result.ok) {
+        setError(result.issues.map((i) => `${i.where}: ${i.message}`).join(' '));
+        setNameDrafts((prev) => ({ ...prev, [id]: project.name }));
+        return;
+      }
+      await refreshAll();
+    } catch (e) {
+      setError((e as Error).message);
+      setNameDrafts((prev) => ({ ...prev, [id]: project.name }));
+    }
+  };
+
+  const canEnterProject = useMemo(() => {
+    if (busy) return false;
+    if (!projects.length) return false;
+    if (!selectedId) return false;
+    return projects.some((p) => p.id === selectedId);
+  }, [busy, projects, selectedId]);
+  const projectBlockingHint = !projects.length
+    ? 'Pick a project or add a repository to continue.'
+    : !selectedId
+      ? 'Select a project to continue.'
+      : '';
+
   const finish = async (): Promise<void> => {
     if (busy) return;
+    if (!canEnterProject) {
+      setError(projectBlockingHint || 'Pick a project or add a repository to continue.');
+      return;
+    }
     setBusy(true);
     setError('');
     try {
       if (name.trim()) await api.settings.patch({ engineerName: name.trim() });
+      if (selectedId) selectProject(selectedId);
       onDone();
     } catch (e) {
       setError((e as Error).message);
@@ -407,8 +542,10 @@ export default function OnboardingScreen({ onDone }: { onDone: () => void }): Re
                 <p className="eyebrow">First project</p>
                 <h1>Point Foundry at a repo</h1>
                 <p className="lead">
-                  Each run gets its own worktree and branch. Merge when you accept. You can skip and
-                  add a project later from the sidebar.
+                  Each run gets its own worktree and branch. Merge when you accept.
+                  {projects.length
+                    ? ' Pick the one to start in — you can change it later from the sidebar.'
+                    : ' Choose a git repository to get started.'}
                 </p>
                 <div className="field">
                   <label>Your name</label>
@@ -420,28 +557,106 @@ export default function OnboardingScreen({ onDone }: { onDone: () => void }): Re
                   />
                   <span className="hint">Recorded on every run as the engineer.</span>
                 </div>
+
                 {projects.length ? (
-                  <div className="added">
-                    <span className="mark">✓</span>
-                    <div>
-                      <strong>{projects[0]!.name}</strong>
-                      <em className="faint mono">{projects[0]!.path}</em>
+                  <div className="field project-manager">
+                    <label>Projects</label>
+                    <span className="hint">
+                      Name is just for you — type whatever you want. The path is where Foundry runs.
+                    </span>
+                    <div className="project-list" role="radiogroup" aria-label="Projects">
+                      {projects.map((p) => {
+                        const selected = p.id === selectedId;
+                        const draft = nameDrafts[p.id] ?? p.name;
+                        const isRenaming = renamingId === p.id;
+                        return (
+                          <label
+                            key={p.id}
+                            className={`project-row ${selected ? 'on' : ''} ${isRenaming ? 'editing' : ''}`}
+                          >
+                            <input
+                              type="radio"
+                              name="onboarding-project"
+                              className="project-radio"
+                              checked={selected}
+                              onChange={() => {
+                                setSelectedId(p.id);
+                                selectProject(p.id);
+                                setError('');
+                              }}
+                            />
+                            <span className="project-radio-mark" aria-hidden />
+                            <span className="project-main">
+                              <input
+                                className="input project-name-input"
+                                value={draft}
+                                onFocus={() => setRenamingId(p.id)}
+                                onChange={(e) =>
+                                  setNameDrafts((prev) => ({ ...prev, [p.id]: e.target.value }))
+                                }
+                                onBlur={() => void commitProjectRename(p.id)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    (e.target as HTMLInputElement).blur();
+                                  } else if (e.key === 'Escape') {
+                                    setNameDrafts((prev) => ({ ...prev, [p.id]: p.name }));
+                                    setRenamingId(null);
+                                    (e.target as HTMLInputElement).blur();
+                                  }
+                                }}
+                                placeholder="Project name"
+                                aria-label={`Project name for ${p.path}`}
+                              />
+                              <span className="faint mono project-path" title={p.path}>
+                                {p.path}
+                              </span>
+                            </span>
+                            <button
+                              type="button"
+                              className="btn sm ghost project-remove"
+                              disabled={busy}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                void removeProject(p.id);
+                              }}
+                              title="Remove from Foundry (repo on disk stays)"
+                            >
+                              Remove
+                            </button>
+                          </label>
+                        );
+                      })}
                     </div>
                   </div>
                 ) : (
-                  <button
-                    className="btn project-btn"
-                    disabled={busy}
-                    onClick={() => void addProject()}
-                  >
-                    {busy ? 'Opening…' : 'Choose a repository…'}
-                  </button>
+                  <p className="faint empty-state">
+                    No projects yet. Pick a git repository below — Foundry isolates each run in a
+                    worktree, so the folder has to be a repo.
+                  </p>
                 )}
+
+                <button
+                  type="button"
+                  className="btn project-btn"
+                  disabled={busy}
+                  onClick={() => void addProject()}
+                >
+                  {busy
+                    ? 'Opening…'
+                    : projects.length
+                      ? 'Add another repository…'
+                      : 'Choose a repository…'}
+                </button>
+
                 <SceneArt path="concepts/pipeline.png" className="project-art" />
               </>
             )}
 
             {error && <p className="err">{error}</p>}
+            {step === 'project' && !canEnterProject && projectBlockingHint && (
+              <p className="hint-line faint">{projectBlockingHint}</p>
+            )}
 
             <footer className="foot">
               {stepIndex > 0 ? (
@@ -462,8 +677,13 @@ export default function OnboardingScreen({ onDone }: { onDone: () => void }): Re
                   {checking ? 'Checking…' : 'Continue'}
                 </button>
               ) : step === 'project' ? (
-                <button className="btn primary" disabled={busy} onClick={() => void finish()}>
-                  {busy ? 'Saving…' : projects.length ? 'Enter Foundry' : 'Skip for now'}
+                <button
+                  className="btn primary"
+                  disabled={!canEnterProject}
+                  title={projectBlockingHint || undefined}
+                  onClick={() => void finish()}
+                >
+                  {busy ? 'Saving…' : 'Enter Foundry'}
                 </button>
               ) : (
                 <button className="btn primary" onClick={() => go(stepIndex + 1)}>
@@ -659,14 +879,34 @@ export default function OnboardingScreen({ onDone }: { onDone: () => void }): Re
         .field { display: flex; flex-direction: column; gap: var(--s1); margin: var(--s2) 0 var(--s4); }
         .field label { font-size: var(--text-sm); font-weight: 500; }
         .hint { font-size: var(--text-xs); color: var(--text-faint); }
-        .project-btn { align-self: flex-start; }
-        .added {
+        .project-btn { align-self: flex-start; margin-top: var(--s2); }
+        .project-manager { gap: var(--s2); }
+        .project-list { display: flex; flex-direction: column; gap: var(--s2); margin-top: var(--s1); }
+        .project-row {
           display: flex; align-items: center; gap: var(--s3);
-          padding: var(--s3); border: 1px solid var(--green-dim);
-          border-radius: var(--r-sm); background: var(--green-dim); font-size: var(--text-sm);
+          padding: var(--s3) var(--s3);
+          border: 1px solid var(--line); border-radius: var(--r);
+          background: var(--bg-raised);
+          cursor: default;
+          transition: border-color 140ms var(--ease), background 140ms var(--ease), box-shadow 140ms var(--ease);
         }
-        .added .mark { color: var(--green); }
-        .added em { display: block; font-style: normal; font-size: var(--text-xs); }
+        .project-row:hover { border-color: var(--line-strong); background: var(--bg-hover); }
+        .project-row.on { border-color: var(--cyan); box-shadow: var(--glow-cyan); background: color-mix(in srgb, var(--bg-raised) 88%, var(--cyan-dim) 12%); }
+        .project-row.editing { border-color: var(--line-strong); }
+        .project-radio { position: absolute; opacity: 0; pointer-events: none; width: 0; height: 0; }
+        .project-radio-mark {
+          flex: none; width: 16px; height: 16px; border-radius: var(--r-full);
+          border: 1.5px solid var(--line-strong); background: var(--bg-void);
+          display: grid; place-items: center;
+        }
+        .project-radio-mark::after { content: ''; width: 7px; height: 7px; border-radius: var(--r-full); background: var(--cyan); opacity: 0; transform: scale(0.6); transition: opacity 140ms var(--ease), transform 140ms var(--ease); }
+        .project-row.on .project-radio-mark { border-color: var(--cyan); box-shadow: 0 0 0 3px var(--cyan-dim); }
+        .project-row.on .project-radio-mark::after { opacity: 1; transform: scale(1); }
+        .project-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+        .project-name-input { font-size: var(--text-sm); font-weight: 500; }
+        .project-path { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .project-remove { flex: none; }
+        .empty-state { font-size: var(--text-sm); line-height: var(--leading); margin: var(--s1) 0 var(--s2); }
         .warn {
           margin-top: var(--s3); padding: var(--s3); border-radius: var(--r-sm);
           background: var(--amber-dim); color: var(--amber);

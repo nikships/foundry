@@ -3,8 +3,9 @@
  * not a diagnosis. Run at onboarding and available from Settings.
  */
 
-import { existsSync } from 'node:fs';
-import { release } from 'node:os';
+import { existsSync, readFileSync } from 'node:fs';
+import { homedir, release } from 'node:os';
+import { join } from 'node:path';
 import type { AppSettings, CliVendor, DoctorCheck, ProjectDef } from '@shared/types.js';
 import { CLI_VENDOR_IDS } from '@shared/types.js';
 import { adapterFor } from '../cli/index.js';
@@ -80,20 +81,37 @@ export async function runDoctor(settings: AppSettings): Promise<DoctorCheck[]> {
     blocking: !git.passed,
   });
 
-  // Junie takes its autonomy from a file rather than from argv, so an unattended
-  // phase on Junie stalls on an approval prompt unless this exists. Reported only
-  // when Junie is actually installed, so it is not noise for everyone else.
+  // Junie takes its autonomy from files rather than from argv, so an unattended
+  // phase on Junie stalls on an approval prompt unless one of them allows it.
+  // Brave mode ON bypasses all approvals; otherwise the allowlist must exist.
+  // Reported only when Junie is actually installed, so it is not noise for
+  // everyone else.
   if (await cliVersion(settings.clis.junie?.path ?? 'junie', ['--version'])) {
-    const allowlist = `${process.env.HOME ?? ''}/.junie/allowlist.json`;
+    const allowlist = join(homedir(), '.junie', 'allowlist.json');
     const hasAllowlist = existsSync(allowlist);
+    let braveOn = false;
+    let braveDetail = '';
+    try {
+      const raw = readFileSync(join(homedir(), '.junie', 'settings.json'), 'utf8');
+      const parsed = JSON.parse(raw) as { braveMode?: unknown };
+      braveOn = String(parsed.braveMode ?? '').toLowerCase() === 'on';
+      if (braveOn) braveDetail = `brave mode is ON in ~/.junie/settings.json`;
+    } catch {
+      // Missing or unparsable settings is not brave.
+    }
+    const ok = hasAllowlist || braveOn;
+    let detail: string;
+    if (hasAllowlist) detail = `found at ${allowlist}`;
+    else if (braveOn) detail = `${braveDetail} (allowlist not needed)`;
+    else
+      detail =
+        'missing: Junie asks before acting, and an unattended phase has nobody to answer — enable brave mode ON or add ~/.junie/allowlist.json';
     checks.push({
       id: 'junie:allowlist',
       label: 'Junie action allowlist',
-      ok: hasAllowlist,
-      detail: hasAllowlist
-        ? `found at ${allowlist}`
-        : 'missing: Junie asks before acting, and an unattended phase has nobody to answer',
-      fix: hasAllowlist
+      ok,
+      detail,
+      fix: ok
         ? undefined
         : {
             kind: 'open-url',

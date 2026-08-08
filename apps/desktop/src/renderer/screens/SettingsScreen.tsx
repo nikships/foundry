@@ -711,8 +711,30 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
             <>
               {projectDraft ? (
                 <>
+                  <div className="field">
+                    <label>Project name</label>
+                    <input
+                      className="input"
+                      value={projectDraft.name}
+                      onChange={(e) => setProjectDraft({ ...projectDraft, name: e.target.value })}
+                      placeholder="My project"
+                    />
+                    <span className="hint">
+                      Just for you — rename freely. The path is where Foundry runs.
+                    </span>
+                  </div>
                   <div className="spread">
-                    <h2>{projectDraft.name}</h2>
+                    <span
+                      className="mono faint"
+                      style={{
+                        fontSize: 'var(--text-xs)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {projectDraft.path}
+                    </span>
                     <button
                       className="btn sm ghost"
                       onClick={() => void api.projects.reveal(projectDraft!.path)}
@@ -720,7 +742,6 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                       Reveal in Finder
                     </button>
                   </div>
-                  <p className="lead faint mono">{projectDraft.path}</p>
                   <DoctorList
                     checks={projectChecks}
                     onRecheck={() =>
