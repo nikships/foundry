@@ -48,6 +48,7 @@ function PrCard({
   noteIsError,
   onOpen,
   onMerge,
+  onFix,
   onOpenRun,
 }: {
   pr: PullRequest;
@@ -56,6 +57,8 @@ function PrCard({
   noteIsError: boolean;
   onOpen: () => void;
   onMerge: (method: PrMergeMethod) => void;
+  /** Present only when a local worktree exists for this PR's foundry run. */
+  onFix?: () => void;
   onOpenRun?: () => void;
 }): React.JSX.Element {
   const [method, setMethod] = useState<PrMergeMethod>('merge');
@@ -67,7 +70,7 @@ function PrCard({
     ? 'Draft PRs cannot be merged'
     : conflicting
       ? 'This PR has merge conflicts'
-      : `Merge #${pr.number} into ${pr.baseRefName} on GitHub, then fast-forward your local ${pr.baseRefName}`;
+      : `Merge #${pr.number} into ${pr.baseRefName} on GitHub, then sync your local ${pr.baseRefName}`;
 
   return (
     <li className={styles.card}>
@@ -122,6 +125,17 @@ function PrCard({
         <Button variant="ghost" size="sm" title="Open this PR on github.com" onClick={onOpen}>
           GitHub ↗
         </Button>
+        {conflicting && onFix && (
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={busy}
+            title="An agent rebases this branch onto the fetched base in the run's worktree; Foundry verifies and pushes the result"
+            onClick={onFix}
+          >
+            {busy ? 'Repairing…' : 'Fix with agent'}
+          </Button>
+        )}
         <select
           className={`select ${styles.method}`}
           value={method}
@@ -199,7 +213,7 @@ export default function PullRequestsScreen({
     const what = method === 'squash' ? 'Squash-merge' : 'Merge';
     if (
       !window.confirm(
-        `${what} #${pr.number} "${pr.title}" into ${pr.baseRefName} on GitHub? Your local ${pr.baseRefName} is fast-forwarded to match.`,
+        `${what} #${pr.number} "${pr.title}" into ${pr.baseRefName} on GitHub? Foundry then tidies up locally — anything it can’t finish lands in the result note.`,
       )
     )
       return;
@@ -209,6 +223,32 @@ export default function PullRequestsScreen({
       const result = await api.prs.merge(projectId, pr.number, method);
       setNotes((n) => ({ ...n, [pr.number]: { text: result.detail, error: !result.ok } }));
       if (result.ok) setPrs((rows) => rows.filter((row) => row.number !== pr.number));
+    } catch (e) {
+      setNotes((n) => ({ ...n, [pr.number]: { text: (e as Error).message, error: true } }));
+    } finally {
+      setMergingNumber(null);
+    }
+  };
+
+  /**
+   * The managed answer to a conflicting foundry PR: an agent rebases the
+   * branch in its worktree, code verifies and pushes. No confirm dialog —
+   * nothing here is destructive, and a failed repair rolls itself back.
+   */
+  const fixConflicts = async (pr: PullRequest): Promise<void> => {
+    if (mergingNumber !== null) return;
+    setMergingNumber(pr.number);
+    setNotes((n) => ({
+      ...n,
+      [pr.number]: {
+        text: 'The agent is rebasing the branch onto the fetched base…',
+        error: false,
+      },
+    }));
+    try {
+      const result = await api.prs.fixConflicts(projectId, pr.number);
+      setNotes((n) => ({ ...n, [pr.number]: { text: result.detail, error: !result.ok } }));
+      if (result.ok) await refresh();
     } catch (e) {
       setNotes((n) => ({ ...n, [pr.number]: { text: (e as Error).message, error: true } }));
     } finally {
@@ -273,6 +313,7 @@ export default function PullRequestsScreen({
                   noteIsError={notes[pr.number]?.error ?? false}
                   onOpen={() => openExternal(pr.url)}
                   onMerge={(method) => void merge(pr, method)}
+                  onFix={runId ? () => void fixConflicts(pr) : undefined}
                   onOpenRun={runId ? () => onOpenRun(runId) : undefined}
                 />
               );

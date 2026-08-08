@@ -39,6 +39,24 @@ export async function headSha(cwd: string): Promise<string> {
   return (await git(cwd, ['rev-parse', 'HEAD'])).stdout.trim();
 }
 
+export async function resolveRef(cwd: string, ref: string): Promise<string> {
+  const r = await git(cwd, ['rev-parse', '--verify', ref]);
+  return r.ok ? r.stdout.trim() : '';
+}
+
+export async function isAncestor(
+  cwd: string,
+  ancestor: string,
+  descendant: string,
+): Promise<boolean> {
+  return (await git(cwd, ['merge-base', '--is-ancestor', ancestor, descendant])).ok;
+}
+
+/** Safe on a quiet tree: aborting when no rebase is in progress just fails. */
+export async function abortRebase(cwd: string): Promise<void> {
+  await git(cwd, ['rebase', '--abort']);
+}
+
 export interface StatusEntry {
   path: string;
   code: string;
@@ -213,6 +231,25 @@ export async function deleteRemoteBranch(
   branch: string,
 ): Promise<GitResult> {
   return git(repo, ['push', remote, '--delete', branch], 120_000);
+}
+
+/**
+ * Update the remote after a repair rewrote the branch. `--force-with-lease`
+ * rather than `--force`: the push is refused if someone else moved the remote
+ * branch since it was last fetched, so a repair can never overwrite work
+ * Foundry has not seen.
+ */
+export async function pushBranchForceWithLease(
+  repo: string,
+  remote: string,
+  branch: string,
+): Promise<GitResult> {
+  return git(repo, ['push', '--force-with-lease', remote, branch], 180_000);
+}
+
+/** Fetch one ref; the answer lands in FETCH_HEAD for the caller to resolve. */
+export async function fetchRef(repo: string, remote: string, ref: string): Promise<GitResult> {
+  return git(repo, ['fetch', remote, ref], 180_000);
 }
 
 /**

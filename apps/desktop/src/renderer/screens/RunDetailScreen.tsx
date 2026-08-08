@@ -34,6 +34,8 @@ export default function RunDetailScreen({
   const [actionError, setActionError] = useState('');
   const [now, setNow] = useState(Date.now());
   const [gh, setGh] = useState<GhStatus | null>(null);
+  /** A refused local merge is what the agent repair path exists for. */
+  const [mergeRefused, setMergeRefused] = useState(false);
 
   // Probe gh only once a finished run could actually use it: the check shells
   // out and may touch the network, so it never runs for live runs.
@@ -72,6 +74,7 @@ export default function RunDetailScreen({
     setKilling(false);
     setWorktreeBusy(false);
     setGh(null);
+    setMergeRefused(false);
   }, [runId]);
 
   const selectedPhase = useMemo(
@@ -107,18 +110,21 @@ export default function RunDetailScreen({
   const withWorktree = async (
     label: string,
     action: () => Promise<{ ok?: boolean; detail: string }>,
-  ): Promise<void> => {
+    busyNote = '',
+  ): Promise<{ ok?: boolean; detail: string } | undefined> => {
     setWorktreeBusy(true);
     setWorktreeError(false);
-    setWorktreeMessage('');
+    setWorktreeMessage(busyNote);
     setActionError('');
     try {
       const result = await action();
       setWorktreeMessage(result.detail || label);
       setWorktreeError(result.ok === false);
+      return result;
     } catch (e) {
       setWorktreeMessage((e as Error).message);
       setWorktreeError(true);
+      return undefined;
     } finally {
       setWorktreeBusy(false);
     }
@@ -128,7 +134,21 @@ export default function RunDetailScreen({
     'Merge this run’s branch into the project base ref? Uncommitted work in the worktree is included only if the merge path commits it first.',
     async (): Promise<void> => {
       if (worktreeBusy) return;
-      await withWorktree('Merged.', () => api.runs.mergeWorktree(projectId, runId));
+      const result = await withWorktree('Merged.', () => api.runs.mergeWorktree(projectId, runId));
+      setMergeRefused(result?.ok === false);
+    },
+  );
+
+  const fixMerge = useConfirmAction(
+    'Have an agent rebase this run’s branch onto the base and merge it? The agent works only inside the run’s worktree, and a repair that doesn’t verify is rolled back.',
+    async (): Promise<void> => {
+      if (worktreeBusy) return;
+      const result = await withWorktree(
+        'Fixed and merged.',
+        () => api.runs.fixMerge(projectId, runId),
+        'The agent is rebasing the run branch onto the base…',
+      );
+      if (result?.ok) setMergeRefused(false);
     },
   );
 
@@ -218,7 +238,9 @@ export default function RunDetailScreen({
           worktreeMessage={worktreeMessage}
           worktreeError={worktreeError}
           gh={gh}
+          canFix={mergeRefused}
           onMerge={() => void mergeWorktree()}
+          onFixMerge={() => void fixMerge()}
           onDiscard={() => void discardWorktree()}
           onCreatePr={(title, body) => void createPr(title, body)}
           onOpenUrl={openUrl}

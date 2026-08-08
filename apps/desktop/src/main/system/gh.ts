@@ -34,6 +34,7 @@ async function gh(bin: string, cwd: string, args: string[], timeoutMs = 60_000):
     const { stdout, stderr } = await exec(bin, args, {
       cwd,
       timeout: timeoutMs,
+      encoding: 'utf8',
       maxBuffer: 32 * 1024 * 1024,
       // Never let gh stop to ask a question a headless call cannot answer.
       env: spawnEnv({ GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1', NO_COLOR: '1' }),
@@ -272,7 +273,12 @@ export async function listOpenPrs(repo: string, opts: GhOptions = {}): Promise<P
   if (!r.ok) return { ok: false, detail: firstLine(r) || 'gh pr list failed', prs: [] };
   const rows = safeParse<RawPr[]>(r.stdout);
   if (!rows) return { ok: false, detail: 'could not parse gh pr list output', prs: [] };
-  return { ok: true, detail: `${rows.length} open`, prs: rows.map(mapPr) };
+  // A row without its identity fields cannot render or merge; drop it rather
+  // than showing a blank card whose buttons target nothing.
+  const usable = rows.filter(
+    (row) => typeof row?.number === 'number' && typeof row.url === 'string' && !!row.title,
+  );
+  return { ok: true, detail: `${usable.length} open`, prs: usable.map(mapPr) };
 }
 
 export interface MergePrOutcome {

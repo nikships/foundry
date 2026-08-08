@@ -86,6 +86,7 @@ const api: FoundryApi = {
     kill: (projectId, runId) => call(IPC.runsKill, projectId, runId),
     archive: (projectId, runId, archived) => call(IPC.runsArchive, projectId, runId, archived),
     mergeWorktree: (projectId, runId) => call(IPC.runsMergeWorktree, projectId, runId),
+    fixMerge: (projectId, runId) => call(IPC.runsFixMerge, projectId, runId),
     discardWorktree: (projectId, runId) => call(IPC.runsDiscardWorktree, projectId, runId),
     openWorktree: (projectId, runId) => call(IPC.runsOpenWorktree, projectId, runId),
     revealFiles: (projectId, runId) => call(IPC.runsRevealFiles, projectId, runId),
@@ -95,6 +96,7 @@ const api: FoundryApi = {
     list: (projectId) => call(IPC.prsList, projectId),
     create: (projectId, runId, title, body) => call(IPC.prsCreate, projectId, runId, title, body),
     merge: (projectId, prNumber, method) => call(IPC.prsMerge, projectId, prNumber, method),
+    fixConflicts: (projectId, prNumber) => call(IPC.prsFixConflicts, projectId, prNumber),
   },
   interrupts: {
     list: () => call(IPC.interruptsList),

@@ -65,7 +65,9 @@ export default function OutcomeBanner({
   worktreeMessage,
   worktreeError = false,
   gh,
+  canFix = false,
   onMerge,
+  onFixMerge,
   onDiscard,
   onCreatePr,
   onOpenUrl,
@@ -77,7 +79,10 @@ export default function OutcomeBanner({
   worktreeError?: boolean;
   /** null while the gh probe is still in flight. */
   gh: GhStatus | null;
+  /** True after a refused merge, which is when the agent repair applies. */
+  canFix?: boolean;
   onMerge: () => void;
+  onFixMerge?: () => void;
   onDiscard: () => void;
   onCreatePr: (title: string, body: string) => void;
   onOpenUrl: (url: string) => void;
@@ -130,6 +135,17 @@ export default function OutcomeBanner({
       </div>
       {hasWorktree ? (
         <div className={styles.actions}>
+          {canFix && onFixMerge && (
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={worktreeBusy}
+              title="An agent rebases the run branch onto the base inside its worktree; Foundry verifies the result and merges it"
+              onClick={onFixMerge}
+            >
+              {worktreeBusy ? 'Working…' : 'Fix & merge with agent'}
+            </Button>
+          )}
           {run.prUrl ? (
             <Button
               size="sm"

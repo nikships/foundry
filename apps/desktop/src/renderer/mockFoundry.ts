@@ -391,6 +391,7 @@ export function createMockFoundryApi(): FoundryApi {
       kill: async () => false,
       archive: async () => {},
       mergeWorktree: async () => ({ ok: false, detail: 'Not available in web preview.' }),
+      fixMerge: async () => ({ ok: false, detail: 'Not available in web preview.' }),
       discardWorktree: async () => ({ ok: false, detail: 'Not available in web preview.' }),
       openWorktree: async () => {},
       revealFiles: async () => {},
@@ -439,6 +440,7 @@ export function createMockFoundryApi(): FoundryApi {
       }),
       create: async () => ({ ok: false, detail: 'Not available in web preview.' }),
       merge: async () => ({ ok: false, detail: 'Not available in web preview.' }),
+      fixConflicts: async () => ({ ok: false, detail: 'Not available in web preview.' }),
     },
     interrupts: {
       list: async (): Promise<PendingInterrupt[]> => [],
