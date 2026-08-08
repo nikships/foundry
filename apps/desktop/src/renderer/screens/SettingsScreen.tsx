@@ -15,6 +15,7 @@ import { CliIcon } from '../components/BrandIcon.js';
 import DoctorList from '../components/DoctorList.js';
 import ProjectCommands from '../components/ProjectCommands.js';
 import { Field, Select, TextInput, Textarea } from '../components/ui/Field.js';
+import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
 import styles from './SettingsScreen.module.css';
 
 type Pane = 'general' | 'clis' | 'defaults' | 'project' | 'maintenance' | 'about';
@@ -147,9 +148,6 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
     void api.catalog.models(defaultCli).then(setModels);
   }, [defaultCli]);
 
-  const projectSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const projectDraftRef = useRef<ProjectDef | null>(null);
-  projectDraftRef.current = projectDraft;
   const projectRef = useRef<ProjectDef | null>(null);
   projectRef.current = project;
   const lastProjectSyncedIdRef = useRef<string | null>(null);
@@ -172,36 +170,23 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
 
   // Live auto-save for the Project pane. Visual state is the source of truth,
   // no Save button. Debounced so typing does not spam disk and refreshAll.
-  useEffect(() => {
-    if (!projectDraft) return;
-    const persisted = projectRef.current;
-    if (!persisted) return;
-    if (JSON.stringify(projectDraft) === JSON.stringify(persisted)) return;
-    if (projectSaveTimer.current) clearTimeout(projectSaveTimer.current);
-    projectSaveTimer.current = setTimeout(() => {
-      const cur = projectDraftRef.current;
-      const base = projectRef.current;
-      if (!cur || !base) return;
-      if (JSON.stringify(cur) === JSON.stringify(base)) return;
-      void (async () => {
-        try {
-          const result = await api.projects.save(cur);
-          if (result.ok) {
-            setErrors([]);
-            await refreshAll();
-            void api.projects.check(cur.id).then(setProjectChecks);
-          } else {
-            setErrors(result.issues.map((i) => `${i.where}: ${i.message}`));
-          }
-        } catch (e) {
-          setErrors([(e as Error).message]);
-        }
-      })();
-    }, 400);
-    return () => {
-      if (projectSaveTimer.current) clearTimeout(projectSaveTimer.current);
-    };
-  }, [projectDraft, project, refreshAll]);
+  // `requirePersisted` stops a save re-creating a project that was just removed;
+  // `cancel` is called from removeProject for the same reason. The hook also
+  // flushes on unmount so a pending edit is not lost when leaving Settings.
+  const { cancel: cancelProjectSave } = useDebouncedSave<ProjectDef>({
+    value: projectDraft,
+    delay: 400,
+    requirePersisted: true,
+    compare: () => projectRef.current,
+    save: (cur) => api.projects.save(cur),
+    onSuccess: async (cur) => {
+      setErrors([]);
+      await refreshAll();
+      void api.projects.check(cur.id).then(setProjectChecks);
+    },
+    onIssues: (issues) => setErrors(issues.map((i) => `${i.where}: ${i.message}`)),
+    onError: (e) => setErrors([(e as Error).message]),
+  });
 
   // Local draft so clearing the field for a rewrite does not POST an empty
   // engineerName that Zod rejects and paints a sticky settings error.
@@ -256,6 +241,8 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
     ) {
       return;
     }
+    // A queued save for this project would re-create it moments after the remove.
+    cancelProjectSave();
     try {
       await api.projects.remove(project.id);
       setErrors([]);

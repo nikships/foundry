@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   Acceptance,
   DryRunPrompt,
@@ -13,6 +13,7 @@ import EmptyState from '../components/EmptyState.js';
 import PhaseEditor from '../components/PhaseEditor.js';
 import { CliIcon } from '../components/BrandIcon.js';
 import DryRunSheet from '../components/DryRunSheet.js';
+import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
 import styles from './PipelinesScreen.module.css';
 
 /* ── phase track ─────────────────────────────────────────────────────── */
@@ -190,9 +191,6 @@ export default function PipelinesScreen(): React.JSX.Element {
   const [openPhase, setOpenPhase] = useState(0);
   const [dryRun, setDryRun] = useState<DryRunPrompt[] | null>(null);
   const [dryRunError, setDryRunError] = useState('');
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const draftRef = useRef<PipelineDef | null>(null);
-  draftRef.current = draft;
 
   const selected = useMemo(
     () => pipelines.find((p) => p.id === selectedId) ?? null,
@@ -246,54 +244,23 @@ export default function PipelinesScreen(): React.JSX.Element {
   pipelinesRef.current = pipelines;
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
-  const pendingRef = useRef<PipelineDef | null>(null);
-
-  /**
-   * Writes the pending snapshot now. Deliberately not called from the debounce
-   * effect's cleanup: that cleanup runs on every `draft` change, so saving from
-   * it would persist a write per keystroke rather than one per pause.
-   */
-  const flush = useCallback(async (): Promise<void> => {
-    if (saveTimer.current) {
-      clearTimeout(saveTimer.current);
-      saveTimer.current = null;
-    }
-    const toSave = pendingRef.current;
-    pendingRef.current = null;
-    if (!toSave) return;
-    const latestSel = pipelinesRef.current.find((p) => p.id === toSave.id) ?? null;
-    if (JSON.stringify(toSave) === JSON.stringify(latestSel)) return;
-    const pid = projectIdRef.current;
-    try {
-      const result = await api.pipelines.save(toSave, pid || undefined);
-      if (result.ok) await refreshScoped();
-      else setIssues(result.issues);
-    } catch (e) {
-      setIssues([{ level: 'error', where: 'save', message: (e as Error).message }]);
-    }
-  }, [refreshScoped]);
-
-  const flushRef = useRef(flush);
-  flushRef.current = flush;
 
   // Live auto-save: every valid edit is persisted shortly after typing stops.
-  // Visual state is the single source of truth, no Save button.
-  useEffect(() => {
-    if (!draft) return;
-    const sel = pipelinesRef.current.find((p) => p.id === draft.id) ?? null;
-    if (JSON.stringify(draft) === JSON.stringify(sel)) return;
-    if (errors.length > 0) return;
-    pendingRef.current = plain(draft);
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => void flushRef.current(), 350);
-    return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = null;
-    };
-  }, [draft, errors]);
-
-  // An unmount is the last chance to persist; a switch flushes explicitly.
-  useEffect(() => () => void flushRef.current(), []);
+  // Visual state is the single source of truth, no Save button. `flush` is
+  // called on switch, `cancel` before a delete so a queued save cannot
+  // re-create the pipeline.
+  const { flush, cancel } = useDebouncedSave<PipelineDef>({
+    value: draft,
+    delay: 350,
+    disabled: errors.length > 0,
+    compare: (d) => pipelinesRef.current.find((p) => p.id === d.id) ?? null,
+    save: (d) => api.pipelines.save(d, projectIdRef.current || undefined),
+    onSuccess: async () => {
+      await refreshScoped();
+    },
+    onIssues: setIssues,
+    onError: (e) => setIssues([{ level: 'error', where: 'save', message: (e as Error).message }]),
+  });
 
   const acceptancePhase = useMemo(() => {
     const a = draft?.acceptance;
@@ -404,7 +371,7 @@ export default function PipelinesScreen(): React.JSX.Element {
   };
   const selectPipeline = (id: string): void => {
     if (id === selectedId) return;
-    void flushRef.current();
+    void flush();
     setSelectedId(id);
   };
   const duplicate = async (): Promise<void> => {
@@ -417,9 +384,7 @@ export default function PipelinesScreen(): React.JSX.Element {
     if (!selected) return;
     if (!window.confirm(`Delete pipeline "${selected.name}"? This cannot be undone.`)) return;
     // A queued save for this pipeline would re-create it moments after the delete.
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = null;
-    pendingRef.current = null;
+    cancel();
     await api.pipelines.remove(selected.id, projectId || undefined);
     await refreshScoped();
   };

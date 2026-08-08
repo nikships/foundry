@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   AgentDef,
   CliDescriptor,
@@ -14,6 +14,7 @@ import ModelPicker from '../components/ModelPicker.js';
 import BoundaryEditor from '../components/BoundaryEditor.js';
 import PromptPreview from '../components/PromptPreview.js';
 import { Field, Select, TextInput, Textarea } from '../components/ui/Field.js';
+import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
 import styles from './RosterScreen.module.css';
 
 const ENVELOPE_KINDS = ['plan', 'build', 'review', 'scout', 'document', 'generic'] as const;
@@ -31,12 +32,10 @@ export default function RosterScreen(): React.JSX.Element {
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [clis, setClis] = useState<CliDescriptor[]>([]);
   const [showPreview, setShowPreview] = useState(false);
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const agentsRef = useRef<AgentDef[]>(agents);
   agentsRef.current = agents;
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
-  const pendingRef = useRef<AgentDef | null>(null);
   const lastSyncedNameRef = useRef<string | null>(null);
 
   const selected = useMemo(
@@ -94,65 +93,27 @@ export default function RosterScreen(): React.JSX.Element {
     void api.catalog.models(draftCli).then(setModels);
   }, [draftCli]);
 
-  /**
-   * Writes the pending snapshot now. Kept off the debounce effect's cleanup:
-   * that cleanup runs on every `draft` change, so saving from it would persist
-   * a write per keystroke rather than one per pause.
-   */
-  const flush = useCallback(async (): Promise<void> => {
-    if (saveTimer.current) {
-      clearTimeout(saveTimer.current);
-      saveTimer.current = null;
-    }
-    const toSave = pendingRef.current;
-    pendingRef.current = null;
-    if (!toSave) return;
-    const persisted = agentsRef.current.find((a) => a.name === toSave.name) ?? null;
-    if (JSON.stringify(toSave) === JSON.stringify(persisted)) return;
-    const pid = projectIdRef.current;
-    try {
-      const found = await api.roster.validate(toSave);
-      if (found.some((i) => i.level === 'error')) {
-        setIssues(found);
-        return;
-      }
-      const result = await api.roster.save(toSave, pid || undefined);
-      if (!result.ok) {
-        setIssues(result.issues);
-        return;
-      }
+  // Live auto-save: every valid edit persists shortly after typing stops.
+  // Visual truth is the source of truth. `flush` is called on switch/rename,
+  // `cancel` before a delete so a queued save cannot re-create the agent.
+  const { flush, cancel } = useDebouncedSave<AgentDef>({
+    value: draft,
+    delay: 350,
+    disabled: errors.length > 0,
+    compare: (d) => agentsRef.current.find((a) => a.name === d.name) ?? null,
+    validate: (d) => api.roster.validate(d),
+    save: (d) => api.roster.save(d, projectIdRef.current || undefined),
+    onSuccess: async () => {
       setIssues([]);
       await refreshScoped();
-    } catch (e) {
-      setIssues([{ level: 'error', where: 'save', message: (e as Error).message }]);
-    }
-  }, [refreshScoped]);
-
-  const flushRef = useRef(flush);
-  flushRef.current = flush;
-
-  // Live auto-save: every valid edit persists shortly after typing stops.
-  // Visual truth is the source of truth.
-  useEffect(() => {
-    if (!draft) return;
-    if (errors.length > 0) return;
-    const persisted = agentsRef.current.find((a) => a.name === draft.name) ?? null;
-    if (JSON.stringify(draft) === JSON.stringify(persisted)) return;
-    pendingRef.current = plain({ ...draft });
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => void flushRef.current(), 350);
-    return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = null;
-    };
-  }, [draft, errors]);
-
-  // An unmount is the last chance to persist; a switch flushes explicitly.
-  useEffect(() => () => void flushRef.current(), []);
+    },
+    onIssues: setIssues,
+    onError: (e) => setIssues([{ level: 'error', where: 'save', message: (e as Error).message }]),
+  });
 
   const selectAgent = (name: string): void => {
     if (name === selectedName) return;
-    void flushRef.current();
+    void flush();
     setSelectedName(name);
   };
 
@@ -168,7 +129,7 @@ export default function RosterScreen(): React.JSX.Element {
       setRenameError('');
       return;
     }
-    await flushRef.current();
+    await flush();
     try {
       const result = await api.roster.rename(selected.name, next, projectId || undefined);
       if (!result.ok) {
@@ -204,9 +165,7 @@ export default function RosterScreen(): React.JSX.Element {
     }
     setActionError('');
     // A queued save for this agent would re-create it moments after the delete.
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = null;
-    pendingRef.current = null;
+    cancel();
     try {
       await api.roster.remove(selected.name, projectId || undefined);
       await refreshScoped();
