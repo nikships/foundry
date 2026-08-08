@@ -157,6 +157,12 @@ if (!app.requestSingleInstanceLock()) {
     ctx = new AppContext(supportDir, assetsRoot);
     registerIpc(ctx);
     buildMenu();
+    // Apply the saved brand's dock icon on launch (best-effort, no-op if packs missing).
+    try {
+      ctx.applyBrandDockIcon();
+    } catch {
+      // Swallow: icon availability must never block app launch.
+    }
 
     // A run whose engine died with the app can never finish on its own.
     const swept = ctx.registry.sweep(ctx.projects.list());

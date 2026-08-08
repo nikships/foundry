@@ -5,11 +5,11 @@
  * a half-inherited roster makes a pipeline's agent reference ambiguous.
  */
 
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, nativeImage } from 'electron';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import type { AgentDef, AppSettings, PipelineDef, RunRow } from '@shared/types.js';
+import type { AgentDef, AppSettings, BrandId, PipelineDef, RunRow } from '@shared/types.js';
 import { IPC } from '@shared/ipc-contract.js';
 import { SettingsStore } from './store/settings.js';
 import { ProjectStore } from './store/projects.js';
@@ -87,17 +87,65 @@ export class AppContext {
     }
   }
 
+  private brandedCandidates(relPath: string): string[] {
+    const normalized = relPath.replace(/^\/+/, '');
+    const brand = this.settings.get().brand as BrandId | undefined;
+    const needsBrand =
+      normalized.startsWith('agents/') ||
+      normalized.startsWith('concepts/') ||
+      normalized.startsWith('scenes/') ||
+      normalized.startsWith('icon/');
+    if (needsBrand && (brand === 'prism' || brand === 'murmur')) {
+      return [join(this.assetsRoot, 'brands', brand, normalized), join(this.assetsRoot, normalized)];
+    }
+    return [join(this.assetsRoot, normalized)];
+  }
+
   /**
    * Asset paths are resolved in main so a dev server and a packaged app agree
    * without the renderer knowing where the app lives on disk.
    */
   assetUrl(relPath: string): string {
+    for (const full of this.brandedCandidates(relPath.replace(/^\/+/, ''))) {
+      if (existsSync(full)) return pathToFileURL(full).toString();
+    }
     const full = join(this.assetsRoot, relPath.replace(/^\/+/, ''));
-    if (existsSync(full)) return pathToFileURL(full).toString();
     // An empty string renders as a silently missing image, which looks like a
     // styling bug rather than a packaging one. Say where it looked.
     console.warn(`[assets] missing: ${full}`);
     return '';
+  }
+
+  /**
+   * Try to hot-swap the dock/taskbar icon for the current brand. Returns true
+   * if Electron accepted a new image, false otherwise (renderer should show a
+   * relaunch prompt).
+   */
+  applyBrandDockIcon(): boolean {
+    if (process.platform !== 'darwin' && process.platform !== 'win32') return false;
+    const brand = this.settings.get().brand as BrandId | undefined;
+    if (brand !== 'prism' && brand !== 'murmur') return false;
+    const iconPath = join(this.assetsRoot, 'brands', brand, 'icon', 'app-icon-1024.png');
+    const fallback = join(this.assetsRoot, 'icon', 'app-icon-1024.png');
+    const chosen = existsSync(iconPath) ? iconPath : fallback;
+    if (!existsSync(chosen)) return false;
+    try {
+      const image = nativeImage.createFromPath(chosen);
+      if (image.isEmpty()) return false;
+      // setIcon works on Windows/Linux; on macOS the canonical API is dock.setIcon
+      if (process.platform === 'darwin' && app.dock) {
+        app.dock.setIcon(image);
+        return true;
+      }
+      // Non-mac fallback (also harmless on mac as a second signal)
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) win.setIcon(image);
+      }
+      // On Windows app.setIcon isn't needed; BrowserWindow covers it.
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   rosterScope(projectId?: string): Scope {

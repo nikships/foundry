@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react';
-import { api } from '../api.js';
+import { useBrandedAsset } from '../hooks/useBrandedAsset.js';
 
 export default function EmptyState({
   art,
@@ -12,14 +11,7 @@ export default function EmptyState({
   body: string;
   children?: React.ReactNode;
 }): React.JSX.Element {
-  const [src, setSrc] = useState('');
-  useEffect(() => {
-    if (!art) {
-      setSrc('');
-      return;
-    }
-    void api.app.assetUrl(art).then(setSrc);
-  }, [art]);
+  const src = useBrandedAsset(art ?? null);
   return (
     <>
       <div className="empty">

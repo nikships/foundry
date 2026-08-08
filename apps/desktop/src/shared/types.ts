@@ -161,7 +161,13 @@ export interface AppSettings {
   appearance: 'system' | 'dark';
   retentionDays: number | null;
   onboarded: boolean;
+  /** Visual brand. Prism is the default; both packs ship in `assets/brands/*`. */
+  brand: BrandId;
 }
+
+export type BrandId = 'prism' | 'murmur';
+export const BRAND_IDS: BrandId[] = ['prism', 'murmur'];
+export const BRAND_LABELS: Record<BrandId, string> = { prism: 'Prism', murmur: 'Murmur' };
 
 export type MergePolicy = 'auto' | 'ask' | 'never';
 

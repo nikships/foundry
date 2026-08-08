@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react';
 import type { PhaseRow, RunRow } from '@shared/types.js';
-import { api } from '../api.js';
+import { useBrandedAsset } from '../hooks/useBrandedAsset.js';
 
 function headlineFor(status: RunRow['status']): string {
   switch (status) {
@@ -63,13 +62,9 @@ export default function OutcomeBanner({
   onMerge: () => void;
   onDiscard: () => void;
 }): React.JSX.Element {
-  const [art, setArt] = useState('');
+  const art = useBrandedAsset(artFor(run.status));
   const color = colorFor(run.status);
   const hasWorktree = !!run.worktreePath && !run.merged;
-
-  useEffect(() => {
-    void api.app.assetUrl(artFor(run.status)).then(setArt);
-  }, [run.status]);
 
   return (
     <>

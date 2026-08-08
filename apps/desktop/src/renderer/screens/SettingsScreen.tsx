@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type {
+  BrandId,
   CliDescriptor,
   CliVendor,
   DoctorCheck,
@@ -8,6 +9,7 @@ import type {
   ProjectDef,
   UpdateStatus,
 } from '@shared/types.js';
+import { BRAND_LABELS } from '@shared/types.js';
 import { api, plain } from '../api.js';
 import { useApp } from '../stores/app.js';
 import ModelPicker from '../components/ModelPicker.js';
@@ -65,6 +67,9 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
   const [nameDraft, setNameDraft] = useState('');
   const [nameHint, setNameHint] = useState('');
   const [maintenanceBusy, setMaintenanceBusy] = useState(false);
+  const [brandBusy, setBrandBusy] = useState(false);
+  const [brandNote, setBrandNote] = useState('');
+  const [needsRelaunch, setNeedsRelaunch] = useState(false);
 
   useEffect(() => {
     setPane((initialPane as Pane) ?? 'general');
@@ -322,6 +327,31 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
       setMaintenanceBusy(false);
     }
   };
+  const applyBrand = async (brand: BrandId): Promise<void> => {
+    if (!settings || brandBusy || settings.brand === brand) return;
+    setBrandBusy(true);
+    setBrandNote('');
+    setNeedsRelaunch(false);
+    const issues = await patchSettings({ brand });
+    if (issues.length) {
+      setErrors(issues);
+      setBrandBusy(false);
+      return;
+    }
+    // Patch already tried to hot-swap the dock icon in main. Confirm it and
+    // fall back to a relaunch prompt if the OS ignored the swap (common on mac
+    // if the app is not focused or the icon file is missing).
+    try {
+      const res = await api.brand.applyDockIcon();
+      if (!res.applied) setNeedsRelaunch(true);
+      else setBrandNote(`Switched to ${BRAND_LABELS[brand]} — visuals updated instantly.`);
+    } catch {
+      setNeedsRelaunch(true);
+    } finally {
+      setBrandBusy(false);
+    }
+  };
+
   useEffect(() => {
     if (pane === 'maintenance') void loadOrphans();
   }, [pane]);
@@ -390,6 +420,44 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                   What a new agent starts on, and what command detection uses. Each agent can choose
                   its own in the Roster.
                 </span>
+              </div>
+              <div className="field">
+                <label>Brand</label>
+                <div className="brand-picker">
+                  <button
+                    className={`brand-btn ${settings.brand === 'prism' ? 'on' : ''}`}
+                    disabled={brandBusy}
+                    onClick={() => void applyBrand('prism')}
+                  >
+                    Prism
+                  </button>
+                  <button
+                    className={`brand-btn ${settings.brand === 'murmur' ? 'on' : ''}`}
+                    disabled={brandBusy}
+                    onClick={() => void applyBrand('murmur')}
+                  >
+                    Murmur
+                  </button>
+                  <span className="brand-active faint mono">
+                    {brandBusy ? 'Switching…' : BRAND_LABELS[settings.brand as BrandId] ?? settings.brand}
+                  </span>
+                </div>
+                <span className="hint">
+                  Switches the app icon, agent glyphs, concept icons, and scenes between the two
+                  packs in <code>assets/brands/prism</code> and <code>assets/brands/murmur</code>.
+                  In-app visuals update instantly; the dock icon hot-swaps when possible.
+                </span>
+                {brandNote && <span className="field-note ok">{brandNote}</span>}
+                {needsRelaunch && (
+                  <div className="brand-relaunch">
+                    <span className="hint">
+                      Dock icon did not update. Relaunch to refresh it.
+                    </span>
+                    <button className="btn sm" onClick={() => void relaunchApp()}>
+                      Relaunch Foundry
+                    </button>
+                  </div>
+                )}
               </div>
               <DoctorList
                 checks={checks}
@@ -1015,6 +1083,14 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
         .update-fill { height: 100%; background: var(--cyan); border-radius: var(--r-full); transition: width 220ms var(--ease); }
         .update-fill.ready { background: var(--green); }
         .update-pct { font-size: var(--text-xs); min-width: 44px; text-align: right; }
+        .brand-picker { display: flex; align-items: center; gap: var(--s2); }
+        .brand-btn { height: 32px; padding: 0 var(--s4); border: 1px solid var(--line); border-radius: var(--r-full); background: var(--bg-raised); color: var(--text-dim); font: inherit; font-size: var(--text-sm); font-weight: 600; cursor: default; }
+        .brand-btn:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); border-color: var(--line-strong); }
+        .brand-btn.on { background: var(--text); color: var(--bg-void); border-color: var(--text); }
+        .brand-btn:disabled { opacity: 0.6; }
+        .brand-active { font-size: var(--text-xs); margin-left: var(--s2); }
+        .field-note.ok { font-size: var(--text-xs); color: var(--green); }
+        .brand-relaunch { display: flex; align-items: center; gap: var(--s3); margin-top: var(--s2); padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--bg-raised); }
       `}</style>
     </>
   );
