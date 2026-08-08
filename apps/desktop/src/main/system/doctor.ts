@@ -105,6 +105,46 @@ export async function runDoctor(settings: AppSettings): Promise<DoctorCheck[]> {
     blocking: !git.passed,
   });
 
+  // Pull requests ride on the operator's own gh install and login; Foundry
+  // holds no GitHub token. Never blocking — local merge works without it.
+  const gh = await runCommand({
+    argv: ['gh', '--version'],
+    cwd: process.cwd(),
+    timeoutMs: 10_000,
+  });
+  if (!gh.passed) {
+    checks.push({
+      id: 'gh',
+      label: 'GitHub CLI',
+      ok: false,
+      detail: 'gh is not on PATH — pull requests are unavailable (local merge still works)',
+      fix: { kind: 'open-url', value: 'https://cli.github.com' },
+    });
+  } else {
+    checks.push({
+      id: 'gh',
+      label: 'GitHub CLI',
+      ok: true,
+      detail: gh.outputTail.trim().split('\n')[0] ?? 'installed',
+    });
+    const ghAuth = await runCommand({
+      argv: ['gh', 'auth', 'status'],
+      cwd: process.cwd(),
+      timeoutMs: 15_000,
+    });
+    checks.push({
+      id: 'gh:auth',
+      label: 'GitHub CLI authentication',
+      ok: ghAuth.passed,
+      detail: ghAuth.passed
+        ? 'signed in'
+        : 'not signed in — run `gh auth login` to enable pull requests',
+      fix: ghAuth.passed
+        ? undefined
+        : { kind: 'open-url', value: 'https://cli.github.com/manual/gh_auth_login' },
+    });
+  }
+
   // Junie takes its autonomy from files rather than from argv, so an unattended
   // phase on Junie stalls on an approval prompt unless one of them allows it.
   // Brave mode ON bypasses all approvals; otherwise the allowlist must exist.

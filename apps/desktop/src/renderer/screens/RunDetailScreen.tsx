@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { GhStatus } from '@shared/types.js';
 import { api } from '../api.js';
 import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useApp } from '../stores/app.js';
@@ -32,6 +33,22 @@ export default function RunDetailScreen({
   const [killing, setKilling] = useState(false);
   const [actionError, setActionError] = useState('');
   const [now, setNow] = useState(Date.now());
+  const [gh, setGh] = useState<GhStatus | null>(null);
+
+  // Probe gh only once a finished run could actually use it: the check shells
+  // out and may touch the network, so it never runs for live runs.
+  const wantsGh =
+    !!view.run && view.run.status !== 'running' && !!view.run.worktreePath && !view.run.merged;
+  useEffect(() => {
+    if (!wantsGh || gh) return;
+    let cancelled = false;
+    void api.prs.status(projectId).then((status) => {
+      if (!cancelled) setGh(status);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [wantsGh, gh, projectId]);
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -54,6 +71,7 @@ export default function RunDetailScreen({
     setActionError('');
     setKilling(false);
     setWorktreeBusy(false);
+    setGh(null);
   }, [runId]);
 
   const selectedPhase = useMemo(
@@ -121,6 +139,15 @@ export default function RunDetailScreen({
       await withWorktree('Discarded.', () => api.runs.discardWorktree(projectId, runId));
     },
   );
+
+  const createPr = async (title: string, body: string): Promise<void> => {
+    if (worktreeBusy) return;
+    await withWorktree('Pull request opened.', () => api.prs.create(projectId, runId, title, body));
+  };
+
+  const openUrl = (url: string): void => {
+    void api.app.openExternal(url);
+  };
 
   const openWorktree = async (): Promise<void> => {
     setActionError('');
@@ -190,8 +217,11 @@ export default function RunDetailScreen({
           worktreeBusy={worktreeBusy}
           worktreeMessage={worktreeMessage}
           worktreeError={worktreeError}
+          gh={gh}
           onMerge={() => void mergeWorktree()}
           onDiscard={() => void discardWorktree()}
+          onCreatePr={(title, body) => void createPr(title, body)}
+          onOpenUrl={openUrl}
         />
       )}
       {showCost && <CostTable phases={view.phases} eventsByPhase={eventsByPhase} />}

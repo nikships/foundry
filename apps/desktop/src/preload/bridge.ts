@@ -28,6 +28,7 @@ const MENU_CHANNELS = [
   'menu:view-pipelines',
   'menu:view-roster',
   'menu:view-inspector',
+  'menu:view-prs',
 ] as const;
 
 const api: FoundryApi = {
@@ -88,6 +89,12 @@ const api: FoundryApi = {
     discardWorktree: (projectId, runId) => call(IPC.runsDiscardWorktree, projectId, runId),
     openWorktree: (projectId, runId) => call(IPC.runsOpenWorktree, projectId, runId),
     revealFiles: (projectId, runId) => call(IPC.runsRevealFiles, projectId, runId),
+  },
+  prs: {
+    status: (projectId) => call(IPC.prsStatus, projectId),
+    list: (projectId) => call(IPC.prsList, projectId),
+    create: (projectId, runId, title, body) => call(IPC.prsCreate, projectId, runId, title, body),
+    merge: (projectId, prNumber, method) => call(IPC.prsMerge, projectId, prNumber, method),
   },
   interrupts: {
     list: () => call(IPC.interruptsList),

@@ -47,3 +47,35 @@
   border-radius: var(--r-full);
   font-size: var(--text-xs);
 }
+
+/* The PR composer opens as a full-width second row inside the banner. */
+.banner {
+  flex-wrap: wrap;
+}
+.prForm {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--line-faint);
+  animation: fade-in var(--fast, 120ms) var(--ease);
+}
+.prBody {
+  font-family: var(--font);
+  font-size: var(--text-sm);
+  line-height: var(--leading);
+  resize: vertical;
+}
+.prFormActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  font-size: var(--text-xs);
+}
+.prFormButtons {
+  display: flex;
+  gap: var(--s2);
+  flex: none;
+}

@@ -8,6 +8,7 @@ const items: { id: View; label: string; key: string }[] = [
   { id: 'pipelines', label: 'Pipelines', key: '2' },
   { id: 'roster', label: 'Roster', key: '3' },
   { id: 'inspector', label: 'Inspector', key: '4' },
+  { id: 'prs', label: 'Pull Requests', key: '5' },
 ];
 
 export default function Sidebar({

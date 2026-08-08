@@ -117,6 +117,7 @@ function buildMenu(): void {
         { label: 'Pipelines', accelerator: 'Cmd+2', click: menuClick('menu:view-pipelines') },
         { label: 'Roster', accelerator: 'Cmd+3', click: menuClick('menu:view-roster') },
         { label: 'Inspector', accelerator: 'Cmd+4', click: menuClick('menu:view-inspector') },
+        { label: 'Pull Requests', accelerator: 'Cmd+5', click: menuClick('menu:view-prs') },
         { type: 'separator' },
         { role: 'reload' },
         { role: 'toggleDevTools' },

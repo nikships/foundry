@@ -187,6 +187,53 @@ export async function deleteBranch(repo: string, branch: string): Promise<GitRes
   return git(repo, ['branch', '-D', branch]);
 }
 
+/**
+ * The remote a PR flow talks to: `origin` when present, otherwise the first
+ * one listed. Null means the repo has nowhere to push, which callers report
+ * rather than guess around.
+ */
+export async function preferredRemote(repo: string): Promise<string | null> {
+  const r = await git(repo, ['remote']);
+  if (!r.ok) return null;
+  const names = r.stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (names.length === 0) return null;
+  return names.includes('origin') ? 'origin' : names[0]!;
+}
+
+export async function pushBranch(repo: string, remote: string, branch: string): Promise<GitResult> {
+  return git(repo, ['push', '-u', remote, branch], 180_000);
+}
+
+export async function deleteRemoteBranch(
+  repo: string,
+  remote: string,
+  branch: string,
+): Promise<GitResult> {
+  return git(repo, ['push', remote, '--delete', branch], 120_000);
+}
+
+/**
+ * Brings the local base ref up to the remote after a PR merged there, without
+ * ever creating a merge commit or moving the operator off their branch.
+ *
+ * On the base branch this is a plain ff-only pull. On any other branch the
+ * ref is updated in place via a fetch refspec — git only fast-forwards a
+ * `base:base` refspec, and refuses to touch a checked-out branch, so both
+ * paths are safe by construction.
+ */
+export async function fastForwardBase(
+  repo: string,
+  remote: string,
+  baseRef: string,
+): Promise<GitResult> {
+  const onBase = (await currentBranch(repo)) === baseRef;
+  if (onBase) return git(repo, ['pull', '--ff-only', remote, baseRef], 180_000);
+  return git(repo, ['fetch', remote, `${baseRef}:${baseRef}`], 180_000);
+}
+
 export interface MergeOutcome {
   ok: boolean;
   detail: string;
