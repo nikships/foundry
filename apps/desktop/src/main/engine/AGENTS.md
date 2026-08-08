@@ -19,7 +19,12 @@ inside one phase and never decide if they succeeded.
   `.foundry/` `.git/` `.foundry-worktrees/` plus project `protectedPaths`.
   Violations are reverted and the phase fails.
 - Every run gets a fresh `foundry/run_*` branch + worktree; merge/discard
-  stays in `worktree.ts`. `git.ts` porcelain parser ignores git's stderr chatter.
+  stays in `worktree.ts`. `create()` registers `/.foundry-worktrees/` in
+  `.git/info/exclude` first, or the run's own directory reports as the
+  operator's untracked work. Merge never vetoes on a dirty base — git refuses
+  only what would actually be overwritten, and a failed merge is aborted and
+  the original branch restored. `git.ts` porcelain parser ignores git's stderr
+  chatter.
 - New `PhaseKind` or gate: add to `src/shared/types.ts`, wire runner/registry,
   add a test against real git temp repos (see `tests/executor.test.ts`).
 

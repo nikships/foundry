@@ -3,6 +3,8 @@
  * renderer ever reaches git directly.
  */
 
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { dirname, isAbsolute, join } from 'node:path';
 import { runCommand } from './commands.js';
 
 export interface GitResult {
@@ -80,10 +82,6 @@ export async function changedPaths(cwd: string): Promise<string[]> {
   return (await status(cwd)).map((s) => s.path);
 }
 
-export async function hasStagedOrUnstaged(cwd: string): Promise<boolean> {
-  return (await status(cwd)).length > 0;
-}
-
 export async function addAll(cwd: string): Promise<GitResult> {
   return git(cwd, ['add', '-A']);
 }
@@ -101,6 +99,39 @@ export async function revertPath(cwd: string, path: string): Promise<boolean> {
   const tracked = await git(cwd, ['ls-files', '--error-unmatch', path]);
   if (tracked.ok) return (await git(cwd, ['checkout', '--', path])).ok;
   return (await git(cwd, ['clean', '-fd', '--', path])).ok;
+}
+
+/**
+ * Ignores a repo-relative directory locally, unless something already does.
+ *
+ * A nested worktree is not ignored by git for free: `.foundry-worktrees/`
+ * reports as untracked in the base checkout, so Foundry's own isolation
+ * scaffolding reads as the operator's unfinished work. `info/exclude` is the
+ * right home for the rule — local to the clone, never committed, and it leaves
+ * the project's `.gitignore` alone.
+ *
+ * The check-ignore probe is a path *inside* the directory: a directory-only
+ * pattern (`foo/`) matches `foo/anything` whether or not `foo` exists yet,
+ * while the bare name is ambiguous to git before the directory is created.
+ */
+export async function excludeLocally(repo: string, dir: string): Promise<boolean> {
+  const pattern = `/${dir}/`;
+  if ((await git(repo, ['check-ignore', '--quiet', `${dir}/probe`])).ok) return true;
+
+  const common = (await git(repo, ['rev-parse', '--git-common-dir'])).stdout.trim();
+  if (!common) return false;
+  const gitDir = isAbsolute(common) ? common : join(repo, common);
+  const file = join(gitDir, 'info', 'exclude');
+
+  try {
+    const existing = existsSync(file) ? readFileSync(file, 'utf8') : '';
+    if (existing.split('\n').some((line) => line.trim() === pattern)) return true;
+    mkdirSync(dirname(file), { recursive: true });
+    appendFileSync(file, `${existing && !existing.endsWith('\n') ? '\n' : ''}${pattern}\n`);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function addWorktree(
@@ -166,6 +197,13 @@ export interface MergeOutcome {
 /**
  * Merge is never automatic when the base moved: the run was verified against
  * the ref it branched from, not against wherever the base is now.
+ *
+ * Uncommitted work in the base checkout is *not* a reason to refuse. Git
+ * already declines a checkout or merge that would overwrite local changes, and
+ * says which files, so a blanket dirty-tree veto only ever blocked merges that
+ * would have been fine. Failure restores where the operator was standing:
+ * a conflicted merge is aborted and the original branch checked back out, so a
+ * rejected merge leaves the base exactly as it found it.
  */
 export async function mergeBranch(
   repo: string,
@@ -182,17 +220,26 @@ export async function mergeBranch(
     };
   }
 
-  if (await hasStagedOrUnstaged(repo)) {
-    return { ok: false, baseMoved: false, detail: 'the base worktree has uncommitted changes' };
-  }
-
+  const startedOn = await currentBranch(repo);
   const onBase = await git(repo, ['checkout', baseRef], 120_000);
-  if (!onBase.ok) return { ok: false, baseMoved: false, detail: onBase.stdout };
+  if (!onBase.ok) {
+    return {
+      ok: false,
+      baseMoved: false,
+      detail: onBase.stdout.trim() || `could not check out ${baseRef}`,
+    };
+  }
 
   const merged = await git(
     repo,
     ['merge', '--no-ff', branch, '-m', `foundry: merge ${branch}`],
     120_000,
   );
-  return { ok: merged.ok, baseMoved: false, detail: merged.stdout };
+  if (merged.ok) return { ok: true, baseMoved: false, detail: merged.stdout };
+
+  await git(repo, ['merge', '--abort']);
+  if (startedOn && startedOn !== 'HEAD' && startedOn !== baseRef) {
+    await git(repo, ['checkout', startedOn], 120_000);
+  }
+  return { ok: false, baseMoved: false, detail: merged.stdout.trim() || 'merge failed' };
 }

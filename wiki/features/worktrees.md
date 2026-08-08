@@ -32,7 +32,7 @@ When isolation is off, phases run against the project path (still subject to wri
 
 Constants: `WORKTREE_DIR = '.foundry-worktrees'`, `branchNameFor(runId) = foundry/${runId}`.
 
-Operators should gitignore `.foundry-worktrees/` in real repos if they do not want those directories to show as untracked noise; the app does not require writing into the repo for config (project settings live app-side).
+`create()` registers `/.foundry-worktrees/` in the repo's `.git/info/exclude` before adding the worktree, so the directory never shows as untracked. That file is local to the clone and never committed; a project that already ignores the path through `.gitignore` is left alone, and the entry is written once. Nothing is added to the operator's tracked files.
 
 ## Merge policies
 
@@ -50,6 +50,8 @@ Project setting `mergePolicy`: `auto` | `ask` | `never` (default `ask` for new p
 Manual merge and discard are available from the run detail outcome banner (`runs.mergeWorktree`, `runs.discardWorktree`). Open worktree opens the path in the system file UI / editor path the app uses for that action.
 
 Merge uses the recorded branch point so a moved base can fail safely rather than force a rebase. Automatic merge is not applied when policy or drift forbids it; the operator remains in control under `ask`.
+
+Uncommitted work in the base checkout does not block a merge. Git refuses a checkout or merge that would overwrite local changes and names the files, which is both narrower and more accurate than a blanket dirty-tree veto; a refused merge is aborted and the original branch restored, so the base is left exactly as it was found.
 
 ## Orphan sweep
 
@@ -69,7 +71,7 @@ On app relaunch, the process registry finalizes dead PIDs so runs do not stay `r
 | Outcome banner | Merge / discard when a worktree remains and is not merged. |
 | Settings → Project | Isolation toggle, merge policy, base ref. |
 | Settings → Maintenance | Orphan worktree list and sweep. |
-| Doctor (project) | Submodule warning (worktrees do not populate submodules automatically); dirty base warning (blocks clean auto-merge). |
+| Doctor (project) | Submodule warning (worktrees do not populate submodules automatically); dirty base advisory (only files the merge touches can be refused). |
 
 ## Related
 

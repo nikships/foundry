@@ -206,7 +206,9 @@ export async function checkProject(project: ProjectDef): Promise<DoctorCheck[]> 
     id: 'clean',
     label: 'Base worktree is clean',
     ok: clean,
-    detail: clean ? 'nothing uncommitted' : 'uncommitted changes will block an automatic merge',
+    detail: clean
+      ? 'nothing uncommitted'
+      : 'uncommitted changes: runs are unaffected, but a merge that touches the same files will be refused by git',
   });
 
   const hasCommands = project.commands.length > 0;

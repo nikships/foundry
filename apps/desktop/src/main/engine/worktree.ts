@@ -14,6 +14,7 @@ import type { MergePolicy, OrphanWorktree } from '@shared/types.js';
 import {
   addWorktree,
   deleteBranch,
+  excludeLocally,
   headSha,
   listWorktrees,
   mergeBranch,
@@ -22,6 +23,9 @@ import {
 } from './git.js';
 
 export const WORKTREE_DIR = '.foundry-worktrees';
+
+/** The rule `create` registers in `.git/info/exclude` before adding a worktree. */
+export const WORKTREE_EXCLUDE = `/${WORKTREE_DIR}/`;
 
 export interface WorktreeHandle {
   path: string;
@@ -45,6 +49,8 @@ export async function create(input: {
 }): Promise<WorktreeHandle> {
   const path = worktreePathFor(input.repo, input.runId);
   const branch = branchNameFor(input.runId);
+  // Before the directory exists, so it never appears as untracked at all.
+  await excludeLocally(input.repo, WORKTREE_DIR);
   const branchPointSha = await headSha(input.repo);
   const result = await addWorktree(input.repo, path, branch, input.baseRef);
   if (!result.ok) {
