@@ -170,10 +170,13 @@
   gap: var(--s6);
   padding: calc(var(--titlebar-h)) var(--s6) 0;
   border-bottom: 1px solid var(--line);
+  min-width: 0;
+  overflow: hidden;
 }
 .pl-switcher-label {
   color: var(--text-faint);
   padding-bottom: var(--s3);
+  flex: none;
 }
 .pl-tabs {
   display: flex;

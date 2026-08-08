@@ -130,4 +130,11 @@
 
 .detectPicker .cliPick {
   min-width: 0;
+  flex-wrap: nowrap;
+}
+
+.detectPicker .cliPick :global(.select) {
+  width: auto;
+  flex: 1 1 0;
+  min-width: 0;
 }

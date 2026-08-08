@@ -21,7 +21,7 @@
 }
 .set-tab {
   flex: 1 1 0;
-  min-width: 56px;
+  min-width: 0;
   display: flex;
   justify-content: center;
   padding: var(--s3) var(--s2) 0;
@@ -33,6 +33,26 @@
   cursor: default;
   white-space: nowrap;
   transition: color var(--fast) var(--ease);
+}
+
+@media (max-width: 900px) {
+  .set-tab {
+    flex: 0 0 auto;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 700px) {
+  .set-strip {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+  .set-tab {
+    flex: 1 1 calc(33.33% - var(--s2));
+    min-width: 92px;
+    padding: var(--s2) var(--s2) 0;
+    font-size: var(--text-xs);
+  }
 }
 .set-tab:hover {
   color: var(--text-dim);
