@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   AgentDef,
   CliDescriptor,
@@ -26,16 +26,18 @@ export default function RosterScreen(): React.JSX.Element {
   const [actionError, setActionError] = useState('');
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [clis, setClis] = useState<CliDescriptor[]>([]);
-  const [saving, setSaving] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const agentsRef = useRef<AgentDef[]>(agents);
+  agentsRef.current = agents;
+  const projectIdRef = useRef(projectId);
+  projectIdRef.current = projectId;
+  const pendingRef = useRef<AgentDef | null>(null);
+  const lastSyncedNameRef = useRef<string | null>(null);
 
   const selected = useMemo(
     () => agents.find((a) => a.name === selectedName) ?? null,
     [agents, selectedName],
-  );
-  const dirty = useMemo(
-    () => JSON.stringify(draft) !== JSON.stringify(selected),
-    [draft, selected],
   );
   const errors = useMemo(() => issues.filter((i) => i.level === 'error'), [issues]);
 
@@ -44,17 +46,29 @@ export default function RosterScreen(): React.JSX.Element {
   }, [agents, selectedName]);
 
   useEffect(() => {
-    setDraft(selected ? plain({ ...selected }) : null);
-    setIssues([]);
-    setActionError('');
-  }, [selected]);
+    if (!selected) {
+      if (draft !== null && lastSyncedNameRef.current !== null) {
+        // No selection available; clear only if we had a synced one before
+        // (keeps new-agent draft alive until it appears in agents)
+      }
+      if (!agents.length) {
+        setDraft(null);
+        lastSyncedNameRef.current = null;
+      }
+      return;
+    }
+    if (lastSyncedNameRef.current !== selected.name) {
+      setDraft(plain({ ...selected }));
+      setIssues([]);
+      setActionError('');
+      lastSyncedNameRef.current = selected.name;
+    }
+  }, [selected, agents.length, draft]);
 
   useEffect(() => {
     void api.catalog.clis().then(setClis);
   }, []);
 
-  // Live validation, same rail save uses, so a bad name or empty prompt is
-  // obvious before the user hits Save and wonders why nothing happened.
   useEffect(() => {
     if (!draft) {
       setIssues([]);
@@ -69,52 +83,80 @@ export default function RosterScreen(): React.JSX.Element {
     };
   }, [draft]);
 
-  // Each CLI answers for its own models, so switching an agent's CLI reloads the
-  // list. Without this the picker keeps offering ids the new CLI cannot resolve,
-  // which fails on the first turn instead of here.
   const draftCli = draft?.cli ?? 'droid';
   useEffect(() => {
     void api.catalog.models(draftCli).then(setModels);
   }, [draftCli]);
 
+  // Live auto-save: every valid edit persists shortly after typing stops.
+  // Visual truth is the source of truth. Pending edits flush when switching agents.
+  useEffect(() => {
+    if (!draft) return;
+    if (errors.length > 0) return;
+    const persisted = agentsRef.current.find((a) => a.name === draft.name) ?? null;
+    if (JSON.stringify(draft) === JSON.stringify(persisted)) return;
+    const snapshot = plain({ ...draft });
+    pendingRef.current = snapshot;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      const toSave = pendingRef.current;
+      pendingRef.current = null;
+      saveTimer.current = null;
+      if (!toSave) return;
+      const curPersisted = agentsRef.current.find((a) => a.name === toSave.name) ?? null;
+      if (JSON.stringify(toSave) === JSON.stringify(curPersisted)) return;
+      const pid = projectIdRef.current;
+      void api.roster.validate(toSave).then((v) => {
+        if (v.some((i) => i.level === 'error')) {
+          setIssues(v);
+          return;
+        }
+        void (async () => {
+          try {
+            const result = await api.roster.save(toSave, pid || undefined);
+            if (result.ok) {
+              if (toSave.name !== lastSyncedNameRef.current) {
+                setSelectedName(toSave.name);
+                lastSyncedNameRef.current = toSave.name;
+              }
+              setIssues([]);
+              await refreshScoped();
+            } else setIssues(result.issues);
+          } catch (e) {
+            setIssues([{ level: 'error', where: 'save', message: (e as Error).message }]);
+          }
+        })();
+      });
+    }, 350);
+    return () => {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+        const toSave = pendingRef.current;
+        pendingRef.current = null;
+        if (toSave) {
+          const curPersisted = agentsRef.current.find((a) => a.name === toSave.name) ?? null;
+          if (JSON.stringify(toSave) !== JSON.stringify(curPersisted)) {
+            const pid = projectIdRef.current;
+            void api.roster.validate(toSave).then((v) => {
+              if (v.some((i) => i.level === 'error')) return;
+              void api.roster.save(toSave, pid || undefined).then((r) => {
+                if (r.ok) void refreshScoped();
+              });
+            });
+          }
+        }
+      }
+    };
+  }, [draft, errors, refreshScoped]);
+
   const selectAgent = (name: string): void => {
     if (name === selectedName) return;
-    if (dirty) {
-      const discard = window.confirm('Discard unsaved changes to this agent?');
-      if (!discard) return;
-    }
     setSelectedName(name);
-  };
-
-  const revert = (): void => {
-    setDraft(selected ? plain({ ...selected }) : null);
-    setActionError('');
-  };
-
-  const save = async (): Promise<void> => {
-    if (!draft || saving || errors.length > 0) return;
-    setSaving(true);
-    setActionError('');
-    try {
-      const result = await api.roster.save(draft, projectId || undefined);
-      setIssues(result.issues);
-      if (result.ok) {
-        setSelectedName(draft.name);
-        await refreshScoped();
-      }
-    } catch (e) {
-      setIssues([{ level: 'error', where: 'save', message: (e as Error).message }]);
-    } finally {
-      setSaving(false);
-    }
   };
 
   const duplicate = async (): Promise<void> => {
     if (!selected) return;
-    if (dirty) {
-      const discard = window.confirm('Discard unsaved changes and duplicate the saved agent?');
-      if (!discard) return;
-    }
     setActionError('');
     try {
       const copy = await api.roster.duplicate(selected.name, projectId || undefined);
@@ -141,10 +183,6 @@ export default function RosterScreen(): React.JSX.Element {
   };
 
   const createAgent = async (): Promise<void> => {
-    if (dirty) {
-      const discard = window.confirm('Discard unsaved changes and create a new agent?');
-      if (!discard) return;
-    }
     setActionError('');
     const fresh: AgentDef = {
       name: `agent-${agents.length + 1}`,
@@ -163,6 +201,7 @@ export default function RosterScreen(): React.JSX.Element {
       if (result.ok) {
         await refreshScoped();
         setSelectedName(fresh.name);
+        lastSyncedNameRef.current = fresh.name;
       } else {
         setIssues(result.issues);
         setActionError(result.issues.map((i) => i.message).join(' '));
@@ -388,29 +427,7 @@ export default function RosterScreen(): React.JSX.Element {
               </ul>
             )}
             {actionError && <p className="action-err">{actionError}</p>}
-            <footer className={`save-bar ${dirty ? 'show' : ''}`}>
-              <span className="faint">
-                {errors.length ? 'Fix errors to save' : dirty ? 'Unsaved changes' : 'No changes'}
-              </span>
-              <div className="grow" />
-              <button className="btn" onClick={revert}>
-                Revert
-              </button>
-              <button
-                className="btn primary"
-                disabled={saving || !dirty || errors.length > 0}
-                title={
-                  errors.length
-                    ? 'Fix validation errors first'
-                    : !dirty
-                      ? 'No changes to save'
-                      : undefined
-                }
-                onClick={() => void save()}
-              >
-                {saving ? 'Saving…' : errors.length ? 'Fix errors to save' : 'Save agent'}
-              </button>
-            </footer>
+            <p className="faint live-hint">Changes save automatically.</p>
           </div>
         )}
         {showPreview && draft && (
@@ -450,8 +467,7 @@ export default function RosterScreen(): React.JSX.Element {
         .issues .warning { color: var(--amber); }
         .issues .error { color: var(--red); }
         .action-err { margin-top: var(--s3); padding: var(--s3); border-radius: var(--r-sm); background: var(--red-dim); color: var(--red); font-size: var(--text-sm); }
-        .save-bar { position: sticky; bottom: var(--s4); display: flex; align-items: center; gap: var(--s3); margin-top: var(--s6); padding: var(--s3) var(--s4); border: 1px solid var(--line-strong); border-radius: var(--r-lg); background: var(--bg-raised); box-shadow: var(--shadow); opacity: 0; transform: translateY(8px); pointer-events: none; transition: opacity var(--normal) var(--ease), transform var(--normal) var(--ease); }
-        .save-bar.show { opacity: 1; transform: none; pointer-events: auto; }
+        .live-hint { margin-top: var(--s6); font-size: var(--text-xs); }
         .scroll { overflow-y: auto; }
       `}</style>
     </>

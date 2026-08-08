@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   Acceptance,
   DryRunPrompt,
@@ -17,45 +17,121 @@ export default function PipelinesScreen(): React.JSX.Element {
   const { pipelines, project, projectId, agents, refreshScoped } = useApp();
   const [selectedId, setSelectedId] = useState('');
   const [draft, setDraft] = useState<PipelineDef | null>(null);
-  // Creating keeps the draft alive while selectedId is empty; without it the
-  // "pick first pipeline" effect wipes a brand-new pipeline immediately.
-  const [creating, setCreating] = useState(false);
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
   const [openPhase, setOpenPhase] = useState(0);
-  const [saving, setSaving] = useState(false);
   const [dryRun, setDryRun] = useState<DryRunPrompt[] | null>(null);
   const [dryRunError, setDryRunError] = useState('');
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const draftRef = useRef<PipelineDef | null>(null);
+  draftRef.current = draft;
 
   const selected = useMemo(
     () => pipelines.find((p) => p.id === selectedId) ?? null,
     [pipelines, selectedId],
   );
-  const dirty = useMemo(
-    () => JSON.stringify(draft) !== JSON.stringify(selected),
-    [draft, selected],
-  );
   const commandNames = useMemo(() => project?.commands.map((c) => c.name) ?? [], [project]);
   const errors = useMemo(() => issues.filter((i) => i.level === 'error'), [issues]);
   const warnings = useMemo(() => issues.filter((i) => i.level === 'warning'), [issues]);
 
+  // Keep a valid selection when the list changes (initial load, add, remove, project switch).
+  // Don't clobber a transient new pipeline that hasn't appeared in the list yet.
   useEffect(() => {
-    if (creating) return;
-    if (!pipelines.some((p) => p.id === selectedId)) setSelectedId(pipelines[0]?.id ?? '');
-  }, [pipelines, selectedId, creating]);
+    if (pipelines.some((p) => p.id === selectedId)) return;
+    if (draft && draft.id === selectedId) return;
+    setSelectedId(pipelines[0]?.id ?? '');
+  }, [pipelines, selectedId, draft]);
 
+  // Sync draft when the selected pipeline changes. Don't clobber an in-flight
+  // edit that hasn't been persisted yet; only sync when the id changes.
   useEffect(() => {
-    if (creating) return;
-    setDraft(selected ? plain({ ...selected }) : null);
-    setOpenPhase(0);
-  }, [selected, creating]);
+    if (!selected) {
+      // No pipeline to edit. If we already have a draft for a different id
+      // (transient new pipeline before it appears in the list), keep it.
+      // Otherwise clear.
+      if (draft && pipelines.some((p) => p.id === draft.id)) setDraft(null);
+      else if (!draft) setDraft(null);
+      return;
+    }
+    if (!draft || draft.id !== selected.id) {
+      setDraft(plain({ ...selected }));
+      setOpenPhase(0);
+    }
+  }, [selected, pipelines, draft]);
 
+  // Live validation so errors are visible immediately.
   useEffect(() => {
     if (!draft) {
       setIssues([]);
       return;
     }
-    void api.pipelines.validate(draft, projectId || undefined).then(setIssues);
+    let cancelled = false;
+    void api.pipelines.validate(draft, projectId || undefined).then((next) => {
+      if (!cancelled) setIssues(next);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [draft, projectId]);
+
+  const pipelinesRef = useRef<PipelineDef[]>(pipelines);
+  pipelinesRef.current = pipelines;
+  const projectIdRef = useRef(projectId);
+  projectIdRef.current = projectId;
+  const pendingRef = useRef<PipelineDef | null>(null);
+
+  // Live auto-save: every valid edit is persisted shortly after typing stops.
+  // Visual state is the single source of truth, no Save button. A pending save
+  // is flushed when the user switches pipelines so no edit is lost.
+  useEffect(() => {
+    if (!draft) return;
+    const sel = pipelinesRef.current.find((p) => p.id === draft.id) ?? null;
+    if (JSON.stringify(draft) === JSON.stringify(sel)) return;
+    if (errors.length > 0) return;
+    const snapshot = plain(draft);
+    pendingRef.current = snapshot;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      const toSave = pendingRef.current;
+      pendingRef.current = null;
+      saveTimer.current = null;
+      if (!toSave) return;
+      const latestSel = pipelinesRef.current.find((p) => p.id === toSave.id) ?? null;
+      if (JSON.stringify(toSave) === JSON.stringify(latestSel)) return;
+      const pid = projectIdRef.current;
+      void (async () => {
+        try {
+          const result = await api.pipelines.save(toSave, pid || undefined);
+          if (result.ok) await refreshScoped();
+          else setIssues(result.issues);
+        } catch (e) {
+          setIssues([{ level: 'error', where: 'save', message: (e as Error).message }]);
+        }
+      })();
+    }, 350);
+    return () => {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+        const toSave = pendingRef.current;
+        pendingRef.current = null;
+        if (toSave) {
+          const latestSel = pipelinesRef.current.find((p) => p.id === toSave.id) ?? null;
+          if (JSON.stringify(toSave) !== JSON.stringify(latestSel)) {
+            const pid = projectIdRef.current;
+            void (async () => {
+              try {
+                const result = await api.pipelines.save(toSave, pid || undefined);
+                if (result.ok) await refreshScoped();
+                else setIssues(result.issues);
+              } catch {
+                // Flush on unmount/switch is best-effort; validation is already visible
+              }
+            })();
+          }
+        }
+      }
+    };
+  }, [draft, errors, refreshScoped]);
 
   const acceptancePhase = useMemo(() => {
     const a = draft?.acceptance;
@@ -80,30 +156,6 @@ export default function PipelinesScreen(): React.JSX.Element {
     if (draft?.acceptance?.kind !== 'phase_flag') return;
     setDraft({ ...draft, acceptance: { ...draft.acceptance, flag } });
   };
-  const revert = (): void => {
-    setCreating(false);
-    setDraft(selected ? plain({ ...selected }) : null);
-  };
-  const save = async (): Promise<boolean> => {
-    if (!draft || saving) return false;
-    setSaving(true);
-    try {
-      const result = await api.pipelines.save(draft, projectId || undefined);
-      if (result.ok) {
-        setCreating(false);
-        setSelectedId(draft.id);
-        await refreshScoped();
-        return true;
-      }
-      setIssues(result.issues);
-      return false;
-    } catch (e) {
-      setIssues([{ level: 'error', where: 'save', message: (e as Error).message }]);
-      return false;
-    } finally {
-      setSaving(false);
-    }
-  };
   const addPhase = (kind: PhaseDef['kind']): void => {
     if (!draft) return;
     const n = draft.phases.length + 1;
@@ -118,8 +170,6 @@ export default function PipelinesScreen(): React.JSX.Element {
         prompt: { template: 'user', inputs: ['request'] },
       } as PhaseDef;
     } else if (kind === 'code') {
-      // Prefer a real project command; fall back to a literal the user must edit
-      // rather than inventing a `{ref:'test'}` that cannot resolve.
       phase = {
         ...base,
         kind,
@@ -157,44 +207,48 @@ export default function PipelinesScreen(): React.JSX.Element {
     });
   };
   const createPipeline = async (): Promise<void> => {
+    const id = `pipeline-${Date.now().toString(36)}`;
+    const starter: PhaseDef | null = agents[0]
+      ? ({
+          name: 'phase-1',
+          description: 'Describe what this phase does and why.',
+          kind: 'agent',
+          agent: agents[0].name,
+          envelope: agents[0].envelope ?? 'build',
+          prompt: { template: 'user', inputs: ['request'] },
+        } as PhaseDef)
+      : null;
     const fresh: PipelineDef = {
-      id: `pipeline-${Date.now().toString(36)}`,
+      id,
       name: 'New pipeline',
       description: 'Say what this pipeline is for and when to reach for it.',
       acceptance: { kind: 'all_phases_pass' },
-      phases: [],
+      phases: starter ? [starter] : [],
     };
-    setCreating(true);
-    setSelectedId('');
+    setSelectedId(id);
     setDraft(fresh);
     setOpenPhase(0);
     setIssues([]);
+    try {
+      const result = await api.pipelines.save(fresh, projectId || undefined);
+      if (result.ok) {
+        await refreshScoped();
+      } else {
+        setIssues(result.issues);
+      }
+    } catch (e) {
+      setIssues([{ level: 'error', where: 'save', message: (e as Error).message }]);
+    }
   };
   const selectPipeline = (id: string): void => {
-    if (id === selectedId && !creating) return;
-    if (dirty) {
-      const discard = window.confirm(
-        creating
-          ? 'Discard the new pipeline that has not been saved?'
-          : 'Discard unsaved changes to this pipeline?',
-      );
-      if (!discard) return;
-    }
-    setCreating(false);
+    if (id === selectedId) return;
     setSelectedId(id);
   };
   const duplicate = async (): Promise<void> => {
     if (!selected) return;
-    if (dirty) {
-      const discard = window.confirm('Discard unsaved changes and duplicate the saved pipeline?');
-      if (!discard) return;
-    }
     const copy = await api.pipelines.duplicate(selected.id, projectId || undefined);
     await refreshScoped();
-    if (copy) {
-      setCreating(false);
-      setSelectedId(copy.id);
-    }
+    if (copy) setSelectedId(copy.id);
   };
   const remove = async (): Promise<void> => {
     if (!selected) return;
@@ -205,12 +259,9 @@ export default function PipelinesScreen(): React.JSX.Element {
   const preview = async (): Promise<void> => {
     if (!draft || !projectId) return;
     setDryRunError('');
-    if (dirty) {
-      const ok = await save();
-      if (!ok) {
-        setDryRunError('Fix save errors before dry-running.');
-        return;
-      }
+    if (errors.length > 0) {
+      setDryRunError('Fix validation errors before dry-running.');
+      return;
     }
     const prompts = await api.pipelines.dryRun(
       draft.id,
@@ -227,20 +278,11 @@ export default function PipelinesScreen(): React.JSX.Element {
   const readyCopy =
     errors.length === 0
       ? warnings.length
-        ? `Ready to save, with ${warnings.length} warning${warnings.length === 1 ? '' : 's'}.`
+        ? `Valid with ${warnings.length} warning${warnings.length === 1 ? '' : 's'}.`
         : projectId
           ? 'This pipeline is ready to run.'
-          : 'This pipeline is ready to save. Select a project to run it.'
+          : 'Select a project to run this pipeline.'
       : null;
-
-  // Every disabled state should be explainable on hover, or the user assumes the button is broken.
-  let saveDisabledReason = '';
-  if (saving) saveDisabledReason = 'Saving…';
-  else if (errors.length > 0) saveDisabledReason = 'Fix validation errors first';
-  else if (!dirty) saveDisabledReason = 'No changes to save';
-  let saveLabel = 'Save pipeline';
-  if (saving) saveLabel = 'Saving…';
-  else if (errors.length > 0) saveLabel = 'Fix errors to save';
 
   return (
     <>
@@ -253,16 +295,10 @@ export default function PipelinesScreen(): React.JSX.Element {
             </button>
           </header>
           <div className="scroll items">
-            {creating && draft && (
-              <button className="item active" type="button">
-                <span className="name">{draft.name || 'New pipeline'}</span>
-                <span className="faint count">unsaved</span>
-              </button>
-            )}
             {pipelines.map((p) => (
               <button
                 key={p.id}
-                className={`item ${!creating && p.id === selectedId ? 'active' : ''}`}
+                className={`item ${p.id === selectedId ? 'active' : ''}`}
                 onClick={() => selectPipeline(p.id)}
               >
                 <span className="name">{p.name}</span>
@@ -295,12 +331,12 @@ export default function PipelinesScreen(): React.JSX.Element {
               >
                 Dry run
               </button>
-              {selected && !creating && (
+              {selected && (
                 <button className="btn sm" onClick={() => void duplicate()}>
                   Duplicate
                 </button>
               )}
-              {selected && !selected.builtin && !creating && (
+              {selected && !selected.builtin && (
                 <button className="btn sm danger" onClick={() => void remove()}>
                   Delete
                 </button>
@@ -412,21 +448,7 @@ export default function PipelinesScreen(): React.JSX.Element {
               </ul>
             )}
             {dryRunError && <p className="dry-err">{dryRunError}</p>}
-            <footer className="rail-foot">
-              <button
-                className="btn primary"
-                disabled={!dirty || saving || errors.length > 0}
-                title={saveDisabledReason || undefined}
-                onClick={() => void save()}
-              >
-                {saveLabel}
-              </button>
-              {dirty && (selected || creating) && (
-                <button className="btn" onClick={revert}>
-                  {creating ? 'Discard' : 'Revert'}
-                </button>
-              )}
-            </footer>
+            <p className="faint live-hint">Changes save automatically.</p>
           </aside>
         )}
         {!draft && (
@@ -483,7 +505,7 @@ export default function PipelinesScreen(): React.JSX.Element {
         .issues .error { color: var(--red); }
         .issues .warning { color: var(--amber); }
         .mark { flex: none; }
-        .rail-foot { display: flex; flex-direction: column; gap: var(--s2); margin-top: auto; padding-top: var(--s4); }
+        .live-hint { margin-top: auto; padding-top: var(--s4); font-size: var(--text-xs); }
         .empty-wrap { grid-column: 2 / -1; display: grid; place-items: center; padding: var(--s8); min-height: 0; }
         .scroll { overflow-y: auto; }
         .card { border: 1px solid var(--line); border-radius: var(--r-lg); }

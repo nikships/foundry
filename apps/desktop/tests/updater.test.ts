@@ -67,6 +67,8 @@ describe('UpdaterService', () => {
     mockUpdater.emit('download-progress', { percent: 42.8 });
     expect(updaterService.getStatus()).toEqual({
       stage: 'downloading',
+      version: '1.2.0',
+      releaseDate: '2026-08-07T00:00:00Z',
       percent: 43,
     });
 
@@ -109,7 +111,7 @@ describe('UpdaterService', () => {
       { stage: 'idle' },
       { stage: 'checking' },
       { stage: 'available', version: '0.2.0', releaseDate: '2026-08-07' },
-      { stage: 'downloading', percent: 75 },
+      { stage: 'downloading', version: '0.2.0', percent: 75 },
       { stage: 'ready', version: '0.2.0' },
       { stage: 'error', message: 'Failed to download' },
     ];
@@ -121,15 +123,21 @@ describe('UpdaterService', () => {
     }
   });
 
-  it('triggers interactive dialog when check({ interactive: true }) is called', async () => {
+  it('exposes status via broadcast without a blocking dialog when check({ interactive: true }) is called', async () => {
     const mockUpdater = new MockAutoUpdater();
     mockUpdater.checkForUpdates.mockImplementation(async () => {
       mockUpdater.emit('update-not-available', { version: '0.1.0' });
     });
-    const updaterService = new UpdaterService(undefined, mockUpdater as never, true);
+    const broadcasts: { channel: string; payload: unknown }[] = [];
+    const broadcaster = (channel: string, payload?: unknown) => {
+      broadcasts.push({ channel, payload });
+    };
+    const updaterService = new UpdaterService(broadcaster, mockUpdater as never, true);
 
     const status = await updaterService.check({ interactive: true });
     expect(status.stage).toBe('idle');
     expect(mockUpdater.checkForUpdates).toHaveBeenCalled();
+    // Status is surfaced through the broadcaster for the in-app banner, not a modal.
+    expect(broadcasts.some((b) => b.channel === 'event:updater-status')).toBe(true);
   });
 });

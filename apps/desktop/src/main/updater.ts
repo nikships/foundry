@@ -3,7 +3,7 @@
  * app.isPackaged guards, and status broadcasting to the renderer.
  */
 
-import { app, BrowserWindow, dialog } from 'electron';
+import { app } from 'electron';
 import pkg from 'electron-updater';
 import type { UpdateStatus } from '../shared/types.js';
 import { IPC } from '../shared/ipc-contract.js';
@@ -88,8 +88,13 @@ export class UpdaterService {
       });
 
       this.updater.on('download-progress', (progress) => {
+        // Preserve version from the available/ready state so the banner and
+        // Settings can keep showing "Foundry vX.Y.Z is downloading".
+        const prev = this.status as UpdateStatus & { version?: string };
         this.setStatus({
           stage: 'downloading',
+          version: prev.version,
+          releaseDate: prev.releaseDate,
           percent: Math.round(progress.percent),
         });
       });
@@ -113,34 +118,24 @@ export class UpdaterService {
     }
   }
 
-  public async check(options?: { interactive?: boolean }): Promise<UpdateStatus> {
-    const isInteractive = options?.interactive ?? false;
+  public async check(_options?: { interactive?: boolean }): Promise<UpdateStatus> {
     if (!this.isPackaged || !this.updater) {
       const status: UpdateStatus = {
         stage: 'idle',
         message: 'Updates are disabled in unpackaged builds',
       };
       this.setStatus(status);
-      if (isInteractive) {
-        await this.showDialogForStatus(status);
-      }
       return status;
     }
     if (this.status.stage === 'downloading' || this.status.stage === 'ready') {
-      const status = this.getStatus();
-      if (isInteractive) await this.showDialogForStatus(status);
-      return status;
+      return this.getStatus();
     }
 
     const operation = this.checkInFlight ?? this.performCheck();
     this.checkInFlight = operation;
     try {
       await operation;
-      const finalStatus = this.getStatus();
-      if (isInteractive) {
-        await this.showDialogForStatus(finalStatus);
-      }
-      return finalStatus;
+      return this.getStatus();
     } finally {
       this.checkInFlight = undefined;
     }
@@ -155,69 +150,6 @@ export class UpdaterService {
       this.setStatus({ stage: 'error', message: msg });
     }
     return this.getStatus();
-  }
-
-  private async showDialogForStatus(status: UpdateStatus): Promise<void> {
-    if (typeof dialog?.showMessageBox !== 'function') return;
-    const window =
-      (typeof BrowserWindow?.getFocusedWindow === 'function' && BrowserWindow.getFocusedWindow()) ||
-      (typeof BrowserWindow?.getAllWindows === 'function' && BrowserWindow.getAllWindows()[0]) ||
-      undefined;
-
-    if (status.stage === 'idle') {
-      const isUnpackagedMsg = status.message === 'Updates are disabled in unpackaged builds';
-      const currentVer = typeof app?.getVersion === 'function' ? app.getVersion() : '';
-      const versionStr = status.version || currentVer;
-      const detailMsg =
-        status.message && status.message !== 'No update available'
-          ? status.message
-          : `Foundry ${versionStr ? `v${versionStr}` : ''}`.trim() +
-            ' is currently the newest version available.';
-
-      await dialog.showMessageBox(window!, {
-        type: 'info',
-        title: 'Check for Updates',
-        message: isUnpackagedMsg ? 'Check for Updates' : "You're up to date!",
-        detail: detailMsg,
-        buttons: ['OK'],
-      });
-    } else if (status.stage === 'available' || status.stage === 'downloading') {
-      await dialog.showMessageBox(window!, {
-        type: 'info',
-        title: 'Update Available',
-        message: status.version
-          ? `Foundry v${status.version} is available!`
-          : 'An update is available!',
-        detail:
-          status.stage === 'available'
-            ? 'Open Settings to download and install it.'
-            : 'The update is downloading in the background.',
-        buttons: ['OK'],
-      });
-    } else if (status.stage === 'ready') {
-      const res = await dialog.showMessageBox(window!, {
-        type: 'info',
-        title: 'Update Ready',
-        message: status.version
-          ? `Foundry v${status.version} is ready to install.`
-          : 'An update is ready to install.',
-        detail: 'Would you like to restart Foundry now to apply the update?',
-        buttons: ['Restart and Install', 'Later'],
-        defaultId: 0,
-        cancelId: 1,
-      });
-      if (res.response === 0) {
-        await this.quitAndInstall();
-      }
-    } else if (status.stage === 'error') {
-      await dialog.showMessageBox(window!, {
-        type: 'warning',
-        title: 'Check for Updates',
-        message: 'Update Check Failed',
-        detail: status.message || 'An error occurred while checking for updates.',
-        buttons: ['OK'],
-      });
-    }
   }
 
   public async download(): Promise<UpdateStatus> {
