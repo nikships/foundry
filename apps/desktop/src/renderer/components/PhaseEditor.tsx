@@ -5,6 +5,7 @@ import { useApp } from '../stores/app.js';
 import { phaseKindColor } from '../derive.js';
 import AgentAvatar from './AgentAvatar.js';
 import { CliIcon } from './BrandIcon.js';
+import { Field, Select, TextInput, Textarea } from './ui/Field.js';
 import styles from './PhaseEditor.module.css';
 
 const ENVELOPE_KINDS: EnvelopeKind[] = ['plan', 'build', 'review', 'scout', 'document', 'generic'];
@@ -229,20 +230,12 @@ export default function PhaseEditor({
         {open && (
           <div className={styles.body}>
             <div className={styles.two}>
-              <div className="field">
-                <label>Name</label>
-                <input
-                  className="input"
-                  value={phase.name}
-                  onChange={(e) => patch({ name: e.target.value })}
-                />
-                <span className="hint">Other phases refer to this one by name.</span>
-              </div>
+              <Field label="Name" hint="Other phases refer to this one by name.">
+                <TextInput value={phase.name} onChange={(e) => patch({ name: e.target.value })} />
+              </Field>
               {phase.kind === 'agent' && (
-                <div className="field">
-                  <label>Agent</label>
-                  <select
-                    className="select"
+                <Field label="Agent">
+                  <Select
                     value={phase.agent ?? ''}
                     onChange={(e) => {
                       const agent = agents.find((a) => a.name === e.target.value);
@@ -259,15 +252,16 @@ export default function PhaseEditor({
                         {a.name}
                       </option>
                     ))}
-                  </select>
-                </div>
+                  </Select>
+                </Field>
               )}
             </div>
             {phase.kind === 'agent' && (
-              <div className="field">
-                <label>Envelope</label>
-                <select
-                  className="select"
+              <Field
+                label="Envelope"
+                hint="Typed reply this phase must return. Defaults from the agent; override when the same agent wears different hats."
+              >
+                <Select
                   value={phase.envelope ?? owner?.envelope ?? 'build'}
                   onChange={(e) => patch({ envelope: e.target.value as EnvelopeKind })}
                 >
@@ -276,29 +270,25 @@ export default function PhaseEditor({
                       {kind}
                     </option>
                   ))}
-                </select>
-                <span className="hint">
-                  Typed reply this phase must return. Defaults from the agent; override when the
-                  same agent wears different hats.
-                </span>
-              </div>
+                </Select>
+              </Field>
             )}
-            <div className="field">
-              <label>Description</label>
-              <input
-                className="input"
+            <Field
+              label="Description"
+              hint="Shown in the run view. A phase nobody can explain is a phase nobody should run."
+            >
+              <TextInput
                 value={phase.description}
                 placeholder="What this phase is for, in one line."
                 onChange={(e) => patch({ description: e.target.value })}
               />
-              <span className="hint">
-                Shown in the run view. A phase nobody can explain is a phase nobody should run.
-              </span>
-            </div>
+            </Field>
             {phase.kind === 'agent' && (
               <>
-                <div className="field">
-                  <label>Inputs from earlier phases</label>
+                <Field
+                  label="Inputs from earlier phases"
+                  hint="Selected envelopes are appended to the prompt unless the agent's template already references them."
+                >
                   <div className={styles.chips}>
                     {earlier.map((name) => (
                       <button
@@ -316,13 +306,11 @@ export default function PhaseEditor({
                       request
                     </button>
                   </div>
-                  <span className="hint">
-                    Selected envelopes are appended to the prompt unless the agent's template
-                    already references them.
-                  </span>
-                </div>
-                <div className="field">
-                  <label>Gates</label>
+                </Field>
+                <Field
+                  label="Gates"
+                  hint="Gates produce evidence. A failed gate is sent back to the agent as a correction."
+                >
                   <div className={styles.gates}>
                     {gates
                       // command_passes needs a configured argv the editor cannot
@@ -342,15 +330,18 @@ export default function PhaseEditor({
                         </label>
                       ))}
                   </div>
-                  <span className="hint">
-                    Gates produce evidence. A failed gate is sent back to the agent as a correction.
-                  </span>
-                </div>
+                </Field>
               </>
             )}
             {phase.kind === 'code' && (
-              <div className="field">
-                <label>Command</label>
+              <Field
+                label="Command"
+                hint={
+                  !usesArgv
+                    ? 'Runs the command configured for the project, so the same pipeline works across repos. Detect or ask an agent from Settings → Project.'
+                    : 'Runs exactly these arguments, with no shell.'
+                }
+              >
                 <div className={styles.modes}>
                   <button
                     className={`${styles.mode} ${!usesArgv ? styles.on : ''}`}
@@ -367,8 +358,7 @@ export default function PhaseEditor({
                 </div>
                 {!usesArgv ? (
                   commands.length ? (
-                    <select
-                      className="select"
+                    <Select
                       value={commandRef}
                       onChange={(e) => patch({ command: { ref: e.target.value } })}
                     >
@@ -377,7 +367,7 @@ export default function PhaseEditor({
                           {name}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   ) : (
                     <p className={`hint ${styles.emptyCmds}`}>
                       No project commands yet. Switch to Literal, or detect them in Settings →
@@ -385,8 +375,8 @@ export default function PhaseEditor({
                     </p>
                   )
                 ) : (
-                  <input
-                    className="input mono"
+                  <TextInput
+                    mono
                     value={argvText}
                     placeholder="npm test"
                     onChange={(e) =>
@@ -396,30 +386,23 @@ export default function PhaseEditor({
                     }
                   />
                 )}
-                <span className="hint">
-                  {!usesArgv
-                    ? 'Runs the command configured for the project, so the same pipeline works across repos. Detect or ask an agent from Settings → Project.'
-                    : 'Runs exactly these arguments, with no shell.'}
-                </span>
-              </div>
+              </Field>
             )}
             {phase.kind === 'engineer' && (
-              <div className="field">
-                <label>Question</label>
-                <textarea
-                  className="textarea"
+              <Field label="Question" hint="The run pauses here until someone answers.">
+                <Textarea
                   value={phase.question ?? ''}
                   rows={2}
                   onChange={(e) => patch({ question: e.target.value })}
                 />
-                <span className="hint">The run pauses here until someone answers.</span>
-              </div>
+              </Field>
             )}
             <div className={styles.two}>
-              <div className="field">
-                <label>Send failures back to</label>
-                <select
-                  className="select"
+              <Field
+                label="Send failures back to"
+                hint="The failure output is handed to that phase as a repair request."
+              >
+                <Select
                   value={phase.feedbackTo ?? ''}
                   onChange={(e) => patch({ feedbackTo: e.target.value || undefined })}
                 >
@@ -429,26 +412,21 @@ export default function PhaseEditor({
                       {name}
                     </option>
                   ))}
-                </select>
-                <span className="hint">
-                  The failure output is handed to that phase as a repair request.
-                </span>
-              </div>
+                </Select>
+              </Field>
               {phase.feedbackTo && (
-                <div className="field">
-                  <label>Repair attempts</label>
-                  <input
-                    className="input"
+                <Field
+                  label="Repair attempts"
+                  hint="After this many attempts the run stops rather than looping."
+                >
+                  <TextInput
                     type="number"
                     min={1}
                     max={5}
                     value={phase.feedbackRetries ?? 1}
                     onChange={(e) => patch({ feedbackRetries: Number(e.target.value) })}
                   />
-                  <span className="hint">
-                    After this many attempts the run stops rather than looping.
-                  </span>
-                </div>
+                </Field>
               )}
             </div>
             <label className={styles.optLine}>

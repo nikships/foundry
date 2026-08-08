@@ -14,6 +14,7 @@ import ModelPicker from '../components/ModelPicker.js';
 import { CliIcon } from '../components/BrandIcon.js';
 import DoctorList from '../components/DoctorList.js';
 import ProjectCommands from '../components/ProjectCommands.js';
+import { Field, Select, TextInput, Textarea } from '../components/ui/Field.js';
 import styles from './SettingsScreen.module.css';
 
 type Pane = 'general' | 'clis' | 'defaults' | 'project' | 'maintenance' | 'about';
@@ -417,10 +418,8 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
               <>
                 <Section label="Identity" note="Attached to every run, so a trace says who asked.">
                   <div className={styles.setFields}>
-                    <div className="field">
-                      <label>Your name</label>
-                      <input
-                        className="input"
+                    <Field label="Your name">
+                      <TextInput
                         value={nameDraft}
                         onChange={(e) => {
                           setNameDraft(e.target.value);
@@ -439,12 +438,13 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                         leave the field.
                       </span>
                       {nameHint && <span className={styles.setWarn}>{nameHint}</span>}
-                    </div>
-                    <div className="field">
-                      <label>Default agent CLI</label>
+                    </Field>
+                    <Field
+                      label="Default agent CLI"
+                      hint="What a new agent starts on, and what command detection uses. Each agent can choose its own in the Roster."
+                    >
                       <div className={styles.cliPicker}>
-                        <select
-                          className="select"
+                        <Select
                           value={settings.defaultCli}
                           onChange={(e) => void set({ defaultCli: e.target.value as CliVendor })}
                         >
@@ -453,14 +453,10 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                               {cli.label}
                             </option>
                           ))}
-                        </select>
+                        </Select>
                         <CliIcon vendor={settings.defaultCli} size={18} />
                       </div>
-                      <span className={styles.hint}>
-                        What a new agent starts on, and what command detection uses. Each agent can
-                        choose its own in the Roster.
-                      </span>
-                    </div>
+                    </Field>
                   </div>
                 </Section>
 
@@ -499,7 +495,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
 
                 <Section label="Software updates" note="Foundry checks only when you ask it to.">
                   <div className={styles.setSpread}>
-                    <div className="field">
+                    <Field>
                       <strong className={styles.setStrong}>
                         Foundry {version ? `v${version}` : ''}
                       </strong>
@@ -511,7 +507,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                           Foundry v{updateStatus.version} is available, download it when ready.
                         </span>
                       )}
-                    </div>
+                    </Field>
                     <span
                       className={`${styles.setPill} ${updateTone === 'ok' ? styles.ok : updateTone === 'bad' ? styles.bad : styles.info}`}
                     >
@@ -624,19 +620,20 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                         )}
                       </div>
                       <div className={styles.setFields}>
-                        <div className="field">
-                          <label>Executable</label>
-                          <input
-                            className="input mono"
+                        <Field label="Executable">
+                          <TextInput
+                            mono
                             value={config.path}
                             onChange={(e) => void setCli(cli.id, { path: e.target.value })}
                           />
                           {found && <span className={styles.hint}>{found.detail}</span>}
-                        </div>
-                        <div className="field">
-                          <label>Extra arguments</label>
-                          <input
-                            className="input mono"
+                        </Field>
+                        <Field
+                          label="Extra arguments"
+                          hint="For an option this release does not model yet. Passed through verbatim."
+                        >
+                          <TextInput
+                            mono
                             value={config.extraArgs.join(' ')}
                             placeholder="appended to every turn"
                             onChange={(e) =>
@@ -645,10 +642,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                               })
                             }
                           />
-                          <span className={styles.hint}>
-                            For an option this release does not model yet. Passed through verbatim.
-                          </span>
-                        </div>
+                        </Field>
                       </div>
                       {cli.caveats.length > 0 && (
                         <ul className={styles.caveats}>
@@ -692,8 +686,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                 </Section>
                 <Section label="Model" note="Offered by whichever CLI is the default.">
                   <div className={styles.setFields}>
-                    <div className="field">
-                      <label>Default model</label>
+                    <Field label="Default model">
                       <ModelPicker
                         value={settings.defaultModel}
                         models={models}
@@ -701,11 +694,9 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                         onChange={(v) => void set({ defaultModel: v })}
                         onRefresh={() => void refreshModels()}
                       />
-                    </div>
-                    <div className="field">
-                      <label>Default reasoning effort</label>
-                      <select
-                        className="select"
+                    </Field>
+                    <Field label="Default reasoning effort">
+                      <Select
                         value={settings.defaultReasoningEffort}
                         onChange={(e) =>
                           void set({ defaultReasoningEffort: e.target.value as never })
@@ -715,15 +706,16 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                         <option value="low">Low</option>
                         <option value="medium">Medium</option>
                         <option value="high">High</option>
-                      </select>
-                    </div>
+                      </Select>
+                    </Field>
                   </div>
                 </Section>
                 <Section label="Autonomy" note="What an agent stops to ask about.">
-                  <div className="field">
-                    <label>Autonomy</label>
-                    <select
-                      className="select"
+                  <Field
+                    label="Autonomy"
+                    hint="Foundry always reverts writes outside an agent's boundary, at every level. Autonomy only decides what it stops to ask about first."
+                  >
+                    <Select
                       value={settings.defaultAutonomy}
                       onChange={(e) => void set({ defaultAutonomy: e.target.value as never })}
                     >
@@ -732,19 +724,16 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                         Medium: writes inside the boundary run unattended
                       </option>
                       <option value="high">High: run unattended within the worktree</option>
-                    </select>
-                    <span className={styles.hint}>
-                      Foundry always reverts writes outside an agent's boundary, at every level.
-                      Autonomy only decides what it stops to ask about first.
-                    </span>
-                  </div>
+                    </Select>
+                  </Field>
                 </Section>
                 <Section label="Limits" note="How hard Foundry tries before a phase fails.">
                   <div className={styles.setFields}>
-                    <div className="field">
-                      <label>Envelope retries</label>
-                      <input
-                        className="input"
+                    <Field
+                      label="Envelope retries"
+                      hint="Correction messages sent when a reply will not parse."
+                    >
+                      <TextInput
                         type="number"
                         min={0}
                         max={5}
@@ -755,14 +744,12 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                           }))
                         }
                       />
-                      <span className={styles.hint}>
-                        Correction messages sent when a reply will not parse.
-                      </span>
-                    </div>
-                    <div className="field">
-                      <label>Gate retries</label>
-                      <input
-                        className="input"
+                    </Field>
+                    <Field
+                      label="Gate retries"
+                      hint="Attempts to fix a gate violation before the phase fails."
+                    >
+                      <TextInput
                         type="number"
                         min={0}
                         max={5}
@@ -773,14 +760,9 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                           }))
                         }
                       />
-                      <span className={styles.hint}>
-                        Attempts to fix a gate violation before the phase fails.
-                      </span>
-                    </div>
-                    <div className="field">
-                      <label>Turn timeout (minutes)</label>
-                      <input
-                        className="input"
+                    </Field>
+                    <Field label="Turn timeout (minutes)">
+                      <TextInput
                         type="number"
                         min={5}
                         max={60}
@@ -791,11 +773,12 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                           }))
                         }
                       />
-                    </div>
-                    <div className="field">
-                      <label>Trace poll cadence (ms)</label>
-                      <input
-                        className="input"
+                    </Field>
+                    <Field
+                      label="Trace poll cadence (ms)"
+                      hint="How often a live run's view refreshes."
+                    >
+                      <TextInput
                         type="number"
                         min={250}
                         max={2000}
@@ -807,8 +790,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                           }))
                         }
                       />
-                      <span className={styles.hint}>How often a live run's view refreshes.</span>
-                    </div>
+                    </Field>
                   </div>
                 </Section>
               </>
@@ -818,20 +800,18 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                 {projectDraft ? (
                   <>
                     <Section label="Project" note="Where Foundry runs, and what it may touch.">
-                      <div className="field">
-                        <label>Project name</label>
-                        <input
-                          className="input"
+                      <Field
+                        label="Project name"
+                        hint="Just for you — rename freely. The path is where Foundry runs."
+                      >
+                        <TextInput
                           value={projectDraft.name}
                           onChange={(e) =>
                             setProjectDraft({ ...projectDraft, name: e.target.value })
                           }
                           placeholder="My project"
                         />
-                        <span className={styles.hint}>
-                          Just for you — rename freely. The path is where Foundry runs.
-                        </span>
-                      </div>
+                      </Field>
                       <div className={styles.setSubrow}>
                         <span className={`mono faint ${styles.setPath}`}>{projectDraft.path}</span>
                         <button
@@ -854,21 +834,17 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                     </Section>
                     <Section label="Git" note="Every run branches from the base ref.">
                       <div className={styles.setFields}>
-                        <div className="field">
-                          <label>Base ref</label>
-                          <input
-                            className="input mono"
+                        <Field label="Base ref" hint="Every run branches from here.">
+                          <TextInput
+                            mono
                             value={projectDraft.baseRef}
                             onChange={(e) =>
                               setProjectDraft({ ...projectDraft, baseRef: e.target.value })
                             }
                           />
-                          <span className={styles.hint}>Every run branches from here.</span>
-                        </div>
-                        <div className="field">
-                          <label>Merge policy</label>
-                          <select
-                            className="select"
+                        </Field>
+                        <Field label="Merge policy">
+                          <Select
                             value={projectDraft.mergePolicy}
                             onChange={(e) =>
                               setProjectDraft({
@@ -880,8 +856,8 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                             <option value="never">Never merge automatically</option>
                             <option value="on_accept">Merge when a run is accepted</option>
                             <option value="ask">Ask me each time</option>
-                          </select>
-                        </div>
+                          </Select>
+                        </Field>
                       </div>
                     </Section>
                     <Section label="Commands" note="What a pipeline can run, and who detects it.">
@@ -894,10 +870,17 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                       label="Boundaries"
                       note="Hard limits, whatever an agent's own boundary says."
                     >
-                      <div className="field">
-                        <label>Protected paths</label>
-                        <textarea
-                          className="textarea"
+                      <Field
+                        label="Protected paths"
+                        hint={
+                          <>
+                            One pattern per line. No agent may write these, whatever its own
+                            boundary says. <code>.git/</code>, CI config, and lockfiles are always
+                            protected.
+                          </>
+                        }
+                      >
+                        <Textarea
                           rows={3}
                           value={projectDraft.protectedPaths.join('\n')}
                           onChange={(e) =>
@@ -907,15 +890,12 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                             })
                           }
                         />
-                        <span className={styles.hint}>
-                          One pattern per line. No agent may write these, whatever its own boundary
-                          says. <code>.git/</code>, CI config, and lockfiles are always protected.
-                        </span>
-                      </div>
-                      <div className="field">
-                        <label>Auto-approved commands</label>
-                        <textarea
-                          className="textarea"
+                      </Field>
+                      <Field
+                        label="Auto-approved commands"
+                        hint="Commands agents may run without stopping to ask. Prefix matching."
+                      >
+                        <Textarea
                           rows={3}
                           value={projectDraft.allowedCommands.join('\n')}
                           onChange={(e) =>
@@ -925,10 +905,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                             })
                           }
                         />
-                        <span className={styles.hint}>
-                          Commands agents may run without stopping to ask. Prefix matching.
-                        </span>
-                      </div>
+                      </Field>
                     </Section>
                     <Section label="Scope" note="Keep configuration local to this project.">
                       <div className={styles.setFields}>
@@ -970,10 +947,12 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
             {pane === 'maintenance' && (
               <>
                 <Section label="Retention" note="Nothing is deleted behind your back.">
-                  <div className={`field ${styles.setNarrow}`}>
-                    <label>Keep run history for</label>
-                    <select
-                      className="select"
+                  <Field
+                    label="Keep run history for"
+                    className={styles.setNarrow}
+                    hint="Applies when you press the button below. Nothing is deleted behind your back."
+                  >
+                    <Select
                       value={settings.retentionDays ?? ''}
                       onChange={(e) =>
                         void set({ retentionDays: e.target.value ? Number(e.target.value) : null })
@@ -984,11 +963,8 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                       <option value="30">30 days</option>
                       <option value="90">90 days</option>
                       <option value="365">A year</option>
-                    </select>
-                    <span className={styles.hint}>
-                      Applies when you press the button below. Nothing is deleted behind your back.
-                    </span>
-                  </div>
+                    </Select>
+                  </Field>
                   <div className={styles.setSubrow}>
                     <div className={styles.setBtnrow}>
                       <button

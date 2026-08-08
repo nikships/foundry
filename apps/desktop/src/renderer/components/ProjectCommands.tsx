@@ -17,6 +17,7 @@ import { duration } from '../format.js';
 import { CliIcon } from './BrandIcon.js';
 import ModelPicker from './ModelPicker.js';
 import DetectionPanel from './DetectionPanel.js';
+import { Field, Select, TextInput } from './ui/Field.js';
 import styles from './ProjectCommands.module.css';
 
 interface TryState {
@@ -202,8 +203,7 @@ export default function ProjectCommands({
 
   return (
     <>
-      <div className="field">
-        <label>Commands</label>
+      <Field label="Commands">
         <span className="hint">
           Named commands a pipeline can reference, so the same pipeline works in every repo. Run
           each one once here so you know it works before a phase depends on it.
@@ -215,14 +215,15 @@ export default function ProjectCommands({
             return (
               <div key={i} className={styles.command}>
                 <div className="row">
-                  <input
-                    className={`input ${styles.name}`}
+                  <TextInput
+                    className={styles.name}
                     value={command.name}
                     onChange={(e) => setName(i, e.target.value)}
                     placeholder="test"
                   />
-                  <input
-                    className={`input mono ${styles.argv}`}
+                  <TextInput
+                    mono
+                    className={styles.argv}
                     value={argvText(i)}
                     placeholder="npm test"
                     onChange={(e) => setArgv(i, e.target.value)}
@@ -285,20 +286,15 @@ export default function ProjectCommands({
             </button>
           </div>
         </div>
-      </div>
+      </Field>
 
-      <div className="field">
-        <label>Who answers “Ask AI”</label>
+      <Field label="Who answers “Ask AI”">
         <span className="hint">
           Detection reads the repo read-only, against your checkout rather than a worktree.
         </span>
         <div className={`${styles.two} ${styles.detectPicker}`}>
           <div className={styles.cliPick}>
-            <select
-              className="select"
-              value={detectCli}
-              onChange={(e) => setDetectCli(e.target.value)}
-            >
+            <Select value={detectCli} onChange={(e) => setDetectCli(e.target.value)}>
               <option value="default">
                 Follow the default CLI ({settings?.defaultCli ?? 'droid'})
               </option>
@@ -307,7 +303,7 @@ export default function ProjectCommands({
                   {cli.label}
                 </option>
               ))}
-            </select>
+            </Select>
             <CliIcon vendor={effectiveCli} size={18} />
           </div>
           <ModelPicker
@@ -318,12 +314,12 @@ export default function ProjectCommands({
             onChange={(model) => void patchSettings({ detectModel: model })}
           />
         </div>
-      </div>
+      </Field>
 
       {detectError && (
-        <div className="field">
+        <Field>
           <span className={styles.detectError}>{detectError}</span>
-        </div>
+        </Field>
       )}
 
       {detection && (
@@ -337,8 +333,7 @@ export default function ProjectCommands({
         />
       )}
       {found && (
-        <div className="field">
-          <label>Detected</label>
+        <Field label="Detected">
           <span className="hint">{found.detail}</span>
           {found.commands.length > 0 ? (
             <div className={styles.commands}>
@@ -363,7 +358,7 @@ export default function ProjectCommands({
               Nothing in the manifests. Ask AI to read the repo, or type the argv by hand.
             </p>
           )}
-        </div>
+        </Field>
       )}
     </>
   );

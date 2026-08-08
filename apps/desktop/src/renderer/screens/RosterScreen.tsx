@@ -13,6 +13,7 @@ import { CliIcon } from '../components/BrandIcon.js';
 import ModelPicker from '../components/ModelPicker.js';
 import BoundaryEditor from '../components/BoundaryEditor.js';
 import PromptPreview from '../components/PromptPreview.js';
+import { Field, Select, TextInput, Textarea } from '../components/ui/Field.js';
 import styles from './RosterScreen.module.css';
 
 const ENVELOPE_KINDS = ['plan', 'build', 'review', 'scout', 'document', 'generic'] as const;
@@ -343,10 +344,9 @@ export default function RosterScreen(): React.JSX.Element {
                   <p>How this agent is referenced in pipelines and run logs.</p>
                 </div>
                 <div className={styles.roFields}>
-                  <div className="field">
-                    <label>Name</label>
-                    <input
-                      className="input mono"
+                  <Field label="Name">
+                    <TextInput
+                      mono
                       value={nameDraft}
                       onChange={(e) => {
                         setNameDraft(e.target.value);
@@ -368,20 +368,17 @@ export default function RosterScreen(): React.JSX.Element {
                         : 'Applied when you leave the field. Pipeline phases naming this agent are repointed for you.'}
                     </span>
                     {renameError && <span className={styles.hint}>{renameError}</span>}
-                  </div>
-                  <div className="field">
-                    <label>Purpose</label>
-                    <input
-                      className="input"
+                  </Field>
+                  <Field label="Purpose">
+                    <TextInput
                       value={draft.purpose}
                       onChange={(e) => setDraft({ ...draft, purpose: e.target.value })}
                     />
                     <span className={styles.hint}>
                       One line, shown wherever this agent appears.
                     </span>
-                  </div>
-                  <div className={`field ${styles.span2}`}>
-                    <label>Accent</label>
+                  </Field>
+                  <Field label="Accent" className={styles.span2}>
                     <div className={styles.swatches}>
                       {COLORS.map((c) => (
                         <button
@@ -400,7 +397,7 @@ export default function RosterScreen(): React.JSX.Element {
                     <span className={styles.hint}>
                       Used for this agent's lane in the waterfall.
                     </span>
-                  </div>
+                  </Field>
                 </div>
               </section>
 
@@ -411,11 +408,10 @@ export default function RosterScreen(): React.JSX.Element {
                   <p>Which CLI runs this agent, and how hard it thinks.</p>
                 </div>
                 <div className={styles.roFields}>
-                  <div className="field">
-                    <label>CLI vendor</label>
+                  <Field label="CLI vendor">
                     <div className={styles.cliPicker}>
-                      <select
-                        className="select mono"
+                      <Select
+                        className="mono"
                         value={draftCli}
                         onChange={(e) =>
                           setDraft({ ...draft, cli: e.target.value as CliVendor, model: 'inherit' })
@@ -426,7 +422,7 @@ export default function RosterScreen(): React.JSX.Element {
                             {cli.label}
                           </option>
                         ))}
-                      </select>
+                      </Select>
                       <CliIcon vendor={draftCli} size={18} />
                     </div>
                     <span className={styles.hint}>
@@ -438,9 +434,8 @@ export default function RosterScreen(): React.JSX.Element {
                         {caveat}
                       </span>
                     ))}
-                  </div>
-                  <div className="field">
-                    <label>Model</label>
+                  </Field>
+                  <Field label="Model">
                     <ModelPicker
                       value={draft.model}
                       models={models}
@@ -450,9 +445,8 @@ export default function RosterScreen(): React.JSX.Element {
                       onRefresh={() => void api.catalog.models(draftCli, true).then(setModels)}
                     />
                     <span className={styles.hint}>“Inherit” uses this CLI's own default.</span>
-                  </div>
-                  <div className="field">
-                    <label>Reasoning effort</label>
+                  </Field>
+                  <Field label="Reasoning effort">
                     <div className={styles.roSeg} role="radiogroup" aria-label="Reasoning effort">
                       {(['off', 'low', 'medium', 'high'] as const).map((level) => (
                         <button
@@ -475,11 +469,10 @@ export default function RosterScreen(): React.JSX.Element {
                     <span className={styles.hint}>
                       Higher effort costs more thinking tokens and takes longer.
                     </span>
-                  </div>
-                  <div className="field">
-                    <label>Envelope kind</label>
-                    <select
-                      className="select mono"
+                  </Field>
+                  <Field label="Envelope kind">
+                    <Select
+                      className="mono"
                       value={draft.envelope}
                       onChange={(e) =>
                         setDraft({ ...draft, envelope: e.target.value as AgentDef['envelope'] })
@@ -490,11 +483,11 @@ export default function RosterScreen(): React.JSX.Element {
                           {kind}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                     <span className={styles.hint}>
                       The typed reply this agent must return. Parsed and validated on every turn.
                     </span>
-                  </div>
+                  </Field>
                 </div>
               </section>
 
@@ -505,10 +498,8 @@ export default function RosterScreen(): React.JSX.Element {
                   <p>The system prompt is fixed per agent; the template is filled per phase.</p>
                 </div>
                 <div className={styles.roStack}>
-                  <div className="field">
-                    <label>System prompt</label>
-                    <textarea
-                      className="textarea"
+                  <Field label="System prompt">
+                    <Textarea
                       value={draft.systemPrompt}
                       rows={7}
                       onChange={(e) => setDraft({ ...draft, systemPrompt: e.target.value })}
@@ -516,11 +507,9 @@ export default function RosterScreen(): React.JSX.Element {
                     <span className={styles.hint}>
                       The agent's standing instructions. Sent once, at the start of its session.
                     </span>
-                  </div>
-                  <div className="field">
-                    <label>User prompt template</label>
-                    <textarea
-                      className="textarea"
+                  </Field>
+                  <Field label="User prompt template">
+                    <Textarea
                       value={draft.userPrompt}
                       rows={6}
                       onChange={(e) => setDraft({ ...draft, userPrompt: e.target.value })}
@@ -532,7 +521,7 @@ export default function RosterScreen(): React.JSX.Element {
                       ))}{' '}
                       Declared inputs not referenced here are appended to the prompt automatically.
                     </span>
-                  </div>
+                  </Field>
                 </div>
               </section>
 
