@@ -16,6 +16,7 @@ import PromptPreview from '../components/PromptPreview.js';
 import { Field, Select, TextInput, Textarea } from '../components/ui/Field.js';
 import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
+import { useTablistNav } from '../hooks/useTablistNav.js';
 import styles from './RosterScreen.module.css';
 
 const ENVELOPE_KINDS = ['plan', 'build', 'review', 'scout', 'document', 'generic'] as const;
@@ -117,6 +118,7 @@ export default function RosterScreen(): React.JSX.Element {
     void flush();
     setSelectedName(name);
   };
+  const onTablistKey = useTablistNav();
 
   /**
    * A rename is a separate operation from a save: `save` upserts by name, so
@@ -215,7 +217,7 @@ export default function RosterScreen(): React.JSX.Element {
     <>
       <div className={styles.roScreen}>
         {/* ── agent strip: the whole roster, one horizontal band ── */}
-        <div className={styles.roStrip} role="tablist" aria-label="Agents">
+        <div className={styles.roStrip} role="tablist" aria-label="Agents" onKeyDown={onTablistKey}>
           <div className={styles.roStripInner}>
             {agents.map((agent) => {
               const isActive = agent.name === selectedName;
@@ -225,6 +227,7 @@ export default function RosterScreen(): React.JSX.Element {
                   type="button"
                   role="tab"
                   aria-selected={isActive}
+                  tabIndex={isActive ? 0 : -1}
                   className={`${styles.roCell} ${isActive ? styles.on : ''}`}
                   style={{ ['--hue' as string]: agent.color ?? 'var(--cyan)' }}
                   onClick={() => selectAgent(agent.name)}

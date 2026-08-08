@@ -18,6 +18,7 @@ import { Field, Select, TextInput, Textarea } from '../components/ui/Field.js';
 import { Button } from '../components/ui/Button.js';
 import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
+import { useTablistNav } from '../hooks/useTablistNav.js';
 import styles from './SettingsScreen.module.css';
 
 type Pane = 'general' | 'clis' | 'defaults' | 'project' | 'maintenance' | 'about';
@@ -198,6 +199,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
   }, [settings?.engineerName]);
 
   const setPaneLive = (next: Pane): void => setPane(next);
+  const onTablistKey = useTablistNav();
   const set = async (patch: Parameters<typeof patchSettings>[0]): Promise<void> => {
     // Always replace the banner: a successful patch must clear a prior failure.
     setErrors(await patchSettings(patch));
@@ -379,13 +381,19 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
     <>
       <div className={styles.setScreen}>
         {/* ── section strip: equal cells spanning the full window width ── */}
-        <div className={styles.setStrip} role="tablist" aria-label="Settings sections">
+        <div
+          className={styles.setStrip}
+          role="tablist"
+          aria-label="Settings sections"
+          onKeyDown={onTablistKey}
+        >
           {PANES.map((p) => (
             <button
               key={p.id}
               type="button"
               role="tab"
               aria-selected={pane === p.id}
+              tabIndex={pane === p.id ? 0 : -1}
               className={`${styles.setTab} ${pane === p.id ? styles.on : ''}`}
               onClick={() => setPaneLive(p.id)}
             >

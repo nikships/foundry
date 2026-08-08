@@ -36,7 +36,10 @@ jobs:
         uses: JetBrains/junie-github-action@main
         with:
           junie_api_key: ${{ secrets.JUNIE_API_KEY }}
+          trigger_phrase: "@junie"
           assignee_trigger: "junie-agent"
           use_single_comment: true
           junie_version: "latest"
-          model: "gpt-5.3-codex"
+          # The action has no reasoning-effort input, but it interpolates `model`
+          # unquoted into the Junie flag list, so the effort flag rides along.
+          model: "grok-4.5 --effort=high"
