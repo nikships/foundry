@@ -160,13 +160,34 @@ jobs:
           rm -f "$ZIP"
           ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
 
+          # Apple's notary service intermittently drops the connection
+          # (HTTPClientError.connectTimeout). Retry so one flaky round trip
+          # does not discard an otherwise good signed build.
+          retry() {
+            local label="$1"
+            shift
+            local attempt=1
+            until "$@"; do
+              if [ "$attempt" -ge 3 ]; then
+                echo "::error::$label failed after $attempt attempts"
+                return 1
+              fi
+              echo "$label failed (attempt $attempt), retrying in $((attempt * 30))s"
+              sleep "$((attempt * 30))"
+              attempt=$((attempt + 1))
+            done
+          }
+
+          # Each attempt overwrites the response file, so a timed-out attempt
+          # never leaves partial JSON in front of the successful one.
+          NOTARY_OUT="$RUNNER_TEMP/notary-response.json"
           notarize() {
             local artifact="$1"
             /usr/bin/xcrun notarytool submit "$artifact" \
               --apple-id "$APPLE_ID" \
               --password "$APPLE_APP_SPECIFIC_PASSWORD" \
               --team-id "$APPLE_TEAM_ID" \
-              --wait --output-format json
+              --wait --timeout 30m --output-format json > "$NOTARY_OUT"
           }
 
           notary_log() {
@@ -178,31 +199,33 @@ jobs:
           }
 
           echo "==> Notarizing app zip"
-          OUT=$(notarize "$ZIP")
-          echo "$OUT"
-          STATUS=$(echo "$OUT" | python3 -c "import json,sys; print(json.load(sys.stdin)['status'])")
-          SUB_ID=$(echo "$OUT" | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
+          retry "App notarization" notarize "$ZIP"
+          cat "$NOTARY_OUT"
+          STATUS=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['status'])" "$NOTARY_OUT")
+          SUB_ID=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['id'])" "$NOTARY_OUT")
           if [ "$STATUS" != "Accepted" ]; then
             echo "::error::App notarization failed: $STATUS"
             notary_log "$SUB_ID"
             exit 1
           fi
-          /usr/bin/xcrun stapler staple "$APP"
+          # Stapling downloads the ticket from Apple, so it is flaky for the
+          # same reason the submit is.
+          retry "App staple" /usr/bin/xcrun stapler staple "$APP"
           /usr/bin/xcrun stapler validate "$APP"
           spctl -a -vvv -t install "$APP"
           rm -f "$ZIP"
 
           echo "==> Notarizing DMG"
-          OUT=$(notarize "$DMG")
-          echo "$OUT"
-          STATUS=$(echo "$OUT" | python3 -c "import json,sys; print(json.load(sys.stdin)['status'])")
-          SUB_ID=$(echo "$OUT" | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
+          retry "DMG notarization" notarize "$DMG"
+          cat "$NOTARY_OUT"
+          STATUS=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['status'])" "$NOTARY_OUT")
+          SUB_ID=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['id'])" "$NOTARY_OUT")
           if [ "$STATUS" != "Accepted" ]; then
             echo "::error::DMG notarization failed: $STATUS"
             notary_log "$SUB_ID"
             exit 1
           fi
-          /usr/bin/xcrun stapler staple "$DMG"
+          retry "DMG staple" /usr/bin/xcrun stapler staple "$DMG"
           /usr/bin/xcrun stapler validate "$DMG"
           echo "DMG=$DMG" >> "$GITHUB_ENV"
           ls -lh "$APP" "$DMG"
@@ -340,4 +363,5 @@ jobs:
           if [ -n "${KEYCHAIN_PATH:-}" ]; then
             security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
           fi
-          rm -f "$RUNNER_TEMP"/developer-id.p12 "$RUNNER_TEMP"/Foundry-notarize.zip 2>/dev/null || true
+          rm -f "$RUNNER_TEMP"/developer-id.p12 "$RUNNER_TEMP"/Foundry-notarize.zip \
+            "$RUNNER_TEMP"/notary-response.json 2>/dev/null || true
