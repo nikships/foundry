@@ -1,9 +1,8 @@
 /**
- * Vite resolves a CSS import to a side-effecting module with no exports. A
- * static `import './x.css'` needs no declaration, but a dynamic
- * `await import(...)` does, so this stays as a fallback for any future use.
+ * CSS Modules: `import styles from './x.module.css'` yields a class-name map.
+ * Static side-effect imports (`import './x.css'`) need no declaration.
  */
-declare module '*.css' {
-  const sheet: void;
-  export default sheet;
+declare module '*.module.css' {
+  const classes: Record<string, string>;
+  export default classes;
 }

@@ -30,6 +30,12 @@ export default defineConfig({
     resolve: { alias },
     plugins: [react()],
     root: resolve(__dirname, 'src/renderer'),
+    css: {
+      modules: {
+        // `.phase-edge` → `styles.phaseEdge`, so className refs stay clean.
+        localsConvention: 'camelCase',
+      },
+    },
     build: {
       rollupOptions: { input: resolve(__dirname, 'src/renderer/index.html') },
     },

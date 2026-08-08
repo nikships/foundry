@@ -5,6 +5,7 @@ import { useApp } from '../stores/app.js';
 import { phaseKindColor } from '../derive.js';
 import AgentAvatar from './AgentAvatar.js';
 import { CliIcon } from './BrandIcon.js';
+import styles from './PhaseEditor.module.css';
 
 const ENVELOPE_KINDS: EnvelopeKind[] = ['plan', 'build', 'review', 'scout', 'document', 'generic'];
 
@@ -82,12 +83,15 @@ export default function PhaseEditor({
 
   return (
     <>
-      <div className={`phase ${open ? 'open' : ''}`} style={{ ['--hue' as string]: color }}>
-        {open && <span className="phase-edge" aria-hidden />}
-        <div className="row-wrap">
-          <button className="row head" onClick={onToggle} aria-expanded={open}>
-            <span className="num">{String(index + 1).padStart(2, '0')}</span>
-            <span className="glyph" style={{ color }}>
+      <div
+        className={`${styles.phase} ${open ? styles.open : ''}`}
+        style={{ ['--hue' as string]: color }}
+      >
+        {open && <span className={styles.phaseEdge} aria-hidden />}
+        <div className={styles.rowWrap}>
+          <button className={`row ${styles.head}`} onClick={onToggle} aria-expanded={open}>
+            <span className={styles.num}>{String(index + 1).padStart(2, '0')}</span>
+            <span className={styles.glyph} style={{ color }}>
               {phase.kind === 'agent' ? (
                 <svg
                   width="12"
@@ -137,21 +141,25 @@ export default function PhaseEditor({
               )}
             </span>
             {phase.kind === 'agent' && <AgentAvatar name={phase.agent ?? null} size={20} />}
-            <span className="pname">{phase.name}</span>
-            <span className="kind">{phase.kind === 'engineer' ? 'checkpoint' : phase.kind}</span>
-            <span className="summary">
+            <span className={styles.pname}>{phase.name}</span>
+            <span className={styles.kind}>
+              {phase.kind === 'engineer' ? 'checkpoint' : phase.kind}
+            </span>
+            <span className={styles.summary}>
               {phase.kind === 'agent' && (
                 <>
                   {owner && <CliIcon vendor={owner.cli ?? 'droid'} size={12} />}
-                  <span className="sum-strong">{phase.agent}</span>
-                  <span className="sum-dim"> · envelope </span>
-                  <span className="sum-strong">{phase.envelope ?? owner?.envelope ?? 'build'}</span>
+                  <span className={styles.sumStrong}>{phase.agent}</span>
+                  <span className={styles.sumDim}> · envelope </span>
+                  <span className={styles.sumStrong}>
+                    {phase.envelope ?? owner?.envelope ?? 'build'}
+                  </span>
                 </>
               )}
               {phase.kind === 'code' && (
                 <>
-                  <span className="sum-dim">$ </span>
-                  <span className="sum-strong">
+                  <span className={styles.sumDim}>$ </span>
+                  <span className={styles.sumStrong}>
                     {phase.command && 'ref' in phase.command
                       ? phase.command.ref
                       : phase.command && 'argv' in phase.command
@@ -160,12 +168,16 @@ export default function PhaseEditor({
                   </span>
                 </>
               )}
-              {phase.kind === 'engineer' && <span className="sum-strong">{phase.question}</span>}
-              {phase.optional && <span className="sum-dim"> · optional</span>}
+              {phase.kind === 'engineer' && (
+                <span className={styles.sumStrong}>{phase.question}</span>
+              )}
+              {phase.optional && <span className={styles.sumDim}> · optional</span>}
             </span>
-            {phase.feedbackTo && <span className="badge loop">↩ {phase.feedbackTo}</span>}
+            {phase.feedbackTo && (
+              <span className={`badge ${styles.loop}`}>↩ {phase.feedbackTo}</span>
+            )}
             <svg
-              className={`chev ${open ? 'up' : ''}`}
+              className={`${styles.chev} ${open ? styles.up : ''}`}
               width="12"
               height="12"
               viewBox="0 0 14 14"
@@ -179,9 +191,9 @@ export default function PhaseEditor({
               <path d="M3.5 5.5 7 9l3.5-3.5" />
             </svg>
           </button>
-          <span className="controls">
+          <span className={styles.controls}>
             <button
-              className="ctl"
+              className={styles.ctl}
               disabled={index === 0}
               title="Move earlier"
               onClick={(e) => {
@@ -192,7 +204,7 @@ export default function PhaseEditor({
               ↑
             </button>
             <button
-              className="ctl"
+              className={styles.ctl}
               disabled={index === phases.length - 1}
               title="Move later"
               onClick={(e) => {
@@ -203,7 +215,7 @@ export default function PhaseEditor({
               ↓
             </button>
             <button
-              className="ctl danger"
+              className={`${styles.ctl} ${styles.danger}`}
               title="Remove phase"
               onClick={(e) => {
                 e.stopPropagation();
@@ -215,8 +227,8 @@ export default function PhaseEditor({
           </span>
         </div>
         {open && (
-          <div className="body">
-            <div className="two">
+          <div className={styles.body}>
+            <div className={styles.two}>
               <div className="field">
                 <label>Name</label>
                 <input
@@ -287,18 +299,18 @@ export default function PhaseEditor({
               <>
                 <div className="field">
                   <label>Inputs from earlier phases</label>
-                  <div className="chips">
+                  <div className={styles.chips}>
                     {earlier.map((name) => (
                       <button
                         key={name}
-                        className={`chip ${phase.prompt?.inputs?.includes(name) ? 'on' : ''}`}
+                        className={`${styles.chip} ${phase.prompt?.inputs?.includes(name) ? styles.on : ''}`}
                         onClick={() => toggleInput(name)}
                       >
                         {name}
                       </button>
                     ))}
                     <button
-                      className={`chip ${phase.prompt?.inputs?.includes('request') ? 'on' : ''}`}
+                      className={`${styles.chip} ${phase.prompt?.inputs?.includes('request') ? styles.on : ''}`}
                       onClick={() => toggleInput('request')}
                     >
                       request
@@ -311,13 +323,13 @@ export default function PhaseEditor({
                 </div>
                 <div className="field">
                   <label>Gates</label>
-                  <div className="gates">
+                  <div className={styles.gates}>
                     {gates
                       // command_passes needs a configured argv the editor cannot
                       // yet set, so offering it only produces a save-blocking error.
                       .filter((gate) => gate.id !== 'command_passes')
                       .map((gate) => (
-                        <label key={gate.id} className="gate">
+                        <label key={gate.id} className={styles.gate}>
                           <input
                             type="checkbox"
                             checked={phase.gates?.includes(gate.id) ?? false}
@@ -339,15 +351,15 @@ export default function PhaseEditor({
             {phase.kind === 'code' && (
               <div className="field">
                 <label>Command</label>
-                <div className="modes">
+                <div className={styles.modes}>
                   <button
-                    className={`mode ${!usesArgv ? 'on' : ''}`}
+                    className={`${styles.mode} ${!usesArgv ? styles.on : ''}`}
                     onClick={() => setCommandMode('ref')}
                   >
                     Project command
                   </button>
                   <button
-                    className={`mode ${usesArgv ? 'on' : ''}`}
+                    className={`${styles.mode} ${usesArgv ? styles.on : ''}`}
                     onClick={() => setCommandMode('argv')}
                   >
                     Literal
@@ -367,7 +379,7 @@ export default function PhaseEditor({
                       ))}
                     </select>
                   ) : (
-                    <p className="hint empty-cmds">
+                    <p className={`hint ${styles.emptyCmds}`}>
                       No project commands yet. Switch to Literal, or detect them in Settings →
                       Project.
                     </p>
@@ -403,7 +415,7 @@ export default function PhaseEditor({
                 <span className="hint">The run pauses here until someone answers.</span>
               </div>
             )}
-            <div className="two">
+            <div className={styles.two}>
               <div className="field">
                 <label>Send failures back to</label>
                 <select
@@ -439,7 +451,7 @@ export default function PhaseEditor({
                 </div>
               )}
             </div>
-            <label className="opt-line">
+            <label className={styles.optLine}>
               <input
                 type="checkbox"
                 checked={!!phase.optional}
@@ -455,65 +467,6 @@ export default function PhaseEditor({
           </div>
         )}
       </div>
-      <style>{`
-        /* Flat row in one continuous list — hairlines only, no card. */
-        .phase { position: relative; border-bottom: 1px solid var(--line); }
-        .phase-edge { position: absolute; left: 0; top: 0; bottom: 0; width: 1px; background: var(--hue); }
-        .row-wrap { display: flex; align-items: center; padding-right: var(--s6); }
-        .row-wrap:hover { background: color-mix(in srgb, #ffffff 1.8%, transparent); }
-        .phase .head {
-          flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--s3);
-          padding: 13px 0 13px var(--s6);
-          border: none; background: transparent; color: inherit; font: inherit;
-          cursor: default; text-align: left;
-        }
-        .num { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em; color: var(--text-faint); width: 22px; flex: none; }
-        .glyph { display: flex; align-items: center; flex: none; }
-        .pname { font-size: var(--text-sm); font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; flex: none; }
-        .kind {
-          font-family: var(--font-mono); font-size: 10px; text-transform: uppercase;
-          letter-spacing: 0.16em; color: var(--hue); flex: none;
-        }
-        .summary {
-          flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px;
-          font-family: var(--font-mono); font-size: 11.5px;
-          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-        }
-        .summary .sum-strong { color: var(--text-dim); }
-        .summary .sum-dim { color: var(--text-faint); }
-        .badge.loop { background: var(--amber-dim); color: var(--amber); padding: 2px 6px; border-radius: var(--r-sm); font-size: var(--text-xs); flex: none; }
-        .chev { color: var(--text-faint); flex: none; transition: transform var(--fast) var(--ease); transform: rotate(-90deg); }
-        .chev.up { transform: rotate(0deg); }
-        .controls { display: flex; gap: 2px; flex: none; opacity: 0; transition: opacity var(--fast) var(--ease); }
-        .row-wrap:hover .controls, .phase.open .controls { opacity: 1; }
-        .ctl {
-          display: inline-flex; align-items: center; justify-content: center;
-          width: 26px; height: 26px; border: none; border-radius: var(--r-sm);
-          background: transparent; color: var(--text-faint); font: inherit; font-size: 11px;
-          cursor: default; transition: color var(--fast) var(--ease), background var(--fast) var(--ease);
-        }
-        .ctl:hover:not(:disabled) { color: var(--text); background: var(--bg-hover); }
-        .ctl:disabled { opacity: 0.3; }
-        .ctl.danger:hover { color: var(--red); }
-        .phase .body { padding: var(--s4) var(--s6) var(--s5) calc(var(--s6) + 22px + var(--s3)); border-top: 1px solid var(--line); animation: fade-in var(--fast) var(--ease); }
-        .two { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s4); }
-        .field { display: flex; flex-direction: column; gap: var(--s1); margin-bottom: var(--s3); }
-        .field label { font-size: var(--text-sm); font-weight: 500; }
-        .hint { font-size: var(--text-xs); color: var(--text-faint); }
-        .chips { display: flex; flex-wrap: wrap; gap: var(--s2); }
-        .chip { padding: var(--s1) var(--s3); border: 1px solid var(--line); border-radius: var(--r-full); background: transparent; color: var(--text-faint); font: inherit; font-size: var(--text-xs); cursor: default; }
-        .chip.on { border-color: var(--cyan); background: var(--cyan-dim); color: var(--cyan); }
-        .gates { display: flex; flex-direction: column; gap: var(--s2); }
-        .gate { display: flex; gap: var(--s2); font-size: var(--text-sm); }
-        .gate em { display: block; font-style: normal; font-size: var(--text-xs); margin-top: 1px; }
-        .gate code { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--purple); }
-        .modes { display: flex; gap: var(--s1); padding: 3px; border-radius: var(--r-sm); background: var(--bg-input); border: 1px solid var(--line); width: fit-content; margin-bottom: var(--s2); }
-        .mode { padding: var(--s1) var(--s3); border: none; border-radius: 5px; background: transparent; color: var(--text-faint); font: inherit; font-size: var(--text-xs); cursor: default; }
-        .mode.on { background: var(--bg-active); color: var(--text); }
-        .empty-cmds { margin: var(--s2) 0; padding: var(--s2) var(--s3); border: 1px dashed var(--line); border-radius: var(--r-sm); }
-        .opt-line { display: flex; gap: var(--s2); font-size: var(--text-sm); margin-top: var(--s3); }
-        .opt-line em { display: block; font-style: normal; font-size: var(--text-xs); margin-top: 1px; }
-      `}</style>
     </>
   );
 }
