@@ -2,7 +2,7 @@
 
 **Scope:** `apps/desktop/src/renderer`
 **Date:** 2026-08-08
-**Status:** Phases 1-3 shipped. Phase 4 items 1-3 (Field, useDebouncedSave, Button) shipped; items 4-7 and Phase 5 remain.
+**Status:** Complete (Phases 1-5 shipped).
 
 ---
 
