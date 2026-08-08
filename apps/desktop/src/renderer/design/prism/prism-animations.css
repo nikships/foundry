@@ -3,22 +3,22 @@
  * kill switch. Imported only in a Prism window.
  */
 
-@keyframes spectral-sweep {
+@keyframes spectral-sweep-v {
   from {
-    background-position: 0% 50%;
+    background-position: 50% 0%;
   }
   to {
-    background-position: 200% 50%;
+    background-position: 50% 200%;
   }
 }
 
 /*
- * What reduced motion has to silence here is the CSS: the header sweep, the
+ * What reduced motion has to silence here is the CSS: the sidebar sweep, the
  * rim fades, and the press burst. Blur is dropped too, because a moving
  * backdrop behind a blur is the part that induces nausea.
  */
 @media (prefers-reduced-motion: reduce) {
-  [data-brand='prism'] .prism-header-rule {
+  [data-brand='prism'] .prism-sidebar-rule {
     animation: none;
   }
   [data-brand='prism'] .btn:active:not(:disabled),

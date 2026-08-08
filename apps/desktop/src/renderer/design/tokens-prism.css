@@ -82,6 +82,18 @@
     var(--prism-neon-cyan),
     var(--prism-neon-ice)
   );
+  --prism-spectrum-v: linear-gradient(
+    180deg,
+    var(--prism-neon-ice),
+    var(--prism-neon-cyan),
+    var(--prism-neon-violet),
+    var(--prism-neon-magenta),
+    var(--prism-neon-amber),
+    var(--prism-neon-magenta),
+    var(--prism-neon-violet),
+    var(--prism-neon-cyan),
+    var(--prism-neon-ice)
+  );
 
   /* How far red and cyan split on a press. Matches the shader's uLens feel. */
   --prism-chroma-offset: 1.4px;

@@ -25,9 +25,7 @@ export function ModalShell({
   tabIndex,
   highPriority = false,
 }: ModalShellProps): React.JSX.Element {
-  if (dismissible && onClose) {
-    useEscapeToClose(onClose);
-  }
+  useEscapeToClose(onClose ?? (() => {}), Boolean(dismissible && onClose));
 
   const scrimClass = `${styles.scrim} ${highPriority ? styles.highPriority : ''}`;
   const sheetClass = className ? `${styles.sheet} ${className}` : styles.sheet;

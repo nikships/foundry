@@ -157,9 +157,7 @@ function AppInner(): React.JSX.Element {
 
   return (
     <div className={styles.shell}>
-      <div className={styles.titlebar}>
-        <div className="prism-header-rule" aria-hidden />
-      </div>
+      <div className={styles.titlebar} />
 
       {needsOnboarding ? (
         <OnboardingShell onDone={finishOnboarding} />
@@ -176,6 +174,7 @@ function AppInner(): React.JSX.Element {
             }}
             onOpenInterruptRun={openRun}
           />
+          <div className={`prism-sidebar-rule ${styles.sidebarRule}`} aria-hidden />
           <main className={styles.content}>{main}</main>
         </>
       ) : (

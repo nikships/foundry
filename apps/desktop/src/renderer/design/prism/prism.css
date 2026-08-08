@@ -24,21 +24,20 @@
   background: color-mix(in srgb, var(--bg-base) 92%, transparent);
 }
 
-/* ── header spectral rule ───────────────────────────────────────────────
+/* ── sidebar spectral rule ───────────────────────────────────────────────
  * A single hairline is the only always-on brand mark in the chrome. The sweep
  * is slow enough to read as light moving through glass rather than animation.
  */
-[data-brand='prism'] .prism-header-rule {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 1px;
-  background: var(--prism-spectrum);
-  background-size: 200% 100%;
+[data-brand='prism'] .prism-sidebar-rule {
+  position: relative;
+  z-index: 1;
+  width: 1px;
+  flex: none;
+  background: var(--prism-spectrum-v);
+  background-size: 100% 200%;
   opacity: 0.5;
   pointer-events: none;
-  animation: spectral-sweep 32s linear infinite;
+  animation: spectral-sweep-v 32s linear infinite;
 }
 
 /* ── button press chromatic burst ───────────────────────────────────────
