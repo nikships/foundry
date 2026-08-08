@@ -6,6 +6,7 @@ import { clockTime, duration, tokens } from '../format.js';
 import { modelFor, phaseDuration, usageFor } from '../derive.js';
 import StatusBadge from './StatusBadge.js';
 import AgentAvatar from './AgentAvatar.js';
+import { CodeBlock } from './ui/CodeBlock.js';
 import JsonView from './JsonView.js';
 import styles from './PhaseDrawer.module.css';
 
@@ -168,10 +169,10 @@ export default function PhaseDrawer({
                 </p>
               )}
               {liveTail && (
-                <pre className={`${styles.live} selectable mono`}>
+                <CodeBlock maxHeight={240} className={styles.live}>
                   {liveTail}
                   <span className={styles.caret} />
-                </pre>
+                </CodeBlock>
               )}
               <ol className={styles.events}>
                 {events.map((event) => (
@@ -260,9 +261,7 @@ export default function PhaseDrawer({
                   {promptError}
                 </p>
               )}
-              {!promptLoading && !promptError && prompt ? (
-                <pre className={`${styles.raw} selectable`}>{prompt}</pre>
-              ) : null}
+              {!promptLoading && !promptError && prompt ? <CodeBlock>{prompt}</CodeBlock> : null}
               {!promptLoading && !promptError && !prompt && (
                 <p className={`faint ${styles.pad}`}>
                   {phase.kind === 'agent'

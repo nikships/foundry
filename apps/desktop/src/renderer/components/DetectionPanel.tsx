@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { DetectionState, DetectionProposal } from '@shared/ipc-contract.js';
 import { duration } from '../format.js';
 import { Button } from './ui/Button.js';
+import { CodeBlock } from './ui/CodeBlock.js';
 import styles from './DetectionPanel.module.css';
 
 const TOOL_ICON: Record<string, string> = {
@@ -149,7 +150,11 @@ export default function DetectionPanel({
           <button className={`linkish ${styles.rawToggle}`} onClick={onToggleRaw}>
             {showRaw ? 'Hide raw reply' : 'Show raw reply'}
           </button>
-          {showRaw && <pre className={`${styles.output} selectable mono`}>{state.rawReply}</pre>}
+          {showRaw && (
+            <CodeBlock maxHeight={220} className={styles.output}>
+              {state.rawReply}
+            </CodeBlock>
+          )}
         </>
       )}
     </div>

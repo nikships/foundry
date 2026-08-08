@@ -17,6 +17,7 @@ import { duration } from '../format.js';
 import { CliIcon } from './BrandIcon.js';
 import ModelPicker from './ModelPicker.js';
 import DetectionPanel from './DetectionPanel.js';
+import { CodeBlock } from './ui/CodeBlock.js';
 import { Field, Select, TextInput } from './ui/Field.js';
 import { Button } from './ui/Button.js';
 import styles from './ProjectCommands.module.css';
@@ -258,7 +259,9 @@ export default function ProjectCommands({
                       <span className="faint">{isOpen ? 'hide output' : 'show output'}</span>
                     </button>
                     {isOpen && (
-                      <pre className={`${styles.output} selectable mono`}>{result.output}</pre>
+                      <CodeBlock maxHeight={260} className={styles.output}>
+                        {result.output}
+                      </CodeBlock>
                     )}
                   </div>
                 )}

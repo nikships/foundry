@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { CodeBlock } from './ui/CodeBlock.js';
 import styles from './JsonView.module.css';
 
 interface Token {
@@ -47,12 +48,12 @@ export default function JsonView({ value }: { value: unknown }): React.JSX.Eleme
     }
   }, [value]);
   return (
-    <pre className={`${styles.json} selectable`}>
+    <CodeBlock maxHeight={420} className={styles.json}>
       {tokens.map((t, i) => (
         <span key={i} className={styles[t.cls]}>
           {t.text}
         </span>
       ))}
-    </pre>
+    </CodeBlock>
   );
 }

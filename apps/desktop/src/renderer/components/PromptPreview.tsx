@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { AgentDef } from '@shared/types.js';
 import { Button } from './ui/Button.js';
+import { CodeBlock } from './ui/CodeBlock.js';
 import { ModalShell } from './ui/ModalShell.js';
 import styles from './PromptPreview.module.css';
 
@@ -37,9 +38,9 @@ export default function PromptPreview({
       </header>
       <div className={`scroll ${styles.body}`}>
         <h3>System</h3>
-        <pre className={`selectable ${styles.block}`}>{agent.systemPrompt}</pre>
+        <CodeBlock>{agent.systemPrompt}</CodeBlock>
         <h3>User</h3>
-        <pre className={`selectable ${styles.block}`}>{rendered}</pre>
+        <CodeBlock>{rendered}</CodeBlock>
         <h3>Appended by the engine</h3>
         <p className={`faint ${styles.note}`}>
           The declared inputs for the phase, then the exact JSON shape of the{' '}

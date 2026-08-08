@@ -107,13 +107,5 @@
 }
 .output {
   margin-top: var(--s2);
-  padding: var(--s3);
-  background: var(--bg-void);
-  font-size: var(--text-xs);
-  line-height: var(--leading);
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 220px;
   overflow-y: auto;
-  color: var(--text-dim);
 }

@@ -1,0 +1,12 @@
+.block {
+  padding: var(--s3);
+  border-radius: var(--r-sm);
+  background: var(--bg-void);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: var(--leading);
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-dim);
+  margin: 0;
+}

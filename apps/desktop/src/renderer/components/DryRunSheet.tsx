@@ -3,6 +3,7 @@ import type { DryRunPrompt } from '@shared/types.js';
 import { modelLabel } from '../format.js';
 import AgentAvatar from './AgentAvatar.js';
 import { Button } from './ui/Button.js';
+import { CodeBlock } from './ui/CodeBlock.js';
 import { ModalShell } from './ui/ModalShell.js';
 import styles from './DryRunSheet.module.css';
 
@@ -50,9 +51,9 @@ export default function DryRunSheet({
         {current && (
           <div className={`${styles.detail} scroll`}>
             <h3>System</h3>
-            <pre className={`${styles.block} selectable`}>{current.systemPrompt}</pre>
+            <CodeBlock>{current.systemPrompt}</CodeBlock>
             <h3>User</h3>
-            <pre className={`${styles.block} selectable`}>{current.userPrompt}</pre>
+            <CodeBlock>{current.userPrompt}</CodeBlock>
           </div>
         )}
       </div>
