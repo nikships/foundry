@@ -1,4 +1,5 @@
 import { Button } from './ui/Button.js';
+import { SegmentedControl } from './ui/SegmentedControl.js';
 import styles from './BoundaryEditor.module.css';
 
 type Mode = 'anywhere' | 'nowhere' | 'paths';
@@ -34,26 +35,17 @@ export default function BoundaryEditor({
   return (
     <>
       <div className={styles.boundary}>
-        <div className={styles.modes}>
-          <button
-            className={`${styles.mode} ${mode === 'anywhere' ? styles.on : ''}`}
-            onClick={() => setMode('anywhere')}
-          >
-            Anywhere in the worktree
-          </button>
-          <button
-            className={`${styles.mode} ${mode === 'paths' ? styles.on : ''}`}
-            onClick={() => setMode('paths')}
-          >
-            Only these paths
-          </button>
-          <button
-            className={`${styles.mode} ${mode === 'nowhere' ? styles.on : ''}`}
-            onClick={() => setMode('nowhere')}
-          >
-            Read-only
-          </button>
-        </div>
+        <SegmentedControl
+          options={[
+            {
+              label: 'Anywhere in the worktree',
+              on: mode === 'anywhere',
+              onClick: () => setMode('anywhere'),
+            },
+            { label: 'Only these paths', on: mode === 'paths', onClick: () => setMode('paths') },
+            { label: 'Read-only', on: mode === 'nowhere', onClick: () => setMode('nowhere') },
+          ]}
+        />
         {mode === 'paths' && (
           <>
             {(value ?? []).map((pattern, i) => (

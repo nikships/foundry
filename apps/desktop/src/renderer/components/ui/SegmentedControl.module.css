@@ -1,0 +1,26 @@
+.modes {
+  display: flex;
+  gap: var(--s1);
+  padding: 3px;
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+  width: fit-content;
+}
+.mode {
+  padding: var(--s1) var(--s3);
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: default;
+}
+.mode:hover {
+  color: var(--text);
+}
+.mode.on {
+  background: var(--bg-active);
+  color: var(--text);
+}

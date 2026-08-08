@@ -6,6 +6,7 @@ import { phaseKindColor } from '../derive.js';
 import AgentAvatar from './AgentAvatar.js';
 import { CliIcon } from './BrandIcon.js';
 import { Field, Select, TextInput, Textarea } from './ui/Field.js';
+import { SegmentedControl } from './ui/SegmentedControl.js';
 import styles from './PhaseEditor.module.css';
 
 const ENVELOPE_KINDS: EnvelopeKind[] = ['plan', 'build', 'review', 'scout', 'document', 'generic'];
@@ -342,20 +343,17 @@ export default function PhaseEditor({
                     : 'Runs exactly these arguments, with no shell.'
                 }
               >
-                <div className={styles.modes}>
-                  <button
-                    className={`${styles.mode} ${!usesArgv ? styles.on : ''}`}
-                    onClick={() => setCommandMode('ref')}
-                  >
-                    Project command
-                  </button>
-                  <button
-                    className={`${styles.mode} ${usesArgv ? styles.on : ''}`}
-                    onClick={() => setCommandMode('argv')}
-                  >
-                    Literal
-                  </button>
-                </div>
+                <SegmentedControl
+                  className={styles.commandModes}
+                  options={[
+                    {
+                      label: 'Project command',
+                      on: !usesArgv,
+                      onClick: () => setCommandMode('ref'),
+                    },
+                    { label: 'Literal', on: usesArgv, onClick: () => setCommandMode('argv') },
+                  ]}
+                />
                 {!usesArgv ? (
                   commands.length ? (
                     <Select
