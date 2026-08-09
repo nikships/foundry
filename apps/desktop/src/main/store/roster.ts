@@ -22,7 +22,7 @@ export const agentSchema = z.object({
     ),
   purpose: z.string().min(1, 'one line on what this agent is for'),
   // Absent on rosters written before multi-CLI support; runtime reads that as droid.
-  cli: z.enum(['droid', 'claude', 'codex', 'junie', 'grok']).optional(),
+  cli: z.enum(['droid']).optional(),
   model: z.string().min(1),
   reasoningEffort: z.enum(['off', 'low', 'medium', 'high']),
   systemPrompt: z.string().min(1),

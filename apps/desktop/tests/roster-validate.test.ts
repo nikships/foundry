@@ -16,7 +16,7 @@ const base: AgentDef = {
 
 describe('roster.validate', () => {
   it('accepts a well-formed agent including optional cli', () => {
-    expect(validate({ ...base, cli: 'claude' })).toEqual([]);
+    expect(validate({ ...base, cli: 'droid' })).toEqual([]);
   });
 
   it('rejects an invalid name and empty purpose before save', () => {

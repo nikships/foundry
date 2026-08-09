@@ -18,7 +18,6 @@ describe('CLI marks', () => {
     // The regression this guards: droid is the default CLI, so dropping the
     // local Factory mark leaves the most-used vendor as the only blank one.
     expect(CLI_MARKS.droid).toBeDefined();
-    expect(CLI_MARKS.droid).not.toBe(CLI_MARKS.claude);
   });
 });
 

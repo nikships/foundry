@@ -13,12 +13,11 @@ export type AutonomyLevel = 'low' | 'medium' | 'high';
 export type EnvelopeKind = 'generic' | 'plan' | 'build' | 'scout' | 'review' | 'document';
 
 /**
- * Which agent CLI drives a phase. Chosen per agent, so one pipeline can plan on
- * one vendor and build on another.
+ * Which agent CLI drives a phase.
  */
-export type CliVendor = 'droid' | 'claude' | 'codex' | 'junie' | 'grok';
+export type CliVendor = 'droid';
 
-export const CLI_VENDOR_IDS: CliVendor[] = ['droid', 'claude', 'codex', 'junie', 'grok'];
+export const CLI_VENDOR_IDS: CliVendor[] = ['droid'];
 
 /**
  * What the renderer is allowed to know about a CLI. The adapter itself stays in

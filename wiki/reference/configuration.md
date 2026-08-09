@@ -8,8 +8,8 @@ Stored via electron-store / JSON under Application Support (`src/main/store/sett
 
 | Setting | Default (conceptually) | Role |
 |---|---|---|
-| `clis` | auto PATH per vendor | `{ path, extraArgs }` for each of `droid`, `claude`, `codex`, `junie`, `grok`. See [Agent CLIs](../systems/clis.md) |
-| `defaultCli` | `droid` | Vendor a new agent starts on, and the one repo command detection uses |
+| `clis` | auto PATH | `{ path, extraArgs }` for `droid`. See [Agent CLI](../systems/clis.md) |
+| `defaultCli` | `droid` | Agent CLI provider (`droid`) |
 | `engineerName` | — | Recorded on every run |
 | `defaultAutonomy` | medium | droid `--auto`; a sandbox tier for every other CLI |
 | `defaultModel` / `defaultReasoningEffort` | droid default | Defaults pane; model ids do not carry across vendors |
