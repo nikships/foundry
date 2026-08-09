@@ -387,6 +387,7 @@ export default function PipelinesScreen(): React.JSX.Element {
       await api.pipelines.remove(selected.id, projectId || undefined);
       await refreshScoped();
     },
+    { title: 'Delete Pipeline', confirmLabel: 'Delete', variant: 'danger' },
   );
   const preview = async (): Promise<void> => {
     if (!draft || !projectId) return;

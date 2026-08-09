@@ -145,7 +145,9 @@ export const droidAdapter: CliAdapter = {
     ];
     if (req.model && req.model !== 'inherit') {
       argv.push('-m', req.model);
-      if (req.reasoningEffort !== 'off') argv.push('-r', req.reasoningEffort);
+    }
+    if (req.reasoningEffort !== 'off') {
+      argv.push('-r', req.reasoningEffort);
     }
     if (req.restrictTools?.length) argv.push('--restrict-tools', req.restrictTools.join(','));
     if (req.disabledTools?.length) argv.push('--disabled-tools', req.disabledTools.join(','));

@@ -1,8 +1,16 @@
 import { useCallback } from 'react';
 
+export interface ConfirmOptions {
+  title?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  variant?: 'danger' | 'primary';
+}
+
 export interface ConfirmRequest {
   id: string;
   message: string;
+  opts?: ConfirmOptions;
 }
 
 type Listener = (req: ConfirmRequest | null) => void;
@@ -19,11 +27,12 @@ class ConfirmManager {
     };
   }
 
-  ask(message: string): Promise<boolean> {
+  ask(message: string, opts?: ConfirmOptions): Promise<boolean> {
     return new Promise<boolean>((resolve) => {
       const req = {
         id: Math.random().toString(36).slice(2),
         message,
+        opts,
         resolve: (accepted: boolean) => {
           this.queue = this.queue.filter((r) => r.id !== req.id);
           this.notify();
@@ -61,17 +70,18 @@ export const confirmManager = new ConfirmManager();
 export function useConfirmAction<Args extends unknown[] = []>(
   message: string | ((...args: Args) => string),
   action: (...args: Args) => Promise<void> | void,
+  opts?: ConfirmOptions,
 ): (...args: Args) => Promise<boolean> {
   return useCallback(
     async (...args: Args): Promise<boolean> => {
       const promptText = typeof message === 'function' ? message(...args) : message;
-      const accepted = await confirmManager.ask(promptText);
+      const accepted = await confirmManager.ask(promptText, opts);
       if (!accepted) {
         return false;
       }
       await action(...args);
       return true;
     },
-    [message, action],
+    [message, action, opts],
   );
 }

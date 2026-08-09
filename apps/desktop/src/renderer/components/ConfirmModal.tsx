@@ -13,14 +13,14 @@ export default function ConfirmModal(): React.JSX.Element | null {
 
   if (!request) return null;
 
-  const isDanger = /delete|remove|discard|compact|history/i.test(request.message);
-  const actionLabel = isDanger
-    ? /delete/i.test(request.message)
-      ? 'Delete'
-      : /remove/i.test(request.message)
-        ? 'Remove'
-        : 'Confirm'
-    : 'Confirm';
+  const isDanger =
+    request.opts?.variant === 'danger' ||
+    (request.opts?.variant === undefined && /delete|remove|discard|compact/i.test(request.message));
+  const confirmLabel =
+    request.opts?.confirmLabel ??
+    (isDanger ? (/delete/i.test(request.message) ? 'Delete' : 'Remove') : 'Confirm');
+  const cancelLabel = request.opts?.cancelLabel ?? 'Cancel';
+  const title = request.opts?.title ?? (isDanger ? 'Confirmation Required' : 'Confirmation');
 
   return (
     <ModalShell
@@ -31,19 +31,19 @@ export default function ConfirmModal(): React.JSX.Element | null {
       <div className={styles.dialog}>
         <div className={styles.body}>
           <h3 id="confirm-dialog-title" className={styles.title}>
-            Confirmation
+            {title}
           </h3>
           <p className={styles.message}>{request.message}</p>
         </div>
         <div className={styles.actions}>
           <Button variant="ghost" onClick={() => confirmManager.resolve(request.id, false)}>
-            Cancel
+            {cancelLabel}
           </Button>
           <Button
             variant={isDanger ? 'danger' : 'primary'}
             onClick={() => confirmManager.resolve(request.id, true)}
           >
-            {actionLabel}
+            {confirmLabel}
           </Button>
         </div>
       </div>

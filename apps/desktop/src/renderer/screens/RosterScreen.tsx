@@ -175,6 +175,7 @@ export default function RosterScreen(): React.JSX.Element {
         setActionError((e as Error).message);
       }
     },
+    { title: 'Delete Agent', confirmLabel: 'Delete', variant: 'danger' },
   );
 
   const createAgent = async (): Promise<void> => {
