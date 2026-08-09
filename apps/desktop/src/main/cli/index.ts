@@ -36,9 +36,7 @@ export function findCli(vendor: CliVendor): string {
   try {
     const which = execFileSync('/usr/bin/which', [adapter.binary], {
       encoding: 'utf8',
-      // `which` writes "no junie in ..." to stderr, and this now runs once per
-      // vendor at first launch. Inheriting that prints five lines about CLIs the
-      // user never asked for, so the answer is taken from stdout alone.
+      // stdout alone is used so warnings/errors from PATH lookups do not pollute logs.
       stdio: ['ignore', 'pipe', 'ignore'],
       // A GUI launch inherits launchd's PATH, where none of these CLIs live.
       // Without the resolved PATH every vendor falls through to its hardcoded

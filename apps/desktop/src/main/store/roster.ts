@@ -21,8 +21,11 @@ export const agentSchema = z.object({
       'lowercase letters, digits, dash, underscore; must start with a letter',
     ),
   purpose: z.string().min(1, 'one line on what this agent is for'),
-  // Absent on rosters written before multi-CLI support; runtime reads that as droid.
-  cli: z.enum(['droid']).optional(),
+  // Unknown or legacy CLI values coerce to droid.
+  cli: z.preprocess(
+    (val) => (typeof val === 'string' && val !== 'droid' ? 'droid' : val),
+    z.enum(['droid']).optional(),
+  ),
   model: z.string().min(1),
   reasoningEffort: z.enum(['off', 'low', 'medium', 'high']),
   systemPrompt: z.string().min(1),
@@ -73,8 +76,15 @@ export class RosterStore {
         // An agent forked off a built-in used to inherit `builtin: true`, which
         // hides its own Delete button. The flag says where an agent came from,
         // so a name that was never shipped cannot legitimately carry it.
+        const sanitize = (a: AgentDef): AgentDef => ({
+          ...a,
+          cli: a.cli && a.cli !== 'droid' ? 'droid' : a.cli,
+        });
         const byName = new Map(
-          list.map((a) => [a.name, shipped.has(a.name) ? a : { ...a, builtin: false }]),
+          list.map((a) => [
+            a.name,
+            shipped.has(a.name) ? sanitize(a) : { ...sanitize(a), builtin: false },
+          ]),
         );
         for (const builtin of BUILTIN_AGENTS) {
           if (!byName.has(builtin.name)) byName.set(builtin.name, { ...builtin });

@@ -42,9 +42,9 @@ export const appSettingsSchema = z.object({
 });
 
 /**
- * Every vendor gets a resolved path at first launch, whether or not it is
- * installed, so choosing a CLI in the roster never requires a trip to Settings
- * first. An absent binary resolves to its bare name and the doctor explains it.
+ * Resolves the path for droid at first launch so executing runs never require
+ * a trip to Settings first. An absent binary resolves to its bare name and the
+ * doctor explains it.
  */
 function defaultClis(): Record<CliVendor, CliConfig> {
   const clis = {} as Record<CliVendor, CliConfig>;

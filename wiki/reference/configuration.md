@@ -11,8 +11,8 @@ Stored via electron-store / JSON under Application Support (`src/main/store/sett
 | `clis` | auto PATH | `{ path, extraArgs }` for `droid`. See [Agent CLI](../systems/clis.md) |
 | `defaultCli` | `droid` | Agent CLI provider (`droid`) |
 | `engineerName` | — | Recorded on every run |
-| `defaultAutonomy` | medium | droid `--auto`; a sandbox tier for every other CLI |
-| `defaultModel` / `defaultReasoningEffort` | droid default | Defaults pane; model ids do not carry across vendors |
+| `defaultAutonomy` | medium | droid `--auto` |
+| `defaultModel` / `defaultReasoningEffort` | droid default | Defaults pane |
 | `pollCadenceMs` | 500 | Renderer poll interval |
 | `turnTimeoutMs` | 20 min class | Per-turn timeout |
 | `envelopeRetries` / `gateRetries` | 3 / 2 class | Correction budgets |

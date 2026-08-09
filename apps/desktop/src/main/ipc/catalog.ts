@@ -3,7 +3,7 @@ import { IPC } from '@shared/ipc-contract.js';
 import { GATE_DESCRIPTIONS } from '../engine/gates.js';
 import { TEMPLATE_VARIABLES } from '../engine/prompts.js';
 import { invalidateCatalog } from '../droid/catalog.js';
-import { adapterFor, allAdapters } from '../cli/index.js';
+import { adapterFor, allAdapters, cliConfigFor } from '../cli/index.js';
 import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
 
@@ -12,13 +12,16 @@ type Ctx = Pick<AppContext, 'settings'>;
 export function register(ctx: Ctx, handle: Handle): void {
   handle(IPC.catalogModels, (vendor: CliVendor, force?: boolean) => {
     if (force) invalidateCatalog();
-    return adapterFor(vendor).models(ctx.settings.get().clis[vendor].path);
+    return adapterFor(vendor).models(cliConfigFor(ctx.settings.get().clis, vendor).path);
   });
   handle(IPC.catalogTools, (vendor: CliVendor, model?: string) => {
     const adapter = adapterFor(vendor);
     // Only droid enumerates tools; the rest scope them by sandbox, so an empty
     // list is the honest answer rather than a failed call.
-    return adapter.tools?.(ctx.settings.get().clis[vendor].path, model) ?? Promise.resolve([]);
+    return (
+      adapter.tools?.(cliConfigFor(ctx.settings.get().clis, vendor).path, model) ??
+      Promise.resolve([])
+    );
   });
   handle(IPC.catalogClis, () =>
     allAdapters().map((a) => ({

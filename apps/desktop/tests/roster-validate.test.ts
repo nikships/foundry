@@ -19,6 +19,10 @@ describe('roster.validate', () => {
     expect(validate({ ...base, cli: 'droid' })).toEqual([]);
   });
 
+  it('coerces legacy or unknown cli values to droid during validation', () => {
+    expect(validate({ ...base, cli: 'claude' as never })).toEqual([]);
+  });
+
   it('rejects an invalid name and empty purpose before save', () => {
     const issues = validate({ ...base, name: 'Bad Name', purpose: '' });
     expect(issues.some((i) => i.where === 'name')).toBe(true);

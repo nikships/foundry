@@ -86,13 +86,10 @@ export interface CliAdapter {
   parse: (out: ProcessOutput) => ParsedTurn | null;
   /**
    * Returns the normaliser for one turn: folds one parsed stdout line into
-   * droid-shaped notifications, so the shared EventFolder traces this vendor's
-   * stream exactly as if droid had sent it. A factory rather than a bare
-   * function because folding can be stateful (grok opens a new thinking block
-   * per segment), and two runs may share the adapter object concurrently.
-   * Absent on vendors whose format has no mid-turn events; their turn stays
-   * one span and the caveat list says so. Shapes are pinned in tests against
-   * real CLI output, never invented.
+   * droid-shaped notifications, so the shared EventFolder traces streams
+   * accurately. A factory rather than a bare function because folding can be
+   * stateful, and two runs may share the adapter object concurrently.
+   * Shapes are pinned in tests against real CLI output, never invented.
    */
   stream?: () => (line: unknown) => DroidNotification[];
   /**
