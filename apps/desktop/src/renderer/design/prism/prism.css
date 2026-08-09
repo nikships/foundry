@@ -24,20 +24,20 @@
   background: color-mix(in srgb, var(--bg-base) 92%, transparent);
 }
 
-/* ── sidebar spectral rule ───────────────────────────────────────────────
- * A single hairline is the only always-on brand mark in the chrome. The sweep
- * is slow enough to read as light moving through glass rather than animation.
+/* ── sidebar spectral divider ────────────────────────────────────────────
+ * The always-on brand mark in the chrome: a saturated spectral strip that
+ * sweeps top-to-bottom. z-index 2 keeps it crisp over both panel
+ * backgrounds.
  */
-[data-brand='prism'] .prism-sidebar-rule {
+[data-brand='prism'] .prism-sidebar-divider {
   position: relative;
-  z-index: 1;
-  width: 1px;
+  z-index: 2;
+  width: 1.5px;
   flex: none;
   background: var(--prism-spectrum-v);
   background-size: 100% 200%;
-  opacity: 0.2;
   pointer-events: none;
-  animation: spectral-sweep-v 32s linear infinite;
+  animation: spectral-sweep-v 18s linear infinite;
 }
 
 /* ── button press chromatic burst ───────────────────────────────────────

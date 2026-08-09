@@ -18,7 +18,7 @@
  * backdrop behind a blur is the part that induces nausea.
  */
 @media (prefers-reduced-motion: reduce) {
-  [data-brand='prism'] .prism-sidebar-rule {
+  [data-brand='prism'] .prism-sidebar-divider {
     animation: none;
   }
   [data-brand='prism'] .btn:active:not(:disabled),

@@ -191,7 +191,7 @@ function AppInner(): React.JSX.Element {
             }}
             onOpenInterruptRun={openRun}
           />
-          <div className={`prism-sidebar-rule ${styles.sidebarRule}`} aria-hidden />
+          <div className={`prism-sidebar-divider ${styles.sidebarRule}`} aria-hidden />
           <main className={styles.content}>{main}</main>
         </>
       ) : (
