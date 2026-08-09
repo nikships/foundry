@@ -39,6 +39,7 @@ export interface ExecutorDeps {
   /** Where each CLI lives and how it is invoked. Agents name the vendor. */
   clis: Record<CliVendor, CliConfig>;
   autonomy: AutonomyLevel;
+  defaultModel?: string;
   turnTimeoutMs: number;
   envelopeRetries: number;
   gateRetries: number;
@@ -267,7 +268,12 @@ export class Executor {
 
     const vendor = agent.cli ?? 'droid';
     const cli = this.deps.clis[vendor] ?? this.deps.clis.droid;
-    const session = new AgentSession(agent, {
+    const model =
+      agent.model === 'inherit' && this.deps.defaultModel && this.deps.defaultModel !== 'inherit'
+        ? this.deps.defaultModel
+        : agent.model;
+    const effectiveAgent = { ...agent, model };
+    const session = new AgentSession(effectiveAgent, {
       cliPath: cli.path,
       cliExtraArgs: cli.extraArgs,
       runId: this.deps.runId,

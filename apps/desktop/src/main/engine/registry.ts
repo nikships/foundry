@@ -110,6 +110,7 @@ export class RunRegistry extends EventEmitter {
       tracer,
       clis: settings.clis,
       autonomy: settings.defaultAutonomy,
+      defaultModel: settings.defaultModel,
       turnTimeoutMs: settings.turnTimeoutMs,
       envelopeRetries: settings.envelopeRetries,
       gateRetries: settings.gateRetries,

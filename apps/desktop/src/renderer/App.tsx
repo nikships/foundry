@@ -12,6 +12,7 @@ import PullRequestsScreen from './screens/PullRequestsScreen.js';
 import SettingsScreen from './screens/SettingsScreen.js';
 import OnboardingShell from './screens/onboarding/OnboardingShell.js';
 import InterruptSheet from './components/InterruptSheet.js';
+import ConfirmModal from './components/ConfirmModal.js';
 import UpdateBanner from './components/UpdateBanner.js';
 import type { UpdateStatus } from '@shared/types.js';
 import styles from './App.module.css';
@@ -200,6 +201,7 @@ function AppInner(): React.JSX.Element {
       )}
 
       {activeInterrupt && <InterruptSheet interrupt={activeInterrupt} />}
+      <ConfirmModal />
       {showBanner && (
         <UpdateBanner
           status={updateStatus}

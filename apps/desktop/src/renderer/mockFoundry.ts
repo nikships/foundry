@@ -164,7 +164,7 @@ function defaultMockSettings(): AppSettings {
     detectModel: 'inherit',
     engineerName: 'web-preview',
     defaultAutonomy: 'medium',
-    defaultModel: 'claude-opus-5',
+    defaultModel: 'inherit',
     defaultReasoningEffort: 'medium',
     pollCadenceMs: 500,
     turnTimeoutMs: 20 * 60_000,

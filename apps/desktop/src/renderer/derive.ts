@@ -65,6 +65,15 @@ export function modelFor(events: EventRow[]): string | null {
 }
 
 /**
+ * Phase-kind labels for consistent UI display across ribbon, phase list, and inspectors.
+ */
+export const KIND_LABEL: Record<string, string> = {
+  agent: 'agent',
+  code: 'command',
+  engineer: 'checkpoint',
+};
+
+/**
  * Phase-kind hues. `agent` is per-agent, so callers pass the resolved owner
  * colour; `code` and `engineer` are fixed. Unknown kinds fall back to cyan.
  */
