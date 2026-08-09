@@ -106,7 +106,7 @@ function PhaseTrack({
         <>
           {owner && <CliIcon vendor={owner.cli ?? 'droid'} size={11} />}
           <span>{phase.agent}</span>
-          <span className={styles.plTrMetaDim}>·</span>
+          <span className={styles.pipelinePhaseMetaDim}>·</span>
           <span>{phase.envelope ?? owner?.envelope ?? 'build'}</span>
         </>
       );
@@ -123,36 +123,39 @@ function PhaseTrack({
     return <span>yes / no</span>;
   };
   return (
-    <div className={styles.plTrackWrap}>
-      <div className={styles.plTrack}>
+    <div className={styles.pipelineTrackWrap}>
+      <div className={styles.pipelineTrack}>
         {pipeline.phases.map((phase, i) => (
-          <div key={i} className={styles.plTrCell} role="presentation">
-            {i > 0 && <span className={styles.plTrLink} aria-hidden />}
+          <div key={i} className={styles.pipelinePhaseCell} role="presentation">
+            {i > 0 && <span className={styles.pipelinePhaseConnector} aria-hidden />}
             <button
               type="button"
-              className={`${styles.plTrNode} ${selected === i ? styles.on : ''}`}
+              className={`${styles.pipelinePhaseNode} ${selected === i ? styles.on : ''}`}
               style={{ ['--hue' as string]: hue(phase) }}
               onClick={() => onSelect(i)}
               aria-pressed={selected === i}
             >
-              <span className={styles.plTrNum}>{String(i + 1).padStart(2, '0')}</span>
-              <span className={styles.plTrBox}>
-                <span className={styles.plTrIcon}>
+              <span className={styles.pipelinePhaseNumber}>{String(i + 1).padStart(2, '0')}</span>
+              <span className={styles.pipelinePhaseBox}>
+                <span className={styles.pipelinePhaseIcon}>
                   <PhaseGlyph kind={phase.kind} />
                 </span>
-                <span className={styles.plTrName}>{phase.name}</span>
+                <span className={styles.pipelinePhaseName}>{phase.name}</span>
               </span>
-              <span className={styles.plTrKind}>{KIND_LABEL[phase.kind]}</span>
-              <span className={styles.plTrMeta}>{meta(phase)}</span>
+              <span className={styles.pipelinePhaseKind}>{KIND_LABEL[phase.kind]}</span>
+              <span className={styles.pipelinePhaseMeta}>{meta(phase)}</span>
             </button>
           </div>
         ))}
-        <span className={`${styles.plTrLink} ${styles.plTrLinkTail}`} aria-hidden />
-        <div className={styles.plTrAdd}>
-          <span className={styles.plTrAddLabel}>add</span>
+        <span
+          className={`${styles.pipelinePhaseConnector} ${styles.pipelinePhaseConnectorTail}`}
+          aria-hidden
+        />
+        <div className={styles.pipelinePhaseAdd}>
+          <span className={styles.pipelinePhaseAddLabel}>add</span>
           <button
             type="button"
-            className={styles.plTrAddbtn}
+            className={styles.pipelinePhaseAddBtn}
             style={{ ['--hue' as string]: 'var(--purple)' }}
             onClick={() => onAdd('agent')}
           >
@@ -160,7 +163,7 @@ function PhaseTrack({
           </button>
           <button
             type="button"
-            className={styles.plTrAddbtn}
+            className={styles.pipelinePhaseAddBtn}
             style={{ ['--hue' as string]: 'var(--amber)' }}
             onClick={() => onAdd('code')}
           >
@@ -168,7 +171,7 @@ function PhaseTrack({
           </button>
           <button
             type="button"
-            className={styles.plTrAddbtn}
+            className={styles.pipelinePhaseAddBtn}
             style={{ ['--hue' as string]: 'var(--blue)' }}
             onClick={() => onAdd('engineer')}
           >
@@ -180,7 +183,11 @@ function PhaseTrack({
   );
 }
 
-export default function PipelinesScreen(): React.JSX.Element {
+export default function PipelinesScreen({
+  onOpenSettings,
+}: {
+  onOpenSettings?: (pane: string) => void;
+} = {}): React.JSX.Element {
   const { pipelines, project, projectId, agents, refreshScoped } = useApp();
   const [selectedId, setSelectedId] = useState('');
   const [draft, setDraft] = useState<PipelineDef | null>(null);
@@ -419,12 +426,12 @@ export default function PipelinesScreen(): React.JSX.Element {
 
   return (
     <>
-      <div className={styles.plScreen}>
+      <div className={styles.pipelineScreen}>
         {/* ── switcher strip: pipelines as tabs, actions at the right ── */}
-        <div className={styles.plSwitcher}>
-          <span className={`${styles.plMono} ${styles.plSwitcherLabel}`}>Pipelines</span>
+        <div className={styles.pipelineTabs}>
+          <span className={`${styles.pipelineMono} ${styles.pipelineTabsLabel}`}>Pipelines</span>
           <div
-            className={styles.plTabs}
+            className={styles.pipelineTabList}
             role="tablist"
             aria-label="Pipelines"
             onKeyDown={onTablistKey}
@@ -436,39 +443,49 @@ export default function PipelinesScreen(): React.JSX.Element {
                 role="tab"
                 aria-selected={p.id === selectedId}
                 tabIndex={p.id === selectedId ? 0 : -1}
-                className={`${styles.plTab} ${p.id === selectedId ? styles.on : ''}`}
+                className={`${styles.pipelineTab} ${p.id === selectedId ? styles.on : ''}`}
                 onClick={() => selectPipeline(p.id)}
               >
-                <span className={styles.plTabName}>{p.name}</span>
-                <span className={styles.plTabCount}>{p.phases.length}</span>
-                {p.id === selectedId && <span className={styles.plTabRule} aria-hidden />}
+                <span className={styles.pipelineTabName}>{p.name}</span>
+                <span className={styles.pipelineTabCount}>{p.phases.length}</span>
+                {p.id === selectedId && (
+                  <span className={styles.pipelineTabUnderline} aria-hidden />
+                )}
               </button>
             ))}
-            <button type="button" className={styles.plNewtab} onClick={() => void createPipeline()}>
+            <button
+              type="button"
+              className={styles.pipelineNewTab}
+              onClick={() => void createPipeline()}
+            >
               + New pipeline
             </button>
           </div>
           {draft && (
-            <div className={styles.plActions}>
+            <div className={styles.pipelineActions}>
               <button
                 type="button"
-                className={styles.plAction}
+                className={styles.pipelineAction}
                 disabled={!projectId}
                 title={!projectId ? 'Select a project first' : undefined}
                 onClick={() => void preview()}
               >
                 Dry run
               </button>
-              <span className={styles.plActionSep} aria-hidden />
+              <span className={styles.pipelineActionSep} aria-hidden />
               {selected && (
-                <button type="button" className={styles.plAction} onClick={() => void duplicate()}>
+                <button
+                  type="button"
+                  className={styles.pipelineAction}
+                  onClick={() => void duplicate()}
+                >
                   Duplicate
                 </button>
               )}
               {selected && !selected.builtin && (
                 <button
                   type="button"
-                  className={`${styles.plAction} ${styles.danger}`}
+                  className={`${styles.pipelineAction} ${styles.danger}`}
                   onClick={() => void remove()}
                 >
                   Delete
@@ -479,28 +496,28 @@ export default function PipelinesScreen(): React.JSX.Element {
         </div>
 
         {draft && (
-          <div className={styles.plScroll}>
-            <div className={styles.plPage}>
+          <div className={styles.pipelineScroll}>
+            <div className={styles.pipelinePage}>
               {/* ── identity ── */}
-              <div className={styles.plIdentity}>
-                <div className={styles.plIdentityMain}>
+              <div className={styles.pipelineIdentity}>
+                <div className={styles.pipelineIdentityMain}>
                   <input
-                    className={styles.plTitle}
+                    className={styles.pipelineTitle}
                     aria-label="Pipeline name"
                     value={draft.name}
                     onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                   />
                   <input
-                    className={styles.plDesc}
+                    className={styles.pipelineDesc}
                     aria-label="Pipeline description"
                     value={draft.description}
                     placeholder="What is this pipeline for?"
                     onChange={(e) => setDraft({ ...draft, description: e.target.value })}
                   />
                 </div>
-                <div className={styles.plIdentityMeta}>
-                  <span className={styles.plMono}>Phases</span>
-                  <span className={styles.plIdentityCount}>{draft.phases.length}</span>
+                <div className={styles.pipelineIdentityMeta}>
+                  <span className={styles.pipelineMono}>Phases</span>
+                  <span className={styles.pipelineIdentityCount}>{draft.phases.length}</span>
                 </div>
               </div>
 
@@ -513,12 +530,12 @@ export default function PipelinesScreen(): React.JSX.Element {
               />
 
               {/* ── phase rows ── */}
-              <section className={styles.plPhases} aria-label="Phases">
-                <div className={styles.plSectionHead}>
-                  <h2 className={styles.plMono}>Phases</h2>
-                  <span className={styles.plSectionCount}>{draft.phases.length} steps</span>
+              <section className={styles.pipelinePhases} aria-label="Phases">
+                <div className={styles.pipelineSectionHead}>
+                  <h2 className={styles.pipelineMono}>Phases</h2>
+                  <span className={styles.pipelineSectionCount}>{draft.phases.length} steps</span>
                 </div>
-                <div className={styles.plPhaseList}>
+                <div className={styles.pipelinePhaseList}>
                   {draft.phases.map((phase, i) => (
                     <PhaseEditor
                       key={i}
@@ -532,23 +549,26 @@ export default function PipelinesScreen(): React.JSX.Element {
                       onToggle={() => setOpenPhase(openPhase === i ? -1 : i)}
                       onMove={(d) => movePhase(i, d)}
                       onRemove={() => removePhase(i)}
+                      onOpenSettings={onOpenSettings}
                     />
                   ))}
                 </div>
               </section>
 
               {/* ── acceptance ── */}
-              <section className={styles.plAcceptance} aria-label="Acceptance">
-                <div className={styles.plSectionHead}>
-                  <h2 className={styles.plMono}>Acceptance</h2>
-                  <span className={styles.plSectionCount}>evaluated when the run settles</span>
+              <section className={styles.pipelineAcceptance} aria-label="Acceptance">
+                <div className={styles.pipelineSectionHead}>
+                  <h2 className={styles.pipelineMono}>Acceptance</h2>
+                  <span className={styles.pipelineSectionCount}>
+                    evaluated when the run settles
+                  </span>
                 </div>
-                <div className={styles.plAcceptanceRow}>
-                  <div className={styles.plField}>
-                    <span className={styles.plFieldLabel}>A run counts as accepted when</span>
-                    <span className={styles.plFieldControl}>
+                <div className={styles.pipelineAcceptanceRow}>
+                  <div className={styles.pipelineField}>
+                    <span className={styles.pipelineFieldLabel}>A run counts as accepted when</span>
+                    <span className={styles.pipelineFieldControl}>
                       <select
-                        className={styles.plSelect}
+                        className={styles.pipelineSelect}
                         value={draft.acceptance.kind}
                         onChange={(e) => setAcceptanceKind(e.target.value as Acceptance['kind'])}
                       >
@@ -558,17 +578,17 @@ export default function PipelinesScreen(): React.JSX.Element {
                         <option value="phase_flag">A phase's envelope sets a flag</option>
                       </select>
                     </span>
-                    <span className={styles.plFieldHint}>
+                    <span className={styles.pipelineFieldHint}>
                       A run where every phase passed is not automatically a run that did what was
                       asked.
                     </span>
                   </div>
                   {acceptancePhase !== null && (
-                    <div className={styles.plField}>
-                      <span className={styles.plFieldLabel}>Phase</span>
-                      <span className={styles.plFieldControl}>
+                    <div className={styles.pipelineField}>
+                      <span className={styles.pipelineFieldLabel}>Phase</span>
+                      <span className={styles.pipelineFieldControl}>
                         <select
-                          className={styles.plSelect}
+                          className={styles.pipelineSelect}
                           value={acceptancePhase}
                           onChange={(e) => setAcceptancePhase(e.target.value)}
                         >
@@ -582,11 +602,11 @@ export default function PipelinesScreen(): React.JSX.Element {
                     </div>
                   )}
                   {draft.acceptance.kind === 'phase_flag' && (
-                    <div className={`${styles.plField} ${styles.plFieldNarrow}`}>
-                      <span className={styles.plFieldLabel}>Flag</span>
-                      <span className={styles.plFieldControl}>
+                    <div className={`${styles.pipelineField} ${styles.pipelineFieldNarrow}`}>
+                      <span className={styles.pipelineFieldLabel}>Flag</span>
+                      <span className={styles.pipelineFieldControl}>
                         <select
-                          className={styles.plSelect}
+                          className={styles.pipelineSelect}
                           value={(draft.acceptance as { flag: string }).flag}
                           onChange={(e) =>
                             setAcceptanceFlag(e.target.value as 'passed' | 'approved')
@@ -598,15 +618,15 @@ export default function PipelinesScreen(): React.JSX.Element {
                       </span>
                     </div>
                   )}
-                  <label className={styles.plWorktree}>
+                  <label className={styles.pipelineWorktree}>
                     <input
                       type="checkbox"
                       checked={draft.isolation !== false}
                       onChange={(e) => setDraft({ ...draft, isolation: e.target.checked })}
                     />
                     <span>
-                      <span className={styles.plWorktreeTitle}>Isolated git worktree</span>
-                      <span className={styles.plFieldHint}>
+                      <span className={styles.pipelineWorktreeTitle}>Isolated git worktree</span>
+                      <span className={styles.pipelineFieldHint}>
                         Each run gets its own checkout, so phases never touch your working tree.
                       </span>
                     </span>
@@ -618,30 +638,34 @@ export default function PipelinesScreen(): React.JSX.Element {
         )}
 
         {draft && (
-          <div className={styles.plValidation}>
-            <span className={styles.plMono}>Validation</span>
-            <div className={styles.plValidationItems}>
+          <div className={styles.pipelineValidation}>
+            <span className={styles.pipelineMono}>Validation</span>
+            <div className={styles.pipelineValidationItems}>
               {readyCopy && (
                 <span
-                  className={`${styles.plValItem} ${errors.length === 0 && warnings.length === 0 ? 'ok' : ''}`}
+                  className={`${styles.pipelineValItem} ${errors.length === 0 && warnings.length === 0 ? 'ok' : ''}`}
                 >
                   {readyCopy}
                 </span>
               )}
               {[...errors, ...warnings].map((issue, i) => (
-                <span key={i} className={`${styles.plValItem} ${issue.level}`}>
-                  <span className={styles.plValMark}>{issue.level === 'error' ? '✕' : '!'}</span>
+                <span key={i} className={`${styles.pipelineValItem} ${issue.level}`}>
+                  <span className={styles.pipelineValMark}>
+                    {issue.level === 'error' ? '✕' : '!'}
+                  </span>
                   <strong>{issue.where}</strong> {issue.message}
                 </span>
               ))}
-              {dryRunError && <span className={`${styles.plValItem} error`}>{dryRunError}</span>}
+              {dryRunError && (
+                <span className={`${styles.pipelineValItem} error`}>{dryRunError}</span>
+              )}
             </div>
-            <span className={styles.plAutosave}>Changes save automatically</span>
+            <span className={styles.pipelineAutosave}>Changes save automatically</span>
           </div>
         )}
 
         {!draft && (
-          <div className={styles.plEmpty}>
+          <div className={styles.pipelineEmpty}>
             <EmptyState
               art="scenes/empty-state.png"
               title={pipelines.length ? 'No pipeline selected' : 'No pipelines yet'}

@@ -14,7 +14,14 @@ import { noIssues, notifyRuns, notifySettings } from './shared.js';
 
 type Ctx = Pick<
   AppContext,
-  'projects' | 'pipelines' | 'pipelineScope' | 'rosterFor' | 'registry' | 'settings' | 'broadcast'
+  | 'projects'
+  | 'pipelines'
+  | 'pipelineScope'
+  | 'rosterFor'
+  | 'registry'
+  | 'settings'
+  | 'envelopes'
+  | 'broadcast'
 >;
 
 const emptyDetail: RunDetail = {
@@ -82,13 +89,21 @@ export function register(ctx: Ctx, handle: Handle): void {
       project = ensured.project;
     }
 
+    const knownEnvelopes = ctx.envelopes.list().map((e) => e.name);
     const issues = preflightForRun(
       pipeline,
       agents,
       project.commands.map((c) => c.name),
+      knownEnvelopes,
     );
-    if (issues.length) return { ok: false, issues };
-    const runId = ctx.registry.start({ project, pipeline, agents, request: input.request });
+    if (issues.some((i) => i.level === 'error')) return { ok: false, issues };
+    const runId = ctx.registry.start({
+      project,
+      pipeline,
+      agents,
+      envelopeDefs: ctx.envelopes.list(),
+      request: input.request,
+    });
     return { ok: true, runId, issues: noIssues };
   });
 

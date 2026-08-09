@@ -1,4 +1,4 @@
-.ob-doc {
+.ob-doctor {
   flex: 1;
   min-height: 0;
   display: flex;
@@ -7,7 +7,7 @@
   padding: var(--s3) var(--s6) var(--s6);
   overflow: auto;
 }
-.ob-doc-body {
+.ob-doctor-body {
   flex: 1;
   min-height: 0;
   display: grid;
@@ -17,31 +17,31 @@
 }
 
 /* ── intro ─────────────────────────────────────────────── */
-.ob-doc-intro {
+.ob-doctor-intro {
   display: flex;
   flex-direction: column;
   min-width: 0;
   position: sticky;
   top: 0;
-  animation: ob-doc-in 480ms var(--ease) both;
+  animation: ob-doctor-in 480ms var(--ease) both;
 }
-.ob-doc-intro :global(.ob-eyebrow) {
+.ob-doctor-intro :global(.ob-eyebrow) {
   margin-bottom: var(--s2);
 }
-.ob-doc-intro :global(.ob-title) {
+.ob-doctor-intro :global(.ob-title) {
   margin-bottom: var(--s2);
   line-height: 1.02;
   letter-spacing: -0.03em;
 }
-.ob-doc-intro :global(.ob-lead) {
+.ob-doctor-intro :global(.ob-lead) {
   margin-bottom: 0;
   max-width: 46ch;
 }
-.ob-doc-intro :global(.ob-lead) strong {
+.ob-doctor-intro :global(.ob-lead) strong {
   color: var(--text);
 }
 
-.ob-doc-meta {
+.ob-doctor-meta {
   margin-top: var(--s6);
   padding-bottom: var(--s2);
   border-bottom: 1px solid var(--line);
@@ -55,10 +55,10 @@
   text-transform: uppercase;
   color: var(--text-faint);
 }
-.ob-doc-meta-label {
+.ob-doctor-meta-label {
   color: var(--text-faint);
 }
-.ob-doc-meta-count {
+.ob-doctor-meta-count {
   color: var(--text-dim);
   letter-spacing: 0.08em;
   text-transform: none;
@@ -90,7 +90,7 @@
     color 140ms var(--ease),
     transform 200ms var(--ease),
     opacity 200ms var(--ease);
-  animation: ob-doc-chip 420ms var(--ease) both;
+  animation: ob-doctor-chip 420ms var(--ease) both;
   animation-delay: calc(var(--i, 0) * 45ms + 120ms);
 }
 .ob-status-chip.ok {
@@ -120,14 +120,14 @@
 }
 
 /* telemetry — ruled, not boxed */
-.ob-doc-telemetry {
+.ob-doctor-telemetry {
   margin-top: var(--s6);
   border-top: 1px solid var(--line-strong);
   padding-top: var(--s3);
-  animation: ob-doc-in 520ms var(--ease) 180ms both;
+  animation: ob-doctor-in 520ms var(--ease) 180ms both;
 }
-.ob-doc-telemetry-head,
-.ob-doc-telemetry-foot {
+.ob-doctor-telemetry-head,
+.ob-doctor-telemetry-foot {
   display: flex;
   justify-content: space-between;
   gap: var(--s3);
@@ -138,20 +138,20 @@
   color: var(--text-faint);
   line-height: 1;
 }
-.ob-doc-telemetry-svg {
+.ob-doctor-telemetry-svg {
   width: 100%;
   height: 72px;
   display: block;
   margin: var(--s3) 0;
 }
-.ob-doc-telemetry-foot {
+.ob-doctor-telemetry-foot {
   border-top: 1px solid var(--line);
   padding-top: var(--s2);
   text-transform: none;
   letter-spacing: 0.06em;
   font-size: 10.5px;
 }
-.ob-doc-telemetry-live {
+.ob-doctor-telemetry-live {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -160,35 +160,35 @@
   letter-spacing: 0.14em;
   font-size: 10px;
 }
-.ob-doc-live-dot {
+.ob-doctor-live-dot {
   width: 5px;
   height: 5px;
   border-radius: 50%;
   background: var(--cyan);
   box-shadow: 0 0 8px var(--cyan);
-  animation: ob-doc-pulse 1.6s ease-in-out infinite;
+  animation: ob-doctor-pulse 1.6s ease-in-out infinite;
 }
-.ob-doc-clarify {
+.ob-doctor-clarify {
   margin-top: var(--s5);
   font-size: var(--text-xs);
   line-height: var(--leading);
   max-width: 46ch;
   color: var(--text-faint);
 }
-.ob-doc-clarify strong {
+.ob-doctor-clarify strong {
   color: var(--text-dim);
   font-weight: 600;
 }
 
 /* ── panel — single bordered container, hairlines inside ── */
-.ob-doc-panelWrap {
+.ob-doctor-panel-wrap {
   display: flex;
   flex-direction: column;
   gap: var(--s2);
   min-width: 0;
-  animation: ob-doc-in 520ms var(--ease) 100ms both;
+  animation: ob-doctor-in 520ms var(--ease) 100ms both;
 }
-.ob-doc-panel {
+.ob-doctor-panel {
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   background: var(--bg-panel);
@@ -197,7 +197,7 @@
   flex-direction: column;
   min-width: 0;
 }
-.ob-doc-panel-head {
+.ob-doctor-panel-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -205,40 +205,40 @@
   padding: var(--s3) var(--s4);
   border-bottom: 1px solid var(--line);
 }
-.ob-doc-panel-title {
+.ob-doctor-panel-title {
   font-family: var(--font-mono);
   font-size: 10.5px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-dim);
 }
-.ob-doc-panel-title em {
+.ob-doctor-panel-title em {
   font-style: normal;
   color: var(--text-faint);
   letter-spacing: 0.1em;
 }
-.ob-doc-recheck {
+.ob-doctor-recheck {
   gap: 6px;
 }
-.ob-doc-recheck:disabled {
+.ob-doctor-recheck:disabled {
   opacity: 0.55;
 }
 
 /* DoctorList overrides — flatten the nested card into the panel's hairlines */
-.ob-doc-panel :global(.doctor) {
+.ob-doctor-panel :global(.doctor) {
   margin: 0;
   padding: 0;
   border: 0;
   border-radius: 0;
   background: transparent;
 }
-.ob-doc-panel :global(.doctor) :global(.head) {
+.ob-doctor-panel :global(.doctor) :global(.head) {
   display: none;
 }
-.ob-doc-panel :global(.doctor) ul {
+.ob-doctor-panel :global(.doctor) ul {
   gap: 0;
 }
-.ob-doc-panel :global(.doctor) li {
+.ob-doctor-panel :global(.doctor) li {
   padding: var(--s3) var(--s4) var(--s3) calc(var(--s4) - 2px);
   border-top: 0;
   border-bottom: 1px solid var(--line);
@@ -248,43 +248,43 @@
   transition:
     background 120ms var(--ease),
     border-left-color 120ms var(--ease);
-  animation: ob-doc-row 380ms var(--ease) both;
+  animation: ob-doctor-row 380ms var(--ease) both;
 }
-.ob-doc-panel :global(.doctor) li:nth-child(1) {
+.ob-doctor-panel :global(.doctor) li:nth-child(1) {
   animation-delay: 0ms;
 }
-.ob-doc-panel :global(.doctor) li:nth-child(2) {
+.ob-doctor-panel :global(.doctor) li:nth-child(2) {
   animation-delay: 36ms;
 }
-.ob-doc-panel :global(.doctor) li:nth-child(3) {
+.ob-doctor-panel :global(.doctor) li:nth-child(3) {
   animation-delay: 72ms;
 }
-.ob-doc-panel :global(.doctor) li:nth-child(4) {
+.ob-doctor-panel :global(.doctor) li:nth-child(4) {
   animation-delay: 108ms;
 }
-.ob-doc-panel :global(.doctor) li:nth-child(5) {
+.ob-doctor-panel :global(.doctor) li:nth-child(5) {
   animation-delay: 144ms;
 }
-.ob-doc-panel :global(.doctor) li:nth-child(6) {
+.ob-doctor-panel :global(.doctor) li:nth-child(6) {
   animation-delay: 180ms;
 }
-.ob-doc-panel :global(.doctor) li:nth-child(7) {
+.ob-doctor-panel :global(.doctor) li:nth-child(7) {
   animation-delay: 216ms;
 }
-.ob-doc-panel :global(.doctor) li:nth-child(n + 8) {
+.ob-doctor-panel :global(.doctor) li:nth-child(n + 8) {
   animation-delay: 252ms;
 }
-.ob-doc-panel :global(.doctor) li:hover {
+.ob-doctor-panel :global(.doctor) li:hover {
   background: var(--bg-hover);
 }
-.ob-doc-panel :global(.doctor) li:global(.bad) {
+.ob-doctor-panel :global(.doctor) li:global(.bad) {
   border-left-color: var(--red);
   background: color-mix(in srgb, var(--red-dim) 38%, transparent);
 }
-.ob-doc-panel :global(.doctor) li:global(.bad):hover {
+.ob-doctor-panel :global(.doctor) li:global(.bad):hover {
   background: color-mix(in srgb, var(--red-dim) 52%, transparent);
 }
-.ob-doc-panel :global(.doctor) :global(.mark) {
+.ob-doctor-panel :global(.doctor) :global(.mark) {
   width: 16px;
   display: grid;
   place-items: center;
@@ -292,59 +292,59 @@
   line-height: 1;
   flex: none;
 }
-.ob-doc-panel :global(.doctor) :global(.text) {
+.ob-doctor-panel :global(.doctor) :global(.text) {
   gap: 2px;
 }
-.ob-doc-panel :global(.doctor) :global(.text) strong {
+.ob-doctor-panel :global(.doctor) :global(.text) strong {
   font-size: var(--text-sm);
   font-weight: 600;
   letter-spacing: -0.01em;
   line-height: 1.25;
   color: var(--text);
 }
-.ob-doc-panel :global(.doctor) li:global(.bad) :global(.text) strong {
+.ob-doctor-panel :global(.doctor) li:global(.bad) :global(.text) strong {
   color: var(--text);
 }
-.ob-doc-panel :global(.doctor) em {
+.ob-doctor-panel :global(.doctor) em {
   font-size: 11px;
   color: var(--text-faint);
   line-height: 1.45;
   margin-top: 1px;
 }
-.ob-doc-panel :global(.doctor) li:global(.bad) em {
+.ob-doctor-panel :global(.doctor) li:global(.bad) em {
   color: var(--text-dim);
 }
-.ob-doc-panel :global(.doctor) :global(.btn) {
+.ob-doctor-panel :global(.doctor) :global(.btn) {
   flex: none;
 }
-.ob-doc-panel :global(.doctor) :global(.btn):global(.sm) {
+.ob-doctor-panel :global(.doctor) :global(.btn):global(.sm) {
   border-color: var(--line);
   background: var(--bg-raised);
 }
-.ob-doc-panel :global(.doctor) :global(.btn):global(.sm):hover:not(:disabled) {
+.ob-doctor-panel :global(.doctor) :global(.btn):global(.sm):hover:not(:disabled) {
   border-color: var(--line-strong);
   background: var(--bg-hover);
 }
 
 /* rules — left-accent, not filled cards */
-.ob-doc-rule {
+.ob-doctor-divider {
   padding: var(--s3) var(--s4) var(--s3) calc(var(--s4) - 2px);
   border-top: 1px solid var(--line);
   border-left: 2px solid var(--line-strong);
 }
-.ob-doc-rule[data-tone='amber'] {
+.ob-doctor-divider[data-tone='amber'] {
   border-left-color: var(--amber);
   background: color-mix(in srgb, var(--amber-dim) 44%, transparent);
 }
-.ob-doc-rule[data-tone='red'] {
+.ob-doctor-divider[data-tone='red'] {
   border-left-color: var(--red);
   background: color-mix(in srgb, var(--red-dim) 44%, transparent);
 }
-.ob-doc-rule[data-tone='green'] {
+.ob-doctor-divider[data-tone='green'] {
   border-left-color: var(--green);
   background: color-mix(in srgb, var(--green-dim) 44%, transparent);
 }
-.ob-doc-rule-title {
+.ob-doctor-divider-title {
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 700;
@@ -352,39 +352,39 @@
   text-transform: uppercase;
   line-height: 1;
 }
-.ob-doc-rule[data-tone='amber'] .ob-doc-rule-title {
+.ob-doctor-divider[data-tone='amber'] .ob-doctor-divider-title {
   color: var(--amber);
 }
-.ob-doc-rule[data-tone='red'] .ob-doc-rule-title {
+.ob-doctor-divider[data-tone='red'] .ob-doctor-divider-title {
   color: var(--red);
 }
-.ob-doc-rule[data-tone='green'] .ob-doc-rule-title {
+.ob-doctor-divider[data-tone='green'] .ob-doctor-divider-title {
   color: var(--green);
 }
-.ob-doc-rule-body {
+.ob-doctor-divider-body {
   margin-top: 6px;
   font-size: var(--text-sm);
   line-height: var(--leading);
   color: var(--text-dim);
 }
-.ob-doc-rule-body b {
+.ob-doctor-divider-body b {
   color: var(--text);
   font-weight: 600;
 }
 
-.ob-doc-hint {
+.ob-doctor-hint {
   padding-left: calc(var(--s4) + 2px);
   font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.5;
   color: var(--text-faint);
 }
-.ob-doc-spin {
-  animation: ob-doc-spin 1s linear infinite;
+.ob-doctor-spin {
+  animation: ob-doctor-spin 1s linear infinite;
   transform-origin: center;
 }
 
-@keyframes ob-doc-in {
+@keyframes ob-doctor-in {
   from {
     opacity: 0;
     transform: translateY(6px);
@@ -394,7 +394,7 @@
     transform: none;
   }
 }
-@keyframes ob-doc-chip {
+@keyframes ob-doctor-chip {
   from {
     opacity: 0;
     transform: translateY(4px) scale(0.98);
@@ -404,7 +404,7 @@
     transform: none;
   }
 }
-@keyframes ob-doc-row {
+@keyframes ob-doctor-row {
   from {
     opacity: 0;
     transform: translateY(4px);
@@ -414,12 +414,12 @@
     transform: none;
   }
 }
-@keyframes ob-doc-spin {
+@keyframes ob-doctor-spin {
   to {
     transform: rotate(360deg);
   }
 }
-@keyframes ob-doc-pulse {
+@keyframes ob-doctor-pulse {
   0%,
   100% {
     opacity: 1;
@@ -432,39 +432,39 @@
 }
 
 @media (max-width: 960px) {
-  .ob-doc {
+  .ob-doctor {
     padding: var(--s3) var(--s4) var(--s4);
     gap: var(--s5);
   }
-  .ob-doc-body {
+  .ob-doctor-body {
     grid-template-columns: 1fr;
     gap: var(--s6);
   }
-  .ob-doc-intro {
+  .ob-doctor-intro {
     position: static;
   }
-  .ob-doc-telemetry-svg {
+  .ob-doctor-telemetry-svg {
     height: 64px;
   }
 }
 @media (max-width: 640px) {
-  .ob-doc-panel :global(.doctor) li {
+  .ob-doctor-panel :global(.doctor) li {
     padding: var(--s3) var(--s3) var(--s3) calc(var(--s3) - 2px);
   }
-  .ob-doc-rule {
+  .ob-doctor-divider {
     padding-right: var(--s3);
   }
-  .ob-doc-meta-count {
+  .ob-doctor-meta-count {
     display: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .ob-doc-intro,
-  .ob-doc-panelWrap,
+  .ob-doctor-intro,
+  .ob-doctor-panel-wrap,
   .ob-status-chip,
-  .ob-doc-panel :global(.doctor) li,
-  .ob-doc-spin,
-  .ob-doc-live-dot {
+  .ob-doctor-panel :global(.doctor) li,
+  .ob-doctor-spin,
+  .ob-doctor-live-dot {
     animation: none !important;
   }
 }

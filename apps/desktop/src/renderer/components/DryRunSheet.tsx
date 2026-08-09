@@ -18,7 +18,7 @@ export default function DryRunSheet({
   const current = prompts[selected];
 
   return (
-    <ModalShell onClose={onClose} ariaLabelledBy="dry-run-title" className={styles.sheet}>
+    <ModalShell onClose={onClose} ariaLabelledBy="dry-run-title" className={styles.modal}>
       <header className="spread">
         <div>
           <h2 id="dry-run-title">Dry run</h2>

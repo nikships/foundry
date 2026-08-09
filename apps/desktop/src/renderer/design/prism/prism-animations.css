@@ -1,9 +1,9 @@
 /*
- * prism-animations.css — keyframes for Prism chrome, plus the reduced-motion
+ * prism-animations.css — keyframes for Prism app shell, plus the reduced-motion
  * kill switch. Imported only in a Prism window.
  */
 
-@keyframes spectral-sweep-v {
+@keyframes sidebar-divider-sweep {
   from {
     background-position: 50% 0%;
   }

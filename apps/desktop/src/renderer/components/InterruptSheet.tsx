@@ -16,7 +16,7 @@ export default function InterruptSheet({
   const [remember, setRemember] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
-  const sheetRef = useRef<HTMLElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
   const approveRef = useRef<HTMLButtonElement>(null);
 
   const isEngineer = interrupt.kind === 'engineer';
@@ -54,7 +54,7 @@ export default function InterruptSheet({
   };
 
   // Escape denies rather than silently closing: an unanswered interrupt would
-  // leave the run parked with no UI if the sheet just vanished.
+  // leave the run parked with no UI if the dialog just vanished.
   const sendingRef = useRef(sending);
   sendingRef.current = sending;
   const answerRef = useRef(answer);
@@ -79,9 +79,9 @@ export default function InterruptSheet({
       dismissible={false}
       highPriority
       ariaLabelledBy="interrupt-title"
-      sheetRef={sheetRef}
+      modalRef={dialogRef}
       tabIndex={-1}
-      className={styles.sheet}
+      className={styles.dialog}
     >
       <header>
         <span className={`badge ${styles.kind}`}>{isEngineer ? 'checkpoint' : 'permission'}</span>
@@ -119,7 +119,7 @@ export default function InterruptSheet({
         </label>
       )}
       {error && (
-        <p className={styles.err} role="alert">
+        <p className={styles.error} role="alert">
           {error}
         </p>
       )}
@@ -131,8 +131,8 @@ export default function InterruptSheet({
         >
           {sending ? 'Sending…' : rejectLabel}
         </Button>
-        <div className={styles.grow} />
-        <span className={`${styles.esc} faint`}>Esc {rejectLabel.toLowerCase()}</span>
+        <div className={styles.spacer} />
+        <span className={`${styles.escHint} faint`}>Esc {rejectLabel.toLowerCase()}</span>
         <Button
           ref={approveRef}
           variant="primary"

@@ -6,7 +6,13 @@
  * to errors, and optionally fills them from manifests / an agent first.
  */
 
-import type { AgentDef, PipelineDef, ProjectDef, ValidationIssue } from '@shared/types.js';
+import {
+  BUILTIN_ENVELOPE_KINDS,
+  type AgentDef,
+  type PipelineDef,
+  type ProjectDef,
+  type ValidationIssue,
+} from '@shared/types.js';
 import { validate as validatePipeline } from '../store/pipelines.js';
 import { type CommandCandidate, mergeCommandsFillMissing, sniffCommands } from './detect.js';
 
@@ -27,16 +33,36 @@ export function missingCommandRefs(pipeline: PipelineDef, project: ProjectDef): 
 
 /**
  * Structural errors from the designer rail, plus missing command refs promoted
- * to errors. Warnings (empty engineer questions, etc.) stay out of the way.
+ * to errors. Unknown envelope names are warnings so a deleted library entry
+ * does not block a start (runtime falls back to generic). Callers that refuse
+ * to start must filter on `level === 'error'`.
  */
 export function preflightForRun(
   pipeline: PipelineDef,
   agents: AgentDef[],
   commandNames: string[],
+  knownEnvelopes: string[] = [],
 ): ValidationIssue[] {
-  const issues = validatePipeline(pipeline, agents, commandNames).filter(
-    (i) => i.level === 'error',
+  const known = new Set([...BUILTIN_ENVELOPE_KINDS, ...knownEnvelopes]);
+  const issues = validatePipeline(pipeline, agents, commandNames, knownEnvelopes).filter(
+    (i) => i.level === 'error' || i.message.includes('not in the library'),
   );
+
+  // Cover agent-only envelope refs (phase has no override) that pipeline
+  // validate does not see on the phase itself.
+  const agentsByName = new Map(agents.map((a) => [a.name, a]));
+  for (const phase of pipeline.phases) {
+    if (phase.kind !== 'agent' || phase.envelope) continue;
+    const agent = phase.agent ? agentsByName.get(phase.agent) : undefined;
+    const envelope = agent?.envelope;
+    if (!envelope || known.has(envelope)) continue;
+    issues.push({
+      level: 'warning',
+      where: phase.name,
+      message: `envelope "${envelope}" is not in the library — this run will fall back to generic`,
+    });
+  }
+
   const have = new Set(commandNames);
   for (const phase of pipeline.phases) {
     if (phase.kind !== 'code' || !phase.command || !('ref' in phase.command)) continue;

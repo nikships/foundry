@@ -8,7 +8,7 @@
 
 import { join } from 'node:path';
 import { z } from 'zod';
-import type { AgentDef, ValidationIssue } from '@shared/types.js';
+import { BUILTIN_ENVELOPE_KINDS, type AgentDef, type ValidationIssue } from '@shared/types.js';
 import { JsonStore } from './json-store.js';
 import { BUILTIN_AGENTS } from './builtin-agents.js';
 
@@ -31,7 +31,8 @@ export const agentSchema = z.object({
   systemPrompt: z.string().min(1),
   userPrompt: z.string().min(1),
   writes: z.array(z.string()).nullable(),
-  envelope: z.enum(['generic', 'plan', 'build', 'scout', 'review', 'document']),
+  // Built-in kind or a custom envelope library name.
+  envelope: z.string().min(1),
   customFields: z
     .array(
       z.object({
@@ -50,14 +51,26 @@ export const agentSchema = z.object({
 });
 
 /** Edit-time rail: same rules save uses, so the designer learns before clicking Save. */
-export function validate(agent: AgentDef): ValidationIssue[] {
+export function validate(agent: AgentDef, knownEnvelopes: string[] = []): ValidationIssue[] {
   const parsed = agentSchema.safeParse(agent);
-  if (parsed.success) return [];
-  return parsed.error.issues.map((i) => ({
-    level: 'error' as const,
-    where: i.path.join('.') || agent.name || 'agent',
-    message: i.message,
-  }));
+  if (!parsed.success) {
+    return parsed.error.issues.map((i) => ({
+      level: 'error' as const,
+      where: i.path.join('.') || agent.name || 'agent',
+      message: i.message,
+    }));
+  }
+  const known = new Set([...BUILTIN_ENVELOPE_KINDS, ...knownEnvelopes]);
+  if (agent.envelope && !known.has(agent.envelope)) {
+    return [
+      {
+        level: 'warning',
+        where: 'envelope',
+        message: `envelope "${agent.envelope}" is not in the library — runs will fall back to generic`,
+      },
+    ];
+  }
+  return [];
 }
 
 export class RosterStore {
@@ -121,9 +134,11 @@ export class RosterStore {
   save(
     agent: AgentDef,
     opts: { projectId?: string; ownRoster?: boolean } = {},
+    knownEnvelopes: string[] = [],
   ): { ok: true; agents: AgentDef[] } | { ok: false; issues: ValidationIssue[] } {
-    const issues = validate(agent);
-    if (issues.length) return { ok: false, issues };
+    const issues = validate(agent, knownEnvelopes);
+    // Warnings (unknown envelope name) must not block autosave.
+    if (issues.some((i) => i.level === 'error')) return { ok: false, issues };
     const value = agentSchema.parse(agent) as AgentDef;
     const next = this.storeFor(opts).update((current) =>
       upsertBy(current, (a) => a.name === value.name, value),

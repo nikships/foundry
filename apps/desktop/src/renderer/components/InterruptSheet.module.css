@@ -1,10 +1,10 @@
-.sheet {
+.dialog {
   width: min(620px, calc(100vw - 96px));
   max-height: calc(100vh - 120px);
   overflow-y: auto;
   padding: var(--s6);
 }
-.sheet header {
+.dialog header {
   display: flex;
   align-items: center;
   gap: var(--s3);
@@ -19,7 +19,7 @@
   border-radius: var(--r-sm);
   font-size: var(--text-xs);
 }
-.sheet h2 {
+.dialog h2 {
   font-size: var(--text-lg);
   font-weight: 600;
 }
@@ -54,7 +54,7 @@
   margin-bottom: var(--s4);
   margin-top: var(--s3);
 }
-.err {
+.error {
   margin: 0 0 var(--s3);
   padding: var(--s3);
   border-radius: var(--r-sm);
@@ -63,14 +63,14 @@
   font-size: var(--text-sm);
   line-height: var(--leading);
 }
-.sheet footer {
+.dialog footer {
   display: flex;
   align-items: center;
   gap: var(--s3);
 }
-.esc {
+.esc-hint {
   font-size: var(--text-xs);
 }
-.grow {
+.spacer {
   flex: 1;
 }

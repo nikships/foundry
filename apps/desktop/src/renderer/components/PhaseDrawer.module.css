@@ -6,7 +6,7 @@
   background: var(--bg-panel);
   border-left: 1px solid var(--line);
 }
-.inline-err {
+.inline-error {
   margin: 0 var(--s5) var(--s3);
   padding: var(--s2) var(--s3);
   border-radius: var(--r-sm);
@@ -15,7 +15,7 @@
   font-size: var(--text-xs);
   line-height: var(--leading);
 }
-.inline-err.pad {
+.inline-error.padded {
   margin-top: var(--s3);
 }
 .head {
@@ -92,7 +92,7 @@
   padding: var(--s3) var(--s5) var(--s8);
   overflow-y: auto;
 }
-.pad {
+.padded {
   padding: var(--s5) 0;
   font-size: var(--text-sm);
 }
@@ -101,7 +101,7 @@
   border: 1px solid var(--cyan-dim);
   overflow-y: auto;
 }
-.caret {
+.live-cursor {
   display: inline-block;
   width: 7px;
   height: 13px;
@@ -139,22 +139,22 @@
 .warn .icon {
   color: var(--amber);
 }
-.bad .icon {
+.failed .icon {
   color: var(--red);
 }
-.good .icon {
+.passed .icon {
   color: var(--green);
 }
-.ev-name {
+.event-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.grow {
+.spacer {
   flex: 1;
 }
-.dur,
-.ts {
+.duration,
+.timestamp {
   font-size: 10px;
   flex: none;
 }
@@ -190,7 +190,7 @@
   color: var(--green);
   flex: none;
 }
-.checks li.bad .mark {
+.checks li.failed .mark {
   color: var(--red);
 }
 .check-body {

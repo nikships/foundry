@@ -20,7 +20,7 @@
   flex: 0 1 140px;
 }
 
-.command .argv {
+.command .args {
   flex: 1 1 160px;
   min-width: 0;
 }
@@ -71,7 +71,7 @@
   width: 80px;
   flex: none;
 }
-.found .argv {
+.found .args {
   flex: 1;
   color: var(--text);
 }

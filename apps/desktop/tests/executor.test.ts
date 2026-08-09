@@ -18,6 +18,7 @@ import type {
   CliConfig,
   CliVendor,
   CommandSpec,
+  EnvelopeDef,
   PhaseDef,
   PipelineDef,
   ProjectDef,
@@ -190,6 +191,7 @@ type AskHuman = ConstructorParameters<typeof Executor>[0]['askHuman'];
 function run(input: {
   pipeline: PipelineDef;
   agents?: AgentDef[];
+  envelopeDefs?: EnvelopeDef[];
   droidPath?: string;
   request?: string;
   project?: Partial<ProjectDef>;
@@ -213,6 +215,7 @@ function run(input: {
     envelopeRetries: input.envelopeRetries ?? 2,
     gateRetries: input.gateRetries ?? 2,
     agents: input.agents ?? [buildAgent()],
+    envelopeDefs: input.envelopeDefs ?? [],
     project: { ...h.project, ...input.project },
     pipeline: input.pipeline,
     request: input.request ?? 'do the thing',
@@ -423,6 +426,53 @@ describe('agent phases', () => {
     });
     expect(outcome.status).toBe('rejected');
     expect(h.tracer.phases(outcome.runId)[0]!.status).toBe('fail');
+  });
+
+  it('resolves a custom envelope library def into the prompt and the parse', async () => {
+    const customEnvelope = JSON.stringify({
+      status: 'success',
+      summary: 'scouted',
+      artifacts: [],
+      notes_for_next_agent: '',
+      severity: 'high',
+    });
+    const droid = scriptedDroid([customEnvelope]);
+    const defs: EnvelopeDef[] = [
+      {
+        name: 'severity_report',
+        fields: [{ name: 'severity', type: 'string', required: true, description: 'low|med|high' }],
+      },
+    ];
+    const outcome = await run({
+      droidPath: droid,
+      envelopeDefs: defs,
+      agents: [buildAgent({ envelope: 'severity_report' })],
+      pipeline: pipe(
+        [
+          agentPhase('report', {
+            description: 'Return a severity-tagged report using a custom envelope.',
+            envelope: 'severity_report',
+          }),
+        ],
+        {
+          description: 'custom envelope library end-to-end',
+          acceptance: { kind: 'envelope_status', phase: 'report' },
+        },
+      ),
+    });
+    expect(outcome.status).toBe('accepted');
+    const envelopes = h.tracer.envelopes(outcome.runId);
+    expect(envelopes).toHaveLength(1);
+    expect(envelopes[0]!.valid).toBe(true);
+    expect(envelopes[0]!.schemaKind).toBe('severity_report');
+    expect(envelopes[0]!.payload).toMatchObject({ severity: 'high' });
+
+    const prompt = readFileSync(
+      join(h.tracer.runDir(outcome.runId), 'builder/prompts/report-1.md'),
+      'utf8',
+    );
+    expect(prompt).toContain('severity');
+    expect(prompt).toContain('low|med|high');
   });
 
   it('fails when the agent itself reports failure', async () => {

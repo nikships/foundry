@@ -6,10 +6,19 @@
  * from the same zod schema the answer is parsed against, so the two cannot
  * drift. Custom agent fields compile into the schema and into the example on
  * the same path.
+ *
+ * A name resolves as: built-in kind → its schema; custom library def → generic
+ * base extended with the def's fields; unknown → generic (today's fallback).
+ * Agent `customFields` still layer on top either way.
  */
 
 import { z } from 'zod';
-import type { CustomEnvelopeField, EnvelopeKind } from '@shared/types.js';
+import {
+  BUILTIN_ENVELOPE_KINDS,
+  type CustomEnvelopeField,
+  type EnvelopeDef,
+  type EnvelopeKind,
+} from '@shared/types.js';
 
 const base = {
   status: z.enum(['success', 'fail']),
@@ -47,6 +56,8 @@ export const schemas = {
 } satisfies Record<EnvelopeKind, z.ZodTypeAny>;
 
 export type Envelope = z.infer<typeof schemas.generic> & Record<string, unknown>;
+
+const builtinSet = new Set<string>(BUILTIN_ENVELOPE_KINDS);
 
 /** Human-facing hints for the base fields, reused by the generated example. */
 const FIELD_HINTS: Record<string, unknown> = {
@@ -93,34 +104,95 @@ function placeholderFor(type: CustomEnvelopeField['type']): unknown {
   }
 }
 
-export function schemaFor(kind: EnvelopeKind, custom?: CustomEnvelopeField[]): z.ZodTypeAny {
-  const built = schemas[kind] ?? schemas.generic;
-  if (!custom?.length) return built;
-
+function extendWithFields(
+  built: z.ZodObject<z.ZodRawShape>,
+  fields: CustomEnvelopeField[] | undefined,
+): z.ZodTypeAny {
+  if (!fields?.length) return built;
   const extra: Record<string, z.ZodTypeAny> = {};
-  for (const f of custom) {
+  for (const f of fields) {
     const t = zodForCustomType(f.type);
     extra[f.name] = f.required ? t : t.optional();
   }
-  return (built as z.ZodObject<z.ZodRawShape>).extend(extra);
+  return built.extend(extra);
+}
+
+/**
+ * Resolve a kind name to its base schema and the library fields that extend it.
+ * Built-ins use their own schema; custom defs extend generic; unknown falls
+ * back to generic so a deleted library entry does not crash a run mid-flight.
+ */
+function resolveBase(
+  kind: string,
+  defs?: EnvelopeDef[],
+): {
+  baseSchema: z.ZodObject<z.ZodRawShape>;
+  libraryFields: CustomEnvelopeField[];
+  exampleKind: string;
+} {
+  if (builtinSet.has(kind) && kind in schemas) {
+    return {
+      baseSchema: schemas[kind as EnvelopeKind] as z.ZodObject<z.ZodRawShape>,
+      libraryFields: [],
+      exampleKind: kind,
+    };
+  }
+  const def = defs?.find((d) => d.name === kind);
+  if (def) {
+    return {
+      baseSchema: schemas.generic as z.ZodObject<z.ZodRawShape>,
+      libraryFields: def.fields,
+      exampleKind: 'generic',
+    };
+  }
+  return {
+    baseSchema: schemas.generic as z.ZodObject<z.ZodRawShape>,
+    libraryFields: [],
+    exampleKind: 'generic',
+  };
+}
+
+function mergedFields(
+  library: CustomEnvelopeField[],
+  custom?: CustomEnvelopeField[],
+): CustomEnvelopeField[] {
+  if (!library.length && !custom?.length) return [];
+  // Agent customFields win on name collision so a per-agent override still works.
+  const byName = new Map<string, CustomEnvelopeField>();
+  for (const f of library) byName.set(f.name, f);
+  for (const f of custom ?? []) byName.set(f.name, f);
+  return [...byName.values()];
+}
+
+export function schemaFor(
+  kind: string,
+  custom?: CustomEnvelopeField[],
+  defs?: EnvelopeDef[],
+): z.ZodTypeAny {
+  const { baseSchema, libraryFields } = resolveBase(kind, defs);
+  return extendWithFields(baseSchema, mergedFields(libraryFields, custom));
 }
 
 /**
  * The JSON example embedded in the agent's prompt, generated from the schema.
  * One source of truth for the shape the agent is asked to produce.
  */
-export function exampleFor(kind: EnvelopeKind, custom?: CustomEnvelopeField[]): string {
-  const shape = (schemas[kind] ?? schemas.generic) as z.ZodObject<z.ZodRawShape>;
+export function exampleFor(
+  kind: string,
+  custom?: CustomEnvelopeField[],
+  defs?: EnvelopeDef[],
+): string {
+  const { baseSchema, libraryFields, exampleKind } = resolveBase(kind, defs);
   const example: Record<string, unknown> = {};
 
-  for (const key of Object.keys(shape.shape)) {
-    if (key === 'findings' && kind === 'review') {
+  for (const key of Object.keys(baseSchema.shape)) {
+    if (key === 'findings' && exampleKind === 'review') {
       example[key] = REVIEW_FINDINGS_HINT;
     } else {
       example[key] = FIELD_HINTS[key] ?? '';
     }
   }
-  for (const f of custom ?? []) {
+  for (const f of mergedFields(libraryFields, custom)) {
     example[f.name] = f.description ?? placeholderFor(f.type);
   }
   return JSON.stringify(example, null, 2);
@@ -189,8 +261,9 @@ function balancedObjects(text: string): string[] {
 
 export function parseEnvelope(
   text: string,
-  kind: EnvelopeKind,
+  kind: string,
   custom?: CustomEnvelopeField[],
+  defs?: EnvelopeDef[],
 ): ParseOutcome {
   const json = extractJson(text);
   if (!json) {
@@ -209,7 +282,7 @@ export function parseEnvelope(
     return { ok: false, problem: `the JSON does not parse: ${(e as Error).message}`, raw: text };
   }
 
-  const result = schemaFor(kind, custom).safeParse(value);
+  const result = schemaFor(kind, custom, defs).safeParse(value);
   if (!result.success) {
     const problems = result.error.issues
       .map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
@@ -222,8 +295,9 @@ export function parseEnvelope(
 /** The correction message: names the failure, restates the shape, asks again. */
 export function correctionMessage(
   problem: string,
-  kind: EnvelopeKind,
+  kind: string,
   custom?: CustomEnvelopeField[],
+  defs?: EnvelopeDef[],
 ): string {
   return [
     'Your reply could not be used as an envelope.',
@@ -231,7 +305,7 @@ export function correctionMessage(
     `Problem: ${problem}`,
     '',
     'Reply again with ONLY this JSON object, no prose, no code fence:',
-    exampleFor(kind, custom),
+    exampleFor(kind, custom, defs),
   ].join('\n');
 }
 

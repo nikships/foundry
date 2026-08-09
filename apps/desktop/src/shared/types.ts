@@ -12,6 +12,16 @@ export type ReasoningEffort = 'off' | 'low' | 'medium' | 'high';
 export type AutonomyLevel = 'low' | 'medium' | 'high';
 export type EnvelopeKind = 'generic' | 'plan' | 'build' | 'scout' | 'review' | 'document';
 
+/** The six built-in envelope kinds. Custom envelopes are named strings outside this set. */
+export const BUILTIN_ENVELOPE_KINDS: readonly EnvelopeKind[] = [
+  'generic',
+  'plan',
+  'build',
+  'scout',
+  'review',
+  'document',
+] as const;
+
 /**
  * Which agent CLI drives a phase.
  */
@@ -61,7 +71,8 @@ export interface PhaseDef {
   /** A phase name identifies; a description explains. Both are required. */
   description: string;
   agent?: string;
-  envelope?: EnvelopeKind;
+  /** Built-in EnvelopeKind or a custom envelope name from the shared library. */
+  envelope?: string;
   gates?: (string | GateSpec)[];
   prompt?: PromptSpec;
   command?: CommandSpec;
@@ -103,6 +114,16 @@ export interface CustomEnvelopeField {
 }
 
 /**
+ * A named custom envelope in the shared library. Built from the generic base
+ * plus typed fields; selectable anywhere a built-in envelope kind is.
+ */
+export interface EnvelopeDef {
+  name: string;
+  description?: string;
+  fields: CustomEnvelopeField[];
+}
+
+/**
  * `writes: null` = unrestricted (minus protected paths); `[]` = read-only;
  * a list = only those paths, prefixes, or globs.
  */
@@ -118,7 +139,8 @@ export interface AgentDef {
   systemPrompt: string;
   userPrompt: string;
   writes: WriteBoundary;
-  envelope: EnvelopeKind;
+  /** Built-in EnvelopeKind or a custom envelope name from the shared library. */
+  envelope: string;
   customFields?: CustomEnvelopeField[];
   /** Empty = droid's default tool set for that model. */
   tools?: string[];

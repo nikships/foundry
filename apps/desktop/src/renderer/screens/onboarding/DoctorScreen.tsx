@@ -22,10 +22,10 @@ export default function DoctorScreen(): React.JSX.Element {
   }).length;
 
   return (
-    <div className={styles.obDoc}>
-      <div className={styles.obDocBody}>
+    <div className={styles.obDoctor}>
+      <div className={styles.obDoctorBody}>
         {/* ── left: narrative, chips, telemetry ───────────────────── */}
-        <div className={styles.obDocIntro}>
+        <div className={styles.obDoctorIntro}>
           <p className="ob-eyebrow">Environment — 5 / 6</p>
           <h1 className="ob-title">Make the floor safe</h1>
           <p className="ob-lead">
@@ -34,9 +34,9 @@ export default function DoctorScreen(): React.JSX.Element {
             it appears here automatically.
           </p>
 
-          <div className={styles.obDocMeta}>
-            <span className={styles.obDocMetaLabel}>Harnesses</span>
-            <span className={styles.obDocMetaCount}>
+          <div className={styles.obDoctorMeta}>
+            <span className={styles.obDoctorMetaLabel}>Harnesses</span>
+            <span className={styles.obDoctorMetaCount}>
               {readyVendors} ready · {badVendors} unavailable ·{' '}
               {CLI_VENDOR_IDS.length - readyVendors - badVendors} idle
             </span>
@@ -64,8 +64,8 @@ export default function DoctorScreen(): React.JSX.Element {
           </div>
 
           {/* probe trace — flat ruled figure, not a card */}
-          <div className={styles.obDocTelemetry} aria-hidden>
-            <div className={styles.obDocTelemetryHead}>
+          <div className={styles.obDoctorTelemetry} aria-hidden>
+            <div className={styles.obDoctorTelemetryHead}>
               <span>probe trace</span>
               <span>
                 {checks.length} signals · {blocking.length} blocking
@@ -74,7 +74,7 @@ export default function DoctorScreen(): React.JSX.Element {
             <svg
               viewBox="0 0 320 72"
               preserveAspectRatio="none"
-              className={styles.obDocTelemetrySvg}
+              className={styles.obDoctorTelemetrySvg}
             >
               {[0, 18, 36, 54, 72].map((y) => (
                 <line
@@ -127,34 +127,34 @@ export default function DoctorScreen(): React.JSX.Element {
                 );
               })()}
             </svg>
-            <div className={styles.obDocTelemetryFoot}>
+            <div className={styles.obDoctorTelemetryFoot}>
               <span>darwin · arm64</span>
               <span>path resolution ok</span>
-              <span className={styles.obDocTelemetryLive}>
-                <span className={styles.obDocLiveDot} />
+              <span className={styles.obDoctorTelemetryLive}>
+                <span className={styles.obDoctorLiveDot} />
                 live
               </span>
             </div>
           </div>
 
-          <p className={`${styles.obDocClarify} faint`}>
+          <p className={`${styles.obDoctorClarify} faint`}>
             Only <strong>{defaultCliLabel}</strong> and git are blocking. A fourth CLI can stay
             uninstalled — the factory still runs.
           </p>
         </div>
 
         {/* ── right: diagnostics panel ────────────────────────────── */}
-        <div className={styles.obDocPanelWrap}>
-          <div className={styles.obDocPanel}>
-            <div className={styles.obDocPanelHead}>
-              <span className={styles.obDocPanelTitle}>
+        <div className={styles.obDoctorPanelWrap}>
+          <div className={styles.obDoctorPanel}>
+            <div className={styles.obDoctorPanelHead}>
+              <span className={styles.obDoctorPanelTitle}>
                 Diagnostics <em>· {checks.length} checks</em>
               </span>
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                className={styles.obDocRecheck}
+                className={styles.obDoctorRecheck}
                 onClick={() => void recheck()}
                 disabled={checking}
                 aria-label="Re-check environment"
@@ -165,7 +165,7 @@ export default function DoctorScreen(): React.JSX.Element {
                   viewBox="0 0 16 16"
                   fill="none"
                   aria-hidden
-                  className={checking ? styles.obDocSpin : undefined}
+                  className={checking ? styles.obDoctorSpin : undefined}
                 >
                   <path
                     d="M13.2 8a5.2 5.2 0 1 1-1.6-3.75"
@@ -188,9 +188,9 @@ export default function DoctorScreen(): React.JSX.Element {
             <DoctorList checks={checks} onRecheck={() => void recheck()} />
 
             {blocking.length > 0 && (
-              <div className={styles.obDocRule} data-tone="amber" role="status">
-                <p className={styles.obDocRuleTitle}>Blocked — cannot continue</p>
-                <p className={styles.obDocRuleBody}>
+              <div className={styles.obDoctorDivider} data-tone="amber" role="status">
+                <p className={styles.obDoctorDividerTitle}>Blocked — cannot continue</p>
+                <p className={styles.obDoctorDividerBody}>
                   <b>{blocking.map((c) => c.label).join(', ')}</b>
                   {blocking.length === 1 ? ' is failing' : ' are failing'}. Fix{' '}
                   {blocking.length === 1 ? 'it' : 'them'} and Re-check before continuing. Foundry
@@ -200,16 +200,16 @@ export default function DoctorScreen(): React.JSX.Element {
             )}
 
             {error && (
-              <div className={styles.obDocRule} data-tone="red" role="alert">
-                <p className={styles.obDocRuleTitle}>Last run</p>
-                <p className={styles.obDocRuleBody}>{error}</p>
+              <div className={styles.obDoctorDivider} data-tone="red" role="alert">
+                <p className={styles.obDoctorDividerTitle}>Last run</p>
+                <p className={styles.obDoctorDividerBody}>{error}</p>
               </div>
             )}
 
             {canLeaveDoctor && (
-              <div className={styles.obDocRule} data-tone="green" role="status">
-                <p className={styles.obDocRuleTitle}>Environment ready</p>
-                <p className={styles.obDocRuleBody}>
+              <div className={styles.obDoctorDivider} data-tone="green" role="status">
+                <p className={styles.obDoctorDividerTitle}>Environment ready</p>
+                <p className={styles.obDoctorDividerBody}>
                   All blocking checks pass. <b>Default CLI is {defaultCliLabel}</b> and git is
                   configured — the factory will run.
                 </p>
@@ -217,7 +217,7 @@ export default function DoctorScreen(): React.JSX.Element {
             )}
           </div>
 
-          {!canLeaveDoctor && doctorHint && <p className={styles.obDocHint}>{doctorHint}</p>}
+          {!canLeaveDoctor && doctorHint && <p className={styles.obDoctorHint}>{doctorHint}</p>}
         </div>
       </div>
 

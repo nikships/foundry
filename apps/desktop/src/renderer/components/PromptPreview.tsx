@@ -29,7 +29,7 @@ export default function PromptPreview({
   );
 
   return (
-    <ModalShell onClose={onClose} className={styles.sheet}>
+    <ModalShell onClose={onClose} className={styles.modal}>
       <header className="spread">
         <h2>Prompt preview: {agent.name}</h2>
         <Button variant="ghost" size="sm" onClick={onClose}>

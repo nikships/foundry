@@ -18,6 +18,7 @@ import type {
   CliConfig,
   CliVendor,
   CommandResult,
+  EnvelopeDef,
   PhaseDef,
   PhaseKind,
   PipelineDef,
@@ -44,6 +45,8 @@ export interface ExecutorDeps {
   envelopeRetries: number;
   gateRetries: number;
   agents: AgentDef[];
+  /** Shared custom envelope library snapshotted at run start. */
+  envelopeDefs: EnvelopeDef[];
   project: ProjectDef;
   pipeline: PipelineDef;
   request: string;
@@ -86,6 +89,7 @@ export class Executor {
     this.runners = {
       agent: new AgentPhaseRunner({
         agents: deps.agents,
+        envelopeDefs: deps.envelopeDefs,
         envelopeRetries: deps.envelopeRetries,
         sessionFor: (agent) => this.sessionFor(agent),
         onLiveText: deps.onLiveText,

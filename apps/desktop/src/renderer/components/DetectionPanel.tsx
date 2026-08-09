@@ -27,7 +27,7 @@ function VerifyMark({ proposal }: { proposal: DetectionProposal }): React.JSX.El
   if (proposal.verify === 'running')
     return <span className={`${styles.mark} ${styles.wait}`}>◌</span>;
   if (proposal.verify === 'pass') return <span className={`${styles.mark} ${styles.ok}`}>✓</span>;
-  return <span className={`${styles.mark} ${styles.bad}`}>✕</span>;
+  return <span className={`${styles.mark} ${styles.failed}`}>✕</span>;
 }
 
 /**
@@ -82,12 +82,12 @@ export default function DetectionPanel({
           <div key={entry.id} className={`${styles.line} ${styles[entry.kind] ?? ''}`}>
             {entry.kind === 'tool' && (
               <span
-                className={`${styles.ticon} ${entry.done ? (entry.failed ? styles.bad : styles.ok) : styles.wait}`}
+                className={`${styles.transcriptIcon} ${entry.done ? (entry.failed ? styles.failed : styles.ok) : styles.wait}`}
               >
                 {TOOL_ICON[entry.toolKind ?? 'other'] ?? '·'}
               </span>
             )}
-            <span className={styles.ltext}>{entry.text}</span>
+            <span className={styles.transcriptText}>{entry.text}</span>
           </div>
         ))}
         {live && <div className={`${styles.line} ${styles.note} ${styles.pulse}`}>…</div>}
@@ -110,7 +110,7 @@ export default function DetectionPanel({
             <div key={p.name} className={`row ${styles.found}`}>
               <VerifyMark proposal={p} />
               <span className={styles.name}>{p.name}</span>
-              <code className={`mono ${styles.argv}`}>{p.argv.join(' ')}</code>
+              <code className={`mono ${styles.args}`}>{p.argv.join(' ')}</code>
               <span className={`faint ${styles.why}`}>
                 {p.source}
                 {p.verify === 'pass' && `, exit 0 in ${duration(p.durationMs)}`}

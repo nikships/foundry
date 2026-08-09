@@ -33,21 +33,21 @@
 .line.note {
   color: var(--text-faint);
 }
-.ticon {
+.transcript-icon {
   flex: none;
   width: 1em;
   color: var(--text-faint);
 }
-.ticon.ok {
+.transcript-icon.ok {
   color: var(--green);
 }
-.ticon.bad {
+.transcript-icon.failed {
   color: var(--red);
 }
-.ticon.wait {
+.transcript-icon.wait {
   color: var(--amber);
 }
-.ltext {
+.transcript-text {
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
@@ -69,7 +69,7 @@
   width: 80px;
   flex: none;
 }
-.found .argv {
+.found .args {
   flex: 1;
   color: var(--text);
 }
@@ -83,7 +83,7 @@
 .mark.ok {
   color: var(--green);
 }
-.mark.bad {
+.mark.failed {
   color: var(--red);
 }
 .mark.wait {

@@ -28,13 +28,13 @@ export default function ProjectScreen(): React.JSX.Element {
   return (
     <div className={styles.obProject}>
       {/* left — atmospheric worktree visual */}
-      <aside className={styles.obProjectVisual} aria-hidden="true">
-        <div className={styles.obProjectVisualGrid} />
-        <div className={`${styles.obProjectOrb} ${styles.obProjectOrbA}`} />
-        <div className={`${styles.obProjectOrb} ${styles.obProjectOrbB}`} />
+      <aside className={styles.obProjectDiagram} aria-hidden="true">
+        <div className={styles.obProjectDiagramGrid} />
+        <div className={`${styles.obGlow} ${styles.obGlowCyan}`} />
+        <div className={`${styles.obGlow} ${styles.obGlowPurple}`} />
 
-        <div className={styles.obProjectVisualInner}>
-          <div className={styles.obProjectVisualLabel}>worktree topology</div>
+        <div className={styles.obProjectDiagramInner}>
+          <div className={styles.obProjectDiagramLabel}>worktree topology</div>
 
           <svg
             className={styles.obProjectTree}
@@ -110,25 +110,25 @@ export default function ProjectScreen(): React.JSX.Element {
           </svg>
 
           <div className={styles.obProjectSchematic}>
-            <div className={styles.obProjectSchRow}>
-              <span className={styles.obProjectSchKey}>main</span>
-              <span className={styles.obProjectSchArrow}>→</span>
-              <span className={styles.obProjectSchVal}>foundry/run_8f2c1a</span>
-              <span className={`${styles.obProjectSchTag} ${styles.obProjectSchTagOn}`}>
+            <div className={styles.obProjectSchematicRow}>
+              <span className={styles.obProjectSchematicKey}>main</span>
+              <span className={styles.obProjectSchematicArrow}>→</span>
+              <span className={styles.obProjectSchematicVal}>foundry/run_8f2c1a</span>
+              <span className={`${styles.obProjectSchematicTag} ${styles.obProjectSchematicTagOn}`}>
                 gates 4/4
               </span>
             </div>
-            <div className={styles.obProjectSchRow}>
-              <span className={styles.obProjectSchKey}>main</span>
-              <span className={styles.obProjectSchArrow}>→</span>
-              <span className={styles.obProjectSchVal}>foundry/run_31de07</span>
-              <span className={styles.obProjectSchTag}>$0.42</span>
+            <div className={styles.obProjectSchematicRow}>
+              <span className={styles.obProjectSchematicKey}>main</span>
+              <span className={styles.obProjectSchematicArrow}>→</span>
+              <span className={styles.obProjectSchematicVal}>foundry/run_31de07</span>
+              <span className={styles.obProjectSchematicTag}>$0.42</span>
             </div>
-            <div className={`${styles.obProjectSchRow} ${styles.obProjectSchRowDim}`}>
-              <span className={styles.obProjectSchKey}>main</span>
-              <span className={styles.obProjectSchArrow}>→</span>
-              <span className={styles.obProjectSchVal}>foundry/run_…</span>
-              <span className={styles.obProjectSchTag}>queued</span>
+            <div className={`${styles.obProjectSchematicRow} ${styles.obProjectSchematicRowDim}`}>
+              <span className={styles.obProjectSchematicKey}>main</span>
+              <span className={styles.obProjectSchematicArrow}>→</span>
+              <span className={styles.obProjectSchematicVal}>foundry/run_…</span>
+              <span className={styles.obProjectSchematicTag}>queued</span>
             </div>
           </div>
 
@@ -138,7 +138,7 @@ export default function ProjectScreen(): React.JSX.Element {
             <span>Your checkout stays clean.</span>
           </p>
 
-          <div className={styles.obProjectVisualFoot}>
+          <div className={styles.obProjectDiagramFoot}>
             <span className={styles.obProjectFootK}>isolated</span>
             <span className={styles.obProjectFootSep}>·</span>
             <span className={styles.obProjectFootK}>inspectable</span>

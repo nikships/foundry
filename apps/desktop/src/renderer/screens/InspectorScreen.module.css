@@ -1,4 +1,4 @@
-.insp {
+.inspector {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -6,22 +6,22 @@
   padding: calc(var(--titlebar-h) + var(--s2)) var(--s5) var(--s4);
   gap: 12px;
 }
-.insp-head {
+.inspector-head {
   display: flex;
   align-items: center;
   gap: 10px;
   flex: none;
   flex-wrap: wrap;
 }
-.insp-head h1 {
+.inspector-head h1 {
   font-size: 17px;
   font-weight: 600;
   margin: 0;
 }
-.insp-head :global(.select) {
+.inspector-head :global(.select) {
   max-width: 300px;
 }
-.insp-request {
+.inspector-request {
   font-size: 12px;
   color: var(--text-faint);
   white-space: nowrap;
@@ -29,7 +29,7 @@
   text-overflow: ellipsis;
   min-width: 0;
 }
-.insp-live {
+.inspector-live {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -39,20 +39,20 @@
   background: var(--cyan-dim);
   color: var(--cyan);
 }
-.insp-controls {
+.inspector-controls {
   margin-left: auto;
   display: flex;
   align-items: center;
   gap: 10px;
   flex: none;
 }
-.insp-filter {
+.inspector-filter {
   display: flex;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
   overflow: hidden;
 }
-.insp-filter-btn {
+.inspector-filter-btn {
   border: none;
   background: transparent;
   color: var(--text-faint);
@@ -61,14 +61,14 @@
   padding: 4px 12px;
   cursor: pointer;
 }
-.insp-filter-btn + .insp-filter-btn {
+.inspector-filter-btn + .inspector-filter-btn {
   border-left: 1px solid var(--line);
 }
-.insp-filter-btn.active {
+.inspector-filter-btn.active {
   background: var(--bg-raised);
   color: var(--text);
 }
-.insp-banner {
+.inspector-banner {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -80,24 +80,26 @@
   font-size: var(--text-sm);
   line-height: var(--leading);
 }
-.insp-grid {
+/* One row of full-height agent columns; ~3 fit, scroll for the rest. */
+.inspector-grid {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  display: grid;
+  display: flex;
+  flex-direction: row;
   gap: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));
-  grid-auto-rows: minmax(280px, 1fr);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x proximity;
 }
-.insp-grid.lanes1,
-.insp-grid.lanes-1 {
-  grid-template-columns: 1fr;
+.inspector-grid > * {
+  flex: 1 0 calc((100% - 20px) / 3); /* 3 cols + 2 gaps */
+  min-width: min(100%, calc((100% - 20px) / 3));
+  max-width: 100%;
+  height: 100%;
+  min-height: 0;
+  scroll-snap-align: start;
 }
-.insp-grid.lanes2,
-.insp-grid.lanes-2 {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));
-}
-.insp-empty {
+.inspector-empty {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -107,11 +109,11 @@
   color: var(--text-dim);
   font-size: 13px;
 }
-.insp-empty .faint {
+.inspector-empty .faint {
   color: var(--text-faint);
   font-size: 12px;
 }
-.insp-skeleton {
+.inspector-skeleton {
   flex: 1;
   display: flex;
   flex-direction: column;

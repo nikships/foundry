@@ -225,7 +225,7 @@ export default function ProjectCommands({
                   />
                   <TextInput
                     mono
-                    className={styles.argv}
+                    className={styles.args}
                     value={argvText(i)}
                     placeholder="npm test"
                     onChange={(e) => setArgv(i, e.target.value)}
@@ -358,7 +358,7 @@ export default function ProjectCommands({
                     {c.verified ? '✓' : '✕'}
                   </span>
                   <span className={styles.name}>{c.name}</span>
-                  <code className={`mono ${styles.argv}`}>{c.argv.join(' ')}</code>
+                  <code className={`mono ${styles.args}`}>{c.argv.join(' ')}</code>
                   <span className="faint">
                     {c.source}, exit {c.exitCode ?? '—'} in {duration(c.durationMs)}
                   </span>

@@ -1,5 +1,5 @@
 /* One continuous surface — structure from hairlines + type, never tinted columns. */
-.ro-screen {
+.roster-screen {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -8,7 +8,7 @@
 }
 
 /* strip — outer chrome holds titlebar spacer + bottom rule; inner is the scroll row */
-.ro-strip {
+.roster-tabs {
   flex: none;
   display: flex;
   padding-top: var(--titlebar-h);
@@ -17,7 +17,7 @@
   min-width: 0;
   overflow: hidden;
 }
-.ro-strip-inner {
+.roster-tabs-inner {
   flex: 1;
   min-width: 0;
   display: flex;
@@ -28,7 +28,7 @@
   scrollbar-width: thin;
   scrollbar-color: var(--line-strong) transparent;
 }
-.ro-cell {
+.roster-cell {
   position: relative;
   flex: 1 1 0;
   min-width: 170px;
@@ -45,19 +45,19 @@
   cursor: default;
   transition: background var(--fast) var(--ease);
 }
-.ro-cell:last-of-type {
+.roster-cell:last-of-type {
   border-right: none;
 }
-.ro-cell:hover {
+.roster-cell:hover {
   background: color-mix(in srgb, #ffffff 2%, transparent);
 }
-.ro-cell-who {
+.roster-cell-who {
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 1px;
 }
-.ro-cell-name {
+.roster-cell-name {
   font-size: var(--text-sm);
   font-weight: 500;
   color: var(--text);
@@ -65,17 +65,17 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.ro-cell.on .ro-cell-name {
+.roster-cell.on .roster-cell-name {
   color: var(--hue);
 }
-.ro-cell-role {
+.roster-cell-role {
   font-size: 11px;
   color: var(--text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.ro-cell-cli {
+.roster-cell-cli {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -86,7 +86,7 @@
   letter-spacing: 0.14em;
   color: var(--text-faint);
 }
-.ro-cell-rule {
+.roster-cell-underline {
   position: absolute;
   left: 0;
   right: 0;
@@ -94,7 +94,7 @@
   height: 1px;
   background: var(--hue);
 }
-.ro-new {
+.roster-new {
   flex: none;
   align-self: center;
   margin-left: var(--s4);
@@ -109,22 +109,22 @@
   white-space: nowrap;
   transition: color var(--fast) var(--ease);
 }
-.ro-new:hover {
+.roster-new:hover {
   color: var(--text);
 }
 
 /* page */
-.ro-scroll {
+.roster-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
 }
-.ro-page {
+.roster-page {
   max-width: 1160px;
   padding: 0 var(--s6) var(--s16);
 }
 
-.ro-head {
+.roster-head {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
@@ -132,23 +132,23 @@
   padding: var(--s8) 0;
   flex-wrap: wrap;
 }
-.ro-head-main {
+.roster-head-main {
   min-width: 0;
 }
-.ro-head-titlerow {
+.roster-head-titlerow {
   display: flex;
   align-items: baseline;
   gap: var(--s3);
   flex-wrap: wrap;
   min-width: 0;
 }
-.ro-title {
+.roster-title {
   font-size: 26px;
   font-weight: 600;
   letter-spacing: -0.01em;
   line-height: 1;
 }
-.ro-head-meta {
+.roster-head-meta {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -159,22 +159,22 @@
   color: var(--text-faint);
   white-space: nowrap;
 }
-.ro-head-sub {
+.roster-head-sub {
   margin-top: 10px;
   font-size: var(--text-sm);
   color: var(--text-dim);
 }
-.ro-head-tag {
+.roster-head-tag {
   color: var(--text-faint);
   font-size: var(--text-xs);
 }
-.ro-head-actions {
+.roster-head-actions {
   flex: none;
   display: flex;
   flex-wrap: wrap;
   gap: var(--s2);
 }
-.ro-action {
+.roster-action {
   display: inline-flex;
   align-items: center;
   height: 32px;
@@ -191,23 +191,23 @@
     color var(--fast) var(--ease),
     border-color var(--fast) var(--ease);
 }
-.ro-action:hover {
+.roster-action:hover {
   color: var(--text);
   border-color: var(--text-faint);
 }
-.ro-action.danger:hover {
+.roster-action.danger:hover {
   color: var(--red);
   border-color: color-mix(in srgb, var(--red) 50%, transparent);
 }
 
-.ro-section {
+.roster-section {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
   gap: var(--s4) var(--s12, 48px);
   border-top: 1px solid var(--line);
   padding: var(--s8) 0;
 }
-.ro-section-label h2 {
+.roster-section-label h2 {
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 500;
@@ -215,43 +215,43 @@
   letter-spacing: 0.22em;
   color: var(--text-dim);
 }
-.ro-section-label p {
+.roster-section-label p {
   margin-top: var(--s2);
   font-size: var(--text-xs);
   line-height: var(--leading);
   color: var(--text-faint);
   max-width: 24ch;
 }
-.ro-fields {
+.roster-fields {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--s5) var(--s8);
 }
-.ro-fields .span2 {
+.roster-fields .span2 {
   grid-column: span 2;
 }
 
 @media (max-width: 1120px) {
-  .ro-section {
+  .roster-section {
     grid-template-columns: 1fr;
     gap: var(--s4);
   }
-  .ro-fields {
+  .roster-fields {
     grid-template-columns: 1fr;
   }
-  .ro-fields .span2 {
+  .roster-fields .span2 {
     grid-column: span 1;
   }
 }
 
-.ro-page :global(.field) {
+.roster-page :global(.field) {
   min-width: 0;
 }
 
-.ro-page :global(.input) {
+.roster-page :global(.input) {
   min-width: 0;
 }
-.ro-stack {
+.roster-stack {
   display: flex;
   flex-direction: column;
   gap: var(--s6);
@@ -292,14 +292,14 @@
   color: var(--text-faint);
 }
 
-.ro-seg {
+.roster-seg {
   display: flex;
   height: 34px;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
   overflow: hidden;
 }
-.ro-seg-btn {
+.roster-seg-btn {
   flex: 1;
   border: none;
   border-right: 1px solid var(--line);
@@ -314,35 +314,35 @@
     color var(--fast) var(--ease),
     background var(--fast) var(--ease);
 }
-.ro-seg-btn:last-child {
+.roster-seg-btn:last-child {
   border-right: none;
 }
-.ro-seg-btn:hover {
+.roster-seg-btn:hover {
   color: var(--text-dim);
 }
-.ro-seg-btn.on {
+.roster-seg-btn.on {
   color: var(--text);
   background: color-mix(in srgb, #ffffff 4.5%, transparent);
 }
 
-.ro-statusbar {
+.roster-statusbar {
   display: flex;
   align-items: center;
   gap: var(--s4);
   border-top: 1px solid var(--line);
   padding-top: var(--s5);
 }
-.ro-status-ok {
+.roster-status-ok {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   font-size: var(--text-xs);
   color: var(--green);
 }
-.ro-statusbar .issues {
+.roster-statusbar .issues {
   margin: 0;
 }
-.ro-autosave {
+.roster-autosave {
   margin-left: auto;
   flex: none;
   font-family: var(--font-mono);
@@ -355,6 +355,21 @@
 .hint {
   font-size: var(--text-xs);
   color: var(--text-faint);
+}
+.link-btn {
+  display: inline;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--cyan);
+  font: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.link-btn:hover {
+  color: var(--text);
 }
 .caveat {
   color: var(--amber, var(--text-faint));

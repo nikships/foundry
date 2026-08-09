@@ -76,6 +76,84 @@ describe('custom fields', () => {
   });
 });
 
+describe('custom envelope library defs', () => {
+  const defs = [
+    {
+      name: 'severity_report',
+      description: 'A severity-tagged report',
+      fields: [
+        { name: 'severity', type: 'string' as const, required: true, description: 'low|med|high' },
+        { name: 'score', type: 'number' as const, required: false },
+      ],
+    },
+  ];
+
+  it('resolves a custom name against the library def', () => {
+    const schema = schemaFor('severity_report', undefined, defs);
+    expect(schema.safeParse({ status: 'success' }).success).toBe(false);
+    expect(schema.safeParse({ status: 'success', severity: 'high' }).success).toBe(true);
+  });
+
+  it('puts library fields and their hints into the example', () => {
+    const example = JSON.parse(exampleFor('severity_report', undefined, defs));
+    expect(example.severity).toBe('low|med|high');
+    expect(example.score).toBe(0);
+    expect(example.status).toBe('success');
+  });
+
+  it('parses a reply against the custom shape', () => {
+    const ok = parseEnvelope(
+      '{"status":"success","severity":"high","score":3}',
+      'severity_report',
+      undefined,
+      defs,
+    );
+    expect(ok.ok).toBe(true);
+    expect(ok.envelope).toMatchObject({ severity: 'high', score: 3 });
+
+    const missing = parseEnvelope('{"status":"success"}', 'severity_report', undefined, defs);
+    expect(missing.ok).toBe(false);
+    expect(missing.problem).toContain('severity');
+  });
+
+  it('restates the custom example in a correction', () => {
+    const message = correctionMessage('severity: Required', 'severity_report', undefined, defs);
+    expect(message).toContain('severity');
+    expect(message).toContain('low|med|high');
+  });
+
+  it('falls back to generic when the name is unknown', () => {
+    const schema = schemaFor('deleted_envelope', undefined, defs);
+    expect(schema.safeParse({ status: 'success' }).success).toBe(true);
+    // No library fields leaked in.
+    expect(JSON.parse(exampleFor('deleted_envelope', undefined, defs))).not.toHaveProperty(
+      'severity',
+    );
+  });
+
+  it('still layers agent customFields on top of a library def', () => {
+    const agentExtra = [{ name: 'owner', type: 'string' as const, required: true }];
+    const schema = schemaFor('severity_report', agentExtra, defs);
+    expect(schema.safeParse({ status: 'success', severity: 'high' }).success).toBe(false);
+    expect(schema.safeParse({ status: 'success', severity: 'high', owner: 'nik' }).success).toBe(
+      true,
+    );
+  });
+
+  it('prefers a built-in when the name collides with a kind', () => {
+    const colliding = [
+      {
+        name: 'build',
+        fields: [{ name: 'severity', type: 'string' as const, required: true }],
+      },
+    ];
+    // Built-in wins: changed_files is present, severity is not required.
+    const example = JSON.parse(exampleFor('build', undefined, colliding));
+    expect(example).toHaveProperty('changed_files');
+    expect(example).not.toHaveProperty('severity');
+  });
+});
+
 describe('generated examples', () => {
   const kinds = ['generic', 'plan', 'build', 'scout', 'review', 'document'] as const;
 

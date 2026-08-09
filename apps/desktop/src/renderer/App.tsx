@@ -163,9 +163,23 @@ function AppInner(): React.JSX.Element {
   } else if (view === 'inspector') {
     main = <InspectorScreen pinnedRunId={inspectorRunId} />;
   } else if (view === 'pipelines') {
-    main = <PipelinesScreen />;
+    main = (
+      <PipelinesScreen
+        onOpenSettings={(pane) => {
+          setSettingsPane(pane);
+          go('settings');
+        }}
+      />
+    );
   } else if (view === 'roster') {
-    main = <RosterScreen />;
+    main = (
+      <RosterScreen
+        onOpenSettings={(pane) => {
+          setSettingsPane(pane);
+          go('settings');
+        }}
+      />
+    );
   } else if (view === 'prs') {
     main = <PullRequestsScreen onOpenRun={openRun} />;
   } else if (view === 'settings') {
@@ -191,11 +205,11 @@ function AppInner(): React.JSX.Element {
             }}
             onOpenInterruptRun={openRun}
           />
-          <div className={`prism-sidebar-divider ${styles.sidebarRule}`} aria-hidden />
+          <div className={`prism-sidebar-divider ${styles.sidebarDivider}`} aria-hidden />
           <main className={styles.content}>{main}</main>
         </>
       ) : (
-        <div className={styles.booting}>
+        <div className={styles.loading}>
           <span className={styles.spinner} />
         </div>
       )}

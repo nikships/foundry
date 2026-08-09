@@ -34,4 +34,15 @@ describe('roster.validate', () => {
     const issues = validate({ ...base, color: 'red' });
     expect(issues.some((i) => i.where === 'color')).toBe(true);
   });
+
+  it('accepts a custom envelope name when it is known', () => {
+    expect(validate({ ...base, envelope: 'severity_report' }, ['severity_report'])).toEqual([]);
+  });
+
+  it('warns (does not error) when the envelope name is unknown', () => {
+    const issues = validate({ ...base, envelope: 'deleted_shape' }, []);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.level).toBe('warning');
+    expect(issues[0]!.where).toBe('envelope');
+  });
 });

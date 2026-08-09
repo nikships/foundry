@@ -79,7 +79,7 @@
 .tone-red .fill {
   background: var(--red);
 }
-.pct {
+.percent {
   font-size: var(--text-xs);
   color: var(--text-dim);
   min-width: 36px;

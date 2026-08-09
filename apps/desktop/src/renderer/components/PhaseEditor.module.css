@@ -33,7 +33,7 @@
   cursor: default;
   text-align: left;
 }
-.num {
+.phase-number {
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.14em;
@@ -41,12 +41,12 @@
   width: 22px;
   flex: none;
 }
-.glyph {
+.phase-icon {
   display: flex;
   align-items: center;
   flex: none;
 }
-.pname {
+.phase-name {
   font-size: var(--text-sm);
   font-weight: 500;
   color: var(--text);
@@ -56,7 +56,7 @@
   max-width: 200px;
   flex: none;
 }
-.kind {
+.phase-kind-dot {
   font-family: var(--font-mono);
   font-size: 10px;
   text-transform: uppercase;
@@ -90,13 +90,13 @@
   font-size: var(--text-xs);
   flex: none;
 }
-.chev {
+.chevron {
   color: var(--text-faint);
   flex: none;
   transition: transform var(--fast) var(--ease);
   transform: rotate(-90deg);
 }
-.chev.up {
+.chevron.up {
   transform: rotate(0deg);
 }
 .controls {
@@ -110,7 +110,7 @@
 .phase.open .controls {
   opacity: 1;
 }
-.ctl {
+.control {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -127,14 +127,14 @@
     color var(--fast) var(--ease),
     background var(--fast) var(--ease);
 }
-.ctl:hover:not(:disabled) {
+.control:hover:not(:disabled) {
   color: var(--text);
   background: var(--bg-hover);
 }
-.ctl:disabled {
+.control:disabled {
   opacity: 0.3;
 }
-.ctl.danger:hover {
+.control.danger:hover {
   color: var(--red);
 }
 .phase .body {
@@ -193,7 +193,7 @@
   font-size: var(--text-xs);
   color: var(--purple);
 }
-.commandModes {
+.command-modes {
   margin-bottom: var(--s2);
 }
 .empty-cmds {
@@ -202,15 +202,30 @@
   border: 1px dashed var(--line);
   border-radius: var(--r-sm);
 }
-.opt-line {
+.optional-toggle {
   display: flex;
   gap: var(--s2);
   font-size: var(--text-sm);
   margin-top: var(--s3);
 }
-.opt-line em {
+.optional-toggle em {
   display: block;
   font-style: normal;
   font-size: var(--text-xs);
   margin-top: 1px;
+}
+.link-btn {
+  display: inline;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--cyan);
+  font: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.link-btn:hover {
+  color: var(--text);
 }

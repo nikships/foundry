@@ -103,10 +103,10 @@
   gap: var(--s3);
   font-size: var(--text-xs);
 }
-.adds {
+.additions {
   color: var(--green);
 }
-.dels {
+.deletions {
   color: var(--red);
 }
 .note {

@@ -98,8 +98,8 @@ function PrCard({
           {pr.author && <span>{pr.author}</span>}
           <span>{since(pr.createdAt)}</span>
           <span>
-            <span className={styles.adds}>+{pr.additions}</span>{' '}
-            <span className={styles.dels}>−{pr.deletions}</span>
+            <span className={styles.additions}>+{pr.additions}</span>{' '}
+            <span className={styles.deletions}>−{pr.deletions}</span>
           </span>
           {checks && (
             <span className="badge" style={{ color: checks.color }}>

@@ -15,11 +15,13 @@ type Ctx = Pick<
   | 'rosterFor'
   | 'commandNames'
   | 'projects'
+  | 'envelopes'
   | 'broadcast'
 >;
 
 export function register(ctx: Ctx, handle: Handle): void {
   const projectOf = (projectId: string) => ctx.projects.get(projectId);
+  const knownEnvelopeNames = () => ctx.envelopes.list().map((e) => e.name);
 
   handle(IPC.pipelinesList, (projectId?: string) => ctx.pipelinesFor(projectId));
 
@@ -31,6 +33,7 @@ export function register(ctx: Ctx, handle: Handle): void {
         ctx.rosterFor(projectId),
         ctx.commandNames(projectId),
         ctx.pipelineScope(projectId),
+        knownEnvelopeNames(),
       );
       if (!result.ok) return { ok: false, issues: result.issues };
       notifySettings(ctx);
@@ -49,7 +52,12 @@ export function register(ctx: Ctx, handle: Handle): void {
   );
 
   handle(IPC.pipelinesValidate, (pipeline: PipelineDef, projectId?: string) =>
-    validatePipeline(pipeline, ctx.rosterFor(projectId), ctx.commandNames(projectId)),
+    validatePipeline(
+      pipeline,
+      ctx.rosterFor(projectId),
+      ctx.commandNames(projectId),
+      knownEnvelopeNames(),
+    ),
   );
 
   /** Renders exactly what a run would send, without spending a token. */
@@ -60,6 +68,7 @@ export function register(ctx: Ctx, handle: Handle): void {
       const pipeline = ctx.pipelines.get(pipelineId, ctx.pipelineScope(projectId));
       if (!project || !pipeline) return [];
       const agents = ctx.rosterFor(projectId);
+      const envelopeDefs = ctx.envelopes.list();
       const worktree = join(project.path, '.foundry-worktrees', 'run_dryrun');
       const out: DryRunPrompt[] = [];
       const envelopes = new Map<string, Record<string, unknown>>();
@@ -76,6 +85,7 @@ export function register(ctx: Ctx, handle: Handle): void {
           // Earlier phases are stood in for with a placeholder envelope, so a
           // later prompt shows its real shape instead of "(not available)".
           envelopes: envelopes as never,
+          envelopeDefs,
         });
         out.push({
           phase: phase.name,

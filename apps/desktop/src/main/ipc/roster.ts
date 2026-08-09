@@ -7,14 +7,16 @@ import { noIssues, notifySettings } from './shared.js';
 
 type Ctx = Pick<
   AppContext,
-  'roster' | 'rosterFor' | 'rosterScope' | 'pipelines' | 'pipelineScope' | 'broadcast'
+  'roster' | 'rosterFor' | 'rosterScope' | 'pipelines' | 'pipelineScope' | 'envelopes' | 'broadcast'
 >;
 
 export function register(ctx: Ctx, handle: Handle): void {
+  const knownEnvelopeNames = () => ctx.envelopes.list().map((e) => e.name);
+
   handle(IPC.rosterList, (projectId?: string) => ctx.rosterFor(projectId));
 
   handle(IPC.rosterSave, (agent: AgentDef, projectId?: string): SaveResult<AgentDef[]> => {
-    const result = ctx.roster.save(agent, ctx.rosterScope(projectId));
+    const result = ctx.roster.save(agent, ctx.rosterScope(projectId), knownEnvelopeNames());
     if (!result.ok) return { ok: false, issues: result.issues };
     notifySettings(ctx);
     return { ok: true, issues: noIssues, value: result.agents };
@@ -42,7 +44,7 @@ export function register(ctx: Ctx, handle: Handle): void {
     ctx.roster.duplicate(name, ctx.rosterScope(projectId)),
   );
 
-  handle(IPC.rosterValidate, (agent: AgentDef) => validateAgent(agent));
+  handle(IPC.rosterValidate, (agent: AgentDef) => validateAgent(agent, knownEnvelopeNames()));
 
   handle(IPC.rosterReset, () => {
     const agents = ctx.roster.resetToBuiltins();

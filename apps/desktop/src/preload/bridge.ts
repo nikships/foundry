@@ -59,6 +59,15 @@ const api: FoundryApi = {
     validate: (agent) => call(IPC.rosterValidate, agent),
     reset: () => call(IPC.rosterReset),
   },
+  envelopes: {
+    list: () => call(IPC.envelopesList),
+    save: (def) => call(IPC.envelopesSave, def),
+    remove: (name) => call(IPC.envelopesRemove, name),
+    duplicate: (name) => call(IPC.envelopesDuplicate, name),
+    usage: (name) => call(IPC.envelopesUsage, name),
+    validate: (def) => call(IPC.envelopesValidate, def),
+    preview: (name) => call(IPC.envelopesPreview, name),
+  },
   pipelines: {
     list: (projectId) => call(IPC.pipelinesList, projectId),
     save: (pipeline, projectId) => call(IPC.pipelinesSave, pipeline, projectId),

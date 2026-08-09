@@ -1,4 +1,4 @@
-.scrim {
+.overlay-backdrop {
   position: fixed;
   inset: 0;
   z-index: 90;
@@ -10,14 +10,14 @@
   animation: fade-in var(--fast) var(--ease);
 }
 
-.scrim.highPriority {
+.overlay-backdrop.highPriority {
   z-index: 100;
   background: rgba(4, 6, 12, 0.72);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
 
-.sheet {
+.modal {
   box-shadow: var(--shadow-lg);
   background: var(--bg-panel);
   border: 1px solid var(--line);

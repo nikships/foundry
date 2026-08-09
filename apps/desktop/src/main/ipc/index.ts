@@ -14,6 +14,7 @@ import type { Handle } from './shared.js';
 import * as settings from './settings.js';
 import * as projects from './projects.js';
 import * as roster from './roster.js';
+import * as envelopes from './envelopes.js';
 import * as pipelines from './pipelines.js';
 import * as catalog from './catalog.js';
 import * as runs from './runs.js';
@@ -29,6 +30,7 @@ export function registerIpc(ctx: AppContext): void {
   settings.register(ctx, handle);
   projects.register(ctx, handle);
   roster.register(ctx, handle);
+  envelopes.register(ctx, handle);
   pipelines.register(ctx, handle);
   catalog.register(ctx, handle);
   runs.register(ctx, handle);

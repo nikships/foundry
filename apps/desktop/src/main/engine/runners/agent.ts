@@ -5,7 +5,7 @@
 
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import type { AgentDef, PhaseDef } from '@shared/types.js';
+import type { AgentDef, EnvelopeDef, PhaseDef } from '@shared/types.js';
 import type { PhaseRunner, RunContext, PhaseJump } from '../phase-context.js';
 import type { Mode } from '../../droid/agent.js';
 import type { AgentSession } from '../../droid/agent.js';
@@ -17,6 +17,7 @@ import { combineForTurn, renderPrompt, type RenderContext } from '../prompts.js'
 
 export interface AgentRunnerDeps {
   agents: AgentDef[];
+  envelopeDefs: EnvelopeDef[];
   envelopeRetries: number;
   /** Session lookup stays with the executor: a session lives for the run, not the phase. */
   sessionFor: (agent: AgentDef) => AgentSession;
@@ -199,7 +200,12 @@ export class AgentPhaseRunner implements PhaseRunner {
         `${JSON.stringify({ phase: phase.name, gateAttempt, attempt, reason: outcome.reason, text: outcome.text })}\n`,
       );
 
-      const parsed = parseEnvelope(outcome.text, envelopeKind, agent.customFields);
+      const parsed = parseEnvelope(
+        outcome.text,
+        envelopeKind,
+        agent.customFields,
+        this.deps.envelopeDefs,
+      );
       ctx.tracer.recordEnvelope({
         runId: ctx.runId,
         phaseId,
@@ -231,7 +237,7 @@ export class AgentPhaseRunner implements PhaseRunner {
         name: 'envelope did not parse',
         payload: { attempt, problem },
       });
-      prompt = correctionMessage(problem, envelopeKind, agent.customFields);
+      prompt = correctionMessage(problem, envelopeKind, agent.customFields, this.deps.envelopeDefs);
     }
 
     return {
@@ -276,6 +282,7 @@ export class AgentPhaseRunner implements PhaseRunner {
       handoffFiles: this.handoffFiles(ctx),
       envelopes: ctx.envelopes,
       feedback: ctx.feedback.get(phase.name),
+      envelopeDefs: this.deps.envelopeDefs,
     };
   }
 

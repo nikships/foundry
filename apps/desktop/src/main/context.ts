@@ -15,6 +15,7 @@ import { SettingsStore } from './store/settings.js';
 import { ProjectStore } from './store/projects.js';
 import { RosterStore } from './store/roster.js';
 import { PipelineStore } from './store/pipelines.js';
+import { EnvelopeStore } from './store/envelopes.js';
 import { RunRegistry } from './engine/registry.js';
 import { Detections } from './engine/detections.js';
 import { UpdaterService } from './updater.js';
@@ -31,6 +32,7 @@ export class AppContext {
   readonly projects: ProjectStore;
   readonly roster: RosterStore;
   readonly pipelines: PipelineStore;
+  readonly envelopes: EnvelopeStore;
   readonly registry: RunRegistry;
   readonly detections: Detections;
   readonly updater: UpdaterService;
@@ -44,6 +46,7 @@ export class AppContext {
     this.projects = new ProjectStore(supportDir);
     this.roster = new RosterStore(supportDir);
     this.pipelines = new PipelineStore(supportDir);
+    this.envelopes = new EnvelopeStore(supportDir);
     this.version = app.getVersion();
     this.updater = new UpdaterService((channel, payload) => this.broadcast(channel, payload));
     this.detections = new Detections((state) => this.broadcast(IPC.eventDetectionProgress, state));

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { AgentDef, EnvelopeKind, PhaseDef } from '@shared/types.js';
+import { BUILTIN_ENVELOPE_KINDS, type AgentDef, type PhaseDef } from '@shared/types.js';
 import { api } from '../api.js';
 import { useApp } from '../stores/app.js';
 import { phaseKindColor, KIND_LABEL } from '../derive.js';
@@ -8,8 +8,6 @@ import { CliIcon } from './BrandIcon.js';
 import { Field, Select, TextInput, Textarea } from './ui/Field.js';
 import { SegmentedControl } from './ui/SegmentedControl.js';
 import styles from './PhaseEditor.module.css';
-
-const ENVELOPE_KINDS: EnvelopeKind[] = ['plan', 'build', 'review', 'scout', 'document', 'generic'];
 
 export default function PhaseEditor({
   phase,
@@ -22,6 +20,7 @@ export default function PhaseEditor({
   onToggle,
   onMove,
   onRemove,
+  onOpenSettings,
 }: {
   phase: PhaseDef;
   index: number;
@@ -33,8 +32,9 @@ export default function PhaseEditor({
   onToggle: () => void;
   onMove: (delta: number) => void;
   onRemove: () => void;
+  onOpenSettings?: (pane: string) => void;
 }): React.JSX.Element {
-  const { agentColor } = useApp();
+  const { agentColor, envelopes } = useApp();
   const [gates, setGates] = useState<{ id: string; description: string }[]>([]);
 
   useEffect(() => {
@@ -92,8 +92,8 @@ export default function PhaseEditor({
         {open && <span className={styles.phaseEdge} aria-hidden />}
         <div className={styles.rowWrap}>
           <button className={`row ${styles.head}`} onClick={onToggle} aria-expanded={open}>
-            <span className={styles.num}>{String(index + 1).padStart(2, '0')}</span>
-            <span className={styles.glyph} style={{ color }}>
+            <span className={styles.phaseNumber}>{String(index + 1).padStart(2, '0')}</span>
+            <span className={styles.phaseIcon} style={{ color }}>
               {phase.kind === 'agent' ? (
                 <svg
                   width="12"
@@ -143,8 +143,8 @@ export default function PhaseEditor({
               )}
             </span>
             {phase.kind === 'agent' && <AgentAvatar name={phase.agent ?? null} size={20} />}
-            <span className={styles.pname}>{phase.name}</span>
-            <span className={styles.kind}>{KIND_LABEL[phase.kind] ?? phase.kind}</span>
+            <span className={styles.phaseName}>{phase.name}</span>
+            <span className={styles.phaseKindDot}>{KIND_LABEL[phase.kind] ?? phase.kind}</span>
             <span className={styles.summary}>
               {phase.kind === 'agent' && (
                 <>
@@ -177,7 +177,7 @@ export default function PhaseEditor({
               <span className={`badge ${styles.loop}`}>↩ {phase.feedbackTo}</span>
             )}
             <svg
-              className={`${styles.chev} ${open ? styles.up : ''}`}
+              className={`${styles.chevron} ${open ? styles.up : ''}`}
               width="12"
               height="12"
               viewBox="0 0 14 14"
@@ -193,7 +193,7 @@ export default function PhaseEditor({
           </button>
           <span className={styles.controls}>
             <button
-              className={styles.ctl}
+              className={styles.control}
               disabled={index === 0}
               title="Move earlier"
               onClick={(e) => {
@@ -204,7 +204,7 @@ export default function PhaseEditor({
               ↑
             </button>
             <button
-              className={styles.ctl}
+              className={styles.control}
               disabled={index === phases.length - 1}
               title="Move later"
               onClick={(e) => {
@@ -215,7 +215,7 @@ export default function PhaseEditor({
               ↓
             </button>
             <button
-              className={`${styles.ctl} ${styles.danger}`}
+              className={`${styles.control} ${styles.danger}`}
               title="Remove phase"
               onClick={(e) => {
                 e.stopPropagation();
@@ -258,17 +258,46 @@ export default function PhaseEditor({
             {phase.kind === 'agent' && (
               <Field
                 label="Envelope"
-                hint="Typed reply this phase must return. Defaults from the agent; override when the same agent wears different hats."
+                hint={
+                  <>
+                    Typed reply this phase must return. Defaults from the agent; override when the
+                    same agent wears different hats.
+                    {onOpenSettings && (
+                      <>
+                        {' '}
+                        <button
+                          type="button"
+                          className={styles.linkBtn}
+                          onClick={() => onOpenSettings('envelopes')}
+                        >
+                          Manage envelopes…
+                        </button>
+                      </>
+                    )}
+                  </>
+                }
               >
                 <Select
                   value={phase.envelope ?? owner?.envelope ?? 'build'}
-                  onChange={(e) => patch({ envelope: e.target.value as EnvelopeKind })}
+                  onChange={(e) => patch({ envelope: e.target.value })}
                 >
-                  {ENVELOPE_KINDS.map((kind) => (
-                    <option key={kind} value={kind}>
-                      {kind}
-                    </option>
-                  ))}
+                  <optgroup label="Built-in">
+                    {BUILTIN_ENVELOPE_KINDS.map((kind) => (
+                      <option key={kind} value={kind}>
+                        {kind}
+                      </option>
+                    ))}
+                  </optgroup>
+                  {envelopes.length > 0 && (
+                    <optgroup label="Custom">
+                      {envelopes.map((env) => (
+                        <option key={env.name} value={env.name}>
+                          {env.name}
+                          {env.description ? ` — ${env.description}` : ''}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </Select>
               </Field>
             )}
@@ -425,7 +454,7 @@ export default function PhaseEditor({
                 </Field>
               )}
             </div>
-            <label className={styles.optLine}>
+            <label className={styles.optionalToggle}>
               <input
                 type="checkbox"
                 checked={!!phase.optional}

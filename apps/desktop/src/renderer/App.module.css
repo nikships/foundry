@@ -29,7 +29,7 @@
   z-index: 50;
   pointer-events: none;
 }
-.sidebarRule {
+.sidebarDivider {
   width: 1px;
   flex: none;
   background: var(--line);
@@ -42,7 +42,7 @@
   flex-direction: column;
   background: var(--bg-base);
 }
-.booting {
+.loading {
   flex: 1;
   display: grid;
   place-items: center;

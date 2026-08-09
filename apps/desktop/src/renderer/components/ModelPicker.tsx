@@ -74,7 +74,7 @@ export default function ModelPicker({
           {onRefresh && (
             <>
               {' '}
-              <button type="button" className={styles.linkish} onClick={onRefresh}>
+              <button type="button" className={styles.linkButton} onClick={onRefresh}>
                 Refresh
               </button>
             </>

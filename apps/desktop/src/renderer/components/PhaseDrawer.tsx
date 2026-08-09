@@ -28,10 +28,10 @@ const EVENT_ICON: Record<string, string> = {
 };
 
 const EVENT_CLASS: Partial<Record<EventRow['type'], string>> = {
-  gate_fail: styles.bad,
-  error: styles.bad,
+  gate_fail: styles.failed,
+  error: styles.failed,
   correction: styles.warn,
-  gate_pass: styles.good,
+  gate_pass: styles.passed,
 };
 
 export default function PhaseDrawer({
@@ -164,14 +164,14 @@ export default function PhaseDrawer({
           {tab === 'timeline' && (
             <>
               {liveTailError && (
-                <p className={styles.inlineErr} role="alert">
+                <p className={styles.inlineError} role="alert">
                   Live tail: {liveTailError}
                 </p>
               )}
               {liveTail && (
                 <CodeBlock maxHeight={240} className={styles.live}>
                   {liveTail}
-                  <span className={styles.caret} />
+                  <span className={styles.liveCursor} />
                 </CodeBlock>
               )}
               <ol className={styles.events}>
@@ -179,16 +179,16 @@ export default function PhaseDrawer({
                   <li key={event.eventId} className={EVENT_CLASS[event.type] ?? ''}>
                     <button className={styles.event} onClick={() => toggle(event.eventId)}>
                       <span className={styles.icon}>{EVENT_ICON[event.type] ?? '·'}</span>
-                      <span className={styles.evName}>{event.name}</span>
-                      <span className={styles.grow} />
+                      <span className={styles.eventName}>{event.name}</span>
+                      <span className={styles.spacer} />
                       {event.endedAt && (
-                        <span className={`mono faint ${styles.dur}`}>
+                        <span className={`mono faint ${styles.duration}`}>
                           {duration(
                             new Date(event.endedAt).getTime() - new Date(event.startedAt).getTime(),
                           )}
                         </span>
                       )}
-                      <span className={`mono faint ${styles.ts}`}>
+                      <span className={`mono faint ${styles.timestamp}`}>
                         {clockTime(event.startedAt)}
                       </span>
                     </button>
@@ -199,7 +199,7 @@ export default function PhaseDrawer({
                 ))}
               </ol>
               {!events.length && !liveTail && !liveTailError && (
-                <p className={`faint ${styles.pad}`}>Nothing recorded for this phase yet.</p>
+                <p className={`faint ${styles.padded}`}>Nothing recorded for this phase yet.</p>
               )}
             </>
           )}
@@ -220,7 +220,7 @@ export default function PhaseDrawer({
                 </div>
               ))}
               {!envelopes.length && (
-                <p className={`faint ${styles.pad}`}>This phase did not return an envelope.</p>
+                <p className={`faint ${styles.padded}`}>This phase did not return an envelope.</p>
               )}
             </>
           )}
@@ -234,7 +234,7 @@ export default function PhaseDrawer({
                   </div>
                   <ul className={styles.checks}>
                     {gate.checks.map((check, i) => (
-                      <li key={i} className={check.ok ? '' : styles.bad}>
+                      <li key={i} className={check.ok ? '' : styles.failed}>
                         <span className={styles.mark}>{check.ok ? '✓' : '✕'}</span>
                         <span className={styles.checkBody}>
                           <span className={`mono ${styles.item}`}>{check.item}</span>
@@ -249,21 +249,21 @@ export default function PhaseDrawer({
                 </div>
               ))}
               {!gates.length && (
-                <p className={`faint ${styles.pad}`}>No gates ran on this phase.</p>
+                <p className={`faint ${styles.padded}`}>No gates ran on this phase.</p>
               )}
             </>
           )}
           {tab === 'prompt' && (
             <>
-              {promptLoading && <p className={`faint ${styles.pad}`}>Loading prompt…</p>}
+              {promptLoading && <p className={`faint ${styles.padded}`}>Loading prompt…</p>}
               {promptError && (
-                <p className={`${styles.inlineErr} ${styles.pad}`} role="alert">
+                <p className={`${styles.inlineError} ${styles.padded}`} role="alert">
                   {promptError}
                 </p>
               )}
               {!promptLoading && !promptError && prompt ? <CodeBlock>{prompt}</CodeBlock> : null}
               {!promptLoading && !promptError && !prompt && (
-                <p className={`faint ${styles.pad}`}>
+                <p className={`faint ${styles.padded}`}>
                   {phase.kind === 'agent'
                     ? 'No prompt was recorded for this phase.'
                     : 'Only agent phases have prompts.'}

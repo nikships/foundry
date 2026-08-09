@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { AgentDef, ModelInfo, ValidationIssue } from '@shared/types.js';
+import {
+  BUILTIN_ENVELOPE_KINDS,
+  type AgentDef,
+  type ModelInfo,
+  type ValidationIssue,
+} from '@shared/types.js';
 import { api, plain } from '../api.js';
 import { useApp } from '../stores/app.js';
 import AgentAvatar from '../components/AgentAvatar.js';
@@ -13,11 +18,14 @@ import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
 import { useTablistNav } from '../hooks/useTablistNav.js';
 import styles from './RosterScreen.module.css';
 
-const ENVELOPE_KINDS = ['plan', 'build', 'review', 'scout', 'document', 'generic'] as const;
 const COLORS = ['#5ad2dd', '#c89bff', '#e8b64a', '#4ade80', '#ff6f67', '#6aa8ff'];
 
-export default function RosterScreen(): React.JSX.Element {
-  const { agents, projectId, settings, refreshScoped } = useApp();
+export default function RosterScreen({
+  onOpenSettings,
+}: {
+  onOpenSettings?: (pane: string) => void;
+} = {}): React.JSX.Element {
+  const { agents, envelopes, projectId, settings, refreshScoped } = useApp();
   const [selectedName, setSelectedName] = useState('');
   const [draft, setDraft] = useState<AgentDef | null>(null);
   /** Kept out of `draft`: a name is committed on blur or Enter, not per keystroke. */
@@ -205,10 +213,15 @@ export default function RosterScreen(): React.JSX.Element {
 
   return (
     <>
-      <div className={styles.roScreen}>
+      <div className={styles.rosterScreen}>
         {/* ── agent strip: the whole roster, one horizontal band ── */}
-        <div className={styles.roStrip} role="tablist" aria-label="Agents" onKeyDown={onTablistKey}>
-          <div className={styles.roStripInner}>
+        <div
+          className={styles.rosterTabs}
+          role="tablist"
+          aria-label="Agents"
+          onKeyDown={onTablistKey}
+        >
+          <div className={styles.rosterTabsInner}>
             {agents.map((agent) => {
               const isActive = agent.name === selectedName;
               return (
@@ -218,62 +231,65 @@ export default function RosterScreen(): React.JSX.Element {
                   role="tab"
                   aria-selected={isActive}
                   tabIndex={isActive ? 0 : -1}
-                  className={`${styles.roCell} ${isActive ? styles.on : ''}`}
+                  className={`${styles.rosterCell} ${isActive ? styles.on : ''}`}
                   style={{ ['--hue' as string]: agent.color ?? 'var(--cyan)' }}
                   onClick={() => selectAgent(agent.name)}
                 >
                   <AgentAvatar name={agent.name} size={30} />
-                  <span className={styles.roCellWho}>
-                    <span className={styles.roCellName}>{agent.name}</span>
-                    <span className={styles.roCellRole}>{agent.purpose}</span>
-                    <span className={styles.roCellCli}>
+                  <span className={styles.rosterCellWho}>
+                    <span className={styles.rosterCellName}>{agent.name}</span>
+                    <span className={styles.rosterCellRole}>{agent.purpose}</span>
+                    <span className={styles.rosterCellCli}>
                       <CliIcon vendor={agent.cli ?? 'droid'} size={11} />
                       {agent.cli ?? 'droid'}
                     </span>
                   </span>
-                  {isActive && <span className={styles.roCellRule} aria-hidden />}
+                  {isActive && <span className={styles.rosterCellUnderline} aria-hidden />}
                 </button>
               );
             })}
-            <button type="button" className={styles.roNew} onClick={() => void createAgent()}>
+            <button type="button" className={styles.rosterNew} onClick={() => void createAgent()}>
               + New agent
             </button>
           </div>
         </div>
 
         {draft && (
-          <div className={styles.roScroll}>
-            <div className={styles.roPage}>
+          <div className={styles.rosterScroll}>
+            <div className={styles.rosterPage}>
               {/* ── title row ── */}
-              <div className={styles.roHead}>
-                <div className={styles.roHeadMain}>
-                  <div className={styles.roHeadTitlerow}>
-                    <h1 className={styles.roTitle} style={{ color: draft.color ?? 'var(--cyan)' }}>
+              <div className={styles.rosterHead}>
+                <div className={styles.rosterHeadMain}>
+                  <div className={styles.rosterHeadTitlerow}>
+                    <h1
+                      className={styles.rosterTitle}
+                      style={{ color: draft.color ?? 'var(--cyan)' }}
+                    >
                       {draft.name}
                     </h1>
-                    <span className={styles.roHeadMeta}>
+                    <span className={styles.rosterHeadMeta}>
                       <CliIcon vendor={draftCli} size={13} />
                       {draftCli} · {draft.envelope}
                     </span>
                   </div>
-                  <p className={styles.roHeadSub}>
+                  <p className={styles.rosterHeadSub}>
                     {draft.purpose || 'No purpose yet.'}{' '}
-                    <span className={styles.roHeadTag}>
+                    <span className={styles.rosterHeadTag}>
                       {draft.builtin ? 'Shipped with Foundry, editable' : 'Custom agent'}
                     </span>
                   </p>
                 </div>
-                <div className={styles.roHeadActions}>
+                <div className={styles.rosterHeadActions}>
                   <button
                     type="button"
-                    className={styles.roAction}
+                    className={styles.rosterAction}
                     onClick={() => setShowPreview(true)}
                   >
                     Preview prompt
                   </button>
                   <button
                     type="button"
-                    className={styles.roAction}
+                    className={styles.rosterAction}
                     onClick={() => void duplicate()}
                   >
                     Duplicate
@@ -281,7 +297,7 @@ export default function RosterScreen(): React.JSX.Element {
                   {!draft.builtin && (
                     <button
                       type="button"
-                      className={`${styles.roAction} ${styles.danger}`}
+                      className={`${styles.rosterAction} ${styles.danger}`}
                       onClick={() => void remove()}
                     >
                       Delete
@@ -291,12 +307,12 @@ export default function RosterScreen(): React.JSX.Element {
               </div>
 
               {/* ── identity ── */}
-              <section className={styles.roSection}>
-                <div className={styles.roSectionLabel}>
+              <section className={styles.rosterSection}>
+                <div className={styles.rosterSectionLabel}>
                   <h2>Identity</h2>
                   <p>How this agent is referenced in pipelines and run logs.</p>
                 </div>
-                <div className={styles.roFields}>
+                <div className={styles.rosterFields}>
                   <Field label="Name">
                     <TextInput
                       mono
@@ -355,12 +371,12 @@ export default function RosterScreen(): React.JSX.Element {
               </section>
 
               {/* ── execution ── */}
-              <section className={styles.roSection}>
-                <div className={styles.roSectionLabel}>
+              <section className={styles.rosterSection}>
+                <div className={styles.rosterSectionLabel}>
                   <h2>Execution</h2>
                   <p>Model selection and reasoning effort for this agent.</p>
                 </div>
-                <div className={styles.roFields}>
+                <div className={styles.rosterFields}>
                   <Field label="Model">
                     <ModelPicker
                       value={draft.model}
@@ -373,14 +389,18 @@ export default function RosterScreen(): React.JSX.Element {
                     <span className={styles.hint}>“Inherit” uses Factory Droid's default.</span>
                   </Field>
                   <Field label="Reasoning effort">
-                    <div className={styles.roSeg} role="radiogroup" aria-label="Reasoning effort">
+                    <div
+                      className={styles.rosterSeg}
+                      role="radiogroup"
+                      aria-label="Reasoning effort"
+                    >
                       {(['off', 'low', 'medium', 'high'] as const).map((level) => (
                         <button
                           key={level}
                           type="button"
                           role="radio"
                           aria-checked={draft.reasoningEffort === level}
-                          className={`${styles.roSegBtn} ${draft.reasoningEffort === level ? styles.on : ''}`}
+                          className={`${styles.rosterSegBtn} ${draft.reasoningEffort === level ? styles.on : ''}`}
                           onClick={() =>
                             setDraft({
                               ...draft,
@@ -400,30 +420,52 @@ export default function RosterScreen(): React.JSX.Element {
                     <Select
                       className="mono"
                       value={draft.envelope}
-                      onChange={(e) =>
-                        setDraft({ ...draft, envelope: e.target.value as AgentDef['envelope'] })
-                      }
+                      onChange={(e) => setDraft({ ...draft, envelope: e.target.value })}
                     >
-                      {ENVELOPE_KINDS.map((kind) => (
-                        <option key={kind} value={kind}>
-                          {kind}
-                        </option>
-                      ))}
+                      <optgroup label="Built-in">
+                        {BUILTIN_ENVELOPE_KINDS.map((kind) => (
+                          <option key={kind} value={kind}>
+                            {kind}
+                          </option>
+                        ))}
+                      </optgroup>
+                      {envelopes.length > 0 && (
+                        <optgroup label="Custom">
+                          {envelopes.map((env) => (
+                            <option key={env.name} value={env.name}>
+                              {env.name}
+                              {env.description ? ` — ${env.description}` : ''}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
                     </Select>
                     <span className={styles.hint}>
                       The typed reply this agent must return. Parsed and validated on every turn.
+                      {onOpenSettings && (
+                        <>
+                          {' '}
+                          <button
+                            type="button"
+                            className={styles.linkBtn}
+                            onClick={() => onOpenSettings('envelopes')}
+                          >
+                            Manage envelopes…
+                          </button>
+                        </>
+                      )}
                     </span>
                   </Field>
                 </div>
               </section>
 
               {/* ── prompts ── */}
-              <section className={styles.roSection}>
-                <div className={styles.roSectionLabel}>
+              <section className={styles.rosterSection}>
+                <div className={styles.rosterSectionLabel}>
                   <h2>Prompts</h2>
                   <p>The system prompt is fixed per agent; the template is filled per phase.</p>
                 </div>
-                <div className={styles.roStack}>
+                <div className={styles.rosterStack}>
                   <Field label="System prompt">
                     <Textarea
                       value={draft.systemPrompt}
@@ -452,8 +494,8 @@ export default function RosterScreen(): React.JSX.Element {
               </section>
 
               {/* ── write boundary ── */}
-              <section className={styles.roSection}>
-                <div className={styles.roSectionLabel}>
+              <section className={styles.rosterSection}>
+                <div className={styles.rosterSectionLabel}>
                   <h2>Write boundary</h2>
                   <p>Paths this agent may modify. Everything else is refused at the tool layer.</p>
                 </div>
@@ -464,7 +506,7 @@ export default function RosterScreen(): React.JSX.Element {
               </section>
 
               {/* ── validation + autosave ── */}
-              <div className={styles.roStatusbar}>
+              <div className={styles.rosterStatusbar}>
                 {issues.length > 0 ? (
                   <ul className={styles.issues}>
                     {issues.map((issue, i) => (
@@ -474,7 +516,7 @@ export default function RosterScreen(): React.JSX.Element {
                     ))}
                   </ul>
                 ) : (
-                  <span className={styles.roStatusOk}>
+                  <span className={styles.rosterStatusOk}>
                     <svg
                       width="12"
                       height="12"
@@ -492,7 +534,7 @@ export default function RosterScreen(): React.JSX.Element {
                   </span>
                 )}
                 {actionError && <p className={styles.actionErr}>{actionError}</p>}
-                <span className={styles.roAutosave}>Changes save automatically</span>
+                <span className={styles.rosterAutosave}>Changes save automatically</span>
               </div>
             </div>
           </div>

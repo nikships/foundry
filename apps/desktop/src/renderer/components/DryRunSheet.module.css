@@ -1,11 +1,11 @@
-.sheet {
+.modal {
   width: min(980px, calc(100vw - 80px));
   height: min(720px, calc(100vh - 100px));
   display: flex;
   flex-direction: column;
   padding: var(--s5);
 }
-.sheet h2 {
+.modal h2 {
   font-size: var(--text-lg);
   font-weight: 600;
 }

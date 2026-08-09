@@ -14,6 +14,7 @@ import React, {
 import type {
   AgentDef,
   AppSettings,
+  EnvelopeDef,
   PendingInterrupt,
   PipelineDef,
   ProjectDef,
@@ -25,6 +26,7 @@ export interface AppState {
   projects: ProjectDef[];
   agents: AgentDef[];
   pipelines: PipelineDef[];
+  envelopes: EnvelopeDef[];
   interrupts: PendingInterrupt[];
   selectedProjectId: string;
   ready: boolean;
@@ -65,6 +67,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
   const [projects, setProjects] = useState<ProjectDef[]>([]);
   const [agents, setAgents] = useState<AgentDef[]>([]);
   const [pipelines, setPipelines] = useState<PipelineDef[]>([]);
+  const [envelopes, setEnvelopes] = useState<EnvelopeDef[]>([]);
   const [interrupts, setInterrupts] = useState<PendingInterrupt[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>(
     () => localStorage.getItem('foundry.project') ?? '',
@@ -90,12 +93,14 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
   }, [project?.id]);
 
   const refreshAll = useCallback(async (): Promise<void> => {
-    const [nextSettings, nextProjects] = await Promise.all([
+    const [nextSettings, nextProjects, nextEnvelopes] = await Promise.all([
       api.settings.get(),
       api.projects.list(),
+      api.envelopes.list(),
     ]);
     setSettings(nextSettings);
     setProjects(nextProjects);
+    setEnvelopes(nextEnvelopes);
 
     let scopeId = selectedProjectIdRef.current;
     if (!nextProjects.some((p) => p.id === scopeId)) {
@@ -162,6 +167,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
       projects,
       agents,
       pipelines,
+      envelopes,
       interrupts,
       selectedProjectId,
       ready,
@@ -181,6 +187,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
       projects,
       agents,
       pipelines,
+      envelopes,
       interrupts,
       selectedProjectId,
       ready,

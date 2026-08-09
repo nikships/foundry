@@ -22,27 +22,27 @@
   opacity: 1;
   transform: none;
 }
-.ob-stage {
+.ob-backdrop {
   position: absolute;
   inset: 0;
   pointer-events: none;
   overflow: hidden;
 }
-.ob-orb {
+.ob-glow {
   position: absolute;
   border-radius: 50%;
   filter: blur(60px);
   opacity: 0.45;
   animation: ob-drift 18s ease-in-out infinite alternate;
 }
-.ob-orb-a {
+.ob-glow-cyan {
   width: 420px;
   height: 420px;
   background: color-mix(in srgb, var(--cyan) 35%, transparent);
   top: -120px;
   left: -80px;
 }
-.ob-orb-b {
+.ob-glow-purple {
   width: 360px;
   height: 360px;
   background: color-mix(in srgb, var(--purple, #c89bff) 28%, transparent);
@@ -50,7 +50,7 @@
   right: -60px;
   animation-delay: -6s;
 }
-.ob-orb-c {
+.ob-glow-amber {
   width: 240px;
   height: 240px;
   background: color-mix(in srgb, var(--amber) 18%, transparent);

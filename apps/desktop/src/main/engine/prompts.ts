@@ -5,7 +5,7 @@
  * agent is shown always matches the shape its answer is parsed against.
  */
 
-import type { AgentDef, PhaseDef } from '@shared/types.js';
+import type { AgentDef, EnvelopeDef, PhaseDef } from '@shared/types.js';
 import { exampleFor, type Envelope } from './envelopes.js';
 
 export interface RenderContext {
@@ -18,6 +18,8 @@ export interface RenderContext {
   envelopes: Map<string, Envelope>;
   /** Set when a code phase sent failure evidence back to this agent. */
   feedback?: string;
+  /** Shared custom envelope library; resolves non-built-in kind names. */
+  envelopeDefs?: EnvelopeDef[];
 }
 
 export const TEMPLATE_VARIABLES = [
@@ -138,7 +140,7 @@ export function renderPrompt(agent: AgentDef, phase: PhaseDef, ctx: RenderContex
     '',
     'Reply with ONLY this JSON object and nothing else, no prose and no code fence:',
     '',
-    exampleFor(kind, agent.customFields),
+    exampleFor(kind, agent.customFields, ctx.envelopeDefs),
   ].join('\n');
 
   return { system, user };

@@ -6,7 +6,12 @@
 
 import { join } from 'node:path';
 import { z } from 'zod';
-import type { AgentDef, PipelineDef, ValidationIssue } from '@shared/types.js';
+import {
+  BUILTIN_ENVELOPE_KINDS,
+  type AgentDef,
+  type PipelineDef,
+  type ValidationIssue,
+} from '@shared/types.js';
 import { JsonStore } from './json-store.js';
 import { BUILTIN_PIPELINES } from './builtin-pipelines.js';
 import { GATES } from '../engine/gates.js';
@@ -25,7 +30,8 @@ const phaseSchema = z.object({
   kind: z.enum(['agent', 'code', 'engineer']),
   description: z.string().min(1, 'one sentence on what this phase does and why'),
   agent: z.string().optional(),
-  envelope: z.enum(['generic', 'plan', 'build', 'scout', 'review', 'document']).optional(),
+  // Built-in kind or a custom envelope library name.
+  envelope: z.string().min(1).optional(),
   gates: z
     .array(
       z.union([
@@ -113,8 +119,9 @@ export class PipelineStore {
     agents: AgentDef[],
     commandNames: string[],
     opts: { projectId?: string; ownPipelines?: boolean } = {},
+    knownEnvelopes: string[] = [],
   ): { ok: true; pipelines: PipelineDef[] } | { ok: false; issues: ValidationIssue[] } {
-    const issues = validate(pipeline, agents, commandNames);
+    const issues = validate(pipeline, agents, commandNames, knownEnvelopes);
     if (issues.some((i) => i.level === 'error')) return { ok: false, issues };
     const next = this.storeFor(opts).update((current) =>
       upsertBy(current, (p) => p.id === pipeline.id, pipeline),
@@ -194,6 +201,7 @@ export function validate(
   pipeline: PipelineDef,
   agents: AgentDef[],
   commandNames: string[],
+  knownEnvelopes: string[] = [],
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const parsed = pipelineSchema.safeParse(pipeline);
@@ -205,6 +213,7 @@ export function validate(
   }
 
   const agentNames = new Set(agents.map((a) => a.name));
+  const known = new Set([...BUILTIN_ENVELOPE_KINDS, ...knownEnvelopes]);
   const seen = new Set<string>();
   pipeline.phases.forEach((phase, index) => {
     const where = `phases[${index}] ${phase.name}`;
@@ -225,7 +234,7 @@ export function validate(
     }
 
     if (phase.kind === 'agent')
-      validateAgentPhase(phase, index, where, agentNames, pipeline, issues);
+      validateAgentPhase(phase, index, where, agentNames, pipeline, known, issues);
     if (phase.kind === 'code')
       validateCodePhase(phase, index, where, commandNames, pipeline, issues);
     if (phase.kind === 'engineer' && !phase.question) {
@@ -267,6 +276,7 @@ function validateAgentPhase(
   where: string,
   agentNames: Set<string>,
   pipeline: PipelineDef,
+  knownEnvelopes: Set<string>,
   issues: ValidationIssue[],
 ): void {
   if (!phase.agent) {
@@ -280,6 +290,13 @@ function validateAgentPhase(
   }
   if (!phase.prompt) {
     issues.push({ level: 'error', where, message: 'an agent phase needs a prompt spec' });
+  }
+  if (phase.envelope && !knownEnvelopes.has(phase.envelope)) {
+    issues.push({
+      level: 'warning',
+      where,
+      message: `envelope "${phase.envelope}" is not in the library — runs will fall back to generic`,
+    });
   }
   for (const raw of phase.gates ?? []) {
     const gate = typeof raw === 'string' ? raw : raw.gate;

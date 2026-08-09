@@ -5,13 +5,15 @@ import styles from './ModalShell.module.css';
 interface ModalShellProps {
   children: ReactNode;
   onClose?: () => void;
-  /** Defaults to true. When false, backdrop click focuses sheet instead of closing, and Esc is not wired. */
+  /** Defaults to true. When false, backdrop click focuses dialog instead of closing, and Esc is not wired. */
   dismissible?: boolean;
   ariaLabelledBy?: string;
   className?: string;
+  modalRef?: RefObject<HTMLElement | null>;
+  /** @deprecated Use modalRef instead. */
   sheetRef?: RefObject<HTMLElement | null>;
   tabIndex?: number;
-  /** Sets z-index to 100 and heavier blur (for interrupt sheets). Defaults to false (z-index 90). */
+  /** Sets z-index to 100 and heavier blur (for interrupt dialogs). Defaults to false (z-index 90). */
   highPriority?: boolean;
 }
 
@@ -21,34 +23,36 @@ export function ModalShell({
   dismissible = true,
   ariaLabelledBy,
   className,
+  modalRef,
   sheetRef,
   tabIndex,
   highPriority = false,
 }: ModalShellProps): React.JSX.Element {
   useEscapeToClose(onClose ?? (() => {}), Boolean(dismissible && onClose));
 
-  const scrimClass = `${styles.scrim} ${highPriority ? styles.highPriority : ''}`;
-  const sheetClass = className ? `${styles.sheet} ${className}` : styles.sheet;
+  const resolvedRef = modalRef ?? sheetRef;
+  const overlayBackdropClass = `${styles.overlayBackdrop} ${highPriority ? styles.highPriority : ''}`;
+  const modalClass = className ? `${styles.modal} ${className}` : styles.modal;
 
   const handleBackdrop = (e: React.MouseEvent<HTMLDivElement>): void => {
     if (e.target !== e.currentTarget) return;
     if (dismissible && onClose) {
       onClose();
-    } else if (sheetRef?.current) {
-      sheetRef.current.focus();
+    } else if (resolvedRef?.current) {
+      resolvedRef.current.focus();
     }
   };
 
   return (
     <div
-      className={scrimClass}
+      className={overlayBackdropClass}
       role="presentation"
       onClick={dismissible ? handleBackdrop : undefined}
       onMouseDown={!dismissible ? handleBackdrop : undefined}
     >
       <section
-        ref={sheetRef as RefObject<HTMLDivElement>}
-        className={sheetClass}
+        ref={resolvedRef as RefObject<HTMLDivElement>}
+        className={modalClass}
         role="dialog"
         aria-modal="true"
         aria-labelledby={ariaLabelledBy}

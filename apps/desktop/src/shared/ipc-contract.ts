@@ -12,6 +12,7 @@ import type {
   CliVendor,
   DoctorCheck,
   DryRunPrompt,
+  EnvelopeDef,
   EnvelopeRow,
   EventRow,
   GateResultRow,
@@ -197,6 +198,24 @@ export interface FoundryApi {
     validate(agent: AgentDef): Promise<ValidationIssue[]>;
     reset(): Promise<AgentDef[]>;
   };
+  envelopes: {
+    list(): Promise<EnvelopeDef[]>;
+    save(def: EnvelopeDef): Promise<SaveResult<EnvelopeDef[]>>;
+    remove(name: string): Promise<EnvelopeDef[]>;
+    duplicate(name: string): Promise<EnvelopeDef | null>;
+    /** Who still names this envelope, so a delete confirm can warn precisely. */
+    usage(name: string): Promise<{
+      agents: string[];
+      phases: { pipeline: string; phase: string }[];
+    }>;
+    /** Issues plus the live JSON example the agent will be shown. */
+    validate(def: EnvelopeDef): Promise<{ issues: ValidationIssue[]; example: string }>;
+    /**
+     * JSON example for a built-in kind or custom name — same path the agent sees.
+     * Used by the Settings inspect pane for built-ins.
+     */
+    preview(name: string): Promise<string>;
+  };
   pipelines: {
     list(projectId?: string): Promise<PipelineDef[]>;
     save(pipeline: PipelineDef, projectId?: string): Promise<SaveResult<PipelineDef[]>>;
@@ -324,6 +343,13 @@ export const IPC = {
   rosterDuplicate: 'roster:duplicate',
   rosterValidate: 'roster:validate',
   rosterReset: 'roster:reset',
+  envelopesList: 'envelopes:list',
+  envelopesSave: 'envelopes:save',
+  envelopesRemove: 'envelopes:remove',
+  envelopesDuplicate: 'envelopes:duplicate',
+  envelopesUsage: 'envelopes:usage',
+  envelopesValidate: 'envelopes:validate',
+  envelopesPreview: 'envelopes:preview',
   pipelinesList: 'pipelines:list',
   pipelinesSave: 'pipelines:save',
   pipelinesRemove: 'pipelines:remove',

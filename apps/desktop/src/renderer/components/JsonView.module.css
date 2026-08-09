@@ -2,7 +2,7 @@
   overflow-x: auto;
   overflow-y: auto;
 }
-.json .k {
+.json .key {
   color: var(--cyan);
 }
 .json .str {
@@ -17,6 +17,6 @@
 .json .null {
   color: var(--text-faint);
 }
-.json .p {
+.json .punctuation {
   color: var(--text-faint);
 }

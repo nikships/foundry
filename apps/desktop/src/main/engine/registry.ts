@@ -12,6 +12,7 @@ import { EventEmitter } from 'node:events';
 import type {
   AgentDef,
   AppSettings,
+  EnvelopeDef,
   InterruptAnswer,
   PendingInterrupt,
   PipelineDef,
@@ -100,6 +101,7 @@ export class RunRegistry extends EventEmitter {
     project: ProjectDef;
     pipeline: PipelineDef;
     agents: AgentDef[];
+    envelopeDefs: EnvelopeDef[];
     request: string;
   }): string {
     const settings = this.deps.settings();
@@ -115,6 +117,7 @@ export class RunRegistry extends EventEmitter {
       envelopeRetries: settings.envelopeRetries,
       gateRetries: settings.gateRetries,
       agents: input.agents,
+      envelopeDefs: input.envelopeDefs,
       project: input.project,
       pipeline: input.pipeline,
       request: input.request,

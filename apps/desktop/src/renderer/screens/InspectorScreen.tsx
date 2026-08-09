@@ -2,8 +2,8 @@
  * The Inspector: every agent's full transcript, live, one lane per phase.
  * It follows the currently running run unless the user picks a specific one,
  * so opening it during a run needs no clicks and opening it after a run is
- * one. Lanes sit in a grid sized to how many phases the pipeline has, ready
- * for the day phases run in parallel.
+ * one. Lanes sit in a single row of full-height columns (~3 visible); scroll
+ * horizontally to see the rest.
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -95,8 +95,8 @@ export default function InspectorScreen({
 
   if (!project) {
     return (
-      <div className={styles.insp}>
-        <header className={styles.inspHead}>
+      <div className={styles.inspector}>
+        <header className={styles.inspectorHead}>
           <h1>Inspector</h1>
         </header>
         <EmptyState
@@ -108,17 +108,9 @@ export default function InspectorScreen({
     );
   }
 
-  // Map visible count to the corresponding lane-count modifier class
-  const lanesClass = (() => {
-    const n = Math.min(visibleLanes.length, 3);
-    if (n === 1) return styles.lanes1;
-    if (n === 2) return styles.lanes2;
-    return '';
-  })();
-
   return (
-    <div className={styles.insp}>
-      <header className={styles.inspHead}>
+    <div className={styles.inspector}>
+      <header className={styles.inspectorHead}>
         <h1>Inspector</h1>
         <select
           className="select"
@@ -141,18 +133,18 @@ export default function InspectorScreen({
         {view.run && (
           <>
             <StatusBadge status={view.run.status} />
-            {view.live && <span className={styles.inspLive}>Live</span>}
-            <span className={styles.inspRequest} title={view.run.request}>
+            {view.live && <span className={styles.inspectorLive}>Live</span>}
+            <span className={styles.inspectorRequest} title={view.run.request}>
               {truncate(view.run.request, 80)}
             </span>
           </>
         )}
-        <div className={styles.inspControls}>
-          <div className={styles.inspFilter}>
+        <div className={styles.inspectorControls}>
+          <div className={styles.inspectorFilter}>
             {FILTERS.map((f) => (
               <button
                 key={f.id}
-                className={`${styles.inspFilterBtn} ${filter === f.id ? styles.active : ''}`}
+                className={`${styles.inspectorFilterBtn} ${filter === f.id ? styles.active : ''}`}
                 onClick={() => setFilter(f.id)}
               >
                 {f.label}
@@ -168,7 +160,7 @@ export default function InspectorScreen({
       </header>
 
       {(listError || view.error || filesError) && (
-        <div className={styles.inspBanner} role="alert">
+        <div className={styles.inspectorBanner} role="alert">
           <span>{listError || view.error || filesError}</span>
           {(listError || view.error) && (
             <Button size="sm" onClick={() => void retry()}>
@@ -179,14 +171,14 @@ export default function InspectorScreen({
       )}
 
       {listLoading && !runs.length && !listError && (
-        <div className={styles.inspSkeleton} aria-hidden>
+        <div className={styles.inspectorSkeleton} aria-hidden>
           <div className={styles.skelRow} />
           <div className={styles.skelRow} />
           <div className={styles.skelRow} />
         </div>
       )}
       {view.loading && runId && !view.error && (
-        <div className={styles.inspSkeleton} aria-hidden>
+        <div className={styles.inspectorSkeleton} aria-hidden>
           <div className={styles.skelRow} />
           <div className={styles.skelRow} />
           <div className={styles.skelRow} />
@@ -200,7 +192,7 @@ export default function InspectorScreen({
         />
       )}
       {!view.loading && !view.error && runId && lanes.length === 0 && (
-        <div className={styles.inspEmpty}>
+        <div className={styles.inspectorEmpty}>
           <p className="faint">No phases match this filter.</p>
           {filter !== 'all' && (
             <Button size="sm" onClick={() => setFilter('all')}>
@@ -210,7 +202,7 @@ export default function InspectorScreen({
         </div>
       )}
       {!view.loading && runId && visibleLanes.length > 0 && (
-        <div className={`${styles.inspGrid} ${lanesClass}`}>
+        <div className={styles.inspectorGrid}>
           {visibleLanes.map((phase) => (
             <TranscriptLane
               key={phase.phaseId}

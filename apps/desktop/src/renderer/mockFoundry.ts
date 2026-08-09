@@ -10,6 +10,7 @@ import type {
   AppSettings,
   CliDescriptor,
   DoctorCheck,
+  EnvelopeDef,
   ModelInfo,
   PipelineDef,
   ProjectDef,
@@ -260,6 +261,45 @@ export function createMockFoundryApi(): FoundryApi {
       },
       validate: async () => [],
       reset: async () => [...BUILTIN_AGENTS],
+    },
+    envelopes: {
+      list: async (): Promise<EnvelopeDef[]> => [],
+      save: async (def): Promise<SaveResult<EnvelopeDef[]>> => ({
+        ok: true,
+        issues: [],
+        value: [def],
+      }),
+      remove: async () => [],
+      duplicate: async (name) => ({
+        name: `${name}-copy`,
+        description: '',
+        fields: [],
+      }),
+      usage: async () => ({ agents: [], phases: [] }),
+      validate: async () => ({
+        issues: [],
+        example: JSON.stringify(
+          {
+            status: 'success',
+            summary: 'one sentence on what you did',
+            artifacts: ['relative/path/you/created.md'],
+            notes_for_next_agent: 'what the next phase needs to know',
+          },
+          null,
+          2,
+        ),
+      }),
+      preview: async () =>
+        JSON.stringify(
+          {
+            status: 'success',
+            summary: 'one sentence on what you did',
+            artifacts: ['relative/path/you/created.md'],
+            notes_for_next_agent: 'what the next phase needs to know',
+          },
+          null,
+          2,
+        ),
     },
     pipelines: {
       list: async (): Promise<PipelineDef[]> => [...BUILTIN_PIPELINES],

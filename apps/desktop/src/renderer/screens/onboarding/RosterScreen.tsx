@@ -20,44 +20,46 @@ const ACCENTS: Record<string, string> = {
 
 export default function RosterScreen(): React.JSX.Element {
   return (
-    <div className={styles.rs}>
-      <div className={styles.rsBody}>
-        <div className={styles.rsIntro}>
+    <div className={styles.obRoster}>
+      <div className={styles.obRosterBody}>
+        <div className={styles.obRosterIntro}>
           <p className="ob-eyebrow">03 — The roster</p>
           <h1 className="ob-title">Meet the crew</h1>
           <p className="ob-lead">
             Built-in agents cover plan, build, scout, review, and docs. Edit them, or bring your
             own. Each one can ride a different CLI.
           </p>
-          <div className={styles.rsRule} aria-hidden />
-          <p className={styles.rsStat}>Five specialists. One request. Isolated git worktrees.</p>
-          <div className={styles.rsFlow} aria-hidden>
+          <div className={styles.obRosterDivider} aria-hidden />
+          <p className={styles.obRosterStat}>
+            Five specialists. One request. Isolated git worktrees.
+          </p>
+          <div className={styles.obRosterFlow} aria-hidden>
             {BUILTIN_AGENTS.map((a, i) => (
-              <span key={a.name} className={styles.rsFlowItem}>
-                {i > 0 && <span className={styles.rsFlowArrow}>→</span>}
-                <span className={styles.rsFlowName} style={{ color: ACCENTS[a.name] }}>
+              <span key={a.name} className={styles.obRosterFlowItem}>
+                {i > 0 && <span className={styles.obRosterFlowArrow}>→</span>}
+                <span className={styles.obRosterFlowName} style={{ color: ACCENTS[a.name] }}>
                   {a.name}
                 </span>
               </span>
             ))}
           </div>
-          <p className={styles.rsClarify}>
+          <p className={styles.obRosterClarify}>
             Pipelines wire them in sequence — each phase runs in order, leaves a typed envelope, and
             is judged by code before the next begins.
           </p>
         </div>
 
-        <div className={styles.rsListWrap}>
-          <div className={styles.rsListhead}>
+        <div className={styles.obRosterListWrap}>
+          <div className={styles.obRosterHeader}>
             <span>Agents</span>
-            <span className={styles.rsListheadRight}>Any CLI</span>
+            <span className={styles.obRosterHeaderRight}>Any CLI</span>
           </div>
-          <ol className={styles.rsLanes}>
-            <span className={styles.rsConnector} aria-hidden />
+          <ol className={styles.obRosterLanes}>
+            <span className={styles.obRosterConnector} aria-hidden />
             {BUILTIN_AGENTS.map((agent, idx) => (
               <li
                 key={agent.name}
-                className={styles.rsLane}
+                className={styles.obRosterRow}
                 style={
                   {
                     borderLeftColor: ACCENTS[agent.name],
@@ -66,21 +68,21 @@ export default function RosterScreen(): React.JSX.Element {
                   } as React.CSSProperties
                 }
               >
-                <span className={styles.rsNum}>{String(idx + 1).padStart(2, '0')}</span>
-                <span className={styles.rsAvatarWrap}>
+                <span className={styles.obRosterNum}>{String(idx + 1).padStart(2, '0')}</span>
+                <span className={styles.obRosterAvatarWrap}>
                   <AgentAvatar name={agent.name} size={36} />
                 </span>
-                <span className={styles.rsMain}>
-                  <span className={styles.rsNameRow}>
-                    <span className={styles.rsName}>{agent.name}</span>
-                    <span className={styles.rsSep}>/</span>
-                    <span className={styles.rsRole}>{agent.role}</span>
+                <span className={styles.obRosterMain}>
+                  <span className={styles.obRosterNameRow}>
+                    <span className={styles.obRosterName}>{agent.name}</span>
+                    <span className={styles.obRosterSep}>/</span>
+                    <span className={styles.obRosterRole}>{agent.role}</span>
                   </span>
-                  <span className={styles.rsHint}>{HINTS[agent.name]}</span>
+                  <span className={styles.obRosterHint}>{HINTS[agent.name]}</span>
                 </span>
-                <span className={styles.rsCli}>
+                <span className={styles.obRosterCli}>
                   <span
-                    className={styles.rsDot}
+                    className={styles.obRosterDot}
                     style={{ background: ACCENTS[agent.name] }}
                     aria-hidden
                   />
@@ -89,7 +91,7 @@ export default function RosterScreen(): React.JSX.Element {
               </li>
             ))}
           </ol>
-          <p className={styles.rsFootnote}>
+          <p className={styles.obRosterFootnote}>
             Tune names, prompts, and harnesses in the Roster after setup. The factory runs whatever
             you wire — these five are just a sharp default.
           </p>

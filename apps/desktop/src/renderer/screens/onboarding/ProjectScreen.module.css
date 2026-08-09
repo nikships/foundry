@@ -7,7 +7,7 @@
 }
 
 /* ── left visual ─────────────────────────────── */
-.ob-project-visual {
+.ob-project-diagram {
   position: relative;
   overflow: hidden;
   border-right: 1px solid var(--line);
@@ -16,7 +16,7 @@
   flex-direction: column;
   min-width: 0;
 }
-.ob-project-visual-grid {
+.ob-project-diagram-grid {
   position: absolute;
   inset: 0;
   background-image:
@@ -28,27 +28,27 @@
   opacity: 0.7;
   pointer-events: none;
 }
-.ob-project-orb {
+.ob-glow {
   position: absolute;
   border-radius: var(--r-full);
   filter: blur(80px);
   pointer-events: none;
 }
-.ob-project-orb-a {
+.ob-glow-cyan {
   width: 420px;
   height: 420px;
   left: -90px;
   top: 6%;
   background: color-mix(in srgb, var(--cyan) 14%, transparent);
 }
-.ob-project-orb-b {
+.ob-glow-purple {
   width: 340px;
   height: 340px;
   right: -70px;
   bottom: 2%;
   background: color-mix(in srgb, var(--cyan) 7%, transparent);
 }
-.ob-project-orb::after {
+.ob-glow::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -59,7 +59,7 @@
     transparent 70%
   );
 }
-.ob-project-visual-inner {
+.ob-project-diagram-inner {
   position: relative;
   z-index: 1;
   display: flex;
@@ -68,7 +68,7 @@
   min-height: 0;
   padding: var(--s6) var(--s8);
 }
-.ob-project-visual-label {
+.ob-project-diagram-label {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   letter-spacing: 0.18em;
@@ -99,34 +99,34 @@
   font-family: var(--font-mono);
   font-size: var(--text-xs);
 }
-.ob-project-sch-row {
+.ob-project-schematic-row {
   display: flex;
   align-items: center;
   gap: var(--s2);
   white-space: nowrap;
   overflow: hidden;
 }
-.ob-project-sch-row-dim {
+.ob-project-schematic-row-dim {
   opacity: 0.42;
 }
-.ob-project-sch-key {
+.ob-project-schematic-key {
   color: var(--text-dim);
 }
-.ob-project-sch-arrow {
+.ob-project-schematic-arrow {
   color: var(--text-faint);
 }
-.ob-project-sch-val {
+.ob-project-schematic-val {
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.ob-project-sch-tag {
+.ob-project-schematic-tag {
   margin-left: auto;
   flex: none;
   color: var(--text-faint);
   letter-spacing: 0.06em;
 }
-.ob-project-sch-tag-on {
+.ob-project-schematic-tag-on {
   color: var(--cyan);
 }
 .ob-project-quote {
@@ -139,7 +139,7 @@
 .ob-project-quote span {
   color: var(--text-dim);
 }
-.ob-project-visual-foot {
+.ob-project-diagram-foot {
   margin-top: auto;
   padding-top: var(--s6);
   display: flex;
@@ -488,12 +488,12 @@
   .ob-project {
     grid-template-columns: 1fr;
   }
-  .ob-project-visual {
+  .ob-project-diagram {
     border-right: 0;
     border-bottom: 1px solid var(--line);
     min-height: 420px;
   }
-  .ob-project-visual-inner {
+  .ob-project-diagram-inner {
     padding: var(--s6) var(--s6);
   }
   .ob-project-tree {

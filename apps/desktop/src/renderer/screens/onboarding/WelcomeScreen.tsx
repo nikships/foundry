@@ -47,41 +47,41 @@ const PROOFS: Proof[] = [
 
 export default function WelcomeScreen(): React.JSX.Element {
   return (
-    <div className={styles.fdyWelcome}>
-      <div className={styles.fdySplit}>
+    <div className={styles.obWelcome}>
+      <div className={styles.obWelcomeSplit}>
         {/* stage */}
-        <section className={styles.fdyStage} aria-hidden="true">
-          <div className={styles.fdyStageGrid} />
-          <div className={styles.fdyStageGrain} />
-          <div className={styles.fdyStageFrame} />
-          <div className={styles.fdyStageField}>
-            <span className={`${styles.fdyOrb} ${styles.fdyOrbA}`} />
-            <span className={`${styles.fdyOrb} ${styles.fdyOrbB}`} />
-            <span className={`${styles.fdyOrb} ${styles.fdyOrbC}`} />
+        <section className={styles.obWelcomeHero} aria-hidden="true">
+          <div className={styles.obWelcomeHeroGrid} />
+          <div className={styles.obWelcomeHeroGrain} />
+          <div className={styles.obWelcomeHeroFrame} />
+          <div className={styles.obWelcomeHeroField}>
+            <span className={`${styles.obWelcomeGlow} ${styles.obGlowCyan}`} />
+            <span className={`${styles.obWelcomeGlow} ${styles.obGlowPurple}`} />
+            <span className={`${styles.obWelcomeGlow} ${styles.obGlowAmber}`} />
             <svg
-              className={styles.fdyPipeline}
+              className={styles.obWelcomePipeline}
               viewBox="0 0 400 320"
               preserveAspectRatio="xMidYMid meet"
               role="img"
               aria-label="Pipeline trace"
             >
               <path
-                className={styles.fdyPipelineRail}
+                className={styles.obWelcomePipelineRail}
                 d="M40 60 h150 a24 24 0 0 1 24 24 v152 a24 24 0 0 0 24 24 h122"
               />
               <path
-                className={styles.fdyPipelineRail}
+                className={styles.obWelcomePipelineRail}
                 d="M40 160 h96 a24 24 0 0 1 24 24 v52 a24 24 0 0 0 24 24 h176"
               />
               <path
-                className={`${styles.fdyPipelineRail} ${styles.fdyPipelineRailDim}`}
+                className={`${styles.obWelcomePipelineRail} ${styles.obWelcomePipelineRailDim}`}
                 d="M40 260 h56 a24 24 0 0 0 24-24 V84 a24 24 0 0 1 24-24 h216"
               />
               <path
-                className={styles.fdyPipelinePulse}
+                className={styles.obWelcomePipelinePulse}
                 d="M40 60 h150 a24 24 0 0 1 24 24 v152 a24 24 0 0 0 24 24 h122"
               />
-              <g className={styles.fdyPipelineNodes}>
+              <g className={styles.obWelcomePipelineNodes}>
                 <circle cx="40" cy="60" r="3.5" />
                 <circle cx="40" cy="160" r="3.5" />
                 <circle cx="40" cy="260" r="3.5" />
@@ -89,45 +89,45 @@ export default function WelcomeScreen(): React.JSX.Element {
               </g>
             </svg>
           </div>
-          <p className={styles.fdyStageCaption}>A software factory you can watch work.</p>
+          <p className={styles.obWelcomeHeroCaption}>A software factory you can watch work.</p>
         </section>
 
         {/* editorial */}
-        <section className={styles.fdyEditorial}>
-          <div className={styles.fdyEditorialInner}>
+        <section className={styles.obWelcomeEditorial}>
+          <div className={styles.obWelcomeEditorialInner}>
             <p
-              className={`${styles.fdyEyebrow} ${styles.fdyRise}`}
+              className={`${styles.obWelcomeEyebrow} ${styles.obWelcomeRise}`}
               style={{ ['--d' as string]: '0ms' } as React.CSSProperties}
             >
               Introducing
             </p>
             <h1
-              className={`${styles.fdyWordmark} ${styles.fdyRise}`}
+              className={`${styles.obWelcomeWordmark} ${styles.obWelcomeRise}`}
               style={{ ['--d' as string]: '60ms' } as React.CSSProperties}
             >
               Foundry
             </h1>
             <p
-              className={`${styles.fdyLead} ${styles.fdyRise}`}
+              className={`${styles.obWelcomeLead} ${styles.obWelcomeRise}`}
               style={{ ['--d' as string]: '120ms' } as React.CSSProperties}
             >
               Describe a change. A pipeline of agents carries it out in an isolated worktree. Every
               phase leaves evidence you can read: prompts, tools, gates, and cost.
             </p>
 
-            <ul className={styles.fdyProof}>
+            <ul className={styles.obWelcomeProof}>
               {PROOFS.map((p, i) => (
                 <li
                   key={p.title}
-                  className={`${styles.fdyProofRow} ${styles.fdyRise}`}
+                  className={`${styles.obWelcomeProofRow} ${styles.obWelcomeRise}`}
                   style={{ ['--d' as string]: `${200 + i * 70}ms` } as React.CSSProperties}
                 >
-                  <span className={styles.fdyProofGlyph} aria-hidden="true">
+                  <span className={styles.obWelcomeProofGlyph} aria-hidden="true">
                     {p.glyph}
                   </span>
-                  <span className={styles.fdyProofText}>
-                    <span className={styles.fdyProofTitle}>{p.title}</span>
-                    <span className={styles.fdyProofDesc}>{p.desc}</span>
+                  <span className={styles.obWelcomeProofText}>
+                    <span className={styles.obWelcomeProofTitle}>{p.title}</span>
+                    <span className={styles.obWelcomeProofDesc}>{p.desc}</span>
                   </span>
                 </li>
               ))}

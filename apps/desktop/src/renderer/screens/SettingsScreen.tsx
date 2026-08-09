@@ -16,17 +16,19 @@ import DoctorList from '../components/DoctorList.js';
 import ProjectCommands from '../components/ProjectCommands.js';
 import { Field, Select, TextInput, Textarea } from '../components/ui/Field.js';
 import { Button } from '../components/ui/Button.js';
+import EnvelopesSettings from '../components/EnvelopesSettings.js';
 import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
 import { useTablistNav } from '../hooks/useTablistNav.js';
 import styles from './SettingsScreen.module.css';
 
-type Pane = 'general' | 'clis' | 'defaults' | 'project' | 'maintenance' | 'about';
+type Pane = 'general' | 'clis' | 'defaults' | 'envelopes' | 'project' | 'maintenance' | 'about';
 
 const PANES: { id: Pane; label: string }[] = [
   { id: 'general', label: 'General' },
   { id: 'clis', label: 'Agent CLI' },
   { id: 'defaults', label: 'Agent defaults' },
+  { id: 'envelopes', label: 'Envelopes' },
   { id: 'project', label: 'Project' },
   { id: 'maintenance', label: 'Maintenance' },
   { id: 'about', label: 'About' },
@@ -66,12 +68,12 @@ function Section({
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <section className={styles.setSection}>
-      <div className={styles.setSectionLabel}>
+    <section className={styles.settingsSection}>
+      <div className={styles.settingsSectionLabel}>
         <h2>{label}</h2>
         {note && <p>{note}</p>}
       </div>
-      <div className={styles.setBody}>{children}</div>
+      <div className={styles.settingsBody}>{children}</div>
     </section>
   );
 }
@@ -89,14 +91,14 @@ function Toggle({
   hint?: string;
 }): React.JSX.Element {
   return (
-    <label className={styles.setToggle}>
+    <label className={styles.settingsToggle}>
       <input
         type="checkbox"
-        className={styles.setSwitch}
+        className={styles.settingsSwitch}
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
       />
-      <span className={styles.setToggleText}>
+      <span className={styles.settingsToggleText}>
         {label}
         {hint && <em>{hint}</em>}
       </span>
@@ -362,7 +364,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
     if (pane === 'maintenance') void loadOrphans();
   }, [pane]);
 
-  if (!settings) return <div className={styles.setScreen} />;
+  if (!settings) return <div className={styles.settingsScreen} />;
 
   const updateTone =
     updateStatus.stage === 'error'
@@ -379,10 +381,10 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
 
   return (
     <>
-      <div className={styles.setScreen}>
+      <div className={styles.settingsScreen}>
         {/* ── section strip: equal cells spanning the full window width ── */}
         <div
-          className={styles.setStrip}
+          className={styles.settingsTabs}
           role="tablist"
           aria-label="Settings sections"
           onKeyDown={onTablistKey}
@@ -394,667 +396,690 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
               role="tab"
               aria-selected={pane === p.id}
               tabIndex={pane === p.id ? 0 : -1}
-              className={`${styles.setTab} ${pane === p.id ? styles.on : ''}`}
+              className={`${styles.settingsTab} ${pane === p.id ? styles.on : ''}`}
               onClick={() => setPaneLive(p.id)}
             >
-              <span className={styles.setTabLabel}>{p.label}</span>
+              <span className={styles.settingsTabLabel}>{p.label}</span>
             </button>
           ))}
         </div>
 
-        <div className={styles.setScroll}>
-          <div className={styles.setPage}>
-            {pane === 'general' && (
-              <>
-                <Section label="Identity" note="Attached to every run, so a trace says who asked.">
-                  <div className={styles.setFields}>
-                    <Field label="Your name" htmlFor="engineer-name-input">
-                      <TextInput
-                        id="engineer-name-input"
-                        aria-label="Your name"
-                        value={nameDraft}
-                        onChange={(e) => {
-                          setNameDraft(e.target.value);
-                          setNameHint('');
-                        }}
-                        onBlur={() => void commitName()}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            (e.target as HTMLInputElement).blur();
-                          }
-                        }}
-                      />
-                      <span className={styles.hint}>
-                        Recorded on every run, so a trace says who asked for it. Saved when you
-                        leave the field.
-                      </span>
-                      {nameHint && <span className={styles.setWarn}>{nameHint}</span>}
-                    </Field>
-                  </div>
-                </Section>
-
-                <Section label="Checks" note="What Foundry found on this machine at launch.">
-                  <DoctorList
-                    checks={checks}
-                    title="Environment checks"
-                    onRecheck={() => void api.doctor.run().then(setChecks)}
-                    onOpenSettings={(next) => setPaneLive(next as Pane)}
-                  />
-                </Section>
-
-                <Section label="Notifications" note="Only the moments that need you.">
-                  <div className={styles.setToggles}>
-                    {(Object.keys(NOTIFY_LABELS) as Array<keyof typeof NOTIFY_LABELS>).map(
-                      (key) => (
-                        <Toggle
-                          key={key}
-                          label={NOTIFY_LABELS[key]}
-                          checked={settings.notifications[key]}
-                          onChange={(value) =>
-                            void set({
-                              notifications: { ...settings.notifications, [key]: value },
-                            })
-                          }
-                        />
-                      ),
-                    )}
-                    <Toggle
-                      label="Show the number of live runs on the dock icon"
-                      checked={settings.dockBadge}
-                      onChange={(value) => void set({ dockBadge: value })}
-                    />
-                  </div>
-                </Section>
-
-                <Section label="Software updates" note="Foundry checks only when you ask it to.">
-                  <div className={styles.setSpread}>
-                    <Field>
-                      <strong className={styles.setStrong}>
-                        Foundry {version ? `v${version}` : ''}
-                      </strong>
-                      {updateStatus.message && (
-                        <span className={styles.hint}>{updateStatus.message}</span>
-                      )}
-                      {updateStatus.stage === 'available' && updateStatus.version && (
-                        <span className={styles.hint}>
-                          Foundry v{updateStatus.version} is available, download it when ready.
-                        </span>
-                      )}
-                    </Field>
-                    <span
-                      className={`${styles.setPill} ${updateTone === 'ok' ? styles.ok : updateTone === 'bad' ? styles.bad : styles.info}`}
-                    >
-                      {updateText}
-                    </span>
-                  </div>
-                  {(updateStatus.stage === 'downloading' || updateStatus.stage === 'ready') && (
-                    <div
-                      className={styles.setProgress}
-                      aria-label={
-                        updateStatus.stage === 'downloading'
-                          ? `Downloading ${Math.round(updateStatus.percent ?? 0)} percent`
-                          : 'Update ready to install'
-                      }
-                    >
-                      <div className={styles.setTrack}>
-                        <div
-                          className={`${styles.setFill} ${updateStatus.stage === 'ready' ? styles.ready : ''}`}
-                          style={{
-                            width: `${updateStatus.stage === 'ready' ? 100 : Math.max(0, Math.min(100, updateStatus.percent ?? 0))}%`,
+        <div className={styles.settingsScroll}>
+          {pane === 'envelopes' ? (
+            <div className={styles.envelopesPage}>
+              <EnvelopesSettings />
+            </div>
+          ) : (
+            <div className={styles.settingsPage}>
+              {pane === 'general' && (
+                <>
+                  <Section
+                    label="Identity"
+                    note="Attached to every run, so a trace says who asked."
+                  >
+                    <div className={styles.settingsFields}>
+                      <Field label="Your name" htmlFor="engineer-name-input">
+                        <TextInput
+                          id="engineer-name-input"
+                          aria-label="Your name"
+                          value={nameDraft}
+                          onChange={(e) => {
+                            setNameDraft(e.target.value);
+                            setNameHint('');
+                          }}
+                          onBlur={() => void commitName()}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              (e.target as HTMLInputElement).blur();
+                            }
                           }}
                         />
-                      </div>
-                      <span className={`mono faint ${styles.setPct}`}>
-                        {updateStatus.stage === 'ready'
-                          ? 'ready'
-                          : `${Math.round(updateStatus.percent ?? 0)}%`}
-                      </span>
+                        <span className={styles.hint}>
+                          Recorded on every run, so a trace says who asked for it. Saved when you
+                          leave the field.
+                        </span>
+                        {nameHint && <span className={styles.settingsWarn}>{nameHint}</span>}
+                      </Field>
                     </div>
-                  )}
-                  <div className={styles.setSubrow}>
-                    {updateStatus.stage === 'ready' ? (
-                      <Button variant="primary" size="sm" onClick={() => void installUpdate()}>
-                        Restart to install
-                      </Button>
-                    ) : updateStatus.stage === 'available' ? (
-                      <Button variant="primary" size="sm" onClick={() => void downloadUpdate()}>
-                        Download update
-                      </Button>
-                    ) : updateStatus.stage === 'downloading' ? (
-                      <span className={styles.hint}>
-                        Installing after the download finishes, you will be asked to restart.
-                      </span>
-                    ) : (
-                      <Button
-                        size="sm"
-                        disabled={updateStatus.stage === 'checking'}
-                        onClick={() => void checkForUpdates()}
-                      >
-                        {updateStatus.stage === 'checking'
-                          ? 'Checking for updates…'
-                          : updateStatus.stage === 'error'
-                            ? 'Try again'
-                            : 'Check for updates'}
-                      </Button>
-                    )}
-                  </div>
-                </Section>
+                  </Section>
 
-                <Section
-                  label="Application"
-                  note="Restart after changing settings or installing an update."
-                >
-                  <p className={styles.hint}>
-                    Restart Foundry after changing settings or installing an update.
-                  </p>
-                  <div className={styles.setBtnrow}>
-                    <Button size="sm" onClick={() => void relaunchApp()}>
-                      Relaunch Foundry
-                    </Button>
-                    <Button size="sm" onClick={() => void quitApp()}>
-                      Quit Foundry
-                    </Button>
-                  </div>
-                </Section>
-              </>
-            )}
-            {pane === 'clis' && (
-              <>
-                <Section label="Agent CLI" note="Drives agent phases.">
-                  <p className={styles.setLead}>
-                    Foundry drives Factory Droid for agent phases. A path is filled in from your
-                    PATH at first launch; correct it here if you keep the binary somewhere unusual.
-                  </p>
-                </Section>
-                {clis.map((cli) => {
-                  const config = settings.clis[cli.id];
-                  const found = checks.find((c) => c.id === `cli:${cli.id}`);
-                  return (
-                    <Section
-                      key={cli.id}
-                      label={cli.label}
-                      note={
-                        found
-                          ? found.ok
-                            ? 'On PATH, ready to drive.'
-                            : 'Not where Foundry expected it.'
-                          : 'Checking…'
-                      }
-                    >
-                      <div className={styles.setCliHead}>
-                        <CliIcon vendor={cli.id} size={18} />
-                        <h3>{cli.label}</h3>
-                        {found && (
-                          <span
-                            className={`${styles.setPill} ${found.ok ? styles.ok : styles.bad}`}
-                          >
-                            {found.ok ? 'found' : 'not found'}
-                          </span>
-                        )}
-                      </div>
-                      <div className={styles.setFields}>
-                        <Field label="Executable">
-                          <TextInput
-                            mono
-                            value={config.path}
-                            onChange={(e) => void setCli(cli.id, { path: e.target.value })}
-                          />
-                          {found && <span className={styles.hint}>{found.detail}</span>}
-                        </Field>
-                        <Field
-                          label="Extra arguments"
-                          hint="For an option this release does not model yet. Passed through verbatim."
-                        >
-                          <TextInput
-                            mono
-                            value={config.extraArgs.join(' ')}
-                            placeholder="appended to every turn"
-                            onChange={(e) =>
-                              void setCli(cli.id, {
-                                extraArgs: e.target.value.split(/\s+/).filter(Boolean),
+                  <Section label="Checks" note="What Foundry found on this machine at launch.">
+                    <DoctorList
+                      checks={checks}
+                      title="Environment checks"
+                      onRecheck={() => void api.doctor.run().then(setChecks)}
+                      onOpenSettings={(next) => setPaneLive(next as Pane)}
+                    />
+                  </Section>
+
+                  <Section label="Notifications" note="Only the moments that need you.">
+                    <div className={styles.settingsToggles}>
+                      {(Object.keys(NOTIFY_LABELS) as Array<keyof typeof NOTIFY_LABELS>).map(
+                        (key) => (
+                          <Toggle
+                            key={key}
+                            label={NOTIFY_LABELS[key]}
+                            checked={settings.notifications[key]}
+                            onChange={(value) =>
+                              void set({
+                                notifications: { ...settings.notifications, [key]: value },
                               })
                             }
                           />
-                        </Field>
-                      </div>
-                      {cli.caveats.length > 0 && (
-                        <ul className={styles.caveats}>
-                          {cli.caveats.map((caveat) => (
-                            <li key={caveat}>{caveat}</li>
-                          ))}
-                        </ul>
+                        ),
                       )}
-                      <div>
-                        <Button size="sm" onClick={() => void api.app.openExternal(cli.docsUrl)}>
-                          Install docs
-                        </Button>
+                      <Toggle
+                        label="Show the number of live runs on the dock icon"
+                        checked={settings.dockBadge}
+                        onChange={(value) => void set({ dockBadge: value })}
+                      />
+                    </div>
+                  </Section>
+
+                  <Section label="Software updates" note="Foundry checks only when you ask it to.">
+                    <div className={styles.settingsSpread}>
+                      <Field>
+                        <strong className={styles.settingsStrong}>
+                          Foundry {version ? `v${version}` : ''}
+                        </strong>
+                        {updateStatus.message && (
+                          <span className={styles.hint}>{updateStatus.message}</span>
+                        )}
+                        {updateStatus.stage === 'available' && updateStatus.version && (
+                          <span className={styles.hint}>
+                            Foundry v{updateStatus.version} is available, download it when ready.
+                          </span>
+                        )}
+                      </Field>
+                      <span
+                        className={`${styles.settingsPill} ${updateTone === 'ok' ? styles.ok : updateTone === 'bad' ? styles.bad : styles.info}`}
+                      >
+                        {updateText}
+                      </span>
+                    </div>
+                    {(updateStatus.stage === 'downloading' || updateStatus.stage === 'ready') && (
+                      <div
+                        className={styles.settingsProgress}
+                        aria-label={
+                          updateStatus.stage === 'downloading'
+                            ? `Downloading ${Math.round(updateStatus.percent ?? 0)} percent`
+                            : 'Update ready to install'
+                        }
+                      >
+                        <div className={styles.settingsTrack}>
+                          <div
+                            className={`${styles.settingsFill} ${updateStatus.stage === 'ready' ? styles.ready : ''}`}
+                            style={{
+                              width: `${updateStatus.stage === 'ready' ? 100 : Math.max(0, Math.min(100, updateStatus.percent ?? 0))}%`,
+                            }}
+                          />
+                        </div>
+                        <span className={`mono faint ${styles.settingsPct}`}>
+                          {updateStatus.stage === 'ready'
+                            ? 'ready'
+                            : `${Math.round(updateStatus.percent ?? 0)}%`}
+                        </span>
                       </div>
-                    </Section>
-                  );
-                })}
-                <Section label="Checks" note="Re-run after installing or moving a CLI.">
-                  <DoctorList
-                    checks={checks}
-                    title="Environment checks"
-                    onRecheck={() => void api.doctor.run().then(setChecks)}
-                    onOpenSettings={(next) => setPaneLive(next as Pane)}
-                  />
-                </Section>
-              </>
-            )}
-            {pane === 'defaults' && (
-              <>
-                <Section label="Agent defaults" note="What an agent set to inherit gets.">
-                  <div className={styles.setSpread}>
-                    <p className={styles.setLead}>
-                      Used by any agent set to inherit. A per-agent choice always wins.
-                    </p>
-                    <Button size="sm" onClick={() => void refreshModels()}>
-                      Refresh models
-                    </Button>
-                  </div>
-                </Section>
-                <Section label="Model" note="Offered by whichever CLI is the default.">
-                  <div className={styles.setFields}>
-                    <Field label="Default model">
-                      <ModelPicker
-                        value={settings.defaultModel}
-                        models={models}
-                        allowInherit
-                        emptyHint={`No models from ${settings.defaultCli}. Install and sign in under Agent CLIs, then refresh.`}
-                        onChange={(v) => void set({ defaultModel: v })}
-                        onRefresh={() => void refreshModels()}
-                      />
-                    </Field>
-                    <Field label="Default reasoning effort">
-                      <Select
-                        value={settings.defaultReasoningEffort}
-                        onChange={(e) =>
-                          void set({ defaultReasoningEffort: e.target.value as never })
-                        }
-                      >
-                        <option value="off">Off</option>
-                        <option value="low">Low</option>
-                        <option value="medium">Medium</option>
-                        <option value="high">High</option>
-                      </Select>
-                    </Field>
-                  </div>
-                </Section>
-                <Section label="Autonomy" note="What an agent stops to ask about.">
-                  <Field
-                    label="Autonomy"
-                    hint="Foundry always reverts writes outside an agent's boundary, at every level. Autonomy only decides what it stops to ask about first."
+                    )}
+                    <div className={styles.settingsSubrow}>
+                      {updateStatus.stage === 'ready' ? (
+                        <Button variant="primary" size="sm" onClick={() => void installUpdate()}>
+                          Restart to install
+                        </Button>
+                      ) : updateStatus.stage === 'available' ? (
+                        <Button variant="primary" size="sm" onClick={() => void downloadUpdate()}>
+                          Download update
+                        </Button>
+                      ) : updateStatus.stage === 'downloading' ? (
+                        <span className={styles.hint}>
+                          Installing after the download finishes, you will be asked to restart.
+                        </span>
+                      ) : (
+                        <Button
+                          size="sm"
+                          disabled={updateStatus.stage === 'checking'}
+                          onClick={() => void checkForUpdates()}
+                        >
+                          {updateStatus.stage === 'checking'
+                            ? 'Checking for updates…'
+                            : updateStatus.stage === 'error'
+                              ? 'Try again'
+                              : 'Check for updates'}
+                        </Button>
+                      )}
+                    </div>
+                  </Section>
+
+                  <Section
+                    label="Application"
+                    note="Restart after changing settings or installing an update."
                   >
-                    <Select
-                      value={settings.defaultAutonomy}
-                      onChange={(e) => void set({ defaultAutonomy: e.target.value as never })}
-                    >
-                      <option value="low">Low: confirm every write and command</option>
-                      <option value="medium">
-                        Medium: writes inside the boundary run unattended
-                      </option>
-                      <option value="high">High: run unattended within the worktree</option>
-                    </Select>
-                  </Field>
-                </Section>
-                <Section label="Limits" note="How hard Foundry tries before a phase fails.">
-                  <div className={styles.setFields}>
-                    <Field
-                      label="Envelope retries"
-                      hint="Correction messages sent when a reply will not parse."
-                    >
-                      <TextInput
-                        type="number"
-                        min={0}
-                        max={5}
-                        value={settings.envelopeRetries}
-                        onChange={(e) =>
-                          void setInt(e.target.value, { min: 0, max: 5 }, (envelopeRetries) => ({
-                            envelopeRetries,
-                          }))
+                    <p className={styles.hint}>
+                      Restart Foundry after changing settings or installing an update.
+                    </p>
+                    <div className={styles.settingsBtnrow}>
+                      <Button size="sm" onClick={() => void relaunchApp()}>
+                        Relaunch Foundry
+                      </Button>
+                      <Button size="sm" onClick={() => void quitApp()}>
+                        Quit Foundry
+                      </Button>
+                    </div>
+                  </Section>
+                </>
+              )}
+              {pane === 'clis' && (
+                <>
+                  <Section label="Agent CLI" note="Drives agent phases.">
+                    <p className={styles.settingsLead}>
+                      Foundry drives Factory Droid for agent phases. A path is filled in from your
+                      PATH at first launch; correct it here if you keep the binary somewhere
+                      unusual.
+                    </p>
+                  </Section>
+                  {clis.map((cli) => {
+                    const config = settings.clis[cli.id];
+                    const found = checks.find((c) => c.id === `cli:${cli.id}`);
+                    return (
+                      <Section
+                        key={cli.id}
+                        label={cli.label}
+                        note={
+                          found
+                            ? found.ok
+                              ? 'On PATH, ready to drive.'
+                              : 'Not where Foundry expected it.'
+                            : 'Checking…'
                         }
-                      />
-                    </Field>
-                    <Field
-                      label="Gate retries"
-                      hint="Attempts to fix a gate violation before the phase fails."
-                    >
-                      <TextInput
-                        type="number"
-                        min={0}
-                        max={5}
-                        value={settings.gateRetries}
-                        onChange={(e) =>
-                          void setInt(e.target.value, { min: 0, max: 5 }, (gateRetries) => ({
-                            gateRetries,
-                          }))
-                        }
-                      />
-                    </Field>
-                    <Field label="Turn timeout (minutes)">
-                      <TextInput
-                        type="number"
-                        min={5}
-                        max={60}
-                        value={Math.round(settings.turnTimeoutMs / 60000)}
-                        onChange={(e) =>
-                          void setInt(e.target.value, { min: 5, max: 60 }, (minutes) => ({
-                            turnTimeoutMs: minutes * 60_000,
-                          }))
-                        }
-                      />
-                    </Field>
-                    <Field
-                      label="Trace poll cadence (ms)"
-                      hint="How often a live run's view refreshes."
-                    >
-                      <TextInput
-                        type="number"
-                        min={250}
-                        max={2000}
-                        step={50}
-                        value={settings.pollCadenceMs}
-                        onChange={(e) =>
-                          void setInt(e.target.value, { min: 250, max: 2000 }, (pollCadenceMs) => ({
-                            pollCadenceMs,
-                          }))
-                        }
-                      />
-                    </Field>
-                  </div>
-                </Section>
-              </>
-            )}
-            {pane === 'project' && (
-              <>
-                {projectDraft ? (
-                  <>
-                    <Section label="Project" note="Where Foundry runs, and what it may touch.">
-                      <Field
-                        label="Project name"
-                        hint="Just for you — rename freely. The path is where Foundry runs."
                       >
-                        <TextInput
-                          value={projectDraft.name}
-                          onChange={(e) =>
-                            setProjectDraft({ ...projectDraft, name: e.target.value })
-                          }
-                          placeholder="My project"
+                        <div className={styles.settingsCliHead}>
+                          <CliIcon vendor={cli.id} size={18} />
+                          <h3>{cli.label}</h3>
+                          {found && (
+                            <span
+                              className={`${styles.settingsPill} ${found.ok ? styles.ok : styles.bad}`}
+                            >
+                              {found.ok ? 'found' : 'not found'}
+                            </span>
+                          )}
+                        </div>
+                        <div className={styles.settingsFields}>
+                          <Field label="Executable">
+                            <TextInput
+                              mono
+                              value={config.path}
+                              onChange={(e) => void setCli(cli.id, { path: e.target.value })}
+                            />
+                            {found && <span className={styles.hint}>{found.detail}</span>}
+                          </Field>
+                          <Field
+                            label="Extra arguments"
+                            hint="For an option this release does not model yet. Passed through verbatim."
+                          >
+                            <TextInput
+                              mono
+                              value={config.extraArgs.join(' ')}
+                              placeholder="appended to every turn"
+                              onChange={(e) =>
+                                void setCli(cli.id, {
+                                  extraArgs: e.target.value.split(/\s+/).filter(Boolean),
+                                })
+                              }
+                            />
+                          </Field>
+                        </div>
+                        {cli.caveats.length > 0 && (
+                          <ul className={styles.caveats}>
+                            {cli.caveats.map((caveat) => (
+                              <li key={caveat}>{caveat}</li>
+                            ))}
+                          </ul>
+                        )}
+                        <div>
+                          <Button size="sm" onClick={() => void api.app.openExternal(cli.docsUrl)}>
+                            Install docs
+                          </Button>
+                        </div>
+                      </Section>
+                    );
+                  })}
+                  <Section label="Checks" note="Re-run after installing or moving a CLI.">
+                    <DoctorList
+                      checks={checks}
+                      title="Environment checks"
+                      onRecheck={() => void api.doctor.run().then(setChecks)}
+                      onOpenSettings={(next) => setPaneLive(next as Pane)}
+                    />
+                  </Section>
+                </>
+              )}
+              {pane === 'defaults' && (
+                <>
+                  <Section label="Agent defaults" note="What an agent set to inherit gets.">
+                    <div className={styles.settingsSpread}>
+                      <p className={styles.settingsLead}>
+                        Used by any agent set to inherit. A per-agent choice always wins.
+                      </p>
+                      <Button size="sm" onClick={() => void refreshModels()}>
+                        Refresh models
+                      </Button>
+                    </div>
+                  </Section>
+                  <Section label="Model" note="Offered by whichever CLI is the default.">
+                    <div className={styles.settingsFields}>
+                      <Field label="Default model">
+                        <ModelPicker
+                          value={settings.defaultModel}
+                          models={models}
+                          allowInherit
+                          emptyHint={`No models from ${settings.defaultCli}. Install and sign in under Agent CLIs, then refresh.`}
+                          onChange={(v) => void set({ defaultModel: v })}
+                          onRefresh={() => void refreshModels()}
                         />
                       </Field>
-                      <div className={styles.setSubrow}>
-                        <span className={`mono faint ${styles.setPath}`}>{projectDraft.path}</span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => void api.projects.reveal(projectDraft.path)}
+                      <Field label="Default reasoning effort">
+                        <Select
+                          value={settings.defaultReasoningEffort}
+                          onChange={(e) =>
+                            void set({ defaultReasoningEffort: e.target.value as never })
+                          }
                         >
-                          Reveal in Finder
-                        </Button>
-                      </div>
-                    </Section>
-                    <Section label="Checks" note="Run against this repository.">
-                      <DoctorList
-                        checks={projectChecks}
-                        title="Repository checks"
-                        onRecheck={() =>
-                          void api.projects.check(projectDraft.id).then(setProjectChecks)
-                        }
-                        onOpenSettings={(next) => setPaneLive(next as Pane)}
-                      />
-                    </Section>
-                    <Section label="Git" note="Every run branches from the base ref.">
-                      <div className={styles.setFields}>
-                        <Field label="Base ref" hint="Every run branches from here.">
+                          <option value="off">Off</option>
+                          <option value="low">Low</option>
+                          <option value="medium">Medium</option>
+                          <option value="high">High</option>
+                        </Select>
+                      </Field>
+                    </div>
+                  </Section>
+                  <Section label="Autonomy" note="What an agent stops to ask about.">
+                    <Field
+                      label="Autonomy"
+                      hint="Foundry always reverts writes outside an agent's boundary, at every level. Autonomy only decides what it stops to ask about first."
+                    >
+                      <Select
+                        value={settings.defaultAutonomy}
+                        onChange={(e) => void set({ defaultAutonomy: e.target.value as never })}
+                      >
+                        <option value="low">Low: confirm every write and command</option>
+                        <option value="medium">
+                          Medium: writes inside the boundary run unattended
+                        </option>
+                        <option value="high">High: run unattended within the worktree</option>
+                      </Select>
+                    </Field>
+                  </Section>
+                  <Section label="Limits" note="How hard Foundry tries before a phase fails.">
+                    <div className={styles.settingsFields}>
+                      <Field
+                        label="Envelope retries"
+                        hint="Correction messages sent when a reply will not parse."
+                      >
+                        <TextInput
+                          type="number"
+                          min={0}
+                          max={5}
+                          value={settings.envelopeRetries}
+                          onChange={(e) =>
+                            void setInt(e.target.value, { min: 0, max: 5 }, (envelopeRetries) => ({
+                              envelopeRetries,
+                            }))
+                          }
+                        />
+                      </Field>
+                      <Field
+                        label="Gate retries"
+                        hint="Attempts to fix a gate violation before the phase fails."
+                      >
+                        <TextInput
+                          type="number"
+                          min={0}
+                          max={5}
+                          value={settings.gateRetries}
+                          onChange={(e) =>
+                            void setInt(e.target.value, { min: 0, max: 5 }, (gateRetries) => ({
+                              gateRetries,
+                            }))
+                          }
+                        />
+                      </Field>
+                      <Field label="Turn timeout (minutes)">
+                        <TextInput
+                          type="number"
+                          min={5}
+                          max={60}
+                          value={Math.round(settings.turnTimeoutMs / 60000)}
+                          onChange={(e) =>
+                            void setInt(e.target.value, { min: 5, max: 60 }, (minutes) => ({
+                              turnTimeoutMs: minutes * 60_000,
+                            }))
+                          }
+                        />
+                      </Field>
+                      <Field
+                        label="Trace poll cadence (ms)"
+                        hint="How often a live run's view refreshes."
+                      >
+                        <TextInput
+                          type="number"
+                          min={250}
+                          max={2000}
+                          step={50}
+                          value={settings.pollCadenceMs}
+                          onChange={(e) =>
+                            void setInt(
+                              e.target.value,
+                              { min: 250, max: 2000 },
+                              (pollCadenceMs) => ({
+                                pollCadenceMs,
+                              }),
+                            )
+                          }
+                        />
+                      </Field>
+                    </div>
+                  </Section>
+                </>
+              )}
+              {pane === 'project' && (
+                <>
+                  {projectDraft ? (
+                    <>
+                      <Section label="Project" note="Where Foundry runs, and what it may touch.">
+                        <Field
+                          label="Project name"
+                          hint="Just for you — rename freely. The path is where Foundry runs."
+                        >
                           <TextInput
-                            mono
-                            value={projectDraft.baseRef}
+                            value={projectDraft.name}
                             onChange={(e) =>
-                              setProjectDraft({ ...projectDraft, baseRef: e.target.value })
+                              setProjectDraft({ ...projectDraft, name: e.target.value })
                             }
+                            placeholder="My project"
                           />
                         </Field>
-                        <Field label="Merge policy">
-                          <Select
-                            value={projectDraft.mergePolicy}
+                        <div className={styles.settingsSubrow}>
+                          <span className={`mono faint ${styles.settingsPath}`}>
+                            {projectDraft.path}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => void api.projects.reveal(projectDraft.path)}
+                          >
+                            Reveal in Finder
+                          </Button>
+                        </div>
+                      </Section>
+                      <Section label="Checks" note="Run against this repository.">
+                        <DoctorList
+                          checks={projectChecks}
+                          title="Repository checks"
+                          onRecheck={() =>
+                            void api.projects.check(projectDraft.id).then(setProjectChecks)
+                          }
+                          onOpenSettings={(next) => setPaneLive(next as Pane)}
+                        />
+                      </Section>
+                      <Section label="Git" note="Every run branches from the base ref.">
+                        <div className={styles.settingsFields}>
+                          <Field label="Base ref" hint="Every run branches from here.">
+                            <TextInput
+                              mono
+                              value={projectDraft.baseRef}
+                              onChange={(e) =>
+                                setProjectDraft({ ...projectDraft, baseRef: e.target.value })
+                              }
+                            />
+                          </Field>
+                          <Field label="Merge policy">
+                            <Select
+                              value={projectDraft.mergePolicy}
+                              onChange={(e) =>
+                                setProjectDraft({
+                                  ...projectDraft,
+                                  mergePolicy: e.target.value as ProjectDef['mergePolicy'],
+                                })
+                              }
+                            >
+                              <option value="never">Never merge automatically</option>
+                              <option value="on_accept">Merge when a run is accepted</option>
+                              <option value="ask">Ask me each time</option>
+                            </Select>
+                          </Field>
+                        </div>
+                      </Section>
+                      <Section label="Commands" note="What a pipeline can run, and who detects it.">
+                        <ProjectCommands
+                          project={projectDraft}
+                          onChange={(commands) => setProjectDraft({ ...projectDraft, commands })}
+                        />
+                      </Section>
+                      <Section
+                        label="Boundaries"
+                        note="Hard limits, whatever an agent's own boundary says."
+                      >
+                        <Field
+                          label="Protected paths"
+                          htmlFor="project-protected-paths"
+                          hint={
+                            <>
+                              One pattern per line. No agent may write these, whatever its own
+                              boundary says. <code>.git/</code>, CI config, and lockfiles are always
+                              protected.
+                            </>
+                          }
+                        >
+                          <Textarea
+                            id="project-protected-paths"
+                            aria-label="Protected paths"
+                            rows={3}
+                            placeholder="e.g. src/**/*.secret&#10;.env*"
+                            value={projectDraft.protectedPaths.join('\n')}
                             onChange={(e) =>
                               setProjectDraft({
                                 ...projectDraft,
-                                mergePolicy: e.target.value as ProjectDef['mergePolicy'],
+                                protectedPaths: e.target.value.split('\n').filter(Boolean),
                               })
                             }
-                          >
-                            <option value="never">Never merge automatically</option>
-                            <option value="on_accept">Merge when a run is accepted</option>
-                            <option value="ask">Ask me each time</option>
-                          </Select>
+                          />
                         </Field>
+                        <Field
+                          label="Auto-approved commands"
+                          htmlFor="project-allowed-commands"
+                          hint="Commands agents may run without stopping to ask. Prefix matching."
+                        >
+                          <Textarea
+                            id="project-allowed-commands"
+                            aria-label="Auto-approved commands"
+                            rows={3}
+                            placeholder="e.g. npm test&#10;pytest"
+                            value={projectDraft.allowedCommands.join('\n')}
+                            onChange={(e) =>
+                              setProjectDraft({
+                                ...projectDraft,
+                                allowedCommands: e.target.value.split('\n').filter(Boolean),
+                              })
+                            }
+                          />
+                        </Field>
+                      </Section>
+                      <Section label="Scope" note="Keep configuration local to this project.">
+                        <div className={styles.settingsFields}>
+                          <Toggle
+                            label="Use a project-specific roster"
+                            hint="Starts as a copy of the global roster; changes stay in this project."
+                            checked={projectDraft.ownRoster}
+                            onChange={(value) =>
+                              setProjectDraft({ ...projectDraft, ownRoster: value })
+                            }
+                          />
+                          <Toggle
+                            label="Use project-specific pipelines"
+                            hint="Same idea, for pipelines."
+                            checked={projectDraft.ownPipelines}
+                            onChange={(value) =>
+                              setProjectDraft({ ...projectDraft, ownPipelines: value })
+                            }
+                          />
+                        </div>
+                      </Section>
+                      <div className={styles.settingsFoot}>
+                        <Button variant="danger" onClick={() => void removeProject()}>
+                          Remove project
+                        </Button>
+                        <span className={styles.settingsAutosave}>Changes save automatically</span>
                       </div>
-                    </Section>
-                    <Section label="Commands" note="What a pipeline can run, and who detects it.">
-                      <ProjectCommands
-                        project={projectDraft}
-                        onChange={(commands) => setProjectDraft({ ...projectDraft, commands })}
-                      />
-                    </Section>
-                    <Section
-                      label="Boundaries"
-                      note="Hard limits, whatever an agent's own boundary says."
+                    </>
+                  ) : (
+                    <div className={styles.settingsEmpty}>
+                      <p className="faint">
+                        No project selected. Add a git repository to configure.
+                      </p>
+                      <Button variant="primary" onClick={() => void addProject()}>
+                        Add a project…
+                      </Button>
+                    </div>
+                  )}
+                </>
+              )}
+              {pane === 'maintenance' && (
+                <>
+                  <Section label="Retention" note="Nothing is deleted behind your back.">
+                    <Field
+                      label="Keep run history for"
+                      className={styles.settingsNarrow}
+                      hint="Applies when you press the button below. Nothing is deleted behind your back."
                     >
-                      <Field
-                        label="Protected paths"
-                        htmlFor="project-protected-paths"
-                        hint={
-                          <>
-                            One pattern per line. No agent may write these, whatever its own
-                            boundary says. <code>.git/</code>, CI config, and lockfiles are always
-                            protected.
-                          </>
+                      <Select
+                        value={settings.retentionDays ?? ''}
+                        onChange={(e) =>
+                          void set({
+                            retentionDays: e.target.value ? Number(e.target.value) : null,
+                          })
                         }
                       >
-                        <Textarea
-                          id="project-protected-paths"
-                          aria-label="Protected paths"
-                          rows={3}
-                          placeholder="e.g. src/**/*.secret&#10;.env*"
-                          value={projectDraft.protectedPaths.join('\n')}
-                          onChange={(e) =>
-                            setProjectDraft({
-                              ...projectDraft,
-                              protectedPaths: e.target.value.split('\n').filter(Boolean),
-                            })
-                          }
-                        />
-                      </Field>
-                      <Field
-                        label="Auto-approved commands"
-                        htmlFor="project-allowed-commands"
-                        hint="Commands agents may run without stopping to ask. Prefix matching."
-                      >
-                        <Textarea
-                          id="project-allowed-commands"
-                          aria-label="Auto-approved commands"
-                          rows={3}
-                          placeholder="e.g. npm test&#10;pytest"
-                          value={projectDraft.allowedCommands.join('\n')}
-                          onChange={(e) =>
-                            setProjectDraft({
-                              ...projectDraft,
-                              allowedCommands: e.target.value.split('\n').filter(Boolean),
-                            })
-                          }
-                        />
-                      </Field>
-                    </Section>
-                    <Section label="Scope" note="Keep configuration local to this project.">
-                      <div className={styles.setFields}>
-                        <Toggle
-                          label="Use a project-specific roster"
-                          hint="Starts as a copy of the global roster; changes stay in this project."
-                          checked={projectDraft.ownRoster}
-                          onChange={(value) =>
-                            setProjectDraft({ ...projectDraft, ownRoster: value })
-                          }
-                        />
-                        <Toggle
-                          label="Use project-specific pipelines"
-                          hint="Same idea, for pipelines."
-                          checked={projectDraft.ownPipelines}
-                          onChange={(value) =>
-                            setProjectDraft({ ...projectDraft, ownPipelines: value })
-                          }
-                        />
+                        <option value="">Forever</option>
+                        <option value="7">7 days</option>
+                        <option value="30">30 days</option>
+                        <option value="90">90 days</option>
+                        <option value="365">A year</option>
+                      </Select>
+                    </Field>
+                    <div className={styles.settingsSubrow}>
+                      <div className={styles.settingsBtnrow}>
+                        <Button disabled={maintenanceBusy} onClick={() => void applyRetention()}>
+                          {maintenanceBusy ? 'Working…' : 'Apply retention now'}
+                        </Button>
+                        <Button disabled={maintenanceBusy} onClick={() => void compact()}>
+                          {maintenanceBusy ? 'Working…' : 'Compact trace databases'}
+                        </Button>
                       </div>
-                    </Section>
-                    <div className={styles.setFoot}>
-                      <Button variant="danger" onClick={() => void removeProject()}>
-                        Remove project
-                      </Button>
-                      <span className={styles.setAutosave}>Changes save automatically</span>
                     </div>
-                  </>
-                ) : (
-                  <div className={styles.setEmpty}>
-                    <p className="faint">No project selected. Add a git repository to configure.</p>
-                    <Button variant="primary" onClick={() => void addProject()}>
-                      Add a project…
-                    </Button>
-                  </div>
-                )}
-              </>
-            )}
-            {pane === 'maintenance' && (
-              <>
-                <Section label="Retention" note="Nothing is deleted behind your back.">
-                  <Field
-                    label="Keep run history for"
-                    className={styles.setNarrow}
-                    hint="Applies when you press the button below. Nothing is deleted behind your back."
+                  </Section>
+                  <Section
+                    label="Leftover worktrees"
+                    note="Left behind by a crashed or killed run."
                   >
-                    <Select
-                      value={settings.retentionDays ?? ''}
-                      onChange={(e) =>
-                        void set({ retentionDays: e.target.value ? Number(e.target.value) : null })
-                      }
-                    >
-                      <option value="">Forever</option>
-                      <option value="7">7 days</option>
-                      <option value="30">30 days</option>
-                      <option value="90">90 days</option>
-                      <option value="365">A year</option>
-                    </Select>
-                  </Field>
-                  <div className={styles.setSubrow}>
-                    <div className={styles.setBtnrow}>
-                      <Button disabled={maintenanceBusy} onClick={() => void applyRetention()}>
-                        {maintenanceBusy ? 'Working…' : 'Apply retention now'}
-                      </Button>
-                      <Button disabled={maintenanceBusy} onClick={() => void compact()}>
-                        {maintenanceBusy ? 'Working…' : 'Compact trace databases'}
-                      </Button>
-                    </div>
-                  </div>
-                </Section>
-                <Section label="Leftover worktrees" note="Left behind by a crashed or killed run.">
-                  <p className={styles.hint}>
-                    A worktree left behind by a crashed or killed run. Removing one deletes its
-                    branch and any uncommitted work in it.
-                  </p>
-                  {orphans.length ? (
-                    <ul className={styles.setOrphans}>
-                      {orphans.map((orphan) => (
-                        <li key={orphan.path}>
-                          <span className={`mono ${styles.path}`}>{orphan.path}</span>
-                          <span className="mono faint">{orphan.branch}</span>
-                          <Button
-                            variant="danger"
-                            size="sm"
-                            onClick={() => void removeOrphan(orphan)}
-                          >
-                            Remove
-                          </Button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="faint">None found.</p>
-                  )}
-                  {maintenanceNote && (
-                    <p className={styles.setNote}>
-                      <svg
-                        width="12"
-                        height="12"
-                        viewBox="0 0 14 14"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.6"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden
-                      >
-                        <path d="M2.5 7.5 5.5 10.5 11.5 3.5" />
-                      </svg>
-                      {maintenanceNote}
+                    <p className={styles.hint}>
+                      A worktree left behind by a crashed or killed run. Removing one deletes its
+                      branch and any uncommitted work in it.
                     </p>
-                  )}
-                </Section>
-              </>
-            )}
-            {pane === 'about' && (
-              <>
-                <Section label="Foundry" note="A software factory you can watch.">
-                  <p className={styles.setLead}>
-                    A software factory you can watch. Pipelines are data, agents are configuration,
-                    and every phase leaves evidence you can read.
-                  </p>
-                </Section>
-                <Section label="Build" note="What this copy of Foundry is running.">
-                  <dl className={styles.setFacts}>
-                    <div className={styles.setFact}>
-                      <dt>Version</dt>
-                      <dd className="mono">{version}</dd>
+                    {orphans.length ? (
+                      <ul className={styles.settingsOrphans}>
+                        {orphans.map((orphan) => (
+                          <li key={orphan.path}>
+                            <span className={`mono ${styles.path}`}>{orphan.path}</span>
+                            <span className="mono faint">{orphan.branch}</span>
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              onClick={() => void removeOrphan(orphan)}
+                            >
+                              Remove
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="faint">None found.</p>
+                    )}
+                    {maintenanceNote && (
+                      <p className={styles.settingsNote}>
+                        <svg
+                          width="12"
+                          height="12"
+                          viewBox="0 0 14 14"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden
+                        >
+                          <path d="M2.5 7.5 5.5 10.5 11.5 3.5" />
+                        </svg>
+                        {maintenanceNote}
+                      </p>
+                    )}
+                  </Section>
+                </>
+              )}
+              {pane === 'about' && (
+                <>
+                  <Section label="Foundry" note="A software factory you can watch.">
+                    <p className={styles.settingsLead}>
+                      A software factory you can watch. Pipelines are data, agents are
+                      configuration, and every phase leaves evidence you can read.
+                    </p>
+                  </Section>
+                  <Section label="Build" note="What this copy of Foundry is running.">
+                    <dl className={styles.settingsFacts}>
+                      <div className={styles.settingsFact}>
+                        <dt>Version</dt>
+                        <dd className="mono">{version}</dd>
+                      </div>
+                      <div className={styles.settingsFact}>
+                        <dt>Agent harness</dt>
+                        <dd className="mono">droid CLI over stream JSON-RPC</dd>
+                      </div>
+                      <div className={styles.settingsFact}>
+                        <dt>Projects</dt>
+                        <dd className="mono">{projects.length}</dd>
+                      </div>
+                    </dl>
+                  </Section>
+                  <Section label="Elsewhere" note="Docs and the cinematic intro.">
+                    <div className={styles.settingsBtnrow}>
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          void api.app.openExternal('https://docs.factory.ai/droid-exec/overview')
+                        }
+                      >
+                        droid CLI documentation
+                      </Button>
+                      <Button size="sm" onClick={() => void replayIntro()}>
+                        Replay intro
+                      </Button>
                     </div>
-                    <div className={styles.setFact}>
-                      <dt>Agent harness</dt>
-                      <dd className="mono">droid CLI over stream JSON-RPC</dd>
-                    </div>
-                    <div className={styles.setFact}>
-                      <dt>Projects</dt>
-                      <dd className="mono">{projects.length}</dd>
-                    </div>
-                  </dl>
-                </Section>
-                <Section label="Elsewhere" note="Docs and the cinematic intro.">
-                  <div className={styles.setBtnrow}>
-                    <Button
-                      size="sm"
-                      onClick={() =>
-                        void api.app.openExternal('https://docs.factory.ai/droid-exec/overview')
-                      }
-                    >
-                      droid CLI documentation
-                    </Button>
-                    <Button size="sm" onClick={() => void replayIntro()}>
-                      Replay intro
-                    </Button>
-                  </div>
-                  <p className={styles.hint}>
-                    Replay intro walks the cinematic onboarding again: agents, CLIs, environment
-                    checks, and your first project.
-                  </p>
-                </Section>
-              </>
-            )}
-            {errors.length > 0 && (
-              <ul className={styles.setErrors} role="alert">
-                {errors.map((error, i) => (
-                  <li key={i}>{error}</li>
-                ))}
-              </ul>
-            )}
-          </div>
+                    <p className={styles.hint}>
+                      Replay intro walks the cinematic onboarding again: agents, CLIs, environment
+                      checks, and your first project.
+                    </p>
+                  </Section>
+                </>
+              )}
+              {errors.length > 0 && (
+                <ul className={styles.settingsErrors} role="alert">
+                  {errors.map((error, i) => (
+                    <li key={i}>{error}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </>

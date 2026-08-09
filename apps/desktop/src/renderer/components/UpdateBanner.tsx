@@ -80,7 +80,7 @@ export default function UpdateBanner({
               style={{ width: `${Math.min(100, Math.max(0, status.percent ?? 0))}%` }}
             />
           </div>
-          <span className={`${styles.pct} mono`}>{Math.round(status.percent ?? 0)}%</span>
+          <span className={`${styles.percent} mono`}>{Math.round(status.percent ?? 0)}%</span>
         </div>
       )}
 
