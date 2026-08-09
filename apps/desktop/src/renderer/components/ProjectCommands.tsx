@@ -299,26 +299,35 @@ export default function ProjectCommands({
           Detection reads the repo read-only, against your checkout rather than a worktree.
         </span>
         <div className={`${styles.two} ${styles.detectPicker}`}>
-          <div className={styles.cliPick}>
-            <Select value={detectCli} onChange={(e) => setDetectCli(e.target.value)}>
-              <option value="default">
-                Follow the default CLI ({settings?.defaultCli ?? 'droid'})
-              </option>
-              {clis.map((cli) => (
-                <option key={cli.id} value={cli.id}>
-                  {cli.label}
+          <Field label="CLI vendor" htmlFor="detect-cli-select">
+            <div className={styles.cliPick}>
+              <Select
+                id="detect-cli-select"
+                aria-label="Command Detection CLI"
+                value={detectCli}
+                onChange={(e) => setDetectCli(e.target.value)}
+              >
+                <option value="default">
+                  Follow the default CLI ({settings?.defaultCli ?? 'droid'})
                 </option>
-              ))}
-            </Select>
-            <CliIcon vendor={effectiveCli} size={18} />
-          </div>
-          <ModelPicker
-            value={detectModel}
-            models={models}
-            allowInherit
-            emptyHint={`No models listed for ${effectiveCli}. Install and sign in to it, or leave this on inherit.`}
-            onChange={(model) => void patchSettings({ detectModel: model })}
-          />
+                {clis.map((cli) => (
+                  <option key={cli.id} value={cli.id}>
+                    {cli.label}
+                  </option>
+                ))}
+              </Select>
+              <CliIcon vendor={effectiveCli} size={18} />
+            </div>
+          </Field>
+          <Field label="Model">
+            <ModelPicker
+              value={detectModel}
+              models={models}
+              allowInherit
+              emptyHint={`No models listed for ${effectiveCli}. Install and sign in to it, or leave this on inherit.`}
+              onChange={(model) => void patchSettings({ detectModel: model })}
+            />
+          </Field>
         </div>
       </Field>
 

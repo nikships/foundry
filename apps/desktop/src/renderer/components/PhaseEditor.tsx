@@ -3,6 +3,7 @@ import type { AgentDef, EnvelopeKind, PhaseDef } from '@shared/types.js';
 import { api } from '../api.js';
 import { useApp } from '../stores/app.js';
 import { phaseKindColor } from '../derive.js';
+import { KIND_LABEL } from '../screens/PipelinesScreen.js';
 import AgentAvatar from './AgentAvatar.js';
 import { CliIcon } from './BrandIcon.js';
 import { Field, Select, TextInput, Textarea } from './ui/Field.js';
@@ -144,9 +145,7 @@ export default function PhaseEditor({
             </span>
             {phase.kind === 'agent' && <AgentAvatar name={phase.agent ?? null} size={20} />}
             <span className={styles.pname}>{phase.name}</span>
-            <span className={styles.kind}>
-              {phase.kind === 'engineer' ? 'checkpoint' : phase.kind}
-            </span>
+            <span className={styles.kind}>{KIND_LABEL[phase.kind] ?? phase.kind}</span>
             <span className={styles.summary}>
               {phase.kind === 'agent' && (
                 <>

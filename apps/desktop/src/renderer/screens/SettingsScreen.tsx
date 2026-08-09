@@ -408,8 +408,10 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
               <>
                 <Section label="Identity" note="Attached to every run, so a trace says who asked.">
                   <div className={styles.setFields}>
-                    <Field label="Your name">
+                    <Field label="Your name" htmlFor="engineer-name-input">
                       <TextInput
+                        id="engineer-name-input"
+                        aria-label="Your name"
                         value={nameDraft}
                         onChange={(e) => {
                           setNameDraft(e.target.value);
@@ -431,10 +433,13 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                     </Field>
                     <Field
                       label="Default agent CLI"
+                      htmlFor="default-agent-cli-select"
                       hint="What a new agent starts on, and what command detection uses. Each agent can choose its own in the Roster."
                     >
                       <div className={styles.cliPicker}>
                         <Select
+                          id="default-agent-cli-select"
+                          aria-label="Default agent CLI"
                           value={settings.defaultCli}
                           onChange={(e) => void set({ defaultCli: e.target.value as CliVendor })}
                         >
@@ -860,6 +865,7 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                     >
                       <Field
                         label="Protected paths"
+                        htmlFor="project-protected-paths"
                         hint={
                           <>
                             One pattern per line. No agent may write these, whatever its own
@@ -869,7 +875,10 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                         }
                       >
                         <Textarea
+                          id="project-protected-paths"
+                          aria-label="Protected paths"
                           rows={3}
+                          placeholder="e.g. src/**/*.secret&#10;.env*"
                           value={projectDraft.protectedPaths.join('\n')}
                           onChange={(e) =>
                             setProjectDraft({
@@ -881,10 +890,14 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                       </Field>
                       <Field
                         label="Auto-approved commands"
+                        htmlFor="project-allowed-commands"
                         hint="Commands agents may run without stopping to ask. Prefix matching."
                       >
                         <Textarea
+                          id="project-allowed-commands"
+                          aria-label="Auto-approved commands"
                           rows={3}
+                          placeholder="e.g. npm test&#10;pytest"
                           value={projectDraft.allowedCommands.join('\n')}
                           onChange={(e) =>
                             setProjectDraft({

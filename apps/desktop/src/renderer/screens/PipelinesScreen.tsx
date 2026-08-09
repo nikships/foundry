@@ -21,7 +21,7 @@ import styles from './PipelinesScreen.module.css';
 
 /* ── phase track ─────────────────────────────────────────────────────── */
 
-const KIND_LABEL: Record<string, string> = {
+export const KIND_LABEL: Record<string, string> = {
   agent: 'agent',
   code: 'command',
   engineer: 'checkpoint',

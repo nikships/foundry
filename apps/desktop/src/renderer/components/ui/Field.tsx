@@ -9,6 +9,7 @@ interface FieldProps {
   label?: ReactNode;
   hint?: ReactNode;
   error?: ReactNode;
+  htmlFor?: string;
   /** Appended to the global `field` wrapper (e.g. grid-span helpers). */
   className?: string;
   children: ReactNode;
@@ -21,10 +22,17 @@ interface FieldProps {
  * needs a hint or error in a non-default position or tone, pass it as a child
  * instead of via the props.
  */
-export function Field({ label, hint, error, className, children }: FieldProps): React.JSX.Element {
+export function Field({
+  label,
+  hint,
+  error,
+  htmlFor,
+  className,
+  children,
+}: FieldProps): React.JSX.Element {
   return (
     <div className={className ? `field ${className}` : 'field'}>
-      {label != null && <label>{label}</label>}
+      {label != null && <label htmlFor={htmlFor}>{label}</label>}
       {children}
       {hint && <span className="hint">{hint}</span>}
       {error && <span className="error">{error}</span>}

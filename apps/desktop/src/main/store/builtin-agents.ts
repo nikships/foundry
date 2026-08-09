@@ -19,7 +19,7 @@ export const BUILTIN_AGENTS: AgentDef[] = [
   {
     name: 'planner',
     purpose: 'Turn a request into a plan the builder needs no questions to implement.',
-    model: 'claude-opus-5',
+    model: 'inherit',
     reasoningEffort: 'high',
     envelope: 'plan',
     writes: ['specs/', '.foundry-handoff/'],
@@ -61,7 +61,7 @@ export const BUILTIN_AGENTS: AgentDef[] = [
   {
     name: 'builder',
     purpose: 'Implement the plan exactly; report every file changed.',
-    model: 'claude-opus-5',
+    model: 'inherit',
     reasoningEffort: 'medium',
     envelope: 'build',
     writes: null,
@@ -104,7 +104,7 @@ export const BUILTIN_AGENTS: AgentDef[] = [
   {
     name: 'scout',
     purpose: 'Map the ground before anyone changes it. Read-only.',
-    model: 'claude-sonnet-5',
+    model: 'inherit',
     reasoningEffort: 'medium',
     envelope: 'scout',
     writes: [],
@@ -141,7 +141,7 @@ export const BUILTIN_AGENTS: AgentDef[] = [
   {
     name: 'reviewer',
     purpose: 'Confirm what was built is what was asked for. This is not testing.',
-    model: 'claude-opus-5',
+    model: 'inherit',
     reasoningEffort: 'high',
     envelope: 'review',
     writes: [],
@@ -186,7 +186,7 @@ export const BUILTIN_AGENTS: AgentDef[] = [
   {
     name: 'documenter',
     purpose: 'Write down what changed, for the human who arrives later.',
-    model: 'claude-sonnet-5',
+    model: 'inherit',
     reasoningEffort: 'medium',
     envelope: 'document',
     writes: ['docs/', 'README.md'],

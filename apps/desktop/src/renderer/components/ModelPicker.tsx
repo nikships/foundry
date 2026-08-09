@@ -30,7 +30,16 @@ export default function ModelPicker({
     return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [models]);
 
-  const current = useMemo(() => models.find((m) => m.id === value) ?? null, [models, value]);
+  const current = useMemo(
+    () =>
+      models.find(
+        (m) =>
+          m.id === value ||
+          m.id.endsWith(`:${value}`) ||
+          (m as unknown as { model?: string }).model === value,
+      ) ?? null,
+    [models, value],
+  );
   const catalogEmpty = models.length === 0;
   const unknownSelected = value !== 'inherit' && !current && !!value;
 
