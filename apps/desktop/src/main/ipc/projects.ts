@@ -10,7 +10,7 @@ import {
 import { runCommand } from '../engine/commands.js';
 import { sniffCommands } from '../engine/detect.js';
 import { adapterFor } from '../cli/index.js';
-import { isRepo } from '../engine/git.js';
+import { currentBranch, isRepo } from '../engine/git.js';
 import { checkProject } from '../system/doctor.js';
 import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
@@ -41,7 +41,8 @@ export function register(ctx: Ctx, handle: Handle): void {
       });
       return null;
     }
-    const project = ctx.projects.add(path);
+    const curBranch = await currentBranch(path);
+    const project = ctx.projects.add(path, curBranch || undefined);
     // Manifest sniffing is free and needs no run, so a new project arrives with
     // its commands already filled in. Only a project with none is seeded, so
     // re-adding a path can never clobber commands the user edited. Nothing is

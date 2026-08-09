@@ -10,7 +10,7 @@ import type { AppSettings, CliVendor, DoctorCheck, ProjectDef } from '@shared/ty
 import { CLI_VENDOR_IDS } from '@shared/types.js';
 import { adapterFor } from '../cli/index.js';
 import { cliVersion } from '../droid/catalog.js';
-import { isRepo, refExists, listWorktrees } from '../engine/git.js';
+import { currentBranch, isRepo, refExists, listWorktrees } from '../engine/git.js';
 import { runCommand } from '../engine/commands.js';
 import { resolvedEnv } from './env.js';
 
@@ -180,11 +180,17 @@ export async function checkProject(project: ProjectDef): Promise<DoctorCheck[]> 
   if (!repo) return checks;
 
   const baseOk = await refExists(project.path, project.baseRef);
+  const curBranch = await currentBranch(project.path);
+  const isUnborn = !baseOk && curBranch === project.baseRef;
   checks.push({
     id: 'base-ref',
     label: `Base ref "${project.baseRef}"`,
-    ok: baseOk,
-    detail: baseOk ? 'resolves' : `"${project.baseRef}" does not exist in this repo`,
+    ok: baseOk || isUnborn,
+    detail: baseOk
+      ? 'resolves'
+      : isUnborn
+        ? 'empty repository (no commits yet)'
+        : `"${project.baseRef}" does not exist in this repo`,
   });
 
   const submodules = existsSync(`${project.path}/.gitmodules`);

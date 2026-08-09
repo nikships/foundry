@@ -28,6 +28,14 @@ function scratchRepo(): string {
   return dir;
 }
 
+function emptyScratchRepo(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'foundry-empty-worktree-'));
+  sh(dir, ['git', 'init', '-q', '-b', 'main']);
+  sh(dir, ['git', 'config', 'user.email', 'test@foundry.local']);
+  sh(dir, ['git', 'config', 'user.name', 'Foundry Test']);
+  return dir;
+}
+
 /** A run that changed one file and committed it on its own branch. */
 async function runWith(repo: string, runId: string, file: string, body: string) {
   const handle = await worktree.create({ repo, runId, baseRef: 'main' });
@@ -89,6 +97,14 @@ describe('worktree isolation', () => {
     // --git-common-dir points back at the main repo, so the rule lands there.
     expect(readFileSync(join(repo, '.git', 'info', 'exclude'), 'utf8')).toContain('/scratch/');
   });
+
+  it('works on an empty repository with no commits', async () => {
+    const repo = emptyScratchRepo();
+    const handle = await worktree.create({ repo, runId: 'run_empty', baseRef: 'main' });
+    expect(handle.branchPointSha).toBe('');
+    expect(handle.branch).toBe('foundry/run_empty');
+    expect(await changedPaths(repo)).toEqual([]);
+  });
 });
 
 describe('merge', () => {
@@ -98,6 +114,19 @@ describe('merge', () => {
     const outcome = await worktree.merge(repo, handle);
     expect(outcome.merged).toBe(true);
     expect(readFileSync(join(repo, 'feature.ts'), 'utf8')).toContain('export const a = 1;');
+  });
+
+  it('merges work on an initially empty repository back into the base', async () => {
+    const repo = emptyScratchRepo();
+    const handle = await worktree.create({ repo, runId: 'run_empty', baseRef: 'main' });
+    writeFileSync(join(handle.path, 'index.ts'), 'export const first = 1;\n');
+    sh(handle.path, ['git', 'add', '-A']);
+    sh(handle.path, ['git', 'commit', '-qm', 'initial commit in run']);
+
+    const outcome = await worktree.merge(repo, handle);
+    expect(outcome.merged).toBe(true);
+    expect(readFileSync(join(repo, 'index.ts'), 'utf8')).toContain('export const first = 1;');
+    expect(await currentBranch(repo)).toBe('main');
   });
 
   it('merges even when the base has unrelated uncommitted work', async () => {

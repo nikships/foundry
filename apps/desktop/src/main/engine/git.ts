@@ -31,12 +31,21 @@ export async function refExists(cwd: string, ref: string): Promise<boolean> {
 }
 
 export async function currentBranch(cwd: string): Promise<string> {
+  const branch = await git(cwd, ['branch', '--show-current']);
+  if (branch.ok && branch.stdout.trim()) {
+    return branch.stdout.trim();
+  }
+  const sym = await git(cwd, ['symbolic-ref', '--short', 'HEAD']);
+  if (sym.ok && sym.stdout.trim()) {
+    return sym.stdout.trim();
+  }
   const r = await git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD']);
-  return r.stdout.trim();
+  return r.ok ? r.stdout.trim() : '';
 }
 
 export async function headSha(cwd: string): Promise<string> {
-  return (await git(cwd, ['rev-parse', 'HEAD'])).stdout.trim();
+  const r = await git(cwd, ['rev-parse', 'HEAD']);
+  return r.ok ? r.stdout.trim() : '';
 }
 
 export async function resolveRef(cwd: string, ref: string): Promise<string> {
@@ -109,6 +118,7 @@ export async function commit(cwd: string, message: string): Promise<GitResult> {
 }
 
 export async function diffStat(cwd: string, base: string): Promise<string> {
+  if (!base) return (await git(cwd, ['diff', '--stat', 'HEAD'])).stdout;
   return (await git(cwd, ['diff', '--stat', `${base}...HEAD`])).stdout;
 }
 
@@ -156,9 +166,12 @@ export async function addWorktree(
   repo: string,
   path: string,
   branch: string,
-  baseRef: string,
+  baseRef?: string,
 ): Promise<GitResult> {
-  return git(repo, ['worktree', 'add', '-b', branch, path, baseRef], 120_000);
+  if (baseRef && (await refExists(repo, baseRef))) {
+    return git(repo, ['worktree', 'add', '-b', branch, path, baseRef], 120_000);
+  }
+  return git(repo, ['worktree', 'add', '-b', branch, path], 120_000);
 }
 
 export async function removeWorktree(repo: string, path: string, force = true): Promise<GitResult> {
@@ -295,7 +308,7 @@ export async function mergeBranch(
   baseRef: string,
   branchPointSha: string,
 ): Promise<MergeOutcome> {
-  const baseNow = (await git(repo, ['rev-parse', baseRef])).stdout.trim();
+  const baseNow = await resolveRef(repo, baseRef);
   if (baseNow && branchPointSha && baseNow !== branchPointSha) {
     return {
       ok: false,
@@ -305,20 +318,25 @@ export async function mergeBranch(
   }
 
   const startedOn = await currentBranch(repo);
-  const onBase = await git(repo, ['checkout', baseRef], 120_000);
-  if (!onBase.ok) {
-    return {
-      ok: false,
-      baseMoved: false,
-      detail: onBase.stdout.trim() || `could not check out ${baseRef}`,
-    };
+  const onBase = startedOn === baseRef;
+  if (!onBase) {
+    const checkout = await git(repo, ['checkout', baseRef], 120_000);
+    if (!checkout.ok) {
+      const checkoutBranch = await git(repo, ['checkout', '-b', baseRef], 120_000);
+      if (!checkoutBranch.ok) {
+        return {
+          ok: false,
+          baseMoved: false,
+          detail: checkout.stdout.trim() || `could not check out ${baseRef}`,
+        };
+      }
+    }
   }
 
-  const merged = await git(
-    repo,
-    ['merge', '--no-ff', branch, '-m', `foundry: merge ${branch}`],
-    120_000,
-  );
+  const hasCommits = await refExists(repo, 'HEAD');
+  const merged = hasCommits
+    ? await git(repo, ['merge', '--no-ff', branch, '-m', `foundry: merge ${branch}`], 120_000)
+    : await git(repo, ['merge', branch], 120_000);
   if (merged.ok) return { ok: true, baseMoved: false, detail: merged.stdout };
 
   await git(repo, ['merge', '--abort']);

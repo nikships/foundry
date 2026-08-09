@@ -19,6 +19,24 @@ import { useTablistNav } from '../hooks/useTablistNav.js';
 import { Button } from '../components/ui/Button.js';
 import styles from './PipelinesScreen.module.css';
 
+function phaseComposition(phases: PhaseDef[]): string {
+  const agents = phases.filter((p) => p.kind === 'agent').length;
+  const commands = phases.filter((p) => p.kind === 'code').length;
+  const checkpoints = phases.filter((p) => p.kind === 'engineer').length;
+  const parts: string[] = [];
+  if (agents) parts.push(`${agents} agent${agents === 1 ? '' : 's'}`);
+  if (commands) parts.push(`${commands} command${commands === 1 ? '' : 's'}`);
+  if (checkpoints) parts.push(`${checkpoints} checkpoint${checkpoints === 1 ? '' : 's'}`);
+  if (!parts.length) return 'Empty';
+  return parts.join(' · ');
+}
+
+function pipelineHue(pipeline: PipelineDef, agentColor: (name: string | null) => string): string {
+  const firstAgent = pipeline.phases.find((p) => p.kind === 'agent' && p.agent);
+  if (firstAgent?.agent) return agentColor(firstAgent.agent);
+  return 'var(--cyan)';
+}
+
 /* ── phase track ─────────────────────────────────────────────────────── */
 
 function AgentGlyph(): React.JSX.Element {
@@ -188,7 +206,7 @@ export default function PipelinesScreen({
 }: {
   onOpenSettings?: (pane: string) => void;
 } = {}): React.JSX.Element {
-  const { pipelines, project, projectId, agents, refreshScoped } = useApp();
+  const { pipelines, project, projectId, agents, agentColor, refreshScoped } = useApp();
   const [selectedId, setSelectedId] = useState('');
   const [draft, setDraft] = useState<PipelineDef | null>(null);
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
@@ -427,72 +445,64 @@ export default function PipelinesScreen({
   return (
     <>
       <div className={styles.pipelineScreen}>
-        {/* ── switcher strip: pipelines as tabs, actions at the right ── */}
-        <div className={styles.pipelineTabs}>
-          <span className={`${styles.pipelineMono} ${styles.pipelineTabsLabel}`}>Pipelines</span>
-          <div
-            className={styles.pipelineTabList}
-            role="tablist"
-            aria-label="Pipelines"
-            onKeyDown={onTablistKey}
-          >
-            {pipelines.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                role="tab"
-                aria-selected={p.id === selectedId}
-                tabIndex={p.id === selectedId ? 0 : -1}
-                className={`${styles.pipelineTab} ${p.id === selectedId ? styles.on : ''}`}
-                onClick={() => selectPipeline(p.id)}
-              >
-                <span className={styles.pipelineTabName}>{p.name}</span>
-                <span className={styles.pipelineTabCount}>{p.phases.length}</span>
-                {p.id === selectedId && (
-                  <span className={styles.pipelineTabUnderline} aria-hidden />
-                )}
-              </button>
-            ))}
+        {/* ── pipeline strip: each pipeline as a full cell, roster-style ── */}
+        <div
+          className={styles.pipelineTabs}
+          role="tablist"
+          aria-label="Pipelines"
+          onKeyDown={onTablistKey}
+        >
+          <div className={styles.pipelineTabsInner}>
+            {pipelines.map((p) => {
+              const isActive = p.id === selectedId;
+              const hue = pipelineHue(p, agentColor);
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  tabIndex={isActive ? 0 : -1}
+                  className={`${styles.pipelineCell} ${isActive ? styles.on : ''}`}
+                  style={{ ['--hue' as string]: hue }}
+                  onClick={() => selectPipeline(p.id)}
+                >
+                  <span className={styles.pipelineCellMark} aria-hidden>
+                    <span className={styles.pipelineCellCount}>{p.phases.length}</span>
+                    <span className={styles.pipelineCellDots}>
+                      {p.phases.slice(0, 5).map((phase, i) => (
+                        <span
+                          key={`${phase.name}-${i}`}
+                          className={styles.pipelineCellDot}
+                          style={{
+                            background: phaseKindColor(phase.kind, agentColor(phase.agent ?? null)),
+                          }}
+                        />
+                      ))}
+                      {p.phases.length > 5 && (
+                        <span className={styles.pipelineCellDotMore}>+{p.phases.length - 5}</span>
+                      )}
+                    </span>
+                  </span>
+                  <span className={styles.pipelineCellWho}>
+                    <span className={styles.pipelineCellName}>{p.name}</span>
+                    <span className={styles.pipelineCellDesc}>
+                      {p.description || 'No description yet.'}
+                    </span>
+                    <span className={styles.pipelineCellMeta}>{phaseComposition(p.phases)}</span>
+                  </span>
+                  {isActive && <span className={styles.pipelineCellUnderline} aria-hidden />}
+                </button>
+              );
+            })}
             <button
               type="button"
-              className={styles.pipelineNewTab}
+              className={styles.pipelineNew}
               onClick={() => void createPipeline()}
             >
               + New pipeline
             </button>
           </div>
-          {draft && (
-            <div className={styles.pipelineActions}>
-              <button
-                type="button"
-                className={styles.pipelineAction}
-                disabled={!projectId}
-                title={!projectId ? 'Select a project first' : undefined}
-                onClick={() => void preview()}
-              >
-                Dry run
-              </button>
-              <span className={styles.pipelineActionSep} aria-hidden />
-              {selected && (
-                <button
-                  type="button"
-                  className={styles.pipelineAction}
-                  onClick={() => void duplicate()}
-                >
-                  Duplicate
-                </button>
-              )}
-              {selected && !selected.builtin && (
-                <button
-                  type="button"
-                  className={`${styles.pipelineAction} ${styles.danger}`}
-                  onClick={() => void remove()}
-                >
-                  Delete
-                </button>
-              )}
-            </div>
-          )}
         </div>
 
         {draft && (
@@ -501,12 +511,18 @@ export default function PipelinesScreen({
               {/* ── identity ── */}
               <div className={styles.pipelineIdentity}>
                 <div className={styles.pipelineIdentityMain}>
-                  <input
-                    className={styles.pipelineTitle}
-                    aria-label="Pipeline name"
-                    value={draft.name}
-                    onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                  />
+                  <div className={styles.pipelineIdentityTitlerow}>
+                    <input
+                      className={styles.pipelineTitle}
+                      aria-label="Pipeline name"
+                      value={draft.name}
+                      onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                    />
+                    <span className={styles.pipelineIdentityBadge}>
+                      {draft.phases.length} phase{draft.phases.length === 1 ? '' : 's'}
+                      {draft.builtin ? ' · shipped' : ''}
+                    </span>
+                  </div>
                   <input
                     className={styles.pipelineDesc}
                     aria-label="Pipeline description"
@@ -515,9 +531,34 @@ export default function PipelinesScreen({
                     onChange={(e) => setDraft({ ...draft, description: e.target.value })}
                   />
                 </div>
-                <div className={styles.pipelineIdentityMeta}>
-                  <span className={styles.pipelineMono}>Phases</span>
-                  <span className={styles.pipelineIdentityCount}>{draft.phases.length}</span>
+                <div className={styles.pipelineHeadActions}>
+                  <button
+                    type="button"
+                    className={styles.pipelineAction}
+                    disabled={!projectId}
+                    title={!projectId ? 'Select a project first' : undefined}
+                    onClick={() => void preview()}
+                  >
+                    Dry run
+                  </button>
+                  {selected && (
+                    <button
+                      type="button"
+                      className={styles.pipelineAction}
+                      onClick={() => void duplicate()}
+                    >
+                      Duplicate
+                    </button>
+                  )}
+                  {selected && !selected.builtin && (
+                    <button
+                      type="button"
+                      className={`${styles.pipelineAction} ${styles.danger}`}
+                      onClick={() => void remove()}
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
               </div>
 

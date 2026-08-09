@@ -40,6 +40,14 @@ function scratchRepo(): string {
   return dir;
 }
 
+function emptyRepo(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'foundry-empty-exec-'));
+  sh(dir, ['git', 'init', '-q', '-b', 'main']);
+  sh(dir, ['git', 'config', 'user.email', 'test@foundry.local']);
+  sh(dir, ['git', 'config', 'user.name', 'Foundry Test']);
+  return dir;
+}
+
 /**
  * Droid stand-in whose whole behaviour is a list of scripted turns, so a
  * pipeline's control flow can be tested without a model in the loop.
@@ -800,5 +808,22 @@ describe('the trace record', () => {
     });
     const phases = h.tracer.phases(outcome.runId);
     expect(phases.map((p) => p.status)).toEqual(['fail', 'queued']);
+  });
+
+  it('runs an execution in an initially empty repository without failing isolation', async () => {
+    const empty = emptyRepo();
+    const droid = scriptedDroid(
+      [buildEnvelope({ summary: 'created initial app', changed_files: ['index.ts'] })],
+      ['index.ts'],
+    );
+    const outcome = await run({
+      droidPath: droid,
+      project: { ...defaultProject(empty), mergePolicy: 'auto' },
+      pipeline: pipe([agentPhase('build', { description: 'build initial project' })], {
+        acceptance: { kind: 'all_phases_pass' },
+      }),
+      request: 'make initial project',
+    });
+    expect(outcome.status).toBe('accepted');
   });
 });

@@ -62,10 +62,11 @@ export class ProjectStore {
     return this.list().find((p) => p.id === id) ?? null;
   }
 
-  add(path: string): ProjectDef {
+  add(path: string, baseRef?: string): ProjectDef {
     const existing = this.list().find((p) => p.path === path);
     if (existing) return existing;
     const project = defaultProject(path);
+    if (baseRef) project.baseRef = baseRef;
     this.store.update((current) => [...current, project]);
     return project;
   }
