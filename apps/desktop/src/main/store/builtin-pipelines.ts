@@ -10,15 +10,32 @@
 
 import type { PhaseDef, PipelineDef } from '@shared/types.js';
 
-function planPhase(): PhaseDef {
+function refinePhase(): PhaseDef {
+  return {
+    name: 'refine',
+    kind: 'agent',
+    agent: 'refiner',
+    description: 'Sharpen the raw request into a brief grounded in this repository.',
+    envelope: 'brief',
+    prompt: { template: 'user', inputs: ['request'] },
+  };
+}
+
+/**
+ * The planner's own template already renders `{{request}}`, so a refined chain
+ * adds the brief alongside it rather than replacing it.
+ */
+function planPhase(refined = false): PhaseDef {
   return {
     name: 'plan',
     kind: 'agent',
     agent: 'planner',
-    description: 'Turn the request into a plan the builder needs no questions to implement.',
+    description: refined
+      ? 'Turn the refined brief into a plan the builder needs no questions to implement.'
+      : 'Turn the request into a plan the builder needs no questions to implement.',
     envelope: 'plan',
     gates: ['artifacts_exist', 'files_non_empty'],
-    prompt: { template: 'user', inputs: ['request'] },
+    prompt: { template: 'user', inputs: refined ? ['request', 'envelope:refine'] : ['request'] },
   };
 }
 
@@ -69,7 +86,39 @@ function testPhase(
   };
 }
 
-function reviewPhase(): PhaseDef {
+/**
+ * The one phase allowed to both judge and fix: a gap it only reported would
+ * leave the run rejected with the work still short of the bar. `verdict_consistent`
+ * keeps it from approving its way out, and `diff_matches_claims` keeps its
+ * repairs visible in the envelope.
+ */
+function productionCheckPhase(): PhaseDef {
+  return {
+    name: 'production_check',
+    kind: 'agent',
+    agent: 'finisher',
+    description: 'Audit the work against the ship bar and close the gaps it finds.',
+    envelope: 'review',
+    gates: ['verdict_consistent'],
+    prompt: { template: 'user', inputs: ['request', 'envelope:build'] },
+  };
+}
+
+function commitPolishPhase(): PhaseDef {
+  return {
+    name: 'commit_polish',
+    kind: 'code',
+    description:
+      'Commit the production-check fixes separately from the implementation they polish.',
+    command: { builtin: 'git_commit', messageFrom: 'envelope:production_check.summary' },
+  };
+}
+
+function reviewPhase(afterProductionCheck = false): PhaseDef {
+  const inputs = ['request', 'envelope:plan', 'envelope:build'];
+  // The build envelope stops describing the tree once production_check has
+  // edited it, so a reviewer that runs after one has to see both.
+  if (afterProductionCheck) inputs.push('envelope:production_check');
   return {
     name: 'review',
     kind: 'agent',
@@ -77,7 +126,7 @@ function reviewPhase(): PhaseDef {
     description: 'Check the built work against the original request, one finding per requirement.',
     envelope: 'review',
     gates: ['verdict_consistent'],
-    prompt: { template: 'user', inputs: ['request', 'envelope:plan', 'envelope:build'] },
+    prompt: { template: 'user', inputs },
   };
 }
 
@@ -160,20 +209,42 @@ export const BUILTIN_PIPELINES: PipelineDef[] = [
     phases: [planPhase(), buildPhase(), commitBuildPhase(), reviewPhase()],
   },
   {
+    id: 'refine-build-ship',
+    name: 'Refine → Build → Ship',
+    description:
+      'Sharpen the request first, implement it, then hold the result to the ship bar before it counts.',
+    acceptance: { kind: 'phase_flag', phase: 'production_check', flag: 'approved' },
+    builtin: true,
+    phases: [
+      refinePhase(),
+      planPhase(true),
+      commitPlanPhase(),
+      buildPhase(),
+      testPhase(),
+      commitBuildPhase('Commit the implementation once its tests are green.'),
+      productionCheckPhase(),
+      commitPolishPhase(),
+    ],
+  },
+  {
     id: 'full-sdlc',
     name: 'Full SDLC',
-    description: 'Plan, build, test, review, and document, committing at each meaningful boundary.',
+    description:
+      'Refine, plan, build, test, polish, review, and document, committing at each meaningful boundary.',
     acceptance: { kind: 'phase_flag', phase: 'review', flag: 'approved' },
     builtin: true,
     phases: [
-      planPhase(),
+      refinePhase(),
+      planPhase(true),
       commitPlanPhase(),
       buildPhase(),
       testPhase(
         "Run the project's test command and send failures back to the builder as evidence.",
       ),
       commitBuildPhase('Commit the implementation once its tests are green.'),
-      reviewPhase(),
+      productionCheckPhase(),
+      commitPolishPhase(),
+      reviewPhase(true),
       {
         name: 'document',
         kind: 'agent',

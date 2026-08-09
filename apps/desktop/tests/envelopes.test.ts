@@ -4,6 +4,7 @@ import {
   exampleFor,
   extractJson,
   parseEnvelope,
+  placeholderEnvelope,
   schemaFor,
 } from '../src/main/engine/envelopes.js';
 
@@ -49,6 +50,17 @@ describe('envelope parsing', () => {
     expect(missing.ok).toBe(false);
     const present = parseEnvelope('{"status":"success","approved":true}', 'review');
     expect(present.ok).toBe(true);
+  });
+
+  it('requires a non-empty improved_request on a brief envelope', () => {
+    expect(parseEnvelope('{"status":"success","summary":"sharpened"}', 'brief').ok).toBe(false);
+    expect(parseEnvelope('{"status":"success","improved_request":""}', 'brief').ok).toBe(false);
+    const ok = parseEnvelope(
+      '{"status":"success","improved_request":"add rate limiting"}',
+      'brief',
+    );
+    expect(ok.ok).toBe(true);
+    expect(ok.envelope).toMatchObject({ constraints: [], acceptance_criteria: [] });
   });
 
   it('reports no-json distinctly from invalid-json', () => {
@@ -99,6 +111,17 @@ describe('custom envelope library defs', () => {
     expect(example.severity).toBe('low|med|high');
     expect(example.score).toBe(0);
     expect(example.status).toBe('success');
+  });
+
+  it('keeps a described non-string field copyable, so the example still validates', () => {
+    const typed = [
+      { name: 'steps', type: 'string[]' as const, required: true, description: 'one step' },
+      { name: 'score', type: 'number' as const, required: true, description: '0-100' },
+    ];
+    const example = JSON.parse(exampleFor('generic', typed));
+    expect(example.steps).toEqual(['one step']);
+    expect(example.score).toBe(0);
+    expect(schemaFor('generic', typed).safeParse(example).success).toBe(true);
   });
 
   it('parses a reply against the custom shape', () => {
@@ -155,7 +178,7 @@ describe('custom envelope library defs', () => {
 });
 
 describe('generated examples', () => {
-  const kinds = ['generic', 'plan', 'build', 'scout', 'review', 'document'] as const;
+  const kinds = ['generic', 'brief', 'plan', 'build', 'scout', 'review', 'document'] as const;
 
   it('carries every schema field for each built-in kind', () => {
     for (const kind of kinds) {
@@ -171,5 +194,29 @@ describe('generated examples', () => {
     const message = correctionMessage('status: Required', 'build');
     expect(message).toContain('status: Required');
     expect(message).toContain('changed_files');
+  });
+});
+
+describe('dry-run placeholders', () => {
+  it('carries the fields of the kind it stands in for, not a fixed shape', () => {
+    const brief = placeholderEnvelope('refine', 'brief');
+    expect(brief).toHaveProperty('improved_request');
+    expect(brief).toHaveProperty('acceptance_criteria');
+    expect(brief).not.toHaveProperty('changed_files');
+
+    const build = placeholderEnvelope('build', 'build');
+    expect(build).toHaveProperty('changed_files');
+    expect(build).not.toHaveProperty('improved_request');
+  });
+
+  it('names the phase it stands in for, so a reader knows it is not real output', () => {
+    expect(placeholderEnvelope('refine', 'brief').summary).toContain('refine');
+  });
+
+  it('satisfies the schema of the kind it stands in for', () => {
+    for (const kind of ['generic', 'brief', 'plan', 'build', 'scout', 'review', 'document']) {
+      const result = schemaFor(kind).safeParse(placeholderEnvelope('x', kind));
+      expect(result.success, `${kind} placeholder must validate`).toBe(true);
+    }
   });
 });

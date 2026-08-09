@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import type { DryRunPrompt, PipelineDef } from '@shared/types.js';
 import { IPC, type SaveResult } from '@shared/ipc-contract.js';
+import { placeholderEnvelope, type Envelope } from '../engine/envelopes.js';
 import { renderPrompt } from '../engine/prompts.js';
 import { validate as validatePipeline } from '../store/pipelines.js';
 import type { AppContext } from '../context.js';
@@ -71,7 +72,7 @@ export function register(ctx: Ctx, handle: Handle): void {
       const envelopeDefs = ctx.envelopes.list();
       const worktree = join(project.path, '.foundry-worktrees', 'run_dryrun');
       const out: DryRunPrompt[] = [];
-      const envelopes = new Map<string, Record<string, unknown>>();
+      const envelopes = new Map<string, Envelope>();
       for (const phase of pipeline.phases) {
         if (phase.kind !== 'agent') continue;
         const agent = agents.find((a) => a.name === phase.agent);
@@ -84,7 +85,7 @@ export function register(ctx: Ctx, handle: Handle): void {
           handoffFiles: [],
           // Earlier phases are stood in for with a placeholder envelope, so a
           // later prompt shows its real shape instead of "(not available)".
-          envelopes: envelopes as never,
+          envelopes,
           envelopeDefs,
         });
         out.push({
@@ -94,14 +95,15 @@ export function register(ctx: Ctx, handle: Handle): void {
           systemPrompt: rendered.system,
           userPrompt: rendered.user,
         });
-        envelopes.set(phase.name, {
-          status: 'success',
-          summary: `[${phase.name} envelope from a previous phase]`,
-          artifacts: [],
-          notes_for_next_agent: '',
-          commit_message: `[${phase.name} commit message]`,
-          changed_files: [],
-        });
+        envelopes.set(
+          phase.name,
+          placeholderEnvelope(
+            phase.name,
+            phase.envelope ?? agent.envelope,
+            agent.customFields,
+            envelopeDefs,
+          ),
+        );
       }
       return out;
     },

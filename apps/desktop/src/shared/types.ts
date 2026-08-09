@@ -10,11 +10,12 @@ export type PhaseStatus = 'queued' | 'running' | 'success' | 'fail' | 'skipped';
 export type RunStatus = 'running' | 'accepted' | 'rejected' | 'failed' | 'killed';
 export type ReasoningEffort = 'off' | 'low' | 'medium' | 'high';
 export type AutonomyLevel = 'low' | 'medium' | 'high';
-export type EnvelopeKind = 'generic' | 'plan' | 'build' | 'scout' | 'review' | 'document';
+export type EnvelopeKind = 'generic' | 'brief' | 'plan' | 'build' | 'scout' | 'review' | 'document';
 
-/** The six built-in envelope kinds. Custom envelopes are named strings outside this set. */
+/** The seven built-in envelope kinds. Custom envelopes are named strings outside this set. */
 export const BUILTIN_ENVELOPE_KINDS: readonly EnvelopeKind[] = [
   'generic',
+  'brief',
   'plan',
   'build',
   'scout',

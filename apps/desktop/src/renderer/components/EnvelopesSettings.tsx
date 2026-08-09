@@ -38,6 +38,7 @@ const BASE_FIELDS: { name: string; type: string; hint: string }[] = [
 
 const BUILTIN_BLURBS: Record<EnvelopeKind, string> = {
   generic: 'Bare outcome — status, summary, artifacts, handoff note.',
+  brief: 'Adds a rewritten request, its constraints, and acceptance criteria.',
   plan: 'Adds a commit_message for the plan phase.',
   build: 'Adds changed_files and commit_message for implementation work.',
   scout: 'Adds findings — a list of what was discovered.',
@@ -127,6 +128,26 @@ const STARTERS: { id: string; title: string; blurb: string; def: EnvelopeDef }[]
 /** Extra fields a built-in adds beyond the generic base — used as a starting point. */
 const BUILTIN_EXTRA_FIELDS: Record<EnvelopeKind, CustomEnvelopeField[]> = {
   generic: [],
+  brief: [
+    {
+      name: 'improved_request',
+      type: 'string',
+      required: true,
+      description: 'the rewritten request, standalone and ready to hand to the next phase',
+    },
+    {
+      name: 'constraints',
+      type: 'string[]',
+      required: false,
+      description: 'a rule the work must respect',
+    },
+    {
+      name: 'acceptance_criteria',
+      type: 'string[]',
+      required: false,
+      description: 'how anyone can tell this is done',
+    },
+  ],
   plan: [
     {
       name: 'commit_message',

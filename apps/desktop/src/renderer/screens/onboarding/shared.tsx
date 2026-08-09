@@ -14,9 +14,11 @@ export const STEPS: { id: StepId; label: string }[] = [
 ];
 
 export const BUILTIN_AGENTS: { name: string; role: string }[] = [
+  { name: 'refiner', role: 'Sharpens the ask' },
   { name: 'planner', role: 'Shapes the work' },
   { name: 'builder', role: 'Writes the code' },
   { name: 'scout', role: 'Maps the repo' },
+  { name: 'finisher', role: 'Holds the bar' },
   { name: 'reviewer', role: 'Judges the diff' },
   { name: 'documenter', role: 'Leaves the trail' },
 ];

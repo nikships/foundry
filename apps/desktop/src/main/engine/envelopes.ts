@@ -35,6 +35,14 @@ const reviewFinding = z.object({
 
 export const schemas = {
   generic: z.object({ ...base }),
+  brief: z.object({
+    ...base,
+    // The whole point of the phase, so an empty one is a failed phase rather
+    // than a brief nobody can act on.
+    improved_request: z.string().min(1),
+    constraints: z.array(z.string()).default([]),
+    acceptance_criteria: z.array(z.string()).default([]),
+  }),
   plan: z.object({ ...base, commit_message: z.string().default('') }),
   build: z.object({
     ...base,
@@ -66,6 +74,9 @@ const FIELD_HINTS: Record<string, unknown> = {
   artifacts: ['relative/path/you/created.md'],
   notes_for_next_agent: 'what the next phase needs to know',
   commit_message: 'imperative subject line under 72 chars',
+  improved_request: 'the rewritten request, standalone and ready to hand to the next phase',
+  constraints: ['a rule the work must respect'],
+  acceptance_criteria: ['how anyone can tell this is done'],
   changed_files: ['src/file/you/edited.ts'],
   findings: ['what you found, one per entry'],
   approved: true,
@@ -102,6 +113,20 @@ function placeholderFor(type: CustomEnvelopeField['type']): unknown {
     default:
       return 'value';
   }
+}
+
+/**
+ * A field description is a hint, not a value: dropping it in as-is would show a
+ * `string[]` field as a bare string and a number field as prose, so the example
+ * an agent is told to copy would not satisfy the schema its copy is parsed
+ * against. The hint is carried where the type can hold it and dropped where it
+ * cannot.
+ */
+function exampleValueFor(field: CustomEnvelopeField): unknown {
+  if (!field.description) return placeholderFor(field.type);
+  if (field.type === 'string') return field.description;
+  if (field.type === 'string[]') return [field.description];
+  return placeholderFor(field.type);
 }
 
 function extendWithFields(
@@ -193,9 +218,26 @@ export function exampleFor(
     }
   }
   for (const f of mergedFields(libraryFields, custom)) {
-    example[f.name] = f.description ?? placeholderFor(f.type);
+    example[f.name] = exampleValueFor(f);
   }
   return JSON.stringify(example, null, 2);
+}
+
+/**
+ * Stands in for a phase that has not run, so a dry run can show a later prompt
+ * the shape its predecessor will actually hand over. Derived from the same
+ * schema as the real example rather than written out, because a fixed stub
+ * would show the next agent a shape its predecessor never returns — exactly
+ * the mismatch a dry run exists to rule out.
+ */
+export function placeholderEnvelope(
+  phaseName: string,
+  kind: string,
+  custom?: CustomEnvelopeField[],
+  defs?: EnvelopeDef[],
+): Envelope {
+  const stub = JSON.parse(exampleFor(kind, custom, defs)) as Envelope;
+  return { ...stub, summary: `[${phaseName} envelope from a previous phase]` };
 }
 
 export interface ParseOutcome {

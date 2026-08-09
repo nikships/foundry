@@ -3,19 +3,24 @@ import { BUILTIN_AGENTS, StepFooter } from './shared.js';
 import styles from './RosterScreen.module.css';
 
 const HINTS: Record<string, string> = {
+  refiner: 'Rewrites a rough ask into a brief grounded in your repo.',
   planner: 'Breaks a prompt into an ordered, reviewable task list.',
   builder: 'Implements each task inside its own isolated worktree.',
   scout: 'Finds the files, patterns, and owners that matter.',
+  finisher: 'Audits the result against the ship bar, then closes the gaps.',
   reviewer: 'Blocks the merge until the change reads clean.',
   documenter: 'Records intent, decisions, and follow-ups in the PR.',
 };
 
+/** Each agent's own accent from the shipped roster, so the lane and the avatar agree. */
 const ACCENTS: Record<string, string> = {
-  planner: 'var(--cyan)',
-  builder: 'var(--purple)',
-  scout: 'var(--amber)',
-  reviewer: 'var(--green)',
-  documenter: 'var(--blue)',
+  refiner: '#e879b9',
+  planner: '#c89bff',
+  builder: '#5ad2dd',
+  scout: '#e8b64a',
+  finisher: '#6aa9ff',
+  reviewer: '#ff6f67',
+  documenter: '#4ade80',
 };
 
 export default function RosterScreen(): React.JSX.Element {
@@ -26,12 +31,12 @@ export default function RosterScreen(): React.JSX.Element {
           <p className="ob-eyebrow">03 — The roster</p>
           <h1 className="ob-title">Meet the crew</h1>
           <p className="ob-lead">
-            Built-in agents cover plan, build, scout, review, and docs. Edit them, or bring your
-            own. Each one can ride a different CLI.
+            Built-in agents cover refine, plan, build, scout, polish, review, and docs. Edit them,
+            or bring your own. Each one can ride a different CLI.
           </p>
           <div className={styles.obRosterDivider} aria-hidden />
           <p className={styles.obRosterStat}>
-            Five specialists. One request. Isolated git worktrees.
+            Seven specialists. One request. Isolated git worktrees.
           </p>
           <div className={styles.obRosterFlow} aria-hidden>
             {BUILTIN_AGENTS.map((a, i) => (
@@ -93,7 +98,7 @@ export default function RosterScreen(): React.JSX.Element {
           </ol>
           <p className={styles.obRosterFootnote}>
             Tune names, prompts, and harnesses in the Roster after setup. The factory runs whatever
-            you wire — these five are just a sharp default.
+            you wire — these seven are just a sharp default.
           </p>
         </div>
       </div>
