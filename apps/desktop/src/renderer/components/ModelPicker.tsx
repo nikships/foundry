@@ -31,13 +31,7 @@ export default function ModelPicker({
   }, [models]);
 
   const current = useMemo(
-    () =>
-      models.find(
-        (m) =>
-          m.id === value ||
-          m.id.endsWith(`:${value}`) ||
-          (m as unknown as { model?: string }).model === value,
-      ) ?? null,
+    () => models.find((m) => m.id === value || m.id.endsWith(`:${value}`)) ?? null,
     [models, value],
   );
   const catalogEmpty = models.length === 0;

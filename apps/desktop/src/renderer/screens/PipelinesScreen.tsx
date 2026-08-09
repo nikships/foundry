@@ -8,7 +8,7 @@ import type {
 } from '@shared/types.js';
 import { api, plain } from '../api.js';
 import { useApp } from '../stores/app.js';
-import { phaseKindColor } from '../derive.js';
+import { phaseKindColor, KIND_LABEL } from '../derive.js';
 import EmptyState from '../components/EmptyState.js';
 import PhaseEditor from '../components/PhaseEditor.js';
 import { CliIcon } from '../components/BrandIcon.js';
@@ -20,12 +20,6 @@ import { Button } from '../components/ui/Button.js';
 import styles from './PipelinesScreen.module.css';
 
 /* ── phase track ─────────────────────────────────────────────────────── */
-
-export const KIND_LABEL: Record<string, string> = {
-  agent: 'agent',
-  code: 'command',
-  engineer: 'checkpoint',
-};
 
 function AgentGlyph(): React.JSX.Element {
   return (

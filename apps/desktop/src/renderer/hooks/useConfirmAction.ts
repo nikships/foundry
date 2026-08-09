@@ -8,12 +8,12 @@ export interface ConfirmRequest {
 type Listener = (req: ConfirmRequest | null) => void;
 
 class ConfirmManager {
-  private current: (ConfirmRequest & { resolve: (accepted: boolean) => void }) | null = null;
+  private queue: (ConfirmRequest & { resolve: (accepted: boolean) => void })[] = [];
   private listeners = new Set<Listener>();
 
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener);
-    if (this.current) listener(this.current);
+    if (this.queue[0]) listener(this.queue[0]);
     return () => {
       this.listeners.delete(listener);
     };
@@ -25,25 +25,29 @@ class ConfirmManager {
         id: Math.random().toString(36).slice(2),
         message,
         resolve: (accepted: boolean) => {
-          this.current = null;
+          this.queue = this.queue.filter((r) => r.id !== req.id);
           this.notify();
           resolve(accepted);
         },
       };
-      this.current = req;
-      this.notify();
+      this.queue.push(req);
+      if (this.queue.length === 1) {
+        this.notify();
+      }
     });
   }
 
   resolve(id: string, accepted: boolean): void {
-    if (this.current && this.current.id === id) {
-      this.current.resolve(accepted);
+    const found = this.queue.find((r) => r.id === id);
+    if (found) {
+      found.resolve(accepted);
     }
   }
 
   private notify(): void {
+    const current = this.queue[0] ?? null;
     for (const listener of this.listeners) {
-      listener(this.current);
+      listener(current);
     }
   }
 }
