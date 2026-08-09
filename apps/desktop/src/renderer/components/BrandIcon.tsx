@@ -33,7 +33,6 @@ import BedrockColor from '@lobehub/icons/es/Bedrock/components/Color.js';
 import ByteDanceColor from '@lobehub/icons/es/ByteDance/components/Color.js';
 import CerebrasColor from '@lobehub/icons/es/Cerebras/components/Color.js';
 import ChatGLMColor from '@lobehub/icons/es/ChatGLM/components/Color.js';
-import ClaudeCodeColor from '@lobehub/icons/es/ClaudeCode/components/Color.js';
 import ClaudeColor from '@lobehub/icons/es/Claude/components/Color.js';
 import CodexColor from '@lobehub/icons/es/Codex/components/Color.js';
 import CohereColor from '@lobehub/icons/es/Cohere/components/Color.js';
@@ -129,11 +128,6 @@ function FactoryDroid({ size = 16, className, style }: MarkProps): React.JSX.Ele
  */
 export const CLI_MARKS: Record<CliVendor, Mark> = {
   droid: FactoryDroid,
-  claude: ClaudeCodeColor,
-  codex: CodexColor,
-  junie: JunieColor,
-  // xAI publishes no colour variant for Grok; the mono glyph takes the palette.
-  grok: GrokMono,
 };
 
 /**

@@ -1,11 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type {
-  AgentDef,
-  CliDescriptor,
-  CliVendor,
-  ModelInfo,
-  ValidationIssue,
-} from '@shared/types.js';
+import type { AgentDef, ModelInfo, ValidationIssue } from '@shared/types.js';
 import { api, plain } from '../api.js';
 import { useApp } from '../stores/app.js';
 import AgentAvatar from '../components/AgentAvatar.js';
@@ -32,7 +26,6 @@ export default function RosterScreen(): React.JSX.Element {
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
   const [actionError, setActionError] = useState('');
   const [models, setModels] = useState<ModelInfo[]>([]);
-  const [clis, setClis] = useState<CliDescriptor[]>([]);
   const [showPreview, setShowPreview] = useState(false);
   const agentsRef = useRef<AgentDef[]>(agents);
   agentsRef.current = agents;
@@ -71,10 +64,6 @@ export default function RosterScreen(): React.JSX.Element {
       lastSyncedNameRef.current = selected.name;
     }
   }, [selected, agents.length, draft]);
-
-  useEffect(() => {
-    void api.catalog.clis().then(setClis);
-  }, []);
 
   useEffect(() => {
     if (!draft) {
@@ -369,46 +358,19 @@ export default function RosterScreen(): React.JSX.Element {
               <section className={styles.roSection}>
                 <div className={styles.roSectionLabel}>
                   <h2>Execution</h2>
-                  <p>Which CLI runs this agent, and how hard it thinks.</p>
+                  <p>Model selection and reasoning effort for this agent.</p>
                 </div>
                 <div className={styles.roFields}>
-                  <Field label="CLI vendor">
-                    <div className={styles.cliPicker}>
-                      <Select
-                        className="mono"
-                        value={draftCli}
-                        onChange={(e) =>
-                          setDraft({ ...draft, cli: e.target.value as CliVendor, model: 'inherit' })
-                        }
-                      >
-                        {clis.map((cli) => (
-                          <option key={cli.id} value={cli.id}>
-                            {cli.label}
-                          </option>
-                        ))}
-                      </Select>
-                      <CliIcon vendor={draftCli} size={18} />
-                    </div>
-                    <span className={styles.hint}>
-                      Which binary runs this agent's phases. Changing it resets the model, because
-                      model ids do not carry across CLIs.
-                    </span>
-                    {(clis.find((c) => c.id === draftCli)?.caveats ?? []).map((caveat) => (
-                      <span key={caveat} className={`${styles.hint} ${styles.caveat}`}>
-                        {caveat}
-                      </span>
-                    ))}
-                  </Field>
                   <Field label="Model">
                     <ModelPicker
                       value={draft.model}
                       models={models}
                       allowInherit
-                      emptyHint={`No models from ${draftCli}. Check Agent CLIs in Settings, or use Inherit.`}
+                      emptyHint="No models available from Factory Droid. Check Settings, or use Inherit."
                       onChange={(value) => setDraft({ ...draft, model: value })}
                       onRefresh={() => void api.catalog.models(draftCli, true).then(setModels)}
                     />
-                    <span className={styles.hint}>“Inherit” uses this CLI's own default.</span>
+                    <span className={styles.hint}>“Inherit” uses Factory Droid's default.</span>
                   </Field>
                   <Field label="Reasoning effort">
                     <div className={styles.roSeg} role="radiogroup" aria-label="Reasoning effort">

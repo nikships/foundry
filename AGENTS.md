@@ -25,8 +25,7 @@ and retries the same live session on failure. Every run is traced to SQLite
 (WAL); the renderer polls `where change_id > ?` — no websocket. `change_id`
 is the cursor (rows are patched in place), `rowid` is ordering.
 
-Five agent CLIs are driven via adapters (`droid`, `claude`, `codex`, `junie`,
-`grok`); `AgentDef.cli` picks one, absent means `droid`.
+Agent phases are driven via the `droid` CLI adapter.
 
 ## What lives where
 

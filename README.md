@@ -22,7 +22,7 @@ No chat tricks. No scripts to maintain. Just describe the change and judge the r
 
 ## Download
 
-**Requirements:** macOS 26+, Apple Silicon, `git`, and at least one agent CLI ([droid](https://docs.factory.ai), [Claude Code](https://code.claude.com), [Codex](https://developers.openai.com/codex), [Junie](https://www.jetbrains.com/junie/), or [Grok Code](https://x.ai/api)) installed and signed in.
+**Requirements:** macOS 26+, Apple Silicon, `git`, and the [droid](https://docs.factory.ai) CLI installed and signed in.
 
 1. Download the latest `Foundry.dmg` from [Releases](https://github.com/nikships/software-factory/releases)
 2. Drag Foundry to Applications and open it
@@ -80,9 +80,9 @@ Five agents cover the work. Each one has its own model, instructions, and limits
 
 There is no separate tester agent. Running tests is a real command in your repo, so Foundry runs it as a real command and hands failures back to the builder to fix.
 
-### Use any agent CLI
+### Powered by Factory Droid
 
-Foundry can drive **droid, Claude Code, Codex, Junie, and Grok**. Pick a default for new agents, then mix and match per agent in the Roster. If you only want one, you only need one. Missing CLIs do not block the app, and each one shows what it can and cannot do before you run.
+Foundry drives **Factory Droid** as its core agent harness, providing live JSON-RPC tool streaming, model selection, and execution context.
 
 ### Safe by design
 
@@ -106,7 +106,7 @@ Runs can pause for you at any **Checkpoint** phase — approve, edit, or reject 
 * **Runs** — compose a request, pick a pipeline, start a run, and scan history
 * **Inspector** — the live timeline for whatever is running, with full phase detail
 * **Pipelines** — design and duplicate pipelines without writing scripts
-* **Roster** — edit agents, swap models and CLIs, tune prompts and boundaries
+* **Roster** — edit agents, select models, tune prompts and boundaries
 * **Settings** — projects, commands, protected paths, notifications, updates, and maintenance
 
 Foundry feels at home on the Mac: native windowing, Finder integration, auto-updates with progress and restart, and a clean, fast UI that stays out of your way.

@@ -17,13 +17,9 @@ const cliConfigSchema = z.object({
 export const appSettingsSchema = z.object({
   clis: z.object({
     droid: cliConfigSchema,
-    claude: cliConfigSchema,
-    codex: cliConfigSchema,
-    junie: cliConfigSchema,
-    grok: cliConfigSchema,
   }),
-  defaultCli: z.enum(['droid', 'claude', 'codex', 'junie', 'grok']),
-  detectCli: z.enum(['default', 'droid', 'claude', 'codex', 'junie', 'grok']),
+  defaultCli: z.literal('droid'),
+  detectCli: z.enum(['default', 'droid']),
   detectModel: z.string().min(1),
   engineerName: z.string().min(1).max(80),
   defaultAutonomy: z.enum(['low', 'medium', 'high']),
@@ -46,9 +42,9 @@ export const appSettingsSchema = z.object({
 });
 
 /**
- * Every vendor gets a resolved path at first launch, whether or not it is
- * installed, so choosing a CLI in the roster never requires a trip to Settings
- * first. An absent binary resolves to its bare name and the doctor explains it.
+ * Resolves the path for droid at first launch so executing runs never require
+ * a trip to Settings first. An absent binary resolves to its bare name and the
+ * doctor explains it.
  */
 function defaultClis(): Record<CliVendor, CliConfig> {
   const clis = {} as Record<CliVendor, CliConfig>;
@@ -95,8 +91,10 @@ export function migrate(raw: unknown): AppSettings {
     clis.droid = { path: stored.droidPath, extraArgs: clis.droid.extraArgs };
   }
   const merged: AppSettings = { ...base, ...stored, clis } as AppSettings;
-  // Settings files written before detection was configurable have neither
-  // field, and an empty string would fail the schema on the next patch.
+  merged.defaultCli = 'droid';
+  if (merged.detectCli !== 'default' && merged.detectCli !== 'droid') {
+    merged.detectCli = 'default';
+  }
   if (!merged.detectCli) merged.detectCli = base.detectCli;
   if (!merged.detectModel) merged.detectModel = base.detectModel;
   delete (merged as { droidPath?: string }).droidPath;

@@ -1,27 +1,18 @@
 /**
- * The vendor registry. Everything outside this directory names a `CliVendor` and
- * asks here for the adapter, so adding a sixth CLI is one file plus one entry.
+ * The CLI vendor registry.
  */
 
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import type { CliConfig, CliVendor } from '@shared/types.js';
 import { spawnEnv } from '../system/env.js';
-import { claudeAdapter } from './claude.js';
-import { codexAdapter } from './codex.js';
 import { droidAdapter } from './droid.js';
-import { grokAdapter } from './grok.js';
-import { junieAdapter } from './junie.js';
 import type { CliAdapter } from './types.js';
 
 export * from './types.js';
 
 const ADAPTERS: Record<CliVendor, CliAdapter> = {
   droid: droidAdapter,
-  claude: claudeAdapter,
-  codex: codexAdapter,
-  junie: junieAdapter,
-  grok: grokAdapter,
 };
 
 export function adapterFor(vendor: CliVendor): CliAdapter {
@@ -45,9 +36,7 @@ export function findCli(vendor: CliVendor): string {
   try {
     const which = execFileSync('/usr/bin/which', [adapter.binary], {
       encoding: 'utf8',
-      // `which` writes "no junie in ..." to stderr, and this now runs once per
-      // vendor at first launch. Inheriting that prints five lines about CLIs the
-      // user never asked for, so the answer is taken from stdout alone.
+      // stdout alone is used so warnings/errors from PATH lookups do not pollute logs.
       stdio: ['ignore', 'pipe', 'ignore'],
       // A GUI launch inherits launchd's PATH, where none of these CLIs live.
       // Without the resolved PATH every vendor falls through to its hardcoded

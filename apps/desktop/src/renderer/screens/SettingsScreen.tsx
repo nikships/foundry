@@ -25,7 +25,7 @@ type Pane = 'general' | 'clis' | 'defaults' | 'project' | 'maintenance' | 'about
 
 const PANES: { id: Pane; label: string }[] = [
   { id: 'general', label: 'General' },
-  { id: 'clis', label: 'Agent CLIs' },
+  { id: 'clis', label: 'Agent CLI' },
   { id: 'defaults', label: 'Agent defaults' },
   { id: 'project', label: 'Project' },
   { id: 'maintenance', label: 'Maintenance' },
@@ -431,27 +431,6 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                       </span>
                       {nameHint && <span className={styles.setWarn}>{nameHint}</span>}
                     </Field>
-                    <Field
-                      label="Default agent CLI"
-                      htmlFor="default-agent-cli-select"
-                      hint="What a new agent starts on, and what command detection uses. Each agent can choose its own in the Roster."
-                    >
-                      <div className={styles.cliPicker}>
-                        <Select
-                          id="default-agent-cli-select"
-                          aria-label="Default agent CLI"
-                          value={settings.defaultCli}
-                          onChange={(e) => void set({ defaultCli: e.target.value as CliVendor })}
-                        >
-                          {clis.map((cli) => (
-                            <option key={cli.id} value={cli.id}>
-                              {cli.label}
-                            </option>
-                          ))}
-                        </Select>
-                        <CliIcon vendor={settings.defaultCli} size={18} />
-                      </div>
-                    </Field>
                   </div>
                 </Section>
 
@@ -582,10 +561,10 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
             )}
             {pane === 'clis' && (
               <>
-                <Section label="Agent CLIs" note="One per agent phase.">
+                <Section label="Agent CLI" note="Drives agent phases.">
                   <p className={styles.setLead}>
-                    Foundry drives one of these per agent phase. A path is filled in from your PATH
-                    at first launch; correct it here if you keep a CLI somewhere unusual.
+                    Foundry drives Factory Droid for agent phases. A path is filled in from your
+                    PATH at first launch; correct it here if you keep the binary somewhere unusual.
                   </p>
                 </Section>
                 {clis.map((cli) => {

@@ -1,31 +1,5 @@
 /**
- * The vendor seam: one interface per agent CLI, so the engine drives five
- * binaries without knowing which one it is holding.
- *
- * Every vendor here is reached through its **headless one-shot mode**, not its
- * streaming protocol. That is a deliberate floor rather than a limitation we
- * failed to lift: one-shot is the only surface all five publish and keep stable,
- * and it still carries everything the engine actually needs, which is a session
- * that survives between turns, a final text, and a usage report. Droid keeps its
- * bespoke JSON-RPC client on top of this (see `supportsRpc`) because that client
- * already exists and earns its keep with mid-turn tool visibility.
- *
- * Three vendors also speak a bidirectional protocol we do not use yet: Junie
- * (`--acp true`), Grok (`grok agent stdio`), and Codex (`codex app-server`). All
- * three are ACP or JSON-RPC over stdio, which is the same shape as
- * `droid/client.ts`, so a later PR can add `supportsRpc` per vendor without
- * touching the engine.
- *
- * One invariant is shared by every adapter and is the thing most likely to be
- * "simplified" away: **autonomy becomes a sandbox or permission tier, never an
- * approval prompt.** Nothing is watching a pipeline phase, so a CLI left in its
- * default "ask the human" mode either blocks forever on a stdin nobody is typing
- * into or aborts mid-turn. Each adapter therefore tells its CLI to stop asking
- * and confines it instead, and Foundry's own write boundary still diffs git
- * afterwards, so a sandbox wider than the agent's declared `writes` is caught and
- * reverted exactly as before. Droid is the exception: its RPC surface hands
- * permission asks back to us, so `--auto` keeps its meaning and the interrupt
- * sheet still opens.
+ * The vendor seam interface for agent CLIs.
  */
 
 import type {
@@ -112,13 +86,10 @@ export interface CliAdapter {
   parse: (out: ProcessOutput) => ParsedTurn | null;
   /**
    * Returns the normaliser for one turn: folds one parsed stdout line into
-   * droid-shaped notifications, so the shared EventFolder traces this vendor's
-   * stream exactly as if droid had sent it. A factory rather than a bare
-   * function because folding can be stateful (grok opens a new thinking block
-   * per segment), and two runs may share the adapter object concurrently.
-   * Absent on vendors whose format has no mid-turn events; their turn stays
-   * one span and the caveat list says so. Shapes are pinned in tests against
-   * real CLI output, never invented.
+   * droid-shaped notifications, so the shared EventFolder traces streams
+   * accurately. A factory rather than a bare function because folding can be
+   * stateful, and two runs may share the adapter object concurrently.
+   * Shapes are pinned in tests against real CLI output, never invented.
    */
   stream?: () => (line: unknown) => DroidNotification[];
   /**
