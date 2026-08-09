@@ -93,8 +93,7 @@
   overflow: hidden;
   background: var(--bg-base);
 }
-.ob-fac-scene-art :global(img),
-.ob-fac-scene-art :global(.scene-art) {
+.ob-fac-scene-art {
   display: block;
   width: 100%;
   height: auto;
@@ -104,8 +103,7 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--s4);
 }
-.ob-fac-concept-art :global(img),
-.ob-fac-concept-art :global(.scene-art) {
+.ob-fac-concept-art {
   display: block;
   width: 100%;
   aspect-ratio: 1;

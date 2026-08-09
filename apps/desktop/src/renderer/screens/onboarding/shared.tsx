@@ -58,15 +58,15 @@ export function SceneArt({
   className?: string;
 }): React.JSX.Element {
   const src = useBrandedAsset(path);
-  const frameStyle: React.CSSProperties = {
+  const placeholderStyle: React.CSSProperties = {
     border: '1px solid var(--line)',
     borderRadius: 'var(--r)',
     overflow: 'hidden',
     background: 'var(--bg-base)',
   };
   if (!src)
-    return <div className={`scene-art placeholder ${className ?? ''}`} style={frameStyle} />;
-  return <img className={`scene-art ${className ?? ''}`} src={src} alt="" style={frameStyle} />;
+    return <div className={`scene-art placeholder ${className ?? ''}`} style={placeholderStyle} />;
+  return <img className={`scene-art ${className ?? ''}`} src={src} alt="" />;
 }
 
 /**

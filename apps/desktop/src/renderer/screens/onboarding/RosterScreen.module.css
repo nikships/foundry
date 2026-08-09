@@ -77,8 +77,7 @@
   overflow: hidden;
   background: var(--bg-base);
 }
-.ob-roster-scene-art :global(img),
-.ob-roster-scene-art :global(.scene-art) {
+.ob-roster-scene-art {
   display: block;
   width: 100%;
   height: auto;

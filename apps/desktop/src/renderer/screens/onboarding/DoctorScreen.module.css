@@ -189,8 +189,7 @@
   overflow: hidden;
   background: var(--bg-base);
 }
-.ob-doctor-scene-art :global(img),
-.ob-doctor-scene-art :global(.scene-art) {
+.ob-doctor-scene-art {
   display: block;
   width: 100%;
   height: auto;

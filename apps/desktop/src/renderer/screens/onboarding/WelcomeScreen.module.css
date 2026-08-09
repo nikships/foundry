@@ -67,8 +67,7 @@
   overflow: hidden;
   opacity: 0.96;
 }
-.ob-welcome-hero-art :global(img),
-.ob-welcome-hero-art :global(.scene-art) {
+.ob-welcome-hero-art {
   display: block;
   width: 100%;
   height: auto;
