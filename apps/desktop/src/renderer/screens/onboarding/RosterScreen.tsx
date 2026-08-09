@@ -12,15 +12,15 @@ const HINTS: Record<string, string> = {
   documenter: 'Records intent, decisions, and follow-ups in the PR.',
 };
 
-/** Each agent's own accent from the shipped roster, so the lane and the avatar agree. */
+/** Muted industrial accents — desaturated, readable on #020202, not brand orange. */
 const ACCENTS: Record<string, string> = {
-  refiner: '#e879b9',
-  planner: '#c89bff',
-  builder: '#5ad2dd',
-  scout: '#e8b64a',
-  finisher: '#6aa9ff',
-  reviewer: '#ff6f67',
-  documenter: '#4ade80',
+  refiner: '#b87a9e',
+  planner: '#9b7ede',
+  builder: '#4fa8b8',
+  scout: '#d19a3d',
+  finisher: '#5b8fd9',
+  reviewer: '#e0605f',
+  documenter: '#3cb87a',
 };
 
 export default function RosterScreen(): React.JSX.Element {
@@ -28,7 +28,9 @@ export default function RosterScreen(): React.JSX.Element {
     <div className={styles.obRoster}>
       <div className={styles.obRosterBody}>
         <div className={styles.obRosterIntro}>
-          <p className="ob-eyebrow">03 — The roster</p>
+          <p className="ob-eyebrow eyebrow">
+            <span className="index">03</span>The roster
+          </p>
           <h1 className="ob-title">Meet the crew</h1>
           <p className="ob-lead">
             Built-in agents cover refine, plan, build, scout, polish, review, and docs. Edit them,

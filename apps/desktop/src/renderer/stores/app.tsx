@@ -55,7 +55,7 @@ export function useApp(): AppContextValue {
 
 export function agentColorFor(agents: AgentDef[], name: string | null): string {
   if (!name) return 'var(--text-faint)';
-  return agents.find((a) => a.name === name)?.color ?? 'var(--cyan)';
+  return agents.find((a) => a.name === name)?.color ?? 'var(--accent)';
 }
 
 async function loadScoped(projectId: string | undefined): Promise<[AgentDef[], PipelineDef[]]> {

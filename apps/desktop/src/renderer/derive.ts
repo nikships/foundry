@@ -80,5 +80,5 @@ export const KIND_LABEL: Record<string, string> = {
 const KIND_COLOR: Record<string, string> = { code: 'var(--blue)', engineer: 'var(--amber)' };
 
 export function phaseKindColor(kind: string, ownerColor: string): string {
-  return kind === 'agent' ? ownerColor : (KIND_COLOR[kind] ?? 'var(--cyan)');
+  return kind === 'agent' ? ownerColor : (KIND_COLOR[kind] ?? 'var(--accent)');
 }

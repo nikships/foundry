@@ -15,12 +15,12 @@ function PipelineDiagram(): React.JSX.Element {
       <path
         d="M46 30 C 46 12, 118 12, 118 30"
         fill="none"
-        stroke="var(--cyan)"
+        stroke="var(--accent)"
         strokeWidth="1"
         opacity="0.7"
         className={styles.obFacDash}
       />
-      <path d="M118 30 l -4 -6 l 8 0 z" fill="var(--cyan)" opacity="0.82" />
+      <path d="M118 30 l -4 -6 l 8 0 z" fill="var(--accent)" opacity="0.82" />
       <text
         x="60"
         y="12"
@@ -33,7 +33,7 @@ function PipelineDiagram(): React.JSX.Element {
       </text>
       {/* phase blocks */}
       {[
-        { x: 20, label: 'PLAN', c: 'var(--cyan)' },
+        { x: 20, label: 'PLAN', c: 'var(--accent)' },
         { x: 92, label: 'BUILD', c: 'var(--purple)' },
         { x: 164, label: 'TEST', c: 'var(--amber)' },
       ].map((b) => (
@@ -84,7 +84,7 @@ function PipelineDiagram(): React.JSX.Element {
         y1="82"
         x2="236"
         y2="82"
-        stroke="var(--cyan)"
+        stroke="var(--accent)"
         strokeWidth="1"
         opacity="0.42"
         className={styles.obFacDashSlow}
@@ -159,7 +159,7 @@ function EnvelopeDiagram(): React.JSX.Element {
         AGENT REPLY
       </text>
       {[
-        { y: 36, k: 'status', t: 'enum', c: 'var(--cyan)' },
+        { y: 36, k: 'status', t: 'enum', c: 'var(--accent)' },
         { y: 55, k: 'patch', t: 'diff', c: 'var(--purple)' },
         { y: 74, k: 'notes', t: 'str', c: 'var(--amber)' },
       ].map((f) => (
@@ -350,7 +350,9 @@ export default function FactoryScreen(): React.JSX.Element {
           <div className={styles.obFacHead}>
             <div className={styles.obFacKicker}>
               <span className={styles.obFacRule} aria-hidden />
-              <span className={styles.obFacEyebrow}>How it works</span>
+              <p className={`${styles.obFacEyebrow} eyebrow`}>
+                <span className="index">02</span>How it works
+              </p>
               <span className={`${styles.obFacStep} mono`} aria-label="Step 2 of 6">
                 02 / 06
               </span>
@@ -371,7 +373,7 @@ export default function FactoryScreen(): React.JSX.Element {
             <div className={styles.obFacTrackLine} />
             <span className={styles.obFacTrackDot} />
             <div className={styles.obFacTrackNodes}>
-              <span className={styles.obFacNode} style={{ borderColor: 'var(--cyan)' }} />
+              <span className={styles.obFacNode} style={{ borderColor: 'var(--accent)' }} />
               <span className={styles.obFacNode} style={{ borderColor: 'var(--purple)' }} />
               <span className={styles.obFacNode} style={{ borderColor: 'var(--green)' }} />
             </div>
@@ -382,8 +384,8 @@ export default function FactoryScreen(): React.JSX.Element {
             <article
               className={styles.obFacFig}
               style={{
-                ['--accent' as string]: 'var(--cyan)',
-                ['--accent-dim' as string]: 'var(--cyan-dim)',
+                ['--accent' as string]: 'var(--accent)',
+                ['--accent-dim' as string]: 'var(--accent-dim)',
               }}
             >
               <span className={styles.obFacAccent} aria-hidden />

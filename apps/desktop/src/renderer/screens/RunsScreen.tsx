@@ -143,8 +143,10 @@ export default function RunsScreen({
   return (
     <div className={styles.screen}>
       <header className={styles.head}>
-        <h1>Runs</h1>
-        <label className={`${styles.archived} faint`}>
+        <p className="eyebrow">
+          <span className="index">01</span>Runs
+        </p>
+        <label className={styles.archived}>
           <input
             type="checkbox"
             checked={includeArchived}

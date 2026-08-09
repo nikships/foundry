@@ -160,7 +160,7 @@
 .chip {
   padding: var(--s1) var(--s3);
   border: 1px solid var(--line);
-  border-radius: var(--r-full);
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--text-faint);
   font: inherit;
@@ -168,9 +168,9 @@
   cursor: default;
 }
 .chip.on {
-  border-color: var(--cyan);
-  background: var(--cyan-dim);
-  color: var(--cyan);
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--accent);
 }
 .gates {
   display: flex;
@@ -191,7 +191,7 @@
 .gate code {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  color: var(--purple);
+  color: var(--text-dim);
 }
 .command-modes {
   margin-bottom: var(--s2);
@@ -219,7 +219,7 @@
   padding: 0;
   border: none;
   background: none;
-  color: var(--cyan);
+  color: var(--accent);
   font: inherit;
   font-size: inherit;
   cursor: pointer;

@@ -1,0 +1,70 @@
+/*
+ * tokens-factory.css — Factory brand: dark industrial surfaces + one orange.
+ * Loaded when brand === 'factory' (the default). Every semantic token keeps
+ * its name so components never branch on brand.
+ *
+ * Palette verified against factory.ai's compiled CSS, 2026-08-09:
+ * --dark-base-primary #020202, --dark-base-secondary #101010,
+ * --light-base-primary #eee, --accent-100 #ef6f2e, --accent-200 #ee6018,
+ * --accent-300 #d15010. Flat fills only: no gradients, no glows, no
+ * shadows for depth. The single accent is Factory orange, used sparingly.
+ */
+
+:root,
+:root[data-brand='factory'] {
+  /* ── surfaces — flat industrial blacks ─────────────────────────────── */
+  --bg-void: #020202;
+  --bg-base: #020202;
+  --bg-panel: #0a0a0a;
+  --bg-raised: #101010;
+  --bg-hover: #161616;
+  --bg-active: #1b1b1b;
+  --bg-input: #050505;
+  --bg-sidebar: #050505;
+  --bg-titlebar: #020202;
+
+  /* ── lines — 1pt hairlines, stronger only when interactive ─────────── */
+  --line-faint: rgba(255, 255, 255, 0.05);
+  --line: rgba(255, 255, 255, 0.09);
+  --line-strong: rgba(255, 255, 255, 0.18);
+
+  /* ── text ──────────────────────────────────────────────────────────── */
+  --text: #eeeeee;
+  --text-dim: #8c8c8c;
+  --text-faint: rgba(255, 255, 255, 0.32);
+  --text-ghost: rgba(255, 255, 255, 0.2);
+
+  /* ── the accent: Factory orange, and only this ─────────────────────── */
+  --accent: #ee6018;
+  --accent-bright: #ef6f2e;
+  --accent-deep: #d15010;
+  --accent-dim: #ee601822;
+
+  /* ── categorical hues — status and data only, never decoration ─────── */
+  --purple: #a78bfa;
+  --purple-dim: #a78bfa22;
+  --amber: #f5a623;
+  --amber-dim: #f5a62322;
+  --green: #34d399;
+  --green-dim: #34d39922;
+  --red: #ef4444;
+  --red-dim: #ef444422;
+  --blue: #60a5fa;
+  --blue-dim: #60a5fa22;
+
+  /* ── status — running is the accent; the rest read as data ─────────── */
+  --status-queued: var(--text-faint);
+  --status-running: var(--accent);
+  --status-success: var(--green);
+  --status-fail: var(--red);
+  --status-skipped: var(--text-faint);
+  --status-accepted: var(--green);
+  --status-rejected: var(--amber);
+  --status-failed: var(--red);
+  --status-killed: var(--text-faint);
+
+  /* ── depth — none. Flat fills and hairlines do all the work. ───────── */
+  --shadow-sm: none;
+  --shadow: none;
+  --shadow-lg: none;
+}

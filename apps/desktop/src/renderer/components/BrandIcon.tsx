@@ -130,6 +130,9 @@ export const CLI_MARKS: Record<CliVendor, Mark> = {
   droid: FactoryDroid,
 };
 
+/** The Factory pinwheel on its own, for app chrome (titlebar, empty states). */
+export const DroidGlyph: Mark = FactoryDroid;
+
 /**
  * Keyed by the `provider` string a CLI's model catalog reports. Aliases for the
  * same brand are listed separately rather than normalised, because a catalog is

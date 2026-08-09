@@ -27,9 +27,6 @@ function OnboardingShellInner(): React.JSX.Element {
   return (
     <div className={`ob-shell ${entered ? 'in' : ''}`}>
       <div className="ob-backdrop" aria-hidden>
-        <div className="ob-glow ob-glow-cyan" />
-        <div className="ob-glow ob-glow-purple" />
-        <div className="ob-glow ob-glow-amber" />
         <div className="ob-grid" />
       </div>
       <header className="ob-top">

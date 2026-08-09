@@ -21,9 +21,9 @@ let ctx: AppContext | null = null;
 /**
  * The window's own backgroundColor is what the user sees between the frame
  * appearing and the first paint, so it has to match the renderer's base colour.
- * Prism paints an opaque OLED void; desktop bleed-through would wash it out.
+ * Factory paints an opaque industrial base; desktop bleed-through would wash it out.
  */
-const WINDOW_BACKGROUND = '#000000';
+const WINDOW_BACKGROUND = '#020202';
 
 function createWindow(): BrowserWindow {
   const rawWidth = (process.env.FOUNDRY_WIDTH ?? '').trim();

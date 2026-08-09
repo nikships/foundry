@@ -35,8 +35,6 @@ export default function ProjectScreen(): React.JSX.Element {
       {/* left — atmospheric worktree visual */}
       <aside className={styles.obProjectDiagram} aria-hidden="true">
         <div className={styles.obProjectDiagramGrid} />
-        <div className={`${styles.obGlow} ${styles.obGlowCyan}`} />
-        <div className={`${styles.obGlow} ${styles.obGlowPurple}`} />
 
         <div className={styles.obProjectDiagramInner}>
           <div className={styles.obProjectDiagramLabel}>worktree topology</div>
@@ -49,8 +47,8 @@ export default function ProjectScreen(): React.JSX.Element {
           >
             <defs>
               <linearGradient id="obp-fade" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stopColor="var(--cyan)" stopOpacity="0.55" />
-                <stop offset="100%" stopColor="var(--cyan)" stopOpacity="0.06" />
+                <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.55" />
+                <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.06" />
               </linearGradient>
             </defs>
             <line x1="42" y1="14" x2="42" y2="506" stroke="var(--line-strong)" strokeWidth="1" />
@@ -79,15 +77,27 @@ export default function ProjectScreen(): React.JSX.Element {
                 stroke="var(--line-strong)"
               />
             ))}
-            <circle cx="168" cy="120" r="4.5" fill="var(--cyan)" className={styles.obProjectNode} />
+            <circle
+              cx="168"
+              cy="120"
+              r="4.5"
+              fill="var(--accent)"
+              className={styles.obProjectNode}
+            />
             <circle
               cx="232"
               cy="224"
               r="6"
-              fill="var(--cyan)"
+              fill="var(--accent)"
               className={`${styles.obProjectNode} ${styles.obProjectNodeLg}`}
             />
-            <circle cx="168" cy="320" r="4.5" fill="var(--cyan)" className={styles.obProjectNode} />
+            <circle
+              cx="168"
+              cy="320"
+              r="4.5"
+              fill="var(--accent)"
+              className={styles.obProjectNode}
+            />
             <circle cx="148" cy="410" r="3.5" fill="var(--bg-void)" stroke="var(--line-strong)" />
             <circle cx="356" cy="150" r="3.5" fill="var(--bg-void)" stroke="var(--line-strong)" />
             <text
@@ -109,7 +119,7 @@ export default function ProjectScreen(): React.JSX.Element {
             >
               run_8f2c1a
             </text>
-            <text x="240" y="228" fill="var(--cyan)" fontFamily="var(--font-mono)" fontSize="10">
+            <text x="240" y="228" fill="var(--accent)" fontFamily="var(--font-mono)" fontSize="10">
               run_31de07
             </text>
           </svg>
@@ -156,8 +166,8 @@ export default function ProjectScreen(): React.JSX.Element {
       {/* right — the form */}
       <main className={styles.obProjectForm}>
         <header className={styles.obProjectHead}>
-          <div className={styles.obProjectEyebrow}>
-            <span>First project</span>
+          <div className={`${styles.obProjectEyebrow} eyebrow`}>
+            <span className="index">06</span>First project
             <span className={styles.obProjectEyebrowSep} />
             <span className={styles.obProjectEyebrowStep}>06 / 06</span>
           </div>

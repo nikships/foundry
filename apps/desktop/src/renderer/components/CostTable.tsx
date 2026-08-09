@@ -40,6 +40,9 @@ export default function CostTable({
 
   return (
     <section className={styles.cost}>
+      <p className="eyebrow">
+        <span className="index">01</span>Cost
+      </p>
       <table>
         <thead>
           <tr>

@@ -11,7 +11,7 @@
   position: relative;
   overflow: hidden;
   border-right: 1px solid var(--line);
-  background: color-mix(in srgb, var(--bg-void) 80%, transparent);
+  background: var(--bg-void);
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -25,39 +25,8 @@
   background-size: 64px 64px;
   mask-image: radial-gradient(circle at 30% 42%, #000 0%, transparent 78%);
   -webkit-mask-image: radial-gradient(circle at 30% 42%, #000 0%, transparent 78%);
-  opacity: 0.7;
+  opacity: 0.3;
   pointer-events: none;
-}
-.ob-glow {
-  position: absolute;
-  border-radius: var(--r-full);
-  filter: blur(80px);
-  pointer-events: none;
-}
-.ob-glow-cyan {
-  width: 420px;
-  height: 420px;
-  left: -90px;
-  top: 6%;
-  background: color-mix(in srgb, var(--cyan) 14%, transparent);
-}
-.ob-glow-purple {
-  width: 340px;
-  height: 340px;
-  right: -70px;
-  bottom: 2%;
-  background: color-mix(in srgb, var(--cyan) 7%, transparent);
-}
-.ob-glow::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: radial-gradient(
-    closest-side,
-    color-mix(in srgb, var(--cyan) 10%, transparent),
-    transparent 70%
-  );
 }
 .ob-project-diagram-inner {
   position: relative;
@@ -70,8 +39,9 @@
 }
 .ob-project-diagram-label {
   font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  letter-spacing: 0.18em;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-faint);
   padding-bottom: var(--s4);
@@ -83,12 +53,6 @@
   height: auto;
   margin: var(--s8) 0 var(--s6);
   flex-shrink: 0;
-}
-.ob-project-node {
-  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--cyan) 55%, transparent));
-}
-.ob-project-node-lg {
-  filter: drop-shadow(0 0 18px color-mix(in srgb, var(--cyan) 72%, transparent));
 }
 .ob-project-schematic {
   border-top: 1px solid var(--line);
@@ -127,7 +91,7 @@
   letter-spacing: 0.06em;
 }
 .ob-project-schematic-tag-on {
-  color: var(--cyan);
+  color: var(--accent);
 }
 .ob-project-quote {
   margin: var(--s8) 0 0;
@@ -172,10 +136,15 @@
   align-items: center;
   gap: var(--s3);
   font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  letter-spacing: 0.2em;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--text-faint);
+  color: var(--text-dim);
+  line-height: 1;
+}
+.ob-project-eyebrow :global(.index) {
+  color: var(--accent);
 }
 .ob-project-eyebrow-sep {
   flex: 0 0 32px;
@@ -183,7 +152,11 @@
   background: var(--line-strong);
 }
 .ob-project-eyebrow-step {
-  color: var(--cyan);
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--text-faint);
 }
 .ob-project-title {
   margin: var(--s4) 0 0;
@@ -220,7 +193,8 @@
 }
 .ob-project-section-meta {
   font-family: var(--font-mono);
-  font-size: var(--text-xs);
+  font-size: 10px;
+  font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -228,28 +202,28 @@
 .ob-project-input {
   margin-top: var(--s4);
   width: 100%;
-  background: transparent;
+  background: var(--bg-input);
   color: var(--text);
-  border: 0;
-  border-bottom: 1px solid var(--line-strong);
-  padding: var(--s3) 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: var(--s3) var(--s3);
   font-family: var(--font);
-  font-size: var(--text-xl);
-  letter-spacing: -0.02em;
+  font-size: var(--text-base);
+  letter-spacing: -0.01em;
   outline: none;
   transition:
-    border-color 160ms var(--ease),
-    box-shadow 160ms var(--ease);
+    border-color var(--fast) var(--ease),
+    background var(--fast) var(--ease);
 }
 .ob-project-input::placeholder {
   color: var(--text-faint);
 }
 .ob-project-input:hover {
-  border-bottom-color: var(--text-faint);
+  border-color: var(--line-strong);
 }
 .ob-project-input:focus {
-  border-bottom-color: var(--cyan);
-  box-shadow: 0 12px 24px -20px color-mix(in srgb, var(--cyan) 50%, transparent);
+  border-color: var(--line-strong);
+  background: var(--bg-raised);
 }
 .ob-project-hint {
   margin: var(--s2) 0 0;
@@ -274,17 +248,15 @@
   border-bottom: 1px solid var(--line);
   border-left: 1px solid transparent;
   transition:
-    background 160ms var(--ease),
-    border-color 160ms var(--ease),
-    box-shadow 200ms var(--ease);
+    background var(--fast) var(--ease),
+    border-color var(--fast) var(--ease);
 }
 .ob-project-row:hover {
-  background: color-mix(in srgb, var(--bg-panel) 70%, transparent);
+  background: var(--bg-hover);
 }
 .ob-project-row.on {
-  background: color-mix(in srgb, var(--bg-panel) 88%, var(--cyan-dim) 12%);
-  border-left-color: var(--cyan);
-  box-shadow: var(--glow-cyan);
+  background: var(--bg-raised);
+  border-left-color: var(--accent);
 }
 .ob-project-radio-hit {
   position: relative;
@@ -311,9 +283,8 @@
   display: grid;
   place-items: center;
   transition:
-    border-color 160ms var(--ease),
-    box-shadow 160ms var(--ease),
-    background 160ms var(--ease);
+    border-color var(--fast) var(--ease),
+    background var(--fast) var(--ease);
   flex: none;
 }
 .ob-project-radio-mark::after {
@@ -321,26 +292,25 @@
   width: 7px;
   height: 7px;
   border-radius: var(--r-full);
-  background: var(--cyan);
+  background: var(--accent);
   opacity: 0;
   transform: scale(0.6);
   transition:
-    opacity 140ms var(--ease),
-    transform 140ms var(--ease);
+    opacity var(--fast) var(--ease),
+    transform var(--fast) var(--ease);
 }
 .ob-project-row:hover .ob-project-radio-mark {
   border-color: var(--text-dim);
 }
 .ob-project-row.on .ob-project-radio-mark {
-  border-color: var(--cyan);
-  box-shadow: 0 0 0 3px var(--cyan-dim);
+  border-color: var(--accent);
 }
 .ob-project-row.on .ob-project-radio-mark::after {
   opacity: 1;
   transform: scale(1);
 }
 .ob-project-radio:focus-visible + .ob-project-radio-mark {
-  outline: 1px solid var(--cyan);
+  outline: 1px solid var(--accent);
   outline-offset: 3px;
 }
 .ob-project-main {
@@ -363,13 +333,13 @@
   font-weight: 500;
   letter-spacing: -0.01em;
   outline: none;
-  transition: border-color 160ms var(--ease);
+  transition: border-color var(--fast) var(--ease);
 }
 .ob-project-name-input:hover {
   border-bottom-color: var(--line-strong);
 }
 .ob-project-name-input:focus {
-  border-bottom-color: var(--cyan);
+  border-bottom-color: var(--accent);
 }
 .ob-project-path {
   font-size: 11px;
@@ -384,17 +354,18 @@
   background: transparent;
   border: 0;
   cursor: pointer;
-  font-family: var(--font);
-  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  font-size: 11px;
   letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--text-faint);
   padding: var(--s1) var(--s2);
   border-radius: var(--r-sm);
   opacity: 0;
   transition:
-    opacity 160ms var(--ease),
-    color 160ms var(--ease),
-    background 160ms var(--ease);
+    opacity var(--fast) var(--ease),
+    color var(--fast) var(--ease),
+    background var(--fast) var(--ease);
 }
 .ob-project-row:hover .ob-project-remove,
 .ob-project-row.on .ob-project-remove,
@@ -439,7 +410,7 @@
 .ob-project-empty-body code {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  color: var(--cyan);
+  color: var(--accent);
 }
 .ob-project-actions {
   display: flex;
@@ -457,17 +428,20 @@
   border: 1px dashed var(--line-strong);
   border-radius: var(--r-sm);
   padding: var(--s3) var(--s5);
-  font-family: var(--font);
-  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   transition:
-    color 160ms var(--ease),
-    border-color 160ms var(--ease),
-    background 160ms var(--ease);
+    color var(--fast) var(--ease),
+    border-color var(--fast) var(--ease),
+    background var(--fast) var(--ease);
 }
 .ob-project-add:hover:not(:disabled) {
   color: var(--text);
-  border-color: var(--cyan);
-  background: color-mix(in srgb, var(--bg-panel) 70%, transparent);
+  border-color: var(--line-strong);
+  background: var(--bg-hover);
 }
 .ob-project-add:disabled {
   opacity: 0.55;
@@ -479,7 +453,9 @@
   display: flex;
   align-items: center;
   gap: var(--s3);
-  border-top: 1px solid var(--red);
+  border: 1px solid color-mix(in srgb, var(--red) 20%, transparent);
+  border-left: 2px solid var(--red);
+  border-radius: var(--r-sm);
   background: var(--red-dim);
   padding: var(--s3) var(--s4);
   color: var(--red);

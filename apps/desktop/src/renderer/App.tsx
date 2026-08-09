@@ -3,6 +3,7 @@ import { api, menu } from './api.js';
 import { useGlobalShortcuts } from './hooks/useGlobalShortcuts.js';
 import { AppProvider, useApp } from './stores/app.js';
 import Sidebar from './components/Sidebar.js';
+import { DroidGlyph } from './components/BrandIcon.js';
 import RunsScreen from './screens/RunsScreen.js';
 import RunDetailScreen from './screens/RunDetailScreen.js';
 import InspectorScreen from './screens/InspectorScreen.js';
@@ -203,7 +204,14 @@ function AppInner(): React.JSX.Element {
 
   return (
     <div className={styles.shell}>
-      <div className={styles.titlebar} />
+      <div className={styles.titlebar}>
+        {ready && !needsOnboarding && (
+          <div className={styles.wordmark} aria-hidden>
+            <DroidGlyph size={13} />
+            <span className={styles.wordmarkText}>Foundry</span>
+          </div>
+        )}
+      </div>
 
       {needsOnboarding ? (
         <OnboardingShell onDone={finishOnboarding} />
@@ -223,7 +231,7 @@ function AppInner(): React.JSX.Element {
             onOpenInspector={openInspector}
             inspectorRunId={inspectorRunId}
           />
-          <div className={`prism-sidebar-divider ${styles.sidebarDivider}`} aria-hidden />
+          <div className={styles.sidebarDivider} aria-hidden />
           <main className={styles.content}>{main}</main>
         </>
       ) : (

@@ -36,7 +36,9 @@ export default function CliScreen(): React.JSX.Element {
   return (
     <div className={styles.obCli}>
       <div className={styles.obCliHead}>
-        <p className="ob-eyebrow">Agent CLI</p>
+        <p className="ob-eyebrow eyebrow">
+          <span className="index">04</span>Agent CLI
+        </p>
         <h1 className="ob-title">Agent harness setup</h1>
         <p className="ob-lead">
           Foundry drives Factory Droid to run agent phases with live JSON-RPC tool streaming.

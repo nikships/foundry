@@ -6,27 +6,30 @@
 }
 .head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   padding: calc(var(--titlebar-h) + var(--s2)) var(--s6) var(--s4);
 }
-.head h1 {
-  font-size: var(--text-2xl);
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
 .archived {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: var(--s2);
-  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.archived input {
+  accent-color: var(--accent);
 }
 .composer {
   margin: 0 var(--s6) var(--s5);
   padding: var(--s4);
   background: var(--bg-panel);
   border: 1px solid var(--line);
-  border-radius: var(--r-lg);
+  border-radius: var(--r);
 }
 .request {
   border: none;
@@ -78,19 +81,25 @@
   }
 }
 .controls kbd {
-  font-family: var(--font);
-  font-size: var(--text-xs);
-  opacity: 0.65;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0;
+  color: var(--text-faint);
   margin-left: var(--s2);
 }
 .desc {
   margin-top: var(--s3);
   font-size: var(--text-sm);
   line-height: var(--leading);
+  color: var(--text-dim);
 }
 .hint-line {
   margin-top: var(--s2);
-  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--text-faint);
 }
 .notice {
   margin-top: var(--s3);
@@ -103,6 +112,7 @@
   align-items: center;
   gap: var(--s3);
   justify-content: space-between;
+  border: 1px solid color-mix(in srgb, var(--amber) 18%, transparent);
 }
 .notice p {
   margin: 0;
@@ -116,10 +126,12 @@
   color: var(--red);
   font-size: var(--text-sm);
   list-style: none;
+  border: 1px solid color-mix(in srgb, var(--red) 18%, transparent);
 }
 .issues.warn {
   background: var(--amber-dim);
   color: var(--amber);
+  border-color: color-mix(in srgb, var(--amber) 18%, transparent);
 }
 .fix {
   margin-top: var(--s2);
@@ -144,10 +156,15 @@
   color: var(--red);
   font-size: var(--text-sm);
   line-height: var(--leading);
+  border: 1px solid color-mix(in srgb, var(--red) 18%, transparent);
 }
 .list-loading {
   padding: var(--s6) var(--s3);
-  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--text-faint);
   text-align: center;
 }
 .run {
@@ -184,13 +201,17 @@
 .pipeline-name {
   font-size: var(--text-sm);
   font-weight: 500;
+  color: var(--text);
 }
 .time {
-  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
 }
 .req {
   font-size: var(--text-sm);
   color: var(--text-dim);
+  line-height: var(--leading);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -198,8 +219,13 @@
 .run-meta {
   display: flex;
   align-items: center;
-  gap: var(--s4);
-  font-size: var(--text-xs);
+  gap: var(--s3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--text-faint);
   flex: none;
 }
 .branch {

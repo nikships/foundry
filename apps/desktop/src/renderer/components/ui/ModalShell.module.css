@@ -4,23 +4,18 @@
   z-index: 90;
   display: grid;
   place-items: center;
-  background: rgba(4, 6, 12, 0.7);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background: rgba(2, 2, 2, 0.72);
   animation: fade-in var(--fast) var(--ease);
 }
 
 .overlay-backdrop.highPriority {
   z-index: 100;
-  background: rgba(4, 6, 12, 0.72);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(2, 2, 2, 0.8);
 }
 
 .modal {
-  box-shadow: var(--shadow-lg);
   background: var(--bg-panel);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-lg);
   outline: none;
 }

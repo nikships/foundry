@@ -4,13 +4,14 @@
   gap: var(--s4);
   margin: var(--s4) var(--s6) 0;
   padding: var(--s3) var(--s4);
-  border: 1px solid;
-  border-radius: var(--r-lg);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--bg-panel);
   animation: fade-in var(--normal) var(--ease);
 }
 .banner img {
-  width: 64px;
-  height: 64px;
+  width: 48px;
+  height: 48px;
   object-fit: contain;
   flex: none;
 }
@@ -19,8 +20,11 @@
   min-width: 0;
 }
 .banner h2 {
-  font-size: var(--text-base);
+  font-family: var(--font-mono);
+  font-size: 11px;
   font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
   margin-bottom: 2px;
 }
 .banner p {
@@ -29,7 +33,9 @@
   line-height: var(--leading);
 }
 .banner .note {
-  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: var(--leading);
   margin-top: var(--s2);
 }
 .banner .note.bad {
@@ -37,22 +43,28 @@
 }
 .actions {
   display: flex;
+  align-items: center;
   gap: var(--s2);
   flex: none;
+  flex-wrap: wrap;
 }
 .merged {
-  background: var(--green-dim);
+  background: color-mix(in srgb, var(--green) 14%, transparent);
   color: var(--green);
   padding: 2px 8px;
-  border-radius: var(--r-full);
-  font-size: var(--text-xs);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
 }
 
 /* The PR composer opens as a full-width second row inside the banner. */
 .banner {
   flex-wrap: wrap;
 }
-.prForm {
+.pr-form {
   flex-basis: 100%;
   display: flex;
   flex-direction: column;
@@ -61,21 +73,28 @@
   border-top: 1px solid var(--line-faint);
   animation: fade-in var(--fast, 120ms) var(--ease);
 }
-.prBody {
+.pr-body {
   font-family: var(--font);
   font-size: var(--text-sm);
   line-height: var(--leading);
   resize: vertical;
 }
-.prFormActions {
+.pr-form-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--s3);
-  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--text-faint);
 }
-.prFormButtons {
+.pr-form-buttons {
   display: flex;
   gap: var(--s2);
   flex: none;
 }
+
+/* Status tint — hairline + faint wash via inline style. Eyebrow headline
+   carries the hue; bar itself stays panel. Inline borderColor/background
+   from TSX (color-mix 40%/8%) is kept for status-specific tint. */

@@ -1,14 +1,31 @@
 /*
  * tokens-base.css — structural tokens only (no colors).
- * Color tokens live in tokens-prism.css.
+ * Color tokens live in tokens-factory.css.
  * Every spacing, radius, type, motion, and layout value is here so a
  * brand file never needs to re-declare them.
  */
 
+/* Geist + Geist Mono, vendored in ./fonts (SIL OFL 1.1). The variable files
+ * cover 100–900, so one face per family. */
+@font-face {
+  font-family: 'Geist';
+  src: url('./fonts/Geist-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('./fonts/GeistMono-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   /* ── type ─────────────────────────────────────────────────────────────── */
-  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
-  --font-mono: 'SF Mono', ui-monospace, 'JetBrains Mono', Menlo, monospace;
+  --font: 'Geist', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
   --text-xs: 12px;
   --text-sm: 14px;
@@ -22,6 +39,11 @@
   --leading: 1.5;
   --leading-loose: 1.7;
 
+  /* UI chrome (buttons, labels, badges) is uppercase tracked monospace. */
+  --label-size: 11px;
+  --label-tracking: 0.08em;
+  --eyebrow-tracking: 0.16em;
+
   /* ── space ────────────────────────────────────────────────────────────── */
   --s1: 4px;
   --s2: 8px;
@@ -34,18 +56,18 @@
   --s12: 48px;
   --s16: 64px;
 
-  /* ── shape ────────────────────────────────────────────────────────────── */
-  --r-sm: 6px;
-  --r: 10px;
-  --r-lg: 14px;
-  --r-xl: 20px;
+  /* ── shape — near-square; --r-full is reserved for true circles ──────── */
+  --r-sm: 3px;
+  --r: 4px;
+  --r-lg: 6px;
+  --r-xl: 8px;
   --r-full: 999px;
 
-  /* ── motion ───────────────────────────────────────────────────────────── */
-  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  /* ── motion — quick and mechanical ────────────────────────────────────── */
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
   --fast: 120ms;
-  --normal: 220ms;
-  --slow: 400ms;
+  --normal: 150ms;
+  --slow: 300ms;
 
   /* ── layout ───────────────────────────────────────────────────────────── */
   --sidebar-w: 264px;
@@ -94,6 +116,10 @@ textarea,
   user-select: text;
 }
 
+::selection {
+  background: color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -113,7 +139,7 @@ textarea,
 }
 
 :focus-visible {
-  outline: 2px solid var(--cyan);
+  outline: 1px solid var(--accent);
   outline-offset: 2px;
 }
 :focus:not(:focus-visible) {
@@ -132,6 +158,22 @@ textarea,
   color: var(--text-faint);
 }
 
+/* Numbered section header: orange index + tracked uppercase gray label. */
+.eyebrow {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--eyebrow-tracking);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.eyebrow .index {
+  color: var(--accent);
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -139,22 +181,26 @@ textarea,
   gap: var(--s2);
   height: 34px;
   padding: 0 var(--s4);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
   background: var(--bg-raised);
   color: var(--text);
-  font: inherit;
-  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  font-size: var(--label-size);
+  font-weight: 500;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
   cursor: default;
   white-space: nowrap;
   flex-shrink: 0;
   transition:
+    color var(--fast) var(--ease),
     background var(--fast) var(--ease),
     border-color var(--fast) var(--ease);
 }
 .btn:hover:not(:disabled) {
-  background: var(--bg-hover);
-  border-color: var(--line-strong);
+  color: var(--accent-bright);
+  border-color: color-mix(in srgb, var(--accent) 65%, transparent);
 }
 .btn:active:not(:disabled) {
   background: var(--bg-active);
@@ -162,22 +208,30 @@ textarea,
 .btn:disabled {
   opacity: 0.4;
 }
+/* Primary inverts against the dark surface: light fill, black label. */
 .btn.primary {
-  background: var(--cyan);
-  border-color: var(--cyan);
-  color: #04212a;
+  background: var(--text);
+  border-color: var(--text);
+  color: #020202;
   font-weight: 600;
 }
 .btn.primary:hover:not(:disabled) {
-  background: #74e0ea;
-  border-color: #74e0ea;
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #020202;
+}
+.btn.primary kbd {
+  color: inherit;
+  opacity: 0.55;
 }
 .btn.danger {
   color: var(--red);
   border-color: var(--red-dim);
 }
 .btn.danger:hover:not(:disabled) {
+  color: var(--red);
   background: var(--red-dim);
+  border-color: var(--red);
 }
 .btn.ghost {
   background: transparent;
@@ -185,13 +239,21 @@ textarea,
   color: var(--text-dim);
 }
 .btn.ghost:hover:not(:disabled) {
-  background: var(--bg-hover);
-  color: var(--text);
+  background: transparent;
+  color: var(--accent-bright);
+  border-color: transparent;
 }
 .btn.sm {
   height: 28px;
   padding: 0 var(--s3);
-  font-size: var(--text-xs);
+  font-size: 10px;
+}
+/* Keyboard hints sit inside buttons but read as tertiary, not as label. */
+.btn kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0;
+  color: var(--text-faint);
 }
 
 .input,
@@ -210,7 +272,7 @@ textarea,
 .input:focus,
 .select:focus,
 .textarea:focus {
-  border-color: var(--cyan);
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
   outline: none;
 }
 .input.invalid,
@@ -243,16 +305,18 @@ textarea,
   height: 20px;
   padding: 0 var(--s2);
   border-radius: var(--r-sm);
-  font-size: var(--text-xs);
-  font-weight: 500;
-  letter-spacing: 0.02em;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
   white-space: nowrap;
 }
 
 .card {
   background: var(--bg-panel);
   border: 1px solid var(--line);
-  border-radius: var(--r-lg);
+  border-radius: var(--r);
 }
 
 .field {
@@ -262,9 +326,12 @@ textarea,
   margin-bottom: var(--s5);
 }
 .field > label {
-  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  font-size: var(--label-size);
   font-weight: 500;
-  color: var(--text);
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--text-dim);
 }
 .field .hint {
   font-size: var(--text-xs);

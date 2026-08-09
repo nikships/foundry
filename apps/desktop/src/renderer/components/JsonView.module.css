@@ -1,22 +1,39 @@
 .json {
   overflow-x: auto;
   overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
 }
+
+.json :global(pre) {
+  margin: 0;
+  padding: var(--s3) var(--s4);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .json .key {
-  color: var(--cyan);
+  color: var(--accent);
 }
+
 .json .str {
   color: var(--green);
 }
+
 .json .num {
   color: var(--amber);
 }
+
 .json .bool {
   color: var(--purple);
 }
+
 .json .null {
   color: var(--text-faint);
 }
+
 .json .punctuation {
   color: var(--text-faint);
 }
