@@ -19,5 +19,5 @@ has no trace rows and so no `change_id` cursor to poll).
   junie/codex/grok/droid and would show the same placeholder for all. The map
   is written out, not inferred.
 - Structural tokens in `design/tokens-base.css`, colours in
-  `tokens-prism.css`, all imported statically in `main.tsx`. Prism is the only
-  brand. No emoji in UI copy.
+  `tokens-factory.css`, all imported statically in `main.tsx`. Factory is the
+  only brand. No emoji in UI copy.

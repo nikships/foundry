@@ -45,6 +45,12 @@ function assetsPlugin(): Plugin {
 export default defineConfig({
   root: resolve(__dirname, 'src/renderer'),
   resolve: { alias },
+  css: {
+    modules: {
+      // Match electron.vite.config.ts: `.phase-edge` → `styles.phaseEdge`.
+      localsConvention: 'camelCase',
+    },
+  },
   plugins: [react(), assetsPlugin()],
   server: {
     port: 5174,

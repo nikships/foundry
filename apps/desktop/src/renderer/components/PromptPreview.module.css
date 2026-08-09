@@ -15,9 +15,11 @@
   overflow-y: auto;
 }
 .body h3 {
-  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--label-tracking);
   color: var(--text-faint);
   margin: var(--s4) 0 var(--s2);
 }

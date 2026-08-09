@@ -97,7 +97,9 @@ export default function InspectorScreen({
     return (
       <div className={styles.inspector}>
         <header className={styles.inspectorHead}>
-          <h1>Inspector</h1>
+          <p className="eyebrow">
+            <span className="index">04</span>Inspector
+          </p>
         </header>
         <EmptyState
           art="scenes/empty-state.png"
@@ -111,7 +113,9 @@ export default function InspectorScreen({
   return (
     <div className={styles.inspector}>
       <header className={styles.inspectorHead}>
-        <h1>Inspector</h1>
+        <p className="eyebrow">
+          <span className="index">04</span>Inspector
+        </p>
         <select
           className="select"
           value={pickedRunId && runs.some((r) => r.runId === pickedRunId) ? pickedRunId : ''}

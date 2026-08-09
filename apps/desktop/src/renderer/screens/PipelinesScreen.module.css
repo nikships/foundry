@@ -49,7 +49,7 @@
   height: 36px;
   padding: 0 10px;
   border: 1px solid var(--line-strong);
-  border-radius: 3px;
+  border-radius: var(--r-sm);
   background: transparent;
   transition:
     border-color var(--fast) var(--ease),
@@ -126,11 +126,14 @@
   height: 32px;
   padding: 0 10px;
   border: 1px dashed var(--line-strong);
-  border-radius: 3px;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--text-dim);
-  font: inherit;
-  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
   cursor: default;
   white-space: nowrap;
   transition:
@@ -143,6 +146,12 @@
 .pipeline-phase-add-btn:hover {
   color: var(--text);
   border-color: color-mix(in srgb, var(--hue) 55%, transparent);
+}
+
+.pipeline-header {
+  display: flex;
+  align-items: center;
+  padding: calc(var(--titlebar-h) + var(--s2)) var(--s6) var(--s4);
 }
 
 /* PipelinesScreen — one continuous surface, structure from hairlines + type */
@@ -166,7 +175,6 @@
 .pipeline-tabs {
   flex: none;
   display: flex;
-  padding-top: var(--titlebar-h);
   border-bottom: 1px solid var(--line);
   background: var(--bg-base);
   min-width: 0;
@@ -219,9 +227,9 @@
   place-items: center;
   width: 30px;
   height: 30px;
-  border: 1px solid color-mix(in srgb, var(--hue, var(--cyan)) 35%, var(--line-strong));
+  border: 1px solid color-mix(in srgb, var(--hue, var(--accent)) 35%, var(--line-strong));
   border-radius: var(--r-sm);
-  background: color-mix(in srgb, var(--hue, var(--cyan)) 8%, transparent);
+  background: color-mix(in srgb, var(--hue, var(--accent)) 8%, transparent);
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 500;
@@ -232,9 +240,9 @@
     background var(--fast) var(--ease);
 }
 .pipeline-cell.on .pipeline-cell-count {
-  color: var(--hue, var(--cyan));
-  border-color: color-mix(in srgb, var(--hue, var(--cyan)) 55%, transparent);
-  background: color-mix(in srgb, var(--hue, var(--cyan)) 12%, transparent);
+  color: var(--hue, var(--accent));
+  border-color: color-mix(in srgb, var(--hue, var(--accent)) 55%, transparent);
+  background: color-mix(in srgb, var(--hue, var(--accent)) 12%, transparent);
 }
 .pipeline-cell-dots {
   display: flex;
@@ -270,7 +278,7 @@
   white-space: nowrap;
 }
 .pipeline-cell.on .pipeline-cell-name {
-  color: var(--hue, var(--cyan));
+  color: var(--hue, var(--accent));
 }
 .pipeline-cell-desc {
   font-size: 11px;
@@ -299,7 +307,7 @@
   right: 0;
   bottom: -1px;
   height: 1px;
-  background: var(--hue, var(--cyan));
+  background: var(--hue, var(--accent));
 }
 .pipeline-new {
   flex: none;
@@ -310,8 +318,11 @@
   border-radius: var(--r-sm);
   background: transparent;
   color: var(--text-faint);
-  font: inherit;
-  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
   cursor: default;
   white-space: nowrap;
   transition: color var(--fast) var(--ease);
@@ -336,8 +347,11 @@
   border-radius: var(--r-sm);
   background: transparent;
   color: var(--text-dim);
-  font: inherit;
-  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
   cursor: default;
   white-space: nowrap;
   transition:
@@ -438,6 +452,9 @@
   gap: var(--s3);
   padding: 0 var(--s6) var(--s3);
 }
+.pipeline-section-head :global(.eyebrow) {
+  color: var(--text-dim);
+}
 .pipeline-section-count {
   font-family: var(--font-mono);
   font-size: 11px;
@@ -515,7 +532,7 @@
 }
 .pipeline-worktree input {
   margin-top: 2px;
-  accent-color: var(--cyan);
+  accent-color: var(--accent);
 }
 .pipeline-worktree-title {
   display: block;

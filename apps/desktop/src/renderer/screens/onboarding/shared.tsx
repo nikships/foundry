@@ -58,21 +58,16 @@ export function SceneArt({
   className?: string;
 }): React.JSX.Element {
   const src = useBrandedAsset(path);
-  if (!src) return <div className={`scene-art placeholder ${className ?? ''}`} />;
-  return <img className={`scene-art ${className ?? ''}`} src={src} alt="" />;
+  const frameStyle: React.CSSProperties = {
+    border: '1px solid var(--line)',
+    borderRadius: 'var(--r)',
+    overflow: 'hidden',
+    background: 'var(--bg-base)',
+  };
+  if (!src)
+    return <div className={`scene-art placeholder ${className ?? ''}`} style={frameStyle} />;
+  return <img className={`scene-art ${className ?? ''}`} src={src} alt="" style={frameStyle} />;
 }
-
-const CHEVRON = (
-  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-    <path
-      d="M4 3 L9 7 L4 11"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-);
 
 /**
  * The one footer every onboarding screen renders. Back sits far left, the
@@ -115,7 +110,7 @@ export function StepFooter({
         onClick={onNext ?? next}
       >
         {busy ? 'Saving…' : nextLabel}
-        {!busy ? CHEVRON : null}
+        {!busy ? <span aria-hidden="true"> →</span> : null}
       </Button>
     </div>
   );

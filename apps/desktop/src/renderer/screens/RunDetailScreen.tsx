@@ -180,12 +180,18 @@ export default function RunDetailScreen({
 
   const bannerError = actionError || view.error;
 
+  const headerLabel = view.run ? view.run.pipelineName || view.run.status : runId.slice(0, 8);
+
   return (
     <div className={styles.screen}>
       <header className={styles.head}>
         <Button variant="ghost" size="sm" className="back" onClick={onBack}>
           ← Runs
         </Button>
+        <p className="eyebrow">
+          <span className="index">Run</span>
+          {headerLabel}
+        </p>
         <Button variant="ghost" size="sm" onClick={() => onOpenInspector(runId)}>
           Inspector
         </Button>

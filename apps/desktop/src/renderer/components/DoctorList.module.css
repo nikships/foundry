@@ -3,8 +3,12 @@
   margin-bottom: var(--s2);
 }
 .doctor h3 {
-  font-size: var(--text-sm);
-  font-weight: 500;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--text-dim);
   margin: 0;
 }
 .doctor ul {

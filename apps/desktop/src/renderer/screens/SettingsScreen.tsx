@@ -70,7 +70,10 @@ function Section({
   return (
     <section className={styles.settingsSection}>
       <div className={styles.settingsSectionLabel}>
-        <h2>{label}</h2>
+        <p className="eyebrow">
+          <span className="index" aria-hidden />
+          {label}
+        </p>
         {note && <p>{note}</p>}
       </div>
       <div className={styles.settingsBody}>{children}</div>
@@ -389,6 +392,11 @@ export default function SettingsScreen({
   return (
     <>
       <div className={styles.settingsScreen}>
+        <header className={styles.settingsHeader}>
+          <p className="eyebrow">
+            <span className="index">06</span>Settings
+          </p>
+        </header>
         {/* ── section strip: equal cells spanning the full window width ── */}
         <div
           className={styles.settingsTabs}

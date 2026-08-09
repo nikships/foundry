@@ -114,6 +114,9 @@ export default function Waterfall({
 
   return (
     <div className={styles.waterfall}>
+      <p className={`eyebrow ${styles.eyebrow}`}>
+        <span className="index">01</span>Timeline
+      </p>
       <div className={styles.axis}>
         {ticks.map((tick) => (
           <span key={tick.left} className={styles.tick} style={{ left: `${tick.left}%` }}>

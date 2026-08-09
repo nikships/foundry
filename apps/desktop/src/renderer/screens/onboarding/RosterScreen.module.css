@@ -201,7 +201,7 @@
   height: 6px;
   border-radius: var(--r-full);
   flex: none;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent, var(--cyan)) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, var(--line-strong)) 30%, transparent);
 }
 .ob-roster-footnote {
   margin-top: var(--s4);

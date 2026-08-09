@@ -827,104 +827,104 @@ export function TranscriptEntry({ event }: { event: EventRow }): React.JSX.Eleme
 export function transcriptStyles(): string {
   return `
     .te { margin: 4px 0; }
-    .te-head, .te-row-head, .te-cmd-head { display: flex; align-items: center; gap: 8px; width: 100%; border: none; background: none; padding: 4px 6px; font: inherit; color: inherit; text-align: left; cursor: default; border-radius: var(--r-sm); transition: background 120ms ease; }
-    button.te-row-head:hover, button.te-cmd-head:hover { background: var(--bg-hover, rgba(255, 255, 255, 0.04)); }
-    .te-time { margin-left: auto; font-size: 10px; color: var(--text-ghost, var(--text-faint)); flex: none; font-variant-numeric: tabular-nums; }
-    .te-tag { flex: none; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; padding: 1px 6px; border-radius: 4px; background: var(--bg-raised); color: var(--text-faint); }
-    .te-tag.edit { color: var(--amber); background: var(--amber-dim); }
-    .te-tag.create { color: var(--green); background: var(--green-dim); }
-    .te-tag.read { color: var(--cyan); background: var(--cyan-dim); }
-    .te-tag.search { color: var(--purple); background: var(--purple-dim); }
-    .te-tag.todo { color: var(--green); background: var(--green-dim); }
-    .te-tag.task { color: var(--blue); background: var(--blue-dim); }
-    .te-tag.ask { color: var(--purple); background: var(--purple-dim); }
-    .te-tag.envelope { color: var(--purple); background: var(--purple-dim); }
-    .te-tag.json { color: var(--blue); background: var(--blue-dim); }
-    .te-tag.tool { color: var(--text-dim); background: var(--bg-raised); }
+    .te-head, .te-row-head, .te-cmd-head { display: flex; align-items: center; gap: var(--s2); width: 100%; border: none; background: none; padding: 4px 6px; font: inherit; color: inherit; text-align: left; cursor: default; border-radius: var(--r-sm); transition: background var(--fast) var(--ease); }
+    button.te-row-head:hover, button.te-cmd-head:hover { background: var(--bg-hover); }
+    .te-time { margin-left: auto; font-family: var(--font-mono); font-size: 10px; color: var(--text-ghost); flex: none; font-variant-numeric: tabular-nums; letter-spacing: 0.04em; }
+    .te-tag { flex: none; font-family: var(--font-mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; padding: 1px 6px; border-radius: var(--r-sm); background: var(--bg-raised); color: var(--text-faint); border: 1px solid transparent; }
+    .te-tag.edit { color: var(--amber); background: var(--amber-dim); border-color: color-mix(in srgb, var(--amber) 14%, transparent); }
+    .te-tag.create { color: var(--green); background: var(--green-dim); border-color: color-mix(in srgb, var(--green) 14%, transparent); }
+    .te-tag.read { color: var(--accent); background: var(--accent-dim); border-color: color-mix(in srgb, var(--accent) 14%, transparent); }
+    .te-tag.search { color: var(--purple); background: var(--purple-dim); border-color: color-mix(in srgb, var(--purple) 14%, transparent); }
+    .te-tag.todo { color: var(--green); background: var(--green-dim); border-color: color-mix(in srgb, var(--green) 14%, transparent); }
+    .te-tag.task { color: var(--blue); background: var(--blue-dim); border-color: color-mix(in srgb, var(--blue) 14%, transparent); }
+    .te-tag.ask { color: var(--purple); background: var(--purple-dim); border-color: color-mix(in srgb, var(--purple) 14%, transparent); }
+    .te-tag.envelope { color: var(--purple); background: var(--purple-dim); border-color: color-mix(in srgb, var(--purple) 14%, transparent); }
+    .te-tag.json { color: var(--blue); background: var(--blue-dim); border-color: color-mix(in srgb, var(--blue) 14%, transparent); }
+    .te-tag.tool { color: var(--text-dim); background: var(--bg-raised); border-color: var(--line); }
 
-    .te-subagent-badge { font-size: 10px; padding: 1px 6px; border-radius: var(--r-full); background: var(--blue-dim); color: var(--blue); font-family: var(--font-mono); }
+    .te-subagent-badge { font-family: var(--font-mono); font-size: 10px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; padding: 1px 6px; border-radius: var(--r-sm); background: var(--blue-dim); color: var(--blue); border: 1px solid color-mix(in srgb, var(--blue) 14%, transparent); }
 
     .te-thinking-body { margin: 2px 0 4px; padding: 4px 10px; border-left: 2px solid var(--line); color: var(--text-faint); font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; font-style: italic; }
-    .te.thinking.open .te-thinking-body { border-left-color: var(--cyan); }
-    .te-toggle-btn { border: none; background: none; color: var(--text-faint); font-size: 10px; cursor: pointer; text-decoration: underline; margin-left: 6px; }
+    .te.thinking.open .te-thinking-body { border-left-color: var(--accent); }
+    .te-toggle-btn { border: none; background: none; color: var(--text-faint); font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; cursor: default; text-decoration: underline; margin-left: 6px; }
 
-    .te-text-body { font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; padding: 4px 6px; color: var(--text); }
-    .te-caret { display: inline-block; width: 7px; height: 13px; margin-left: 3px; vertical-align: -2px; background: var(--cyan); animation: te-blink 1s steps(2) infinite; }
+    .te-text-body { font-size: var(--text-sm); line-height: 1.6; white-space: pre-wrap; word-break: break-word; padding: 4px 6px; color: var(--text); }
+    .te-caret { display: inline-block; width: 7px; height: 13px; margin-left: 3px; vertical-align: -2px; background: var(--accent); animation: te-blink 1s steps(2) infinite; }
     @keyframes te-blink { 50% { opacity: 0; } }
 
-    .te-cmd { font-size: 12.5px; color: var(--text); word-break: break-all; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .te-cmd { font-family: var(--font-mono); font-size: 12px; color: var(--text); word-break: break-all; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .te-prompt { color: var(--green); font-family: var(--font-mono); font-weight: 700; flex: none; }
 
-    .te-exec { flex: none; font-size: 10px; padding: 1px 7px; border-radius: var(--r-full); font-weight: 500; }
-    .te-exec.ok { color: var(--green); background: var(--green-dim); }
-    .te-exec.fail { color: var(--red); background: var(--red-dim); }
-    .te-exec.running { color: var(--cyan); background: var(--cyan-dim); animation: pulse 1.4s var(--ease) infinite; }
+    .te-exec { flex: none; font-family: var(--font-mono); font-size: 10px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; padding: 1px 7px; border-radius: var(--r-sm); border: 1px solid transparent; }
+    .te-exec.ok { color: var(--green); background: var(--green-dim); border-color: color-mix(in srgb, var(--green) 14%, transparent); }
+    .te-exec.fail { color: var(--red); background: var(--red-dim); border-color: color-mix(in srgb, var(--red) 14%, transparent); }
+    .te-exec.running { color: var(--accent); background: var(--accent-dim); border-color: color-mix(in srgb, var(--accent) 14%, transparent); animation: pulse 1.4s var(--ease) infinite; }
 
     .te-output-wrapper { margin: 4px 0 6px; }
-    .te-output { margin: 0; padding: 8px 10px; background: var(--bg-void, #000); border: 1px solid var(--line-faint); border-radius: var(--r-sm); font-size: 11.5px; line-height: 1.5; color: var(--text-dim); white-space: pre-wrap; word-break: break-word; overflow-x: auto; }
-    .te.command.failed .te-output { border-color: color-mix(in srgb, var(--red) 30%, transparent); }
+    .te-output { margin: 0; padding: 8px 10px; background: var(--bg-input); border: 1px solid var(--line-faint); border-radius: var(--r-sm); font-family: var(--font-mono); font-size: 11.5px; line-height: 1.5; color: var(--text-dim); white-space: pre-wrap; word-break: break-word; overflow-x: auto; }
+    .te.command.failed .te-output { border-color: color-mix(in srgb, var(--red) 22%, transparent); }
 
-    .te-expand-btn { display: block; width: 100%; margin-top: 2px; padding: 3px 0; border: none; background: var(--bg-raised); color: var(--text-faint); font-size: 10.5px; font-family: var(--font); cursor: pointer; border-radius: 0 0 var(--r-sm) var(--r-sm); text-align: center; transition: color 120ms, background 120ms; }
+    .te-expand-btn { display: block; width: 100%; margin-top: 2px; padding: 4px 0; border: none; background: var(--bg-raised); color: var(--text-faint); font-family: var(--font-mono); font-size: 10px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; cursor: default; border-radius: 0 0 var(--r-sm) var(--r-sm); text-align: center; transition: color var(--fast) var(--ease), background var(--fast) var(--ease); }
     .te-expand-btn:hover { color: var(--text); background: var(--bg-hover); }
 
-    .te-path { font-size: 12px; color: var(--text-dim); word-break: break-all; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .te-truncated { font-size: 10.5px; color: var(--amber); margin: 2px 0 6px; }
+    .te-path { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); word-break: break-all; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .te-truncated { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--amber); margin: 2px 0 6px; }
 
     /* ── Diff styling ── */
-    .te-diff-container { margin: 4px 0 6px; border: 1px solid var(--line-faint); border-radius: var(--r-sm); overflow: hidden; background: var(--bg-void, #000); }
-    .te-diff-stat-bar { display: flex; align-items: center; gap: 8px; padding: 4px 10px; background: var(--bg-raised); border-bottom: 1px solid var(--line-faint); font-size: 11px; }
-    .te-diff-stat { font-weight: 600; font-family: var(--font-mono); padding: 0 4px; border-radius: 3px; font-size: 10.5px; }
-    .te-diff-stat.add { color: var(--green); background: var(--green-dim); }
-    .te-diff-stat.del { color: var(--red); background: var(--red-dim); }
-    .te-diff-line-count { color: var(--text-faint); font-size: 10px; margin-left: auto; }
-    .te-diff-body { padding: 4px 0; font-size: 11.5px; line-height: 1.45; overflow-x: auto; }
+    .te-diff-container { margin: 4px 0 6px; border: 1px solid var(--line); border-radius: var(--r-sm); overflow: hidden; background: var(--bg-input); }
+    .te-diff-stat-bar { display: flex; align-items: center; gap: var(--s2); padding: 4px 10px; background: var(--bg-raised); border-bottom: 1px solid var(--line); font-family: var(--font-mono); font-size: 10px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; }
+    .te-diff-stat { font-weight: 600; font-family: var(--font-mono); padding: 0 4px; border-radius: var(--r-sm); font-size: 10px; letter-spacing: 0.04em; }
+    .te-diff-stat.add { color: var(--green); background: var(--green-dim); border: 1px solid color-mix(in srgb, var(--green) 14%, transparent); }
+    .te-diff-stat.del { color: var(--red); background: var(--red-dim); border: 1px solid color-mix(in srgb, var(--red) 14%, transparent); }
+    .te-diff-line-count { color: var(--text-faint); font-size: 10px; margin-left: auto; text-transform: none; letter-spacing: 0; }
+    .te-diff-body { padding: 4px 0; font-family: var(--font-mono); font-size: 11.5px; line-height: 1.45; overflow-x: auto; }
     .te-diff-line { display: flex; padding: 1px 8px; white-space: pre-wrap; word-break: break-word; }
     .te-diff-prefix { width: 16px; flex: none; user-select: none; font-weight: bold; }
     .te-diff-text { flex: 1; min-width: 0; }
-    .te-diff-line.add { background: color-mix(in srgb, var(--green) 12%, transparent); color: var(--green); }
+    .te-diff-line.add { background: color-mix(in srgb, var(--green) 10%, transparent); color: var(--green); }
     .te-diff-line.add .te-diff-prefix { color: var(--green); }
-    .te-diff-line.del { background: color-mix(in srgb, var(--red) 12%, transparent); color: var(--red); }
+    .te-diff-line.del { background: color-mix(in srgb, var(--red) 10%, transparent); color: var(--red); }
     .te-diff-line.del .te-diff-prefix { color: var(--red); }
     .te-diff-line.ctx { color: var(--text-dim); }
-    .te-diff-line.hunk { color: var(--cyan); background: var(--cyan-dim); font-style: italic; }
-    .te-empty-diff { padding: 8px 10px; font-size: 11px; color: var(--text-faint); font-style: italic; }
+    .te-diff-line.hunk { color: var(--accent); background: var(--accent-dim); font-style: italic; }
+    .te-empty-diff { padding: 8px 10px; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-faint); }
 
     /* ── Todo list styling ── */
-    .te-todo-list { margin: 4px 0 6px; padding: 6px 10px; background: var(--bg-void, #000); border: 1px solid var(--line-faint); border-radius: var(--r-sm); display: flex; flex-direction: column; gap: 4px; }
-    .te-todo-item { display: flex; align-items: baseline; gap: 8px; font-size: 12px; }
+    .te-todo-list { margin: 4px 0 6px; padding: 6px 10px; background: var(--bg-input); border: 1px solid var(--line); border-radius: var(--r-sm); display: flex; flex-direction: column; gap: 4px; }
+    .te-todo-item { display: flex; align-items: baseline; gap: var(--s2); font-size: var(--text-xs); }
     .te-todo-icon { font-weight: bold; flex: none; font-size: 11px; }
     .te-todo-icon.completed { color: var(--green); }
-    .te-todo-icon.in_progress { color: var(--cyan); animation: pulse 1.4s var(--ease) infinite; }
+    .te-todo-icon.in_progress { color: var(--accent); animation: pulse 1.4s var(--ease) infinite; }
     .te-todo-icon.pending { color: var(--text-faint); }
     .te-todo-item.completed .te-todo-text { color: var(--text-faint); text-decoration: line-through; }
     .te-todo-item.in_progress .te-todo-text { color: var(--text); font-weight: 500; }
     .te-todo-item.pending .te-todo-text { color: var(--text-dim); }
 
     /* ── Task & Ask styling ── */
-    .te-task-body, .te-ask-body { margin: 4px 0 6px; padding: 8px 10px; background: var(--bg-void, #000); border: 1px solid var(--line-faint); border-radius: var(--r-sm); font-size: 12px; }
+    .te-task-body, .te-ask-body { margin: 4px 0 6px; padding: 8px 10px; background: var(--bg-input); border: 1px solid var(--line); border-radius: var(--r-sm); font-size: var(--text-xs); line-height: var(--leading); }
     .te-task-prompt, .te-ask-q { color: var(--text-dim); margin-bottom: 6px; line-height: 1.5; white-space: pre-wrap; }
     .te-ask-a { color: var(--green); font-weight: 500; }
 
     /* ── Envelope & JSON styling ── */
-    .te.envelope { margin: 4px 0 6px; padding: 6px 10px; background: var(--bg-void, #000); border: 1px solid var(--line-faint); border-radius: var(--r-sm); }
-    .te.envelope.ok { border-color: color-mix(in srgb, var(--green) 30%, transparent); }
-    .te.envelope.fail { border-color: color-mix(in srgb, var(--red) 30%, transparent); }
-    .te-envelope-summary { font-size: 12.5px; color: var(--text); margin-top: 4px; line-height: 1.5; font-weight: 500; }
-    .te-envelope-notes { font-size: 11.5px; color: var(--text-dim); margin-top: 4px; line-height: 1.45; }
-    .te-envelope-files { font-size: 11.5px; color: var(--text-faint); margin-top: 4px; font-family: var(--font-mono); }
-    .te-envelope-label { font-weight: 600; color: var(--text-faint); }
+    .te.envelope { margin: 4px 0 6px; padding: 6px 10px; background: var(--bg-input); border: 1px solid var(--line); border-radius: var(--r-sm); }
+    .te.envelope.ok { border-color: color-mix(in srgb, var(--green) 22%, transparent); }
+    .te.envelope.fail { border-color: color-mix(in srgb, var(--red) 22%, transparent); }
+    .te-envelope-summary { font-size: var(--text-sm); color: var(--text); margin-top: 4px; line-height: 1.5; font-weight: 500; }
+    .te-envelope-notes { font-size: var(--text-xs); color: var(--text-dim); margin-top: 4px; line-height: 1.45; }
+    .te-envelope-files { font-size: var(--text-xs); color: var(--text-faint); margin-top: 4px; font-family: var(--font-mono); }
+    .te-envelope-label { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
 
-    .te.banner { display: flex; align-items: baseline; gap: 8px; margin: 6px 0; padding: 6px 10px; border-radius: var(--r-sm); font-size: 12px; }
-    .te.banner.ok { background: var(--green-dim); color: var(--green); }
-    .te.banner.fail { background: var(--red-dim); color: var(--red); }
-    .te.banner.warn { background: var(--amber-dim); color: var(--amber); }
-    .te.banner.info { background: var(--cyan-dim); color: var(--cyan); }
-    .te-banner-name { font-weight: 600; }
-    .te-banner-detail { opacity: 0.85; word-break: break-word; }
+    .te.banner { display: flex; align-items: baseline; gap: var(--s2); margin: 6px 0; padding: 6px 10px; border-radius: var(--r-sm); border: 1px solid transparent; font-size: var(--text-xs); line-height: var(--leading); }
+    .te.banner.ok { background: var(--green-dim); color: var(--green); border-color: color-mix(in srgb, var(--green) 14%, transparent); }
+    .te.banner.fail { background: var(--red-dim); color: var(--red); border-color: color-mix(in srgb, var(--red) 14%, transparent); }
+    .te.banner.warn { background: var(--amber-dim); color: var(--amber); border-color: color-mix(in srgb, var(--amber) 14%, transparent); }
+    .te.banner.info { background: var(--accent-dim); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 14%, transparent); }
+    .te-banner-name { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+    .te-banner-detail { opacity: 0.9; word-break: break-word; font-size: var(--text-xs); }
     .te.banner .te-time, .te.usage .te-time { color: inherit; opacity: 0.6; }
-    .te.usage { display: flex; align-items: baseline; gap: 8px; margin: 4px 0; font-size: 11px; color: var(--text-faint); }
-    .te.logrow { display: flex; align-items: baseline; gap: 8px; margin: 2px 0; font-size: 11px; color: var(--text-faint); }
-    .te-log-name { font-weight: 500; }
-    .te-log-detail { opacity: 0.8; word-break: break-word; }
+    .te.usage { display: flex; align-items: baseline; gap: var(--s2); margin: 4px 0; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-faint); }
+    .te.logrow { display: flex; align-items: baseline; gap: var(--s2); margin: 2px 0; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.02em; color: var(--text-faint); }
+    .te-log-name { font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+    .te-log-detail { opacity: 0.8; word-break: break-word; text-transform: none; letter-spacing: 0; font-family: var(--font); }
   `;
 }

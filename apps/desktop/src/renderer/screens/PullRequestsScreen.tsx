@@ -267,7 +267,9 @@ export default function PullRequestsScreen({
   return (
     <div className={styles.screen}>
       <header className={styles.head}>
-        <h1>Pull Requests</h1>
+        <p className="eyebrow">
+          <span className="index">05</span>Pull Requests
+        </p>
         <div className={styles.headRight}>
           {gh?.repo && <span className={`mono faint ${styles.repo}`}>{gh.repo}</span>}
           <Button size="sm" disabled={loading} onClick={() => void refresh()}>

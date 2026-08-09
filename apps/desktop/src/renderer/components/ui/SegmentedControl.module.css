@@ -1,7 +1,7 @@
 .modes {
   display: flex;
-  gap: var(--s1);
-  padding: 3px;
+  gap: 2px;
+  padding: 2px;
   border-radius: var(--r-sm);
   background: var(--bg-input);
   border: 1px solid var(--line);
@@ -9,19 +9,26 @@
 }
 .mode {
   padding: var(--s1) var(--s3);
-  border: none;
-  border-radius: 5px;
+  border: 1px solid transparent;
+  border-radius: 2px;
   background: transparent;
   color: var(--text-faint);
-  font: inherit;
-  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
   cursor: default;
   white-space: nowrap;
+  transition:
+    color var(--fast) var(--ease),
+    background var(--fast) var(--ease);
 }
 .mode:hover {
   color: var(--text);
 }
 .mode.on {
   background: var(--bg-active);
+  border-color: var(--line);
   color: var(--text);
 }

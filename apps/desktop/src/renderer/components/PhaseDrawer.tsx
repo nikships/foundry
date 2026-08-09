@@ -148,6 +148,9 @@ export default function PhaseDrawer({
         </header>
         {phase.description && <p className={`${styles.desc} faint`}>{phase.description}</p>}
         {phase.error && <p className={`${styles.errorBanner} selectable`}>{phase.error}</p>}
+        <p className={`eyebrow ${styles.eyebrow}`}>
+          <span className="index">01</span>Phase detail
+        </p>
         <nav className={styles.tabs}>
           {tabs.map((t) => (
             <button
@@ -163,6 +166,9 @@ export default function PhaseDrawer({
         <div className={`${styles.body} scroll`}>
           {tab === 'timeline' && (
             <>
+              <p className={`eyebrow ${styles.sectionLabel}`}>
+                <span className="index">02</span>Timeline
+              </p>
               {liveTailError && (
                 <p className={styles.inlineError} role="alert">
                   Live tail: {liveTailError}
@@ -205,6 +211,9 @@ export default function PhaseDrawer({
           )}
           {tab === 'envelope' && (
             <>
+              <p className={`eyebrow ${styles.sectionLabel}`}>
+                <span className="index">02</span>Envelope
+              </p>
               {envelopes.map((envelope) => (
                 <div key={envelope.envelopeId} className={styles.blockCard}>
                   <div className={`spread ${styles.blockHead}`}>
@@ -226,6 +235,9 @@ export default function PhaseDrawer({
           )}
           {tab === 'gates' && (
             <>
+              <p className={`eyebrow ${styles.sectionLabel}`}>
+                <span className="index">02</span>Gates
+              </p>
               {gates.map((gate) => (
                 <div key={gate.id} className={styles.blockCard}>
                   <div className={`spread ${styles.blockHead}`}>
@@ -255,6 +267,9 @@ export default function PhaseDrawer({
           )}
           {tab === 'prompt' && (
             <>
+              <p className={`eyebrow ${styles.sectionLabel}`}>
+                <span className="index">02</span>Prompt
+              </p>
               {promptLoading && <p className={`faint ${styles.padded}`}>Loading prompt…</p>}
               {promptError && (
                 <p className={`${styles.inlineError} ${styles.padded}`} role="alert">

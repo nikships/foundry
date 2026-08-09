@@ -1,9 +1,5 @@
 .ob-welcome {
-  --ob-welcome-accent: var(--cyan);
-  --ob-welcome-glow-cyan: var(--cyan);
-  --ob-welcome-glow-purple: var(--purple);
-  --ob-welcome-glow-amber: var(--prism-neon-magenta, var(--purple));
-  --ob-welcome-grain: 0;
+  --ob-welcome-accent: var(--accent);
   position: relative;
   flex: 1;
   min-height: 0;
@@ -32,23 +28,7 @@
   align-items: flex-end;
   padding: clamp(22px, 4.8vw, 64px);
   isolation: isolate;
-}
-.ob-welcome-hero::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(
-      120% 80% at 20% 15%,
-      color-mix(in srgb, var(--ob-welcome-glow-cyan) 13%, transparent),
-      transparent 60%
-    ),
-    radial-gradient(
-      90% 70% at 85% 85%,
-      color-mix(in srgb, var(--ob-welcome-glow-purple) 15%, transparent),
-      transparent 66%
-    );
-  z-index: -1;
+  border-right: 1px solid var(--line);
 }
 .ob-welcome-hero-grid {
   position: absolute;
@@ -57,22 +37,18 @@
     linear-gradient(to right, var(--line) 1px, transparent 1px),
     linear-gradient(to bottom, var(--line) 1px, transparent 1px);
   background-size: 72px 72px;
-  opacity: 0.34;
+  opacity: 0.28;
   mask-image: radial-gradient(70% 60% at 45% 45%, #000 20%, transparent 100%);
   -webkit-mask-image: radial-gradient(70% 60% at 45% 45%, #000 20%, transparent 100%);
 }
 .ob-welcome-hero-grain {
-  position: absolute;
-  inset: 0;
-  opacity: var(--ob-welcome-grain);
-  pointer-events: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  display: none;
 }
 .ob-welcome-hero-frame {
   position: absolute;
   inset: clamp(14px, 2.2vw, 28px);
   border: 1px solid var(--line);
-  border-radius: var(--r);
+  border-radius: var(--r-sm);
   pointer-events: none;
   opacity: 0.72;
 }
@@ -83,65 +59,25 @@
   place-items: center;
   pointer-events: none;
 }
-.ob-welcome-glow {
-  position: absolute;
-  border-radius: var(--r-full);
-  filter: blur(52px);
-  animation: ob-welcome-drift 26s ease-in-out infinite alternate;
-}
-.ob-glow-cyan {
-  width: 46%;
-  aspect-ratio: 1;
-  top: 8%;
-  left: 4%;
-  background: color-mix(in srgb, var(--ob-welcome-glow-cyan) 42%, transparent);
-}
-.ob-glow-purple {
-  width: 38%;
-  aspect-ratio: 1;
-  bottom: 6%;
-  right: 2%;
-  background: color-mix(in srgb, var(--ob-welcome-glow-purple) 44%, transparent);
-  animation-duration: 34s;
-  animation-delay: -8s;
-}
-.ob-glow-amber {
-  width: 22%;
-  aspect-ratio: 1;
-  top: 46%;
-  left: 52%;
-  background: color-mix(in srgb, var(--ob-welcome-glow-amber) 34%, transparent);
-  animation-duration: 21s;
-  animation-delay: -14s;
-}
-@keyframes ob-welcome-drift {
-  from {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  to {
-    transform: translate3d(6%, -7%, 0) scale(1.14);
-  }
-}
 .ob-welcome-pipeline {
   position: relative;
   width: min(78%, 520px);
   height: auto;
   fill: none;
   stroke-linecap: round;
-  filter: drop-shadow(0 0 0 transparent);
 }
 .ob-welcome-pipeline-rail {
-  stroke: color-mix(in srgb, var(--text) 26%, transparent);
+  stroke: var(--line-strong);
   stroke-width: 1;
 }
 .ob-welcome-pipeline-rail-dim {
-  stroke: color-mix(in srgb, var(--text) 13%, transparent);
+  stroke: var(--line);
+  stroke-width: 1;
 }
 .ob-welcome-pipeline-pulse {
   stroke: var(--ob-welcome-accent);
   stroke-width: 1.45;
   stroke-dasharray: 46 620;
-  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--ob-welcome-accent) 72%, transparent));
   animation: ob-welcome-trace 7s linear infinite;
 }
 @keyframes ob-welcome-trace {
@@ -154,7 +90,7 @@
 }
 .ob-welcome-pipeline-nodes circle {
   fill: var(--bg-base);
-  stroke: color-mix(in srgb, var(--ob-welcome-accent) 70%, transparent);
+  stroke: var(--line-strong);
   stroke-width: 1;
 }
 .ob-welcome-hero-caption {
@@ -183,12 +119,17 @@
 }
 .ob-welcome-eyebrow {
   margin: 0 0 var(--s6);
-  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--ob-welcome-accent);
+  color: var(--text-dim);
   line-height: 1;
+}
+.ob-welcome-eyebrow span {
+  color: var(--accent);
+  margin-right: var(--s2);
 }
 .ob-welcome-wordmark {
   margin: 0;
@@ -218,7 +159,7 @@
   gap: var(--s4);
   padding: var(--s4) 0;
   border-top: 1px solid var(--line);
-  transition: background 160ms var(--ease);
+  transition: background var(--fast) var(--ease);
 }
 .ob-welcome-proof-row:last-child {
   border-bottom: 1px solid var(--line);
@@ -246,9 +187,9 @@
   color: var(--text-faint);
   margin-top: 1px;
   transition:
-    color 220ms var(--ease),
-    border-color 220ms var(--ease),
-    background 220ms var(--ease);
+    color var(--fast) var(--ease),
+    border-color var(--fast) var(--ease),
+    background var(--fast) var(--ease);
 }
 .ob-welcome-proof-glyph svg {
   width: 16px;
@@ -278,10 +219,8 @@
   font-size: var(--text-sm);
   line-height: 1.5;
   color: var(--text-faint);
-  transition: color 200ms var(--ease);
+  transition: color var(--fast) var(--ease);
 }
-
-/* footer is the shared .ob-foot bar from OnboardingShell */
 
 /* entrance */
 .ob-welcome-rise {
@@ -307,6 +246,8 @@
   .ob-welcome-hero {
     min-height: 42vh;
     padding: 28px 24px 22px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
   }
   .ob-welcome-hero-frame {
     inset: 12px;
@@ -329,7 +270,6 @@
     opacity: 1;
     transform: none;
   }
-  .ob-welcome-glow,
   .ob-welcome-pipeline-pulse {
     animation: none;
   }

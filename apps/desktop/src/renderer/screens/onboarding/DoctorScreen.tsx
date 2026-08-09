@@ -26,7 +26,9 @@ export default function DoctorScreen(): React.JSX.Element {
       <div className={styles.obDoctorBody}>
         {/* ── left: narrative, chips, telemetry ───────────────────── */}
         <div className={styles.obDoctorIntro}>
-          <p className="ob-eyebrow">Environment — 5 / 6</p>
+          <p className="ob-eyebrow eyebrow">
+            <span className="index">05</span>Environment — 5 / 6
+          </p>
           <h1 className="ob-title">Make the floor safe</h1>
           <p className="ob-lead">
             Default CLI is <strong>{defaultCliLabel}</strong>. It and <strong>git</strong> block the
@@ -99,7 +101,7 @@ export default function DoctorScreen(): React.JSX.Element {
                     <polyline
                       points={pts}
                       fill="none"
-                      stroke="var(--cyan)"
+                      stroke="var(--accent)"
                       strokeWidth={1.05}
                       opacity={0.9}
                     />
@@ -120,7 +122,7 @@ export default function DoctorScreen(): React.JSX.Element {
                         cx={(i / (bars.length - 1)) * 320}
                         cy={72 - bars[i] * 2.6}
                         r={1.7}
-                        fill="var(--cyan)"
+                        fill="var(--accent)"
                       />
                     ))}
                   </>

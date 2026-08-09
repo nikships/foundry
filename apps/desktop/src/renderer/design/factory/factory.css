@@ -1,0 +1,44 @@
+/*
+ * factory.css — Factory app shell. Loaded only in a Factory window, so every
+ * rule here is still scoped to [data-brand='factory'] purely to keep the
+ * selectors honest when the two sheets are read side by side.
+ */
+
+/* ── stacking ────────────────────────────────────────────────────────────
+ * The shell floor is a flat industrial base — nothing is painted behind the
+ * sidebar and content. The stacking context and the z-index on those two are
+ * kept so anything added at the shell's floor later lands below the app shell
+ * rather than on top of it.
+ */
+[data-brand='factory'] .shell {
+  position: relative;
+  isolation: isolate;
+  background: var(--bg-void);
+}
+[data-brand='factory'] .sidebar,
+[data-brand='factory'] .content {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── button press — quick and mechanical, no bounce ─────────────────────── */
+[data-brand='factory'] .btn:active:not(:disabled) {
+  transform: scale(0.985);
+}
+
+[data-brand='factory'] .btn.primary:active:not(:disabled) {
+  transform: scale(0.98);
+  background: var(--text-dim);
+  border-color: var(--text-dim);
+  transition:
+    transform var(--fast) ease-out,
+    background var(--fast) ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-brand='factory'] .btn:active:not(:disabled),
+  [data-brand='factory'] .btn.primary:active:not(:disabled) {
+    transform: none;
+    transition: none;
+  }
+}

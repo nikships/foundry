@@ -25,7 +25,7 @@
 /* headline */
 .ob-fac-head {
   max-width: 760px;
-  animation: ob-fac-in 520ms var(--ease) both;
+  animation: ob-fac-in var(--normal) var(--ease) both;
 }
 .ob-fac-kicker {
   display: flex;
@@ -36,19 +36,25 @@
 .ob-fac-rule {
   width: 28px;
   height: 1px;
-  background: var(--cyan);
+  background: var(--accent);
   flex: 0 0 28px;
 }
 .ob-fac-eyebrow {
-  font-size: 11px;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
+  font-family: var(--font-mono);
+  font-size: 10px;
   font-weight: 600;
-  color: var(--cyan);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.ob-fac-eyebrow .index {
+  color: var(--accent);
+  margin-right: var(--s2);
 }
 .ob-fac-step {
   margin-left: auto;
-  font-size: 11px;
+  font-family: var(--font-mono);
+  font-size: 10px;
   letter-spacing: 0.14em;
   color: var(--text-faint);
 }
@@ -85,7 +91,7 @@
   position: relative;
   height: 36px;
   margin: var(--s1) 0 calc(-1 * var(--s4));
-  animation: ob-fac-in 520ms var(--ease) 120ms both;
+  animation: ob-fac-in var(--normal) var(--ease) 120ms both;
 }
 .ob-fac-track-line {
   position: absolute;
@@ -102,8 +108,7 @@
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: var(--cyan);
-  box-shadow: 0 0 10px var(--cyan);
+  background: var(--accent);
   animation: ob-fac-dot 7s linear infinite;
 }
 .ob-fac-track-nodes {
@@ -131,7 +136,7 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0;
   border-top: 1px solid var(--line);
-  animation: ob-fac-in 560ms var(--ease) 200ms both;
+  animation: ob-fac-in var(--normal) var(--ease) 200ms both;
 }
 .ob-fac-fig {
   position: relative;
@@ -171,6 +176,7 @@
   color: var(--accent);
 }
 .ob-fac-caption {
+  font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.18em;
   text-transform: uppercase;

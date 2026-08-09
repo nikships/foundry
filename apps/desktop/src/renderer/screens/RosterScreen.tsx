@@ -18,7 +18,7 @@ import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
 import { useTablistNav } from '../hooks/useTablistNav.js';
 import styles from './RosterScreen.module.css';
 
-const COLORS = ['#5ad2dd', '#c89bff', '#e8b64a', '#4ade80', '#ff6f67', '#6aa8ff'];
+const COLORS = ['#4fa8b8', '#9b7ede', '#d19a3d', '#3cb87a', '#e0605f', '#5b8fd9'];
 
 export default function RosterScreen({
   onOpenSettings,
@@ -192,7 +192,7 @@ export default function RosterScreen({
       userPrompt: 'Work on: {{request}}',
       writes: null,
       envelope: 'build',
-      color: '#5ad2dd',
+      color: '#4fa8b8',
     };
     try {
       const result = await api.roster.save(fresh, projectId || undefined);
@@ -214,6 +214,11 @@ export default function RosterScreen({
   return (
     <>
       <div className={styles.rosterScreen}>
+        <header className={styles.rosterHeader}>
+          <p className="eyebrow">
+            <span className="index">03</span>Roster
+          </p>
+        </header>
         {/* ── agent strip: the whole roster, one horizontal band ── */}
         <div
           className={styles.rosterTabs}
@@ -232,7 +237,7 @@ export default function RosterScreen({
                   aria-selected={isActive}
                   tabIndex={isActive ? 0 : -1}
                   className={`${styles.rosterCell} ${isActive ? styles.on : ''}`}
-                  style={{ ['--hue' as string]: agent.color ?? 'var(--cyan)' }}
+                  style={{ ['--hue' as string]: agent.color ?? 'var(--accent)' }}
                   onClick={() => selectAgent(agent.name)}
                 >
                   <AgentAvatar name={agent.name} size={30} />
@@ -263,7 +268,7 @@ export default function RosterScreen({
                   <div className={styles.rosterHeadTitlerow}>
                     <h1
                       className={styles.rosterTitle}
-                      style={{ color: draft.color ?? 'var(--cyan)' }}
+                      style={{ color: draft.color ?? 'var(--accent)' }}
                     >
                       {draft.name}
                     </h1>
@@ -309,7 +314,9 @@ export default function RosterScreen({
               {/* ── identity ── */}
               <section className={styles.rosterSection}>
                 <div className={styles.rosterSectionLabel}>
-                  <h2>Identity</h2>
+                  <p className="eyebrow">
+                    <span className="index">01</span>Identity
+                  </p>
                   <p>How this agent is referenced in pipelines and run logs.</p>
                 </div>
                 <div className={styles.rosterFields}>
@@ -373,7 +380,9 @@ export default function RosterScreen({
               {/* ── execution ── */}
               <section className={styles.rosterSection}>
                 <div className={styles.rosterSectionLabel}>
-                  <h2>Execution</h2>
+                  <p className="eyebrow">
+                    <span className="index">02</span>Execution
+                  </p>
                   <p>Model selection and reasoning effort for this agent.</p>
                 </div>
                 <div className={styles.rosterFields}>
@@ -462,7 +471,9 @@ export default function RosterScreen({
               {/* ── prompts ── */}
               <section className={styles.rosterSection}>
                 <div className={styles.rosterSectionLabel}>
-                  <h2>Prompts</h2>
+                  <p className="eyebrow">
+                    <span className="index">03</span>Prompts
+                  </p>
                   <p>The system prompt is fixed per agent; the template is filled per phase.</p>
                 </div>
                 <div className={styles.rosterStack}>
@@ -496,7 +507,9 @@ export default function RosterScreen({
               {/* ── write boundary ── */}
               <section className={styles.rosterSection}>
                 <div className={styles.rosterSectionLabel}>
-                  <h2>Write boundary</h2>
+                  <p className="eyebrow">
+                    <span className="index">04</span>Write boundary
+                  </p>
                   <p>Paths this agent may modify. Everything else is refused at the tool layer.</p>
                 </div>
                 <BoundaryEditor

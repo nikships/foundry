@@ -52,12 +52,8 @@ export default function WelcomeScreen(): React.JSX.Element {
         {/* stage */}
         <section className={styles.obWelcomeHero} aria-hidden="true">
           <div className={styles.obWelcomeHeroGrid} />
-          <div className={styles.obWelcomeHeroGrain} />
           <div className={styles.obWelcomeHeroFrame} />
           <div className={styles.obWelcomeHeroField}>
-            <span className={`${styles.obWelcomeGlow} ${styles.obGlowCyan}`} />
-            <span className={`${styles.obWelcomeGlow} ${styles.obGlowPurple}`} />
-            <span className={`${styles.obWelcomeGlow} ${styles.obGlowAmber}`} />
             <svg
               className={styles.obWelcomePipeline}
               viewBox="0 0 400 320"
@@ -96,10 +92,10 @@ export default function WelcomeScreen(): React.JSX.Element {
         <section className={styles.obWelcomeEditorial}>
           <div className={styles.obWelcomeEditorialInner}>
             <p
-              className={`${styles.obWelcomeEyebrow} ${styles.obWelcomeRise}`}
+              className={`${styles.obWelcomeEyebrow} ${styles.obWelcomeRise} eyebrow`}
               style={{ ['--d' as string]: '0ms' } as React.CSSProperties}
             >
-              Introducing
+              <span className="index">01</span>Introducing
             </p>
             <h1
               className={`${styles.obWelcomeWordmark} ${styles.obWelcomeRise}`}

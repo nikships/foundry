@@ -23,7 +23,7 @@
   min-width: 0;
   position: sticky;
   top: 0;
-  animation: ob-doctor-in 480ms var(--ease) both;
+  animation: ob-doctor-in var(--normal) var(--ease) both;
 }
 .ob-doctor-intro :global(.ob-eyebrow) {
   margin-bottom: var(--s2);
@@ -51,6 +51,7 @@
   gap: var(--s3);
   font-family: var(--font-mono);
   font-size: 10px;
+  font-weight: 600;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -62,7 +63,8 @@
   color: var(--text-dim);
   letter-spacing: 0.08em;
   text-transform: none;
-  font-size: 10.5px;
+  font-size: 10px;
+  font-family: var(--font-mono);
 }
 
 /* chips — flat, bordered, no card */
@@ -77,7 +79,7 @@
   align-items: center;
   gap: 7px;
   padding: 6px 10px;
-  border-radius: var(--r-full);
+  border-radius: var(--r-sm);
   border: 1px solid var(--line);
   background: var(--bg-raised);
   font-family: var(--font-mono);
@@ -85,12 +87,10 @@
   letter-spacing: 0.02em;
   color: var(--text-dim);
   transition:
-    border-color 140ms var(--ease),
-    background 140ms var(--ease),
-    color 140ms var(--ease),
-    transform 200ms var(--ease),
-    opacity 200ms var(--ease);
-  animation: ob-doctor-chip 420ms var(--ease) both;
+    border-color var(--fast) var(--ease),
+    background var(--fast) var(--ease),
+    color var(--fast) var(--ease);
+  animation: ob-doctor-chip var(--normal) var(--ease) both;
   animation-delay: calc(var(--i, 0) * 45ms + 120ms);
 }
 .ob-status-chip.ok {
@@ -124,7 +124,7 @@
   margin-top: var(--s6);
   border-top: 1px solid var(--line-strong);
   padding-top: var(--s3);
-  animation: ob-doctor-in 520ms var(--ease) 180ms both;
+  animation: ob-doctor-in var(--normal) var(--ease) 180ms both;
 }
 .ob-doctor-telemetry-head,
 .ob-doctor-telemetry-foot {
@@ -133,6 +133,7 @@
   gap: var(--s3);
   font-family: var(--font-mono);
   font-size: 10px;
+  font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -149,23 +150,25 @@
   padding-top: var(--s2);
   text-transform: none;
   letter-spacing: 0.06em;
-  font-size: 10.5px;
+  font-size: 10px;
+  font-family: var(--font-mono);
 }
 .ob-doctor-telemetry-live {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  color: var(--cyan);
+  color: var(--accent);
   text-transform: uppercase;
   letter-spacing: 0.14em;
   font-size: 10px;
+  font-family: var(--font-mono);
+  font-weight: 600;
 }
 .ob-doctor-live-dot {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--cyan);
-  box-shadow: 0 0 8px var(--cyan);
+  background: var(--accent);
   animation: ob-doctor-pulse 1.6s ease-in-out infinite;
 }
 .ob-doctor-clarify {
@@ -186,11 +189,11 @@
   flex-direction: column;
   gap: var(--s2);
   min-width: 0;
-  animation: ob-doctor-in 520ms var(--ease) 100ms both;
+  animation: ob-doctor-in var(--normal) var(--ease) 100ms both;
 }
 .ob-doctor-panel {
   border: 1px solid var(--line);
-  border-radius: var(--r-lg);
+  border-radius: var(--r);
   background: var(--bg-panel);
   overflow: hidden;
   display: flex;
@@ -207,7 +210,8 @@
 }
 .ob-doctor-panel-title {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 10px;
+  font-weight: 600;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-dim);
@@ -246,9 +250,9 @@
   gap: var(--s3);
   align-items: center;
   transition:
-    background 120ms var(--ease),
-    border-left-color 120ms var(--ease);
-  animation: ob-doctor-row 380ms var(--ease) both;
+    background var(--fast) var(--ease),
+    border-left-color var(--fast) var(--ease);
+  animation: ob-doctor-row var(--normal) var(--ease) both;
 }
 .ob-doctor-panel :global(.doctor) li:nth-child(1) {
   animation-delay: 0ms;

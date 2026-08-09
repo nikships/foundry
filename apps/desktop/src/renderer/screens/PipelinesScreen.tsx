@@ -34,7 +34,7 @@ function phaseComposition(phases: PhaseDef[]): string {
 function pipelineHue(pipeline: PipelineDef, agentColor: (name: string | null) => string): string {
   const firstAgent = pipeline.phases.find((p) => p.kind === 'agent' && p.agent);
   if (firstAgent?.agent) return agentColor(firstAgent.agent);
-  return 'var(--cyan)';
+  return 'var(--accent)';
 }
 
 /* ── phase track ─────────────────────────────────────────────────────── */
@@ -174,7 +174,7 @@ function PhaseTrack({
           <button
             type="button"
             className={styles.pipelinePhaseAddBtn}
-            style={{ ['--hue' as string]: 'var(--purple)' }}
+            style={{ ['--hue' as string]: 'var(--accent)' }}
             onClick={() => onAdd('agent')}
           >
             <AgentGlyph /> Agent
@@ -182,7 +182,7 @@ function PhaseTrack({
           <button
             type="button"
             className={styles.pipelinePhaseAddBtn}
-            style={{ ['--hue' as string]: 'var(--amber)' }}
+            style={{ ['--hue' as string]: 'var(--blue)' }}
             onClick={() => onAdd('code')}
           >
             <CommandGlyph /> Command
@@ -190,7 +190,7 @@ function PhaseTrack({
           <button
             type="button"
             className={styles.pipelinePhaseAddBtn}
-            style={{ ['--hue' as string]: 'var(--blue)' }}
+            style={{ ['--hue' as string]: 'var(--amber)' }}
             onClick={() => onAdd('engineer')}
           >
             <CheckpointGlyph /> Checkpoint
@@ -445,6 +445,11 @@ export default function PipelinesScreen({
   return (
     <>
       <div className={styles.pipelineScreen}>
+        <header className={styles.pipelineHeader}>
+          <p className="eyebrow">
+            <span className="index">02</span>Pipelines
+          </p>
+        </header>
         {/* ── pipeline strip: each pipeline as a full cell, roster-style ── */}
         <div
           className={styles.pipelineTabs}
@@ -573,7 +578,9 @@ export default function PipelinesScreen({
               {/* ── phase rows ── */}
               <section className={styles.pipelinePhases} aria-label="Phases">
                 <div className={styles.pipelineSectionHead}>
-                  <h2 className={styles.pipelineMono}>Phases</h2>
+                  <p className="eyebrow">
+                    <span className="index">01</span>Phases
+                  </p>
                   <span className={styles.pipelineSectionCount}>{draft.phases.length} steps</span>
                 </div>
                 <div className={styles.pipelinePhaseList}>
@@ -599,7 +606,9 @@ export default function PipelinesScreen({
               {/* ── acceptance ── */}
               <section className={styles.pipelineAcceptance} aria-label="Acceptance">
                 <div className={styles.pipelineSectionHead}>
-                  <h2 className={styles.pipelineMono}>Acceptance</h2>
+                  <p className="eyebrow">
+                    <span className="index">02</span>Acceptance
+                  </p>
                   <span className={styles.pipelineSectionCount}>
                     evaluated when the run settles
                   </span>
@@ -680,7 +689,9 @@ export default function PipelinesScreen({
 
         {draft && (
           <div className={styles.pipelineValidation}>
-            <span className={styles.pipelineMono}>Validation</span>
+            <span className="eyebrow">
+              <span className="index">03</span>Validation
+            </span>
             <div className={styles.pipelineValidationItems}>
               {readyCopy && (
                 <span

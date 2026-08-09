@@ -1,8 +1,8 @@
 .cost {
   margin: var(--s4) var(--s6) 0;
-  padding: var(--s2);
+  padding: var(--s2) var(--s3);
   border: 1px solid var(--line);
-  border-radius: var(--r-lg);
+  border-radius: var(--r);
   background: var(--bg-panel);
   animation: fade-in var(--fast) var(--ease);
 }
@@ -16,22 +16,35 @@
   padding: var(--s2) var(--s3);
   text-align: right;
   white-space: nowrap;
+  border-bottom: 1px solid var(--line-faint);
+}
+.cost tbody tr:last-child td {
+  border-bottom: none;
 }
 .cost th {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
   color: var(--text-faint);
-  font-weight: 500;
-  border-bottom: 1px solid var(--line-faint);
+  border-bottom-color: var(--line);
 }
 .cost .left {
   text-align: left;
 }
+.cost tbody tr {
+  transition: background var(--fast) var(--ease);
+}
 .cost tbody tr:hover {
   background: var(--bg-hover);
 }
-.phaseCell {
+.phase-cell {
   display: inline-flex;
   align-items: center;
   gap: var(--s2);
+  font-size: var(--text-xs);
+  color: var(--text);
 }
 .model {
   color: var(--text-faint);
@@ -45,12 +58,20 @@
 .unreported {
   text-align: center;
   font-style: italic;
+  color: var(--text-faint);
 }
 .cost tfoot td {
-  border-top: 1px solid var(--line-faint);
+  border-top: 1px solid var(--line);
+  border-bottom: none;
   font-weight: 600;
+  color: var(--text);
 }
 .none {
   padding: var(--s3);
-  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--text-faint);
 }

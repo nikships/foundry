@@ -1,3 +1,9 @@
+.roster-header {
+  display: flex;
+  align-items: center;
+  padding: calc(var(--titlebar-h) + var(--s2)) var(--s6) var(--s4);
+}
+
 /* One continuous surface — structure from hairlines + type, never tinted columns. */
 .roster-screen {
   display: flex;
@@ -11,7 +17,6 @@
 .roster-tabs {
   flex: none;
   display: flex;
-  padding-top: var(--titlebar-h);
   border-bottom: 1px solid var(--line);
   background: var(--bg-base);
   min-width: 0;
@@ -103,8 +108,11 @@
   border-radius: var(--r-sm);
   background: transparent;
   color: var(--text-faint);
-  font: inherit;
-  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
   cursor: default;
   white-space: nowrap;
   transition: color var(--fast) var(--ease);
@@ -183,8 +191,11 @@
   border-radius: var(--r-sm);
   background: transparent;
   color: var(--text-dim);
-  font: inherit;
-  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
   cursor: default;
   white-space: nowrap;
   transition:
@@ -206,6 +217,9 @@
   gap: var(--s4) var(--s12, 48px);
   border-top: 1px solid var(--line);
   padding: var(--s8) 0;
+}
+.roster-section-label :global(.eyebrow) {
+  color: var(--text-dim);
 }
 .roster-section-label h2 {
   font-family: var(--font-mono);
@@ -361,7 +375,7 @@
   padding: 0;
   border: none;
   background: none;
-  color: var(--cyan);
+  color: var(--accent);
   font: inherit;
   font-size: inherit;
   cursor: pointer;
@@ -386,9 +400,9 @@
   font-family: var(--font-mono);
   font-size: 11px;
   padding: 1px 4px;
-  border-radius: 4px;
+  border-radius: var(--r-sm);
   background: var(--bg-raised);
-  color: var(--cyan);
+  color: var(--accent);
 }
 .issues {
   list-style: none;

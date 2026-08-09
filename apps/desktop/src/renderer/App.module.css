@@ -5,11 +5,10 @@
   transform: translateX(-50%);
   padding: var(--s2) var(--s4);
   background: var(--bg-raised);
-  border: 1px solid var(--line);
-  border-radius: var(--r-full);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
   color: var(--text);
   font-size: var(--text-sm);
-  box-shadow: var(--shadow);
   z-index: 80;
   animation: fade-in 140ms var(--ease);
 }
@@ -25,9 +24,25 @@
   left: 0;
   right: 0;
   height: var(--titlebar-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   -webkit-app-region: drag;
   z-index: 50;
   pointer-events: none;
+}
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  color: var(--text-dim);
+}
+.wordmarkText {
+  font-family: var(--font-mono);
+  font-size: var(--label-size);
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
 }
 .sidebarDivider {
   width: 1px;
@@ -51,7 +66,7 @@
   width: 22px;
   height: 22px;
   border: 2px solid var(--line-strong);
-  border-top-color: var(--cyan);
+  border-top-color: var(--accent);
   border-radius: var(--r-full);
   animation: spin 700ms linear infinite;
 }
