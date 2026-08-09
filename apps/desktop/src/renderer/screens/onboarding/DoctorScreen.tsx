@@ -2,7 +2,7 @@ import { CLI_VENDOR_IDS } from '@shared/types.js';
 import { CliIcon } from '../../components/BrandIcon.js';
 import DoctorList from '../../components/DoctorList.js';
 import { useOnboarding } from './OnboardingContext.js';
-import { StepFooter } from './shared.js';
+import { SceneArt, StepFooter } from './shared.js';
 import { Button } from '../../components/ui/Button.js';
 import styles from './DoctorScreen.module.css';
 
@@ -143,6 +143,9 @@ export default function DoctorScreen(): React.JSX.Element {
             Only <strong>{defaultCliLabel}</strong> and git are blocking. A fourth CLI can stay
             uninstalled — the factory still runs.
           </p>
+          <div className={styles.obDoctorScene} aria-hidden>
+            <SceneArt path="scenes/empty-state.png" className={styles.obDoctorSceneArt} />
+          </div>
         </div>
 
         {/* ── right: diagnostics panel ────────────────────────────── */}

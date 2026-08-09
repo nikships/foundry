@@ -1,4 +1,4 @@
-import { StepFooter } from './shared.js';
+import { SceneArt, StepFooter } from './shared.js';
 import styles from './WelcomeScreen.module.css';
 
 type Proof = {
@@ -49,41 +49,12 @@ export default function WelcomeScreen(): React.JSX.Element {
   return (
     <div className={styles.obWelcome}>
       <div className={styles.obWelcomeSplit}>
-        {/* stage */}
+        {/* stage — new Factory blueprint hero */}
         <section className={styles.obWelcomeHero} aria-hidden="true">
           <div className={styles.obWelcomeHeroGrid} />
           <div className={styles.obWelcomeHeroFrame} />
           <div className={styles.obWelcomeHeroField}>
-            <svg
-              className={styles.obWelcomePipeline}
-              viewBox="0 0 400 320"
-              preserveAspectRatio="xMidYMid meet"
-              role="img"
-              aria-label="Pipeline trace"
-            >
-              <path
-                className={styles.obWelcomePipelineRail}
-                d="M40 60 h150 a24 24 0 0 1 24 24 v152 a24 24 0 0 0 24 24 h122"
-              />
-              <path
-                className={styles.obWelcomePipelineRail}
-                d="M40 160 h96 a24 24 0 0 1 24 24 v52 a24 24 0 0 0 24 24 h176"
-              />
-              <path
-                className={`${styles.obWelcomePipelineRail} ${styles.obWelcomePipelineRailDim}`}
-                d="M40 260 h56 a24 24 0 0 0 24-24 V84 a24 24 0 0 1 24-24 h216"
-              />
-              <path
-                className={styles.obWelcomePipelinePulse}
-                d="M40 60 h150 a24 24 0 0 1 24 24 v152 a24 24 0 0 0 24 24 h122"
-              />
-              <g className={styles.obWelcomePipelineNodes}>
-                <circle cx="40" cy="60" r="3.5" />
-                <circle cx="40" cy="160" r="3.5" />
-                <circle cx="40" cy="260" r="3.5" />
-                <circle cx="360" cy="260" r="3.5" />
-              </g>
-            </svg>
+            <SceneArt path="scenes/onboarding-hero.png" className={styles.obWelcomeHeroArt} />
           </div>
           <p className={styles.obWelcomeHeroCaption}>A software factory you can watch work.</p>
         </section>

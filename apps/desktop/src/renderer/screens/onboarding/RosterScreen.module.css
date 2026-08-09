@@ -70,6 +70,19 @@
   line-height: var(--leading-loose);
   max-width: 42ch;
 }
+.ob-roster-scene {
+  margin-top: var(--s6);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  overflow: hidden;
+  background: var(--bg-base);
+}
+.ob-roster-scene-art :global(img),
+.ob-roster-scene-art :global(.scene-art) {
+  display: block;
+  width: 100%;
+  height: auto;
+}
 
 .ob-roster-list-wrap {
   display: flex;
