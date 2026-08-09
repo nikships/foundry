@@ -136,6 +136,9 @@ const COLUMN_MIGRATIONS: [table: string, column: string, decl: string][] = [
   // pre-existing db answers the change query exactly as it answered the rowid
   // one until new writes land.
   ['events', 'change_id', 'INTEGER'],
+  // Set once a PR has been opened for the run's branch via gh.
+  ['runs', 'pr_number', 'INTEGER'],
+  ['runs', 'pr_url', 'TEXT'],
 ];
 
 /** Indexes for columns added after the initial schema, created once present. */

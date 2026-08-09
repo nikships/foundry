@@ -8,6 +8,7 @@ import RunDetailScreen from './screens/RunDetailScreen.js';
 import InspectorScreen from './screens/InspectorScreen.js';
 import PipelinesScreen from './screens/PipelinesScreen.js';
 import RosterScreen from './screens/RosterScreen.js';
+import PullRequestsScreen from './screens/PullRequestsScreen.js';
 import SettingsScreen from './screens/SettingsScreen.js';
 import OnboardingShell from './screens/onboarding/OnboardingShell.js';
 import InterruptSheet from './components/InterruptSheet.js';
@@ -15,7 +16,7 @@ import UpdateBanner from './components/UpdateBanner.js';
 import type { UpdateStatus } from '@shared/types.js';
 import styles from './App.module.css';
 
-export type View = 'runs' | 'inspector' | 'pipelines' | 'roster' | 'settings';
+export type View = 'runs' | 'inspector' | 'pipelines' | 'roster' | 'prs' | 'settings';
 
 const MENU_VIEWS: Record<string, View> = {
   'menu:settings': 'settings',
@@ -23,6 +24,7 @@ const MENU_VIEWS: Record<string, View> = {
   'menu:view-inspector': 'inspector',
   'menu:view-pipelines': 'pipelines',
   'menu:view-roster': 'roster',
+  'menu:view-prs': 'prs',
 };
 
 function AppInner(): React.JSX.Element {
@@ -163,6 +165,8 @@ function AppInner(): React.JSX.Element {
     main = <PipelinesScreen />;
   } else if (view === 'roster') {
     main = <RosterScreen />;
+  } else if (view === 'prs') {
+    main = <PullRequestsScreen onOpenRun={openRun} />;
   } else if (view === 'settings') {
     main = <SettingsScreen pane={settingsPane} />;
   }

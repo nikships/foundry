@@ -5,6 +5,8 @@ import { IPC, type EventPage, type RunDetail, type WorktreeAction } from '@share
 import { DETECT_PROMPT, parseDetectReply } from '../engine/detect.js';
 import { ensureMissingCommands, missingCommandRefs, preflightForRun } from '../engine/preflight.js';
 import { OneShotClient } from '../droid/oneshot.js';
+import { resolveRef } from '../engine/git.js';
+import { rebaseOntoBase, repairAgent } from '../engine/repair.js';
 import * as worktreeLib from '../engine/worktree.js';
 import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
@@ -173,6 +175,63 @@ export function register(ctx: Ctx, handle: Handle): void {
       return { ok: outcome.merged, detail: outcome.detail };
     },
   );
+
+  /**
+   * The recovery path for a refused merge: an agent rebases the run branch
+   * inside its own worktree, code verifies the result with git, and only then
+   * lands the merge. One click from "base moved" to merged, and a failed
+   * repair aborts back to exactly where the run left off.
+   */
+  handle(IPC.runsFixMerge, async (projectId: string, runId: string): Promise<WorktreeAction> => {
+    const scoped = tracerOf(projectId);
+    if (!scoped) return { ok: false, detail: 'project not found' };
+    const { project, tracer } = scoped;
+    const run = tracer.run(runId);
+    if (!run?.worktreePath || !run.branch) return { ok: false, detail: 'this run has no worktree' };
+    if (run.merged) return { ok: false, detail: 'this run is already merged' };
+
+    const baseRef = run.baseRef ?? project.baseRef;
+    const ontoSha = await resolveRef(project.path, baseRef);
+    if (!ontoSha) return { ok: false, detail: `${baseRef} does not resolve in this repo` };
+
+    const settings = ctx.settings.get();
+    const outcome = await rebaseOntoBase({
+      worktreePath: run.worktreePath,
+      branch: run.branch,
+      ontoSha,
+      ontoLabel: baseRef,
+      agent: repairAgent(settings, run.worktreePath),
+      timeoutMs: settings.turnTimeoutMs,
+    });
+    tracer.event({ runId, type: 'log', name: 'agent fix', payload: { detail: outcome.detail } });
+    if (!outcome.ok) {
+      notifyRuns(ctx);
+      return { ok: false, detail: outcome.detail };
+    }
+
+    // The branch now sits on the base tip; record that and land the merge.
+    tracer.setBranchPoint(runId, ontoSha);
+    const merged = await worktreeLib.merge(project.path, {
+      path: run.worktreePath,
+      branch: run.branch,
+      baseRef,
+      branchPointSha: ontoSha,
+    });
+    if (merged.merged) tracer.setMerged(runId, true);
+    tracer.event({
+      runId,
+      type: 'log',
+      name: 'worktree merge',
+      payload: { detail: merged.detail },
+    });
+    notifyRuns(ctx);
+    return {
+      ok: merged.merged,
+      detail: merged.merged
+        ? `${outcome.detail}; merged into ${baseRef}`
+        : `${outcome.detail}; but the merge still failed: ${merged.detail}`,
+    };
+  });
 
   handle(
     IPC.runsDiscardWorktree,

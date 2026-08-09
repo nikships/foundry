@@ -1,5 +1,7 @@
-import type { PhaseRow, RunRow } from '@shared/types.js';
+import { useState } from 'react';
+import type { GhStatus, PhaseRow, RunRow } from '@shared/types.js';
 import { useBrandedAsset } from '../hooks/useBrandedAsset.js';
+import { truncate } from '../format.js';
 import { Button } from './ui/Button.js';
 import styles from './OutcomeBanner.module.css';
 
@@ -47,26 +49,64 @@ function explanationFor(run: RunRow, phases: PhaseRow[]): string {
   }
 }
 
+function defaultPrTitle(run: RunRow): string {
+  return `${run.pipelineName}: ${truncate(run.request, 64)}`;
+}
+
+function defaultPrBody(run: RunRow): string {
+  const outcome = run.outcomeDetail ? `${run.outcomeDetail}\n\n` : '';
+  return `${run.request}\n\n${outcome}---\nOpened by Foundry from run ${run.runId} (branch \`${run.branch ?? ''}\`).`;
+}
+
 export default function OutcomeBanner({
   run,
   phases,
   worktreeBusy,
   worktreeMessage,
   worktreeError = false,
+  gh,
+  canFix = false,
   onMerge,
+  onFixMerge,
   onDiscard,
+  onCreatePr,
+  onOpenUrl,
 }: {
   run: RunRow;
   phases: PhaseRow[];
   worktreeBusy: boolean;
   worktreeMessage: string;
   worktreeError?: boolean;
+  /** null while the gh probe is still in flight. */
+  gh: GhStatus | null;
+  /** True after a refused merge, which is when the agent repair applies. */
+  canFix?: boolean;
   onMerge: () => void;
+  onFixMerge?: () => void;
   onDiscard: () => void;
+  onCreatePr: (title: string, body: string) => void;
+  onOpenUrl: (url: string) => void;
 }): React.JSX.Element {
   const art = useBrandedAsset(artFor(run.status));
   const color = colorFor(run.status);
   const hasWorktree = !!run.worktreePath && !run.merged;
+  const [prFormOpen, setPrFormOpen] = useState(false);
+  const [prTitle, setPrTitle] = useState('');
+  const [prBody, setPrBody] = useState('');
+
+  const openPrForm = (): void => {
+    setPrTitle(defaultPrTitle(run));
+    setPrBody(defaultPrBody(run));
+    setPrFormOpen(true);
+  };
+
+  const submitPr = (): void => {
+    setPrFormOpen(false);
+    onCreatePr(prTitle.trim(), prBody);
+  };
+
+  const ghReady = !!gh?.available;
+  const ghHint = gh === null ? 'Checking the GitHub CLI…' : gh.available ? '' : gh.detail;
 
   return (
     <section
@@ -95,10 +135,41 @@ export default function OutcomeBanner({
       </div>
       {hasWorktree ? (
         <div className={styles.actions}>
+          {canFix && onFixMerge && (
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={worktreeBusy}
+              title="An agent rebases the run branch onto the base inside its worktree; Foundry verifies the result and merges it"
+              onClick={onFixMerge}
+            >
+              {worktreeBusy ? 'Working…' : 'Fix & merge with agent'}
+            </Button>
+          )}
+          {run.prUrl ? (
+            <Button
+              size="sm"
+              disabled={worktreeBusy}
+              title="Open this run's pull request on GitHub"
+              onClick={() => onOpenUrl(run.prUrl!)}
+            >
+              PR #{run.prNumber ?? '?'} ↗
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              disabled={worktreeBusy || !ghReady}
+              title={ghHint || 'Push the run branch and open a pull request on GitHub'}
+              onClick={() => (prFormOpen ? setPrFormOpen(false) : openPrForm())}
+            >
+              Open PR…
+            </Button>
+          )}
           <Button
+            variant="ghost"
             size="sm"
             disabled={worktreeBusy}
-            title="Merge the run branch into the project base ref"
+            title="Merge the run branch into the project base ref locally, without a PR"
             onClick={onMerge}
           >
             {worktreeBusy ? 'Working…' : 'Merge branch'}
@@ -114,8 +185,63 @@ export default function OutcomeBanner({
           </Button>
         </div>
       ) : run.merged ? (
-        <span className={`badge ${styles.merged}`}>merged</span>
+        <div className={styles.actions}>
+          {run.prUrl && (
+            <Button
+              variant="ghost"
+              size="sm"
+              title="Open this run's pull request on GitHub"
+              onClick={() => onOpenUrl(run.prUrl!)}
+            >
+              PR #{run.prNumber ?? '?'} ↗
+            </Button>
+          )}
+          <span className={`badge ${styles.merged}`}>merged</span>
+        </div>
       ) : null}
+      {prFormOpen && hasWorktree && !run.prUrl && (
+        <div className={styles.prForm}>
+          <input
+            className="input"
+            value={prTitle}
+            placeholder="Pull request title"
+            onChange={(e) => setPrTitle(e.target.value)}
+          />
+          <textarea
+            className={`input ${styles.prBody}`}
+            value={prBody}
+            placeholder="Pull request description"
+            rows={5}
+            onChange={(e) => setPrBody(e.target.value)}
+          />
+          <div className={styles.prFormActions}>
+            <span className="faint">
+              Pushes <span className="mono">{run.branch}</span> and opens a PR against{' '}
+              <span className="mono">{run.baseRef ?? 'the base ref'}</span>
+              {gh?.repo ? (
+                <>
+                  {' '}
+                  on <span className="mono">{gh.repo}</span>
+                </>
+              ) : null}
+              .
+            </span>
+            <div className={styles.prFormButtons}>
+              <Button variant="ghost" size="sm" onClick={() => setPrFormOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={worktreeBusy || !prTitle.trim()}
+                onClick={submitPr}
+              >
+                Create PR
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

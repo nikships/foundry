@@ -163,6 +163,12 @@ export class Tracer {
     this.db.prepare('UPDATE runs SET merged = ? WHERE run_id = ?').run(merged ? 1 : 0, runId);
   }
 
+  setPr(runId: string, prNumber: number, prUrl: string): void {
+    this.db
+      .prepare('UPDATE runs SET pr_number = ?, pr_url = ? WHERE run_id = ?')
+      .run(prNumber, prUrl, runId);
+  }
+
   setArchived(runId: string, archived: boolean): void {
     this.db.prepare('UPDATE runs SET archived = ? WHERE run_id = ?').run(archived ? 1 : 0, runId);
   }
@@ -740,6 +746,8 @@ interface RawRun {
   base_ref: string | null;
   branch_point_sha: string | null;
   outcome_detail: string | null;
+  pr_number: number | null;
+  pr_url: string | null;
   mode: string | null;
   merged: number;
   archived: number;
@@ -856,6 +864,8 @@ function mapRun(r: RawRun): RunRow {
     baseRef: r.base_ref,
     branchPointSha: r.branch_point_sha,
     outcomeDetail: r.outcome_detail,
+    prNumber: r.pr_number ?? null,
+    prUrl: r.pr_url ?? null,
     merged: !!r.merged,
     archived: !!r.archived,
     mode: (r.mode as 'rpc' | 'oneshot') ?? 'rpc',

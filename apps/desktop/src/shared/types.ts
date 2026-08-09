@@ -172,6 +172,42 @@ export interface AppSettings {
 
 export type MergePolicy = 'auto' | 'ask' | 'never';
 
+// ── Pull requests (via the gh CLI) ───────────────────────────────────────────
+
+/** One word per PR, summarised from gh's per-context statusCheckRollup. */
+export type PrChecks = 'passing' | 'failing' | 'pending' | 'none';
+
+export type PrMergeMethod = 'merge' | 'squash';
+
+export interface PullRequest {
+  number: number;
+  title: string;
+  url: string;
+  author: string;
+  headRefName: string;
+  baseRefName: string;
+  createdAt: string;
+  additions: number;
+  deletions: number;
+  isDraft: boolean;
+  checks: PrChecks;
+  mergeable: 'mergeable' | 'conflicting' | 'unknown';
+  /** '' when the repo requires no review; otherwise gh's reviewDecision verbatim. */
+  reviewDecision: string;
+}
+
+/**
+ * Whether PR features can work at all for a repo: gh installed, authenticated,
+ * and the repo resolving to something on GitHub. `detail` carries the reason
+ * when they cannot, in gh's own words where possible.
+ */
+export interface GhStatus {
+  available: boolean;
+  detail: string;
+  /** owner/name when the repo resolved, so the UI can say which repo. */
+  repo?: string;
+}
+
 export interface ProjectCommand {
   name: string;
   argv: string[];
@@ -210,6 +246,9 @@ export interface RunRow {
   branchPointSha: string | null;
   /** Why the run ended as it did, in the words the banner shows. */
   outcomeDetail: string | null;
+  /** Set once a PR has been opened for this run's branch. */
+  prNumber: number | null;
+  prUrl: string | null;
   merged: boolean;
   archived: boolean;
   mode: 'rpc' | 'oneshot';

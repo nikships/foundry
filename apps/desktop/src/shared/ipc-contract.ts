@@ -15,6 +15,7 @@ import type {
   EnvelopeRow,
   EventRow,
   GateResultRow,
+  GhStatus,
   InterruptAnswer,
   MaintenanceReport,
   ModelInfo,
@@ -22,7 +23,9 @@ import type {
   PendingInterrupt,
   PhaseRow,
   PipelineDef,
+  PrMergeMethod,
   ProjectDef,
+  PullRequest,
   RunRow,
   StartRunInput,
   ToolInfo,
@@ -142,6 +145,20 @@ export interface WorktreeAction {
   detail: string;
 }
 
+/** The outcome of a gh action, with the PR's coordinates when one exists. */
+export interface PrAction {
+  ok: boolean;
+  detail: string;
+  number?: number;
+  url?: string;
+}
+
+export interface PrList {
+  ok: boolean;
+  detail: string;
+  prs: PullRequest[];
+}
+
 export interface FoundryApi {
   settings: {
     get(): Promise<AppSettings>;
@@ -212,10 +229,35 @@ export interface FoundryApi {
     kill(projectId: string, runId: string): Promise<boolean>;
     archive(projectId: string, runId: string, archived: boolean): Promise<void>;
     mergeWorktree(projectId: string, runId: string): Promise<WorktreeAction>;
+    /**
+     * When the base moved or the merge conflicts, an agent rebases the run
+     * branch inside its worktree; code verifies the result and merges. One
+     * click from a refused merge to a landed one.
+     */
+    fixMerge(projectId: string, runId: string): Promise<WorktreeAction>;
     discardWorktree(projectId: string, runId: string): Promise<WorktreeAction>;
     openWorktree(projectId: string, runId: string): Promise<void>;
     /** Opens the run's folder of raw records (prompts, stream.jsonl, logs). */
     revealFiles(projectId: string, runId: string): Promise<void>;
+  };
+  prs: {
+    /** Cheap enough to gate the UI on: gh presence, auth, and remote resolve. */
+    status(projectId: string): Promise<GhStatus>;
+    list(projectId: string): Promise<PrList>;
+    /** Pushes the run's branch and opens a PR against the run's base ref. */
+    create(projectId: string, runId: string, title: string, body: string): Promise<PrAction>;
+    /**
+     * Merges on GitHub, then settles locally: a foundry run branch has its
+     * worktree removed and its run marked merged, and the base ref is
+     * fast-forwarded to match the remote.
+     */
+    merge(projectId: string, prNumber: number, method: PrMergeMethod): Promise<PrAction>;
+    /**
+     * A conflicting PR whose head is a foundry run branch still has its
+     * worktree: an agent rebases it onto the freshly fetched base there, and
+     * code force-with-lease pushes the result so the PR becomes mergeable.
+     */
+    fixConflicts(projectId: string, prNumber: number): Promise<PrAction>;
   };
   interrupts: {
     list(): Promise<PendingInterrupt[]>;
@@ -303,9 +345,15 @@ export const IPC = {
   runsKill: 'runs:kill',
   runsArchive: 'runs:archive',
   runsMergeWorktree: 'runs:mergeWorktree',
+  runsFixMerge: 'runs:fixMerge',
   runsDiscardWorktree: 'runs:discardWorktree',
   runsOpenWorktree: 'runs:openWorktree',
   runsRevealFiles: 'runs:revealFiles',
+  prsStatus: 'prs:status',
+  prsList: 'prs:list',
+  prsCreate: 'prs:create',
+  prsMerge: 'prs:merge',
+  prsFixConflicts: 'prs:fixConflicts',
   interruptsList: 'interrupts:list',
   interruptsAnswer: 'interrupts:answer',
   doctorRun: 'doctor:run',
