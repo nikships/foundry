@@ -16,7 +16,8 @@ import {
 } from '@shared/types.js';
 import { api, plain } from '../api.js';
 import { useApp } from '../stores/app.js';
-import { Field, Select, TextInput } from './ui/Field.js';
+import { Dropdown } from './ui/Dropdown.js';
+import { Field, TextInput } from './ui/Field.js';
 import { Button } from './ui/Button.js';
 import { confirmManager } from '../hooks/useConfirmAction.js';
 import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
@@ -800,21 +801,19 @@ export default function EnvelopesSettings(): React.JSX.Element {
                         </label>
                         <label className={styles.envelopeFieldLabel}>
                           <span>Type</span>
-                          <Select
+                          <Dropdown
                             value={field.type}
                             disabled={busy}
-                            onChange={(e) =>
+                            options={FIELD_TYPES.map((t) => ({
+                              value: t.value,
+                              label: t.label,
+                            }))}
+                            onChange={(next) =>
                               patchField(index, {
-                                type: e.target.value as CustomEnvelopeField['type'],
+                                type: next as CustomEnvelopeField['type'],
                               })
                             }
-                          >
-                            {FIELD_TYPES.map((t) => (
-                              <option key={t.value} value={t.value}>
-                                {t.label}
-                              </option>
-                            ))}
-                          </Select>
+                          />
                         </label>
                         <label
                           className={`${styles.envelopeFieldLabel} ${styles.envelopeFieldReq}`}

@@ -14,8 +14,9 @@ import ModelPicker from '../components/ModelPicker.js';
 import { CliIcon } from '../components/BrandIcon.js';
 import DoctorList from '../components/DoctorList.js';
 import ProjectCommands from '../components/ProjectCommands.js';
-import { Field, Select, TextInput, Textarea } from '../components/ui/Field.js';
+import { Field, TextInput, Textarea } from '../components/ui/Field.js';
 import { Button } from '../components/ui/Button.js';
+import { Dropdown } from '../components/ui/Dropdown.js';
 import EnvelopesSettings from '../components/EnvelopesSettings.js';
 import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
@@ -694,17 +695,16 @@ export default function SettingsScreen({
                         />
                       </Field>
                       <Field label="Default reasoning effort">
-                        <Select
+                        <Dropdown
                           value={settings.defaultReasoningEffort}
-                          onChange={(e) =>
-                            void set({ defaultReasoningEffort: e.target.value as never })
-                          }
-                        >
-                          <option value="off">Off</option>
-                          <option value="low">Low</option>
-                          <option value="medium">Medium</option>
-                          <option value="high">High</option>
-                        </Select>
+                          options={[
+                            { value: 'off', label: 'Off' },
+                            { value: 'low', label: 'Low' },
+                            { value: 'medium', label: 'Medium' },
+                            { value: 'high', label: 'High' },
+                          ]}
+                          onChange={(next) => void set({ defaultReasoningEffort: next as never })}
+                        />
                       </Field>
                     </div>
                   </Section>
@@ -713,16 +713,24 @@ export default function SettingsScreen({
                       label="Autonomy"
                       hint="Foundry always reverts writes outside an agent's boundary, at every level. Autonomy only decides what it stops to ask about first."
                     >
-                      <Select
+                      <Dropdown
                         value={settings.defaultAutonomy}
-                        onChange={(e) => void set({ defaultAutonomy: e.target.value as never })}
-                      >
-                        <option value="low">Low: confirm every write and command</option>
-                        <option value="medium">
-                          Medium: writes inside the boundary run unattended
-                        </option>
-                        <option value="high">High: run unattended within the worktree</option>
-                      </Select>
+                        options={[
+                          {
+                            value: 'low',
+                            label: 'Low: confirm every write and command',
+                          },
+                          {
+                            value: 'medium',
+                            label: 'Medium: writes inside the boundary run unattended',
+                          },
+                          {
+                            value: 'high',
+                            label: 'High: run unattended within the worktree',
+                          },
+                        ]}
+                        onChange={(next) => void set({ defaultAutonomy: next as never })}
+                      />
                     </Field>
                   </Section>
                   <Section label="Limits" note="How hard Foundry tries before a phase fails.">
@@ -849,19 +857,20 @@ export default function SettingsScreen({
                             />
                           </Field>
                           <Field label="Merge policy">
-                            <Select
+                            <Dropdown
                               value={projectDraft.mergePolicy}
-                              onChange={(e) =>
+                              options={[
+                                { value: 'never', label: 'Never merge automatically' },
+                                { value: 'on_accept', label: 'Merge when a run is accepted' },
+                                { value: 'ask', label: 'Ask me each time' },
+                              ]}
+                              onChange={(next) =>
                                 setProjectDraft({
                                   ...projectDraft,
-                                  mergePolicy: e.target.value as ProjectDef['mergePolicy'],
+                                  mergePolicy: next as ProjectDef['mergePolicy'],
                                 })
                               }
-                            >
-                              <option value="never">Never merge automatically</option>
-                              <option value="on_accept">Merge when a run is accepted</option>
-                              <option value="ask">Ask me each time</option>
-                            </Select>
+                            />
                           </Field>
                         </div>
                       </Section>
@@ -971,20 +980,21 @@ export default function SettingsScreen({
                       className={styles.settingsNarrow}
                       hint="Applies when you press the button below. Nothing is deleted behind your back."
                     >
-                      <Select
-                        value={settings.retentionDays ?? ''}
-                        onChange={(e) =>
+                      <Dropdown
+                        value={String(settings.retentionDays ?? '')}
+                        options={[
+                          { value: '', label: 'Forever' },
+                          { value: '7', label: '7 days' },
+                          { value: '30', label: '30 days' },
+                          { value: '90', label: '90 days' },
+                          { value: '365', label: 'A year' },
+                        ]}
+                        onChange={(next) =>
                           void set({
-                            retentionDays: e.target.value ? Number(e.target.value) : null,
+                            retentionDays: next ? Number(next) : null,
                           })
                         }
-                      >
-                        <option value="">Forever</option>
-                        <option value="7">7 days</option>
-                        <option value="30">30 days</option>
-                        <option value="90">90 days</option>
-                        <option value="365">A year</option>
-                      </Select>
+                      />
                     </Field>
                     <div className={styles.settingsSubrow}>
                       <div className={styles.settingsBtnrow}>

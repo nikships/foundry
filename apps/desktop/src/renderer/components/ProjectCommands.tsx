@@ -18,7 +18,8 @@ import { CliIcon } from './BrandIcon.js';
 import ModelPicker from './ModelPicker.js';
 import DetectionPanel from './DetectionPanel.js';
 import { CodeBlock } from './ui/CodeBlock.js';
-import { Field, Select, TextInput } from './ui/Field.js';
+import { Dropdown } from './ui/Dropdown.js';
+import { Field, TextInput } from './ui/Field.js';
 import { Button } from './ui/Button.js';
 import styles from './ProjectCommands.module.css';
 
@@ -301,21 +302,23 @@ export default function ProjectCommands({
         <div className={`${styles.two} ${styles.detectPicker}`}>
           <Field label="CLI vendor" htmlFor="detect-cli-select">
             <div className={styles.cliPick}>
-              <Select
+              <Dropdown
                 id="detect-cli-select"
+                className={styles.cliDropdown}
                 aria-label="Command Detection CLI"
                 value={detectCli}
-                onChange={(e) => setDetectCli(e.target.value)}
-              >
-                <option value="default">
-                  Follow the default CLI ({settings?.defaultCli ?? 'droid'})
-                </option>
-                {clis.map((cli) => (
-                  <option key={cli.id} value={cli.id}>
-                    {cli.label}
-                  </option>
-                ))}
-              </Select>
+                options={[
+                  {
+                    value: 'default',
+                    label: `Follow the default CLI (${settings?.defaultCli ?? 'droid'})`,
+                  },
+                  ...clis.map((cli) => ({
+                    value: cli.id,
+                    label: cli.label,
+                  })),
+                ]}
+                onChange={setDetectCli}
+              />
               <CliIcon vendor={effectiveCli} size={18} />
             </div>
           </Field>

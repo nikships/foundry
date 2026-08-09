@@ -158,6 +158,8 @@
 }
 .method {
   width: auto;
+  min-width: 120px;
+  flex: none;
   font-size: 11px;
   font-family: var(--font-mono);
 }

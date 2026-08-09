@@ -1,10 +1,4 @@
-import type {
-  InputHTMLAttributes,
-  ReactNode,
-  Ref,
-  SelectHTMLAttributes,
-  TextareaHTMLAttributes,
-} from 'react';
+import type { InputHTMLAttributes, ReactNode, Ref, TextareaHTMLAttributes } from 'react';
 
 interface FieldProps {
   label?: ReactNode;
@@ -56,13 +50,6 @@ export function TextInput({ mono, className, ref, ...rest }: TextInputProps): Re
       {...rest}
     />
   );
-}
-
-export function Select({
-  className,
-  ...rest
-}: SelectHTMLAttributes<HTMLSelectElement>): React.JSX.Element {
-  return <select className={['select', className].filter(Boolean).join(' ')} {...rest} />;
 }
 
 export function Textarea({

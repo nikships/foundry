@@ -11,6 +11,7 @@ import { useApp } from '../stores/app.js';
 import { since } from '../format.js';
 import EmptyState from '../components/EmptyState.js';
 import { Button } from '../components/ui/Button.js';
+import { Dropdown } from '../components/ui/Dropdown.js';
 import styles from './PullRequestsScreen.module.css';
 
 const FOUNDRY_BRANCH = /^foundry\//;
@@ -136,16 +137,17 @@ function PrCard({
             {busy ? 'Repairing…' : 'Fix with agent'}
           </Button>
         )}
-        <select
-          className={`select ${styles.method}`}
+        <Dropdown
+          className={styles.method}
           value={method}
           disabled={busy}
-          title="How gh merges this PR"
-          onChange={(e) => setMethod(e.target.value as PrMergeMethod)}
-        >
-          <option value="merge">merge commit</option>
-          <option value="squash">squash</option>
-        </select>
+          aria-label="How gh merges this PR"
+          options={[
+            { value: 'merge', label: 'merge commit' },
+            { value: 'squash', label: 'squash' },
+          ]}
+          onChange={(next) => setMethod(next as PrMergeMethod)}
+        />
         <Button
           variant="primary"
           size="sm"

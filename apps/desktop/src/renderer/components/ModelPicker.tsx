@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import type { ModelInfo } from '@shared/types.js';
 import { modelLabel } from '../format.js';
 import { ProviderIcon } from './BrandIcon.js';
+import { Dropdown, type DropdownOption } from './ui/Dropdown.js';
 import styles from './ModelPicker.module.css';
 
 export default function ModelPicker({
@@ -37,34 +38,51 @@ export default function ModelPicker({
   const catalogEmpty = models.length === 0;
   const unknownSelected = value !== 'inherit' && !current && !!value;
 
+  const options = useMemo<DropdownOption[]>(() => {
+    const next: DropdownOption[] = [];
+    if (allowInherit) {
+      next.push({ value: 'inherit', label: 'Inherit from Settings' });
+    }
+    for (const [provider, list] of groups) {
+      for (const model of list) {
+        next.push({
+          value: model.id,
+          label: model.displayName || modelLabel(model.id),
+          description: model.contextWindow
+            ? `${Math.round(model.contextWindow / 1000)}k context`
+            : undefined,
+          group: provider,
+          icon: <ProviderIcon provider={model.provider} size={16} />,
+        });
+      }
+    }
+    if (unknownSelected) {
+      next.push({
+        value,
+        label: `${modelLabel(value)} (not in the current catalog)`,
+      });
+    }
+    if (catalogEmpty && !allowInherit && !unknownSelected) {
+      next.push({
+        value: value || '',
+        label: value ? modelLabel(value) : 'No models available',
+        disabled: true,
+      });
+    }
+    return next;
+  }, [allowInherit, catalogEmpty, groups, unknownSelected, value]);
+
   return (
     <>
       <div className={styles.picker}>
-        <select
-          className="select"
+        <Dropdown
+          className={styles.dropdown}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          options={options}
+          onChange={onChange}
           aria-invalid={catalogEmpty && !allowInherit ? true : undefined}
-        >
-          {allowInherit && <option value="inherit">Inherit from Settings</option>}
-          {groups.map(([provider, list]) => (
-            <optgroup key={provider} label={provider}>
-              {list.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.displayName || modelLabel(model.id)}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-          {unknownSelected && (
-            <option value={value}>{modelLabel(value)} (not in the current catalog)</option>
-          )}
-          {catalogEmpty && !allowInherit && !unknownSelected && (
-            <option value={value || ''} disabled>
-              {value ? modelLabel(value) : 'No models available'}
-            </option>
-          )}
-        </select>
+          aria-label="Model"
+        />
         {current && <ProviderIcon provider={current.provider} size={18} />}
       </div>
       {catalogEmpty && (

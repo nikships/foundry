@@ -1,0 +1,364 @@
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react';
+import { createPortal } from 'react-dom';
+import styles from './Dropdown.module.css';
+
+export interface DropdownOption {
+  value: string;
+  label: ReactNode;
+  /** Secondary line under the label (agent purpose, envelope blurb, etc.). */
+  description?: ReactNode;
+  /** Leading glyph (avatar, CLI mark, etc.). */
+  icon?: ReactNode;
+  /** Options that share a group label render under a section header. */
+  group?: string;
+  disabled?: boolean;
+}
+
+export interface DropdownProps {
+  value: string;
+  options: DropdownOption[];
+  onChange: (value: string) => void;
+  /** Extra classes on the root wrapper. */
+  className?: string;
+  /** Extra classes on the face button. Defaults include the global `.select`. */
+  triggerClassName?: string;
+  disabled?: boolean;
+  id?: string;
+  'aria-label'?: string;
+  'aria-invalid'?: boolean | 'true' | 'false';
+  placeholder?: string;
+  /** Override the closed-face content. Defaults to the selected option's label. */
+  renderValue?: (option: DropdownOption | null) => ReactNode;
+}
+
+interface MenuPos {
+  top: number;
+  left: number;
+  width: number;
+  maxHeight: number;
+  openUp: boolean;
+}
+
+const MENU_GAP = 4;
+const VIEWPORT_PAD = 8;
+const MIN_MENU_WIDTH = 180;
+
+/**
+ * Themed listbox that replaces native `<select>`. The closed face reuses the
+ * global `.select` chrome so existing layouts keep their look; the open menu is
+ * a portaled, keyboard-navigable list that can show icons and descriptions.
+ */
+export function Dropdown({
+  value,
+  options,
+  onChange,
+  className,
+  triggerClassName,
+  disabled,
+  id,
+  'aria-label': ariaLabel,
+  'aria-invalid': ariaInvalid,
+  placeholder = 'Select…',
+  renderValue,
+}: DropdownProps): React.JSX.Element {
+  const listId = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<MenuPos | null>(null);
+  const [activeIndex, setActiveIndex] = useState(-1);
+
+  const selected = useMemo(() => options.find((o) => o.value === value) ?? null, [options, value]);
+  const enabledIndexes = useMemo(
+    () => options.map((o, i) => (o.disabled ? -1 : i)).filter((i) => i >= 0),
+    [options],
+  );
+
+  const close = useCallback((): void => {
+    setOpen(false);
+    setPos(null);
+    setActiveIndex(-1);
+  }, []);
+
+  const measure = useCallback((): void => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const viewportH = window.innerHeight;
+    const viewportW = window.innerWidth;
+    const spaceBelow = viewportH - rect.bottom - VIEWPORT_PAD;
+    const spaceAbove = rect.top - VIEWPORT_PAD;
+    const openUp = spaceBelow < 200 && spaceAbove > spaceBelow;
+    const maxHeight = Math.max(
+      140,
+      Math.min(320, openUp ? spaceAbove - MENU_GAP : spaceBelow - MENU_GAP),
+    );
+    const width = Math.min(Math.max(rect.width, MIN_MENU_WIDTH), viewportW - VIEWPORT_PAD * 2);
+    let left = rect.left;
+    if (left + width > viewportW - VIEWPORT_PAD) {
+      left = Math.max(VIEWPORT_PAD, viewportW - VIEWPORT_PAD - width);
+    }
+    setPos({
+      top: openUp ? rect.top - MENU_GAP : rect.bottom + MENU_GAP,
+      left,
+      width,
+      maxHeight,
+      openUp,
+    });
+  }, []);
+
+  const openMenu = useCallback((): void => {
+    if (disabled) return;
+    measure();
+    const start =
+      enabledIndexes.find((i) => options[i]?.value === value) ?? enabledIndexes[0] ?? -1;
+    setActiveIndex(start);
+    setOpen(true);
+  }, [disabled, enabledIndexes, measure, options, value]);
+
+  const toggle = useCallback((): void => {
+    if (open) close();
+    else openMenu();
+  }, [close, open, openMenu]);
+
+  const pick = useCallback(
+    (option: DropdownOption): void => {
+      if (option.disabled) return;
+      onChange(option.value);
+      close();
+      triggerRef.current?.focus();
+    },
+    [close, onChange],
+  );
+
+  const moveActive = useCallback(
+    (delta: number): void => {
+      if (!enabledIndexes.length) return;
+      setActiveIndex((prev) => {
+        const currentPos = enabledIndexes.indexOf(prev);
+        const nextPos =
+          currentPos < 0
+            ? delta > 0
+              ? 0
+              : enabledIndexes.length - 1
+            : (currentPos + delta + enabledIndexes.length) % enabledIndexes.length;
+        return enabledIndexes[nextPos]!;
+      });
+    },
+    [enabledIndexes],
+  );
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    measure();
+  }, [open, measure, options.length]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (e: MouseEvent): void => {
+      const target = e.target as Node;
+      if (rootRef.current?.contains(target)) return;
+      if (menuRef.current?.contains(target)) return;
+      close();
+    };
+    const onScroll = (e: Event): void => {
+      // Keep the menu open for scrolls inside it; close (and re-anchor) otherwise.
+      if (menuRef.current && e.target instanceof Node && menuRef.current.contains(e.target)) {
+        return;
+      }
+      close();
+    };
+    const onResize = (): void => close();
+    document.addEventListener('mousedown', onPointer);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onResize);
+    return () => {
+      document.removeEventListener('mousedown', onPointer);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [open, close]);
+
+  useEffect(() => {
+    if (!open || activeIndex < 0) return;
+    const el = menuRef.current?.querySelector<HTMLElement>(`[data-index="${activeIndex}"]`);
+    el?.scrollIntoView({ block: 'nearest' });
+  }, [open, activeIndex]);
+
+  const onTriggerKeyDown = (e: KeyboardEvent<HTMLButtonElement>): void => {
+    if (disabled) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!open) openMenu();
+      else moveActive(e.key === 'ArrowDown' ? 1 : -1);
+      return;
+    }
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      if (!open) openMenu();
+      else if (activeIndex >= 0) {
+        const option = options[activeIndex];
+        if (option) pick(option);
+      }
+      return;
+    }
+    if (e.key === 'Escape' && open) {
+      e.preventDefault();
+      close();
+    }
+  };
+
+  const onMenuKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      moveActive(1);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      moveActive(-1);
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      if (enabledIndexes.length) setActiveIndex(enabledIndexes[0]!);
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      if (enabledIndexes.length) setActiveIndex(enabledIndexes[enabledIndexes.length - 1]!);
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      const option = activeIndex >= 0 ? options[activeIndex] : undefined;
+      if (option) pick(option);
+    } else if (e.key === 'Escape' || e.key === 'Tab') {
+      e.preventDefault();
+      close();
+      triggerRef.current?.focus();
+    }
+  };
+
+  const face = renderValue
+    ? renderValue(selected)
+    : selected
+      ? selected.label
+      : value
+        ? value
+        : placeholder;
+
+  const menuStyle: CSSProperties | undefined = pos
+    ? {
+        top: pos.openUp ? undefined : pos.top,
+        bottom: pos.openUp ? window.innerHeight - pos.top : undefined,
+        left: pos.left,
+        width: pos.width,
+        maxHeight: pos.maxHeight,
+      }
+    : undefined;
+
+  let lastGroup: string | undefined;
+
+  return (
+    <div ref={rootRef} className={[styles.root, className].filter(Boolean).join(' ')}>
+      <button
+        ref={triggerRef}
+        id={id}
+        type="button"
+        className={['select', styles.trigger, triggerClassName].filter(Boolean).join(' ')}
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? listId : undefined}
+        aria-label={ariaLabel}
+        aria-invalid={ariaInvalid}
+        onClick={toggle}
+        onKeyDown={onTriggerKeyDown}
+      >
+        <span className={styles.face}>{face}</span>
+      </button>
+      {open &&
+        pos &&
+        createPortal(
+          <div
+            ref={menuRef}
+            id={listId}
+            className={styles.menu}
+            style={menuStyle}
+            role="listbox"
+            tabIndex={-1}
+            aria-activedescendant={activeIndex >= 0 ? `${listId}-opt-${activeIndex}` : undefined}
+            onKeyDown={onMenuKeyDown}
+          >
+            {options.length === 0 && <div className={styles.empty}>No options</div>}
+            {options.map((option, index) => {
+              const showGroup = option.group && option.group !== lastGroup;
+              if (option.group) lastGroup = option.group;
+              const isSelected = option.value === value;
+              const isActive = index === activeIndex;
+              return (
+                <div key={`${option.group ?? ''}:${option.value}:${index}`}>
+                  {showGroup && (
+                    <div className={styles.group} role="presentation">
+                      {option.group}
+                    </div>
+                  )}
+                  <div
+                    id={`${listId}-opt-${index}`}
+                    role="option"
+                    data-index={index}
+                    aria-selected={isSelected}
+                    aria-disabled={option.disabled || undefined}
+                    className={[
+                      styles.option,
+                      isSelected ? styles.selected : '',
+                      isActive ? styles.active : '',
+                      option.disabled ? styles.disabled : '',
+                      option.description ? styles.rich : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
+                    onMouseEnter={() => {
+                      if (!option.disabled) setActiveIndex(index);
+                    }}
+                    onMouseDown={(e) => {
+                      // Prevent the trigger from stealing focus before click fires.
+                      e.preventDefault();
+                    }}
+                    onClick={() => pick(option)}
+                  >
+                    {option.icon && <span className={styles.icon}>{option.icon}</span>}
+                    <span className={styles.body}>
+                      <span className={styles.label}>{option.label}</span>
+                      {option.description != null && option.description !== '' && (
+                        <span className={styles.description}>{option.description}</span>
+                      )}
+                    </span>
+                    {isSelected && (
+                      <span className={styles.check} aria-hidden>
+                        <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+                          <path
+                            d="M2.5 7.2 5.6 10.2 11.5 3.8"
+                            stroke="currentColor"
+                            strokeWidth="1.6"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>,
+          document.body,
+        )}
+    </div>
+  );
+}

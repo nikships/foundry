@@ -14,7 +14,8 @@ import type { GithubAccount, ProjectDef } from '@shared/types.js';
 import type { NewRepoResult } from '@shared/ipc-contract.js';
 import { api } from '../api.js';
 import { Button } from './ui/Button.js';
-import { Field, Select, TextInput, Textarea } from './ui/Field.js';
+import { Dropdown } from './ui/Dropdown.js';
+import { Field, TextInput, Textarea } from './ui/Field.js';
 import { ModalShell } from './ui/ModalShell.js';
 import { SegmentedControl } from './ui/SegmentedControl.js';
 import styles from './NewProjectWizard.module.css';
@@ -263,17 +264,12 @@ export default function NewProjectWizard({
                 htmlFor="new-repo-owner"
                 hint="Your account, or an organisation you can create repositories in."
               >
-                <Select
+                <Dropdown
                   id="new-repo-owner"
                   value={owner}
-                  onChange={(e) => setOwner(e.target.value)}
-                >
-                  {owners.map((o) => (
-                    <option key={o} value={o}>
-                      {o}
-                    </option>
-                  ))}
-                </Select>
+                  options={owners.map((o) => ({ value: o, label: o }))}
+                  onChange={setOwner}
+                />
               </Field>
             ) : null}
             <p className={`faint mono ${styles.preview}`}>github.com/{target}</p>

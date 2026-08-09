@@ -23,6 +23,17 @@ export const BUILTIN_ENVELOPE_KINDS: readonly EnvelopeKind[] = [
   'document',
 ] as const;
 
+/** One-line blurbs for picker UIs. Keep in sync with `engine/envelopes.ts` schemas. */
+export const BUILTIN_ENVELOPE_BLURBS: Record<EnvelopeKind, string> = {
+  generic: 'Base reply: status, summary, artifacts, notes',
+  brief: 'Rewritten request with constraints and acceptance criteria',
+  plan: 'Approach plus a commit message for the next step',
+  build: 'Changed files and the commit message for the work',
+  scout: 'Findings from reading the repo, one per entry',
+  review: 'Approve or block, with per-requirement findings',
+  document: 'Path of the doc written and the files it covers',
+};
+
 /**
  * Which agent CLI drives a phase.
  */
