@@ -25,10 +25,10 @@ export interface RepairOutcome {
 }
 
 /**
- * The repair agent on the operator's default CLI, at high autonomy because a
- * rebase is commands and writes. The blast radius is the worktree it is
- * spawned in, and nothing it claims is believed: `rebaseOntoBase` re-derives
- * the outcome from git afterwards.
+ * The repair agent on the operator's default CLI. A rebase is commands and
+ * writes; the blast radius is the worktree it is spawned in, and nothing it
+ * claims is believed: `rebaseOntoBase` re-derives the outcome from git
+ * afterwards.
  */
 export function repairAgent(settings: AppSettings, cwd: string): OneShotClient {
   const vendor = settings.defaultCli;
@@ -39,7 +39,6 @@ export function repairAgent(settings: AppSettings, cwd: string): OneShotClient {
     cliPath: cli.path,
     extraArgs: cli.extraArgs,
     cwd,
-    autonomy: 'high',
     model,
     reasoningEffort: model === 'inherit' ? 'off' : settings.defaultReasoningEffort,
   });

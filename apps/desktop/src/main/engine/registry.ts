@@ -33,7 +33,6 @@ export interface RegistryDeps {
   onRunFinished: (run: RunRow) => void;
   onInterruptsChanged: () => void;
   onRunsChanged: () => void;
-  rememberCommand: (projectId: string, command: string) => void;
 }
 
 interface LiveRun {
@@ -44,7 +43,7 @@ interface LiveRun {
 
 interface PendingEntry {
   interrupt: PendingInterrupt;
-  resolve: (answer: { approve: boolean; text?: string; remember?: boolean }) => void;
+  resolve: (answer: { approve: boolean; text?: string }) => void;
 }
 
 const LIVE_TAIL_LINES = 40;
@@ -53,11 +52,6 @@ const ENGINEER_OPTIONS: PendingInterrupt['options'] = [
   { id: 'approve', label: 'Approve', kind: 'approve' },
   { id: 'edit', label: 'Approve with notes', kind: 'edit' },
   { id: 'reject', label: 'Reject', kind: 'reject' },
-];
-
-const PERMISSION_OPTIONS: PendingInterrupt['options'] = [
-  { id: 'approve', label: 'Allow', kind: 'approve' },
-  { id: 'reject', label: 'Deny', kind: 'reject' },
 ];
 
 function processStillAlive(pid: number, command: string): boolean {
@@ -111,7 +105,6 @@ export class RunRegistry extends EventEmitter {
     const executor = new Executor({
       tracer,
       clis: settings.clis,
-      autonomy: settings.defaultAutonomy,
       defaultModel: settings.defaultModel,
       turnTimeoutMs: settings.turnTimeoutMs,
       envelopeRetries: settings.envelopeRetries,
@@ -125,7 +118,6 @@ export class RunRegistry extends EventEmitter {
       engineer: this.deps.engineerName,
       askHuman: (req) => this.raiseInterrupt(req),
       onLiveText: (phaseId, text) => this.appendLiveText(phaseId, text),
-      onCommandRemembered: (command) => this.deps.rememberCommand(input.project.id, command),
     });
 
     this.live.set(runId, { runId, projectId: input.project.id, executor });
@@ -180,9 +172,7 @@ export class RunRegistry extends EventEmitter {
     return false;
   }
 
-  private raiseInterrupt(
-    req: InterruptRequest,
-  ): Promise<{ approve: boolean; text?: string; remember?: boolean }> {
+  private raiseInterrupt(req: InterruptRequest): Promise<{ approve: boolean; text?: string }> {
     const interruptId = `int_${randomBytes(5).toString('hex')}`;
     const interrupt: PendingInterrupt = {
       interruptId,
@@ -191,8 +181,7 @@ export class RunRegistry extends EventEmitter {
       kind: req.kind,
       title: req.title,
       body: req.body,
-      command: req.command,
-      options: req.kind === 'engineer' ? ENGINEER_OPTIONS : PERMISSION_OPTIONS,
+      options: ENGINEER_OPTIONS,
       createdAt: new Date().toISOString(),
     };
     return new Promise((resolve) => {
@@ -210,11 +199,7 @@ export class RunRegistry extends EventEmitter {
     const entry = this.pending.get(answer.interruptId);
     if (!entry) return false;
     this.pending.delete(answer.interruptId);
-    entry.resolve({
-      approve: answer.decision === 'approve',
-      text: answer.text,
-      remember: answer.remember,
-    });
+    entry.resolve({ approve: answer.decision === 'approve', text: answer.text });
     this.deps.onInterruptsChanged();
     return true;
   }

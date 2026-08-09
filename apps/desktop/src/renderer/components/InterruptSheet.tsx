@@ -6,6 +6,10 @@ import { Button } from './ui/Button.js';
 import { ModalShell } from './ui/ModalShell.js';
 import styles from './InterruptSheet.module.css';
 
+/**
+ * The engineer checkpoint. Only a pipeline that declares an engineer phase
+ * raises this — a run never stops here to ask permission.
+ */
 export default function InterruptSheet({
   interrupt,
 }: {
@@ -13,20 +17,14 @@ export default function InterruptSheet({
 }): React.JSX.Element {
   const { refreshInterrupts } = useApp();
   const [notes, setNotes] = useState('');
-  const [remember, setRemember] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const dialogRef = useRef<HTMLElement>(null);
   const approveRef = useRef<HTMLButtonElement>(null);
 
-  const isEngineer = interrupt.kind === 'engineer';
-  const rejectLabel = isEngineer ? 'Reject' : 'Deny';
-  const approveLabel = isEngineer ? 'Approve' : 'Allow';
-
   // A new interrupt must not inherit notes or a stale error from the last one.
   useEffect(() => {
     setNotes('');
-    setRemember(false);
     setError('');
     setSending(false);
     approveRef.current?.focus();
@@ -41,10 +39,8 @@ export default function InterruptSheet({
         interruptId: interrupt.interruptId,
         decision,
         text: notes.trim() || undefined,
-        remember,
       });
       setNotes('');
-      setRemember(false);
       await refreshInterrupts();
     } catch (e) {
       setError((e as Error).message || 'Could not send that answer. Try again.');
@@ -84,16 +80,13 @@ export default function InterruptSheet({
       className={styles.dialog}
     >
       <header>
-        <span className={`badge ${styles.kind}`}>{isEngineer ? 'checkpoint' : 'permission'}</span>
+        <span className={`badge ${styles.kind}`}>checkpoint</span>
         <h2 id="interrupt-title">{interrupt.title}</h2>
       </header>
       {contextBits.length > 0 && (
         <p className={`${styles.context} mono faint`}>{contextBits.join(' · ')}</p>
       )}
       <p className={`${styles.body} selectable`}>{interrupt.body}</p>
-      {interrupt.command && (
-        <pre className={`${styles.command} selectable mono`}>{interrupt.command}</pre>
-      )}
       <label className="field">
         <span>
           Notes for the agent <em className="faint">(optional)</em>
@@ -107,39 +100,24 @@ export default function InterruptSheet({
           placeholder="Anything you add here is sent to the agent as part of your answer."
         />
       </label>
-      {interrupt.command && (
-        <label className={styles.remember}>
-          <input
-            type="checkbox"
-            checked={remember}
-            disabled={sending}
-            onChange={(e) => setRemember(e.target.checked)}
-          />
-          Always allow this command in this project
-        </label>
-      )}
       {error && (
         <p className={styles.error} role="alert">
           {error}
         </p>
       )}
       <footer>
-        <Button
-          disabled={sending}
-          onClick={() => void answer('reject')}
-          title={`${rejectLabel} (Esc)`}
-        >
-          {sending ? 'Sending…' : rejectLabel}
+        <Button disabled={sending} onClick={() => void answer('reject')} title="Reject (Esc)">
+          {sending ? 'Sending…' : 'Reject'}
         </Button>
         <div className={styles.spacer} />
-        <span className={`${styles.escHint} faint`}>Esc {rejectLabel.toLowerCase()}</span>
+        <span className={`${styles.escHint} faint`}>Esc rejects</span>
         <Button
           ref={approveRef}
           variant="primary"
           disabled={sending}
           onClick={() => void answer('approve')}
         >
-          {sending ? 'Sending…' : approveLabel}
+          {sending ? 'Sending…' : 'Approve'}
         </Button>
       </footer>
     </ModalShell>

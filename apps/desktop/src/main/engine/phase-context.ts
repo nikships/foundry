@@ -32,8 +32,8 @@ export interface RunContext {
   cancelled(): boolean;
   /** The trace phase id queued up front for this phase name. */
   phaseId(name: string): string;
-  /** Raises the interrupt sheet. Engineer phases and permission asks share it. */
-  askHuman(req: InterruptRequest): Promise<{ approve: boolean; text?: string; remember?: boolean }>;
+  /** Raises the interrupt sheet. Only engineer phases reach it. */
+  askHuman(req: InterruptRequest): Promise<{ approve: boolean; text?: string }>;
 }
 
 /** Where the walk goes after a phase. Unchanged from executor.ts. */

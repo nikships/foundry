@@ -13,6 +13,15 @@
 export const FACTORY_API_VERSION = '1.0.0';
 export const FACTORY_PROTOCOL_VERSION = '1.151.0';
 
+/**
+ * The one autonomy level Foundry runs at. Foundry pipelines are unattended by
+ * design, so it is a constant rather than a setting — and it is always sent
+ * explicitly: omitting `autonomyLevel` happens to default to high, which is
+ * exactly why it is never omitted. Safety is post-hoc and code-owned (write
+ * boundaries, protected paths), not a level the CLI enforces for us.
+ */
+export const AUTONOMY_LEVEL = 'high';
+
 export interface RpcRequest {
   jsonrpc: '2.0';
   type: 'request';

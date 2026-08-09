@@ -17,7 +17,11 @@ inside one phase and never decide if they succeeded.
   (`boundary.ts`): `null` = unrestricted minus protected, `[]` = read-only,
   list = allowlist (`*` within segment, `**` across). Always-protected
   `.foundry/` `.git/` `.foundry-worktrees/` plus project `protectedPaths`.
-  Violations are reverted and the phase fails.
+  Violations are reverted and the phase fails. This is the ONLY enforcement:
+  runs never stop for permission (`droid/permissions.ts` always decides), so a
+  mid-turn allow is safe precisely because the diff runs afterwards.
+- `InterruptRequest` / the interrupt sheet belongs to **engineer phases only** —
+  a checkpoint a pipeline author wrote, not a permission prompt.
 - Every run gets a fresh `foundry/run_*` branch + worktree; merge/discard
   stays in `worktree.ts`. `create()` registers `/.foundry-worktrees/` in
   `.git/info/exclude` first, or the run's own directory reports as the
@@ -39,7 +43,10 @@ prevent:
   agent. A button labelled "Ask AI" that quietly returns a manifest guess is
   indistinguishable from a broken one.
 
-A detection is not a run: no worktree, no phase, no tracer, so it lives in
+A detection is not a run: no worktree, no phase, no tracer — so nothing reverts
+what it writes, and it runs against the operator's **base checkout**. Its
+read-only guarantee comes from `DETECT_TOOLS` (`restrictTools`), not from an
+autonomy level; keep an editing or shell tool out of that list. It lives in
 `detections.ts` rather than `RunRegistry`, and progress is **pushed**
 (`detection-progress`) because there are no trace rows and therefore no
 `change_id` cursor to poll. The IPC handler returns a `detectionId` immediately

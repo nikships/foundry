@@ -22,7 +22,6 @@ export const appSettingsSchema = z.object({
   detectCli: z.enum(['default', 'droid']),
   detectModel: z.string().min(1),
   engineerName: z.string().min(1).max(80),
-  defaultAutonomy: z.enum(['low', 'medium', 'high']),
   defaultModel: z.string().min(1),
   defaultReasoningEffort: z.enum(['off', 'low', 'medium', 'high']),
   pollCadenceMs: z.number().int().min(250).max(2000),
@@ -59,7 +58,6 @@ export function defaultSettings(): AppSettings {
     detectCli: 'default',
     detectModel: 'inherit',
     engineerName: process.env.USER || 'engineer',
-    defaultAutonomy: 'medium',
     defaultModel: 'inherit',
     defaultReasoningEffort: 'medium',
     pollCadenceMs: 500,
@@ -78,10 +76,17 @@ export function defaultSettings(): AppSettings {
  * Settings files written before multi-CLI support carry a single `droidPath`.
  * Carrying it over matters: a user who pointed Foundry at a non-standard droid
  * build would otherwise silently get whatever is on PATH after an update.
+ *
+ * Retired keys are deleted here rather than ignored: the schema is strict on
+ * patch, so a stale key that survived the read would fail the operator's next
+ * save on a value they never set.
  */
 export function migrate(raw: unknown): AppSettings {
   const base = defaultSettings();
-  const stored = (raw ?? {}) as Partial<AppSettings> & { droidPath?: string };
+  const stored = (raw ?? {}) as Partial<AppSettings> & {
+    droidPath?: string;
+    defaultAutonomy?: string;
+  };
   const clis = { ...base.clis };
   for (const vendor of CLI_VENDOR_IDS) {
     const kept = stored.clis?.[vendor];
@@ -98,6 +103,8 @@ export function migrate(raw: unknown): AppSettings {
   if (!merged.detectCli) merged.detectCli = base.detectCli;
   if (!merged.detectModel) merged.detectModel = base.detectModel;
   delete (merged as { droidPath?: string }).droidPath;
+  // Foundry no longer has autonomy modes: runs are always fully autonomous.
+  delete (merged as { defaultAutonomy?: string }).defaultAutonomy;
   return merged;
 }
 

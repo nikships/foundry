@@ -9,7 +9,6 @@ export type PhaseKind = 'agent' | 'code' | 'engineer';
 export type PhaseStatus = 'queued' | 'running' | 'success' | 'fail' | 'skipped';
 export type RunStatus = 'running' | 'accepted' | 'rejected' | 'failed' | 'killed';
 export type ReasoningEffort = 'off' | 'low' | 'medium' | 'high';
-export type AutonomyLevel = 'low' | 'medium' | 'high';
 export type EnvelopeKind = 'generic' | 'brief' | 'plan' | 'build' | 'scout' | 'review' | 'document';
 
 /** The seven built-in envelope kinds. Custom envelopes are named strings outside this set. */
@@ -189,7 +188,6 @@ export interface AppSettings {
   detectModel: string;
   /** Recorded on every run so a trace says who asked for it. */
   engineerName: string;
-  defaultAutonomy: AutonomyLevel;
   defaultModel: string;
   defaultReasoningEffort: ReasoningEffort;
   pollCadenceMs: number;
@@ -269,8 +267,6 @@ export interface ProjectDef {
   mergePolicy: MergePolicy;
   commands: ProjectCommand[];
   protectedPaths: string[];
-  /** Per-project allowlist of commands auto-approved for droid's ask_user. */
-  allowedCommands: string[];
   ownRoster: boolean;
   ownPipelines: boolean;
   /**
@@ -475,16 +471,20 @@ export interface DoctorCheck {
   fix?: { kind: 'open-url' | 'open-settings' | 'run'; value: string };
 }
 
+/**
+ * A deliberate checkpoint an engineer phase in the pipeline asked for. Runs
+ * never stop for permission: those are settled by the engine policy and only
+ * appear in the trace.
+ */
 export interface PendingInterrupt {
   interruptId: string;
   runId: string;
   phaseId: string | null;
-  kind: 'engineer' | 'permission';
+  kind: 'engineer';
   title: string;
   body: string;
-  /** Engineer phases accept edited text; permission asks are yes/no + remember. */
+  /** Engineer phases accept edited text alongside approve/reject. */
   options: { id: string; label: string; kind: 'approve' | 'reject' | 'edit' }[];
-  command?: string;
   createdAt: string;
 }
 
@@ -492,7 +492,6 @@ export interface InterruptAnswer {
   interruptId: string;
   decision: 'approve' | 'reject';
   text?: string;
-  remember?: boolean;
 }
 
 export interface StartRunInput {

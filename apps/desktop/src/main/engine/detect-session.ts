@@ -20,6 +20,7 @@ import { labelToolCall, toolKind, type ToolKind } from '../droid/events.js';
 import type { DroidNotification, ToolUse } from '../droid/protocol.js';
 import {
   DETECT_PROMPT,
+  DETECT_TOOLS,
   parseDetectReply,
   sniffCommands,
   type CommandCandidate,
@@ -207,9 +208,7 @@ export class DetectSession {
       cliPath: cli.path,
       extraArgs: cli.extraArgs,
       cwd: this.deps.projectPath,
-      // Discovery reads the repo and must never be able to change it. This runs
-      // against the base checkout, not a worktree, because no run owns it.
-      autonomy: 'low',
+      restrictTools: DETECT_TOOLS,
       model,
       reasoningEffort: model === 'inherit' ? 'off' : settings.defaultReasoningEffort,
       onStderr: (text) => {

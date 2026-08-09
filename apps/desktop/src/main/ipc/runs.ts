@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { shell } from 'electron';
 import type { InterruptAnswer, StartRunInput } from '@shared/types.js';
 import { IPC, type EventPage, type RunDetail, type WorktreeAction } from '@shared/ipc-contract.js';
-import { DETECT_PROMPT, parseDetectReply } from '../engine/detect.js';
+import { DETECT_PROMPT, DETECT_TOOLS, parseDetectReply } from '../engine/detect.js';
 import { ensureMissingCommands, missingCommandRefs, preflightForRun } from '../engine/preflight.js';
 import { OneShotClient } from '../droid/oneshot.js';
 import { resolveRef } from '../engine/git.js';
@@ -77,7 +77,7 @@ export function register(ctx: Ctx, handle: Handle): void {
             cliPath: cli.path,
             extraArgs: cli.extraArgs,
             cwd: projectPath,
-            autonomy: 'low',
+            restrictTools: DETECT_TOOLS,
             model,
             reasoningEffort: model === 'inherit' ? 'off' : settings.defaultReasoningEffort,
           });

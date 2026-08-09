@@ -1,10 +1,13 @@
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { DroidClient } from '../src/main/droid/client.js';
+import {
+  DroidClient,
+  type PermissionAsk,
+  type PermissionDecision,
+} from '../src/main/droid/client.js';
 import { labelToolCall, toUsageBreakdown } from '../src/main/droid/events.js';
-import { evaluate } from '../src/main/droid/permissions.js';
 import { writeFakeDroid } from './fake-droid.js';
 
 let fakeDroid: string;
@@ -18,20 +21,20 @@ beforeAll(() => {
 
 afterEach(() => {
   while (open.length > 0) open.pop()?.kill();
+  delete process.env.FAKE_FRAMES;
 });
 
 function client(
   scenario: string,
   opts: {
     model?: string;
-    onPermission?: () => Promise<{ outcome: 'allow' | 'deny' }>;
+    onPermission?: (ask: PermissionAsk) => Promise<PermissionDecision>;
   } = {},
 ): DroidClient {
   process.env.FAKE_SCENARIO = scenario;
   const c = new DroidClient({
     droidPath: fakeDroid,
     cwd,
-    autonomy: 'medium',
     model: opts.model ?? 'fake-allowed',
     reasoningEffort: 'medium',
     onPermission: opts.onPermission ?? (async () => ({ outcome: 'allow' })),
@@ -40,11 +43,17 @@ function client(
   return c;
 }
 
-type PermMethod = 'droid.request_permission' | 'droid.ask_user';
-const perm = (
-  params: Record<string, unknown>,
-  method: PermMethod = 'droid.request_permission',
-) => ({ method, params });
+/** Captures every frame the client writes, so the wire itself can be asserted. */
+function recordFrames(): () => Record<string, unknown>[] {
+  const path = join(mkdtempSync(join(tmpdir(), 'foundry-frames-')), 'frames.jsonl');
+  writeFileSync(path, '');
+  process.env.FAKE_FRAMES = path;
+  return () =>
+    readFileSync(path, 'utf8')
+      .split('\n')
+      .filter((l) => l.trim())
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+}
 
 describe('session lifecycle', () => {
   it('initialises, learns its session id, and reads the catalog', async () => {
@@ -82,6 +91,37 @@ describe('session lifecycle', () => {
     await c.start();
     const tools = await c.listTools();
     expect(tools[0]).toMatchObject({ llmId: 'Execute' });
+  });
+});
+
+describe('the autonomy level on the wire', () => {
+  it('spawns at --auto high whatever the session is for', () => {
+    const args = client('happy').spawnArgs();
+    expect(args[args.indexOf('--auto') + 1]).toBe('high');
+  });
+
+  it('states autonomyLevel high explicitly on a fresh session', async () => {
+    const frames = recordFrames();
+    const c = client('happy');
+    await c.start();
+    const applied = frames().filter((f) => f.method === 'droid.update_session_settings');
+    expect(applied.length).toBeGreaterThan(0);
+    for (const frame of applied) {
+      expect((frame.params as Record<string, unknown>).autonomyLevel).toBe('high');
+    }
+  });
+
+  it('re-states it on a resumed session, which starts from stored settings', async () => {
+    const frames = recordFrames();
+    const c = client('happy');
+    await c.start('fake-session-1');
+    const loaded = frames().find((f) => f.method === 'droid.load_session');
+    expect(loaded).toBeDefined();
+    const applied = frames().filter((f) => f.method === 'droid.update_session_settings');
+    expect(applied.length).toBeGreaterThan(0);
+    for (const frame of applied) {
+      expect((frame.params as Record<string, unknown>).autonomyLevel).toBe('high');
+    }
   });
 });
 
@@ -130,6 +170,37 @@ describe('turns', () => {
     expect(asked).toBe(1);
     expect(JSON.parse(result.text).status).toBe('success');
   });
+
+  it('answers ask_user with one answer per question, not a verdict', async () => {
+    const c = client('ask-user', {
+      onPermission: async (ask) => {
+        expect(ask.method).toBe('droid.ask_user');
+        return {
+          outcome: 'allow',
+          answers: [{ index: 0, question: 'which database?', answer: 'postgres' }],
+        };
+      },
+    });
+    await c.start();
+    const result = await c.send('needs an answer', 20_000);
+    // The fake echoes back whatever it received, so this asserts the wire shape.
+    const echoed = JSON.parse(JSON.parse(result.text).notes_for_next_agent) as {
+      answers: { answer: string }[];
+    };
+    expect(echoed.answers).toEqual([{ index: 0, question: 'which database?', answer: 'postgres' }]);
+  });
+
+  it('cancels the questionnaire when the policy declines to answer', async () => {
+    const c = client('ask-user', {
+      onPermission: async () => ({ outcome: 'deny', reason: 'nope' }),
+    });
+    await c.start();
+    const result = await c.send('needs an answer', 20_000);
+    const echoed = JSON.parse(JSON.parse(result.text).notes_for_next_agent) as {
+      cancelled?: boolean;
+    };
+    expect(echoed.cancelled).toBe(true);
+  });
 });
 
 describe('tool-call labelling', () => {
@@ -161,78 +232,5 @@ describe('tool-call labelling', () => {
   it('is honest when usage was never reported', () => {
     expect(toUsageBreakdown(null).reported).toBe(false);
     expect(toUsageBreakdown(null).inputTokens).toBe(0);
-  });
-});
-
-describe('permission policy', () => {
-  const ctx = {
-    autonomy: 'medium' as const,
-    worktree: '/repo',
-    writes: ['src/'],
-    protectedPaths: [] as string[],
-    allowedCommands: ['bun test'],
-  };
-
-  it('auto-approves read-only tools', () => {
-    expect(evaluate(perm({ toolName: 'Read' }), ctx).decision).toEqual({ outcome: 'allow' });
-  });
-
-  it('auto-approves an in-boundary write inside the worktree', () => {
-    const outcome = evaluate(perm({ toolName: 'Edit', file_path: '/repo/src/a.ts' }), ctx);
-    expect(outcome.decision).toEqual({ outcome: 'allow' });
-  });
-
-  it('denies a write outside the boundary without asking anyone', () => {
-    const outcome = evaluate(perm({ toolName: 'Edit', file_path: '/repo/infra/x.tf' }), ctx);
-    expect(outcome.decision?.outcome).toBe('deny');
-  });
-
-  it('escalates a write outside the worktree entirely', () => {
-    const outcome = evaluate(perm({ toolName: 'Edit', file_path: '/etc/hosts' }), ctx);
-    expect(outcome.decision).toBeNull();
-  });
-
-  it('confirms every write at low autonomy', () => {
-    const outcome = evaluate(perm({ toolName: 'Edit', file_path: '/repo/src/a.ts' }), {
-      ...ctx,
-      autonomy: 'low',
-    });
-    expect(outcome.decision).toBeNull();
-  });
-
-  it('auto-approves an allowlisted command and its arguments', () => {
-    const outcome = evaluate(perm({ toolName: 'Execute', command: 'bun test src/a' }), ctx);
-    expect(outcome.decision).toEqual({ outcome: 'allow' });
-  });
-
-  it('escalates a command that is not allowlisted at medium', () => {
-    const outcome = evaluate(perm({ toolName: 'Execute', command: 'rm -rf /' }), ctx);
-    expect(outcome.decision).toBeNull();
-    expect(outcome.command).toBe('rm -rf /');
-  });
-
-  it('runs commands unattended at high autonomy', () => {
-    const outcome = evaluate(perm({ toolName: 'Execute', command: 'curl example.com' }), {
-      ...ctx,
-      autonomy: 'high',
-    });
-    expect(outcome.decision).toEqual({ outcome: 'allow' });
-  });
-
-  it('always sends a question to a human', () => {
-    const outcome = evaluate(perm({ question: 'which database?' }, 'droid.ask_user'), {
-      ...ctx,
-      autonomy: 'high',
-    });
-    expect(outcome.decision).toBeNull();
-    expect(outcome.body).toContain('which database');
-  });
-
-  it('reads a command out of a nested tool payload', () => {
-    const outcome = evaluate(
-      perm({ toolUse: { name: 'Execute', input: { command: 'bun test' } } }),
-      ctx,
-    );
-    expect(outcome.decision).toEqual({ outcome: 'allow' });
   });
 });

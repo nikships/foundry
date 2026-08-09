@@ -6,7 +6,7 @@
  * agent's first phase.
  */
 
-import type { AgentDef, AutonomyLevel, CliVendor, UsageBreakdown } from '@shared/types.js';
+import type { AgentDef, CliVendor, UsageBreakdown } from '@shared/types.js';
 import type { Tracer } from '../trace/tracer.js';
 import { adapterFor } from '../cli/index.js';
 import {
@@ -27,13 +27,16 @@ export interface AgentTurnContext {
   onText?: (text: string) => void;
 }
 
+/**
+ * A deliberate human checkpoint an engineer phase raises. Permission asks are
+ * never one of these: a started run settles without a person.
+ */
 export interface InterruptRequest {
   runId: string;
   phaseId: string | null;
-  kind: 'engineer' | 'permission';
+  kind: 'engineer';
   title: string;
   body: string;
-  command?: string;
 }
 
 export interface AgentSessionDeps {
@@ -43,14 +46,10 @@ export interface AgentSessionDeps {
   cliExtraArgs?: string[];
   runId: string;
   worktree: string;
-  autonomy: AutonomyLevel;
   turnTimeoutMs: number;
   tracer: Tracer;
-  policy: Omit<PolicyContext, 'autonomy' | 'worktree' | 'writes'>;
-  /** Asks the human; resolves to the decision the sheet produced. */
-  askHuman: (req: InterruptRequest) => Promise<{ approve: boolean; remember?: boolean }>;
+  policy: Omit<PolicyContext, 'worktree' | 'writes'>;
   onModeChange?: (mode: Mode) => void;
-  onCommandRemembered?: (command: string) => void;
 }
 
 const PROTOCOL_FAILURE_LIMIT = 2;
@@ -109,7 +108,7 @@ export class AgentSession {
     const client = new DroidClient({
       droidPath: this.deps.cliPath,
       ...this.turnOpts(),
-      onPermission: (ask) => this.decide(ask),
+      onPermission: async (ask) => this.decide(ask),
       onNotification: (n) => this.currentFolder?.absorb(n),
       onExit: (code) => this.onRpcExit(code),
     });
@@ -148,7 +147,6 @@ export class AgentSession {
   private turnOpts() {
     return {
       cwd: this.deps.worktree,
-      autonomy: this.deps.autonomy,
       model: this.agent.model,
       reasoningEffort: this.agent.reasoningEffort,
       restrictTools: this.agent.tools?.length ? this.agent.tools : undefined,
@@ -222,46 +220,31 @@ export class AgentSession {
     });
   }
 
-  private async decide(ask: PermissionAsk): Promise<PermissionDecision> {
+  /**
+   * Every ask is settled here and traced. Nothing waits for a person: the
+   * write boundary is re-checked against git after the phase, which is what
+   * makes an in-turn allow safe to give.
+   */
+  private decide(ask: PermissionAsk): PermissionDecision {
     const outcome = evaluate(ask, {
-      autonomy: this.deps.autonomy,
       worktree: this.deps.worktree,
       writes: this.agent.writes,
       protectedPaths: this.deps.policy.protectedPaths,
-      allowedCommands: this.deps.policy.allowedCommands,
     });
-    if (outcome.decision) {
-      this.deps.tracer.event({
-        runId: this.deps.runId,
-        phaseId: this.currentPhaseId,
-        type: 'interrupt',
-        name: `${outcome.decision.outcome} (policy)`,
-        payload: { reason: outcome.reason, auto: true, method: ask.method },
-      });
-      return outcome.decision;
-    }
-    const eventId = this.deps.tracer.event({
+    this.deps.tracer.event({
       runId: this.deps.runId,
       phaseId: this.currentPhaseId,
       type: 'interrupt',
-      name: outcome.title || 'needs input',
-      payload: { reason: outcome.reason, auto: false, body: outcome.body, method: ask.method },
+      name: `${outcome.decision.outcome} (policy)`,
+      payload: {
+        reason: outcome.reason,
+        auto: true,
+        method: ask.method,
+        ...(outcome.command ? { command: outcome.command } : {}),
+        ...(outcome.answers ? { answers: outcome.answers } : {}),
+      },
     });
-    const answer = await this.deps.askHuman({
-      runId: this.deps.runId,
-      phaseId: this.currentPhaseId,
-      kind: 'permission',
-      title: outcome.title || 'Approve action',
-      body: outcome.body,
-      command: outcome.command,
-    });
-    this.deps.tracer.endEvent(eventId, { answered: answer.approve ? 'approve' : 'reject' });
-    if (answer.approve && answer.remember && outcome.command) {
-      this.deps.onCommandRemembered?.(outcome.command);
-    }
-    return answer.approve
-      ? { outcome: 'allow' }
-      : { outcome: 'deny', reason: 'the engineer declined this action' };
+    return outcome.decision;
   }
 
   async send(prompt: string, ctx: AgentTurnContext): Promise<TurnOutcome> {

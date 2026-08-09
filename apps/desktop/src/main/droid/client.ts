@@ -6,7 +6,7 @@
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import type { AutonomyLevel, ReasoningEffort } from '@shared/types.js';
+import type { ReasoningEffort } from '@shared/types.js';
 import {
   type AvailableModel,
   type ContextStatsResult,
@@ -16,6 +16,7 @@ import {
   type RpcMessage,
   type SessionSettings,
   type TokenUsage,
+  AUTONOMY_LEVEL,
   request,
   response,
 } from './protocol.js';
@@ -27,17 +28,17 @@ export interface PermissionAsk {
 }
 
 export type PermissionDecision =
-  { outcome: 'allow'; remember?: boolean } | { outcome: 'deny'; reason?: string };
+  | { outcome: 'allow'; answers?: { index: number; question: string; answer: string }[] }
+  | { outcome: 'deny'; reason?: string };
 
 export interface DroidClientOptions {
   droidPath: string;
   cwd: string;
-  autonomy: AutonomyLevel;
   model: string;
   reasoningEffort: ReasoningEffort;
   restrictTools?: string[];
   disabledTools?: string[];
-  /** In-boundary asks auto-approve; the rest surface to the human. */
+  /** Answers every ask from the engine policy; no ask ever reaches a person. */
   onPermission: (ask: PermissionAsk) => Promise<PermissionDecision>;
   onNotification?: (n: DroidNotification) => void;
   onExit?: (code: number | null) => void;
@@ -100,7 +101,7 @@ export class DroidClient extends EventEmitter {
 
   /**
    * CLI flags do not configure a JSON-RPC session, but --auto is still
-   * validated and bounds what the session may ask for.
+   * validated, so it is passed at the level the session itself runs at.
    */
   spawnArgs(): string[] {
     return [
@@ -112,7 +113,7 @@ export class DroidClient extends EventEmitter {
       '--cwd',
       this.opts.cwd,
       '--auto',
-      this.opts.autonomy,
+      AUTONOMY_LEVEL,
     ];
   }
 
@@ -168,7 +169,7 @@ export class DroidClient extends EventEmitter {
 
     const base: Record<string, unknown> = {
       sessionId: this.sessionId,
-      autonomyLevel: this.opts.autonomy,
+      autonomyLevel: AUTONOMY_LEVEL,
     };
     if (this.opts.restrictTools?.length) base.restrictToolIds = this.opts.restrictTools;
     if (this.opts.disabledTools?.length) base.disabledToolIds = this.opts.disabledTools;
@@ -385,7 +386,16 @@ export class DroidClient extends EventEmitter {
       return;
     }
 
-    this.write(response(id, { answer: decision.outcome === 'allow' ? 'yes' : 'no' }));
+    // `droid.ask_user` wants one free-text answer per question, not a verdict:
+    // a yes/no reply is read as a cancellation and the agent asks again.
+    this.write(
+      response(
+        id,
+        decision.outcome === 'allow' && decision.answers
+          ? { answers: decision.answers }
+          : { cancelled: true, answers: [] },
+      ),
+    );
   }
 
   private write(frame: Record<string, unknown>): void {

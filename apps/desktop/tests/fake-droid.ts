@@ -14,9 +14,12 @@ export type FakeScenario =
   | 'bad-envelope-then-good'
   | 'die-on-first-turn'
   | 'reject-model'
-  | 'ask-permission';
+  | 'ask-permission'
+  | 'ask-user';
 
 const SCRIPT = String.raw`
+import { appendFileSync } from 'node:fs';
+
 const V = { jsonrpc: '2.0', factoryApiVersion: '1.0.0', factoryProtocolVersion: '1.151.0' };
 const scenario = process.env.FAKE_SCENARIO || 'happy';
 const out = (o) => process.stdout.write(JSON.stringify(o) + '\n');
@@ -29,6 +32,17 @@ let sessionId = 'fake-session-1';
 let settings = { modelId: 'gpt-fake-default', reasoningEffort: 'high', autonomyLevel: 'high' };
 let turns = 0;
 let buffer = '';
+
+// Every frame the client sends, appended for tests that assert on the wire
+// rather than on an observable side effect.
+const framesPath = process.env.FAKE_FRAMES || '';
+const record = (msg) => {
+  if (!framesPath) return;
+  appendFileSync(framesPath, JSON.stringify(msg) + '\n');
+};
+
+/** Server requests awaiting the client's response, by frame id. */
+const serverRequests = new Map();
 
 const EFFORTS = ['off', 'low', 'medium', 'high'];
 const MODELS = [
@@ -45,7 +59,17 @@ process.stdin.on('data', (chunk) => {
     if (!line.trim()) continue;
     let msg;
     try { msg = JSON.parse(line); } catch { continue; }
-    // Real CLI rejects frames without type:'request' and a string id.
+    record(msg);
+    // The client answers a server request with a response frame; only those two
+    // shapes are legal, and the real CLI rejects anything else.
+    if (msg.type === 'response' && typeof msg.id === 'string') {
+      const pending = serverRequests.get(msg.id);
+      if (pending) {
+        serverRequests.delete(msg.id);
+        pending(msg.result);
+      }
+      continue;
+    }
     if (msg.type !== 'request' || typeof msg.id !== 'string') {
       out({ ...V, type: 'response', id: null, error: { code: -32700, message: 'Invalid JSON-RPC message' } });
       continue;
@@ -134,6 +158,18 @@ function runTurn(_prompt) {
 
   if (scenario === 'ask-permission' && turns === 1) {
     out({ ...V, type: 'request', id: 'srv-1', method: 'droid.request_permission', params: { toolName: 'Execute', command: 'rm -rf build' } });
+  }
+
+  // The agent blocks on its own question, exactly like the real CLI: the turn
+  // only completes once an answer comes back.
+  if (scenario === 'ask-user' && turns === 1) {
+    const id = 'srv-ask-1';
+    serverRequests.set(id, (result) => {
+      finalText(JSON.stringify({ status: 'success', summary: 'fake did the work', artifacts: [], notes_for_next_agent: JSON.stringify(result) }));
+      completeTurn();
+    });
+    out({ ...V, type: 'request', id, method: 'droid.ask_user', params: { toolCallId: 'call-1', questions: [{ index: 0, topic: 'db', question: 'which database?', options: ['postgres', 'mysql'] }] } });
+    return;
   }
 
   const bad = scenario === 'bad-envelope-then-good' && turns === 1;

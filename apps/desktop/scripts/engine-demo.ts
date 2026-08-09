@@ -132,7 +132,6 @@ async function main(): Promise<void> {
   const executor = new Executor({
     tracer,
     clis: settings.clis,
-    autonomy: 'medium',
     turnTimeoutMs: 10 * 60_000,
     envelopeRetries: 2,
     gateRetries: 1,
@@ -232,7 +231,6 @@ async function sweepDemo(tracer: Tracer, appSupport: string, project: ProjectDef
     onRunFinished: () => undefined,
     onInterruptsChanged: () => undefined,
     onRunsChanged: () => undefined,
-    rememberCommand: () => undefined,
   });
   const result = registry.sweep([project]);
   const after = tracer.run(runId);

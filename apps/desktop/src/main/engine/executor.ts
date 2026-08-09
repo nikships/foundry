@@ -14,7 +14,6 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type {
   AgentDef,
-  AutonomyLevel,
   CliConfig,
   CliVendor,
   CommandResult,
@@ -39,7 +38,6 @@ export interface ExecutorDeps {
   tracer: Tracer;
   /** Where each CLI lives and how it is invoked. Agents name the vendor. */
   clis: Record<CliVendor, CliConfig>;
-  autonomy: AutonomyLevel;
   defaultModel?: string;
   turnTimeoutMs: number;
   envelopeRetries: number;
@@ -52,12 +50,9 @@ export interface ExecutorDeps {
   request: string;
   runId: string;
   engineer: string;
-  /** Raises the interrupt sheet and resolves with what the human chose. */
-  askHuman: (
-    req: InterruptRequest,
-  ) => Promise<{ approve: boolean; text?: string; remember?: boolean }>;
+  /** Raises an engineer phase's checkpoint and resolves with what was chosen. */
+  askHuman: (req: InterruptRequest) => Promise<{ approve: boolean; text?: string }>;
   onLiveText?: (phaseId: string, text: string) => void;
-  onCommandRemembered?: (command: string) => void;
   onRunFinished?: (status: RunStatus) => void;
 }
 
@@ -282,22 +277,13 @@ export class Executor {
       cliExtraArgs: cli.extraArgs,
       runId: this.deps.runId,
       worktree: this.cwd,
-      autonomy: this.deps.autonomy,
       turnTimeoutMs: this.deps.turnTimeoutMs,
       tracer: this.deps.tracer,
-      policy: {
-        protectedPaths: this.deps.project.protectedPaths,
-        allowedCommands: this.deps.project.allowedCommands,
-      },
-      askHuman: async (req) => {
-        const answer = await this.deps.askHuman(req);
-        return { approve: answer.approve, remember: answer.remember };
-      },
+      policy: { protectedPaths: this.deps.project.protectedPaths },
       onModeChange: (mode) => {
         this.mode = mode;
         this.deps.tracer.setRunMode(this.deps.runId, mode);
       },
-      onCommandRemembered: (command) => this.deps.onCommandRemembered?.(command),
     });
     this.sessions.set(agent.name, session);
     return session;

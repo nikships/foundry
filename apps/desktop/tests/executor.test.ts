@@ -49,25 +49,67 @@ function emptyRepo(): string {
 }
 
 /**
+ * One permission ask the scripted agent raises mid-turn, and what it does with
+ * the answer. `writeIfAllowed` models an agent that respects a denial: the file
+ * appears only when the policy allowed the write, so a leaked deny is visible
+ * on disk rather than only in the trace.
+ */
+interface ScriptedAsk {
+  method: 'droid.request_permission' | 'droid.ask_user';
+  params: Record<string, unknown>;
+  writeIfAllowed?: string;
+}
+
+/**
  * Droid stand-in whose whole behaviour is a list of scripted turns, so a
  * pipeline's control flow can be tested without a model in the loop.
  */
-function scriptedDroid(turns: string[], sideEffects: (string | null)[] = []): string {
+function scriptedDroid(
+  turns: string[],
+  sideEffects: (string | null)[] = [],
+  asks: ScriptedAsk[][] = [],
+): string {
   const dir = mkdtempSync(join(tmpdir(), 'foundry-scripted-'));
   const state = join(dir, 'turn-count');
   writeFileSync(state, '0');
   const script = `
 const { readFileSync, writeFileSync, mkdirSync } = require('node:fs');
-const { dirname, join } = require('node:path');
+const { dirname, isAbsolute, join } = require('node:path');
 const V = { jsonrpc: '2.0', factoryApiVersion: '1.0.0', factoryProtocolVersion: '1.151.0' };
 const TURNS = ${JSON.stringify(turns)};
 const EFFECTS = ${JSON.stringify(sideEffects)};
+const ASKS = ${JSON.stringify(asks)};
 const STATE = ${JSON.stringify(state)};
 const cwdIndex = process.argv.indexOf('--cwd');
 const workdir = cwdIndex >= 0 ? process.argv[cwdIndex + 1] : process.cwd();
 const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
 const notify = (n) => out({ ...V, type: 'notification', method: 'droid.session_notification', params: { sessionId: 's1', notification: n } });
+const pending = new Map();
+let askSeq = 0;
 let buffer = '';
+
+const write = (path) => {
+  const target = isAbsolute(path) ? path : join(workdir, path);
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, 'written by the scripted agent\\n');
+};
+
+/** Raises each ask in order, waiting for the answer, then finishes the turn. */
+const raiseAsks = (list, done) => {
+  const next = (i) => {
+    if (i >= list.length) return done();
+    const ask = list[i];
+    const id = 'srv-' + askSeq++;
+    pending.set(id, (result) => {
+      const outcome = result && result.outcome ? result.outcome.outcome : undefined;
+      if (ask.writeIfAllowed && outcome === 'allow') write(ask.writeIfAllowed);
+      next(i + 1);
+    });
+    out({ ...V, type: 'request', id, method: ask.method, params: ask.params });
+  };
+  next(0);
+};
+
 process.stdin.on('data', (chunk) => {
   buffer += chunk.toString();
   let i;
@@ -76,6 +118,12 @@ process.stdin.on('data', (chunk) => {
     if (!line.trim()) continue;
     let msg; try { msg = JSON.parse(line); } catch { continue; }
     const { id, method, params = {} } = msg;
+    if (msg.type === 'response' && pending.has(id)) {
+      const resolve = pending.get(id);
+      pending.delete(id);
+      resolve(msg.result);
+      continue;
+    }
     if (method === 'droid.initialize_session' || method === 'droid.load_session') {
       out({ ...V, type: 'response', id, result: { sessionId: 's1', settings: { modelId: 'scripted' }, availableModels: [] } });
     } else if (method === 'droid.add_user_message') {
@@ -83,15 +131,14 @@ process.stdin.on('data', (chunk) => {
       const n = Number(readFileSync(STATE, 'utf8')) || 0;
       writeFileSync(STATE, String(n + 1));
       const effect = EFFECTS[n];
-      if (effect) {
-        const target = join(workdir, effect);
-        mkdirSync(dirname(target), { recursive: true });
-        writeFileSync(target, 'written by the scripted agent\\n');
-      }
-      const text = TURNS[Math.min(n, TURNS.length - 1)];
-      const messageId = 'm' + n;
-      notify({ type: 'create_message', message: { id: messageId, role: 'assistant', content: [{ type: 'text', text }] } });
-      notify({ type: 'agent_turn_completed', reason: 'completed', turnId: 't' + n, tokenUsage: { inputTokens: 100, outputTokens: 20, factoryCredits: 1 } });
+      if (effect) write(effect);
+      const finish = () => {
+        const text = TURNS[Math.min(n, TURNS.length - 1)];
+        const messageId = 'm' + n;
+        notify({ type: 'create_message', message: { id: messageId, role: 'assistant', content: [{ type: 'text', text }] } });
+        notify({ type: 'agent_turn_completed', reason: 'completed', turnId: 't' + n, tokenUsage: { inputTokens: 100, outputTokens: 20, factoryCredits: 1 } });
+      };
+      raiseAsks(ASKS[n] || [], finish);
     } else if (method === 'droid.close_session') {
       out({ ...V, type: 'response', id, result: {} });
       setTimeout(() => process.exit(0), 10);
@@ -218,7 +265,6 @@ function run(input: {
   const executor = new Executor({
     tracer: h.tracer,
     clis,
-    autonomy: 'medium',
     turnTimeoutMs: input.turnTimeoutMs ?? 30_000,
     envelopeRetries: input.envelopeRetries ?? 2,
     gateRetries: input.gateRetries ?? 2,
@@ -810,6 +856,154 @@ describe('engineer phases', () => {
       askHuman: async () => ({ approve: false }),
     });
     expect(outcome.status).toBe('rejected');
+  });
+});
+
+describe('zero-interrupt runs', () => {
+  /**
+   * Every ask a run can raise, in one phase: a non-allowlisted command, a write
+   * outside the worktree, a tool no rule covers, and a question. None of them
+   * may reach a human, and each must settle the way the policy says.
+   */
+  const everyAsk = (outside: string): ScriptedAsk[] => [
+    {
+      method: 'droid.request_permission',
+      params: { toolName: 'Execute', command: 'git commit --allow-empty -m probe' },
+    },
+    {
+      method: 'droid.request_permission',
+      params: { toolName: 'Create', file_path: outside },
+      writeIfAllowed: outside,
+    },
+    { method: 'droid.request_permission', params: { toolName: 'SomeFutureTool', payload: {} } },
+    {
+      method: 'droid.ask_user',
+      params: {
+        toolCallId: 'call-1',
+        questions: [
+          { index: 0, topic: 'db', question: 'which database?', options: ['postgres', 'mysql'] },
+        ],
+      },
+    },
+  ];
+
+  it('settles with no human prompt and traces all four auto-decisions', async () => {
+    const outside = join(mkdtempSync(join(tmpdir(), 'foundry-outside-')), 'escaped.txt');
+    const droid = scriptedDroid([buildEnvelope()], [], [everyAsk(outside)]);
+    let humanAsked = 0;
+
+    const outcome = await run({
+      droidPath: droid,
+      pipeline: pipe(
+        [agentPhase('build', { description: 'Raise every kind of ask a run can raise.' })],
+        {
+          description: 'an agent that asks for everything',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
+      askHuman: async () => {
+        humanAsked++;
+        return { approve: true };
+      },
+    });
+
+    expect(outcome.status).toBe('accepted');
+    expect(humanAsked).toBe(0);
+
+    const interrupts = events(outcome.runId).filter((e) => e.type === 'interrupt');
+    expect(interrupts).toHaveLength(4);
+    for (const event of interrupts) {
+      expect(event.payload.auto).toBe(true);
+      expect(event.payload.reason).toBeTruthy();
+    }
+
+    const byMethod = (method: string, predicate: (p: Record<string, unknown>) => boolean) =>
+      interrupts.find((e) => e.payload.method === method && predicate(e.payload));
+
+    expect(
+      byMethod(
+        'droid.request_permission',
+        (p) => p.command === 'git commit --allow-empty -m probe',
+      )!.name,
+    ).toBe('allow (policy)');
+    expect(
+      byMethod('droid.request_permission', (p) =>
+        String(p.reason).includes('outside the run worktree'),
+      )!.name,
+    ).toBe('deny (policy)');
+    expect(
+      byMethod('droid.request_permission', (p) => String(p.reason).includes('no policy rule'))!
+        .name,
+    ).toBe('allow (policy)');
+
+    const question = byMethod('droid.ask_user', () => true)!;
+    expect(question.name).toBe('allow (policy)');
+    expect(question.payload.answers).toEqual([
+      { index: 0, question: 'which database?', answer: 'postgres' },
+    ]);
+
+    // The denial has to actually stop the write, not merely be recorded.
+    expect(existsSync(outside)).toBe(false);
+  });
+});
+
+describe('the safety net under a zero-interrupt policy', () => {
+  it('reverts a boundary violation that never went through an ask', async () => {
+    const droid = scriptedDroid(
+      [buildEnvelope(), buildEnvelope()],
+      ['forbidden/slipped.txt', 'forbidden/slipped.txt'],
+    );
+    const outcome = await run({
+      droidPath: droid,
+      agents: [buildAgent({ writes: ['allowed/'] })],
+      pipeline: pipe(
+        [
+          agentPhase('build', {
+            retries: 1,
+            description: 'Prove git, not the ask layer, is what enforces the boundary.',
+          }),
+        ],
+        {
+          description: 'the agent writes outside its boundary without asking',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
+    });
+
+    expect(outcome.status).toBe('rejected');
+    const worktree = h.tracer.run(outcome.runId)!.worktreePath!;
+    expect(existsSync(join(worktree, 'forbidden/slipped.txt'))).toBe(false);
+    const violation = events(outcome.runId).find((e) => e.name === 'write boundary');
+    expect(JSON.stringify(violation!.payload)).toContain('forbidden/slipped.txt');
+    expect(events(outcome.runId).some((e) => e.name === 'boundary violation')).toBe(true);
+  });
+
+  it('fails the phase on a protected path however many retries it gets', async () => {
+    const droid = scriptedDroid(
+      [buildEnvelope(), buildEnvelope(), buildEnvelope()],
+      ['.foundry/stash.json', '.foundry/stash.json', '.foundry/stash.json'],
+    );
+    const outcome = await run({
+      droidPath: droid,
+      agents: [buildAgent({ writes: null })],
+      pipeline: pipe(
+        [
+          agentPhase('build', {
+            retries: 2,
+            description: 'Prove a protected path cannot be retried into a pass.',
+          }),
+        ],
+        {
+          description: 'the agent writes a protected path',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
+    });
+
+    expect(outcome.status).toBe('rejected');
+    expect(h.tracer.phases(outcome.runId)[0]!.status).toBe('fail');
+    const worktree = h.tracer.run(outcome.runId)!.worktreePath!;
+    expect(existsSync(join(worktree, '.foundry/stash.json'))).toBe(false);
   });
 });
 

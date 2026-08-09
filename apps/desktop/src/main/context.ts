@@ -61,7 +61,6 @@ export class AppContext {
         setDockBadge(this.registry.liveRunCount(), this.settings.get());
         this.broadcast(IPC.eventRunsChanged);
       },
-      rememberCommand: (projectId, command) => this.rememberCommand(projectId, command),
     });
 
     this.registry.on('needs-input', (interrupt: { title: string; body: string }) => {
@@ -73,14 +72,6 @@ export class AppContext {
     notifyOutcome(run, this.settings.get());
     setDockBadge(this.registry.liveRunCount(), this.settings.get());
     this.broadcast(IPC.eventRunsChanged);
-  }
-
-  /** "Always allow" from a permission sheet is a project-level setting change. */
-  private rememberCommand(projectId: string, command: string): void {
-    const project = this.projects.get(projectId);
-    if (!project || project.allowedCommands.includes(command)) return;
-    this.projects.save({ ...project, allowedCommands: [...project.allowedCommands, command] });
-    this.broadcast(IPC.eventSettingsChanged);
   }
 
   window(): BrowserWindow | null {

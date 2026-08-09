@@ -14,7 +14,7 @@
  */
 
 import { spawn } from 'node:child_process';
-import type { AutonomyLevel, ReasoningEffort } from '@shared/types.js';
+import type { ReasoningEffort } from '@shared/types.js';
 import { adapterFor, type CliAdapter, type CliVendor } from '../cli/index.js';
 import { spawnEnv } from '../system/env.js';
 import type { TokenUsage } from './protocol.js';
@@ -26,7 +26,6 @@ export interface OneShotOptions {
   /** Path to that CLI's binary. */
   cliPath: string;
   cwd: string;
-  autonomy: AutonomyLevel;
   model: string;
   reasoningEffort: ReasoningEffort;
   restrictTools?: string[];
@@ -142,7 +141,6 @@ export class OneShotClient {
     return this.adapter.turn({
       prompt: text,
       cwd: this.opts.cwd,
-      autonomy: this.opts.autonomy,
       // Dropping the model is how the policy retry asks for the CLI's default,
       // and `inherit` is already the value every adapter reads that way.
       model: withModel ? this.opts.model : 'inherit',

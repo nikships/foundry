@@ -10,7 +10,7 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { ModelInfo, ToolInfo } from '@shared/types.js';
-import type { DroidNotification, TokenUsage } from '../droid/protocol.js';
+import { AUTONOMY_LEVEL, type DroidNotification, type TokenUsage } from '../droid/protocol.js';
 import { loadDroidCatalog, loadDroidTools } from '../droid/catalog.js';
 import { lastJsonObject, type CliAdapter, type ParsedTurn, type ProcessOutput } from './types.js';
 
@@ -141,7 +141,7 @@ export const droidAdapter: CliAdapter = {
       '--cwd',
       req.cwd,
       '--auto',
-      req.autonomy,
+      AUTONOMY_LEVEL,
     ];
     if (req.model && req.model !== 'inherit') {
       argv.push('-m', req.model);

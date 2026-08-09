@@ -708,30 +708,13 @@ export default function SettingsScreen({
                       </Field>
                     </div>
                   </Section>
-                  <Section label="Autonomy" note="What an agent stops to ask about.">
-                    <Field
-                      label="Autonomy"
-                      hint="Foundry always reverts writes outside an agent's boundary, at every level. Autonomy only decides what it stops to ask about first."
-                    >
-                      <Dropdown
-                        value={settings.defaultAutonomy}
-                        options={[
-                          {
-                            value: 'low',
-                            label: 'Low: confirm every write and command',
-                          },
-                          {
-                            value: 'medium',
-                            label: 'Medium: writes inside the boundary run unattended',
-                          },
-                          {
-                            value: 'high',
-                            label: 'High: run unattended within the worktree',
-                          },
-                        ]}
-                        onChange={(next) => void set({ defaultAutonomy: next as never })}
-                      />
-                    </Field>
+                  <Section label="Autonomy" note="How a run behaves once it starts.">
+                    <p className={styles.hint}>
+                      Runs are fully autonomous: once a run starts it never stops to ask permission.
+                      Writes outside an agent&rsquo;s boundary are always reverted, and every
+                      decision the engine makes on your behalf is recorded in the run&rsquo;s
+                      timeline.
+                    </p>
                   </Section>
                   <Section label="Limits" note="How hard Foundry tries before a phase fails.">
                     <div className={styles.settingsFields}>
@@ -905,25 +888,6 @@ export default function SettingsScreen({
                               setProjectDraft({
                                 ...projectDraft,
                                 protectedPaths: e.target.value.split('\n').filter(Boolean),
-                              })
-                            }
-                          />
-                        </Field>
-                        <Field
-                          label="Auto-approved commands"
-                          htmlFor="project-allowed-commands"
-                          hint="Commands agents may run without stopping to ask. Prefix matching."
-                        >
-                          <Textarea
-                            id="project-allowed-commands"
-                            aria-label="Auto-approved commands"
-                            rows={3}
-                            placeholder="e.g. npm test&#10;pytest"
-                            value={projectDraft.allowedCommands.join('\n')}
-                            onChange={(e) =>
-                              setProjectDraft({
-                                ...projectDraft,
-                                allowedCommands: e.target.value.split('\n').filter(Boolean),
                               })
                             }
                           />
