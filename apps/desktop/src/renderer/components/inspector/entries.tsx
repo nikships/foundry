@@ -333,12 +333,121 @@ function ThinkingBlock({ event }: { event: EventRow }): React.JSX.Element {
   );
 }
 
+interface EnvelopePayload {
+  status?: string;
+  summary?: string;
+  notes_for_next_agent?: string;
+  changed_files?: string[];
+  artifacts?: string[];
+  commit_message?: string;
+  diff_matches_claims?: boolean;
+}
+
+function parseJsonEnvelope(text: string): EnvelopePayload | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return null;
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      !Array.isArray(parsed) &&
+      ('status' in parsed ||
+        'summary' in parsed ||
+        'commit_message' in parsed ||
+        'notes_for_next_agent' in parsed)
+    ) {
+      return {
+        status: typeof parsed.status === 'string' ? parsed.status : undefined,
+        summary: typeof parsed.summary === 'string' ? parsed.summary : undefined,
+        notes_for_next_agent:
+          typeof parsed.notes_for_next_agent === 'string' ? parsed.notes_for_next_agent : undefined,
+        changed_files: Array.isArray(parsed.changed_files)
+          ? (parsed.changed_files as string[])
+          : undefined,
+        artifacts: Array.isArray(parsed.artifacts) ? (parsed.artifacts as string[]) : undefined,
+        commit_message:
+          typeof parsed.commit_message === 'string' ? parsed.commit_message : undefined,
+        diff_matches_claims:
+          typeof parsed.diff_matches_claims === 'boolean' ? parsed.diff_matches_claims : undefined,
+      };
+    }
+  } catch {
+    // Not valid JSON
+  }
+  return null;
+}
+
+function EnvelopeCardBlock({
+  env,
+  open,
+  startedAt,
+}: {
+  env: EnvelopePayload;
+  open: boolean;
+  startedAt: string;
+}): React.JSX.Element {
+  const isOk = env.status === 'success' || env.status === 'accepted' || !env.status;
+  return (
+    <div className={`te envelope ${isOk ? 'ok' : 'fail'} ${open ? 'open' : ''}`}>
+      <div className="te-row-head">
+        <span className="te-tag envelope">envelope</span>
+        {env.status && <span className={`te-exec ${isOk ? 'ok' : 'fail'}`}>{env.status}</span>}
+        {env.commit_message && <span className="te-path mono">{env.commit_message}</span>}
+        <Time iso={startedAt} />
+      </div>
+      {env.summary && <div className="te-envelope-summary">{env.summary}</div>}
+      {env.notes_for_next_agent && (
+        <div className="te-envelope-notes">
+          <span className="te-envelope-label">Notes: </span>
+          {env.notes_for_next_agent}
+        </div>
+      )}
+      {Array.isArray(env.changed_files) && env.changed_files.length > 0 && (
+        <div className="te-envelope-files">
+          <span className="te-envelope-label">Changed files: </span>
+          {env.changed_files.join(', ')}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TextBlock({ event }: { event: EventRow }): React.JSX.Element {
   const open = event.endedAt == null;
+  const rawText = str(event.payload.text);
+  const envelope = useMemo(() => parseJsonEnvelope(rawText), [rawText]);
+
+  if (envelope) {
+    return <EnvelopeCardBlock env={envelope} open={open} startedAt={event.startedAt} />;
+  }
+
+  const trimmed = rawText.trim();
+  if (
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  ) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      const pretty = JSON.stringify(parsed, null, 2);
+      return (
+        <div className={`te text json ${open ? 'open' : ''}`}>
+          <div className="te-row-head">
+            <span className="te-tag json">data</span>
+            <Time iso={event.startedAt} />
+          </div>
+          <TruncatedOutput text={pretty} maxLines={12} mono={true} />
+        </div>
+      );
+    } catch {
+      // Fallback to plain text
+    }
+  }
+
   return (
     <div className={`te text ${open ? 'open' : ''}`}>
       <div className="te-text-body">
-        {str(event.payload.text)}
+        {rawText}
         {open && <span className="te-caret" />}
       </div>
       {event.payload.truncated === true && <TruncatedNote />}
@@ -729,6 +838,8 @@ export function transcriptStyles(): string {
     .te-tag.todo { color: var(--green); background: var(--green-dim); }
     .te-tag.task { color: var(--blue); background: var(--blue-dim); }
     .te-tag.ask { color: var(--purple); background: var(--purple-dim); }
+    .te-tag.envelope { color: var(--purple); background: var(--purple-dim); }
+    .te-tag.json { color: var(--blue); background: var(--blue-dim); }
     .te-tag.tool { color: var(--text-dim); background: var(--bg-raised); }
 
     .te-subagent-badge { font-size: 10px; padding: 1px 6px; border-radius: var(--r-full); background: var(--blue-dim); color: var(--blue); font-family: var(--font-mono); }
@@ -793,6 +904,15 @@ export function transcriptStyles(): string {
     .te-task-body, .te-ask-body { margin: 4px 0 6px; padding: 8px 10px; background: var(--bg-void, #000); border: 1px solid var(--line-faint); border-radius: var(--r-sm); font-size: 12px; }
     .te-task-prompt, .te-ask-q { color: var(--text-dim); margin-bottom: 6px; line-height: 1.5; white-space: pre-wrap; }
     .te-ask-a { color: var(--green); font-weight: 500; }
+
+    /* ── Envelope & JSON styling ── */
+    .te.envelope { margin: 4px 0 6px; padding: 6px 10px; background: var(--bg-void, #000); border: 1px solid var(--line-faint); border-radius: var(--r-sm); }
+    .te.envelope.ok { border-color: color-mix(in srgb, var(--green) 30%, transparent); }
+    .te.envelope.fail { border-color: color-mix(in srgb, var(--red) 30%, transparent); }
+    .te-envelope-summary { font-size: 12.5px; color: var(--text); margin-top: 4px; line-height: 1.5; font-weight: 500; }
+    .te-envelope-notes { font-size: 11.5px; color: var(--text-dim); margin-top: 4px; line-height: 1.45; }
+    .te-envelope-files { font-size: 11.5px; color: var(--text-faint); margin-top: 4px; font-family: var(--font-mono); }
+    .te-envelope-label { font-weight: 600; color: var(--text-faint); }
 
     .te.banner { display: flex; align-items: baseline; gap: 8px; margin: 6px 0; padding: 6px 10px; border-radius: var(--r-sm); font-size: 12px; }
     .te.banner.ok { background: var(--green-dim); color: var(--green); }
