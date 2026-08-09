@@ -17,7 +17,50 @@ import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
 import { useTablistNav } from '../hooks/useTablistNav.js';
 import { Button } from '../components/ui/Button.js';
+import { Dropdown, type DropdownOption } from '../components/ui/Dropdown.js';
 import styles from './PipelinesScreen.module.css';
+
+function EnvelopeGlyph(): React.JSX.Element {
+  return (
+    <svg
+      width="11"
+      height="11"
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="1.5" y="3" width="11" height="8" rx="1.2" />
+      <path d="M1.8 3.6 7 8l5.2-4.4" />
+    </svg>
+  );
+}
+
+const ACCEPTANCE_OPTIONS: DropdownOption[] = [
+  {
+    value: 'all_phases_pass',
+    label: 'Every phase passed',
+    description: 'The run is accepted only when every phase ends in success.',
+  },
+  {
+    value: 'last_phase_pass',
+    label: 'The last phase passed',
+    description: "Only the final phase's status decides acceptance.",
+  },
+  {
+    value: 'envelope_status',
+    label: "A phase's envelope reports success",
+    description: "Accepted when a chosen phase's envelope status is success.",
+  },
+  {
+    value: 'phase_flag',
+    label: "A phase's envelope sets a flag",
+    description: 'Accepted when a chosen phase sets passed or approved.',
+  },
+];
 
 function phaseComposition(phases: PhaseDef[]): string {
   const agents = phases.filter((p) => p.kind === 'agent').length;
@@ -124,8 +167,10 @@ function PhaseTrack({
         <>
           {owner && <CliIcon vendor={owner.cli ?? 'droid'} size={11} />}
           <span>{phase.agent}</span>
-          <span className={styles.pipelinePhaseMetaDim}>·</span>
-          <span>{phase.envelope ?? owner?.envelope ?? 'build'}</span>
+          <span className={styles.pipelineEnvelopeChip} title="Envelope">
+            <EnvelopeGlyph />
+            <span>{phase.envelope ?? owner?.envelope ?? 'build'}</span>
+          </span>
         </>
       );
     }
@@ -310,7 +355,7 @@ export default function PipelinesScreen({
   const addPhase = (kind: PhaseDef['kind']): void => {
     if (!draft) return;
     const n = draft.phases.length + 1;
-    const base = { name: `phase-${n}`, description: '' };
+    const base = { name: `phase_${n}`, description: '' };
     let phase: PhaseDef;
     if (kind === 'agent') {
       phase = {
@@ -361,7 +406,7 @@ export default function PipelinesScreen({
     const id = `pipeline-${Date.now().toString(36)}`;
     const starter: PhaseDef | null = agents[0]
       ? ({
-          name: 'phase-1',
+          name: 'phase_1',
           description: 'Describe what this phase does and why.',
           kind: 'agent',
           agent: agents[0].name,
@@ -617,16 +662,12 @@ export default function PipelinesScreen({
                   <div className={styles.pipelineField}>
                     <span className={styles.pipelineFieldLabel}>A run counts as accepted when</span>
                     <span className={styles.pipelineFieldControl}>
-                      <select
-                        className={styles.pipelineSelect}
+                      <Dropdown
                         value={draft.acceptance.kind}
-                        onChange={(e) => setAcceptanceKind(e.target.value as Acceptance['kind'])}
-                      >
-                        <option value="all_phases_pass">Every phase passed</option>
-                        <option value="last_phase_pass">The last phase passed</option>
-                        <option value="envelope_status">A phase's envelope reports success</option>
-                        <option value="phase_flag">A phase's envelope sets a flag</option>
-                      </select>
+                        options={ACCEPTANCE_OPTIONS}
+                        triggerClassName={styles.pipelineSelect}
+                        onChange={(next) => setAcceptanceKind(next as Acceptance['kind'])}
+                      />
                     </span>
                     <span className={styles.pipelineFieldHint}>
                       A run where every phase passed is not automatically a run that did what was
@@ -637,17 +678,12 @@ export default function PipelinesScreen({
                     <div className={styles.pipelineField}>
                       <span className={styles.pipelineFieldLabel}>Phase</span>
                       <span className={styles.pipelineFieldControl}>
-                        <select
-                          className={styles.pipelineSelect}
+                        <Dropdown
                           value={acceptancePhase}
-                          onChange={(e) => setAcceptancePhase(e.target.value)}
-                        >
-                          {draft.phases.map((p) => (
-                            <option key={p.name} value={p.name}>
-                              {p.name}
-                            </option>
-                          ))}
-                        </select>
+                          options={draft.phases.map((p) => ({ value: p.name, label: p.name }))}
+                          triggerClassName={styles.pipelineSelect}
+                          onChange={setAcceptancePhase}
+                        />
                       </span>
                     </div>
                   )}
@@ -655,16 +691,15 @@ export default function PipelinesScreen({
                     <div className={`${styles.pipelineField} ${styles.pipelineFieldNarrow}`}>
                       <span className={styles.pipelineFieldLabel}>Flag</span>
                       <span className={styles.pipelineFieldControl}>
-                        <select
-                          className={styles.pipelineSelect}
+                        <Dropdown
                           value={(draft.acceptance as { flag: string }).flag}
-                          onChange={(e) =>
-                            setAcceptanceFlag(e.target.value as 'passed' | 'approved')
-                          }
-                        >
-                          <option value="passed">passed</option>
-                          <option value="approved">approved</option>
-                        </select>
+                          options={[
+                            { value: 'passed', label: 'passed' },
+                            { value: 'approved', label: 'approved' },
+                          ]}
+                          triggerClassName={styles.pipelineSelect}
+                          onChange={(next) => setAcceptanceFlag(next as 'passed' | 'approved')}
+                        />
                       </span>
                     </div>
                   )}

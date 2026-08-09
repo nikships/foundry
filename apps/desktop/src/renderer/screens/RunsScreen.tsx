@@ -9,6 +9,7 @@ import StatusBadge from '../components/StatusBadge.js';
 import PipelineRibbon from '../components/PipelineRibbon.js';
 import EmptyState from '../components/EmptyState.js';
 import { Button } from '../components/ui/Button.js';
+import { Dropdown } from '../components/ui/Dropdown.js';
 import styles from './RunsScreen.module.css';
 
 export default function RunsScreen({
@@ -166,17 +167,17 @@ export default function RunsScreen({
             onKeyDown={onKeydown}
           />
           <div className={styles.controls}>
-            <select
-              className={`select ${styles.pipeline}`}
-              value={selectedPipeline}
-              onChange={(e) => setSelectedPipeline(e.target.value)}
-            >
-              {pipelines.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+            <Dropdown
+              className={styles.pipeline}
+              value={selectedPipeline || pipeline?.id || ''}
+              options={pipelines.map((p) => ({
+                value: p.id,
+                label: p.name,
+                description: p.description || undefined,
+              }))}
+              onChange={(next) => setSelectedPipeline(next)}
+              aria-label="Pipeline"
+            />
             {pipeline && <PipelineRibbon pipeline={pipeline} />}
             <Button
               variant="primary"

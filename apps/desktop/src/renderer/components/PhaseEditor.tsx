@@ -1,13 +1,38 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BUILTIN_ENVELOPE_KINDS, type AgentDef, type PhaseDef } from '@shared/types.js';
+import {
+  BUILTIN_ENVELOPE_BLURBS,
+  BUILTIN_ENVELOPE_KINDS,
+  type AgentDef,
+  type PhaseDef,
+} from '@shared/types.js';
 import { api } from '../api.js';
 import { useApp } from '../stores/app.js';
 import { phaseKindColor, KIND_LABEL } from '../derive.js';
 import AgentAvatar from './AgentAvatar.js';
 import { CliIcon } from './BrandIcon.js';
-import { Field, Select, TextInput, Textarea } from './ui/Field.js';
+import { Dropdown, type DropdownOption } from './ui/Dropdown.js';
+import { Field, TextInput, Textarea } from './ui/Field.js';
 import { SegmentedControl } from './ui/SegmentedControl.js';
 import styles from './PhaseEditor.module.css';
+
+function EnvelopeGlyph(): React.JSX.Element {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="1.5" y="3" width="11" height="8" rx="1.2" />
+      <path d="M1.8 3.6 7 8l5.2-4.4" />
+    </svg>
+  );
+}
 
 export default function PhaseEditor({
   phase,
@@ -47,6 +72,56 @@ export default function PhaseEditor({
   );
   const earlier = useMemo(() => phases.slice(0, index).map((p) => p.name), [phases, index]);
   const usesArgv = phase.kind === 'code' && !!phase.command && 'argv' in phase.command;
+
+  const agentOptions = useMemo<DropdownOption[]>(
+    () =>
+      agents.map((a) => ({
+        value: a.name,
+        label: a.name,
+        description: a.purpose,
+        icon: <AgentAvatar name={a.name} size={22} />,
+      })),
+    [agents],
+  );
+
+  const envelopeOptions = useMemo<DropdownOption[]>(() => {
+    const builtin: DropdownOption[] = BUILTIN_ENVELOPE_KINDS.map((kind) => ({
+      value: kind,
+      label: kind,
+      description: BUILTIN_ENVELOPE_BLURBS[kind],
+      group: 'Built-in',
+      icon: (
+        <span className={styles.envelopeOptionIcon}>
+          <EnvelopeGlyph />
+        </span>
+      ),
+    }));
+    const custom: DropdownOption[] = envelopes.map((env) => ({
+      value: env.name,
+      label: env.name,
+      description: env.description || undefined,
+      group: 'Custom',
+      icon: (
+        <span className={styles.envelopeOptionIcon}>
+          <EnvelopeGlyph />
+        </span>
+      ),
+    }));
+    return [...builtin, ...custom];
+  }, [envelopes]);
+
+  const commandOptions = useMemo<DropdownOption[]>(
+    () => commands.map((name) => ({ value: name, label: name })),
+    [commands],
+  );
+
+  const feedbackOptions = useMemo<DropdownOption[]>(
+    () => [
+      { value: '', label: 'Nowhere: a failure ends the run' },
+      ...earlier.map((name) => ({ value: name, label: name })),
+    ],
+    [earlier],
+  );
 
   const patch = (next: Partial<PhaseDef>): void => onChange({ ...phase, ...next });
 
@@ -150,9 +225,13 @@ export default function PhaseEditor({
                 <>
                   {owner && <CliIcon vendor={owner.cli ?? 'droid'} size={12} />}
                   <span className={styles.sumStrong}>{phase.agent}</span>
-                  <span className={styles.sumDim}> · envelope </span>
-                  <span className={styles.sumStrong}>
-                    {phase.envelope ?? owner?.envelope ?? 'build'}
+                  <span className={styles.envelopeChip} title="Envelope">
+                    <span className={styles.envelopeChipIcon}>
+                      <EnvelopeGlyph />
+                    </span>
+                    <span className={styles.envelopeChipName}>
+                      {phase.envelope ?? owner?.envelope ?? 'build'}
+                    </span>
                   </span>
                 </>
               )}
@@ -234,24 +313,19 @@ export default function PhaseEditor({
               </Field>
               {phase.kind === 'agent' && (
                 <Field label="Agent">
-                  <Select
+                  <Dropdown
                     value={phase.agent ?? ''}
-                    onChange={(e) => {
-                      const agent = agents.find((a) => a.name === e.target.value);
+                    options={agentOptions}
+                    onChange={(next) => {
+                      const agent = agents.find((a) => a.name === next);
                       // Default the phase envelope to the agent's so a reviewer
                       // phase is not left on build after the agent is swapped.
                       patch({
-                        agent: e.target.value,
+                        agent: next,
                         envelope: agent?.envelope ?? phase.envelope ?? 'build',
                       });
                     }}
-                  >
-                    {agents.map((a) => (
-                      <option key={a.name} value={a.name}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </Select>
+                  />
                 </Field>
               )}
             </div>
@@ -277,28 +351,11 @@ export default function PhaseEditor({
                   </>
                 }
               >
-                <Select
+                <Dropdown
                   value={phase.envelope ?? owner?.envelope ?? 'build'}
-                  onChange={(e) => patch({ envelope: e.target.value })}
-                >
-                  <optgroup label="Built-in">
-                    {BUILTIN_ENVELOPE_KINDS.map((kind) => (
-                      <option key={kind} value={kind}>
-                        {kind}
-                      </option>
-                    ))}
-                  </optgroup>
-                  {envelopes.length > 0 && (
-                    <optgroup label="Custom">
-                      {envelopes.map((env) => (
-                        <option key={env.name} value={env.name}>
-                          {env.name}
-                          {env.description ? ` — ${env.description}` : ''}
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-                </Select>
+                  options={envelopeOptions}
+                  onChange={(next) => patch({ envelope: next })}
+                />
               </Field>
             )}
             <Field
@@ -383,16 +440,11 @@ export default function PhaseEditor({
                 />
                 {!usesArgv ? (
                   commands.length ? (
-                    <Select
+                    <Dropdown
                       value={commandRef}
-                      onChange={(e) => patch({ command: { ref: e.target.value } })}
-                    >
-                      {commands.map((name) => (
-                        <option key={name} value={name}>
-                          {name}
-                        </option>
-                      ))}
-                    </Select>
+                      options={commandOptions}
+                      onChange={(next) => patch({ command: { ref: next } })}
+                    />
                   ) : (
                     <p className={`hint ${styles.emptyCmds}`}>
                       No project commands yet. Switch to Literal, or detect them in Settings →
@@ -427,17 +479,11 @@ export default function PhaseEditor({
                 label="Send failures back to"
                 hint="The failure output is handed to that phase as a repair request."
               >
-                <Select
+                <Dropdown
                   value={phase.feedbackTo ?? ''}
-                  onChange={(e) => patch({ feedbackTo: e.target.value || undefined })}
-                >
-                  <option value="">Nowhere: a failure ends the run</option>
-                  {earlier.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </Select>
+                  options={feedbackOptions}
+                  onChange={(next) => patch({ feedbackTo: next || undefined })}
+                />
               </Field>
               {phase.feedbackTo && (
                 <Field

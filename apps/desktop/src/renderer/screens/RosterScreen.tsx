@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  BUILTIN_ENVELOPE_BLURBS,
   BUILTIN_ENVELOPE_KINDS,
   type AgentDef,
   type ModelInfo,
@@ -12,7 +13,8 @@ import { CliIcon } from '../components/BrandIcon.js';
 import ModelPicker from '../components/ModelPicker.js';
 import BoundaryEditor from '../components/BoundaryEditor.js';
 import PromptPreview from '../components/PromptPreview.js';
-import { Field, Select, TextInput, Textarea } from '../components/ui/Field.js';
+import { Dropdown, type DropdownOption } from '../components/ui/Dropdown.js';
+import { Field, TextInput, Textarea } from '../components/ui/Field.js';
 import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
 import { useTablistNav } from '../hooks/useTablistNav.js';
@@ -46,6 +48,21 @@ export default function RosterScreen({
     [agents, selectedName],
   );
   const errors = useMemo(() => issues.filter((i) => i.level === 'error'), [issues]);
+  const envelopeOptions = useMemo<DropdownOption[]>(() => {
+    const builtin: DropdownOption[] = BUILTIN_ENVELOPE_KINDS.map((kind) => ({
+      value: kind,
+      label: kind,
+      description: BUILTIN_ENVELOPE_BLURBS[kind],
+      group: 'Built-in',
+    }));
+    const custom: DropdownOption[] = envelopes.map((env) => ({
+      value: env.name,
+      label: env.name,
+      description: env.description || undefined,
+      group: 'Custom',
+    }));
+    return [...builtin, ...custom];
+  }, [envelopes]);
 
   useEffect(() => {
     if (!agents.some((a) => a.name === selectedName)) setSelectedName(agents[0]?.name ?? '');
@@ -426,29 +443,12 @@ export default function RosterScreen({
                     </span>
                   </Field>
                   <Field label="Envelope kind">
-                    <Select
-                      className="mono"
+                    <Dropdown
                       value={draft.envelope}
-                      onChange={(e) => setDraft({ ...draft, envelope: e.target.value })}
-                    >
-                      <optgroup label="Built-in">
-                        {BUILTIN_ENVELOPE_KINDS.map((kind) => (
-                          <option key={kind} value={kind}>
-                            {kind}
-                          </option>
-                        ))}
-                      </optgroup>
-                      {envelopes.length > 0 && (
-                        <optgroup label="Custom">
-                          {envelopes.map((env) => (
-                            <option key={env.name} value={env.name}>
-                              {env.name}
-                              {env.description ? ` — ${env.description}` : ''}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                    </Select>
+                      options={envelopeOptions}
+                      triggerClassName="mono"
+                      onChange={(next) => setDraft({ ...draft, envelope: next })}
+                    />
                     <span className={styles.hint}>
                       The typed reply this agent must return. Parsed and validated on every turn.
                       {onOpenSettings && (

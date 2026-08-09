@@ -15,6 +15,7 @@ import EmptyState from '../components/EmptyState.js';
 import TranscriptLane from '../components/inspector/TranscriptLane.js';
 import { clockTime, since, truncate } from '../format.js';
 import { Button } from '../components/ui/Button.js';
+import { Dropdown } from '../components/ui/Dropdown.js';
 import styles from './InspectorScreen.module.css';
 
 type LaneFilter = 'all' | 'running' | 'failed';
@@ -116,24 +117,27 @@ export default function InspectorScreen({
         <p className="eyebrow">
           <span className="index">04</span>Inspector
         </p>
-        <select
-          className="select"
+        <Dropdown
+          className={styles.inspectorSelect}
           value={pickedRunId && runs.some((r) => r.runId === pickedRunId) ? pickedRunId : ''}
-          onChange={(e) => {
-            setPickedRunId(e.target.value);
+          options={[
+            {
+              value: '',
+              label: runs.some((r) => r.status === 'running')
+                ? 'Follow live run'
+                : 'Follow latest run',
+            },
+            ...runs.map((r) => ({
+              value: r.runId,
+              label: `${r.status === 'running' ? '* ' : ''}${r.pipelineName} · ${r.status} · ${clockTime(r.startedAt)} · ${since(r.startedAt)}`,
+            })),
+          ]}
+          onChange={(next) => {
+            setPickedRunId(next);
             setFocusedPhaseId('');
           }}
-        >
-          <option value="">
-            {runs.some((r) => r.status === 'running') ? 'Follow live run' : 'Follow latest run'}
-          </option>
-          {runs.map((r) => (
-            <option key={r.runId} value={r.runId}>
-              {r.status === 'running' ? '* ' : ''}
-              {r.pipelineName} · {r.status} · {clockTime(r.startedAt)} · {since(r.startedAt)}
-            </option>
-          ))}
-        </select>
+          aria-label="Run"
+        />
         {view.run && (
           <>
             <StatusBadge status={view.run.status} />

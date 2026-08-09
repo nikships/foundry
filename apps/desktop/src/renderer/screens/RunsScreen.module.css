@@ -58,9 +58,9 @@
 }
 .pipeline {
   width: auto;
-  max-width: 220px;
+  max-width: 240px;
   min-width: 110px;
-  flex: 0 1 140px;
+  flex: 0 1 160px;
 }
 .grow {
   flex: 1 1 100px;

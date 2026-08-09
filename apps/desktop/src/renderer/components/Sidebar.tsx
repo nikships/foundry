@@ -3,6 +3,7 @@ import { useApp } from '../stores/app.js';
 import { useAllProjectRuns } from '../stores/run.js';
 import { since, statusColor, statusWord } from '../format.js';
 import { Button } from './ui/Button.js';
+import { Dropdown } from './ui/Dropdown.js';
 import styles from './Sidebar.module.css';
 
 const items: { id: View; label: string; key: string }[] = [
@@ -58,17 +59,21 @@ export default function Sidebar({
       <div className={styles.projectPicker}>
         <label className="faint">Project</label>
         {projects.length > 0 && (
-          <select
-            className="select"
+          <Dropdown
             value={project?.id ?? ''}
-            onChange={(e) => selectProject(e.target.value)}
-          >
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+            options={projects.map((p) => {
+              const parts = p.path.split('/').filter(Boolean);
+              const short =
+                parts.length <= 3 ? p.path : `/${parts[0]}/…/${parts.slice(-2).join('/')}`;
+              return {
+                value: p.id,
+                label: p.name,
+                description: short,
+              };
+            })}
+            onChange={(next) => selectProject(next)}
+            aria-label="Project"
+          />
         )}
         <Button size="sm" onClick={onAddProject}>
           {projects.length ? 'Add another project…' : 'Add a project…'}
