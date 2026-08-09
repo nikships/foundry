@@ -41,7 +41,7 @@ export interface FoldContext {
 }
 
 /** What kind of work a tool call is, so the UI can format without guessing. */
-export type ToolKind = 'command' | 'read' | 'edit' | 'search' | 'other';
+export type ToolKind = 'command' | 'read' | 'edit' | 'search' | 'todo' | 'task' | 'ask' | 'other';
 
 export function toolKind(name: string): ToolKind {
   switch (name) {
@@ -58,6 +58,14 @@ export function toolKind(name: string): ToolKind {
     case 'Glob':
     case 'LS':
       return 'search';
+    case 'TodoWrite':
+      return 'todo';
+    case 'Task':
+    case 'TaskOutput':
+    case 'TaskStop':
+      return 'task';
+    case 'AskUser':
+      return 'ask';
     default:
       return 'other';
   }
@@ -102,8 +110,26 @@ export function labelToolCall(tool: ToolUse): string {
       const p = pick('directory_path', 'path');
       return p ? `ls: ${short(p)}` : 'ls';
     }
+    case 'TodoWrite': {
+      return 'todowrite: update task list';
+    }
+    case 'Task': {
+      const d = pick('description', 'prompt');
+      return d ? `task: ${firstLine(d)}` : 'task';
+    }
+    case 'AskUser': {
+      return 'askuser: questionnaire';
+    }
     default: {
-      const summary = pick('summary', 'description');
+      const summary = pick(
+        'summary',
+        'description',
+        'query',
+        'url',
+        'file_path',
+        'path',
+        'pattern',
+      );
       return summary ? `${name}: ${firstLine(summary)}` : name;
     }
   }

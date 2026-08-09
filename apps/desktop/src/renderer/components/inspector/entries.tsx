@@ -1,14 +1,14 @@
 /**
  * One renderer per transcript entry. The Inspector shows what an agent's own
- * CLI shows, so the vocabulary is the CLI's: a thought, a paragraph, a command
- * with its output, an edit, a search. Everything else (gates, corrections,
- * interrupts) is a banner, because those come from Foundry, not the agent.
+ * CLI shows, formatted in the style of Claude Code: clear tool call headers,
+ * explicit line-by-line diffs for edits, collapsible command outputs, and zero
+ * raw JSON blocks or unformatted turn dumps.
  *
  * An entry with no endedAt is still open: the agent is mid-thought or a tool
  * is mid-run, and the block shows that rather than pretending to be finished.
  */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { EventRow, UsageBreakdown } from '@shared/types.js';
 import { clockTime, credits, tokens } from '../../format.js';
 
@@ -22,10 +22,7 @@ function args(event: EventRow): Record<string, unknown> {
 }
 
 /**
- * Rows written before the folder stamped `kind` still name themselves
- * `bash: …` / `grep: …`, and code phases record their command span with an
- * argv payload. Infer the kind so history renders with the same blocks as a
- * live run instead of falling through to the generic row.
+ * Infer kind of tool work for display formatting.
  */
 function inferKind(event: EventRow): string {
   const kind = str(event.payload.kind);
@@ -34,9 +31,18 @@ function inferKind(event: EventRow): string {
   const head = event.name.split(':', 1)[0]!.toLowerCase();
   if (head === 'bash' || head === 'execute') return 'command';
   if (head === 'read') return 'read';
-  if (head === 'edit' || head === 'create' || head === 'write' || head === 'multiedit')
+  if (
+    head === 'edit' ||
+    head === 'create' ||
+    head === 'write' ||
+    head === 'multiedit' ||
+    head === 'applypatch'
+  )
     return 'edit';
   if (head === 'grep' || head === 'glob' || head === 'ls' || head === 'search') return 'search';
+  if (head === 'todowrite' || head === 'todo') return 'todo';
+  if (head === 'task' || head === 'subagent') return 'task';
+  if (head === 'askuser' || head === 'ask') return 'ask';
   return 'other';
 }
 
@@ -52,28 +58,276 @@ function failedOf(event: EventRow): boolean {
   return event.payload.isError === true || event.payload.passed === false;
 }
 
+/** Whatever identifies the target after `name: `, regardless of case. */
+function nameSummary(event: EventRow): string {
+  const colon = event.name.indexOf(': ');
+  return colon > 0 ? event.name.slice(colon + 2) : event.name;
+}
+
 /** The folder writes the full record to stream.jsonl when it caps a field. */
 function TruncatedNote(): React.JSX.Element {
-  return <div className="te-truncated">truncated here, full text in the run's stream.jsonl</div>;
+  return <div className="te-truncated">truncated here, full text in stream.jsonl</div>;
 }
 
 function Time({ iso }: { iso: string }): React.JSX.Element {
   return <span className="te-time">{clockTime(iso)}</span>;
 }
 
+/**
+ * Render monospaced text with line capping and expand/collapse button.
+ * Avoids giant outputs that overflow the view.
+ */
+function TruncatedOutput({
+  text,
+  maxLines = 12,
+  mono = true,
+}: {
+  text: string;
+  maxLines?: number;
+  mono?: boolean;
+}): React.JSX.Element | null {
+  const [expanded, setExpanded] = useState(false);
+  const lines = useMemo(() => (text ? text.split('\n') : []), [text]);
+
+  if (!text) return null;
+
+  const hasMore = lines.length > maxLines;
+  const visibleLines = expanded || !hasMore ? lines : lines.slice(0, maxLines);
+
+  return (
+    <div className="te-output-wrapper">
+      <pre className={`te-output ${mono ? 'mono' : ''}`}>{visibleLines.join('\n')}</pre>
+      {hasMore && (
+        <button className="te-expand-btn" onClick={() => setExpanded((v) => !v)}>
+          {expanded ? '▲ Show less' : `▼ Show ${lines.length - maxLines} more lines`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── Diff View Component ──────────────────────────────────────────────────────
+
+interface DiffLine {
+  type: 'add' | 'del' | 'ctx' | 'hunk';
+  text: string;
+}
+
+function parseJsonDiffLines(rawResult: string): DiffLine[] | null {
+  if (!rawResult || !rawResult.trim().startsWith('{')) return null;
+  try {
+    const parsed = JSON.parse(rawResult) as {
+      diffLines?: Array<{
+        type?: string;
+        content?: string;
+      }>;
+    };
+    if (parsed && Array.isArray(parsed.diffLines)) {
+      const out: DiffLine[] = [];
+      for (const item of parsed.diffLines) {
+        const t = String(item.type ?? '').toLowerCase();
+        const diffType: DiffLine['type'] =
+          t === 'added' || t === 'add'
+            ? 'add'
+            : t === 'removed' || t === 'deleted' || t === 'del'
+              ? 'del'
+              : t === 'hunk'
+                ? 'hunk'
+                : 'ctx';
+        out.push({
+          type: diffType,
+          text: String(item.content ?? ''),
+        });
+      }
+      return out;
+    }
+  } catch {
+    // Ignore JSON parse errors
+  }
+  return null;
+}
+
+function computeDiff(
+  oldStr?: string,
+  newStr?: string,
+  content?: string,
+  rawResult?: string,
+): { lines: DiffLine[]; addCount: number; delCount: number } {
+  let lines: DiffLine[] = [];
+
+  // Check if rawResult has structured diffLines JSON from droid tool_result
+  if (rawResult) {
+    const jsonLines = parseJsonDiffLines(rawResult);
+    if (jsonLines) {
+      lines = jsonLines;
+      const addCount = lines.filter((l) => l.type === 'add').length;
+      const delCount = lines.filter((l) => l.type === 'del').length;
+      return { lines, addCount, delCount };
+    }
+  }
+
+  if (oldStr !== undefined || newStr !== undefined) {
+    const oldLines = (oldStr ?? '').split('\n');
+    const newLines = (newStr ?? '').split('\n');
+
+    if (!oldStr && newStr) {
+      lines = newLines.map((l) => ({ type: 'add', text: l }));
+    } else if (!newStr && oldStr) {
+      lines = oldLines.map((l) => ({ type: 'del', text: l }));
+    } else {
+      // Find common prefix lines
+      let prefixLen = 0;
+      while (
+        prefixLen < oldLines.length &&
+        prefixLen < newLines.length &&
+        oldLines[prefixLen] === newLines[prefixLen]
+      ) {
+        prefixLen++;
+      }
+
+      // Find common suffix lines
+      let suffixLen = 0;
+      while (
+        suffixLen < oldLines.length - prefixLen &&
+        suffixLen < newLines.length - prefixLen &&
+        oldLines[oldLines.length - 1 - suffixLen] === newLines[newLines.length - 1 - suffixLen]
+      ) {
+        suffixLen++;
+      }
+
+      // Context prefix (up to 2 lines)
+      const ctxPrefixStart = Math.max(0, prefixLen - 2);
+      for (let i = ctxPrefixStart; i < prefixLen; i++) {
+        lines.push({ type: 'ctx', text: oldLines[i]! });
+      }
+
+      // Deleted lines
+      const delSlice = oldLines.slice(prefixLen, oldLines.length - suffixLen);
+      for (const l of delSlice) {
+        lines.push({ type: 'del', text: l });
+      }
+
+      // Added lines
+      const addSlice = newLines.slice(prefixLen, newLines.length - suffixLen);
+      for (const l of addSlice) {
+        lines.push({ type: 'add', text: l });
+      }
+
+      // Context suffix (up to 2 lines)
+      const ctxSuffixEnd = Math.min(oldLines.length, oldLines.length - suffixLen + 2);
+      for (let i = oldLines.length - suffixLen; i < ctxSuffixEnd; i++) {
+        lines.push({ type: 'ctx', text: oldLines[i]! });
+      }
+    }
+  } else if (content !== undefined) {
+    const cLines = content.split('\n');
+    lines = cLines.map((l) => ({ type: 'add', text: l }));
+  } else if (rawResult) {
+    const rLines = rawResult.split('\n');
+    if (rLines.some((l) => l.startsWith('@@') || l.startsWith('+') || l.startsWith('-'))) {
+      for (const l of rLines) {
+        if (l.startsWith('+++') || l.startsWith('---')) continue;
+        if (l.startsWith('@@')) lines.push({ type: 'hunk', text: l });
+        else if (l.startsWith('+')) lines.push({ type: 'add', text: l.slice(1) });
+        else if (l.startsWith('-')) lines.push({ type: 'del', text: l.slice(1) });
+        else lines.push({ type: 'ctx', text: l.startsWith(' ') ? l.slice(1) : l });
+      }
+    } else {
+      lines = rLines.map((l) => ({ type: 'ctx', text: l }));
+    }
+  }
+
+  const addCount = lines.filter((l) => l.type === 'add').length;
+  const delCount = lines.filter((l) => l.type === 'del').length;
+
+  return { lines, addCount, delCount };
+}
+
+function DiffView({
+  oldStr,
+  newStr,
+  content,
+  result,
+  maxLines = 15,
+}: {
+  oldStr?: string;
+  newStr?: string;
+  content?: string;
+  result?: string;
+  maxLines?: number;
+}): React.JSX.Element {
+  const [expanded, setExpanded] = useState(false);
+  const { lines, addCount, delCount } = useMemo(
+    () => computeDiff(oldStr, newStr, content, result),
+    [oldStr, newStr, content, result],
+  );
+
+  if (lines.length === 0) return <div className="te-empty-diff">No changes</div>;
+
+  const hasMore = lines.length > maxLines;
+  const visibleLines = expanded || !hasMore ? lines : lines.slice(0, maxLines);
+
+  return (
+    <div className="te-diff-container">
+      {(addCount > 0 || delCount > 0) && (
+        <div className="te-diff-stat-bar">
+          {addCount > 0 && <span className="te-diff-stat add">+{addCount}</span>}
+          {delCount > 0 && <span className="te-diff-stat del">-{delCount}</span>}
+          <span className="te-diff-line-count">{lines.length} lines changed</span>
+        </div>
+      )}
+      <div className="te-diff-body mono">
+        {visibleLines.map((line, idx) => {
+          const prefix =
+            line.type === 'add'
+              ? '+'
+              : line.type === 'del'
+                ? '-'
+                : line.type === 'hunk'
+                  ? '@'
+                  : ' ';
+          return (
+            <div key={idx} className={`te-diff-line ${line.type}`}>
+              <span className="te-diff-prefix">{prefix}</span>
+              <span className="te-diff-text">{line.text || ' '}</span>
+            </div>
+          );
+        })}
+      </div>
+      {hasMore && (
+        <button className="te-expand-btn" onClick={() => setExpanded((v) => !v)}>
+          {expanded ? '▲ Show less' : `▼ Show ${lines.length - maxLines} more lines`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── Specialized Tool Blocks ──────────────────────────────────────────────────
+
 function ThinkingBlock({ event }: { event: EventRow }): React.JSX.Element {
   const open = event.endedAt == null;
   const text = str(event.payload.text);
+  const [collapsed, setCollapsed] = useState(false);
+  const isLong = text.length > 300 || text.split('\n').length > 6;
+
   return (
     <div className={`te thinking ${open ? 'open' : ''}`}>
       <div className="te-head">
         <span className="te-tag">thought</span>
+        {isLong && !open && (
+          <button className="te-toggle-btn" onClick={() => setCollapsed((v) => !v)}>
+            {collapsed ? 'show thought' : 'collapse thought'}
+          </button>
+        )}
         <Time iso={event.startedAt} />
       </div>
-      <div className="te-thinking-body">
-        {text}
-        {open && <span className="te-caret" />}
-      </div>
+      {!collapsed && (
+        <div className="te-thinking-body">
+          {text}
+          {open && <span className="te-caret" />}
+        </div>
+      )}
       {event.payload.truncated === true && <TruncatedNote />}
     </div>
   );
@@ -98,6 +352,7 @@ function CommandBlock({ event }: { event: EventRow }): React.JSX.Element {
   const command = commandOf(event);
   const output = str(event.payload.result);
   const failed = failedOf(event);
+
   return (
     <div className={`te command ${failed ? 'failed' : ''} ${open ? 'open' : ''}`}>
       <button className="te-cmd-head" onClick={() => setExpanded((v) => !v)}>
@@ -110,39 +365,42 @@ function CommandBlock({ event }: { event: EventRow }): React.JSX.Element {
         )}
         <Time iso={event.startedAt} />
       </button>
-      {expanded && (output || open) && (
-        <pre className="te-output mono">
-          {output}
-          {open && <span className="te-caret" />}
-        </pre>
-      )}
+      {expanded && (output || open) && <TruncatedOutput text={output} maxLines={12} />}
       {expanded && event.payload.truncated === true && <TruncatedNote />}
     </div>
   );
 }
 
-/** Whatever identifies the target after `name: `, regardless of case. */
-function nameSummary(event: EventRow): string {
-  const colon = event.name.indexOf(': ');
-  return colon > 0 ? event.name.slice(colon + 2) : event.name;
-}
-
 function EditBlock({ event }: { event: EventRow }): React.JSX.Element {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const open = event.endedAt == null;
   const a = args(event);
   const path = str(a.file_path) || str(a.path) || nameSummary(event);
-  const body = str(a.new_string) || str(a.content) || str(a.input) || str(event.payload.result);
-  const isCreate = /^create:/i.test(event.name);
+  const isCreate = /^create:/i.test(event.name) || Boolean(a.content && !a.old_str);
+  const oldStr = typeof a.old_str === 'string' ? a.old_str : undefined;
+  const newStr = typeof a.new_string === 'string' ? a.new_string : undefined;
+  const content = typeof a.content === 'string' ? a.content : undefined;
+  const rawResult = str(event.payload.result);
+
   return (
     <div className={`te edit ${open ? 'open' : ''}`}>
       <button className="te-row-head" onClick={() => setExpanded((v) => !v)}>
-        <span className="te-tag edit">{isCreate ? 'create' : 'edit'}</span>
+        <span className={`te-tag ${isCreate ? 'create' : 'edit'}`}>
+          {isCreate ? 'create' : 'edit'}
+        </span>
         <span className="te-path mono">{path}</span>
         {open && <span className="te-exec running">writing</span>}
         <Time iso={event.startedAt} />
       </button>
-      {expanded && body && <pre className="te-output mono">{body}</pre>}
+      {expanded && (
+        <DiffView
+          oldStr={oldStr}
+          newStr={newStr}
+          content={content}
+          result={rawResult}
+          maxLines={15}
+        />
+      )}
       {expanded && event.payload.truncated === true && <TruncatedNote />}
     </div>
   );
@@ -161,48 +419,184 @@ function ReadBlock({
   const target =
     str(a.file_path) || str(a.pattern) || str(a.query) || str(a.path) || nameSummary(event);
   const result = str(event.payload.result);
+  const offset = typeof a.offset === 'number' ? a.offset : undefined;
+  const limit = typeof a.limit === 'number' ? a.limit : undefined;
+  const rangeInfo =
+    offset !== undefined || limit !== undefined
+      ? ` (lines ${offset ?? 1}-${(offset ?? 1) + (limit ?? 0)})`
+      : '';
+
   return (
     <div className={`te read ${open ? 'open' : ''}`}>
       <button className="te-row-head" onClick={() => setExpanded((v) => !v)}>
-        <span className="te-tag read">{verb}</span>
-        <span className="te-path mono">{target}</span>
+        <span className={`te-tag ${verb}`}>{verb}</span>
+        <span className="te-path mono">
+          {target}
+          {rangeInfo}
+        </span>
         {open && (
           <span className="te-exec running">{str(event.payload.execPhase) || 'running'}</span>
         )}
         <Time iso={event.startedAt} />
       </button>
-      {expanded && result && <pre className="te-output mono">{result}</pre>}
+      {expanded && result && <TruncatedOutput text={result} maxLines={14} />}
       {expanded && event.payload.truncated === true && <TruncatedNote />}
     </div>
   );
+}
+
+interface TodoItem {
+  id: number;
+  status: 'completed' | 'in_progress' | 'pending';
+  text: string;
+}
+
+function parseTodos(todosStr: string): TodoItem[] {
+  if (!todosStr) return [];
+  const lines = todosStr.split('\n');
+  const items: TodoItem[] = [];
+  for (const line of lines) {
+    const match = line.match(/^(\d+)\.\s*\[(completed|in_progress|pending)\]\s*(.*)$/);
+    if (match) {
+      items.push({
+        id: parseInt(match[1]!, 10),
+        status: match[2] as 'completed' | 'in_progress' | 'pending',
+        text: match[3]!.trim(),
+      });
+    }
+  }
+  return items;
+}
+
+function TodoBlock({ event }: { event: EventRow }): React.JSX.Element {
+  const [expanded, setExpanded] = useState(true);
+  const open = event.endedAt == null;
+  const a = args(event);
+  const todosStr = str(a.todos);
+  const items = useMemo(() => parseTodos(todosStr), [todosStr]);
+  const completedCount = items.filter((i) => i.status === 'completed').length;
+
+  return (
+    <div className={`te todo ${open ? 'open' : ''}`}>
+      <button className="te-row-head" onClick={() => setExpanded((v) => !v)}>
+        <span className="te-tag todo">todo</span>
+        <span className="te-path mono">
+          {items.length > 0
+            ? `${completedCount}/${items.length} tasks completed`
+            : 'Update task list'}
+        </span>
+        {open && <span className="te-exec running">updating</span>}
+        <Time iso={event.startedAt} />
+      </button>
+      {expanded && items.length > 0 && (
+        <div className="te-todo-list">
+          {items.map((item) => (
+            <div key={item.id} className={`te-todo-item ${item.status}`}>
+              <span className={`te-todo-icon ${item.status}`}>
+                {item.status === 'completed' ? '✓' : item.status === 'in_progress' ? '●' : '○'}
+              </span>
+              <span className="te-todo-text">{item.text}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TaskBlock({ event }: { event: EventRow }): React.JSX.Element {
+  const [expanded, setExpanded] = useState(true);
+  const open = event.endedAt == null;
+  const a = args(event);
+  const description = str(a.description) || nameSummary(event);
+  const subagentType = str(a.subagent_type) || 'subagent';
+  const prompt = str(a.prompt);
+  const result = str(event.payload.result);
+
+  return (
+    <div className={`te task ${open ? 'open' : ''}`}>
+      <button className="te-row-head" onClick={() => setExpanded((v) => !v)}>
+        <span className="te-tag task">task</span>
+        <span className="te-subagent-badge">{subagentType}</span>
+        <span className="te-path mono">{description}</span>
+        {open && <span className="te-exec running">running</span>}
+        <Time iso={event.startedAt} />
+      </button>
+      {expanded && (
+        <div className="te-task-body">
+          {prompt && <div className="te-task-prompt">{prompt}</div>}
+          {result && <TruncatedOutput text={result} maxLines={10} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AskBlock({ event }: { event: EventRow }): React.JSX.Element {
+  const [expanded, setExpanded] = useState(true);
+  const open = event.endedAt == null;
+  const a = args(event);
+  const questionnaire = str(a.questionnaire);
+  const result = str(event.payload.result);
+
+  return (
+    <div className={`te ask ${open ? 'open' : ''}`}>
+      <button className="te-row-head" onClick={() => setExpanded((v) => !v)}>
+        <span className="te-tag ask">ask user</span>
+        <span className="te-path mono">Questionnaire prompt</span>
+        {open && <span className="te-exec running">waiting</span>}
+        <Time iso={event.startedAt} />
+      </button>
+      {expanded && (
+        <div className="te-ask-body">
+          {questionnaire && <div className="te-ask-q">{questionnaire}</div>}
+          {result && <div className="te-ask-a">Answer: {result}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatArgsSummary(a: Record<string, unknown>): string {
+  const parts: string[] = [];
+  for (const [k, v] of Object.entries(a)) {
+    if (v === undefined || v === null) continue;
+    if (typeof v === 'string') {
+      const trimmed = v.trim();
+      if (!trimmed) continue;
+      parts.push(`${k}: "${trimmed.length > 35 ? trimmed.slice(0, 32) + '…' : trimmed}"`);
+    } else if (typeof v === 'number' || typeof v === 'boolean') {
+      parts.push(`${k}: ${v}`);
+    }
+  }
+  return parts.slice(0, 3).join(' · ');
 }
 
 function GenericToolBlock({ event }: { event: EventRow }): React.JSX.Element {
   const [expanded, setExpanded] = useState(false);
   const open = event.endedAt == null;
   const result = str(event.payload.result);
-  // The tag is the tool's name; the summary (after the colon) wraps.
+  const a = args(event);
   const colon = event.name.indexOf(': ');
   const toolName = colon > 0 ? event.name.slice(0, colon) : event.name;
-  const summary = colon > 0 ? event.name.slice(colon + 2) : JSON.stringify(args(event));
+  const summary = colon > 0 ? event.name.slice(colon + 2) : formatArgsSummary(a);
+
   return (
     <div className={`te tool ${open ? 'open' : ''}`}>
       <button className="te-row-head" onClick={() => setExpanded((v) => !v)}>
         <span className="te-tag tool">{toolName}</span>
-        <span className="te-path mono">{summary === '{}' ? '' : summary}</span>
+        <span className="te-path mono">{summary}</span>
         {open && (
           <span className="te-exec running">{str(event.payload.execPhase) || 'running'}</span>
         )}
         <Time iso={event.startedAt} />
       </button>
-      {expanded && result && <pre className="te-output mono">{result}</pre>}
+      {expanded && result && <TruncatedOutput text={result} maxLines={12} />}
     </div>
   );
 }
 
 function ToolBlock({ event }: { event: EventRow }): React.JSX.Element {
-  // A one-shot CLI without a stream normaliser yields one honest span for the
-  // whole turn; it renders as a command block with the prompt as its args.
   switch (inferKind(event)) {
     case 'command':
       return <CommandBlock event={event} />;
@@ -212,6 +606,12 @@ function ToolBlock({ event }: { event: EventRow }): React.JSX.Element {
       return <ReadBlock event={event} verb="read" />;
     case 'search':
       return <ReadBlock event={event} verb="search" />;
+    case 'todo':
+      return <TodoBlock event={event} />;
+    case 'task':
+      return <TaskBlock event={event} />;
+    case 'ask':
+      return <AskBlock event={event} />;
     default:
       return <GenericToolBlock event={event} />;
   }
@@ -309,7 +709,6 @@ export function TranscriptEntry({ event }: { event: EventRow }): React.JSX.Eleme
     case 'agent_start':
     case 'phase_start':
     case 'phase_end':
-      // The lane header already says who is running; envelopes get a card.
       return null;
     default:
       return null;
@@ -318,29 +717,83 @@ export function TranscriptEntry({ event }: { event: EventRow }): React.JSX.Eleme
 
 export function transcriptStyles(): string {
   return `
-    .te { margin: 2px 0; }
-    .te-head, .te-row-head, .te-cmd-head { display: flex; align-items: baseline; gap: 8px; width: 100%; border: none; background: none; padding: 2px 0; font: inherit; color: inherit; text-align: left; cursor: default; }
-    button.te-row-head, button.te-cmd-head { cursor: pointer; }
-    .te-time { margin-left: auto; font-size: 10px; color: var(--text-ghost, var(--text-faint)); flex: none; }
-    .te-tag { flex: none; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); }
-    .te-tag.edit { color: var(--amber); }
-    .te-tag.read { color: var(--cyan); }
-    .te-tag.tool { color: var(--text-dim); }
-    .te-thinking-body { margin: 2px 0 4px; padding-left: 10px; border-left: 2px solid var(--line); color: var(--text-faint); font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+    .te { margin: 4px 0; }
+    .te-head, .te-row-head, .te-cmd-head { display: flex; align-items: center; gap: 8px; width: 100%; border: none; background: none; padding: 4px 6px; font: inherit; color: inherit; text-align: left; cursor: default; border-radius: var(--r-sm); transition: background 120ms ease; }
+    button.te-row-head:hover, button.te-cmd-head:hover { background: var(--bg-hover, rgba(255, 255, 255, 0.04)); }
+    .te-time { margin-left: auto; font-size: 10px; color: var(--text-ghost, var(--text-faint)); flex: none; font-variant-numeric: tabular-nums; }
+    .te-tag { flex: none; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; padding: 1px 6px; border-radius: 4px; background: var(--bg-raised); color: var(--text-faint); }
+    .te-tag.edit { color: var(--amber); background: var(--amber-dim); }
+    .te-tag.create { color: var(--green); background: var(--green-dim); }
+    .te-tag.read { color: var(--cyan); background: var(--cyan-dim); }
+    .te-tag.search { color: var(--purple); background: var(--purple-dim); }
+    .te-tag.todo { color: var(--green); background: var(--green-dim); }
+    .te-tag.task { color: var(--blue); background: var(--blue-dim); }
+    .te-tag.ask { color: var(--purple); background: var(--purple-dim); }
+    .te-tag.tool { color: var(--text-dim); background: var(--bg-raised); }
+
+    .te-subagent-badge { font-size: 10px; padding: 1px 6px; border-radius: var(--r-full); background: var(--blue-dim); color: var(--blue); font-family: var(--font-mono); }
+
+    .te-thinking-body { margin: 2px 0 4px; padding: 4px 10px; border-left: 2px solid var(--line); color: var(--text-faint); font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; font-style: italic; }
     .te.thinking.open .te-thinking-body { border-left-color: var(--cyan); }
-    .te-text-body { font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+    .te-toggle-btn { border: none; background: none; color: var(--text-faint); font-size: 10px; cursor: pointer; text-decoration: underline; margin-left: 6px; }
+
+    .te-text-body { font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; padding: 4px 6px; color: var(--text); }
     .te-caret { display: inline-block; width: 7px; height: 13px; margin-left: 3px; vertical-align: -2px; background: var(--cyan); animation: te-blink 1s steps(2) infinite; }
     @keyframes te-blink { 50% { opacity: 0; } }
-    .te-cmd { font-size: 12.5px; color: var(--text); word-break: break-all; }
-    .te-prompt { color: var(--green); font-family: var(--font-mono); flex: none; }
-    .te-exec { flex: none; font-size: 10px; padding: 1px 7px; border-radius: var(--r-full); }
+
+    .te-cmd { font-size: 12.5px; color: var(--text); word-break: break-all; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .te-prompt { color: var(--green); font-family: var(--font-mono); font-weight: 700; flex: none; }
+
+    .te-exec { flex: none; font-size: 10px; padding: 1px 7px; border-radius: var(--r-full); font-weight: 500; }
     .te-exec.ok { color: var(--green); background: var(--green-dim); }
     .te-exec.fail { color: var(--red); background: var(--red-dim); }
     .te-exec.running { color: var(--cyan); background: var(--cyan-dim); animation: pulse 1.4s var(--ease) infinite; }
-    .te-output { margin: 4px 0 6px; padding: 8px 10px; max-height: 320px; overflow: auto; background: var(--bg-void); border: 1px solid var(--line-faint); border-radius: var(--r-sm); font-size: 11.5px; line-height: 1.5; color: var(--text-dim); white-space: pre-wrap; word-break: break-word; }
+
+    .te-output-wrapper { margin: 4px 0 6px; }
+    .te-output { margin: 0; padding: 8px 10px; background: var(--bg-void, #000); border: 1px solid var(--line-faint); border-radius: var(--r-sm); font-size: 11.5px; line-height: 1.5; color: var(--text-dim); white-space: pre-wrap; word-break: break-word; overflow-x: auto; }
     .te.command.failed .te-output { border-color: color-mix(in srgb, var(--red) 30%, transparent); }
-    .te-path { font-size: 12px; color: var(--text-dim); word-break: break-all; }
+
+    .te-expand-btn { display: block; width: 100%; margin-top: 2px; padding: 3px 0; border: none; background: var(--bg-raised); color: var(--text-faint); font-size: 10.5px; font-family: var(--font); cursor: pointer; border-radius: 0 0 var(--r-sm) var(--r-sm); text-align: center; transition: color 120ms, background 120ms; }
+    .te-expand-btn:hover { color: var(--text); background: var(--bg-hover); }
+
+    .te-path { font-size: 12px; color: var(--text-dim); word-break: break-all; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .te-truncated { font-size: 10.5px; color: var(--amber); margin: 2px 0 6px; }
+
+    /* ── Diff styling ── */
+    .te-diff-container { margin: 4px 0 6px; border: 1px solid var(--line-faint); border-radius: var(--r-sm); overflow: hidden; background: var(--bg-void, #000); }
+    .te-diff-stat-bar { display: flex; align-items: center; gap: 8px; padding: 4px 10px; background: var(--bg-raised); border-bottom: 1px solid var(--line-faint); font-size: 11px; }
+    .te-diff-stat { font-weight: 600; font-family: var(--font-mono); padding: 0 4px; border-radius: 3px; font-size: 10.5px; }
+    .te-diff-stat.add { color: var(--green); background: var(--green-dim); }
+    .te-diff-stat.del { color: var(--red); background: var(--red-dim); }
+    .te-diff-line-count { color: var(--text-faint); font-size: 10px; margin-left: auto; }
+    .te-diff-body { padding: 4px 0; font-size: 11.5px; line-height: 1.45; overflow-x: auto; }
+    .te-diff-line { display: flex; padding: 1px 8px; white-space: pre-wrap; word-break: break-word; }
+    .te-diff-prefix { width: 16px; flex: none; user-select: none; font-weight: bold; }
+    .te-diff-text { flex: 1; min-width: 0; }
+    .te-diff-line.add { background: color-mix(in srgb, var(--green) 12%, transparent); color: var(--green); }
+    .te-diff-line.add .te-diff-prefix { color: var(--green); }
+    .te-diff-line.del { background: color-mix(in srgb, var(--red) 12%, transparent); color: var(--red); }
+    .te-diff-line.del .te-diff-prefix { color: var(--red); }
+    .te-diff-line.ctx { color: var(--text-dim); }
+    .te-diff-line.hunk { color: var(--cyan); background: var(--cyan-dim); font-style: italic; }
+    .te-empty-diff { padding: 8px 10px; font-size: 11px; color: var(--text-faint); font-style: italic; }
+
+    /* ── Todo list styling ── */
+    .te-todo-list { margin: 4px 0 6px; padding: 6px 10px; background: var(--bg-void, #000); border: 1px solid var(--line-faint); border-radius: var(--r-sm); display: flex; flex-direction: column; gap: 4px; }
+    .te-todo-item { display: flex; align-items: baseline; gap: 8px; font-size: 12px; }
+    .te-todo-icon { font-weight: bold; flex: none; font-size: 11px; }
+    .te-todo-icon.completed { color: var(--green); }
+    .te-todo-icon.in_progress { color: var(--cyan); animation: pulse 1.4s var(--ease) infinite; }
+    .te-todo-icon.pending { color: var(--text-faint); }
+    .te-todo-item.completed .te-todo-text { color: var(--text-faint); text-decoration: line-through; }
+    .te-todo-item.in_progress .te-todo-text { color: var(--text); font-weight: 500; }
+    .te-todo-item.pending .te-todo-text { color: var(--text-dim); }
+
+    /* ── Task & Ask styling ── */
+    .te-task-body, .te-ask-body { margin: 4px 0 6px; padding: 8px 10px; background: var(--bg-void, #000); border: 1px solid var(--line-faint); border-radius: var(--r-sm); font-size: 12px; }
+    .te-task-prompt, .te-ask-q { color: var(--text-dim); margin-bottom: 6px; line-height: 1.5; white-space: pre-wrap; }
+    .te-ask-a { color: var(--green); font-weight: 500; }
+
     .te.banner { display: flex; align-items: baseline; gap: 8px; margin: 6px 0; padding: 6px 10px; border-radius: var(--r-sm); font-size: 12px; }
     .te.banner.ok { background: var(--green-dim); color: var(--green); }
     .te.banner.fail { background: var(--red-dim); color: var(--red); }

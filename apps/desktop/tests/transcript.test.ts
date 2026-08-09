@@ -171,6 +171,9 @@ describe('tool call folding', () => {
     expect(toolKind('Edit')).toBe('edit');
     expect(toolKind('Create')).toBe('edit');
     expect(toolKind('Grep')).toBe('search');
+    expect(toolKind('TodoWrite')).toBe('todo');
+    expect(toolKind('Task')).toBe('task');
+    expect(toolKind('AskUser')).toBe('ask');
     expect(toolKind('WebFetch')).toBe('other');
   });
 });
