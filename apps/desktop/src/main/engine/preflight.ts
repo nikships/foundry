@@ -36,12 +36,19 @@ export function missingCommandRefs(pipeline: PipelineDef, project: ProjectDef): 
  * to errors. Unknown envelope names are warnings so a deleted library entry
  * does not block a start (runtime falls back to generic). Callers that refuse
  * to start must filter on `level === 'error'`.
+ *
+ * `scaffold` inverts one rule: a project Foundry created empty has no test
+ * command because there is no code yet, which is a fact about a new repo rather
+ * than a misconfiguration. Blocking there would make a fresh project unable to
+ * run the very pipeline meant to fill it, so the ref stays a warning and the
+ * phase skips at runtime (`runners/code.ts`).
  */
 export function preflightForRun(
   pipeline: PipelineDef,
   agents: AgentDef[],
   commandNames: string[],
   knownEnvelopes: string[] = [],
+  opts: { scaffold?: boolean } = {},
 ): ValidationIssue[] {
   const known = new Set([...BUILTIN_ENVELOPE_KINDS, ...knownEnvelopes]);
   const issues = validatePipeline(pipeline, agents, commandNames, knownEnvelopes).filter(
@@ -68,11 +75,19 @@ export function preflightForRun(
     if (phase.kind !== 'code' || !phase.command || !('ref' in phase.command)) continue;
     const ref = phase.command.ref;
     if (!ref || have.has(ref)) continue;
-    issues.push({
-      level: 'error',
-      where: phase.name,
-      message: `project command "${ref}" is not configured — detect it from the repo or set it in Settings → Project`,
-    });
+    issues.push(
+      opts.scaffold
+        ? {
+            level: 'warning',
+            where: phase.name,
+            message: `no "${ref}" command in this new project yet — this phase will be skipped until one exists`,
+          }
+        : {
+            level: 'error',
+            where: phase.name,
+            message: `project command "${ref}" is not configured — detect it from the repo or set it in Settings → Project`,
+          },
+    );
   }
   return issues;
 }

@@ -325,6 +325,63 @@ describe('code phases', () => {
     expect(h.tracer.phases(outcome.runId)[0]!.error).toContain('is not configured');
   });
 
+  /**
+   * A project Foundry created empty has no test command because it has no code
+   * yet. Failing there would make a brand-new repo unable to run the pipeline
+   * meant to fill it, so the phase skips and says why.
+   */
+  it('skips an unconfigured project command for a project created empty', async () => {
+    const outcome = await run({
+      project: { scaffold: true },
+      pipeline: pipe(
+        [
+          codePhase(
+            'write',
+            { argv: ['sh', '-c', 'echo hi > a.txt'] },
+            { description: 'Stand in for the work a build phase would do.' },
+          ),
+          codePhase(
+            'test',
+            { ref: 'test' },
+            { description: 'Run the project test command this new repo does not have yet.' },
+          ),
+        ],
+        {
+          description: 'a new project with no test command',
+          acceptance: { kind: 'phase_flag', phase: 'test', flag: 'passed' },
+        },
+      ),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    const phases = h.tracer.phases(outcome.runId);
+    expect(phases.map((p) => p.status)).toEqual(['success', 'skipped']);
+    expect(phases[1]!.error).toContain('no "test" command');
+  });
+
+  /**
+   * The skip is scoped to the gap it exists for: once the project has the
+   * command, the phase runs for real and a failure still fails the run.
+   */
+  it('still runs the command for a scaffold project that has one', async () => {
+    const outcome = await run({
+      project: { scaffold: true, commands: [{ name: 'test', argv: ['sh', '-c', 'exit 3'] }] },
+      pipeline: pipe(
+        [
+          codePhase(
+            'test',
+            { ref: 'test' },
+            { description: 'Run the project test command, which now exists.' },
+          ),
+        ],
+        { description: 'a scaffold project that grew a test command' },
+      ),
+    });
+
+    expect(outcome.status).toBe('rejected');
+    expect(h.tracer.phases(outcome.runId)[0]!.error).toContain('exit 3');
+  });
+
   it('runs inside a worktree on its own branch by default', async () => {
     const outcome = await run({
       pipeline: pipe(

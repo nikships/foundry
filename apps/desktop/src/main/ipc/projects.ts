@@ -1,9 +1,13 @@
 import { BrowserWindow, dialog, shell } from 'electron';
 import { existsSync } from 'node:fs';
-import type { ProjectDef } from '@shared/types.js';
+import { homedir } from 'node:os';
+import { dirname } from 'node:path';
+import type { GithubAccount, ProjectDef } from '@shared/types.js';
 import {
   IPC,
   type DetectCommandsResult,
+  type NewRepoInput,
+  type NewRepoResult,
   type SaveResult,
   type TryCommandResult,
 } from '@shared/ipc-contract.js';
@@ -12,6 +16,7 @@ import { sniffCommands } from '../engine/detect.js';
 import { adapterFor } from '../cli/index.js';
 import { currentBranch, isRepo } from '../engine/git.js';
 import { checkProject } from '../system/doctor.js';
+import { createRepo, githubAccount } from '../system/gh.js';
 import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
 import { noIssues, notifySettings } from './shared.js';
@@ -58,6 +63,43 @@ export function register(ctx: Ctx, handle: Handle): void {
     }
     notifySettings(ctx);
     return ctx.projects.get(project.id) ?? project;
+  });
+
+  handle(IPC.projectsGithubAccount, (): Promise<GithubAccount> => githubAccount());
+
+  handle(IPC.projectsChooseParentDir, async (): Promise<string | null> => {
+    const window = BrowserWindow.getFocusedWindow() ?? ctx.window();
+    // The parent of an existing project is where the next repo most likely
+    // belongs; home is the fallback for a first-ever project.
+    const known = ctx.projects.list().at(-1)?.path;
+    const result = await dialog.showOpenDialog(window!, {
+      title: 'Where should the new repository live?',
+      properties: ['openDirectory', 'createDirectory'],
+      defaultPath: known ? dirname(known) : homedir(),
+      message: 'Foundry clones the new repository into this folder.',
+    });
+    return result.canceled ? null : (result.filePaths[0] ?? null);
+  });
+
+  /**
+   * Creates on GitHub through the operator's own gh, then registers the clone.
+   *
+   * No manifest sniffing here, unlike `projects:add`: a repository created
+   * moments ago has nothing to sniff, and the `scaffold` flag is what tells the
+   * engine to skip command-shaped phases until the project grows one.
+   */
+  handle(IPC.projectsCreateGithub, async (input: NewRepoInput): Promise<NewRepoResult> => {
+    const created = await createRepo(input);
+    if (!created.ok || !created.path) return created;
+
+    const path = created.path;
+    if (!(await isRepo(path))) {
+      return { ...created, ok: false, detail: `${path} was cloned but is not a git repository` };
+    }
+    const curBranch = await currentBranch(path);
+    const project = ctx.projects.add(path, curBranch || undefined, { scaffold: true });
+    notifySettings(ctx);
+    return { ...created, project: ctx.projects.get(project.id) ?? project };
   });
 
   handle(IPC.projectsSave, (project: ProjectDef): SaveResult<ProjectDef[]> => {

@@ -50,6 +50,15 @@ export function decideAcceptance(input: AcceptanceInput): Verdict {
       if (!phase) {
         return { accepted: false, reason: `phase "${acceptance.phase}" never ran` };
       }
+      // A skipped phase produced no verdict either way. Treating it as a
+      // rejection would judge the run on a check that never happened, which is
+      // what a project with no test command yet would hit on every run.
+      if (phase.status === 'skipped') {
+        return {
+          accepted: true,
+          reason: `"${phase.name}" was skipped (${phase.error || 'nothing to run'}), so it could not fail the run`,
+        };
+      }
       if (phase.status !== 'success') {
         return { accepted: false, reason: `phase "${phase.name}" is ${phase.status}` };
       }

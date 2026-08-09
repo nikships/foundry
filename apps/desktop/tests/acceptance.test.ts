@@ -166,6 +166,15 @@ const CASES: Case[] = [
     accepted: false,
     reason: 'is fail',
   },
+  {
+    // A project with no test command yet skips the phase. Judging the run on a
+    // check that never happened would reject every run a new repo makes.
+    name: 'a skipped phase could not fail the run',
+    acceptance: { kind: 'phase_flag', phase: 'test', flag: 'passed' },
+    phases: [phase('test', 'skipped')],
+    accepted: true,
+    reason: 'was skipped',
+  },
 
   // phase_flag / approved
   {

@@ -163,6 +163,75 @@ export function useRun(
   return { view, refresh: tick, eventsByPhase, envelopesByPhase, gatesByPhase };
 }
 
+/**
+ * Runs across every project for the sidebar: everything live plus the most
+ * recently finished, newest first. Trace DBs are sharded per project, so this
+ * fans one list call out per project and merges.
+ */
+export function useAllProjectRuns(recentLimit = 5): { runs: RunRow[] } {
+  const { projects } = useApp();
+  const [runs, setRuns] = useState<RunRow[]>([]);
+  const timerRef = useRef<number | null>(null);
+  const inFlightRef = useRef(false);
+  const disposedRef = useRef(false);
+  const runsRef = useRef(runs);
+  const tickRef = useRef<() => Promise<void>>(async () => {});
+  useEffect(() => {
+    runsRef.current = runs;
+  }, [runs]);
+
+  const projectIds = useMemo(() => projects.map((p) => p.id), [projects]);
+
+  const schedule = useCallback(() => {
+    if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    if (disposedRef.current) return;
+    const anyLive = runsRef.current.some((r) => r.status === 'running');
+    timerRef.current = window.setTimeout(() => void tickRef.current(), anyLive ? 1500 : 5000);
+  }, []);
+
+  const tick = useCallback(async (): Promise<void> => {
+    if (inFlightRef.current || disposedRef.current) return;
+    if (!projectIds.length) {
+      setRuns([]);
+      return;
+    }
+    inFlightRef.current = true;
+    try {
+      const lists = await Promise.all(projectIds.map((id) => api.runs.list(id, false)));
+      const all = lists.flat();
+      const byStart = (a: RunRow, b: RunRow): number => b.startedAt.localeCompare(a.startedAt);
+      const running = all.filter((r) => r.status === 'running').sort(byStart);
+      const finished = all
+        .filter((r) => r.status !== 'running')
+        .sort((a, b) => (b.endedAt ?? b.startedAt).localeCompare(a.endedAt ?? a.startedAt))
+        .slice(0, recentLimit);
+      setRuns([...running, ...finished]);
+    } catch {
+      // The sidebar list is ambient; a failed poll just waits for the next.
+    } finally {
+      inFlightRef.current = false;
+      schedule();
+    }
+  }, [projectIds, recentLimit, schedule]);
+
+  useEffect(() => {
+    tickRef.current = tick;
+  }, [tick]);
+
+  useEffect(() => {
+    disposedRef.current = false;
+    void tick();
+    const off = api.on('runs-changed', () => void tick());
+    return () => {
+      disposedRef.current = true;
+      off();
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    };
+  }, [tick]);
+
+  return { runs };
+}
+
 /** The runs list for a project, polled while any run is live. */
 export function useRunList(
   projectId: string,

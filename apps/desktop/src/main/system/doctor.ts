@@ -219,14 +219,20 @@ export async function checkProject(project: ProjectDef): Promise<DoctorCheck[]> 
   });
 
   const hasCommands = project.commands.length > 0;
+  // A project created empty from Foundry has no commands because it has no code
+  // yet. Reporting that as a fault would flag a brand-new repo as broken on the
+  // first screen someone sees after creating it.
+  const commandsOk = hasCommands || project.scaffold === true;
   checks.push({
     id: 'commands',
     label: 'Project commands',
-    ok: hasCommands,
+    ok: commandsOk,
     detail: hasCommands
       ? project.commands.map((c) => c.name).join(', ')
-      : 'none configured: a pipeline with a test phase cannot run, and a placeholder test proves nothing. Detect from repo fills these in',
-    fix: hasCommands ? undefined : { kind: 'open-settings', value: 'project-commands' },
+      : project.scaffold
+        ? 'none yet: this project was created empty, so test phases are skipped until it has a test command'
+        : 'none configured: a pipeline with a test phase cannot run, and a placeholder test proves nothing. Detect from repo fills these in',
+    fix: commandsOk ? undefined : { kind: 'open-settings', value: 'project-commands' },
   });
 
   const worktrees = await listWorktrees(project.path);

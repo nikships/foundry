@@ -1,3 +1,4 @@
+import NewProjectWizard from '../../components/NewProjectWizard.js';
 import { useApp } from '../../stores/app.js';
 import { useOnboarding } from './OnboardingContext.js';
 import { StepFooter } from './shared.js';
@@ -17,6 +18,10 @@ export default function ProjectScreen(): React.JSX.Element {
     busy,
     error,
     addProject,
+    creatingProject,
+    startCreateProject,
+    cancelCreateProject,
+    projectCreated,
     removeProject,
     commitProjectRename,
     canEnterProject,
@@ -286,35 +291,58 @@ export default function ProjectScreen(): React.JSX.Element {
               </svg>
               <p className={styles.obProjectEmptyTitle}>No repositories yet</p>
               <p className={styles.obProjectEmptyBody}>
-                Pick a folder with a <code>.git</code> directory. Foundry never writes to your
-                working tree — only to worktrees it creates.
+                Pick a folder with a <code>.git</code> directory, or have Foundry create a new
+                repository on GitHub. Foundry never writes to your working tree — only to worktrees
+                it creates.
               </p>
             </div>
           )}
 
-          <button
-            type="button"
-            className={styles.obProjectAdd}
-            disabled={busy}
-            onClick={() => void addProject()}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 14 14"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.75"
-              aria-hidden="true"
+          <div className={styles.obProjectActions}>
+            <button
+              type="button"
+              className={styles.obProjectAdd}
+              disabled={busy}
+              onClick={() => void addProject()}
             >
-              <path d="M7 2.5v9M2.5 7h9" />
-            </svg>
-            {busy
-              ? 'Opening…'
-              : projects.length
-                ? 'Add another repository…'
-                : 'Choose a repository…'}
-          </button>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 14 14"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                aria-hidden="true"
+              >
+                <path d="M7 2.5v9M2.5 7h9" />
+              </svg>
+              {busy
+                ? 'Opening…'
+                : projects.length
+                  ? 'Add another repository…'
+                  : 'Choose a repository…'}
+            </button>
+
+            <button
+              type="button"
+              className={styles.obProjectAdd}
+              disabled={busy}
+              onClick={startCreateProject}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                aria-hidden="true"
+              >
+                <path d="M12 3a9 9 0 0 0-2.85 17.54c.45.08.62-.2.62-.44v-1.7c-2.5.55-3.03-1.06-3.03-1.06-.41-1.04-1-1.32-1-1.32-.82-.56.06-.55.06-.55.9.07 1.38.93 1.38.93.8 1.38 2.11.98 2.63.75.08-.58.31-.98.57-1.2-2-.23-4.1-1-4.1-4.45 0-.98.35-1.79.93-2.42-.1-.23-.4-1.15.08-2.4 0 0 .76-.24 2.48.92a8.6 8.6 0 0 1 4.52 0c1.72-1.16 2.47-.92 2.47-.92.49 1.25.18 2.17.09 2.4.58.63.93 1.44.93 2.42 0 3.46-2.11 4.22-4.12 4.44.32.28.61.83.61 1.68v2.5c0 .24.16.52.62.43A9 9 0 0 0 12 3Z" />
+              </svg>
+              Create a new project…
+            </button>
+          </div>
         </section>
 
         {error ? (
@@ -344,6 +372,15 @@ export default function ProjectScreen(): React.JSX.Element {
           hint={!canEnterProject ? projectBlockingHint : undefined}
         />
       </main>
+
+      {creatingProject && (
+        <NewProjectWizard
+          onClose={cancelCreateProject}
+          onCreated={async (project) => {
+            await projectCreated(project);
+          }}
+        />
+      )}
     </div>
   );
 }

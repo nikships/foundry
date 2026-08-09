@@ -10,9 +10,18 @@
  */
 
 import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { promisify } from 'node:util';
-import type { GhStatus, PrChecks, PrMergeMethod, PullRequest } from '@shared/types.js';
-import type { PrAction, PrList } from '@shared/ipc-contract.js';
+import type {
+  GhStatus,
+  GithubAccount,
+  PrChecks,
+  PrMergeMethod,
+  PullRequest,
+} from '@shared/types.js';
+import type { NewRepoInput, NewRepoResult, PrAction, PrList } from '@shared/ipc-contract.js';
 import { preferredRemote, pushBranch } from '../engine/git.js';
 import { spawnEnv } from './env.js';
 
@@ -92,6 +101,128 @@ export async function ghStatus(repo: string, opts: GhOptions = {}): Promise<GhSt
     detail: name ? `gh is signed in; repo resolves to ${name}` : 'gh is signed in',
     repo: name,
   };
+}
+
+/**
+ * Who gh is signed in as. `ghStatus` answers "can this repo do PRs", which
+ * needs a checkout; creating a repository happens before one exists, so the
+ * account is asked for on its own, from a directory that always exists.
+ *
+ * A failure to list orgs is not a failure to be signed in: most people create
+ * under their own login, so the owner list degrades to just that.
+ */
+export async function githubAccount(opts: GhOptions = {}): Promise<GithubAccount> {
+  const bin = opts.bin ?? 'gh';
+  const cwd = homedir();
+  const version = await gh(bin, cwd, ['--version'], 10_000);
+  if (!version.ok) {
+    return { available: false, detail: 'GitHub CLI (gh) is not installed or not on PATH' };
+  }
+  const auth = await gh(bin, cwd, ['auth', 'status'], 15_000);
+  if (!auth.ok) {
+    return { available: false, detail: 'gh is not signed in — run `gh auth login` in a terminal' };
+  }
+  const user = await gh(bin, cwd, ['api', 'user'], 30_000);
+  const login = safeParse<{ login?: string }>(user.stdout)?.login;
+  if (!user.ok || !login) {
+    return {
+      available: false,
+      detail: firstLine(user) || 'gh is signed in but could not read your account',
+    };
+  }
+
+  const orgsResult = await gh(bin, cwd, ['api', 'user/orgs', '--paginate'], 30_000);
+  const orgs = orgsResult.ok
+    ? (safeParse<{ login?: string }[]>(orgsResult.stdout) ?? [])
+        .map((o) => o?.login)
+        .filter((name): name is string => !!name)
+    : [];
+
+  return {
+    available: true,
+    detail: `signed in as ${login}`,
+    login,
+    owners: [login, ...orgs.filter((name) => name !== login)],
+  };
+}
+
+/**
+ * GitHub's own rule, applied before the network call so a bad name costs a
+ * keystroke rather than a round trip. `.` and `..` pass the character class but
+ * would name the parent directory rather than a new one.
+ */
+const REPO_NAME = /^[A-Za-z0-9._-]{1,100}$/;
+
+export function repoNameIssue(name: string): string | null {
+  const trimmed = name.trim();
+  if (!trimmed) return 'a repository needs a name';
+  if (trimmed === '.' || trimmed === '..') return `"${trimmed}" is not a repository name`;
+  if (!REPO_NAME.test(trimmed)) {
+    return 'use letters, numbers, dots, hyphens and underscores only';
+  }
+  return null;
+}
+
+/**
+ * Create on GitHub, then clone. `--add-readme` is not decoration: a repository
+ * with no commits has no HEAD, `git worktree add` refuses it, and every run
+ * would die at isolation before the first agent turn. One commit makes the
+ * clone a repo Foundry can actually branch from.
+ *
+ * Visibility is passed as an explicit flag on every call, never defaulted by
+ * gh, so "private" is a fact about the argv rather than a hope about config.
+ */
+export async function createRepo(
+  input: NewRepoInput,
+  opts: GhOptions = {},
+): Promise<NewRepoResult> {
+  const bin = opts.bin ?? 'gh';
+  const name = input.name.trim();
+  const nameIssue = repoNameIssue(name);
+  if (nameIssue) return { ok: false, detail: nameIssue };
+
+  const parentDir = input.parentDir.trim();
+  if (!parentDir || !existsSync(parentDir)) {
+    return { ok: false, detail: `${parentDir || 'the chosen folder'} does not exist` };
+  }
+  const path = join(parentDir, name);
+  if (existsSync(path)) {
+    return { ok: false, detail: `${path} already exists — pick another name or folder` };
+  }
+
+  const owner = input.owner?.trim();
+  const target = owner ? `${owner}/${name}` : name;
+  const argv = [
+    'repo',
+    'create',
+    target,
+    `--${input.visibility}`,
+    '--add-readme',
+    '--clone',
+    ...(input.description?.trim() ? ['--description', input.description.trim()] : []),
+  ];
+
+  const created = await gh(bin, parentDir, argv, 180_000);
+  if (!created.ok) {
+    return { ok: false, detail: firstLine(created) || 'gh repo create failed' };
+  }
+  // gh reports success even when the clone step is the part that failed, so the
+  // directory is the evidence, not the exit code.
+  if (!existsSync(path)) {
+    return {
+      ok: false,
+      detail: `gh created ${target} but no clone landed at ${path}`,
+      nameWithOwner: target,
+    };
+  }
+
+  const url =
+    `${created.stdout}\n${created.stderr}`
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => /^https:\/\/github\.com\//.test(line)) ?? `https://github.com/${target}`;
+
+  return { ok: true, detail: `created ${target}`, url, nameWithOwner: target, path };
 }
 
 interface PrRef {

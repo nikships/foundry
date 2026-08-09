@@ -17,6 +17,7 @@ import type {
   EventRow,
   GateResultRow,
   GhStatus,
+  GithubAccount,
   InterruptAnswer,
   MaintenanceReport,
   ModelInfo,
@@ -146,6 +147,32 @@ export interface WorktreeAction {
   detail: string;
 }
 
+/**
+ * Everything creating a repository needs and nothing else. Owner is optional
+ * because the signed-in login is the answer for most people, and a question
+ * whose answer is already known is not worth a step.
+ */
+export interface NewRepoInput {
+  /** Repo name only; the owner travels separately so it can be defaulted. */
+  name: string;
+  owner?: string;
+  visibility: 'private' | 'public';
+  description?: string;
+  /** Where the clone lands: the new repo becomes `${parentDir}/${name}`. */
+  parentDir: string;
+}
+
+export interface NewRepoResult {
+  ok: boolean;
+  /** gh's own words when it refused, so the reason is diagnosable. */
+  detail: string;
+  /** Present only on success: the project is already registered. */
+  project?: ProjectDef;
+  url?: string;
+  nameWithOwner?: string;
+  path?: string;
+}
+
 /** The outcome of a gh action, with the PR's coordinates when one exists. */
 export interface PrAction {
   ok: boolean;
@@ -168,6 +195,15 @@ export interface FoundryApi {
   projects: {
     list(): Promise<ProjectDef[]>;
     add(): Promise<ProjectDef | null>;
+    /** Who gh is signed in as, so the create flow can name the owner up front. */
+    githubAccount(): Promise<GithubAccount>;
+    /** Folder picker for where a new repo should be cloned. Null when cancelled. */
+    chooseParentDir(): Promise<string | null>;
+    /**
+     * Creates the repo on GitHub through the operator's own gh, clones it, and
+     * registers the clone as a project. Foundry holds no GitHub token.
+     */
+    createGithub(input: NewRepoInput): Promise<NewRepoResult>;
     save(project: ProjectDef): Promise<SaveResult<ProjectDef[]>>;
     remove(id: string): Promise<ProjectDef[]>;
     export(id: string): Promise<string | null>;
@@ -326,6 +362,9 @@ export const IPC = {
   settingsPatch: 'settings:patch',
   projectsList: 'projects:list',
   projectsAdd: 'projects:add',
+  projectsGithubAccount: 'projects:githubAccount',
+  projectsChooseParentDir: 'projects:chooseParentDir',
+  projectsCreateGithub: 'projects:createGithub',
   projectsSave: 'projects:save',
   projectsRemove: 'projects:remove',
   projectsExport: 'projects:export',

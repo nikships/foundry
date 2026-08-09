@@ -23,6 +23,7 @@ export const projectSchema = z.object({
   allowedCommands: z.array(z.string()),
   ownRoster: z.boolean(),
   ownPipelines: z.boolean(),
+  scaffold: z.boolean().optional(),
   addedAt: z.string(),
 });
 
@@ -62,11 +63,12 @@ export class ProjectStore {
     return this.list().find((p) => p.id === id) ?? null;
   }
 
-  add(path: string, baseRef?: string): ProjectDef {
+  add(path: string, baseRef?: string, opts: { scaffold?: boolean } = {}): ProjectDef {
     const existing = this.list().find((p) => p.path === path);
     if (existing) return existing;
     const project = defaultProject(path);
     if (baseRef) project.baseRef = baseRef;
+    if (opts.scaffold) project.scaffold = true;
     this.store.update((current) => [...current, project]);
     return project;
   }

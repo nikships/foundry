@@ -229,6 +229,20 @@ export interface GhStatus {
   repo?: string;
 }
 
+/**
+ * Who gh is signed in as, asked without a repo in hand. Creating a repository
+ * happens before any local checkout exists, which is the one question
+ * `ghStatus` cannot answer: it resolves the repo of a directory.
+ */
+export interface GithubAccount {
+  available: boolean;
+  detail: string;
+  /** The authenticated login, which is also the default owner for a new repo. */
+  login?: string;
+  /** Owners a repo can be created under: the login first, then its orgs. */
+  owners?: string[];
+}
+
 export interface ProjectCommand {
   name: string;
   argv: string[];
@@ -247,6 +261,14 @@ export interface ProjectDef {
   allowedCommands: string[];
   ownRoster: boolean;
   ownPipelines: boolean;
+  /**
+   * Created empty from Foundry rather than pointed at an existing checkout, so
+   * it has no build or test command yet. Code phases whose `{ref}` is still
+   * unconfigured skip instead of failing the run, and start-time detection does
+   * not spend an agent turn looking for commands that cannot exist. Cleared as
+   * soon as a command is found.
+   */
+  scaffold?: boolean;
   addedAt: string;
 }
 

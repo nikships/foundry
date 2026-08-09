@@ -214,6 +214,12 @@ export function createMockFoundryApi(): FoundryApi {
     projects: {
       list: async () => [...MOCK_PROJECTS],
       add: async () => null,
+      githubAccount: async () => ({
+        available: false,
+        detail: 'creating a repository needs the gh CLI, which the web preview cannot reach',
+      }),
+      chooseParentDir: async () => null,
+      createGithub: async () => ({ ok: false, detail: 'Not available in web preview.' }),
       save: async (project): Promise<SaveResult<ProjectDef[]>> => {
         const idx = MOCK_PROJECTS.findIndex((p) => p.id === project.id);
         if (idx >= 0) MOCK_PROJECTS[idx] = project;

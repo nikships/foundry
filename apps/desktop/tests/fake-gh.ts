@@ -28,6 +28,17 @@ export interface FakeGhConfig {
   prList?: unknown[];
   /** `gh pr merge` fails with this message when set. */
   mergeError?: string;
+  /** `gh api user` login; unset means the call fails like a broken token. */
+  login?: string;
+  /** `gh api user/orgs` answer. */
+  orgs?: string[];
+  /** `gh repo create` fails with this message when set. */
+  repoCreateError?: string;
+  /**
+   * `gh repo create --clone` exits 0 but leaves no directory, which is what a
+   * created repo whose clone step failed looks like from the outside.
+   */
+  cloneSilentlyFails?: boolean;
 }
 
 const SCRIPT = String.raw`#!/usr/bin/env node
@@ -47,6 +58,39 @@ if (args[0] === '--version') {
 if (args[0] === 'auth' && args[1] === 'status') {
   if (cfg.authed === false) die('You are not logged into any GitHub hosts.');
   process.stdout.write('Logged in to github.com\n');
+  process.exit(0);
+}
+if (args[0] === 'api' && args[1] === 'user') {
+  if (!cfg.login) die('HTTP 401: Bad credentials');
+  process.stdout.write(JSON.stringify({ login: cfg.login }) + '\n');
+  process.exit(0);
+}
+if (args[0] === 'api' && args[1] === 'user/orgs') {
+  process.stdout.write(JSON.stringify((cfg.orgs ?? []).map((login) => ({ login }))) + '\n');
+  process.exit(0);
+}
+if (args[0] === 'repo' && args[1] === 'create') {
+  if (cfg.repoCreateError) die(cfg.repoCreateError);
+  const target = args[2];
+  const name = target.includes('/') ? target.split('/')[1] : target;
+  // --clone is what makes this real: the flow reads the working tree it lands
+  // in, so the fake has to produce a repo with a commit, exactly as the README
+  // flag does. A cloneless fake would pass while the real one broke isolation.
+  if (args.includes('--clone') && !cfg.cloneSilentlyFails) {
+    const dest = path.join(process.cwd(), name);
+    const { execFileSync } = require('node:child_process');
+    const run = (argv) => execFileSync(argv[0], argv.slice(1), { cwd: dest, stdio: 'ignore' });
+    fs.mkdirSync(dest, { recursive: true });
+    execFileSync('git', ['init', '-q', '-b', 'main', dest], { stdio: 'ignore' });
+    run(['git', 'config', 'user.email', 'test@foundry.local']);
+    run(['git', 'config', 'user.name', 'Foundry Test']);
+    if (args.includes('--add-readme')) {
+      fs.writeFileSync(path.join(dest, 'README.md'), '# ' + name + '\n');
+      run(['git', 'add', '-A']);
+      run(['git', 'commit', '-qm', 'Initial commit']);
+    }
+  }
+  process.stdout.write('https://github.com/' + (target.includes('/') ? target : 'me/' + target) + '\n');
   process.exit(0);
 }
 if (args[0] === 'repo' && args[1] === 'view') {

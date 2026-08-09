@@ -57,8 +57,13 @@ export function register(ctx: Ctx, handle: Handle): void {
     const missing = missingCommandRefs(pipeline, project);
     if (missing.length) {
       const projectPath = project.path;
+      // A project Foundry created empty has nothing for an agent to find, so
+      // asking one costs a turn to learn what is already known. Manifest
+      // sniffing still runs: it is free, and it starts answering the moment a
+      // run writes the first package.json.
+      const scaffold = project.scaffold === true;
       const ensured = await ensureMissingCommands(project, missing, {
-        useAgent: true,
+        useAgent: !scaffold,
         detectWithAgent: async () => {
           const settings = ctx.settings.get();
           // Start-time fill honours the operator's detection choice, so the
@@ -80,10 +85,14 @@ export function register(ctx: Ctx, handle: Handle): void {
           return parseDetectReply(turn.text).commands;
         },
         save: (next) => {
-          const result = ctx.projects.save(next);
-          if (!result.ok) return next;
+          // Finding a command means the project has grown real code, so it is
+          // no longer a scaffold: from here it gets the strict treatment, and a
+          // later missing command is a misconfiguration again.
+          const settled = next.scaffold ? { ...next, scaffold: false } : next;
+          const result = ctx.projects.save(settled);
+          if (!result.ok) return settled;
           notifySettings(ctx);
-          return ctx.projects.get(next.id) ?? next;
+          return ctx.projects.get(settled.id) ?? settled;
         },
       });
       project = ensured.project;
@@ -95,6 +104,7 @@ export function register(ctx: Ctx, handle: Handle): void {
       agents,
       project.commands.map((c) => c.name),
       knownEnvelopes,
+      { scaffold: project.scaffold === true },
     );
     if (issues.some((i) => i.level === 'error')) return { ok: false, issues };
     const runId = ctx.registry.start({

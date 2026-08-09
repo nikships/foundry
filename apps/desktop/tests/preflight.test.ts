@@ -121,6 +121,25 @@ describe('preflightForRun', () => {
     expect(preflightForRun(pipeline, agents, ['test'])).toEqual([]);
   });
 
+  /**
+   * A project Foundry created empty has no test command because it has no code
+   * yet. Blocking the start would mean a brand-new repo could never run the
+   * pipeline meant to fill it.
+   */
+  it('demotes a missing ref to a warning for a project created empty', () => {
+    const pipeline = pipe([
+      {
+        name: 'test',
+        kind: 'code',
+        description: 'Run the project test suite before accepting.',
+        command: { ref: 'test' },
+      },
+    ]);
+    const issues = preflightForRun(pipeline, agents, [], [], { scaffold: true });
+    expect(issues.some((i) => i.level === 'error')).toBe(false);
+    expect(issues.some((i) => i.level === 'warning' && i.message.includes('skipped'))).toBe(true);
+  });
+
   it('does not require project commands for argv-only pipelines', () => {
     const pipeline = pipe([
       {

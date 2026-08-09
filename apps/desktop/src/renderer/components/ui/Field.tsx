@@ -1,6 +1,7 @@
 import type {
   InputHTMLAttributes,
   ReactNode,
+  Ref,
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from 'react';
@@ -43,11 +44,17 @@ export function Field({
 interface TextInputProps extends InputHTMLAttributes<HTMLInputElement> {
   /** Monospace variant — paths, commands, identifiers. */
   mono?: boolean;
+  /** Ref to the underlying input (e.g. for autofocus). */
+  ref?: Ref<HTMLInputElement>;
 }
 
-export function TextInput({ mono, className, ...rest }: TextInputProps): React.JSX.Element {
+export function TextInput({ mono, className, ref, ...rest }: TextInputProps): React.JSX.Element {
   return (
-    <input className={['input', mono && 'mono', className].filter(Boolean).join(' ')} {...rest} />
+    <input
+      ref={ref}
+      className={['input', mono && 'mono', className].filter(Boolean).join(' ')}
+      {...rest}
+    />
   );
 }
 

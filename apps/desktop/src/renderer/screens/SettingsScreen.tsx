@@ -106,7 +106,14 @@ function Toggle({
   );
 }
 
-export default function SettingsScreen({ pane: initialPane }: { pane: string }): React.JSX.Element {
+export default function SettingsScreen({
+  pane: initialPane,
+  onNewProject,
+}: {
+  pane: string;
+  /** Create a repository on GitHub instead of pointing at an existing checkout. */
+  onNewProject?: () => void;
+}): React.JSX.Element {
   const { settings, project, projects, refreshAll, patchSettings } = useApp();
   const [pane, setPane] = useState<Pane>((initialPane as Pane) ?? 'general');
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -935,11 +942,15 @@ export default function SettingsScreen({ pane: initialPane }: { pane: string }):
                   ) : (
                     <div className={styles.settingsEmpty}>
                       <p className="faint">
-                        No project selected. Add a git repository to configure.
+                        No project selected. Add a git repository you already have, or create a new
+                        one on GitHub.
                       </p>
                       <Button variant="primary" onClick={() => void addProject()}>
                         Add a project…
                       </Button>
+                      {onNewProject && (
+                        <Button onClick={onNewProject}>Create a new project…</Button>
+                      )}
                     </div>
                   )}
                 </>

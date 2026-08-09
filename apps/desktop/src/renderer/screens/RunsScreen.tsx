@@ -14,10 +14,13 @@ import styles from './RunsScreen.module.css';
 export default function RunsScreen({
   onOpen,
   onAddProject,
+  onNewProject,
   onOpenSettings,
 }: {
   onOpen: (runId: string) => void;
   onAddProject?: () => void;
+  /** Create a repository on GitHub instead of pointing at an existing checkout. */
+  onNewProject?: () => void;
   onOpenSettings?: (pane: string) => void;
 }): React.JSX.Element {
   const { pipelines, project, projectId, refreshAll } = useApp();
@@ -232,13 +235,14 @@ export default function RunsScreen({
       {!project ? (
         <EmptyState
           title="No project yet"
-          body="Foundry runs against a git repository. Add one to get started."
+          body="Foundry runs against a git repository. Point it at one you already have, or create a new one on GitHub."
         >
           {onAddProject && (
             <Button variant="primary" onClick={onAddProject}>
               Add a project…
             </Button>
           )}
+          {onNewProject && <Button onClick={onNewProject}>Create a new project…</Button>}
         </EmptyState>
       ) : (
         <div className={`${styles.list} scroll`}>

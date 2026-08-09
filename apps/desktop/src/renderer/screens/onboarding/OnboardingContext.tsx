@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import type { CliDescriptor, DoctorCheck } from '@shared/types.js';
+import type { CliDescriptor, DoctorCheck, ProjectDef } from '@shared/types.js';
 import type { StepId } from './shared.js';
 import { STEPS } from './shared.js';
 import { api } from '../../api.js';
@@ -38,6 +38,11 @@ export type OnboardingContextValue = {
   error: string;
   setError: (s: string) => void;
   addProject: () => Promise<void>;
+  /** True while the create-a-repository wizard is open over this step. */
+  creatingProject: boolean;
+  startCreateProject: () => void;
+  cancelCreateProject: () => void;
+  projectCreated: (project: ProjectDef) => Promise<void>;
   removeProject: (id: string) => Promise<void>;
   commitProjectRename: (id: string) => Promise<void>;
   canEnterProject: boolean;
@@ -81,6 +86,7 @@ export function OnboardingProvider({
     Object.fromEntries(projects.map((p) => [p.id, p.name])),
   );
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [creatingProject, setCreatingProject] = useState(false);
 
   const step: StepId = STEPS[stepIndex]!.id;
 
@@ -197,6 +203,22 @@ export function OnboardingProvider({
     } finally {
       setBusy(false);
     }
+  };
+
+  const startCreateProject = (): void => {
+    setError('');
+    setCreatingProject(true);
+  };
+  const cancelCreateProject = (): void => setCreatingProject(false);
+
+  /**
+   * The wizard registered the project already; this selects it so the step's
+   * "Enter Foundry" button is satisfied without a second click.
+   */
+  const projectCreated = async (project: ProjectDef): Promise<void> => {
+    await refreshAll();
+    setSelectedId(project.id);
+    selectProject(project.id);
   };
 
   const removeProjectConfirm = useConfirmAction(
@@ -321,6 +343,10 @@ export function OnboardingProvider({
     error,
     setError,
     addProject,
+    creatingProject,
+    startCreateProject,
+    cancelCreateProject,
+    projectCreated,
     removeProject,
     commitProjectRename,
     canEnterProject,

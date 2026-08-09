@@ -140,6 +140,18 @@ export class CodePhaseRunner implements PhaseRunner {
     if ('ref' in spec) {
       const command = ctx.project.commands.find((c) => c.name === spec.ref);
       if (!command) {
+        // A project Foundry created empty has no test command because it has no
+        // code yet. Failing the run would mean a new repo could never use the
+        // pipeline meant to fill it; skipping records the gap honestly and lets
+        // the phase become real as soon as the command exists.
+        if (ctx.project.scaffold) {
+          return {
+            ok: true,
+            skip: true,
+            argv: [],
+            detail: `no "${spec.ref}" command in this project yet — nothing to run`,
+          };
+        }
         return {
           ok: false,
           detail: `project command "${spec.ref}" is not configured — set it in Settings → Project`,

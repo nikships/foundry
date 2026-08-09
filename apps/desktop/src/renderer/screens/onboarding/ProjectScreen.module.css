@@ -441,6 +441,11 @@
   font-size: var(--text-xs);
   color: var(--cyan);
 }
+.ob-project-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+}
 .ob-project-add {
   margin-top: var(--s5);
   display: inline-flex;

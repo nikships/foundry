@@ -12,9 +12,10 @@ import PullRequestsScreen from './screens/PullRequestsScreen.js';
 import SettingsScreen from './screens/SettingsScreen.js';
 import OnboardingShell from './screens/onboarding/OnboardingShell.js';
 import InterruptSheet from './components/InterruptSheet.js';
+import NewProjectWizard from './components/NewProjectWizard.js';
 import ConfirmModal from './components/ConfirmModal.js';
 import UpdateBanner from './components/UpdateBanner.js';
-import type { UpdateStatus } from '@shared/types.js';
+import type { ProjectDef, UpdateStatus } from '@shared/types.js';
 import styles from './App.module.css';
 
 export type View = 'runs' | 'inspector' | 'pipelines' | 'roster' | 'prs' | 'settings';
@@ -29,8 +30,9 @@ const MENU_VIEWS: Record<string, View> = {
 };
 
 function AppInner(): React.JSX.Element {
-  const { ready, settings, interrupts, refreshAll } = useApp();
+  const { ready, settings, interrupts, refreshAll, selectProject } = useApp();
   const [view, setView] = useState<View>('runs');
+  const [creatingProject, setCreatingProject] = useState(false);
   const [openRunId, setOpenRunId] = useState('');
   const [inspectorRunId, setInspectorRunId] = useState('');
   const [settingsPane, setSettingsPane] = useState('general');
@@ -107,6 +109,18 @@ function AppInner(): React.JSX.Element {
     if (added) await refreshAll();
   }, [refreshAll]);
 
+  const newProject = useCallback((): void => setCreatingProject(true), []);
+
+  // The wizard has already registered the project; this makes it the one the
+  // rest of the app is looking at, so "created" and "selected" are one step.
+  const projectCreated = useCallback(
+    async (project: ProjectDef): Promise<void> => {
+      await refreshAll();
+      selectProject(project.id);
+    },
+    [refreshAll, selectProject],
+  );
+
   const finishOnboarding = async (): Promise<void> => {
     await api.settings.patch({ onboarded: true });
     await refreshAll();
@@ -154,6 +168,7 @@ function AppInner(): React.JSX.Element {
       <RunsScreen
         onOpen={openRun}
         onAddProject={() => void addProject()}
+        onNewProject={newProject}
         onOpenSettings={(pane) => {
           setSettingsPane(pane);
           go('settings');
@@ -183,7 +198,7 @@ function AppInner(): React.JSX.Element {
   } else if (view === 'prs') {
     main = <PullRequestsScreen onOpenRun={openRun} />;
   } else if (view === 'settings') {
-    main = <SettingsScreen pane={settingsPane} />;
+    main = <SettingsScreen pane={settingsPane} onNewProject={newProject} />;
   }
 
   return (
@@ -199,11 +214,14 @@ function AppInner(): React.JSX.Element {
             openRunId={openRunId}
             onNavigate={go}
             onAddProject={addProject}
+            onNewProject={newProject}
             onOpenSettings={(pane) => {
               setSettingsPane(pane);
               go('settings');
             }}
             onOpenInterruptRun={openRun}
+            onOpenInspector={openInspector}
+            inspectorRunId={inspectorRunId}
           />
           <div className={`prism-sidebar-divider ${styles.sidebarDivider}`} aria-hidden />
           <main className={styles.content}>{main}</main>
@@ -215,6 +233,9 @@ function AppInner(): React.JSX.Element {
       )}
 
       {activeInterrupt && <InterruptSheet interrupt={activeInterrupt} />}
+      {creatingProject && (
+        <NewProjectWizard onClose={() => setCreatingProject(false)} onCreated={projectCreated} />
+      )}
       <ConfirmModal />
       {showBanner && (
         <UpdateBanner
