@@ -1,4 +1,4 @@
-import { StepFooter } from './shared.js';
+import { SceneArt, StepFooter } from './shared.js';
 import styles from './FactoryScreen.module.css';
 
 /* ── diagrams ────────────────────────────────────────────────────────── */
@@ -368,7 +368,12 @@ export default function FactoryScreen(): React.JSX.Element {
             </p>
           </div>
 
-          {/* assembly track */}
+          {/* scene — pipeline blueprint */}
+          <div className={styles.obFacScene} aria-hidden>
+            <SceneArt path="scenes/pipeline-designer.png" className={styles.obFacSceneArt} />
+          </div>
+
+          {/* assembly track — keep the live motion */}
           <div className={styles.obFacTrack} aria-hidden>
             <div className={styles.obFacTrackLine} />
             <span className={styles.obFacTrackDot} />
@@ -379,7 +384,14 @@ export default function FactoryScreen(): React.JSX.Element {
             </div>
           </div>
 
-          {/* concepts — flat open figures, not cards */}
+          {/* concepts — blueprint concepts now above, diagrams below */}
+          <div className={styles.obFacConcepts}>
+            <SceneArt path="concepts/pipeline.png" className={styles.obFacConceptArt} />
+            <SceneArt path="concepts/envelope.png" className={styles.obFacConceptArt} />
+            <SceneArt path="concepts/gate.png" className={styles.obFacConceptArt} />
+          </div>
+
+          {/* diagrams — keep the flat SVG language */}
           <div className={styles.obFacGrid}>
             <article
               className={styles.obFacFig}

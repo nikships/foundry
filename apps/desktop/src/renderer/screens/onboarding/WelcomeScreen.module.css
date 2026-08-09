@@ -59,39 +59,21 @@
   place-items: center;
   pointer-events: none;
 }
-.ob-welcome-pipeline {
+.ob-welcome-hero-art {
   position: relative;
-  width: min(78%, 520px);
+  width: min(86%, 560px);
   height: auto;
-  fill: none;
-  stroke-linecap: round;
+  border-radius: var(--r);
+  overflow: hidden;
+  opacity: 0.96;
 }
-.ob-welcome-pipeline-rail {
-  stroke: var(--line-strong);
-  stroke-width: 1;
+.ob-welcome-hero-art {
+  display: block;
+  width: 100%;
+  height: auto;
 }
-.ob-welcome-pipeline-rail-dim {
-  stroke: var(--line);
-  stroke-width: 1;
-}
-.ob-welcome-pipeline-pulse {
-  stroke: var(--ob-welcome-accent);
-  stroke-width: 1.45;
-  stroke-dasharray: 46 620;
-  animation: ob-welcome-trace 7s linear infinite;
-}
-@keyframes ob-welcome-trace {
-  from {
-    stroke-dashoffset: 666;
-  }
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-.ob-welcome-pipeline-nodes circle {
-  fill: var(--bg-base);
-  stroke: var(--line-strong);
-  stroke-width: 1;
+.ob-welcome-pipeline {
+  display: none;
 }
 .ob-welcome-hero-caption {
   position: relative;

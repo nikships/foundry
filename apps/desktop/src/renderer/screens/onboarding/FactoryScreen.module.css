@@ -86,6 +86,33 @@
   padding-bottom: 1px;
 }
 
+/* scene + blueprint concepts */
+.ob-fac-scene {
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  overflow: hidden;
+  background: var(--bg-base);
+}
+.ob-fac-scene-art {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.ob-fac-concepts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s4);
+}
+.ob-fac-concept-art {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--bg-base);
+}
+
 /* assembly track */
 .ob-fac-track {
   position: relative;

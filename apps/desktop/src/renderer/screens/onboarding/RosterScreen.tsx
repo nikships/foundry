@@ -1,5 +1,5 @@
 import AgentAvatar from '../../components/AgentAvatar.js';
-import { BUILTIN_AGENTS, StepFooter } from './shared.js';
+import { BUILTIN_AGENTS, SceneArt, StepFooter } from './shared.js';
 import styles from './RosterScreen.module.css';
 
 const HINTS: Record<string, string> = {
@@ -54,6 +54,9 @@ export default function RosterScreen(): React.JSX.Element {
             Pipelines wire them in sequence — each phase runs in order, leaves a typed envelope, and
             is judged by code before the next begins.
           </p>
+          <div className={styles.obRosterScene} aria-hidden>
+            <SceneArt path="scenes/run-success.png" className={styles.obRosterSceneArt} />
+          </div>
         </div>
 
         <div className={styles.obRosterListWrap}>

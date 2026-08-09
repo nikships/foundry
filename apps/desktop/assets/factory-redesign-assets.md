@@ -173,21 +173,23 @@ Current: rainbow crystal prism on black — pure Prism brand.
 
 ### Checklist
 
-- [ ] scenes/run-accepted.png (NEW)
-- [ ] scenes/run-rejected.png (NEW)
-- [ ] scenes/onboarding-hero.png
-- [ ] scenes/pipeline-designer.png
-- [ ] scenes/empty-state.png
-- [ ] scenes/run-success.png
-- [ ] scenes/run-failed.png
-- [ ] concepts/pipeline.png
-- [ ] concepts/envelope.png
-- [ ] concepts/gate.png
-- [ ] agents/planner.png
-- [ ] agents/builder.png
-- [ ] agents/scout.png
-- [ ] agents/reviewer.png
-- [ ] agents/documenter.png
-- [ ] agents/refiner.png
-- [ ] agents/finisher.png
-- [ ] icon/app-icon-1024.png + icon/app-icon.icns
+- [x] scenes/run-accepted.png (NEW) — generated 2026-08-09, Factory pinwheel hairlines + orange check tick
+- [x] scenes/run-rejected.png (NEW) — generated 2026-08-09, pinwheel hairlines + amber bracket
+- [x] scenes/onboarding-hero.png — pinwheel wireframe + white→orange beam, flat blueprint
+- [x] scenes/pipeline-designer.png — isometric assembly line, middle station solid orange
+- [x] scenes/empty-state.png — wireframe parts tray + orange corner marker, legible at 220px
+- [x] scenes/run-success.png — hairline beams converging through gate to single orange beam
+- [x] scenes/run-failed.png — same diagram with fracture ticks + red dot at break
+- [x] concepts/pipeline.png — compact 3-station line, middle node solid orange
+- [x] concepts/envelope.png — wireframe cube + flat solid orange card inside
+- [x] concepts/gate.png — hairline iris + crisp solid orange beams
+- [x] agents/planner.png — compass/dividers motif, orange needle
+- [x] agents/builder.png — blocky head + I-beam, orange rivet
+- [x] agents/scout.png — narrow head + radar ring, orange blip
+- [x] agents/reviewer.png — magnifier lens, orange center dot
+- [x] agents/documenter.png — page-lines + orange bullet
+- [x] agents/refiner.png — concentric arcs, orange tip dot
+- [x] agents/finisher.png — flag/tick above head in orange
+- [x] icon/app-icon-1024.png + icon/app-icon.icns — flat pinwheel in #EEEEEE + orange hub on #020202, rebuilt via make-icns.sh
+
+All 18 assets regenerated 2026-08-09 via Gemini 3.1 Flash with Factory pinwheel reference (`factory.ai/icon.svg`). Scenes are 2752×1536 PNG, concepts/agents/icon are 1024×1024 PNG. App ICNS rebuilt from the 1024 master.
