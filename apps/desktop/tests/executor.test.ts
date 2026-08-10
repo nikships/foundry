@@ -2820,3 +2820,25 @@ describe('non-droid vendor oneshot path (VAL-CROSS-011)', () => {
     expect(rows.length).toBeGreaterThanOrEqual(1);
   });
 });
+
+/** VAL-PROD-012 — missing droid binary surfaces as a settled failure, not a hang. */
+describe('missing droid binary (VAL-PROD-012)', () => {
+  it('settles failed with a legible outcome_detail when the binary is unresolvable', async () => {
+    const outcome = await run({
+      droidPath: '/nonexistent/droid',
+      pipeline: pipe([agentPhase('build', { description: 'binary is missing' })], {
+        description: 'missing droid binary',
+        acceptance: { kind: 'envelope_status', phase: 'build' },
+      }),
+    });
+
+    // No hang, no perpetual running — run settles terminal.
+    expect(['failed', 'rejected']).toContain(outcome.status);
+    const row = h.tracer.run(outcome.runId)!;
+    expect(row.outcomeDetail).toBeTruthy();
+    // The trace explains the root cause rather than masking it.
+    const payloads = events(outcome.runId).map((e) => JSON.stringify(e.payload));
+    const combined = payloads.join('\n');
+    expect(combined).toMatch(/spawn|ENOENT|not found|unresolvable|executable|droid/i);
+  });
+});
