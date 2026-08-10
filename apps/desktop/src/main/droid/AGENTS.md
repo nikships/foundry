@@ -1,7 +1,13 @@
 # AGENTS.md — src/main/droid
 
-Droid's JSON-RPC client + shared one-shot runner. `protocol.ts` encodes
-findings observed against the real CLI, not the docs.
+Droid's transports + shared one-shot runner. `agent.ts` drives `sdk/session.ts`
+for RPC turns and falls back to `oneshot.ts`; `protocol.ts` encodes findings
+observed against the real CLI, not the docs.
+
+`AgentSession` degrades after two transport failures in a run. Strikes are
+counted on the failing turn only: a dying child both rejects its in-flight turn
+and fires an exit callback, so counting in both places would spend the whole
+budget on one death.
 
 ## Three quirks a naive client gets wrong
 
@@ -17,8 +23,22 @@ immediately; turn ends with `agent_turn_completed`. `tool_call` is re-emitted
 per `toolUseId` — fold into one span. `droid.ask_user` wants one free-text
 answer per question (`{answers:[{index,question,answer}]}`), never a yes/no —
 a verdict reads as a cancellation and the agent asks again. `oneshot.ts` must
-stay vendor-agnostic; vendor flags belong in `cli/<vendor>.ts`. Test against
-`tests/fake-droid.ts`.
+stay vendor-agnostic; vendor flags belong in `cli/<vendor>.ts`.
+
+## Testing against a stub CLI
+
+Two stubs answer the RPC handshake: `tests/fake-droid.ts`, and the inline
+`scriptedDroid` in `tests/executor.test.ts` (a separate one because the
+executor's stub scripts whole turns, including side effects on disk).
+
+The SDK validates every frame with the CLI's own zod schemas and drops what
+fails, so a stub must be schema-complete rather than merely plausible — a
+`create_message` without `createdAt`/`updatedAt`, a completion without
+`tokenUsage`, or a tool with `category:'exec'` instead of `'execute'` is
+discarded in silence and the turn hangs instead of failing. The sharpest edge
+is the turn id: the SDK mints it, sends it as `add_user_message.messageId`, and
+requires `agent_turn_completed` to echo it. Omitting it raises a protocol
+error; a *mismatched* one is ignored, so the turn hangs to its timeout.
 
 ## The SDK seam (`sdk/`)
 

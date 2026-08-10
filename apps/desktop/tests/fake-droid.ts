@@ -2,6 +2,14 @@
  * Stand-in for `droid exec --input-format stream-jsonrpc`. Frames match the
  * real CLI (type discriminator, string ids, flat settings params) so the
  * adapter can be tested against protocol quirks that broke a naive client.
+ *
+ * The SDK validates every frame with the CLI's own zod schemas and drops
+ * whatever fails, so this stub has to be schema-complete rather than merely
+ * plausible: a `create_message` without timestamps or an `agent_turn_completed`
+ * missing a token count is silently discarded and the turn hangs instead of
+ * failing. The turn id is the sharpest edge — the SDK generates it, sends it as
+ * `add_user_message.messageId`, and raises a ProtocolError if the completion
+ * comes back without it.
  */
 
 import { writeFileSync, chmodSync, mkdtempSync } from 'node:fs';
@@ -32,6 +40,9 @@ let sessionId = 'fake-session-1';
 let settings = { modelId: 'gpt-fake-default', reasoningEffort: 'high', autonomyLevel: 'high' };
 let turns = 0;
 let buffer = '';
+// The turn id the SDK minted for the in-flight turn; agent_turn_completed must
+// echo it or the SDK raises a protocol error / ignores the completion.
+let turnId = null;
 
 // Every frame the client sends, appended for tests that assert on the wire
 // rather than on an observable side effect.
@@ -44,11 +55,25 @@ const record = (msg) => {
 /** Server requests awaiting the client's response, by frame id. */
 const serverRequests = new Map();
 
+/** A permission ask in the CLI's real shape: nested tool use + offered options. */
+const execPermission = (command) => ({
+  toolUses: [{
+    toolUse: { type: 'tool_use', id: 'call-perm-1', name: 'Execute', input: { command } },
+    confirmationType: 'exec',
+    details: { type: 'exec', fullCommand: command, command },
+  }],
+  options: [
+    { label: 'Yes', value: 'proceed_once' },
+    { label: 'No', value: 'cancel' },
+  ],
+});
+
 const EFFORTS = ['off', 'low', 'medium', 'high'];
 const MODELS = [
-  { id: 'gpt-fake-default', modelId: 'gpt-fake-default', modelProvider: 'openai', displayName: 'Fake Default', supportedReasoningEfforts: EFFORTS, defaultReasoningEffort: 'high' },
-  { id: 'fake-allowed', modelId: 'fake-allowed', modelProvider: 'anthropic', displayName: 'Fake Allowed', supportedReasoningEfforts: EFFORTS, defaultReasoningEffort: 'medium' },
+  { id: 'gpt-fake-default', modelId: 'gpt-fake-default', modelProvider: 'openai', displayName: 'Fake Default', shortDisplayName: 'Default', supportedReasoningEfforts: EFFORTS, defaultReasoningEffort: 'high', isCustom: false },
+  { id: 'fake-allowed', modelId: 'fake-allowed', modelProvider: 'anthropic', displayName: 'Fake Allowed', shortDisplayName: 'Allowed', supportedReasoningEfforts: EFFORTS, defaultReasoningEffort: 'medium', isCustom: false },
 ];
+const USAGE = () => ({ inputTokens: 1000 + turns, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 900, thinkingTokens: 10, factoryCredits: 42 });
 
 process.stdin.on('data', (chunk) => {
   buffer += chunk.toString();
@@ -83,7 +108,7 @@ function handle(msg) {
   if (method === 'droid.initialize_session' || method === 'droid.load_session') {
     if (params.sessionId) sessionId = params.sessionId;
     notify({ type: 'settings_updated', settings }, sessionId);
-    reply(id, { sessionId, hostId: 'fake-host', settings, availableModels: MODELS });
+    reply(id, { sessionId, session: { messages: [] }, settings, availableModels: MODELS });
     return;
   }
   if (method === 'droid.update_session_settings') {
@@ -98,11 +123,11 @@ function handle(msg) {
     return;
   }
   if (method === 'droid.get_context_stats') {
-    reply(id, { used: 1234, remaining: 98766, limit: 100000, accuracy: 'estimated' });
+    reply(id, { used: 1234, remaining: 98766, limit: 100000, accuracy: 'estimated', updatedAt: '2026-08-09T00:00:00.000Z' });
     return;
   }
   if (method === 'droid.list_tools') {
-    reply(id, { tools: [{ id: 'execute-cli', llmId: 'Execute', displayName: 'Execute', description: 'run a command', category: 'exec', defaultAllowed: true }] });
+    reply(id, { tools: [{ id: 'execute-cli', llmId: 'Execute', displayName: 'Execute', description: 'run a command', category: 'execute', defaultAllowed: true, currentlyAllowed: true }] });
     return;
   }
   if (method === 'droid.close_session') {
@@ -115,6 +140,7 @@ function handle(msg) {
     return;
   }
   if (method === 'droid.add_user_message') {
+    turnId = params.messageId;
     reply(id, {});
     runTurn(params.text || '');
     return;
@@ -128,14 +154,14 @@ function finalText(text) {
     notify({ type: 'assistant_text_delta', messageId, blockIndex: 0, textDelta: piece }, sessionId);
   }
   notify({ type: 'assistant_text_complete', messageId, blockIndex: 0 }, sessionId);
-  notify({ type: 'create_message', message: { id: messageId, role: 'assistant', content: [{ type: 'text', text }] } }, sessionId);
+  notify({ type: 'create_message', message: { id: messageId, role: 'assistant', content: [{ type: 'text', text }], createdAt: 1, updatedAt: 1 } }, sessionId);
 }
 
 function completeTurn() {
-  const usage = { inputTokens: 1000 + turns, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 900, thinkingTokens: 10, factoryCredits: 42 };
+  const usage = USAGE();
   notify({ type: 'session_token_usage_changed', sessionId, tokenUsage: usage }, sessionId);
   notify({ type: 'droid_working_state_changed', newState: 'idle' }, sessionId);
-  notify({ type: 'agent_turn_completed', reason: 'completed', turnId: 'turn-' + turns, tokenUsage: usage, cumulativeTokenUsage: usage }, sessionId);
+  notify({ type: 'agent_turn_completed', reason: 'completed', turnId, tokenUsage: usage, cumulativeTokenUsage: usage }, sessionId);
 }
 
 function runTurn(_prompt) {
@@ -157,7 +183,7 @@ function runTurn(_prompt) {
   }
 
   if (scenario === 'ask-permission' && turns === 1) {
-    out({ ...V, type: 'request', id: 'srv-1', method: 'droid.request_permission', params: { toolName: 'Execute', command: 'rm -rf build' } });
+    out({ ...V, type: 'request', id: 'srv-1', method: 'droid.request_permission', params: execPermission('rm -rf build') });
   }
 
   // The agent blocks on its own question, exactly like the real CLI: the turn

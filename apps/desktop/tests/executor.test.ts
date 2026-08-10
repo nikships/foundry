@@ -9,7 +9,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync, chmodSync } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { openDb, projectDbPath, projectRunsDir } from '../src/main/trace/db.js';
+import { openDb, projectDbPath, projectRunsDir, type Db } from '../src/main/trace/db.js';
 import { Tracer } from '../src/main/trace/tracer.js';
 import { Executor } from '../src/main/engine/executor.js';
 import { defaultProject } from '../src/main/store/projects.js';
@@ -26,7 +26,14 @@ import type {
 import { CLI_VENDOR_IDS } from '../src/shared/types.js';
 
 function sh(cwd: string, argv: string[]): string {
-  return execFileSync(argv[0]!, argv.slice(1), { cwd, encoding: 'utf8' });
+  try {
+    return execFileSync(argv[0]!, argv.slice(1), { cwd, encoding: 'utf8' });
+  } catch (e) {
+    // execFileSync reports only "Command failed", which turns any setup failure
+    // into an unactionable one; the command's own stderr says what happened.
+    const stderr = (e as { stderr?: string }).stderr ?? '';
+    throw new Error(`${argv.join(' ')} failed in ${cwd}: ${stderr.trim() || String(e)}`);
+  }
 }
 
 function scratchRepo(): string {
@@ -60,14 +67,33 @@ interface ScriptedAsk {
   writeIfAllowed?: string;
 }
 
+interface ScriptedDroidOptions {
+  /** Turn indexes (0-based) on which the child dies mid-turn, answering nothing. */
+  dieOnTurns?: number[];
+  /** Turn indexes that are acknowledged but never completed, so the turn times out. */
+  stallOnTurns?: number[];
+}
+
 /**
  * Droid stand-in whose whole behaviour is a list of scripted turns, so a
  * pipeline's control flow can be tested without a model in the loop.
+ *
+ * It answers both transports off one argv: the SDK spawns it with
+ * `--input-format stream-jsonrpc` and drives the JSON-RPC handshake, while the
+ * one-shot fallback spawns it per turn and reads a single terminal object. The
+ * shared turn counter on disk is what lets a session degrade mid-phase and
+ * still continue the script where it left off.
+ *
+ * Every frame here has to satisfy the CLI's real zod schemas, because the SDK
+ * validates and silently drops what does not — in particular the completion
+ * must echo back the `messageId` the SDK minted for the turn, or the turn never
+ * resolves.
  */
 function scriptedDroid(
   turns: string[],
   sideEffects: (string | null)[] = [],
   asks: ScriptedAsk[][] = [],
+  options: ScriptedDroidOptions = {},
 ): string {
   const dir = mkdtempSync(join(tmpdir(), 'foundry-scripted-'));
   const state = join(dir, 'turn-count');
@@ -80,19 +106,43 @@ const TURNS = ${JSON.stringify(turns)};
 const EFFECTS = ${JSON.stringify(sideEffects)};
 const ASKS = ${JSON.stringify(asks)};
 const STATE = ${JSON.stringify(state)};
-const cwdIndex = process.argv.indexOf('--cwd');
-const workdir = cwdIndex >= 0 ? process.argv[cwdIndex + 1] : process.cwd();
-const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
-const notify = (n) => out({ ...V, type: 'notification', method: 'droid.session_notification', params: { sessionId: 's1', notification: n } });
-const pending = new Map();
-let askSeq = 0;
-let buffer = '';
+const DIE_ON = ${JSON.stringify(options.dieOnTurns ?? [])};
+const STALL_ON = ${JSON.stringify(options.stallOnTurns ?? [])};
+const EFFORTS = ['off', 'low', 'medium', 'high'];
+const MODELS = [{ id: 'scripted', displayName: 'Scripted', shortDisplayName: 'Scripted', modelProvider: 'anthropic', supportedReasoningEfforts: EFFORTS, defaultReasoningEffort: 'medium', isCustom: false }];
+const SETTINGS = { modelId: 'scripted', reasoningEffort: 'medium', autonomyLevel: 'high' };
+const USAGE = { inputTokens: 100, outputTokens: 20, cacheCreationTokens: 0, cacheReadTokens: 0, thinkingTokens: 0, factoryCredits: 1 };
+// The SDK spawns with the stream-jsonrpc formats; the one-shot fallback does not.
+const RPC = process.argv.includes('stream-jsonrpc');
+const workdir = process.cwd();
 
 const write = (path) => {
   const target = isAbsolute(path) ? path : join(workdir, path);
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(target, 'written by the scripted agent\\n');
 };
+
+const takeTurn = () => {
+  const n = Number(readFileSync(STATE, 'utf8')) || 0;
+  writeFileSync(STATE, String(n + 1));
+  return n;
+};
+const textFor = (n) => TURNS[Math.min(n, TURNS.length - 1)];
+
+if (!RPC) {
+  const n = takeTurn();
+  const effect = EFFECTS[n];
+  if (effect) write(effect);
+  process.stdout.write(JSON.stringify({ type: 'completion', finalText: textFor(n), session_id: 's1', usage: { input_tokens: 100, output_tokens: 20 } }) + '\\n');
+  process.exit(0);
+}
+
+const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
+const notify = (n) => out({ ...V, type: 'notification', method: 'droid.session_notification', params: { sessionId: 's1', notification: n } });
+const pending = new Map();
+let askSeq = 0;
+let buffer = '';
+let turnId = null;
 
 /** Raises each ask in order, waiting for the answer, then finishes the turn. */
 const raiseAsks = (list, done) => {
@@ -101,13 +151,29 @@ const raiseAsks = (list, done) => {
     const ask = list[i];
     const id = 'srv-' + askSeq++;
     pending.set(id, (result) => {
-      const outcome = result && result.outcome ? result.outcome.outcome : undefined;
-      if (ask.writeIfAllowed && outcome === 'allow') write(ask.writeIfAllowed);
+      const allowed = !!result && result.selectedOption !== undefined && result.selectedOption !== 'cancel';
+      if (ask.writeIfAllowed && allowed) write(ask.writeIfAllowed);
       next(i + 1);
     });
     out({ ...V, type: 'request', id, method: ask.method, params: ask.params });
   };
   next(0);
+};
+
+const finish = (n) => {
+  const messageId = 'm' + n;
+  notify({ type: 'create_message', message: { id: messageId, role: 'assistant', content: [{ type: 'text', text: textFor(n) }], createdAt: 1, updatedAt: 1 } });
+  notify({ type: 'session_token_usage_changed', sessionId: 's1', tokenUsage: USAGE });
+  notify({ type: 'agent_turn_completed', reason: 'completed', turnId, tokenUsage: USAGE, cumulativeTokenUsage: USAGE });
+};
+
+const runTurn = () => {
+  const n = takeTurn();
+  if (DIE_ON.includes(n)) { setTimeout(() => process.exit(9), 20); return; }
+  if (STALL_ON.includes(n)) return;
+  const effect = EFFECTS[n];
+  if (effect) write(effect);
+  raiseAsks(ASKS[n] || [], () => finish(n));
 };
 
 process.stdin.on('data', (chunk) => {
@@ -124,21 +190,21 @@ process.stdin.on('data', (chunk) => {
       resolve(msg.result);
       continue;
     }
-    if (method === 'droid.initialize_session' || method === 'droid.load_session') {
-      out({ ...V, type: 'response', id, result: { sessionId: 's1', settings: { modelId: 'scripted' }, availableModels: [] } });
-    } else if (method === 'droid.add_user_message') {
+    if (method === 'droid.initialize_session') {
+      out({ ...V, type: 'response', id, result: { sessionId: 's1', session: { messages: [] }, settings: SETTINGS, availableModels: MODELS } });
+    } else if (method === 'droid.load_session') {
+      out({ ...V, type: 'response', id, result: { session: { messages: [] }, settings: SETTINGS, availableModels: MODELS, cwd: workdir } });
+    } else if (method === 'droid.update_session_settings') {
+      notify({ type: 'settings_updated', requestId: id, settings: SETTINGS });
       out({ ...V, type: 'response', id, result: {} });
-      const n = Number(readFileSync(STATE, 'utf8')) || 0;
-      writeFileSync(STATE, String(n + 1));
-      const effect = EFFECTS[n];
-      if (effect) write(effect);
-      const finish = () => {
-        const text = TURNS[Math.min(n, TURNS.length - 1)];
-        const messageId = 'm' + n;
-        notify({ type: 'create_message', message: { id: messageId, role: 'assistant', content: [{ type: 'text', text }] } });
-        notify({ type: 'agent_turn_completed', reason: 'completed', turnId: 't' + n, tokenUsage: { inputTokens: 100, outputTokens: 20, factoryCredits: 1 } });
-      };
-      raiseAsks(ASKS[n] || [], finish);
+    } else if (method === 'droid.list_tools') {
+      out({ ...V, type: 'response', id, result: { tools: [{ id: 'execute-cli', llmId: 'Execute', displayName: 'Execute', description: 'run a command', category: 'execute', defaultAllowed: true, currentlyAllowed: true }] } });
+    } else if (method === 'droid.get_context_stats') {
+      out({ ...V, type: 'response', id, result: { used: 1234, remaining: 98766, limit: 100000, accuracy: 'estimated', updatedAt: '2026-08-09T00:00:00.000Z' } });
+    } else if (method === 'droid.add_user_message') {
+      turnId = params.messageId;
+      out({ ...V, type: 'response', id, result: {} });
+      runTurn();
     } else if (method === 'droid.close_session') {
       out({ ...V, type: 'response', id, result: {} });
       setTimeout(() => process.exit(0), 10);
@@ -154,6 +220,21 @@ process.stdin.on('data', (chunk) => {
   writeFileSync(bin, `#!/bin/sh\nexec "${process.execPath}" "${js}" "$@"\n`);
   chmodSync(bin, 0o755);
   return bin;
+}
+
+/** A `droid.request_permission` ask in the CLI's real nested shape. */
+function permissionAsk(
+  toolUse: { id: string; name: string; input: Record<string, unknown> },
+  confirmationType: string,
+  details: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    toolUses: [{ toolUse: { type: 'tool_use', ...toolUse }, confirmationType, details }],
+    options: [
+      { label: 'Yes', value: 'proceed_once' },
+      { label: 'No', value: 'cancel' },
+    ],
+  };
 }
 
 const buildAgent = (over: Partial<AgentDef> = {}): AgentDef => ({
@@ -225,6 +306,7 @@ interface Harness {
   project: ProjectDef;
   tracer: Tracer;
   support: string;
+  db: Db;
 }
 
 let h: Harness;
@@ -236,10 +318,36 @@ beforeEach(() => {
   h = {
     repo,
     support,
+    db,
     tracer: new Tracer(db, projectRunsDir(support, repo)),
     project: { ...defaultProject(repo), mergePolicy: 'never' },
   };
 });
+
+interface ProcessRow {
+  kind: string;
+  name: string;
+  pid: number;
+  command: string;
+  ended_at: string | null;
+}
+
+/** Every recorded child, open or closed — `openProcesses` only shows the open ones. */
+function processRows(runId: string): ProcessRow[] {
+  return h.db
+    .prepare('SELECT kind, name, pid, command, ended_at FROM processes WHERE run_id = ?')
+    .all(runId) as ProcessRow[];
+}
+
+/** Whether a pid is still a live process, without signalling it. */
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 type AskHuman = ConstructorParameters<typeof Executor>[0]['askHuman'];
 
@@ -868,14 +976,42 @@ describe('zero-interrupt runs', () => {
   const everyAsk = (outside: string): ScriptedAsk[] => [
     {
       method: 'droid.request_permission',
-      params: { toolName: 'Execute', command: 'git commit --allow-empty -m probe' },
+      params: permissionAsk(
+        {
+          id: 'call-exec',
+          name: 'Execute',
+          input: { command: 'git commit --allow-empty -m probe' },
+        },
+        'exec',
+        {
+          type: 'exec',
+          fullCommand: 'git commit --allow-empty -m probe',
+          command: 'git commit --allow-empty -m probe',
+        },
+      ),
     },
     {
       method: 'droid.request_permission',
-      params: { toolName: 'Create', file_path: outside },
+      params: permissionAsk(
+        { id: 'call-write', name: 'Create', input: { file_path: outside } },
+        'create',
+        {
+          type: 'create',
+          filePath: outside,
+          fileName: 'escaped.txt',
+          content: 'escaped',
+        },
+      ),
       writeIfAllowed: outside,
     },
-    { method: 'droid.request_permission', params: { toolName: 'SomeFutureTool', payload: {} } },
+    {
+      method: 'droid.request_permission',
+      params: permissionAsk({ id: 'call-future', name: 'SomeFutureTool', input: {} }, 'mcp_tool', {
+        type: 'mcp_tool',
+        toolName: 'SomeFutureTool',
+        impactLevel: 'medium',
+      }),
+    },
     {
       method: 'droid.ask_user',
       params: {
@@ -1076,5 +1212,195 @@ describe('the trace record', () => {
       request: 'make initial project',
     });
     expect(outcome.status).toBe('accepted');
+  });
+});
+
+/**
+ * The SDK transport, exercised the way a run actually uses it: a real child
+ * process over stream-jsonrpc against the scripted binary. These pin the
+ * properties the swap could quietly lose — that agent phases still run in RPC
+ * mode, that the child is recorded and reaped, and that a flapping transport
+ * degrades exactly twice before giving up on it.
+ */
+describe('the SDK transport under the executor', () => {
+  it('runs agent phases over RPC, not the one-shot fallback', async () => {
+    const droid = scriptedDroid([buildEnvelope()]);
+    const outcome = await run({
+      droidPath: droid,
+      pipeline: pipe(
+        [agentPhase('build', { description: 'Prove the agent phase drove the SDK transport.' })],
+        {
+          description: 'one agent phase over the SDK',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    expect(h.tracer.run(outcome.runId)!.mode).toBe('rpc');
+    const sessions = h.tracer.agentSessions(outcome.runId);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]!.mode).toBe('rpc');
+    // The session id only exists if the SDK's own handshake completed.
+    expect(sessions[0]!.droidSessionId).toBe('s1');
+  });
+
+  it('records the droid child with a real pid and its --auto spawn command', async () => {
+    const droid = scriptedDroid([buildEnvelope()]);
+    const outcome = await run({
+      droidPath: droid,
+      pipeline: pipe(
+        [agentPhase('build', { description: 'Prove the child is recorded for the kill path.' })],
+        {
+          description: 'one agent phase',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
+    });
+
+    const rows = processRows(outcome.runId).filter((r) => r.kind === 'droid');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.name).toBe('builder');
+    expect(rows[0]!.pid).toBeGreaterThan(0);
+    expect(rows[0]!.command).toContain(droid);
+    // Runs are always autonomous; the flag is part of what `ps` should show.
+    expect(rows[0]!.command).toContain('--auto high');
+    expect(rows[0]!.ended_at).not.toBeNull();
+    expect(h.tracer.openProcesses(outcome.runId)).toHaveLength(0);
+  });
+
+  it('leaves no droid child alive after an accepted run settles', async () => {
+    const droid = scriptedDroid([buildEnvelope()]);
+    const outcome = await run({
+      droidPath: droid,
+      pipeline: pipe(
+        [agentPhase('build', { description: 'Settle cleanly and close the child.' })],
+        {
+          description: 'an accepted run',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    const pids = processRows(outcome.runId)
+      .filter((r) => r.kind === 'droid')
+      .map((r) => r.pid);
+    expect(pids.length).toBeGreaterThan(0);
+    for (const pid of pids) expect(alive(pid)).toBe(false);
+  });
+
+  it('leaves no droid child alive after a failed run settles', async () => {
+    // Never a valid envelope: the phase burns its budget and the run is rejected.
+    const droid = scriptedDroid(['not an envelope at all']);
+    const outcome = await run({
+      droidPath: droid,
+      pipeline: pipe(
+        [agentPhase('build', { description: 'Fail the phase and still close the child.' })],
+        {
+          description: 'a rejected run',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
+    });
+
+    expect(outcome.status).toBe('rejected');
+    const pids = processRows(outcome.runId)
+      .filter((r) => r.kind === 'droid')
+      .map((r) => r.pid);
+    expect(pids.length).toBeGreaterThan(0);
+    for (const pid of pids) expect(alive(pid)).toBe(false);
+  });
+
+  it('keeps one session across a correction rather than restarting', async () => {
+    const droid = scriptedDroid(['prose, not JSON', buildEnvelope()]);
+    const outcome = await run({
+      droidPath: droid,
+      pipeline: pipe(
+        [agentPhase('build', { description: 'Correct in the live session over the SDK.' })],
+        {
+          description: 'a correction inside one session',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    const sessions = h.tracer.agentSessions(outcome.runId);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]!.mode).toBe('rpc');
+    expect(
+      events(outcome.runId).some(
+        (e) => e.type === 'correction' && e.name === 'envelope did not parse',
+      ),
+    ).toBe(true);
+    // One child for the whole phase: a restart would have recorded a second.
+    expect(processRows(outcome.runId).filter((r) => r.kind === 'droid')).toHaveLength(1);
+  });
+
+  it('restarts the session in RPC after a single stalled turn', async () => {
+    // Turn 0 is acknowledged and never answered, so the turn times out; the
+    // restarted session picks the script up at turn 1.
+    const droid = scriptedDroid([buildEnvelope(), buildEnvelope()], [], [], { stallOnTurns: [0] });
+    const outcome = await run({
+      droidPath: droid,
+      turnTimeoutMs: 1500,
+      pipeline: pipe(
+        [agentPhase('build', { description: 'Prove one strike does not cost RPC mode.' })],
+        {
+          description: 'a transport that stalls once',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    // One strike is survivable: the run stays on the RPC transport throughout.
+    expect(h.tracer.run(outcome.runId)!.mode).toBe('rpc');
+    const fallbacks = events(outcome.runId).filter(
+      (e) => e.name === 'builder: fallback to one-shot',
+    );
+    expect(fallbacks).toHaveLength(1);
+    expect(String(fallbacks[0]!.payload.reason)).toContain('retrying after');
+    // The stalled child is replaced, and both children are reaped. The
+    // replaced one is only closed out by the exit hook, since settlement can
+    // only ever close the row of the session that is current at the end.
+    const rows = processRows(outcome.runId).filter((r) => r.kind === 'droid');
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row.ended_at).not.toBeNull();
+      expect(alive(row.pid)).toBe(false);
+    }
+    expect(h.tracer.openProcesses(outcome.runId)).toHaveLength(0);
+  });
+
+  it('retries the first mid-turn death, then degrades to one-shot on the second', async () => {
+    // Turn 0 and turn 1 kill the child mid-turn; turn 2 is the one-shot reply.
+    const droid = scriptedDroid([buildEnvelope(), buildEnvelope(), buildEnvelope()], [], [], {
+      dieOnTurns: [0, 1],
+    });
+    const outcome = await run({
+      droidPath: droid,
+      pipeline: pipe(
+        [agentPhase('build', { description: 'Prove two strikes cost the RPC transport.' })],
+        {
+          description: 'a transport that dies twice',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    expect(h.tracer.run(outcome.runId)!.mode).toBe('oneshot');
+    expect(h.tracer.agentSessions(outcome.runId)[0]!.mode).toBe('oneshot');
+
+    const fallbacks = events(outcome.runId).filter(
+      (e) => e.name === 'builder: fallback to one-shot',
+    );
+    // Strike one retries in RPC, strike two switches: two log events, in order.
+    expect(fallbacks).toHaveLength(2);
+    expect(String(fallbacks[0]!.payload.reason)).toContain('retrying after');
+    expect(fallbacks[0]!.payload.failures).toBe(1);
+    expect(fallbacks[1]!.payload.failures).toBe(2);
   });
 });

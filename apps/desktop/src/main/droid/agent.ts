@@ -9,15 +9,12 @@
 import type { AgentDef, CliVendor, UsageBreakdown } from '@shared/types.js';
 import type { Tracer } from '../trace/tracer.js';
 import { adapterFor } from '../cli/index.js';
-import {
-  DroidClient,
-  type PermissionAsk,
-  type PermissionDecision,
-  type TurnResult,
-} from './client.js';
+import { type PermissionAsk, type PermissionDecision, type TurnResult } from './client.js';
 import { OneShotClient } from './oneshot.js';
 import { EventFolder, toUsageBreakdown } from './events.js';
 import { evaluate, type PolicyContext } from './permissions.js';
+import { SdkSession } from './sdk/session.js';
+import { isTransportFailure } from './sdk/errors.js';
 
 export type Mode = 'rpc' | 'oneshot';
 
@@ -65,7 +62,7 @@ function errorMessage(e: unknown): string {
 }
 
 export class AgentSession {
-  private rpc: DroidClient | null = null;
+  private rpc: SdkSession | null = null;
   private oneshot: OneShotClient | null = null;
   private mode: Mode = 'rpc';
   private protocolFailures = 0;
@@ -105,25 +102,22 @@ export class AgentSession {
     }
     if (this.rpc?.alive) return;
 
-    const client = new DroidClient({
+    const client = new SdkSession({
       droidPath: this.deps.cliPath,
       ...this.turnOpts(),
-      onPermission: async (ask) => this.decide(ask),
+      onPermission: (ask) => this.decide(ask),
       onNotification: (n) => this.currentFolder?.absorb(n),
-      onExit: (code) => this.onRpcExit(code),
-    });
-    client.on('model-warning', (message: string) => {
-      this.agentLog('log', 'model', { message });
-    });
-    client.on('protocol-error', (message: string) => {
-      this.protocolFailures++;
-      this.agentLog('error', 'protocol', { message, failures: this.protocolFailures });
+      onExit: () => this.onRpcExit(),
+      onModelWarning: (message) => this.agentLog('log', 'model', { message }),
     });
 
     try {
       await client.start(this.droidSessionId);
     } catch (e) {
-      this.protocolFailures++;
+      // A session that never started leaves a child behind when the failure
+      // was the handshake rather than the spawn.
+      await client.close().catch(() => undefined);
+      this.countFailure(e);
       this.noteFallback(`session start failed: ${errorMessage(e)}`);
       this.switchToOneShot();
       return;
@@ -183,12 +177,32 @@ export class AgentSession {
     });
   }
 
-  private onRpcExit(code: number | null): void {
-    if (this.processRowId !== null) {
-      this.deps.tracer.endProcess(this.processRowId);
-      this.processRowId = null;
-    }
-    if (code !== 0 && code !== null) this.protocolFailures++;
+  /**
+   * One strike against the RPC transport. Strikes are only ever counted here,
+   * on the turn that failed: a dying child both rejects the in-flight turn and
+   * fires its exit callback, and counting in both places would spend the whole
+   * budget on a single death. A child that dies between turns is not a strike —
+   * the next turn silently restarts it and nothing was lost.
+   *
+   * The SDK reports a broken transport as four unrelated classes rather than
+   * one wrapper, so they are recognised explicitly; anything else still costs a
+   * strike, but is filed as unclassified so a new SDK error class shows up in
+   * the trace instead of blending in.
+   */
+  private countFailure(error: unknown): void {
+    this.protocolFailures++;
+    if (isTransportFailure(error)) return;
+    this.agentLog('log', 'protocol', {
+      message: errorMessage(error),
+      unclassified: true,
+      failures: this.protocolFailures,
+    });
+  }
+
+  private onRpcExit(): void {
+    if (this.processRowId === null) return;
+    this.deps.tracer.endProcess(this.processRowId);
+    this.processRowId = null;
   }
 
   private logStderr(text: string): void {
@@ -283,35 +297,37 @@ export class AgentSession {
     folder: EventFolder,
     ctx: AgentTurnContext,
   ): Promise<TurnResult> {
-    if (this.mode === 'rpc' && this.rpc) {
+    while (this.mode === 'rpc' && this.rpc) {
       try {
         return await this.rpc.send(prompt, this.deps.turnTimeoutMs);
       } catch (e) {
         const message = errorMessage(e);
-        this.protocolFailures++;
+        this.countFailure(e);
         folder.closeDangling(`transport failed: ${message}`);
-        if (this.protocolFailures < PROTOCOL_FAILURE_LIMIT) {
-          this.noteFallback(`retrying after ${message}`);
-          const retried = await this.restartAndSend(prompt);
-          if (retried) return retried;
-        } else {
+        if (this.protocolFailures >= PROTOCOL_FAILURE_LIMIT) {
           this.noteFallback(message);
           this.switchToOneShot();
+          break;
         }
+        this.noteFallback(`retrying after ${message}`);
+        // A restart that cannot come back up has already switched the mode, so
+        // the loop condition ends the RPC attempts rather than spinning.
+        await this.restart();
       }
     }
 
     return this.sendOneShot(prompt, ctx.phaseId, folder);
   }
 
-  /** Drop the dead RPC child, restart, and attempt the turn once more. */
-  private async restartAndSend(prompt: string): Promise<TurnResult | null> {
+  /** Drop the dead RPC child and start a fresh one for the next attempt. */
+  private async restart(): Promise<void> {
+    const dead = this.rpc;
     this.rpc = null;
+    // The dead session's own child may still be running (a protocol failure is
+    // not always process death), and nothing else will reap it once the field
+    // is reassigned.
+    await dead?.close().catch(() => undefined);
     await this.ensureStarted();
-    // ensureStarted repopulates this.rpc; control-flow analysis cannot see that.
-    const rpc = this.rpc as DroidClient | null;
-    if (this.mode !== 'rpc' || !rpc) return null;
-    return rpc.send(prompt, this.deps.turnTimeoutMs);
   }
 
   private async sendOneShot(
