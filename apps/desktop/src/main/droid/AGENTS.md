@@ -86,7 +86,7 @@ reason: it owns `DroidProtocolError` (what this seam raises: a timed-out turn,
 an error result, a session used before it started) and classifies the SDK's own
 four transport errors for `agent.ts`, which may not name them itself.
 
-### DaemonManager (`sdk/daemon.ts` + `sdk/auth.ts`)
+### DaemonManager + DaemonSession (`sdk/daemon.ts` + `sdk/daemon-session.ts` + `sdk/auth.ts`)
 
 One local `droid daemon` for the app process, started lazily on first
 `ensure()` — never at boot. Spawn argv is
@@ -106,8 +106,33 @@ to subprocess. The connect path is injectable (`opts.connect`) for vitest.
 daemon, not per session). `shutdown()` is disconnect + SIGTERM; app quit calls
 it from `AppContext.dispose` (and `--parent-pid` is the crash backstop).
 
-Daemon `sessions.create` requires `machineId` (pass `'default'`) — that lands
-with the DaemonSession wrapper, not this manager.
+`DaemonSession` wraps a `ConnectedDroidSession` behind the same
+`TransportSession` surface as `SdkSession` (`sdk/transport.ts`). Agent-facing
+code types against `TransportSession`; daemon-default wiring is a separate
+feature. Daemon specifics that matter:
+
+- Permission/askUser handlers attach **per session** at `create`/`resume`
+  (spike V6: the closure is the binding; no registry). Connection-level
+  handlers installed by `adaptConnectedDroid` / `connectToDaemon` are a
+  **fail-closed safety net** only (`failClosedPermissionHandler`).
+- Adapters live in `sdk/policy-adapters.ts` and are shared with `SdkSession`
+  — including `proceedOption()`, because the SDK silently converts an
+  unoffered selection to cancel.
+- `compact`/`rewind` return `{newSessionId}` and the source handle stays
+  usable (opposite of subprocess retire). The wrapper `sessions.resume`s the
+  successor, swaps, detaches the source attachment, and never streams it
+  again. Autonomy is re-asserted after every resume/successor load.
+- `contextBreakdown` via `sessions.getContextBreakdown`; `contextStats` is
+  derived from it (daemon has no high-level `getContextStats`).
+- No per-session child pid: `kill()` = interrupt + close best-effort;
+  `spawnArgs()` is empty; the daemon process row is recorded once by the
+  manager.
+- `machineId: 'default'` is passed on create (spike V6). SDK 0.7.0 forces
+  `LOCAL_MACHINE_ID='local'` internally on the real client.
+- Raw notifications: `ConnectedDroidSession` has no `onNotification`; the
+  production adapter taps the runtime handle's `controller` EventEmitter
+  (`sessionNotification`). Scripted tests implement
+  `subscribeNotifications` directly.
 
 Three things the SDK cannot give us, all solved by the one decorator in
 `sdk/sniffing-transport.ts`:

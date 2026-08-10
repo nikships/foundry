@@ -22,6 +22,7 @@ import { noteSessionModels, noteSessionTools } from './catalog.js';
 import { EventFolder, toUsageBreakdown } from './events.js';
 import { evaluate, type PolicyContext } from './permissions.js';
 import { SdkSession } from './sdk/session.js';
+import type { TransportSession } from './sdk/transport.js';
 import { isTransportFailure } from './sdk/errors.js';
 import type { ContextStatsResult } from './protocol.js';
 
@@ -123,7 +124,7 @@ function stripWorktreePrefix(path: string, worktree: string): string {
 }
 
 export class AgentSession {
-  private rpc: SdkSession | null = null;
+  private rpc: TransportSession | null = null;
   private oneshot: OneShotClient | null = null;
   private mode: Mode = 'rpc';
   private protocolFailures = 0;
@@ -237,7 +238,7 @@ export class AgentSession {
    * the roster picker reads is refreshed from it. Discovery is a view: a
    * session that will not answer costs the run nothing.
    */
-  private async publishDiscovery(client: SdkSession): Promise<void> {
+  private async publishDiscovery(client: TransportSession): Promise<void> {
     noteSessionModels(client.availableModels);
     try {
       const tools = await client.listTools();

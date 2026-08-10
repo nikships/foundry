@@ -14,7 +14,6 @@ import {
   ProcessExitError,
   ProcessTransport,
   ReasoningEffort as SdkReasoningEffort,
-  ToolConfirmationOutcome,
   createSession,
   resumeSession,
   type AskUserRequestParams,
@@ -27,13 +26,7 @@ import {
   type StringFramedDroidClientTransport,
 } from '@factory/droid-sdk/node';
 import type { ContextBreakdown, ReasoningEffort } from '@shared/types.js';
-import {
-  INHERIT_MODEL,
-  type PermissionAsk,
-  type PermissionDecision,
-  type TurnOptions,
-  type TurnResult,
-} from '../turn.js';
+import { INHERIT_MODEL, type TurnOptions, type TurnResult } from '../turn.js';
 import { DroidProtocolError } from './errors.js';
 import {
   AUTONOMY_LEVEL,
@@ -49,35 +42,22 @@ import {
   FOUNDRY_TOOL_IDS,
   type FoundryMcpContext,
 } from './mcp-tools.js';
+import {
+  toAskUserAsk,
+  toAskUserResult,
+  toPermissionAsk,
+  toPermissionHandlerResult,
+} from './policy-adapters.js';
 import { SniffingTransport } from './sniffing-transport.js';
+import type { SessionTool, TransportSession, TransportSessionOptions } from './transport.js';
+import { TurnCollector } from './turn-collector.js';
 
-/** One tool as this session sees it; `id` is the llmId the allowlist names. */
-export interface SessionTool {
-  id: string;
-  displayName: string;
-  description: string;
-  category: string;
-  defaultAllowed: boolean;
-  allowed: boolean;
-}
+export type { SessionTool } from './transport.js';
 
-export interface SdkSessionOptions {
+export interface SdkSessionOptions extends TransportSessionOptions {
   droidPath: string;
-  cwd: string;
-  model: string;
-  reasoningEffort: ReasoningEffort;
-  /** Allowlist: every other tool is disabled, since the SDK is subtractive. */
-  restrictTools?: string[];
-  disabledTools?: string[];
-  /** Answers every ask from the engine policy; no ask ever reaches a person. */
-  onPermission: (ask: PermissionAsk) => PermissionDecision | Promise<PermissionDecision>;
   /** Test seam: an in-memory transport replaces the child process entirely. */
   transport?: StringFramedDroidClientTransport;
-  onNotification?: (n: DroidNotification) => void;
-  onExit?: (code: number | null) => void;
-  onStderr?: (text: string) => void;
-  /** Which model a turn actually ran on, when it is not the one asked for. */
-  onModelWarning?: (warning: string) => void;
   /** Test seam for the CLI's lag between announcing MCP tools and listing them. */
   toolRefreshDelayMs?: number;
   /**
@@ -115,10 +95,7 @@ const EFFORTS: Record<ReasoningEffort, SdkReasoningEffort> = {
  */
 const MCP_TOOL_SETTLE_MS = 1_500;
 
-/** Every selection that lets the tool run, i.e. what an `allow` may answer. */
-type ProceedOutcome = Exclude<ToolConfirmationOutcome, ToolConfirmationOutcome.ProceedEdit>;
-
-export class SdkSession {
+export class SdkSession implements TransportSession {
   private session: DroidSession | null = null;
   private sniffer: SniffingTransport | null = null;
   private owned: ProcessTransport | null = null;
@@ -645,24 +622,15 @@ export class SdkSession {
   }
 
   /**
-   * The zero-interrupt policy answers every ask. The SDK speaks selections
-   * rather than allow/deny, and a denial carries its reason as the comment so
-   * the agent can act on it instead of retrying blind.
+   * The zero-interrupt policy answers every ask. Shared adapters map
+   * allow/deny onto SDK selections (including proceedOption so an unoffered
+   * selection is never returned bare).
    */
   private async onPermission(
     params: RequestPermissionRequestParams,
   ): Promise<RequestPermissionHandlerResult> {
-    const decision = await this.opts.onPermission({
-      method: 'droid.request_permission',
-      params: flattenToolUse(params),
-    });
-    if (decision.outcome !== 'allow') {
-      return {
-        selectedOption: ToolConfirmationOutcome.Cancel,
-        comment: decision.reason ?? 'denied by policy',
-      };
-    }
-    return proceedOption(params);
+    const decision = await this.opts.onPermission(toPermissionAsk(params));
+    return toPermissionHandlerResult(decision, params);
   }
 
   /**
@@ -671,12 +639,8 @@ export class SdkSession {
    * exists to prevent.
    */
   private async onAskUser(params: AskUserRequestParams): Promise<AskUserResult> {
-    const decision = await this.opts.onPermission({
-      method: 'droid.ask_user',
-      params: params as unknown as Record<string, unknown>,
-    });
-    if (decision.outcome === 'allow' && decision.answers) return { answers: decision.answers };
-    return { cancelled: true, answers: [] };
+    const decision = await this.opts.onPermission(toAskUserAsk(params));
+    return toAskUserResult(decision);
   }
 
   private onEnvelope(envelope: Record<string, unknown>): void {
@@ -717,97 +681,6 @@ export class SdkSession {
     this.exitReported = true;
     this.opts.onExit?.(code);
   }
-}
-
-/**
- * Per-turn facts the SDK's own result does not carry: the committed assistant
- * text (which survives an error turn where `result.text` empties) and droid's
- * raw completion reason, which the trace records rather than the SDK subtype.
- */
-class TurnCollector {
-  private committed = '';
-  private lastUsage: TokenUsage | null = null;
-  private lastReason: string | null = null;
-
-  get text(): string {
-    return this.committed;
-  }
-
-  get usage(): TokenUsage | null {
-    return this.lastUsage;
-  }
-
-  get reason(): string | null {
-    return this.lastReason;
-  }
-
-  absorb(n: DroidNotification): void {
-    switch (n.type) {
-      case 'create_message': {
-        const message = (
-          n as { message?: { role?: string; content?: { type: string; text?: string }[] } }
-        ).message;
-        if (message?.role !== 'assistant') return;
-        const joined = (message.content ?? [])
-          .filter((block) => block.type === 'text' && typeof block.text === 'string')
-          .map((block) => block.text as string)
-          .join('\n');
-        if (joined.trim()) this.committed = joined;
-        return;
-      }
-      case 'session_token_usage_changed':
-        this.lastUsage = (n as { tokenUsage?: TokenUsage }).tokenUsage ?? this.lastUsage;
-        return;
-      case 'agent_turn_completed': {
-        const done = n as {
-          reason?: string;
-          tokenUsage?: TokenUsage;
-          cumulativeTokenUsage?: TokenUsage;
-        };
-        this.lastUsage = done.cumulativeTokenUsage ?? done.tokenUsage ?? this.lastUsage;
-        this.lastReason = done.reason ?? 'completed';
-        return;
-      }
-      default:
-        return;
-    }
-  }
-}
-
-/**
- * The policy reads a flat ask (`toolName`, `command`, `file_path`); the SDK
- * nests the same facts one level down and splits them across `toolUse.input`
- * and the typed confirmation `details`.
- */
-function flattenToolUse(params: RequestPermissionRequestParams): Record<string, unknown> {
-  const first = params.toolUses?.[0];
-  if (!first) return { ...params } as unknown as Record<string, unknown>;
-  const details = first.details as Record<string, unknown>;
-  return {
-    toolName: first.toolUse.name,
-    ...first.toolUse.input,
-    ...(typeof details.command === 'string' ? { command: details.command } : {}),
-    ...(typeof details.filePath === 'string' ? { file_path: details.filePath } : {}),
-  };
-}
-
-/**
- * The SDK answers `cancel` for any selection the ask did not offer, so an
- * allow that names an unavailable option lands as a silent denial. Asks
- * normally offer `proceed_once`; take whatever proceed they do offer instead
- * of assuming, and never fall back to a selection that stops the tool.
- */
-function proceedOption(params: RequestPermissionRequestParams): ProceedOutcome {
-  const offered = params.options?.map((option) => option.value) ?? [];
-  if (offered.includes(ToolConfirmationOutcome.ProceedOnce)) {
-    return ToolConfirmationOutcome.ProceedOnce;
-  }
-  // ProceedEdit is left out because it is only answerable with edited content.
-  const proceed = offered.filter(
-    (value): value is ProceedOutcome =>
-      value !== ToolConfirmationOutcome.Cancel && value !== ToolConfirmationOutcome.ProceedEdit,
-  );
-  return proceed[0] ?? ToolConfirmationOutcome.ProceedOnce;
 }
 
 function errorText(error: unknown): string {

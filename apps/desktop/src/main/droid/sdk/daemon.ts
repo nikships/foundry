@@ -18,7 +18,14 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import {
   connectToDaemon as sdkConnectToDaemon,
   type ConnectedDroid,
+  type ConnectedDroidSession,
   type ConnectToDaemonOptions,
+} from '@factory/droid-sdk';
+import type {
+  AskUserRequestParams,
+  AskUserResult,
+  RequestPermissionHandlerResult,
+  RequestPermissionRequestParams,
 } from '@factory/droid-sdk';
 import { spawnEnv } from '../../system/env.js';
 import { isAlive, killTree } from '../../system/procs.js';
@@ -27,6 +34,28 @@ import {
   type DaemonAuthCredential,
   type ResolveDaemonAuthOptions,
 } from './auth.js';
+import {
+  failClosedAskUserHandler,
+  failClosedPermissionHandler,
+  type DaemonHandle,
+  type DaemonSessionsFacade,
+  type DaemonStreamMessage,
+} from './daemon-session.js';
+import type { DroidNotification } from '../protocol.js';
+import type { ContextBreakdown } from '@shared/types.js';
+
+export {
+  DaemonSession,
+  DAEMON_AUTONOMY,
+  failClosedAskUserHandler,
+  failClosedPermissionHandler,
+} from './daemon-session.js';
+export type {
+  DaemonHandle,
+  DaemonSessionOptions,
+  DaemonSessionsFacade,
+  DaemonStreamMessage,
+} from './daemon-session.js';
 
 /** Mission-bounded daemon port band (AGENTS.md). */
 export const DAEMON_PORT_MIN = 37_600;
@@ -49,11 +78,14 @@ export type DaemonEnsureResult =
   | { ok: false; reason: DaemonUnavailableReason; detail: string };
 
 /**
- * Minimal surface DaemonManager needs from a ConnectedDroid. Tests inject a
- * fake; production uses the real SDK connection.
+ * Surface DaemonManager + DaemonSession need from a ConnectedDroid. Tests
+ * inject a fake; production uses the real SDK connection with fail-closed
+ * connection-level handlers and a sessions facade.
  */
 export interface DaemonConnection {
   disconnect(): void;
+  /** Present once connected; DaemonSession multiplexes agent sessions over it. */
+  sessions?: DaemonSessionsFacade;
 }
 
 export type ConnectToDaemonFn = (
@@ -317,9 +349,141 @@ export class DaemonManager {
 async function defaultConnect(
   options: Pick<ConnectToDaemonOptions, 'url' | 'auth' | 'onError' | 'onAuthenticationError'>,
 ): Promise<DaemonConnection> {
-  const droid: ConnectedDroid = await sdkConnectToDaemon(options);
-  return droid;
+  // Connection-level handlers are a fail-closed safety net only. Per-session
+  // handlers attached at sessions.create/resume fully override them and receive
+  // only their own session's asks (spike V6). Anything that still reaches here
+  // — missing handler, missing/mismatched associatedSessionIds — is denied.
+  const droid: ConnectedDroid = await sdkConnectToDaemon({
+    ...options,
+    permissionHandler: failClosedPermissionHandler,
+    askUserHandler: failClosedAskUserHandler,
+  });
+  return adaptConnectedDroid(droid);
 }
+
+/**
+ * Wrap the SDK ConnectedDroid so DaemonSession sees a stable facade, including
+ * raw notification subscription (tapped off the session controller the public
+ * ConnectedDroidSession type does not expose).
+ */
+export function adaptConnectedDroid(droid: ConnectedDroid): DaemonConnection {
+  const sessions: DaemonSessionsFacade = {
+    // SdkMcpServer is accepted at runtime by create/resume; the public daemon
+    // option type only lists wire shapes. Cast at the boundary.
+    create: async (options) =>
+      adaptHandle(
+        await droid.sessions.create(
+          options as Parameters<ConnectedDroid['sessions']['create']>[0],
+        ),
+      ),
+    resume: async (sessionId, options) =>
+      adaptHandle(
+        await droid.sessions.resume(
+          sessionId,
+          options as Parameters<ConnectedDroid['sessions']['resume']>[1],
+        ),
+      ),
+    updateSettings: (sessionId, params) => droid.sessions.updateSettings(sessionId, params),
+    getContextBreakdown: async (sessionId) => {
+      const raw = await droid.sessions.getContextBreakdown(sessionId);
+      return raw as ContextBreakdown;
+    },
+    getRewindInfo: async (sessionId, messageId) => {
+      const info = await droid.sessions.getRewindInfo(sessionId, messageId);
+      return {
+        availableFiles: info.availableFiles.map((file) => ({
+          filePath: file.filePath,
+          contentHash: file.contentHash,
+          size: file.size,
+        })),
+        createdFiles: info.createdFiles.map((file) => ({ filePath: file.filePath })),
+        evictedFiles: info.evictedFiles.map((file) => ({
+          filePath: file.filePath,
+          reason: file.reason,
+        })),
+      };
+    },
+  };
+  return {
+    disconnect: () => droid.disconnect(),
+    sessions,
+  };
+}
+
+function adaptHandle(session: ConnectedDroidSession): DaemonHandle {
+  return {
+    id: session.id,
+    settings: session.settings as Readonly<Record<string, unknown>>,
+    cwd: session.cwd,
+    stream: (prompt, options) => session.stream(prompt, options) as AsyncIterable<DaemonStreamMessage>,
+    interrupt: () => session.interrupt(),
+    compact: async (customInstructions) => {
+      const outcome = await session.compact(customInstructions);
+      return {
+        newSessionId: outcome.newSessionId,
+        removedCount: outcome.removedCount,
+      };
+    },
+    rewind: async (params) => {
+      const outcome = await session.rewind(params);
+      return {
+        newSessionId: outcome.newSessionId,
+        restoredCount: outcome.restoredCount,
+        deletedCount: outcome.deletedCount,
+        failedRestoreCount: outcome.failedRestoreCount,
+        failedDeleteCount: outcome.failedDeleteCount,
+      };
+    },
+    detach: () => session.detach(),
+    close: () => session.close(),
+    subscribeNotifications: (handler) => subscribeSessionNotifications(session, handler),
+  };
+}
+
+/**
+ * ConnectedDroidSession does not expose onNotification. The runtime handle
+ * keeps a `controller` EventEmitter that fans out `sessionNotification` with
+ * the inner payload — the same shape EventFolder.absorb expects. Pin the
+ * access so a future SDK that hides the field fails loudly at subscribe time
+ * rather than silently dropping the trace stream.
+ */
+function subscribeSessionNotifications(
+  session: ConnectedDroidSession,
+  handler: (n: DroidNotification) => void,
+): () => void {
+  const controller = readSessionController(session);
+  if (!controller) return () => undefined;
+  const listener = (event: unknown): void => {
+    if (!event || typeof event !== 'object') return;
+    const payload = event as { sessionId?: string; notification?: DroidNotification };
+    if (payload.sessionId !== session.id || !payload.notification) return;
+    handler(payload.notification);
+  };
+  controller.on('sessionNotification', listener);
+  return () => controller.off('sessionNotification', listener);
+}
+
+interface SessionController {
+  on(event: string, listener: (event: unknown) => void): void;
+  off(event: string, listener: (event: unknown) => void): void;
+}
+
+function readSessionController(session: ConnectedDroidSession): SessionController | null {
+  if (!('controller' in session)) return null;
+  const controller = (session as { controller?: unknown }).controller;
+  if (!controller || typeof controller !== 'object') return null;
+  const candidate = controller as Partial<SessionController>;
+  if (typeof candidate.on !== 'function' || typeof candidate.off !== 'function') return null;
+  return candidate as SessionController;
+}
+
+// Re-export handler param types used by tests that assert wire replies.
+export type {
+  AskUserRequestParams,
+  AskUserResult,
+  RequestPermissionHandlerResult,
+  RequestPermissionRequestParams,
+};
 
 function clampPort(port: number): number {
   if (!Number.isFinite(port)) return DEFAULT_DAEMON_PORT;
