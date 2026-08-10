@@ -137,6 +137,7 @@ async function main(): Promise<void> {
     gateRetries: 1,
     compactionThreshold: settings.compactionThreshold,
     rewindAfterCorrections: settings.rewindAfterCorrections,
+    daemonPort: settings.daemonPort,
     agents,
     envelopeDefs: [],
     project,

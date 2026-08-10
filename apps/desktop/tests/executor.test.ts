@@ -628,6 +628,7 @@ interface RunInput {
   gateRetries?: number;
   compactionThreshold?: number;
   rewindAfterCorrections?: number;
+  daemonPort?: number;
 }
 
 function run(input: RunInput): Promise<{ status: string; runId: string }> {
@@ -659,6 +660,7 @@ function start(input: RunInput): {
     gateRetries: input.gateRetries ?? 2,
     compactionThreshold: input.compactionThreshold ?? 0.8,
     rewindAfterCorrections: input.rewindAfterCorrections ?? 2,
+    daemonPort: input.daemonPort ?? 37_643,
     agents: input.agents ?? [buildAgent()],
     envelopeDefs: input.envelopeDefs ?? [],
     project: { ...h.project, ...input.project },

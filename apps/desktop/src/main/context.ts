@@ -20,6 +20,7 @@ import { RunRegistry } from './engine/registry.js';
 import { Detections } from './engine/detections.js';
 import { UpdaterService } from './updater.js';
 import { notifyNeedsInput, notifyOutcome, setDockBadge } from './system/notify.js';
+import { shutdownDaemonManager } from './droid/sdk/daemon.js';
 
 export interface Scope {
   projectId?: string;
@@ -127,5 +128,9 @@ export class AppContext {
   dispose(): void {
     this.registry.closeAll();
     this.detections.cancelAll();
+    // Best-effort: disconnect + SIGTERM the app-owned daemon. --parent-pid is
+    // the crash backstop; this is the clean quit path. Fire-and-forget so
+    // dispose stays sync for before-quit.
+    void shutdownDaemonManager();
   }
 }

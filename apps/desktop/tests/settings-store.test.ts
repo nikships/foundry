@@ -148,3 +148,35 @@ describe('rewindAfterCorrections', () => {
     );
   });
 });
+
+describe('daemonPort', () => {
+  it('defaults to 37643 on a fresh install', () => {
+    expect(defaultSettings().daemonPort).toBe(37_643);
+  });
+
+  it('reads 37643 for a settings file written before the field existed', () => {
+    const stored = { ...defaultSettings() } as Record<string, unknown>;
+    delete stored.daemonPort;
+    expect(migrate(stored).daemonPort).toBe(37_643);
+    expect(seed(stored).get().daemonPort).toBe(37_643);
+  });
+
+  it('accepts a value inside the mission band', () => {
+    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
+    expect(store.patch({ daemonPort: 37_650 })).toMatchObject({ ok: true });
+    expect(store.get().daemonPort).toBe(37_650);
+  });
+
+  it('refuses a value outside 37600–37699 rather than storing it', () => {
+    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
+    for (const value of [80, 9_999, 37_599, 37_700]) {
+      expect(store.patch({ daemonPort: value }).ok).toBe(false);
+    }
+    expect(store.get().daemonPort).toBe(37_643);
+  });
+
+  it('clamps a stored out-of-range value into the mission band', () => {
+    expect(migrate({ ...defaultSettings(), daemonPort: 80 }).daemonPort).toBe(37_600);
+    expect(migrate({ ...defaultSettings(), daemonPort: 99_999 }).daemonPort).toBe(37_699);
+  });
+});

@@ -141,6 +141,7 @@ export class RunRegistry extends EventEmitter {
       gateRetries: settings.gateRetries,
       compactionThreshold: settings.compactionThreshold,
       rewindAfterCorrections: settings.rewindAfterCorrections,
+      daemonPort: settings.daemonPort,
       agents: input.agents,
       envelopeDefs: input.envelopeDefs,
       project: input.project,

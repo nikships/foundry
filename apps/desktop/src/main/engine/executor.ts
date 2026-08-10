@@ -50,6 +50,11 @@ export interface ExecutorDeps {
    * instead of appending another correction. `0` disables.
    */
   rewindAfterCorrections: number;
+  /**
+   * Preferred port for the app-owned droid daemon (37600–37699). DaemonManager
+   * scans up within the band when this port is busy.
+   */
+  daemonPort: number;
   agents: AgentDef[];
   /** Shared custom envelope library snapshotted at run start. */
   envelopeDefs: EnvelopeDef[];

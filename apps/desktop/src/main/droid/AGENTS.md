@@ -86,6 +86,29 @@ reason: it owns `DroidProtocolError` (what this seam raises: a timed-out turn,
 an error result, a session used before it started) and classifies the SDK's own
 four transport errors for `agent.ts`, which may not name them itself.
 
+### DaemonManager (`sdk/daemon.ts` + `sdk/auth.ts`)
+
+One local `droid daemon` for the app process, started lazily on first
+`ensure()` — never at boot. Spawn argv is
+`droid daemon --port <p> --host 127.0.0.1 --parent-pid <app>` so an unclean
+quit still reaps the child. Port comes from `AppSettings.daemonPort` (default
+37643); a busy preferred port scans **up** inside 37600–37699 only. Auth is
+`resolveDaemonAuth()`: `FACTORY_API_KEY` if set, else the stored WorkOS JWT
+decrypted read-only from `~/.factory/auth.v2.{file,key}` (AES-256-GCM
+`iv:tag:ciphertext`). Never write `~/.factory`, never log the secret.
+
+`ensure()` never throws: spawn/connect/auth failure returns
+`{ok:false, reason}` (`auth_missing` | `auth_rejected` | `spawn_failed` |
+`connect_failed` | `port_exhausted` | `health_timeout`) so callers fall back
+to subprocess. The connect path is injectable (`opts.connect`) for vitest.
+`onProcess` fires once with `{pid, port, command}` — wire it to
+`tracer.recordProcess({ kind:'droid', name:'daemon', ... })` (one row for the
+daemon, not per session). `shutdown()` is disconnect + SIGTERM; app quit calls
+it from `AppContext.dispose` (and `--parent-pid` is the crash backstop).
+
+Daemon `sessions.create` requires `machineId` (pass `'default'`) — that lands
+with the DaemonSession wrapper, not this manager.
+
 Three things the SDK cannot give us, all solved by the one decorator in
 `sdk/sniffing-transport.ts`:
 

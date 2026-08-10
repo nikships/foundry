@@ -167,6 +167,7 @@ function defaultMockSettings(): AppSettings {
     gateRetries: 2,
     compactionThreshold: 0.8,
     rewindAfterCorrections: 2,
+    daemonPort: 37_643,
     notifications: { accepted: true, rejected: true, failed: true, needsInput: true },
     dockBadge: true,
     appearance: 'system',

@@ -21,6 +21,10 @@ const cliConfigSchema = z.object({
  */
 const COMPACTION_BAND = [0.5, 0.95] as const;
 
+/** Mission-bounded band for the app-owned droid daemon (see architecture §9.1). */
+const DAEMON_PORT_BAND = [37_600, 37_699] as const;
+const DEFAULT_DAEMON_PORT = 37_643;
+
 export const appSettingsSchema = z.object({
   clis: z.object({
     droid: cliConfigSchema,
@@ -38,6 +42,7 @@ export const appSettingsSchema = z.object({
   compactionThreshold: z.number().min(COMPACTION_BAND[0]).max(COMPACTION_BAND[1]),
   /** 0 disables; the useful range stops well before a phase's retry budgets. */
   rewindAfterCorrections: z.number().int().min(0).max(20),
+  daemonPort: z.number().int().min(DAEMON_PORT_BAND[0]).max(DAEMON_PORT_BAND[1]),
   notifications: z.object({
     accepted: z.boolean(),
     rejected: z.boolean(),
@@ -76,6 +81,7 @@ export function defaultSettings(): AppSettings {
     gateRetries: 2,
     compactionThreshold: 0.8,
     rewindAfterCorrections: 2,
+    daemonPort: DEFAULT_DAEMON_PORT,
     notifications: { accepted: true, rejected: true, failed: true, needsInput: true },
     dockBadge: true,
     appearance: 'system',
@@ -128,6 +134,11 @@ export function migrate(raw: unknown): AppSettings {
   // disable validation by leaving the app with no integer at all.
   merged.rewindAfterCorrections = Math.round(
     clamp(merged.rewindAfterCorrections, base.rewindAfterCorrections, [0, 20]),
+  );
+  // Out-of-band ports (hand-edited or pre-field files) clamp into the mission
+  // range rather than leaving the app with no daemon port at all.
+  merged.daemonPort = Math.round(
+    clamp(merged.daemonPort, base.daemonPort, DAEMON_PORT_BAND),
   );
   return merged;
 }

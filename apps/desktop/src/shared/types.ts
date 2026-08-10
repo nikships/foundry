@@ -205,6 +205,11 @@ export interface AppSettings {
    * correction turn. `0` disables rewind entirely.
    */
   rewindAfterCorrections: number;
+  /**
+   * Preferred local port for the app-owned `droid daemon`. Must sit inside
+   * 37600–37699; when busy the manager scans up within that band.
+   */
+  daemonPort: number;
   notifications: { accepted: boolean; rejected: boolean; failed: boolean; needsInput: boolean };
   dockBadge: boolean;
   appearance: 'system' | 'dark';
