@@ -11,12 +11,70 @@
   padding: calc(var(--titlebar-h) + var(--s2)) var(--s6) var(--s3);
   border-bottom: 1px solid var(--line-faint);
 }
-.head :global(.eyebrow) {
-  margin-right: auto;
+.headSep {
+  width: 1px;
+  height: 16px;
+  background: var(--line);
+  flex: none;
+  margin: 0 1px;
+}
+.headTitle {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.headIndex {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--eyebrow-tracking);
+  text-transform: uppercase;
+  color: var(--accent);
+  flex: none;
+}
+.headName {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.headDot {
+  color: var(--text-ghost);
+  flex: none;
+  font-size: 12px;
+  line-height: 1;
+}
+.headId {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  flex: none;
+}
+.inspectorBtn {
+  gap: 4px;
+}
+.inspectorExt {
+  font-size: 10px;
+  line-height: 1;
+  opacity: 0.65;
+}
+.actionSep {
+  width: 1px;
+  height: 16px;
+  background: var(--line-faint);
+  flex: none;
+  margin: 0 1px;
 }
 .grow {
   flex: 1;
-  min-width: 0;
+  min-width: 12px;
 }
 .action-err {
   margin: var(--s3) var(--s6) 0;

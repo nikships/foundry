@@ -180,7 +180,8 @@ export default function RunDetailScreen({
 
   const bannerError = actionError || view.error;
 
-  const headerLabel = view.run ? view.run.pipelineName || view.run.status : runId.slice(0, 8);
+  const pipelineLabel = view.run?.pipelineName?.trim() || '';
+  const shortId = runId.slice(0, 7);
 
   return (
     <div className={styles.screen}>
@@ -188,14 +189,33 @@ export default function RunDetailScreen({
         <Button variant="ghost" size="sm" className="back" onClick={onBack}>
           ← Runs
         </Button>
-        <p className="eyebrow">
-          <span className="index">Run</span>
-          {headerLabel}
-        </p>
-        <Button variant="ghost" size="sm" onClick={() => onOpenInspector(runId)}>
-          Inspector
+        <span className={styles.headSep} aria-hidden />
+        <span className={styles.headTitle} title={pipelineLabel || shortId}>
+          <span className={styles.headIndex}>Run</span>
+          {pipelineLabel ? (
+            <>
+              <span className={styles.headName}>{pipelineLabel}</span>
+              <span className={styles.headDot}>·</span>
+              <span className={styles.headId}>{shortId}</span>
+            </>
+          ) : (
+            <span className={styles.headId}>{shortId}</span>
+          )}
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={styles.inspectorBtn}
+          onClick={() => onOpenInspector(runId)}
+          title="Open live transcript in Inspector"
+        >
+          Inspector{' '}
+          <span className={styles.inspectorExt} aria-hidden>
+            ↗
+          </span>
         </Button>
         <div className={styles.grow} />
+        {(view.live || showCost) && <span className={styles.actionSep} aria-hidden />}
         {view.live && (
           <Button
             variant="danger"
