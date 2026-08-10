@@ -1010,17 +1010,19 @@ export default function SettingsScreen({
                               return;
                             }
                             const rounded = Math.round(n);
+                            const clamped = Math.min(
+                              DAEMON_PORT_BAND.max,
+                              Math.max(DAEMON_PORT_BAND.min, rounded),
+                            );
                             if (rounded !== n) {
                               setFieldErrors((m) => ({
                                 ...m,
                                 daemonPort: `Rounded to ${rounded}.`,
                               }));
-                            }
-                            const clamped = Math.min(
-                              DAEMON_PORT_BAND.max,
-                              Math.max(DAEMON_PORT_BAND.min, rounded),
-                            );
-                            if (rounded < DAEMON_PORT_BAND.min || rounded > DAEMON_PORT_BAND.max) {
+                            } else if (
+                              rounded < DAEMON_PORT_BAND.min ||
+                              rounded > DAEMON_PORT_BAND.max
+                            ) {
                               setFieldErrors((m) => ({
                                 ...m,
                                 daemonPort: `Clamped to ${clamped} — the allowed band is ${DAEMON_PORT_BAND.min}–${DAEMON_PORT_BAND.max}.`,

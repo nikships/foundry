@@ -8,7 +8,8 @@
  * onto nothing is indistinguishable from a broken one.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { ContextBreakdown as Breakdown } from '@shared/types.js';
 import type { ContextBreakdownReason } from '@shared/ipc-contract.js';
 import { api } from '../../api.js';
@@ -108,6 +109,9 @@ export default function ContextBreakdownDisclosure({
   const { projectId } = useApp();
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<State>(EMPTY);
+  const wrapRef = useRef<HTMLSpanElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({});
 
   const load = useCallback(async (): Promise<void> => {
     setState((prev) => ({ ...prev, loading: true, message: '' }));
@@ -127,6 +131,8 @@ export default function ContextBreakdownDisclosure({
     }
   }, [projectId, runId, agent]);
 
+  const close = useCallback(() => setOpen(false), []);
+
   // Read on open rather than on mount: it costs a round trip to a live session,
   // and a closed panel has nothing to show it with.
   useEffect(() => {
@@ -134,8 +140,74 @@ export default function ContextBreakdownDisclosure({
     else setState(EMPTY);
   }, [open, load]);
 
+  // Measure on open (and on viewport changes) so the panel never clips off-screen.
+  useEffect(() => {
+    if (!open) return;
+    const measure = (): void => {
+      const wrap = wrapRef.current;
+      if (!wrap) return;
+      const rect = wrap.getBoundingClientRect();
+      const viewportH = window.innerHeight;
+      const viewportW = window.innerWidth;
+      const gap = 6;
+      const pad = 8;
+      const panelWidth = 300;
+      const panelMaxH = 340;
+      const spaceBelow = viewportH - rect.bottom - pad;
+      const spaceAbove = rect.top - pad;
+      const openUp = spaceBelow < Math.min(200, panelMaxH) && spaceAbove > spaceBelow;
+      const maxHeight = Math.min(panelMaxH, openUp ? spaceAbove - gap : spaceBelow - gap);
+      // Keep the panel inside the viewport horizontally — align to the wrap's right edge.
+      let left = rect.right - panelWidth;
+      left = Math.max(pad, Math.min(left, viewportW - panelWidth - pad));
+      setPanelStyle(
+        openUp
+          ? {
+              top: rect.top - gap,
+              left,
+              width: panelWidth,
+              maxHeight: Math.max(80, maxHeight),
+              transform: 'translateY(-100%)',
+            }
+          : {
+              top: rect.bottom + gap,
+              left,
+              width: panelWidth,
+              maxHeight: Math.max(80, maxHeight),
+            },
+      );
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    window.addEventListener('scroll', measure, true);
+    return () => {
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('scroll', measure, true);
+    };
+  }, [open, state.breakdown, state.message]);
+
+  // Escape dismisses, outside-click dismisses.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') close();
+    };
+    const onPointer = (e: MouseEvent): void => {
+      const target = e.target as Node;
+      if (wrapRef.current?.contains(target)) return;
+      if (panelRef.current?.contains(target)) return;
+      close();
+    };
+    window.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onPointer);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onPointer);
+    };
+  }, [open, close]);
+
   return (
-    <span className={styles.wrap}>
+    <span ref={wrapRef} className={styles.wrap}>
       <button
         className={styles.toggle}
         onClick={() => setOpen((v) => !v)}
@@ -144,30 +216,38 @@ export default function ContextBreakdownDisclosure({
       >
         {open ? '▾' : '▸'} ctx
       </button>
-      {open && (
-        <div className={styles.panel}>
-          <div className={styles.panelHead}>
-            <span className="te-tag">context</span>
-            <button className={styles.refresh} onClick={() => void load()} disabled={state.loading}>
-              {state.loading ? 'reading…' : 'refresh'}
-            </button>
-          </div>
-          {state.loading && !state.breakdown && <p className={styles.note}>Reading the session…</p>}
-          {!state.loading && state.breakdown && (
-            <>
-              <Rows breakdown={state.breakdown} />
-              {state.capturedAt && (
-                <p className={styles.note}>
-                  As of this agent&rsquo;s last turn, {clockTime(state.capturedAt)}.
-                </p>
-              )}
-            </>
-          )}
-          {!state.loading && !state.breakdown && state.message && (
-            <p className={styles.note}>{state.message}</p>
-          )}
-        </div>
-      )}
+      {open &&
+        createPortal(
+          <div ref={panelRef} className={styles.panel} style={panelStyle}>
+            <div className={styles.panelHead}>
+              <span className="te-tag">context</span>
+              <button
+                className={styles.refresh}
+                onClick={() => void load()}
+                disabled={state.loading}
+              >
+                {state.loading ? 'reading…' : 'refresh'}
+              </button>
+            </div>
+            {state.loading && !state.breakdown && (
+              <p className={styles.note}>Reading the session…</p>
+            )}
+            {!state.loading && state.breakdown && (
+              <>
+                <Rows breakdown={state.breakdown} />
+                {state.capturedAt && (
+                  <p className={styles.note}>
+                    As of this agent&rsquo;s last turn, {clockTime(state.capturedAt)}.
+                  </p>
+                )}
+              </>
+            )}
+            {!state.loading && !state.breakdown && state.message && (
+              <p className={styles.note}>{state.message}</p>
+            )}
+          </div>,
+          document.body,
+        )}
     </span>
   );
 }

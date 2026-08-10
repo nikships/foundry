@@ -31,18 +31,12 @@
   border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
 }
 
-/* Anchored to the lane header rather than the toggle: the header is one tight
- * row, a panel that grows inside it pushes the meter and the status badge out,
- * and the lane clips overflow, so a panel hung off the toggle loses its left
- * edge in every lane. Staying inside the header keeps it whole. */
+/* Portaled to document.body — the lane and Inspector clip overflow, so a
+ * non-portaled panel loses its edge; the React tree keeps it local. */
 .panel {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: var(--s3);
-  z-index: 4;
-  width: 300px;
-  max-width: calc(100% - 2 * var(--s3));
-  max-height: 340px;
+  position: fixed;
+  z-index: 40;
+  max-width: calc(100vw - 16px);
   overflow-y: auto;
   padding: var(--s3);
   border: 1px solid var(--line-strong);
