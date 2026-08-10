@@ -140,6 +140,63 @@ function CheckpointGlyph(): React.JSX.Element {
   );
 }
 
+function PlusGlyph(): React.JSX.Element {
+  return (
+    <svg
+      width="11"
+      height="11"
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M7 2v10M2 7h10" />
+    </svg>
+  );
+}
+
+function ChevronDownGlyph(): React.JSX.Element {
+  return (
+    <svg
+      width="10"
+      height="10"
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M3.5 5.25 7 8.75l3.5-3.5" />
+    </svg>
+  );
+}
+
+const ADD_PHASE_OPTIONS: DropdownOption[] = [
+  {
+    value: 'agent',
+    label: 'Agent',
+    description: 'Prompt an agent with an envelope',
+    icon: <AgentGlyph />,
+  },
+  {
+    value: 'code',
+    label: 'Command',
+    description: 'Run a project command or shell script',
+    icon: <CommandGlyph />,
+  },
+  {
+    value: 'engineer',
+    label: 'Checkpoint',
+    description: 'Pause execution for human approval',
+    icon: <CheckpointGlyph />,
+  },
+];
+
 function PhaseGlyph({ kind }: { kind: PhaseDef['kind'] }): React.JSX.Element {
   if (kind === 'agent') return <AgentGlyph />;
   if (kind === 'code') return <CommandGlyph />;
@@ -214,32 +271,23 @@ function PhaseTrack({
           className={`${styles.pipelinePhaseConnector} ${styles.pipelinePhaseConnectorTail}`}
           aria-hidden
         />
-        <div className={styles.pipelinePhaseAdd}>
-          <span className={styles.pipelinePhaseAddLabel}>add</span>
-          <button
-            type="button"
-            className={styles.pipelinePhaseAddBtn}
-            style={{ ['--hue' as string]: 'var(--accent)' }}
-            onClick={() => onAdd('agent')}
-          >
-            <AgentGlyph /> Agent
-          </button>
-          <button
-            type="button"
-            className={styles.pipelinePhaseAddBtn}
-            style={{ ['--hue' as string]: 'var(--blue)' }}
-            onClick={() => onAdd('code')}
-          >
-            <CommandGlyph /> Command
-          </button>
-          <button
-            type="button"
-            className={styles.pipelinePhaseAddBtn}
-            style={{ ['--hue' as string]: 'var(--amber)' }}
-            onClick={() => onAdd('engineer')}
-          >
-            <CheckpointGlyph /> Checkpoint
-          </button>
+        <div className={styles.pipelinePhaseAddNode}>
+          <span className={styles.pipelinePhaseNumber}>+ NEXT</span>
+          <Dropdown
+            value=""
+            options={ADD_PHASE_OPTIONS}
+            onChange={(kind) => onAdd(kind as PhaseDef['kind'])}
+            className={styles.pipelineAddDropdownWrap}
+            triggerClassName={styles.pipelinePhaseAddTrigger}
+            renderValue={() => (
+              <span className={styles.pipelinePhaseAddFace}>
+                <PlusGlyph />
+                <span>Add phase</span>
+                <ChevronDownGlyph />
+              </span>
+            )}
+          />
+          <span className={styles.pipelinePhaseAddHint}>Append step</span>
         </div>
       </div>
     </div>
@@ -623,10 +671,28 @@ export default function PipelinesScreen({
               {/* ── phase rows ── */}
               <section className={styles.pipelinePhases} aria-label="Phases">
                 <div className={styles.pipelineSectionHead}>
-                  <p className="eyebrow">
-                    <span className="index">01</span>Phases
-                  </p>
-                  <span className={styles.pipelineSectionCount}>{draft.phases.length} steps</span>
+                  <div className={styles.pipelineSectionTitleRow}>
+                    <p className="eyebrow">
+                      <span className="index">01</span>Phases
+                    </p>
+                    <span className={styles.pipelineSectionCount}>
+                      {draft.phases.length} step{draft.phases.length === 1 ? '' : 's'}
+                    </span>
+                  </div>
+                  <Dropdown
+                    value=""
+                    options={ADD_PHASE_OPTIONS}
+                    onChange={(kind) => addPhase(kind as PhaseDef['kind'])}
+                    className={styles.pipelineAddDropdownWrap}
+                    triggerClassName={styles.pipelineHeaderAddBtn}
+                    renderValue={() => (
+                      <span className={styles.pipelineHeaderAddFace}>
+                        <PlusGlyph />
+                        <span>Add phase</span>
+                        <ChevronDownGlyph />
+                      </span>
+                    )}
+                  />
                 </div>
                 <div className={styles.pipelinePhaseList}>
                   {draft.phases.map((phase, i) => (
