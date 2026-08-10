@@ -238,6 +238,11 @@ export class AgentSession {
    * Every ask is settled here and traced. Nothing waits for a person: the
    * write boundary is re-checked against git after the phase, which is what
    * makes an in-turn allow safe to give.
+   *
+   * The returned `PermissionDecision` is all a transport ever sees, which is
+   * why ask_user answers ride on the decision rather than beside it — one that
+   * reaches the wire without them is replied to as a cancellation and the
+   * agent asks again.
    */
   private decide(ask: PermissionAsk): PermissionDecision {
     const outcome = evaluate(ask, {
@@ -245,6 +250,7 @@ export class AgentSession {
       writes: this.agent.writes,
       protectedPaths: this.deps.policy.protectedPaths,
     });
+    const answers = outcome.decision.outcome === 'allow' ? outcome.decision.answers : undefined;
     this.deps.tracer.event({
       runId: this.deps.runId,
       phaseId: this.currentPhaseId,
@@ -255,7 +261,7 @@ export class AgentSession {
         auto: true,
         method: ask.method,
         ...(outcome.command ? { command: outcome.command } : {}),
-        ...(outcome.answers ? { answers: outcome.answers } : {}),
+        ...(answers ? { answers } : {}),
       },
     });
     return outcome.decision;

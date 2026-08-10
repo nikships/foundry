@@ -7,7 +7,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openDb, projectDbPath, projectRunsDir, type Db } from '../src/main/trace/db.js';
 import { Tracer } from '../src/main/trace/tracer.js';
@@ -67,6 +67,24 @@ interface ScriptedAsk {
   writeIfAllowed?: string;
 }
 
+/** Where `scriptedDroid` records every server-request reply it received. */
+const ASK_REPLIES_FILE = 'ask-replies.jsonl';
+
+interface AskReply {
+  method: string;
+  result: Record<string, unknown> | null;
+}
+
+/** The replies the scripted agent got back, in the order it raised the asks. */
+function askReplies(droidPath: string): AskReply[] {
+  const path = join(dirname(droidPath), ASK_REPLIES_FILE);
+  if (!existsSync(path)) return [];
+  return readFileSync(path, 'utf8')
+    .split('\n')
+    .filter((line) => line.trim())
+    .map((line) => JSON.parse(line) as AskReply);
+}
+
 interface ScriptedDroidOptions {
   /** Turn indexes (0-based) on which the child dies mid-turn, answering nothing. */
   dieOnTurns?: number[];
@@ -99,13 +117,14 @@ function scriptedDroid(
   const state = join(dir, 'turn-count');
   writeFileSync(state, '0');
   const script = `
-const { readFileSync, writeFileSync, mkdirSync } = require('node:fs');
+const { appendFileSync, readFileSync, writeFileSync, mkdirSync } = require('node:fs');
 const { dirname, isAbsolute, join } = require('node:path');
 const V = { jsonrpc: '2.0', factoryApiVersion: '1.0.0', factoryProtocolVersion: '1.151.0' };
 const TURNS = ${JSON.stringify(turns)};
 const EFFECTS = ${JSON.stringify(sideEffects)};
 const ASKS = ${JSON.stringify(asks)};
 const STATE = ${JSON.stringify(state)};
+const REPLIES = ${JSON.stringify(join(dir, ASK_REPLIES_FILE))};
 const DIE_ON = ${JSON.stringify(options.dieOnTurns ?? [])};
 const STALL_ON = ${JSON.stringify(options.stallOnTurns ?? [])};
 const EFFORTS = ['off', 'low', 'medium', 'high'];
@@ -151,6 +170,9 @@ const raiseAsks = (list, done) => {
     const ask = list[i];
     const id = 'srv-' + askSeq++;
     pending.set(id, (result) => {
+      // The reply the agent actually received, not the trace: cancelled vs
+      // answers is what decides whether the agent asks again.
+      appendFileSync(REPLIES, JSON.stringify({ method: ask.method, result: result ?? null }) + '\\n');
       const allowed = !!result && result.selectedOption !== undefined && result.selectedOption !== 'cancel';
       if (ask.writeIfAllowed && allowed) write(ask.writeIfAllowed);
       next(i + 1);
@@ -1077,6 +1099,21 @@ describe('zero-interrupt runs', () => {
     expect(question.payload.answers).toEqual([
       { index: 0, question: 'which database?', answer: 'postgres' },
     ]);
+
+    // The trace is not the wire. What settles the question is the reply the
+    // agent received: a `cancelled` there reads as a refusal and it asks again.
+    const replies = askReplies(droid);
+    expect(replies.map((r) => r.method)).toEqual([
+      'droid.request_permission',
+      'droid.request_permission',
+      'droid.request_permission',
+      'droid.ask_user',
+    ]);
+    const answered = replies.at(-1)!.result!;
+    expect(answered.answers).toEqual([
+      { index: 0, question: 'which database?', answer: 'postgres' },
+    ]);
+    expect(answered.cancelled).toBeUndefined();
 
     // The denial has to actually stop the write, not merely be recorded.
     expect(existsSync(outside)).toBe(false);

@@ -31,12 +31,14 @@ export interface QuestionAnswer {
 }
 
 export interface PolicyOutcome {
-  /** Never null: a started run never waits for a person. */
+  /**
+   * Never null: a started run never waits for a person. `droid.ask_user`
+   * answers ride on the decision itself, because the decision is the only part
+   * of this that a transport ever sees (see `turn.ts`).
+   */
   decision: PermissionDecision;
   /** Why: recorded on the interrupt event whichever way it goes. */
   reason: string;
-  /** Set for `droid.ask_user` only, one entry per question asked. */
-  answers?: QuestionAnswer[];
   command?: string;
 }
 
@@ -69,9 +71,8 @@ export function evaluate(
   if (ask.method === 'droid.ask_user') {
     const answers = autoAnswer(params);
     return {
-      decision: { outcome: 'allow' },
+      decision: { outcome: 'allow', answers },
       reason: `auto-answered ${answers.length} question(s): runs never wait for a person`,
-      answers,
     };
   }
 
@@ -83,7 +84,13 @@ export function evaluate(
     return allow(`${tool} is read-only`);
   }
 
-  if (WRITE_TOOLS.has(tool) && path) {
+  if (WRITE_TOOLS.has(tool)) {
+    // A write whose target cannot be read is the one case that must fail
+    // closed: the post-hoc git diff only sees inside the worktree, so an
+    // unreadable path could be a base-checkout write with nothing to revert it.
+    if (!path) {
+      return deny(`${tool} asked with no target path; a write must name where it lands`);
+    }
     const rel = toRelative(ctx.worktree, path);
     // The base checkout and everything else on the machine are off limits, and
     // the git-diff enforcement only sees inside the worktree, so this ask is

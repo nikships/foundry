@@ -5,13 +5,17 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { evaluate, type PolicyContext } from '../src/main/droid/permissions.js';
+import { evaluate, type PolicyContext, type PolicyOutcome } from '../src/main/droid/permissions.js';
 
 const ctx: PolicyContext = {
   worktree: '/repo',
   writes: ['src/'],
   protectedPaths: [],
 };
+
+/** Answers live on the decision, so reading them means narrowing to an allow. */
+const answersOf = (outcome: PolicyOutcome) =>
+  outcome.decision.outcome === 'allow' ? outcome.decision.answers : undefined;
 
 type PermMethod = 'droid.request_permission' | 'droid.ask_user';
 const perm = (
@@ -58,6 +62,22 @@ describe('writes', () => {
   it('allows a read-only tool', () => {
     expect(evaluate(perm({ toolName: 'Read' }), ctx).decision).toEqual({ outcome: 'allow' });
   });
+
+  it('denies a write tool whose target path cannot be read out of the ask', () => {
+    for (const toolName of ['Create', 'Edit', 'ApplyPatch', 'apply-patch-cli']) {
+      const outcome = evaluate(perm({ toolName, content: 'x' }), ctx);
+      expect(outcome.decision.outcome).toBe('deny');
+      expect(outcome.reason).toContain('no target path');
+    }
+  });
+
+  it('does not let a command field turn a path-less write into an allow', () => {
+    const outcome = evaluate(
+      perm({ toolName: 'ApplyPatch', command: 'apply-patch < /tmp/p.diff' }),
+      ctx,
+    );
+    expect(outcome.decision.outcome).toBe('deny');
+  });
 });
 
 describe('commands', () => {
@@ -86,6 +106,23 @@ describe('tools with no rule', () => {
 });
 
 describe('ask_user', () => {
+  it('carries the answers on the decision itself, which is all a transport sees', () => {
+    const outcome = evaluate(
+      perm(
+        {
+          toolCallId: 'call-4',
+          questions: [{ index: 0, topic: 'db', question: 'which?', options: ['postgres'] }],
+        },
+        'droid.ask_user',
+      ),
+      ctx,
+    );
+    expect(outcome.decision).toEqual({
+      outcome: 'allow',
+      answers: [{ index: 0, question: 'which?', answer: 'postgres' }],
+    });
+  });
+
   it('answers every question with its first option', () => {
     const outcome = evaluate(
       perm(
@@ -100,11 +137,13 @@ describe('ask_user', () => {
       ),
       ctx,
     );
-    expect(outcome.decision).toEqual({ outcome: 'allow' });
-    expect(outcome.answers).toEqual([
-      { index: 0, question: 'which database?', answer: 'postgres' },
-      { index: 1, question: 'which CI?', answer: 'github' },
-    ]);
+    expect(outcome.decision).toEqual({
+      outcome: 'allow',
+      answers: [
+        { index: 0, question: 'which database?', answer: 'postgres' },
+        { index: 1, question: 'which CI?', answer: 'github' },
+      ],
+    });
   });
 
   it('tells an open question to proceed rather than asking again', () => {
@@ -118,7 +157,7 @@ describe('ask_user', () => {
       ),
       ctx,
     );
-    expect(outcome.answers).toEqual([
+    expect(answersOf(outcome)).toEqual([
       {
         index: 0,
         question: 'how?',
@@ -129,8 +168,8 @@ describe('ask_user', () => {
 
   it('still answers when the request carries no questions array', () => {
     const outcome = evaluate(perm({ toolCallId: 'call-3' }, 'droid.ask_user'), ctx);
-    expect(outcome.decision).toEqual({ outcome: 'allow' });
-    expect(outcome.answers).toHaveLength(1);
-    expect(outcome.answers?.[0]?.answer).toContain('best judgment');
+    expect(outcome.decision.outcome).toBe('allow');
+    expect(answersOf(outcome)).toHaveLength(1);
+    expect(answersOf(outcome)?.[0]?.answer).toContain('best judgment');
   });
 });

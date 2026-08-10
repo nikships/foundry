@@ -144,9 +144,18 @@ every create/resume (the argv `--auto high` is cosmetic — see the SDK seam).
 The table: commands allow; in-worktree in-boundary writes allow; boundary
 violations and protected paths deny; **out-of-worktree writes deny** (this ask
 is the only thing guarding the base checkout, since the post-hoc git diff only
-sees inside the worktree); an unmatched tool allows. `ask_user` is auto-answered
-with each question's first option. Every branch is traced as an `interrupt`
-event with `auto: true` and a reason.
+sees inside the worktree); a known write tool whose ask carries **no readable
+path denies** for the same reason — an unreadable target may be outside the
+worktree, and unmatched-tool allow would wave it through; an unmatched tool
+allows. `ask_user` is auto-answered with each question's first option. Every
+branch is traced as an `interrupt` event with `auto: true` and a reason.
+
+Those answers ride on the `PermissionDecision` (`{outcome:'allow', answers}`),
+not beside it: the decision is the whole of what `AgentSession.decide()` hands
+a transport, and an ask_user allow that arrives without answers is replied to
+as `{cancelled:true}` — which the CLI reads as a refusal, so the agent asks
+again. Tests for this must assert the reply the agent RECEIVED, not the traced
+interrupt payload; the trace stayed green through exactly that bug.
 
 Allowing in-turn is safe because acceptance is post-hoc: `engine/boundary.ts`
 diffs git after the phase and reverts what was not allowed. `InterruptRequest`

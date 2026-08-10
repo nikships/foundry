@@ -17,7 +17,7 @@ import { EventFolder, toUsageBreakdown } from '../src/main/droid/events.js';
 import { evaluate, type PolicyContext } from '../src/main/droid/permissions.js';
 import { openDb, projectDbPath, projectRunsDir } from '../src/main/trace/db.js';
 import { Tracer } from '../src/main/trace/tracer.js';
-import type { PermissionAsk } from '../src/main/droid/turn.js';
+import type { PermissionAsk, PermissionDecision } from '../src/main/droid/turn.js';
 import type { DroidNotification, TokenUsage } from '../src/main/droid/protocol.js';
 import type { PipelineDef } from '../src/shared/types.js';
 
@@ -421,10 +421,14 @@ const POLICY: PolicyContext = {
   protectedPaths: [],
 };
 
-/** Exactly what `AgentSession.decide()` does, minus the tracing. */
-function decide(ask: PermissionAsk) {
-  const outcome = evaluate(ask, POLICY);
-  return outcome.answers ? { ...outcome.decision, answers: outcome.answers } : outcome.decision;
+/**
+ * A stand-in for `AgentSession.decide()`, which is the policy call plus
+ * tracing. Nothing here proves the real one hands the decision over intact —
+ * that is `tests/executor.test.ts`, which runs `AgentSession` and reads the
+ * reply the agent received off the wire.
+ */
+function decide(ask: PermissionAsk): PermissionDecision {
+  return evaluate(ask, POLICY).decision;
 }
 
 function delay(ms: number): Promise<void> {

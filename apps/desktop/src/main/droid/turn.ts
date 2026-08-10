@@ -24,6 +24,13 @@ export interface PermissionAsk {
   params: Record<string, unknown>;
 }
 
+/**
+ * The whole of what a transport gets back for an ask — nothing else crosses
+ * the seam, which is why `droid.ask_user` answers travel here rather than
+ * beside the decision. An allow that reaches the wire without them is replied
+ * to as `{cancelled:true}`, which the CLI reads as a refusal, and the agent
+ * asks the same question again.
+ */
 export type PermissionDecision =
   | { outcome: 'allow'; answers?: { index: number; question: string; answer: string }[] }
   | { outcome: 'deny'; reason?: string };
