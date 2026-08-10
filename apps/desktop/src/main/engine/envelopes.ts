@@ -199,6 +199,24 @@ export function schemaFor(
 }
 
 /**
+ * The JSON Schema handed to the model as an output constraint, derived from the
+ * very schema the reply is parsed against — the fourth leg of the synced set
+ * (type, prompt example, parse, wire constraint), so none of them can drift.
+ *
+ * Emitted as the OUTPUT view: `.default()` fields are `required`, i.e. the
+ * model is asked for strictly more than `parseEnvelope` demands (which fills
+ * defaults for anything omitted). Conforming to this schema therefore always
+ * parses; the text-parse fallback covers replies that do not conform.
+ */
+export function jsonSchemaFor(
+  kind: string,
+  custom?: CustomEnvelopeField[],
+  defs?: EnvelopeDef[],
+): z.core.JSONSchema.BaseSchema {
+  return z.toJSONSchema(schemaFor(kind, custom, defs));
+}
+
+/**
  * The JSON example embedded in the agent's prompt, generated from the schema.
  * One source of truth for the shape the agent is asked to produce.
  */

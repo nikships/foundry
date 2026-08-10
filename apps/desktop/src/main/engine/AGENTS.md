@@ -9,8 +9,14 @@ inside one phase and never decide if they succeeded.
   (one message, not a cold restart); envelope and gate retries have separate
   budgets.
 - Envelopes are typed seams (`envelopes.ts`): the JSON example shown to the
-  agent is derived from the same zod schema the answer is parsed against —
-  don't hand-write examples or parse outside the schema.
+  agent, the JSON Schema sent as an output constraint (`jsonSchemaFor`), and
+  the parse all come off the same zod instance — don't hand-write examples,
+  don't hand-write a JSON Schema, don't parse outside the schema.
+  `jsonSchemaFor` emits the **output** view, so every `.default()` field is
+  `required`: the model is asked for strictly more than `parseEnvelope`
+  demands, so anything conforming to the schema parses. `tests/envelopes.test.ts`
+  pins the `required` array per kind — a drift there is a failing test, not a
+  surprise at runtime.
 - Gates return evidence, not verdicts — one `GateCheck` per item examined
   (`gates.ts`). Unknown gate names fail.
 - Write boundaries are enforced after the call by diffing `git status`
