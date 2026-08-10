@@ -51,6 +51,22 @@ export interface AgentSessionDeps {
 
 const PROTOCOL_FAILURE_LIMIT = 2;
 
+/**
+ * Why a turn stopped when the operator ended the run, and the detail the run
+ * settles with. A kill is a verdict, not a transport flap: the dead child must
+ * never be restarted or answered one-shot, or the kill settles as an accepted
+ * run.
+ */
+export const KILLED_DETAIL = 'the run was killed';
+
+/** Raised instead of a transport failure once a session has been killed. */
+class RunKilledError extends Error {
+  constructor() {
+    super(KILLED_DETAIL);
+    this.name = 'RunKilledError';
+  }
+}
+
 export interface TurnOutcome {
   text: string;
   usage: UsageBreakdown;
@@ -68,8 +84,11 @@ export class AgentSession {
   private protocolFailures = 0;
   private droidSessionId: string | null = null;
   private processRowId: number | null = null;
+  /** One row per one-shot turn: each turn is its own child process. */
+  private readonly oneshotRows = new Map<number, number>();
   private currentFolder: EventFolder | null = null;
   private currentPhaseId: string | null = null;
+  private killed = false;
 
   constructor(
     private readonly agent: AgentDef,
@@ -96,6 +115,7 @@ export class AgentSession {
 
   /** Started lazily: an agent that never runs a phase never spawns a child. */
   private async ensureStarted(): Promise<void> {
+    if (this.killed) throw new RunKilledError();
     if (this.mode === 'oneshot') {
       this.oneshot ??= this.buildOneShot();
       return;
@@ -117,6 +137,7 @@ export class AgentSession {
       // A session that never started leaves a child behind when the failure
       // was the handshake rather than the spawn.
       await client.close().catch(() => undefined);
+      if (this.killed) throw new RunKilledError();
       this.countFailure(e);
       this.noteFallback(`session start failed: ${errorMessage(e)}`);
       this.switchToOneShot();
@@ -135,6 +156,12 @@ export class AgentSession {
       });
     }
     this.persistSession();
+    // A kill that landed while this child was still handshaking never saw it:
+    // `kill()` only reaches the sessions that existed when it ran.
+    if (this.killed) {
+      await this.close();
+      throw new RunKilledError();
+    }
   }
 
   /** What both transports need to describe one turn's settings. */
@@ -155,9 +182,32 @@ export class AgentSession {
       cliPath: this.deps.cliPath,
       extraArgs: this.deps.cliExtraArgs,
       ...this.turnOpts(),
+      onSpawn: (pid, command) => this.recordOneShot(pid, command),
+      onChildExit: (pid) => this.endOneShot(pid),
     });
     client.adopt(this.droidSessionId);
     return client;
+  }
+
+  /** A one-shot child is as killable as an RPC one, so it gets a row too. */
+  private recordOneShot(pid: number, command: string): void {
+    this.oneshotRows.set(
+      pid,
+      this.deps.tracer.recordProcess({
+        runId: this.deps.runId,
+        kind: 'droid',
+        name: this.agent.name,
+        pid,
+        command,
+      }),
+    );
+  }
+
+  private endOneShot(pid: number): void {
+    const rowId = this.oneshotRows.get(pid);
+    if (rowId === undefined) return;
+    this.oneshotRows.delete(pid);
+    this.deps.tracer.endProcess(rowId);
   }
 
   private switchToOneShot(): void {
@@ -308,6 +358,13 @@ export class AgentSession {
         return await this.rpc.send(prompt, this.deps.turnTimeoutMs);
       } catch (e) {
         const message = errorMessage(e);
+        // A killed child rejects its turn like any dead one. Recovering here
+        // would hand the operator's kill to the one-shot fallback, which can
+        // finish the phase and settle the run accepted.
+        if (this.killed) {
+          folder.closeDangling(KILLED_DETAIL);
+          throw new RunKilledError();
+        }
         this.countFailure(e);
         folder.closeDangling(`transport failed: ${message}`);
         if (this.protocolFailures >= PROTOCOL_FAILURE_LIMIT) {
@@ -341,6 +398,7 @@ export class AgentSession {
     phaseId: string,
     folder: EventFolder,
   ): Promise<TurnResult> {
+    if (this.killed) throw new RunKilledError();
     const oneshot = (this.oneshot ??= this.buildOneShot());
     // A vendor with a stream normaliser gets its mid-turn events folded into
     // real trace rows; one without keeps the single honest span that says
@@ -365,6 +423,9 @@ export class AgentSession {
       this.deps.turnTimeoutMs,
       normalise ? (line) => folder.absorbAll(normalise(line)) : undefined,
     );
+    // A kill that landed mid-turn leaves whatever the child printed first; it
+    // is not an answer the phase may be settled on.
+    if (this.killed) throw new RunKilledError();
     this.droidSessionId = oneshot.id ?? this.droidSessionId;
     this.persistSession();
     if (spanId) this.deps.tracer.endEvent(spanId, { reason: result.reason });
@@ -392,11 +453,14 @@ export class AgentSession {
       this.deps.tracer.endProcess(this.processRowId);
       this.processRowId = null;
     }
+    for (const rowId of this.oneshotRows.values()) this.deps.tracer.endProcess(rowId);
+    this.oneshotRows.clear();
     await this.rpc?.close();
     await this.oneshot?.close();
   }
 
   kill(): void {
+    this.killed = true;
     this.rpc?.kill();
     this.oneshot?.kill();
   }

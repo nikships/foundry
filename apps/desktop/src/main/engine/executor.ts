@@ -25,7 +25,7 @@ import type {
   RunStatus,
 } from '@shared/types.js';
 import type { Tracer } from '../trace/tracer.js';
-import { AgentSession, type InterruptRequest, type Mode } from '../droid/agent.js';
+import { AgentSession, KILLED_DETAIL, type InterruptRequest, type Mode } from '../droid/agent.js';
 import { decideAcceptance } from './acceptance.js';
 import type { PhaseRunner, RunContext, PhaseJump } from './phase-context.js';
 import { AgentPhaseRunner } from './runners/agent.js';
@@ -181,10 +181,7 @@ export class Executor {
     let detail = '';
 
     while (index < pipeline.phases.length) {
-      if (this.cancelled) {
-        await this.closeSessions();
-        return this.finish('killed', 'the run was killed');
-      }
+      if (this.cancelled) return this.settleKilled();
       if (guard++ > maxSteps) {
         detail = 'the pipeline exceeded its step budget: a feedback loop is not converging';
         tracer.event({ runId, type: 'error', name: 'loop guard', payload: { detail } });
@@ -207,6 +204,11 @@ export class Executor {
       }
       index++;
     }
+
+    // A kill is an operator verdict, not a phase outcome: whatever the pipeline
+    // managed to finish first must not be run through acceptance, or a phase
+    // that completed before the kill landed settles the run as accepted.
+    if (this.cancelled) return this.settleKilled();
 
     await this.closeSessions();
     const verdict = decideAcceptance({
@@ -287,6 +289,11 @@ export class Executor {
     });
     this.sessions.set(agent.name, session);
     return session;
+  }
+
+  private async settleKilled(): Promise<RunOutcome> {
+    await this.closeSessions();
+    return this.finish('killed', KILLED_DETAIL);
   }
 
   private async closeSessions(): Promise<void> {

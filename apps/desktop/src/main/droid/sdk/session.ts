@@ -11,7 +11,6 @@
 import { realpathSync } from 'node:fs';
 import type { ChildProcess } from 'node:child_process';
 import {
-  AutonomyLevel,
   ProcessExitError,
   ProcessTransport,
   ReasoningEffort as SdkReasoningEffort,
@@ -20,6 +19,7 @@ import {
   resumeSession,
   type AskUserRequestParams,
   type AskUserResult,
+  type CreateSessionOptions,
   type DroidResultMessage,
   type DroidSession,
   type RequestPermissionHandlerResult,
@@ -76,11 +76,17 @@ export interface SdkSessionOptions {
   toolRefreshDelayMs?: number;
 }
 
+/** However the SDK spells autonomy; Foundry never names its levels. */
+type WireAutonomy = NonNullable<CreateSessionOptions['autonomyLevel']>;
+
 /**
  * The one level Foundry runs at, pinned to the protocol constant so the argv
- * flag and the session setting cannot drift apart.
+ * flag and the session setting cannot drift apart. The SDK types the field as
+ * a nominal string enum, so the value is checked against that enum's own
+ * strings — a constant the SDK would not accept fails to compile — and only
+ * then given the nominal type.
  */
-const AUTONOMY = AutonomyLevel.High satisfies typeof AUTONOMY_LEVEL;
+const AUTONOMY = AUTONOMY_LEVEL satisfies `${WireAutonomy}` as WireAutonomy;
 
 /** Foundry's four efforts named the way the wire wants them. */
 const EFFORTS: Record<ReasoningEffort, SdkReasoningEffort> = {

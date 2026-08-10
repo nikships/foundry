@@ -90,6 +90,45 @@ interface ScriptedDroidOptions {
   dieOnTurns?: number[];
   /** Turn indexes that are acknowledged but never completed, so the turn times out. */
   stallOnTurns?: number[];
+  /** Held-back handshake, so a test can act while the session is still starting. */
+  handshakeDelayMs?: number;
+}
+
+/** Marker the stub writes as soon as it is spawned, before any handshake. */
+const SPAWN_MARKER_FILE = 'spawned';
+
+/** Marker the stub writes the moment a turn starts, in either transport. */
+const TURN_MARKER_FILE = 'turn-started';
+
+/** `"<transport> <turn index>"` per turn the scripted agent has begun. */
+function turnMarkers(droidPath: string): string[] {
+  const path = join(dirname(droidPath), TURN_MARKER_FILE);
+  if (!existsSync(path)) return [];
+  return readFileSync(path, 'utf8')
+    .split('\n')
+    .filter((line) => line.trim());
+}
+
+/** Whether the scripted agent has begun a turn, i.e. a turn is in flight. */
+function turnStarted(droidPath: string): boolean {
+  return turnMarkers(droidPath).length > 0;
+}
+
+/** How many scripted children have reached their handshake, restarts included. */
+function handshakeCount(droidPath: string): number {
+  const path = join(dirname(droidPath), SPAWN_MARKER_FILE);
+  if (!existsSync(path)) return 0;
+  return readFileSync(path, 'utf8').split('\n').filter(Boolean).length;
+}
+
+/** Waits for a condition the scripted child reports through the filesystem. */
+async function until(predicate: () => boolean, what: string, timeoutMs = 10_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`timed out waiting for ${what}`);
 }
 
 /**
@@ -125,6 +164,9 @@ const EFFECTS = ${JSON.stringify(sideEffects)};
 const ASKS = ${JSON.stringify(asks)};
 const STATE = ${JSON.stringify(state)};
 const REPLIES = ${JSON.stringify(join(dir, ASK_REPLIES_FILE))};
+const TURN_MARKER = ${JSON.stringify(join(dir, TURN_MARKER_FILE))};
+const SPAWN_MARKER = ${JSON.stringify(join(dir, SPAWN_MARKER_FILE))};
+const HANDSHAKE_DELAY = ${JSON.stringify(options.handshakeDelayMs ?? 0)};
 const DIE_ON = ${JSON.stringify(options.dieOnTurns ?? [])};
 const STALL_ON = ${JSON.stringify(options.stallOnTurns ?? [])};
 const EFFORTS = ['off', 'low', 'medium', 'high'];
@@ -144,6 +186,9 @@ const write = (path) => {
 const takeTurn = () => {
   const n = Number(readFileSync(STATE, 'utf8')) || 0;
   writeFileSync(STATE, String(n + 1));
+  // The marker is how a test knows a turn is actually in flight, and which
+  // transport ran it, without racing the engine.
+  appendFileSync(TURN_MARKER, (RPC ? 'rpc' : 'oneshot') + ' ' + n + '\\n');
   return n;
 };
 const textFor = (n) => TURNS[Math.min(n, TURNS.length - 1)];
@@ -152,6 +197,8 @@ if (!RPC) {
   const n = takeTurn();
   const effect = EFFECTS[n];
   if (effect) write(effect);
+  // A stalled one-shot turn stays alive and silent, so a kill can land on it.
+  if (STALL_ON.includes(n)) { setInterval(() => {}, 1000); return; }
   process.stdout.write(JSON.stringify({ type: 'completion', finalText: textFor(n), session_id: 's1', usage: { input_tokens: 100, output_tokens: 20 } }) + '\\n');
   process.exit(0);
 }
@@ -212,10 +259,15 @@ process.stdin.on('data', (chunk) => {
       resolve(msg.result);
       continue;
     }
-    if (method === 'droid.initialize_session') {
-      out({ ...V, type: 'response', id, result: { sessionId: 's1', session: { messages: [] }, settings: SETTINGS, availableModels: MODELS } });
-    } else if (method === 'droid.load_session') {
-      out({ ...V, type: 'response', id, result: { session: { messages: [] }, settings: SETTINGS, availableModels: MODELS, cwd: workdir } });
+    if (method === 'droid.initialize_session' || method === 'droid.load_session') {
+      // A resumed session handshakes with load_session, so both are marked: a
+      // restart's child is only visible to a test through the second one.
+      appendFileSync(SPAWN_MARKER, method + '\\n');
+      const result = method === 'droid.initialize_session'
+        ? { sessionId: 's1', session: { messages: [] }, settings: SETTINGS, availableModels: MODELS }
+        : { session: { messages: [] }, settings: SETTINGS, availableModels: MODELS, cwd: workdir };
+      const answer = () => out({ ...V, type: 'response', id, result });
+      if (HANDSHAKE_DELAY) setTimeout(answer, HANDSHAKE_DELAY); else answer();
     } else if (method === 'droid.update_session_settings') {
       notify({ type: 'settings_updated', requestId: id, settings: SETTINGS });
       out({ ...V, type: 'response', id, result: {} });
@@ -373,7 +425,7 @@ function alive(pid: number): boolean {
 
 type AskHuman = ConstructorParameters<typeof Executor>[0]['askHuman'];
 
-function run(input: {
+interface RunInput {
   pipeline: PipelineDef;
   agents?: AgentDef[];
   envelopeDefs?: EnvelopeDef[];
@@ -384,7 +436,22 @@ function run(input: {
   turnTimeoutMs?: number;
   envelopeRetries?: number;
   gateRetries?: number;
-}): Promise<{ status: string; runId: string }> {
+}
+
+function run(input: RunInput): Promise<{ status: string; runId: string }> {
+  const started = start(input);
+  return started.done;
+}
+
+/**
+ * The run as a live handle rather than a promise, so a test can act on it
+ * while it is still in flight — the kill path has no other way in.
+ */
+function start(input: RunInput): {
+  executor: Executor;
+  runId: string;
+  done: Promise<{ status: string; runId: string }>;
+} {
   const runId = `run_${Math.random().toString(36).slice(2, 8)}`;
   // These tests exercise droid, so every vendor points at the same stub: an
   // agent that names another CLI would otherwise spawn a binary the test
@@ -407,7 +474,7 @@ function run(input: {
     engineer: 'test',
     askHuman: input.askHuman ?? (async () => ({ approve: true })),
   });
-  return executor.run().then((o) => ({ status: o.status, runId }));
+  return { executor, runId, done: executor.run().then((o) => ({ status: o.status, runId })) };
 }
 
 function events(runId: string) {
@@ -1439,5 +1506,210 @@ describe('the SDK transport under the executor', () => {
     expect(String(fallbacks[0]!.payload.reason)).toContain('retrying after');
     expect(fallbacks[0]!.payload.failures).toBe(1);
     expect(fallbacks[1]!.payload.failures).toBe(2);
+  });
+
+  it('records the one-shot fallback child as its own process row', async () => {
+    const droid = scriptedDroid([buildEnvelope(), buildEnvelope(), buildEnvelope()], [], [], {
+      dieOnTurns: [0, 1],
+    });
+    const outcome = await run({
+      droidPath: droid,
+      pipeline: pipe(
+        [agentPhase('build', { description: 'Prove the fallback child is visible to the sweep.' })],
+        {
+          description: 'a transport that dies twice',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    // A fallback child the kill path cannot see is a child that survives a kill.
+    // `stream-jsonrpc` is the RPC child's format and starts with the same text.
+    const fallbackRows = processRows(outcome.runId).filter(
+      (r) => !r.command.includes('stream-jsonrpc'),
+    );
+    expect(fallbackRows).toHaveLength(1);
+    expect(fallbackRows[0]!.name).toBe('builder');
+    expect(fallbackRows[0]!.pid).toBeGreaterThan(0);
+    expect(fallbackRows[0]!.ended_at).not.toBeNull();
+    expect(alive(fallbackRows[0]!.pid)).toBe(false);
+    expect(h.tracer.openProcesses(outcome.runId)).toHaveLength(0);
+  });
+});
+
+/**
+ * A kill is an operator verdict, not a transport flap. The two-strike fallback
+ * exists to rescue a run from a dying child, and the child a kill leaves behind
+ * looks exactly like one — so every recovery path has to stand down once the
+ * kill has fired, or the operator's kill settles as an accepted run.
+ */
+describe('killing a run mid-turn', () => {
+  it('settles killed instead of being rescued by the one-shot fallback', async () => {
+    // Turn 0 is acknowledged and never answered, so the kill lands mid-turn.
+    // Turn 1 would succeed: without the short-circuit, a recovery attempt
+    // finishes the phase and the run settles accepted.
+    const droid = scriptedDroid([buildEnvelope(), buildEnvelope(), buildEnvelope()], [], [], {
+      stallOnTurns: [0],
+    });
+    const started = start({
+      droidPath: droid,
+      pipeline: pipe(
+        [agentPhase('build', { description: 'Prove a kill is not a transport failure.' })],
+        {
+          description: 'a run killed mid-turn',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
+    });
+
+    await until(() => turnStarted(droid), 'the scripted agent to start its turn');
+    started.executor.cancel();
+    const outcome = await started.done;
+
+    expect(outcome.status).toBe('killed');
+    const row = h.tracer.run(outcome.runId)!;
+    expect(row.status).toBe('killed');
+    expect(row.outcomeDetail).toBe('the run was killed');
+
+    // No recovery of any kind: not a restart, not a degrade to one-shot.
+    expect(events(outcome.runId).filter((e) => e.name === 'builder: fallback to one-shot')).toEqual(
+      [],
+    );
+    // The killed turn is not filed as an agent failure: a kill is what the
+    // operator asked for, so the timeline must not read like a broken agent.
+    expect(events(outcome.runId).filter((e) => e.name === 'builder: turn failed')).toEqual([]);
+    // Only the one turn the kill landed on was ever spent.
+    expect(turnMarkers(droid)).toEqual(['rpc 0']);
+    expect(h.tracer.run(outcome.runId)!.mode).toBe('rpc');
+    const rows = processRows(outcome.runId).filter((r) => r.kind === 'droid');
+    expect(rows).toHaveLength(1);
+    for (const r of rows) {
+      expect(r.ended_at).not.toBeNull();
+      expect(alive(r.pid)).toBe(false);
+    }
+    expect(h.tracer.openProcesses(outcome.runId)).toHaveLength(0);
+  });
+
+  it('does not accept a run whose remaining phases never ran', async () => {
+    const droid = scriptedDroid([buildEnvelope(), buildEnvelope()], [], [], { stallOnTurns: [1] });
+    const started = start({
+      droidPath: droid,
+      pipeline: pipe(
+        [
+          agentPhase('build', { description: 'Pass before the kill lands.' }),
+          agentPhase('review', { description: 'Never finish: the kill lands here.' }),
+        ],
+        {
+          description: 'a kill after one phase already passed',
+          // The phase that passed would satisfy acceptance on its own.
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
+    });
+
+    await until(
+      () => turnStarted(droid) && h.tracer.phases(started.runId)[0]?.status === 'success',
+      'the first phase to pass and the second turn to start',
+    );
+    started.executor.cancel();
+    const outcome = await started.done;
+
+    expect(outcome.status).toBe('killed');
+    expect(h.tracer.run(outcome.runId)!.outcomeDetail).toBe('the run was killed');
+  });
+
+  it('settles killed when the kill lands during a one-shot turn', async () => {
+    // Two deaths degrade the session to one-shot, and the one-shot turn then
+    // stalls: the kill lands on a fallback child, not an RPC one.
+    const droid = scriptedDroid([buildEnvelope(), buildEnvelope(), buildEnvelope()], [], [], {
+      dieOnTurns: [0, 1],
+      stallOnTurns: [2],
+    });
+    const started = start({
+      droidPath: droid,
+      pipeline: pipe(
+        [agentPhase('build', { description: 'Prove the fallback turn is killable too.' })],
+        {
+          description: 'a kill during the one-shot fallback',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
+    });
+
+    await until(
+      () => turnMarkers(droid).some((line) => line.startsWith('oneshot')),
+      'the one-shot fallback turn to start',
+    );
+    const fallbackPid = h.tracer
+      .openProcesses(started.runId)
+      .find((p) => !p.command.includes('stream-jsonrpc'))?.pid;
+    expect(fallbackPid).toBeGreaterThan(0);
+    started.executor.cancel();
+    const outcome = await started.done;
+
+    expect(outcome.status).toBe('killed');
+    expect(h.tracer.run(outcome.runId)!.outcomeDetail).toBe('the run was killed');
+    expect(alive(fallbackPid!)).toBe(false);
+    expect(h.tracer.openProcesses(outcome.runId)).toHaveLength(0);
+  });
+
+  it('kills the child a recovery path spawned while the kill was landing', async () => {
+    // The kill lands during the restarted session's handshake, so `kill()` runs
+    // before that child exists: nothing else would ever reap it.
+    const droid = scriptedDroid([buildEnvelope(), buildEnvelope()], [], [], {
+      dieOnTurns: [0],
+      handshakeDelayMs: 1500,
+    });
+    const started = start({
+      droidPath: droid,
+      pipeline: pipe(
+        [agentPhase('build', { description: 'Prove an in-flight restart is reaped by the kill.' })],
+        {
+          description: 'a kill racing a transport restart',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
+    });
+
+    // The first child dies on turn 0; the restart's handshake is the second,
+    // and it is still in flight while the delay runs.
+    await until(() => handshakeCount(droid) === 2, 'the restarted session to reach its handshake');
+    started.executor.cancel();
+    const outcome = await started.done;
+
+    expect(outcome.status).toBe('killed');
+    // The restarted child is never prompted: a turn spent after the kill is
+    // both real money and a result the run could still be settled on.
+    expect(turnMarkers(droid)).toHaveLength(1);
+    // Two children, both recorded and both reaped — including the one that did
+    // not exist yet when `kill()` ran.
+    const rows = processRows(outcome.runId);
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row.ended_at).not.toBeNull();
+      expect(alive(row.pid)).toBe(false);
+    }
+    expect(h.tracer.openProcesses(outcome.runId)).toHaveLength(0);
+  });
+
+  it('leaves no droid child alive and no process row open after a kill', async () => {
+    const droid = scriptedDroid([buildEnvelope(), buildEnvelope()], [], [], { stallOnTurns: [0] });
+    const started = start({
+      droidPath: droid,
+      pipeline: pipe([agentPhase('build', { description: 'Prove the kill reaps the child.' })], {
+        description: 'a killed run leaves nothing behind',
+        acceptance: { kind: 'envelope_status', phase: 'build' },
+      }),
+    });
+
+    await until(() => turnStarted(droid), 'the scripted agent to start its turn');
+    const before = h.tracer.openProcesses(started.runId);
+    expect(before).toHaveLength(1);
+    started.executor.cancel();
+    await started.done;
+
+    expect(alive(before[0]!.pid)).toBe(false);
+    expect(h.tracer.openProcesses(started.runId)).toHaveLength(0);
   });
 });

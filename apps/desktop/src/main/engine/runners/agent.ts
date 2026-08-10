@@ -7,8 +7,7 @@ import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AgentDef, EnvelopeDef, PhaseDef } from '@shared/types.js';
 import type { PhaseRunner, RunContext, PhaseJump } from '../phase-context.js';
-import type { Mode } from '../../droid/agent.js';
-import type { AgentSession } from '../../droid/agent.js';
+import { KILLED_DETAIL, type AgentSession, type Mode } from '../../droid/agent.js';
 import * as boundary from '../boundary.js';
 import { correctionMessage, parseEnvelope, type Envelope } from '../envelopes.js';
 import { gateCorrection, runGates, violationsOf, type GateReport } from '../gates.js';
@@ -172,7 +171,7 @@ export class AgentPhaseRunner implements PhaseRunner {
     let prompt = firstPrompt;
 
     for (let attempt = 1; attempt <= this.deps.envelopeRetries + 1; attempt++) {
-      if (ctx.cancelled()) return { ok: false, detail: 'the run was killed' };
+      if (ctx.cancelled()) return { ok: false, detail: KILLED_DETAIL };
 
       let outcome;
       try {
@@ -181,6 +180,9 @@ export class AgentPhaseRunner implements PhaseRunner {
           onText: (text) => this.deps.onLiveText?.(phaseId, text),
         });
       } catch (e) {
+        // A turn the operator ended is not an agent failure, and filing it as
+        // one puts a red error on a timeline that only shows what was asked for.
+        if (ctx.cancelled()) return { ok: false, detail: KILLED_DETAIL };
         ctx.tracer.event({
           runId: ctx.runId,
           phaseId,

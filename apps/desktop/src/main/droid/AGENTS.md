@@ -11,6 +11,19 @@ counted on the failing turn only: a dying child both rejects its in-flight turn
 and fires an exit callback, so counting in both places would spend the whole
 budget on one death.
 
+**A kill is not a strike.** `kill()` latches, and every recovery path stands
+down once it has: the rejected turn is not counted, not restarted, and not
+answered one-shot — it raises the kill instead, and the executor settles the
+run `killed`. Without that latch a killed child looks exactly like a flapping
+one, and the two-strike fallback finishes the phase and settles the run
+`accepted` after the operator ended it. The latch is also checked _after_ a
+session handshake completes: a `kill()` that ran while a restart was still
+starting up never saw that child, so it closes itself instead of taking a turn.
+
+Every one-shot turn spawns its own child and gets its own `processes` row
+(opened at spawn, closed on exit). A fallback child with no row is invisible to
+the kill path and to the relaunch sweep.
+
 ## Invariants
 
 - **All SDK imports live in `src/main/droid/sdk/`.** ESLint enforces it

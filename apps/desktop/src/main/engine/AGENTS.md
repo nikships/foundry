@@ -22,6 +22,11 @@ inside one phase and never decide if they succeeded.
   mid-turn allow is safe precisely because the diff runs afterwards.
 - `InterruptRequest` / the interrupt sheet belongs to **engineer phases only** —
   a checkpoint a pipeline author wrote, not a permission prompt.
+- **A kill outranks acceptance.** Once `cancel()` has fired the run settles
+  `killed`, both at the top of the loop and after it: the phases that finished
+  before the kill landed are never run through `decideAcceptance`, or a
+  pipeline whose criterion was already satisfied settles `accepted` after the
+  operator ended it. The sessions stand down too (`droid/AGENTS.md`).
 - Every run gets a fresh `foundry/run_*` branch + worktree; merge/discard
   stays in `worktree.ts`. `create()` registers `/.foundry-worktrees/` in
   `.git/info/exclude` first, or the run's own directory reports as the
