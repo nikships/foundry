@@ -45,6 +45,40 @@ to high, which is why it is always sent), and the SDK's stderr goes through a
 logger that strips message text from any customer sink — so `sdk/session.ts`
 reads `childProcess.stderr` directly.
 
+### Settings the CLI accepts and then ignores
+
+`createSession` carries autonomy and cwd only. The model and reasoning effort
+travel in the `update_session_settings` that follows, because both need droid's
+own `availableModels` (which arrives on that same init response) — the effort
+to gate against `supportedReasoningEfforts`, the model to know the default to
+fall back to. An unsupported effort is dropped rather than sent: a rejected
+setting would fail the whole session for a preference.
+
+A modelId droid does not know, or the org forbids, is **accepted silently** at
+init and at `update_session_settings`, and `settings.modelId` echoes it back.
+It only fails when a turn runs on it, as a non-throwing terminal result
+(`success:false`, `subtype:'error_during_execution'`, empty `text`, a 400
+"Invalid model ID" in `result.error.message`). So substitution is a turn-time
+retry — re-state the default model, run the turn again once, report which model
+won — and the free pre-turn check against `availableModels` still runs first.
+
+### The allowlist is a complement
+
+`restrictToolIds` is stripped by the SDK's public schemas; only the subtractive
+`disabledToolIds` survives. An allowlist therefore becomes "disable everything
+else", merged with any explicitly disabled tools. Three things this depends on:
+
+- `updateSettings` accepts tool ids that do not exist without any error, so the
+  only proof of what applied is a `listTools()` re-read (`ToolInfo.id` is the
+  llmId the roster names).
+- `ToolSearch` ignores `disabledToolIds` entirely. The effective set is the
+  allowlist **∪ {ToolSearch}**; it only loads schemas for other tools, which
+  stay disabled, so it is not a boundary hole.
+- A tool that attaches mid-session reaches `list_tools` about a second after
+  `mcp_status_changed` announces its server, so the recompute is scheduled
+  rather than immediate — a synchronous one reads a list the tool is not in yet
+  and it stays allowed.
+
 ## Zero-interrupt policy (`permissions.ts`)
 
 Runs never stop for a person. `evaluate()` ALWAYS returns a decision — there is
@@ -62,3 +96,11 @@ event with `auto: true` and a reason.
 Allowing in-turn is safe because acceptance is post-hoc: `engine/boundary.ts`
 diffs git after the phase and reverts what was not allowed. `InterruptRequest`
 is now engineer-phase only — those are pipeline content, not permissions.
+
+The SDK speaks selections rather than allow/deny, so `sdk/session.ts` adapts
+both directions: its permission handler flattens `params.toolUses[0]` (the
+tool's `input` plus the typed confirmation `details`) into the flat shape
+`evaluate()` reads, then maps allow → `proceed_once` and deny →
+`{selectedOption:'cancel', comment: reason}`. Its ask_user handler returns the
+policy's answers verbatim; `cancelled` is reserved for a decision that has no
+answers at all and never used for an ordinary question.

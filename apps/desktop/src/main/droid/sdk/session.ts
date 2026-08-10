@@ -14,34 +14,66 @@ import {
   AutonomyLevel,
   ProcessExitError,
   ProcessTransport,
+  ReasoningEffort as SdkReasoningEffort,
+  ToolConfirmationOutcome,
   createSession,
   resumeSession,
+  type AskUserRequestParams,
+  type AskUserResult,
   type DroidResultMessage,
   type DroidSession,
+  type RequestPermissionHandlerResult,
+  type RequestPermissionRequestParams,
   type StringFramedDroidClientTransport,
 } from '@factory/droid-sdk/node';
 import type { ReasoningEffort } from '@shared/types.js';
-import { DroidProtocolError, INHERIT_MODEL, type TurnResult } from '../client.js';
+import {
+  DroidProtocolError,
+  INHERIT_MODEL,
+  type PermissionAsk,
+  type PermissionDecision,
+  type TurnResult,
+} from '../client.js';
 import {
   AUTONOMY_LEVEL,
   type AvailableModel,
   type ContextStatsResult,
   type DroidNotification,
+  type SessionSettings,
   type TokenUsage,
 } from '../protocol.js';
 import { spawnEnv } from '../../system/env.js';
 import { SniffingTransport } from './sniffing-transport.js';
+
+/** One tool as this session sees it; `id` is the llmId the allowlist names. */
+export interface SessionTool {
+  id: string;
+  displayName: string;
+  description: string;
+  category: string;
+  defaultAllowed: boolean;
+  allowed: boolean;
+}
 
 export interface SdkSessionOptions {
   droidPath: string;
   cwd: string;
   model: string;
   reasoningEffort: ReasoningEffort;
+  /** Allowlist: every other tool is disabled, since the SDK is subtractive. */
+  restrictTools?: string[];
+  disabledTools?: string[];
+  /** Answers every ask from the engine policy; no ask ever reaches a person. */
+  onPermission: (ask: PermissionAsk) => PermissionDecision | Promise<PermissionDecision>;
   /** Test seam: an in-memory transport replaces the child process entirely. */
   transport?: StringFramedDroidClientTransport;
   onNotification?: (n: DroidNotification) => void;
   onExit?: (code: number | null) => void;
   onStderr?: (text: string) => void;
+  /** Which model a turn actually ran on, when it is not the one asked for. */
+  onModelWarning?: (warning: string) => void;
+  /** Test seam for the CLI's lag between announcing MCP tools and listing them. */
+  toolRefreshDelayMs?: number;
 }
 
 /**
@@ -49,6 +81,24 @@ export interface SdkSessionOptions {
  * flag and the session setting cannot drift apart.
  */
 const AUTONOMY = AutonomyLevel.High satisfies typeof AUTONOMY_LEVEL;
+
+/** Foundry's four efforts named the way the wire wants them. */
+const EFFORTS: Record<ReasoningEffort, SdkReasoningEffort> = {
+  off: SdkReasoningEffort.Off,
+  low: SdkReasoningEffort.Low,
+  medium: SdkReasoningEffort.Medium,
+  high: SdkReasoningEffort.High,
+};
+
+/**
+ * How long an MCP tool takes to reach `list_tools` after the CLI announces the
+ * server. Recomputing the allowlist synchronously on `mcp_status_changed` reads
+ * a list the new tool is not in yet, and the tool stays allowed.
+ */
+const MCP_TOOL_SETTLE_MS = 1_500;
+
+/** Every selection that lets the tool run, i.e. what an `allow` may answer. */
+type ProceedOutcome = Exclude<ToolConfirmationOutcome, ToolConfirmationOutcome.ProceedEdit>;
 
 /** What `droid.get_context_breakdown` answers; no SDK method exposes it. */
 export interface ContextBreakdown {
@@ -72,6 +122,14 @@ export class SdkSession {
   private collector: TurnCollector | null = null;
   private exited = false;
   private exitReported = false;
+  private settings: SessionSettings = {};
+  /** The model droid picked for itself, before the roster overrode it. */
+  private droidDefaultModel: string | null = null;
+  /** Set once the roster's model has been refused and given up on. */
+  private modelRefused = false;
+  private appliedDisabledTools: string[] | null = null;
+  private toolRefresh: NodeJS.Timeout | null = null;
+  private toolRefreshDelay = 0;
 
   constructor(private readonly opts: SdkSessionOptions) {}
 
@@ -90,6 +148,11 @@ export class SdkSession {
   /** droid's own model list for this session, sniffed off the init response. */
   get availableModels(): AvailableModel[] {
     return this.sniffer?.availableModels ?? [];
+  }
+
+  /** The model this session actually runs on, after any substitution. */
+  get activeModel(): string {
+    return this.settings.modelId ?? (this.wantsModel() ? this.opts.model : 'droid default');
   }
 
   /**
@@ -118,10 +181,21 @@ export class SdkSession {
     });
     this.sniffer = sniffer;
 
-    const shared = { transport: sniffer, execArgs: ['--auto', AUTONOMY_LEVEL] };
+    this.toolRefreshDelay = this.opts.toolRefreshDelayMs ?? MCP_TOOL_SETTLE_MS;
+    const shared = {
+      transport: sniffer,
+      execArgs: ['--auto', AUTONOMY_LEVEL],
+      permissionHandler: (params: RequestPermissionRequestParams) => this.onPermission(params),
+      askUserHandler: (params: AskUserRequestParams) => this.onAskUser(params),
+    };
     // `autonomyLevel` is stated on every create and re-stated after every
     // resume: omitting it happens to default to high, and load_session carries
     // no settings at all, so neither path may be left to chance.
+    //
+    // The model and the reasoning effort deliberately do NOT travel here: the
+    // effort can only be gated against droid's own model list, which arrives
+    // with this very response, and leaving the model out keeps droid's default
+    // visible in it — the only known-good model to fall back to later.
     this.session = existingSessionId
       ? await resumeSession(existingSessionId, shared)
       : await createSession({
@@ -129,15 +203,59 @@ export class SdkSession {
           cwd: this.opts.cwd,
           machineId: 'foundry',
           autonomyLevel: AUTONOMY,
-          ...(this.wantsModel() ? { modelId: this.opts.model } : {}),
         });
 
     this.session.onNotification((envelope) => this.onEnvelope(envelope));
     sniffer.markSubscribed();
+    this.settings = { ...(sniffer.initResult?.settings ?? {}) };
+    this.droidDefaultModel = this.settings.modelId ?? null;
 
-    if (existingSessionId) {
-      await this.adoptResumedSession(existingSessionId);
+    if (existingSessionId) await this.verifyResumedCwd(existingSessionId);
+
+    const applied = await this.applySettings();
+    if (applied.warning) this.opts.onModelWarning?.(applied.warning);
+    await this.applyToolPolicy();
+  }
+
+  /**
+   * Re-states everything the roster asked for on the live session and reports
+   * which model actually took effect. droid accepts an unknown model id here
+   * without complaint — only a turn finds out — so `availableModels` (droid's
+   * own list, not Foundry's catalog) is checked before anything is spent.
+   */
+  async applySettings(): Promise<{ model: string; warning?: string }> {
+    const session = this.session;
+    if (!session) return { model: this.activeModel };
+
+    const wantsModel = this.wantsModel() && !this.modelRefused;
+    await this.updateSettings({
+      autonomyLevel: AUTONOMY,
+      ...(wantsModel ? { modelId: this.opts.model } : {}),
+      ...(wantsModel ? this.effortFor(this.opts.model, this.availableModels) : {}),
+    });
+
+    const models = this.availableModels;
+    if (wantsModel && models.length && !models.some((m) => m.id === this.opts.model)) {
+      return {
+        model: this.opts.model,
+        warning: `${this.opts.model} is not in this session's available models; turns may come back empty`,
+      };
     }
+    return { model: this.activeModel };
+  }
+
+  /** The session's own tool list, whose `allowed` flag is what actually applied. */
+  async listTools(): Promise<SessionTool[]> {
+    if (!this.session) return [];
+    const tools = await this.session.listTools();
+    return tools.map((tool) => ({
+      id: tool.id,
+      displayName: tool.displayName,
+      description: tool.description,
+      category: tool.category,
+      defaultAllowed: tool.defaultAllowed,
+      allowed: tool.allowed,
+    }));
   }
 
   /**
@@ -147,6 +265,20 @@ export class SdkSession {
    * inspected rather than trusted.
    */
   async send(text: string, timeoutMs: number): Promise<TurnResult> {
+    try {
+      return await this.runTurn(text, timeoutMs);
+    } catch (error) {
+      // The only thing that ever rejects the roster's model is a turn, so the
+      // substitution the session was created for happens here, once.
+      if (!this.canSubstituteModel(error)) throw error;
+      // Reported before the retry: which model the run is on is worth knowing
+      // even if the retry then fails for its own reasons.
+      this.opts.onModelWarning?.(await this.dropModelOverride(errorText(error)));
+      return this.runTurn(text, timeoutMs);
+    }
+  }
+
+  private async runTurn(text: string, timeoutMs: number): Promise<TurnResult> {
     const session = this.session;
     if (!session) throw new DroidProtocolError('session not initialised');
     if (!this.alive) throw new DroidProtocolError('droid child is not running');
@@ -222,6 +354,8 @@ export class SdkSession {
   }
 
   async close(): Promise<void> {
+    if (this.toolRefresh) clearTimeout(this.toolRefresh);
+    this.toolRefresh = null;
     const session = this.session;
     this.session = null;
     if (session) {
@@ -264,26 +398,138 @@ export class SdkSession {
    * reports that as a realpath, so `/tmp` and `/private/tmp` are the same
    * place and only a resolved comparison can tell a real mismatch.
    */
-  private async adoptResumedSession(sessionId: string): Promise<void> {
+  private async verifyResumedCwd(sessionId: string): Promise<void> {
     const sessionCwd = this.session?.cwd;
-    if (sessionCwd && resolvePath(sessionCwd) !== resolvePath(this.opts.cwd)) {
-      await this.close();
-      throw new DroidProtocolError(
-        `session ${sessionId} runs in ${sessionCwd}, not this run's worktree ${this.opts.cwd}`,
-      );
-    }
-
-    // load_session carries no settings, so everything the roster demands has
-    // to be re-stated here — autonomy included.
-    await this.session?.updateSettings({
-      autonomyLevel: AUTONOMY,
-      ...(this.wantsModel() ? { modelId: this.opts.model } : {}),
-    });
+    if (!sessionCwd || resolvePath(sessionCwd) === resolvePath(this.opts.cwd)) return;
+    await this.close();
+    throw new DroidProtocolError(
+      `session ${sessionId} runs in ${sessionCwd}, not this run's worktree ${this.opts.cwd}`,
+    );
   }
 
   /** A roster entry may decline to pick a model and take droid's own default. */
   private wantsModel(): boolean {
     return !!this.opts.model && this.opts.model !== INHERIT_MODEL;
+  }
+
+  /**
+   * An effort droid does not list for this model is dropped rather than sent:
+   * a rejected setting would fail the whole session for a preference. The
+   * catalog is advisory; droid's own list wins.
+   */
+  private effortFor(
+    modelId: string,
+    models: AvailableModel[],
+  ): { reasoningEffort?: SdkReasoningEffort } {
+    const effort = this.opts.reasoningEffort;
+    const model = models.find((m) => m.id === modelId);
+    const supported = model
+      ? (model.supportedReasoningEfforts?.includes(effort) ?? false)
+      : effort !== 'off';
+    return supported ? { reasoningEffort: EFFORTS[effort] } : {};
+  }
+
+  /** Tracks what droid says the settings are now, since it is the authority. */
+  private async updateSettings(params: Parameters<DroidSession['updateSettings']>[0]) {
+    await this.session?.updateSettings(params);
+    this.settings = { ...this.settings, ...(this.session?.settings ?? {}) };
+  }
+
+  /**
+   * A model the org forbids or droid does not know is accepted at init and at
+   * settings time and only rejected when a turn runs on it, as a 400 inside an
+   * otherwise ordinary result.
+   */
+  private canSubstituteModel(error: unknown): boolean {
+    if (this.modelRefused || !this.wantsModel() || !this.alive) return false;
+    return /invalid model id/i.test(errorText(error));
+  }
+
+  /** Retries the session on droid's own default and says which model won. */
+  private async dropModelOverride(reason: string): Promise<string> {
+    this.modelRefused = true;
+    // droid keeps the last modelId it was given, so the override is cleared by
+    // re-stating the default this session started on rather than by omission.
+    await this.updateSettings({
+      autonomyLevel: AUTONOMY,
+      ...(this.droidDefaultModel ? { modelId: this.droidDefaultModel } : {}),
+    });
+    const fallback = this.droidDefaultModel ?? 'droid default';
+    return `${this.opts.model} was refused (${reason}); this session runs on ${fallback}`;
+  }
+
+  /**
+   * The SDK is subtractive only (`restrictToolIds` is stripped by its public
+   * schemas), so an allowlist becomes its complement. `updateSettings` accepts
+   * ids that do not exist without complaining, which is why the caller-visible
+   * proof of what applied is a `listTools()` re-read, never this request.
+   */
+  private async applyToolPolicy(): Promise<void> {
+    const session = this.session;
+    if (!session) return;
+    const allow = this.opts.restrictTools;
+    const explicit = this.opts.disabledTools ?? [];
+    if (!allow?.length && !explicit.length) return;
+
+    const allowed = new Set(allow ?? []);
+    const complement = allow?.length
+      ? (await session.listTools()).map((t) => t.id).filter((id) => !allowed.has(id))
+      : [];
+    const disabled = [...new Set([...complement, ...explicit])].sort();
+
+    if (this.appliedDisabledTools?.join('\u0000') === disabled.join('\u0000')) return;
+    this.appliedDisabledTools = disabled;
+    await this.updateSettings({ disabledToolIds: disabled });
+  }
+
+  /**
+   * A tool that attaches mid-session is allowed until the complement is
+   * recomputed, and it reaches `list_tools` about a second after the CLI
+   * announces its server — so the recompute is scheduled, not immediate.
+   */
+  private scheduleToolPolicy(): void {
+    if (!this.opts.restrictTools?.length || this.toolRefresh) return;
+    const timer = setTimeout(() => {
+      this.toolRefresh = null;
+      void this.applyToolPolicy().catch(() => undefined);
+    }, this.toolRefreshDelay);
+    timer.unref?.();
+    this.toolRefresh = timer;
+  }
+
+  /**
+   * The zero-interrupt policy answers every ask. The SDK speaks selections
+   * rather than allow/deny, and a denial carries its reason as the comment so
+   * the agent can act on it instead of retrying blind.
+   */
+  private async onPermission(
+    params: RequestPermissionRequestParams,
+  ): Promise<RequestPermissionHandlerResult> {
+    const decision = await this.opts.onPermission({
+      method: 'droid.request_permission',
+      params: flattenToolUse(params),
+    });
+    if (decision.outcome !== 'allow') {
+      return {
+        selectedOption: ToolConfirmationOutcome.Cancel,
+        comment: decision.reason ?? 'denied by policy',
+      };
+    }
+    return proceedOption(params);
+  }
+
+  /**
+   * `cancelled` is never used for an ordinary question: the CLI reads it as a
+   * refusal and the agent asks again, which is exactly the stall the policy
+   * exists to prevent.
+   */
+  private async onAskUser(params: AskUserRequestParams): Promise<AskUserResult> {
+    const decision = await this.opts.onPermission({
+      method: 'droid.ask_user',
+      params: params as unknown as Record<string, unknown>,
+    });
+    if (decision.outcome === 'allow' && decision.answers) return { answers: decision.answers };
+    return { cancelled: true, answers: [] };
   }
 
   private onEnvelope(envelope: Record<string, unknown>): void {
@@ -297,6 +543,9 @@ export class SdkSession {
 
   private deliver(notification: DroidNotification): void {
     this.collector?.absorb(notification);
+    if (notification.type === 'settings_updated' || notification.type === 'mcp_status_changed') {
+      this.scheduleToolPolicy();
+    }
     this.opts.onNotification?.(notification);
   }
 
@@ -367,6 +616,46 @@ class TurnCollector {
         return;
     }
   }
+}
+
+/**
+ * The policy reads a flat ask (`toolName`, `command`, `file_path`); the SDK
+ * nests the same facts one level down and splits them across `toolUse.input`
+ * and the typed confirmation `details`.
+ */
+function flattenToolUse(params: RequestPermissionRequestParams): Record<string, unknown> {
+  const first = params.toolUses?.[0];
+  if (!first) return { ...params } as unknown as Record<string, unknown>;
+  const details = first.details as Record<string, unknown>;
+  return {
+    toolName: first.toolUse.name,
+    ...first.toolUse.input,
+    ...(typeof details.command === 'string' ? { command: details.command } : {}),
+    ...(typeof details.filePath === 'string' ? { file_path: details.filePath } : {}),
+  };
+}
+
+/**
+ * The SDK answers `cancel` for any selection the ask did not offer, so an
+ * allow that names an unavailable option lands as a silent denial. Asks
+ * normally offer `proceed_once`; take whatever proceed they do offer instead
+ * of assuming, and never fall back to a selection that stops the tool.
+ */
+function proceedOption(params: RequestPermissionRequestParams): ProceedOutcome {
+  const offered = params.options?.map((option) => option.value) ?? [];
+  if (offered.includes(ToolConfirmationOutcome.ProceedOnce)) {
+    return ToolConfirmationOutcome.ProceedOnce;
+  }
+  // ProceedEdit is left out because it is only answerable with edited content.
+  const proceed = offered.filter(
+    (value): value is ProceedOutcome =>
+      value !== ToolConfirmationOutcome.Cancel && value !== ToolConfirmationOutcome.ProceedEdit,
+  );
+  return proceed[0] ?? ToolConfirmationOutcome.ProceedOnce;
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function asProtocolError(error: unknown): Error {

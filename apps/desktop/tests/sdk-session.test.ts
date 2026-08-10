@@ -14,8 +14,10 @@ import { ProcessExitError, type StringFramedDroidClientTransport } from '@factor
 import { SdkSession } from '../src/main/droid/sdk/session.js';
 import { SniffingTransport } from '../src/main/droid/sdk/sniffing-transport.js';
 import { EventFolder, toUsageBreakdown } from '../src/main/droid/events.js';
+import { evaluate, type PolicyContext } from '../src/main/droid/permissions.js';
 import { openDb, projectDbPath, projectRunsDir } from '../src/main/trace/db.js';
 import { Tracer } from '../src/main/trace/tracer.js';
+import type { PermissionAsk } from '../src/main/droid/client.js';
 import type { DroidNotification, TokenUsage } from '../src/main/droid/protocol.js';
 import type { PipelineDef } from '../src/shared/types.js';
 
@@ -46,6 +48,13 @@ const MODELS = [
     isCustom: false,
   },
 ];
+
+/** Tool ids as `ToolInfo.id` — the llmId, which is what the complement uses. */
+const BUILTIN_TOOLS = ['Read', 'Grep', 'Glob', 'LS', 'Edit', 'Create', 'Execute', 'ToolSearch'];
+
+/** The 400 the CLI answers a turn with when the session's model is unknown. */
+const INVALID_MODEL_400 =
+  '400 {"detail":"Invalid model ID in request body","status":400,"title":"Bad Request"}';
 
 function usage(overrides: Partial<TokenUsage> = {}): TokenUsage {
   return {
@@ -88,10 +97,19 @@ class ScriptedTransport implements StringFramedDroidClientTransport {
     { type: 'droid_working_state_changed', newState: 'idle' },
   ];
   turnScript: TurnScript = completesWith('{"status":"success"}');
+  /** Every tool this session knows about, by `ToolInfo.id`. */
+  tools: string[] = [...BUILTIN_TOOLS];
+  /** droid's own model list for this session, sniffed off the init response. */
+  models: typeof MODELS = MODELS;
+  /** Model ids a turn will actually run on; anything else 400s at turn time. */
+  runnableModels = new Set(MODELS.map((m) => m.id));
+  private disabled: string[] = [];
   private messageHandler: ((message: string) => void) | null = null;
   private readonly errorHandlers: ((error: Error) => void)[] = [];
+  private readonly serverRequests = new Map<string, (result: unknown) => void>();
   private connected = true;
   private turns = 0;
+  private nextServerId = 1;
 
   get isConnected(): boolean {
     return this.connected;
@@ -102,6 +120,13 @@ class ScriptedTransport implements StringFramedDroidClientTransport {
     const frame = JSON.parse(message) as Record<string, unknown>;
     this.sent.push(frame);
     if (frame.type === 'request') this.handle(frame);
+    if (frame.type === 'response') {
+      const settle = this.serverRequests.get(String(frame.id));
+      if (settle) {
+        this.serverRequests.delete(String(frame.id));
+        settle(frame.result);
+      }
+    }
   }
 
   onMessage(handler: (message: string) => void): void {
@@ -153,6 +178,28 @@ class ScriptedTransport implements StringFramedDroidClientTransport {
     this.emit({ ...ENVELOPE, type: 'response', id, result });
   }
 
+  /**
+   * A server-initiated request (permission / ask_user), resolved with whatever
+   * the client answers — the wire shape the policy adapter has to produce.
+   */
+  ask(method: string, params: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const id = `srv-${this.nextServerId++}`;
+    return new Promise((resolve) => {
+      this.serverRequests.set(id, (result) => resolve((result ?? {}) as Record<string, unknown>));
+      this.emit({ ...ENVELOPE, type: 'request', id, method, params });
+    });
+  }
+
+  /** What `listTools()` would report right now, complement applied. */
+  get allowedTools(): string[] {
+    // ToolSearch ignores disabledToolIds in the real CLI (spike V2).
+    return this.tools.filter((id) => id === 'ToolSearch' || !this.disabled.includes(id));
+  }
+
+  get disabledToolIds(): string[] {
+    return [...this.disabled];
+  }
+
   private handle(frame: Record<string, unknown>): void {
     const id = String(frame.id);
     const method = String(frame.method);
@@ -160,12 +207,13 @@ class ScriptedTransport implements StringFramedDroidClientTransport {
 
     switch (method) {
       case 'droid.initialize_session': {
+        if (typeof params.modelId === 'string') this.settings.modelId = params.modelId;
         for (const n of this.initNotifications) this.notify(n);
         this.reply(id, {
           sessionId: this.sessionId,
           session: { messages: [] },
           settings: this.settings,
-          availableModels: MODELS,
+          availableModels: this.models,
         });
         return;
       }
@@ -175,25 +223,55 @@ class ScriptedTransport implements StringFramedDroidClientTransport {
         this.reply(id, {
           session: { messages: [] },
           settings: this.settings,
-          availableModels: MODELS,
+          availableModels: this.models,
           ...(this.cwd ? { cwd: this.cwd } : {}),
         });
         return;
       }
       case 'droid.update_session_settings': {
+        // The CLI accepts an unknown modelId and echoes it back; only a turn
+        // finds out. Same for tool ids that do not exist.
         if (typeof params.modelId === 'string') this.settings.modelId = params.modelId;
+        if (params.modelId === undefined && 'modelId' in params) delete this.settings.modelId;
+        if (typeof params.reasoningEffort === 'string') {
+          this.settings.reasoningEffort = params.reasoningEffort;
+        }
+        if (Array.isArray(params.disabledToolIds)) {
+          this.disabled = params.disabledToolIds as string[];
+          this.settings.disabledToolIds = [...this.disabled];
+        }
         this.notify({ type: 'settings_updated', requestId: id, settings: this.settings });
         this.reply(id, {});
+        return;
+      }
+      case 'droid.list_tools': {
+        this.reply(id, {
+          tools: this.tools.map((toolId) => ({
+            id: toolId,
+            llmId: toolId,
+            displayName: toolId,
+            description: `${toolId} tool`,
+            category: 'other',
+            defaultAllowed: true,
+            currentlyAllowed: this.allowedTools.includes(toolId),
+          })),
+        });
         return;
       }
       case 'droid.add_user_message': {
         this.turns++;
         this.reply(id, {});
-        this.turnScript({
+        const turn = {
           turnId: String(params.messageId),
           prompt: String(params.text ?? ''),
           transport: this,
-        });
+        };
+        const model = this.settings.modelId;
+        if (typeof model === 'string' && !this.runnableModels.has(model)) {
+          rejectsModel(turn);
+          return;
+        }
+        this.turnScript(turn);
         return;
       }
       case 'droid.get_context_stats': {
@@ -268,6 +346,101 @@ function completesWith(text: string, reason = 'completed'): TurnScript {
   };
 }
 
+/**
+ * The turn an unknown model produces: a NON-throwing terminal result carrying
+ * the upstream 400, which is the only place the CLI ever rejects a model.
+ */
+const rejectsModel: TurnScript = ({ turnId, transport }) => {
+  transport.notify({
+    type: 'error',
+    message: INVALID_MODEL_400,
+    errorType: 'Error',
+    timestamp: '2026-08-09T00:00:00.000Z',
+  });
+  transport.notify({ type: 'agent_turn_completed', reason: 'error', turnId, tokenUsage: usage() });
+};
+
+/** A turn that asks the client something and only finishes once answered. */
+function asksThenCompletes(
+  method: string,
+  params: Record<string, unknown>,
+  answers: Record<string, unknown>[],
+): TurnScript {
+  return (turn) => {
+    void turn.transport.ask(method, params).then((answer) => {
+      answers.push(answer);
+      completesWith('{"status":"success"}')(turn);
+    });
+  };
+}
+
+function execAsk(command: string): Record<string, unknown> {
+  return {
+    toolUses: [
+      {
+        toolUse: { type: 'tool_use', id: 'call-perm-1', name: 'Execute', input: { command } },
+        confirmationType: 'exec',
+        details: { type: 'exec', fullCommand: command, command },
+      },
+    ],
+    options: [
+      { label: 'Yes', value: 'proceed_once' },
+      { label: 'No', value: 'cancel' },
+    ],
+  };
+}
+
+function writeAsk(filePath: string): Record<string, unknown> {
+  return {
+    toolUses: [
+      {
+        toolUse: {
+          type: 'tool_use',
+          id: 'call-perm-2',
+          name: 'Edit',
+          input: { file_path: filePath },
+        },
+        confirmationType: 'edit',
+        details: { type: 'edit', filePath, fileName: filePath.split('/').pop() ?? filePath },
+      },
+    ],
+    options: [
+      { label: 'Yes', value: 'proceed_once' },
+      { label: 'No', value: 'cancel' },
+    ],
+  };
+}
+
+function questionsAsk(questions: Record<string, unknown>[]): Record<string, unknown> {
+  return { toolCallId: 'call-ask-1', questions };
+}
+
+const POLICY: PolicyContext = {
+  worktree: '/repo',
+  writes: ['src/'],
+  protectedPaths: [],
+};
+
+/** Exactly what `AgentSession.decide()` does, minus the tracing. */
+function decide(ask: PermissionAsk) {
+  const outcome = evaluate(ask, POLICY);
+  return outcome.answers ? { ...outcome.decision, answers: outcome.answers } : outcome.decision;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** The recompute is scheduled, not synchronous — poll for its effect. */
+async function waitFor(condition: () => Promise<boolean>, timeoutMs = 2_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await condition()) return;
+    await delay(5);
+  }
+  throw new Error('condition never became true');
+}
+
 const open: SdkSession[] = [];
 
 function session(overrides: Partial<ConstructorParameters<typeof SdkSession>[0]> = {}): {
@@ -275,22 +448,29 @@ function session(overrides: Partial<ConstructorParameters<typeof SdkSession>[0]>
   transport: ScriptedTransport;
   notifications: DroidNotification[];
   exits: (number | null)[];
+  warnings: string[];
 } {
   const transport = new ScriptedTransport();
   const notifications: DroidNotification[] = [];
   const exits: (number | null)[] = [];
+  const warnings: string[] = [];
   const sdk = new SdkSession({
     droidPath: '/nonexistent/droid',
     cwd: '/tmp',
     model: 'fake-allowed',
     reasoningEffort: 'medium',
     transport,
+    onPermission: decide,
     onNotification: (n) => notifications.push(n),
     onExit: (code) => exits.push(code),
+    onModelWarning: (warning) => warnings.push(warning),
+    // The real lag between mcp_status_changed and the tool showing up in
+    // listTools() is ~1s; the tests drive the same code path faster.
+    toolRefreshDelayMs: 1,
     ...overrides,
   });
   open.push(sdk);
-  return { sdk, transport, notifications, exits };
+  return { sdk, transport, notifications, exits, warnings };
 }
 
 afterEach(async () => {
@@ -475,8 +655,12 @@ describe('notifications', () => {
     const { sdk, notifications } = session();
     await sdk.start();
     // The SDK can only subscribe after createSession() resolves; without the
-    // sniffing transport these ~5 frames never reach stream.jsonl.
-    expect(notifications.filter((n) => n.type === 'settings_updated')).toHaveLength(1);
+    // sniffing transport these ~5 frames never reach stream.jsonl. They must
+    // arrive first, and exactly once — later ones come from applying settings.
+    expect(notifications.slice(0, 2).map((n) => n.type)).toEqual([
+      'settings_updated',
+      'droid_working_state_changed',
+    ]);
     expect(notifications.filter((n) => n.type === 'droid_working_state_changed')).toHaveLength(1);
   });
 
@@ -599,5 +783,292 @@ describe('context breakdown', () => {
     const sniffer = new SniffingTransport(transport);
     expect(await sniffer.request('droid.never_answered', {}, 20)).toBeNull();
     await sniffer.close();
+  });
+});
+
+describe('permission asks', () => {
+  it('answers an allowed ask with proceed_once and lets the turn finish', async () => {
+    const answers: Record<string, unknown>[] = [];
+    const { sdk, transport } = session({ cwd: '/repo' });
+    await sdk.start();
+    transport.turnScript = asksThenCompletes(
+      'droid.request_permission',
+      execAsk('git commit --allow-empty -m probe'),
+      answers,
+    );
+    const result = await sdk.send('needs permission', 5_000);
+    expect(answers).toEqual([{ selectedOption: 'proceed_once' }]);
+    expect(result.text).toBe('{"status":"success"}');
+  });
+
+  it('answers a denied ask with cancel and the policy reason as the comment', async () => {
+    const answers: Record<string, unknown>[] = [];
+    const { sdk, transport } = session({ cwd: '/repo' });
+    await sdk.start();
+    transport.turnScript = asksThenCompletes(
+      'droid.request_permission',
+      writeAsk('/etc/hosts'),
+      answers,
+    );
+    const result = await sdk.send('tries to escape', 5_000);
+    expect(answers[0]!.selectedOption).toBe('cancel');
+    expect(String(answers[0]!.comment)).toContain('outside the run worktree');
+    // A denial ends the ask, not the turn.
+    expect(result.text).toBe('{"status":"success"}');
+  });
+
+  it('denies a write outside the agent boundary but inside the worktree', async () => {
+    const answers: Record<string, unknown>[] = [];
+    const { sdk, transport } = session({ cwd: '/repo' });
+    await sdk.start();
+    transport.turnScript = asksThenCompletes(
+      'droid.request_permission',
+      writeAsk('/repo/infra/main.tf'),
+      answers,
+    );
+    await sdk.send('writes out of bounds', 5_000);
+    expect(answers[0]!.selectedOption).toBe('cancel');
+    expect(String(answers[0]!.comment)).toContain('write boundary');
+  });
+
+  it('picks a proceed option the ask actually offers', async () => {
+    const answers: Record<string, unknown>[] = [];
+    const { sdk, transport } = session({ cwd: '/repo' });
+    await sdk.start();
+    const ask = execAsk('echo hi');
+    // The SDK answers `cancel` in place of any selection the ask did not
+    // offer, which would silently turn this allow into a deny.
+    ask.options = [
+      { label: 'Yes, always', value: 'proceed_always' },
+      { label: 'No', value: 'cancel' },
+    ];
+    transport.turnScript = asksThenCompletes('droid.request_permission', ask, answers);
+    await sdk.send('needs permission', 5_000);
+    expect(answers).toEqual([{ selectedOption: 'proceed_always' }]);
+  });
+});
+
+describe('ask_user', () => {
+  it('answers every question with its first option and never cancels', async () => {
+    const answers: Record<string, unknown>[] = [];
+    const { sdk, transport } = session({ cwd: '/repo' });
+    await sdk.start();
+    transport.turnScript = asksThenCompletes(
+      'droid.ask_user',
+      questionsAsk([
+        { index: 0, topic: 'db', question: 'which database?', options: ['postgres', 'mysql'] },
+        { index: 1, topic: 'ci', question: 'which CI?', options: ['github', 'gitlab'] },
+      ]),
+      answers,
+    );
+    await sdk.send('needs an answer', 5_000);
+    expect(answers[0]).toEqual({
+      answers: [
+        { index: 0, question: 'which database?', answer: 'postgres' },
+        { index: 1, question: 'which CI?', answer: 'github' },
+      ],
+    });
+    expect(answers[0]!.cancelled).toBeUndefined();
+  });
+
+  it('tells an option-less question to proceed rather than cancelling it', async () => {
+    const answers: Record<string, unknown>[] = [];
+    const { sdk, transport } = session({ cwd: '/repo' });
+    await sdk.start();
+    transport.turnScript = asksThenCompletes(
+      'droid.ask_user',
+      questionsAsk([{ index: 0, topic: 'x', question: 'how?', options: [] }]),
+      answers,
+    );
+    await sdk.send('needs an answer', 5_000);
+    expect(answers[0]).toEqual({
+      answers: [
+        {
+          index: 0,
+          question: 'how?',
+          answer: 'Proceed with your best judgment; do not ask again.',
+        },
+      ],
+    });
+  });
+});
+
+describe('applySettings', () => {
+  it('sends a reasoning effort the model supports', async () => {
+    const { sdk, transport } = session({ reasoningEffort: 'low' });
+    await sdk.start();
+    const efforts = transport
+      .paramsFor('droid.update_session_settings')
+      .map((p) => p.reasoningEffort)
+      .filter((e) => e !== undefined);
+    expect(efforts).toContain('low');
+  });
+
+  it('drops an effort the model does not support instead of failing the session', async () => {
+    const { sdk, transport } = session({ reasoningEffort: 'low' });
+    // droid's own list, not Foundry's catalog, decides which efforts exist.
+    transport.models = MODELS.map((m) =>
+      m.id === 'fake-allowed' ? { ...m, supportedReasoningEfforts: ['high'] } : m,
+    );
+    await sdk.start();
+    for (const params of transport.paramsFor('droid.update_session_settings')) {
+      expect(params.reasoningEffort).toBeUndefined();
+    }
+    expect(transport.paramsFor('droid.initialize_session')[0]!.reasoningEffort).toBeUndefined();
+  });
+
+  it('warns before the first turn when the model is not in droid’s own list', async () => {
+    const { sdk } = session({ model: 'well-formed-but-unknown' });
+    await sdk.start();
+    const applied = await sdk.applySettings();
+    expect(applied.warning).toContain("not in this session's available models");
+    expect(applied.model).toBe('well-formed-but-unknown');
+    expect(sdk.alive).toBe(true);
+  });
+
+  it('reports no warning for a model droid knows', async () => {
+    const { sdk } = session();
+    await sdk.start();
+    expect((await sdk.applySettings()).warning).toBeUndefined();
+  });
+});
+
+describe('model substitution at turn time', () => {
+  it('keeps the session, retries without the override, and reports the substitute', async () => {
+    const { sdk, transport, warnings } = session({ model: 'forbidden-by-policy' });
+    await sdk.start();
+    // The bad model is accepted everywhere until a turn runs on it.
+    expect(transport.paramsFor('droid.update_session_settings').map((p) => p.modelId)).toContain(
+      'forbidden-by-policy',
+    );
+    expect(sdk.alive).toBe(true);
+
+    // Pre-turn: the model is not in droid's list, which is knowable for free.
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("not in this session's available models");
+
+    const result = await sdk.send('first turn', 5_000);
+    expect(result.text).toBe('{"status":"success"}');
+    expect(sdk.activeModel).toBe('gpt-fake-default');
+    expect(warnings).toHaveLength(2);
+    expect(warnings[1]).toContain('forbidden-by-policy');
+    expect(warnings[1]).toContain('gpt-fake-default');
+    expect(transport.turnCount).toBe(2);
+
+    // The substitution is remembered: the next turn does not pay for it again.
+    const after = await sdk.send('second turn', 5_000);
+    expect(after.text).toBe('{"status":"success"}');
+    expect(transport.turnCount).toBe(3);
+    expect(warnings).toHaveLength(2);
+  });
+
+  it('fails the turn when the substitute is refused too, rather than retrying forever', async () => {
+    const { sdk, transport } = session({ model: 'forbidden-by-policy' });
+    transport.runnableModels = new Set();
+    await sdk.start();
+    await expect(sdk.send('doomed', 5_000)).rejects.toThrow(/Invalid model ID/);
+    expect(transport.turnCount).toBe(2);
+  });
+
+  it('does not substitute for an unrelated turn failure', async () => {
+    const { sdk, transport, warnings } = session();
+    await sdk.start();
+    transport.turnScript = ({ turnId, transport: t }) => {
+      t.notify({
+        type: 'error',
+        message: 'the tool exploded',
+        errorType: 'Error',
+        timestamp: '2026-08-09T00:00:00.000Z',
+      });
+      t.notify({ type: 'agent_turn_completed', reason: 'error', turnId, tokenUsage: usage() });
+    };
+    await expect(sdk.send('boom', 5_000)).rejects.toThrow('the tool exploded');
+    expect(warnings).toHaveLength(0);
+    expect(transport.turnCount).toBe(1);
+  });
+});
+
+describe('tool allowlist', () => {
+  it('disables the complement of the allowlist and proves it with a re-read', async () => {
+    const { sdk, transport } = session({ restrictTools: ['Read', 'Grep'] });
+    await sdk.start();
+    expect(transport.disabledToolIds.sort()).toEqual(
+      ['Create', 'Edit', 'Execute', 'Glob', 'LS', 'ToolSearch'].sort(),
+    );
+    // ToolSearch ignores disabledToolIds in the real CLI, so the effective set
+    // is the allowlist plus ToolSearch — asserted from the re-read, which is
+    // the only signal of what actually applied.
+    const allowed = (await sdk.listTools()).filter((t) => t.allowed).map((t) => t.id);
+    expect(allowed.sort()).toEqual(['Grep', 'Read', 'ToolSearch']);
+  });
+
+  it('merges explicitly disabled tools with the complement', async () => {
+    const { sdk, transport } = session({
+      restrictTools: ['Read', 'Grep', 'Execute'],
+      disabledTools: ['Execute'],
+    });
+    await sdk.start();
+    expect(transport.disabledToolIds).toContain('Execute');
+    const allowed = (await sdk.listTools()).filter((t) => t.allowed).map((t) => t.id);
+    expect(allowed.sort()).toEqual(['Grep', 'Read', 'ToolSearch']);
+  });
+
+  it('disables the listed tools when there is no allowlist at all', async () => {
+    const { sdk, transport } = session({ disabledTools: ['Execute'] });
+    await sdk.start();
+    expect(transport.disabledToolIds).toEqual(['Execute']);
+    const allowed = (await sdk.listTools()).filter((t) => t.allowed).map((t) => t.id);
+    expect(allowed).not.toContain('Execute');
+    expect(allowed).toContain('Edit');
+  });
+
+  it('re-complements a tool that appears after the MCP server connects', async () => {
+    const { sdk, transport } = session({ restrictTools: ['Read', 'Grep'] });
+    await sdk.start();
+
+    // The CLI announces the server ~1s before its tools reach list_tools, so a
+    // synchronous recompute would look at a stale list and let the tool escape.
+    transport.notify({
+      type: 'mcp_status_changed',
+      servers: [{ name: 'late-mcp', status: 'connected' }],
+      summary: { total: 1, connected: 1, connecting: 0, failed: 0, disabled: 0 },
+    });
+    transport.tools = [...BUILTIN_TOOLS, 'late-mcp___echo'];
+
+    await waitFor(async () =>
+      (await sdk.listTools()).some((t) => t.id === 'late-mcp___echo' && !t.allowed),
+    );
+    expect(transport.disabledToolIds).toContain('late-mcp___echo');
+    const allowed = (await sdk.listTools()).filter((t) => t.allowed).map((t) => t.id);
+    expect(allowed.sort()).toEqual(['Grep', 'Read', 'ToolSearch']);
+  });
+
+  it('re-complements on a settings_updated that reveals a new tool', async () => {
+    const { sdk, transport } = session({ restrictTools: ['Read'] });
+    await sdk.start();
+    transport.tools = [...BUILTIN_TOOLS, 'other___tool'];
+    transport.notify({ type: 'settings_updated', settings: transport.settings });
+
+    await waitFor(async () =>
+      (await sdk.listTools()).some((t) => t.id === 'other___tool' && !t.allowed),
+    );
+    expect(transport.disabledToolIds).toContain('other___tool');
+  });
+
+  it('does not re-apply settings when nothing about the tool set changed', async () => {
+    const { sdk, transport } = session({ restrictTools: ['Read', 'Grep'] });
+    await sdk.start();
+    const applied = transport.framesFor('droid.update_session_settings').length;
+    transport.notify({ type: 'settings_updated', settings: transport.settings });
+    await delay(20);
+    // A recompute that re-sends its own answer would loop forever.
+    expect(transport.framesFor('droid.update_session_settings')).toHaveLength(applied);
+  });
+
+  it('leaves the session unrestricted when the roster asks for nothing', async () => {
+    const { sdk, transport } = session();
+    await sdk.start();
+    expect(transport.disabledToolIds).toEqual([]);
+    expect(transport.framesFor('droid.list_tools')).toHaveLength(0);
   });
 });
