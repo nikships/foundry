@@ -118,13 +118,21 @@ export class OneShotClient {
           `${this.adapter.binary} exited ${code}: ${stderr.slice(-1500) || stdout.slice(-1500)}`,
         );
       }
-      return { text: stdout.trim(), usage: null, reason: 'completed', interrupted: false };
+      return {
+        text: stdout.trim(),
+        usage: null,
+        reason: 'completed',
+        interrupted: false,
+        structuredOutput: null,
+      };
     }
     return {
       text: parsed.text,
       usage: parsed.usage as TokenUsage | null,
       reason: parsed.reason,
       interrupted: false,
+      // Argv has no schema surface; a one-shot turn is text and nothing else.
+      structuredOutput: null,
     };
   }
 

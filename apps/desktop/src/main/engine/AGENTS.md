@@ -16,7 +16,13 @@ inside one phase and never decide if they succeeded.
   `required`: the model is asked for strictly more than `parseEnvelope`
   demands, so anything conforming to the schema parses. `tests/envelopes.test.ts`
   pins the `required` array per kind — a drift there is a failing test, not a
-  surprise at runtime.
+  surprise at runtime. It also pins that no `$schema` dialect is declared: droid
+  compiles the constraint with a Draft-07 ajv and rejects the whole turn for a
+  2020-12 dialect URI.
+- Only **agent** phases carry the output constraint, and a structured reply is a
+  candidate, not a verdict: `validateEnvelope` runs it through the same zod
+  instance, and a rejection (or a droid that could not shape one) falls back to
+  parsing the text on the _same_ envelope-retry budget — no second budget.
 - Gates return evidence, not verdicts — one `GateCheck` per item examined
   (`gates.ts`). Unknown gate names fail.
 - Write boundaries are enforced after the call by diffing `git status`

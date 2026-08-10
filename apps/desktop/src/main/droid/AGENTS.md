@@ -130,6 +130,17 @@ It only fails when a turn runs on it, as a non-throwing terminal result
 retry — re-state the default model, run the turn again once, report which model
 won — and the free pre-turn check against `availableModels` still runs first.
 
+### A schema droid could not honour is a completed turn
+
+`subtype:'error_structured_output'` (turn reasons `structured_output_missing` /
+`_invalid` / `_schema_invalid`) is the one `success:false` result `runTurn` does
+**not** throw on. The turn ran and `text` still holds the answer, so refusing it
+here would deny the engine the fallback it is built to take. `structuredOutput`
+is returned as a plain object or `null`, never a verdict — the caller validates.
+
+Note `_schema_invalid` blames the _request_: droid compiles the requested schema
+with a Draft-07 ajv, so a schema declaring the 2020-12 dialect fails every turn.
+
 ### The allowlist is a complement
 
 `restrictToolIds` is stripped by the SDK's public schemas; only the subtractive

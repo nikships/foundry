@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { openDb, projectDbPath, projectRunsDir, type Db } from '../src/main/trace/db.js';
 import { Tracer } from '../src/main/trace/tracer.js';
 import { Executor } from '../src/main/engine/executor.js';
+import { exampleFor, jsonSchemaFor } from '../src/main/engine/envelopes.js';
 import { defaultProject } from '../src/main/store/projects.js';
 import type {
   AgentDef,
@@ -92,6 +93,27 @@ interface ScriptedDroidOptions {
   stallOnTurns?: number[];
   /** Held-back handshake, so a test can act while the session is still starting. */
   handshakeDelayMs?: number;
+  /** Structured output the CLI reports per turn index; `null` reports none. */
+  structuredOutputs?: (unknown | null)[];
+  /**
+   * Completion reason per turn index. A `structured_output_*` reason is how
+   * the CLI says it could not shape the reply, and the SDK turns it into the
+   * `error_structured_output` subtype.
+   */
+  turnReasons?: (string | null)[];
+}
+
+/** Where `scriptedDroid` records the params of every turn the client sent. */
+const TURN_REQUESTS_FILE = 'turn-requests.jsonl';
+
+/** Every `add_user_message` the client sent, in order — the wire, not the trace. */
+function turnRequests(droidPath: string): Record<string, unknown>[] {
+  const path = join(dirname(droidPath), TURN_REQUESTS_FILE);
+  if (!existsSync(path)) return [];
+  return readFileSync(path, 'utf8')
+    .split('\n')
+    .filter((line) => line.trim())
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
 }
 
 /** Marker the stub writes as soon as it is spawned, before any handshake. */
@@ -166,9 +188,12 @@ const STATE = ${JSON.stringify(state)};
 const REPLIES = ${JSON.stringify(join(dir, ASK_REPLIES_FILE))};
 const TURN_MARKER = ${JSON.stringify(join(dir, TURN_MARKER_FILE))};
 const SPAWN_MARKER = ${JSON.stringify(join(dir, SPAWN_MARKER_FILE))};
+const TURN_REQUESTS = ${JSON.stringify(join(dir, TURN_REQUESTS_FILE))};
 const HANDSHAKE_DELAY = ${JSON.stringify(options.handshakeDelayMs ?? 0)};
 const DIE_ON = ${JSON.stringify(options.dieOnTurns ?? [])};
 const STALL_ON = ${JSON.stringify(options.stallOnTurns ?? [])};
+const STRUCTURED = ${JSON.stringify(options.structuredOutputs ?? [])};
+const REASONS = ${JSON.stringify(options.turnReasons ?? [])};
 const EFFORTS = ['off', 'low', 'medium', 'high'];
 const MODELS = [{ id: 'scripted', displayName: 'Scripted', shortDisplayName: 'Scripted', modelProvider: 'anthropic', supportedReasoningEfforts: EFFORTS, defaultReasoningEffort: 'medium', isCustom: false }];
 const SETTINGS = { modelId: 'scripted', reasoningEffort: 'medium', autonomyLevel: 'high' };
@@ -232,8 +257,12 @@ const raiseAsks = (list, done) => {
 const finish = (n) => {
   const messageId = 'm' + n;
   notify({ type: 'create_message', message: { id: messageId, role: 'assistant', content: [{ type: 'text', text: textFor(n) }], createdAt: 1, updatedAt: 1 } });
+  const structured = STRUCTURED[n];
+  if (structured !== undefined && structured !== null) {
+    notify({ type: 'structured_output', messageId, structuredOutput: structured });
+  }
   notify({ type: 'session_token_usage_changed', sessionId: 's1', tokenUsage: USAGE });
-  notify({ type: 'agent_turn_completed', reason: 'completed', turnId, tokenUsage: USAGE, cumulativeTokenUsage: USAGE });
+  notify({ type: 'agent_turn_completed', reason: REASONS[n] || 'completed', turnId, tokenUsage: USAGE, cumulativeTokenUsage: USAGE });
 };
 
 const runTurn = () => {
@@ -277,6 +306,9 @@ process.stdin.on('data', (chunk) => {
       out({ ...V, type: 'response', id, result: { used: 1234, remaining: 98766, limit: 100000, accuracy: 'estimated', updatedAt: '2026-08-09T00:00:00.000Z' } });
     } else if (method === 'droid.add_user_message') {
       turnId = params.messageId;
+      // The params as they arrived: whether a turn carried an output schema is
+      // only knowable from the wire, not from any observable side effect.
+      appendFileSync(TURN_REQUESTS, JSON.stringify(params) + '\\n');
       out({ ...V, type: 'response', id, result: {} });
       runTurn();
     } else if (method === 'droid.close_session') {
@@ -1535,6 +1567,265 @@ describe('the SDK transport under the executor', () => {
     expect(fallbackRows[0]!.ended_at).not.toBeNull();
     expect(alive(fallbackRows[0]!.pid)).toBe(false);
     expect(h.tracer.openProcesses(outcome.runId)).toHaveLength(0);
+  });
+});
+
+/**
+ * The envelope as a wire constraint. The schema an agent turn carries is the
+ * same zod instance the reply is parsed against, and a structured reply is
+ * still only a candidate: nothing succeeds without passing the parse.
+ */
+describe('structured-output envelopes', () => {
+  /** Prose no `extractJson` can rescue, so only structuredOutput can settle it. */
+  const NO_JSON = 'I did the work. There is no JSON anywhere in this sentence.';
+
+  const structuredBuild = {
+    status: 'success',
+    summary: 'built it from the schema',
+    artifacts: [],
+    changed_files: [],
+    commit_message: 'add a thing',
+    notes_for_next_agent: '',
+  };
+
+  function corrections(runId: string) {
+    return events(runId).filter(
+      (e) => e.type === 'correction' && e.name === 'envelope did not parse',
+    );
+  }
+
+  it('constrains agent turns with the envelope schema and no other phase', async () => {
+    const droid = scriptedDroid([buildEnvelope()]);
+    const outcome = await run({
+      droidPath: droid,
+      pipeline: pipe(
+        [
+          agentPhase('build', { description: 'Carry the envelope schema on the wire.' }),
+          {
+            name: 'approve',
+            kind: 'engineer',
+            description: 'A human checkpoint, which is not an agent turn.',
+            question: 'Ship it?',
+          },
+          codePhase('check', { argv: ['true'] }, { description: 'A command, not an agent turn.' }),
+        ],
+        {
+          description: 'agent, engineer, and code phases side by side',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    // Only the agent phase ever sends a turn, and it carries the schema the
+    // reply is parsed against — same source, so the two cannot drift.
+    const requests = turnRequests(droid);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]!.outputFormat).toEqual({
+      type: 'json_schema',
+      schema: JSON.parse(JSON.stringify(jsonSchemaFor('build'))),
+    });
+  });
+
+  it('carries an agent’s custom fields into the schema it puts on the wire', async () => {
+    const droid = scriptedDroid([buildEnvelope({ severity: 'high' })]);
+    const custom = [
+      { name: 'severity', type: 'string' as const, required: true, description: 'low|med|high' },
+    ];
+    const outcome = await run({
+      droidPath: droid,
+      agents: [buildAgent({ customFields: custom })],
+      pipeline: pipe(
+        [agentPhase('build', { description: 'Constrain the turn with the extended schema.' })],
+        {
+          description: 'an agent with a custom envelope field',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    const format = turnRequests(droid)[0]!.outputFormat as { schema: Record<string, unknown> };
+    expect(format.schema).toEqual(JSON.parse(JSON.stringify(jsonSchemaFor('build', custom))));
+    expect(format.schema.required).toContain('severity');
+  });
+
+  it('still shows the agent the generated example beside the schema', async () => {
+    const droid = scriptedDroid([buildEnvelope()]);
+    const outcome = await run({
+      droidPath: droid,
+      pipeline: pipe(
+        [agentPhase('build', { description: 'Keep the prompt example alongside the constraint.' })],
+        {
+          description: 'the prompt example survives the wire constraint',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
+    });
+
+    // Removing the example is an eval-backed decision, not a side effect of
+    // gaining a second channel for the same shape.
+    const example = exampleFor('build');
+    expect(String(turnRequests(droid)[0]!.text)).toContain(example);
+    const prompt = readFileSync(
+      join(h.tracer.runDir(outcome.runId), 'builder/prompts/build-1.md'),
+      'utf8',
+    );
+    expect(prompt).toContain(example);
+  });
+
+  it('accepts a valid structured reply whose text carries no envelope at all', async () => {
+    const droid = scriptedDroid([NO_JSON], [], [], { structuredOutputs: [structuredBuild] });
+    const outcome = await run({
+      droidPath: droid,
+      pipeline: pipe(
+        [agentPhase('build', { description: 'Settle the phase from the structured reply.' })],
+        {
+          description: 'structured output is the primary path',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    expect(corrections(outcome.runId)).toHaveLength(0);
+    const envelopes = h.tracer.envelopes(outcome.runId);
+    expect(envelopes).toHaveLength(1);
+    expect(envelopes[0]!.valid).toBe(true);
+    expect(envelopes[0]!.payload).toMatchObject({
+      status: 'success',
+      summary: 'built it from the schema',
+      commit_message: 'add a thing',
+    });
+  });
+
+  it('accepts a structured reply on a non-generic kind with a required field', async () => {
+    const structuredReview = {
+      status: 'success',
+      summary: 'reviewed from the schema',
+      artifacts: [],
+      approved: true,
+      findings: [],
+      blocking: [],
+      notes_for_next_agent: '',
+    };
+    const droid = scriptedDroid([NO_JSON], [], [], { structuredOutputs: [structuredReview] });
+    const outcome = await run({
+      droidPath: droid,
+      agents: [buildAgent({ name: 'reviewer', envelope: 'review' })],
+      pipeline: pipe(
+        [
+          agentPhase('review', {
+            agent: 'reviewer',
+            envelope: 'review',
+            description: 'Settle a review phase from the structured reply.',
+          }),
+        ],
+        {
+          description: 'structured output on the review kind',
+          acceptance: { kind: 'phase_flag', phase: 'review', flag: 'approved' },
+        },
+      ),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    expect(corrections(outcome.runId)).toHaveLength(0);
+    expect(h.tracer.envelopes(outcome.runId)[0]!.payload).toMatchObject({
+      approved: true,
+      summary: 'reviewed from the schema',
+    });
+  });
+
+  it('corrects a structured reply the schema accepts but the parse rejects', async () => {
+    // `status: 'maybe'` is a string, so a loose schema check waves it through;
+    // the zod enum is what actually decides, and it is the only authority.
+    const bogus = { ...structuredBuild, status: 'maybe' };
+    const droid = scriptedDroid([NO_JSON, buildEnvelope()], [], [], {
+      structuredOutputs: [bogus, null],
+    });
+    const outcome = await run({
+      droidPath: droid,
+      pipeline: pipe(
+        [agentPhase('build', { description: 'Never trust a transport’s conformance claim.' })],
+        {
+          description: 'structured output that fails the zod parse',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    const corrected = corrections(outcome.runId);
+    expect(corrected).toHaveLength(1);
+    expect(String(corrected[0]!.payload.problem)).toContain('status');
+    // Both attempts are recorded, the rejected one as evidence.
+    expect(h.tracer.envelopes(outcome.runId).map((e) => e.valid)).toEqual([false, true]);
+  });
+
+  it('reads the text when droid could not shape the reply, without burning a retry', async () => {
+    const droid = scriptedDroid([buildEnvelope()], [], [], {
+      turnReasons: ['structured_output_invalid'],
+    });
+    const outcome = await run({
+      droidPath: droid,
+      pipeline: pipe(
+        [agentPhase('build', { description: 'Fall back to the text on the same attempt.' })],
+        {
+          description: 'a schema failure whose text still parses',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    expect(corrections(outcome.runId)).toHaveLength(0);
+    expect(turnRequests(droid)).toHaveLength(1);
+    expect(h.tracer.envelopes(outcome.runId).map((e) => e.valid)).toEqual([true]);
+  });
+
+  it('spends the envelope budget, not a second one, when neither channel parses', async () => {
+    const droid = scriptedDroid([NO_JSON], [], [], {
+      turnReasons: ['structured_output_missing', 'structured_output_missing'],
+    });
+    const outcome = await run({
+      droidPath: droid,
+      envelopeRetries: 1,
+      pipeline: pipe(
+        [agentPhase('build', { description: 'Prove a schema failure has no budget of its own.' })],
+        {
+          description: 'neither structured output nor text ever parses',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
+    });
+
+    expect(outcome.status).toBe('rejected');
+    // envelopeRetries + 1 attempts, exactly today's arithmetic.
+    expect(turnRequests(droid)).toHaveLength(2);
+    expect(corrections(outcome.runId)).toHaveLength(2);
+    // Born fail: nothing about a schema failure flips a phase.
+    expect(h.tracer.phases(outcome.runId)[0]!.status).toBe('fail');
+  });
+
+  it('keeps the bad-envelope-then-good scenario at one correction and two attempts', async () => {
+    // The pre-SDK baseline for this scenario, unchanged by the wire constraint.
+    const droid = scriptedDroid(['I will explain in prose instead of JSON.', buildEnvelope()]);
+    const outcome = await run({
+      droidPath: droid,
+      pipeline: pipe(
+        [agentPhase('build', { description: 'Hold the envelope retry rate where it was.' })],
+        {
+          description: 'first reply is prose, second is an envelope',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    expect(h.tracer.phases(outcome.runId)[0]!.status).toBe('success');
+    expect(corrections(outcome.runId)).toHaveLength(1);
+    expect(turnRequests(droid)).toHaveLength(2);
+    expect(h.tracer.envelopes(outcome.runId).map((e) => e.valid)).toEqual([false, true]);
   });
 });
 

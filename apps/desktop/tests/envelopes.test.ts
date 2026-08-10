@@ -1,3 +1,4 @@
+import Ajv from 'ajv';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import { describe, expect, it } from 'vitest';
 import {
@@ -241,18 +242,33 @@ describe('json schema derivation', () => {
     return new Ajv2020({ strict: true }).compile(schema);
   }
 
-  it('emits a Draft 2020-12 schema whose example round-trips back through the zod parse', () => {
+  it('emits a schema whose example round-trips back through the zod parse', () => {
     for (const kind of BUILTIN_KINDS) {
       const schema = jsonSchemaFor(kind);
-      expect(schema.$schema, `${kind} dialect`).toBe(
-        'https://json-schema.org/draft/2020-12/schema',
-      );
       expect(schema.type).toBe('object');
 
       const validate = compile(schema);
       const sample: unknown = JSON.parse(exampleFor(kind));
       expect(validate(sample), `${kind}: ${JSON.stringify(validate.errors)}`).toBe(true);
       expect(schemas[kind].safeParse(sample).success, `${kind} zod parse`).toBe(true);
+    }
+  });
+
+  /**
+   * droid compiles an output constraint with a Draft-07 ajv, which cannot
+   * resolve the 2020-12 dialect URI and rejects the whole turn request. Live
+   * CLI 0.189.0 answered `The requested structured output schema is invalid.`
+   * for the URI zod stamps on, so a re-introduced `$schema` silently costs the
+   * app every structured turn.
+   */
+  it('declares no dialect, so both the strict Draft-07 and 2020-12 validators take it', () => {
+    for (const kind of BUILTIN_KINDS) {
+      const schema = jsonSchemaFor(kind);
+      expect(schema.$schema, `${kind} dialect`).toBeUndefined();
+      // `strictSchema` mirrors droid's own ingress check, the one that failed.
+      const draft07 = new Ajv({ allErrors: true, strict: false, strictSchema: true });
+      expect(() => draft07.compile(structuredClone(schema)), `${kind} draft-07`).not.toThrow();
+      expect(() => compile(schema), `${kind} 2020-12`).not.toThrow();
     }
   });
 
@@ -351,7 +367,7 @@ describe('json schema derivation', () => {
     ];
 
     const schema = jsonSchemaFor('severity_report', customFields, defs);
-    expect(schema.$schema).toBe('https://json-schema.org/draft/2020-12/schema');
+    expect(schema.type).toBe('object');
     const props = schema.properties as Record<string, Record<string, unknown>>;
     expect(props.score.type).toBe('number');
     expect(props.urgent.type).toBe('boolean');

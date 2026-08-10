@@ -9,7 +9,14 @@ import type { AgentDef, EnvelopeDef, PhaseDef } from '@shared/types.js';
 import type { PhaseRunner, RunContext, PhaseJump } from '../phase-context.js';
 import { KILLED_DETAIL, type AgentSession, type Mode } from '../../droid/agent.js';
 import * as boundary from '../boundary.js';
-import { correctionMessage, parseEnvelope, type Envelope } from '../envelopes.js';
+import {
+  correctionMessage,
+  jsonSchemaFor,
+  parseEnvelope,
+  validateEnvelope,
+  type Envelope,
+  type ParseOutcome,
+} from '../envelopes.js';
 import { gateCorrection, runGates, violationsOf, type GateReport } from '../gates.js';
 import { changedPaths } from '../git.js';
 import { combineForTurn, renderPrompt, type RenderContext } from '../prompts.js';
@@ -169,6 +176,12 @@ export class AgentPhaseRunner implements PhaseRunner {
     ctx: RunContext,
   ): Promise<{ ok: true; envelope: Envelope } | { ok: false; detail: string }> {
     let prompt = firstPrompt;
+    // The wire constraint and the parse come off the same zod schema, so a
+    // reply that satisfies the constraint always satisfies the parse.
+    const outputFormat = {
+      type: 'json_schema' as const,
+      schema: jsonSchemaFor(envelopeKind, agent.customFields, this.deps.envelopeDefs),
+    };
 
     for (let attempt = 1; attempt <= this.deps.envelopeRetries + 1; attempt++) {
       if (ctx.cancelled()) return { ok: false, detail: KILLED_DETAIL };
@@ -177,6 +190,7 @@ export class AgentPhaseRunner implements PhaseRunner {
       try {
         outcome = await session.send(prompt, {
           phaseId,
+          outputFormat,
           onText: (text) => this.deps.onLiveText?.(phaseId, text),
         });
       } catch (e) {
@@ -202,12 +216,7 @@ export class AgentPhaseRunner implements PhaseRunner {
         `${JSON.stringify({ phase: phase.name, gateAttempt, attempt, reason: outcome.reason, text: outcome.text })}\n`,
       );
 
-      const parsed = parseEnvelope(
-        outcome.text,
-        envelopeKind,
-        agent.customFields,
-        this.deps.envelopeDefs,
-      );
+      const parsed = this.envelopeFrom(outcome, envelopeKind, agent);
       ctx.tracer.recordEnvelope({
         runId: ctx.runId,
         phaseId,
@@ -246,6 +255,36 @@ export class AgentPhaseRunner implements PhaseRunner {
       ok: false,
       detail: `the agent did not produce a valid ${envelopeKind} envelope in ${this.deps.envelopeRetries + 1} attempts`,
     };
+  }
+
+  /**
+   * Where the envelope comes from, in order of trust. A structured reply is
+   * the primary path — but "the transport shaped it" is a claim, not a
+   * verdict, so it is validated against the same zod schema the text path uses
+   * and a rejection falls back to reading the text, on the same retry budget.
+   * A reply droid could not shape at all arrives with nothing here, which is
+   * the same fallback by a different route.
+   */
+  private envelopeFrom(
+    outcome: { text: string; structuredOutput: Record<string, unknown> | null },
+    envelopeKind: string,
+    agent: AgentDef,
+  ): ParseOutcome {
+    const fromText = (): ParseOutcome =>
+      parseEnvelope(outcome.text, envelopeKind, agent.customFields, this.deps.envelopeDefs);
+    if (!outcome.structuredOutput) return fromText();
+
+    const structured = validateEnvelope(
+      outcome.structuredOutput,
+      envelopeKind,
+      agent.customFields,
+      this.deps.envelopeDefs,
+    );
+    if (structured.ok) return structured;
+    const text = fromText();
+    // The structured rejection is the more specific complaint when neither
+    // source parses: it names the field the model actually got wrong.
+    return text.ok ? text : structured;
   }
 
   private async runGatesFor(

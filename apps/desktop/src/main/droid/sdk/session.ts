@@ -31,6 +31,7 @@ import {
   INHERIT_MODEL,
   type PermissionAsk,
   type PermissionDecision,
+  type TurnOptions,
   type TurnResult,
 } from '../turn.js';
 import { DroidProtocolError } from './errors.js';
@@ -270,9 +271,9 @@ export class SdkSession {
    * arrives as one of those too, with `success: false`, so the result is
    * inspected rather than trusted.
    */
-  async send(text: string, timeoutMs: number): Promise<TurnResult> {
+  async send(text: string, timeoutMs: number, opts: TurnOptions = {}): Promise<TurnResult> {
     try {
-      return await this.runTurn(text, timeoutMs);
+      return await this.runTurn(text, timeoutMs, opts);
     } catch (error) {
       // The only thing that ever rejects the roster's model is a turn, so the
       // substitution the session was created for happens here, once.
@@ -280,11 +281,11 @@ export class SdkSession {
       // Reported before the retry: which model the run is on is worth knowing
       // even if the retry then fails for its own reasons.
       this.opts.onModelWarning?.(await this.dropModelOverride(errorText(error)));
-      return this.runTurn(text, timeoutMs);
+      return this.runTurn(text, timeoutMs, opts);
     }
   }
 
-  private async runTurn(text: string, timeoutMs: number): Promise<TurnResult> {
+  private async runTurn(text: string, timeoutMs: number, opts: TurnOptions): Promise<TurnResult> {
     const session = this.session;
     if (!session) throw new DroidProtocolError('session not initialised');
     if (!this.alive) throw new DroidProtocolError('droid child is not running');
@@ -300,7 +301,11 @@ export class SdkSession {
 
     let result: DroidResultMessage | null = null;
     try {
-      for await (const message of session.stream(text, { abortSignal: controller.signal })) {
+      const stream = session.stream(text, {
+        abortSignal: controller.signal,
+        ...(opts.outputFormat ? { outputFormat: opts.outputFormat } : {}),
+      });
+      for await (const message of stream) {
         if (message.type === 'result') result = message;
       }
     } catch (error) {
@@ -314,7 +319,10 @@ export class SdkSession {
     }
 
     if (!result) throw new DroidProtocolError('droid ended the turn without a result');
-    if (!result.success && !result.interrupted) {
+    // A reply droid could not shape is a turn that ran, not a transport that
+    // broke: the text is still the answer, and the caller decides whether it
+    // parses. Only a genuinely failed turn ends the phase here.
+    if (!result.success && !result.interrupted && result.subtype !== 'error_structured_output') {
       // An unknown or forbidden model does not fail at init or at settings
       // time — it fails here, as a non-throwing result with an empty text.
       throw new DroidProtocolError(result.error?.message ?? `turn failed: ${result.subtype}`);
@@ -325,6 +333,7 @@ export class SdkSession {
       usage: (result.tokenUsage as TokenUsage | null) ?? collector.usage,
       reason: collector.reason ?? (result.interrupted ? 'cancelled' : 'completed'),
       interrupted: result.interrupted,
+      structuredOutput: asJsonObject(result.structuredOutput),
     };
   }
 
@@ -662,6 +671,12 @@ function proceedOption(params: RequestPermissionRequestParams): ProceedOutcome {
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** The SDK types its structured output as `unknown`; only an object is one. */
+function asJsonObject(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
 }
 
 function asProtocolError(error: unknown): Error {

@@ -9,7 +9,12 @@
 import type { AgentDef, CliVendor, UsageBreakdown } from '@shared/types.js';
 import type { Tracer } from '../trace/tracer.js';
 import { adapterFor } from '../cli/index.js';
-import { type PermissionAsk, type PermissionDecision, type TurnResult } from './turn.js';
+import {
+  type PermissionAsk,
+  type PermissionDecision,
+  type TurnOptions,
+  type TurnResult,
+} from './turn.js';
 import { OneShotClient } from './oneshot.js';
 import { EventFolder, toUsageBreakdown } from './events.js';
 import { evaluate, type PolicyContext } from './permissions.js';
@@ -18,7 +23,7 @@ import { isTransportFailure } from './sdk/errors.js';
 
 export type Mode = 'rpc' | 'oneshot';
 
-export interface AgentTurnContext {
+export interface AgentTurnContext extends TurnOptions {
   phaseId: string;
   /** Live text tail for the phase panel; a ring buffer, never stored. */
   onText?: (text: string) => void;
@@ -71,6 +76,8 @@ export interface TurnOutcome {
   text: string;
   usage: UsageBreakdown;
   reason: string;
+  /** What the transport claims conforms to the requested schema, if anything. */
+  structuredOutput: Record<string, unknown> | null;
 }
 
 function errorMessage(e: unknown): string {
@@ -338,6 +345,7 @@ export class AgentSession {
         text: result.text,
         usage: toUsageBreakdown(result.usage ?? folder.usage),
         reason: result.reason,
+        structuredOutput: result.structuredOutput,
       };
     } finally {
       this.currentFolder = null;
@@ -355,7 +363,9 @@ export class AgentSession {
   ): Promise<TurnResult> {
     while (this.mode === 'rpc' && this.rpc) {
       try {
-        return await this.rpc.send(prompt, this.deps.turnTimeoutMs);
+        return await this.rpc.send(prompt, this.deps.turnTimeoutMs, {
+          outputFormat: ctx.outputFormat,
+        });
       } catch (e) {
         const message = errorMessage(e);
         // A killed child rejects its turn like any dead one. Recovering here

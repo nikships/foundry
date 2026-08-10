@@ -311,7 +311,10 @@ class ScriptedTransport implements StringFramedDroidClientTransport {
 }
 
 /** Committed assistant text that deliberately differs from the delta stream. */
-function completesWith(text: string, reason = 'completed'): TurnScript {
+function completesWith(
+  text: string,
+  opts: { reason?: string; structuredOutput?: unknown } = {},
+): TurnScript {
   return ({ turnId, transport }) => {
     const messageId = `msg-${turnId.slice(0, 6)}`;
     transport.notify({
@@ -331,6 +334,13 @@ function completesWith(text: string, reason = 'completed'): TurnScript {
         updatedAt: 1,
       },
     });
+    if (opts.structuredOutput !== undefined) {
+      transport.notify({
+        type: 'structured_output',
+        messageId,
+        structuredOutput: opts.structuredOutput,
+      });
+    }
     transport.notify({
       type: 'session_token_usage_changed',
       sessionId: transport.sessionId,
@@ -338,7 +348,7 @@ function completesWith(text: string, reason = 'completed'): TurnScript {
     });
     transport.notify({
       type: 'agent_turn_completed',
-      reason,
+      reason: opts.reason ?? 'completed',
       turnId,
       tokenUsage: usage(),
       cumulativeTokenUsage: usage(),
@@ -1074,5 +1084,87 @@ describe('tool allowlist', () => {
     await sdk.start();
     expect(transport.disabledToolIds).toEqual([]);
     expect(transport.framesFor('droid.list_tools')).toHaveLength(0);
+  });
+});
+
+describe('structured output', () => {
+  const SCHEMA: Record<string, unknown> = {
+    type: 'object',
+    properties: { status: { type: 'string' } },
+    required: ['status'],
+    additionalProperties: false,
+  };
+  const FORMAT = { type: 'json_schema', schema: SCHEMA } as const;
+
+  function turns(transport: ScriptedTransport): Record<string, unknown>[] {
+    return transport.paramsFor('droid.add_user_message');
+  }
+
+  it('puts the caller’s schema on the turn that asked for one', async () => {
+    const { sdk, transport } = session();
+    await sdk.start();
+    await sdk.send('do the thing', 5_000, { outputFormat: FORMAT });
+    expect(turns(transport)).toHaveLength(1);
+    expect(turns(transport)[0]!.outputFormat).toEqual(FORMAT);
+  });
+
+  it('leaves a turn that asked for nothing unconstrained', async () => {
+    const { sdk, transport } = session();
+    await sdk.start();
+    await sdk.send('do the thing', 5_000);
+    expect(turns(transport)[0]!.outputFormat).toBeUndefined();
+  });
+
+  it('carries the structured result back beside the text', async () => {
+    const { sdk, transport } = session();
+    await sdk.start();
+    transport.turnScript = completesWith('prose the parser cannot use', {
+      structuredOutput: { status: 'success', summary: 'done' },
+    });
+    const result = await sdk.send('do the thing', 5_000, { outputFormat: FORMAT });
+    expect(result.structuredOutput).toEqual({ status: 'success', summary: 'done' });
+    expect(result.text).toBe('prose the parser cannot use');
+  });
+
+  /**
+   * A turn droid could not shape is not a transport failure: the text is still
+   * the answer, and the caller decides whether it parses.
+   */
+  it('reports a schema failure as a completed turn instead of throwing', async () => {
+    const { sdk, transport } = session();
+    await sdk.start();
+    transport.turnScript = completesWith('I could not produce that shape', {
+      reason: 'structured_output_invalid',
+    });
+    const result = await sdk.send('do the thing', 5_000, { outputFormat: FORMAT });
+    expect(result.text).toBe('I could not produce that shape');
+    expect(result.structuredOutput).toBeNull();
+    // The reason is the fallback's whole explanation: no second field restates it.
+    expect(result.reason).toBe('structured_output_invalid');
+    expect(sdk.alive).toBe(true);
+  });
+
+  it('still fails a turn that broke for a reason unrelated to the schema', async () => {
+    const { sdk, transport } = session();
+    await sdk.start();
+    transport.turnScript = ({ turnId, transport: t }) => {
+      t.notify({
+        type: 'error',
+        message: 'the tool exploded',
+        errorType: 'Error',
+        timestamp: '2026-08-09T00:00:00.000Z',
+      });
+      t.notify({ type: 'agent_turn_completed', reason: 'error', turnId, tokenUsage: usage() });
+    };
+    await expect(sdk.send('boom', 5_000, { outputFormat: FORMAT })).rejects.toThrow(
+      'the tool exploded',
+    );
+  });
+
+  it('reports no structured output at all for an ordinary turn', async () => {
+    const { sdk } = session();
+    await sdk.start();
+    const result = await sdk.send('do the thing', 5_000);
+    expect(result.structuredOutput).toBeNull();
   });
 });
