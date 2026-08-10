@@ -37,6 +37,7 @@ import {
   type TokenUsage,
 } from '../protocol.js';
 import { spawnEnv } from '../../system/env.js';
+import { register as registerProc } from '../../system/procs.js';
 import {
   createFoundryMcpServer,
   FOUNDRY_TOOL_IDS,
@@ -470,6 +471,8 @@ export class SdkSession implements TransportSession {
         // A session whose child already died is closed enough.
       }
     } else if (this.owned) {
+      // Transport never reached session creation; close the owned transport
+      // directly. A dead child reports as failure; null pid is already gone.
       await this.owned.close().catch(() => undefined);
     }
     // session.close() runs the SDK cleanup that stops the loopback listener;
@@ -507,6 +510,12 @@ export class SdkSession implements TransportSession {
     this.owned = transport;
     const child = transport.getManagedProcess()?.childProcess ?? null;
     this.child = child;
+    // Unify kill paths: RunRegistry.kill(runId) scans the procs registry;
+    // executor.cancel() drives session.kill() directly. Register here so
+    // either path suffices; the actual kill comes from session.kill() today.
+    if (child?.pid && this.opts.runId) {
+      registerProc(this.opts.runId, child, `${this.opts.droidPath} ${this.spawnArgs().join(' ')}`);
+    }
     // The SDK forwards stderr to its logger, which strips the text out of any
     // customer-supplied sink, so the pipe is read directly instead.
     child?.stderr?.on('data', (chunk: Buffer) => this.opts.onStderr?.(chunk.toString()));

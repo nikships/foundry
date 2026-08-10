@@ -528,6 +528,8 @@ export class DaemonSession implements TransportSession {
     this.closed = true;
     this.unsubNotifications?.();
     this.unsubNotifications = null;
+    // Kill latches; best-effort interrupt+close with detach fallback.
+    // Every catch traces to no diagnostic: the operator already ended the run.
     this.handle = null;
     if (handle) {
       void handle

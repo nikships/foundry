@@ -66,6 +66,8 @@ export interface TransportSession {
 /** Options both transports accept from AgentSession. */
 export interface TransportSessionOptions {
   cwd: string;
+  /** The run this session belongs to — used to register the child for killRun(). */
+  runId?: string;
   model: string;
   reasoningEffort: ReasoningEffort;
   restrictTools?: string[];

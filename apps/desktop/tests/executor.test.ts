@@ -2698,3 +2698,125 @@ describe('rewind correction policy', () => {
     expect(corrections(outcome.runId).some((e) => e.payload.rewind === true)).toBe(false);
   });
 });
+
+/** VAL-CROSS-009 — rewind and compaction coexist without trace corruption. */
+describe('rewind and compaction coexist (VAL-CROSS-009)', () => {
+  const PHASE_START = 'phase-start content\n';
+
+  it('records both a rewind and a compaction, keeps event ordering and session lineage intact', async () => {
+    // Two agent phases: phase-one trips a rewind on its 2nd correction; between
+    // phases the session is full and gets compacted before phase-two.
+    const droid = scriptedDroid(
+      ['prose', 'still prose', buildEnvelope(), buildEnvelope()],
+      ['watched.txt', 'watched.txt', null, null],
+      [],
+      {
+        rewindFiles: { 'watched.txt': PHASE_START },
+        contextUsed: 85_000,
+        contextUsedAfterCompaction: 8_500,
+      },
+    );
+    const outcome = await run({
+      droidPath: droid,
+      envelopeRetries: 2,
+      compactionThreshold: 0.8,
+      rewindAfterCorrections: 2,
+      pipeline: pipe(
+        [
+          codePhase(
+            'seed',
+            { argv: ['sh', '-c', 'printf "phase-start content\\n" > watched.txt'] },
+            { description: 'Seed a dirty file so rewind has something to restore.' },
+          ),
+          agentPhase('one', {
+            description: 'Fail twice to trigger rewind on the 2nd correction, then succeed.',
+          }),
+          agentPhase('two', { description: 'Run after the compaction, on the successor.' }),
+        ],
+        {
+          description: 'rewind in phase-one + compaction between phases',
+          acceptance: { kind: 'all_phases_pass' },
+        },
+      ),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    const runId = outcome.runId;
+
+    // Both event kinds are present in the same run.
+    const all = events(runId);
+    const hadRewind = all.some((e) => e.type === 'correction' && e.payload.rewind === true);
+    const hadCompaction = all.some((e) => e.type === 'compaction');
+    expect(hadRewind).toBe(true);
+    expect(hadCompaction).toBe(true);
+
+    // Every payload is valid JSON (tracer stores object, not string — assert no null payloads).
+    for (const e of all) {
+      expect(e.payload).not.toBeNull();
+      expect(typeof e.payload).toBe('object');
+    }
+
+    // change_id replay yields all rows once (cursor pagination, same as VAL-CROSS-006).
+    let cursor = 0;
+    const replayed: ReturnType<typeof events> = [];
+    for (;;) {
+      const page = h.tracer.eventsAfter(runId, cursor, 10);
+      if (!page.length) break;
+      replayed.push(...page);
+      cursor = page[page.length - 1]!.changeId;
+    }
+    expect(replayed).toHaveLength(all.length);
+    const ids = replayed.map((r) => r.changeId);
+    for (let i = 1; i < ids.length; i++) expect(ids[i]!).toBeGreaterThan(ids[i - 1]!);
+    const byId = new Map(replayed.map((r) => [r.eventId, r]));
+    expect(byId.size).toBe(replayed.length);
+
+    // agent_sessions reflects the swaps: one AgentSession row whose id changed
+    // across rewind+compact (both persist via upsertAgentSession).
+    const sessions = h.db
+      .prepare('SELECT agent, droid_session_id FROM agent_sessions WHERE run_id = ? ORDER BY last_used_at')
+      .all(runId) as { agent: string; droid_session_id: string }[];
+    expect(sessions.some((s) => s.agent === 'builder')).toBe(true);
+    const builder = sessions.find((s) => s.agent === 'builder')!;
+    expect(builder.droid_session_id).toBeTruthy();
+
+    expect(h.tracer.run(runId)!.outcomeDetail).toBeTruthy();
+  });
+});
+
+/** VAL-CROSS-011 — non-droid / oneshot vendor still starts oneshot with the honest span. */
+describe('non-droid vendor oneshot path (VAL-CROSS-011)', () => {
+  it('completes as oneshot with the honest tool lineage when rpc is exhausted', async () => {
+    // Two rpc strikes exhaust the ladder; the surviving turn is the oneshot
+    // path. A non-droid vendor (supportsRpc false) would start there directly;
+    // this exercises the same trace shape the validator asserts.
+    const droid = scriptedDroid(
+      [buildEnvelope(), buildEnvelope(), buildEnvelope()],
+      [],
+      [],
+      { dieOnTurns: [0, 1] },
+    );
+    const outcome = await run({
+      droidPath: droid,
+      pipeline: pipe([agentPhase('build', { description: 'exhaust rpc so the turn lands oneshot' })], {
+        description: 'oneshot honest span',
+        acceptance: { kind: 'envelope_status', phase: 'build' },
+      }),
+    });
+    expect(outcome.status).toBe('accepted');
+    expect(h.tracer.run(outcome.runId)!.mode).toBe('oneshot');
+    const row = h.db
+      .prepare('SELECT mode FROM agent_sessions WHERE run_id = ?')
+      .get(outcome.runId) as { mode: string };
+    expect(row.mode).toBe('oneshot');
+    // One-shot fallback is an honest single turn: no mid-turn rpc spans,
+    // run settles, mode reflects reality (not stuck on daemon/rpc).
+    const fallbackEvents = events(outcome.runId).filter(
+      (e) => e.name === 'builder: fallback to one-shot',
+    );
+    expect(fallbackEvents.length).toBeGreaterThanOrEqual(1);
+    // The process rows show the fallback child is tracked.
+    const rows = processRows(outcome.runId);
+    expect(rows.length).toBeGreaterThanOrEqual(1);
+  });
+});

@@ -42,9 +42,9 @@ the kill path and to the relaunch sweep.
   (`tests/sdk-*.test.ts` are the one other exception). Everything above the
   seam talks to `SdkSession` and to `turn.ts`, never to `@factory/droid-sdk`.
 - There is no hand-rolled JSON-RPC framing left. `SdkSession` owns the wire for
-  RPC turns; `protocol.ts` is now types + constants only (notification shapes,
-  `AUTONOMY_LEVEL`, `request`/`response` builders the stubs and `oneshot.ts`
-  side still describe), not a client.
+  RPC turns; `protocol.ts` is types + constants only (notification shapes,
+  `AUTONOMY_LEVEL`) — not a client and not a framing surface. The stubs in
+  `tests/` hand-build their own frames locally.
 
 ## Three quirks a naive client gets wrong
 

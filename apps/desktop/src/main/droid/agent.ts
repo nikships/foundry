@@ -371,6 +371,7 @@ export class AgentSession {
 
   private transportOpts(): TransportSessionOptions {
     return {
+      runId: this.deps.runId,
       ...this.turnOpts(),
       onPermission: (ask) => this.decide(ask),
       onNotification: (n) => this.currentFolder?.absorb(n),
@@ -432,6 +433,7 @@ export class AgentSession {
       vendor: this.vendor,
       cliPath: this.deps.cliPath,
       extraArgs: this.deps.cliExtraArgs,
+      runId: this.deps.runId,
       ...this.turnOpts(),
       onSpawn: (pid, command) => this.recordOneShot(pid, command),
       onChildExit: (pid) => this.endOneShot(pid),

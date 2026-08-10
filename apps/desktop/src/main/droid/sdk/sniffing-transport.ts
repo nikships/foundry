@@ -129,6 +129,8 @@ export class SniffingTransport implements StringFramedDroidClientTransport {
         clearTimeout(timer);
         resolve((result ?? null) as T | null);
       });
+      // Diagnostic request (get_context_breakdown). A dead transport is
+      // observed as a null breakdown, never an unhandled rejection.
       this.inner.send(JSON.stringify(frame)).catch(() => {
         clearTimeout(timer);
         this.pending.delete(id);

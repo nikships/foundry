@@ -17,6 +17,7 @@ import { spawn } from 'node:child_process';
 import type { ReasoningEffort } from '@shared/types.js';
 import { adapterFor, type CliAdapter, type CliVendor } from '../cli/index.js';
 import { spawnEnv } from '../system/env.js';
+import { register as registerProc } from '../system/procs.js';
 import type { TokenUsage } from './protocol.js';
 import type { TurnResult } from './turn.js';
 
@@ -32,6 +33,8 @@ export interface OneShotOptions {
   disabledTools?: string[];
   /** Operator-supplied flags for this vendor, appended to every turn. */
   extraArgs?: string[];
+  /** Run id for procs-register so killRun and session.kill overlap. */
+  runId?: string;
   onStderr?: (text: string) => void;
   /**
    * Every turn is its own child, so the kill path can only find one that has
@@ -178,7 +181,12 @@ export class OneShotClient {
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       this.lastPid = child.pid;
-      if (child.pid) this.opts.onSpawn?.(child.pid, [this.opts.cliPath, ...args].join(' '));
+      if (child.pid) {
+        this.opts.onSpawn?.(child.pid, [this.opts.cliPath, ...args].join(' '));
+        if (this.opts.runId) {
+          registerProc(this.opts.runId, child, [this.opts.cliPath, ...args].join(' '));
+        }
+      }
       let stdout = '';
       let stderr = '';
       let timedOut = false;
