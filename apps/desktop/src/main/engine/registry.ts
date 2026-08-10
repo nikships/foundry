@@ -20,11 +20,12 @@ import type {
   RunRow,
   RunStatus,
 } from '@shared/types.js';
+import type { ContextBreakdownResult } from '@shared/ipc-contract.js';
 import { openDb, projectDbPath, projectRunsDir } from '../trace/db.js';
 import { Tracer } from '../trace/tracer.js';
 import { Executor } from './executor.js';
 import { commandMatches, isAlive, killRun } from '../system/procs.js';
-import type { InterruptRequest } from '../droid/agent.js';
+import { breakdownFile, type CapturedBreakdown, type InterruptRequest } from '../droid/agent.js';
 
 export interface RegistryDeps {
   appSupportDir: string;
@@ -89,6 +90,35 @@ export class RunRegistry extends EventEmitter {
 
   liveTail(phaseId: string): string {
     return (this.liveText.get(phaseId) ?? []).join('');
+  }
+
+  /**
+   * What is filling one agent's context. A breakdown can only be read off a
+   * live session, so a finished run answers from the snapshot each turn left
+   * behind, and every remaining way of having nothing carries its own reason.
+   */
+  async contextBreakdown(
+    project: ProjectDef,
+    runId: string,
+    agent: string,
+  ): Promise<ContextBreakdownResult> {
+    const entry = this.live.get(runId);
+    const answer = entry ? await entry.executor.contextBreakdown(agent) : null;
+    if (answer?.breakdown) return { breakdown: answer.breakdown, live: true };
+
+    const captured = this.tracerFor(project).readRunJson<CapturedBreakdown>(
+      runId,
+      breakdownFile(agent),
+    );
+    if (captured?.breakdown) {
+      return { breakdown: captured.breakdown, live: false, capturedAt: captured.capturedAt };
+    }
+    if (!entry) return { breakdown: null, reason: 'not_live' };
+    if (!answer) return { breakdown: null, reason: 'not_started' };
+    return {
+      breakdown: null,
+      reason: answer.mode === 'oneshot' ? 'no_session_context' : 'unanswered',
+    };
   }
 
   start(input: {

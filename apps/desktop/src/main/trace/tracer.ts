@@ -687,6 +687,20 @@ export class Tracer {
     return '';
   }
 
+  /**
+   * A JSON run file this run wrote earlier, or `null` when it is absent or no
+   * longer parseable. Used for records a finished run can still be asked about
+   * after the session that produced them is gone.
+   */
+  readRunJson<T>(runId: string, relPath: string): T | null {
+    const full = join(this.runDir(runId), relPath);
+    try {
+      return JSON.parse(readFileSync(full, 'utf8')) as T;
+    } catch {
+      return null;
+    }
+  }
+
   appendRunFile(runId: string, relPath: string, content: string): string {
     const full = join(this.runDir(runId), relPath);
     mkdirSync(dirname(full), { recursive: true });

@@ -1,7 +1,13 @@
 import { existsSync } from 'node:fs';
 import { shell } from 'electron';
 import type { InterruptAnswer, StartRunInput } from '@shared/types.js';
-import { IPC, type EventPage, type RunDetail, type WorktreeAction } from '@shared/ipc-contract.js';
+import {
+  IPC,
+  type ContextBreakdownResult,
+  type EventPage,
+  type RunDetail,
+  type WorktreeAction,
+} from '@shared/ipc-contract.js';
 import { DETECT_PROMPT, DETECT_TOOLS, parseDetectReply } from '../engine/detect.js';
 import { ensureMissingCommands, missingCommandRefs, preflightForRun } from '../engine/preflight.js';
 import { OneShotClient } from '../droid/oneshot.js';
@@ -151,6 +157,15 @@ export function register(ctx: Ctx, handle: Handle): void {
   });
 
   handle(IPC.runsLiveTail, (phaseId: string) => ctx.registry.liveTail(phaseId));
+
+  handle(
+    IPC.runsContextBreakdown,
+    async (projectId: string, runId: string, agent: string): Promise<ContextBreakdownResult> => {
+      const project = projectOf(projectId);
+      if (!project) return { breakdown: null, reason: 'not_live' };
+      return ctx.registry.contextBreakdown(project, runId, agent);
+    },
+  );
 
   /** Prompts can be very large, so they are read on demand rather than polled. */
   handle(IPC.runsPrompt, (projectId: string, phaseId: string) => {

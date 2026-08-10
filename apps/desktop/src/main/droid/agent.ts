@@ -6,7 +6,7 @@
  * agent's first phase.
  */
 
-import type { AgentDef, CliVendor, UsageBreakdown } from '@shared/types.js';
+import type { AgentDef, CliVendor, ContextBreakdown, UsageBreakdown } from '@shared/types.js';
 import type { Tracer } from '../trace/tracer.js';
 import { adapterFor } from '../cli/index.js';
 import {
@@ -56,6 +56,17 @@ export interface AgentSessionDeps {
 }
 
 const PROTOCOL_FAILURE_LIMIT = 2;
+
+/** Where an agent's last context breakdown is kept among the run's raw records. */
+export function breakdownFile(agent: string): string {
+  return `${agent}/context-breakdown.json`;
+}
+
+/** A breakdown as it was when the session could still be asked for one. */
+export interface CapturedBreakdown {
+  capturedAt: string;
+  breakdown: ContextBreakdown;
+}
 
 /**
  * Why a turn stopped when the operator ended the run, and the detail the run
@@ -452,6 +463,27 @@ export class AgentSession {
       stats.used ?? 0,
       stats.limit ?? 0,
     );
+    await this.captureBreakdown();
+  }
+
+  /**
+   * The breakdown outlives the session it describes. It can only be read off a
+   * live session, so a run that has finished would have nothing to show the
+   * operator; the last one each turn produced is kept with the run's other raw
+   * records instead. A read that fails leaves the previous snapshot in place.
+   */
+  private async captureBreakdown(): Promise<void> {
+    const breakdown = await this.contextBreakdown();
+    if (!breakdown) return;
+    try {
+      this.deps.tracer.writeRunFile(
+        this.deps.runId,
+        breakdownFile(this.agent.name),
+        JSON.stringify({ capturedAt: new Date().toISOString(), breakdown }, null, 2),
+      );
+    } catch {
+      // A record of a diagnostic is not worth failing a turn over.
+    }
   }
 
   /**
@@ -462,6 +494,16 @@ export class AgentSession {
   async contextStats(): Promise<ContextStatsResult | null> {
     if (this.mode !== 'rpc' || !this.rpc) return null;
     return this.rpc.contextStats();
+  }
+
+  /**
+   * What is occupying this agent's context, for the Inspector's disclosure.
+   * `null` for a one-shot session (no conversation to account for) and for a
+   * transport that did not answer — a breakdown is a view, never a run input.
+   */
+  async contextBreakdown(): Promise<ContextBreakdown | null> {
+    if (this.mode !== 'rpc' || !this.rpc) return null;
+    return this.rpc.contextBreakdown();
   }
 
   /**

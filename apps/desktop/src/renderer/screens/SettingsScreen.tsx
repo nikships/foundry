@@ -35,6 +35,14 @@ const PANES: { id: Pane; label: string }[] = [
   { id: 'about', label: 'About' },
 ];
 
+/**
+ * The compaction threshold is stored as a fraction and shown as a percentage,
+ * because "compact at 80%" is what the lane's context meter reads. The band
+ * mirrors the settings schema: below it a run compacts more than it works, and
+ * at 100% it never compacts before hitting the context wall.
+ */
+const COMPACTION_PERCENT = { min: 50, max: 95 } as const;
+
 const NOTIFY_LABELS: Record<'accepted' | 'rejected' | 'failed' | 'needsInput', string> = {
   accepted: 'A run was accepted',
   rejected: 'A run was not accepted',
@@ -746,6 +754,22 @@ export default function SettingsScreen({
                           onChange={(e) =>
                             void setInt(e.target.value, { min: 0, max: 5 }, (gateRetries) => ({
                               gateRetries,
+                            }))
+                          }
+                        />
+                      </Field>
+                      <Field
+                        label="Compact context at (%)"
+                        hint="Between phases, an agent this full of context is compacted so the next phase has room."
+                      >
+                        <TextInput
+                          type="number"
+                          min={COMPACTION_PERCENT.min}
+                          max={COMPACTION_PERCENT.max}
+                          value={Math.round(settings.compactionThreshold * 100)}
+                          onChange={(e) =>
+                            void setInt(e.target.value, COMPACTION_PERCENT, (percent) => ({
+                              compactionThreshold: percent / 100,
                             }))
                           }
                         />

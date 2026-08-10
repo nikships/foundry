@@ -733,22 +733,63 @@ const BANNER_KIND: Record<string, string> = {
   interrupt: 'warn',
   error: 'fail',
   handoff: 'info',
+  compaction: 'info',
 };
+
+/**
+ * A compaction row names the act rather than the agent: it is recorded under
+ * the agent's name, and the lane header already says whose transcript this is.
+ */
+const BANNER_NAME: Record<string, string> = {
+  compaction: 'context compacted',
+};
+
+function num(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/** How full a window was, as the percentage the lane's context meter shows. */
+function occupancy(value: unknown): number | null {
+  if (!value || typeof value !== 'object') return null;
+  const stats = value as Record<string, unknown>;
+  const used = num(stats.used);
+  const limit = num(stats.limit);
+  if (used == null || !limit) return null;
+  return Math.min(100, Math.round((used / limit) * 100));
+}
+
+/**
+ * What a compaction cost and what it bought. The after-stats are optional: the
+ * engine records the event even when the follow-up occupancy read failed, and a
+ * compaction that happened must still be visible.
+ */
+function compactionDetail(payload: Record<string, unknown>): string {
+  const parts: string[] = [];
+  const removed = num(payload.removedCount);
+  if (removed != null) parts.push(`${removed} message${removed === 1 ? '' : 's'} removed`);
+  const before = occupancy(payload.before);
+  const after = occupancy(payload.after);
+  if (before != null && after != null) parts.push(`${before}% → ${after}% of context`);
+  else if (before != null) parts.push(`from ${before}% of context`);
+  return parts.join(' · ');
+}
 
 function Banner({ event }: { event: EventRow }): React.JSX.Element {
   const kind = BANNER_KIND[event.type] ?? 'info';
   const p = event.payload;
   const detail =
-    str(p.detail) ||
-    str(p.question) ||
-    (event.type === 'correction'
-      ? `retry ${String(p.attempt ?? '')} of ${String(p.budget ?? '')}`
-      : '') ||
-    str(p.to) ||
-    str(p.gate);
+    event.type === 'compaction'
+      ? compactionDetail(p)
+      : str(p.detail) ||
+        str(p.question) ||
+        (event.type === 'correction'
+          ? `retry ${String(p.attempt ?? '')} of ${String(p.budget ?? '')}`
+          : '') ||
+        str(p.to) ||
+        str(p.gate);
   return (
     <div className={`te banner ${kind}`}>
-      <span className="te-banner-name">{event.name}</span>
+      <span className="te-banner-name">{BANNER_NAME[event.type] ?? event.name}</span>
       {detail && <span className="te-banner-detail">{detail}</span>}
       <Time iso={event.startedAt} />
     </div>
@@ -804,12 +845,16 @@ export function TranscriptEntry({ event }: { event: EventRow }): React.JSX.Eleme
       return <TextBlock event={event} />;
     case 'tool_call':
       return <ToolBlock event={event} />;
+    // A type missing from this switch falls to the default and vanishes from the
+    // timeline with nothing to show it was ever recorded, so every addition to
+    // `EventType` needs a case here — Banner is the default home for one.
     case 'gate_pass':
     case 'gate_fail':
     case 'correction':
     case 'interrupt':
     case 'error':
     case 'handoff':
+    case 'compaction':
       return <Banner event={event} />;
     case 'agent_end':
       return <UsageRow event={event} />;

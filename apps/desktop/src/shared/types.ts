@@ -414,6 +414,25 @@ export interface AgentSessionRow {
   lastUsedAt: string;
 }
 
+/**
+ * What is actually occupying an agent's context window, as droid accounts for
+ * it. The occupancy figures are droid's own estimate and can differ from
+ * `AgentSessionRow.contextTokens` by a token or two: they are two reads of a
+ * moving number, so a view shows one of them, never a difference between them.
+ */
+export interface ContextBreakdown {
+  modelId: string;
+  modelDisplayName: string;
+  contextBudget: number;
+  usedTokens: number;
+  freeTokens: number;
+  lastCallCompactionTokens?: number;
+  categories: { name: string; tokens: number; colorKey: string }[];
+  skills: { name: string; location: string; tokens: number }[];
+  mcpServers: { name: string; toolCount: number; tokens: number }[];
+  droids: { name: string; location: string; tokens: number }[];
+}
+
 export interface UsageBreakdown {
   inputTokens: number;
   outputTokens: number;

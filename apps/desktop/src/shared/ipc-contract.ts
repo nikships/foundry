@@ -10,6 +10,7 @@ import type {
   AppSettings,
   CliDescriptor,
   CliVendor,
+  ContextBreakdown,
   DoctorCheck,
   DryRunPrompt,
   EnvelopeDef,
@@ -66,6 +67,25 @@ export interface EventPage {
   events: EventRow[];
   /** Walks EventRow.changeId, so updated rows are re-served, not just new ones. */
   cursor: number;
+}
+
+/**
+ * Why an agent has no context breakdown to show. A breakdown comes off the
+ * agent's own session, so absence is normal in specific ways — the reason
+ * travels rather than the copy, so the renderer says it in its own words
+ * instead of expanding onto an empty panel.
+ */
+export type ContextBreakdownReason =
+  'not_live' | 'not_started' | 'no_session_context' | 'unanswered';
+
+export interface ContextBreakdownResult {
+  breakdown: ContextBreakdown | null;
+  /** Absent exactly when `breakdown` is present. */
+  reason?: ContextBreakdownReason;
+  /** Read from the live session rather than the snapshot a turn left behind. */
+  live?: boolean;
+  /** When that snapshot was taken. Absent for a live read. */
+  capturedAt?: string;
 }
 
 export interface TryCommandResult {
@@ -279,6 +299,16 @@ export interface FoundryApi {
     detail(projectId: string, runId: string): Promise<RunDetail>;
     events(projectId: string, runId: string, afterChangeId: number): Promise<EventPage>;
     liveTail(phaseId: string): Promise<string>;
+    /**
+     * What is filling an agent's context: read off the live session, or the
+     * snapshot its last turn left behind once the run has finished. Always
+     * answers — an absent breakdown carries the reason instead of throwing.
+     */
+    contextBreakdown(
+      projectId: string,
+      runId: string,
+      agent: string,
+    ): Promise<ContextBreakdownResult>;
     /** The prompt as sent, read from the run's files rather than the event stream. */
     promptFor(projectId: string, phaseId: string): Promise<string>;
     kill(projectId: string, runId: string): Promise<boolean>;
@@ -406,6 +436,7 @@ export const IPC = {
   runsDetail: 'runs:detail',
   runsEvents: 'runs:events',
   runsLiveTail: 'runs:liveTail',
+  runsContextBreakdown: 'runs:contextBreakdown',
   runsPrompt: 'runs:prompt',
   runsKill: 'runs:kill',
   runsArchive: 'runs:archive',

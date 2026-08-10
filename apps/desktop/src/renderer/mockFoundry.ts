@@ -392,6 +392,7 @@ export function createMockFoundryApi(): FoundryApi {
         return { events: _after < 1 ? events : [], cursor: 1 };
       },
       liveTail: async () => '(web preview — no live process)',
+      contextBreakdown: async () => ({ breakdown: null, reason: 'not_live' as const }),
       promptFor: async () => '(web preview)',
       kill: async () => false,
       archive: async () => {},

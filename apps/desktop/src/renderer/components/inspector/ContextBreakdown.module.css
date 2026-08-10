@@ -1,0 +1,180 @@
+.wrap {
+  display: inline-flex;
+}
+
+.toggle {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  cursor: default;
+  transition:
+    color var(--fast) var(--ease),
+    border-color var(--fast) var(--ease),
+    background var(--fast) var(--ease);
+}
+
+.toggle:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+  border-color: var(--line-strong);
+}
+
+.toggle[aria-expanded='true'] {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+}
+
+/* Anchored to the lane header rather than the toggle: the header is one tight
+ * row, a panel that grows inside it pushes the meter and the status badge out,
+ * and the lane clips overflow, so a panel hung off the toggle loses its left
+ * edge in every lane. Staying inside the header keeps it whole. */
+.panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: var(--s3);
+  z-index: 4;
+  width: 300px;
+  max-width: calc(100% - 2 * var(--s3));
+  max-height: 340px;
+  overflow-y: auto;
+  padding: var(--s3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 55%);
+  text-align: left;
+}
+
+.panelHead {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-bottom: var(--s2);
+}
+
+.refresh {
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: underline;
+  cursor: default;
+}
+
+.refresh:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.refresh:disabled {
+  color: var(--text-ghost);
+  text-decoration: none;
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: var(--s2);
+  border-bottom: 1px solid var(--line-faint);
+}
+
+.model {
+  font-size: var(--text-xs);
+  color: var(--text);
+}
+
+.total {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.rows {
+  list-style: none;
+  margin: var(--s2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr 56px 44px;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.rowName {
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowBar {
+  height: 4px;
+  border-radius: var(--r-sm);
+  background: var(--line);
+  overflow: hidden;
+}
+
+.rowFill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.rowTokens {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.list {
+  display: flex;
+  gap: var(--s2);
+  margin-top: var(--s2);
+  padding-top: var(--s2);
+  border-top: 1px solid var(--line-faint);
+}
+
+.listLabel {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-ghost);
+  padding-top: 1px;
+}
+
+.listValue {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: var(--leading);
+  word-break: break-word;
+}
+
+.note {
+  margin: 0;
+  font-size: 11px;
+  line-height: var(--leading);
+  color: var(--text-faint);
+}

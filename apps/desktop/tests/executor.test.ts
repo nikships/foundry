@@ -12,10 +12,13 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { openDb, projectDbPath, projectRunsDir, type Db } from '../src/main/trace/db.js';
 import { Tracer } from '../src/main/trace/tracer.js';
 import { Executor } from '../src/main/engine/executor.js';
+import { RunRegistry } from '../src/main/engine/registry.js';
+import { breakdownFile } from '../src/main/droid/agent.js';
 import { exampleFor, jsonSchemaFor } from '../src/main/engine/envelopes.js';
 import { defaultProject } from '../src/main/store/projects.js';
 import type {
   AgentDef,
+  AppSettings,
   CliConfig,
   CliVendor,
   CommandSpec,
@@ -348,6 +351,8 @@ process.stdin.on('data', (chunk) => {
       out({ ...V, type: 'response', id, result: {} });
     } else if (method === 'droid.list_tools') {
       out({ ...V, type: 'response', id, result: { tools: [{ id: 'execute-cli', llmId: 'Execute', displayName: 'Execute', description: 'run a command', category: 'execute', defaultAllowed: true, currentlyAllowed: true }] } });
+    } else if (method === 'droid.get_context_breakdown') {
+      out({ ...V, type: 'response', id, result: { modelId: 'scripted', modelDisplayName: 'Scripted', contextBudget: CONTEXT_LIMIT, usedTokens: 1200, freeTokens: CONTEXT_LIMIT - 1200, categories: [{ name: 'System prompt', tokens: 900, colorKey: 'systemPrompt' }], skills: [], mcpServers: [], droids: [] } });
     } else if (method === 'droid.get_context_stats') {
       const used = compactions ? CONTEXT_USED_COMPACTED : CONTEXT_USED;
       out({ ...V, type: 'response', id, result: { used, remaining: CONTEXT_LIMIT - used, limit: CONTEXT_LIMIT, accuracy: 'estimated', updatedAt: '2026-08-09T00:00:00.000Z' } });
@@ -2238,5 +2243,66 @@ describe('killing a run mid-turn', () => {
 
     expect(alive(before[0]!.pid)).toBe(false);
     expect(h.tracer.openProcesses(started.runId)).toHaveLength(0);
+  });
+});
+
+/**
+ * What is filling an agent's context. The session is the only thing that can
+ * answer, and it dies with the run, so the answer has to outlive it or the
+ * Inspector shows every finished run the same empty panel.
+ */
+describe('the context breakdown an agent leaves behind', () => {
+  function registry(): RunRegistry {
+    return new RunRegistry({
+      appSupportDir: h.support,
+      settings: () => ({}) as AppSettings,
+      engineerName: 'test',
+      onRunFinished: () => undefined,
+      onInterruptsChanged: () => undefined,
+      onRunsChanged: () => undefined,
+    });
+  }
+
+  it('records the breakdown each turn produced with the run files', async () => {
+    const droid = scriptedDroid([buildEnvelope()]);
+    const outcome = await run({
+      droidPath: droid,
+      pipeline: pipe([agentPhase('build', { description: 'Produce one turn to snapshot.' })], {
+        description: 'a run whose breakdown is kept',
+        acceptance: { kind: 'envelope_status', phase: 'build' },
+      }),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    const captured = h.tracer.readRunJson<{
+      capturedAt: string;
+      breakdown: { usedTokens: number; categories: { name: string }[] };
+    }>(outcome.runId, breakdownFile('builder'));
+    expect(captured?.breakdown.usedTokens).toBe(1200);
+    expect(captured?.breakdown.categories[0]!.name).toBe('System prompt');
+    expect(Date.parse(captured!.capturedAt)).toBeGreaterThan(0);
+  });
+
+  it('answers for a finished run from that record, marked as not live', async () => {
+    const droid = scriptedDroid([buildEnvelope()]);
+    const outcome = await run({
+      droidPath: droid,
+      pipeline: pipe([agentPhase('build', { description: 'Produce one turn to snapshot.' })], {
+        description: 'a finished run still explains its context',
+        acceptance: { kind: 'envelope_status', phase: 'build' },
+      }),
+    });
+
+    const result = await registry().contextBreakdown(h.project, outcome.runId, 'builder');
+    expect(result.breakdown?.usedTokens).toBe(1200);
+    expect(result.live).toBe(false);
+    expect(result.capturedAt).toBeTruthy();
+    expect(result.reason).toBeUndefined();
+  });
+
+  it('says why there is nothing rather than answering with an empty breakdown', async () => {
+    const result = await registry().contextBreakdown(h.project, 'run_never_existed', 'builder');
+    expect(result.breakdown).toBeNull();
+    expect(result.reason).toBe('not_live');
   });
 });

@@ -17,6 +17,7 @@ import type {
   CliConfig,
   CliVendor,
   CommandResult,
+  ContextBreakdown,
   EnvelopeDef,
   PhaseDef,
   PhaseKind,
@@ -104,6 +105,22 @@ export class Executor {
   cancel(): void {
     this.cancelled = true;
     for (const session of this.sessions.values()) session.kill();
+  }
+
+  /**
+   * What is occupying one agent's context right now, plus the transport that
+   * answered — a one-shot session has no conversation to account for, and the
+   * caller needs to tell that apart from a request that went unanswered.
+   *
+   * `null` when this run never started a session for that agent: a disclosure
+   * must not spawn a child to have something to show.
+   */
+  async contextBreakdown(
+    agent: string,
+  ): Promise<{ breakdown: ContextBreakdown | null; mode: Mode } | null> {
+    const session = this.sessions.get(agent);
+    if (!session) return null;
+    return { breakdown: await session.contextBreakdown(), mode: session.currentMode };
   }
 
   async run(): Promise<RunOutcome> {

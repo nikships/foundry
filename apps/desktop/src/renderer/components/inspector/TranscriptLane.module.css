@@ -18,7 +18,11 @@
   border-color: color-mix(in srgb, var(--red) 22%, var(--line));
 }
 
+/* The positioning context for the context-breakdown panel: the lane clips
+ * overflow, so a panel anchored to its own toggle hangs off the lane's left
+ * edge and loses part of itself. */
 .laneHead {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--s3);

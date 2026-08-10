@@ -26,7 +26,7 @@ import {
   type RequestPermissionRequestParams,
   type StringFramedDroidClientTransport,
 } from '@factory/droid-sdk/node';
-import type { ReasoningEffort } from '@shared/types.js';
+import type { ContextBreakdown, ReasoningEffort } from '@shared/types.js';
 import {
   INHERIT_MODEL,
   type PermissionAsk,
@@ -106,20 +106,6 @@ const MCP_TOOL_SETTLE_MS = 1_500;
 
 /** Every selection that lets the tool run, i.e. what an `allow` may answer. */
 type ProceedOutcome = Exclude<ToolConfirmationOutcome, ToolConfirmationOutcome.ProceedEdit>;
-
-/** What `droid.get_context_breakdown` answers; no SDK method exposes it. */
-export interface ContextBreakdown {
-  modelId: string;
-  modelDisplayName: string;
-  contextBudget: number;
-  usedTokens: number;
-  freeTokens: number;
-  lastCallCompactionTokens?: number;
-  categories: { name: string; tokens: number; colorKey: string }[];
-  skills: { name: string; location: string; tokens: number }[];
-  mcpServers: { name: string; toolCount: number; tokens: number }[];
-  droids: { name: string; location: string; tokens: number }[];
-}
 
 export class SdkSession {
   private session: DroidSession | null = null;
@@ -388,7 +374,12 @@ export class SdkSession {
     return { removedCount: outcome.removedCount };
   }
 
-  /** Diagnostic only: a `null` here must never block a run. */
+  /**
+   * What is filling this session's context window. `droid.get_context_breakdown`
+   * is a real protocol method with no `DroidSession` counterpart, so the request
+   * is injected through the sniffing transport. Diagnostic only: a `null` here
+   * must never block a run.
+   */
   async contextBreakdown(): Promise<ContextBreakdown | null> {
     if (!this.session || !this.sniffer) return null;
     return this.sniffer.request<ContextBreakdown>('droid.get_context_breakdown');

@@ -99,6 +99,12 @@ Three things the SDK cannot give us, all solved by the one decorator in
   the SDK's client never sees an id it did not issue. Never reach for the
   session's private `_client`.
 
+A breakdown can only be read off a live session, and the Inspector is mostly
+read after the fact, so `agent.ts` writes the last one each turn produced to
+`{agent}/context-breakdown.json` among the run's files. The registry prefers a
+live read and falls back to that snapshot; without it a finished run answers
+every operator the same way, with an empty panel.
+
 ### Compaction retires the handle it was called on
 
 `compact()` does not shrink a session in place — it returns a **new**
