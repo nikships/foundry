@@ -202,6 +202,8 @@ describe('a live agent session', () => {
         turnTimeoutMs: 20_000,
         tracer,
         policy: { protectedPaths: [] },
+        // Unit tests force subprocess so they never touch DaemonManager.
+        transport: 'subprocess',
       },
     );
     sessions.push(session);

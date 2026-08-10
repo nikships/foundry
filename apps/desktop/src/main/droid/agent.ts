@@ -22,11 +22,12 @@ import { noteSessionModels, noteSessionTools } from './catalog.js';
 import { EventFolder, toUsageBreakdown } from './events.js';
 import { evaluate, type PolicyContext } from './permissions.js';
 import { SdkSession } from './sdk/session.js';
-import type { TransportSession } from './sdk/transport.js';
+import { DaemonSession, getDaemonManager, type DaemonEnsureResult } from './sdk/daemon.js';
+import type { TransportSession, TransportSessionOptions } from './sdk/transport.js';
 import { isTransportFailure } from './sdk/errors.js';
 import type { ContextStatsResult } from './protocol.js';
 
-export type Mode = 'rpc' | 'oneshot';
+export type Mode = 'daemon' | 'rpc' | 'oneshot';
 
 export interface AgentTurnContext extends TurnOptions {
   phaseId: string;
@@ -46,6 +47,11 @@ export interface InterruptRequest {
   body: string;
 }
 
+/** Outcome of opening a daemon-backed TransportSession (production or test). */
+export type OpenDaemonResult =
+  | { ok: true; session: TransportSession }
+  | { ok: false; reason: string };
+
 export interface AgentSessionDeps {
   /** Path to the binary this agent's CLI lives at. */
   cliPath: string;
@@ -62,6 +68,23 @@ export interface AgentSessionDeps {
    * MCP `read_phase_context` tool reads it; absent means an empty chain.
    */
   envelopes?: ReadonlyMap<string, Envelope>;
+  /**
+   * Settings preference. Default `daemon`. `subprocess` forces SdkSession and
+   * never touches DaemonManager.
+   */
+  transport?: 'daemon' | 'subprocess';
+  /** Preferred daemon port (37600–37699). Used only when transport is daemon. */
+  daemonPort?: number;
+  /**
+   * Test seam: open a daemon TransportSession without a real DaemonManager.
+   * Production leaves this unset.
+   */
+  openDaemonSession?: () => Promise<OpenDaemonResult>;
+  /**
+   * Test seam: open a subprocess SdkSession stand-in. Production leaves this
+   * unset and constructs SdkSession directly.
+   */
+  openRpcSession?: () => Promise<TransportSession>;
 }
 
 const PROTOCOL_FAILURE_LIMIT = 2;
@@ -135,15 +158,22 @@ export class AgentSession {
   private currentFolder: EventFolder | null = null;
   private currentPhaseId: string | null = null;
   private killed = false;
+  /** Daemon child is recorded once for the whole app process, not per agent. */
+  private daemonProcessRecorded = false;
 
   constructor(
     private readonly agent: AgentDef,
     private readonly deps: AgentSessionDeps,
   ) {
-    // Only droid has a JSON-RPC client. Every other vendor starts in one-shot
-    // rather than discovering it by failing a handshake twice, which would cost
-    // two turns and file two protocol errors against a CLI doing nothing wrong.
-    if (!adapterFor(this.vendor).supportsRpc) this.mode = 'oneshot';
+    // Only droid has a JSON-RPC / daemon client. Every other vendor starts in
+    // one-shot rather than discovering it by failing a handshake twice.
+    if (!adapterFor(this.vendor).supportsRpc) {
+      this.mode = 'oneshot';
+    } else if ((this.deps.transport ?? 'daemon') === 'subprocess') {
+      this.mode = 'rpc';
+    } else {
+      this.mode = 'daemon';
+    }
   }
 
   /** A roster written before agents could pick a CLI means droid. */
@@ -159,18 +189,23 @@ export class AgentSession {
     return this.droidSessionId;
   }
 
+  /** Daemon and subprocess SdkSession both expose a live conversation. */
+  private get isSdkMode(): boolean {
+    return this.mode === 'daemon' || this.mode === 'rpc';
+  }
+
   /**
    * Last user-message id on the live SDK session. One-shot has no message id
-   * stream, so this is always null outside RPC.
+   * stream, so this is always null outside daemon/rpc.
    */
   get lastUserMessageId(): string | null {
-    if (this.mode !== 'rpc' || !this.rpc) return null;
+    if (!this.isSdkMode || !this.rpc) return null;
     return this.rpc.lastUserMessageId;
   }
 
   /** Rewind needs a live SDK session; one-shot never qualifies. */
   get canRewind(): boolean {
-    return this.mode === 'rpc' && !!this.rpc?.alive;
+    return this.isSdkMode && !!this.rpc?.alive;
   }
 
   /** Started lazily: an agent that never runs a phase never spawns a child. */
@@ -182,21 +217,122 @@ export class AgentSession {
     }
     if (this.rpc?.alive) return;
 
-    const client = new SdkSession({
+    if (this.mode === 'daemon') {
+      const opened = await this.openDaemon();
+      if (opened) return;
+      // openDaemon already fell back to rpc with a traced reason.
+    }
+
+    await this.startRpcSession();
+  }
+
+  /**
+   * Try the daemon path. Returns true when a live DaemonSession is installed.
+   * Any failure falls back to subprocess with a traced warning and leaves
+   * mode='rpc' so the caller can open SdkSession — a run never dies because
+   * the daemon did not come up.
+   */
+  private async openDaemon(): Promise<boolean> {
+    try {
+      const opened = this.deps.openDaemonSession
+        ? await this.deps.openDaemonSession()
+        : await this.openDaemonProduction();
+      if (!opened.ok) {
+        this.fallbackToSubprocess(opened.reason);
+        return false;
+      }
+      const client = opened.session;
+      try {
+        await client.start(this.droidSessionId);
+      } catch (e) {
+        await client.close().catch(() => undefined);
+        if (this.killed) throw new RunKilledError();
+        this.fallbackToSubprocess(`daemon session start failed: ${errorMessage(e)}`);
+        return false;
+      }
+      this.rpc = client;
+      this.droidSessionId = client.id;
+      // No per-session child pid: DaemonManager records the daemon once.
+      this.setMode('daemon');
+      this.persistSession();
+      await this.publishDiscovery(client);
+      if (this.killed) {
+        await this.close();
+        throw new RunKilledError();
+      }
+      return true;
+    } catch (e) {
+      if (e instanceof RunKilledError) throw e;
+      this.fallbackToSubprocess(`daemon unavailable: ${errorMessage(e)}`);
+      return false;
+    }
+  }
+
+  private async openDaemonProduction(): Promise<OpenDaemonResult> {
+    // Restrictive allowlists need listTools to compute the disabled complement.
+    // The daemon high-level API has no builtin listTools (only MCP listTools),
+    // so a roster with restrictTools must fail closed to subprocess rather than
+    // silently run unenforced.
+    if (this.agent.tools?.length) {
+      return {
+        ok: false,
+        reason: 'daemon cannot enforce restrictTools (no listTools)',
+      };
+    }
+
+    const manager = getDaemonManager({
       droidPath: this.deps.cliPath,
-      ...this.turnOpts(),
-      onPermission: (ask) => this.decide(ask),
-      onNotification: (n) => this.currentFolder?.absorb(n),
-      onExit: () => this.onRpcExit(),
-      onModelWarning: (message) => this.agentLog('log', 'model', { message }),
-      foundryMcp: {
-        runId: this.deps.runId,
-        agentName: this.agent.name,
-        phaseId: () => this.currentPhaseId,
-        envelopes: () => this.deps.envelopes ?? new Map(),
-        tracer: this.deps.tracer,
+      port: this.deps.daemonPort ?? 37_643,
+      onProcess: (info) => {
+        if (this.daemonProcessRecorded) return;
+        this.daemonProcessRecorded = true;
+        this.deps.tracer.recordProcess({
+          runId: this.deps.runId,
+          kind: 'droid',
+          name: 'daemon',
+          pid: info.pid,
+          command: info.command,
+        });
       },
     });
+
+    const ensured: DaemonEnsureResult = await manager.ensure();
+    if (!ensured.ok) {
+      return { ok: false, reason: `daemon ${ensured.reason}: ${ensured.detail}` };
+    }
+    const sessions = ensured.droid.sessions;
+    if (!sessions) {
+      return { ok: false, reason: 'daemon connection has no sessions facade' };
+    }
+    // Double-check: a future facade that gains listTools can serve restricted
+    // rosters; until then the early return above already caught them. If a
+    // restricted roster somehow reached here without listTools, still fail closed.
+    if (this.agent.tools?.length && !sessions.listTools) {
+      return {
+        ok: false,
+        reason: 'daemon cannot enforce restrictTools (no listTools)',
+      };
+    }
+
+    return {
+      ok: true,
+      session: new DaemonSession({
+        sessions,
+        ...this.transportOpts(),
+        foundryMcp: this.foundryMcpOpts(),
+      }),
+    };
+  }
+
+  private async startRpcSession(): Promise<void> {
+    const client = this.deps.openRpcSession
+      ? await this.deps.openRpcSession()
+      : new SdkSession({
+          droidPath: this.deps.cliPath,
+          ...this.transportOpts(),
+          onExit: () => this.onRpcExit(),
+          foundryMcp: this.foundryMcpOpts(),
+        });
 
     try {
       await client.start(this.droidSessionId);
@@ -206,13 +342,14 @@ export class AgentSession {
       await client.close().catch(() => undefined);
       if (this.killed) throw new RunKilledError();
       this.countFailure(e);
-      this.noteFallback(`session start failed: ${errorMessage(e)}`);
+      this.noteOneShotFallback(`session start failed: ${errorMessage(e)}`);
       this.switchToOneShot();
       return;
     }
 
     this.rpc = client;
     this.droidSessionId = client.id;
+    this.setMode('rpc');
     if (client.pid) {
       this.processRowId = this.deps.tracer.recordProcess({
         runId: this.deps.runId,
@@ -230,6 +367,25 @@ export class AgentSession {
       await this.close();
       throw new RunKilledError();
     }
+  }
+
+  private transportOpts(): TransportSessionOptions {
+    return {
+      ...this.turnOpts(),
+      onPermission: (ask) => this.decide(ask),
+      onNotification: (n) => this.currentFolder?.absorb(n),
+      onModelWarning: (message) => this.agentLog('log', 'model', { message }),
+    };
+  }
+
+  private foundryMcpOpts() {
+    return {
+      runId: this.deps.runId,
+      agentName: this.agent.name,
+      phaseId: () => this.currentPhaseId,
+      envelopes: () => this.deps.envelopes ?? new Map(),
+      tracer: this.deps.tracer,
+    };
   }
 
   /**
@@ -307,15 +463,54 @@ export class AgentSession {
 
   private switchToOneShot(): void {
     if (this.mode === 'oneshot') return;
-    this.mode = 'oneshot';
     this.rpc?.kill();
     this.rpc = null;
     this.oneshot = this.buildOneShot();
-    this.deps.onModeChange?.('oneshot');
+    this.setMode('oneshot');
     this.persistSession();
   }
 
-  private noteFallback(reason: string): void {
+  /**
+   * Daemon path is unavailable (start/auth/allowlist). Mode becomes rpc so the
+   * next ensureStarted opens SdkSession; the run continues.
+   */
+  private fallbackToSubprocess(reason: string): void {
+    if (this.mode === 'rpc' || this.mode === 'oneshot') return;
+    this.rpc = null;
+    this.agentLog('log', `fallback to subprocess: ${reason}`, {
+      reason,
+      failures: this.protocolFailures,
+    });
+    this.setMode('rpc');
+    this.persistSession();
+  }
+
+  /**
+   * A daemon-mode protocol strike: drop the daemon session and open a
+   * subprocess SdkSession for the retry. Counts as one strike already via
+   * countFailure; does not itself increment.
+   */
+  private async fallDaemonToRpc(reason: string): Promise<void> {
+    const dead = this.rpc;
+    this.rpc = null;
+    await dead?.close().catch(() => undefined);
+    this.agentLog('log', `fallback to subprocess: ${reason}`, {
+      reason,
+      failures: this.protocolFailures,
+    });
+    this.setMode('rpc');
+    this.persistSession();
+    await this.ensureStarted();
+  }
+
+  /** Notify only when the mode actually changes — avoids duplicate rpc events. */
+  private setMode(mode: Mode): void {
+    if (this.mode === mode) return;
+    this.mode = mode;
+    this.deps.onModeChange?.(mode);
+  }
+
+  private noteOneShotFallback(reason: string): void {
     this.agentLog('log', 'fallback to one-shot', {
       reason,
       failures: this.protocolFailures,
@@ -441,15 +636,17 @@ export class AgentSession {
   }
 
   /**
-   * Two protocol failures in a run and the agent drops to one-shot for the
-   * rest of it: a flapping transport must not be retried forever.
+   * Protocol-failure ladder across daemon + rpc:
+   *   daemon strike → rpc (same turn retries on subprocess)
+   *   two total strikes → oneshot for the rest of the run
+   * A flapping transport must not be retried forever.
    */
   private async transportSend(
     prompt: string,
     folder: EventFolder,
     ctx: AgentTurnContext,
   ): Promise<TurnResult> {
-    while (this.mode === 'rpc' && this.rpc) {
+    while (this.isSdkMode && this.rpc) {
       try {
         return await this.rpc.send(prompt, this.deps.turnTimeoutMs, {
           outputFormat: ctx.outputFormat,
@@ -466,11 +663,16 @@ export class AgentSession {
         this.countFailure(e);
         folder.closeDangling(`transport failed: ${message}`);
         if (this.protocolFailures >= PROTOCOL_FAILURE_LIMIT) {
-          this.noteFallback(message);
+          this.noteOneShotFallback(message);
           this.switchToOneShot();
           break;
         }
-        this.noteFallback(`retrying after ${message}`);
+        if (this.mode === 'daemon') {
+          // One daemon strike drops to subprocess; the counter carries over.
+          await this.fallDaemonToRpc(message);
+          continue;
+        }
+        this.noteOneShotFallback(`retrying after ${message}`);
         // A restart that cannot come back up has already switched the mode, so
         // the loop condition ends the RPC attempts rather than spinning.
         await this.restart();
@@ -568,7 +770,7 @@ export class AgentSession {
    * own child, so occupancy is not a property it has.
    */
   async contextStats(): Promise<ContextStatsResult | null> {
-    if (this.mode !== 'rpc' || !this.rpc) return null;
+    if (!this.isSdkMode || !this.rpc) return null;
     return this.rpc.contextStats();
   }
 
@@ -578,7 +780,7 @@ export class AgentSession {
    * transport that did not answer — a breakdown is a view, never a run input.
    */
   async contextBreakdown(): Promise<ContextBreakdown | null> {
-    if (this.mode !== 'rpc' || !this.rpc) return null;
+    if (!this.isSdkMode || !this.rpc) return null;
     return this.rpc.contextBreakdown();
   }
 
@@ -593,7 +795,7 @@ export class AgentSession {
    * carries on.
    */
   async compact(before: ContextStatsResult): Promise<{ removedCount: number } | null> {
-    if (this.mode !== 'rpc' || !this.rpc) return null;
+    if (!this.isSdkMode || !this.rpc) return null;
     try {
       const outcome = await this.rpc.compact();
       if (!outcome) return null;

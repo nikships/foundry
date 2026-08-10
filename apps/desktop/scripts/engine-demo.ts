@@ -15,6 +15,7 @@ import { openDb, projectDbPath, projectRunsDir } from '../src/main/trace/db.js';
 import { Tracer } from '../src/main/trace/tracer.js';
 import { Executor } from '../src/main/engine/executor.js';
 import { RunRegistry } from '../src/main/engine/registry.js';
+import { shutdownDaemonManager } from '../src/main/droid/sdk/daemon.js';
 import { BUILTIN_AGENTS } from '../src/main/store/builtin-agents.js';
 import { defaultProject } from '../src/main/store/projects.js';
 import { defaultSettings } from '../src/main/store/settings.js';
@@ -138,6 +139,7 @@ async function main(): Promise<void> {
     compactionThreshold: settings.compactionThreshold,
     rewindAfterCorrections: settings.rewindAfterCorrections,
     daemonPort: settings.daemonPort,
+    transport: settings.transport,
     agents,
     envelopeDefs: [],
     project,
@@ -196,6 +198,9 @@ async function main(): Promise<void> {
     .trim()
     .split('\n')[0];
   console.log(`git log: ${head}`);
+  // Match AppContext.dispose: tear down the app-owned daemon so --parent-pid
+  // is not the only reaper for a clean demo exit.
+  await shutdownDaemonManager();
   process.exit(outcome.status === 'accepted' ? 0 : 1);
 }
 

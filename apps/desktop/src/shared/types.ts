@@ -206,6 +206,13 @@ export interface AppSettings {
    */
   rewindAfterCorrections: number;
   /**
+   * How droid agent sessions talk to the CLI. `daemon` (default) multiplexes
+   * over one app-owned `droid daemon`; `subprocess` forces a ProcessTransport
+   * SdkSession per agent. Daemon start/auth failure falls back to subprocess
+   * automatically — a run never fails because the daemon did not come up.
+   */
+  transport: 'daemon' | 'subprocess';
+  /**
    * Preferred local port for the app-owned `droid daemon`. Must sit inside
    * 37600–37699; when busy the manager scans up within that band.
    */
@@ -318,7 +325,7 @@ export interface RunRow {
   prUrl: string | null;
   merged: boolean;
   archived: boolean;
-  mode: 'rpc' | 'oneshot';
+  mode: 'daemon' | 'rpc' | 'oneshot';
   startedAt: string;
   endedAt: string | null;
   totalTokens: number;
@@ -417,7 +424,7 @@ export interface AgentSessionRow {
   cli: CliVendor;
   /** The vendor's own session id, whatever it calls one. */
   droidSessionId: string | null;
-  mode: 'rpc' | 'oneshot';
+  mode: 'daemon' | 'rpc' | 'oneshot';
   color: string;
   contextTokens: number;
   contextWindow: number;

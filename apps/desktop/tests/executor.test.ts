@@ -629,6 +629,8 @@ interface RunInput {
   compactionThreshold?: number;
   rewindAfterCorrections?: number;
   daemonPort?: number;
+  /** Defaults to subprocess so unit tests never spawn a real daemon. */
+  transport?: 'daemon' | 'subprocess';
 }
 
 function run(input: RunInput): Promise<{ status: string; runId: string }> {
@@ -661,6 +663,7 @@ function start(input: RunInput): {
     compactionThreshold: input.compactionThreshold ?? 0.8,
     rewindAfterCorrections: input.rewindAfterCorrections ?? 2,
     daemonPort: input.daemonPort ?? 37_643,
+    transport: input.transport ?? 'subprocess',
     agents: input.agents ?? [buildAgent()],
     envelopeDefs: input.envelopeDefs ?? [],
     project: { ...h.project, ...input.project },

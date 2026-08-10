@@ -96,6 +96,19 @@ export interface DaemonHandle {
   subscribeNotifications(handler: (n: DroidNotification) => void): () => void;
 }
 
+/**
+ * Wire MCP config the daemon create/resume schema accepts. In-process
+ * SdkMcpServer objects are rejected by the public daemon schema — start them
+ * first and pass the resulting HTTP config (type/url/headers).
+ */
+export type DaemonMcpServerConfig = {
+  type: 'http';
+  name: string;
+  url: string;
+  oauth?: false;
+  headers?: { name: string; value: string }[];
+};
+
 export interface DaemonSessionsFacade {
   create(options: {
     cwd: string;
@@ -107,7 +120,7 @@ export interface DaemonSessionsFacade {
     askUserHandler: (
       params: AskUserRequestParams,
     ) => Promise<AskUserResult> | AskUserResult;
-    mcpServers?: ReturnType<typeof createFoundryMcpServer>[];
+    mcpServers?: DaemonMcpServerConfig[];
   }): Promise<DaemonHandle>;
   resume(
     sessionId: string,
@@ -118,7 +131,7 @@ export interface DaemonSessionsFacade {
       askUserHandler?: (
         params: AskUserRequestParams,
       ) => Promise<AskUserResult> | AskUserResult;
-      mcpServers?: ReturnType<typeof createFoundryMcpServer>[];
+      mcpServers?: DaemonMcpServerConfig[];
     },
   ): Promise<DaemonHandle>;
   updateSettings(
@@ -237,10 +250,30 @@ export class DaemonSession implements TransportSession {
     this.closed = false;
     this.toolRefreshDelay = this.opts.toolRefreshDelayMs ?? MCP_TOOL_SETTLE_MS;
 
-    const mcpServers = this.opts.foundryMcp
-      ? [createFoundryMcpServer(this.opts.foundryMcp)]
-      : undefined;
-    this.foundryServer = mcpServers?.[0] ?? null;
+    // Daemon create/resume validates mcpServers against the wire schema only
+    // (stdio/http/sse). SdkMcpServer is an in-process object the subprocess
+    // path starts for us; here we start it and pass the HTTP config so the
+    // daemon worker can reach the app-local loopback server.
+    let mcpServers: DaemonMcpServerConfig[] | undefined;
+    if (this.opts.foundryMcp) {
+      const server = createFoundryMcpServer(this.opts.foundryMcp);
+      this.foundryServer = server;
+      try {
+        const config = await server.start();
+        mcpServers = [
+          {
+            type: 'http',
+            name: config.name,
+            url: config.url,
+            oauth: false,
+            headers: config.headers?.map((h) => ({ name: h.name, value: h.value })),
+          },
+        ];
+      } catch (e) {
+        await this.closeFoundryServer();
+        throw e;
+      }
+    }
 
     const handlers = {
       permissionHandler: (params: RequestPermissionRequestParams) => this.onPermission(params),
@@ -250,18 +283,23 @@ export class DaemonSession implements TransportSession {
     // machineId: 'default' is required on daemon create (spike V6). The SDK
     // 0.7.0 forces LOCAL_MACHINE_ID='local' internally when using the real
     // client; scripted seams and future SDK versions still see our value.
-    this.handle = existingSessionId
-      ? await this.opts.sessions.resume(existingSessionId, {
-          ...handlers,
-          ...(mcpServers ? { mcpServers } : {}),
-        })
-      : await this.opts.sessions.create({
-          cwd: this.opts.cwd,
-          autonomyLevel: DAEMON_AUTONOMY,
-          machineId: 'default',
-          ...handlers,
-          ...(mcpServers ? { mcpServers } : {}),
-        });
+    try {
+      this.handle = existingSessionId
+        ? await this.opts.sessions.resume(existingSessionId, {
+            ...handlers,
+            ...(mcpServers ? { mcpServers } : {}),
+          })
+        : await this.opts.sessions.create({
+            cwd: this.opts.cwd,
+            autonomyLevel: DAEMON_AUTONOMY,
+            machineId: 'default',
+            ...handlers,
+            ...(mcpServers ? { mcpServers } : {}),
+          });
+    } catch (e) {
+      await this.closeFoundryServer();
+      throw e;
+    }
 
     this.bindNotifications(this.handle);
     this.settings = { ...(this.handle.settings as SessionSettings) };

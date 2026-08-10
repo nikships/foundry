@@ -1,15 +1,27 @@
 # AGENTS.md — src/main/droid
 
-Droid's transports + shared one-shot runner. `agent.ts` drives `sdk/session.ts`
-for RPC turns and falls back to `oneshot.ts`; `protocol.ts` encodes findings
-observed against the real CLI, not the docs. `turn.ts` holds the shapes both
-transports agree on (`TurnResult`, `PermissionAsk`, `PermissionDecision`,
-`INHERIT_MODEL`) so nothing above the seam has to know which one ran.
+Droid's transports + shared one-shot runner. `agent.ts` selects the transport
+from `AppSettings.transport` (default **`daemon`**): daemon+droid →
+`DaemonManager`/`DaemonSession`; `subprocess` → `SdkSession`; any daemon
+failure → traced `log` (`fallback to subprocess: <reason>`) + SdkSession; two
+protocol strikes across daemon+rpc → `oneshot.ts`. `protocol.ts` encodes
+findings observed against the real CLI, not the docs. `turn.ts` holds the
+shapes both transports agree on (`TurnResult`, `PermissionAsk`,
+`PermissionDecision`, `INHERIT_MODEL`) so nothing above the seam has to know
+which one ran.
 
-`AgentSession` degrades after two transport failures in a run. Strikes are
+Mode union is `'daemon' | 'rpc' | 'oneshot'` (persisted on `runs.mode` /
+`agent_sessions.mode` — unconstrained TEXT, no migration). Ladder: a daemon
+protocol strike falls to rpc first; two total strikes → oneshot. Strikes are
 counted on the failing turn only: a dying child both rejects its in-flight turn
 and fires an exit callback, so counting in both places would spend the whole
 budget on one death.
+
+**restrictTools fail-closed on daemon:** the daemon high-level API has no
+session `listTools` (only MCP `listTools`), so an allowlist complement cannot
+be computed. A roster with `tools` set never opens a DaemonSession — it falls
+back to subprocess with a traced reason rather than silently running
+unenforced.
 
 **A kill is not a strike.** `kill()` latches, and every recovery path stands
 down once it has: the rejected turn is not counted, not restarted, and not
@@ -108,8 +120,9 @@ it from `AppContext.dispose` (and `--parent-pid` is the crash backstop).
 
 `DaemonSession` wraps a `ConnectedDroidSession` behind the same
 `TransportSession` surface as `SdkSession` (`sdk/transport.ts`). Agent-facing
-code types against `TransportSession`; daemon-default wiring is a separate
-feature. Daemon specifics that matter:
+code types against `TransportSession`. `AgentSession.ensureStarted()` opens a
+daemon session when `transport === 'daemon'` (the default). Daemon specifics
+that matter:
 
 - Permission/askUser handlers attach **per session** at `create`/`resume`
   (spike V6: the closure is the binding; no registry). Connection-level

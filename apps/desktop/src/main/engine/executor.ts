@@ -55,6 +55,11 @@ export interface ExecutorDeps {
    * scans up within the band when this port is busy.
    */
   daemonPort: number;
+  /**
+   * How droid agents talk to the CLI. Default is daemon; `subprocess` forces
+   * SdkSession. See AppSettings.transport.
+   */
+  transport: 'daemon' | 'subprocess';
   agents: AgentDef[];
   /** Shared custom envelope library snapshotted at run start. */
   envelopeDefs: EnvelopeDef[];
@@ -89,11 +94,14 @@ export class Executor {
   private cancelled = false;
   private handle: worktreeLib.WorktreeHandle | null = null;
   private cwd: string;
-  private mode: Mode = 'rpc';
+  private mode: Mode;
   private readonly runners: Record<PhaseKind, PhaseRunner>;
 
   constructor(private readonly deps: ExecutorDeps) {
     this.cwd = deps.project.path;
+    // runs.mode starts as the settings preference; AgentSession may fall back
+    // (daemon → rpc → oneshot) and observeMode patches the row to match.
+    this.mode = deps.transport === 'subprocess' ? 'rpc' : 'daemon';
     this.runners = {
       agent: new AgentPhaseRunner({
         agents: deps.agents,
@@ -320,6 +328,8 @@ export class Executor {
       tracer: this.deps.tracer,
       policy: { protectedPaths: this.deps.project.protectedPaths },
       envelopes: this.envelopes,
+      transport: this.deps.transport,
+      daemonPort: this.deps.daemonPort,
       onModeChange: (mode) => {
         this.mode = mode;
         this.deps.tracer.setRunMode(this.deps.runId, mode);
