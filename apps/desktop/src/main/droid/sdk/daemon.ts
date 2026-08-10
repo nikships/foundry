@@ -372,9 +372,7 @@ export function adaptConnectedDroid(droid: ConnectedDroid): DaemonConnection {
     // option type only lists wire shapes. Cast at the boundary.
     create: async (options) =>
       adaptHandle(
-        await droid.sessions.create(
-          options as Parameters<ConnectedDroid['sessions']['create']>[0],
-        ),
+        await droid.sessions.create(options as Parameters<ConnectedDroid['sessions']['create']>[0]),
       ),
     resume: async (sessionId, options) =>
       adaptHandle(
@@ -415,7 +413,8 @@ function adaptHandle(session: ConnectedDroidSession): DaemonHandle {
     id: session.id,
     settings: session.settings as Readonly<Record<string, unknown>>,
     cwd: session.cwd,
-    stream: (prompt, options) => session.stream(prompt, options) as AsyncIterable<DaemonStreamMessage>,
+    stream: (prompt, options) =>
+      session.stream(prompt, options) as AsyncIterable<DaemonStreamMessage>,
     interrupt: () => session.interrupt(),
     compact: async (customInstructions) => {
       const outcome = await session.compact(customInstructions);

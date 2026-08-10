@@ -140,12 +140,12 @@ describe('rewindAfterCorrections', () => {
   });
 
   it('clamps a stored out-of-range value into the accepted band', () => {
-    expect(migrate({ ...defaultSettings(), rewindAfterCorrections: -3 }).rewindAfterCorrections).toBe(
-      0,
-    );
-    expect(migrate({ ...defaultSettings(), rewindAfterCorrections: 99 }).rewindAfterCorrections).toBe(
-      20,
-    );
+    expect(
+      migrate({ ...defaultSettings(), rewindAfterCorrections: -3 }).rewindAfterCorrections,
+    ).toBe(0);
+    expect(
+      migrate({ ...defaultSettings(), rewindAfterCorrections: 99 }).rewindAfterCorrections,
+    ).toBe(20);
   });
 });
 

@@ -62,11 +62,7 @@ function policyFor(worktree: string, writes: string[] | null = ['**/*']): Policy
   };
 }
 
-function resultSuccess(
-  sessionId: string,
-  text: string,
-  tokenUsage = usage(),
-): DroidResultMessage {
+function resultSuccess(sessionId: string, text: string, tokenUsage = usage()): DroidResultMessage {
   return {
     type: 'result',
     subtype: 'success',
@@ -84,15 +80,13 @@ function resultSuccess(
 
 type ToolUseEntry = RequestPermissionRequestParams['toolUses'][number];
 
-function toolUse(
-  partial: {
-    id: string;
-    name: string;
-    input: Record<string, unknown>;
-    details: Record<string, unknown>;
-    confirmationType: string;
-  },
-): ToolUseEntry {
+function toolUse(partial: {
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+  details: Record<string, unknown>;
+  confirmationType: string;
+}): ToolUseEntry {
   return {
     toolUse: {
       type: 'tool_use',
@@ -119,8 +113,10 @@ class ScriptedHandle implements DaemonHandle {
   detachCalls = 0;
 
   /** Script that runs when stream() is consumed. */
-  turnScript: (handle: ScriptedHandle, prompt: string) => Promise<DroidResultMessage> | DroidResultMessage =
-    (h, prompt) => h.defaultTurn(prompt);
+  turnScript: (
+    handle: ScriptedHandle,
+    prompt: string,
+  ) => Promise<DroidResultMessage> | DroidResultMessage = (h, prompt) => h.defaultTurn(prompt);
 
   constructor(
     readonly id: string,
@@ -180,7 +176,10 @@ class ScriptedHandle implements DaemonHandle {
       });
       yield result;
     } catch (error) {
-      if (options?.abortSignal?.aborted || (error instanceof Error && error.message === 'aborted')) {
+      if (
+        options?.abortSignal?.aborted ||
+        (error instanceof Error && error.message === 'aborted')
+      ) {
         // Mirror the real stream: abort ends the generator; DaemonSession maps
         // the timed-out abort onto the legacy timeout string.
         throw error;
@@ -329,13 +328,18 @@ class ScriptedSessions implements DaemonSessionsFacade {
   private readonly handlers = new Map<
     string,
     {
-      permissionHandler?: (p: RequestPermissionRequestParams) => Promise<RequestPermissionHandlerResult> | RequestPermissionHandlerResult;
+      permissionHandler?: (
+        p: RequestPermissionRequestParams,
+      ) => Promise<RequestPermissionHandlerResult> | RequestPermissionHandlerResult;
       askUserHandler?: (p: AskUserRequestParams) => Promise<AskUserResult> | AskUserResult;
     }
   >();
   private seq = 0;
   /** Settings applied after a "daemon restart" wipe of live handles. */
-  private persisted = new Map<string, { cwd?: string; settings: Record<string, unknown>; messages: string[] }>();
+  private persisted = new Map<
+    string,
+    { cwd?: string; settings: Record<string, unknown>; messages: string[] }
+  >();
 
   nextId = (): string => {
     this.seq += 1;
@@ -666,7 +670,7 @@ describe('autonomy (spike V1)', () => {
 });
 
 describe('permission routing (spike V6 / VAL-DAEMON-005)', () => {
-  it('routes concurrent asks to each session\'s own policy context', async () => {
+  it("routes concurrent asks to each session's own policy context", async () => {
     const facade = new ScriptedSessions();
     const asksA: PermissionAsk[] = [];
     const asksB: PermissionAsk[] = [];
@@ -985,9 +989,9 @@ describe('compact/rewind successor resume (VAL-DAEMON-014)', () => {
     // Source handle must not receive further streams.
     const after = await sdk.send('post-compact', 5_000);
     expect(after.text).toContain('post-compact');
-    expect(facade.streamLog.every((e) => e.sessionId !== sourceId || e.prompt !== 'post-compact')).toBe(
-      true,
-    );
+    expect(
+      facade.streamLog.every((e) => e.sessionId !== sourceId || e.prompt !== 'post-compact'),
+    ).toBe(true);
     expect(facade.streamLog.some((e) => e.sessionId === 'daemon-session-compacted')).toBe(true);
 
     // Autonomy re-asserted on the successor (load carries no settings).

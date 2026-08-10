@@ -17,19 +17,14 @@ import {
 import type { PermissionAsk, PermissionDecision } from '../turn.js';
 
 /** Every selection that lets the tool run, i.e. what an `allow` may answer. */
-export type ProceedOutcome = Exclude<
-  ToolConfirmationOutcome,
-  ToolConfirmationOutcome.ProceedEdit
->;
+export type ProceedOutcome = Exclude<ToolConfirmationOutcome, ToolConfirmationOutcome.ProceedEdit>;
 
 /**
  * The policy reads a flat ask (`toolName`, `command`, `file_path`); the SDK
  * nests the same facts one level down and splits them across `toolUse.input`
  * and the typed confirmation `details`.
  */
-export function flattenToolUse(
-  params: RequestPermissionRequestParams,
-): Record<string, unknown> {
+export function flattenToolUse(params: RequestPermissionRequestParams): Record<string, unknown> {
   const first = params.toolUses?.[0];
   if (!first) return { ...params } as unknown as Record<string, unknown>;
   const details = first.details as Record<string, unknown>;

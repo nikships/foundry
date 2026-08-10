@@ -99,10 +99,7 @@ describe('mergeSessionModels', () => {
         deprecated: true,
       },
     ]);
-    expect(merged.map((m) => m.id).sort()).toEqual([
-      'custom:droidproxy:opus-5',
-      'session-only',
-    ]);
+    expect(merged.map((m) => m.id).sort()).toEqual(['custom:droidproxy:opus-5', 'session-only']);
     const added = merged.find((m) => m.id === 'session-only')!;
     expect(added.displayName).toBe('Session Only');
     expect(added.provider).toBe('meta');

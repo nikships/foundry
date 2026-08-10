@@ -112,10 +112,7 @@ describe('foundry MCP registry', () => {
     const server = serverFor(context(tracer, runId, new Map(), phaseId));
     expect(server.name).toBe(FOUNDRY_MCP_SERVER_NAME);
     expect(server.tools.map((t) => t.name).sort()).toEqual([...FOUNDRY_TOOL_NAMES].sort());
-    expect(FOUNDRY_TOOL_IDS).toEqual([
-      'foundry___report_progress',
-      'foundry___read_phase_context',
-    ]);
+    expect(FOUNDRY_TOOL_IDS).toEqual(['foundry___report_progress', 'foundry___read_phase_context']);
   });
 
   it('uses the typed tool() overload — every tool carries an inputSchema', () => {
@@ -128,10 +125,7 @@ describe('foundry MCP registry', () => {
   });
 
   it('isolates the nested zod-3 import to sdk-zod.ts', () => {
-    const src = readFileSync(
-      join(process.cwd(), 'src/main/droid/sdk/sdk-zod.ts'),
-      'utf8',
-    );
+    const src = readFileSync(join(process.cwd(), 'src/main/droid/sdk/sdk-zod.ts'), 'utf8');
     expect(src).toMatch(/@factory\/droid-sdk\/node_modules\/zod/);
     const mcp = readFileSync(join(process.cwd(), 'src/main/droid/sdk/mcp-tools.ts'), 'utf8');
     expect(mcp).toMatch(/from '\.\/sdk-zod\.js'/);
@@ -237,12 +231,7 @@ describe('malformed input', () => {
     const server = serverFor(context(tracer, runId, new Map(), phaseId));
     const report = toolNamed(server, 'report_progress');
 
-    const bad: unknown[] = [
-      {},
-      { summary: 42 },
-      { summary: null },
-      { notSummary: 'x' },
-    ];
+    const bad: unknown[] = [{}, { summary: 42 }, { summary: null }, { notSummary: 'x' }];
     for (const payload of bad) {
       let threw: unknown;
       try {

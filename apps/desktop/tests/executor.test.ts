@@ -2628,9 +2628,7 @@ describe('rewind correction policy', () => {
     for (const turn of turns) expect(turn).toContain('session=s1');
     expect(h.tracer.agentSessions(outcome.runId)[0]!.droidSessionId).toBe('s1');
     expect(corrections(outcome.runId).some((e) => e.payload.rewind === true)).toBe(false);
-    expect(
-      events(outcome.runId).some((e) => e.name === 'builder: rewind failed'),
-    ).toBe(true);
+    expect(events(outcome.runId).some((e) => e.name === 'builder: rewind failed')).toBe(true);
   });
 
   it('disables rewind entirely when rewindAfterCorrections is 0', async () => {
@@ -2774,7 +2772,9 @@ describe('rewind and compaction coexist (VAL-CROSS-009)', () => {
     // agent_sessions reflects the swaps: one AgentSession row whose id changed
     // across rewind+compact (both persist via upsertAgentSession).
     const sessions = h.db
-      .prepare('SELECT agent, droid_session_id FROM agent_sessions WHERE run_id = ? ORDER BY last_used_at')
+      .prepare(
+        'SELECT agent, droid_session_id FROM agent_sessions WHERE run_id = ? ORDER BY last_used_at',
+      )
       .all(runId) as { agent: string; droid_session_id: string }[];
     expect(sessions.some((s) => s.agent === 'builder')).toBe(true);
     const builder = sessions.find((s) => s.agent === 'builder')!;
@@ -2790,18 +2790,18 @@ describe('non-droid vendor oneshot path (VAL-CROSS-011)', () => {
     // Two rpc strikes exhaust the ladder; the surviving turn is the oneshot
     // path. A non-droid vendor (supportsRpc false) would start there directly;
     // this exercises the same trace shape the validator asserts.
-    const droid = scriptedDroid(
-      [buildEnvelope(), buildEnvelope(), buildEnvelope()],
-      [],
-      [],
-      { dieOnTurns: [0, 1] },
-    );
+    const droid = scriptedDroid([buildEnvelope(), buildEnvelope(), buildEnvelope()], [], [], {
+      dieOnTurns: [0, 1],
+    });
     const outcome = await run({
       droidPath: droid,
-      pipeline: pipe([agentPhase('build', { description: 'exhaust rpc so the turn lands oneshot' })], {
-        description: 'oneshot honest span',
-        acceptance: { kind: 'envelope_status', phase: 'build' },
-      }),
+      pipeline: pipe(
+        [agentPhase('build', { description: 'exhaust rpc so the turn lands oneshot' })],
+        {
+          description: 'oneshot honest span',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
     });
     expect(outcome.status).toBe('accepted');
     expect(h.tracer.run(outcome.runId)!.mode).toBe('oneshot');

@@ -5,17 +5,8 @@
  */
 
 import type { ContextBreakdown, ReasoningEffort } from '@shared/types.js';
-import type {
-  AvailableModel,
-  ContextStatsResult,
-  DroidNotification,
-} from '../protocol.js';
-import type {
-  PermissionAsk,
-  PermissionDecision,
-  TurnOptions,
-  TurnResult,
-} from '../turn.js';
+import type { AvailableModel, ContextStatsResult, DroidNotification } from '../protocol.js';
+import type { PermissionAsk, PermissionDecision, TurnOptions, TurnResult } from '../turn.js';
 
 /** One tool as this session sees it; `id` is the llmId the allowlist names. */
 export interface SessionTool {

@@ -144,9 +144,7 @@ export function migrate(raw: unknown): AppSettings {
   }
   // Out-of-band ports (hand-edited or pre-field files) clamp into the mission
   // range rather than leaving the app with no daemon port at all.
-  merged.daemonPort = Math.round(
-    clamp(merged.daemonPort, base.daemonPort, DAEMON_PORT_BAND),
-  );
+  merged.daemonPort = Math.round(clamp(merged.daemonPort, base.daemonPort, DAEMON_PORT_BAND));
   return merged;
 }
 

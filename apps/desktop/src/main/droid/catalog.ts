@@ -310,12 +310,7 @@ export function mergeCustomModels(base: ModelInfo[], custom: CustomModelEntry[])
  * refresh must still reach the next reader.
  */
 export async function loadDroidCatalog(droidPath: string, force = false): Promise<ModelInfo[]> {
-  if (
-    force ||
-    !cache ||
-    cache.droidPath !== droidPath ||
-    Date.now() - cache.at >= CACHE_MS
-  ) {
+  if (force || !cache || cache.droidPath !== droidPath || Date.now() - cache.at >= CACHE_MS) {
     cache = {
       help: await modelsFromHelp(droidPath),
       custom: await customModels(),

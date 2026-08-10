@@ -49,8 +49,7 @@ export interface InterruptRequest {
 
 /** Outcome of opening a daemon-backed TransportSession (production or test). */
 export type OpenDaemonResult =
-  | { ok: true; session: TransportSession }
-  | { ok: false; reason: string };
+  { ok: true; session: TransportSession } | { ok: false; reason: string };
 
 export interface AgentSessionDeps {
   /** Path to the binary this agent's CLI lives at. */
@@ -839,10 +838,7 @@ export class AgentSession {
    * messageId) or when the CLI refuses — the caller then falls back to an
    * append-style correction. A failure here must never fail the phase.
    */
-  async rewind(input: {
-    messageId: string;
-    snapshot: Snapshot;
-  }): Promise<{
+  async rewind(input: { messageId: string; snapshot: Snapshot }): Promise<{
     restoredCount: number;
     deletedCount: number;
     failedRestoreCount: number;
@@ -856,7 +852,9 @@ export class AgentSession {
       if (!info) return null;
       // Match on path only: the CLI's contentHash/size are what rewind accepts.
       const filesToRestore = info.availableFiles.filter((file) =>
-        input.snapshot.files.some((snap) => sameWorktreePath(snap.path, file.filePath, this.deps.worktree)),
+        input.snapshot.files.some((snap) =>
+          sameWorktreePath(snap.path, file.filePath, this.deps.worktree),
+        ),
       );
       const filesToDelete = info.createdFiles.map((file) => ({
         filePath: file.filePath,

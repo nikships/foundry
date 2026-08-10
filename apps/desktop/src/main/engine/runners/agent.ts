@@ -463,9 +463,7 @@ function rewindPayload(rewind: RewindTrace | null): Record<string, unknown> {
     rewind: true,
     restoredCount: rewind.restoredCount,
     deletedCount: rewind.deletedCount,
-    ...(rewind.failedRestoreCount
-      ? { failedRestoreCount: rewind.failedRestoreCount }
-      : {}),
+    ...(rewind.failedRestoreCount ? { failedRestoreCount: rewind.failedRestoreCount } : {}),
     ...(rewind.failedDeleteCount ? { failedDeleteCount: rewind.failedDeleteCount } : {}),
   };
 }

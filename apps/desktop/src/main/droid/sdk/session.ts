@@ -38,11 +38,7 @@ import {
 } from '../protocol.js';
 import { spawnEnv } from '../../system/env.js';
 import { register as registerProc } from '../../system/procs.js';
-import {
-  createFoundryMcpServer,
-  FOUNDRY_TOOL_IDS,
-  type FoundryMcpContext,
-} from './mcp-tools.js';
+import { createFoundryMcpServer, FOUNDRY_TOOL_IDS, type FoundryMcpContext } from './mcp-tools.js';
 import {
   toAskUserAsk,
   toAskUserResult,

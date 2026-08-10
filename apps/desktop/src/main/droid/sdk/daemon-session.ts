@@ -36,22 +36,14 @@ import {
 } from '../protocol.js';
 import { INHERIT_MODEL, type TurnOptions, type TurnResult } from '../turn.js';
 import { DroidProtocolError } from './errors.js';
-import {
-  createFoundryMcpServer,
-  FOUNDRY_TOOL_IDS,
-  type FoundryMcpContext,
-} from './mcp-tools.js';
+import { createFoundryMcpServer, FOUNDRY_TOOL_IDS, type FoundryMcpContext } from './mcp-tools.js';
 import {
   toAskUserAsk,
   toAskUserResult,
   toPermissionAsk,
   toPermissionHandlerResult,
 } from './policy-adapters.js';
-import type {
-  SessionTool,
-  TransportSession,
-  TransportSessionOptions,
-} from './transport.js';
+import type { SessionTool, TransportSession, TransportSessionOptions } from './transport.js';
 import { TurnCollector } from './turn-collector.js';
 
 /**
@@ -117,9 +109,7 @@ export interface DaemonSessionsFacade {
     permissionHandler: (
       params: RequestPermissionRequestParams,
     ) => Promise<RequestPermissionHandlerResult> | RequestPermissionHandlerResult;
-    askUserHandler: (
-      params: AskUserRequestParams,
-    ) => Promise<AskUserResult> | AskUserResult;
+    askUserHandler: (params: AskUserRequestParams) => Promise<AskUserResult> | AskUserResult;
     mcpServers?: DaemonMcpServerConfig[];
   }): Promise<DaemonHandle>;
   resume(
@@ -128,9 +118,7 @@ export interface DaemonSessionsFacade {
       permissionHandler?: (
         params: RequestPermissionRequestParams,
       ) => Promise<RequestPermissionHandlerResult> | RequestPermissionHandlerResult;
-      askUserHandler?: (
-        params: AskUserRequestParams,
-      ) => Promise<AskUserResult> | AskUserResult;
+      askUserHandler?: (params: AskUserRequestParams) => Promise<AskUserResult> | AskUserResult;
       mcpServers?: DaemonMcpServerConfig[];
     },
   ): Promise<DaemonHandle>;
@@ -613,7 +601,9 @@ export class DaemonSession implements TransportSession {
     if (!allow?.length && !explicit.length) return;
 
     const allowed = new Set([...(allow ?? []), ...FOUNDRY_TOOL_IDS]);
-    const listed = this.opts.sessions.listTools ? await this.opts.sessions.listTools(handle.id) : [];
+    const listed = this.opts.sessions.listTools
+      ? await this.opts.sessions.listTools(handle.id)
+      : [];
     // Without a tool list the complement cannot be computed; only apply
     // explicit disables rather than accidentally disabling nothing under a
     // restricted roster.
