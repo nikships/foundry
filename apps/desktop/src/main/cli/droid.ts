@@ -11,7 +11,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { ModelInfo, ToolInfo } from '@shared/types.js';
 import { AUTONOMY_LEVEL, type DroidNotification, type TokenUsage } from '../droid/protocol.js';
-import { loadDroidCatalog, loadDroidTools } from '../droid/catalog.js';
+import { droidTools, loadDroidCatalog } from '../droid/catalog.js';
 import { lastJsonObject, type CliAdapter, type ParsedTurn, type ProcessOutput } from './types.js';
 
 interface DroidResult {
@@ -181,5 +181,8 @@ export const droidAdapter: CliAdapter = {
   },
 
   models: (binPath: string): Promise<ModelInfo[]> => loadDroidCatalog(binPath),
-  tools: (binPath: string, model?: string): Promise<ToolInfo[]> => loadDroidTools(binPath, model),
+  // Tools are whatever the last live session reported. Enumerating them used to
+  // cost a `droid exec --list-tools` child per request, for a list only a
+  // session can answer for correctly anyway.
+  tools: (): Promise<ToolInfo[]> => droidTools(),
 };

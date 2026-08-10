@@ -5,7 +5,9 @@
  * phase.
  *
  * Sources, cheapest first: `droid exec --help`, a session's `availableModels`,
- * and `~/.factory/settings.json` customModels for BYOK badges.
+ * and `~/.factory/settings.json` customModels for BYOK badges. Tools are the
+ * one thing only a session can answer for, so the last session's list is kept
+ * here rather than re-derived by a child process.
  *
  * Only droid publishes a table this rich. Every other vendor answers through its
  * own adapter in `cli/`, which is why the exported names here say droid: the
@@ -48,8 +50,13 @@ export interface CustomModelEntry {
   defaultReasoningEffort?: string;
 }
 
-let cache: { models: ModelInfo[]; at: number } | null = null;
+/** The two layers that cost a subprocess or a disk read, never the session one. */
+let cache: { help: ModelInfo[]; custom: CustomModelEntry[]; at: number } | null = null;
 const CACHE_MS = 60_000;
+
+/** What the last session that started said droid can reach, if any has. */
+let sessionModels: AvailableModel[] = [];
+let sessionTools: ToolInfo[] = [];
 
 const EFFORT_RE =
   /^\s+-\s+(.+?):\s+supports reasoning:\s+(Yes|No);\s+supported:\s+\[(.*?)\];\s+default:\s+(\S+)/;
@@ -57,6 +64,37 @@ const MODEL_LINE_RE = /^\s{2,}(\S+)\s{2,}(.+?)\s*$/;
 
 export function invalidateCatalog(): void {
   cache = null;
+  // A different droid path is a different install: its session's models and
+  // tools describe the old binary, so they are dropped with the scrape.
+  sessionModels = [];
+  sessionTools = [];
+}
+
+/**
+ * droid's own model list for a live session, which is richer than the `--help`
+ * table (deprecation, per-model efforts) and is the only place a model the org
+ * enabled after this install shows up.
+ */
+export function noteSessionModels(models: AvailableModel[]): void {
+  if (models.length) sessionModels = models;
+}
+
+/**
+ * The tool set a live session reports. Only a session knows it — `ToolInfo.id`
+ * is the llmId a roster's allowlist names — so this replaces the discovery
+ * child `droid exec --list-tools` used to spawn.
+ */
+export function noteSessionTools(tools: ToolInfo[]): void {
+  if (tools.length) sessionTools = tools;
+}
+
+/**
+ * The last session's tool set, or an empty list before any session has run.
+ * Cold start is the normal case for a fresh app: nothing to enumerate is the
+ * honest answer, and it costs no child process to give.
+ */
+export function droidTools(): Promise<ToolInfo[]> {
+  return Promise.resolve(sessionTools.map((tool) => ({ ...tool })));
 }
 
 /** A CLI's own version string, or null when the binary is not runnable. */
@@ -232,35 +270,20 @@ export function mergeCustomModels(base: ModelInfo[], custom: CustomModelEntry[])
   return [...byId.values()];
 }
 
+/**
+ * The picker's list. Three layers, cheapest first and each allowed to correct
+ * the one under it: the session-free `--help` scrape, then whatever a live
+ * session has since reported, then settings.json — which stays on top because
+ * it is the only source of a custom model's reasoning efforts.
+ *
+ * Only the two subprocess/disk layers are cached; a session that starts after a
+ * refresh must still reach the next reader.
+ */
 export async function loadDroidCatalog(droidPath: string, force = false): Promise<ModelInfo[]> {
-  if (!force && cache && Date.now() - cache.at < CACHE_MS) return cache.models;
-
-  const models = mergeCustomModels(await modelsFromHelp(droidPath), await customModels());
-  cache = { models, at: Date.now() };
-  return models;
-}
-
-export async function loadDroidTools(droidPath: string, model?: string): Promise<ToolInfo[]> {
-  const args = ['exec', '--list-tools', '--output-format', 'json'];
-  if (model) args.push('-m', model);
-  try {
-    const { stdout } = await exec(droidPath, args, {
-      timeout: 60_000,
-      maxBuffer: 8 * 1024 * 1024,
-    });
-    const parsed = JSON.parse(stdout) as { tools?: ToolInfo[] } | ToolInfo[];
-    const tools = Array.isArray(parsed) ? parsed : (parsed.tools ?? []);
-    return tools.map(({ id, llmId, displayName, description, category, defaultAllowed }) => ({
-      id,
-      llmId,
-      displayName,
-      description,
-      category,
-      defaultAllowed,
-    }));
-  } catch {
-    return [];
+  if (force || !cache || Date.now() - cache.at >= CACHE_MS) {
+    cache = { help: await modelsFromHelp(droidPath), custom: await customModels(), at: Date.now() };
   }
+  return mergeCustomModels(mergeSessionModels(cache.help, sessionModels), cache.custom);
 }
 
 export function isKnownModel(models: ModelInfo[], id: string): boolean {

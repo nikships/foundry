@@ -16,6 +16,7 @@ import {
   type TurnResult,
 } from './turn.js';
 import { OneShotClient } from './oneshot.js';
+import { noteSessionModels, noteSessionTools } from './catalog.js';
 import { EventFolder, toUsageBreakdown } from './events.js';
 import { evaluate, type PolicyContext } from './permissions.js';
 import { SdkSession } from './sdk/session.js';
@@ -175,11 +176,39 @@ export class AgentSession {
       });
     }
     this.persistSession();
+    await this.publishDiscovery(client);
     // A kill that landed while this child was still handshaking never saw it:
     // `kill()` only reaches the sessions that existed when it ran.
     if (this.killed) {
       await this.close();
       throw new RunKilledError();
+    }
+  }
+
+  /**
+   * A live session is the only thing that can enumerate droid's tools and the
+   * only model list that reflects what the org enables today, so the catalog
+   * the roster picker reads is refreshed from it. Discovery is a view: a
+   * session that will not answer costs the run nothing.
+   */
+  private async publishDiscovery(client: SdkSession): Promise<void> {
+    noteSessionModels(client.availableModels);
+    try {
+      const tools = await client.listTools();
+      noteSessionTools(
+        tools.map(({ id, displayName, description, category, defaultAllowed }) => ({
+          id,
+          // The SDK reports one id, the llmId, which is the name a roster's
+          // allowlist uses; the CLI's internal id is not exposed and not needed.
+          llmId: id,
+          displayName,
+          description,
+          category,
+          defaultAllowed,
+        })),
+      );
+    } catch {
+      // The last known list stays; a refreshed catalog is not worth a failed run.
     }
   }
 

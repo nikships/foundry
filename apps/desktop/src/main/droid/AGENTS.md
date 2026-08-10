@@ -176,6 +176,24 @@ else", merged with any explicitly disabled tools. Three things this depends on:
   rather than immediate — a synchronous one reads a list the tool is not in yet
   and it stays allowed.
 
+## Discovery is session-first (`catalog.ts`)
+
+Three layers, cheapest first, each allowed to correct the one under it: the
+`droid exec --help` scrape, then whatever a live session reported, then
+`settings.json` on top (the only source of a custom model's reasoning efforts).
+Only the first two cost a subprocess or a disk read, so only they are cached —
+a session that starts after a refresh still reaches the next reader.
+
+Tools have **no session-free source at all**. `droid exec --list-tools` is gone:
+a session's `listTools()` is both cheaper (no child) and more accurate (it
+reports what actually applied, complement included — see the allowlist section),
+so `AgentSession` publishes its models and tool set to the catalog right after a
+session starts and `droidAdapter.tools` reads the last one. Cold start therefore
+answers `[]` — the honest answer for a question only a session can answer, and
+`catalog:tools` resolving to an empty array is not an error state. Changing the
+droid path invalidates the session layer with the scrape: a different install's
+tools are not this one's.
+
 ## Zero-interrupt policy (`permissions.ts`)
 
 Runs never stop for a person. `evaluate()` ALWAYS returns a decision — there is
