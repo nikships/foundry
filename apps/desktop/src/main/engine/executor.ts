@@ -345,11 +345,12 @@ export class Executor {
    * compaction that fails is not an error the run answers for: the next turn
    * hits the same context wall it would have hit without this.
    */
-  private async compactFullSessions(): Promise<void> {
+  private async compactFullSessions(threshold = this.deps.compactionThreshold): Promise<void> {
+    const effective = threshold ?? 0.8;
     for (const session of this.sessions.values()) {
       const stats = await session.contextStats();
       if (!stats?.limit) continue;
-      if (stats.used / stats.limit < this.deps.compactionThreshold) continue;
+      if (stats.used / stats.limit < effective) continue;
       await session.compact(stats);
     }
   }

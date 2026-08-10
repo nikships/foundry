@@ -631,6 +631,8 @@ export class DaemonSession implements TransportSession {
     if (!this.opts.restrictTools?.length || this.toolRefresh) return;
     const timer = setTimeout(() => {
       this.toolRefresh = null;
+      // Background reconciliation: same justification as SdkSession — swallow to
+      // avoid unhandled rejection; correctness checked via listTools re-read.
       void this.applyToolPolicy().catch(() => undefined);
     }, this.toolRefreshDelay);
     timer.unref?.();

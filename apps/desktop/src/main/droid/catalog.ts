@@ -30,7 +30,11 @@ const execFileAsync = promisify(execFile);
  * Every child this module has spawned. Tools refresh must leave it empty — the
  * argv shim alone only sees spawns of the configured droid path, and a
  * regression that shells out to a hard-coded binary would slip past that.
+ *
+ * Capped so production does not retain an unbounded argv history for the
+ * lifetime of the app; tests drain via takeDiscoverySpawns before it grows.
  */
+const DISCOVERY_SPAWN_CAP = 200;
 let discoverySpawns: { file: string; args: string[] }[] = [];
 
 /** Drain the spawn log. Tests assert a tools refresh leaves it empty. */
@@ -51,6 +55,7 @@ const exec = (
   options: { timeout?: number; maxBuffer?: number } = {},
 ): Promise<{ stdout: string; stderr: string }> => {
   discoverySpawns.push({ file, args: [...args] });
+  if (discoverySpawns.length > DISCOVERY_SPAWN_CAP) discoverySpawns.shift();
   return execFileAsync(file, args, { ...options, encoding: 'utf8', env: spawnEnv() });
 };
 
@@ -67,7 +72,8 @@ export interface CustomModelEntry {
 }
 
 /** The two layers that cost a subprocess or a disk read, never the session one. */
-let cache: { help: ModelInfo[]; custom: CustomModelEntry[]; at: number } | null = null;
+let cache: { help: ModelInfo[]; custom: CustomModelEntry[]; at: number; droidPath: string } | null =
+  null;
 const CACHE_MS = 60_000;
 
 /** What the last session that started said droid can reach, if any has. */
@@ -90,6 +96,11 @@ export function invalidateCatalog(): void {
  * droid's own model list for a live session, which is richer than the `--help`
  * table (deprecation, per-model efforts) and is the only place a model the org
  * enabled after this install shows up.
+ *
+ * An empty list means the session did not answer (or the transport could not
+ * report models); the last known non-empty list is kept rather than clearing
+ * the picker to blank mid-run. If clearing were intended, call
+ * invalidateCatalog() explicitly.
  */
 export function noteSessionModels(models: AvailableModel[]): void {
   if (models.length) sessionModels = models;
@@ -99,6 +110,9 @@ export function noteSessionModels(models: AvailableModel[]): void {
  * The tool set a live session reports. Only a session knows it — `ToolInfo.id`
  * is the llmId a roster's allowlist names — so this replaces the discovery
  * child `droid exec --list-tools` used to spawn.
+ *
+ * Same empty-list semantics as noteSessionModels: keep the last known list
+ * when a session reports zero tools rather than clearing droidTools() to [].
  */
 export function noteSessionTools(tools: ToolInfo[]): void {
   if (tools.length) sessionTools = tools;
@@ -296,8 +310,18 @@ export function mergeCustomModels(base: ModelInfo[], custom: CustomModelEntry[])
  * refresh must still reach the next reader.
  */
 export async function loadDroidCatalog(droidPath: string, force = false): Promise<ModelInfo[]> {
-  if (force || !cache || Date.now() - cache.at >= CACHE_MS) {
-    cache = { help: await modelsFromHelp(droidPath), custom: await customModels(), at: Date.now() };
+  if (
+    force ||
+    !cache ||
+    cache.droidPath !== droidPath ||
+    Date.now() - cache.at >= CACHE_MS
+  ) {
+    cache = {
+      help: await modelsFromHelp(droidPath),
+      custom: await customModels(),
+      at: Date.now(),
+      droidPath,
+    };
   }
   return mergeCustomModels(mergeSessionModels(cache.help, sessionModels), cache.custom);
 }

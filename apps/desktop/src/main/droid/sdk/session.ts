@@ -615,6 +615,10 @@ export class SdkSession implements TransportSession {
     if (!this.opts.restrictTools?.length || this.toolRefresh) return;
     const timer = setTimeout(() => {
       this.toolRefresh = null;
+      // Background reconciliation: failure is not surfaced to the turn — the
+      // next settings_updated / a subsequent timer still retries. Swallowing
+      // here avoids an unhandled rejection; the policy's correctness is still
+      // asserted via listTools re-read in tests.
       void this.applyToolPolicy().catch(() => undefined);
     }, this.toolRefreshDelay);
     timer.unref?.();
