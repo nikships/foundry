@@ -107,8 +107,11 @@ function AppInner(): React.JSX.Element {
 
   const addProject = useCallback(async (): Promise<void> => {
     const added = await api.projects.add();
-    if (added) await refreshAll();
-  }, [refreshAll]);
+    if (added) {
+      await refreshAll();
+      selectProject(added.id);
+    }
+  }, [refreshAll, selectProject]);
 
   const newProject = useCallback((): void => setCreatingProject(true), []);
 

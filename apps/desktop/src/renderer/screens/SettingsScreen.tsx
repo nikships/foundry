@@ -131,7 +131,7 @@ export default function SettingsScreen({
   /** Create a repository on GitHub instead of pointing at an existing checkout. */
   onNewProject?: () => void;
 }): React.JSX.Element {
-  const { settings, project, projects, refreshAll, patchSettings } = useApp();
+  const { settings, project, projects, refreshAll, patchSettings, selectProject } = useApp();
   const [pane, setPane] = useState<Pane>((initialPane as Pane) ?? 'general');
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [clis, setClis] = useState<CliDescriptor[]>([]);
@@ -296,8 +296,9 @@ export default function SettingsScreen({
   };
   const addProject = async (): Promise<void> => {
     await runAppAction(async () => {
-      await api.projects.add();
+      const added = await api.projects.add();
       await refreshAll();
+      if (added) selectProject(added.id);
     });
   };
   const refreshModels = async (): Promise<void> => {

@@ -23,11 +23,53 @@
   text-transform: uppercase;
   letter-spacing: var(--eyebrow-tracking);
 }
-.path {
-  font-size: var(--text-xs);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.split-option-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 2px;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+.split-option-half {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 var(--s2);
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  user-select: none;
+  transition:
+    background var(--fast) var(--ease),
+    color var(--fast) var(--ease);
+}
+.split-option-half:hover,
+.split-option-half-active {
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-raised));
+  color: var(--text);
+}
+.split-option-half.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.split-divider {
+  width: 1px;
+  height: 14px;
+  background: var(--line);
+  flex: none;
+  margin: 0 2px;
+}
+.split-icon {
+  flex: none;
+  color: var(--accent);
 }
 .sidebar nav {
   display: flex;

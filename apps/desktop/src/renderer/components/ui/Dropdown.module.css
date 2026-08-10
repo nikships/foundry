@@ -129,6 +129,19 @@
   margin-top: 2px;
 }
 
+.customOption {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  border-radius: var(--r-sm);
+}
+
+.divider {
+  height: 1px;
+  margin: var(--s1) 0;
+  background: var(--line);
+}
+
 .empty {
   padding: var(--s3);
   font-size: var(--text-xs);

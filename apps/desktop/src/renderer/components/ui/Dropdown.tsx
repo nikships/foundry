@@ -23,6 +23,10 @@ export interface DropdownOption {
   /** Options that share a group label render under a section header. */
   group?: string;
   disabled?: boolean;
+  /** Custom render function for option content inside the dropdown menu. */
+  render?: (option: DropdownOption, helpers: { close: () => void }) => ReactNode;
+  /** Render a divider line after this option in the menu. */
+  divider?: boolean;
 }
 
 export interface DropdownProps {
@@ -314,15 +318,25 @@ export function Dropdown({
                     data-index={index}
                     aria-selected={isSelected}
                     aria-disabled={option.disabled || undefined}
-                    className={[
-                      styles.option,
-                      isSelected ? styles.selected : '',
-                      isActive ? styles.active : '',
-                      option.disabled ? styles.disabled : '',
-                      option.description ? styles.rich : '',
-                    ]
-                      .filter(Boolean)
-                      .join(' ')}
+                    className={
+                      option.render
+                        ? [
+                            styles.customOption,
+                            isActive ? styles.active : '',
+                            option.disabled ? styles.disabled : '',
+                          ]
+                            .filter(Boolean)
+                            .join(' ')
+                        : [
+                            styles.option,
+                            isSelected ? styles.selected : '',
+                            isActive ? styles.active : '',
+                            option.disabled ? styles.disabled : '',
+                            option.description ? styles.rich : '',
+                          ]
+                            .filter(Boolean)
+                            .join(' ')
+                    }
                     onMouseEnter={() => {
                       if (!option.disabled) setActiveIndex(index);
                     }}
@@ -330,29 +344,38 @@ export function Dropdown({
                       // Prevent the trigger from stealing focus before click fires.
                       e.preventDefault();
                     }}
-                    onClick={() => pick(option)}
+                    onClick={() => {
+                      if (!option.render) pick(option);
+                    }}
                   >
-                    {option.icon && <span className={styles.icon}>{option.icon}</span>}
-                    <span className={styles.body}>
-                      <span className={styles.label}>{option.label}</span>
-                      {option.description != null && option.description !== '' && (
-                        <span className={styles.description}>{option.description}</span>
-                      )}
-                    </span>
-                    {isSelected && (
-                      <span className={styles.check} aria-hidden>
-                        <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
-                          <path
-                            d="M2.5 7.2 5.6 10.2 11.5 3.8"
-                            stroke="currentColor"
-                            strokeWidth="1.6"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      </span>
+                    {option.render ? (
+                      option.render(option, { close })
+                    ) : (
+                      <>
+                        {option.icon && <span className={styles.icon}>{option.icon}</span>}
+                        <span className={styles.body}>
+                          <span className={styles.label}>{option.label}</span>
+                          {option.description != null && option.description !== '' && (
+                            <span className={styles.description}>{option.description}</span>
+                          )}
+                        </span>
+                        {isSelected && (
+                          <span className={styles.check} aria-hidden>
+                            <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+                              <path
+                                d="M2.5 7.2 5.6 10.2 11.5 3.8"
+                                stroke="currentColor"
+                                strokeWidth="1.6"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          </span>
+                        )}
+                      </>
                     )}
                   </div>
+                  {option.divider && <div className={styles.divider} />}
                 </div>
               );
             })}
