@@ -36,6 +36,8 @@ export const appSettingsSchema = z.object({
   envelopeRetries: z.number().int().min(0).max(5),
   gateRetries: z.number().int().min(0).max(5),
   compactionThreshold: z.number().min(COMPACTION_BAND[0]).max(COMPACTION_BAND[1]),
+  /** 0 disables; the useful range stops well before a phase's retry budgets. */
+  rewindAfterCorrections: z.number().int().min(0).max(20),
   notifications: z.object({
     accepted: z.boolean(),
     rejected: z.boolean(),
@@ -73,6 +75,7 @@ export function defaultSettings(): AppSettings {
     envelopeRetries: 3,
     gateRetries: 2,
     compactionThreshold: 0.8,
+    rewindAfterCorrections: 2,
     notifications: { accepted: true, rejected: true, failed: true, needsInput: true },
     dockBadge: true,
     appearance: 'system',
@@ -120,6 +123,11 @@ export function migrate(raw: unknown): AppSettings {
     merged.compactionThreshold,
     base.compactionThreshold,
     COMPACTION_BAND,
+  );
+  // Same read-time clamp as the threshold: a hand-edited negative must not
+  // disable validation by leaving the app with no integer at all.
+  merged.rewindAfterCorrections = Math.round(
+    clamp(merged.rewindAfterCorrections, base.rewindAfterCorrections, [0, 20]),
   );
   return merged;
 }

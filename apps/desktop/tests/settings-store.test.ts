@@ -110,3 +110,41 @@ describe('the compaction threshold', () => {
     ).toBe(0.8);
   });
 });
+
+describe('rewindAfterCorrections', () => {
+  it('defaults to 2 on a fresh install', () => {
+    expect(defaultSettings().rewindAfterCorrections).toBe(2);
+  });
+
+  it('reads 2 for a settings file written before the field existed', () => {
+    const stored = { ...defaultSettings() } as Record<string, unknown>;
+    delete stored.rewindAfterCorrections;
+    expect(migrate(stored).rewindAfterCorrections).toBe(2);
+    expect(seed(stored).get().rewindAfterCorrections).toBe(2);
+  });
+
+  it('accepts 0 (disabled) and other non-negative integers', () => {
+    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
+    expect(store.patch({ rewindAfterCorrections: 0 })).toMatchObject({ ok: true });
+    expect(store.get().rewindAfterCorrections).toBe(0);
+    expect(store.patch({ rewindAfterCorrections: 5 })).toMatchObject({ ok: true });
+    expect(store.get().rewindAfterCorrections).toBe(5);
+  });
+
+  it('refuses a negative or non-integer value rather than storing it', () => {
+    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
+    for (const value of [-1, 1.5, 21]) {
+      expect(store.patch({ rewindAfterCorrections: value }).ok).toBe(false);
+    }
+    expect(store.get().rewindAfterCorrections).toBe(2);
+  });
+
+  it('clamps a stored out-of-range value into the accepted band', () => {
+    expect(migrate({ ...defaultSettings(), rewindAfterCorrections: -3 }).rewindAfterCorrections).toBe(
+      0,
+    );
+    expect(migrate({ ...defaultSettings(), rewindAfterCorrections: 99 }).rewindAfterCorrections).toBe(
+      20,
+    );
+  });
+});

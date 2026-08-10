@@ -90,6 +90,17 @@ class ScriptedTransport implements StringFramedDroidClientTransport {
   removedOnCompact = 9;
   /** Compaction the CLI refuses, which must cost the run nothing. */
   compactFails = false;
+  /** The successor `rewind` mints; the source handle is retired for it. */
+  rewindTo = 'fake-session-rw';
+  restoredOnRewind = 1;
+  deletedOnRewind = 0;
+  /** Rewind the CLI refuses, which must cost the run nothing. */
+  rewindFails = false;
+  /** Files get_rewind_info advertises. */
+  rewindAvailableFiles: { filePath: string; contentHash: string; size: number }[] = [
+    { filePath: 'watched.txt', contentHash: 'abc', size: 12 },
+  ];
+  rewindCreatedFiles: { filePath: string }[] = [];
   settings: Record<string, unknown> = {
     modelId: 'gpt-fake-default',
     reasoningEffort: 'high',
@@ -271,8 +282,20 @@ class ScriptedTransport implements StringFramedDroidClientTransport {
       case 'droid.add_user_message': {
         this.turns++;
         this.reply(id, {});
+        const turnId = String(params.messageId);
+        // User create_message is how SdkSession records the rewind anchor.
+        this.notify({
+          type: 'create_message',
+          message: {
+            id: turnId,
+            role: 'user',
+            content: [{ type: 'text', text: String(params.text ?? '') }],
+            createdAt: 1,
+            updatedAt: 1,
+          },
+        });
         const turn = {
-          turnId: String(params.messageId),
+          turnId,
           prompt: String(params.text ?? ''),
           transport: this,
         };
@@ -316,6 +339,32 @@ class ScriptedTransport implements StringFramedDroidClientTransport {
         // The successor is a different session id; the source handle is
         // retired the moment the SDK loads it.
         this.reply(id, { newSessionId: this.compactTo, removedCount: this.removedOnCompact });
+        return;
+      }
+      case 'droid.get_rewind_info': {
+        if (this.rewindFails) {
+          this.replyError(id, 'rewind info unavailable');
+          return;
+        }
+        this.reply(id, {
+          availableFiles: this.rewindAvailableFiles,
+          createdFiles: this.rewindCreatedFiles,
+          evictedFiles: [],
+        });
+        return;
+      }
+      case 'droid.execute_rewind': {
+        if (this.rewindFails) {
+          this.replyError(id, 'rewind refused');
+          return;
+        }
+        this.reply(id, {
+          newSessionId: this.rewindTo,
+          restoredCount: this.restoredOnRewind,
+          deletedCount: this.deletedOnRewind,
+          failedRestoreCount: 0,
+          failedDeleteCount: 0,
+        });
         return;
       }
       case 'droid.never_answered':
@@ -877,6 +926,93 @@ describe('compaction', () => {
     await sdk.start();
     await sdk.compact();
     expect(await sdk.contextStats()).toMatchObject({ used: 1234, limit: 100_000 });
+  });
+});
+
+describe('rewind', () => {
+  it('tracks the last user-message id from create_message notifications', async () => {
+    const { sdk, transport } = session();
+    await sdk.start();
+    expect(sdk.lastUserMessageId).toBeNull();
+    await sdk.send('first turn', 5_000);
+    const turnId = String(transport.paramsFor('droid.add_user_message')[0]!.messageId);
+    expect(sdk.lastUserMessageId).toBe(turnId);
+  });
+
+  it('swaps to the successor session and reports restore counts', async () => {
+    const { sdk, transport } = session();
+    await sdk.start();
+    await sdk.send('anchor', 5_000);
+    const messageId = sdk.lastUserMessageId!;
+    const info = await sdk.getRewindInfo(messageId);
+    expect(info?.availableFiles).toEqual([
+      { filePath: 'watched.txt', contentHash: 'abc', size: 12 },
+    ]);
+    expect(
+      await sdk.rewind({
+        messageId,
+        filesToRestore: info!.availableFiles,
+        filesToDelete: [],
+        forkTitle: 'foundry:builder:correction',
+      }),
+    ).toEqual({
+      restoredCount: 1,
+      deletedCount: 0,
+      failedRestoreCount: 0,
+      failedDeleteCount: 0,
+    });
+    expect(sdk.id).toBe('fake-session-rw');
+    expect(sdk.alive).toBe(true);
+    expect(transport.framesFor('droid.execute_rewind')).toHaveLength(1);
+    expect(transport.paramsFor('droid.execute_rewind')[0]).toMatchObject({
+      messageId,
+      forkTitle: 'foundry:builder:correction',
+    });
+  });
+
+  it('sends the next turn on the successor after a rewind', async () => {
+    const { sdk, transport } = session();
+    await sdk.start();
+    await sdk.send('anchor', 5_000);
+    await sdk.rewind({
+      messageId: sdk.lastUserMessageId!,
+      filesToRestore: [],
+      filesToDelete: [],
+      forkTitle: 'foundry:test',
+    });
+    const result = await sdk.send('after rewind', 5_000);
+    expect(result.text).toBe('{"status":"success"}');
+    expect(transport.paramsFor('droid.add_user_message')).toHaveLength(2);
+  });
+
+  it('raises a refused rewind and leaves the session usable', async () => {
+    const { sdk, transport } = session();
+    await sdk.start();
+    await sdk.send('anchor', 5_000);
+    transport.rewindFails = true;
+    await expect(
+      sdk.rewind({
+        messageId: sdk.lastUserMessageId!,
+        filesToRestore: [],
+        filesToDelete: [],
+        forkTitle: 'foundry:test',
+      }),
+    ).rejects.toThrow(/rewind/);
+    expect(sdk.id).toBe('fake-session-1');
+    expect(sdk.alive).toBe(true);
+  });
+
+  it('returns null rather than throwing when there is no session to rewind', async () => {
+    const { sdk } = session();
+    expect(await sdk.getRewindInfo('m1')).toBeNull();
+    expect(
+      await sdk.rewind({
+        messageId: 'm1',
+        filesToRestore: [],
+        filesToDelete: [],
+        forkTitle: 'x',
+      }),
+    ).toBeNull();
   });
 });
 

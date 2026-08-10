@@ -136,6 +136,7 @@ async function main(): Promise<void> {
     envelopeRetries: 2,
     gateRetries: 1,
     compactionThreshold: settings.compactionThreshold,
+    rewindAfterCorrections: settings.rewindAfterCorrections,
     agents,
     envelopeDefs: [],
     project,

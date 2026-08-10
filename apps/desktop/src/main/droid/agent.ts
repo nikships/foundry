@@ -9,6 +9,7 @@
 import type { AgentDef, CliVendor, ContextBreakdown, UsageBreakdown } from '@shared/types.js';
 import type { Tracer } from '../trace/tracer.js';
 import type { Envelope } from '../engine/envelopes.js';
+import type { Snapshot } from '../engine/boundary.js';
 import { adapterFor } from '../cli/index.js';
 import {
   type PermissionAsk,
@@ -103,6 +104,24 @@ function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+/**
+ * Snapshot paths are worktree-relative; the CLI may report the same file as a
+ * cwd-relative or absolute path. Compare after stripping a worktree prefix.
+ */
+function sameWorktreePath(snapshotPath: string, rewindPath: string, worktree: string): boolean {
+  const left = stripWorktreePrefix(snapshotPath, worktree);
+  const right = stripWorktreePrefix(rewindPath, worktree);
+  return left === right;
+}
+
+function stripWorktreePrefix(path: string, worktree: string): string {
+  const normalised = path.replace(/\\/g, '/').replace(/^\.\//, '');
+  const root = worktree.replace(/\\/g, '/').replace(/\/$/, '');
+  if (normalised === root) return '';
+  if (normalised.startsWith(`${root}/`)) return normalised.slice(root.length + 1);
+  return normalised;
+}
+
 export class AgentSession {
   private rpc: SdkSession | null = null;
   private oneshot: OneShotClient | null = null;
@@ -137,6 +156,20 @@ export class AgentSession {
 
   get sessionId(): string | null {
     return this.droidSessionId;
+  }
+
+  /**
+   * Last user-message id on the live SDK session. One-shot has no message id
+   * stream, so this is always null outside RPC.
+   */
+  get lastUserMessageId(): string | null {
+    if (this.mode !== 'rpc' || !this.rpc) return null;
+    return this.rpc.lastUserMessageId;
+  }
+
+  /** Rewind needs a live SDK session; one-shot never qualifies. */
+  get canRewind(): boolean {
+    return this.mode === 'rpc' && !!this.rpc?.alive;
   }
 
   /** Started lazily: an agent that never runs a phase never spawns a child. */
@@ -588,6 +621,53 @@ export class AgentSession {
       return outcome;
     } catch (e) {
       this.agentLog('log', 'compaction failed', { message: errorMessage(e) });
+      return null;
+    }
+  }
+
+  /**
+   * Rewind the live SDK session to `messageId`, restoring the phase-start files
+   * the snapshot still knows about, and continue on the successor. Same
+   * swap-and-persist mechanics as compaction.
+   *
+   * Returns null when rewind is impossible (one-shot / no session / no
+   * messageId) or when the CLI refuses — the caller then falls back to an
+   * append-style correction. A failure here must never fail the phase.
+   */
+  async rewind(input: {
+    messageId: string;
+    snapshot: Snapshot;
+  }): Promise<{
+    restoredCount: number;
+    deletedCount: number;
+    failedRestoreCount: number;
+    failedDeleteCount: number;
+  } | null> {
+    if (!this.canRewind || !this.rpc) return null;
+    const messageId = input.messageId.trim();
+    if (!messageId) return null;
+    try {
+      const info = await this.rpc.getRewindInfo(messageId);
+      if (!info) return null;
+      // Match on path only: the CLI's contentHash/size are what rewind accepts.
+      const filesToRestore = info.availableFiles.filter((file) =>
+        input.snapshot.files.some((snap) => sameWorktreePath(snap.path, file.filePath, this.deps.worktree)),
+      );
+      const filesToDelete = info.createdFiles.map((file) => ({
+        filePath: file.filePath,
+      }));
+      const outcome = await this.rpc.rewind({
+        messageId,
+        filesToRestore,
+        filesToDelete,
+        forkTitle: `foundry:${this.agent.name}:correction`,
+      });
+      if (!outcome) return null;
+      this.droidSessionId = this.rpc.id;
+      this.persistSession();
+      return outcome;
+    } catch (e) {
+      this.agentLog('log', 'rewind failed', { message: errorMessage(e) });
       return null;
     }
   }

@@ -37,6 +37,18 @@ inside one phase and never decide if they succeeded.
   file that still exists (no tree walk). Agent-phase correction events carry a
   per-phase running `correctionIndex` shared across envelope/boundary/gate so
   traces can answer attempt-index-vs-success; existing `attempt` stays.
+- **Rewind on the Nth correction (SDK transport only).**
+  `AppSettings.rewindAfterCorrections` (default 2, `0` = off) is engine-owned.
+  When a phase's Nth correction is about to be sent on an RPC session: capture
+  the phase's first user-message id (SdkSession tracks last user `create_message`
+  id) → `getRewindInfo` → intersect `availableFiles` with the phase-start
+  snapshot → `rewind({messageId, filesToRestore, filesToDelete, forkTitle})` →
+  swap-and-persist the successor (same mechanics as compaction) → re-snapshot
+  the boundary baseline → send the retry on the successor. Failure falls back
+  to today's append-style correction; budgets are unchanged (rewind consumes a
+  correction attempt, never extends). One-shot never attempts rewind. The
+  correction event carries `payload.rewind: true` plus restored/deleted counts
+  — no new EventType.
 - **Compaction happens between phases, never inside one.** The loop compacts
   every session past `compactionThreshold` before it starts the next phase: the
   SDK refuses a replacement with a stream open, and the successor session has to

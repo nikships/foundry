@@ -105,17 +105,26 @@ read after the fact, so `agent.ts` writes the last one each turn produced to
 live read and falls back to that snapshot; without it a finished run answers
 every operator the same way, with an empty panel.
 
-### Compaction retires the handle it was called on
+### Compaction and rewind retire the handle they were called on
 
-`compact()` does not shrink a session in place — it returns a **new**
-`DroidSession` and retires the old one (any later frame on it raises
-`SessionReplacedError`), so `SdkSession.compact()` swaps the handle, follows
-`id` to the successor, and re-subscribes: the SDK releases the retired handle's
-notification callbacks as the successor loads, so a missed re-subscribe leaves
-the trace silent for the rest of the run. The replacement is a `load_session`,
-which carries no settings, so `applySettings()` runs again for the same reason
-a resume re-states them. The SDK also refuses a replacement while a stream is
-open, which is why the engine only compacts between phases.
+`compact()` / `rewind()` do not mutate a session in place — each returns a
+**new** `DroidSession` and retires the old one (any later frame on it raises
+`SessionReplacedError`), so `SdkSession.compact()` / `rewind()` swap the
+handle, follow `id` to the successor, and re-subscribe: the SDK releases the
+retired handle's notification callbacks as the successor loads, so a missed
+re-subscribe leaves the trace silent for the rest of the run. The replacement
+is a `load_session`, which carries no settings, so `applySettings()` runs again
+for the same reason a resume re-states them. The SDK also refuses a replacement
+while a stream is open, which is why the engine only compacts between phases
+and only rewinds between correction turns.
+
+`SdkSession` tracks `lastUserMessageId` from user-role `create_message`
+notifications so the engine can name the phase-start rewind anchor.
+`AgentSession.rewind({messageId, snapshot})` intersects `getRewindInfo`'s
+`availableFiles` with the phase-start snapshot (CLI hashes go on the wire),
+deletes `createdFiles`, swap-and-persists like compaction, and returns null on
+any failure so the runner can fall back to append-style correction. One-shot
+`canRewind` is always false.
 
 Two more SDK behaviours the code works around: `--auto` is inert for a
 stream-jsonrpc session, and the SDK's stderr goes through a logger that strips

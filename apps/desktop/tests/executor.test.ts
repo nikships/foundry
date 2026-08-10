@@ -110,6 +110,12 @@ interface ScriptedDroidOptions {
    * `error_structured_output` subtype.
    */
   turnReasons?: (string | null)[];
+  /** Files get_rewind_info advertises and execute_rewind can restore (path → bytes). */
+  rewindFiles?: Record<string, string>;
+  /** Paths get_rewind_info lists as created after the rewind anchor. */
+  rewindCreatedFiles?: string[];
+  /** Rewind the CLI refuses, so the engine must fall back to append-style. */
+  rewindFails?: boolean;
 }
 
 /** Where `scriptedDroid` records the params of every turn the client sent. */
@@ -139,6 +145,19 @@ function wireLog(droidPath: string): string[] {
   return readFileSync(path, 'utf8')
     .split('\n')
     .filter((line) => line.trim());
+}
+
+/** Where the stub records on-disk file bytes at the start of each turn. */
+const CONTENT_AT_TURN_FILE = 'content-at-turn.jsonl';
+
+/** Per-turn snapshots of watched files, so a test can see pre-retry restores. */
+function contentAtTurns(droidPath: string): { turn: number; files: Record<string, string> }[] {
+  const path = join(dirname(droidPath), CONTENT_AT_TURN_FILE);
+  if (!existsSync(path)) return [];
+  return readFileSync(path, 'utf8')
+    .split('\n')
+    .filter((line) => line.trim())
+    .map((line) => JSON.parse(line) as { turn: number; files: Record<string, string> });
 }
 
 /** Marker the stub writes as soon as it is spawned, before any handshake. */
@@ -226,6 +245,10 @@ const CONTEXT_USED_COMPACTED = ${JSON.stringify(
     options.contextUsedAfterCompaction ?? Math.round((options.contextUsed ?? 1234) / 10),
   )};
 const COMPACT_FAILS = ${JSON.stringify(options.compactFails ?? false)};
+const REWIND_FILES = ${JSON.stringify(options.rewindFiles ?? {})};
+const REWIND_CREATED = ${JSON.stringify(options.rewindCreatedFiles ?? [])};
+const REWIND_FAILS = ${JSON.stringify(options.rewindFails ?? false)};
+const CONTENT_AT_TURN = ${JSON.stringify(join(dir, CONTENT_AT_TURN_FILE))};
 const EFFORTS = ['off', 'low', 'medium', 'high'];
 const MODELS = [{ id: 'scripted', displayName: 'Scripted', shortDisplayName: 'Scripted', modelProvider: 'anthropic', supportedReasoningEfforts: EFFORTS, defaultReasoningEffort: 'medium', isCustom: false }];
 const SETTINGS = { modelId: 'scripted', reasoningEffort: 'medium', autonomyLevel: 'high' };
@@ -233,11 +256,12 @@ const USAGE = { inputTokens: 100, outputTokens: 20, cacheCreationTokens: 0, cach
 // The SDK spawns with the stream-jsonrpc formats; the one-shot fallback does not.
 const RPC = process.argv.includes('stream-jsonrpc');
 const workdir = process.cwd();
+const { createHash } = require('node:crypto');
 
-const write = (path) => {
+const write = (path, contents) => {
   const target = isAbsolute(path) ? path : join(workdir, path);
   mkdirSync(dirname(target), { recursive: true });
-  writeFileSync(target, 'written by the scripted agent\\n');
+  writeFileSync(target, contents ?? 'written by the scripted agent\\n');
 };
 
 const takeTurn = () => {
@@ -249,6 +273,20 @@ const takeTurn = () => {
   return n;
 };
 const textFor = (n) => TURNS[Math.min(n, TURNS.length - 1)];
+const recordWatchedContent = (n) => {
+  const paths = Object.keys(REWIND_FILES);
+  if (!paths.length) return;
+  const files = {};
+  for (const rel of paths) {
+    const target = isAbsolute(rel) ? rel : join(workdir, rel);
+    try { files[rel] = readFileSync(target, 'utf8'); } catch { files[rel] = null; }
+  }
+  appendFileSync(CONTENT_AT_TURN, JSON.stringify({ turn: n, files }) + '\\n');
+};
+const availableRewindFiles = () => Object.entries(REWIND_FILES).map(([filePath, content]) => {
+  const buf = Buffer.from(content, 'utf8');
+  return { filePath, contentHash: createHash('sha256').update(buf).digest('hex'), size: buf.byteLength };
+});
 
 if (!RPC) {
   const n = takeTurn();
@@ -271,6 +309,7 @@ let buffer = '';
 let turnId = null;
 let sessionId = 's1';
 let compactions = 0;
+let rewinds = 0;
 
 /** Raises each ask in order, waiting for the answer, then finishes the turn. */
 const raiseAsks = (list, done) => {
@@ -305,6 +344,7 @@ const finish = (n) => {
 
 const runTurn = () => {
   const n = takeTurn();
+  recordWatchedContent(n);
   if (DIE_ON.includes(n)) { setTimeout(() => process.exit(9), 20); return; }
   if (STALL_ON.includes(n)) return;
   const effect = EFFECTS[n];
@@ -346,6 +386,60 @@ process.stdin.on('data', (chunk) => {
         // arrive on it, and load_session is how the SDK adopts it.
         out({ ...V, type: 'response', id, result: { newSessionId: 's' + (compactions + 1), removedCount: 7 } });
       }
+    } else if (method === 'droid.get_rewind_info') {
+      if (REWIND_FAILS) {
+        out({ ...V, type: 'response', id, error: { code: -32603, message: 'rewind info unavailable' } });
+      } else {
+        out({
+          ...V,
+          type: 'response',
+          id,
+          result: {
+            availableFiles: availableRewindFiles(),
+            createdFiles: REWIND_CREATED.map((filePath) => ({ filePath })),
+            evictedFiles: [],
+          },
+        });
+      }
+    } else if (method === 'droid.execute_rewind') {
+      if (REWIND_FAILS) {
+        out({ ...V, type: 'response', id, error: { code: -32603, message: 'rewind refused' } });
+      } else {
+        rewinds++;
+        const restore = Array.isArray(params.filesToRestore) ? params.filesToRestore : [];
+        let restoredCount = 0;
+        for (const file of restore) {
+          const rel = file && file.filePath;
+          if (rel && Object.prototype.hasOwnProperty.call(REWIND_FILES, rel)) {
+            write(rel, REWIND_FILES[rel]);
+            restoredCount++;
+          }
+        }
+        const del = Array.isArray(params.filesToDelete) ? params.filesToDelete : [];
+        let deletedCount = 0;
+        for (const file of del) {
+          const rel = file && file.filePath;
+          if (!rel) continue;
+          try {
+            const target = isAbsolute(rel) ? rel : join(workdir, rel);
+            require('node:fs').rmSync(target, { force: true });
+            deletedCount++;
+          } catch { /* best-effort */ }
+        }
+        // Successor id the source handle is retired for — same swap as compact.
+        out({
+          ...V,
+          type: 'response',
+          id,
+          result: {
+            newSessionId: 'rw' + rewinds,
+            restoredCount,
+            deletedCount,
+            failedRestoreCount: 0,
+            failedDeleteCount: 0,
+          },
+        });
+      }
     } else if (method === 'droid.update_session_settings') {
       notify({ type: 'settings_updated', requestId: id, settings: SETTINGS });
       out({ ...V, type: 'response', id, result: {} });
@@ -359,6 +453,17 @@ process.stdin.on('data', (chunk) => {
     } else if (method === 'droid.add_user_message') {
       turnId = params.messageId;
       wire('turn_started ' + params.messageId + ' session=' + sessionId);
+      // User create_message is how SdkSession learns the rewind anchor id.
+      notify({
+        type: 'create_message',
+        message: {
+          id: params.messageId,
+          role: 'user',
+          content: [{ type: 'text', text: String(params.text || '') }],
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      });
       // The params as they arrived: whether a turn carried an output schema is
       // only knowable from the wire, not from any observable side effect.
       appendFileSync(TURN_REQUESTS, JSON.stringify(params) + '\\n');
@@ -522,6 +627,7 @@ interface RunInput {
   envelopeRetries?: number;
   gateRetries?: number;
   compactionThreshold?: number;
+  rewindAfterCorrections?: number;
 }
 
 function run(input: RunInput): Promise<{ status: string; runId: string }> {
@@ -552,6 +658,7 @@ function start(input: RunInput): {
     envelopeRetries: input.envelopeRetries ?? 2,
     gateRetries: input.gateRetries ?? 2,
     compactionThreshold: input.compactionThreshold ?? 0.8,
+    rewindAfterCorrections: input.rewindAfterCorrections ?? 2,
     agents: input.agents ?? [buildAgent()],
     envelopeDefs: input.envelopeDefs ?? [],
     project: { ...h.project, ...input.project },
@@ -2400,5 +2507,189 @@ describe('the context breakdown an agent leaves behind', () => {
     const result = await registry().contextBreakdown(h.project, 'run_never_existed', 'builder');
     expect(result.breakdown).toBeNull();
     expect(result.reason).toBe('not_live');
+  });
+});
+
+/**
+ * Rewind correction loops (Phase 3b part 2). After N failed corrections the
+ * engine rewinds the SDK session (swap-and-persist like compaction) and
+ * restores phase-start files before the retry turn — without extending budgets.
+ */
+describe('rewind correction policy', () => {
+  const PHASE_START = 'phase-start content\n';
+  const seedThenBuild = (): PipelineDef =>
+    pipe(
+      [
+        codePhase(
+          'seed',
+          { argv: ['sh', '-c', 'printf "phase-start content\\n" > watched.txt'] },
+          { description: 'Leave a dirty file the agent phase will snapshot.' },
+        ),
+        agentPhase('build', {
+          description: 'Fail twice so the 2nd correction rewinds, then succeed.',
+        }),
+      ],
+      {
+        description: 'seed a dirty file, then an agent phase that rewinds',
+        acceptance: { kind: 'envelope_status', phase: 'build' },
+      },
+    );
+
+  function corrections(runId: string) {
+    return events(runId).filter((e) => e.type === 'correction');
+  }
+
+  it('rewinds on the 2nd correction, persists the successor, and retries on it', async () => {
+    const droid = scriptedDroid(
+      ['prose', 'still prose', buildEnvelope()],
+      ['watched.txt', 'watched.txt', null],
+      [],
+      { rewindFiles: { 'watched.txt': PHASE_START } },
+    );
+    const outcome = await run({
+      droidPath: droid,
+      envelopeRetries: 2,
+      pipeline: seedThenBuild(),
+    });
+    expect(outcome.status).toBe('accepted');
+
+    const wire = wireLog(droid);
+    expect(wire).toContain('droid.get_rewind_info');
+    expect(wire).toContain('droid.execute_rewind');
+    // getRewindInfo before execute_rewind, and the retry turn after the swap.
+    const infoAt = wire.indexOf('droid.get_rewind_info');
+    const rewindAt = wire.indexOf('droid.execute_rewind');
+    expect(infoAt).toBeGreaterThanOrEqual(0);
+    expect(rewindAt).toBeGreaterThan(infoAt);
+    const turns = wire.filter((line) => line.startsWith('turn_started'));
+    expect(turns).toHaveLength(3);
+    // First two attempts on s1; the post-rewind retry lands on the successor.
+    expect(turns[0]).toContain('session=s1');
+    expect(turns[1]).toContain('session=s1');
+    expect(turns[2]).toContain('session=rw1');
+    expect(h.tracer.agentSessions(outcome.runId)[0]!.droidSessionId).toBe('rw1');
+
+    const rewound = corrections(outcome.runId).filter((e) => e.payload.rewind === true);
+    expect(rewound).toHaveLength(1);
+    expect(rewound[0]!.payload.correctionIndex).toBe(2);
+    expect(rewound[0]!.payload.restoredCount).toBe(1);
+    expect(rewound[0]!.payload.deletedCount).toBe(0);
+    // No novel event type — architecture reuses correction.
+    expect(events(outcome.runId).map((e) => e.type)).not.toContain('rewind');
+  });
+
+  it('restores phase-start file bytes before the retry turn starts', async () => {
+    const droid = scriptedDroid(
+      ['prose', 'still prose', buildEnvelope()],
+      ['watched.txt', 'watched.txt', null],
+      [],
+      { rewindFiles: { 'watched.txt': PHASE_START } },
+    );
+    const outcome = await run({
+      droidPath: droid,
+      envelopeRetries: 2,
+      pipeline: seedThenBuild(),
+    });
+    expect(outcome.status).toBe('accepted');
+
+    const snapshots = contentAtTurns(droid);
+    // Turns 0 and 1 are the failed attempts; turn 2 is the post-rewind retry.
+    expect(snapshots.map((s) => s.turn)).toEqual([0, 1, 2]);
+    // After the agent corrupted the file, rewind put phase-start bytes back
+    // before the retry turn was composed.
+    expect(snapshots[2]!.files['watched.txt']).toBe(PHASE_START);
+    // And the intermediate attempts really did dirty it.
+    expect(snapshots[0]!.files['watched.txt']).toBe(PHASE_START);
+    expect(snapshots[1]!.files['watched.txt']).toBe('written by the scripted agent\n');
+  });
+
+  it('falls back to append-style correction when rewind fails', async () => {
+    const droid = scriptedDroid(['prose', 'still prose', buildEnvelope()], [], [], {
+      rewindFiles: { 'watched.txt': PHASE_START },
+      rewindFails: true,
+    });
+    const outcome = await run({
+      droidPath: droid,
+      envelopeRetries: 2,
+      pipeline: seedThenBuild(),
+    });
+    // A refused rewind must not fail the phase: the append-style retry still runs.
+    expect(outcome.status).toBe('accepted');
+    expect(wireLog(droid)).toContain('droid.get_rewind_info');
+    expect(wireLog(droid)).not.toContain('droid.execute_rewind');
+    // All three turns stayed on the original session.
+    const turns = wireLog(droid).filter((line) => line.startsWith('turn_started'));
+    expect(turns).toHaveLength(3);
+    for (const turn of turns) expect(turn).toContain('session=s1');
+    expect(h.tracer.agentSessions(outcome.runId)[0]!.droidSessionId).toBe('s1');
+    expect(corrections(outcome.runId).some((e) => e.payload.rewind === true)).toBe(false);
+    expect(
+      events(outcome.runId).some((e) => e.name === 'builder: rewind failed'),
+    ).toBe(true);
+  });
+
+  it('disables rewind entirely when rewindAfterCorrections is 0', async () => {
+    const droid = scriptedDroid(['prose', 'still prose', buildEnvelope()], [], [], {
+      rewindFiles: { 'watched.txt': PHASE_START },
+    });
+    const outcome = await run({
+      droidPath: droid,
+      envelopeRetries: 2,
+      rewindAfterCorrections: 0,
+      pipeline: seedThenBuild(),
+    });
+    expect(outcome.status).toBe('accepted');
+    expect(wireLog(droid)).not.toContain('droid.get_rewind_info');
+    expect(wireLog(droid)).not.toContain('droid.execute_rewind');
+    expect(corrections(outcome.runId).some((e) => e.payload.rewind === true)).toBe(false);
+  });
+
+  it('does not extend the envelope budget when a rewind runs', async () => {
+    // Every reply is prose: envelopeRetries+1 attempts, then the phase fails.
+    // Rewind on the 2nd correction must not buy an extra turn.
+    const droid = scriptedDroid(['no', 'still no', 'nope', 'never'], [], [], {
+      rewindFiles: { 'watched.txt': PHASE_START },
+    });
+    const outcome = await run({
+      droidPath: droid,
+      envelopeRetries: 2,
+      rewindAfterCorrections: 2,
+      pipeline: seedThenBuild(),
+    });
+    expect(outcome.status).toBe('rejected');
+    expect(h.tracer.phases(outcome.runId).find((p) => p.name === 'build')!.status).toBe('fail');
+    // envelopeRetries + 1 turn attempts, exactly — rewind consumed a correction
+    // slot inside that envelope, it did not add one.
+    expect(turnRequests(droid)).toHaveLength(3);
+    expect(wireLog(droid)).toContain('droid.execute_rewind');
+    const envelopeCorrections = corrections(outcome.runId).filter(
+      (e) => e.name === 'envelope did not parse',
+    );
+    expect(envelopeCorrections).toHaveLength(3);
+  });
+
+  it('never attempts rewind for a session that degraded to one-shot', async () => {
+    // Two stalled turns force oneshot; further envelope failures must stay append-style.
+    const droid = scriptedDroid(
+      ['ignored', 'ignored', 'prose', 'still prose', buildEnvelope()],
+      [],
+      [],
+      {
+        stallOnTurns: [0, 1],
+        rewindFiles: { 'watched.txt': PHASE_START },
+      },
+    );
+    const outcome = await run({
+      droidPath: droid,
+      turnTimeoutMs: 1500,
+      envelopeRetries: 2,
+      rewindAfterCorrections: 2,
+      pipeline: seedThenBuild(),
+    });
+    expect(outcome.status).toBe('accepted');
+    expect(h.tracer.run(outcome.runId)!.mode).toBe('oneshot');
+    expect(wireLog(droid)).not.toContain('droid.get_rewind_info');
+    expect(wireLog(droid)).not.toContain('droid.execute_rewind');
+    expect(corrections(outcome.runId).some((e) => e.payload.rewind === true)).toBe(false);
   });
 });

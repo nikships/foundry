@@ -199,6 +199,12 @@ export interface AppSettings {
    * phases, as a fraction of the model's window.
    */
   compactionThreshold: number;
+  /**
+   * After this many failed corrections in a phase, the engine rewinds the SDK
+   * session (and restores phase-start files) instead of appending another
+   * correction turn. `0` disables rewind entirely.
+   */
+  rewindAfterCorrections: number;
   notifications: { accepted: boolean; rejected: boolean; failed: boolean; needsInput: boolean };
   dockBadge: boolean;
   appearance: 'system' | 'dark';

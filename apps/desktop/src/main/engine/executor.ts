@@ -45,6 +45,11 @@ export interface ExecutorDeps {
   gateRetries: number;
   /** Context occupancy at which a session is compacted between phases. */
   compactionThreshold: number;
+  /**
+   * After this many failed corrections in a phase, rewind the SDK session
+   * instead of appending another correction. `0` disables.
+   */
+  rewindAfterCorrections: number;
   agents: AgentDef[];
   /** Shared custom envelope library snapshotted at run start. */
   envelopeDefs: EnvelopeDef[];
@@ -89,6 +94,7 @@ export class Executor {
         agents: deps.agents,
         envelopeDefs: deps.envelopeDefs,
         envelopeRetries: deps.envelopeRetries,
+        rewindAfterCorrections: deps.rewindAfterCorrections,
         sessionFor: (agent) => this.sessionFor(agent),
         onLiveText: deps.onLiveText,
         onModeObserved: (mode) => this.observeMode(mode),

@@ -166,6 +166,7 @@ function defaultMockSettings(): AppSettings {
     envelopeRetries: 3,
     gateRetries: 2,
     compactionThreshold: 0.8,
+    rewindAfterCorrections: 2,
     notifications: { accepted: true, rejected: true, failed: true, needsInput: true },
     dockBadge: true,
     appearance: 'system',

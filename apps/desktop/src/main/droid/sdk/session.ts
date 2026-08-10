@@ -136,6 +136,11 @@ export class SdkSession {
   private toolRefreshDelay = 0;
   /** Kept so a kill that skips session.close still tears the HTTP listener down. */
   private foundryServer: ReturnType<typeof createFoundryMcpServer> | null = null;
+  /**
+   * The most recent user `create_message` id. Rewind needs the pre-attempt
+   * message id, and the engine reads this between turns to capture it.
+   */
+  private userMessageId: string | null = null;
 
   constructor(private readonly opts: SdkSessionOptions) {}
 
@@ -145,6 +150,11 @@ export class SdkSession {
 
   get alive(): boolean {
     return !!this.session && !this.exited;
+  }
+
+  /** Last user-message id observed on this session, or null before any turn. */
+  get lastUserMessageId(): string | null {
+    return this.userMessageId;
   }
 
   get pid(): number | undefined {
@@ -381,17 +391,83 @@ export class SdkSession {
     const session = this.session;
     if (!session) return null;
     const outcome = await session.compact();
-    this.session = outcome.session;
+    await this.adoptSuccessor(outcome.session);
+    return { removedCount: outcome.removedCount };
+  }
+
+  /**
+   * Files the CLI can restore (and the ones it would delete) if the session
+   * were rewound to `messageId`. Diagnostic for the engine's intersection with
+   * the phase-start snapshot; a transport that cannot answer returns null.
+   */
+  async getRewindInfo(messageId: string): Promise<{
+    availableFiles: { filePath: string; contentHash: string; size: number }[];
+    createdFiles: { filePath: string }[];
+    evictedFiles: { filePath: string; reason: string }[];
+  } | null> {
+    const session = this.session;
+    if (!session) return null;
+    const info = await session.getRewindInfo({ messageId });
+    return {
+      availableFiles: info.availableFiles.map((file) => ({
+        filePath: file.filePath,
+        contentHash: file.contentHash,
+        size: file.size,
+      })),
+      createdFiles: info.createdFiles.map((file) => ({ filePath: file.filePath })),
+      evictedFiles: info.evictedFiles.map((file) => ({
+        filePath: file.filePath,
+        reason: file.reason,
+      })),
+    };
+  }
+
+  /**
+   * Rewinds the conversation to `messageId`, restores/deletes the given files,
+   * and continues on the successor session. Same replacement mechanics as
+   * compact: source handle retired, id follows, settings re-stated.
+   *
+   * Never call this with a turn in flight.
+   */
+  async rewind(params: {
+    messageId: string;
+    filesToRestore: { filePath: string; contentHash: string; size: number }[];
+    filesToDelete: { filePath: string }[];
+    forkTitle: string;
+  }): Promise<{
+    restoredCount: number;
+    deletedCount: number;
+    failedRestoreCount: number;
+    failedDeleteCount: number;
+  } | null> {
+    const session = this.session;
+    if (!session) return null;
+    const outcome = await session.rewind(params);
+    await this.adoptSuccessor(outcome.session);
+    // The successor is a fork of the conversation at messageId; the last user
+    // message on this handle is that anchor until a new turn lands.
+    this.userMessageId = params.messageId;
+    return {
+      restoredCount: outcome.restoredCount,
+      deletedCount: outcome.deletedCount,
+      failedRestoreCount: outcome.failedRestoreCount,
+      failedDeleteCount: outcome.failedDeleteCount,
+    };
+  }
+
+  /**
+   * A compact/rewind successor is loaded, not created: re-subscribe, follow
+   * `id`, and re-state settings the load_session path does not carry.
+   */
+  private async adoptSuccessor(successor: DroidSession): Promise<void> {
+    this.session = successor;
     // The retired handle's subscriptions are released by the SDK when the
     // successor loads, so without re-subscribing the trace goes quiet for the
     // rest of the run.
-    outcome.session.onNotification((envelope) => this.onEnvelope(envelope));
-    this.settings = { ...this.settings, ...outcome.session.settings };
-    // A successor is loaded, not created, and load_session carries no settings:
-    // the same reason a resume re-states them applies here.
+    successor.onNotification((envelope) => this.onEnvelope(envelope));
+    this.settings = { ...this.settings, ...successor.settings };
     const applied = await this.applySettings();
     if (applied.warning) this.opts.onModelWarning?.(applied.warning);
-    return { removedCount: outcome.removedCount };
   }
 
   /**
@@ -613,11 +689,20 @@ export class SdkSession {
   }
 
   private deliver(notification: DroidNotification): void {
+    this.noteUserMessage(notification);
     this.collector?.absorb(notification);
     if (notification.type === 'settings_updated' || notification.type === 'mcp_status_changed') {
       this.scheduleToolPolicy();
     }
     this.opts.onNotification?.(notification);
+  }
+
+  /** User create_message ids are the only rewind anchors the engine can name. */
+  private noteUserMessage(notification: DroidNotification): void {
+    if (notification.type !== 'create_message') return;
+    const message = (notification as { message?: { id?: string; role?: string } }).message;
+    if (message?.role !== 'user' || typeof message.id !== 'string' || !message.id) return;
+    this.userMessageId = message.id;
   }
 
   private onTransportError(error: Error): void {
