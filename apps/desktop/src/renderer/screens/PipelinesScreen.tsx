@@ -207,12 +207,10 @@ function PhaseTrack({
   pipeline,
   selected,
   onSelect,
-  onAdd,
 }: {
   pipeline: PipelineDef;
   selected: number;
   onSelect: (index: number) => void;
-  onAdd: (kind: PhaseDef['kind']) => void;
 }): React.JSX.Element {
   const { agents, agentColor } = useApp();
   const hue = (phase: PhaseDef): string =>
@@ -267,28 +265,6 @@ function PhaseTrack({
             </button>
           </div>
         ))}
-        <span
-          className={`${styles.pipelinePhaseConnector} ${styles.pipelinePhaseConnectorTail}`}
-          aria-hidden
-        />
-        <div className={styles.pipelinePhaseAddNode}>
-          <span className={styles.pipelinePhaseNumber}>+ NEXT</span>
-          <Dropdown
-            value=""
-            options={ADD_PHASE_OPTIONS}
-            onChange={(kind) => onAdd(kind as PhaseDef['kind'])}
-            className={styles.pipelineAddDropdownWrap}
-            triggerClassName={styles.pipelinePhaseAddTrigger}
-            renderValue={() => (
-              <span className={styles.pipelinePhaseAddFace}>
-                <PlusGlyph />
-                <span>Add phase</span>
-                <ChevronDownGlyph />
-              </span>
-            )}
-          />
-          <span className={styles.pipelinePhaseAddHint}>Append step</span>
-        </div>
       </div>
     </div>
   );
@@ -665,7 +641,6 @@ export default function PipelinesScreen({
                 pipeline={draft}
                 selected={openPhase}
                 onSelect={(i) => setOpenPhase(i === openPhase ? -1 : i)}
-                onAdd={addPhase}
               />
 
               {/* ── phase rows ── */}
