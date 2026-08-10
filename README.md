@@ -24,7 +24,7 @@ No chat tricks. No scripts to maintain. Just describe the change and judge the r
 
 **Requirements:** macOS 26+, Apple Silicon, `git`, and the [droid](https://docs.factory.ai) CLI installed and signed in.
 
-1. Download the latest `Foundry.dmg` from [Releases](https://github.com/nikships/software-factory/releases)
+1. Download the latest `Foundry.dmg` from [Releases](https://github.com/nikships/foundry/releases)
 2. Drag Foundry to Applications and open it
 3. Follow the onboarding, add a git repository as your project, and you are ready
 

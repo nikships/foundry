@@ -30,8 +30,8 @@ function OnboardingShellInner(): React.JSX.Element {
         <div className="ob-grid" />
       </div>
       <header className="ob-top">
-        <div className="ob-brand">
-          <CliIcon vendor="droid" size={20} />
+        <div className="ob-brand" aria-hidden>
+          <CliIcon vendor="droid" size={13} />
           <span>Foundry</span>
         </div>
         <Stepper

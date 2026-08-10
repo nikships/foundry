@@ -3,7 +3,7 @@ productName: Foundry
 publish:
   provider: github
   owner: nikships
-  repo: software-factory
+  repo: foundry
 
 directories:
   buildResources: assets
