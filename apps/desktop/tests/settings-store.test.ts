@@ -70,3 +70,43 @@ describe('settings written before autonomy was removed', () => {
     expect('defaultAutonomy' in settings).toBe(false);
   });
 });
+
+describe('the compaction threshold', () => {
+  it('defaults to 0.8 on a fresh install', () => {
+    expect(defaultSettings().compactionThreshold).toBe(0.8);
+  });
+
+  it('reads 0.8 for a settings file written before the field existed', () => {
+    const stored = { ...defaultSettings() } as Record<string, unknown>;
+    delete stored.compactionThreshold;
+    expect(migrate(stored).compactionThreshold).toBe(0.8);
+    expect(seed(stored).get().compactionThreshold).toBe(0.8);
+  });
+
+  it('accepts a value inside the useful band', () => {
+    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
+    expect(store.patch({ compactionThreshold: 0.6 })).toMatchObject({ ok: true });
+    expect(store.get().compactionThreshold).toBe(0.6);
+  });
+
+  it('refuses a value outside the band rather than storing it', () => {
+    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
+    for (const value of [0.1, 0.99, 1, 0]) {
+      expect(store.patch({ compactionThreshold: value }).ok).toBe(false);
+    }
+    // A rejected patch leaves the last good value on disk.
+    expect(store.get().compactionThreshold).toBe(0.8);
+  });
+
+  it('clamps a stored value that is out of band into it', () => {
+    // Hand-edited files and files from a build with a different band still have
+    // to load: a threshold of 2 would mean compaction could never fire.
+    expect(migrate({ ...defaultSettings(), compactionThreshold: 2 }).compactionThreshold).toBe(
+      0.95,
+    );
+    expect(migrate({ ...defaultSettings(), compactionThreshold: 0 }).compactionThreshold).toBe(0.5);
+    expect(
+      migrate({ ...defaultSettings(), compactionThreshold: 'lots' as never }).compactionThreshold,
+    ).toBe(0.8);
+  });
+});

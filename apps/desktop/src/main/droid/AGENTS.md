@@ -99,6 +99,18 @@ Three things the SDK cannot give us, all solved by the one decorator in
   the SDK's client never sees an id it did not issue. Never reach for the
   session's private `_client`.
 
+### Compaction retires the handle it was called on
+
+`compact()` does not shrink a session in place — it returns a **new**
+`DroidSession` and retires the old one (any later frame on it raises
+`SessionReplacedError`), so `SdkSession.compact()` swaps the handle, follows
+`id` to the successor, and re-subscribes: the SDK releases the retired handle's
+notification callbacks as the successor loads, so a missed re-subscribe leaves
+the trace silent for the rest of the run. The replacement is a `load_session`,
+which carries no settings, so `applySettings()` runs again for the same reason
+a resume re-states them. The SDK also refuses a replacement while a stream is
+open, which is why the engine only compacts between phases.
+
 Two more SDK behaviours the code works around: `--auto` is inert for a
 stream-jsonrpc session, and the SDK's stderr goes through a logger that strips
 message text from any customer sink — so `sdk/session.ts` reads

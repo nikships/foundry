@@ -42,6 +42,8 @@ export interface ExecutorDeps {
   turnTimeoutMs: number;
   envelopeRetries: number;
   gateRetries: number;
+  /** Context occupancy at which a session is compacted between phases. */
+  compactionThreshold: number;
   agents: AgentDef[];
   /** Shared custom envelope library snapshotted at run start. */
   envelopeDefs: EnvelopeDef[];
@@ -188,6 +190,13 @@ export class Executor {
         break;
       }
 
+      // Between phases is the only window a session may be compacted in: no
+      // stream is open, and the next phase's turn has not been composed yet.
+      // Before the phase rather than after, so the last phase of a run is never
+      // followed by a compaction nothing will use; the first pass has no
+      // sessions yet, which is what makes this the space *between* phases.
+      await this.compactFullSessions();
+
       const phase = pipeline.phases[index]!;
       const jump = await this.runPhase(phase);
       if (jump.kind === 'abort') {
@@ -289,6 +298,21 @@ export class Executor {
     });
     this.sessions.set(agent.name, session);
     return session;
+  }
+
+  /**
+   * Compacts every session that has filled past the threshold. A session that
+   * cannot report its occupancy (one-shot has none) is left alone, and a
+   * compaction that fails is not an error the run answers for: the next turn
+   * hits the same context wall it would have hit without this.
+   */
+  private async compactFullSessions(): Promise<void> {
+    for (const session of this.sessions.values()) {
+      const stats = await session.contextStats();
+      if (!stats?.limit) continue;
+      if (stats.used / stats.limit < this.deps.compactionThreshold) continue;
+      await session.compact(stats);
+    }
   }
 
   private async settleKilled(): Promise<RunOutcome> {

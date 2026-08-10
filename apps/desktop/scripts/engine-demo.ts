@@ -135,6 +135,7 @@ async function main(): Promise<void> {
     turnTimeoutMs: 10 * 60_000,
     envelopeRetries: 2,
     gateRetries: 1,
+    compactionThreshold: settings.compactionThreshold,
     agents,
     envelopeDefs: [],
     project,

@@ -194,6 +194,11 @@ export interface AppSettings {
   turnTimeoutMs: number;
   envelopeRetries: number;
   gateRetries: number;
+  /**
+   * How full an agent's context may get before the engine compacts it between
+   * phases, as a fraction of the model's window.
+   */
+  compactionThreshold: number;
   notifications: { accepted: boolean; rejected: boolean; failed: boolean; needsInput: boolean };
   dockBadge: boolean;
   appearance: 'system' | 'dark';
@@ -339,6 +344,7 @@ export type EventType =
   | 'gate_fail'
   | 'correction'
   | 'interrupt'
+  | 'compaction'
   | 'log'
   | 'error';
 

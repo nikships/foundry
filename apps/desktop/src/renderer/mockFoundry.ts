@@ -165,6 +165,7 @@ function defaultMockSettings(): AppSettings {
     turnTimeoutMs: 20 * 60_000,
     envelopeRetries: 3,
     gateRetries: 2,
+    compactionThreshold: 0.8,
     notifications: { accepted: true, rejected: true, failed: true, needsInput: true },
     dockBadge: true,
     appearance: 'system',

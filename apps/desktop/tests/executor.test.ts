@@ -89,6 +89,12 @@ function askReplies(droidPath: string): AskReply[] {
 interface ScriptedDroidOptions {
   /** Turn indexes (0-based) on which the child dies mid-turn, answering nothing. */
   dieOnTurns?: number[];
+  /** Context occupancy the session reports, against a 100k window. */
+  contextUsed?: number;
+  /** What it reports once compaction has run; defaults to a tenth of the used. */
+  contextUsedAfterCompaction?: number;
+  /** Compaction the CLI refuses, the way a session too short to compact would. */
+  compactFails?: boolean;
   /** Turn indexes that are acknowledged but never completed, so the turn times out. */
   stallOnTurns?: number[];
   /** Held-back handshake, so a test can act while the session is still starting. */
@@ -114,6 +120,22 @@ function turnRequests(droidPath: string): Record<string, unknown>[] {
     .split('\n')
     .filter((line) => line.trim())
     .map((line) => JSON.parse(line) as Record<string, unknown>);
+}
+
+/** Where `scriptedDroid` records every wire event in the order it saw it. */
+const WIRE_FILE = 'wire.jsonl';
+
+/**
+ * The session's wire history: every request the client sent plus the turn
+ * completions the stub answered with, in order. Whether compaction happened
+ * mid-turn is only knowable from this ordering.
+ */
+function wireLog(droidPath: string): string[] {
+  const path = join(dirname(droidPath), WIRE_FILE);
+  if (!existsSync(path)) return [];
+  return readFileSync(path, 'utf8')
+    .split('\n')
+    .filter((line) => line.trim());
 }
 
 /** Marker the stub writes as soon as it is spawned, before any handshake. */
@@ -189,11 +211,18 @@ const REPLIES = ${JSON.stringify(join(dir, ASK_REPLIES_FILE))};
 const TURN_MARKER = ${JSON.stringify(join(dir, TURN_MARKER_FILE))};
 const SPAWN_MARKER = ${JSON.stringify(join(dir, SPAWN_MARKER_FILE))};
 const TURN_REQUESTS = ${JSON.stringify(join(dir, TURN_REQUESTS_FILE))};
+const WIRE = ${JSON.stringify(join(dir, WIRE_FILE))};
 const HANDSHAKE_DELAY = ${JSON.stringify(options.handshakeDelayMs ?? 0)};
 const DIE_ON = ${JSON.stringify(options.dieOnTurns ?? [])};
 const STALL_ON = ${JSON.stringify(options.stallOnTurns ?? [])};
 const STRUCTURED = ${JSON.stringify(options.structuredOutputs ?? [])};
 const REASONS = ${JSON.stringify(options.turnReasons ?? [])};
+const CONTEXT_LIMIT = 100000;
+const CONTEXT_USED = ${JSON.stringify(options.contextUsed ?? 1234)};
+const CONTEXT_USED_COMPACTED = ${JSON.stringify(
+    options.contextUsedAfterCompaction ?? Math.round((options.contextUsed ?? 1234) / 10),
+  )};
+const COMPACT_FAILS = ${JSON.stringify(options.compactFails ?? false)};
 const EFFORTS = ['off', 'low', 'medium', 'high'];
 const MODELS = [{ id: 'scripted', displayName: 'Scripted', shortDisplayName: 'Scripted', modelProvider: 'anthropic', supportedReasoningEfforts: EFFORTS, defaultReasoningEffort: 'medium', isCustom: false }];
 const SETTINGS = { modelId: 'scripted', reasoningEffort: 'medium', autonomyLevel: 'high' };
@@ -229,11 +258,16 @@ if (!RPC) {
 }
 
 const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
-const notify = (n) => out({ ...V, type: 'notification', method: 'droid.session_notification', params: { sessionId: 's1', notification: n } });
+// Every request in, every turn boundary out: the only record of what happened
+// between two turns rather than inside one.
+const wire = (entry) => appendFileSync(WIRE, entry + '\\n');
+const notify = (n) => out({ ...V, type: 'notification', method: 'droid.session_notification', params: { sessionId, notification: n } });
 const pending = new Map();
 let askSeq = 0;
 let buffer = '';
 let turnId = null;
+let sessionId = 's1';
+let compactions = 0;
 
 /** Raises each ask in order, waiting for the answer, then finishes the turn. */
 const raiseAsks = (list, done) => {
@@ -261,7 +295,8 @@ const finish = (n) => {
   if (structured !== undefined && structured !== null) {
     notify({ type: 'structured_output', messageId, structuredOutput: structured });
   }
-  notify({ type: 'session_token_usage_changed', sessionId: 's1', tokenUsage: USAGE });
+  notify({ type: 'session_token_usage_changed', sessionId, tokenUsage: USAGE });
+  wire('turn_completed ' + n);
   notify({ type: 'agent_turn_completed', reason: REASONS[n] || 'completed', turnId, tokenUsage: USAGE, cumulativeTokenUsage: USAGE });
 };
 
@@ -288,24 +323,37 @@ process.stdin.on('data', (chunk) => {
       resolve(msg.result);
       continue;
     }
+    if (method) wire(method);
     if (method === 'droid.initialize_session' || method === 'droid.load_session') {
       // A resumed session handshakes with load_session, so both are marked: a
       // restart's child is only visible to a test through the second one.
       appendFileSync(SPAWN_MARKER, method + '\\n');
+      if (method === 'droid.load_session' && params.sessionId) sessionId = params.sessionId;
       const result = method === 'droid.initialize_session'
-        ? { sessionId: 's1', session: { messages: [] }, settings: SETTINGS, availableModels: MODELS }
+        ? { sessionId, session: { messages: [] }, settings: SETTINGS, availableModels: MODELS }
         : { session: { messages: [] }, settings: SETTINGS, availableModels: MODELS, cwd: workdir };
       const answer = () => out({ ...V, type: 'response', id, result });
       if (HANDSHAKE_DELAY) setTimeout(answer, HANDSHAKE_DELAY); else answer();
+    } else if (method === 'droid.compact_session') {
+      if (COMPACT_FAILS) {
+        out({ ...V, type: 'response', id, error: { code: -32603, message: 'nothing to compact' } });
+      } else {
+        compactions++;
+        // A successor id the source handle is retired for: the next turn has to
+        // arrive on it, and load_session is how the SDK adopts it.
+        out({ ...V, type: 'response', id, result: { newSessionId: 's' + (compactions + 1), removedCount: 7 } });
+      }
     } else if (method === 'droid.update_session_settings') {
       notify({ type: 'settings_updated', requestId: id, settings: SETTINGS });
       out({ ...V, type: 'response', id, result: {} });
     } else if (method === 'droid.list_tools') {
       out({ ...V, type: 'response', id, result: { tools: [{ id: 'execute-cli', llmId: 'Execute', displayName: 'Execute', description: 'run a command', category: 'execute', defaultAllowed: true, currentlyAllowed: true }] } });
     } else if (method === 'droid.get_context_stats') {
-      out({ ...V, type: 'response', id, result: { used: 1234, remaining: 98766, limit: 100000, accuracy: 'estimated', updatedAt: '2026-08-09T00:00:00.000Z' } });
+      const used = compactions ? CONTEXT_USED_COMPACTED : CONTEXT_USED;
+      out({ ...V, type: 'response', id, result: { used, remaining: CONTEXT_LIMIT - used, limit: CONTEXT_LIMIT, accuracy: 'estimated', updatedAt: '2026-08-09T00:00:00.000Z' } });
     } else if (method === 'droid.add_user_message') {
       turnId = params.messageId;
+      wire('turn_started ' + params.messageId + ' session=' + sessionId);
       // The params as they arrived: whether a turn carried an output schema is
       // only knowable from the wire, not from any observable side effect.
       appendFileSync(TURN_REQUESTS, JSON.stringify(params) + '\\n');
@@ -468,6 +516,7 @@ interface RunInput {
   turnTimeoutMs?: number;
   envelopeRetries?: number;
   gateRetries?: number;
+  compactionThreshold?: number;
 }
 
 function run(input: RunInput): Promise<{ status: string; runId: string }> {
@@ -497,6 +546,7 @@ function start(input: RunInput): {
     turnTimeoutMs: input.turnTimeoutMs ?? 30_000,
     envelopeRetries: input.envelopeRetries ?? 2,
     gateRetries: input.gateRetries ?? 2,
+    compactionThreshold: input.compactionThreshold ?? 0.8,
     agents: input.agents ?? [buildAgent()],
     envelopeDefs: input.envelopeDefs ?? [],
     project: { ...h.project, ...input.project },
@@ -1567,6 +1617,192 @@ describe('the SDK transport under the executor', () => {
     expect(fallbackRows[0]!.ended_at).not.toBeNull();
     expect(alive(fallbackRows[0]!.pid)).toBe(false);
     expect(h.tracer.openProcesses(outcome.runId)).toHaveLength(0);
+  });
+});
+
+/**
+ * Pre-emptive compaction. The engine, not the agent, decides when a session has
+ * filled up, and it decides it BETWEEN phases: compacting a session mid-turn
+ * would need the stream closed first, and the SDK refuses it outright.
+ */
+describe('compaction between phases', () => {
+  /** Two agent phases so there is an inter-phase window at all. */
+  function twoPhases(over: Partial<PipelineDef> = {}): PipelineDef {
+    return pipe(
+      [
+        agentPhase('build', { description: 'Fill the context up.' }),
+        agentPhase('polish', { description: 'Run after the window was compacted.' }),
+      ],
+      {
+        description: 'two agent phases with a compaction window between them',
+        acceptance: { kind: 'envelope_status', phase: 'polish' },
+        ...over,
+      },
+    );
+  }
+
+  function compactions(runId: string) {
+    return events(runId).filter((e) => e.type === 'compaction');
+  }
+
+  it('compacts a session over the threshold and runs the next phase on the successor', async () => {
+    const droid = scriptedDroid([buildEnvelope(), buildEnvelope()], [], [], {
+      contextUsed: 85_000,
+      contextUsedAfterCompaction: 8_500,
+    });
+    const outcome = await run({ droidPath: droid, pipeline: twoPhases() });
+
+    expect(outcome.status).toBe('accepted');
+    // One compaction, in the one window there was for it.
+    const compacted = wireLog(droid).filter((line) => line === 'droid.compact_session');
+    expect(compacted).toHaveLength(1);
+
+    // The successor id is what the trace carries, so a resumed run picks up the
+    // session that still has room rather than the retired one.
+    const sessions = h.tracer.agentSessions(outcome.runId);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]!.droidSessionId).toBe('s2');
+
+    const turns = wireLog(droid).filter((line) => line.startsWith('turn_started'));
+    expect(turns).toHaveLength(2);
+    expect(turns[0]).toContain('session=s1');
+    expect(turns[1]).toContain('session=s2');
+  });
+
+  it('records what the compaction removed and the window either side of it', async () => {
+    const droid = scriptedDroid([buildEnvelope(), buildEnvelope()], [], [], {
+      contextUsed: 85_000,
+      contextUsedAfterCompaction: 8_500,
+    });
+    const outcome = await run({ droidPath: droid, pipeline: twoPhases() });
+
+    const rows = compactions(outcome.runId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.name).toBe('builder');
+    expect(rows[0]!.payload.removedCount).toBe(7);
+    expect(rows[0]!.payload.before).toEqual({ used: 85_000, limit: 100_000 });
+    expect(rows[0]!.payload.after).toEqual({ used: 8_500, limit: 100_000 });
+  });
+
+  it('leaves a session under the threshold alone', async () => {
+    const droid = scriptedDroid([buildEnvelope(), buildEnvelope()], [], [], {
+      contextUsed: 40_000,
+    });
+    const outcome = await run({ droidPath: droid, pipeline: twoPhases() });
+
+    expect(outcome.status).toBe('accepted');
+    expect(wireLog(droid)).not.toContain('droid.compact_session');
+    expect(compactions(outcome.runId)).toHaveLength(0);
+    expect(h.tracer.agentSessions(outcome.runId)[0]!.droidSessionId).toBe('s1');
+  });
+
+  it('honours a threshold the operator moved', async () => {
+    const droid = scriptedDroid([buildEnvelope(), buildEnvelope()], [], [], {
+      contextUsed: 60_000,
+    });
+    const outcome = await run({
+      droidPath: droid,
+      compactionThreshold: 0.5,
+      pipeline: twoPhases(),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    expect(wireLog(droid).filter((l) => l === 'droid.compact_session')).toHaveLength(1);
+  });
+
+  it('never compacts inside a turn, correction retries included', async () => {
+    // Phase one needs a correction, so the phase spans two turns with one
+    // inter-phase window after them — over threshold from the very first stats.
+    const droid = scriptedDroid(['prose, not JSON', buildEnvelope(), buildEnvelope()], [], [], {
+      contextUsed: 90_000,
+      contextUsedAfterCompaction: 9_000,
+    });
+    const outcome = await run({ droidPath: droid, pipeline: twoPhases() });
+
+    expect(outcome.status).toBe('accepted');
+    const log = wireLog(droid);
+    // Every compaction sits outside an open turn: between a completion and the
+    // next turn's start, never between a start and its completion.
+    let openTurn = false;
+    for (const line of log) {
+      if (line.startsWith('turn_started')) openTurn = true;
+      if (line.startsWith('turn_completed')) openTurn = false;
+      if (line === 'droid.compact_session') expect(openTurn).toBe(false);
+    }
+    expect(log.filter((l) => l === 'droid.compact_session')).toHaveLength(1);
+    // Three turns: the bad envelope, its correction, then phase two.
+    expect(log.filter((l) => l.startsWith('turn_started'))).toHaveLength(3);
+  });
+
+  it('carries a post-compaction correction on the successor session', async () => {
+    // Phase two's first reply is unparseable, so its correction is the first
+    // thing the successor session ever sees.
+    const droid = scriptedDroid([buildEnvelope(), 'prose, not JSON', buildEnvelope()], [], [], {
+      contextUsed: 85_000,
+      contextUsedAfterCompaction: 8_500,
+    });
+    const outcome = await run({ droidPath: droid, pipeline: twoPhases() });
+
+    expect(outcome.status).toBe('accepted');
+    const turns = wireLog(droid).filter((l) => l.startsWith('turn_started'));
+    expect(turns).toHaveLength(3);
+    expect(turns[0]).toContain('session=s1');
+    // Both phase-two turns, the correction included, land on the successor.
+    expect(turns[1]).toContain('session=s2');
+    expect(turns[2]).toContain('session=s2');
+
+    // One session row for the agent, and the correction is inside the phase.
+    const sessions = h.tracer.agentSessions(outcome.runId);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]!.droidSessionId).toBe('s2');
+    expect(
+      events(outcome.runId).some(
+        (e) => e.type === 'correction' && e.name === 'envelope did not parse',
+      ),
+    ).toBe(true);
+    // A swap is not a restart: no second child was spawned for it.
+    expect(processRows(outcome.runId).filter((r) => r.kind === 'droid')).toHaveLength(1);
+  });
+
+  it('carries on with the run when the session refuses to compact', async () => {
+    const droid = scriptedDroid([buildEnvelope(), buildEnvelope()], [], [], {
+      contextUsed: 85_000,
+      compactFails: true,
+    });
+    const outcome = await run({ droidPath: droid, pipeline: twoPhases() });
+
+    // A failed compaction costs the run nothing: the next phase runs on the
+    // session it already had and acceptance decides the outcome as usual.
+    expect(outcome.status).toBe('accepted');
+    expect(wireLog(droid).filter((l) => l === 'droid.compact_session')).toHaveLength(1);
+    expect(compactions(outcome.runId)).toHaveLength(0);
+    expect(h.tracer.agentSessions(outcome.runId)[0]!.droidSessionId).toBe('s1');
+    const turns = wireLog(droid).filter((l) => l.startsWith('turn_started'));
+    expect(turns[1]).toContain('session=s1');
+    // The failure is on the record, so a run that then hits the wall explains itself.
+    const failures = events(outcome.runId).filter((e) => e.name === 'builder: compaction failed');
+    expect(failures).toHaveLength(1);
+    expect(String(failures[0]!.payload.message)).toContain('nothing to compact');
+  });
+
+  it('never attempts compaction for a session that degraded to one-shot', async () => {
+    // Two stalled turns cost the RPC transport, and a stalled child stays ALIVE
+    // and answering — so a session that reached one-shot while still holding a
+    // usable RPC handle would happily report 95% and be compacted. The guard is
+    // on the transport, not on stats happening to be unavailable.
+    const droid = scriptedDroid(
+      [buildEnvelope(), buildEnvelope(), buildEnvelope(), buildEnvelope()],
+      [],
+      [],
+      { stallOnTurns: [0, 1], contextUsed: 95_000 },
+    );
+    const outcome = await run({ droidPath: droid, turnTimeoutMs: 1500, pipeline: twoPhases() });
+
+    expect(outcome.status).toBe('accepted');
+    expect(h.tracer.agentSessions(outcome.runId)[0]!.mode).toBe('oneshot');
+    // The stalled children were alive when the session gave up on them.
+    expect(wireLog(droid)).not.toContain('droid.compact_session');
+    expect(compactions(outcome.runId)).toHaveLength(0);
   });
 });
 

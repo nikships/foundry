@@ -362,6 +362,32 @@ export class SdkSession {
     }
   }
 
+  /**
+   * Compacts the conversation and continues on the successor session droid
+   * mints for it. The source handle is retired the moment the successor loads
+   * (any later frame on it raises `SessionReplacedError`), so the swap has to
+   * happen here and `id` has to follow it — the caller persists the new id.
+   *
+   * Never call this with a turn in flight: the SDK refuses a replacement while
+   * a stream is open, and the engine only ever compacts between phases.
+   */
+  async compact(): Promise<{ removedCount: number } | null> {
+    const session = this.session;
+    if (!session) return null;
+    const outcome = await session.compact();
+    this.session = outcome.session;
+    // The retired handle's subscriptions are released by the SDK when the
+    // successor loads, so without re-subscribing the trace goes quiet for the
+    // rest of the run.
+    outcome.session.onNotification((envelope) => this.onEnvelope(envelope));
+    this.settings = { ...this.settings, ...outcome.session.settings };
+    // A successor is loaded, not created, and load_session carries no settings:
+    // the same reason a resume re-states them applies here.
+    const applied = await this.applySettings();
+    if (applied.warning) this.opts.onModelWarning?.(applied.warning);
+    return { removedCount: outcome.removedCount };
+  }
+
   /** Diagnostic only: a `null` here must never block a run. */
   async contextBreakdown(): Promise<ContextBreakdown | null> {
     if (!this.session || !this.sniffer) return null;

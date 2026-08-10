@@ -14,6 +14,13 @@ const cliConfigSchema = z.object({
   extraArgs: z.array(z.string()),
 });
 
+/**
+ * The band a compaction threshold is useful in. Below it a run compacts more
+ * than it works; at 1 it never compacts before the context wall, which is the
+ * failure the setting exists to avoid.
+ */
+const COMPACTION_BAND = [0.5, 0.95] as const;
+
 export const appSettingsSchema = z.object({
   clis: z.object({
     droid: cliConfigSchema,
@@ -28,6 +35,7 @@ export const appSettingsSchema = z.object({
   turnTimeoutMs: z.number().int().min(300_000).max(3_600_000),
   envelopeRetries: z.number().int().min(0).max(5),
   gateRetries: z.number().int().min(0).max(5),
+  compactionThreshold: z.number().min(COMPACTION_BAND[0]).max(COMPACTION_BAND[1]),
   notifications: z.object({
     accepted: z.boolean(),
     rejected: z.boolean(),
@@ -64,6 +72,7 @@ export function defaultSettings(): AppSettings {
     turnTimeoutMs: 20 * 60_000,
     envelopeRetries: 3,
     gateRetries: 2,
+    compactionThreshold: 0.8,
     notifications: { accepted: true, rejected: true, failed: true, needsInput: true },
     dockBadge: true,
     appearance: 'system',
@@ -105,7 +114,23 @@ export function migrate(raw: unknown): AppSettings {
   delete (merged as { droidPath?: string }).droidPath;
   // Foundry no longer has autonomy modes: runs are always fully autonomous.
   delete (merged as { defaultAutonomy?: string }).defaultAutonomy;
+  // A read is not a save, so an out-of-band value is clamped rather than
+  // rejected: refusing it here would leave the app with no threshold at all.
+  merged.compactionThreshold = clamp(
+    merged.compactionThreshold,
+    base.compactionThreshold,
+    COMPACTION_BAND,
+  );
   return merged;
+}
+
+function clamp(
+  value: number | undefined,
+  fallback: number,
+  [min, max]: readonly [number, number],
+): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
 }
 
 export class SettingsStore {

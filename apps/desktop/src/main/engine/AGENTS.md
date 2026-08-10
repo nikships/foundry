@@ -32,6 +32,12 @@ inside one phase and never decide if they succeeded.
   Violations are reverted and the phase fails. This is the ONLY enforcement:
   runs never stop for permission (`droid/permissions.ts` always decides), so a
   mid-turn allow is safe precisely because the diff runs afterwards.
+- **Compaction happens between phases, never inside one.** The loop compacts
+  every session past `compactionThreshold` before it starts the next phase: the
+  SDK refuses a replacement with a stream open, and the successor session has to
+  be in place before the turn is composed. A failed compaction is traced and
+  ignored — the next turn then hits the context wall it would have hit anyway,
+  so a compaction that cannot run must not cost the run.
 - `InterruptRequest` / the interrupt sheet belongs to **engineer phases only** —
   a checkpoint a pipeline author wrote, not a permission prompt.
 - **A kill outranks acceptance.** Once `cancel()` has fired the run settles

@@ -20,6 +20,7 @@ import { EventFolder, toUsageBreakdown } from './events.js';
 import { evaluate, type PolicyContext } from './permissions.js';
 import { SdkSession } from './sdk/session.js';
 import { isTransportFailure } from './sdk/errors.js';
+import type { ContextStatsResult } from './protocol.js';
 
 export type Mode = 'rpc' | 'oneshot';
 
@@ -443,8 +444,7 @@ export class AgentSession {
   }
 
   private async refreshContext(): Promise<void> {
-    if (this.mode !== 'rpc' || !this.rpc) return;
-    const stats = await this.rpc.contextStats();
+    const stats = await this.contextStats();
     if (!stats) return;
     this.deps.tracer.setAgentContext(
       this.deps.runId,
@@ -452,6 +452,60 @@ export class AgentSession {
       stats.used ?? 0,
       stats.limit ?? 0,
     );
+  }
+
+  /**
+   * How full this agent's context is, or `null` when there is nothing to
+   * measure. A one-shot session has no context to report: every turn is its
+   * own child, so occupancy is not a property it has.
+   */
+  async contextStats(): Promise<ContextStatsResult | null> {
+    if (this.mode !== 'rpc' || !this.rpc) return null;
+    return this.rpc.contextStats();
+  }
+
+  /**
+   * Compacts this agent's conversation and continues on the successor session,
+   * which is persisted so a resumed run picks up the one with room in it.
+   *
+   * Only ever called between phases: the SDK refuses a replacement with a
+   * stream open, and the successor has to be in place before the next turn is
+   * composed. Failure is survivable by design — the next turn then hits the
+   * context wall as it would have anyway, so the reason is traced and the run
+   * carries on.
+   */
+  async compact(before: ContextStatsResult): Promise<{ removedCount: number } | null> {
+    if (this.mode !== 'rpc' || !this.rpc) return null;
+    try {
+      const outcome = await this.rpc.compact();
+      if (!outcome) return null;
+      this.droidSessionId = this.rpc.id;
+      this.persistSession();
+      const after = await this.rpc.contextStats();
+      if (after) {
+        this.deps.tracer.setAgentContext(
+          this.deps.runId,
+          this.agent.name,
+          after.used ?? 0,
+          after.limit ?? 0,
+        );
+      }
+      this.deps.tracer.event({
+        runId: this.deps.runId,
+        phaseId: this.currentPhaseId,
+        type: 'compaction',
+        name: this.agent.name,
+        payload: {
+          removedCount: outcome.removedCount,
+          before: { used: before.used, limit: before.limit },
+          ...(after ? { after: { used: after.used, limit: after.limit } } : {}),
+        },
+      });
+      return outcome;
+    } catch (e) {
+      this.agentLog('log', 'compaction failed', { message: errorMessage(e) });
+      return null;
+    }
   }
 
   async interrupt(): Promise<void> {

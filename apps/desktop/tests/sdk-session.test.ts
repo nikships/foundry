@@ -85,6 +85,11 @@ class ScriptedTransport implements StringFramedDroidClientTransport {
   /** Every frame the client wrote, so the wire itself can be asserted. */
   readonly sent: Record<string, unknown>[] = [];
   sessionId = 'fake-session-1';
+  /** The successor `compact` mints; the source handle is retired for it. */
+  compactTo = 'fake-session-2';
+  removedOnCompact = 9;
+  /** Compaction the CLI refuses, which must cost the run nothing. */
+  compactFails = false;
   settings: Record<string, unknown> = {
     modelId: 'gpt-fake-default',
     reasoningEffort: 'high',
@@ -176,6 +181,11 @@ class ScriptedTransport implements StringFramedDroidClientTransport {
 
   reply(id: string, result: unknown): void {
     this.emit({ ...ENVELOPE, type: 'response', id, result });
+  }
+
+  /** A JSON-RPC error response, which is how the CLI refuses a request. */
+  replyError(id: string, message: string): void {
+    this.emit({ ...ENVELOPE, type: 'response', id, error: { code: -32603, message } });
   }
 
   /**
@@ -296,6 +306,16 @@ class ScriptedTransport implements StringFramedDroidClientTransport {
           mcpServers: [],
           droids: [],
         });
+        return;
+      }
+      case 'droid.compact_session': {
+        if (this.compactFails) {
+          this.replyError(id, 'compaction is not available for this session');
+          return;
+        }
+        // The successor is a different session id; the source handle is
+        // retired the moment the SDK loads it.
+        this.reply(id, { newSessionId: this.compactTo, removedCount: this.removedOnCompact });
         return;
       }
       case 'droid.never_answered':
@@ -797,6 +817,66 @@ describe('context breakdown', () => {
     const sniffer = new SniffingTransport(transport);
     expect(await sniffer.request('droid.never_answered', {}, 20)).toBeNull();
     await sniffer.close();
+  });
+});
+
+describe('compaction', () => {
+  it('swaps to the successor session and reports what it removed', async () => {
+    const { sdk, transport } = session();
+    await sdk.start();
+    expect(await sdk.compact()).toEqual({ removedCount: 9 });
+    // The source handle is retired by the SDK, so the id has to follow.
+    expect(sdk.id).toBe('fake-session-2');
+    expect(sdk.alive).toBe(true);
+    expect(transport.framesFor('droid.compact_session')).toHaveLength(1);
+  });
+
+  it('sends the next turn on the successor, never the retired session', async () => {
+    const { sdk, transport } = session();
+    await sdk.start();
+    await sdk.compact();
+    const result = await sdk.send('after compaction', 5_000);
+    expect(result.text).toBe('{"status":"success"}');
+    // A frame addressed to the retired handle raises SessionReplacedError; the
+    // turn landing at all is the proof the swap took.
+    expect(transport.paramsFor('droid.add_user_message')).toHaveLength(1);
+  });
+
+  it('keeps delivering notifications after the swap', async () => {
+    const { sdk, transport, notifications } = session();
+    await sdk.start();
+    await sdk.compact();
+    const before = notifications.length;
+    transport.notify({ type: 'droid_working_state_changed', newState: 'thinking' });
+    // The SDK releases the source handle's subscriptions when it swaps, so the
+    // successor must be re-subscribed or the trace goes quiet mid-run.
+    expect(notifications.length).toBe(before + 1);
+  });
+
+  it('raises a refused compaction and leaves the session usable', async () => {
+    const { sdk, transport } = session();
+    await sdk.start();
+    transport.compactFails = true;
+    // The reason travels to the caller rather than being swallowed here: the
+    // engine is what decides a failed compaction is survivable, and it traces
+    // why. The SDK rolls the source handle back to active.
+    await expect(sdk.compact()).rejects.toThrow(/compaction is not available/);
+    expect(sdk.id).toBe('fake-session-1');
+    expect(sdk.alive).toBe(true);
+    const result = await sdk.send('still usable', 5_000);
+    expect(result.text).toBe('{"status":"success"}');
+  });
+
+  it('returns null rather than throwing when there is no session to compact', async () => {
+    const { sdk } = session();
+    expect(await sdk.compact()).toBeNull();
+  });
+
+  it('reads context stats off the successor after a swap', async () => {
+    const { sdk } = session();
+    await sdk.start();
+    await sdk.compact();
+    expect(await sdk.contextStats()).toMatchObject({ used: 1234, limit: 100_000 });
   });
 });
 
