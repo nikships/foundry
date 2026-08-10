@@ -7,6 +7,13 @@
   align-items: flex-start;
   padding: var(--s6) var(--s6) var(--s7, 28px);
   overflow-x: auto;
+  position: relative;
+  /* continuous spine that nodes sit on */
+  background-image: linear-gradient(to right, var(--line-strong) 0 84%, var(--line) 84% 100%);
+  background-repeat: no-repeat;
+  background-position: 0 80px;
+  background-size: 100% 2px;
+  z-index: 0;
 }
 .pipeline-phase-cell {
   display: contents;
@@ -14,12 +21,12 @@
 .pipeline-phase-connector {
   flex: 1 1 18px;
   min-width: 18px;
-  height: 1px;
-  background: var(--line-strong);
-  margin-top: 25px;
+  height: 0;
+  background: transparent;
+  margin-top: 0;
 }
 .pipeline-phase-connector-tail {
-  background: var(--line);
+  display: none;
 }
 .pipeline-phase-node {
   flex: none;
@@ -33,6 +40,8 @@
   font: inherit;
   text-align: left;
   cursor: default;
+  position: relative;
+  z-index: 1;
 }
 .pipeline-phase-number {
   font-family: var(--font-mono);
@@ -54,6 +63,26 @@
   transition:
     border-color var(--fast) var(--ease),
     background var(--fast) var(--ease);
+  position: relative;
+}
+.pipeline-phase-box::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -7px;
+  transform: translateX(-50%);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--bg-base);
+  border: 2px solid var(--line-strong);
+  box-sizing: border-box;
+  z-index: 2;
+  transition: border-color var(--fast) var(--ease);
+}
+.pipeline-phase-node:hover .pipeline-phase-box::after,
+.pipeline-phase-node.on .pipeline-phase-box::after {
+  border-color: var(--hue);
 }
 .pipeline-phase-node:hover .pipeline-phase-box {
   border-color: color-mix(in srgb, var(--hue) 55%, transparent);
@@ -124,7 +153,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 21px;
+  margin-top: 48px;
 }
 .pipeline-phase-add-label {
   font-family: var(--font-mono);
