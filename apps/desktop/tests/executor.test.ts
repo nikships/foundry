@@ -2071,6 +2071,102 @@ describe('structured-output envelopes', () => {
 });
 
 /**
+ * Rewind instrumentation (Phase 3b part 1): every agent-phase correction carries
+ * a per-phase running correctionIndex shared across envelope/boundary/gate, so
+ * traces can answer "which attempt index succeeded".
+ */
+describe('correction instrumentation', () => {
+  function agentCorrections(runId: string) {
+    return events(runId).filter(
+      (e) =>
+        e.type === 'correction' &&
+        (e.name === 'envelope did not parse' ||
+          e.name === 'boundary violation' ||
+          e.name === 'gate violations'),
+    );
+  }
+
+  it('numbers every correction in a phase with a shared running correctionIndex', async () => {
+    // Envelope fail → boundary fail → gate fail → success. One counter across
+    // the three kinds, and the existing attempt field stays on each payload.
+    const droid = scriptedDroid(
+      [
+        'prose, not JSON',
+        buildEnvelope({ changed_files: ['allowed/ok.txt'] }),
+        buildEnvelope({ changed_files: ['ghost.txt'] }),
+        buildEnvelope({ changed_files: ['real.txt'] }),
+      ],
+      [null, 'forbidden/slipped.txt', null, 'real.txt'],
+    );
+    const outcome = await run({
+      droidPath: droid,
+      agents: [buildAgent({ writes: ['allowed/', 'real.txt'] })],
+      envelopeRetries: 1,
+      pipeline: pipe(
+        [
+          agentPhase('build', {
+            retries: 2,
+            description: 'Share one correctionIndex across envelope, boundary, and gate.',
+            gates: ['diff_matches_claims'],
+          }),
+        ],
+        {
+          description: 'three correction kinds then success',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    const corrections = agentCorrections(outcome.runId);
+    expect(corrections.map((e) => e.name)).toEqual([
+      'envelope did not parse',
+      'boundary violation',
+      'gate violations',
+    ]);
+    expect(corrections.map((e) => e.payload.correctionIndex)).toEqual([1, 2, 3]);
+    // attempt is still present — Banner detail keys off it.
+    for (const event of corrections) {
+      expect(typeof event.payload.attempt).toBe('number');
+      expect(event.payload.attempt).toBeGreaterThan(0);
+    }
+  });
+
+  it('resets correctionIndex at the start of each agent phase', async () => {
+    const droid = scriptedDroid([
+      'phase-one prose',
+      buildEnvelope({ summary: 'phase one' }),
+      'phase-two prose',
+      buildEnvelope({ summary: 'phase two' }),
+    ]);
+    const outcome = await run({
+      droidPath: droid,
+      pipeline: pipe(
+        [
+          agentPhase('first', {
+            description: 'First phase burns one envelope correction.',
+          }),
+          agentPhase('second', {
+            description: 'Second phase starts the counter over.',
+          }),
+        ],
+        {
+          description: 'two agent phases each with one envelope correction',
+          acceptance: { kind: 'all_phases_pass' },
+        },
+      ),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    const corrections = agentCorrections(outcome.runId);
+    expect(corrections).toHaveLength(2);
+    expect(corrections.map((e) => e.payload.correctionIndex)).toEqual([1, 1]);
+    // Distinct phases — the counter did not bleed across.
+    expect(corrections[0]!.phaseId).not.toBe(corrections[1]!.phaseId);
+  });
+});
+
+/**
  * A kill is an operator verdict, not a transport flap. The two-strike fallback
  * exists to rescue a run from a dying child, and the child a kill leaves behind
  * looks exactly like one — so every recovery path has to stand down once the

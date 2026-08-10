@@ -53,6 +53,9 @@ export class AgentPhaseRunner implements PhaseRunner {
     const envelopeKind = phase.envelope ?? agent.envelope;
     const before = await boundary.snapshot(ctx.cwd);
     const maxGateAttempts = (phase.retries ?? 0) + 1;
+    // One running count across envelope/boundary/gate so a trace can answer
+    // "which correction attempt index succeeded" without kind-local indexes.
+    let correctionIndex = 0;
 
     tracer.event({
       runId,
@@ -85,6 +88,10 @@ export class AgentPhaseRunner implements PhaseRunner {
         envelopeKind,
         gateAttempt,
         ctx,
+        () => {
+          correctionIndex += 1;
+          return correctionIndex;
+        },
       );
       if (!parsed.ok) {
         lastError = parsed.detail;
@@ -112,6 +119,7 @@ export class AgentPhaseRunner implements PhaseRunner {
         });
         if (gateAttempt < maxGateAttempts) {
           prompt = boundary.boundaryCorrection(enforcement.violations);
+          correctionIndex += 1;
           tracer.event({
             runId,
             phaseId,
@@ -119,6 +127,7 @@ export class AgentPhaseRunner implements PhaseRunner {
             name: 'boundary violation',
             payload: {
               attempt: gateAttempt,
+              correctionIndex,
               violations: enforcement.violations.map((v) => v.path),
             },
           });
@@ -146,12 +155,13 @@ export class AgentPhaseRunner implements PhaseRunner {
       lastError = `gates rejected the phase: ${violations[0]}`;
       if (gateAttempt < maxGateAttempts) {
         prompt = gateCorrection(violations);
+        correctionIndex += 1;
         tracer.event({
           runId,
           phaseId,
           type: 'correction',
           name: 'gate violations',
-          payload: { attempt: gateAttempt, violations },
+          payload: { attempt: gateAttempt, correctionIndex, violations },
         });
       }
     }
@@ -174,6 +184,7 @@ export class AgentPhaseRunner implements PhaseRunner {
     envelopeKind: PhaseDef['envelope'] & string,
     gateAttempt: number,
     ctx: RunContext,
+    nextCorrectionIndex: () => number,
   ): Promise<{ ok: true; envelope: Envelope } | { ok: false; detail: string }> {
     let prompt = firstPrompt;
     // The wire constraint and the parse come off the same zod schema, so a
@@ -246,7 +257,7 @@ export class AgentPhaseRunner implements PhaseRunner {
         phaseId,
         type: 'correction',
         name: 'envelope did not parse',
-        payload: { attempt, problem },
+        payload: { attempt, correctionIndex: nextCorrectionIndex(), problem },
       });
       prompt = correctionMessage(problem, envelopeKind, agent.customFields, this.deps.envelopeDefs);
     }

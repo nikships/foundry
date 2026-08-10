@@ -8,18 +8,65 @@
  * the violation list as evidence.
  */
 
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { BoundaryViolation, WriteBoundary } from '@shared/types.js';
-import { changedPaths, revertPath } from './git.js';
+import { changedPaths, resolveRef, revertPath } from './git.js';
 
 /** Always protected, whatever an agent's boundary says. */
 export const ALWAYS_PROTECTED = ['.foundry/', '.git/', '.foundry-worktrees/'];
 
-export interface Snapshot {
-  paths: Set<string>;
+/**
+ * One dirty path's content at phase start — the shape rewind({filesToRestore})
+ * needs. Missing/deleted paths stay in `paths` only (nothing to restore by hash).
+ */
+export interface SnapshotFile {
+  path: string;
+  contentHash: string;
+  size: number;
 }
 
+export interface Snapshot {
+  paths: Set<string>;
+  /** Worktree HEAD at phase start (`resolveRef(cwd, 'HEAD')`). */
+  headSha: string;
+  /** Content hashes for changed files that still exist on disk. */
+  files: SnapshotFile[];
+}
+
+function hashExistingFile(cwd: string, relPath: string): SnapshotFile | null {
+  const abs = join(cwd, relPath);
+  if (!existsSync(abs)) return null;
+  try {
+    const buf = readFileSync(abs);
+    return {
+      path: relPath,
+      contentHash: createHash('sha256').update(buf).digest('hex'),
+      size: buf.byteLength,
+    };
+  } catch {
+    // Unreadable (permissions, race) — keep the path in the set; skip the hash.
+    return null;
+  }
+}
+
+/**
+ * Cheap phase-start capture: porcelain changed paths + HEAD + per-file hashes
+ * of only those paths. Never walks the tree.
+ */
 export async function snapshot(cwd: string): Promise<Snapshot> {
-  return { paths: new Set(await changedPaths(cwd)) };
+  const changed = await changedPaths(cwd);
+  const files: SnapshotFile[] = [];
+  for (const path of changed) {
+    const file = hashExistingFile(cwd, path);
+    if (file) files.push(file);
+  }
+  return {
+    paths: new Set(changed),
+    headSha: await resolveRef(cwd, 'HEAD'),
+    files,
+  };
 }
 
 function normalise(p: string): string {

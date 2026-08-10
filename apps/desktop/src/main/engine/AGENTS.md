@@ -32,6 +32,11 @@ inside one phase and never decide if they succeeded.
   Violations are reverted and the phase fails. This is the ONLY enforcement:
   runs never stop for permission (`droid/permissions.ts` always decides), so a
   mid-turn allow is safe precisely because the diff runs afterwards.
+- Phase-start `boundary.snapshot()` is cheap and rewind-ready: porcelain
+  changed-paths Set + HEAD SHA (`resolveRef`) + sha256/size for each dirty
+  file that still exists (no tree walk). Agent-phase correction events carry a
+  per-phase running `correctionIndex` shared across envelope/boundary/gate so
+  traces can answer attempt-index-vs-success; existing `attempt` stays.
 - **Compaction happens between phases, never inside one.** The loop compacts
   every session past `compactionThreshold` before it starts the next phase: the
   SDK refuses a replacement with a stream open, and the successor session has to
