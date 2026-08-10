@@ -10,9 +10,6 @@
   "ignoreIssues": {
     "package.json": ["unresolved"]
   },
-  // Pinned ahead of its first import: src/main/droid/sdk/session.ts adopts the SDK in
-  // Phase 1 of issue #51, at which point this entry must be deleted.
-  "ignoreDependencies": ["@factory/droid-sdk"],
   "rules": {
     "files": "error",
     "dependencies": "error",

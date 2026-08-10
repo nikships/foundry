@@ -20,6 +20,31 @@ a verdict reads as a cancellation and the agent asks again. `oneshot.ts` must
 stay vendor-agnostic; vendor flags belong in `cli/<vendor>.ts`. Test against
 `tests/fake-droid.ts`.
 
+## The SDK seam (`sdk/`)
+
+`sdk/session.ts` is the only place `@factory/droid-sdk` may be imported (ESLint
+enforces it; tests/sdk-\*.test.ts are the one other exception). Everything
+else talks to `SdkSession`, so the transport stays swappable.
+
+Three things the SDK cannot give us, all solved by the one decorator in
+`sdk/sniffing-transport.ts`:
+
+- `availableModels` lives only on the `initialize_session` response envelope,
+  which `createSession()` discards.
+- ~5 notifications fire before `createSession()` resolves, which is the
+  earliest anything can subscribe — without the tap, stream.jsonl starts
+  mid-conversation.
+- `droid.get_context_breakdown` is a real method with no `DroidSession`
+  counterpart; the decorator injects the request and swallows the response so
+  the SDK's client never sees an id it did not issue. Never reach for the
+  session's private `_client`.
+
+Two more SDK behaviours the code works around: `--auto` is inert for a
+stream-jsonrpc session (only `autonomyLevel` decides, and omitting it defaults
+to high, which is why it is always sent), and the SDK's stderr goes through a
+logger that strips message text from any customer sink — so `sdk/session.ts`
+reads `childProcess.stderr` directly.
+
 ## Zero-interrupt policy (`permissions.ts`)
 
 Runs never stop for a person. `evaluate()` ALWAYS returns a decision — there is
