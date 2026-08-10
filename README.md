@@ -50,15 +50,15 @@ A pipeline is a recipe made of phases. Each phase has one job and one way to be 
 
 Foundry ships with seven, all editable:
 
-| Pipeline | What it does | When to use it |
-|---|---|---|
-| **Prompt** | One agent, one answer | Quick questions |
-| **Scout** | Read-only reconnaissance with evidence | "Where is this and what touches it?" |
-| **Plan** | Produces a concrete plan and commits it | You want a spec before code |
-| **Plan → Build** | Plan, then implement | The default for most changes |
-| **Plan → Build → Test** | Plan, build, then prove it with your own tests | You want green tests before merge |
-| **Plan → Build → Review** | Plan, build, then a second agent checks it | You want a second pair of eyes |
-| **Full SDLC** | Plan, build, test, review, and document | The full chain, with a commit at each boundary |
+| Pipeline                  | What it does                                   | When to use it                                 |
+| ------------------------- | ---------------------------------------------- | ---------------------------------------------- |
+| **Prompt**                | One agent, one answer                          | Quick questions                                |
+| **Scout**                 | Read-only reconnaissance with evidence         | "Where is this and what touches it?"           |
+| **Plan**                  | Produces a concrete plan and commits it        | You want a spec before code                    |
+| **Plan → Build**          | Plan, then implement                           | The default for most changes                   |
+| **Plan → Build → Test**   | Plan, build, then prove it with your own tests | You want green tests before merge              |
+| **Plan → Build → Review** | Plan, build, then a second agent checks it     | You want a second pair of eyes                 |
+| **Full SDLC**             | Plan, build, test, review, and document        | The full chain, with a commit at each boundary |
 
 <p align="center">
   <img src="apps/desktop/assets/scenes/pipeline-designer.png" alt="Pipeline designer" width="720">
@@ -70,26 +70,35 @@ The Pipeline Designer is visual and live. Drag to reorder, change acceptance, ad
 
 Five agents cover the work. Each one has its own model, instructions, and limits — and you can edit all of it or add your own.
 
-| Agent | Role |
-|---|---|
-| **planner** | Turns your request into a plan a builder can follow without guessing |
-| **builder** | Implements the plan and lists every file it changed |
-| **scout** | Maps the codebase and answers with paths and symbols, changes nothing |
-| **reviewer** | Checks the diff against your request, one finding per requirement |
-| **documenter** | Writes down what changed for the next person |
+| Agent          | Role                                                                  |
+| -------------- | --------------------------------------------------------------------- |
+| **planner**    | Turns your request into a plan a builder can follow without guessing  |
+| **builder**    | Implements the plan and lists every file it changed                   |
+| **scout**      | Maps the codebase and answers with paths and symbols, changes nothing |
+| **reviewer**   | Checks the diff against your request, one finding per requirement     |
+| **documenter** | Writes down what changed for the next person                          |
 
 There is no separate tester agent. Running tests is a real command in your repo, so Foundry runs it as a real command and hands failures back to the builder to fix.
 
 ### Powered by Factory Droid
 
-Foundry drives **Factory Droid** as its core agent harness, providing live JSON-RPC tool streaming, model selection, and execution context.
+Foundry drives **Factory Droid** through the official [`@factory/droid-sdk`](https://www.npmjs.com/package/@factory/droid-sdk) (`0.7.0`, exact-pinned in `dependencies` — `out/main/main.js` externalizes it as a `require`, not tree-shaken) — the SDK owns wire framing, notifications, and session lifecycle behind `apps/desktop/src/main/droid/sdk/` (the only import site, ESLint-enforced). Transports degrade honestly: **daemon** (default, one app-owned `droid daemon` on `127.0.0.1:37600–37699`, `--parent-pid` so it dies with the app) → **subprocess RPC** (`SdkSession` via `ProcessTransport`) → **oneshot** (`droid exec` argv+parse). A daemon that fails to spawn or authenticate falls back to subprocess with a traced `log` warning (`fallback to subprocess: <reason>`); two protocol failures (`PROTOCOL_FAILURE_LIMIT = 2`) fall back to oneshot — a run never fails because the daemon didn't come up.
+
+Settings (Limits / Transport) expose the four knobs:
+
+- `compactionThreshold` — compact between phases when `used/limit ≥ threshold` (default `0.8`, clamp `0.5–0.95`)
+- `rewindAfterCorrections` — rewind the session after N failed corrections instead of appending (default `2`, `0` disables)
+- `transport` — `daemon` (default) or `subprocess` (force subprocess; daemon unavailability still traces the fallback)
+- `daemonPort` — preferred daemon port (default `37643`, scans up inside `37600–37699` when busy; per-session children are not per-agent — one `processes` row for the daemon)
+
+All transports share the same trace/Inspector contract: one span per `toolUseId`, byte-compatible `stream.jsonl`, post-hoc write-boundary enforcement and `finish()` settlement — see `apps/desktop/src/main/droid/AGENTS.md` for wire quirks, fake-droid handshake notes, and the sniffing-transport decorator.
 
 ### Safe by design
 
-* **Your checkout stays clean.** Every run gets its own git worktree and `foundry/run_*` branch. Nothing lands on your base branch until you merge.
-* **Agents cannot write outside their lane.** Each agent has a write boundary (unrestricted, read-only, or a set of allowed paths). Writes outside it are reverted and the phase fails.
-* **Protected paths are always protected.** `.git`, CI config, and lockfiles are off limits no matter what the agent says.
-* **Gates check the work.** Automatic checks verify that claimed files exist, are not empty, match the diff, and that a review's verdict matches its findings. A green gate tells you what it checked.
+- **Your checkout stays clean.** Every run gets its own git worktree and `foundry/run_*` branch. Nothing lands on your base branch until you merge.
+- **Agents cannot write outside their lane.** Each agent has a write boundary (unrestricted, read-only, or a set of allowed paths). Writes outside it are reverted and the phase fails.
+- **Protected paths are always protected.** `.git`, CI config, and lockfiles are off limits no matter what the agent says.
+- **Gates check the work.** Automatic checks verify that claimed files exist, are not empty, match the diff, and that a review's verdict matches its findings. A green gate tells you what it checked.
 
 ### Watch it work
 
@@ -103,11 +112,11 @@ Runs can pause for you at any **Checkpoint** phase — approve, edit, or reject 
 
 ## The app
 
-* **Runs** — compose a request, pick a pipeline, start a run, and scan history
-* **Inspector** — the live timeline for whatever is running, with full phase detail
-* **Pipelines** — design and duplicate pipelines without writing scripts
-* **Roster** — edit agents, select models, tune prompts and boundaries
-* **Settings** — projects, commands, protected paths, notifications, updates, and maintenance
+- **Runs** — compose a request, pick a pipeline, start a run, and scan history
+- **Inspector** — the live timeline for whatever is running, with full phase detail
+- **Pipelines** — design and duplicate pipelines without writing scripts
+- **Roster** — edit agents, select models, tune prompts and boundaries
+- **Settings** — projects, commands, protected paths, notifications, updates, and maintenance
 
 Foundry feels at home on the Mac: native windowing, Finder integration, auto-updates with progress and restart, and a clean, fast UI that stays out of your way.
 
