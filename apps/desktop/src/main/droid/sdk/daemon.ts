@@ -98,6 +98,12 @@ export interface DaemonProcessInfo {
   command: string;
 }
 
+export type DaemonSpawnFn = (
+  command: string,
+  args: string[],
+  options: { env: NodeJS.ProcessEnv; stdio: ['ignore', 'pipe', 'pipe']; detached: boolean },
+) => ChildProcess;
+
 export interface DaemonManagerOptions {
   droidPath: string;
   /** Preferred port from AppSettings.daemonPort; scan-up within the band if busy. */
@@ -114,6 +120,8 @@ export interface DaemonManagerOptions {
   onSpawnAttempt?: (argv: string[]) => void;
   healthTimeoutMs?: number;
   healthPollMs?: number;
+  /** Test seam: replace child spawn (defaults to node:child_process spawn). */
+  spawn?: DaemonSpawnFn;
 }
 
 let singleton: DaemonManager | null = null;
@@ -252,7 +260,8 @@ export class DaemonManager {
 
     let child: ChildProcess;
     try {
-      child = spawn(this.opts.droidPath, args, {
+      const spawnFn = this.opts.spawn ?? spawn;
+      child = spawnFn(this.opts.droidPath, args, {
         env: spawnEnv(),
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: false,

@@ -6,7 +6,7 @@
  * Pre-existing user daemons on 39217/39321 are baseline-scoped and NEVER touched.
  */
 
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn as nodeSpawn } from 'node:child_process';
 import { createServer, type Server } from 'node:net';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -123,6 +123,55 @@ function listenOn(port: number): Promise<Server> {
 
 const droidPath = () => findCli('droid');
 
+/**
+ * Hermetic fake droid daemon for CI: a tiny Node TCP server that listens on
+ * the requested --port/--host and honours --parent-pid / SIGTERM. Using a fake
+ * avoids requiring the real `droid` binary on GitHub-hosted runners (which have
+ * no FACTORY_API_KEY) while still exercising DaemonManager's port scan, health
+ * poll, connect classification, and kill discipline. The child is spawned with
+ * argv0 'droid daemon' so the existing `droidDaemonPids()` helper still finds
+ * it (best-effort orphan sweep + isAlive checks remain meaningful).
+ */
+function fakeDaemonSpawn(): (
+  command: string,
+  args: string[],
+  options: { env: NodeJS.ProcessEnv; stdio: ['ignore', 'pipe', 'pipe']; detached: boolean },
+) => ReturnType<typeof nodeSpawn> {
+  return (_command, args, options) => {
+    const portIdx = args.indexOf('--port');
+    const port = portIdx !== -1 ? Number(args[portIdx + 1]) : DEFAULT_DAEMON_PORT;
+    const hostIdx = args.indexOf('--host');
+    const host = hostIdx !== -1 ? String(args[hostIdx + 1]) : '127.0.0.1';
+    const parentPidIdx = args.indexOf('--parent-pid');
+    const parentPid = parentPidIdx !== -1 ? Number(args[parentPidIdx + 1]) : null;
+    // Validate port/host extraction — if parsing fails, let the child fail fast.
+    if (!Number.isFinite(port) || !host) {
+      throw new Error(`fake daemon: invalid args ${args.join(' ')}`);
+    }
+    const script = `
+      const net = require('net');
+      const port = ${JSON.stringify(port)};
+      const host = ${JSON.stringify(host)};
+      const parentPid = ${parentPid === null ? 'null' : JSON.stringify(parentPid)};
+      const server = net.createServer((socket) => socket.end());
+      server.listen(port, host, () => {});
+      server.on('error', (err) => { console.error(err.message); process.exit(1); });
+      if (parentPid !== null && Number.isFinite(parentPid)) {
+        const iv = setInterval(() => {
+          try { process.kill(parentPid, 0); } catch { clearInterval(iv); server.close(() => process.exit(0)); }
+        }, 100);
+        if (iv.unref) iv.unref();
+      }
+      process.on('SIGTERM', () => server.close(() => process.exit(0)));
+      process.on('SIGINT', () => server.close(() => process.exit(0)));
+    `;
+    return nodeSpawn(process.execPath, ['-e', script], {
+      ...options,
+      argv0: 'droid daemon',
+    } as unknown as Parameters<typeof nodeSpawn>[2]);
+  };
+}
+
 describe('DaemonManager', () => {
   it('spawns droid daemon with --parent-pid on 127.0.0.1 inside the mission range', async () => {
     const recorded: { pid: number; port: number; command: string }[] = [];
@@ -135,6 +184,7 @@ describe('DaemonManager', () => {
         resolveAuth: () => ({ apiKey: 'fk-test-not-real', source: 'env' }),
         onProcess: (info) => recorded.push(info),
         healthTimeoutMs: 10_000,
+        spawn: fakeDaemonSpawn(),
       }),
     );
 
@@ -179,6 +229,7 @@ describe('DaemonManager', () => {
         connect,
         resolveAuth: () => ({ apiKey: 'fk-test-scan', source: 'env' }),
         healthTimeoutMs: 10_000,
+        spawn: fakeDaemonSpawn(),
       }),
     );
 
@@ -205,6 +256,7 @@ describe('DaemonManager', () => {
         connect,
         resolveAuth: () => ({ apiKey: 'fk-bad-key', source: 'env' }),
         healthTimeoutMs: 10_000,
+        spawn: fakeDaemonSpawn(),
       }),
     );
 
@@ -233,6 +285,7 @@ describe('DaemonManager', () => {
         connect,
         resolveAuth: () => ({ apiKey: 'fk-ok', source: 'env' }),
         healthTimeoutMs: 10_000,
+        spawn: fakeDaemonSpawn(),
       }),
     );
 
@@ -279,6 +332,7 @@ describe('DaemonManager', () => {
         connect,
         resolveAuth: () => ({ apiKey: 'fk-shutdown', source: 'env' }),
         healthTimeoutMs: 10_000,
+        spawn: fakeDaemonSpawn(),
       }),
     );
 
@@ -315,6 +369,7 @@ describe('DaemonManager', () => {
         connect,
         resolveAuth: () => ({ apiKey: 'fk-parent', source: 'env' }),
         healthTimeoutMs: 10_000,
+        spawn: fakeDaemonSpawn(),
       }),
     );
 
@@ -344,6 +399,7 @@ describe('DaemonManager', () => {
         connect,
         resolveAuth: () => ({ apiKey: 'fk-reuse', source: 'env' }),
         healthTimeoutMs: 10_000,
+        spawn: fakeDaemonSpawn(),
       }),
     );
 
