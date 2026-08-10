@@ -308,6 +308,7 @@ export class Executor {
       turnTimeoutMs: this.deps.turnTimeoutMs,
       tracer: this.deps.tracer,
       policy: { protectedPaths: this.deps.project.protectedPaths },
+      envelopes: this.envelopes,
       onModeChange: (mode) => {
         this.mode = mode;
         this.deps.tracer.setRunMode(this.deps.runId, mode);

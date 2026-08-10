@@ -44,6 +44,11 @@ import {
   type TokenUsage,
 } from '../protocol.js';
 import { spawnEnv } from '../../system/env.js';
+import {
+  createFoundryMcpServer,
+  FOUNDRY_TOOL_IDS,
+  type FoundryMcpContext,
+} from './mcp-tools.js';
 import { SniffingTransport } from './sniffing-transport.js';
 
 /** One tool as this session sees it; `id` is the llmId the allowlist names. */
@@ -75,6 +80,12 @@ export interface SdkSessionOptions {
   onModelWarning?: (warning: string) => void;
   /** Test seam for the CLI's lag between announcing MCP tools and listing them. */
   toolRefreshDelayMs?: number;
+  /**
+   * When set, the in-process foundry MCP server is attached at session create
+   * (and resume) via init-time `mcpServers` — never via `addMcpServer()`, which
+   * permanently writes the user's global `~/.factory/mcp.json`.
+   */
+  foundryMcp?: FoundryMcpContext;
 }
 
 /** However the SDK spells autonomy; Foundry never names its levels. */
@@ -123,6 +134,8 @@ export class SdkSession {
   private appliedDisabledTools: string[] | null = null;
   private toolRefresh: NodeJS.Timeout | null = null;
   private toolRefreshDelay = 0;
+  /** Kept so a kill that skips session.close still tears the HTTP listener down. */
+  private foundryServer: ReturnType<typeof createFoundryMcpServer> | null = null;
 
   constructor(private readonly opts: SdkSessionOptions) {}
 
@@ -175,11 +188,18 @@ export class SdkSession {
     this.sniffer = sniffer;
 
     this.toolRefreshDelay = this.opts.toolRefreshDelayMs ?? MCP_TOOL_SETTLE_MS;
+    // Init-time mcpServers only: session-scoped, no config write, no late-tool
+    // escape window. Never session.addMcpServer() (writes ~/.factory/mcp.json).
+    const mcpServers = this.opts.foundryMcp
+      ? [createFoundryMcpServer(this.opts.foundryMcp)]
+      : undefined;
+    this.foundryServer = mcpServers?.[0] ?? null;
     const shared = {
       transport: sniffer,
       execArgs: ['--auto', AUTONOMY_LEVEL],
       permissionHandler: (params: RequestPermissionRequestParams) => this.onPermission(params),
       askUserHandler: (params: AskUserRequestParams) => this.onAskUser(params),
+      ...(mcpServers ? { mcpServers } : {}),
     };
     // `autonomyLevel` is stated on every create and re-stated after every
     // resume: omitting it happens to default to high, and load_session carries
@@ -399,11 +419,28 @@ export class SdkSession {
     } else if (this.owned) {
       await this.owned.close().catch(() => undefined);
     }
+    // session.close() runs the SDK cleanup that stops the loopback listener;
+    // call it again here so a kill that skipped close still leaves no orphan.
+    await this.closeFoundryServer();
     this.exited = true;
   }
 
   kill(): void {
     this.child?.kill('SIGKILL');
+    // Best-effort: the HTTP listener must not outlive a killed child. close()
+    // is the orderly path; this covers cancel/kill before closeSessions runs.
+    void this.closeFoundryServer();
+  }
+
+  private async closeFoundryServer(): Promise<void> {
+    const server = this.foundryServer;
+    this.foundryServer = null;
+    if (!server) return;
+    try {
+      await server.close();
+    } catch {
+      // Already closed by the SDK cleanup, or never started.
+    }
   }
 
   private async spawnTransport(): Promise<StringFramedDroidClientTransport> {
@@ -503,7 +540,9 @@ export class SdkSession {
     const explicit = this.opts.disabledTools ?? [];
     if (!allow?.length && !explicit.length) return;
 
-    const allowed = new Set(allow ?? []);
+    // Foundry MCP tools stay available under a restricted roster: the allow
+    // set is the roster list extended with the wire ids listTools reports.
+    const allowed = new Set([...(allow ?? []), ...FOUNDRY_TOOL_IDS]);
     const complement = allow?.length
       ? (await session.listTools()).map((t) => t.id).filter((id) => !allowed.has(id))
       : [];

@@ -175,6 +175,27 @@ else", merged with any explicitly disabled tools. Three things this depends on:
   `mcp_status_changed` announces its server, so the recompute is scheduled
   rather than immediate — a synchronous one reads a list the tool is not in yet
   and it stays allowed.
+- Foundry's own MCP tools (`foundry___report_progress`,
+  `foundry___read_phase_context`) are always folded into the allow set when a
+  roster restricts tools. Wire ids use a triple underscore.
+
+### Foundry MCP tools (`sdk/mcp-tools.ts`)
+
+Every droid RPC session attaches an in-process foundry MCP server at
+**create/resume** via init-time `mcpServers` — never `session.addMcpServer()`,
+which permanently writes `~/.factory/mcp.json`. The server is a loopback HTTP
+listener the SDK starts and stops with the session.
+
+Exactly two tools, registered with the **typed** `tool()` overload and the
+SDK's nested zod 3 (`sdk/sdk-zod.ts` — the only place that import lives; app
+zod 4 must never reach `tool()`). The schema-less overload is defective in
+0.7.0 (no inputSchema → handler gets the MCP extra and fires twice).
+
+- `report_progress({summary})` → tracer `log` event named `{agent}: progress`
+- `read_phase_context({})` → JSON of this run's validated envelope chain
+
+Handlers close over Tracer + run context injected through `SdkSessionOptions.foundryMcp`.
+They never write the worktree. They are not gate/acceptance tools.
 
 ## Discovery is session-first (`catalog.ts`)
 

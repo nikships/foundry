@@ -1165,6 +1165,102 @@ describe('tool allowlist', () => {
     expect(transport.disabledToolIds).toEqual([]);
     expect(transport.framesFor('droid.list_tools')).toHaveLength(0);
   });
+
+  it('keeps foundry MCP tools allowed under a restricted roster after recompute', async () => {
+    const { sdk, transport } = session({ restrictTools: ['Read', 'Grep'] });
+    // Simulate init-time foundry tools already present in the list.
+    transport.tools = [
+      ...BUILTIN_TOOLS,
+      'foundry___report_progress',
+      'foundry___read_phase_context',
+      'late-mcp___echo',
+    ];
+    await sdk.start();
+
+    expect(transport.disabledToolIds).not.toContain('foundry___report_progress');
+    expect(transport.disabledToolIds).not.toContain('foundry___read_phase_context');
+    expect(transport.disabledToolIds).toContain('late-mcp___echo');
+
+    const allowed = (await sdk.listTools()).filter((t) => t.allowed).map((t) => t.id);
+    expect(allowed.sort()).toEqual(
+      [
+        'Grep',
+        'Read',
+        'ToolSearch',
+        'foundry___read_phase_context',
+        'foundry___report_progress',
+      ].sort(),
+    );
+
+    // A late non-foundry tool still gets disabled after settle.
+    transport.notify({
+      type: 'mcp_status_changed',
+      servers: [{ name: 'late-mcp', status: 'connected' }],
+      summary: { total: 1, connected: 1, connecting: 0, failed: 0, disabled: 0 },
+    });
+    await waitFor(async () =>
+      (await sdk.listTools()).some((t) => t.id === 'late-mcp___echo' && !t.allowed),
+    );
+    expect(transport.disabledToolIds).toContain('late-mcp___echo');
+    expect(transport.disabledToolIds).not.toContain('foundry___report_progress');
+  });
+});
+
+describe('foundry MCP attachment', () => {
+  it('passes the foundry server on create via init-time mcpServers, never addMcpServer', async () => {
+    const events: { type: string; name: string; payload: Record<string, unknown> }[] = [];
+    const { sdk, transport } = session({
+      foundryMcp: {
+        runId: 'run_x',
+        agentName: 'scout',
+        phaseId: () => 'ph_1',
+        envelopes: () => new Map(),
+        tracer: {
+          event: (input) => {
+            events.push({
+              type: input.type,
+              name: input.name,
+              payload: (input.payload ?? {}) as Record<string, unknown>,
+            });
+            return 'evt_1';
+          },
+        },
+      },
+    });
+    await sdk.start();
+
+    const init = transport.paramsFor('droid.initialize_session')[0]!;
+    const servers = init.mcpServers as Array<Record<string, unknown>>;
+    expect(Array.isArray(servers)).toBe(true);
+    expect(servers).toHaveLength(1);
+    expect(servers[0]).toMatchObject({
+      type: 'http',
+      name: 'foundry',
+    });
+    expect(String(servers[0]!.url)).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/);
+    // Never the config-mutating RPC.
+    expect(transport.framesFor('droid.add_mcp_server')).toHaveLength(0);
+
+    await sdk.close();
+  });
+
+  it('re-attaches foundry mcpServers on resume', async () => {
+    const { sdk, transport } = session({
+      foundryMcp: {
+        runId: 'run_x',
+        agentName: 'scout',
+        phaseId: () => null,
+        envelopes: () => new Map(),
+        tracer: { event: () => 'evt' },
+      },
+    });
+    await sdk.start('carried-over-session');
+    const loaded = transport.paramsFor('droid.load_session')[0]!;
+    const servers = loaded.mcpServers as Array<Record<string, unknown>>;
+    expect(servers).toHaveLength(1);
+    expect(servers[0]).toMatchObject({ type: 'http', name: 'foundry' });
+    expect(transport.framesFor('droid.add_mcp_server')).toHaveLength(0);
+  });
 });
 
 describe('structured output', () => {

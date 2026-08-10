@@ -8,6 +8,7 @@
 
 import type { AgentDef, CliVendor, ContextBreakdown, UsageBreakdown } from '@shared/types.js';
 import type { Tracer } from '../trace/tracer.js';
+import type { Envelope } from '../engine/envelopes.js';
 import { adapterFor } from '../cli/index.js';
 import {
   type PermissionAsk,
@@ -54,6 +55,11 @@ export interface AgentSessionDeps {
   tracer: Tracer;
   policy: Omit<PolicyContext, 'worktree' | 'writes'>;
   onModeChange?: (mode: Mode) => void;
+  /**
+   * Validated envelopes for this run (same Map the engine mutates). The foundry
+   * MCP `read_phase_context` tool reads it; absent means an empty chain.
+   */
+  envelopes?: ReadonlyMap<string, Envelope>;
 }
 
 const PROTOCOL_FAILURE_LIMIT = 2;
@@ -149,6 +155,13 @@ export class AgentSession {
       onNotification: (n) => this.currentFolder?.absorb(n),
       onExit: () => this.onRpcExit(),
       onModelWarning: (message) => this.agentLog('log', 'model', { message }),
+      foundryMcp: {
+        runId: this.deps.runId,
+        agentName: this.agent.name,
+        phaseId: () => this.currentPhaseId,
+        envelopes: () => this.deps.envelopes ?? new Map(),
+        tracer: this.deps.tracer,
+      },
     });
 
     try {
