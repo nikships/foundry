@@ -22,7 +22,7 @@ Build output must exist (`npm run build` emits `out/`; `electron .` loads
 single-instance lock per user-data dir.
 
 ```bash
-cd /path/to/software-factory/apps/desktop
+cd /path/to/foundry/apps/desktop
 
 # 0. Check nothing is already running (single-instance lock)
 pgrep -fl "electron ." || true
@@ -72,7 +72,7 @@ agent-browser screenshot /tmp/shot.png
 - Refs renumber on every snapshot; always re-snapshot after navigating.
 - There is exactly one CDP target (no webviews); `tab` shows one page.
 - `click "text=..."` selectors are unreliable here; click sidebar/@refs.
-- The UI is the dark "Prism" OLED theme; screenshots are mostly black with
+- The UI is the dark Factory theme; screenshots are mostly black with
   light text. That is correct, not a rendering failure.
 - View shortcuts work through CDP: `agent-browser press Meta+1` (Runs),
   `Meta+2` (Pipelines), `Meta+3` (Roster), `Meta+4` (Inspector),
