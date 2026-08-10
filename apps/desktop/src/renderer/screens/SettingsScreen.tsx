@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type {
+  AppSettings,
   CliDescriptor,
   CliVendor,
   DoctorCheck,
@@ -34,6 +35,18 @@ const PANES: { id: Pane; label: string }[] = [
   { id: 'maintenance', label: 'Maintenance' },
   { id: 'about', label: 'About' },
 ];
+
+/**
+ * The compaction threshold is stored as a fraction and shown as a percentage,
+ * because "compact at 80%" is what the lane's context meter reads. The band
+ * mirrors the settings schema: below it a run compacts more than it works, and
+ * at 100% it never compacts before hitting the context wall.
+ */
+const COMPACTION_PERCENT = { min: 50, max: 95 } as const;
+
+const REWIND_BAND = { min: 0, max: 20 } as const;
+
+const DAEMON_PORT_BAND = { min: 37_600, max: 37_699 } as const;
 
 const NOTIFY_LABELS: Record<'accepted' | 'rejected' | 'failed' | 'needsInput', string> = {
   accepted: 'A run was accepted',
@@ -211,11 +224,22 @@ export default function SettingsScreen({
     setNameHint('');
   }, [settings?.engineerName]);
 
+  // Drives the error banner `patchSettings` returns. Kept locally so a
+  // non-range invalid value (e.g. "abc" parsed as null) that never reaches
+  // Zod can still show the operator why nothing saved.
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [transportSaveError, setTransportSaveError] = useState('');
+
   const setPaneLive = (next: Pane): void => setPane(next);
   const onTablistKey = useTablistNav();
   const set = async (patch: Parameters<typeof patchSettings>[0]): Promise<void> => {
     // Always replace the banner: a successful patch must clear a prior failure.
-    setErrors(await patchSettings(patch));
+    const next = await patchSettings(patch);
+    setErrors(next);
+    if (next.length === 0) {
+      setTransportSaveError('');
+    }
+    return;
   };
   const setInt = async (
     raw: string,
@@ -708,30 +732,13 @@ export default function SettingsScreen({
                       </Field>
                     </div>
                   </Section>
-                  <Section label="Autonomy" note="What an agent stops to ask about.">
-                    <Field
-                      label="Autonomy"
-                      hint="Foundry always reverts writes outside an agent's boundary, at every level. Autonomy only decides what it stops to ask about first."
-                    >
-                      <Dropdown
-                        value={settings.defaultAutonomy}
-                        options={[
-                          {
-                            value: 'low',
-                            label: 'Low: confirm every write and command',
-                          },
-                          {
-                            value: 'medium',
-                            label: 'Medium: writes inside the boundary run unattended',
-                          },
-                          {
-                            value: 'high',
-                            label: 'High: run unattended within the worktree',
-                          },
-                        ]}
-                        onChange={(next) => void set({ defaultAutonomy: next as never })}
-                      />
-                    </Field>
+                  <Section label="Autonomy" note="How a run behaves once it starts.">
+                    <p className={styles.hint}>
+                      Runs are fully autonomous: once a run starts it never stops to ask permission.
+                      Writes outside an agent&rsquo;s boundary are always reverted, and every
+                      decision the engine makes on your behalf is recorded in the run&rsquo;s
+                      timeline.
+                    </p>
                   </Section>
                   <Section label="Limits" note="How hard Foundry tries before a phase fails.">
                     <div className={styles.settingsFields}>
@@ -767,6 +774,125 @@ export default function SettingsScreen({
                           }
                         />
                       </Field>
+                      <Field
+                        label="Compact context at (%)"
+                        hint="Between phases, an agent this full of context is compacted so the next phase has room."
+                      >
+                        <TextInput
+                          type="number"
+                          min={COMPACTION_PERCENT.min}
+                          max={COMPACTION_PERCENT.max}
+                          value={Math.round(settings.compactionThreshold * 100)}
+                          onChange={(e) =>
+                            void setInt(e.target.value, COMPACTION_PERCENT, (percent) => ({
+                              compactionThreshold: percent / 100,
+                            }))
+                          }
+                        />
+                      </Field>
+                      <Field
+                        label="Rewind after (corrections)"
+                        hint="After this many failed corrections, rewind the session to its phase-start state instead of appending another fix. Set to 0 to disable — the phase simply retries in place."
+                        error={fieldErrors.rewindAfterCorrections}
+                      >
+                        <TextInput
+                          type="number"
+                          min={REWIND_BAND.min}
+                          max={REWIND_BAND.max}
+                          step={1}
+                          value={settings.rewindAfterCorrections}
+                          aria-invalid={fieldErrors.rewindAfterCorrections ? 'true' : undefined}
+                          aria-describedby={
+                            fieldErrors.rewindAfterCorrections
+                              ? 'field-rewindAfterCorrections-error'
+                              : undefined
+                          }
+                          onChange={(e) => {
+                            const raw = e.target.value.trim();
+                            if (raw === '') {
+                              setFieldErrors((m) => ({
+                                ...m,
+                                rewindAfterCorrections:
+                                  'Enter 0–20, or clear to keep the last value.',
+                              }));
+                              return;
+                            }
+                            const n = Number(raw);
+                            if (!Number.isFinite(n)) {
+                              setFieldErrors((m) => ({
+                                ...m,
+                                rewindAfterCorrections: 'That is not a number — enter 0–20.',
+                              }));
+                              return;
+                            }
+                            const clamped = Math.min(
+                              REWIND_BAND.max,
+                              Math.max(REWIND_BAND.min, Math.round(n)),
+                            );
+                            if (Math.round(n) !== n) {
+                              setFieldErrors((m) => ({
+                                ...m,
+                                rewindAfterCorrections: `Rounded to ${clamped}.`,
+                              }));
+                            } else if (n < REWIND_BAND.min || n > REWIND_BAND.max) {
+                              setFieldErrors((m) => ({
+                                ...m,
+                                rewindAfterCorrections: `Clamped to ${clamped}.`,
+                              }));
+                            } else if (n === 0) {
+                              setFieldErrors((m) => ({
+                                ...m,
+                                rewindAfterCorrections:
+                                  'Rewind disabled — corrections append in place.',
+                              }));
+                            } else {
+                              setFieldErrors((m) => {
+                                const next = { ...m };
+                                delete next.rewindAfterCorrections;
+                                return next;
+                              });
+                            }
+                            void (async () => {
+                              const issues = await patchSettings({
+                                rewindAfterCorrections: clamped,
+                              });
+                              if (issues.length) setErrors(issues);
+                              else setErrors([]);
+                              // Do not clear fieldErrors on success here — the
+                              // clamped/disabled notes must survive to explain
+                              // why the input now shows a different number.
+                            })();
+                          }}
+                          onBlur={(e) => {
+                            const raw = e.target.value.trim();
+                            if (!raw) {
+                              setFieldErrors((m) => {
+                                const next = { ...m };
+                                delete next.rewindAfterCorrections;
+                                return next;
+                              });
+                              e.target.value = String(settings.rewindAfterCorrections);
+                              // Force React to treat the re-populated value as
+                              // the current committed one on next onChange.
+                              const tracker = (
+                                e.target as HTMLInputElement & {
+                                  _valueTracker?: { setValue(v: string): void };
+                                }
+                              )._valueTracker;
+                              if (tracker) tracker.setValue(e.target.value);
+                            }
+                          }}
+                        />
+                        {fieldErrors.rewindAfterCorrections && (
+                          <span
+                            id="field-rewindAfterCorrections-error"
+                            role="status"
+                            className={styles.settingsWarn}
+                          >
+                            {fieldErrors.rewindAfterCorrections}
+                          </span>
+                        )}
+                      </Field>
                       <Field label="Turn timeout (minutes)">
                         <TextInput
                           type="number"
@@ -800,6 +926,148 @@ export default function SettingsScreen({
                             )
                           }
                         />
+                      </Field>
+                    </div>
+                  </Section>
+                  <Section
+                    label="Transport"
+                    note="How each agent talks to the droid CLI — and where the daemon listens."
+                  >
+                    <div className={styles.settingsFields}>
+                      <Field
+                        label="Agent transport"
+                        hint="Droid daemon multiplexes many agents over one connection. Subprocess starts a fresh droid process per agent. Daemon is the default; a run still finishes if the daemon is unavailable — it falls back to subprocess automatically."
+                      >
+                        <Dropdown
+                          value={settings.transport}
+                          options={[
+                            {
+                              value: 'daemon',
+                              label: 'Droid daemon (default)',
+                              description:
+                                'Agents share one app-owned daemon. Fastest for parallel runs.',
+                            },
+                            {
+                              value: 'subprocess',
+                              label: 'Subprocess per agent',
+                              description:
+                                'Each agent spawns its own droid process. Use for debugging or when the daemon is unavailable.',
+                            },
+                          ]}
+                          onChange={(next) => {
+                            const patch = {
+                              transport: next as AppSettings['transport'],
+                            } as Partial<AppSettings>;
+                            void (async () => {
+                              const issues = await patchSettings(patch);
+                              if (issues.length) {
+                                setTransportSaveError(issues.join(' · '));
+                              } else {
+                                setTransportSaveError('');
+                                setErrors([]);
+                              }
+                            })();
+                          }}
+                        />
+                        <span className={styles.hint}>
+                          Effective now for the next run. This run is already started.
+                        </span>
+                        {transportSaveError && (
+                          <span role="status" className={styles.settingsWarn}>
+                            {transportSaveError}
+                          </span>
+                        )}
+                      </Field>
+                      <Field
+                        label="Daemon port"
+                        hint="Preferred port for the app-owned daemon. Must be 37600–37699; if busy, the daemon tries the next free port in that band. Change takes effect on next daemon launch."
+                        error={fieldErrors.daemonPort}
+                      >
+                        <TextInput
+                          type="number"
+                          min={DAEMON_PORT_BAND.min}
+                          max={DAEMON_PORT_BAND.max}
+                          value={settings.daemonPort}
+                          aria-invalid={fieldErrors.daemonPort ? 'true' : undefined}
+                          aria-describedby={
+                            fieldErrors.daemonPort ? 'field-daemonPort-error' : undefined
+                          }
+                          onChange={(e) => {
+                            const raw = e.target.value.trim();
+                            if (raw === '') {
+                              setFieldErrors((m) => ({
+                                ...m,
+                                daemonPort: 'Enter 37600–37699, or clear to keep the current port.',
+                              }));
+                              return;
+                            }
+                            const n = Number(raw);
+                            if (!Number.isFinite(n)) {
+                              setFieldErrors((m) => ({
+                                ...m,
+                                daemonPort: 'That is not a number — enter 37600–37699.',
+                              }));
+                              return;
+                            }
+                            const rounded = Math.round(n);
+                            const clamped = Math.min(
+                              DAEMON_PORT_BAND.max,
+                              Math.max(DAEMON_PORT_BAND.min, rounded),
+                            );
+                            if (rounded !== n) {
+                              setFieldErrors((m) => ({
+                                ...m,
+                                daemonPort: `Rounded to ${rounded}.`,
+                              }));
+                            } else if (
+                              rounded < DAEMON_PORT_BAND.min ||
+                              rounded > DAEMON_PORT_BAND.max
+                            ) {
+                              setFieldErrors((m) => ({
+                                ...m,
+                                daemonPort: `Clamped to ${clamped} — the allowed band is ${DAEMON_PORT_BAND.min}–${DAEMON_PORT_BAND.max}.`,
+                              }));
+                            } else {
+                              setFieldErrors((m) => {
+                                const next = { ...m };
+                                delete next.daemonPort;
+                                return next;
+                              });
+                            }
+                            void (async () => {
+                              const result = await patchSettings({ daemonPort: clamped });
+                              // patchSettings already surfaced range errors in the banner;
+                              // clamp-away handling kept our field note visible instead.
+                              if (result.length) setErrors(result);
+                            })();
+                          }}
+                          onBlur={(e) => {
+                            const raw = e.target.value.trim();
+                            if (!raw) {
+                              setFieldErrors((m) => {
+                                const next = { ...m };
+                                delete next.daemonPort;
+                                return next;
+                              });
+                              e.target.value = String(settings.daemonPort);
+                              const tracker = (
+                                e.target as HTMLInputElement & {
+                                  _valueTracker?: { setValue(v: string): void };
+                                }
+                              )._valueTracker;
+                              if (tracker) tracker.setValue(e.target.value);
+                            }
+                          }}
+                        />
+                        {fieldErrors.daemonPort && (
+                          <span
+                            id="field-daemonPort-error"
+                            role="status"
+                            className={styles.settingsWarn}
+                          >
+                            {fieldErrors.daemonPort}
+                          </span>
+                        )}
                       </Field>
                     </div>
                   </Section>
@@ -905,25 +1173,6 @@ export default function SettingsScreen({
                               setProjectDraft({
                                 ...projectDraft,
                                 protectedPaths: e.target.value.split('\n').filter(Boolean),
-                              })
-                            }
-                          />
-                        </Field>
-                        <Field
-                          label="Auto-approved commands"
-                          htmlFor="project-allowed-commands"
-                          hint="Commands agents may run without stopping to ask. Prefix matching."
-                        >
-                          <Textarea
-                            id="project-allowed-commands"
-                            aria-label="Auto-approved commands"
-                            rows={3}
-                            placeholder="e.g. npm test&#10;pytest"
-                            value={projectDraft.allowedCommands.join('\n')}
-                            onChange={(e) =>
-                              setProjectDraft({
-                                ...projectDraft,
-                                allowedCommands: e.target.value.split('\n').filter(Boolean),
                               })
                             }
                           />

@@ -10,7 +10,6 @@ import { CLI_VENDOR_IDS } from '../src/shared/types.js';
 const baseTurn: TurnRequest = {
   prompt: 'do the thing',
   cwd: '/tmp/wt',
-  autonomy: 'medium',
   model: 'inherit',
   reasoningEffort: 'off',
   sessionId: null,
@@ -75,8 +74,24 @@ describe('the vendor registry', () => {
 describe('droid', () => {
   const droid = adapterFor('droid');
 
-  it('sends autonomy as --auto, the one vendor that keeps a permission callback', () => {
-    expect(valueOf(droid.turn({ ...baseTurn, autonomy: 'high' }).argv, '--auto')).toBe('high');
+  it('hardcodes --auto high, so no input can lower what a run may do', () => {
+    const configurations: TurnRequest[] = [
+      baseTurn,
+      {
+        ...baseTurn,
+        prompt: 'something else',
+        cwd: '/elsewhere',
+        model: 'claude-opus-5',
+        reasoningEffort: 'high',
+        sessionId: 'sess-9',
+        restrictTools: ['Read'],
+        disabledTools: ['Execute'],
+        extraArgs: ['--flag-we-do-not-model'],
+      },
+    ];
+    for (const turn of configurations) {
+      expect(valueOf(droid.turn(turn).argv, '--auto')).toBe('high');
+    }
   });
 
   it('resumes with --session-id', () => {

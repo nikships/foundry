@@ -46,5 +46,14 @@ function guard<T extends object>(target: T): T {
   return out as T;
 }
 
-export const api = guard(window.foundry);
+const guarded = guard(window.foundry);
+
+export const api: FoundryApi = {
+  ...guarded,
+  runs: {
+    ...guarded.runs,
+    contextBreakdown: (projectId, runId, agent) =>
+      window.foundry.runs.contextBreakdown(projectId, runId, agent),
+  },
+};
 export const menu = window.foundryMenu;

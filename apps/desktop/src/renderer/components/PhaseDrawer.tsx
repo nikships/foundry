@@ -23,6 +23,7 @@ const EVENT_ICON: Record<string, string> = {
   gate_fail: '⛨',
   correction: '↻',
   interrupt: '☝',
+  compaction: '⇲',
   log: '·',
   error: '✕',
 };

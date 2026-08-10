@@ -199,6 +199,32 @@ export function schemaFor(
 }
 
 /**
+ * The JSON Schema handed to the model as an output constraint, derived from the
+ * very schema the reply is parsed against — the fourth leg of the synced set
+ * (type, prompt example, parse, wire constraint), so none of them can drift.
+ *
+ * Emitted as the OUTPUT view: `.default()` fields are `required`, i.e. the
+ * model is asked for strictly more than `parseEnvelope` demands (which fills
+ * defaults for anything omitted). Conforming to this schema therefore always
+ * parses; the text-parse fallback covers replies that do not conform.
+ *
+ * No `$schema` dialect is declared. droid compiles an output constraint with a
+ * Draft-07 ajv and rejects the whole request when it cannot resolve the dialect
+ * URI — a live turn on CLI 0.189.0 answered `The requested structured output
+ * schema is invalid.` for the 2020-12 URI zod stamps on. Every envelope body is
+ * identical under both dialects, so declaring none is what both accept.
+ */
+export function jsonSchemaFor(
+  kind: string,
+  custom?: CustomEnvelopeField[],
+  defs?: EnvelopeDef[],
+): z.core.JSONSchema.BaseSchema {
+  const schema = z.toJSONSchema(schemaFor(kind, custom, defs));
+  delete schema.$schema;
+  return schema;
+}
+
+/**
  * The JSON example embedded in the agent's prompt, generated from the schema.
  * One source of truth for the shape the agent is asked to produce.
  */
@@ -301,6 +327,30 @@ function balancedObjects(text: string): string[] {
   return out;
 }
 
+/**
+ * Validate a value that is already parsed — a transport's structured output —
+ * against the very schema the text path validates through. A transport saying
+ * its answer conforms is not conformance: this is the only authority, so a
+ * schema-shaped reply that the zod schema rejects fails here exactly like a
+ * malformed one pulled out of prose.
+ */
+export function validateEnvelope(
+  value: unknown,
+  kind: string,
+  custom?: CustomEnvelopeField[],
+  defs?: EnvelopeDef[],
+): ParseOutcome {
+  const raw = JSON.stringify(value ?? null);
+  const result = schemaFor(kind, custom, defs).safeParse(value);
+  if (!result.success) {
+    const problems = result.error.issues
+      .map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
+      .join('; ');
+    return { ok: false, problem: problems, raw };
+  }
+  return { ok: true, envelope: result.data as Envelope, raw };
+}
+
 export function parseEnvelope(
   text: string,
   kind: string,
@@ -324,14 +374,7 @@ export function parseEnvelope(
     return { ok: false, problem: `the JSON does not parse: ${(e as Error).message}`, raw: text };
   }
 
-  const result = schemaFor(kind, custom, defs).safeParse(value);
-  if (!result.success) {
-    const problems = result.error.issues
-      .map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
-      .join('; ');
-    return { ok: false, problem: problems, raw: text };
-  }
-  return { ok: true, envelope: result.data as Envelope, raw: text };
+  return { ...validateEnvelope(value, kind, custom, defs), raw: text };
 }
 
 /** The correction message: names the failure, restates the shape, asks again. */

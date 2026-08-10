@@ -7,10 +7,16 @@ import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AgentDef, EnvelopeDef, PhaseDef } from '@shared/types.js';
 import type { PhaseRunner, RunContext, PhaseJump } from '../phase-context.js';
-import type { Mode } from '../../droid/agent.js';
-import type { AgentSession } from '../../droid/agent.js';
+import { KILLED_DETAIL, type AgentSession, type Mode } from '../../droid/agent.js';
 import * as boundary from '../boundary.js';
-import { correctionMessage, parseEnvelope, type Envelope } from '../envelopes.js';
+import {
+  correctionMessage,
+  jsonSchemaFor,
+  parseEnvelope,
+  validateEnvelope,
+  type Envelope,
+  type ParseOutcome,
+} from '../envelopes.js';
 import { gateCorrection, runGates, violationsOf, type GateReport } from '../gates.js';
 import { changedPaths } from '../git.js';
 import { combineForTurn, renderPrompt, type RenderContext } from '../prompts.js';
@@ -19,11 +25,34 @@ export interface AgentRunnerDeps {
   agents: AgentDef[];
   envelopeDefs: EnvelopeDef[];
   envelopeRetries: number;
+  /**
+   * After this many failed corrections in a phase, rewind the SDK session
+   * instead of appending another correction. `0` disables.
+   */
+  rewindAfterCorrections: number;
   /** Session lookup stays with the executor: a session lives for the run, not the phase. */
   sessionFor: (agent: AgentDef) => AgentSession;
   onLiveText?: (phaseId: string, text: string) => void;
   /** Reports the transport mode when a session falls back mid-turn. */
   onModeObserved: (mode: Mode) => void;
+}
+
+/** Counts the rewind path leaves on a correction event when it ran. */
+export interface RewindTrace {
+  restoredCount: number;
+  deletedCount: number;
+  failedRestoreCount: number;
+  failedDeleteCount: number;
+}
+
+/**
+ * Mutable phase-start facts the correction loop updates when a rewind lands:
+ * the boundary baseline must reflect restored files before the retry turn.
+ */
+interface PhaseRewindState {
+  before: boundary.Snapshot;
+  /** First user-message id of this phase — the rewind anchor for phase-start files. */
+  anchorMessageId: string | null;
 }
 
 export class AgentPhaseRunner implements PhaseRunner {
@@ -45,8 +74,14 @@ export class AgentPhaseRunner implements PhaseRunner {
 
     const session = this.deps.sessionFor(agent);
     const envelopeKind = phase.envelope ?? agent.envelope;
-    const before = await boundary.snapshot(ctx.cwd);
+    const phaseState: PhaseRewindState = {
+      before: await boundary.snapshot(ctx.cwd),
+      anchorMessageId: null,
+    };
     const maxGateAttempts = (phase.retries ?? 0) + 1;
+    // One running count across envelope/boundary/gate so a trace can answer
+    // "which correction attempt index succeeded" without kind-local indexes.
+    let correctionIndex = 0;
 
     tracer.event({
       runId,
@@ -79,6 +114,11 @@ export class AgentPhaseRunner implements PhaseRunner {
         envelopeKind,
         gateAttempt,
         ctx,
+        phaseState,
+        () => {
+          correctionIndex += 1;
+          return correctionIndex;
+        },
       );
       if (!parsed.ok) {
         lastError = parsed.detail;
@@ -89,7 +129,7 @@ export class AgentPhaseRunner implements PhaseRunner {
 
       const enforcement = await boundary.enforce({
         cwd: ctx.cwd,
-        before,
+        before: phaseState.before,
         writes: agent.writes,
         projectProtected: ctx.project.protectedPaths,
       });
@@ -106,6 +146,8 @@ export class AgentPhaseRunner implements PhaseRunner {
         });
         if (gateAttempt < maxGateAttempts) {
           prompt = boundary.boundaryCorrection(enforcement.violations);
+          correctionIndex += 1;
+          const rewind = await this.maybeRewind(session, phaseState, correctionIndex, ctx);
           tracer.event({
             runId,
             phaseId,
@@ -113,7 +155,9 @@ export class AgentPhaseRunner implements PhaseRunner {
             name: 'boundary violation',
             payload: {
               attempt: gateAttempt,
+              correctionIndex,
               violations: enforcement.violations.map((v) => v.path),
+              ...rewindPayload(rewind),
             },
           });
           continue;
@@ -140,12 +184,19 @@ export class AgentPhaseRunner implements PhaseRunner {
       lastError = `gates rejected the phase: ${violations[0]}`;
       if (gateAttempt < maxGateAttempts) {
         prompt = gateCorrection(violations);
+        correctionIndex += 1;
+        const rewind = await this.maybeRewind(session, phaseState, correctionIndex, ctx);
         tracer.event({
           runId,
           phaseId,
           type: 'correction',
           name: 'gate violations',
-          payload: { attempt: gateAttempt, violations },
+          payload: {
+            attempt: gateAttempt,
+            correctionIndex,
+            violations,
+            ...rewindPayload(rewind),
+          },
         });
       }
     }
@@ -168,19 +219,31 @@ export class AgentPhaseRunner implements PhaseRunner {
     envelopeKind: PhaseDef['envelope'] & string,
     gateAttempt: number,
     ctx: RunContext,
+    phaseState: PhaseRewindState,
+    nextCorrectionIndex: () => number,
   ): Promise<{ ok: true; envelope: Envelope } | { ok: false; detail: string }> {
     let prompt = firstPrompt;
+    // The wire constraint and the parse come off the same zod schema, so a
+    // reply that satisfies the constraint always satisfies the parse.
+    const outputFormat = {
+      type: 'json_schema' as const,
+      schema: jsonSchemaFor(envelopeKind, agent.customFields, this.deps.envelopeDefs),
+    };
 
     for (let attempt = 1; attempt <= this.deps.envelopeRetries + 1; attempt++) {
-      if (ctx.cancelled()) return { ok: false, detail: 'the run was killed' };
+      if (ctx.cancelled()) return { ok: false, detail: KILLED_DETAIL };
 
       let outcome;
       try {
         outcome = await session.send(prompt, {
           phaseId,
+          outputFormat,
           onText: (text) => this.deps.onLiveText?.(phaseId, text),
         });
       } catch (e) {
+        // A turn the operator ended is not an agent failure, and filing it as
+        // one puts a red error on a timeline that only shows what was asked for.
+        if (ctx.cancelled()) return { ok: false, detail: KILLED_DETAIL };
         ctx.tracer.event({
           runId: ctx.runId,
           phaseId,
@@ -192,6 +255,7 @@ export class AgentPhaseRunner implements PhaseRunner {
       }
 
       this.deps.onModeObserved(session.currentMode);
+      this.notePhaseAnchor(session, phaseState);
 
       const usageEventId = ctx.tracer.recordUsage(ctx.runId, phaseId, agent.name, outcome.usage);
       ctx.tracer.appendRunFile(
@@ -200,12 +264,7 @@ export class AgentPhaseRunner implements PhaseRunner {
         `${JSON.stringify({ phase: phase.name, gateAttempt, attempt, reason: outcome.reason, text: outcome.text })}\n`,
       );
 
-      const parsed = parseEnvelope(
-        outcome.text,
-        envelopeKind,
-        agent.customFields,
-        this.deps.envelopeDefs,
-      );
+      const parsed = this.envelopeFrom(outcome, envelopeKind, agent);
       ctx.tracer.recordEnvelope({
         runId: ctx.runId,
         phaseId,
@@ -230,13 +289,21 @@ export class AgentPhaseRunner implements PhaseRunner {
       }
 
       const problem = parsed.problem ?? 'the envelope did not validate';
+      const correctionIndex = nextCorrectionIndex();
+      // The final failed attempt still records a correction for the trace, but
+      // there is no retry turn to send — rewind only runs when a retry follows.
+      const willRetry = attempt <= this.deps.envelopeRetries;
+      const rewind = willRetry
+        ? await this.maybeRewind(session, phaseState, correctionIndex, ctx)
+        : null;
       ctx.tracer.event({
         runId: ctx.runId,
         phaseId,
         type: 'correction',
         name: 'envelope did not parse',
-        payload: { attempt, problem },
+        payload: { attempt, correctionIndex, problem, ...rewindPayload(rewind) },
       });
+      if (!willRetry) break;
       prompt = correctionMessage(problem, envelopeKind, agent.customFields, this.deps.envelopeDefs);
     }
 
@@ -244,6 +311,80 @@ export class AgentPhaseRunner implements PhaseRunner {
       ok: false,
       detail: `the agent did not produce a valid ${envelopeKind} envelope in ${this.deps.envelopeRetries + 1} attempts`,
     };
+  }
+
+  /**
+   * The first user-message id of the phase is the rewind anchor: getRewindInfo
+   * at that id describes files as they were at phase start, which is what the
+   * snapshot intersection restores.
+   */
+  private notePhaseAnchor(session: AgentSession, phaseState: PhaseRewindState): void {
+    if (phaseState.anchorMessageId) return;
+    const id = session.lastUserMessageId;
+    if (id) phaseState.anchorMessageId = id;
+  }
+
+  /**
+   * On the Nth correction of an SDK-transport phase, rewind instead of only
+   * appending. Failure is non-fatal: the caller still sends the append-style
+   * correction prompt on the same session. Rewind consumes the correction
+   * attempt — it never extends the envelope/gate budgets.
+   */
+  private async maybeRewind(
+    session: AgentSession,
+    phaseState: PhaseRewindState,
+    correctionIndex: number,
+    ctx: RunContext,
+  ): Promise<RewindTrace | null> {
+    const threshold = this.deps.rewindAfterCorrections;
+    if (threshold <= 0 || correctionIndex < threshold) return null;
+    // One-shot has no session to rewind and no messageId stream.
+    if (!session.canRewind) return null;
+    const messageId = phaseState.anchorMessageId ?? session.lastUserMessageId;
+    if (!messageId) return null;
+
+    const outcome = await session.rewind({
+      messageId,
+      snapshot: phaseState.before,
+    });
+    if (!outcome) return null;
+
+    // Files are back to phase-start content: the retry's boundary baseline is
+    // the restored tree, not the corrupted intermediate.
+    phaseState.before = await boundary.snapshot(ctx.cwd);
+    // Successor conversation still carries the anchor message id.
+    phaseState.anchorMessageId = messageId;
+    return outcome;
+  }
+
+  /**
+   * Where the envelope comes from, in order of trust. A structured reply is
+   * the primary path — but "the transport shaped it" is a claim, not a
+   * verdict, so it is validated against the same zod schema the text path uses
+   * and a rejection falls back to reading the text, on the same retry budget.
+   * A reply droid could not shape at all arrives with nothing here, which is
+   * the same fallback by a different route.
+   */
+  private envelopeFrom(
+    outcome: { text: string; structuredOutput: Record<string, unknown> | null },
+    envelopeKind: string,
+    agent: AgentDef,
+  ): ParseOutcome {
+    const fromText = (): ParseOutcome =>
+      parseEnvelope(outcome.text, envelopeKind, agent.customFields, this.deps.envelopeDefs);
+    if (!outcome.structuredOutput) return fromText();
+
+    const structured = validateEnvelope(
+      outcome.structuredOutput,
+      envelopeKind,
+      agent.customFields,
+      this.deps.envelopeDefs,
+    );
+    if (structured.ok) return structured;
+    const text = fromText();
+    // The structured rejection is the more specific complaint when neither
+    // source parses: it names the field the model actually got wrong.
+    return text.ok ? text : structured;
   }
 
   private async runGatesFor(
@@ -313,4 +454,16 @@ export class AgentPhaseRunner implements PhaseRunner {
       payload: { artifacts: envelope.artifacts, summary: envelope.summary },
     });
   }
+}
+
+/** Additive correction-payload fields when a rewind actually ran. */
+function rewindPayload(rewind: RewindTrace | null): Record<string, unknown> {
+  if (!rewind) return {};
+  return {
+    rewind: true,
+    restoredCount: rewind.restoredCount,
+    deletedCount: rewind.deletedCount,
+    ...(rewind.failedRestoreCount ? { failedRestoreCount: rewind.failedRestoreCount } : {}),
+    ...(rewind.failedDeleteCount ? { failedDeleteCount: rewind.failedDeleteCount } : {}),
+  };
 }

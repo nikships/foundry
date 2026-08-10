@@ -17,7 +17,9 @@ export function register(ctx: Ctx, handle: Handle): void {
   handle(IPC.catalogTools, (vendor: CliVendor, model?: string) => {
     const adapter = adapterFor(vendor);
     // Only droid enumerates tools; the rest scope them by sandbox, so an empty
-    // list is the honest answer rather than a failed call.
+    // list is the honest answer rather than a failed call. droid's own answer is
+    // empty too until a session has run — enumerating tools is not something a
+    // binary can be asked without one.
     return (
       adapter.tools?.(cliConfigFor(ctx.settings.get().clis, vendor).path, model) ??
       Promise.resolve([])

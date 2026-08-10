@@ -11,7 +11,12 @@ import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openDb, projectDbPath, projectRunsDir } from '../src/main/trace/db.js';
 import { Tracer } from '../src/main/trace/tracer.js';
-import { EventFolder, toolKind } from '../src/main/droid/events.js';
+import {
+  EventFolder,
+  labelToolCall,
+  toolKind,
+  toUsageBreakdown,
+} from '../src/main/droid/events.js';
 import type { PipelineDef } from '../src/shared/types.js';
 
 const pipeline: PipelineDef = {
@@ -175,6 +180,38 @@ describe('tool call folding', () => {
     expect(toolKind('Task')).toBe('task');
     expect(toolKind('AskUser')).toBe('ask');
     expect(toolKind('WebFetch')).toBe('other');
+  });
+});
+
+describe('tool call labelling', () => {
+  it('names a shell call by its command', () => {
+    expect(
+      labelToolCall({
+        type: 'tool_use',
+        id: '1',
+        name: 'Execute',
+        input: { command: 'bun test\nmore' },
+      }),
+    ).toBe('bash: bun test');
+  });
+
+  it('shortens a deep path but keeps the tail', () => {
+    const label = labelToolCall({
+      type: 'tool_use',
+      id: '1',
+      name: 'Read',
+      input: { file_path: '/a/b/c/d/e.ts' },
+    });
+    expect(label).toBe('read: …/d/e.ts');
+  });
+
+  it('falls back to the tool name before arguments have arrived', () => {
+    expect(labelToolCall({ type: 'tool_use', id: '1', name: 'Execute', input: {} })).toBe('bash');
+  });
+
+  it('is honest when usage was never reported', () => {
+    expect(toUsageBreakdown(null).reported).toBe(false);
+    expect(toUsageBreakdown(null).inputTokens).toBe(0);
   });
 });
 

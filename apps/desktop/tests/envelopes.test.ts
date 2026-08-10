@@ -1,11 +1,15 @@
+import Ajv from 'ajv';
+import { Ajv2020 } from 'ajv/dist/2020.js';
 import { describe, expect, it } from 'vitest';
 import {
   correctionMessage,
   exampleFor,
   extractJson,
+  jsonSchemaFor,
   parseEnvelope,
   placeholderEnvelope,
   schemaFor,
+  schemas,
 } from '../src/main/engine/envelopes.js';
 
 describe('envelope extraction', () => {
@@ -218,5 +222,176 @@ describe('dry-run placeholders', () => {
       const result = schemaFor(kind).safeParse(placeholderEnvelope('x', kind));
       expect(result.success, `${kind} placeholder must validate`).toBe(true);
     }
+  });
+});
+
+describe('json schema derivation', () => {
+  const BUILTIN_KINDS = [
+    'generic',
+    'brief',
+    'plan',
+    'build',
+    'scout',
+    'review',
+    'document',
+  ] as const;
+
+  // ajv is the only 2020-12 validator in the tree; a fresh instance per compile
+  // keeps schemas from colliding on the anonymous $id ajv derives.
+  function compile(schema: Record<string, unknown>) {
+    return new Ajv2020({ strict: true }).compile(schema);
+  }
+
+  it('emits a schema whose example round-trips back through the zod parse', () => {
+    for (const kind of BUILTIN_KINDS) {
+      const schema = jsonSchemaFor(kind);
+      expect(schema.type).toBe('object');
+
+      const validate = compile(schema);
+      const sample: unknown = JSON.parse(exampleFor(kind));
+      expect(validate(sample), `${kind}: ${JSON.stringify(validate.errors)}`).toBe(true);
+      expect(schemas[kind].safeParse(sample).success, `${kind} zod parse`).toBe(true);
+    }
+  });
+
+  /**
+   * droid compiles an output constraint with a Draft-07 ajv, which cannot
+   * resolve the 2020-12 dialect URI and rejects the whole turn request. Live
+   * CLI 0.189.0 answered `The requested structured output schema is invalid.`
+   * for the URI zod stamps on, so a re-introduced `$schema` silently costs the
+   * app every structured turn.
+   */
+  it('declares no dialect, so both the strict Draft-07 and 2020-12 validators take it', () => {
+    for (const kind of BUILTIN_KINDS) {
+      const schema = jsonSchemaFor(kind);
+      expect(schema.$schema, `${kind} dialect`).toBeUndefined();
+      // `strictSchema` mirrors droid's own ingress check, the one that failed.
+      const draft07 = new Ajv({ allErrors: true, strict: false, strictSchema: true });
+      expect(() => draft07.compile(structuredClone(schema)), `${kind} draft-07`).not.toThrow();
+      expect(() => compile(schema), `${kind} 2020-12`).not.toThrow();
+    }
+  });
+
+  it('refuses unknown properties, so a model cannot invent envelope fields', () => {
+    const validate = compile(jsonSchemaFor('generic'));
+    const sample = JSON.parse(exampleFor('generic')) as Record<string, unknown>;
+    expect(validate({ ...sample, surprise: 1 })).toBe(false);
+  });
+
+  /**
+   * Pinned semantics: the emitted schema is the OUTPUT view, so every
+   * `.default()` field is `required`. The model is told to emit them all —
+   * strictly more than `parseEnvelope` demands, which fills defaults for
+   * anything omitted. Anything conforming to the schema therefore parses;
+   * the looser text-parse fallback stays the safety net for anything that
+   * does not. Changing this to the input view would silently let a model
+   * skip fields the next phase reads.
+   */
+  it('pins required-ness per kind, defaults included', () => {
+    const base = ['status', 'summary', 'artifacts', 'notes_for_next_agent'];
+    const expected: Record<(typeof BUILTIN_KINDS)[number], string[]> = {
+      generic: base,
+      brief: [...base, 'improved_request', 'constraints', 'acceptance_criteria'],
+      plan: [...base, 'commit_message'],
+      build: [...base, 'changed_files', 'commit_message'],
+      scout: [...base, 'findings'],
+      review: [...base, 'approved', 'findings', 'blocking'],
+      document: [...base, 'document_path', 'documented_files'],
+    };
+    for (const kind of BUILTIN_KINDS) {
+      expect(jsonSchemaFor(kind).required, `${kind} required`).toEqual(expected[kind]);
+    }
+
+    // Nested objects follow the same rule: review findings carry a defaulted
+    // `evidence` and it is required too.
+    const reviewFindings = (
+      (jsonSchemaFor('review').properties as Record<string, Record<string, unknown>>).findings
+        .items as Record<string, unknown>
+    ).required;
+    expect(reviewFindings).toEqual(['requirement', 'met', 'evidence']);
+  });
+
+  it('lets the zod parse fill every defaulted field the schema demands', () => {
+    // The other half of the pin: omitting all defaults is stricter than the
+    // JSON Schema allows but still a valid envelope on the parse side.
+    for (const kind of BUILTIN_KINDS) {
+      const minimal: Record<string, unknown> = { status: 'success' };
+      if (kind === 'brief') minimal.improved_request = 'do the thing';
+      if (kind === 'review') minimal.approved = true;
+
+      expect(schemas[kind].safeParse(minimal).success, `${kind} zod fills defaults`).toBe(true);
+      expect(compile(jsonSchemaFor(kind))(minimal), `${kind} json schema demands defaults`).toBe(
+        false,
+      );
+    }
+  });
+
+  it('rejects a missing non-defaulted field in both validators', () => {
+    const cases: { kind: (typeof BUILTIN_KINDS)[number]; omit: string; instance: unknown }[] = [
+      { kind: 'generic', omit: 'status', instance: JSON.parse(exampleFor('generic')) },
+      { kind: 'brief', omit: 'improved_request', instance: JSON.parse(exampleFor('brief')) },
+      { kind: 'review', omit: 'approved', instance: JSON.parse(exampleFor('review')) },
+    ];
+    for (const { kind, omit, instance } of cases) {
+      const broken = { ...(instance as Record<string, unknown>) };
+      delete broken[omit];
+      expect(compile(jsonSchemaFor(kind))(broken), `${kind} json schema rejects ${omit}`).toBe(
+        false,
+      );
+      expect(schemas[kind].safeParse(broken).success, `${kind} zod rejects ${omit}`).toBe(false);
+    }
+  });
+
+  it('compiles a custom library def with every field type, agent overrides winning', () => {
+    const defs = [
+      {
+        name: 'severity_report',
+        description: 'A severity-tagged report',
+        fields: [
+          {
+            name: 'severity',
+            type: 'string' as const,
+            required: true,
+            description: 'low|med|high',
+          },
+          { name: 'score', type: 'number' as const, required: false },
+          { name: 'urgent', type: 'boolean' as const, required: true },
+          { name: 'steps', type: 'string[]' as const, required: false, description: 'one step' },
+        ],
+      },
+    ];
+    // Name collision: the agent relaxes the library's required `severity`.
+    const customFields = [
+      { name: 'severity', type: 'string' as const, required: false },
+      { name: 'owner', type: 'string' as const, required: true },
+    ];
+
+    const schema = jsonSchemaFor('severity_report', customFields, defs);
+    expect(schema.type).toBe('object');
+    const props = schema.properties as Record<string, Record<string, unknown>>;
+    expect(props.score.type).toBe('number');
+    expect(props.urgent.type).toBe('boolean');
+    expect(props.steps).toMatchObject({ type: 'array', items: { type: 'string' } });
+    // The agent override wins, so severity drops out of required; owner joins it.
+    expect(schema.required).toEqual([
+      'status',
+      'summary',
+      'artifacts',
+      'notes_for_next_agent',
+      'urgent',
+      'owner',
+    ]);
+
+    const sample: unknown = JSON.parse(exampleFor('severity_report', customFields, defs));
+    const validate = compile(schema);
+    expect(validate(sample), JSON.stringify(validate.errors)).toBe(true);
+    expect(schemaFor('severity_report', customFields, defs).safeParse(sample).success).toBe(true);
+  });
+
+  it('falls back to the generic schema for an unknown kind', () => {
+    const defs = [{ name: 'severity_report', fields: [] }];
+    const schema = jsonSchemaFor('deleted_envelope', undefined, defs);
+    expect(schema.required).toEqual(['status', 'summary', 'artifacts', 'notes_for_next_agent']);
+    expect(compile(schema)(JSON.parse(exampleFor('deleted_envelope', undefined, defs)))).toBe(true);
   });
 });

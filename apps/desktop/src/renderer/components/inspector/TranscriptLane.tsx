@@ -14,6 +14,7 @@ import StatusBadge from '../StatusBadge.js';
 import { duration, modelLabel, tokens } from '../../format.js';
 import { usageFor, phaseDuration } from '../../derive.js';
 import { TranscriptEntry, transcriptStyles } from './entries.js';
+import ContextBreakdownDisclosure from './ContextBreakdown.js';
 import styles from './TranscriptLane.module.css';
 
 function ContextBar({
@@ -126,6 +127,7 @@ export default function TranscriptLane({
             <span className={styles.laneTokens}>{tokens(tokenCount)} tok</span>
           )}
           <ContextBar session={session} />
+          {session && <ContextBreakdownDisclosure runId={session.runId} agent={session.agent} />}
           {elapsed != null && <span className={styles.laneElapsed}>{duration(elapsed)}</span>}
           <StatusBadge status={phase.status} />
           <button

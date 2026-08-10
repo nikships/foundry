@@ -1,3 +1,8 @@
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   ALWAYS_PROTECTED,
@@ -5,7 +10,28 @@ import {
   isAllowed,
   isProtected,
   matchesPattern,
+  snapshot,
 } from '../src/main/engine/boundary.js';
+import { resolveRef } from '../src/main/engine/git.js';
+
+function sh(cwd: string, argv: string[]): string {
+  return execFileSync(argv[0]!, argv.slice(1), { cwd, encoding: 'utf8' });
+}
+
+function tempRepo(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'foundry-boundary-'));
+  sh(dir, ['git', 'init', '-q', '-b', 'main']);
+  sh(dir, ['git', 'config', 'user.email', 'test@foundry.local']);
+  sh(dir, ['git', 'config', 'user.name', 'Foundry Test']);
+  writeFileSync(join(dir, 'README.md'), '# boundary\n');
+  sh(dir, ['git', 'add', '-A']);
+  sh(dir, ['git', 'commit', '-qm', 'initial']);
+  return dir;
+}
+
+function sha256(content: string | Buffer): string {
+  return createHash('sha256').update(content).digest('hex');
+}
 
 describe('pattern matching', () => {
   it('treats a trailing slash as a directory prefix', () => {
@@ -75,5 +101,50 @@ describe('write boundary semantics', () => {
     expect(describeBoundary(null)).toContain('unrestricted');
     expect(describeBoundary([])).toBe('read-only');
     expect(describeBoundary(['specs/'])).toBe('specs/');
+  });
+});
+
+describe('phase-start snapshot', () => {
+  it('captures HEAD SHA and per-file content hash and size for changed files only', async () => {
+    const dir = tempRepo();
+    const head = await resolveRef(dir, 'HEAD');
+    expect(head).toMatch(/^[0-9a-f]{40}$/);
+
+    // Seed two dirty files after the commit so the snapshot has real content to hash.
+    const trackedBody = 'phase-start tracked body\n';
+    const untrackedBody = 'phase-start untracked body\n';
+    writeFileSync(join(dir, 'README.md'), trackedBody);
+    writeFileSync(join(dir, 'notes.txt'), untrackedBody);
+
+    const snap = await snapshot(dir);
+
+    expect(snap.headSha).toBe(head);
+    expect(snap.paths.has('README.md')).toBe(true);
+    expect(snap.paths.has('notes.txt')).toBe(true);
+    // Only dirty paths — the clean tree is not walked.
+    expect(snap.paths.has('.git')).toBe(false);
+
+    const byPath = new Map(snap.files.map((f) => [f.path, f]));
+    expect(byPath.get('README.md')).toEqual({
+      path: 'README.md',
+      contentHash: sha256(trackedBody),
+      size: Buffer.byteLength(trackedBody),
+    });
+    expect(byPath.get('notes.txt')).toEqual({
+      path: 'notes.txt',
+      contentHash: sha256(untrackedBody),
+      size: Buffer.byteLength(untrackedBody),
+    });
+    expect(snap.files).toHaveLength(2);
+  });
+
+  it('returns an empty files list and still records HEAD when the tree is clean', async () => {
+    const dir = tempRepo();
+    const head = await resolveRef(dir, 'HEAD');
+    const snap = await snapshot(dir);
+
+    expect(snap.headSha).toBe(head);
+    expect(snap.paths.size).toBe(0);
+    expect(snap.files).toEqual([]);
   });
 });

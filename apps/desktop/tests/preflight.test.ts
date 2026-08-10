@@ -29,7 +29,6 @@ function project(partial: Partial<ProjectDef> & { path: string }): ProjectDef {
     mergePolicy: 'never',
     commands: [],
     protectedPaths: [],
-    allowedCommands: [],
     ownRoster: false,
     ownPipelines: false,
     addedAt: new Date().toISOString(),

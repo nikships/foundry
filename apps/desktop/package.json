@@ -30,6 +30,7 @@
     "check": "npm run typecheck && npm run lint && npm run format:check && npm run knip && npm test && npm run build && npm run check:css && npm run audit:deps"
   },
   "dependencies": {
+    "@factory/droid-sdk": "0.7.0",
     "better-sqlite3": "^13.0.3",
     "electron-updater": "^6.3.9",
     "react": "^19.2.8",
@@ -44,6 +45,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^5.2.0",
+    "ajv": "8.20.0",
     "electron": "^43.3.0",
     "electron-builder": "^26.0.12",
     "electron-vite": "^5.0.0",

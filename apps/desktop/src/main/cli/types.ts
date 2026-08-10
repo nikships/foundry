@@ -2,13 +2,7 @@
  * The vendor seam interface for agent CLIs.
  */
 
-import type {
-  AutonomyLevel,
-  CliVendor,
-  ModelInfo,
-  ReasoningEffort,
-  ToolInfo,
-} from '@shared/types.js';
+import type { CliVendor, ModelInfo, ReasoningEffort, ToolInfo } from '@shared/types.js';
 import type { DroidNotification, TokenUsage } from '../droid/protocol.js';
 
 // Re-exported so everything under cli/ has one import for the vendor seam, but
@@ -20,7 +14,6 @@ export type { CliVendor };
 export interface TurnRequest {
   prompt: string;
   cwd: string;
-  autonomy: AutonomyLevel;
   model: string;
   reasoningEffort: ReasoningEffort;
   /** Null on the first turn of a session; the vendor's own id afterwards. */

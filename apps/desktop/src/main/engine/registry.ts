@@ -20,11 +20,12 @@ import type {
   RunRow,
   RunStatus,
 } from '@shared/types.js';
+import type { ContextBreakdownResult } from '@shared/ipc-contract.js';
 import { openDb, projectDbPath, projectRunsDir } from '../trace/db.js';
 import { Tracer } from '../trace/tracer.js';
 import { Executor } from './executor.js';
 import { commandMatches, isAlive, killRun } from '../system/procs.js';
-import type { InterruptRequest } from '../droid/agent.js';
+import { breakdownFile, type CapturedBreakdown, type InterruptRequest } from '../droid/agent.js';
 
 export interface RegistryDeps {
   appSupportDir: string;
@@ -33,7 +34,6 @@ export interface RegistryDeps {
   onRunFinished: (run: RunRow) => void;
   onInterruptsChanged: () => void;
   onRunsChanged: () => void;
-  rememberCommand: (projectId: string, command: string) => void;
 }
 
 interface LiveRun {
@@ -44,7 +44,7 @@ interface LiveRun {
 
 interface PendingEntry {
   interrupt: PendingInterrupt;
-  resolve: (answer: { approve: boolean; text?: string; remember?: boolean }) => void;
+  resolve: (answer: { approve: boolean; text?: string }) => void;
 }
 
 const LIVE_TAIL_LINES = 40;
@@ -53,11 +53,6 @@ const ENGINEER_OPTIONS: PendingInterrupt['options'] = [
   { id: 'approve', label: 'Approve', kind: 'approve' },
   { id: 'edit', label: 'Approve with notes', kind: 'edit' },
   { id: 'reject', label: 'Reject', kind: 'reject' },
-];
-
-const PERMISSION_OPTIONS: PendingInterrupt['options'] = [
-  { id: 'approve', label: 'Allow', kind: 'approve' },
-  { id: 'reject', label: 'Deny', kind: 'reject' },
 ];
 
 function processStillAlive(pid: number, command: string): boolean {
@@ -97,6 +92,35 @@ export class RunRegistry extends EventEmitter {
     return (this.liveText.get(phaseId) ?? []).join('');
   }
 
+  /**
+   * What is filling one agent's context. A breakdown can only be read off a
+   * live session, so a finished run answers from the snapshot each turn left
+   * behind, and every remaining way of having nothing carries its own reason.
+   */
+  async contextBreakdown(
+    project: ProjectDef,
+    runId: string,
+    agent: string,
+  ): Promise<ContextBreakdownResult> {
+    const entry = this.live.get(runId);
+    const answer = entry ? await entry.executor.contextBreakdown(agent) : null;
+    if (answer?.breakdown) return { breakdown: answer.breakdown, live: true };
+
+    const captured = this.tracerFor(project).readRunJson<CapturedBreakdown>(
+      runId,
+      breakdownFile(agent),
+    );
+    if (captured?.breakdown) {
+      return { breakdown: captured.breakdown, live: false, capturedAt: captured.capturedAt };
+    }
+    if (!entry) return { breakdown: null, reason: 'not_live' };
+    if (!answer) return { breakdown: null, reason: 'not_started' };
+    return {
+      breakdown: null,
+      reason: answer.mode === 'oneshot' ? 'no_session_context' : 'unanswered',
+    };
+  }
+
   start(input: {
     project: ProjectDef;
     pipeline: PipelineDef;
@@ -111,11 +135,14 @@ export class RunRegistry extends EventEmitter {
     const executor = new Executor({
       tracer,
       clis: settings.clis,
-      autonomy: settings.defaultAutonomy,
       defaultModel: settings.defaultModel,
       turnTimeoutMs: settings.turnTimeoutMs,
       envelopeRetries: settings.envelopeRetries,
       gateRetries: settings.gateRetries,
+      compactionThreshold: settings.compactionThreshold,
+      rewindAfterCorrections: settings.rewindAfterCorrections,
+      daemonPort: settings.daemonPort,
+      transport: settings.transport,
       agents: input.agents,
       envelopeDefs: input.envelopeDefs,
       project: input.project,
@@ -125,7 +152,6 @@ export class RunRegistry extends EventEmitter {
       engineer: this.deps.engineerName,
       askHuman: (req) => this.raiseInterrupt(req),
       onLiveText: (phaseId, text) => this.appendLiveText(phaseId, text),
-      onCommandRemembered: (command) => this.deps.rememberCommand(input.project.id, command),
     });
 
     this.live.set(runId, { runId, projectId: input.project.id, executor });
@@ -180,9 +206,7 @@ export class RunRegistry extends EventEmitter {
     return false;
   }
 
-  private raiseInterrupt(
-    req: InterruptRequest,
-  ): Promise<{ approve: boolean; text?: string; remember?: boolean }> {
+  private raiseInterrupt(req: InterruptRequest): Promise<{ approve: boolean; text?: string }> {
     const interruptId = `int_${randomBytes(5).toString('hex')}`;
     const interrupt: PendingInterrupt = {
       interruptId,
@@ -191,8 +215,7 @@ export class RunRegistry extends EventEmitter {
       kind: req.kind,
       title: req.title,
       body: req.body,
-      command: req.command,
-      options: req.kind === 'engineer' ? ENGINEER_OPTIONS : PERMISSION_OPTIONS,
+      options: ENGINEER_OPTIONS,
       createdAt: new Date().toISOString(),
     };
     return new Promise((resolve) => {
@@ -210,11 +233,7 @@ export class RunRegistry extends EventEmitter {
     const entry = this.pending.get(answer.interruptId);
     if (!entry) return false;
     this.pending.delete(answer.interruptId);
-    entry.resolve({
-      approve: answer.decision === 'approve',
-      text: answer.text,
-      remember: answer.remember,
-    });
+    entry.resolve({ approve: answer.decision === 'approve', text: answer.text });
     this.deps.onInterruptsChanged();
     return true;
   }

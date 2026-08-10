@@ -94,6 +94,8 @@ const api: FoundryApi = {
     detail: (projectId, runId) => call(IPC.runsDetail, projectId, runId),
     events: (projectId, runId, afterRowid) => call(IPC.runsEvents, projectId, runId, afterRowid),
     liveTail: (phaseId) => call(IPC.runsLiveTail, phaseId),
+    contextBreakdown: (projectId, runId, agent) =>
+      call(IPC.runsContextBreakdown, projectId, runId, agent),
     promptFor: (projectId, phaseId) => call(IPC.runsPrompt, projectId, phaseId),
     kill: (projectId, runId) => call(IPC.runsKill, projectId, runId),
     archive: (projectId, runId, archived) => call(IPC.runsArchive, projectId, runId, archived),

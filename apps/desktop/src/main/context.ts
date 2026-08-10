@@ -20,6 +20,7 @@ import { RunRegistry } from './engine/registry.js';
 import { Detections } from './engine/detections.js';
 import { UpdaterService } from './updater.js';
 import { notifyNeedsInput, notifyOutcome, setDockBadge } from './system/notify.js';
+import { shutdownDaemonManager } from './droid/sdk/daemon.js';
 
 export interface Scope {
   projectId?: string;
@@ -61,7 +62,6 @@ export class AppContext {
         setDockBadge(this.registry.liveRunCount(), this.settings.get());
         this.broadcast(IPC.eventRunsChanged);
       },
-      rememberCommand: (projectId, command) => this.rememberCommand(projectId, command),
     });
 
     this.registry.on('needs-input', (interrupt: { title: string; body: string }) => {
@@ -73,14 +73,6 @@ export class AppContext {
     notifyOutcome(run, this.settings.get());
     setDockBadge(this.registry.liveRunCount(), this.settings.get());
     this.broadcast(IPC.eventRunsChanged);
-  }
-
-  /** "Always allow" from a permission sheet is a project-level setting change. */
-  private rememberCommand(projectId: string, command: string): void {
-    const project = this.projects.get(projectId);
-    if (!project || project.allowedCommands.includes(command)) return;
-    this.projects.save({ ...project, allowedCommands: [...project.allowedCommands, command] });
-    this.broadcast(IPC.eventSettingsChanged);
   }
 
   window(): BrowserWindow | null {
@@ -136,5 +128,9 @@ export class AppContext {
   dispose(): void {
     this.registry.closeAll();
     this.detections.cancelAll();
+    // Best-effort: disconnect + SIGTERM the app-owned daemon. --parent-pid is
+    // the crash backstop; this is the clean quit path. Fire-and-forget so
+    // dispose stays sync for before-quit.
+    void shutdownDaemonManager();
   }
 }

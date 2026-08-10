@@ -1,34 +1,49 @@
 /**
- * Permission policy: why the raw JSON-RPC surface exists.
+ * The zero-interrupt permission policy.
  *
- * Too much auto-approve and autonomy is theater; too little and unattended
- * runs stall. Rule is conservative: file ops inside the worktree and write
- * boundary auto-approve at medium+, allowlisted commands auto-approve, and
- * everything else becomes a human interrupt. Every decision is traced.
+ * Once a pipeline starts it settles without a human, so `evaluate()` always
+ * returns a decision — there is no "ask someone" outcome to fall back on.
+ * That is only safe because the real guard is post-hoc and code-owned: the
+ * write boundary is enforced by diffing git after the call and reverting what
+ * was not allowed, and protected paths fail the phase outright. Asking mid-turn
+ * is an early warning, not the enforcement.
+ *
+ * Every branch is traced as an `interrupt` event with `auto: true` and the
+ * reason, so observability replaces interruption.
  */
 
 import { isAbsolute, relative, resolve } from 'node:path';
-import type { AutonomyLevel, WriteBoundary } from '@shared/types.js';
-import { isAllowed } from '../engine/boundary.js';
-import type { PermissionAsk, PermissionDecision } from './client.js';
+import type { WriteBoundary } from '@shared/types.js';
+import { isAllowed, isProtected } from '../engine/boundary.js';
+import type { PermissionDecision } from './turn.js';
 
 export interface PolicyContext {
-  autonomy: AutonomyLevel;
   worktree: string;
   writes: WriteBoundary;
   protectedPaths: string[];
-  allowedCommands: string[];
+}
+
+/** One auto-answer for a `droid.ask_user` question, in the CLI's own shape. */
+export interface QuestionAnswer {
+  index: number;
+  question: string;
+  answer: string;
 }
 
 export interface PolicyOutcome {
-  decision: PermissionDecision | null;
+  /**
+   * Never null: a started run never waits for a person. `droid.ask_user`
+   * answers ride on the decision itself, because the decision is the only part
+   * of this that a transport ever sees (see `turn.ts`).
+   */
+  decision: PermissionDecision;
   /** Why: recorded on the interrupt event whichever way it goes. */
   reason: string;
-  /** What the sheet shows when the policy declines to decide. */
-  title: string;
-  body: string;
   command?: string;
 }
+
+/** What an agent is told when its question has no options to choose from. */
+export const OPEN_QUESTION_ANSWER = 'Proceed with your best judgment; do not ask again.';
 
 const READ_ONLY_TOOLS = new Set([
   'Read',
@@ -41,15 +56,23 @@ const READ_ONLY_TOOLS = new Set([
 ]);
 const WRITE_TOOLS = new Set(['Create', 'Edit', 'ApplyPatch', 'apply-patch-cli']);
 
-export function evaluate(ask: PermissionAsk, ctx: PolicyContext): PolicyOutcome {
+interface AskUserQuestion {
+  index?: number;
+  question?: string;
+  options?: unknown;
+}
+
+export function evaluate(
+  ask: { method: 'droid.request_permission' | 'droid.ask_user'; params: Record<string, unknown> },
+  ctx: PolicyContext,
+): PolicyOutcome {
   const params = ask.params;
 
   if (ask.method === 'droid.ask_user') {
+    const answers = autoAnswer(params);
     return {
-      decision: null,
-      reason: 'agent asked a question: only a human can answer it',
-      title: 'The agent has a question',
-      body: describeQuestion(params),
+      decision: { outcome: 'allow', answers },
+      reason: `auto-answered ${answers.length} question(s): runs never wait for a person`,
     };
   }
 
@@ -61,69 +84,61 @@ export function evaluate(ask: PermissionAsk, ctx: PolicyContext): PolicyOutcome 
     return allow(`${tool} is read-only`);
   }
 
-  if (WRITE_TOOLS.has(tool) && path) {
+  if (WRITE_TOOLS.has(tool)) {
+    // A write whose target cannot be read is the one case that must fail
+    // closed: the post-hoc git diff only sees inside the worktree, so an
+    // unreadable path could be a base-checkout write with nothing to revert it.
+    if (!path) {
+      return deny(`${tool} asked with no target path; a write must name where it lands`);
+    }
     const rel = toRelative(ctx.worktree, path);
+    // The base checkout and everything else on the machine are off limits, and
+    // the git-diff enforcement only sees inside the worktree, so this ask is
+    // the one place an out-of-worktree write can still be stopped.
     if (rel === null) {
-      return {
-        decision: null,
-        reason: `${tool} targets ${path}, outside the run worktree`,
-        title: 'Write outside the worktree',
-        body: `${tool} wants to write ${path}, which is not inside ${ctx.worktree}.`,
-      };
+      return deny(`${tool} targets ${path}, outside the run worktree`);
+    }
+    if (isProtected(rel, ctx.protectedPaths)) {
+      return deny(`${rel} is a protected path`);
     }
     if (!isAllowed(rel, ctx.writes, ctx.protectedPaths)) {
-      return {
-        decision: { outcome: 'deny', reason: `${rel} is outside this agent's write boundary` },
-        reason: `${rel} is outside the write boundary`,
-        title: '',
-        body: '',
-      };
-    }
-    if (ctx.autonomy === 'low') {
-      return {
-        decision: null,
-        reason: 'autonomy is low: every write is confirmed',
-        title: 'Approve a file write',
-        body: `${tool} wants to write ${rel}.`,
-      };
+      return deny(`${rel} is outside this agent's write boundary`);
     }
     return allow(`${rel} is in boundary and inside the worktree`);
   }
 
   if (command) {
-    if (ctx.allowedCommands.some((allowed) => commandMatchesAllow(command, allowed))) {
-      return allow('command is on the project allowlist');
-    }
-    if (ctx.autonomy === 'high') {
-      return allow('autonomy is high: commands run without confirmation');
-    }
-    return {
-      decision: null,
-      reason: `command is not on the allowlist at autonomy ${ctx.autonomy}`,
-      title: 'Approve a command',
-      body: command,
-      command,
-    };
+    return { ...allow('commands run unattended'), command };
   }
 
-  return {
-    decision: null,
-    reason: `${tool} does not match any policy rule`,
-    title: `Approve ${tool}`,
-    body: JSON.stringify(params).slice(0, 1200),
-  };
+  return allow(`${tool} matches no policy rule; the write boundary is the guard`);
 }
 
 function allow(reason: string): PolicyOutcome {
-  return { decision: { outcome: 'allow' }, reason, title: '', body: '' };
+  return { decision: { outcome: 'allow' }, reason };
 }
 
-/** Allowlist entries match a command's head, so `bun test -x` matches `bun test`. */
-export function commandMatchesAllow(command: string, allowed: string): boolean {
-  const c = command.trim();
-  const a = allowed.trim();
-  if (!a) return false;
-  return c === a || c.startsWith(`${a} `);
+function deny(reason: string): PolicyOutcome {
+  return { decision: { outcome: 'deny', reason }, reason };
+}
+
+/**
+ * Each question takes its first option, which is the CLI's own recommended
+ * choice. A question with no options gets prose instead: an empty answer reads
+ * to the agent as a refusal and it asks again.
+ */
+function autoAnswer(params: Record<string, unknown>): QuestionAnswer[] {
+  const raw = Array.isArray(params.questions) ? (params.questions as AskUserQuestion[]) : [];
+  const questions = raw.length ? raw : [{}];
+  return questions.map((q, i) => {
+    const options = Array.isArray(q.options) ? (q.options as unknown[]) : [];
+    const first = options.find((o) => typeof o === 'string' && o.trim());
+    return {
+      index: typeof q.index === 'number' ? q.index : i,
+      question: typeof q.question === 'string' ? q.question : '',
+      answer: typeof first === 'string' ? first : OPEN_QUESTION_ANSWER,
+    };
+  });
 }
 
 function toRelative(worktree: string, path: string): string | null {
@@ -154,11 +169,4 @@ function extractCommand(params: Record<string, unknown>): string | undefined {
 
 function extractPath(params: Record<string, unknown>): string | undefined {
   return pickString(nestedFields(params) ?? {}, ['file_path', 'path', 'filePath']);
-}
-
-function describeQuestion(params: Record<string, unknown>): string {
-  return (
-    pickString(params, ['question', 'questionnaire', 'prompt', 'message']) ??
-    JSON.stringify(params).slice(0, 1500)
-  );
 }

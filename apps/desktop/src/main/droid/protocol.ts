@@ -13,54 +13,20 @@
 export const FACTORY_API_VERSION = '1.0.0';
 export const FACTORY_PROTOCOL_VERSION = '1.151.0';
 
-export interface RpcRequest {
-  jsonrpc: '2.0';
-  type: 'request';
-  factoryApiVersion: string;
-  factoryProtocolVersion: string;
-  id: string;
-  method: string;
-  params?: Record<string, unknown>;
-}
-
-export interface RpcResponse {
-  jsonrpc: '2.0';
-  type: 'response';
-  id: string | null;
-  result?: unknown;
-  error?: { code: number; message: string; data?: unknown };
-}
+/**
+ * The one autonomy level Foundry runs at. Foundry pipelines are unattended by
+ * design, so it is a constant rather than a setting — and it is always sent
+ * explicitly: omitting `autonomyLevel` happens to default to high, which is
+ * exactly why it is never omitted. Safety is post-hoc and code-owned (write
+ * boundaries, protected paths), not a level the CLI enforces for us.
+ */
+export const AUTONOMY_LEVEL = 'high';
 
 export interface RpcNotification {
   jsonrpc: '2.0';
   type: 'notification';
   method: string;
   params: { sessionId?: string; notification: DroidNotification };
-}
-
-export type RpcMessage = RpcResponse | RpcNotification | (RpcRequest & { type: 'request' });
-
-export function request(id: string, method: string, params?: Record<string, unknown>): RpcRequest {
-  return {
-    jsonrpc: '2.0',
-    type: 'request',
-    factoryApiVersion: FACTORY_API_VERSION,
-    factoryProtocolVersion: FACTORY_PROTOCOL_VERSION,
-    id,
-    method,
-    ...(params ? { params } : {}),
-  };
-}
-
-export function response(id: string, result: unknown): Record<string, unknown> {
-  return {
-    jsonrpc: '2.0',
-    type: 'response',
-    factoryApiVersion: FACTORY_API_VERSION,
-    factoryProtocolVersion: FACTORY_PROTOCOL_VERSION,
-    id,
-    result,
-  };
 }
 
 // ── notification payloads ────────────────────────────────────────────────────

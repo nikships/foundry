@@ -14,11 +14,12 @@
  */
 
 import { spawn } from 'node:child_process';
-import type { AutonomyLevel, ReasoningEffort } from '@shared/types.js';
+import type { ReasoningEffort } from '@shared/types.js';
 import { adapterFor, type CliAdapter, type CliVendor } from '../cli/index.js';
 import { spawnEnv } from '../system/env.js';
+import { register as registerProc } from '../system/procs.js';
 import type { TokenUsage } from './protocol.js';
-import type { TurnResult } from './client.js';
+import type { TurnResult } from './turn.js';
 
 export interface OneShotOptions {
   /** Which CLI this session drives. */
@@ -26,14 +27,21 @@ export interface OneShotOptions {
   /** Path to that CLI's binary. */
   cliPath: string;
   cwd: string;
-  autonomy: AutonomyLevel;
   model: string;
   reasoningEffort: ReasoningEffort;
   restrictTools?: string[];
   disabledTools?: string[];
   /** Operator-supplied flags for this vendor, appended to every turn. */
   extraArgs?: string[];
+  /** Run id for procs-register so killRun and session.kill overlap. */
+  runId?: string;
   onStderr?: (text: string) => void;
+  /**
+   * Every turn is its own child, so the kill path can only find one that has
+   * been announced. Reported at spawn and again when it is gone.
+   */
+  onSpawn?: (pid: number, command: string) => void;
+  onChildExit?: (pid: number) => void;
 }
 
 interface ExecResult {
@@ -113,13 +121,21 @@ export class OneShotClient {
           `${this.adapter.binary} exited ${code}: ${stderr.slice(-1500) || stdout.slice(-1500)}`,
         );
       }
-      return { text: stdout.trim(), usage: null, reason: 'completed', interrupted: false };
+      return {
+        text: stdout.trim(),
+        usage: null,
+        reason: 'completed',
+        interrupted: false,
+        structuredOutput: null,
+      };
     }
     return {
       text: parsed.text,
       usage: parsed.usage as TokenUsage | null,
       reason: parsed.reason,
       interrupted: false,
+      // Argv has no schema surface; a one-shot turn is text and nothing else.
+      structuredOutput: null,
     };
   }
 
@@ -142,7 +158,6 @@ export class OneShotClient {
     return this.adapter.turn({
       prompt: text,
       cwd: this.opts.cwd,
-      autonomy: this.opts.autonomy,
       // Dropping the model is how the policy retry asks for the CLI's default,
       // and `inherit` is already the value every adapter reads that way.
       model: withModel ? this.opts.model : 'inherit',
@@ -166,10 +181,19 @@ export class OneShotClient {
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       this.lastPid = child.pid;
+      if (child.pid) {
+        this.opts.onSpawn?.(child.pid, [this.opts.cliPath, ...args].join(' '));
+        if (this.opts.runId) {
+          registerProc(this.opts.runId, child, [this.opts.cliPath, ...args].join(' '));
+        }
+      }
       let stdout = '';
       let stderr = '';
       let timedOut = false;
       let lineBuffer = '';
+      const reportExit = (): void => {
+        if (child.pid) this.opts.onChildExit?.(child.pid);
+      };
 
       const dispatchLine = (line: string): void => {
         const trimmed = line.trim();
@@ -204,12 +228,14 @@ export class OneShotClient {
 
       child.on('close', (code) => {
         clearTimeout(timer);
+        reportExit();
         // A final line with no trailing newline still carries a JSON object.
         if (lineBuffer.trim()) dispatchLine(lineBuffer);
         resolve({ stdout, stderr, code, timedOut });
       });
       child.on('error', (e) => {
         clearTimeout(timer);
+        reportExit();
         resolve({ stdout, stderr: `${stderr}${e.message}`, code: null, timedOut });
       });
     });

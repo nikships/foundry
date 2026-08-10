@@ -9,7 +9,6 @@ export type PhaseKind = 'agent' | 'code' | 'engineer';
 export type PhaseStatus = 'queued' | 'running' | 'success' | 'fail' | 'skipped';
 export type RunStatus = 'running' | 'accepted' | 'rejected' | 'failed' | 'killed';
 export type ReasoningEffort = 'off' | 'low' | 'medium' | 'high';
-export type AutonomyLevel = 'low' | 'medium' | 'high';
 export type EnvelopeKind = 'generic' | 'brief' | 'plan' | 'build' | 'scout' | 'review' | 'document';
 
 /** The seven built-in envelope kinds. Custom envelopes are named strings outside this set. */
@@ -189,13 +188,35 @@ export interface AppSettings {
   detectModel: string;
   /** Recorded on every run so a trace says who asked for it. */
   engineerName: string;
-  defaultAutonomy: AutonomyLevel;
   defaultModel: string;
   defaultReasoningEffort: ReasoningEffort;
   pollCadenceMs: number;
   turnTimeoutMs: number;
   envelopeRetries: number;
   gateRetries: number;
+  /**
+   * How full an agent's context may get before the engine compacts it between
+   * phases, as a fraction of the model's window.
+   */
+  compactionThreshold: number;
+  /**
+   * After this many failed corrections in a phase, the engine rewinds the SDK
+   * session (and restores phase-start files) instead of appending another
+   * correction turn. `0` disables rewind entirely.
+   */
+  rewindAfterCorrections: number;
+  /**
+   * How droid agent sessions talk to the CLI. `daemon` (default) multiplexes
+   * over one app-owned `droid daemon`; `subprocess` forces a ProcessTransport
+   * SdkSession per agent. Daemon start/auth failure falls back to subprocess
+   * automatically — a run never fails because the daemon did not come up.
+   */
+  transport: 'daemon' | 'subprocess';
+  /**
+   * Preferred local port for the app-owned `droid daemon`. Must sit inside
+   * 37600–37699; when busy the manager scans up within that band.
+   */
+  daemonPort: number;
   notifications: { accepted: boolean; rejected: boolean; failed: boolean; needsInput: boolean };
   dockBadge: boolean;
   appearance: 'system' | 'dark';
@@ -269,8 +290,6 @@ export interface ProjectDef {
   mergePolicy: MergePolicy;
   commands: ProjectCommand[];
   protectedPaths: string[];
-  /** Per-project allowlist of commands auto-approved for droid's ask_user. */
-  allowedCommands: string[];
   ownRoster: boolean;
   ownPipelines: boolean;
   /**
@@ -306,7 +325,7 @@ export interface RunRow {
   prUrl: string | null;
   merged: boolean;
   archived: boolean;
-  mode: 'rpc' | 'oneshot';
+  mode: 'daemon' | 'rpc' | 'oneshot';
   startedAt: string;
   endedAt: string | null;
   totalTokens: number;
@@ -343,6 +362,7 @@ export type EventType =
   | 'gate_fail'
   | 'correction'
   | 'interrupt'
+  | 'compaction'
   | 'log'
   | 'error';
 
@@ -404,12 +424,31 @@ export interface AgentSessionRow {
   cli: CliVendor;
   /** The vendor's own session id, whatever it calls one. */
   droidSessionId: string | null;
-  mode: 'rpc' | 'oneshot';
+  mode: 'daemon' | 'rpc' | 'oneshot';
   color: string;
   contextTokens: number;
   contextWindow: number;
   createdAt: string;
   lastUsedAt: string;
+}
+
+/**
+ * What is actually occupying an agent's context window, as droid accounts for
+ * it. The occupancy figures are droid's own estimate and can differ from
+ * `AgentSessionRow.contextTokens` by a token or two: they are two reads of a
+ * moving number, so a view shows one of them, never a difference between them.
+ */
+export interface ContextBreakdown {
+  modelId: string;
+  modelDisplayName: string;
+  contextBudget: number;
+  usedTokens: number;
+  freeTokens: number;
+  lastCallCompactionTokens?: number;
+  categories: { name: string; tokens: number; colorKey: string }[];
+  skills: { name: string; location: string; tokens: number }[];
+  mcpServers: { name: string; toolCount: number; tokens: number }[];
+  droids: { name: string; location: string; tokens: number }[];
 }
 
 export interface UsageBreakdown {
@@ -475,16 +514,20 @@ export interface DoctorCheck {
   fix?: { kind: 'open-url' | 'open-settings' | 'run'; value: string };
 }
 
+/**
+ * A deliberate checkpoint an engineer phase in the pipeline asked for. Runs
+ * never stop for permission: those are settled by the engine policy and only
+ * appear in the trace.
+ */
 export interface PendingInterrupt {
   interruptId: string;
   runId: string;
   phaseId: string | null;
-  kind: 'engineer' | 'permission';
+  kind: 'engineer';
   title: string;
   body: string;
-  /** Engineer phases accept edited text; permission asks are yes/no + remember. */
+  /** Engineer phases accept edited text alongside approve/reject. */
   options: { id: string; label: string; kind: 'approve' | 'reject' | 'edit' }[];
-  command?: string;
   createdAt: string;
 }
 
@@ -492,7 +535,6 @@ export interface InterruptAnswer {
   interruptId: string;
   decision: 'approve' | 'reject';
   text?: string;
-  remember?: boolean;
 }
 
 export interface StartRunInput {

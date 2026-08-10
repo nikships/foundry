@@ -3,15 +3,15 @@
  *
  * This adapter is the extraction of what `oneshot.ts` already did, unchanged on
  * the wire. Droid is the only vendor with `supportsRpc`, so it is also the only
- * one that reaches `droid/client.ts` and therefore the only one whose permission
- * asks can still open the interrupt sheet mid-turn.
+ * one with an SDK transport (`droid/sdk/session.ts`); every vendor, droid
+ * included, comes back through here whenever a session runs one-shot.
  */
 
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { ModelInfo, ToolInfo } from '@shared/types.js';
-import type { DroidNotification, TokenUsage } from '../droid/protocol.js';
-import { loadDroidCatalog, loadDroidTools } from '../droid/catalog.js';
+import { AUTONOMY_LEVEL, type DroidNotification, type TokenUsage } from '../droid/protocol.js';
+import { droidTools, loadDroidCatalog } from '../droid/catalog.js';
 import { lastJsonObject, type CliAdapter, type ParsedTurn, type ProcessOutput } from './types.js';
 
 interface DroidResult {
@@ -141,7 +141,7 @@ export const droidAdapter: CliAdapter = {
       '--cwd',
       req.cwd,
       '--auto',
-      req.autonomy,
+      AUTONOMY_LEVEL,
     ];
     if (req.model && req.model !== 'inherit') {
       argv.push('-m', req.model);
@@ -181,5 +181,8 @@ export const droidAdapter: CliAdapter = {
   },
 
   models: (binPath: string): Promise<ModelInfo[]> => loadDroidCatalog(binPath),
-  tools: (binPath: string, model?: string): Promise<ToolInfo[]> => loadDroidTools(binPath, model),
+  // Tools are whatever the last live session reported. Enumerating them used to
+  // cost a `droid exec --list-tools` child per request, for a list only a
+  // session can answer for correctly anyway.
+  tools: (): Promise<ToolInfo[]> => droidTools(),
 };

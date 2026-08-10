@@ -15,7 +15,7 @@ invisible. `resolveEnv()` asks the login shell once at startup (`$SHELL -ilc`,
 answer fenced by markers because rc files print banners) and caches it.
 
 - **Every** spawn uses `spawnEnv()` — `engine/commands.ts`, `system/procs.ts`,
-  `droid/oneshot.ts`, `droid/client.ts`, `droid/catalog.ts`, and the `which`
+  `droid/oneshot.ts`, `droid/sdk/session.ts`, `droid/catalog.ts`, and the `which`
   in `cli/index.ts`. A new spawn site that uses `process.env` reintroduces the
   bug for whichever feature it powers.
 - `resolveEnv()` must be awaited **before** anything spawns: `findCli` caches
