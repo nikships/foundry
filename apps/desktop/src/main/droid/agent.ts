@@ -9,7 +9,7 @@
 import type { AgentDef, CliVendor, UsageBreakdown } from '@shared/types.js';
 import type { Tracer } from '../trace/tracer.js';
 import { adapterFor } from '../cli/index.js';
-import { type PermissionAsk, type PermissionDecision, type TurnResult } from './client.js';
+import { type PermissionAsk, type PermissionDecision, type TurnResult } from './turn.js';
 import { OneShotClient } from './oneshot.js';
 import { EventFolder, toUsageBreakdown } from './events.js';
 import { evaluate, type PolicyContext } from './permissions.js';

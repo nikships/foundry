@@ -112,10 +112,6 @@ function handle(msg) {
     return;
   }
   if (method === 'droid.update_session_settings') {
-    if (scenario === 'reject-model' && params.modelId && params.modelId !== 'gpt-fake-default') {
-      fail(id, -32603, 'Model not allowed by organization policy');
-      return;
-    }
     if (params.modelId) settings = { ...settings, modelId: params.modelId };
     if (params.reasoningEffort) settings = { ...settings, reasoningEffort: params.reasoningEffort };
     notify({ type: 'settings_updated', requestId: id, settings }, sessionId);
@@ -170,6 +166,14 @@ function runTurn(_prompt) {
 
   if (scenario === 'die-on-first-turn' && turns === 1) {
     setTimeout(() => process.exit(7), 30);
+    return;
+  }
+
+  // A model the org forbids is accepted by update_session_settings and only
+  // fails once a turn runs on it, as an error notification rather than a throw.
+  if (scenario === 'reject-model' && settings.modelId !== 'gpt-fake-default') {
+    notify({ type: 'error', message: '400 {"detail":"Invalid model ID in request body","status":400,"title":"Bad Request"}', errorType: 'Error', timestamp: '2026-08-09T00:00:00.000Z' }, sessionId);
+    notify({ type: 'agent_turn_completed', reason: 'error', turnId, tokenUsage: USAGE(), cumulativeTokenUsage: USAGE() }, sessionId);
     return;
   }
 

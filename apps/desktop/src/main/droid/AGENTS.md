@@ -2,14 +2,30 @@
 
 Droid's transports + shared one-shot runner. `agent.ts` drives `sdk/session.ts`
 for RPC turns and falls back to `oneshot.ts`; `protocol.ts` encodes findings
-observed against the real CLI, not the docs.
+observed against the real CLI, not the docs. `turn.ts` holds the shapes both
+transports agree on (`TurnResult`, `PermissionAsk`, `PermissionDecision`,
+`INHERIT_MODEL`) so nothing above the seam has to know which one ran.
 
 `AgentSession` degrades after two transport failures in a run. Strikes are
 counted on the failing turn only: a dying child both rejects its in-flight turn
 and fires an exit callback, so counting in both places would spend the whole
 budget on one death.
 
+## Invariants
+
+- **All SDK imports live in `src/main/droid/sdk/`.** ESLint enforces it
+  (`tests/sdk-*.test.ts` are the one other exception). Everything above the
+  seam talks to `SdkSession` and to `turn.ts`, never to `@factory/droid-sdk`.
+- There is no hand-rolled JSON-RPC framing left. `SdkSession` owns the wire for
+  RPC turns; `protocol.ts` is now types + constants only (notification shapes,
+  `AUTONOMY_LEVEL`, `request`/`response` builders the stubs and `oneshot.ts`
+  side still describe), not a client.
+
 ## Three quirks a naive client gets wrong
+
+The SDK handles all three now. They are kept here because the stubs in `tests/`
+have to reproduce them, and because `oneshot.ts` still talks to the CLI without
+the SDK in front of it.
 
 1. Every frame needs `type` + `factoryApiVersion`/`factoryProtocolVersion` —
    plain JSON-RPC is rejected `-32700`.
@@ -27,9 +43,13 @@ stay vendor-agnostic; vendor flags belong in `cli/<vendor>.ts`.
 
 ## Testing against a stub CLI
 
-Two stubs answer the RPC handshake: `tests/fake-droid.ts`, and the inline
+Two stubs answer the SDK's handshake over a real child: `tests/fake-droid.ts`
+(driven by `tests/sdk-session-child.test.ts`, the only suite that exercises
+`spawnTransport()` — pid, stderr pipe, exit code), and the inline
 `scriptedDroid` in `tests/executor.test.ts` (a separate one because the
-executor's stub scripts whole turns, including side effects on disk).
+executor's stub scripts whole turns, including side effects on disk). The
+scripted in-memory transport in `tests/sdk-session.test.ts` covers everything
+that does not need a process.
 
 The SDK validates every frame with the CLI's own zod schemas and drops what
 fails, so a stub must be schema-complete rather than merely plausible — a
@@ -38,13 +58,20 @@ fails, so a stub must be schema-complete rather than merely plausible — a
 discarded in silence and the turn hangs instead of failing. The sharpest edge
 is the turn id: the SDK mints it, sends it as `add_user_message.messageId`, and
 requires `agent_turn_completed` to echo it. Omitting it raises a protocol
-error; a *mismatched* one is ignored, so the turn hangs to its timeout.
+error; a _mismatched_ one is ignored, so the turn hangs to its timeout.
+
+A stub must also fail a forbidden model the way the CLI does — as an `error`
+notification during the turn, never as an error response to
+`update_session_settings`, which the CLI always accepts (see below).
 
 ## The SDK seam (`sdk/`)
 
-`sdk/session.ts` is the only place `@factory/droid-sdk` may be imported (ESLint
-enforces it; tests/sdk-\*.test.ts are the one other exception). Everything
-else talks to `SdkSession`, so the transport stays swappable.
+`sdk/` is the only place `@factory/droid-sdk` may be imported (ESLint enforces
+it; tests/sdk-\*.test.ts are the one other exception). Everything else talks to
+`SdkSession`, so the transport stays swappable. `sdk/errors.ts` exists for that
+reason: it owns `DroidProtocolError` (what this seam raises: a timed-out turn,
+an error result, a session used before it started) and classifies the SDK's own
+four transport errors for `agent.ts`, which may not name them itself.
 
 Three things the SDK cannot give us, all solved by the one decorator in
 `sdk/sniffing-transport.ts`:
@@ -60,10 +87,18 @@ Three things the SDK cannot give us, all solved by the one decorator in
   session's private `_client`.
 
 Two more SDK behaviours the code works around: `--auto` is inert for a
-stream-jsonrpc session (only `autonomyLevel` decides, and omitting it defaults
-to high, which is why it is always sent), and the SDK's stderr goes through a
-logger that strips message text from any customer sink — so `sdk/session.ts`
-reads `childProcess.stderr` directly.
+stream-jsonrpc session, and the SDK's stderr goes through a logger that strips
+message text from any customer sink — so `sdk/session.ts` reads
+`childProcess.stderr` directly.
+
+The autonomy finding is worth stating precisely, because the pre-SDK client
+claimed the opposite in a comment. `--auto` on the argv **does not bound a
+JSON-RPC session at all**: it is validated at spawn and then ignored, and the
+session-level `autonomyLevel` moves freely in both directions past it. The
+session setting is the only bound, and omitting it defaults to `high` — so
+`autonomyLevel` is stated explicitly on every create and re-stated after every
+resume (`load_session` carries no settings). `--auto` is still passed so `ps`
+describes the child the way the session is actually configured.
 
 ### Settings the CLI accepts and then ignores
 
@@ -104,7 +139,7 @@ else", merged with any explicitly disabled tools. Three things this depends on:
 Runs never stop for a person. `evaluate()` ALWAYS returns a decision — there is
 no "ask a human" outcome and no autonomy setting; `AUTONOMY_LEVEL` in
 `protocol.ts` is the single level every session runs at, sent explicitly on
-every create/resume and passed as `--auto high` on every spawn.
+every create/resume (the argv `--auto high` is cosmetic — see the SDK seam).
 
 The table: commands allow; in-worktree in-boundary writes allow; boundary
 violations and protected paths deny; **out-of-worktree writes deny** (this ask

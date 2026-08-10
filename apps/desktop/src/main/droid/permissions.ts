@@ -15,7 +15,7 @@
 import { isAbsolute, relative, resolve } from 'node:path';
 import type { WriteBoundary } from '@shared/types.js';
 import { isAllowed, isProtected } from '../engine/boundary.js';
-import type { PermissionDecision } from './client.js';
+import type { PermissionDecision } from './turn.js';
 
 export interface PolicyContext {
   worktree: string;

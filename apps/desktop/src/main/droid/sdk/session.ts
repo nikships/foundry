@@ -28,12 +28,12 @@ import {
 } from '@factory/droid-sdk/node';
 import type { ReasoningEffort } from '@shared/types.js';
 import {
-  DroidProtocolError,
   INHERIT_MODEL,
   type PermissionAsk,
   type PermissionDecision,
   type TurnResult,
-} from '../client.js';
+} from '../turn.js';
+import { DroidProtocolError } from './errors.js';
 import {
   AUTONOMY_LEVEL,
   type AvailableModel,

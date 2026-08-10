@@ -18,7 +18,7 @@ import type { ReasoningEffort } from '@shared/types.js';
 import { adapterFor, type CliAdapter, type CliVendor } from '../cli/index.js';
 import { spawnEnv } from '../system/env.js';
 import type { TokenUsage } from './protocol.js';
-import type { TurnResult } from './client.js';
+import type { TurnResult } from './turn.js';
 
 export interface OneShotOptions {
   /** Which CLI this session drives. */

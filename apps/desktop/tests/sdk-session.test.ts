@@ -17,7 +17,7 @@ import { EventFolder, toUsageBreakdown } from '../src/main/droid/events.js';
 import { evaluate, type PolicyContext } from '../src/main/droid/permissions.js';
 import { openDb, projectDbPath, projectRunsDir } from '../src/main/trace/db.js';
 import { Tracer } from '../src/main/trace/tracer.js';
-import type { PermissionAsk } from '../src/main/droid/client.js';
+import type { PermissionAsk } from '../src/main/droid/turn.js';
 import type { DroidNotification, TokenUsage } from '../src/main/droid/protocol.js';
 import type { PipelineDef } from '../src/shared/types.js';
 

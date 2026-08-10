@@ -3,8 +3,8 @@
  *
  * This adapter is the extraction of what `oneshot.ts` already did, unchanged on
  * the wire. Droid is the only vendor with `supportsRpc`, so it is also the only
- * one that reaches `droid/client.ts` and therefore the only one whose permission
- * asks can still open the interrupt sheet mid-turn.
+ * one with an SDK transport (`droid/sdk/session.ts`); every vendor, droid
+ * included, comes back through here whenever a session runs one-shot.
  */
 
 import { homedir } from 'node:os';
