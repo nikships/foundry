@@ -3,9 +3,9 @@
  * own session models over the help scrape, and the tool list comes off a live
  * session instead of a `droid exec --list-tools` child.
  *
- * The shim below stands in for the droid binary and records every argv it is
- * ever called with, so "no child was spawned" is a fact these tests read rather
- * than a claim.
+ * Two independent "no child" signals: the argv-logging shim (catches spawns of
+ * the configured droid path) and `takeDiscoverySpawns()` (catches any child this
+ * module shells out to, including a hard-coded binary).
  */
 
 import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -21,6 +21,7 @@ import {
   loadDroidCatalog,
   noteSessionModels,
   noteSessionTools,
+  takeDiscoverySpawns,
 } from '../src/main/droid/catalog.js';
 import { AgentSession } from '../src/main/droid/agent.js';
 import { openDb, projectDbPath, projectRunsDir } from '../src/main/trace/db.js';
@@ -61,6 +62,7 @@ beforeEach(() => {
   shim = written.bin;
   argvLog = written.log;
   invalidateCatalog();
+  takeDiscoverySpawns();
 });
 
 describe('a tools request before any session exists', () => {
@@ -73,6 +75,7 @@ describe('a tools request before any session exists', () => {
     expect(Array.isArray(tools)).toBe(true);
     expect(tools).toEqual([]);
     expect(shimInvocations()).toEqual([]);
+    expect(takeDiscoverySpawns()).toEqual([]);
   });
 });
 
@@ -91,6 +94,7 @@ describe('a tools request once a session has reported', () => {
     const tools = await toolsHandler(shim)('droid');
     expect(tools.map((t) => t.id)).toEqual(['Execute']);
     expect(shimInvocations()).toEqual([]);
+    expect(takeDiscoverySpawns()).toEqual([]);
   });
 
   it('hands out a copy, so a caller cannot mutate what the next one reads', async () => {

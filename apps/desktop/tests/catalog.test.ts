@@ -86,6 +86,29 @@ describe('mergeSessionModels', () => {
     expect(merged).toHaveLength(1);
     expect(merged[0]!.supportedReasoningEfforts).toEqual(['high']);
   });
+
+  it('adds a session-only model and keeps non-colliding help entries', () => {
+    const merged = mergeSessionModels(fromHelp, [
+      {
+        id: 'session-only',
+        modelId: 'session-only',
+        modelProvider: 'meta',
+        displayName: 'Session Only',
+        supportedReasoningEfforts: ['low'],
+        defaultReasoningEffort: 'low',
+        deprecated: true,
+      },
+    ]);
+    expect(merged.map((m) => m.id).sort()).toEqual([
+      'custom:droidproxy:opus-5',
+      'session-only',
+    ]);
+    const added = merged.find((m) => m.id === 'session-only')!;
+    expect(added.displayName).toBe('Session Only');
+    expect(added.provider).toBe('meta');
+    expect(added.deprecated).toBe(true);
+    expect(added.supportedReasoningEfforts).toEqual(['low']);
+  });
 });
 
 describe('providerOf', () => {
