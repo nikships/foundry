@@ -86,6 +86,13 @@ export class SmithService {
     this.socket.start();
   }
 
+  // TODO(smith-cli-exec): the helper builds to an ESM `foundry-cli.js` with a
+  // `#!/usr/bin/env node` shebang. For droid to invoke `$FOUNDRY_CLI` directly
+  // the file must be executable and keep its shebang through the bundler; if a
+  // future build strips it, wrap the value in a tiny generated shell shim
+  // (`exec node "<path>" "$@"`) written next to the system prompt. Left until
+  // the packaging path (electron-builder) is exercised on macOS.
+
   dispose(): void {
     this.proposals.cancelAll();
     this.registry.closeAll();

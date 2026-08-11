@@ -97,12 +97,12 @@ export class AppContext {
 
   /**
    * The helper binary droid invokes as `$FOUNDRY_CLI`. It builds alongside the
-   * main bundle at `out/cli/foundry-cli.js`; packaged, that sits beside the app
-   * resources under the same layout.
+   * main bundle (out/main/foundry-cli.js) and ships in the same directory when
+   * packaged, so it is always a sibling of the main entry.
    */
   private foundryCliPath(): string {
     const here = dirname(fileURLToPath(import.meta.url));
-    return join(here, '../cli/foundry-cli.js');
+    return join(here, 'foundry-cli.js');
   }
 
   private onRunFinished(run: RunRow): void {

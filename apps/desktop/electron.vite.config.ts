@@ -13,7 +13,14 @@ export default defineConfig({
     resolve: { alias },
     plugins: [externalizeDepsPlugin()],
     build: {
-      lib: { entry: resolve(__dirname, 'src/main/main.ts') },
+      // The Smith helper binary builds alongside main so droid can invoke it as
+      // `$FOUNDRY_CLI` from a spawned session. It lands at out/main/foundry-cli.js.
+      lib: {
+        entry: {
+          main: resolve(__dirname, 'src/main/main.ts'),
+          'foundry-cli': resolve(__dirname, 'src/cli/foundry-cli.ts'),
+        },
+      },
       rollupOptions: { output: { format: 'es' } },
     },
   },
