@@ -30,6 +30,7 @@ import type {
   ProjectDef,
   PullRequest,
   RunRow,
+  SmithLaunchInfo,
   SmithProposal,
   SmithProposalAnswer,
   StartRunInput,
@@ -382,6 +383,13 @@ export interface FoundryApi {
     answer(answer: InterruptAnswer): Promise<boolean>;
   };
   smith: {
+    /**
+     * Everything needed to start a session in the user's own terminal: resolved
+     * CLI and skill paths, the bootstrap line, and the chosen terminal.
+     */
+    launchInfo(projectId: string): Promise<SmithLaunchInfo>;
+    /** Opens the project directory in the preferred terminal. */
+    openTerminal(projectId: string): Promise<{ ok: boolean; error?: string }>;
     /** The one pending proposal, or an empty list. Only ever one at a time. */
     proposalsList(): Promise<SmithProposal[]>;
     /** Approve or reject the pending proposal, unblocking the waiting CLI. */
@@ -501,6 +509,8 @@ export const IPC = {
   prsFixConflicts: 'prs:fixConflicts',
   interruptsList: 'interrupts:list',
   interruptsAnswer: 'interrupts:answer',
+  smithLaunchInfo: 'smith:launchInfo',
+  smithOpenTerminal: 'smith:openTerminal',
   smithProposalsList: 'smith:proposalsList',
   smithProposalAnswer: 'smith:proposalAnswer',
   doctorRun: 'doctor:run',

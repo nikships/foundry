@@ -235,6 +235,8 @@ export interface AppSettings {
   daemonPort: number;
   notifications: { accepted: boolean; rejected: boolean; failed: boolean; needsInput: boolean };
   dockBadge: boolean;
+  /** Which terminal emulator "Open in terminal" hands a directory to. */
+  terminalApp: TerminalAppId;
   appearance: 'system' | 'dark';
   retentionDays: number | null;
   onboarded: boolean;
@@ -592,6 +594,32 @@ export interface ValidationIssue {
   message: string;
 }
 
+// ── Terminals ────────────────────────────────────────────────────────────────
+
+/** The terminal emulators Foundry can hand a directory to. */
+export type TerminalAppId = 'terminal' | 'iterm' | 'ghostty' | 'warp' | 'alacritty' | 'kitty';
+
+export interface TerminalAppInfo {
+  id: TerminalAppId;
+  label: string;
+  /**
+   * The macOS application name `open -a` resolves. Settings stores the `id`, not
+   * this, so the value handed to `open` is always one of ours — never a string a
+   * user typed.
+   */
+  appName: string;
+}
+
+/** Terminal.app first: it is the only one guaranteed to be installed. */
+export const TERMINAL_APPS: readonly TerminalAppInfo[] = [
+  { id: 'terminal', label: 'Terminal', appName: 'Terminal' },
+  { id: 'iterm', label: 'iTerm2', appName: 'iTerm' },
+  { id: 'ghostty', label: 'Ghostty', appName: 'Ghostty' },
+  { id: 'warp', label: 'Warp', appName: 'Warp' },
+  { id: 'alacritty', label: 'Alacritty', appName: 'Alacritty' },
+  { id: 'kitty', label: 'kitty', appName: 'kitty' },
+] as const;
+
 // ── Smith (the entity-smith skill's approval gate) ───────────────────────────
 
 /**
@@ -626,6 +654,26 @@ export interface SmithProposal {
 export interface SmithProposalAnswer {
   approved: boolean;
   note?: string;
+}
+
+/**
+ * Everything the renderer needs to hand a Smith session off to the user's own
+ * terminal. Resolved in main because only main knows where the app is installed,
+ * where the skill shipped, and which terminal the settings chose.
+ */
+export interface SmithLaunchInfo {
+  /** Absolute path to the helper binary. Invoke it as `node <cliPath>`. */
+  cliPath: string;
+  /** Absolute path to the skill directory shipped inside the app bundle. */
+  skillDir: string;
+  /** The unix socket the CLI connects to, for the troubleshooting case. */
+  socketPath: string;
+  /** A shell block that aliases `foundry-cli` and exports the project scope. */
+  bootstrap: string;
+  /** The terminal the launch button will use, and whether it is actually installed. */
+  terminal: TerminalAppInfo & { installed: boolean };
+  /** The project the session would scope to; null means no project is selected. */
+  project: { id: string; name: string; path: string; exists: boolean } | null;
 }
 
 // ── Updater ──────────────────────────────────────────────────────────────────

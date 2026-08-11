@@ -171,6 +171,7 @@ function defaultMockSettings(): AppSettings {
     daemonPort: 37_643,
     notifications: { accepted: true, rejected: true, failed: true, needsInput: true },
     dockBadge: true,
+    terminalApp: 'terminal',
     appearance: 'system',
     retentionDays: null,
     onboarded: true,
@@ -493,7 +494,22 @@ export function createMockFoundryApi(): FoundryApi {
       answer: async () => true,
     },
     smith: {
-      // The web preview has no app socket, so nothing can ever propose.
+      // The web preview has no app socket and no way to open a terminal, so the
+      // launcher renders with empty paths and nothing can ever propose.
+      launchInfo: async () => ({
+        cliPath: '',
+        skillDir: '',
+        socketPath: '',
+        bootstrap: '',
+        terminal: {
+          id: 'terminal' as const,
+          label: 'Terminal',
+          appName: 'Terminal',
+          installed: false,
+        },
+        project: null,
+      }),
+      openTerminal: async () => ({ ok: false, error: 'Smith needs the desktop app.' }),
       proposalsList: async () => [],
       proposalAnswer: async () => false,
     },

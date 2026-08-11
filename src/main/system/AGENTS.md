@@ -1,6 +1,6 @@
 # AGENTS.md — src/main/system
 
-Owns launch environment resolution, process control, doctor checks, notifications, and dock badges. Does not own pipeline logic. Doctor failures are advisory; the app still starts. Run completion (notification + badge) is settled by `finish()` in the engine.
+Owns launch environment resolution, process control, doctor checks, notifications, dock badges, and handing a directory to the user's terminal. Does not own pipeline logic. Doctor failures are advisory; the app still starts. Run completion (notification + badge) is settled by `finish()` in the engine.
 
 ## Project Overview
 
@@ -8,6 +8,7 @@ Owns launch environment resolution, process control, doctor checks, notification
 - `procs.ts` — tracked child registry + argv, `killAll()`, pid-recycle safety via `ps` argv check.
 - `doctor.ts` — advisory startup checks.
 - `notify.ts` / badge helpers — respect notification/badge settings while `finish()` owns completion state.
+- `terminal.ts` — `open -a <App> <dir>` for the emulator in settings, plus the catalog and an install check. A handoff only: no PTY, no command injection, nothing tracked in `procs.ts` because `open` exits immediately.
 
 ## Setup Commands
 

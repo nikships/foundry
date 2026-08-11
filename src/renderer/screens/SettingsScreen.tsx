@@ -9,6 +9,7 @@ import type {
   ProjectDef,
   UpdateStatus,
 } from '@shared/types.js';
+import { TERMINAL_APPS } from '@shared/types.js';
 import { api, plain } from '../api.js';
 import { useApp } from '../stores/app.js';
 import ModelPicker from '../components/ModelPicker.js';
@@ -596,6 +597,35 @@ export default function SettingsScreen({
                               : 'Check for updates'}
                         </Button>
                       )}
+                    </div>
+                  </Section>
+
+                  <Section
+                    label="Terminal"
+                    note="Where Foundry hands you a shell — Smith sessions and Open in terminal."
+                  >
+                    <div className={styles.settingsFields}>
+                      <Field
+                        label="Preferred terminal"
+                        hint="Used by Smith's launcher to open your project directory. Foundry does not embed a terminal; it opens yours."
+                      >
+                        <Dropdown
+                          value={settings.terminalApp}
+                          options={TERMINAL_APPS.map((terminal) => ({
+                            value: terminal.id,
+                            label: terminal.label,
+                            description:
+                              terminal.id === 'terminal'
+                                ? 'Ships with macOS, so it always resolves.'
+                                : `Opens ${terminal.appName}.app — must be installed.`,
+                          }))}
+                          onChange={(next) => {
+                            void patchSettings({
+                              terminalApp: next as AppSettings['terminalApp'],
+                            });
+                          }}
+                        />
+                      </Field>
                     </div>
                   </Section>
 

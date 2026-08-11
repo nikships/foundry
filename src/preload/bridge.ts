@@ -126,6 +126,8 @@ const api: FoundryApi = {
     answer: (answer) => call(IPC.interruptsAnswer, answer),
   },
   smith: {
+    launchInfo: (projectId) => call(IPC.smithLaunchInfo, projectId),
+    openTerminal: (projectId) => call(IPC.smithOpenTerminal, projectId),
     proposalsList: () => call(IPC.smithProposalsList),
     proposalAnswer: (id, answer) => call(IPC.smithProposalAnswer, id, answer),
   },

@@ -16,6 +16,7 @@ import InterruptSheet from './components/InterruptSheet.js';
 import NewProjectWizard from './components/NewProjectWizard.js';
 import ConfirmModal from './components/ConfirmModal.js';
 import UpdateBanner from './components/UpdateBanner.js';
+import SmithLauncher from './components/SmithLauncher.js';
 import SmithProposalCard, { type SmithNavTarget } from './components/SmithProposalCard.js';
 import type { ProjectDef, UpdateStatus } from '@shared/types.js';
 import styles from './App.module.css';
@@ -32,12 +33,14 @@ const MENU_VIEWS: Record<string, View> = {
 };
 
 function AppInner(): React.JSX.Element {
-  const { ready, settings, interrupts, refreshAll, refreshScoped, selectProject } = useApp();
+  const { ready, settings, interrupts, project, refreshAll, refreshScoped, selectProject } =
+    useApp();
   const [view, setView] = useState<View>('runs');
   const [creatingProject, setCreatingProject] = useState(false);
   const [openRunId, setOpenRunId] = useState('');
   const [inspectorRunId, setInspectorRunId] = useState('');
   const [settingsPane, setSettingsPane] = useState('general');
+  const [smithOpen, setSmithOpen] = useState(false);
   // Deep link for the active project's roster/pipelines/envelope editors after a
   // Smith approve. The nonce re-fires the target screen's effect on a repeat.
   const [smithNav, setSmithNav] = useState<(SmithNavTarget & { nonce: number }) | null>(null);
@@ -76,6 +79,8 @@ function AppInner(): React.JSX.Element {
       setUpdateStatus(next);
     });
   }, []);
+
+  const openSmith = useCallback((): void => setSmithOpen(true), []);
 
   // A Smith approve saved the entity; open its editor. The store save already
   // broadcast settings-changed (which refreshes the app), but refresh scoped
@@ -266,6 +271,7 @@ function AppInner(): React.JSX.Element {
             }}
             onOpenInterruptRun={openRun}
             onOpenInspector={openInspector}
+            onOpenSmith={openSmith}
             inspectorRunId={inspectorRunId}
           />
           <div className={styles.sidebarDivider} aria-hidden />
@@ -278,10 +284,22 @@ function AppInner(): React.JSX.Element {
       )}
 
       {/*
-       * Stacking: the Smith proposal card sits below an engineer interrupt. Both
-       * use ModalShell `highPriority` (z-100), so DOM order breaks the tie — the
-       * interrupt renders last to stay on top.
+       * Stacking (bottom to top): the Smith launcher is an ordinary ModalShell
+       * (z-90), below the proposal card, which is below an engineer interrupt.
+       * The card and the interrupt both use `highPriority` (z-100), so DOM order
+       * breaks that tie — the interrupt renders last to stay on top.
        */}
+      {smithOpen && (
+        <SmithLauncher
+          projectId={project?.id ?? ''}
+          onClose={() => setSmithOpen(false)}
+          onOpenSettings={(pane) => {
+            setSmithOpen(false);
+            setSettingsPane(pane);
+            go('settings');
+          }}
+        />
+      )}
       <SmithProposalCard onApproved={(target) => void onSmithApproved(target)} />
       {activeInterrupt && <InterruptSheet interrupt={activeInterrupt} />}
       {creatingProject && (

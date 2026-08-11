@@ -64,6 +64,12 @@ need more depth than this, read the repo's own `AGENTS.md`.
 closed, every command exits 2 with `Foundry is not running`. That is not an error
 to work around — ask the user to launch the app.
 
+**Shortcut: the app can set this up for you.** Foundry's sidebar has a **Smith**
+entry that opens the user's terminal at the project root and hands them a
+ready-made bootstrap line plus the path to this skill. If they used it, the
+`foundry-cli` command already exists in the shell and the project scope is already
+exported — check with `foundry-cli project list` before resolving anything by hand.
+
 **Socket path.** The CLI defaults to the app's real support-dir path:
 
 ```
@@ -83,12 +89,16 @@ node "/Applications/Foundry.app/Contents/Resources/app.asar.unpacked/out/main/fo
 node <repo>/out/main/foundry-cli.js agent list     # run `npm run build` first if out/ is missing
 ```
 
-Resolve the path once, then alias it for the rest of the session so every later
-command reads the way this document writes them:
+Resolve the path once, then define `foundry-cli` for the rest of the session so
+every later command reads the way this document writes them. This is the same line
+the app's Smith launcher hands over:
 
 ```bash
-alias foundry-cli='node "/Applications/Foundry.app/Contents/Resources/app.asar.unpacked/out/main/foundry-cli.js"'
+foundry-cli() { node '/Applications/Foundry.app/Contents/Resources/app.asar.unpacked/out/main/foundry-cli.js' "$@"; }
 ```
+
+A function rather than an alias: it takes arguments naturally and works in
+non-interactive shells.
 
 If neither path exists, say so plainly rather than guessing at another location.
 
