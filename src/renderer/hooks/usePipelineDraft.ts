@@ -165,12 +165,12 @@ export function usePipelineDraft(): {
   }, [selectedId]);
 
   // Initialize or reset draft when selected pipeline changes
+  const prevSelectedIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (selected) {
-      setDraft(clonePipeline(selected));
-      setActivePhase(null);
-    } else {
-      setDraft(null);
+    const currentId = selected?.id ?? null;
+    if (currentId !== prevSelectedIdRef.current) {
+      prevSelectedIdRef.current = currentId;
+      setDraft(selected ? clonePipeline(selected) : null);
       setActivePhase(null);
     }
   }, [selected]);
