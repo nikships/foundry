@@ -48,13 +48,25 @@
   font: inherit;
   text-align: left;
   cursor: default;
-  transition: background var(--fast) var(--ease);
+  transition:
+    background var(--fast) var(--ease),
+    border-color var(--fast) var(--ease);
 }
 .roster-cell:last-of-type {
   border-right: none;
 }
 .roster-cell:hover {
-  background: color-mix(in srgb, #ffffff 2%, transparent);
+  background: color-mix(in srgb, #ffffff 2.5%, transparent);
+}
+.roster-cell.on {
+  background: color-mix(in srgb, var(--hue) 9%, transparent);
+}
+.roster-cell.on:hover {
+  background: color-mix(in srgb, var(--hue) 12%, transparent);
+}
+.roster-cell.on :global(.avatar) {
+  border-color: var(--hue) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--hue) 40%, transparent);
 }
 .roster-cell-who {
   min-width: 0;
@@ -65,20 +77,26 @@
 .roster-cell-name {
   font-size: var(--text-sm);
   font-weight: 500;
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.roster-cell.on .roster-cell-name {
-  color: var(--hue);
-}
-.roster-cell-role {
-  font-size: 11px;
   color: var(--text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: color var(--fast) var(--ease);
+}
+.roster-cell.on .roster-cell-name {
+  color: var(--text);
+  font-weight: 600;
+}
+.roster-cell-role {
+  font-size: 11px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color var(--fast) var(--ease);
+}
+.roster-cell.on .roster-cell-role {
+  color: var(--text-dim);
 }
 .roster-cell-cli {
   display: flex;
@@ -90,14 +108,26 @@
   text-transform: uppercase;
   letter-spacing: 0.14em;
   color: var(--text-faint);
+  transition: color var(--fast) var(--ease);
+}
+.roster-cell.on .roster-cell-cli {
+  color: var(--hue);
+}
+.roster-cell-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: var(--r-full);
+  background: var(--hue);
+  flex: none;
 }
 .roster-cell-underline {
   position: absolute;
   left: 0;
   right: 0;
   bottom: -1px;
-  height: 1px;
+  height: 2px;
   background: var(--hue);
+  box-shadow: 0 -1px 8px color-mix(in srgb, var(--hue) 45%, transparent);
 }
 .roster-new {
   flex: none;

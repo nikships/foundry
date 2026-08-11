@@ -262,6 +262,7 @@ export default function RosterScreen({
                     <span className={styles.rosterCellName}>{agent.name}</span>
                     <span className={styles.rosterCellRole}>{agent.purpose}</span>
                     <span className={styles.rosterCellCli}>
+                      {isActive && <span className={styles.rosterCellDot} aria-hidden />}
                       <CliIcon vendor={agent.cli ?? 'droid'} size={11} />
                       {agent.cli ?? 'droid'}
                     </span>
