@@ -123,9 +123,6 @@ function PrCard({
         )}
       </div>
       <div className={styles.cardActions}>
-        <Button variant="ghost" size="sm" title="Open this PR on github.com" onClick={onOpen}>
-          GitHub ↗
-        </Button>
         {conflicting && onFix && (
           <Button
             variant="primary"

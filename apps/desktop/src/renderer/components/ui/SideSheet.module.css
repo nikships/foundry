@@ -1,0 +1,102 @@
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(2, 2, 2, 0.6);
+  animation: fade var(--fast) var(--ease);
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 440px;
+  height: 100%;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--line-strong);
+  animation: slideIn var(--normal) var(--ease);
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--line);
+}
+
+.titleGroup {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.closeBtn {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  transition:
+    color var(--fast) var(--ease),
+    border-color var(--fast) var(--ease),
+    background var(--fast) var(--ease);
+}
+
+.closeBtn:hover {
+  color: var(--text);
+  background: var(--bg-raised);
+  border-color: var(--line-strong);
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s4);
+}
+
+.footer {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4);
+  background: var(--bg-void);
+  border-top: 1px solid var(--line);
+}

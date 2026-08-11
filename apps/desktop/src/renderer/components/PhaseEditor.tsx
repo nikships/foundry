@@ -6,12 +6,15 @@ import {
   type EnvelopeKind,
   type PhaseDef,
   type PhaseKind,
+  type ValidationIssue,
 } from '@shared/types.js';
 import { api } from '../api.js';
 import { useApp } from '../stores/app.js';
 import { gateNames } from '../pipeline-view.js';
 import { SegmentedControl } from './ui/SegmentedControl.js';
 import { Button } from './ui/Button.js';
+import { IssueLine } from './ui/Issues.js';
+import { Toggle } from './ui/Toggle.js';
 import styles from './PhaseEditor.module.css';
 
 type CommandSource = 'ref' | 'builtin' | 'argv';
@@ -26,6 +29,7 @@ export default function PhaseEditor({
   phases,
   agents,
   commands,
+  issues = [],
   onChange,
   onRemove,
 }: {
@@ -34,6 +38,8 @@ export default function PhaseEditor({
   phases: PhaseDef[];
   agents: AgentDef[];
   commands: string[];
+  /** Validation issues already narrowed to this phase. */
+  issues?: ValidationIssue[];
   onChange: (phase: PhaseDef) => void;
   onRemove: () => void;
   onOpenSettings?: (pane: string) => void;
@@ -129,6 +135,14 @@ export default function PhaseEditor({
 
   return (
     <div className={styles.container}>
+      {issues.length > 0 && (
+        <div className={styles.issueList} role="alert">
+          {issues.map((issue, i) => (
+            <IssueLine key={`${issue.level}-${issue.message}-${i}`} issue={issue} />
+          ))}
+        </div>
+      )}
+
       {/* ── Name & Kind ──────────────────────────────────────────────── */}
       <div className={styles.fieldGroup}>
         <div className={styles.fieldHeader}>
@@ -477,20 +491,12 @@ export default function PhaseEditor({
           </div>
 
           <div className={styles.fieldGroup}>
-            <label className={styles.toggleRow}>
-              <input
-                type="checkbox"
-                checked={!!phase.optional}
-                onChange={(e) => onChange({ ...phase, optional: e.target.checked })}
-                className={styles.checkbox}
-              />
-              <div>
-                <span className={styles.toggleLabel}>Optional</span>
-                <span className={styles.toggleHint}>
-                  Non-zero exit is recorded in the trace but does not fail the run.
-                </span>
-              </div>
-            </label>
+            <Toggle
+              checked={!!phase.optional}
+              onChange={(optional) => onChange({ ...phase, optional })}
+              label="Optional"
+              hint="Non-zero exit is recorded in the trace but does not fail the run."
+            />
           </div>
         </>
       )}

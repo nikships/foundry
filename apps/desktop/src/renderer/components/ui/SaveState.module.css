@@ -1,0 +1,26 @@
+.saveState {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-sm);
+  background: var(--green);
+}
+
+.dotSaving {
+  background: var(--accent);
+}
+
+.clock {
+  font-variant-numeric: tabular-nums;
+}

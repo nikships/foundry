@@ -7,7 +7,7 @@
  * Geometry, wording, and stage grouping live here so they are pure functions
  * and unit-testable without a DOM.
  */
-import type { Acceptance, PhaseDef, PipelineDef, ValidationIssue } from '@shared/types.js';
+import type { Acceptance, PhaseDef, PipelineDef } from '@shared/types.js';
 
 /** Composition line: "3 agents · 1 command · 1 checkpoint". */
 export function phaseComposition(phases: PhaseDef[]): string {
@@ -49,6 +49,39 @@ export function issuePhaseIndex(where: string): number | null {
   if (!match) return null;
   const index = Number(match[1]);
   return Number.isInteger(index) && index >= 0 ? index : null;
+}
+
+/** The four acceptance rules, with the sentence each one means. */
+export const ACCEPTANCE_OPTIONS: {
+  value: Acceptance['kind'];
+  label: string;
+  description: string;
+}[] = [
+  {
+    value: 'all_phases_pass',
+    label: 'Every phase passed',
+    description: 'The run is accepted only when every phase ends in success.',
+  },
+  {
+    value: 'last_phase_pass',
+    label: 'The last phase passed',
+    description: "Only the final phase's status decides acceptance.",
+  },
+  {
+    value: 'envelope_status',
+    label: "A phase's envelope reports success",
+    description: "Accepted when a chosen phase's envelope status is success.",
+  },
+  {
+    value: 'phase_flag',
+    label: "A phase's envelope sets a flag",
+    description: 'Accepted when a chosen phase sets passed or approved.',
+  },
+];
+
+/** The short label for an acceptance rule, as the option list words it. */
+export function acceptanceLabel(acceptance: Acceptance): string {
+  return ACCEPTANCE_OPTIONS.find((o) => o.value === acceptance.kind)?.label ?? acceptance.kind;
 }
 
 /** The phase name an acceptance rule points at, if it points at one. */
@@ -121,57 +154,6 @@ export function formatClock(date: Date): string {
   return date.toLocaleTimeString('en-GB', { hour12: false });
 }
 
-export type StatusTone = 'ok' | 'warning' | 'error';
-
-export interface ValidationSummary {
-  tone: StatusTone;
-  /** Short status word for the pill. */
-  label: string;
-  /** Sentence explaining what that status means right now. */
-  detail: string;
-  errors: ValidationIssue[];
-  warnings: ValidationIssue[];
-}
-
-/**
- * Status-bar reading of the live validation result. A pipeline with warnings
- * still saves and still runs, so warnings never read as a failure.
- */
-export function validationSummary(
-  issues: ValidationIssue[],
-  opts: { hasProject: boolean } = { hasProject: true },
-): ValidationSummary {
-  const errors = issues.filter((i) => i.level === 'error');
-  const warnings = issues.filter((i) => i.level === 'warning');
-  if (errors.length) {
-    return {
-      tone: 'error',
-      label: `${errors.length} error${errors.length === 1 ? '' : 's'}`,
-      detail: 'Changes stop saving until these are fixed.',
-      errors,
-      warnings,
-    };
-  }
-  if (warnings.length) {
-    return {
-      tone: 'warning',
-      label: `${warnings.length} warning${warnings.length === 1 ? '' : 's'}`,
-      detail: 'Saved and runnable, but worth a look.',
-      errors,
-      warnings,
-    };
-  }
-  return {
-    tone: 'ok',
-    label: 'Ready',
-    detail: opts.hasProject
-      ? 'This pipeline is ready to run.'
-      : 'Select a project to run this pipeline.',
-    errors,
-    warnings,
-  };
-}
-
 /* ── Stage Board derived views ─────────────────────────────────────────── */
 
 /**
@@ -181,6 +163,8 @@ export function validationSummary(
 export interface Stage {
   /** Position of the stage in the run, from 0. */
   index: number;
+  /** Index of this stage's first phase — where a prepend lands. */
+  start: number;
   /** Indices into `phases` of the work in this stage, in execution order. */
   members: number[];
   /** Index of the checkpoint closing this stage, or null when nothing gates it. */
@@ -198,16 +182,19 @@ export interface Stage {
 export function stagesOf(phases: PhaseDef[]): Stage[] {
   const stages: Stage[] = [];
   let members: number[] = [];
+  let start = 0;
   phases.forEach((phase, i) => {
     if (phase.kind === 'engineer') {
-      stages.push({ index: stages.length, members, gate: i, end: i + 1 });
+      stages.push({ index: stages.length, start, members, gate: i, end: i + 1 });
       members = [];
+      start = i + 1;
       return;
     }
     members.push(i);
   });
   stages.push({
     index: stages.length,
+    start,
     members,
     gate: null,
     end: phases.length,
@@ -250,6 +237,127 @@ export function stageMoveTarget(phases: PhaseDef[], phase: number, delta: number
   if (last != null) return last + 1;
   // An empty stage starts where the previous one ended.
   return target.index === 0 ? 0 : stages[target.index - 1]!.end;
+}
+
+/**
+ * The insertion points a stage column exposes, as indices into `phases`.
+ *
+ * A stage is a contiguous run, so its slots are every index from its first
+ * phase up to and including the index its own append lands on — the gate when
+ * one closes the stage, its end when nothing does. An empty stage still has
+ * one slot, which is why a column is never a dead drop target.
+ */
+export function stageSlots(stage: Stage): number[] {
+  const last = stage.gate ?? stage.end;
+  const slots: number[] = [];
+  for (let i = stage.start; i <= last; i += 1) slots.push(i);
+  return slots;
+}
+
+/**
+ * The index `reorderPhase` needs for a drop on the insertion point `insertAt`.
+ *
+ * A reorder splices the phase out before it splices it back in, so an
+ * insertion point after the dragged phase has already shifted down one by the
+ * time it is read. Returns null when the drop would not move anything: the
+ * slots on either side of a phase are the position it already holds.
+ */
+export function reorderTarget(from: number, insertAt: number): number | null {
+  if (insertAt === from || insertAt === from + 1) return null;
+  return insertAt > from ? insertAt - 1 : insertAt;
+}
+
+/**
+ * How to rebuild the phase list so a dragged phase becomes a stage of its own.
+ *
+ * `at` is an index into the list with the dragged phase already removed,
+ * because that is the order the edit applies in. Only a checkpoint or the edge
+ * of the run bounds a stage, so a side that has neither needs a new
+ * checkpoint.
+ */
+export interface NewStagePlan {
+  /** Where the insertion starts, as an index into the list without the phase. */
+  at: number;
+  /** Whether a new checkpoint has to open the stage. */
+  before: boolean;
+  /** Whether a new checkpoint has to close it. */
+  after: boolean;
+}
+
+/**
+ * Plan the stage a phase dropped at `boundary` gets to itself, or null when the
+ * drop would leave the run as it already is.
+ *
+ * `boundary` is an index into the current phase list where one stage ends and
+ * the next begins: 0, the index of a checkpoint, or the length of the list.
+ */
+export function newStagePlan(
+  phases: PhaseDef[],
+  from: number,
+  boundary: number,
+): NewStagePlan | null {
+  const phase = phases[from];
+  // A checkpoint is a boundary, so it cannot be the contents of a stage.
+  if (!phase || phase.kind === 'engineer') return null;
+
+  const stages = stagesOf(phases);
+  const stage = stages[stageOfPhase(stages, from)];
+  // A phase that already has a stage to itself gains nothing from being
+  // dropped on that stage's own boundaries except an empty stage beside it.
+  if (stage && stage.members.length === 1) {
+    const opening = stage.start === 0 ? 0 : stage.start - 1;
+    const closing = stage.gate ?? phases.length;
+    if (boundary === opening || boundary === closing) return null;
+  }
+
+  const rest = phases.filter((_, i) => i !== from);
+  const at = Math.min(Math.max(0, boundary > from ? boundary - 1 : boundary), rest.length);
+  return {
+    at,
+    before: at > 0 && rest[at - 1]!.kind !== 'engineer',
+    after: at < rest.length && rest[at]!.kind !== 'engineer',
+  };
+}
+
+/* ── Stage Board drag identifiers ──────────────────────────────────────── */
+
+/** What a board drop id resolves to: an insertion point, or a new stage. */
+export type DropTarget = { kind: 'slot'; at: number } | { kind: 'rail'; boundary: number };
+
+/**
+ * A drag id per phase, positionally indexed but stable across a reorder.
+ *
+ * The id follows the phase rather than the slot it sits in, because the drop
+ * animation lands the card on wherever its id ended up: an index-based id would
+ * name a different phase the moment the array is rewritten, and the card would
+ * fly to a position it was never dropped on. Names are unique in a valid
+ * pipeline; a duplicate is a validation error, so the index only breaks the tie
+ * to keep the ids distinct while that error stands.
+ */
+export function phaseDragIds(phases: PhaseDef[]): string[] {
+  const counts = new Map<string, number>();
+  for (const phase of phases) counts.set(phase.name, (counts.get(phase.name) ?? 0) + 1);
+  return phases.map((phase, i) =>
+    (counts.get(phase.name) ?? 0) > 1 ? `phase:${phase.name}#${i}` : `phase:${phase.name}`,
+  );
+}
+
+/** The drop id of the insertion point that lands a phase at `at`. */
+export function dropSlotId(at: number): string {
+  return `slot:${at}`;
+}
+
+/** The drop id of the new-stage rail at `boundary`. */
+export function dropRailId(boundary: number): string {
+  return `rail:${boundary}`;
+}
+
+/** Resolve a board drop id, or null when it names nothing droppable. */
+export function parseDropId(id: string | number): DropTarget | null {
+  const match = /^(slot|rail):(\d+)$/.exec(String(id));
+  if (!match) return null;
+  const value = Number(match[2]);
+  return match[1] === 'rail' ? { kind: 'rail', boundary: value } : { kind: 'slot', at: value };
 }
 
 /** Label for a stage column: stages are numbered for the operator, from 1. */

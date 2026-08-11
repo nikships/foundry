@@ -149,6 +149,9 @@ const api: FoundryApi = {
     version: () => call(IPC.appVersion),
     quit: () => call(IPC.appQuit),
     relaunch: () => call(IPC.appRelaunch),
+    windowClose: () => call(IPC.appWindowClose),
+    windowMinimize: () => call(IPC.appWindowMinimize),
+    windowMaximize: () => call(IPC.appWindowMaximize),
   },
   updater: {
     check: () => call(IPC.updaterCheck),

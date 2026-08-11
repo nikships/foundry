@@ -7,8 +7,7 @@ acceptance.
 
 ## Architecture
 
-- `apps/desktop/` is the application. The original SSSF Python factory is
-  reference-only: do not import, execute, link, or add Python to the app.
+- `apps/desktop/` is the application.
 - A run normally uses `.foundry-worktrees/<runId>` and branch
   `foundry/<runId>`. The base checkout is not modified; merge/discard is an
   explicit operator action.

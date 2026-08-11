@@ -48,6 +48,7 @@ describe('StageBoard', () => {
         onAddPhase: noop,
         onMovePhase: noop,
         onReorderPhase: noop,
+        onNewStagePhase: noop,
         onRemovePhase: noop,
         agentColor,
         issues: [],
@@ -69,6 +70,7 @@ describe('StageBoard', () => {
         onAddPhase: noop,
         onMovePhase: noop,
         onReorderPhase: noop,
+        onNewStagePhase: noop,
         onRemovePhase: noop,
         agentColor,
         issues: [],
@@ -95,6 +97,38 @@ describe('StageBoard', () => {
     expect(html).toContain('+ Checkpoint');
   });
 
+  it('gives every card a drag surface and every stage its drop targets', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(StageBoard, {
+        phases: samplePhases,
+        selectedPhase: null,
+        onSelectPhase: noop,
+        onAddPhase: noop,
+        onMovePhase: noop,
+        onReorderPhase: noop,
+        onNewStagePhase: noop,
+        onRemovePhase: noop,
+        agentColor,
+        issues: [],
+      }),
+    );
+
+    // A settle id per phase, named after the phase so it survives a reorder;
+    // the checkpoint is draggable on the same terms as the work.
+    expect(html).toContain('data-settle="phase:scope_analyst"');
+    expect(html).toContain('data-settle="phase:run_tests"');
+    expect(html).toContain('data-settle="phase:human_gate"');
+    expect(html).toContain('data-settle="phase:ship_release"');
+
+    // The whole card above the toolbar is the handle, not a small grip.
+    expect(html.match(/dragSurface/g)?.length).toBe(samplePhases.length);
+
+    // Slots and rails are painted before a drag starts so the board does not
+    // change geometry the moment a card is picked up.
+    expect((html.match(/dropSlot/g) ?? []).length).toBeGreaterThanOrEqual(5);
+    expect(html).toContain('newStageRail');
+  });
+
   it('renders validation issue indicators', () => {
     const issues: ValidationIssue[] = [
       { level: 'error', message: 'Unknown agent', where: 'phases[0] scope_analyst' },
@@ -109,6 +143,7 @@ describe('StageBoard', () => {
         onAddPhase: noop,
         onMovePhase: noop,
         onReorderPhase: noop,
+        onNewStagePhase: noop,
         onRemovePhase: noop,
         agentColor,
         issues,
@@ -117,5 +152,36 @@ describe('StageBoard', () => {
 
     expect(html).toContain('error');
     expect(html).toContain('issue');
+  });
+
+  it('renders the resolved configuration of each phase as chips', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(StageBoard, {
+        phases: samplePhases,
+        selectedPhase: null,
+        onSelectPhase: noop,
+        onAddPhase: noop,
+        onMovePhase: noop,
+        onReorderPhase: noop,
+        onNewStagePhase: noop,
+        onRemovePhase: noop,
+        agentColor,
+        issues: [],
+      }),
+    );
+
+    // Agent phase: owner, envelope, and gate count
+    expect(html).toContain('builder');
+    expect(html).toContain('build');
+    expect(html).toContain('1 gate');
+    // A phase with no envelope of its own inherits the agent's
+    expect(html).toContain('inherit');
+    // Code phase: the command it runs and where failure is handed back
+    expect(html).toContain('test');
+    expect(html).toContain('feedback');
+    // Checkpoint: the two answers it accepts and its timeout
+    expect(html).toContain('approve');
+    expect(html).toContain('reject');
+    expect(html).toContain('10m');
   });
 });

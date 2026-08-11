@@ -1,0 +1,74 @@
+.count {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+}
+
+.countItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.valid {
+  color: var(--green);
+}
+
+.errors {
+  color: var(--red);
+}
+
+.warnings {
+  color: var(--amber);
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-sm);
+  background: currentcolor;
+}
+
+.line {
+  display: flex;
+  gap: var(--s2);
+  padding: 6px 10px;
+  border-left: 2px solid var(--red);
+  background: var(--red-dim);
+  font-size: var(--text-xs);
+  line-height: var(--leading);
+  color: var(--text);
+}
+
+.lineWarn {
+  border-left-color: var(--amber);
+  background: var(--amber-dim);
+}
+
+.level {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--red);
+}
+
+.levelWarn {
+  color: var(--amber);
+}
+
+.message {
+  min-width: 0;
+}
+
+.where {
+  font-family: var(--font-mono);
+  color: var(--text-faint);
+}

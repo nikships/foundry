@@ -18,7 +18,7 @@ import type {
 } from '@shared/types.js';
 import { api, plain } from '../api.js';
 import { useApp } from '../stores/app.js';
-import { formatClock } from '../pipeline-view.js';
+import { formatClock, newStagePlan } from '../pipeline-view.js';
 import { safeGetItem, safeSetItem } from '../local-store.js';
 
 const STORAGE_KEY = 'foundry.pipeline';
@@ -108,6 +108,7 @@ export function usePipelineDraft(deepLink?: {
   insertPhase: (kind: PhaseKind, at?: number) => number;
   movePhase: (index: number, delta: number) => void;
   reorderPhase: (from: number, to: number) => void;
+  movePhaseToNewStage: (from: number, boundary: number) => void;
   removePhase: (index: number) => void;
   updatePhase: (index: number, patch: Partial<PhaseDef>) => void;
   updateDraft: (patch: Partial<PipelineDef>) => void;
@@ -376,6 +377,28 @@ export function usePipelineDraft(deepLink?: {
     [draft, updateDraft],
   );
 
+  const movePhaseToNewStage = useCallback(
+    (from: number, boundary: number): void => {
+      if (!draft) return;
+      const plan = newStagePlan(draft.phases, from, boundary);
+      if (!plan) return;
+      const phases = [...draft.phases];
+      const [item] = phases.splice(from, 1);
+      const taken = new Set(phases.map((p) => p.name));
+      const insert: PhaseDef[] = [];
+      if (plan.before) {
+        insert.push(blankPhase('engineer', taken));
+        taken.add(insert[0].name);
+      }
+      insert.push(item);
+      if (plan.after) insert.push(blankPhase('engineer', taken));
+      phases.splice(plan.at, 0, ...insert);
+      updateDraft({ phases });
+      setActivePhase(plan.before ? plan.at + 1 : plan.at);
+    },
+    [draft, updateDraft],
+  );
+
   const removePhase = useCallback(
     (index: number): void => {
       if (!draft) return;
@@ -483,6 +506,7 @@ export function usePipelineDraft(deepLink?: {
     insertPhase,
     movePhase,
     reorderPhase,
+    movePhaseToNewStage,
     removePhase,
     updatePhase,
     updateDraft,
