@@ -41,6 +41,13 @@ describe('tablistStep', () => {
     expect(tablistStep('a', 1, 3)).toBeNull();
   });
 
+  it('supports vertical orientation with ArrowUp/ArrowDown', () => {
+    expect(tablistStep('ArrowDown', 0, 3, 'vertical')).toBe(1);
+    expect(tablistStep('ArrowDown', 2, 3, 'vertical')).toBe(0);
+    expect(tablistStep('ArrowUp', 0, 3, 'vertical')).toBe(2);
+    expect(tablistStep('ArrowRight', 0, 3, 'vertical')).toBeNull();
+  });
+
   it('rejects empty lists and unknown current tabs', () => {
     expect(tablistStep('ArrowRight', 0, 0)).toBeNull();
     expect(tablistStep('ArrowRight', -1, 3)).toBeNull();
