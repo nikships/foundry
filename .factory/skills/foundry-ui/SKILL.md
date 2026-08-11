@@ -1,11 +1,11 @@
 ---
 name: foundry-ui
-description: Launch the Foundry native Electron app (apps/desktop) and drive it with agent-browser for UI testing, navigation, and screenshots. Use when asked to launch Foundry, look at / verify the app UI, navigate its screens (Runs, Run detail, Inspector, Pipelines, Roster, Settings, Onboarding), or capture screenshots of the desktop app. Never use a web browser for this; drive the real Electron app.
+description: Launch the Foundry native Electron app and drive it with agent-browser for UI testing, navigation, and screenshots. Use when asked to launch Foundry, look at / verify the app UI, navigate its screens (Runs, Run detail, Inspector, Pipelines, Roster, Settings, Onboarding), or capture screenshots of the desktop app. Never use a web browser for this; drive the real Electron app.
 ---
 
 # Foundry Desktop App: Launch, Navigate, Screenshot
 
-Foundry is the native macOS Electron app in `apps/desktop/`. This skill covers
+Foundry is the native macOS Electron app at the repo root. This skill covers
 launching the real Electron binary with CDP enabled, connecting agent-browser,
 and navigating every screen.
 
@@ -22,7 +22,7 @@ Build output must exist (`npm run build` emits `out/`; `electron .` loads
 single-instance lock per user-data dir.
 
 ```bash
-cd /path/to/foundry/apps/desktop
+cd /path/to/foundry
 
 # 0. Check nothing is already running (single-instance lock)
 pgrep -fl "electron ." || true
@@ -89,13 +89,13 @@ agent-browser screenshot /tmp/shot.png
 No URL routing; one window, view state in React. The left sidebar is always
 present (except during Onboarding):
 
-| Sidebar button (snapshot label) | View | CDP shortcut |
-|---|---|---|
-| `button "Runs ⌘1"` | Runs list + run composer | `press Meta+1` |
-| `button "Pipelines ⌘2"` | Pipeline editor | `press Meta+2` |
-| `button "Roster ⌘3"` | Agent roster editor | `press Meta+3` |
-| `button "Inspector ⌘4"` | Live trace viewer | `press Meta+4` |
-| `button "Settings ⌘,"` | Settings panes | `press "Meta+,"` |
+| Sidebar button (snapshot label) | View                     | CDP shortcut     |
+| ------------------------------- | ------------------------ | ---------------- |
+| `button "Runs ⌘1"`              | Runs list + run composer | `press Meta+1`   |
+| `button "Pipelines ⌘2"`         | Pipeline editor          | `press Meta+2`   |
+| `button "Roster ⌘3"`            | Agent roster editor      | `press Meta+3`   |
+| `button "Inspector ⌘4"`         | Live trace viewer        | `press Meta+4`   |
+| `button "Settings ⌘,"`          | Settings panes           | `press "Meta+,"` |
 
 The sidebar also has the project `combobox` (switch active project) and
 `button "Add another project…"` — **do not click the latter in automation**:

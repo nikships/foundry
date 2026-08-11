@@ -3,7 +3,7 @@
 version: 2
 updates:
   - package-ecosystem: npm
-    directory: /apps/desktop
+    directory: /
     schedule:
       interval: weekly
       day: monday

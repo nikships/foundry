@@ -1,0 +1,626 @@
+.canvas {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg-base);
+  cursor: grab;
+  touch-action: none;
+}
+
+.canvas:active {
+  cursor: grabbing;
+}
+
+.grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.65;
+  background-image:
+    linear-gradient(var(--line-faint) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line-faint) 1px, transparent 1px);
+  background-size: 24px 24px;
+  mask-image: linear-gradient(to bottom, transparent, #000 12%, #000 88%, transparent);
+}
+
+.world {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.edgeLayer {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.edge {
+  fill: none;
+  stroke: color-mix(in srgb, var(--accent) 56%, var(--line-strong));
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.arrowHead {
+  fill: var(--accent);
+}
+
+.node {
+  position: absolute;
+  z-index: 1;
+  width: 300px;
+  height: 210px;
+  overflow: visible;
+  background: var(--bg-raised);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  cursor: grab;
+  transition:
+    border-color var(--fast) var(--ease),
+    background var(--fast) var(--ease);
+}
+
+.node:hover {
+  background: var(--bg-hover);
+  border-color: color-mix(in srgb, var(--accent) 54%, var(--line-strong));
+}
+
+.nodeSelected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-dim);
+}
+
+.nodeError {
+  border-color: var(--red);
+}
+
+.nodeWarning {
+  border-color: var(--amber);
+}
+
+.checkpointNode {
+  height: 236px;
+  background: var(--bg-panel);
+  border-color: color-mix(in srgb, var(--amber) 54%, var(--line-strong));
+}
+
+.inputPort,
+.outputPort {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--bg-base);
+  border-radius: var(--r-full);
+  background: var(--accent);
+  transform: translateY(-50%);
+}
+
+.inputPort {
+  left: -6px;
+}
+
+.outputPort {
+  right: -6px;
+}
+
+.checkpointNode .inputPort,
+.checkpointNode .outputPort {
+  background: var(--amber);
+}
+
+.nodeBody {
+  display: block;
+  width: 100%;
+  height: calc(100% - 39px);
+  padding: 14px 14px 10px;
+  overflow: hidden;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: inherit;
+}
+
+.nodeHeading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.kindGlyph {
+  display: inline-flex;
+}
+
+.kindLabel,
+.stepNumber,
+.actionHint,
+.issueLabel,
+.checkpointQuestion > span {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+}
+
+.canvasHint,
+.addMenuLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+}
+
+.kindLabel {
+  color: var(--text-dim);
+}
+
+.stepNumber {
+  margin-left: auto;
+  color: var(--text-ghost);
+  font-variant-numeric: tabular-nums;
+}
+
+.nodeName {
+  margin-top: 12px;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 17.5px;
+  font-weight: 550;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nodeDescription {
+  display: -webkit-box;
+  min-height: 36px;
+  margin-top: 6px;
+  overflow: hidden;
+  font-size: 15px;
+  line-height: var(--leading);
+  color: var(--text-dim);
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.missingDescription {
+  color: var(--red);
+}
+
+.nodeChips {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 12px;
+  overflow: hidden;
+}
+
+.chip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  max-width: 132px;
+  padding: 0 6px;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--text-dim);
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+
+.chipDot {
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-radius: var(--r-full);
+}
+
+.checkpointQuestion {
+  min-height: 70px;
+  margin-top: 12px;
+  padding: 9px 10px;
+  overflow: hidden;
+  background: var(--amber-dim);
+  border-left: 2px solid var(--amber);
+}
+
+.checkpointQuestion > span {
+  color: var(--amber);
+}
+
+.checkpointQuestion > p {
+  display: -webkit-box;
+  margin-top: 4px;
+  overflow: hidden;
+  font-size: 15px;
+  line-height: var(--leading);
+  color: var(--text);
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.nodeActions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 39px;
+  padding: 6px 9px;
+  border-top: 1px solid var(--line-faint);
+}
+
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 25px;
+  height: 25px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: default;
+}
+
+.iconButton:hover:not(:disabled) {
+  color: var(--accent-bright);
+  border-color: var(--accent);
+}
+
+.iconButton:disabled {
+  opacity: 0.28;
+}
+
+.actionHint {
+  margin-left: 3px;
+  color: var(--text-ghost);
+}
+
+.issueLabel {
+  margin-left: auto;
+  color: var(--amber);
+}
+
+.removeButton {
+  margin-left: auto;
+  padding: 3px 4px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-ghost);
+  background: transparent;
+  border: 0;
+  cursor: default;
+}
+
+.removeButton:hover {
+  color: var(--red);
+}
+
+.issueLabel + .removeButton {
+  margin-left: 0;
+}
+
+.canvasHint {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  display: flex;
+  gap: 7px;
+  padding: 7px 9px;
+  color: var(--text-ghost);
+  pointer-events: none;
+  background: color-mix(in srgb, var(--bg-panel) 92%, transparent);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+
+.viewportControls,
+.addMenu {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px;
+  background: color-mix(in srgb, var(--bg-panel) 94%, transparent);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+}
+
+.viewportControls {
+  right: 16px;
+  bottom: 16px;
+}
+
+.zoomReadout {
+  min-width: 46px;
+  height: 25px;
+  padding: 0 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: default;
+}
+
+.zoomReadout:hover {
+  color: var(--accent-bright);
+  border-color: var(--line-strong);
+}
+
+.topControls {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pipelinePicker {
+  position: relative;
+}
+
+.pipelinePickerTrigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 31px;
+  padding: 0 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  background: color-mix(in srgb, var(--bg-panel) 94%, transparent);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  cursor: default;
+  transition:
+    border-color var(--fast) var(--ease),
+    background var(--fast) var(--ease);
+}
+
+.pipelinePickerTrigger:hover {
+  background: var(--bg-raised);
+  border-color: var(--accent);
+}
+
+.pipelinePickerName {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pipelinePickerCount {
+  padding: 1px 5px;
+  font-size: 10px;
+  color: var(--text-dim);
+  background: var(--bg-base);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.pipelinePickerDropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  max-width: 300px;
+  max-height: 320px;
+  padding: 4px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.pipelinePickerList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  max-height: 240px;
+}
+
+.pipelineOption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: default;
+  text-align: left;
+  transition: background var(--fast) var(--ease);
+}
+
+.pipelineOption:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.pipelineOptionActive {
+  color: var(--accent-bright);
+  background: var(--accent-dim);
+}
+
+.pipelineOptionName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.pipelineOptionCount {
+  font-size: 10px;
+  color: var(--text-faint);
+  flex: none;
+}
+
+.checkIcon {
+  color: var(--accent);
+  flex: none;
+}
+
+.pipelinePickerNew {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 6px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--line-faint);
+  border-radius: 0 0 var(--r-sm) var(--r-sm);
+  cursor: default;
+  transition: color var(--fast) var(--ease);
+}
+
+.pipelinePickerNew:hover {
+  color: var(--accent-bright);
+  background: var(--bg-hover);
+}
+
+.addMenu {
+  position: static;
+}
+
+.addMenuLabel {
+  padding: 0 4px;
+  color: var(--text-ghost);
+}
+
+.addMenu > button,
+.emptyActions > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 27px;
+  padding: 0 9px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: default;
+}
+
+.addMenu > button:hover,
+.emptyActions > button:hover {
+  color: var(--accent-bright);
+  background: var(--bg-raised);
+  border-color: var(--line-strong);
+}
+
+.emptyCanvas {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: var(--s6);
+  background:
+    linear-gradient(var(--line-faint) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line-faint) 1px, transparent 1px), var(--bg-base);
+  background-size: 24px 24px;
+}
+
+.emptyCard {
+  width: min(100%, 510px);
+  padding: 34px;
+  text-align: center;
+  background: var(--bg-panel);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-lg);
+}
+
+.emptyEyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--eyebrow-tracking);
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.emptyCard h2 {
+  margin-top: 8px;
+  font-size: var(--text-xl);
+  font-weight: 500;
+  color: var(--text);
+}
+
+.emptyCard p {
+  max-width: 370px;
+  margin: 10px auto 22px;
+  font-size: var(--text-sm);
+  line-height: var(--leading);
+  color: var(--text-dim);
+}
+
+.emptyActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+@media (max-width: 760px) {
+  .canvasHint {
+    display: none;
+  }
+
+  .addMenuLabel {
+    display: none;
+  }
+
+  .addMenu > button {
+    padding: 0 6px;
+  }
+}

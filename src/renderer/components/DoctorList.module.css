@@ -1,0 +1,217 @@
+/* Flat list with hairline dividers between items */
+.doctor .head {
+  margin-bottom: var(--s3);
+}
+.doctor h3 {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin: 0;
+}
+.doctor ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+.doctor li {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s4);
+  font-size: var(--text-sm);
+  padding: var(--s3) 0;
+  border-bottom: 1px solid var(--line-faint);
+}
+.doctor li:last-child {
+  border-bottom: none;
+}
+.doctor .text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.doctor strong {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  color: var(--text);
+}
+.doctor em {
+  display: block;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--text-faint);
+  line-height: 1.45;
+  margin-top: 1px;
+}
+
+/* ── Checkbox element ─────────────────────────────────────────────────── */
+.checkbox {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--bg-input);
+  flex: none;
+  box-sizing: border-box;
+  margin-top: 2px;
+  overflow: hidden;
+  transition:
+    border-color var(--fast) var(--ease),
+    background var(--fast) var(--ease),
+    color var(--fast) var(--ease);
+}
+
+.checkboxOk {
+  border-color: color-mix(in srgb, var(--green) 45%, var(--line-strong));
+  background: color-mix(in srgb, var(--green-dim) 50%, var(--bg-raised));
+  color: var(--green);
+}
+
+.checkboxBad {
+  border-color: color-mix(in srgb, var(--red) 45%, var(--line-strong));
+  background: color-mix(in srgb, var(--red-dim) 50%, var(--bg-raised));
+  color: var(--red);
+}
+
+.checkIcon,
+.crossIcon {
+  display: block;
+}
+
+/* ── Sequential Checking Animation ───────────────────────────────────── */
+.checkboxAnimated {
+  border-color: var(--line-strong);
+  background: var(--bg-input);
+}
+
+.checkboxAnimated.checkboxOk {
+  animation: checkPopOk 240ms var(--ease) forwards;
+  animation-delay: var(--check-delay, 0ms);
+}
+
+.checkboxAnimated.checkboxBad {
+  animation: checkPopBad 240ms var(--ease) forwards;
+  animation-delay: var(--check-delay, 0ms);
+}
+
+.checkboxAnimated .checkIcon {
+  stroke-dasharray: 18;
+  stroke-dashoffset: 18;
+  opacity: 0;
+  animation: drawCheck 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: calc(var(--check-delay, 0ms) + 30ms);
+}
+
+.checkboxAnimated .crossIcon {
+  stroke-dasharray: 14;
+  stroke-dashoffset: 14;
+  opacity: 0;
+  animation: drawCross 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: calc(var(--check-delay, 0ms) + 30ms);
+}
+
+.checkboxChecking {
+  animation: checkPulse 1s ease-in-out infinite !important;
+  animation-delay: 0ms !important;
+}
+
+@keyframes checkPopOk {
+  0% {
+    transform: scale(0.92);
+    border-color: var(--line-strong);
+    background: var(--bg-input);
+  }
+  50% {
+    transform: scale(1.14);
+    border-color: color-mix(in srgb, var(--green) 75%, var(--line-strong));
+    background: color-mix(in srgb, var(--green-dim) 80%, var(--bg-raised));
+  }
+  100% {
+    transform: scale(1);
+    border-color: color-mix(in srgb, var(--green) 45%, var(--line-strong));
+    background: color-mix(in srgb, var(--green-dim) 50%, var(--bg-raised));
+  }
+}
+
+@keyframes checkPopBad {
+  0% {
+    transform: scale(0.92);
+    border-color: var(--line-strong);
+    background: var(--bg-input);
+  }
+  50% {
+    transform: scale(1.14);
+    border-color: color-mix(in srgb, var(--red) 75%, var(--line-strong));
+    background: color-mix(in srgb, var(--red-dim) 80%, var(--bg-raised));
+  }
+  100% {
+    transform: scale(1);
+    border-color: color-mix(in srgb, var(--red) 45%, var(--line-strong));
+    background: color-mix(in srgb, var(--red-dim) 50%, var(--bg-raised));
+  }
+}
+
+@keyframes drawCheck {
+  0% {
+    opacity: 0;
+    stroke-dashoffset: 18;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes drawCross {
+  0% {
+    opacity: 0;
+    stroke-dashoffset: 14;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes checkPulse {
+  0%,
+  100% {
+    border-color: var(--line-strong);
+    background: var(--bg-input);
+  }
+  50% {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent-dim) 35%, var(--bg-input));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .checkboxAnimated,
+  .checkboxAnimated.checkboxOk,
+  .checkboxAnimated.checkboxBad,
+  .checkboxAnimated .checkIcon,
+  .checkboxAnimated .crossIcon,
+  .checkboxChecking {
+    animation: none !important;
+    stroke-dashoffset: 0 !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}

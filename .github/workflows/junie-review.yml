@@ -21,9 +21,9 @@ jobs:
       - uses: JetBrains/junie-github-action@main
         with:
           junie_api_key: ${{ secrets.JUNIE_API_KEY }}
-          use_single_comment: "true"
-          prompt: "code-review"
-          junie_version: "latest"
+          use_single_comment: 'true'
+          prompt: 'code-review'
+          junie_version: 'latest'
           # The action has no reasoning-effort input, but it interpolates `model`
           # unquoted into the Junie flag list, so the effort flag rides along.
-          model: "grok-4.5 --effort=high"
+          model: 'grok-4.5 --effort=high'

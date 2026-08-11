@@ -4,7 +4,7 @@
 
 ## How verified
 
-- [ ] `cd apps/desktop && npm run check` (typecheck, lint, format, knip, test, build, audit)
+- [ ] `npm run check` (typecheck, lint, format, knip, test, build, audit)
 - [ ] CI green on this PR
 
 ## Agent / reviewer notes
