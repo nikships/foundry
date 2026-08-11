@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isEditableTarget, tablistStep, viewShortcut } from '@renderer/keyboard.js';
+import {
+  isEditableTarget,
+  isSmithShortcut,
+  tablistStep,
+  viewShortcut,
+} from '@renderer/keyboard.js';
 
 const chord = (key: string, mods: Partial<Parameters<typeof viewShortcut>[0]> = {}) => ({
   key,
@@ -24,6 +29,20 @@ describe('viewShortcut', () => {
     expect(viewShortcut(chord('1', { metaKey: true, shiftKey: true }))).toBeNull();
     expect(viewShortcut(chord('1', { metaKey: true, altKey: true }))).toBeNull();
     expect(viewShortcut(chord('5', { metaKey: true }))).toBeNull();
+  });
+});
+
+describe('isSmithShortcut', () => {
+  it('matches ⌘6 / Ctrl+6 and nothing else', () => {
+    expect(isSmithShortcut(chord('6', { metaKey: true }))).toBe(true);
+    expect(isSmithShortcut(chord('6', { ctrlKey: true }))).toBe(true);
+    expect(isSmithShortcut(chord('6'))).toBe(false);
+    expect(isSmithShortcut(chord('5', { metaKey: true }))).toBe(false);
+    expect(isSmithShortcut(chord('6', { metaKey: true, shiftKey: true }))).toBe(false);
+  });
+
+  it('is not also a view chord, so Smith stays a modal', () => {
+    expect(viewShortcut(chord('6', { metaKey: true }))).toBeNull();
   });
 });
 
