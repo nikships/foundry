@@ -4,9 +4,9 @@ import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 
 const alias = {
-  '@shared': resolve(__dirname, 'src/shared'),
-  '@main': resolve(__dirname, 'src/main'),
-  '@renderer': resolve(__dirname, 'src/renderer'),
+  '@shared': resolve(import.meta.dirname, 'src/shared'),
+  '@main': resolve(import.meta.dirname, 'src/main'),
+  '@renderer': resolve(import.meta.dirname, 'src/renderer'),
 };
 
 function copyDir(src: string, dest: string): void {
@@ -24,11 +24,11 @@ function assetsPlugin(): Plugin {
   return {
     name: 'foundry-web-assets',
     closeBundle() {
-      const outAssets = resolve(__dirname, 'out/web/assets');
-      copyDir(resolve(__dirname, 'assets'), outAssets);
+      const outAssets = resolve(import.meta.dirname, 'out/web/assets');
+      copyDir(resolve(import.meta.dirname, 'assets'), outAssets);
     },
     configureServer(server) {
-      const assetsRoot = resolve(__dirname, 'assets');
+      const assetsRoot = resolve(import.meta.dirname, 'assets');
       server.middlewares.use((req, _res, next) => {
         // Map /assets/* to the real assets/ dir in dev so useBrandedAsset's
         // `/assets/scenes/...` URLs resolve without Electron's assetUrl.
@@ -43,7 +43,7 @@ function assetsPlugin(): Plugin {
 }
 
 export default defineConfig({
-  root: resolve(__dirname, 'src/renderer'),
+  root: resolve(import.meta.dirname, 'src/renderer'),
   resolve: { alias },
   css: {
     modules: {
@@ -63,10 +63,10 @@ export default defineConfig({
     open: true,
   },
   build: {
-    outDir: resolve(__dirname, 'out/web'),
+    outDir: resolve(import.meta.dirname, 'out/web'),
     emptyOutDir: true,
     rollupOptions: {
-      input: resolve(__dirname, 'src/renderer/index.html'),
+      input: resolve(import.meta.dirname, 'src/renderer/index.html'),
     },
   },
 });

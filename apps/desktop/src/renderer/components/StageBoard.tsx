@@ -1,10 +1,11 @@
-import { Fragment, useCallback, useMemo, useState } from 'react';
+import { Fragment, useCallback, useMemo, useRef, useState } from 'react';
 import {
   DndContext,
   DragOverlay,
   MeasuringStrategy,
   PointerSensor,
   closestCenter,
+  defaultDropAnimationSideEffects,
   pointerWithin,
   useDraggable,
   useDroppable,
@@ -14,6 +15,7 @@ import {
   type DraggableSyntheticListeners,
   type DragEndEvent,
   type DragStartEvent,
+  type DropAnimation,
 } from '@dnd-kit/core';
 import {
   ArrowDown,
@@ -26,17 +28,17 @@ import {
 } from 'lucide-react';
 import type { PhaseDef, PhaseKind, ValidationIssue } from '@shared/types.js';
 import { KIND_LABEL, phaseKindColor } from '../derive.js';
+import { useSettleLayout } from '../hooks/useSettleLayout.js';
 import {
   commandText,
-  dragPhaseId,
   dropRailId,
   dropSlotId,
   formatTimeout,
   gateNames,
   issuePhaseIndex,
   newStagePlan,
-  parseDragPhaseId,
   parseDropId,
+  phaseDragIds,
   reorderTarget,
   stageLabel,
   stageMoveTarget,
@@ -61,6 +63,22 @@ const boardCollision: CollisionDetection = (args) => {
     ...args,
     droppableContainers: args.droppableContainers.filter((c) => !String(c.id).startsWith('rail:')),
   });
+};
+
+/**
+ * The card falls to the place it was dropped rather than vanishing from under
+ * the pointer.
+ *
+ * The reorder is committed before this runs, so the node behind the overlay is
+ * already at its new position and dnd-kit animates towards it. The real card
+ * stays invisible until the overlay arrives, so only one card is ever visible.
+ */
+const DROP_MS = 260;
+const dropAnimation: DropAnimation = {
+  duration: DROP_MS,
+  // A slight overshoot on landing; nothing in the run reads as weightless.
+  easing: 'cubic-bezier(0.2, 1.2, 0.3, 1)',
+  sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: '0' } } }),
 };
 
 /** A square icon button in a card toolbar. */
@@ -113,36 +131,6 @@ function Chip({
         <span className={styles.chipDot} style={{ background: color }} aria-hidden="true" />
       )}
       {children}
-    </span>
-  );
-}
-
-/**
- * The handle that starts a drag.
- *
- * dnd-kit's `attributes` are deliberately dropped: they describe a focusable
- * draggable role, and the card toolbar already moves a phase in all four
- * directions from the keyboard. Announcing a second, pointer-only path to the
- * same edit to a screen reader would be noise, not an affordance.
- */
-function DragGrip({
-  listeners,
-  setActivatorNodeRef,
-  label,
-}: {
-  listeners: DraggableSyntheticListeners;
-  setActivatorNodeRef: (element: HTMLElement | null) => void;
-  label: string;
-}): React.JSX.Element {
-  return (
-    <span
-      {...listeners}
-      ref={setActivatorNodeRef}
-      aria-hidden="true"
-      title={label}
-      className={styles.dragGrip}
-    >
-      <GripVertical size={12} strokeWidth={1.6} />
     </span>
   );
 }
@@ -230,7 +218,19 @@ export default function StageBoard({
   issues: ValidationIssue[];
 }): React.JSX.Element {
   const stages = stagesOf(phases);
+  const dragIds = useMemo(() => phaseDragIds(phases), [phases]);
   const [dragging, setDragging] = useState<number | null>(null);
+  // The id of the card the overlay is currently falling onto. It has to be
+  // exempt from the settle pass, or it would be animated from its old position
+  // at the same time as the overlay flies to its new one.
+  const [landing, setLanding] = useState<string | null>(null);
+  const landingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
+  // A drag ends with a pointerup over the card, which the browser also reports
+  // as a click; without this the phase sheet opens on top of every drop.
+  const dragged = useRef(false);
+
+  useSettleLayout(trackRef, dragIds.join('\u0000'), landing);
 
   const sensors = useSensors(
     // A card is a button first: a drag only begins once the pointer travels far
@@ -238,32 +238,53 @@ export default function StageBoard({
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   );
 
-  const onDragStart = useCallback((event: DragStartEvent) => {
-    setDragging(parseDragPhaseId(event.active.id));
-  }, []);
+  const onDragStart = useCallback(
+    (event: DragStartEvent) => {
+      dragged.current = true;
+      if (landingTimer.current) clearTimeout(landingTimer.current);
+      setLanding(null);
+      setDragging(dragIds.indexOf(String(event.active.id)));
+    },
+    [dragIds],
+  );
 
   const onDragCancel = useCallback(() => setDragging(null), []);
 
   const onDragEnd = useCallback(
     (event: DragEndEvent) => {
-      setDragging(null);
-      const from = parseDragPhaseId(event.active.id);
+      const from = dragIds.indexOf(String(event.active.id));
       const target = event.over ? parseDropId(event.over.id) : null;
-      if (from === null || !target) return;
+      setDragging(null);
+      if (from < 0 || !target) return;
+
+      // Commit before the overlay animates: the drop animation reads where the
+      // card ended up, so the edit has to already be in the tree.
       if (target.kind === 'rail') {
         onNewStagePhase(from, target.boundary);
-        return;
+      } else {
+        const to = reorderTarget(from, target.at);
+        if (to === null) return;
+        onReorderPhase(from, to);
       }
-      const to = reorderTarget(from, target.at);
-      if (to !== null) onReorderPhase(from, to);
+
+      setLanding(String(event.active.id));
+      landingTimer.current = setTimeout(() => setLanding(null), DROP_MS);
     },
-    [onNewStagePhase, onReorderPhase],
+    [dragIds, onNewStagePhase, onReorderPhase],
   );
 
   // A checkpoint is a stage boundary, so it has no stage of its own to be given.
-  const railsEnabled = useMemo(
-    () => dragging !== null && phases[dragging]?.kind !== 'engineer',
-    [dragging, phases],
+  const railsEnabled = dragging !== null && phases[dragging]?.kind !== 'engineer';
+
+  const onCardSelect = useCallback(
+    (index: number) => {
+      if (dragged.current) {
+        dragged.current = false;
+        return;
+      }
+      onSelectPhase(index);
+    },
+    [onSelectPhase],
   );
 
   if (phases.length === 0) {
@@ -291,7 +312,7 @@ export default function StageBoard({
     );
   }
 
-  const dragged = dragging !== null ? phases[dragging] : null;
+  const carried = dragging !== null ? phases[dragging] : null;
 
   return (
     <DndContext
@@ -305,7 +326,7 @@ export default function StageBoard({
       onDragCancel={onDragCancel}
     >
       <div className={styles.boardContainer}>
-        <div className={styles.boardTrack}>
+        <div ref={trackRef} className={styles.boardTrack}>
           <NewStageRail
             boundary={0}
             dragging={dragging !== null}
@@ -319,9 +340,10 @@ export default function StageBoard({
                   stage={stage}
                   totalStages={stages.length}
                   phases={phases}
+                  dragIds={dragIds}
                   selectedPhase={selectedPhase}
                   dragging={dragging}
-                  onSelectPhase={onSelectPhase}
+                  onSelectPhase={onCardSelect}
                   onAddPhase={onAddPhase}
                   onMovePhase={onMovePhase}
                   onReorderPhase={onReorderPhase}
@@ -332,9 +354,10 @@ export default function StageBoard({
                 <GateSlot
                   stage={stage}
                   phases={phases}
+                  dragIds={dragIds}
                   selectedPhase={selectedPhase}
                   dragging={dragging}
-                  onSelectPhase={onSelectPhase}
+                  onSelectPhase={onCardSelect}
                   onAddPhase={onAddPhase}
                   onMovePhase={onMovePhase}
                   onRemovePhase={onRemovePhase}
@@ -352,18 +375,23 @@ export default function StageBoard({
         </div>
       </div>
 
-      <DragOverlay dropAnimation={null}>
-        {dragged && dragging !== null && (
-          <div className={styles.dragPreview}>
-            <span
-              style={{ color: phaseKindColor(dragged.kind, agentColor(dragged.agent ?? null)) }}
-              className={styles.kindGlyphWrap}
-              aria-hidden="true"
-            >
-              <PhaseGlyph kind={dragged.kind} />
-            </span>
-            <span className={styles.phaseName}>{dragged.name}</span>
-            <span className={styles.phaseIndex}>{String(dragging + 1).padStart(2, '0')}</span>
+      {/* The carried card is the card, at full size: a drag lifts a phase off
+          the board, it does not swap it for a token. */}
+      <DragOverlay dropAnimation={dropAnimation} className={styles.dragLayer}>
+        {carried && dragging !== null && (
+          <div
+            className={
+              carried.kind === 'engineer'
+                ? `${styles.checkpointCard} ${styles.cardCarried}`
+                : `${styles.phaseCard} ${styles.cardCarried}`
+            }
+          >
+            <GripRow />
+            {carried.kind === 'engineer' ? (
+              <CheckpointBody phase={carried} index={dragging} />
+            ) : (
+              <PhaseBody phase={carried} index={dragging} agentColor={agentColor} issues={issues} />
+            )}
           </div>
         )}
       </DragOverlay>
@@ -375,6 +403,7 @@ function StageColumn({
   stage,
   totalStages,
   phases,
+  dragIds,
   selectedPhase,
   dragging,
   onSelectPhase,
@@ -388,6 +417,7 @@ function StageColumn({
   stage: Stage;
   totalStages: number;
   phases: PhaseDef[];
+  dragIds: string[];
   selectedPhase: number | null;
   dragging: number | null;
   onSelectPhase: (index: number) => void;
@@ -428,10 +458,11 @@ function StageColumn({
             const phase = phases[phaseIdx];
             if (!phase) return null;
             return (
-              <Fragment key={`${phase.name}-${phaseIdx}`}>
+              <Fragment key={dragIds[phaseIdx]}>
                 <PhaseCard
                   phase={phase}
                   index={phaseIdx}
+                  dragId={dragIds[phaseIdx]!}
                   phases={phases}
                   selected={selectedPhase === phaseIdx}
                   dragging={dragging === phaseIdx}
@@ -472,9 +503,100 @@ function StageColumn({
   );
 }
 
+/**
+ * The grip: a hint that the card moves, not the only place it moves from.
+ *
+ * The whole card is the drag handle, so this carries no listeners of its own.
+ */
+function GripRow(): React.JSX.Element {
+  return (
+    <div className={styles.cardGripRow} aria-hidden="true">
+      <GripVertical size={12} strokeWidth={1.6} />
+    </div>
+  );
+}
+
+/** The visible contents of a work card, identical on the board and in hand. */
+function PhaseBody({
+  phase,
+  index,
+  agentColor,
+  issues,
+}: {
+  phase: PhaseDef;
+  index: number;
+  agentColor: (name: string | null) => string;
+  issues: ValidationIssue[];
+}): React.JSX.Element {
+  const color = phaseKindColor(phase.kind, agentColor(phase.agent ?? null));
+  const gates = gateNames(phase);
+  const phaseIssues = issues.filter((i) => issuePhaseIndex(i.where) === index);
+  const hasError = phaseIssues.some((i) => i.level === 'error');
+  const hasWarning = phaseIssues.some((i) => i.level === 'warning');
+
+  return (
+    <>
+      <div className={styles.cardHeaderRow}>
+        <span style={{ color }} className={styles.kindGlyphWrap} aria-hidden="true">
+          <PhaseGlyph kind={phase.kind} />
+        </span>
+        <span className={styles.phaseName}>{phase.name}</span>
+        <span className={styles.phaseIndex}>{String(index + 1).padStart(2, '0')}</span>
+      </div>
+
+      <div className={styles.cardSubRow}>
+        <span className={styles.kindLabel} style={{ color }}>
+          {KIND_LABEL[phase.kind]}
+        </span>
+        {phase.optional && <span className={styles.badgeAmber}>optional</span>}
+        {hasError && <span className={styles.badgeRed}>error</span>}
+        {hasWarning && !hasError && <span className={styles.badgeAmber}>warning</span>}
+      </div>
+
+      <p className={styles.cardDescription}>
+        {phase.description || (
+          <span className={styles.missingDesc}>description missing — will not save</span>
+        )}
+      </p>
+
+      <div className={styles.chipsRow}>
+        {phase.kind === 'agent' && (
+          <>
+            <Chip color={agentColor(phase.agent ?? null)}>{phase.agent ?? 'no agent'}</Chip>
+            <Chip title="Envelope">
+              <EnvelopeGlyph />
+              {phase.envelope ?? 'inherit'}
+            </Chip>
+            {gates.length > 0 && (
+              <Chip title={gates.join(' · ')}>
+                {gates.length} gate{gates.length === 1 ? '' : 's'}
+              </Chip>
+            )}
+            {phase.retries ? <Chip>retries {phase.retries}</Chip> : null}
+          </>
+        )}
+
+        {phase.kind === 'code' && (
+          <>
+            <Chip color="var(--blue)" className={styles.blueChip}>
+              {commandText(phase) || 'no command'}
+            </Chip>
+            {phase.feedbackTo && (
+              <Chip title="Repair loop">
+                feedback → {phase.feedbackTo} ×{phase.feedbackRetries ?? 1}
+              </Chip>
+            )}
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+
 function PhaseCard({
   phase,
   index,
+  dragId,
   phases,
   selected,
   dragging,
@@ -487,6 +609,7 @@ function PhaseCard({
 }: {
   phase: PhaseDef;
   index: number;
+  dragId: string;
   phases: PhaseDef[];
   selected: boolean;
   dragging: boolean;
@@ -497,120 +620,48 @@ function PhaseCard({
   agentColor: (name: string | null) => string;
   issues: ValidationIssue[];
 }): React.JSX.Element {
-  const color = phaseKindColor(phase.kind, agentColor(phase.agent ?? null));
-  const gates = gateNames(phase);
-  const phaseIssues = issues.filter((i) => issuePhaseIndex(i.where) === index);
-  const hasError = phaseIssues.some((i) => i.level === 'error');
-  const hasWarning = phaseIssues.some((i) => i.level === 'warning');
-
-  const canUp = index > 0 && phases[index - 1]?.kind !== 'engineer';
-  const canDown = index < phases.length - 1 && phases[index + 1]?.kind !== 'engineer';
-  const leftTarget = stageMoveTarget(phases, index, -1);
-  const rightTarget = stageMoveTarget(phases, index, 1);
-
-  const drag = useDraggable({ id: dragPhaseId(index) });
+  const hasError = issues.some((i) => issuePhaseIndex(i.where) === index && i.level === 'error');
+  const drag = useDraggable({ id: dragId });
 
   return (
     <article
       ref={drag.setNodeRef}
+      data-settle={dragId}
       className={[
         styles.phaseCard,
         selected ? styles.cardSelected : '',
         hasError ? styles.cardError : '',
-        dragging ? styles.cardDragging : '',
+        dragging ? styles.cardLifted : '',
       ]
         .filter(Boolean)
         .join(' ')}
     >
-      <div className={styles.cardGripRow}>
-        <DragGrip
-          listeners={drag.listeners}
-          setActivatorNodeRef={drag.setActivatorNodeRef}
-          label={`Drag ${phase.name}`}
-        />
-      </div>
-
-      <button type="button" className={styles.cardContentBtn} onClick={onSelect}>
-        <div className={styles.cardHeaderRow}>
-          <span style={{ color }} className={styles.kindGlyphWrap} aria-hidden="true">
-            <PhaseGlyph kind={phase.kind} />
-          </span>
-          <span className={styles.phaseName}>{phase.name}</span>
-          <span className={styles.phaseIndex}>{String(index + 1).padStart(2, '0')}</span>
-        </div>
-
-        <div className={styles.cardSubRow}>
-          <span className={styles.kindLabel} style={{ color }}>
-            {KIND_LABEL[phase.kind]}
-          </span>
-          {phase.optional && <span className={styles.badgeAmber}>optional</span>}
-          {hasError && <span className={styles.badgeRed}>error</span>}
-          {hasWarning && !hasError && <span className={styles.badgeAmber}>warning</span>}
-        </div>
-
-        <p className={styles.cardDescription}>
-          {phase.description || (
-            <span className={styles.missingDesc}>description missing — will not save</span>
-          )}
-        </p>
-
-        <div className={styles.chipsRow}>
-          {phase.kind === 'agent' && (
-            <>
-              <Chip color={agentColor(phase.agent ?? null)}>{phase.agent ?? 'no agent'}</Chip>
-              <Chip title="Envelope">
-                <EnvelopeGlyph />
-                {phase.envelope ?? 'inherit'}
-              </Chip>
-              {gates.length > 0 && (
-                <Chip title={gates.join(' · ')}>
-                  {gates.length} gate{gates.length === 1 ? '' : 's'}
-                </Chip>
-              )}
-              {phase.retries ? <Chip>retries {phase.retries}</Chip> : null}
-            </>
-          )}
-
-          {phase.kind === 'code' && (
-            <>
-              <Chip color="var(--blue)" className={styles.blueChip}>
-                {commandText(phase) || 'no command'}
-              </Chip>
-              {phase.feedbackTo && (
-                <Chip title="Repair loop">
-                  feedback → {phase.feedbackTo} ×{phase.feedbackRetries ?? 1}
-                </Chip>
-              )}
-            </>
-          )}
-        </div>
-      </button>
+      <DragSurface listeners={drag.listeners}>
+        <GripRow />
+        <button type="button" className={styles.cardContentBtn} onClick={onSelect}>
+          <PhaseBody phase={phase} index={index} agentColor={agentColor} issues={issues} />
+        </button>
+      </DragSurface>
 
       <div className={styles.cardToolbar}>
         <ToolBtn
           label={`Move ${phase.name} earlier`}
           Icon={ArrowUp}
-          disabled={!canUp}
+          disabled={!(index > 0 && phases[index - 1]?.kind !== 'engineer')}
           onClick={() => onMovePhase(index, -1)}
         />
         <ToolBtn
           label={`Move ${phase.name} later`}
           Icon={ArrowDown}
-          disabled={!canDown}
+          disabled={!(index < phases.length - 1 && phases[index + 1]?.kind !== 'engineer')}
           onClick={() => onMovePhase(index, 1)}
         />
         <span className={styles.toolSeparator} aria-hidden="true" />
-        <ToolBtn
-          label={`Move ${phase.name} before the previous checkpoint`}
-          Icon={ArrowLeft}
-          disabled={leftTarget === null}
-          onClick={() => leftTarget !== null && onReorderPhase(index, leftTarget)}
-        />
-        <ToolBtn
-          label={`Move ${phase.name} past the next checkpoint`}
-          Icon={ArrowRight}
-          disabled={rightTarget === null}
-          onClick={() => rightTarget !== null && onReorderPhase(index, rightTarget)}
+        <StageMoveBtns
+          phase={phase}
+          index={index}
+          phases={phases}
+          onReorderPhase={onReorderPhase}
         />
         <ToolBtn
           label={`Remove ${phase.name}`}
@@ -624,9 +675,63 @@ function PhaseCard({
   );
 }
 
+/** The two buttons that push a phase across a checkpoint into the next stage. */
+function StageMoveBtns({
+  phase,
+  index,
+  phases,
+  onReorderPhase,
+}: {
+  phase: PhaseDef;
+  index: number;
+  phases: PhaseDef[];
+  onReorderPhase: (from: number, to: number) => void;
+}): React.JSX.Element {
+  const leftTarget = stageMoveTarget(phases, index, -1);
+  const rightTarget = stageMoveTarget(phases, index, 1);
+  return (
+    <>
+      <ToolBtn
+        label={`Move ${phase.name} before the previous checkpoint`}
+        Icon={ArrowLeft}
+        disabled={leftTarget === null}
+        onClick={() => leftTarget !== null && onReorderPhase(index, leftTarget)}
+      />
+      <ToolBtn
+        label={`Move ${phase.name} past the next checkpoint`}
+        Icon={ArrowRight}
+        disabled={rightTarget === null}
+        onClick={() => rightTarget !== null && onReorderPhase(index, rightTarget)}
+      />
+    </>
+  );
+}
+
+/**
+ * Everything above a card's toolbar is the drag handle.
+ *
+ * The toolbar is left out on purpose: its buttons are small targets whose whole
+ * job is a single click, and a 5px wobble on one of them should press it rather
+ * than pick the card up.
+ */
+function DragSurface({
+  listeners,
+  children,
+}: {
+  listeners: DraggableSyntheticListeners;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <div {...listeners} className={styles.dragSurface}>
+      {children}
+    </div>
+  );
+}
+
 function GateSlot({
   stage,
   phases,
+  dragIds,
   selectedPhase,
   dragging,
   onSelectPhase,
@@ -638,6 +743,7 @@ function GateSlot({
 }: {
   stage: Stage;
   phases: PhaseDef[];
+  dragIds: string[];
   selectedPhase: number | null;
   dragging: number | null;
   onSelectPhase: (index: number) => void;
@@ -670,6 +776,7 @@ function GateSlot({
   return (
     <CheckpointGate
       gateIdx={stage.gate}
+      dragId={dragIds[stage.gate]!}
       stage={stage}
       phases={phases}
       selectedPhase={selectedPhase}
@@ -682,8 +789,61 @@ function GateSlot({
   );
 }
 
+/** The visible contents of a checkpoint card, identical on the board and in hand. */
+function CheckpointBody({
+  phase,
+  index,
+  stageIndex,
+}: {
+  phase: PhaseDef;
+  index: number;
+  stageIndex?: number;
+}): React.JSX.Element {
+  const missingQuestion = !phase.question?.trim();
+  return (
+    <>
+      <div className={styles.cardHeaderRow}>
+        <span className={styles.checkpointGlyph} aria-hidden="true">
+          <PhaseGlyph kind="engineer" />
+        </span>
+        <span className={styles.checkpointLabel}>Checkpoint</span>
+        <span className={styles.phaseIndex}>{String(index + 1).padStart(2, '0')}</span>
+      </div>
+
+      <p className={styles.phaseName}>{phase.name}</p>
+      <p className={styles.checkpointDesc}>{phase.description}</p>
+
+      <div className={styles.asksSection}>
+        <span className={styles.asksLabel}>Asks</span>
+        {missingQuestion ? (
+          <p className={styles.warningText}>No question set — the sheet opens empty.</p>
+        ) : (
+          <p className={styles.asksQuestion}>“{phase.question}”</p>
+        )}
+      </div>
+
+      <div className={styles.chipsRow}>
+        <Chip color="var(--green)" className={styles.greenChip}>
+          approve
+        </Chip>
+        <Chip color="var(--red)" className={styles.redChip}>
+          reject
+        </Chip>
+        <Chip>{formatTimeout(phase.timeoutMs)}</Chip>
+      </div>
+
+      {stageIndex !== undefined && (
+        <p className={styles.closesStageSubtext}>
+          Closes stage {String(stageIndex + 1).padStart(2, '0')}
+        </p>
+      )}
+    </>
+  );
+}
+
 function CheckpointGate({
   gateIdx,
+  dragId,
   stage,
   phases,
   selectedPhase,
@@ -694,6 +854,7 @@ function CheckpointGate({
   issues,
 }: {
   gateIdx: number;
+  dragId: string;
   stage: Stage;
   phases: PhaseDef[];
   selectedPhase: number | null;
@@ -703,13 +864,11 @@ function CheckpointGate({
   onRemovePhase: (index: number) => void;
   issues: ValidationIssue[];
 }): React.JSX.Element | null {
-  const drag = useDraggable({ id: dragPhaseId(gateIdx) });
+  const drag = useDraggable({ id: dragId });
   const phase = phases[gateIdx];
   if (!phase) return null;
 
   const gateIssues = issues.filter((i) => issuePhaseIndex(i.where) === gateIdx);
-  const missingQuestion = !phase.question?.trim();
-  const selected = selectedPhase === gateIdx;
 
   return (
     <div className={styles.gateSlotActive}>
@@ -718,62 +877,26 @@ function CheckpointGate({
 
       <div
         ref={drag.setNodeRef}
+        data-settle={dragId}
         className={[
           styles.checkpointCard,
-          selected ? styles.cardSelected : '',
-          missingQuestion ? styles.cardAmberBorder : '',
-          dragging === gateIdx ? styles.cardDragging : '',
+          selectedPhase === gateIdx ? styles.cardSelected : '',
+          !phase.question?.trim() ? styles.cardAmberBorder : '',
+          dragging === gateIdx ? styles.cardLifted : '',
         ]
           .filter(Boolean)
           .join(' ')}
       >
-        <div className={styles.cardGripRow}>
-          <DragGrip
-            listeners={drag.listeners}
-            setActivatorNodeRef={drag.setActivatorNodeRef}
-            label={`Drag ${phase.name}`}
-          />
-        </div>
-
-        <button
-          type="button"
-          className={styles.checkpointContentBtn}
-          onClick={() => onSelectPhase(gateIdx)}
-        >
-          <div className={styles.cardHeaderRow}>
-            <span className={styles.checkpointGlyph} aria-hidden="true">
-              <PhaseGlyph kind="engineer" />
-            </span>
-            <span className={styles.checkpointLabel}>Checkpoint</span>
-            <span className={styles.phaseIndex}>{String(gateIdx + 1).padStart(2, '0')}</span>
-          </div>
-
-          <p className={styles.phaseName}>{phase.name}</p>
-          <p className={styles.checkpointDesc}>{phase.description}</p>
-
-          <div className={styles.asksSection}>
-            <span className={styles.asksLabel}>Asks</span>
-            {missingQuestion ? (
-              <p className={styles.warningText}>No question set — the sheet opens empty.</p>
-            ) : (
-              <p className={styles.asksQuestion}>“{phase.question}”</p>
-            )}
-          </div>
-
-          <div className={styles.chipsRow}>
-            <Chip color="var(--green)" className={styles.greenChip}>
-              approve
-            </Chip>
-            <Chip color="var(--red)" className={styles.redChip}>
-              reject
-            </Chip>
-            <Chip>{formatTimeout(phase.timeoutMs)}</Chip>
-          </div>
-
-          <p className={styles.closesStageSubtext}>
-            Closes stage {String(stage.index + 1).padStart(2, '0')}
-          </p>
-        </button>
+        <DragSurface listeners={drag.listeners}>
+          <GripRow />
+          <button
+            type="button"
+            className={styles.checkpointContentBtn}
+            onClick={() => onSelectPhase(gateIdx)}
+          >
+            <CheckpointBody phase={phase} index={gateIdx} stageIndex={stage.index} />
+          </button>
+        </DragSurface>
 
         <div className={styles.cardToolbar}>
           <ToolBtn

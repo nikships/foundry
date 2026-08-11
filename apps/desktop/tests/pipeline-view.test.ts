@@ -6,7 +6,6 @@ import {
   acceptanceReads,
   acceptanceSummary,
   commandText,
-  dragPhaseId,
   dropRailId,
   dropSlotId,
   formatClock,
@@ -14,9 +13,9 @@ import {
   gateNames,
   issuePhaseIndex,
   newStagePlan,
-  parseDragPhaseId,
   parseDropId,
   phaseComposition,
+  phaseDragIds,
   reorderTarget,
   stageGateSummary,
   stageLabel,
@@ -386,15 +385,28 @@ describe('pipeline-view', () => {
     });
 
     describe('drag identifiers', () => {
-      it('round-trips phase drag ids', () => {
-        expect(parseDragPhaseId(dragPhaseId(3))).toBe(3);
-        expect(parseDragPhaseId('slot:3')).toBeNull();
+      it('names a phase, so the id survives the reorder that moves it', () => {
+        const ids = phaseDragIds(phases);
+        const moved = [...phases];
+        const [item] = moved.splice(0, 1);
+        moved.splice(3, 0, item);
+        // p0_prep sits at a different index afterwards but keeps its drag id,
+        // so the drop animation can find the card it just landed.
+        expect(ids[0]).toBe(phaseDragIds(moved)[3]);
+      });
+
+      it('keeps ids distinct while a duplicate name is still a validation error', () => {
+        const dupes: PhaseDef[] = [
+          { name: 'same', kind: 'agent', description: '' },
+          { name: 'same', kind: 'code', description: '' },
+        ];
+        expect(new Set(phaseDragIds(dupes)).size).toBe(2);
       });
 
       it('round-trips slot and rail drop ids', () => {
         expect(parseDropId(dropSlotId(2))).toEqual({ kind: 'slot', at: 2 });
         expect(parseDropId(dropRailId(4))).toEqual({ kind: 'rail', boundary: 4 });
-        expect(parseDropId(dragPhaseId(1))).toBeNull();
+        expect(parseDropId(phaseDragIds(phases)[1]!)).toBeNull();
         expect(parseDropId('nonsense')).toBeNull();
       });
     });

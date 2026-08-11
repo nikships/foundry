@@ -169,49 +169,75 @@
   color: var(--accent-bright);
 }
 
+/* The whole card above the toolbar drags, so the grip is a hint and not a
+   target: it must not swallow the pointer that starts the drag. */
+.dragSurface {
+  cursor: grab;
+  touch-action: none;
+}
+
+.dragSurface:active {
+  cursor: grabbing;
+}
+
 .cardGripRow {
   display: flex;
   justify-content: center;
   padding-top: 2px;
-}
-
-.dragGrip {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 12px;
   color: var(--text-ghost);
-  cursor: grab;
-  touch-action: none;
-  transition: color var(--fast) var(--ease);
+  opacity: 0.5;
+  transition: opacity var(--fast) var(--ease);
 }
 
-.dragGrip:active {
-  cursor: grabbing;
-}
-
-.phaseCard:hover .dragGrip,
-.checkpointCard:hover .dragGrip {
+.phaseCard:hover .cardGripRow,
+.checkpointCard:hover .cardGripRow {
   color: var(--text-dim);
+  opacity: 1;
 }
 
-.cardDragging {
-  opacity: 0.35;
+/* The card left behind is a socket, not a smaller card: it keeps its exact
+   footprint so nothing around it reflows while the phase is in hand. */
+.cardLifted {
+  background: var(--bg-void);
+  border-color: var(--line-faint);
+  border-style: dashed;
 }
 
-/* The overlay is torn out of the track, so it carries its own surface. */
-.dragPreview {
-  display: flex;
-  align-items: center;
-  gap: var(--s2);
-  width: 284px;
-  padding: var(--s2) var(--s3);
+.cardLifted > * {
+  visibility: hidden;
+}
+
+/* Held in hand: lifted off the board, tilted just enough to read as picked up,
+   and casting a shadow the resting cards do not have. */
+.cardCarried {
   cursor: grabbing;
-  background: var(--bg-raised);
-  border: 1px solid var(--accent);
-  border-radius: var(--r-sm);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+  transform: scale(1.02) rotate(-0.6deg);
+  border-color: var(--accent);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 6%) inset,
+    0 18px 40px -12px rgb(0 0 0 / 70%);
+  animation: cardPickUp 160ms var(--ease) both;
+}
+
+@keyframes cardPickUp {
+  from {
+    transform: scale(1) rotate(0deg);
+  }
+  to {
+    transform: scale(1.02) rotate(-0.6deg);
+  }
+}
+
+/* The overlay sits above the board but below any sheet opened over it. */
+.dragLayer {
+  width: 284px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cardCarried {
+    transform: none;
+    animation: none;
+  }
 }
 
 .emptyStagePlaceholder {

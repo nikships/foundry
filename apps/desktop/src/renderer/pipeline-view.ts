@@ -324,15 +324,22 @@ export function newStagePlan(
 /** What a board drop id resolves to: an insertion point, or a new stage. */
 export type DropTarget = { kind: 'slot'; at: number } | { kind: 'rail'; boundary: number };
 
-/** The drag id of the card for phase `index`. */
-export function dragPhaseId(index: number): string {
-  return `phase:${index}`;
-}
-
-/** The phase index a drag id names, or null when the id is not a phase card. */
-export function parseDragPhaseId(id: string | number): number | null {
-  const match = /^phase:(\d+)$/.exec(String(id));
-  return match ? Number(match[1]) : null;
+/**
+ * A drag id per phase, positionally indexed but stable across a reorder.
+ *
+ * The id follows the phase rather than the slot it sits in, because the drop
+ * animation lands the card on wherever its id ended up: an index-based id would
+ * name a different phase the moment the array is rewritten, and the card would
+ * fly to a position it was never dropped on. Names are unique in a valid
+ * pipeline; a duplicate is a validation error, so the index only breaks the tie
+ * to keep the ids distinct while that error stands.
+ */
+export function phaseDragIds(phases: PhaseDef[]): string[] {
+  const counts = new Map<string, number>();
+  for (const phase of phases) counts.set(phase.name, (counts.get(phase.name) ?? 0) + 1);
+  return phases.map((phase, i) =>
+    (counts.get(phase.name) ?? 0) > 1 ? `phase:${phase.name}#${i}` : `phase:${phase.name}`,
+  );
 }
 
 /** The drop id of the insertion point that lands a phase at `at`. */

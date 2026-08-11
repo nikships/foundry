@@ -97,7 +97,7 @@ describe('StageBoard', () => {
     expect(html).toContain('+ Checkpoint');
   });
 
-  it('gives every card a drag handle and every stage its drop targets', () => {
+  it('gives every card a drag surface and every stage its drop targets', () => {
     const html = renderToStaticMarkup(
       React.createElement(StageBoard, {
         phases: samplePhases,
@@ -113,16 +113,19 @@ describe('StageBoard', () => {
       }),
     );
 
-    // Work cards and the checkpoint alike are draggable by their grip.
-    expect(html).toContain('title="Drag scope_analyst"');
-    expect(html).toContain('title="Drag run_tests"');
-    expect(html).toContain('title="Drag human_gate"');
-    expect(html).toContain('title="Drag ship_release"');
+    // A settle id per phase, named after the phase so it survives a reorder;
+    // the checkpoint is draggable on the same terms as the work.
+    expect(html).toContain('data-settle="phase:scope_analyst"');
+    expect(html).toContain('data-settle="phase:run_tests"');
+    expect(html).toContain('data-settle="phase:human_gate"');
+    expect(html).toContain('data-settle="phase:ship_release"');
+
+    // The whole card above the toolbar is the handle, not a small grip.
+    expect(html.match(/dragSurface/g)?.length).toBe(samplePhases.length);
 
     // Slots and rails are painted before a drag starts so the board does not
     // change geometry the moment a card is picked up.
-    const slots = html.match(/dropSlot/g) ?? [];
-    expect(slots.length).toBeGreaterThanOrEqual(5);
+    expect((html.match(/dropSlot/g) ?? []).length).toBeGreaterThanOrEqual(5);
     expect(html).toContain('newStageRail');
   });
 

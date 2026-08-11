@@ -3,9 +3,9 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite';
 import react from '@vitejs/plugin-react';
 
 const alias = {
-  '@shared': resolve(__dirname, 'src/shared'),
-  '@main': resolve(__dirname, 'src/main'),
-  '@renderer': resolve(__dirname, 'src/renderer'),
+  '@shared': resolve(import.meta.dirname, 'src/shared'),
+  '@main': resolve(import.meta.dirname, 'src/main'),
+  '@renderer': resolve(import.meta.dirname, 'src/renderer'),
 };
 
 export default defineConfig({
@@ -13,7 +13,7 @@ export default defineConfig({
     resolve: { alias },
     plugins: [externalizeDepsPlugin()],
     build: {
-      lib: { entry: resolve(__dirname, 'src/main/main.ts') },
+      lib: { entry: resolve(import.meta.dirname, 'src/main/main.ts') },
       rollupOptions: { output: { format: 'es' } },
       // electron-vite leaves main unminified by default. The main bundle is
       // plain app code (native deps are externalized), so esbuild minify is
@@ -25,7 +25,7 @@ export default defineConfig({
     resolve: { alias },
     plugins: [externalizeDepsPlugin()],
     build: {
-      lib: { entry: resolve(__dirname, 'src/preload/bridge.ts') },
+      lib: { entry: resolve(import.meta.dirname, 'src/preload/bridge.ts') },
       // Sandboxed preload scripts cannot be ES modules.
       rollupOptions: { output: { format: 'cjs', entryFileNames: 'bridge.cjs' } },
       minify: 'esbuild',
@@ -34,7 +34,7 @@ export default defineConfig({
   renderer: {
     resolve: { alias },
     plugins: [react()],
-    root: resolve(__dirname, 'src/renderer'),
+    root: resolve(import.meta.dirname, 'src/renderer'),
     css: {
       modules: {
         // `.phase-edge` → `styles.phaseEdge`, so className refs stay clean.
@@ -44,7 +44,7 @@ export default defineConfig({
     build: {
       minify: 'esbuild',
       chunkSizeWarningLimit: 1000,
-      rollupOptions: { input: resolve(__dirname, 'src/renderer/index.html') },
+      rollupOptions: { input: resolve(import.meta.dirname, 'src/renderer/index.html') },
       // electron-vite maps `rolldownOptions` onto `rollupOptions` after merge,
       // so chunking must live here to survive the preset (a bare `rollupOptions`
       // would be overwritten by the preset's discovered input).
