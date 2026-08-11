@@ -8,9 +8,10 @@
  * is mid-run, and the block shows that rather than pretending to be finished.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { EventRow, UsageBreakdown } from '@shared/types.js';
 import { clockTime, credits, tokens } from '../../format.js';
+import { useCollapseSignal } from './collapse.js';
 
 function str(value: unknown): string {
   return typeof value === 'string' ? value : '';
@@ -456,7 +457,7 @@ function TextBlock({ event }: { event: EventRow }): React.JSX.Element {
 }
 
 function CommandBlock({ event }: { event: EventRow }): React.JSX.Element {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useCollapsible(true);
   const open = event.endedAt == null;
   const command = commandOf(event);
   const output = str(event.payload.result);
@@ -481,7 +482,7 @@ function CommandBlock({ event }: { event: EventRow }): React.JSX.Element {
 }
 
 function EditBlock({ event }: { event: EventRow }): React.JSX.Element {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useCollapsible(true);
   const open = event.endedAt == null;
   const a = args(event);
   const path = str(a.file_path) || str(a.path) || nameSummary(event);
@@ -522,7 +523,7 @@ function ReadBlock({
   event: EventRow;
   verb: 'read' | 'search';
 }): React.JSX.Element {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useCollapsible(false);
   const open = event.endedAt == null;
   const a = args(event);
   const target =
@@ -578,7 +579,7 @@ function parseTodos(todosStr: string): TodoItem[] {
 }
 
 function TodoBlock({ event }: { event: EventRow }): React.JSX.Element {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useCollapsible(true);
   const open = event.endedAt == null;
   const a = args(event);
   const todosStr = str(a.todos);
@@ -614,7 +615,7 @@ function TodoBlock({ event }: { event: EventRow }): React.JSX.Element {
 }
 
 function TaskBlock({ event }: { event: EventRow }): React.JSX.Element {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useCollapsible(true);
   const open = event.endedAt == null;
   const a = args(event);
   const description = str(a.description) || nameSummary(event);
@@ -642,7 +643,7 @@ function TaskBlock({ event }: { event: EventRow }): React.JSX.Element {
 }
 
 function AskBlock({ event }: { event: EventRow }): React.JSX.Element {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useCollapsible(true);
   const open = event.endedAt == null;
   const a = args(event);
   const questionnaire = str(a.questionnaire);
@@ -682,7 +683,7 @@ function formatArgsSummary(a: Record<string, unknown>): string {
 }
 
 function GenericToolBlock({ event }: { event: EventRow }): React.JSX.Element {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useCollapsible(false);
   const open = event.endedAt == null;
   const result = str(event.payload.result);
   const a = args(event);
@@ -867,6 +868,29 @@ export function TranscriptEntry({ event }: { event: EventRow }): React.JSX.Eleme
     default:
       return null;
   }
+}
+
+/**
+ * A collapse that leaves the user's re-expands intact: `initial` is the open
+ * default; a global collapse flips every adopter to closed. Because individual
+ * toggles use the returned setter, anything expanded after a collapse survives
+ * until the next collapse. Newly mounted entries (live tail) do not inherit a
+ * past collapse — they render at their natural `initial`.
+ */
+function useCollapsible(
+  initial: boolean,
+): [boolean, React.Dispatch<React.SetStateAction<boolean>>] {
+  const signal = useCollapseSignal();
+  const [value, setValue] = useState(initial);
+  const seenSignal = useRef(signal);
+  useEffect(() => {
+    // Incrementing `signal` is the operator's collapse; zero is "never."
+    if (signal > 0 && signal !== seenSignal.current) {
+      seenSignal.current = signal;
+      setValue(false);
+    }
+  }, [signal]);
+  return [value, setValue];
 }
 
 export function transcriptStyles(): string {

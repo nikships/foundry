@@ -159,3 +159,24 @@
   border: 1px solid var(--line-faint);
   animation: pulse 1.4s var(--ease) infinite;
 }
+
+.inspectorFooter {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s3) var(--s1);
+  border-top: 1px solid var(--line-faint);
+}
+
+.inspectorFooterHint {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  letter-spacing: 0.02em;
+  line-height: var(--leading);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
