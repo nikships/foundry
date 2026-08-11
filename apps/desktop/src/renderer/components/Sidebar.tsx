@@ -8,6 +8,7 @@ import {
   PanelLeftOpen,
   Play,
   Settings as SettingsIcon,
+  Terminal,
   Users,
   Workflow,
 } from 'lucide-react';
@@ -123,6 +124,8 @@ export default function Sidebar({
   onOpenSettings,
   onOpenInterruptRun,
   onOpenInspector,
+  onOpenSmith,
+  smithBusy = false,
   inspectorRunId = '',
 }: {
   view: View;
@@ -136,6 +139,10 @@ export default function Sidebar({
   onOpenInterruptRun?: (runId: string) => void;
   /** Pin the Inspector to a run; the run may live in any project. */
   onOpenInspector?: (runId: string) => void;
+  /** Smith opens a modal rather than switching the View, so it takes its own handler. */
+  onOpenSmith?: () => void;
+  /** The active project's Smith session has a running turn (passive activity dot). */
+  smithBusy?: boolean;
   /** The run the Inspector is pinned to, so its activity row reads as selected. */
   inspectorRunId?: string;
 }): React.JSX.Element {
@@ -241,6 +248,34 @@ export default function Sidebar({
             </button>
           );
         })}
+        {/*
+         * Smith sits below Pull Requests but opens a modal rather than switching
+         * the View, so it is never `.active`. A busy session shows an activity
+         * dot in both collapsed and expanded states.
+         */}
+        <button
+          type="button"
+          className={`${styles.navItem} ${collapsed ? styles.navItemCollapsed : ''}`}
+          onClick={() => onOpenSmith?.()}
+          title={collapsed ? `Smith${smithBusy ? ' — working' : ''} (⌘6)` : undefined}
+          aria-label={collapsed ? `Smith ⌘6${smithBusy ? ', working' : ''}` : 'Smith'}
+        >
+          {collapsed ? (
+            <span className={styles.smithEmblemWrap}>
+              <Terminal size={18} strokeWidth={1.9} aria-hidden className={styles.navEmblem} />
+              {smithBusy && <span className={styles.smithBusyDot} aria-hidden />}
+            </span>
+          ) : (
+            <>
+              <span className={styles.navLabel}>Smith</span>
+              {smithBusy ? (
+                <span className={styles.smithBusyDotInline} aria-hidden title="Smith is working" />
+              ) : (
+                <kbd>⌘6</kbd>
+              )}
+            </>
+          )}
+        </button>
       </nav>
       {!collapsed && pipelineRuns.length > 0 && (
         <div className={styles.runsSection}>

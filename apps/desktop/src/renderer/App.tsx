@@ -16,7 +16,9 @@ import InterruptSheet from './components/InterruptSheet.js';
 import NewProjectWizard from './components/NewProjectWizard.js';
 import ConfirmModal from './components/ConfirmModal.js';
 import UpdateBanner from './components/UpdateBanner.js';
-import type { ProjectDef, UpdateStatus } from '@shared/types.js';
+import SmithModal from './components/SmithModal.js';
+import SmithProposalCard, { type SmithNavTarget } from './components/SmithProposalCard.js';
+import type { ProjectDef, SmithStatus, UpdateStatus } from '@shared/types.js';
 import styles from './App.module.css';
 
 export type View = 'runs' | 'inspector' | 'pipelines' | 'roster' | 'prs' | 'settings';
@@ -31,12 +33,18 @@ const MENU_VIEWS: Record<string, View> = {
 };
 
 function AppInner(): React.JSX.Element {
-  const { ready, settings, interrupts, refreshAll, selectProject } = useApp();
+  const { ready, settings, interrupts, project, refreshAll, refreshScoped, selectProject } =
+    useApp();
   const [view, setView] = useState<View>('runs');
   const [creatingProject, setCreatingProject] = useState(false);
   const [openRunId, setOpenRunId] = useState('');
   const [inspectorRunId, setInspectorRunId] = useState('');
   const [settingsPane, setSettingsPane] = useState('general');
+  const [smithOpen, setSmithOpen] = useState(false);
+  const [smithBusy, setSmithBusy] = useState(false);
+  // Deep link for the active project's roster/pipelines/envelope editors after a
+  // Smith approve. The nonce re-fires the target screen's effect on a repeat.
+  const [smithNav, setSmithNav] = useState<(SmithNavTarget & { nonce: number }) | null>(null);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ stage: 'idle' });
   const [updateDismissedKey, setUpdateDismissedKey] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -72,6 +80,50 @@ function AppInner(): React.JSX.Element {
       setUpdateStatus(next);
     });
   }, []);
+
+  // The Smith activity dot on the sidebar: best-effort, driven by the status
+  // broadcast so it shows even when the modal is closed. Scoped to the active
+  // project — other projects' sessions keep running but do not light this dot.
+  const projectId = project?.id ?? '';
+  useEffect(() => {
+    if (!projectId) {
+      setSmithBusy(false);
+      return;
+    }
+    let cancelled = false;
+    void api.smith.status(projectId).then((s) => {
+      if (!cancelled) setSmithBusy(s.state === 'busy');
+    });
+    const off = api.on('smith-status-changed', (data) => {
+      const next = data as SmithStatus | undefined;
+      if (next && next.projectId === projectId) setSmithBusy(next.state === 'busy');
+    });
+    return () => {
+      cancelled = true;
+      off();
+    };
+  }, [projectId]);
+
+  const openSmith = useCallback((): void => setSmithOpen(true), []);
+
+  // A Smith approve saved the entity; open its editor. The store save already
+  // broadcast settings-changed (which refreshes the app), but refresh scoped
+  // data too so the target is present before the screen's deep-link effect runs.
+  const onSmithApproved = useCallback(
+    async (target: SmithNavTarget): Promise<void> => {
+      await refreshScoped();
+      setSmithNav({ ...target, nonce: Date.now() });
+      if (target.kind === 'agent') {
+        setView('roster');
+      } else if (target.kind === 'pipeline') {
+        setView('pipelines');
+      } else {
+        setSettingsPane('envelopes');
+        setView('settings');
+      }
+    },
+    [refreshScoped],
+  );
 
   const handleUpdateDownload = useCallback(async (): Promise<void> => {
     await api.updater.download();
@@ -138,6 +190,7 @@ function AppInner(): React.JSX.Element {
   useGlobalShortcuts({
     onNavigate: go,
     onEscape: escapeBack,
+    onOpenSmith: openSmith,
     enabled: ready && !needsOnboarding,
   });
 
@@ -188,6 +241,8 @@ function AppInner(): React.JSX.Element {
           setSettingsPane(pane);
           go('settings');
         }}
+        openPipeline={smithNav?.kind === 'pipeline' ? smithNav.name : undefined}
+        openNonce={smithNav?.kind === 'pipeline' ? smithNav.nonce : undefined}
       />
     );
   } else if (view === 'roster') {
@@ -197,12 +252,21 @@ function AppInner(): React.JSX.Element {
           setSettingsPane(pane);
           go('settings');
         }}
+        openAgent={smithNav?.kind === 'agent' ? smithNav.name : undefined}
+        openNonce={smithNav?.kind === 'agent' ? smithNav.nonce : undefined}
       />
     );
   } else if (view === 'prs') {
     main = <PullRequestsScreen onOpenRun={openRun} />;
   } else if (view === 'settings') {
-    main = <SettingsScreen pane={settingsPane} onNewProject={newProject} />;
+    main = (
+      <SettingsScreen
+        pane={settingsPane}
+        onNewProject={newProject}
+        openEnvelope={smithNav?.kind === 'envelope' ? smithNav.name : undefined}
+        openNonce={smithNav?.kind === 'envelope' ? smithNav.nonce : undefined}
+      />
+    );
   }
 
   return (
@@ -232,6 +296,8 @@ function AppInner(): React.JSX.Element {
             }}
             onOpenInterruptRun={openRun}
             onOpenInspector={openInspector}
+            onOpenSmith={openSmith}
+            smithBusy={smithBusy}
             inspectorRunId={inspectorRunId}
           />
           <div className={styles.sidebarDivider} aria-hidden />
@@ -243,6 +309,14 @@ function AppInner(): React.JSX.Element {
         </div>
       )}
 
+      {/*
+       * Stacking (bottom to top): the Smith terminal modal (z-90) sits below
+       * the proposal card, which sits below an engineer interrupt. Both the
+       * card and the interrupt use ModalShell `highPriority` (z-100), so DOM
+       * order breaks the tie — the interrupt renders last to stay on top.
+       */}
+      {smithOpen && <SmithModal onClose={() => setSmithOpen(false)} />}
+      <SmithProposalCard onApproved={(target) => void onSmithApproved(target)} />
       {activeInterrupt && <InterruptSheet interrupt={activeInterrupt} />}
       {creatingProject && (
         <NewProjectWizard onClose={() => setCreatingProject(false)} onCreated={projectCreated} />

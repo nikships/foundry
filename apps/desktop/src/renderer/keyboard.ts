@@ -29,6 +29,16 @@ export function viewShortcut(e: ShortcutKey): View | null {
   return VIEW_KEYS[e.key] ?? null;
 }
 
+/**
+ * ⌘/Ctrl+6 opens Smith. It is not in `VIEW_KEYS` because Smith is a modal, not
+ * a `View` — the same reason its sidebar item never reads as the active view.
+ */
+export function isSmithShortcut(e: ShortcutKey): boolean {
+  const mod = e.metaKey || e.ctrlKey;
+  if (!mod || e.altKey || e.shiftKey) return false;
+  return e.key === '6';
+}
+
 export function isEditableTarget(target: unknown): boolean {
   const el = target as { tagName?: string; isContentEditable?: boolean } | null;
   if (!el?.tagName) return false;
