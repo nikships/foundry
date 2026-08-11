@@ -45,6 +45,35 @@ export default function InspectorScreen({
   const [now, setNow] = useState(Date.now());
   const [filesError, setFilesError] = useState('');
   const [collapseSignal, setCollapseSignal] = useState(0);
+  const [laneCount, setLaneCount] = useState<number>(() => {
+    try {
+      // Prefer localStorage so the preference survives app restarts, but
+      // fall back to sessionStorage for sessions that already saved there.
+      const fromLocal =
+        typeof localStorage !== 'undefined' ? localStorage.getItem('inspectorLaneCount') : null;
+      const fromSession =
+        typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('inspectorLaneCount') : null;
+      const saved = fromLocal ?? fromSession;
+      if (saved) {
+        const n = parseInt(saved, 10);
+        if (n >= 1 && n <= 6) return n;
+      }
+    } catch {
+      // ignore storage access errors (e.g. tests without DOM)
+    }
+    return 3;
+  });
+
+  useEffect(() => {
+    try {
+      if (typeof localStorage !== 'undefined')
+        localStorage.setItem('inspectorLaneCount', String(laneCount));
+      if (typeof sessionStorage !== 'undefined')
+        sessionStorage.setItem('inspectorLaneCount', String(laneCount));
+    } catch {
+      // ignore storage access errors
+    }
+  }, [laneCount]);
 
   // A deep link from the run detail screen pins the picker to that run.
   useEffect(() => {
@@ -122,12 +151,34 @@ export default function InspectorScreen({
           <span className={styles.inspectorFooterHint}>
             Collapses every tool call across all visible agents
           </span>
+          <div className={styles.inspectorDensity}>
+            <span className={styles.densityLabel}>Lanes</span>
+            <span className={styles.densityValue} aria-hidden>
+              {laneCount}
+            </span>
+            <input
+              type="range"
+              min="1"
+              max="6"
+              step="1"
+              value={laneCount}
+              onChange={(e) => {
+                const n = parseInt(e.target.value, 10);
+                if (!Number.isNaN(n) && n >= 1 && n <= 6) setLaneCount(n);
+              }}
+              className={styles.densitySlider}
+              disabled
+              title="Lanes per viewport"
+              aria-label="Adjust visible lanes density"
+            />
+          </div>
         </footer>
       </div>
     );
   }
 
   const hasVisibleTools = visibleLanes.length > 0;
+  const isFocused = Boolean(focusedPhaseId);
 
   return (
     <CollapseContext.Provider value={collapseSignal}>
@@ -229,7 +280,10 @@ export default function InspectorScreen({
           </div>
         )}
         {!view.loading && runId && visibleLanes.length > 0 && (
-          <div className={styles.inspectorGrid}>
+          <div
+            className={`${styles.inspectorGrid} ${isFocused ? styles.inspectorGridFocused : ''}`}
+            style={{ '--lane-count': laneCount } as React.CSSProperties}
+          >
             {visibleLanes.map((phase) => (
               <TranscriptLane
                 key={phase.phaseId}
@@ -264,6 +318,26 @@ export default function InspectorScreen({
           <span className={styles.inspectorFooterHint}>
             Collapses every tool call across all visible agents — re-expand any step individually
           </span>
+          <div className={styles.inspectorDensity}>
+            <span className={styles.densityLabel}>Lanes</span>
+            <span className={styles.densityValue} aria-hidden>
+              {laneCount}
+            </span>
+            <input
+              type="range"
+              min="1"
+              max="6"
+              step="1"
+              value={laneCount}
+              onChange={(e) => {
+                const n = parseInt(e.target.value, 10);
+                if (!Number.isNaN(n) && n >= 1 && n <= 6) setLaneCount(n);
+              }}
+              className={styles.densitySlider}
+              title="Lanes per viewport"
+              aria-label="Adjust visible lanes density"
+            />
+          </div>
         </footer>
       </div>
     </CollapseContext.Provider>
