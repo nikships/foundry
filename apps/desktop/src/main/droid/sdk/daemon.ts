@@ -57,7 +57,7 @@ export type {
   DaemonStreamMessage,
 } from './daemon-session.js';
 
-/** Mission-bounded daemon port band (AGENTS.md). */
+/** Mission-bounded daemon port band. */
 export const DAEMON_PORT_MIN = 37_600;
 export const DAEMON_PORT_MAX = 37_699;
 export const DEFAULT_DAEMON_PORT = 37_643;

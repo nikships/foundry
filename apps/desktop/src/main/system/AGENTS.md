@@ -1,27 +1,24 @@
-# AGENTS.md — src/main/system
+# src/main/system
 
-Process control, doctor checks, notifications. No pipeline logic here.
+This directory owns launch environment resolution, process control, doctor
+checks, notifications, and dock badges. It does not own pipeline logic.
+Doctor failures are advisory; the app still starts. Notification and badge
+settings are respected, while run completion is settled by `finish()` in the
+engine.
 
-Doctor checks are advisory — app starts even when they fail.
-Notifications/dock badge must respect user settings; `finish()` settles status
+## Launch PATH
 
-- notification + banner together.
+A GUI launch inherits launchd's minimal PATH, so `resolveEnv()` must complete
+before any CLI lookup or spawn and its result is cached. It uses `$SHELL -ilc`
+(not `-lc`) with marker fencing because profile files may print banners. Every
+spawn uses `spawnEnv()`, including commands, catalog, one-shot, SDK, process
+helpers, and the CLI `which` lookup. An ENOENT-shaped tail with
+`exitCode === null` means the binary was not found, not that the command ran
+and failed.
 
-## PATH (`env.ts`)
+## Process safety
 
-A GUI launch inherits launchd's `PATH=/usr/bin:/bin:/usr/sbin:/sbin`, where
-node, npm, pnpm, yarn, bun, cargo, go, uv, gradle and every agent CLI are
-invisible. `resolveEnv()` asks the login shell once at startup (`$SHELL -ilc`,
-answer fenced by markers because rc files print banners) and caches it.
-
-- **Every** spawn uses `spawnEnv()` — `engine/commands.ts`, `system/procs.ts`,
-  `droid/oneshot.ts`, `droid/sdk/session.ts`, `droid/catalog.ts`, and the `which`
-  in `cli/index.ts`. A new spawn site that uses `process.env` reintroduces the
-  bug for whichever feature it powers.
-- `resolveEnv()` must be awaited **before** anything spawns: `findCli` caches
-  its answer, so resolving late caches a wrong one for the session.
-- `-ilc`, not `-lc`: PATH usually lives in `.zshrc`, which a non-interactive
-  login shell never reads.
-- `exitCode === null` + an ENOENT-shaped tail means the binary was never found.
-  That is a PATH problem, not a failing command, and the two must not be
-  conflated in anything a human reads.
+Tracked children are registered with argv and the trace process row. Before
+signalling a persisted pid, verify the current `ps` command still matches the
+recorded argv; pids can be recycled. Kill children before parents and keep the
+registry/trace lifecycle in sync. Do not add an untracked spawn site.

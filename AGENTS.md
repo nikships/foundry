@@ -1,53 +1,41 @@
-# AGENTS.md
-
-For coding agents working on this repo's source (you). Not for agents
-running inside Foundry.
-
-## What Foundry is
+# Foundry repository
 
 Native macOS Electron app (TypeScript + React 19) that turns a prompt into
-reviewed code in an isolated git worktree you can watch live.
+reviewed code in an isolated run. Worktrees and branches are created by the
+engine; code, not an agent, owns sequencing, retries, boundaries, and
+acceptance.
 
-You describe the work, pick a pipeline, start a run. A roster of specialist
-agents does each phase, code judges every phase, your base checkout stays
-untouched until you merge `foundry/run_*` yourself.
+## Architecture
 
-Philosophy: **agent proposes, code disposes**. Agents work inside one bounded
-phase; code owns sequencing, retries, corrections, and acceptance.
+- `apps/desktop/` is the application. The original SSSF Python factory is
+  reference-only: do not import, execute, link, or add Python to the app.
+- A run normally uses `.foundry-worktrees/<runId>` and branch
+  `foundry/<runId>`. The base checkout is not modified; merge/discard is an
+  explicit operator action.
+- A fresh worktree has tracked files only. Its project `setupScript` runs at
+  the worktree root before phases. Phase handoffs are JSON files under
+  `.foundry-handoff/`. For projects marked `scaffold`, a missing code command
+  is a warning and that code phase is skipped rather than blocking creation.
+- The main process owns git, disk, CLIs, and SQLite. The renderer reaches it
+  only through shared IPC types, the preload bridge, and named channels.
 
-## How it works
+## Invariants
 
-Pipelines are data, not scripts — an ordered list of `agent | code | engineer`
-phases. The deterministic engine walks them, creates a worktree + branch per
-run, snapshots git at phase start, enforces write boundaries after each phase
-by diffing `git status` (violations are reverted), checks envelopes + gates,
-and retries the same live session on failure. Every run is traced to SQLite
-(WAL); the renderer polls `where change_id > ?` — no websocket. `change_id`
-is the cursor (rows are patched in place), `rowid` is ordering.
+- Every phase starts failed and succeeds only after a clean exit, parsed
+  envelope, and passing gates. Boundaries are enforced after the call by
+  diffing git; protected paths always fail.
+- The `Tracer` is the sole SQLite writer. The trace directory guide covers the
+  polling cursor and in-place event update rules.
+- `finish()` settles run status and operator-facing completion state together;
+  the main-process directory guide covers the lifecycle invariant.
+- Electron takes a single-instance lock because a second SQLite writer would
+  corrupt the per-project trace.
 
-Agent phases are driven via the `droid` CLI adapter.
+## Routing
 
-## What lives where
+The nearest directory guide is loaded automatically. Keep app work under the
+desktop app directory, main-process behavior in its child directories, and CI
+or release changes in the GitHub workflow directory.
 
-- `apps/desktop/` — the app. All work happens here.
-- `.claude/skills/sssf/` — original Python factory. Reference only: read for
-  concepts, never import/execute/link, never add Python to `apps/desktop/`.
-
-## Invariants (don't break from any layer)
-
-- A phase is born `fail`, flips to `success` only on clean exit + parsed
-  envelope + green gates.
-- Code owns sequencing/retries/acceptance. No agent decides if it succeeded.
-- Write boundaries are enforced after the call by diffing git, not by prompting
-  nicely. Protected paths (`.git`, `.foundry`, lockfiles) always fail.
-- `finish()` settles status, notification, banner, and `outcome_detail` together.
-
-## Working in the app
-
-Details live in [apps/desktop/AGENTS.md](apps/desktop/AGENTS.md). From
-`apps/desktop/`, `npm run check` (typecheck + lint + format + knip + test +
-build + audit) must pass before you finish. CI enforces the same.
-
-Deeper docs are next to the code you are touching — e.g.
-`src/main/engine/AGENTS.md`, `src/main/cli/AGENTS.md`. Read the closest one;
-they contain only what `ls` and the code won't tell you.
+From `apps/desktop/`, run `npm run check` before finishing. It includes
+`check:css` and dependency auditing; CI enforces the same gates.

@@ -1,8 +1,10 @@
-# AGENTS.md — src/preload
+# src/preload
 
-Narrow named-invoke bridge (`bridge.ts` → `bridge.cjs`). Sandboxed preloads
-cannot be ESM, so the vite config's `format: 'cjs'` is intentional.
+The preload is a narrow, named capability bridge: `bridge.ts` emits
+`bridge.cjs` and exposes explicit wrappers for each `IPC.*` constant. The CJS
+output is required because the sandboxed preload cannot be ESM.
 
-No generic `invoke(channel, ...args)` — every channel is an explicit
-`ipcRenderer.invoke(IPC.*)` wrapper. That's the auditable capability surface;
-keep this file wiring-only, no logic.
+Do not add `invoke(channel, ...args)` or business logic here. Add capabilities
+through the shared IPC contract and the main router, then expose the smallest
+typed wrapper needed by the renderer. The IPC directory guide defines the
+canonical flow.

@@ -1,100 +1,45 @@
-# AGENTS.md — src/main/engine
+# src/main/engine
 
-Deterministic runner. Code owns sequencing/retries/acceptance; agents work
-inside one phase and never decide if they succeeded.
+The deterministic runner owns phase sequencing, retries, write boundaries,
+gates, acceptance, and per-run worktrees. Agents never decide whether a phase
+or run succeeded.
 
 ## Invariants
 
-- A phase is born `fail`. Corrections re-prompt the **same live session**
-  (one message, not a cold restart); envelope and gate retries have separate
-  budgets.
-- Envelopes are typed seams (`envelopes.ts`): the JSON example shown to the
-  agent, the JSON Schema sent as an output constraint (`jsonSchemaFor`), and
-  the parse all come off the same zod instance — don't hand-write examples,
-  don't hand-write a JSON Schema, don't parse outside the schema.
-  `jsonSchemaFor` emits the **output** view, so every `.default()` field is
-  `required`: the model is asked for strictly more than `parseEnvelope`
-  demands, so anything conforming to the schema parses. `tests/envelopes.test.ts`
-  pins the `required` array per kind — a drift there is a failing test, not a
-  surprise at runtime. It also pins that no `$schema` dialect is declared: droid
-  compiles the constraint with a Draft-07 ajv and rejects the whole turn for a
-  2020-12 dialect URI.
-- Only **agent** phases carry the output constraint, and a structured reply is a
-  candidate, not a verdict: `validateEnvelope` runs it through the same zod
-  instance, and a rejection (or a droid that could not shape one) falls back to
-  parsing the text on the _same_ envelope-retry budget — no second budget.
-- Gates return evidence, not verdicts — one `GateCheck` per item examined
-  (`gates.ts`). Unknown gate names fail.
-- Write boundaries are enforced after the call by diffing `git status`
-  (`boundary.ts`): `null` = unrestricted minus protected, `[]` = read-only,
-  list = allowlist (`*` within segment, `**` across). Always-protected
-  `.foundry/` `.git/` `.foundry-worktrees/` plus project `protectedPaths`.
-  Violations are reverted and the phase fails. This is the ONLY enforcement:
-  runs never stop for permission (`droid/permissions.ts` always decides), so a
-  mid-turn allow is safe precisely because the diff runs afterwards.
-- Phase-start `boundary.snapshot()` is cheap and rewind-ready: porcelain
-  changed-paths Set + HEAD SHA (`resolveRef`) + sha256/size for each dirty
-  file that still exists (no tree walk). Agent-phase correction events carry a
-  per-phase running `correctionIndex` shared across envelope/boundary/gate so
-  traces can answer attempt-index-vs-success; existing `attempt` stays.
-- **Rewind on the Nth correction (SDK transport only).**
-  `AppSettings.rewindAfterCorrections` (default 2, `0` = off) is engine-owned.
-  When a phase's Nth correction is about to be sent on an RPC session: capture
-  the phase's first user-message id (SdkSession tracks last user `create_message`
-  id) → `getRewindInfo` → intersect `availableFiles` with the phase-start
-  snapshot → `rewind({messageId, filesToRestore, filesToDelete, forkTitle})` →
-  swap-and-persist the successor (same mechanics as compaction) → re-snapshot
-  the boundary baseline → send the retry on the successor. Failure falls back
-  to today's append-style correction; budgets are unchanged (rewind consumes a
-  correction attempt, never extends). One-shot never attempts rewind. The
-  correction event carries `payload.rewind: true` plus restored/deleted counts
-  — no new EventType.
-- **Compaction happens between phases, never inside one.** The loop compacts
-  every session past `compactionThreshold` before it starts the next phase: the
-  SDK refuses a replacement with a stream open, and the successor session has to
-  be in place before the turn is composed. A failed compaction is traced and
-  ignored — the next turn then hits the context wall it would have hit anyway,
-  so a compaction that cannot run must not cost the run.
-- `InterruptRequest` / the interrupt sheet belongs to **engineer phases only** —
-  a checkpoint a pipeline author wrote, not a permission prompt.
-- **A kill outranks acceptance.** Once `cancel()` has fired the run settles
-  `killed`, both at the top of the loop and after it: the phases that finished
-  before the kill landed are never run through `decideAcceptance`, or a
-  pipeline whose criterion was already satisfied settles `accepted` after the
-  operator ended it. The sessions stand down too (`droid/AGENTS.md`).
-- Every run gets a fresh `foundry/run_*` branch + worktree; merge/discard
-  stays in `worktree.ts`. `create()` registers `/.foundry-worktrees/` in
-  `.git/info/exclude` first, or the run's own directory reports as the
-  operator's untracked work. Merge never vetoes on a dirty base — git refuses
-  only what would actually be overwritten, and a failed merge is aborted and
-  the original branch restored. `git.ts` porcelain parser ignores git's stderr
-  chatter.
-- New `PhaseKind` or gate: add to `src/shared/types.ts`, wire runner/registry,
-  add a test against real git temp repos (see `tests/executor.test.ts`).
+- A phase starts `fail` and becomes `success` only after clean exit, parsed
+  envelope, and green gates. Corrections re-prompt the same live session;
+  envelope and gate budgets are separate.
+- The envelope example, output constraint, and parser must come from the same
+  zod definition. `jsonSchemaFor` exposes defaulted fields as required and
+  emits no `$schema` dialect (Droid compiles Draft-07). Structured output is a
+  candidate; `validateEnvelope` and text parsing share the envelope retry
+  budget.
+- Gates return evidence (`GateCheck`), not a verdict. Unknown gates fail.
+- Boundary enforcement is post-call git diffing: `null` means unrestricted
+  except protected paths, `[]` is read-only, and a list is an allowlist with
+  segment `*` and recursive `**` matching. Violations are reverted and fail
+  the phase; permission evaluation is not the boundary enforcement mechanism.
+- Compaction happens between phases, never while a stream is open. SDK rewind
+  happens only on the configured correction number, restores files from the
+  phase-start snapshot, and falls back to append-style correction on failure.
+  One-shot sessions never rewind.
+- A kill outranks acceptance. Once cancellation fires, recovery is stopped and
+  the run settles `killed`; do not let a protocol fallback complete it.
 
-## Command detection (`detect.ts`, `detect-session.ts`, `detections.ts`)
+## Worktrees and phase context
 
-Two separate paths, and conflating them is the bug this design exists to
-prevent:
+A run creates `.foundry-worktrees/<runId>` on `foundry/<runId>` and creates
+`.foundry-handoff/` in that worktree. Earlier phase handoff JSON files are
+listed in later prompts. Before agent phases, an optional project
+`setupScript` runs as `sh -c` at the worktree root and failure keeps the
+worktree for inspection. A `scaffold` project treats a missing referenced code
+command as a warning and skips that code phase.
 
-- `sniffCommands()` reads manifests. Free, no model, no child process.
-- `DetectSession` **always** spawns an agent. Manifest results are passed into
-  the prompt as context to confirm or correct — never as a reason to skip the
-  agent. A button labelled "Ask AI" that quietly returns a manifest guess is
-  indistinguishable from a broken one.
+Command detection is separate from runs: manifest sniffing is free, but
+`DetectSession` always asks an agent and runs against the base checkout with
+`DETECT_TOOLS` read-only restrictions. Detection has no worktree, trace rows,
+or cursor; its progress is pushed.
 
-A detection is not a run: no worktree, no phase, no tracer — so nothing reverts
-what it writes, and it runs against the operator's **base checkout**. Its
-read-only guarantee comes from `DETECT_TOOLS` (`restrictTools`), not from an
-autonomy level; keep an editing or shell tool out of that list. It lives in
-`detections.ts` rather than `RunRegistry`, and progress is **pushed**
-(`detection-progress`) because there are no trace rows and therefore no
-`change_id` cursor to poll. The IPC handler returns a `detectionId` immediately
-and never awaits the turn.
-
-`parseDetectReply` returns `{commands, rejected, rawReply, parseError}`. Every
-rejection carries a reason and the raw reply is always kept: silent filtering
-made a correct answer read as "no command found". Names are free-form
-(`ProjectCommand.name` is a string); the four pipeline roles just sort first.
-Shell metacharacters in argv are still refused — argv is executed without a
-shell.
+Add a new phase kind or gate to shared types, runner/registry wiring, and a
+real-git executor test. Keep vendor argv parsing in `cli/` and transport work
+in `droid/`.

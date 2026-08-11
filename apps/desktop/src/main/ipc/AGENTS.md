@@ -1,18 +1,16 @@
-# AGENTS.md — src/main/ipc
+# src/main/ipc
 
-One router per domain for channels declared in `src/shared/ipc-contract.ts`.
-Renderer never touches disk/git/droid except through here.
+Use one domain router per capability. The IPC capability flow is:
+`types.ts` → `ipc-contract.ts` → router here → `preload/bridge.ts` →
+`renderer/api.ts` through `plain()`. There is no generic invoke passthrough.
 
-Add a capability: type in `types.ts` → channel in `ipc-contract.ts` →
-handler here → expose in `preload/bridge.ts` → call via `api.ts` (through
-`plain()`). No generic `invoke(channel)` passthrough.
+Handlers must surface rejected promises. Long work returns a handle and
+progress is observed separately; do not await an agent turn inside a click
+handler. `projects:askAgentCommands` returns a `detectionId`, and setup-agent
+requests return a `setupId`.
 
-Handlers that can reject must surface the error — silent rejection looks like
-a dead button. Keep routers domain-scoped; push channels are only `runs-changed`,
-`interrupts-changed`, `settings-changed`, `updater-status`,
-`detection-progress` — everything else is polled.
-
-A handler that starts long work returns a handle, not the result: awaiting a
-five-minute agent turn inside a click leaves a button that looks dead and a
-rejection with nowhere to land. `projects:askAgentCommands` returns a
-`detectionId` and progress arrives on `detection-progress`.
+Push channels are exactly `runs-changed`, `interrupts-changed`,
+`settings-changed`, `updater-status`, `detection-progress`, and
+`setup-progress`. Detection and setup have no trace cursor, so their progress
+is pushed; ordinary run data is polled. Keep routers domain-scoped and update
+the shared contract before wiring a new channel.

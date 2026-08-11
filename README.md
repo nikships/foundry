@@ -91,7 +91,7 @@ Settings (Limits / Transport) expose the four knobs:
 - `transport` — `daemon` (default) or `subprocess` (force subprocess; daemon unavailability still traces the fallback)
 - `daemonPort` — preferred daemon port (default `37643`, scans up inside `37600–37699` when busy; per-session children are not per-agent — one `processes` row for the daemon)
 
-All transports share the same trace/Inspector contract: one span per `toolUseId`, byte-compatible `stream.jsonl`, post-hoc write-boundary enforcement and `finish()` settlement — see `apps/desktop/src/main/droid/AGENTS.md` for wire quirks, fake-droid handshake notes, and the sniffing-transport decorator.
+All transports share the same trace/Inspector contract: one span per `toolUseId`, byte-compatible `stream.jsonl`, post-hoc write-boundary enforcement and `finish()` settlement. The Droid transport directory guide covers wire quirks, fake-droid handshake notes, and the sniffing-transport decorator.
 
 ### Safe by design
 

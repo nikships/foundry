@@ -1,27 +1,23 @@
-# AGENTS.md — src/renderer
+# src/renderer
 
-React 19, unprivileged. Never touches disk, git, or CLIs — everything goes
-through `src/shared/ipc-contract.ts` + preload bridge. Polls trace; five
-push channels only (`runs-changed`, `interrupts-changed`, `settings-changed`,
-`updater-status`, `detection-progress` — the last because a command detection
-has no trace rows and so no `change_id` cursor to poll).
+React 19 is unprivileged: no disk, git, CLI, or `src/main/` imports. Use the
+shared contract and preload bridge; IPC arguments go through `plain()` in
+`api.ts` so structured-clone errors are visible.
 
-## Invariants
+Trace polling and cursor merging live in `stores/run.tsx`; event-derived
+cost/duration/model data belongs in `derive.ts`, not a denormalized column.
+A new event needs a `TranscriptEntry` switch case in
+`inspector/entries.tsx`, or the default silently drops it.
 
-- No imports from `src/main/`. Add an IPC channel instead.
-- IPC args go through `plain()` in `api.ts` — structured-clone failures
-  surface only as a button that appears to do nothing.
-- Polling + cursor merging lives in `stores/run.tsx`; cost/duration/model are
-  derived from events in `derive.ts`, not stored.
-- A new event type needs a `case` in the `TranscriptEntry` switch
-  (`inspector/entries.tsx`). Its `default` returns `null`, so an unhandled type
-  is traced, polled, and then silently dropped in front of the operator;
-  `tests/transcript-entries.test.ts` fails the suite instead.
-- `BrandIcon.tsx`: import `.../components/Color.js` or `Mono.js` directly —
-  never the provider's default export (drags `@lobehub/ui` + antd + emoji-mart).
-  Droid's mark is an inline SVG; lobehub's `ProviderIcon` misses kimi/zai/
-  junie/codex/grok/droid and would show the same placeholder for all. The map
-  is written out, not inferred.
-- Structural tokens in `design/tokens-base.css`, colours in
-  `tokens-factory.css`, all imported statically in `main.tsx`. Factory is the
-  only brand. No emoji in UI copy.
+The web preview is backed by `src/renderer/mockFoundry.ts` when
+`window.foundry` is absent. Keep the mock in sync with new API methods and do
+not import Node/main behavior into it. `vite.web.config.ts` uses CSS modules
+with `localsConvention: 'camelCase'`; the production CSS collision check is a
+real gate. Vitest runs the Node suites in a `forks` pool, so renderer tests
+must account for that environment rather than assuming a browser DOM.
+
+Push channels include `runs-changed`, `interrupts-changed`,
+`settings-changed`, `updater-status`, `detection-progress`, and
+`setup-progress`; the last two are progress for work that has no trace rows.
+Factory tokens are statically imported in `main.tsx`; keep provider icons and
+CSS imports narrow to avoid pulling unwanted UI bundles.

@@ -1,16 +1,15 @@
-# AGENTS.md — src/shared
+# src/shared
 
-Pure types + string constants, imported by both main and renderer. No `fs`,
-`child_process`, `electron`, or React here.
+Pure types and constants imported by both processes. No `fs`,
+`child_process`, `electron`, or React imports.
 
-- `types.ts` is the single source for `PipelineDef`/`PhaseDef`/`AgentDef`/
-  `WriteBoundary` (`null` unrestricted, `[]` read-only, list = allowlist),
-  run/event/gate shapes, `CliVendor`, `ProjectDef`/`AppSettings`.
-- `ipc-contract.ts` is the capability surface: `FoundryApi` + `IPC` const.
-  Both sides import the const so a rename can't silently break a call.
-  Add a new capability: type in `types.ts` → channel in `ipc-contract.ts` →
-  handler in `src/main/ipc/` → expose in `preload/bridge.ts` → call via
-  `src/renderer/api.ts` (through `plain()`).
+`types.ts` is the source of truth for pipeline/phase/agent, boundary, run,
+event, gate, CLI, project, and settings shapes. Boundary values are `null`
+(unrestricted), `[]` (read-only), or an allowlist. `ipc-contract.ts` defines
+`FoundryApi` and the `IPC` constants; both sides import those constants so a
+rename cannot silently break a call.
 
-`AgentDef.cli` is optional — absent means `droid`. Keep `CLI_VENDOR_IDS` in
-sync with `src/main/cli/index.ts`.
+For a new capability, add the type, IPC constant, main handler, preload
+wrapper, and renderer `api.ts` call in that order. `AgentDef.cli` is optional
+and defaults to Droid; keep `CLI_VENDOR_IDS` synchronized with
+`src/main/cli/index.ts`.
