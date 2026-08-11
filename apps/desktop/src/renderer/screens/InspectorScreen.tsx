@@ -45,6 +45,28 @@ export default function InspectorScreen({
   const [now, setNow] = useState(Date.now());
   const [filesError, setFilesError] = useState('');
   const [collapseSignal, setCollapseSignal] = useState(0);
+  const [laneCount, setLaneCount] = useState<number>(() => {
+    try {
+      const saved =
+        typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('inspectorLaneCount') : null;
+      if (saved) {
+        const n = parseInt(saved, 10);
+        if (n >= 1 && n <= 6) return n;
+      }
+    } catch {
+      // ignore storage access errors (e.g. tests without DOM)
+    }
+    return 3;
+  });
+
+  useEffect(() => {
+    try {
+      if (typeof sessionStorage !== 'undefined')
+        sessionStorage.setItem('inspectorLaneCount', String(laneCount));
+    } catch {
+      // ignore storage access errors
+    }
+  }, [laneCount]);
 
   // A deep link from the run detail screen pins the picker to that run.
   useEffect(() => {
@@ -122,6 +144,20 @@ export default function InspectorScreen({
           <span className={styles.inspectorFooterHint}>
             Collapses every tool call across all visible agents
           </span>
+          <div className={styles.inspectorDensity}>
+            <span className={styles.densityLabel}>Lanes</span>
+            <input
+              type="range"
+              min="1"
+              max="6"
+              step="1"
+              value={laneCount}
+              onChange={(e) => setLaneCount(parseInt(e.target.value, 10))}
+              className={styles.densitySlider}
+              disabled
+              aria-label="Adjust visible lanes density"
+            />
+          </div>
         </footer>
       </div>
     );
@@ -229,7 +265,10 @@ export default function InspectorScreen({
           </div>
         )}
         {!view.loading && runId && visibleLanes.length > 0 && (
-          <div className={styles.inspectorGrid}>
+          <div
+            className={styles.inspectorGrid}
+            style={{ '--lane-count': laneCount } as React.CSSProperties}
+          >
             {visibleLanes.map((phase) => (
               <TranscriptLane
                 key={phase.phaseId}
@@ -264,6 +303,19 @@ export default function InspectorScreen({
           <span className={styles.inspectorFooterHint}>
             Collapses every tool call across all visible agents — re-expand any step individually
           </span>
+          <div className={styles.inspectorDensity}>
+            <span className={styles.densityLabel}>Lanes</span>
+            <input
+              type="range"
+              min="1"
+              max="6"
+              step="1"
+              value={laneCount}
+              onChange={(e) => setLaneCount(parseInt(e.target.value, 10))}
+              className={styles.densitySlider}
+              aria-label="Adjust visible lanes density"
+            />
+          </div>
         </footer>
       </div>
     </CollapseContext.Provider>
