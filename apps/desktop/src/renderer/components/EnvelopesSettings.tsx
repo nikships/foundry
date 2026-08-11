@@ -269,7 +269,6 @@ export default function EnvelopesSettings({
     if (openEnvelope && envelopes.some((e) => e.name === openEnvelope)) {
       setSelection({ kind: 'custom', name: openEnvelope, isNew: false });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openEnvelope, openNonce, envelopes]);
 
   // Keep a custom selection valid when the library shrinks under us.

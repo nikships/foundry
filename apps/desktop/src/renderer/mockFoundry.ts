@@ -467,6 +467,26 @@ export function createMockFoundryApi(): FoundryApi {
       list: async (): Promise<PendingInterrupt[]> => [],
       answer: async () => true,
     },
+    smith: {
+      status: async (projectId) => ({
+        projectId,
+        state: 'blocked' as const,
+        blocked: 'droid-missing' as const,
+        detail: 'Smith needs the desktop app: the web preview cannot spawn a terminal.',
+      }),
+      open: async (projectId) => ({
+        projectId,
+        state: 'blocked' as const,
+        blocked: 'droid-missing' as const,
+        detail: 'Smith needs the desktop app: the web preview cannot spawn a terminal.',
+      }),
+      write: async () => {},
+      resize: async () => {},
+      buffer: async () => '',
+      kill: async () => {},
+      proposalsList: async () => [],
+      proposalAnswer: async () => false,
+    },
     doctor: {
       run: async (): Promise<DoctorCheck[]> => [
         {

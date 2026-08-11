@@ -101,9 +101,18 @@ $FOUNDRY_CLI <kind> edit <name> --file <spec.json>
 
 ## Current inventory (project scope)
 
-- ${inventory('Agents', agents.map((a) => a.name))}
-- ${inventory('Pipelines', pipelines.map((p) => p.id))}
-- ${inventory('Envelopes', envelopes.map((e) => e.name))}
+- ${inventory(
+    'Agents',
+    agents.map((a) => a.name),
+  )}
+- ${inventory(
+    'Pipelines',
+    pipelines.map((p) => p.id),
+  )}
+- ${inventory(
+    'Envelopes',
+    envelopes.map((e) => e.name),
+  )}
 
 ## How to behave
 

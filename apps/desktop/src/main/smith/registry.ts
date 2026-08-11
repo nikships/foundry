@@ -115,11 +115,7 @@ export class SmithRegistry {
     return this.spawn(projectId, scope, droid.path);
   }
 
-  private blocked(
-    projectId: string,
-    reason: SmithStatus['blocked'],
-    detail: string,
-  ): SmithStatus {
+  private blocked(projectId: string, reason: SmithStatus['blocked'], detail: string): SmithStatus {
     const status: SmithStatus = { projectId, state: 'blocked', blocked: reason, detail };
     this.deps.onStatusChanged(status);
     return status;
@@ -214,7 +210,10 @@ export class SmithRegistry {
     const wasResume = args(true).includes('--resume');
     if (wasResume && exitCode !== 0 && this.sessions.get(session.projectId) === session) {
       this.forgetSession(session.projectId);
-      this.deps.onData(session.projectId, '\r\n[foundry] resume failed — starting a fresh session\r\n');
+      this.deps.onData(
+        session.projectId,
+        '\r\n[foundry] resume failed — starting a fresh session\r\n',
+      );
       const engine = spawnPtyEngine({
         file: droidPath,
         args: args(false),

@@ -121,9 +121,8 @@ export default function SmithProposalCard({
 
       {proposal.overwrites && (
         <p className={styles.overwriteNote}>
-          A {KIND_LABEL[proposal.kind]} named{' '}
-          <strong>{proposal.name}</strong> already exists. Approving replaces its
-          current definition.
+          A {KIND_LABEL[proposal.kind]} named <strong>{proposal.name}</strong> already exists.
+          Approving replaces its current definition.
         </p>
       )}
 

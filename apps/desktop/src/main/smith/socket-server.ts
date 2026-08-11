@@ -121,7 +121,11 @@ export class SmithSocketServer {
     const projectId = request.projectId || undefined;
     switch (request.op) {
       case 'list':
-        return { ok: true, kind: request.kind, entities: this.listEntities(request.kind, projectId) };
+        return {
+          ok: true,
+          kind: request.kind,
+          entities: this.listEntities(request.kind, projectId),
+        };
       case 'show': {
         if (!request.name) return { ok: false, error: 'show needs a name' };
         const entity = this.showEntity(request.kind, request.name, projectId);

@@ -42,7 +42,8 @@ const terminals = new Map<string, CachedTerminal>();
 /** Reads the app's palette off the DOM so the terminal matches the Foundry theme. */
 function themeFromCss(): Record<string, string> {
   const root = getComputedStyle(document.documentElement);
-  const v = (name: string, fallback: string): string => root.getPropertyValue(name).trim() || fallback;
+  const v = (name: string, fallback: string): string =>
+    root.getPropertyValue(name).trim() || fallback;
   return {
     background: v('--bg-void', '#020202'),
     foreground: v('--text', '#eeeeee'),

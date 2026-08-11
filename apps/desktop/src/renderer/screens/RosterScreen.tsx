@@ -79,7 +79,6 @@ export default function RosterScreen({
   // the same agent is approved twice in a row.
   useEffect(() => {
     if (openAgent && agents.some((a) => a.name === openAgent)) setSelectedName(openAgent);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openAgent, openNonce, agents]);
 
   useEffect(() => {

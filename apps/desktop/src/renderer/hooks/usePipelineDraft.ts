@@ -158,7 +158,6 @@ export function usePipelineDraft(deepLink?: {
     if (openPipeline && pipelines.some((p) => p.id === openPipeline)) {
       setSelectedId(openPipeline);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openPipeline, openNonce, pipelines]);
 
   // Initialize or reset draft when selected pipeline changes

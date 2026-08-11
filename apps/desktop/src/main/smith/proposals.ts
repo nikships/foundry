@@ -28,8 +28,7 @@ export interface ProposalInput {
  * can print it; `reject` carries the human's note so droid can revise.
  */
 export type ProposalOutcome =
-  | { approved: true; entity: unknown }
-  | { approved: false; note?: string };
+  { approved: true; entity: unknown } | { approved: false; note?: string };
 
 /**
  * How a proposal is settled once a human answers. The queue does not know how

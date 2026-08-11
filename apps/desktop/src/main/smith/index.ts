@@ -28,9 +28,7 @@ export interface SmithServiceDeps {
   /** Channel names, passed in so this module does not import the contract twice. */
   channels: { data: string; statusChanged: string; proposalsChanged: string };
   /** Persists an approved proposal; supplied by the IPC layer (store access). */
-  save: (
-    proposal: SmithProposal,
-  ) => { ok: true; entity: unknown } | { ok: false; error: string };
+  save: (proposal: SmithProposal) => { ok: true; entity: unknown } | { ok: false; error: string };
   /** Resolves a project's full definition for spawning. */
   projectFor: (projectId: string) => ProjectDef | null;
   /** Scope-aware inventory for the system prompt and socket reads. */
@@ -46,7 +44,7 @@ export class SmithService {
   readonly socket: SmithSocketServer;
   readonly registry: SmithRegistry;
 
-  constructor(private readonly deps: SmithServiceDeps) {
+  constructor(deps: SmithServiceDeps) {
     this.proposals = new ProposalQueue(
       () => deps.broadcast(deps.channels.proposalsChanged),
       // The queue awaits the save so an approve that fails the store keeps the

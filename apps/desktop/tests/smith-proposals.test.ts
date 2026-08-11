@@ -66,7 +66,10 @@ describe('ProposalQueue', () => {
   });
 
   it('fails a concurrent proposal fast rather than stacking a queue', async () => {
-    const queue = new ProposalQueue(() => {}, async () => ({ ok: true, entity: {} }));
+    const queue = new ProposalQueue(
+      () => {},
+      async () => ({ ok: true, entity: {} }),
+    );
 
     const first = queue.propose(input({ name: 'a' }));
     await expect(queue.propose(input({ name: 'b' }))).rejects.toThrow('proposal_pending');
@@ -91,7 +94,10 @@ describe('ProposalQueue', () => {
   });
 
   it('ignores an answer whose id does not match the pending proposal', async () => {
-    const queue = new ProposalQueue(() => {}, async () => ({ ok: true, entity: {} }));
+    const queue = new ProposalQueue(
+      () => {},
+      async () => ({ ok: true, entity: {} }),
+    );
     queue.propose(input());
     expect(await queue.answer('not-the-id', { approved: true })).toBe(false);
     expect(queue.list()).toHaveLength(1);
@@ -99,7 +105,10 @@ describe('ProposalQueue', () => {
   });
 
   it('cancelAll unblocks a waiting CLI on shutdown', async () => {
-    const queue = new ProposalQueue(() => {}, async () => ({ ok: true, entity: {} }));
+    const queue = new ProposalQueue(
+      () => {},
+      async () => ({ ok: true, entity: {} }),
+    );
     const pending = queue.propose(input());
     queue.cancelAll();
     await expect(pending).resolves.toEqual({ approved: false, note: 'Foundry is shutting down' });
