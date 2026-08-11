@@ -30,6 +30,8 @@ import type {
   ProjectDef,
   PullRequest,
   RunRow,
+  SmithProposal,
+  SmithProposalAnswer,
   StartRunInput,
   ToolInfo,
   UpdateStatus,
@@ -379,6 +381,12 @@ export interface FoundryApi {
     list(): Promise<PendingInterrupt[]>;
     answer(answer: InterruptAnswer): Promise<boolean>;
   };
+  smith: {
+    /** The one pending proposal, or an empty list. Only ever one at a time. */
+    proposalsList(): Promise<SmithProposal[]>;
+    /** Approve or reject the pending proposal, unblocking the waiting CLI. */
+    proposalAnswer(id: string, answer: SmithProposalAnswer): Promise<boolean>;
+  };
   doctor: {
     run(): Promise<DoctorCheck[]>;
   };
@@ -415,7 +423,8 @@ export interface FoundryApi {
       | 'settings-changed'
       | 'updater-status'
       | 'detection-progress'
-      | 'setup-progress',
+      | 'setup-progress'
+      | 'smith-proposals-changed',
     handler: (data?: unknown) => void,
   ): () => void;
 }
@@ -492,6 +501,8 @@ export const IPC = {
   prsFixConflicts: 'prs:fixConflicts',
   interruptsList: 'interrupts:list',
   interruptsAnswer: 'interrupts:answer',
+  smithProposalsList: 'smith:proposalsList',
+  smithProposalAnswer: 'smith:proposalAnswer',
   doctorRun: 'doctor:run',
   maintenanceOrphans: 'maintenance:orphans',
   maintenanceRemoveWorktree: 'maintenance:removeWorktree',
@@ -512,4 +523,5 @@ export const IPC = {
   eventUpdaterStatus: 'event:updater-status',
   eventDetectionProgress: 'event:detection-progress',
   eventSetupProgress: 'event:setup-progress',
+  eventSmithProposalsChanged: 'event:smith-proposals-changed',
 } as const;

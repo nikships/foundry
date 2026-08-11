@@ -20,8 +20,14 @@ type Sheet = 'phase' | 'pipeline' | null;
 
 export default function PipelinesScreen({
   onOpenSettings,
+  openPipeline,
+  openNonce = 0,
 }: {
   onOpenSettings?: (pane: string) => void;
+  /** Deep link (e.g. a Smith approve): select this pipeline id when it resolves. */
+  openPipeline?: string;
+  /** Bumped per deep-link so re-selecting the same pipeline re-fires the effect. */
+  openNonce?: number;
 } = {}): React.JSX.Element {
   const { agentColor, agents } = useApp();
   const {
@@ -51,7 +57,7 @@ export default function PipelinesScreen({
     setAcceptancePhase,
     setAcceptanceFlag,
     setIsolation,
-  } = usePipelineDraft();
+  } = usePipelineDraft({ openPipeline, openNonce });
 
   const [sheet, setSheet] = useState<Sheet>(null);
 

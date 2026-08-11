@@ -231,7 +231,15 @@ function fieldTypeLabel(type: CustomEnvelopeField['type']): string {
   return FIELD_TYPES.find((t) => t.value === type)?.label ?? type;
 }
 
-export default function EnvelopesSettings(): React.JSX.Element {
+export default function EnvelopesSettings({
+  openEnvelope,
+  openNonce = 0,
+}: {
+  /** Deep link (e.g. a Smith approve): select this custom envelope once it resolves. */
+  openEnvelope?: string;
+  /** Bumped per deep-link so re-selecting the same envelope re-fires the effect. */
+  openNonce?: number;
+} = {}): React.JSX.Element {
   const { envelopes, refreshAll } = useApp();
   const [selection, setSelection] = useState<Selection>({ kind: 'none' });
   const [draft, setDraft] = useState<EnvelopeDef | null>(null);
@@ -254,6 +262,14 @@ export default function EnvelopesSettings(): React.JSX.Element {
   const isEditing = selection.kind === 'custom' && draft != null;
   const isNew = selection.kind === 'custom' && selection.isNew;
   const showEmptyHero = envelopes.length === 0 && selection.kind === 'none';
+
+  // Deep link from a Smith approve: select the saved custom envelope once it
+  // appears. `openNonce` re-fires the effect for a repeat approval.
+  useEffect(() => {
+    if (openEnvelope && envelopes.some((e) => e.name === openEnvelope)) {
+      setSelection({ kind: 'custom', name: openEnvelope, isNew: false });
+    }
+  }, [openEnvelope, openNonce, envelopes]);
 
   // Keep a custom selection valid when the library shrinks under us.
   useEffect(() => {

@@ -21,6 +21,10 @@ asar: true
 asarUnpack:
   # The native sqlite binding cannot be loaded from inside an asar archive.
   - '**/node_modules/better-sqlite3/**'
+  # The Smith helper CLI is run from outside the app (`node <path> …`) by
+  # whatever agent loaded the foundry-smith skill. A path inside app.asar is not
+  # a real file on disk, so unpack this one entry to give it one.
+  - 'out/main/foundry-cli.js'
 
 mac:
   category: public.app-category.developer-tools

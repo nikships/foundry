@@ -1,0 +1,174 @@
+<!doctype html>
+<!--
+  Smith preview template — envelope.
+
+  Fill every {{token}} by hand, HTML-escaping the values. Duplicate the block
+  marked "repeat:field" once per field, then delete the two marker comments
+  around it. See SKILL.md § Visual previews.
+
+  Tokens: name, description
+  Per field: field_name, field_type, field_required, field_description
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>{{name}} — Foundry envelope</title>
+    <style>
+      :root {
+        --bg: #0a0a0a;
+        --panel: #131313;
+        --line: #262626;
+        --text: #ededed;
+        --dim: #8a8a8a;
+        --accent: #ee6018;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 48px 6vw 72px;
+        background: var(--bg);
+        color: var(--text);
+        font:
+          15px/1.6 -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
+      }
+      .label {
+        color: var(--dim);
+        font:
+          11px/1 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+        letter-spacing: 0.11em;
+        text-transform: uppercase;
+      }
+      h1 {
+        margin: 10px 0 0;
+        font:
+          650 27px/1.2 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+      }
+      .description {
+        margin: 12px 0 34px;
+        max-width: 70ch;
+        color: var(--dim);
+        font-size: 16px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        overflow: hidden;
+      }
+      th {
+        padding: 11px 16px;
+        border-bottom: 1px solid var(--line);
+        color: var(--dim);
+        font:
+          11px/1 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+        letter-spacing: 0.11em;
+        text-align: left;
+        text-transform: uppercase;
+      }
+      td {
+        padding: 13px 16px;
+        border-bottom: 1px solid var(--line);
+        font-size: 14px;
+        vertical-align: top;
+      }
+      tr:last-child td {
+        border-bottom: 0;
+      }
+      .fname {
+        font:
+          600 14px/1.4 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+        white-space: nowrap;
+      }
+      .ftype {
+        color: var(--accent);
+        font:
+          13px/1.4 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+        white-space: nowrap;
+      }
+      .freq {
+        color: var(--dim);
+        font:
+          12px/1.4 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+        white-space: nowrap;
+      }
+      .fdesc {
+        color: var(--dim);
+      }
+      .base {
+        margin-top: 30px;
+        padding: 16px 18px;
+        border: 1px solid var(--line);
+        border-left: 2px solid var(--accent);
+        border-radius: 6px;
+        background: var(--panel);
+        color: var(--dim);
+        font-size: 14px;
+      }
+      .base code {
+        color: var(--text);
+        font:
+          13px/1.5 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="label">Envelope</div>
+    <h1>{{name}}</h1>
+    <p class="description">{{description}}</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Field</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- repeat:field -->
+        <tr>
+          <td class="fname">{{field_name}}</td>
+          <td class="ftype">{{field_type}}</td>
+          <td class="freq">{{field_required}}</td>
+          <td class="fdesc">{{field_description}}</td>
+        </tr>
+        <!-- /repeat:field -->
+      </tbody>
+    </table>
+
+    <p class="base">
+      Every envelope also carries the reserved base fields
+      <code>status</code>, <code>summary</code>, <code>artifacts</code>, and
+      <code>notes_for_next_agent</code>. They are always present and cannot be redeclared above.
+    </p>
+  </body>
+</html>

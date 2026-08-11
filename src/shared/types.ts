@@ -592,6 +592,42 @@ export interface ValidationIssue {
   message: string;
 }
 
+// ── Smith (the entity-smith skill's approval gate) ───────────────────────────
+
+/**
+ * What Smith proposes writing through the helper CLI. One entity, staged for a
+ * human to approve before the store is touched. `spec` is the entity JSON as the
+ * store would save it (an `AgentDef`, `PipelineDef`, or `EnvelopeDef`), carried
+ * as `unknown` because the card only needs to render and forward it.
+ */
+export interface SmithProposal {
+  id: string;
+  kind: 'agent' | 'pipeline' | 'envelope';
+  mode: 'create' | 'edit';
+  /** The entity's identifying name (agents/envelopes) or id (pipelines). */
+  name: string;
+  /** The entity JSON, validated but not yet saved. */
+  spec: unknown;
+  /** Non-blocking warnings the store surfaced; errors would have refused earlier. */
+  validation: ValidationIssue[];
+  /** True when a stored entity already carries this name/id — approving overwrites it. */
+  overwrites: boolean;
+  /** Which project the proposing session scoped itself to, so save uses the right scope. */
+  projectId: string;
+  createdAt: string;
+}
+
+/**
+ * The answer a human gives a proposal card. The card sends no `note`: the agent
+ * is sitting in the user's own terminal, so revision guidance is simply the next
+ * thing they type there. `note` survives for the shutdown path, which explains
+ * itself to a CLI it is unblocking.
+ */
+export interface SmithProposalAnswer {
+  approved: boolean;
+  note?: string;
+}
+
 // ── Updater ──────────────────────────────────────────────────────────────────
 
 export type UpdateStage = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error';

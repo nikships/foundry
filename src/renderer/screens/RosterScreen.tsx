@@ -24,8 +24,14 @@ const COLORS = ['#4fa8b8', '#9b7ede', '#d19a3d', '#3cb87a', '#e0605f', '#5b8fd9'
 
 export default function RosterScreen({
   onOpenSettings,
+  openAgent,
+  openNonce = 0,
 }: {
   onOpenSettings?: (pane: string) => void;
+  /** Deep link (e.g. a Smith approve): select this agent when it resolves. */
+  openAgent?: string;
+  /** Bumped per deep-link so re-selecting the same agent re-fires the effect. */
+  openNonce?: number;
 } = {}): React.JSX.Element {
   const { agents, envelopes, projectId, settings, refreshScoped } = useApp();
   const [selectedName, setSelectedName] = useState('');
@@ -67,6 +73,13 @@ export default function RosterScreen({
   useEffect(() => {
     if (!agents.some((a) => a.name === selectedName)) setSelectedName(agents[0]?.name ?? '');
   }, [agents, selectedName]);
+
+  // Deep link from a Smith approve: once the saved agent shows up in the list,
+  // select it so the editor opens on it. `openNonce` re-fires the effect when
+  // the same agent is approved twice in a row.
+  useEffect(() => {
+    if (openAgent && agents.some((a) => a.name === openAgent)) setSelectedName(openAgent);
+  }, [openAgent, openNonce, agents]);
 
   useEffect(() => {
     if (!selected) {

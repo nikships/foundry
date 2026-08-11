@@ -492,6 +492,11 @@ export function createMockFoundryApi(): FoundryApi {
       list: async (): Promise<PendingInterrupt[]> => [],
       answer: async () => true,
     },
+    smith: {
+      // The web preview has no app socket, so nothing can ever propose.
+      proposalsList: async () => [],
+      proposalAnswer: async () => false,
+    },
     doctor: {
       run: async (): Promise<DoctorCheck[]> => [
         {

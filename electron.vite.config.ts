@@ -13,7 +13,14 @@ export default defineConfig({
     resolve: { alias },
     plugins: [externalizeDepsPlugin()],
     build: {
-      lib: { entry: resolve(import.meta.dirname, 'src/main/main.ts') },
+      // The Smith helper binary builds alongside main so an agent running the
+      // foundry-smith skill can invoke it. It lands at out/main/foundry-cli.js.
+      lib: {
+        entry: {
+          main: resolve(import.meta.dirname, 'src/main/main.ts'),
+          'foundry-cli': resolve(import.meta.dirname, 'src/cli/foundry-cli.ts'),
+        },
+      },
       rollupOptions: { output: { format: 'es' } },
       // electron-vite leaves main unminified by default. The main bundle is
       // plain app code (native deps are externalized), so esbuild minify is

@@ -1,0 +1,141 @@
+/**
+ * The Smith proposal preview card. Sits on a high-priority ModalShell like the
+ * interrupt sheet, but ranks below it (engineer interrupts outrank a proposal)
+ * and above the Smith terminal modal.
+ */
+
+.dialog {
+  width: min(720px, calc(100vw - 96px));
+  max-height: calc(100vh - 120px);
+  display: flex;
+  flex-direction: column;
+  padding: var(--s6);
+  gap: var(--s4);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.kind {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 var(--s2);
+  border-radius: var(--r-sm);
+  background: var(--accent-dim);
+  color: var(--accent-bright);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.mode {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 var(--s2);
+  border-radius: var(--r-sm);
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.modeOverwrite {
+  background: var(--amber-dim);
+  color: var(--amber);
+}
+
+.title {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.title .name {
+  font-family: var(--font-mono);
+  color: var(--accent-bright);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.overwriteNote {
+  margin: 0;
+  padding: var(--s3);
+  border-radius: var(--r-sm);
+  background: var(--amber-dim);
+  border: 1px solid color-mix(in srgb, var(--amber) 20%, transparent);
+  color: var(--amber);
+  font-size: var(--text-sm);
+  line-height: var(--leading);
+}
+
+.spec {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: var(--s3);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.55;
+  white-space: pre;
+  tab-size: 2;
+}
+
+.warnings {
+  margin: 0;
+  padding: var(--s3);
+  border-radius: var(--r-sm);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.warning {
+  display: flex;
+  gap: var(--s2);
+  font-size: var(--text-sm);
+  color: var(--amber);
+  line-height: var(--leading);
+}
+
+.warningWhere {
+  font-family: var(--font-mono);
+  color: var(--text-faint);
+}
+
+.error {
+  margin: 0;
+  padding: var(--s3);
+  border-radius: var(--r-sm);
+  background: var(--red-dim);
+  border: 1px solid color-mix(in srgb, var(--red) 14%, transparent);
+  color: var(--red);
+  font-size: var(--text-sm);
+  line-height: var(--leading);
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
