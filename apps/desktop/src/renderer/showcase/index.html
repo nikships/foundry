@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <!--
+      Review surface for the Pipelines redesign. Served by `npm run dev:showcase`
+      and never packaged into the desktop app, so it carries no preload bridge
+      and no Electron CSP — the seeded backend in showcase/mock.ts stands in.
+    -->
+    <style>
+      html:not([data-brand]) #app {
+        visibility: hidden;
+      }
+      html,
+      body {
+        background: #020202;
+      }
+    </style>
+    <title>Foundry — Pipelines redesign review</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

@@ -45,6 +45,23 @@ describe('tablistStep', () => {
     expect(tablistStep('ArrowRight', 0, 0)).toBeNull();
     expect(tablistStep('ArrowRight', -1, 3)).toBeNull();
   });
+
+  it('wraps on up/down for a vertical tablist like the phase ladder', () => {
+    expect(tablistStep('ArrowDown', 0, 3, 'vertical')).toBe(1);
+    expect(tablistStep('ArrowDown', 2, 3, 'vertical')).toBe(0);
+    expect(tablistStep('ArrowUp', 0, 3, 'vertical')).toBe(2);
+    expect(tablistStep('Home', 2, 3, 'vertical')).toBe(0);
+    expect(tablistStep('End', 0, 3, 'vertical')).toBe(2);
+  });
+
+  it('leaves the cross-axis arrows alone, so each list only claims its own', () => {
+    // The ladder sits beside text fields; stealing Left/Right would move the
+    // selection instead of the caret. Horizontal strips stay Left/Right only.
+    expect(tablistStep('ArrowLeft', 1, 3, 'vertical')).toBeNull();
+    expect(tablistStep('ArrowRight', 1, 3, 'vertical')).toBeNull();
+    expect(tablistStep('ArrowDown', 1, 3)).toBeNull();
+    expect(tablistStep('ArrowUp', 1, 3)).toBeNull();
+  });
 });
 
 describe('isEditableTarget', () => {

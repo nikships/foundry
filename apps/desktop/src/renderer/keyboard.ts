@@ -36,17 +36,29 @@ export function isEditableTarget(target: unknown): boolean {
   return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT';
 }
 
+export type TablistOrientation = 'horizontal' | 'vertical';
+
 /**
- * Next tab index for a horizontal tablist, per the ARIA pattern:
- * Left/Right move with wrap-around, Home/End jump. Null means "not ours" so
- * the caller lets the event fall through (e.g. plain typing, Tab).
+ * Next tab index for a tablist, per the ARIA pattern: the arrows along the
+ * list's own axis move with wrap-around, Home/End jump. Null means "not ours"
+ * so the caller lets the event fall through (e.g. plain typing, Tab).
+ *
+ * A vertical tablist reads Up/Down instead of Left/Right, because in a stacked
+ * list Left/Right is where the caret moves in the fields beside it.
  */
-export function tablistStep(key: string, current: number, count: number): number | null {
+export function tablistStep(
+  key: string,
+  current: number,
+  count: number,
+  orientation: TablistOrientation = 'horizontal',
+): number | null {
   if (count <= 0 || current < 0) return null;
+  const back = orientation === 'vertical' ? 'ArrowUp' : 'ArrowLeft';
+  const forward = orientation === 'vertical' ? 'ArrowDown' : 'ArrowRight';
   switch (key) {
-    case 'ArrowLeft':
+    case back:
       return (current - 1 + count) % count;
-    case 'ArrowRight':
+    case forward:
       return (current + 1) % count;
     case 'Home':
       return 0;

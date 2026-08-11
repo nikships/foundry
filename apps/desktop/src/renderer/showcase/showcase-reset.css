@@ -1,0 +1,25 @@
+/*
+ * Showcase-only reset. Imported last, after the token sheets.
+ *
+ * `tokens-base.css` pins `html, body, #app` to `height: 100%; overflow: hidden`
+ * because the desktop app is a fixed shell that never scrolls — panes scroll,
+ * the window does not. This review page is the opposite: a long document that
+ * has to scroll normally, including when it is opened as a saved file.
+ *
+ * Without this the page renders at full height inside a clamped `#app` and is
+ * simply clipped, with no scrollbar anywhere.
+ */
+html,
+body,
+#app {
+  height: auto;
+  min-height: 100%;
+  overflow: visible;
+}
+
+/* A review surface people quote from; the app suppresses selection, a document
+ * should not. */
+body {
+  user-select: text;
+  cursor: auto;
+}

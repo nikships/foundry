@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ValidationIssue } from '@shared/types.js';
 import { api } from '../api.js';
 import { useApp } from '../stores/app.js';
+import { readLocal, writeLocal } from '../local-store.js';
 import { useRunList } from '../stores/run.js';
 import { duration, since, tokens, truncate } from '../format.js';
 import { runDuration } from '../derive.js';
@@ -26,9 +27,7 @@ export default function RunsScreen({
 }): React.JSX.Element {
   const { pipelines, project, projectId, refreshAll } = useApp();
   const [request, setRequest] = useState('');
-  const [selectedPipeline, setSelectedPipeline] = useState(
-    () => localStorage.getItem('foundry.pipeline') ?? '',
-  );
+  const [selectedPipeline, setSelectedPipeline] = useState(() => readLocal('foundry.pipeline'));
   const [includeArchived, setIncludeArchived] = useState(false);
   const [starting, setStarting] = useState(false);
   const [startNote, setStartNote] = useState('');
@@ -53,7 +52,7 @@ export default function RunsScreen({
   }, [pipelines, selectedPipeline]);
 
   useEffect(() => {
-    if (selectedPipeline) localStorage.setItem('foundry.pipeline', selectedPipeline);
+    if (selectedPipeline) writeLocal('foundry.pipeline', selectedPipeline);
   }, [selectedPipeline]);
 
   // Live preflight so missing commands and broken refs show before Start is hit.

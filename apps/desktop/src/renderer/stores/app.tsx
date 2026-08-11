@@ -20,6 +20,7 @@ import type {
   ProjectDef,
 } from '@shared/types.js';
 import { api } from '../api.js';
+import { readLocal, writeLocal } from '../local-store.js';
 
 export interface AppState {
   settings: AppSettings | null;
@@ -69,8 +70,8 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
   const [pipelines, setPipelines] = useState<PipelineDef[]>([]);
   const [envelopes, setEnvelopes] = useState<EnvelopeDef[]>([]);
   const [interrupts, setInterrupts] = useState<PendingInterrupt[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState<string>(
-    () => localStorage.getItem('foundry.project') ?? '',
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(() =>
+    readLocal('foundry.project'),
   );
   const [ready, setReady] = useState(false);
 
@@ -106,7 +107,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
     if (!nextProjects.some((p) => p.id === scopeId)) {
       scopeId = nextProjects[0]?.id ?? '';
       setSelectedProjectId(scopeId);
-      localStorage.setItem('foundry.project', scopeId);
+      writeLocal('foundry.project', scopeId);
     }
 
     const [nextAgents, nextPipelines] = await loadScoped(scopeId || undefined);
@@ -121,7 +122,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
 
   const selectProject = useCallback((id: string): void => {
     setSelectedProjectId(id);
-    localStorage.setItem('foundry.project', id);
+    writeLocal('foundry.project', id);
   }, []);
 
   useEffect(() => {

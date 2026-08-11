@@ -27,7 +27,9 @@
     "icons": "bash scripts/make-icns.sh",
     "package": "npm run build && npm run icons && electron-builder --mac --arm64",
     "check:css": "node scripts/check-css-collisions.mjs",
-    "check": "npm run typecheck && npm run lint && npm run format:check && npm run knip && npm test && npm run build && npm run check:css && npm run audit:deps"
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm run knip && npm test && npm run build && npm run check:css && npm run audit:deps",
+    "dev:showcase": "vite --config vite.showcase.config.ts",
+    "build:showcase": "vite build --config vite.showcase.config.ts"
   },
   "dependencies": {
     "@factory/droid-sdk": "0.7.0",

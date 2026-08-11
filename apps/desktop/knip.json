@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": ["scripts/**/*.ts", "tests/**/*.ts"],
+  "entry": ["scripts/**/*.ts", "tests/**/*.ts", "src/renderer/showcase/main.tsx"],
   "project": ["src/**/*.{ts,tsx}", "scripts/**/*.ts", "tests/**/*.ts"],
   "paths": {
     "@shared/*": ["src/shared/*"],

@@ -7,6 +7,10 @@ Run everything from this directory, not the repo root.
 - `npm run dev`/`build`/`typecheck`/`lint`/`format:check`/`knip`/`test`
 - `npm run check` — all of the above + `build` + `audit:deps`. Must pass
   before you finish; CI enforces the same. Don't skip or deselect failing tests.
+- `npm run dev:showcase` — the Pipelines redesign review page on :5175. Serves
+  both candidate screens live against a seeded in-memory backend
+  (`src/renderer/showcase/`). Review surface only: not routed from the app, not
+  packaged, and deleted with the losing option once a direction is picked.
 
 ## Gotchas
 
