@@ -4,6 +4,7 @@ import type {
   PipelineDef,
   SmithProposal,
   SmithProposalAnswer,
+  SmithTheme,
 } from '@shared/types.js';
 import { IPC } from '@shared/ipc-contract.js';
 import type { AppContext } from '../context.js';
@@ -14,14 +15,9 @@ type Ctx = Pick<AppContext, 'smith' | 'broadcast'>;
 
 export function register(ctx: Ctx, handle: Handle): void {
   handle(IPC.smithStatus, (projectId: string) => ctx.smith.registry.status(projectId));
-  handle(IPC.smithOpen, (projectId: string) => ctx.smith.registry.open(projectId));
-  handle(IPC.smithWrite, (projectId: string, data: string) => {
-    ctx.smith.registry.write(projectId, data);
-  });
-  handle(IPC.smithResize, (projectId: string, cols: number, rows: number) => {
-    ctx.smith.registry.resize(projectId, cols, rows);
-  });
-  handle(IPC.smithBuffer, (projectId: string) => ctx.smith.registry.buffer(projectId));
+  handle(IPC.smithOpen, (projectId: string, theme?: SmithTheme) =>
+    ctx.smith.registry.open(projectId, theme),
+  );
   handle(IPC.smithKill, (projectId: string) => {
     ctx.smith.registry.kill(projectId);
   });

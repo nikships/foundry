@@ -79,9 +79,12 @@ export class AppContext {
       cliPath: this.foundryCliPath(),
       broadcast: (channel, payload) => this.broadcast(channel, payload),
       channels: {
-        data: IPC.eventSmithData,
         statusChanged: IPC.eventSmithStatusChanged,
         proposalsChanged: IPC.eventSmithProposalsChanged,
+      },
+      webContents: () => {
+        const window = this.window();
+        return window && !window.isDestroyed() ? window.webContents : null;
       },
       // The queue awaits a save; store access lives in the IPC layer, so the
       // handler is threaded through here rather than importing a store into the

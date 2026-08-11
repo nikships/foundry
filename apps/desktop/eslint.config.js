@@ -19,6 +19,8 @@ export default tseslint.config(
       'package-lock.json',
       // Plain Node ESM helpers without a TS project service.
       'scripts/**/*.mjs',
+      // Prebuilt terminal engine, vendored verbatim from nikships/ghostty-electron.
+      'vendor/**',
     ],
   },
   js.configs.recommended,

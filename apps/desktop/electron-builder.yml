@@ -11,6 +11,10 @@ directories:
 files:
   - out/**/*
   - package.json
+  # The prebuilt Ghostty terminal engine (Smith). Kept out of `out/` so the
+  # bundler never touches it: the package is CJS with __dirname-relative paths
+  # (native addon, utilityProcess host) that must stay real files.
+  - vendor/electron-ghostty/**/*
 
 # Not in `files`: those land in Resources/app, but main.ts resolves assets at
 # `process.resourcesPath/assets`. extraResources copies them there directly.
@@ -21,6 +25,9 @@ asar: true
 asarUnpack:
   # The native sqlite binding cannot be loaded from inside an asar archive.
   - '**/node_modules/better-sqlite3/**'
+  # The whole ghostty engine: the .node addon cannot load from asar, and the
+  # utilityProcess host (host.js) must be forkable from a real path.
+  - 'vendor/electron-ghostty/**'
 
 mac:
   category: public.app-category.developer-tools

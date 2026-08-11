@@ -33,6 +33,7 @@ import type {
   SmithProposal,
   SmithProposalAnswer,
   SmithStatus,
+  SmithTheme,
   StartRunInput,
   ToolInfo,
   UpdateStatus,
@@ -385,14 +386,12 @@ export interface FoundryApi {
   smith: {
     /** Current session status for a project, without spawning anything. */
     status(projectId: string): Promise<SmithStatus>;
-    /** Ensures a session is spawned for the project; returns its status. */
-    open(projectId: string): Promise<SmithStatus>;
-    /** Terminal input bytes from the renderer to the PTY. */
-    write(projectId: string, data: string): Promise<void>;
-    /** Reflows the PTY to the terminal's measured grid. */
-    resize(projectId: string, cols: number, rows: number): Promise<void>;
-    /** Recent output for repainting scrollback when the modal reopens. */
-    buffer(projectId: string): Promise<string>;
+    /**
+     * Ensures a session is spawned for the project; returns its status. The
+     * theme carries the renderer's resolved palette/scale for ghostty — input
+     * and frames flow over the engine's own channels, not this contract.
+     */
+    open(projectId: string, theme?: SmithTheme): Promise<SmithStatus>;
     /** Ends the session and its PTY. A closed modal does not call this. */
     kill(projectId: string): Promise<void>;
     /** The one pending proposal, or null. Only ever one at a time. */
@@ -437,11 +436,19 @@ export interface FoundryApi {
       | 'updater-status'
       | 'detection-progress'
       | 'setup-progress'
-      | 'smith-data'
       | 'smith-status-changed'
       | 'smith-proposals-changed',
     handler: (data?: unknown) => void,
   ): () => void;
+}
+
+/**
+ * The `data-ghostty` slot a project's Smith terminal paints into. Main
+ * attaches the engine to this slot; the renderer's modal renders a canvas
+ * carrying it. Shared so the two can never drift.
+ */
+export function smithSlot(projectId: string): string {
+  return `smith:${projectId}`;
 }
 
 export const IPC = {
@@ -518,9 +525,6 @@ export const IPC = {
   interruptsAnswer: 'interrupts:answer',
   smithStatus: 'smith:status',
   smithOpen: 'smith:open',
-  smithWrite: 'smith:write',
-  smithResize: 'smith:resize',
-  smithBuffer: 'smith:buffer',
   smithKill: 'smith:kill',
   smithProposalsList: 'smith:proposalsList',
   smithProposalAnswer: 'smith:proposalAnswer',
@@ -544,7 +548,6 @@ export const IPC = {
   eventUpdaterStatus: 'event:updater-status',
   eventDetectionProgress: 'event:detection-progress',
   eventSetupProgress: 'event:setup-progress',
-  eventSmithData: 'event:smith-data',
   eventSmithStatusChanged: 'event:smith-status-changed',
   eventSmithProposalsChanged: 'event:smith-proposals-changed',
 } as const;

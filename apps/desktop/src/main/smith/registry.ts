@@ -1,29 +1,45 @@
 /**
- * Per-project Smith PTY sessions. The main process owns each session so it
- * survives the modal closing (a hidden modal is not a killed terminal) — only an
- * explicit kill or app quit ends one.
+ * Per-project Smith sessions. The main process owns each session so it
+ * survives the modal closing (a hidden modal is not a killed terminal) — only
+ * an explicit kill or app quit ends one.
  *
- * Each session spawns the real `droid` CLI with the project path as cwd and the
- * generated system prompt appended, plus the two injected env vars the helper
- * CLI needs (`FOUNDRY_SMITH_SOCKET`, `FOUNDRY_CLI`). A ring buffer of recent
- * output lets the renderer repaint scrollback when the modal reopens.
+ * Each session spawns the real `droid` CLI inside a headless Ghostty
+ * (`engine.ts`) with the project path as cwd and the generated system prompt
+ * appended, plus the env vars the helper CLI needs (`FOUNDRY_SMITH_SOCKET`,
+ * `FOUNDRY_CLI`). Ghostty owns the PTY and repaints the renderer's canvas
+ * itself, so there is no output ring buffer here — a reopened modal gets a
+ * `redraw()` kick and the live screen reappears.
  *
- * The Ghostty engine (spec §5) will replace the PTY ownership here with a
- * utilityProcess slot; the `TerminalEngine` seam below is where it slots in.
+ * Session ids: droid persists sessions under `~/.factory/sessions`. After a
+ * fresh spawn the registry resolves the new session's id (newest session whose
+ * cwd matches the project path, created after our spawn) via the droid SDK's
+ * local store reader and records it, so a later app launch can `droid
+ * --resume` it. A resume that dies immediately retries fresh once.
  */
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import type { AgentDef, EnvelopeDef, PipelineDef, ProjectDef, SmithStatus } from '@shared/types.js';
+import type { ProjectDef, SmithStatus, SmithTheme } from '@shared/types.js';
+import type { AgentDef, EnvelopeDef, PipelineDef } from '@shared/types.js';
+import { smithSlot } from '@shared/ipc-contract.js';
+import { localDroidSessions } from '../droid/sdk/local-sessions.js';
 import { spawnEnv } from '../system/env.js';
 import { JsonStore } from '../store/json-store.js';
 import { writeSystemPrompt } from './system-prompt.js';
-import { spawnPtyEngine, type TerminalEngine } from './engine.js';
+import type { GhosttySpawnOptions, TerminalEngine } from './engine.js';
 
-/** ~2 MB of recent output, so a reopened modal repaints without a live redraw. */
-const RING_LIMIT_BYTES = 2 * 1024 * 1024;
-/** After this long with no output, a busy session is treated as idle again. */
+/** After this long with no presented frame, a busy session is idle again. */
 const ACTIVITY_IDLE_MS = 1500;
+
+/**
+ * When a fresh spawn's droid session id is looked up in the local store.
+ * droid creates the session file quickly but not instantly, and the modal
+ * being open is no guarantee the user typed anything yet — so a few widening
+ * attempts, then give up (the next fresh spawn tries again).
+ */
+const DISCOVERY_DELAYS_MS = [5_000, 15_000, 45_000];
+/** Tolerated skew between our clock and the session file's birthtime. */
+const DISCOVERY_SKEW_MS = 2_000;
 
 /** Persisted per-project droid session id, for `--resume` across app launches. */
 type SessionState = Record<string, { droidSessionId?: string }>;
@@ -38,10 +54,15 @@ interface SessionScope {
 interface Session {
   projectId: string;
   engine: TerminalEngine;
-  ring: string;
-  ringBytes: number;
   status: SmithStatus;
   activityTimer: ReturnType<typeof setTimeout> | null;
+  discoveryTimers: ReturnType<typeof setTimeout>[];
+}
+
+/** The slice of the droid session store the discovery needs. */
+export interface DiscoveredSession {
+  id: string;
+  createdTime: Date;
 }
 
 export interface SmithRegistryDeps {
@@ -55,10 +76,16 @@ export interface SmithRegistryDeps {
   scopeFor: (projectId: string) => SessionScope | null;
   /** Verifies droid is installed; reused doctor check. Resolves the binary path. */
   droid: () => Promise<{ ok: boolean; path: string }>;
-  /** Terminal output for the renderer, keyed by projectId. */
-  onData: (projectId: string, data: string) => void;
   /** Status transitions (starting → idle/busy/exited/blocked). */
   onStatusChanged: (status: SmithStatus) => void;
+  /** True when the vendored Ghostty addon can run here. There is no fallback. */
+  engineAvailable: () => boolean;
+  /** Spawns the engine; separated from the module so tests can fake it. */
+  spawnEngine: (opts: GhosttySpawnOptions) => TerminalEngine;
+  /** The window the terminal paints into; null when no window exists. */
+  webContents: () => GhosttySpawnOptions['webContents'] | null;
+  /** Reads droid's local session store, newest first. Overridable in tests. */
+  discoverSessions?: (cwd: string) => Promise<DiscoveredSession[]>;
 }
 
 export class SmithRegistry {
@@ -83,24 +110,36 @@ export class SmithRegistry {
     return { projectId, state: 'absent' };
   }
 
-  /** Recent output for repainting scrollback when the modal reopens. */
-  buffer(projectId: string): string {
-    return this.sessions.get(projectId)?.ring ?? '';
-  }
-
   /**
    * Ensures a session exists and returns its status. A missing/invalid project
-   * path or an uninstalled droid returns a `blocked` status the modal renders as
-   * guidance instead of spawning a dead terminal.
+   * path, an uninstalled droid, or an unavailable terminal engine returns a
+   * `blocked` status the modal renders as guidance instead of a dead terminal.
+   * Reopening an existing session kicks a redraw so the remounted canvas
+   * repaints from live state.
    */
-  async open(projectId: string): Promise<SmithStatus> {
+  async open(projectId: string, theme?: SmithTheme): Promise<SmithStatus> {
     const existing = this.sessions.get(projectId);
-    if (existing && existing.status.state !== 'exited') return existing.status;
+    if (existing && existing.status.state !== 'exited') {
+      existing.engine.redraw();
+      return existing.status;
+    }
 
     const scope = this.deps.scopeFor(projectId);
     if (!scope) return this.blocked(projectId, 'no-project', 'No project selected.');
     if (!scope.project.path || !existsSync(scope.project.path)) {
       return this.blocked(projectId, 'invalid-path', `${scope.project.path} is not reachable.`);
+    }
+
+    if (!this.deps.engineAvailable()) {
+      return this.blocked(
+        projectId,
+        'engine-missing',
+        'The embedded terminal engine failed to load. Smith needs the bundled Ghostty addon (macOS arm64).',
+      );
+    }
+    const webContents = this.deps.webContents();
+    if (!webContents) {
+      return this.blocked(projectId, 'engine-missing', 'No window to attach the terminal to.');
     }
 
     const droid = await this.deps.droid();
@@ -112,7 +151,7 @@ export class SmithRegistry {
       );
     }
 
-    return this.spawn(projectId, scope, droid.path);
+    return this.spawn(projectId, scope, droid.path, webContents, theme);
   }
 
   private blocked(projectId: string, reason: SmithStatus['blocked'], detail: string): SmithStatus {
@@ -121,7 +160,13 @@ export class SmithRegistry {
     return status;
   }
 
-  private spawn(projectId: string, scope: SessionScope, droidPath: string): SmithStatus {
+  private spawn(
+    projectId: string,
+    scope: SessionScope,
+    droidPath: string,
+    webContents: NonNullable<ReturnType<SmithRegistryDeps['webContents']>>,
+    theme?: SmithTheme,
+  ): SmithStatus {
     const promptPath = writeSystemPrompt(this.smithDir(), {
       project: scope.project,
       agents: scope.agents,
@@ -137,52 +182,51 @@ export class SmithRegistry {
       promptPath,
     ];
 
-    const env = spawnEnv({
-      FOUNDRY_SMITH_SOCKET: this.deps.socketPath,
-      FOUNDRY_CLI: this.deps.cliPath,
-      FOUNDRY_SMITH_PROJECT: projectId,
-    });
-
-    const engine = spawnPtyEngine({
+    const spawnOpts = (resume: boolean): GhosttySpawnOptions => ({
       file: droidPath,
-      args: args(true),
+      args: args(resume),
       cwd: scope.project.path,
-      env,
+      extraEnv: {
+        // The engine's utilityProcess inherits the GUI launch environment, so
+        // the shell-resolved PATH must ride along for droid to find its tools.
+        PATH: spawnEnv().PATH ?? '',
+        FOUNDRY_SMITH_SOCKET: this.deps.socketPath,
+        FOUNDRY_CLI: this.deps.cliPath,
+        FOUNDRY_SMITH_PROJECT: projectId,
+      },
+      webContents,
+      slot: smithSlot(projectId),
+      theme,
     });
 
+    const resuming = !!storedId;
+    const engine = this.deps.spawnEngine(spawnOpts(true));
     const session: Session = {
       projectId,
       engine,
-      ring: '',
-      ringBytes: 0,
-      status: { projectId, state: 'starting', resumed: !!storedId },
+      status: { projectId, state: 'starting', resumed: resuming },
       activityTimer: null,
+      discoveryTimers: [],
     };
     this.sessions.set(projectId, session);
 
-    engine.onData((data) => this.absorb(session, data));
-    engine.onExit(({ exitCode }) => this.onExit(session, exitCode, scope, droidPath, args));
+    engine.onActivity(() => this.markBusy(session));
+    engine.onExit(({ exitCode }) =>
+      this.onExit(session, exitCode, scope.project.path, spawnOpts, resuming),
+    );
 
-    // A spawn is idle until the first byte flips it busy; report starting first.
     this.deps.onStatusChanged(session.status);
     this.setState(session, 'idle');
+    // A resumed session already has its id recorded; a fresh one needs it
+    // discovered from droid's local store for the next `--resume`.
+    if (!resuming) this.scheduleDiscovery(session, scope.project.path);
     return session.status;
   }
 
-  private absorb(session: Session, data: string): void {
-    session.ring += data;
-    session.ringBytes += Buffer.byteLength(data);
-    if (session.ringBytes > RING_LIMIT_BYTES) {
-      const overflow = session.ringBytes - RING_LIMIT_BYTES;
-      session.ring = session.ring.slice(overflow);
-      session.ringBytes = Buffer.byteLength(session.ring);
-    }
-    this.deps.onData(session.projectId, data);
-    this.markBusy(session);
-  }
-
-  /** Output means a turn is running; quiet for a beat means idle again. */
+  /** A presented frame means output happened; quiet for a beat means idle. */
   private markBusy(session: Session): void {
+    if (this.sessions.get(session.projectId) !== session) return;
+    if (session.status.state === 'exited' || session.status.state === 'blocked') return;
     if (session.status.state !== 'busy') this.setState(session, 'busy');
     if (session.activityTimer) clearTimeout(session.activityTimer);
     session.activityTimer = setTimeout(() => {
@@ -199,36 +243,31 @@ export class SmithRegistry {
   private onExit(
     session: Session,
     exitCode: number,
-    scope: SessionScope,
-    droidPath: string,
-    args: (resume: boolean) => string[],
+    projectPath: string,
+    spawnOpts: (resume: boolean) => GhosttySpawnOptions,
+    wasResume: boolean,
   ): void {
-    if (session.activityTimer) clearTimeout(session.activityTimer);
-    // A resume that failed (expired/missing id) is the one exit worth retrying:
-    // respawn fresh once, dropping the stored id, so the user gets a live
-    // session with a one-line notice rather than a dead terminal.
-    const wasResume = args(true).includes('--resume');
+    this.clearTimers(session);
+    // A resume that died immediately (expired/missing id) is the one exit
+    // worth retrying: respawn fresh once, dropping the stored id, so the user
+    // gets a live session rather than a dead terminal.
     if (wasResume && exitCode !== 0 && this.sessions.get(session.projectId) === session) {
       this.forgetSession(session.projectId);
-      this.deps.onData(
-        session.projectId,
-        '\r\n[foundry] resume failed — starting a fresh session\r\n',
-      );
-      const engine = spawnPtyEngine({
-        file: droidPath,
-        args: args(false),
-        cwd: scope.project.path,
-        env: spawnEnv({
-          FOUNDRY_SMITH_SOCKET: this.deps.socketPath,
-          FOUNDRY_CLI: this.deps.cliPath,
-          FOUNDRY_SMITH_PROJECT: session.projectId,
-        }),
-      });
+      const engine = this.deps.spawnEngine(spawnOpts(false));
       session.engine = engine;
-      session.status = { projectId: session.projectId, state: 'idle', resumed: false };
-      engine.onData((data) => this.absorb(session, data));
-      engine.onExit(({ exitCode: code }) => this.finalizeExit(session, code));
+      session.status = {
+        projectId: session.projectId,
+        state: 'idle',
+        resumed: false,
+        detail: 'Previous session could not be resumed — started fresh.',
+      };
+      engine.onActivity(() => this.markBusy(session));
+      engine.onExit(({ exitCode: code }) => {
+        this.clearTimers(session);
+        this.finalizeExit(session, code);
+      });
       this.deps.onStatusChanged(session.status);
+      this.scheduleDiscovery(session, projectPath);
       return;
     }
     this.finalizeExit(session, exitCode);
@@ -243,24 +282,48 @@ export class SmithRegistry {
     this.deps.onStatusChanged(session.status);
   }
 
-  write(projectId: string, data: string): void {
-    this.sessions.get(projectId)?.engine.write(data);
-  }
-
-  resize(projectId: string, cols: number, rows: number): void {
-    const session = this.sessions.get(projectId);
-    if (!session) return;
-    session.engine.resize(cols, rows);
-    session.status = { ...session.status, cols, rows };
-  }
-
   kill(projectId: string): void {
     const session = this.sessions.get(projectId);
     if (!session) return;
-    if (session.activityTimer) clearTimeout(session.activityTimer);
+    this.clearTimers(session);
     session.engine.kill();
     this.sessions.delete(projectId);
     this.deps.onStatusChanged({ projectId, state: 'absent' });
+  }
+
+  /* ── droid session-id discovery ─────────────────────────────────────── */
+
+  /**
+   * droid writes its session under `~/.factory/sessions/<sanitized-cwd>/` as
+   * `<id>.jsonl` shortly after spawn. Resolve the newest session for this
+   * project created after our spawn and persist its id for `--resume`. The
+   * created-after guard keeps a session the user started in their own
+   * terminal (before ours) from being claimed as Smith's.
+   */
+  private scheduleDiscovery(session: Session, projectPath: string): void {
+    const spawnedAt = Date.now();
+    const discover = this.deps.discoverSessions ?? localDroidSessions;
+    const attempt = async (): Promise<void> => {
+      if (this.sessions.get(session.projectId) !== session) return;
+      if (this.state.read()[session.projectId]?.droidSessionId) return;
+      let found: DiscoveredSession | undefined;
+      try {
+        const sessions = await discover(projectPath);
+        found = sessions.find((s) => s.createdTime.getTime() >= spawnedAt - DISCOVERY_SKEW_MS);
+      } catch {
+        return; // Store unreadable; a later attempt or spawn tries again.
+      }
+      if (found && this.sessions.get(session.projectId) === session) {
+        this.recordSessionId(session.projectId, found.id);
+      }
+    };
+    session.discoveryTimers = DISCOVERY_DELAYS_MS.map((delay) =>
+      setTimeout(() => void attempt(), delay),
+    );
+  }
+
+  recordSessionId(projectId: string, droidSessionId: string): void {
+    this.state.update((current) => ({ ...current, [projectId]: { droidSessionId } }));
   }
 
   /** Drops the persisted droid session id so the next open spawns fresh. */
@@ -272,22 +335,16 @@ export class SmithRegistry {
     });
   }
 
-  /**
-   * TODO(smith-session-id): droid stores sessions locally; after a first spawn
-   * we should resolve the new session's id (newest local session whose cwd
-   * matches the project path) and persist it here so a later launch can
-   * `--resume`. Left as a stub until droid's local session-store layout is
-   * confirmed — see spec §1 "Session id capture" and open question 2. Until
-   * then every spawn is fresh and `--resume` only fires if an id was recorded
-   * by some other path.
-   */
-  recordSessionId(projectId: string, droidSessionId: string): void {
-    this.state.update((current) => ({ ...current, [projectId]: { droidSessionId } }));
+  private clearTimers(session: Session): void {
+    if (session.activityTimer) clearTimeout(session.activityTimer);
+    session.activityTimer = null;
+    for (const timer of session.discoveryTimers) clearTimeout(timer);
+    session.discoveryTimers = [];
   }
 
   closeAll(): void {
     for (const [, session] of this.sessions) {
-      if (session.activityTimer) clearTimeout(session.activityTimer);
+      this.clearTimers(session);
       session.engine.kill();
     }
     this.sessions.clear();

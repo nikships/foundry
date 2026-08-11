@@ -1,5 +1,5 @@
 /**
- * The Smith service: the proposal queue, the socket transport, and the PTY
+ * The Smith service: the proposal queue, the socket transport, and the Ghostty
  * session registry, wired together and owned by `AppContext`. One instance per
  * app, started at boot.
  */
@@ -12,11 +12,13 @@ import type {
   ProjectDef,
   SmithProposal,
 } from '@shared/types.js';
+import type { WebContents } from 'electron';
 import { cliVersion } from '../droid/catalog.js';
 import { findCli } from '../cli/index.js';
 import { ProposalQueue } from './proposals.js';
 import { SmithSocketServer } from './socket-server.js';
 import { SmithRegistry } from './registry.js';
+import { ghosttyAvailable, spawnGhosttyEngine } from './engine.js';
 
 /** Everything the Smith service needs from the wider app, kept to a narrow seam. */
 export interface SmithServiceDeps {
@@ -26,7 +28,9 @@ export interface SmithServiceDeps {
   /** Broadcasts a channel + payload to every window. */
   broadcast: (channel: string, payload?: unknown) => void;
   /** Channel names, passed in so this module does not import the contract twice. */
-  channels: { data: string; statusChanged: string; proposalsChanged: string };
+  channels: { statusChanged: string; proposalsChanged: string };
+  /** The window Smith's terminal paints into (frames go straight to its canvas). */
+  webContents: () => WebContents | null;
   /** Persists an approved proposal; supplied by the IPC layer (store access). */
   save: (proposal: SmithProposal) => { ok: true; entity: unknown } | { ok: false; error: string };
   /** Resolves a project's full definition for spawning. */
@@ -75,8 +79,10 @@ export class SmithService {
         const version = await cliVersion(path);
         return { ok: !!version, path };
       },
-      onData: (projectId, data) => deps.broadcast(deps.channels.data, { projectId, data }),
       onStatusChanged: (status) => deps.broadcast(deps.channels.statusChanged, status),
+      engineAvailable: ghosttyAvailable,
+      spawnEngine: spawnGhosttyEngine,
+      webContents: () => deps.webContents(),
     });
   }
 

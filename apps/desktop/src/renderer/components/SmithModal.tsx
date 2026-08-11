@@ -1,119 +1,69 @@
 /**
- * The Smith terminal modal: a near-fullscreen dialog wrapping an embedded droid
- * session for the active project. Escape/close only HIDE it — the PTY lives in
- * the main process and keeps working in the background, so scrollback and any
- * running turn survive a close.
+ * The Smith terminal modal: a near-fullscreen dialog around the embedded
+ * Ghostty terminal for the active project. Escape/close only HIDE it — the
+ * engine and its droid session live in the main process and keep working in
+ * the background, so scrollback and any running turn survive a close.
  *
- * The xterm instance is cached per project at module scope (`terminals`), so
- * reopening the modal reattaches the same terminal rather than building a fresh
- * one and losing its scrollback. On open we call `smith.open`, repaint the ring
- * buffer the main-side registry exposes, subscribe to the `smith-data`
- * broadcast, wire input/resize back over IPC, and focus.
+ * The terminal is a sandboxed <canvas data-ghostty> painted zero-copy by the
+ * main-side engine via `sharedTexture`; input (keys, mouse, IME, paste) and
+ * CSS-size-driven resizes are wired by `preload/ghostty.ts`, which discovers
+ * the canvas when this modal mounts it. Nothing terminal-shaped crosses the
+ * FoundryApi contract — `smith.open` just ensures the session exists and
+ * carries the renderer's resolved theme for ghostty's config.
  *
- * When `smith.open` returns a blocked status (no project, unreachable repo path,
- * droid missing) the modal renders doctor-style guidance instead of a terminal.
- *
- * The fallback engine (spec §5) streams PTY bytes, which is exactly what xterm
- * consumes here. The Ghostty engine would swap the view for a canvas; this modal
- * is where that branch lands, keyed off the eventual engine descriptor.
+ * When `smith.open` returns a blocked status (no project, unreachable repo
+ * path, droid missing, engine missing) the modal renders doctor-style
+ * guidance instead of a terminal.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Terminal } from '@xterm/xterm';
-import { FitAddon } from '@xterm/addon-fit';
-import '@xterm/xterm/css/xterm.css';
+import { useEffect, useState } from 'react';
 import { Terminal as TerminalIcon, X } from 'lucide-react';
-import type { SmithBlockedReason, SmithStatus } from '@shared/types.js';
+import type { SmithBlockedReason, SmithStatus, SmithTheme } from '@shared/types.js';
+import { smithSlot } from '@shared/ipc-contract.js';
 import { api } from '../api.js';
 import { useApp } from '../stores/app.js';
 import { Button } from './ui/Button.js';
 import { ModalShell } from './ui/ModalShell.js';
 import styles from './SmithModal.module.css';
 
-/** One live xterm per project, kept alive across modal open/close for scrollback. */
-interface CachedTerminal {
-  term: Terminal;
-  fit: FitAddon;
-  /** True once the current ring buffer has been repainted, so reopen does not double-paint. */
-  painted: boolean;
-}
-const terminals = new Map<string, CachedTerminal>();
-
 /** Reads the app's palette off the DOM so the terminal matches the Foundry theme. */
-function themeFromCss(): Record<string, string> {
+function themeFromCss(): SmithTheme {
   const root = getComputedStyle(document.documentElement);
   const v = (name: string, fallback: string): string =>
     root.getPropertyValue(name).trim() || fallback;
   return {
-    background: v('--bg-void', '#020202'),
-    foreground: v('--text', '#eeeeee'),
-    cursor: v('--accent', '#ee6018'),
-    cursorAccent: v('--bg-void', '#020202'),
-    selectionBackground: v('--line-strong', 'rgba(255,255,255,0.18)'),
-    black: v('--bg-void', '#020202'),
-    red: v('--red', '#ef4444'),
-    green: v('--green', '#34d399'),
-    yellow: v('--amber', '#f5a623'),
-    blue: v('--blue', '#60a5fa'),
-    magenta: '#c084fc',
-    cyan: '#22d3ee',
-    white: v('--text-dim', '#8c8c8c'),
-    brightBlack: v('--text-faint', 'rgba(255,255,255,0.32)'),
-    brightWhite: v('--text', '#eeeeee'),
-  };
-}
-
-/** Builds (or reuses) the cached terminal for a project and wires its input. */
-function ensureTerminal(projectId: string): CachedTerminal {
-  const existing = terminals.get(projectId);
-  if (existing) return existing;
-  const fontFamily = getComputedStyle(document.documentElement)
-    .getPropertyValue('--font-mono')
-    .trim();
-  const term = new Terminal({
-    fontFamily: fontFamily || 'ui-monospace, Menlo, monospace',
+    colors: {
+      background: v('--bg-void', '#020202'),
+      foreground: v('--text', '#eeeeee'),
+      cursor: v('--accent', '#ee6018'),
+      selectionBackground: v('--line-strong', '#3a3a3a'),
+      black: v('--bg-void', '#020202'),
+      red: v('--red', '#ef4444'),
+      green: v('--green', '#34d399'),
+      yellow: v('--amber', '#f5a623'),
+      blue: v('--blue', '#60a5fa'),
+      magenta: '#c084fc',
+      cyan: '#22d3ee',
+      white: v('--text-dim', '#8c8c8c'),
+      brightBlack: '#4a4a4a',
+      brightWhite: v('--text', '#eeeeee'),
+    },
+    scale: window.devicePixelRatio || 2,
     fontSize: 13,
-    cursorBlink: true,
-    allowProposedApi: true,
-    theme: themeFromCss(),
-    scrollback: 10_000,
-  });
-  const fit = new FitAddon();
-  term.loadAddon(fit);
-  // Input flows renderer → main PTY; output arrives on the smith-data broadcast.
-  term.onData((data) => void api.smith.write(projectId, data));
-  const cached: CachedTerminal = { term, fit, painted: false };
-  terminals.set(projectId, cached);
-  return cached;
+  };
 }
 
 const BLOCKED_TITLE: Record<SmithBlockedReason, string> = {
   'no-project': 'No project selected',
   'invalid-path': 'Project path is unreachable',
   'droid-missing': 'droid is not installed',
+  'engine-missing': 'Terminal engine unavailable',
 };
 
 export default function SmithModal({ onClose }: { onClose: () => void }): React.JSX.Element {
   const { project } = useApp();
   const projectId = project?.id ?? '';
-  const mountRef = useRef<HTMLDivElement | null>(null);
-  const dialogRef = useRef<HTMLElement | null>(null);
   const [status, setStatus] = useState<SmithStatus | null>(null);
-
-  // Resize the PTY to the terminal's measured grid, then tell main.
-  const syncSize = useCallback(
-    (cached: CachedTerminal): void => {
-      try {
-        cached.fit.fit();
-      } catch {
-        // A zero-sized container (mid-transition) throws; the next tick retries.
-        return;
-      }
-      const { cols, rows } = cached.term;
-      if (cols > 0 && rows > 0) void api.smith.resize(projectId, cols, rows);
-    },
-    [projectId],
-  );
 
   useEffect(() => {
     if (!projectId) {
@@ -122,39 +72,14 @@ export default function SmithModal({ onClose }: { onClose: () => void }): React.
     }
     let cancelled = false;
 
-    void api.smith.open(projectId).then((next) => {
+    // Ensures the session exists; the preload notices the canvas below and
+    // reports `ready`, which kicks the engine to draw (repainting scrollback
+    // on reopen). Frames and input never touch this component.
+    void api.smith.open(projectId, themeFromCss()).then((next) => {
       if (cancelled) return;
       setStatus(next);
-      if (next.state === 'blocked') return;
-
-      const cached = ensureTerminal(projectId);
-      const mount = mountRef.current;
-      if (mount && cached.term.element?.parentElement !== mount) {
-        mount.replaceChildren();
-        cached.term.open(mount);
-      }
-      // Repaint scrollback from the ring buffer exactly once per cached terminal.
-      if (!cached.painted) {
-        void api.smith.buffer(projectId).then((buffer) => {
-          if (cancelled) return;
-          if (buffer) cached.term.write(buffer);
-          cached.painted = true;
-        });
-      }
-      // Two frames: one for layout, one after xterm has sized its rows.
-      requestAnimationFrame(() => {
-        if (cancelled) return;
-        syncSize(cached);
-        cached.term.focus();
-      });
     });
 
-    // Live output for this project's session.
-    const off = api.on('smith-data', (data) => {
-      const payload = data as { projectId: string; data: string } | undefined;
-      if (!payload || payload.projectId !== projectId) return;
-      terminals.get(projectId)?.term.write(payload.data);
-    });
     // Status transitions keep the header dot honest while the modal is open.
     const offStatus = api.on('smith-status-changed', (data) => {
       const next = data as SmithStatus | undefined;
@@ -163,21 +88,9 @@ export default function SmithModal({ onClose }: { onClose: () => void }): React.
 
     return () => {
       cancelled = true;
-      off();
       offStatus();
     };
-  }, [projectId, syncSize]);
-
-  // Keep the grid matched to the window while the modal is open.
-  useEffect(() => {
-    if (!projectId) return;
-    const onResize = (): void => {
-      const cached = terminals.get(projectId);
-      if (cached) syncSize(cached);
-    };
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, [projectId, syncSize]);
+  }, [projectId]);
 
   const blocked = status?.state === 'blocked';
   const stateWord = status?.state ?? 'starting';
@@ -195,7 +108,6 @@ export default function SmithModal({ onClose }: { onClose: () => void }): React.
       dismissible
       onClose={onClose}
       ariaLabelledBy="smith-title"
-      modalRef={dialogRef}
       tabIndex={-1}
       className={styles.dialog}
     >
@@ -240,7 +152,14 @@ export default function SmithModal({ onClose }: { onClose: () => void }): React.
         </div>
       ) : (
         <div className={styles.terminalWrap}>
-          <div className={styles.terminal} ref={mountRef} />
+          {projectId && (
+            <canvas
+              className={styles.terminalCanvas}
+              data-ghostty={smithSlot(projectId)}
+              tabIndex={0}
+              aria-label="Smith terminal"
+            />
+          )}
         </div>
       )}
     </ModalShell>

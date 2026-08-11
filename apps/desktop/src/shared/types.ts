@@ -602,13 +602,13 @@ export interface SmithProposal {
 }
 
 /** Why a Smith session cannot show a live terminal, so the modal can guide instead. */
-export type SmithBlockedReason = 'no-project' | 'invalid-path' | 'droid-missing';
+export type SmithBlockedReason = 'no-project' | 'invalid-path' | 'droid-missing' | 'engine-missing';
 
 /**
  * A per-project Smith session as the renderer sees it. `blocked` carries a
  * doctor-style reason when the session cannot spawn (no project, missing repo
- * path, droid not installed) so the modal renders guidance rather than a dead
- * terminal.
+ * path, droid not installed, terminal engine unavailable) so the modal renders
+ * guidance rather than a dead terminal.
  */
 export interface SmithStatus {
   projectId: string;
@@ -620,8 +620,19 @@ export interface SmithStatus {
   detail?: string;
   /** True when the session was resumed from a stored droid session id. */
   resumed?: boolean;
-  cols?: number;
-  rows?: number;
+}
+
+/**
+ * The renderer's resolved look for the embedded Ghostty terminal, read off the
+ * DOM at open time (CSS variables are a renderer concept; main cannot see
+ * them). Colors are CSS color strings — main keeps the `#rrggbb` ones and
+ * ignores anything else, falling back to ghostty defaults. `scale` is the
+ * display's devicePixelRatio so ghostty renders at native resolution.
+ */
+export interface SmithTheme {
+  colors?: Record<string, string>;
+  scale?: number;
+  fontSize?: number;
 }
 
 /** The answer a human gives a proposal card. `note` travels back to droid on reject. */

@@ -6,6 +6,7 @@
 
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC, type FoundryApi } from '../shared/ipc-contract.js';
+import { wireGhosttyRenderer } from './ghostty.js';
 
 const call = <T>(channel: string, ...args: unknown[]): Promise<T> =>
   ipcRenderer.invoke(channel, ...args) as Promise<T>;
@@ -18,7 +19,6 @@ const EVENT_CHANNELS = {
   'updater-status': IPC.eventUpdaterStatus,
   'detection-progress': IPC.eventDetectionProgress,
   'setup-progress': IPC.eventSetupProgress,
-  'smith-data': IPC.eventSmithData,
   'smith-status-changed': IPC.eventSmithStatusChanged,
   'smith-proposals-changed': IPC.eventSmithProposalsChanged,
 } as const;
@@ -129,10 +129,7 @@ const api: FoundryApi = {
   },
   smith: {
     status: (projectId) => call(IPC.smithStatus, projectId),
-    open: (projectId) => call(IPC.smithOpen, projectId),
-    write: (projectId, data) => call(IPC.smithWrite, projectId, data),
-    resize: (projectId, cols, rows) => call(IPC.smithResize, projectId, cols, rows),
-    buffer: (projectId) => call(IPC.smithBuffer, projectId),
+    open: (projectId, theme) => call(IPC.smithOpen, projectId, theme),
     kill: (projectId) => call(IPC.smithKill, projectId),
     proposalsList: () => call(IPC.smithProposalsList),
     proposalAnswer: (id, answer) => call(IPC.smithProposalAnswer, id, answer),
@@ -181,3 +178,7 @@ contextBridge.exposeInMainWorld('foundryMenu', {
     };
   },
 });
+
+// Frames, input, and resizes for the embedded Ghostty terminal travel over the
+// engine's own channels (sharedTexture + electron-ghostty IPC), not FoundryApi.
+wireGhosttyRenderer();

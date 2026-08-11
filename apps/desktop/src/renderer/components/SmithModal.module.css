@@ -106,10 +106,17 @@
   padding: var(--s3);
 }
 
-/* The xterm mount fills the padded wrap; xterm manages its own scrollback. */
-.terminal {
+/*
+ * The ghostty canvas fills the padded wrap. Its CSS size drives the grid (a
+ * ResizeObserver in the preload reports it; ghostty reflows + SIGWINCHes) and
+ * its bitmap size is set per-frame by the sharedTexture receiver, so the two
+ * never fight.
+ */
+.terminalCanvas {
   width: 100%;
   height: 100%;
+  display: block;
+  outline: none;
 }
 
 /* Doctor-style guidance shown instead of a terminal when a session is blocked. */
