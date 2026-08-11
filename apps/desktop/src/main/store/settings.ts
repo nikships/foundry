@@ -25,6 +25,32 @@ const COMPACTION_BAND = [0.5, 0.95] as const;
 const DAEMON_PORT_BAND = [37_600, 37_699] as const;
 const DEFAULT_DAEMON_PORT = 37_643;
 
+const mcpServerSchema = z.discriminatedUnion('type', [
+  z.object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    disabled: z.boolean(),
+    type: z.literal('stdio'),
+    command: z.string().min(1),
+    args: z.array(z.string()).optional(),
+    env: z.record(z.string(), z.string()).optional(),
+  }),
+  z.object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    disabled: z.boolean(),
+    type: z.literal('http'),
+    url: z.string().min(1),
+  }),
+  z.object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    disabled: z.boolean(),
+    type: z.literal('sse'),
+    url: z.string().min(1),
+  }),
+]);
+
 export const appSettingsSchema = z.object({
   clis: z.object({
     droid: cliConfigSchema,
@@ -54,6 +80,7 @@ export const appSettingsSchema = z.object({
   appearance: z.enum(['system', 'dark']),
   retentionDays: z.number().int().min(1).max(3650).nullable(),
   onboarded: z.boolean(),
+  mcpServers: z.array(mcpServerSchema),
 });
 
 /**
@@ -89,6 +116,7 @@ export function defaultSettings(): AppSettings {
     appearance: 'system',
     retentionDays: null,
     onboarded: false,
+    mcpServers: [],
   };
 }
 
@@ -145,6 +173,7 @@ export function migrate(raw: unknown): AppSettings {
   // Out-of-band ports (hand-edited or pre-field files) clamp into the mission
   // range rather than leaving the app with no daemon port at all.
   merged.daemonPort = Math.round(clamp(merged.daemonPort, base.daemonPort, DAEMON_PORT_BAND));
+  if (!Array.isArray(merged.mcpServers)) merged.mcpServers = [];
   return merged;
 }
 

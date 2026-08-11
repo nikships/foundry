@@ -25,7 +25,8 @@ import {
   type RequestPermissionRequestParams,
   type StringFramedDroidClientTransport,
 } from '@factory/droid-sdk/node';
-import type { ContextBreakdown, ReasoningEffort } from '@shared/types.js';
+import type { ContextBreakdown, ReasoningEffort, UserMcpServer } from '@shared/types.js';
+import type { McpServerConfig } from '@factory/droid-sdk/node';
 import { INHERIT_MODEL, type TurnOptions, type TurnResult } from '../turn.js';
 import { DroidProtocolError } from './errors.js';
 import {
@@ -174,10 +175,17 @@ export class SdkSession implements TransportSession {
     this.toolRefreshDelay = this.opts.toolRefreshDelayMs ?? MCP_TOOL_SETTLE_MS;
     // Init-time mcpServers only: session-scoped, no config write, no late-tool
     // escape window. Never session.addMcpServer() (writes ~/.factory/mcp.json).
-    const mcpServers = this.opts.foundryMcp
-      ? [createFoundryMcpServer(this.opts.foundryMcp)]
-      : undefined;
-    this.foundryServer = mcpServers?.[0] ?? null;
+    const foundryServer = this.opts.foundryMcp
+      ? createFoundryMcpServer(this.opts.foundryMcp)
+      : null;
+    this.foundryServer = foundryServer;
+    const userServers = (this.opts.userMcpServers ?? [])
+      .filter((s) => !s.disabled)
+      .map(mapUserMcpToSdk);
+    const mcpServers =
+      foundryServer || userServers.length
+        ? [...(foundryServer ? [foundryServer] : []), ...userServers]
+        : undefined;
     const shared = {
       transport: sniffer,
       execArgs: ['--auto', AUTONOMY_LEVEL],
@@ -715,6 +723,16 @@ function resolvePath(path: string): string {
     // A path that no longer exists still has to compare as itself.
     return path;
   }
+}
+
+function mapUserMcpToSdk(s: UserMcpServer): McpServerConfig {
+  if (s.type === 'stdio') {
+    return { name: s.name, command: s.command, args: s.args, env: s.env } as never;
+  }
+  if (s.type === 'sse') {
+    return { type: 'sse', name: s.name, url: s.url } as never;
+  }
+  return { type: 'http', name: s.name, url: s.url } as never;
 }
 
 /** ProcessTransport wants a defined-valued env; `process.env` does not have one. */

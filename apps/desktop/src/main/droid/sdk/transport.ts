@@ -4,7 +4,7 @@
  * transport can swap without the engine noticing.
  */
 
-import type { ContextBreakdown, ReasoningEffort } from '@shared/types.js';
+import type { ContextBreakdown, ReasoningEffort, UserMcpServer } from '@shared/types.js';
 import type { AvailableModel, ContextStatsResult, DroidNotification } from '../protocol.js';
 import type { PermissionAsk, PermissionDecision, TurnOptions, TurnResult } from '../turn.js';
 
@@ -63,6 +63,7 @@ export interface TransportSessionOptions {
   reasoningEffort: ReasoningEffort;
   restrictTools?: string[];
   disabledTools?: string[];
+  userMcpServers?: UserMcpServer[];
   onPermission: (ask: PermissionAsk) => PermissionDecision | Promise<PermissionDecision>;
   onNotification?: (n: DroidNotification) => void;
   onExit?: (code: number | null) => void;

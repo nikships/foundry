@@ -173,6 +173,7 @@ function defaultMockSettings(): AppSettings {
     dockBadge: true,
     appearance: 'system',
     retentionDays: null,
+    mcpServers: [],
     onboarded: true,
   };
 }

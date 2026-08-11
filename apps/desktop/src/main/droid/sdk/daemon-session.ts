@@ -25,7 +25,7 @@ import {
   type RequestPermissionHandlerResult,
   type RequestPermissionRequestParams,
 } from '@factory/droid-sdk';
-import type { ContextBreakdown, ReasoningEffort } from '@shared/types.js';
+import type { ContextBreakdown, ReasoningEffort, UserMcpServer } from '@shared/types.js';
 import {
   AUTONOMY_LEVEL,
   type AvailableModel,
@@ -93,13 +93,10 @@ export interface DaemonHandle {
  * SdkMcpServer objects are rejected by the public daemon schema — start them
  * first and pass the resulting HTTP config (type/url/headers).
  */
-export type DaemonMcpServerConfig = {
-  type: 'http';
-  name: string;
-  url: string;
-  oauth?: false;
-  headers?: { name: string; value: string }[];
-};
+export type DaemonMcpServerConfig =
+  | { type: 'stdio'; name: string; command: string; args?: string[]; env?: Record<string, string> }
+  | { type: 'http'; name: string; url: string; oauth?: false; headers?: { name: string; value: string }[] }
+  | { type: 'sse'; name: string; url: string; oauth?: false; headers?: { name: string; value: string }[] };
 
 export interface DaemonSessionsFacade {
   create(options: {
@@ -243,6 +240,9 @@ export class DaemonSession implements TransportSession {
     // path starts for us; here we start it and pass the HTTP config so the
     // daemon worker can reach the app-local loopback server.
     let mcpServers: DaemonMcpServerConfig[] | undefined;
+    const userServers: DaemonMcpServerConfig[] = (this.opts.userMcpServers ?? [])
+      .filter((s) => !s.disabled)
+      .map(mapUserMcpToDaemon);
     if (this.opts.foundryMcp) {
       const server = createFoundryMcpServer(this.opts.foundryMcp);
       this.foundryServer = server;
@@ -256,11 +256,14 @@ export class DaemonSession implements TransportSession {
             oauth: false,
             headers: config.headers?.map((h) => ({ name: h.name, value: h.value })),
           },
+          ...userServers,
         ];
       } catch (e) {
         await this.closeFoundryServer();
         throw e;
       }
+    } else if (userServers.length) {
+      mcpServers = [...userServers];
     }
 
     const handlers = {
@@ -682,6 +685,16 @@ function asProtocolError(error: unknown): Error {
 function pathsMatch(a: string, b: string): boolean {
   const norm = (p: string): string => p.replace(/\\/g, '/').replace(/\/$/, '');
   return norm(a) === norm(b) || norm(a).endsWith(norm(b)) || norm(b).endsWith(norm(a));
+}
+
+function mapUserMcpToDaemon(s: UserMcpServer): DaemonMcpServerConfig {
+  if (s.type === 'stdio') {
+    return { type: 'stdio', name: s.name, command: s.command, args: s.args, env: s.env };
+  }
+  if (s.type === 'sse') {
+    return { type: 'sse', name: s.name, url: s.url, oauth: false };
+  }
+  return { type: 'http', name: s.name, url: s.url, oauth: false };
 }
 
 // Keep the protocol constant and the enum aligned so a drift fails to compile.

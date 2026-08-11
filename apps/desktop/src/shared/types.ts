@@ -174,6 +174,19 @@ export interface CliConfig {
   extraArgs: string[];
 }
 
+export type UserMcpServer =
+  | {
+      id: string;
+      name: string;
+      disabled: boolean;
+      type: 'stdio';
+      command: string;
+      args?: string[];
+      env?: Record<string, string>;
+    }
+  | { id: string; name: string; disabled: boolean; type: 'http'; url: string }
+  | { id: string; name: string; disabled: boolean; type: 'sse'; url: string };
+
 export interface AppSettings {
   /** One entry per vendor. An agent names the vendor; this says where it lives. */
   clis: Record<CliVendor, CliConfig>;
@@ -222,6 +235,7 @@ export interface AppSettings {
   appearance: 'system' | 'dark';
   retentionDays: number | null;
   onboarded: boolean;
+  mcpServers: UserMcpServer[];
 }
 
 export type MergePolicy = 'auto' | 'ask' | 'never';

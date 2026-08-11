@@ -631,6 +631,7 @@ interface RunInput {
   daemonPort?: number;
   /** Defaults to subprocess so unit tests never spawn a real daemon. */
   transport?: 'daemon' | 'subprocess';
+  mcpServers?: import('../src/shared/types.js').UserMcpServer[]; // eslint-disable-line @typescript-eslint/consistent-type-imports
 }
 
 function run(input: RunInput): Promise<{ status: string; runId: string }> {
@@ -664,6 +665,7 @@ function start(input: RunInput): {
     rewindAfterCorrections: input.rewindAfterCorrections ?? 2,
     daemonPort: input.daemonPort ?? 37_643,
     transport: input.transport ?? 'subprocess',
+    mcpServers: input.mcpServers ?? [],
     agents: input.agents ?? [buildAgent()],
     envelopeDefs: input.envelopeDefs ?? [],
     project: { ...h.project, ...input.project },

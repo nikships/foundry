@@ -6,7 +6,7 @@
  * agent's first phase.
  */
 
-import type { AgentDef, CliVendor, ContextBreakdown, UsageBreakdown } from '@shared/types.js';
+import type { AgentDef, CliVendor, ContextBreakdown, UsageBreakdown, UserMcpServer } from '@shared/types.js';
 import type { Tracer } from '../trace/tracer.js';
 import type { Envelope } from '../engine/envelopes.js';
 import type { Snapshot } from '../engine/boundary.js';
@@ -74,6 +74,7 @@ export interface AgentSessionDeps {
   transport?: 'daemon' | 'subprocess';
   /** Preferred daemon port (37600–37699). Used only when transport is daemon. */
   daemonPort?: number;
+  userMcpServers?: UserMcpServer[];
   /**
    * Test seam: open a daemon TransportSession without a real DaemonManager.
    * Production leaves this unset.
@@ -372,6 +373,7 @@ export class AgentSession {
     return {
       runId: this.deps.runId,
       ...this.turnOpts(),
+      userMcpServers: this.deps.userMcpServers,
       onPermission: (ask) => this.decide(ask),
       onNotification: (n) => this.currentFolder?.absorb(n),
       onModelWarning: (message) => this.agentLog('log', 'model', { message }),

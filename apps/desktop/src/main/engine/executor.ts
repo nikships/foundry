@@ -24,6 +24,7 @@ import type {
   PipelineDef,
   ProjectDef,
   RunStatus,
+  UserMcpServer,
 } from '@shared/types.js';
 import type { Tracer } from '../trace/tracer.js';
 import { AgentSession, KILLED_DETAIL, type InterruptRequest, type Mode } from '../droid/agent.js';
@@ -61,6 +62,7 @@ export interface ExecutorDeps {
    * SdkSession. See AppSettings.transport.
    */
   transport: 'daemon' | 'subprocess';
+  mcpServers: UserMcpServer[];
   agents: AgentDef[];
   /** Shared custom envelope library snapshotted at run start. */
   envelopeDefs: EnvelopeDef[];
@@ -374,6 +376,7 @@ export class Executor {
       envelopes: this.envelopes,
       transport: this.deps.transport,
       daemonPort: this.deps.daemonPort,
+      userMcpServers: this.deps.mcpServers.filter((s) => !s.disabled),
       onModeChange: (mode) => {
         this.mode = mode;
         this.deps.tracer.setRunMode(this.deps.runId, mode);

@@ -143,6 +143,7 @@ export class RunRegistry extends EventEmitter {
       rewindAfterCorrections: settings.rewindAfterCorrections,
       daemonPort: settings.daemonPort,
       transport: settings.transport,
+      mcpServers: settings.mcpServers ?? [],
       agents: input.agents,
       envelopeDefs: input.envelopeDefs,
       project: input.project,
