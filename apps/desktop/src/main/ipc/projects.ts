@@ -22,7 +22,10 @@ import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
 import { noIssues, notifySettings } from './shared.js';
 
-type Ctx = Pick<AppContext, 'projects' | 'settings' | 'window' | 'broadcast' | 'detections' | 'setups'>;
+type Ctx = Pick<
+  AppContext,
+  'projects' | 'settings' | 'window' | 'broadcast' | 'detections' | 'setups'
+>;
 
 export function register(ctx: Ctx, handle: Handle): void {
   const projectOf = (projectId: string) => ctx.projects.get(projectId);
@@ -226,20 +229,26 @@ export function register(ctx: Ctx, handle: Handle): void {
     return project?.setupScript ?? '';
   });
 
-  handle(
-    IPC.projectsSetupScriptSave,
-    (id: string, script: string): SaveResult<ProjectDef[]> => {
-      const project = projectOf(id);
-      if (!project) return { ok: false, issues: [{ level: 'error', where: 'project', message: 'project not found' }] };
-      if (script.length > 8000) {
-        return { ok: false, issues: [{ level: 'error', where: 'setupScript', message: 'script too long (max 8000 chars)' }] };
-      }
-      const result = ctx.projects.save({ ...project, setupScript: script });
-      if (!result.ok) return { ok: false, issues: result.issues };
-      notifySettings(ctx);
-      return { ok: true, issues: noIssues, value: result.projects };
-    },
-  );
+  handle(IPC.projectsSetupScriptSave, (id: string, script: string): SaveResult<ProjectDef[]> => {
+    const project = projectOf(id);
+    if (!project)
+      return {
+        ok: false,
+        issues: [{ level: 'error', where: 'project', message: 'project not found' }],
+      };
+    if (script.length > 8000) {
+      return {
+        ok: false,
+        issues: [
+          { level: 'error', where: 'setupScript', message: 'script too long (max 8000 chars)' },
+        ],
+      };
+    }
+    const result = ctx.projects.save({ ...project, setupScript: script });
+    if (!result.ok) return { ok: false, issues: result.issues };
+    notifySettings(ctx);
+    return { ok: true, issues: noIssues, value: result.projects };
+  });
 
   handle(IPC.projectsSetupScriptSniff, async (id: string) => {
     const project = projectOf(id);
@@ -250,12 +259,26 @@ export function register(ctx: Ctx, handle: Handle): void {
   handle(IPC.projectsSetupScriptTry, async (id: string, script: string) => {
     const project = projectOf(id);
     if (!project) {
-      return { exitCode: null as number | null, passed: false, outputTail: 'project not found', durationMs: 0 };
+      return {
+        exitCode: null as number | null,
+        passed: false,
+        outputTail: 'project not found',
+        durationMs: 0,
+      };
     }
     if (!script.trim()) {
-      return { exitCode: 0 as number | null, passed: true, outputTail: 'nothing to run', durationMs: 0 };
+      return {
+        exitCode: 0 as number | null,
+        passed: true,
+        outputTail: 'nothing to run',
+        durationMs: 0,
+      };
     }
-    const result = await runCommand({ argv: ['sh', '-c', script], cwd: project.path, timeoutMs: 300_000 });
+    const result = await runCommand({
+      argv: ['sh', '-c', script],
+      cwd: project.path,
+      timeoutMs: 300_000,
+    });
     return {
       exitCode: result.exitCode,
       passed: result.passed,

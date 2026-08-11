@@ -208,7 +208,8 @@ export class Executor {
         timeoutMs: 300_000,
         name: 'setup',
         runId,
-        onPid: (pid, command) => tracer.recordProcess({ runId, kind: 'code', name: 'setup', pid, command }),
+        onPid: (pid, command) =>
+          tracer.recordProcess({ runId, kind: 'code', name: 'setup', pid, command }),
       });
       tracer.writeRunFile(runId, 'setup.log', result.outputTail);
       tracer.endEvent(setupEvent, {
@@ -221,7 +222,9 @@ export class Executor {
           runId,
           type: 'error',
           name: 'setup',
-          payload: { message: `worktree setup failed (exit ${result.exitCode ?? '—'}): ${result.outputTail.slice(-1500)}` },
+          payload: {
+            message: `worktree setup failed (exit ${result.exitCode ?? '—'}): ${result.outputTail.slice(-1500)}`,
+          },
         });
         return this.finish(
           'failed',

@@ -242,7 +242,12 @@ export function createMockFoundryApi(): FoundryApi {
       setupScriptGet: async () => '',
       setupScriptSave: async () => ({ ok: true, issues: [], value: [...MOCK_PROJECTS] }),
       setupScriptSniff: async () => ({ script: '', detail: '(web preview)', sources: [] }),
-      setupScriptTry: async () => ({ exitCode: 0, passed: true, outputTail: '(web preview)', durationMs: 0 }),
+      setupScriptTry: async () => ({
+        exitCode: 0,
+        passed: true,
+        outputTail: '(web preview)',
+        durationMs: 0,
+      }),
       setupScriptAskAgent: async () => ({ error: 'no agent CLI in the web preview' }),
       setupProgress: async () => null,
       setupCancel: async () => false,

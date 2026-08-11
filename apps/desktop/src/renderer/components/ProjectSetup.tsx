@@ -36,34 +36,52 @@ function SetupPanel({
   return (
     <div className={`field ${panelStyles.detection}`}>
       <label>
-        {state.status === 'running' ? 'Reading the repo' : state.status === 'done' ? 'Finished' : state.status}
-        <span className={`faint ${panelStyles.cli}`}> · {state.cli}{state.model === 'inherit' ? '' : ` · ${state.model}`}</span>
+        {state.status === 'running'
+          ? 'Reading the repo'
+          : state.status === 'done'
+            ? 'Finished'
+            : state.status}
+        <span className={`faint ${panelStyles.cli}`}>
+          {' '}
+          · {state.cli}
+          {state.model === 'inherit' ? '' : ` · ${state.model}`}
+        </span>
       </label>
       <span className="hint">{state.detail}</span>
       <div className={`${panelStyles.transcript} scroll`} ref={tailRef}>
         {state.entries.map((e) => (
           <div key={e.id} className={`${panelStyles.line} ${panelStyles[e.kind] ?? ''}`}>
             {e.kind === 'tool' && (
-              <span className={`${panelStyles.transcriptIcon} ${e.done ? (e.failed ? panelStyles.failed : panelStyles.ok) : panelStyles.wait}`}>
+              <span
+                className={`${panelStyles.transcriptIcon} ${e.done ? (e.failed ? panelStyles.failed : panelStyles.ok) : panelStyles.wait}`}
+              >
                 {TOOL_ICON[e.toolKind ?? 'other'] ?? '·'}
               </span>
             )}
             <span className={panelStyles.transcriptText}>{e.text}</span>
           </div>
         ))}
-        {live && <div className={`${panelStyles.line} ${panelStyles.note} ${panelStyles.pulse}`}>…</div>}
-        {!state.entries.length && !live && <div className={`${panelStyles.line} ${panelStyles.note}`}>Nothing was reported.</div>}
+        {live && (
+          <div className={`${panelStyles.line} ${panelStyles.note} ${panelStyles.pulse}`}>…</div>
+        )}
+        {!state.entries.length && !live && (
+          <div className={`${panelStyles.line} ${panelStyles.note}`}>Nothing was reported.</div>
+        )}
       </div>
       {live && (
         <div className={`row ${panelStyles.actions}`}>
-          <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>
+          <Button variant="ghost" size="sm" onClick={onCancel}>
+            Cancel
+          </Button>
         </div>
       )}
       {state.status === 'done' && state.script && (
         <div style={{ marginTop: 8 }}>
           <CodeBlock maxHeight={180}>{state.script}</CodeBlock>
           <div className="row" style={{ marginTop: 8 }}>
-            <Button size="sm" onClick={() => onUse(state.script)}>Use this script</Button>
+            <Button size="sm" onClick={() => onUse(state.script)}>
+              Use this script
+            </Button>
           </div>
         </div>
       )}
@@ -90,7 +108,13 @@ export default function ProjectSetup({
   const [settingUp, setSettingUp] = useState<SetupState | null>(null);
   const [starting, setStarting] = useState(false);
   const [setupError, setSetupError] = useState('');
-  const [tryState, setTryState] = useState<{ running: boolean; passed?: boolean; exitCode?: number | null; output?: string; durationMs?: number } | null>(null);
+  const [tryState, setTryState] = useState<{
+    running: boolean;
+    passed?: boolean;
+    exitCode?: number | null;
+    output?: string;
+    durationMs?: number;
+  } | null>(null);
   const setupIdRef = useRef('');
 
   useEffect(() => {
@@ -127,7 +151,13 @@ export default function ProjectSetup({
   const tryIt = async (): Promise<void> => {
     setTryState({ running: true });
     const r = await api.projects.setupScriptTry(project.id, draft);
-    setTryState({ running: false, passed: r.passed, exitCode: r.exitCode, output: r.outputTail, durationMs: r.durationMs });
+    setTryState({
+      running: false,
+      passed: r.passed,
+      exitCode: r.exitCode,
+      output: r.outputTail,
+      durationMs: r.durationMs,
+    });
   };
 
   const askAgent = async (): Promise<void> => {
@@ -164,7 +194,11 @@ export default function ProjectSetup({
 
   return (
     <>
-      <Field label="Setup script" htmlFor="setup-script" hint="Shell script run at the worktree root after git worktree add, before any phase. One command per line. Keep it to idempotent installs (npm ci, pnpm install --frozen-lockfile, uv sync, cargo fetch). Empty means nothing to run.">
+      <Field
+        label="Setup script"
+        htmlFor="setup-script"
+        hint="Shell script run at the worktree root after git worktree add, before any phase. One command per line. Keep it to idempotent installs (npm ci, pnpm install --frozen-lockfile, uv sync, cargo fetch). Empty means nothing to run."
+      >
         <Textarea
           id="setup-script"
           className="mono"
@@ -174,7 +208,11 @@ export default function ProjectSetup({
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
         />
-        <span className="hint">Saved when you leave the field. Runs via <code>sh -c</code> in the fresh worktree; PATH comes from your login shell as usual. Keep it short — 5 min timeout, fail-fast with setup.log.</span>
+        <span className="hint">
+          Saved when you leave the field. Runs via <code>sh -c</code> in the fresh worktree; PATH
+          comes from your login shell as usual. Keep it short — 5 min timeout, fail-fast with
+          setup.log.
+        </span>
       </Field>
 
       <div className={styles.commandActionsRow} style={{ marginTop: 8 }}>
@@ -184,21 +222,44 @@ export default function ProjectSetup({
         <Button size="sm" disabled={starting || !!live} onClick={() => void askAgent()}>
           {starting || live ? 'Asking AI…' : 'Generate with AI'}
         </Button>
-        <Button size="sm" disabled={!draft.trim() || !!tryState?.running} onClick={() => void tryIt()}>
+        <Button
+          size="sm"
+          disabled={!draft.trim() || !!tryState?.running}
+          onClick={() => void tryIt()}
+        >
           {tryState?.running ? 'Running…' : 'Try it'}
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => { setDraft(''); onChange(''); }}>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            setDraft('');
+            onChange('');
+          }}
+        >
           Clear
         </Button>
       </div>
 
-      {sniffDetail && <span className="hint" style={{ marginTop: 6 }}>{sniffDetail}</span>}
+      {sniffDetail && (
+        <span className="hint" style={{ marginTop: 6 }}>
+          {sniffDetail}
+        </span>
+      )}
       {setupError && <span className={styles.detectError}>{setupError}</span>}
 
       {tryState && !tryState.running && (
-        <div className={`${styles.result} ${tryState.passed ? styles.ok : ''}`} style={{ marginTop: 8 }}>
-          <span className={styles.mark}>{tryState.passed ? '✓' : '✕'}</span> exit {tryState.exitCode ?? '—'} in {duration(tryState.durationMs)}
-          {tryState.output && <CodeBlock maxHeight={260} className={styles.output}>{tryState.output}</CodeBlock>}
+        <div
+          className={`${styles.result} ${tryState.passed ? styles.ok : ''}`}
+          style={{ marginTop: 8 }}
+        >
+          <span className={styles.mark}>{tryState.passed ? '✓' : '✕'}</span> exit{' '}
+          {tryState.exitCode ?? '—'} in {duration(tryState.durationMs)}
+          {tryState.output && (
+            <CodeBlock maxHeight={260} className={styles.output}>
+              {tryState.output}
+            </CodeBlock>
+          )}
         </div>
       )}
 

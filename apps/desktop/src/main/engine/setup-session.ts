@@ -11,12 +11,7 @@ import { adapterFor } from '../cli/index.js';
 import { OneShotClient } from '../droid/oneshot.js';
 import { labelToolCall, toolKind, type ToolKind } from '../droid/events.js';
 import type { DroidNotification, ToolUse } from '../droid/protocol.js';
-import {
-  SETUP_PROMPT,
-  SETUP_TOOLS,
-  parseSetupReply,
-  sniffSetupScript,
-} from './setup.js';
+import { SETUP_PROMPT, SETUP_TOOLS, parseSetupReply, sniffSetupScript } from './setup.js';
 
 export interface SetupEntry {
   id: string;
