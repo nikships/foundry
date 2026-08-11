@@ -190,7 +190,13 @@ export default function DoctorScreen(): React.JSX.Element {
               </Button>
             </div>
 
-            <DoctorList checks={checks} onRecheck={() => void recheck()} />
+            <DoctorList
+              checks={checks}
+              onRecheck={() => void recheck()}
+              hideHeader
+              checking={checking}
+              animate
+            />
 
             {blocking.length > 0 && (
               <div className={styles.obDoctorDivider} data-tone="amber" role="status">

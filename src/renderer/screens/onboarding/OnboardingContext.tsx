@@ -147,6 +147,7 @@ export function OnboardingProvider({
 
   useEffect(() => {
     if (step !== 'doctor') return;
+    if (checks.length > 0) return;
     let cancelled = false;
     setChecking(true);
     void api.doctor.run().then((next) => {
@@ -158,7 +159,7 @@ export function OnboardingProvider({
     return () => {
       cancelled = true;
     };
-  }, [step]);
+  }, [step, checks.length]);
 
   const go = (next: number): void => {
     setError('');

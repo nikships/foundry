@@ -195,19 +195,19 @@
   height: auto;
 }
 
-/* ── panel — single bordered container, hairlines inside ── */
+/* ── panel — clean surface layout without card border ── */
 .ob-doctor-panel-wrap {
   display: flex;
   flex-direction: column;
-  gap: var(--s2);
+  gap: var(--s3);
   min-width: 0;
+  padding-left: 0;
   animation: ob-doctor-in var(--normal) var(--ease) 100ms both;
 }
 .ob-doctor-panel {
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  background: var(--bg-panel);
-  overflow: hidden;
+  border: none;
+  border-radius: 0;
+  background: transparent;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -217,8 +217,9 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--s3);
-  padding: var(--s3) var(--s4);
+  padding: 0 0 var(--s3) 0;
   border-bottom: 1px solid var(--line);
+  margin-bottom: var(--s2);
 }
 .ob-doctor-panel-title {
   font-family: var(--font-mono);
@@ -255,40 +256,13 @@
   gap: 0;
 }
 .ob-doctor-panel :global(.doctor) li {
-  padding: var(--s3) var(--s4) var(--s3) calc(var(--s4) - 2px);
+  padding: var(--s3) 0;
   border-top: 0;
-  border-bottom: 1px solid var(--line);
-  border-left: 2px solid transparent;
-  gap: var(--s3);
-  align-items: center;
-  transition:
-    background var(--fast) var(--ease),
-    border-left-color var(--fast) var(--ease);
-  animation: ob-doctor-row var(--normal) var(--ease) both;
-}
-.ob-doctor-panel :global(.doctor) li:nth-child(1) {
-  animation-delay: 0ms;
-}
-.ob-doctor-panel :global(.doctor) li:nth-child(2) {
-  animation-delay: 36ms;
-}
-.ob-doctor-panel :global(.doctor) li:nth-child(3) {
-  animation-delay: 72ms;
-}
-.ob-doctor-panel :global(.doctor) li:nth-child(4) {
-  animation-delay: 108ms;
-}
-.ob-doctor-panel :global(.doctor) li:nth-child(5) {
-  animation-delay: 144ms;
-}
-.ob-doctor-panel :global(.doctor) li:nth-child(6) {
-  animation-delay: 180ms;
-}
-.ob-doctor-panel :global(.doctor) li:nth-child(7) {
-  animation-delay: 216ms;
-}
-.ob-doctor-panel :global(.doctor) li:nth-child(n + 8) {
-  animation-delay: 252ms;
+  border-bottom: 1px solid var(--line-faint);
+  border-left: 0;
+  gap: var(--s4);
+  align-items: flex-start;
+  transition: background var(--fast) var(--ease);
 }
 .ob-doctor-panel :global(.doctor) li:hover {
   background: var(--bg-hover);
@@ -299,14 +273,6 @@
 }
 .ob-doctor-panel :global(.doctor) li:global(.bad):hover {
   background: color-mix(in srgb, var(--red-dim) 52%, transparent);
-}
-.ob-doctor-panel :global(.doctor) :global(.mark) {
-  width: 16px;
-  display: grid;
-  place-items: center;
-  font-size: 13px;
-  line-height: 1;
-  flex: none;
 }
 .ob-doctor-panel :global(.doctor) :global(.text) {
   gap: 2px;

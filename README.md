@@ -24,7 +24,7 @@ If you're still babysitting a single agent in a terminal, you're moving slow.<br
 
 Claude Code is incredible. But one agent, one chat, one thread — you prompt, you wait, you review, you re-prompt. You are the orchestrator, the QA, and the git janitor.
 
-**Foundry is the factory you actually wanted.** You describe the work, pick how rigorous to be, and a roster of specialists builds it in an isolated worktree while you watch a live waterfall of real evidence. When it's right, you merge. If it's not, you discard — your base branch was never touched.
+**Foundry is the factory you actually wanted.** You describe the work, pick how rigorous to be, and a roster of specialists builds it in an isolated worktree while you watch a live waterfall of real evidence. When it's right, you merge. When it's not, you see exactly where the line failed, retool the pipeline, and run it again — scrap the part, not the factory.
 
 Builders using Foundry aren't just prompting. They're shipping.
 

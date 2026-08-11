@@ -495,10 +495,50 @@ export function createMockFoundryApi(): FoundryApi {
     doctor: {
       run: async (): Promise<DoctorCheck[]> => [
         {
-          id: 'web-preview',
-          label: 'Web preview',
+          id: 'cli:droid',
+          label: 'Factory droid CLI',
           ok: true,
-          detail: 'UI is running without Electron. Reads and writes are mocked.',
+          detail: 'found 0.19.1 at /usr/local/bin/droid',
+          blocking: true,
+        },
+        {
+          id: 'auth:droid',
+          label: 'Factory droid authentication',
+          ok: true,
+          detail: 'signed in, config at ~/.factory/settings.json',
+          blocking: true,
+        },
+        {
+          id: 'toolchain-path',
+          label: 'Toolchain PATH',
+          ok: true,
+          detail:
+            'resolved from your login shell; found node, npm, pnpm, bun, cargo, go, uv, swift',
+        },
+        {
+          id: 'git',
+          label: 'git',
+          ok: true,
+          detail: 'git version 2.55.0',
+          blocking: true,
+        },
+        {
+          id: 'gh',
+          label: 'GitHub CLI',
+          ok: true,
+          detail: 'gh version 2.97.0 (2025-07-31)',
+        },
+        {
+          id: 'gh:auth',
+          label: 'GitHub CLI authentication',
+          ok: true,
+          detail: 'signed in',
+        },
+        {
+          id: 'macos',
+          label: 'macOS 26 or newer',
+          ok: true,
+          detail: 'darwin 27.0.0',
         },
       ],
     },
