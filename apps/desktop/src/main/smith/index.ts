@@ -1,0 +1,94 @@
+/**
+ * The Smith service: the proposal queue, the socket transport, and the PTY
+ * session registry, wired together and owned by `AppContext`. One instance per
+ * app, started at boot.
+ */
+
+import { join } from 'node:path';
+import type {
+  AgentDef,
+  EnvelopeDef,
+  PipelineDef,
+  ProjectDef,
+  SmithProposal,
+} from '@shared/types.js';
+import { cliVersion } from '../droid/catalog.js';
+import { findCli } from '../cli/index.js';
+import { ProposalQueue } from './proposals.js';
+import { SmithSocketServer } from './socket-server.js';
+import { SmithRegistry } from './registry.js';
+
+/** Everything the Smith service needs from the wider app, kept to a narrow seam. */
+export interface SmithServiceDeps {
+  supportDir: string;
+  /** Absolute path to the running helper binary (`$FOUNDRY_CLI`). */
+  cliPath: string;
+  /** Broadcasts a channel + payload to every window. */
+  broadcast: (channel: string, payload?: unknown) => void;
+  /** Channel names, passed in so this module does not import the contract twice. */
+  channels: { data: string; statusChanged: string; proposalsChanged: string };
+  /** Persists an approved proposal; supplied by the IPC layer (store access). */
+  save: (
+    proposal: SmithProposal,
+  ) => { ok: true; entity: unknown } | { ok: false; error: string };
+  /** Resolves a project's full definition for spawning. */
+  projectFor: (projectId: string) => ProjectDef | null;
+  /** Scope-aware inventory for the system prompt and socket reads. */
+  rosterFor: (projectId?: string) => AgentDef[];
+  pipelinesFor: (projectId?: string) => PipelineDef[];
+  envelopes: () => EnvelopeDef[];
+  /** Everything the socket server needs to answer and validate. */
+  socketCtx: ConstructorParameters<typeof SmithSocketServer>[1];
+}
+
+export class SmithService {
+  readonly proposals: ProposalQueue;
+  readonly socket: SmithSocketServer;
+  readonly registry: SmithRegistry;
+
+  constructor(private readonly deps: SmithServiceDeps) {
+    this.proposals = new ProposalQueue(
+      () => deps.broadcast(deps.channels.proposalsChanged),
+      // The queue awaits the save so an approve that fails the store keeps the
+      // card up. The store call itself is synchronous; wrap it in a resolved
+      // promise to satisfy the async handler contract.
+      (proposal) => Promise.resolve(deps.save(proposal)),
+    );
+
+    const socketPath = join(deps.supportDir, 'smith', 'foundry.sock');
+    this.socket = new SmithSocketServer(socketPath, deps.socketCtx, this.proposals);
+
+    this.registry = new SmithRegistry({
+      supportDir: deps.supportDir,
+      cliPath: deps.cliPath,
+      socketPath,
+      scopeFor: (projectId) => {
+        const project = deps.projectFor(projectId);
+        if (!project) return null;
+        return {
+          project,
+          agents: deps.rosterFor(projectId),
+          pipelines: deps.pipelinesFor(projectId),
+          envelopes: deps.envelopes(),
+        };
+      },
+      droid: async () => {
+        const path = findCli('droid');
+        const version = await cliVersion(path);
+        return { ok: !!version, path };
+      },
+      onData: (projectId, data) => deps.broadcast(deps.channels.data, { projectId, data }),
+      onStatusChanged: (status) => deps.broadcast(deps.channels.statusChanged, status),
+    });
+  }
+
+  start(): void {
+    this.socket.start();
+  }
+
+  dispose(): void {
+    this.proposals.cancelAll();
+    this.registry.closeAll();
+    this.socket.stop();
+  }
+}

@@ -7,8 +7,8 @@
 
 import { app, BrowserWindow } from 'electron';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { AgentDef, AppSettings, PipelineDef, RunRow } from '@shared/types.js';
 import { IPC } from '@shared/ipc-contract.js';
 import { SettingsStore } from './store/settings.js';
@@ -20,6 +20,8 @@ import { RunRegistry } from './engine/registry.js';
 import { Detections } from './engine/detections.js';
 import { Setups } from './engine/setups.js';
 import { UpdaterService } from './updater.js';
+import { SmithService } from './smith/index.js';
+import { saveProposal } from './ipc/smith.js';
 import { notifyNeedsInput, notifyOutcome, setDockBadge } from './system/notify.js';
 import { shutdownDaemonManager } from './droid/sdk/daemon.js';
 
@@ -39,6 +41,7 @@ export class AppContext {
   readonly detections: Detections;
   readonly setups: Setups;
   readonly updater: UpdaterService;
+  readonly smith: SmithService;
   readonly version: string;
 
   constructor(
@@ -70,6 +73,36 @@ export class AppContext {
     this.registry.on('needs-input', (interrupt: { title: string; body: string }) => {
       notifyNeedsInput(interrupt.title, interrupt.body, this.settings.get());
     });
+
+    this.smith = new SmithService({
+      supportDir,
+      cliPath: this.foundryCliPath(),
+      broadcast: (channel, payload) => this.broadcast(channel, payload),
+      channels: {
+        data: IPC.eventSmithData,
+        statusChanged: IPC.eventSmithStatusChanged,
+        proposalsChanged: IPC.eventSmithProposalsChanged,
+      },
+      // The queue awaits a save; store access lives in the IPC layer, so the
+      // handler is threaded through here rather than importing a store into the
+      // queue.
+      save: (proposal) => saveProposal(this, proposal),
+      projectFor: (projectId) => this.projects.get(projectId),
+      rosterFor: (projectId) => this.rosterFor(projectId),
+      pipelinesFor: (projectId) => this.pipelinesFor(projectId),
+      envelopes: () => this.envelopes.list(),
+      socketCtx: this,
+    });
+  }
+
+  /**
+   * The helper binary droid invokes as `$FOUNDRY_CLI`. It builds alongside the
+   * main bundle at `out/cli/foundry-cli.js`; packaged, that sits beside the app
+   * resources under the same layout.
+   */
+  private foundryCliPath(): string {
+    const here = dirname(fileURLToPath(import.meta.url));
+    return join(here, '../cli/foundry-cli.js');
   }
 
   private onRunFinished(run: RunRow): void {
@@ -132,6 +165,7 @@ export class AppContext {
     this.registry.closeAll();
     this.detections.cancelAll();
     this.setups.cancelAll();
+    this.smith.dispose();
     // Best-effort: disconnect + SIGTERM the app-owned daemon. --parent-pid is
     // the crash backstop; this is the clean quit path. Fire-and-forget so
     // dispose stays sync for before-quit.

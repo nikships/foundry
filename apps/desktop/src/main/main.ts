@@ -173,6 +173,9 @@ if (!app.requestSingleInstanceLock()) {
 
     ctx = new AppContext(supportDir, assetsRoot);
     registerIpc(ctx);
+    // The Smith helper CLI connects over a unix socket that must be listening
+    // before any droid session could invoke it.
+    ctx.smith.start();
     buildMenu();
 
     // A run whose engine died with the app can never finish on its own.
