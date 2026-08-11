@@ -127,10 +127,16 @@ function Toggle({
 export default function SettingsScreen({
   pane: initialPane,
   onNewProject,
+  openEnvelope,
+  openNonce = 0,
 }: {
   pane: string;
   /** Create a repository on GitHub instead of pointing at an existing checkout. */
   onNewProject?: () => void;
+  /** Deep link (e.g. a Smith approve) into the envelopes pane: select this envelope. */
+  openEnvelope?: string;
+  /** Bumped per deep-link so re-selecting the same envelope re-fires the effect. */
+  openNonce?: number;
 }): React.JSX.Element {
   const { settings, project, projects, refreshAll, patchSettings, selectProject } = useApp();
   const [pane, setPane] = useState<Pane>((initialPane as Pane) ?? 'general');
@@ -449,7 +455,7 @@ export default function SettingsScreen({
         <div className={styles.settingsScroll}>
           {pane === 'envelopes' ? (
             <div className={styles.envelopesPage}>
-              <EnvelopesSettings />
+              <EnvelopesSettings openEnvelope={openEnvelope} openNonce={openNonce} />
             </div>
           ) : (
             <div className={styles.settingsPage}>

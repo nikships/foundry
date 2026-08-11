@@ -77,7 +77,12 @@ export function blankPhase(kind: PhaseKind, taken: Set<string>): PhaseDef {
   };
 }
 
-export function usePipelineDraft(): {
+export function usePipelineDraft(deepLink?: {
+  /** Deep link (e.g. a Smith approve): select this pipeline id once it resolves. */
+  openPipeline?: string;
+  /** Bumped per deep-link so re-selecting the same pipeline re-fires the effect. */
+  openNonce?: number;
+}): {
   pipelines: PipelineDef[];
   selected: PipelineDef | null;
   selectedId: string;
@@ -144,6 +149,17 @@ export function usePipelineDraft(): {
   useEffect(() => {
     if (selectedId) safeSetItem(STORAGE_KEY, selectedId);
   }, [selectedId]);
+
+  // Deep link from a Smith approve: select the saved pipeline once it appears.
+  // `openNonce` re-fires the effect for a repeat approval of the same pipeline.
+  const openPipeline = deepLink?.openPipeline;
+  const openNonce = deepLink?.openNonce ?? 0;
+  useEffect(() => {
+    if (openPipeline && pipelines.some((p) => p.id === openPipeline)) {
+      setSelectedId(openPipeline);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openPipeline, openNonce, pipelines]);
 
   // Initialize or reset draft when selected pipeline changes
   useEffect(() => {

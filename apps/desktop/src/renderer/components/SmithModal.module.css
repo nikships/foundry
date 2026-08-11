@@ -1,0 +1,148 @@
+/**
+ * Near-fullscreen Smith terminal modal. The dialog fills most of the viewport
+ * so an embedded droid session reads as a first-class terminal, not a popover.
+ */
+
+.dialog {
+  width: calc(100vw - 64px);
+  height: calc(100vh - 64px);
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.projectName {
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+.state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.stateDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-ghost);
+}
+
+.stateDotIdle {
+  background: var(--green);
+}
+
+.stateDotBusy {
+  background: var(--accent);
+  animation: pulse 1.2s var(--ease) infinite;
+}
+
+.stateDotExited {
+  background: var(--red);
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.spacer {
+  flex: 1;
+}
+
+.close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.close:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.terminalWrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  background: var(--bg-void);
+  padding: var(--s3);
+}
+
+/* The xterm mount fills the padded wrap; xterm manages its own scrollback. */
+.terminal {
+  width: 100%;
+  height: 100%;
+}
+
+/* Doctor-style guidance shown instead of a terminal when a session is blocked. */
+.guidance {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s4);
+  padding: var(--s6);
+  text-align: center;
+}
+
+.guidanceIcon {
+  color: var(--amber);
+}
+
+.guidanceTitle {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.guidanceBody {
+  max-width: 460px;
+  font-size: var(--text-sm);
+  line-height: var(--leading-loose);
+  color: var(--text-dim);
+}
+
+.guidanceActions {
+  display: flex;
+  gap: var(--s3);
+}

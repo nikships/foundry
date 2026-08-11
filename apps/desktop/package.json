@@ -31,9 +31,12 @@
   },
   "dependencies": {
     "@factory/droid-sdk": "0.7.0",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
     "better-sqlite3": "^13.0.3",
     "electron-updater": "^6.8.9",
     "lucide-react": "^1.31.0",
+    "node-pty": "^1.0.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "zod": "^4.4.3"
