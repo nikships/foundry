@@ -1,17 +1,34 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  Bell,
+  Eye,
+  Folder,
+  GitPullRequest,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Play,
+  Settings as SettingsIcon,
+  Users,
+  Workflow,
+} from 'lucide-react';
 import type { View } from '../App.js';
 import { useApp } from '../stores/app.js';
 import { useAllProjectRuns } from '../stores/run.js';
 import { since, statusColor, statusWord } from '../format.js';
+import { safeGetItem, safeSetItem } from '../local-store.js';
 import { Dropdown, type DropdownOption } from './ui/Dropdown.js';
 import styles from './Sidebar.module.css';
 
-const items: { id: View; label: string; key: string }[] = [
-  { id: 'runs', label: 'Runs', key: '1' },
-  { id: 'pipelines', label: 'Pipelines', key: '2' },
-  { id: 'roster', label: 'Roster', key: '3' },
-  { id: 'inspector', label: 'Inspector', key: '4' },
-  { id: 'prs', label: 'Pull Requests', key: '5' },
+const SIDEBAR_COLLAPSED_KEY = 'foundry.sidebarCollapsed';
+
+type NavIcon = typeof Play;
+
+const items: { id: View; label: string; key: string; Icon: NavIcon }[] = [
+  { id: 'runs', label: 'Runs', key: '1', Icon: Play },
+  { id: 'pipelines', label: 'Pipelines', key: '2', Icon: Workflow },
+  { id: 'roster', label: 'Roster', key: '3', Icon: Users },
+  { id: 'inspector', label: 'Inspector', key: '4', Icon: Eye },
+  { id: 'prs', label: 'Pull Requests', key: '5', Icon: GitPullRequest },
 ];
 
 function SplitProjectOption({
@@ -127,6 +144,18 @@ export default function Sidebar({
   const pendingCount = interrupts.length;
   const firstWaiting = interrupts[0] ?? null;
 
+  const [collapsed, setCollapsed] = useState<boolean>(
+    () => safeGetItem(SIDEBAR_COLLAPSED_KEY) === '1',
+  );
+
+  useEffect(() => {
+    safeSetItem(SIDEBAR_COLLAPSED_KEY, collapsed ? '1' : '0');
+  }, [collapsed]);
+
+  const toggleCollapsed = useCallback(() => {
+    setCollapsed((v) => !v);
+  }, []);
+
   const dropdownOptions: DropdownOption[] = [
     {
       value: '__split_add_create__',
@@ -147,38 +176,73 @@ export default function Sidebar({
     }),
   ];
 
+  const projectTitle = project?.name ?? 'Project';
+
   return (
-    <aside className={styles.sidebar}>
+    <aside className={`${styles.sidebar} ${collapsed ? styles.collapsed : ''}`}>
       <div className={styles.dragPad} />
-      <div className={styles.projectPicker}>
-        <label className="faint">Project</label>
-        <Dropdown
-          value={project?.id ?? ''}
-          options={dropdownOptions}
-          onChange={(next) => {
-            if (next === '__split_add_create__') {
-              onAddProject();
-              return;
-            }
-            selectProject(next);
-          }}
-          aria-label="Project"
-          placeholder="Select or add project…"
-        />
-      </div>
-      <nav>
-        {items.map((item) => (
-          <button
-            key={item.id}
-            className={`${styles.navItem} ${view === item.id ? styles.active : ''}`}
-            onClick={() => onNavigate(item.id)}
-          >
-            <span>{item.label}</span>
-            <kbd>⌘{item.key}</kbd>
-          </button>
-        ))}
+      {collapsed ? (
+        <div className={styles.projectPickerCollapsed}>
+          <Dropdown
+            value={project?.id ?? ''}
+            options={dropdownOptions}
+            onChange={(next) => {
+              if (next === '__split_add_create__') {
+                onAddProject();
+                return;
+              }
+              selectProject(next);
+            }}
+            aria-label="Project"
+            placeholder={projectTitle}
+            triggerClassName={styles.emblemProjectTrigger}
+            renderValue={() => <Folder size={18} strokeWidth={1.8} aria-hidden />}
+          />
+        </div>
+      ) : (
+        <div className={styles.projectPicker}>
+          <label className="faint">Project</label>
+          <Dropdown
+            value={project?.id ?? ''}
+            options={dropdownOptions}
+            onChange={(next) => {
+              if (next === '__split_add_create__') {
+                onAddProject();
+                return;
+              }
+              selectProject(next);
+            }}
+            aria-label="Project"
+            placeholder="Select or add project…"
+          />
+        </div>
+      )}
+      <nav className={styles.nav} aria-label="Primary">
+        {items.map((item) => {
+          const active = view === item.id;
+          const Icon = item.Icon;
+          return (
+            <button
+              key={item.id}
+              className={`${styles.navItem} ${active ? styles.active : ''} ${collapsed ? styles.navItemCollapsed : ''}`}
+              onClick={() => onNavigate(item.id)}
+              title={collapsed ? `${item.label} (⌘${item.key})` : undefined}
+              aria-label={collapsed ? `${item.label} ⌘${item.key}` : undefined}
+              aria-current={active ? 'page' : undefined}
+            >
+              {collapsed ? (
+                <Icon size={18} strokeWidth={1.9} aria-hidden className={styles.navEmblem} />
+              ) : (
+                <>
+                  <span className={styles.navLabel}>{item.label}</span>
+                  <kbd>⌘{item.key}</kbd>
+                </>
+              )}
+            </button>
+          );
+        })}
       </nav>
-      {pipelineRuns.length > 0 && (
+      {!collapsed && pipelineRuns.length > 0 && (
         <div className={styles.runsSection}>
           <label className="faint">Activity</label>
           <div className={styles.runsList}>
@@ -216,22 +280,59 @@ export default function Sidebar({
         </div>
       )}
       <div className={styles.spacer} />
-      {pendingCount > 0 && firstWaiting && (
-        <button
-          type="button"
-          className={styles.pending}
-          title="Open the run waiting for you"
-          onClick={() => onOpenInterruptRun?.(firstWaiting.runId)}
-        >
-          {pendingCount} {pendingCount === 1 ? 'run needs' : 'runs need'} you
-        </button>
-      )}
+      {pendingCount > 0 && firstWaiting ? (
+        collapsed ? (
+          <button
+            type="button"
+            className={styles.pendingCollapsed}
+            title={`${pendingCount} ${pendingCount === 1 ? 'run needs' : 'runs need'} you — open`}
+            aria-label={`${pendingCount} ${pendingCount === 1 ? 'run needs' : 'runs need'} you`}
+            onClick={() => onOpenInterruptRun?.(firstWaiting.runId)}
+          >
+            <Bell size={18} strokeWidth={1.9} aria-hidden />
+            <span className={styles.pendingBadge} aria-hidden>
+              {pendingCount > 9 ? '9+' : String(pendingCount)}
+            </span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            className={styles.pending}
+            title="Open the run waiting for you"
+            onClick={() => onOpenInterruptRun?.(firstWaiting.runId)}
+          >
+            {pendingCount} {pendingCount === 1 ? 'run needs' : 'runs need'} you
+          </button>
+        )
+      ) : null}
       <button
-        className={`${styles.navItem} settings ${view === 'settings' ? styles.active : ''}`}
-        onClick={() => onOpenSettings('general')}
+        type="button"
+        className={`${styles.collapseToggle} ${collapsed ? styles.collapseToggleCollapsed : ''}`}
+        onClick={toggleCollapsed}
+        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
-        <span>Settings</span>
-        <kbd>⌘,</kbd>
+        {collapsed ? (
+          <PanelLeftOpen size={18} strokeWidth={1.9} aria-hidden />
+        ) : (
+          <PanelLeftClose size={16} strokeWidth={1.9} aria-hidden />
+        )}
+      </button>
+      <button
+        className={`${styles.navItem} ${view === 'settings' ? styles.active : ''} ${collapsed ? styles.navItemCollapsed : ''} ${styles.settingsItem}`}
+        onClick={() => onOpenSettings('general')}
+        title={collapsed ? 'Settings (⌘,)' : undefined}
+        aria-label={collapsed ? 'Settings ⌘,' : undefined}
+        aria-current={view === 'settings' ? 'page' : undefined}
+      >
+        {collapsed ? (
+          <SettingsIcon size={18} strokeWidth={1.9} aria-hidden className={styles.navEmblem} />
+        ) : (
+          <>
+            <span>Settings</span>
+            <kbd>⌘,</kbd>
+          </>
+        )}
       </button>
     </aside>
   );

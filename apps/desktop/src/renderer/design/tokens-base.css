@@ -71,6 +71,7 @@
 
   /* ── layout ───────────────────────────────────────────────────────────── */
   --sidebar-w: 264px;
+  --sidebar-w-collapsed: 56px;
   --titlebar-h: 52px;
   --lane-h: 44px;
   --lane-gap: 6px;
