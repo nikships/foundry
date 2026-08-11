@@ -58,9 +58,9 @@
 }
 .pipeline {
   width: auto;
-  max-width: 240px;
+  max-width: 100%;
   min-width: 110px;
-  flex: 0 1 160px;
+  flex: 0 0 auto;
 }
 .grow {
   flex: 1 1 100px;
@@ -74,10 +74,6 @@
 @media (max-width: 760px) {
   .controls {
     gap: var(--s2);
-  }
-  .pipeline {
-    flex-basis: 120px;
-    max-width: 160px;
   }
 }
 .controls kbd {

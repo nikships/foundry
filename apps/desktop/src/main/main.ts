@@ -47,14 +47,6 @@ function createWindow(): BrowserWindow {
     },
   });
 
-  // Hide the native horizontal traffic lights — the renderer paints a vertical
-  // Red/Yellow/Green stack inside the sidenav instead, so the window controls
-  // are completely contained within the sidebar rail in both expanded and
-  // collapsed states. macOS-only API.
-  if (process.platform === 'darwin') {
-    window.setWindowButtonVisibility(false);
-  }
-
   // Painting an empty window before the first frame reads as a hang.
   window.once('ready-to-show', () => window.show());
 

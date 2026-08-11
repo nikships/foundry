@@ -394,9 +394,6 @@ export interface FoundryApi {
     version(): Promise<string>;
     quit(): Promise<void>;
     relaunch(): Promise<void>;
-    windowClose(): Promise<void>;
-    windowMinimize(): Promise<void>;
-    windowMaximize(): Promise<void>;
   };
   updater: {
     check(): Promise<UpdateStatus>;
@@ -505,9 +502,6 @@ export const IPC = {
   appVersion: 'app:version',
   appQuit: 'app:quit',
   appRelaunch: 'app:relaunch',
-  appWindowClose: 'app:windowClose',
-  appWindowMinimize: 'app:windowMinimize',
-  appWindowMaximize: 'app:windowMaximize',
   updaterCheck: 'updater:check',
   updaterDownload: 'updater:download',
   updaterQuitAndInstall: 'updater:quitAndInstall',

@@ -493,9 +493,6 @@ export function createMockFoundryApi(): FoundryApi {
       version: async () => '0.1.1-web',
       quit: async () => {},
       relaunch: async () => {},
-      windowClose: async () => {},
-      windowMinimize: async () => {},
-      windowMaximize: async () => {},
     },
     updater: {
       check: async (): Promise<UpdateStatus> => ({ stage: 'idle' }),

@@ -17,7 +17,6 @@ import { useAllProjectRuns } from '../stores/run.js';
 import { since, statusColor, statusWord } from '../format.js';
 import { safeGetItem, safeSetItem } from '../local-store.js';
 import { Dropdown, type DropdownOption } from './ui/Dropdown.js';
-import WindowTrafficLights from './WindowTrafficLights.js';
 import styles from './Sidebar.module.css';
 
 const SIDEBAR_COLLAPSED_KEY = 'foundry.sidebarCollapsed';
@@ -181,7 +180,6 @@ export default function Sidebar({
 
   return (
     <aside className={`${styles.sidebar} ${collapsed ? styles.collapsed : ''}`}>
-      <WindowTrafficLights collapsed={collapsed} />
       {collapsed ? (
         <div className={styles.projectPickerCollapsed}>
           <Dropdown

@@ -3,7 +3,6 @@ import { api, menu } from './api.js';
 import { useGlobalShortcuts } from './hooks/useGlobalShortcuts.js';
 import { AppProvider, useApp } from './stores/app.js';
 import Sidebar from './components/Sidebar.js';
-import WindowTrafficLights from './components/WindowTrafficLights.js';
 import { DroidGlyph } from './components/BrandIcon.js';
 import RunsScreen from './screens/RunsScreen.js';
 import RunDetailScreen from './screens/RunDetailScreen.js';
@@ -215,7 +214,6 @@ function AppInner(): React.JSX.Element {
             <span className={styles.wordmarkText}>Foundry</span>
           </div>
         )}
-        {(needsOnboarding || !ready) && <WindowTrafficLights />}
       </div>
 
       {needsOnboarding ? (
