@@ -37,16 +37,23 @@ export function isEditableTarget(target: unknown): boolean {
 }
 
 /**
- * Next tab index for a horizontal tablist, per the ARIA pattern:
- * Left/Right move with wrap-around, Home/End jump. Null means "not ours" so
- * the caller lets the event fall through (e.g. plain typing, Tab).
+ * Next tab index for a tablist, per the ARIA pattern:
+ * Left/Right (or Up/Down for vertical) move with wrap-around, Home/End jump.
+ * Null means "not ours" so the caller lets the event fall through.
  */
-export function tablistStep(key: string, current: number, count: number): number | null {
+export function tablistStep(
+  key: string,
+  current: number,
+  count: number,
+  orientation: 'horizontal' | 'vertical' = 'horizontal',
+): number | null {
   if (count <= 0 || current < 0) return null;
+  const prevKey = orientation === 'vertical' ? 'ArrowUp' : 'ArrowLeft';
+  const nextKey = orientation === 'vertical' ? 'ArrowDown' : 'ArrowRight';
   switch (key) {
-    case 'ArrowLeft':
+    case prevKey:
       return (current - 1 + count) % count;
-    case 'ArrowRight':
+    case nextKey:
       return (current + 1) % count;
     case 'Home':
       return 0;
