@@ -1,19 +1,210 @@
-import React from 'react';
+import { Fragment, useCallback, useMemo, useState } from 'react';
+import {
+  DndContext,
+  DragOverlay,
+  MeasuringStrategy,
+  PointerSensor,
+  closestCenter,
+  pointerWithin,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type CollisionDetection,
+  type DraggableSyntheticListeners,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core';
+import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
+  GripVertical,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 import type { PhaseDef, PhaseKind, ValidationIssue } from '@shared/types.js';
 import { KIND_LABEL, phaseKindColor } from '../derive.js';
 import {
   commandText,
+  dragPhaseId,
+  dropRailId,
+  dropSlotId,
   formatTimeout,
   gateNames,
   issuePhaseIndex,
+  newStagePlan,
+  parseDragPhaseId,
+  parseDropId,
+  reorderTarget,
   stageLabel,
   stageMoveTarget,
+  stageSlots,
   stagesOf,
   type Stage,
 } from '../pipeline-view.js';
-import { PhaseGlyph } from './PhaseGlyphs.js';
+import { EnvelopeGlyph, PhaseGlyph } from './PhaseGlyphs.js';
 import { Button } from './ui/Button.js';
 import styles from './StageBoard.module.css';
+
+/**
+ * A rail is a deliberate target: it only wins when the pointer is inside it, so
+ * a drag that drifts through the gap between columns still reorders instead of
+ * silently splitting the run into a new stage. Insertion slots are hairlines,
+ * so they get the generous rule and claim the nearest one to the dragged card.
+ */
+const boardCollision: CollisionDetection = (args) => {
+  const rail = pointerWithin(args).find((c) => String(c.id).startsWith('rail:'));
+  if (rail) return [rail];
+  return closestCenter({
+    ...args,
+    droppableContainers: args.droppableContainers.filter((c) => !String(c.id).startsWith('rail:')),
+  });
+};
+
+/** A square icon button in a card toolbar. */
+function ToolBtn({
+  label,
+  Icon,
+  disabled,
+  danger,
+  className,
+  onClick,
+}: {
+  label: string;
+  Icon: LucideIcon;
+  disabled?: boolean;
+  danger?: boolean;
+  className?: string;
+  onClick: () => void;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      className={[styles.toolBtn, danger ? styles.removeToolBtn : '', className]
+        .filter(Boolean)
+        .join(' ')}
+      onClick={onClick}
+    >
+      <Icon size={12} strokeWidth={1.6} aria-hidden="true" />
+    </button>
+  );
+}
+
+/** A small metadata chip, optionally led by a colour swatch. */
+function Chip({
+  children,
+  color,
+  title,
+  className,
+}: {
+  children: React.ReactNode;
+  color?: string;
+  title?: string;
+  className?: string;
+}): React.JSX.Element {
+  return (
+    <span title={title} className={[styles.chip, className].filter(Boolean).join(' ')}>
+      {color && (
+        <span className={styles.chipDot} style={{ background: color }} aria-hidden="true" />
+      )}
+      {children}
+    </span>
+  );
+}
+
+/**
+ * The handle that starts a drag.
+ *
+ * dnd-kit's `attributes` are deliberately dropped: they describe a focusable
+ * draggable role, and the card toolbar already moves a phase in all four
+ * directions from the keyboard. Announcing a second, pointer-only path to the
+ * same edit to a screen reader would be noise, not an affordance.
+ */
+function DragGrip({
+  listeners,
+  setActivatorNodeRef,
+  label,
+}: {
+  listeners: DraggableSyntheticListeners;
+  setActivatorNodeRef: (element: HTMLElement | null) => void;
+  label: string;
+}): React.JSX.Element {
+  return (
+    <span
+      {...listeners}
+      ref={setActivatorNodeRef}
+      aria-hidden="true"
+      title={label}
+      className={styles.dragGrip}
+    >
+      <GripVertical size={12} strokeWidth={1.6} />
+    </span>
+  );
+}
+
+/**
+ * A hairline between two cards: where a dropped phase lands in the run order.
+ *
+ * Slots that would not move the dragged phase are disabled rather than hidden,
+ * so the column keeps the same geometry through the whole drag.
+ */
+function DropSlot({
+  at,
+  disabled,
+  active,
+}: {
+  at: number;
+  disabled: boolean;
+  active: boolean;
+}): React.JSX.Element {
+  const { setNodeRef, isOver } = useDroppable({ id: dropSlotId(at), disabled });
+  return (
+    <div
+      ref={setNodeRef}
+      aria-hidden="true"
+      className={[
+        styles.dropSlot,
+        active ? styles.dropSlotArmed : '',
+        isOver ? styles.dropSlotOver : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+    />
+  );
+}
+
+/** The gutter between two stages: a drop here gives the phase its own stage. */
+function NewStageRail({
+  boundary,
+  dragging,
+  enabled,
+}: {
+  boundary: number;
+  dragging: boolean;
+  enabled: boolean;
+}): React.JSX.Element {
+  const { setNodeRef, isOver } = useDroppable({ id: dropRailId(boundary), disabled: !enabled });
+  return (
+    <div
+      ref={setNodeRef}
+      aria-hidden="true"
+      className={[
+        styles.newStageRail,
+        dragging ? styles.newStageRailArmed : '',
+        enabled && isOver ? styles.newStageRailOver : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+    >
+      {dragging && enabled && <span className={styles.newStageRailLabel}>New stage</span>}
+    </div>
+  );
+}
 
 export default function StageBoard({
   phases,
@@ -22,6 +213,7 @@ export default function StageBoard({
   onAddPhase,
   onMovePhase,
   onReorderPhase,
+  onNewStagePhase,
   onRemovePhase,
   agentColor,
   issues,
@@ -32,11 +224,47 @@ export default function StageBoard({
   onAddPhase: (kind: PhaseKind, at?: number) => void;
   onMovePhase: (index: number, delta: number) => void;
   onReorderPhase: (from: number, to: number) => void;
+  onNewStagePhase: (from: number, boundary: number) => void;
   onRemovePhase: (index: number) => void;
   agentColor: (name: string | null) => string;
   issues: ValidationIssue[];
 }): React.JSX.Element {
   const stages = stagesOf(phases);
+  const [dragging, setDragging] = useState<number | null>(null);
+
+  const sensors = useSensors(
+    // A card is a button first: a drag only begins once the pointer travels far
+    // enough that the press was not a click meant to open the phase sheet.
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  );
+
+  const onDragStart = useCallback((event: DragStartEvent) => {
+    setDragging(parseDragPhaseId(event.active.id));
+  }, []);
+
+  const onDragCancel = useCallback(() => setDragging(null), []);
+
+  const onDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      setDragging(null);
+      const from = parseDragPhaseId(event.active.id);
+      const target = event.over ? parseDropId(event.over.id) : null;
+      if (from === null || !target) return;
+      if (target.kind === 'rail') {
+        onNewStagePhase(from, target.boundary);
+        return;
+      }
+      const to = reorderTarget(from, target.at);
+      if (to !== null) onReorderPhase(from, to);
+    },
+    [onNewStagePhase, onReorderPhase],
+  );
+
+  // A checkpoint is a stage boundary, so it has no stage of its own to be given.
+  const railsEnabled = useMemo(
+    () => dragging !== null && phases[dragging]?.kind !== 'engineer',
+    [dragging, phases],
+  );
 
   if (phases.length === 0) {
     return (
@@ -63,39 +291,83 @@ export default function StageBoard({
     );
   }
 
+  const dragged = dragging !== null ? phases[dragging] : null;
+
   return (
-    <div className={styles.boardContainer}>
-      <div className={styles.boardTrack}>
-        {stages.map((stage, stageIdx) => (
-          <React.Fragment key={`stage-${stage.index}`}>
-            <StageColumn
-              stage={stage}
-              totalStages={stages.length}
-              phases={phases}
-              selectedPhase={selectedPhase}
-              onSelectPhase={onSelectPhase}
-              onAddPhase={onAddPhase}
-              onMovePhase={onMovePhase}
-              onReorderPhase={onReorderPhase}
-              onRemovePhase={onRemovePhase}
-              agentColor={agentColor}
-              issues={issues}
-            />
-            <GateSlot
-              stage={stage}
-              phases={phases}
-              selectedPhase={selectedPhase}
-              onSelectPhase={onSelectPhase}
-              onAddPhase={onAddPhase}
-              onMovePhase={onMovePhase}
-              onRemovePhase={onRemovePhase}
-              isLast={stageIdx === stages.length - 1}
-              issues={issues}
-            />
-          </React.Fragment>
-        ))}
+    <DndContext
+      sensors={sensors}
+      collisionDetection={boardCollision}
+      // Rails and slots appear and resize when a drag starts, so a rect
+      // measured once at drag start would be the wrong one.
+      measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragCancel={onDragCancel}
+    >
+      <div className={styles.boardContainer}>
+        <div className={styles.boardTrack}>
+          <NewStageRail
+            boundary={0}
+            dragging={dragging !== null}
+            enabled={railsEnabled && newStagePlan(phases, dragging ?? -1, 0) !== null}
+          />
+          {stages.map((stage, stageIdx) => {
+            const boundary = stage.gate ?? phases.length;
+            return (
+              <Fragment key={`stage-${stage.index}`}>
+                <StageColumn
+                  stage={stage}
+                  totalStages={stages.length}
+                  phases={phases}
+                  selectedPhase={selectedPhase}
+                  dragging={dragging}
+                  onSelectPhase={onSelectPhase}
+                  onAddPhase={onAddPhase}
+                  onMovePhase={onMovePhase}
+                  onReorderPhase={onReorderPhase}
+                  onRemovePhase={onRemovePhase}
+                  agentColor={agentColor}
+                  issues={issues}
+                />
+                <GateSlot
+                  stage={stage}
+                  phases={phases}
+                  selectedPhase={selectedPhase}
+                  dragging={dragging}
+                  onSelectPhase={onSelectPhase}
+                  onAddPhase={onAddPhase}
+                  onMovePhase={onMovePhase}
+                  onRemovePhase={onRemovePhase}
+                  isLast={stageIdx === stages.length - 1}
+                  issues={issues}
+                />
+                <NewStageRail
+                  boundary={boundary}
+                  dragging={dragging !== null}
+                  enabled={railsEnabled && newStagePlan(phases, dragging ?? -1, boundary) !== null}
+                />
+              </Fragment>
+            );
+          })}
+        </div>
       </div>
-    </div>
+
+      <DragOverlay dropAnimation={null}>
+        {dragged && dragging !== null && (
+          <div className={styles.dragPreview}>
+            <span
+              style={{ color: phaseKindColor(dragged.kind, agentColor(dragged.agent ?? null)) }}
+              className={styles.kindGlyphWrap}
+              aria-hidden="true"
+            >
+              <PhaseGlyph kind={dragged.kind} />
+            </span>
+            <span className={styles.phaseName}>{dragged.name}</span>
+            <span className={styles.phaseIndex}>{String(dragging + 1).padStart(2, '0')}</span>
+          </div>
+        )}
+      </DragOverlay>
+    </DndContext>
   );
 }
 
@@ -104,6 +376,7 @@ function StageColumn({
   totalStages,
   phases,
   selectedPhase,
+  dragging,
   onSelectPhase,
   onAddPhase,
   onMovePhase,
@@ -116,6 +389,7 @@ function StageColumn({
   totalStages: number;
   phases: PhaseDef[];
   selectedPhase: number | null;
+  dragging: number | null;
   onSelectPhase: (index: number) => void;
   onAddPhase: (kind: PhaseKind, at?: number) => void;
   onMovePhase: (index: number, delta: number) => void;
@@ -125,6 +399,16 @@ function StageColumn({
   issues: ValidationIssue[];
 }): React.JSX.Element {
   const insertIndex = stage.gate !== null ? stage.gate : stage.end;
+  const slots = stageSlots(stage);
+
+  const slotAt = (at: number): React.JSX.Element => (
+    <DropSlot
+      key={`slot-${at}`}
+      at={at}
+      active={dragging !== null}
+      disabled={dragging === null || reorderTarget(dragging, at) === null}
+    />
+  );
 
   return (
     <section className={styles.stageColumn} aria-label={stageLabel(stage, totalStages)}>
@@ -138,24 +422,28 @@ function StageColumn({
       </header>
 
       <div className={styles.cardList}>
+        {slotAt(slots[0]!)}
         {stage.members.length > 0 ? (
-          stage.members.map((phaseIdx) => {
+          stage.members.map((phaseIdx, i) => {
             const phase = phases[phaseIdx];
             if (!phase) return null;
             return (
-              <PhaseCard
-                key={`${phase.name}-${phaseIdx}`}
-                phase={phase}
-                index={phaseIdx}
-                phases={phases}
-                selected={selectedPhase === phaseIdx}
-                onSelect={() => onSelectPhase(phaseIdx)}
-                onMovePhase={onMovePhase}
-                onReorderPhase={onReorderPhase}
-                onRemove={() => onRemovePhase(phaseIdx)}
-                agentColor={agentColor}
-                issues={issues}
-              />
+              <Fragment key={`${phase.name}-${phaseIdx}`}>
+                <PhaseCard
+                  phase={phase}
+                  index={phaseIdx}
+                  phases={phases}
+                  selected={selectedPhase === phaseIdx}
+                  dragging={dragging === phaseIdx}
+                  onSelect={() => onSelectPhase(phaseIdx)}
+                  onMovePhase={onMovePhase}
+                  onReorderPhase={onReorderPhase}
+                  onRemove={() => onRemovePhase(phaseIdx)}
+                  agentColor={agentColor}
+                  issues={issues}
+                />
+                {slotAt(slots[i + 1]!)}
+              </Fragment>
             );
           })
         ) : (
@@ -189,6 +477,7 @@ function PhaseCard({
   index,
   phases,
   selected,
+  dragging,
   onSelect,
   onMovePhase,
   onReorderPhase,
@@ -200,6 +489,7 @@ function PhaseCard({
   index: number;
   phases: PhaseDef[];
   selected: boolean;
+  dragging: boolean;
   onSelect: () => void;
   onMovePhase: (index: number, delta: number) => void;
   onReorderPhase: (from: number, to: number) => void;
@@ -218,12 +508,28 @@ function PhaseCard({
   const leftTarget = stageMoveTarget(phases, index, -1);
   const rightTarget = stageMoveTarget(phases, index, 1);
 
+  const drag = useDraggable({ id: dragPhaseId(index) });
+
   return (
     <article
-      className={`${styles.phaseCard} ${selected ? styles.cardSelected : ''} ${
-        hasError ? styles.cardError : ''
-      }`}
+      ref={drag.setNodeRef}
+      className={[
+        styles.phaseCard,
+        selected ? styles.cardSelected : '',
+        hasError ? styles.cardError : '',
+        dragging ? styles.cardDragging : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
     >
+      <div className={styles.cardGripRow}>
+        <DragGrip
+          listeners={drag.listeners}
+          setActivatorNodeRef={drag.setActivatorNodeRef}
+          label={`Drag ${phase.name}`}
+        />
+      </div>
+
       <button type="button" className={styles.cardContentBtn} onClick={onSelect}>
         <div className={styles.cardHeaderRow}>
           <span style={{ color }} className={styles.kindGlyphWrap} aria-hidden="true">
@@ -251,26 +557,29 @@ function PhaseCard({
         <div className={styles.chipsRow}>
           {phase.kind === 'agent' && (
             <>
-              <span
-                className={styles.chip}
-                style={{ borderLeftColor: agentColor(phase.agent ?? null) }}
-              >
-                {phase.agent ?? 'no agent'}
-              </span>
-              <span className={styles.chip}>{phase.envelope ?? 'inherit'}</span>
-              {gates.length > 0 && <span className={styles.chip}>{gates.length} gates</span>}
+              <Chip color={agentColor(phase.agent ?? null)}>{phase.agent ?? 'no agent'}</Chip>
+              <Chip title="Envelope">
+                <EnvelopeGlyph />
+                {phase.envelope ?? 'inherit'}
+              </Chip>
+              {gates.length > 0 && (
+                <Chip title={gates.join(' · ')}>
+                  {gates.length} gate{gates.length === 1 ? '' : 's'}
+                </Chip>
+              )}
+              {phase.retries ? <Chip>retries {phase.retries}</Chip> : null}
             </>
           )}
 
           {phase.kind === 'code' && (
             <>
-              <span className={`${styles.chip} ${styles.blueChip}`}>
+              <Chip color="var(--blue)" className={styles.blueChip}>
                 {commandText(phase) || 'no command'}
-              </span>
+              </Chip>
               {phase.feedbackTo && (
-                <span className={styles.chip}>
+                <Chip title="Repair loop">
                   feedback → {phase.feedbackTo} ×{phase.feedbackRetries ?? 1}
-                </span>
+                </Chip>
               )}
             </>
           )}
@@ -278,56 +587,38 @@ function PhaseCard({
       </button>
 
       <div className={styles.cardToolbar}>
-        <button
-          type="button"
-          aria-label={`Move ${phase.name} earlier`}
-          title="Move earlier"
+        <ToolBtn
+          label={`Move ${phase.name} earlier`}
+          Icon={ArrowUp}
           disabled={!canUp}
-          className={styles.toolBtn}
           onClick={() => onMovePhase(index, -1)}
-        >
-          ↑
-        </button>
-        <button
-          type="button"
-          aria-label={`Move ${phase.name} later`}
-          title="Move later"
+        />
+        <ToolBtn
+          label={`Move ${phase.name} later`}
+          Icon={ArrowDown}
           disabled={!canDown}
-          className={styles.toolBtn}
           onClick={() => onMovePhase(index, 1)}
-        >
-          ↓
-        </button>
+        />
         <span className={styles.toolSeparator} aria-hidden="true" />
-        <button
-          type="button"
-          aria-label={`Move ${phase.name} before previous checkpoint`}
-          title="Move before previous checkpoint"
+        <ToolBtn
+          label={`Move ${phase.name} before the previous checkpoint`}
+          Icon={ArrowLeft}
           disabled={leftTarget === null}
-          className={styles.toolBtn}
           onClick={() => leftTarget !== null && onReorderPhase(index, leftTarget)}
-        >
-          ←
-        </button>
-        <button
-          type="button"
-          aria-label={`Move ${phase.name} past next checkpoint`}
-          title="Move past next checkpoint"
+        />
+        <ToolBtn
+          label={`Move ${phase.name} past the next checkpoint`}
+          Icon={ArrowRight}
           disabled={rightTarget === null}
-          className={styles.toolBtn}
           onClick={() => rightTarget !== null && onReorderPhase(index, rightTarget)}
-        >
-          →
-        </button>
-        <button
-          type="button"
-          aria-label={`Remove ${phase.name}`}
-          title="Remove phase"
-          className={`${styles.toolBtn} ${styles.removeToolBtn}`}
+        />
+        <ToolBtn
+          label={`Remove ${phase.name}`}
+          Icon={X}
+          danger
+          className={styles.toolBtnAutoLeft}
           onClick={onRemove}
-        >
-          ✕
-        </button>
+        />
       </div>
     </article>
   );
@@ -337,6 +628,7 @@ function GateSlot({
   stage,
   phases,
   selectedPhase,
+  dragging,
   onSelectPhase,
   onAddPhase,
   onMovePhase,
@@ -347,6 +639,7 @@ function GateSlot({
   stage: Stage;
   phases: PhaseDef[];
   selectedPhase: number | null;
+  dragging: number | null;
   onSelectPhase: (index: number) => void;
   onAddPhase: (kind: PhaseKind, at?: number) => void;
   onMovePhase: (index: number, delta: number) => void;
@@ -374,7 +667,43 @@ function GateSlot({
     );
   }
 
-  const gateIdx = stage.gate;
+  return (
+    <CheckpointGate
+      gateIdx={stage.gate}
+      stage={stage}
+      phases={phases}
+      selectedPhase={selectedPhase}
+      dragging={dragging}
+      onSelectPhase={onSelectPhase}
+      onMovePhase={onMovePhase}
+      onRemovePhase={onRemovePhase}
+      issues={issues}
+    />
+  );
+}
+
+function CheckpointGate({
+  gateIdx,
+  stage,
+  phases,
+  selectedPhase,
+  dragging,
+  onSelectPhase,
+  onMovePhase,
+  onRemovePhase,
+  issues,
+}: {
+  gateIdx: number;
+  stage: Stage;
+  phases: PhaseDef[];
+  selectedPhase: number | null;
+  dragging: number | null;
+  onSelectPhase: (index: number) => void;
+  onMovePhase: (index: number, delta: number) => void;
+  onRemovePhase: (index: number) => void;
+  issues: ValidationIssue[];
+}): React.JSX.Element | null {
+  const drag = useDraggable({ id: dragPhaseId(gateIdx) });
   const phase = phases[gateIdx];
   if (!phase) return null;
 
@@ -388,10 +717,24 @@ function GateSlot({
       <span className={styles.gateDividerRight} aria-hidden="true" />
 
       <div
-        className={`${styles.checkpointCard} ${selected ? styles.cardSelected : ''} ${
-          missingQuestion ? styles.cardAmberBorder : ''
-        }`}
+        ref={drag.setNodeRef}
+        className={[
+          styles.checkpointCard,
+          selected ? styles.cardSelected : '',
+          missingQuestion ? styles.cardAmberBorder : '',
+          dragging === gateIdx ? styles.cardDragging : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
       >
+        <div className={styles.cardGripRow}>
+          <DragGrip
+            listeners={drag.listeners}
+            setActivatorNodeRef={drag.setActivatorNodeRef}
+            label={`Drag ${phase.name}`}
+          />
+        </div>
+
         <button
           type="button"
           className={styles.checkpointContentBtn}
@@ -411,16 +754,20 @@ function GateSlot({
           <div className={styles.asksSection}>
             <span className={styles.asksLabel}>Asks</span>
             {missingQuestion ? (
-              <p className={styles.warningText}>No question set — sheet opens empty.</p>
+              <p className={styles.warningText}>No question set — the sheet opens empty.</p>
             ) : (
               <p className={styles.asksQuestion}>“{phase.question}”</p>
             )}
           </div>
 
           <div className={styles.chipsRow}>
-            <span className={`${styles.chip} ${styles.greenChip}`}>approve</span>
-            <span className={`${styles.chip} ${styles.redChip}`}>reject</span>
-            <span className={styles.chip}>{formatTimeout(phase.timeoutMs)}</span>
+            <Chip color="var(--green)" className={styles.greenChip}>
+              approve
+            </Chip>
+            <Chip color="var(--red)" className={styles.redChip}>
+              reject
+            </Chip>
+            <Chip>{formatTimeout(phase.timeoutMs)}</Chip>
           </div>
 
           <p className={styles.closesStageSubtext}>
@@ -429,40 +776,30 @@ function GateSlot({
         </button>
 
         <div className={styles.cardToolbar}>
-          <button
-            type="button"
-            aria-label={`Move ${phase.name} earlier`}
-            title="Move earlier"
+          <ToolBtn
+            label={`Move ${phase.name} earlier`}
+            Icon={ArrowUp}
             disabled={gateIdx === 0}
-            className={styles.toolBtn}
             onClick={() => onMovePhase(gateIdx, -1)}
-          >
-            ↑
-          </button>
-          <button
-            type="button"
-            aria-label={`Move ${phase.name} later`}
-            title="Move later"
+          />
+          <ToolBtn
+            label={`Move ${phase.name} later`}
+            Icon={ArrowDown}
             disabled={gateIdx === phases.length - 1}
-            className={styles.toolBtn}
             onClick={() => onMovePhase(gateIdx, 1)}
-          >
-            ↓
-          </button>
+          />
           {gateIssues.length > 0 && (
-            <span className={styles.issueCountLabel}>{gateIssues.length} issue</span>
+            <span className={styles.issueCountLabel}>
+              {gateIssues.length} issue{gateIssues.length === 1 ? '' : 's'}
+            </span>
           )}
-          <button
-            type="button"
-            aria-label={`Remove ${phase.name}`}
-            title="Remove checkpoint"
-            className={`${styles.toolBtn} ${styles.removeToolBtn} ${
-              gateIssues.length === 0 ? styles.toolBtnAutoLeft : ''
-            }`}
+          <ToolBtn
+            label={`Remove ${phase.name}`}
+            Icon={X}
+            danger
+            className={gateIssues.length === 0 ? styles.toolBtnAutoLeft : ''}
             onClick={() => onRemovePhase(gateIdx)}
-          >
-            ✕
-          </button>
+          />
         </div>
       </div>
     </div>

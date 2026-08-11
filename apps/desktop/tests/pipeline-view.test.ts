@@ -1,20 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import type { Acceptance, PhaseDef, PipelineDef, ValidationIssue } from '@shared/types.js';
+import type { Acceptance, PhaseDef, PipelineDef } from '@shared/types.js';
 import {
+  ACCEPTANCE_OPTIONS,
+  acceptanceLabel,
   acceptanceReads,
   acceptanceSummary,
   commandText,
+  dragPhaseId,
+  dropRailId,
+  dropSlotId,
   formatClock,
   formatTimeout,
   gateNames,
   issuePhaseIndex,
+  newStagePlan,
+  parseDragPhaseId,
+  parseDropId,
   phaseComposition,
+  reorderTarget,
   stageGateSummary,
   stageLabel,
   stageMoveTarget,
   stageOfPhase,
+  stageSlots,
   stagesOf,
-  validationSummary,
 } from '../src/renderer/pipeline-view.js';
 
 describe('pipeline-view', () => {
@@ -157,30 +166,21 @@ describe('pipeline-view', () => {
     });
   });
 
-  describe('validationSummary', () => {
-    it('returns error summary when errors exist', () => {
-      const issues: ValidationIssue[] = [
-        { level: 'error', message: 'Missing name', where: 'phases[0]' },
-        { level: 'warning', message: 'No timeout', where: 'phases[1]' },
-      ];
-      const sum = validationSummary(issues);
-      expect(sum.tone).toBe('error');
-      expect(sum.label).toBe('1 error');
+  describe('acceptanceLabel', () => {
+    it('labels every acceptance kind from the option list', () => {
+      for (const option of ACCEPTANCE_OPTIONS) {
+        const acceptance = {
+          kind: option.value,
+          phase: 'verifier',
+          flag: 'approved',
+        } as Acceptance;
+        expect(acceptanceLabel(acceptance)).toBe(option.label);
+        expect(option.description.length).toBeGreaterThan(0);
+      }
     });
 
-    it('returns warning summary when only warnings exist', () => {
-      const issues: ValidationIssue[] = [
-        { level: 'warning', message: 'No timeout', where: 'phases[0]' },
-      ];
-      const sum = validationSummary(issues);
-      expect(sum.tone).toBe('warning');
-      expect(sum.label).toBe('1 warning');
-    });
-
-    it('returns ready when no issues', () => {
-      const sum = validationSummary([], { hasProject: true });
-      expect(sum.tone).toBe('ok');
-      expect(sum.label).toBe('Ready');
+    it('falls back to the raw kind when the rule is not in the list', () => {
+      expect(acceptanceLabel({ kind: 'nonexistent' } as unknown as Acceptance)).toBe('nonexistent');
     });
   });
 
@@ -238,6 +238,165 @@ describe('pipeline-view', () => {
       expect(stageLabel(stages[0], 1)).toBe('Whole run');
 
       expect(stageGateSummary(stages[2], phases)).toBe('Runs to the end, then acceptance decides.');
+    });
+
+    it('reports where each stage starts', () => {
+      const stages = stagesOf(phases);
+      expect(stages.map((s) => s.start)).toEqual([0, 3, 5]);
+    });
+  });
+
+  describe('Stage Board drag and drop', () => {
+    // p0 p1 | gate2 | p3 | gate4 | p5
+    const phases: PhaseDef[] = [
+      { name: 'p0_prep', kind: 'code', description: '' },
+      { name: 'p1_build', kind: 'agent', description: '' },
+      { name: 'p2_gate1', kind: 'engineer', description: '' },
+      { name: 'p3_test', kind: 'code', description: '' },
+      { name: 'p4_gate2', kind: 'engineer', description: '' },
+      { name: 'p5_ship', kind: 'agent', description: '' },
+    ];
+
+    /** The list `movePhaseToNewStage` produces, so a plan is read as an edit. */
+    function applyNewStage(from: number, boundary: number, list = phases): string[] | null {
+      const plan = newStagePlan(list, from, boundary);
+      if (!plan) return null;
+      const next = [...list];
+      const [item] = next.splice(from, 1);
+      const insert: PhaseDef[] = [];
+      if (plan.before) insert.push({ name: 'gate_a', kind: 'engineer', description: '' });
+      insert.push(item);
+      if (plan.after) insert.push({ name: 'gate_b', kind: 'engineer', description: '' });
+      next.splice(plan.at, 0, ...insert);
+      return next.map((p) => p.name);
+    }
+
+    describe('stageSlots', () => {
+      it('exposes every insertion point in a stage, gate included', () => {
+        const stages = stagesOf(phases);
+        // Stage 0 holds p0 and p1 and is closed by gate 2: dropping on 2 puts
+        // the phase last in the stage, just before the checkpoint.
+        expect(stageSlots(stages[0])).toEqual([0, 1, 2]);
+        expect(stageSlots(stages[1])).toEqual([3, 4]);
+        expect(stageSlots(stages[2])).toEqual([5, 6]);
+      });
+
+      it('gives an empty stage one slot so the column still takes a drop', () => {
+        const empty: PhaseDef[] = [
+          { name: 'g0', kind: 'engineer', description: '' },
+          { name: 'g1', kind: 'engineer', description: '' },
+        ];
+        const stages = stagesOf(empty);
+        expect(stages[1].members).toEqual([]);
+        expect(stageSlots(stages[1])).toEqual([1]);
+      });
+    });
+
+    describe('reorderTarget', () => {
+      it('accounts for the splice when the drop is after the phase', () => {
+        // p0 dropped on slot 2 (before gate1) lands at index 1 once removed.
+        expect(reorderTarget(0, 2)).toBe(1);
+        expect(reorderTarget(0, 6)).toBe(5);
+      });
+
+      it('uses the slot as-is when the drop is before the phase', () => {
+        expect(reorderTarget(5, 0)).toBe(0);
+        expect(reorderTarget(3, 1)).toBe(1);
+      });
+
+      it('rejects the two slots that bracket the phase already', () => {
+        expect(reorderTarget(3, 3)).toBeNull();
+        expect(reorderTarget(3, 4)).toBeNull();
+      });
+    });
+
+    describe('newStagePlan', () => {
+      it('closes a stage behind a phase pulled out of a shared stage', () => {
+        // p0 leaves p1 behind, so a checkpoint has to separate them.
+        expect(applyNewStage(0, 0)).toEqual([
+          'p0_prep',
+          'gate_b',
+          'p1_build',
+          'p2_gate1',
+          'p3_test',
+          'p4_gate2',
+          'p5_ship',
+        ]);
+      });
+
+      it('opens a stage in front of a phase dropped at the end of the run', () => {
+        expect(applyNewStage(0, 6)).toEqual([
+          'p1_build',
+          'p2_gate1',
+          'p3_test',
+          'p4_gate2',
+          'p5_ship',
+          'gate_a',
+          'p0_prep',
+        ]);
+      });
+
+      it('closes the stage when the drop lands beside work, not a checkpoint', () => {
+        // The gate2 boundary sits right after p3, which is unattended work: it
+        // cannot share the stage, so the new one is closed behind the phase.
+        expect(applyNewStage(0, 4)).toEqual([
+          'p1_build',
+          'p2_gate1',
+          'p3_test',
+          'gate_a',
+          'p0_prep',
+          'p4_gate2',
+          'p5_ship',
+        ]);
+      });
+
+      it('adds no checkpoint when existing ones already bound the stage', () => {
+        // Two adjacent checkpoints are an empty stage; a phase dropped into it
+        // is already bounded on both sides.
+        const adjacent: PhaseDef[] = [
+          { name: 'a0', kind: 'code', description: '' },
+          { name: 'a1', kind: 'agent', description: '' },
+          { name: 'a2_gate', kind: 'engineer', description: '' },
+          { name: 'a3_gate', kind: 'engineer', description: '' },
+          { name: 'a4', kind: 'agent', description: '' },
+        ];
+        expect(applyNewStage(0, 3, adjacent)).toEqual(['a1', 'a2_gate', 'a0', 'a3_gate', 'a4']);
+      });
+
+      it('refuses a checkpoint, which is a boundary and not stage contents', () => {
+        expect(newStagePlan(phases, 2, 0)).toBeNull();
+        expect(newStagePlan(phases, 4, 6)).toBeNull();
+      });
+
+      it('refuses a drop that would only add an empty stage beside a lone phase', () => {
+        // p3 already has stage 1 to itself, bounded by gate1 and gate2.
+        expect(newStagePlan(phases, 3, 2)).toBeNull();
+        expect(newStagePlan(phases, 3, 4)).toBeNull();
+        // p5 is the last stage, so its own boundaries are gate2 and the end.
+        expect(newStagePlan(phases, 5, 4)).toBeNull();
+        expect(newStagePlan(phases, 5, 6)).toBeNull();
+        // Moving it anywhere else is still a real edit.
+        expect(newStagePlan(phases, 3, 0)).not.toBeNull();
+      });
+
+      it('refuses an index that names no phase', () => {
+        expect(newStagePlan(phases, -1, 0)).toBeNull();
+        expect(newStagePlan(phases, 9, 0)).toBeNull();
+      });
+    });
+
+    describe('drag identifiers', () => {
+      it('round-trips phase drag ids', () => {
+        expect(parseDragPhaseId(dragPhaseId(3))).toBe(3);
+        expect(parseDragPhaseId('slot:3')).toBeNull();
+      });
+
+      it('round-trips slot and rail drop ids', () => {
+        expect(parseDropId(dropSlotId(2))).toEqual({ kind: 'slot', at: 2 });
+        expect(parseDropId(dropRailId(4))).toEqual({ kind: 'rail', boundary: 4 });
+        expect(parseDropId(dragPhaseId(1))).toBeNull();
+        expect(parseDropId('nonsense')).toBeNull();
+      });
     });
   });
 });

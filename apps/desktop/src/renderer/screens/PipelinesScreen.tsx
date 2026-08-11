@@ -1,40 +1,39 @@
 /**
- * PipelinesScreen — Magic Patterns 02 Stage Board implementation.
+ * PipelinesScreen — the stage board.
  *
- * Full-width Kanban-like workbench where columns are unattended execution stages
- * delimited by human checkpoint gates.
+ * Columns are the phases that run unattended; the element between two columns
+ * is the checkpoint that closes the earlier one. The board owns the whole
+ * viewport height: everything that is not the board (pipeline settings,
+ * acceptance, validation, phase fields) opens in one slide-over sheet so the
+ * board behind it stays whole.
  *
  * Key interactions:
  * - Pill tablist in the top bar for fast pipeline switching
  * - In-place editing of pipeline name and description
  * - Horizontal canvas with auto-grouped stages and checkpoint gates
- * - Phase cards with reorder within stage and move across gates
- * - Slide-over drawer for deep phase editing (with Escape/backdrop dismiss)
- * - Shared acceptance & validation footer
+ * - Phase sheet for deep editing, pipeline sheet for acceptance and validation
  * - Debounced auto-save, live validation, and dry-run preview
  */
-import { useCallback, useId } from 'react';
-import type { Acceptance } from '@shared/types.js';
+import { useCallback, useState } from 'react';
+import { Play, Plus, SlidersHorizontal } from 'lucide-react';
 import { useApp } from '../stores/app.js';
-import { acceptanceReads, phaseComposition, validationSummary } from '../pipeline-view.js';
+import { KIND_LABEL } from '../derive.js';
+import { acceptanceLabel, issuePhaseIndex, phaseComposition } from '../pipeline-view.js';
 import { usePipelineDraft } from '../hooks/usePipelineDraft.js';
-import { useEscapeToClose } from '../hooks/useEscapeToClose.js';
 import { useTablistNav } from '../hooks/useTablistNav.js';
 import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import EmptyState from '../components/EmptyState.js';
 import PhaseEditor from '../components/PhaseEditor.js';
+import PipelineSheet from '../components/PipelineSheet.js';
 import StageBoard from '../components/StageBoard.js';
 import DryRunSheet from '../components/DryRunSheet.js';
 import { Button } from '../components/ui/Button.js';
-import { Dropdown, type DropdownOption } from '../components/ui/Dropdown.js';
+import { IssueCount } from '../components/ui/Issues.js';
+import { SaveState } from '../components/ui/SaveState.js';
+import { SideSheet } from '../components/ui/SideSheet.js';
 import styles from './PipelinesScreen.module.css';
 
-const ACCEPTANCE_OPTIONS: DropdownOption[] = [
-  { value: 'all_phases_pass', label: 'Every phase passed' },
-  { value: 'last_phase_pass', label: 'The last phase passed' },
-  { value: 'envelope_status', label: "A phase's envelope reports success" },
-  { value: 'phase_flag', label: "A phase's envelope sets a flag" },
-];
+type Sheet = 'phase' | 'pipeline' | null;
 
 export default function PipelinesScreen({
   onOpenSettings,
@@ -42,13 +41,11 @@ export default function PipelinesScreen({
   onOpenSettings?: (pane: string) => void;
 } = {}): React.JSX.Element {
   const { agentColor, agents } = useApp();
-  const draftApi = usePipelineDraft();
   const {
     pipelines,
     selectedId,
     draft,
     commandNames,
-    projectId,
     issues,
     activePhase,
     saving,
@@ -64,6 +61,7 @@ export default function PipelinesScreen({
     insertPhase,
     movePhase,
     reorderPhase,
+    movePhaseToNewStage,
     removePhase,
     updatePhase,
     updateDraft,
@@ -71,16 +69,20 @@ export default function PipelinesScreen({
     setAcceptancePhase,
     setAcceptanceFlag,
     setIsolation,
-  } = draftApi;
+  } = usePipelineDraft();
 
+  const [sheet, setSheet] = useState<Sheet>(null);
   const tablistNav = useTablistNav();
-  const nameId = useId();
 
-  const handleCloseDrawer = useCallback(() => {
-    setActivePhase(null);
-  }, [setActivePhase]);
+  const closeSheet = useCallback(() => setSheet(null), []);
 
-  useEscapeToClose(handleCloseDrawer, activePhase !== null);
+  const openPhase = useCallback(
+    (index: number) => {
+      setActivePhase(index);
+      setSheet('phase');
+    },
+    [setActivePhase],
+  );
 
   const confirmDelete = useConfirmAction(
     () =>
@@ -106,16 +108,15 @@ export default function PipelinesScreen({
     );
   }
 
-  const phaseNames = draft.phases.map((p) => p.name);
-  const phaseOptions: DropdownOption[] = phaseNames.map((name) => ({ value: name, label: name }));
-  const valSummary = validationSummary(issues, { hasProject: !!projectId });
-  const selectedPhaseObj = activePhase !== null ? (draft.phases[activePhase] ?? null) : null;
+  const errors = issues.filter((i) => i.level === 'error').length;
+  const warnings = issues.length - errors;
+  const activePhaseObj = activePhase !== null ? (draft.phases[activePhase] ?? null) : null;
 
   return (
     <div className={styles.container}>
-      {/* ── Top Pill Bar ────────────────────────────────────────────── */}
+      {/* ── Pipeline switcher ───────────────────────────────────────── */}
       <header className={styles.topBar}>
-        <span className={styles.topEyebrow}>Pipelines</span>
+        <span className="eyebrow">Pipelines</span>
 
         <div
           className={styles.pillList}
@@ -132,7 +133,10 @@ export default function PipelinesScreen({
                 role="tab"
                 aria-selected={active}
                 tabIndex={active ? 0 : -1}
-                onClick={() => void selectPipeline(p.id)}
+                onClick={() => {
+                  closeSheet();
+                  void selectPipeline(p.id);
+                }}
                 className={`${styles.pillTab} ${active ? styles.pillTabActive : ''}`}
               >
                 <span className={styles.pillName}>{p.name}</span>
@@ -145,33 +149,27 @@ export default function PipelinesScreen({
             aria-label="New pipeline"
             title="Create new pipeline"
             className={styles.newPipelineBtn}
-            onClick={() => void createPipeline()}
+            onClick={() => {
+              closeSheet();
+              void createPipeline();
+            }}
           >
-            +
+            <Plus size={14} strokeWidth={1.6} aria-hidden="true" />
           </button>
         </div>
 
         <div className={styles.topBarRight}>
-          <span className={styles.saveStateIndicator} aria-live="polite">
-            <span
-              className={`${styles.saveDot} ${saving ? styles.saveDotSaving : styles.saveDotSaved}`}
-              aria-hidden="true"
-            />
-            {saving ? 'Saving…' : `Saved ${savedAt}`}
-          </span>
+          <SaveState saving={saving} savedAt={savedAt} />
 
-          <span
-            className={`${styles.statusBadge} ${
-              valSummary.tone === 'error'
-                ? styles.badgeError
-                : valSummary.tone === 'warning'
-                  ? styles.badgeWarning
-                  : styles.badgeOk
-            }`}
-            title={valSummary.detail}
+          <button
+            type="button"
+            className={styles.issueCountBtn}
+            title="Open pipeline settings and validation"
+            onClick={() => setSheet('pipeline')}
           >
-            {valSummary.label}
-          </span>
+            <IssueCount errors={errors} warnings={warnings} />
+            <span className={styles.srOnly}>Open pipeline settings and validation</span>
+          </button>
 
           <div className={styles.pipelineActions}>
             <button
@@ -194,11 +192,10 @@ export default function PipelinesScreen({
         </div>
       </header>
 
-      {/* ── Identity Header ─────────────────────────────────────────── */}
+      {/* ── Identity header ─────────────────────────────────────────── */}
       <section className={styles.identityHeader}>
         <div className={styles.identityInputs}>
           <input
-            id={nameId}
             aria-label="Pipeline name"
             className={styles.nameInput}
             value={draft.name}
@@ -222,186 +219,102 @@ export default function PipelinesScreen({
           )}
           <span className={styles.metaChip}>{phaseComposition(draft.phases)}</span>
           <span
-            className={styles.metaChip}
-            style={{ color: draft.isolation ? 'var(--green)' : 'var(--text-faint)' }}
+            className={`${styles.metaChip} ${draft.isolation !== false ? styles.metaChipGreen : ''}`}
           >
-            {draft.isolation ? 'isolated worktree' : 'runs in place'}
+            {draft.isolation !== false ? 'isolated worktree' : 'runs in place'}
           </span>
-          <Button size="sm" onClick={() => void preview()}>
-            ▶ Dry run
+          <Button
+            size="sm"
+            onClick={() => setSheet('pipeline')}
+            title={acceptanceLabel(draft.acceptance)}
+          >
+            <SlidersHorizontal size={12} strokeWidth={1.6} aria-hidden="true" />
+            Acceptance
+          </Button>
+          <Button size="sm" disabled={draft.phases.length === 0} onClick={() => void preview()}>
+            <Play size={12} strokeWidth={1.6} aria-hidden="true" />
+            Dry run
           </Button>
         </div>
       </section>
 
-      {/* ── Stage Board ─────────────────────────────────────────────── */}
+      {/* ── Stage board ─────────────────────────────────────────────── */}
       <main className={styles.boardWrap}>
         <StageBoard
           phases={draft.phases}
           selectedPhase={activePhase}
-          onSelectPhase={(idx) => setActivePhase(idx)}
-          onAddPhase={(kind, at) => insertPhase(kind, at)}
-          onMovePhase={(idx, delta) => movePhase(idx, delta)}
-          onReorderPhase={(from, to) => reorderPhase(from, to)}
-          onRemovePhase={(idx) => removePhase(idx)}
+          onSelectPhase={openPhase}
+          onAddPhase={(kind, at) => openPhase(insertPhase(kind, at))}
+          onMovePhase={movePhase}
+          onReorderPhase={reorderPhase}
+          onNewStagePhase={movePhaseToNewStage}
+          onRemovePhase={removePhase}
           agentColor={agentColor}
           issues={issues}
         />
       </main>
 
-      {/* ── Acceptance & Validation Footer ──────────────────── */}
-      <footer className={styles.footerSection}>
-        <div className={styles.acceptanceColumn}>
-          <span className={styles.sectionEyebrow}>Acceptance</span>
-          <div className={styles.acceptanceControls}>
-            <div className={styles.acceptanceDropdownWrap}>
-              <Dropdown
-                value={draft.acceptance.kind}
-                options={ACCEPTANCE_OPTIONS}
-                onChange={(v) => setAcceptanceKind(v as Acceptance['kind'])}
-              />
-            </div>
-
-            {'phase' in draft.acceptance && (
-              <div className={styles.acceptanceSubDropdown}>
-                <Dropdown
-                  value={draft.acceptance.phase}
-                  options={phaseOptions}
-                  onChange={(p) => setAcceptancePhase(p)}
-                />
-              </div>
-            )}
-
-            {draft.acceptance.kind === 'phase_flag' && (
-              <div className={styles.acceptanceFlagDropdown}>
-                <Dropdown
-                  value={draft.acceptance.flag}
-                  options={[
-                    { value: 'passed', label: 'passed' },
-                    { value: 'approved', label: 'approved' },
-                  ]}
-                  onChange={(f) => setAcceptanceFlag(f)}
-                />
-              </div>
-            )}
-          </div>
-
-          <p className={styles.acceptanceReading}>{acceptanceReads(draft)}</p>
-
-          <div className={styles.isolationWrap}>
-            <label className={styles.toggleLabel}>
-              <input
-                type="checkbox"
-                checked={draft.isolation !== false}
-                onChange={(e) => setIsolation(e.target.checked)}
-                className={styles.toggleCheckbox}
-              />
-              <div>
-                <span className={styles.toggleTitle}>Isolated worktree</span>
-                <span className={styles.toggleDesc}>
-                  Every run gets its own git worktree and branch.
-                </span>
-              </div>
-            </label>
-          </div>
-        </div>
-
-        <div className={styles.validationColumn}>
-          <div className={styles.validationHeader}>
-            <span className={styles.sectionEyebrow}>Validation</span>
-            <span className={styles.issueCountsHint}>
-              {valSummary.errors.length} errors · {valSummary.warnings.length} warnings
+      {/* ── Sheets ──────────────────────────────────────────────────── */}
+      <SideSheet
+        open={sheet === 'phase' && activePhaseObj !== null && activePhase !== null}
+        onClose={closeSheet}
+        label={activePhaseObj ? `Edit ${activePhaseObj.name}` : 'Phase editor'}
+        eyebrow={
+          <>
+            Phase{' '}
+            <span className="index">
+              {activePhase !== null ? String(activePhase + 1).padStart(2, '0') : ''}
             </span>
-          </div>
-
-          <div className={styles.validationIssuesList}>
-            {issues.length > 0 ? (
-              issues.map((issue, i) => {
-                const isErr = issue.level === 'error';
-                return (
-                  <div
-                    key={`${issue.where}-${issue.message}-${i}`}
-                    className={`${styles.issueRow} ${isErr ? styles.issueRowErr : styles.issueRowWarn}`}
-                  >
-                    <span
-                      className={`${styles.issuePill} ${
-                        isErr ? styles.issuePillErr : styles.issuePillWarn
-                      }`}
-                    >
-                      {isErr ? 'ERR' : 'WARN'}
-                    </span>
-                    <span className={styles.issueMessage}>
-                      {issue.where && (
-                        <strong className={styles.issueWhere}>{issue.where} — </strong>
-                      )}
-                      {issue.message}
-                    </span>
-                  </div>
-                );
-              })
-            ) : (
-              <p className={styles.noIssuesText}>No issues. This pipeline saves as written.</p>
+          </>
+        }
+        title={
+          <p className={styles.sheetTitle}>
+            {activePhaseObj?.name}{' '}
+            {activePhaseObj && (
+              <span className={styles.sheetTitleKind}>{KIND_LABEL[activePhaseObj.kind]}</span>
             )}
-          </div>
-        </div>
-      </footer>
+          </p>
+        }
+        footer={
+          <>
+            <SaveState saving={saving} savedAt={savedAt} />
+            <Button size="sm" onClick={closeSheet}>
+              Done
+            </Button>
+          </>
+        }
+      >
+        {activePhaseObj && activePhase !== null && (
+          <PhaseEditor
+            phase={activePhaseObj}
+            index={activePhase}
+            phases={draft.phases}
+            agents={agents}
+            commands={commandNames}
+            issues={issues.filter((i) => issuePhaseIndex(i.where) === activePhase)}
+            onChange={(p) => updatePhase(activePhase, p)}
+            onRemove={() => {
+              removePhase(activePhase);
+              closeSheet();
+            }}
+            onOpenSettings={onOpenSettings}
+          />
+        )}
+      </SideSheet>
 
-      {/* ── Slide-Over Phase Drawer ─────────────────────────────────── */}
-      {selectedPhaseObj && activePhase !== null && (
-        <div className={styles.drawerOverlay} onClick={handleCloseDrawer}>
-          <aside
-            className={styles.drawerPanel}
-            onClick={(e) => e.stopPropagation()}
-            aria-label={`Edit ${selectedPhaseObj.name}`}
-          >
-            <div className={styles.drawerHeader}>
-              <div className={styles.drawerTitleGroup}>
-                <span className={styles.drawerEyebrow}>Phase</span>
-                <h2 className={styles.drawerPhaseName}>{selectedPhaseObj.name}</h2>
-              </div>
-              <button
-                type="button"
-                className={styles.drawerCloseBtn}
-                aria-label="Close drawer"
-                onClick={handleCloseDrawer}
-              >
-                ✕
-              </button>
-            </div>
+      <PipelineSheet
+        draft={draft}
+        issues={issues}
+        saving={saving}
+        savedAt={savedAt}
+        open={sheet === 'pipeline'}
+        onClose={closeSheet}
+        onAcceptanceKind={setAcceptanceKind}
+        onAcceptancePhase={setAcceptancePhase}
+        onAcceptanceFlag={setAcceptanceFlag}
+        onIsolation={setIsolation}
+      />
 
-            <div className={styles.drawerBody}>
-              <PhaseEditor
-                phase={selectedPhaseObj}
-                index={activePhase}
-                phases={draft.phases}
-                agents={agents}
-                commands={commandNames}
-                onChange={(p) => updatePhase(activePhase, p)}
-                onRemove={() => {
-                  removePhase(activePhase);
-                }}
-                onOpenSettings={onOpenSettings}
-              />
-            </div>
-
-            <div className={styles.drawerFooter}>
-              <span className={styles.saveStateIndicator}>
-                <span
-                  className={`${styles.saveDot} ${
-                    saving ? styles.saveDotSaving : styles.saveDotSaved
-                  }`}
-                  aria-hidden="true"
-                />
-                {saving ? 'Saving…' : `Saved ${savedAt}`}
-              </span>
-              <Button size="sm" onClick={handleCloseDrawer}>
-                Done
-              </Button>
-            </div>
-          </aside>
-        </div>
-      )}
-
-      {/* ── Modals ─────────────────────────────────────────────────── */}
       {dryRun && <DryRunSheet prompts={dryRun} onClose={closeDryRun} />}
     </div>
   );

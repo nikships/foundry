@@ -39,9 +39,9 @@
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
   outline: none;
   transition: border-color 0.15s ease;
 }
@@ -57,9 +57,9 @@
   font-size: 12px;
   line-height: 1.4;
   color: var(--text);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
   outline: none;
   resize: vertical;
   transition: border-color 0.15s ease;
@@ -72,12 +72,12 @@
 .select {
   width: 100%;
   padding: 6px 10px;
-  font-family: var(--font-sans);
+  font-family: var(--font);
   font-size: 12px;
   color: var(--text);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
   outline: none;
   transition: border-color 0.15s ease;
 }
@@ -113,9 +113,9 @@
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--text-dim);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xs);
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -141,35 +141,14 @@
   margin-top: 4px;
 }
 
-.toggleRow {
+.issueList {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.checkbox {
-  margin-top: 3px;
-  accent-color: var(--accent);
-}
-
-.toggleLabel {
-  display: block;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text);
-}
-
-.toggleHint {
-  display: block;
-  font-size: 11px;
-  color: var(--text-dim);
-  margin-top: 2px;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .footerAction {
   margin-top: 12px;
   padding-top: 16px;
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--line-faint);
 }

@@ -15,6 +15,10 @@ export default defineConfig({
     build: {
       lib: { entry: resolve(__dirname, 'src/main/main.ts') },
       rollupOptions: { output: { format: 'es' } },
+      // electron-vite leaves main unminified by default. The main bundle is
+      // plain app code (native deps are externalized), so esbuild minify is
+      // safe and meaningfully shrinks the shipped file.
+      minify: 'esbuild',
     },
   },
   preload: {
@@ -24,6 +28,7 @@ export default defineConfig({
       lib: { entry: resolve(__dirname, 'src/preload/bridge.ts') },
       // Sandboxed preload scripts cannot be ES modules.
       rollupOptions: { output: { format: 'cjs', entryFileNames: 'bridge.cjs' } },
+      minify: 'esbuild',
     },
   },
   renderer: {
@@ -37,7 +42,23 @@ export default defineConfig({
       },
     },
     build: {
+      minify: 'esbuild',
+      chunkSizeWarningLimit: 1000,
       rollupOptions: { input: resolve(__dirname, 'src/renderer/index.html') },
+      // electron-vite maps `rolldownOptions` onto `rollupOptions` after merge,
+      // so chunking must live here to survive the preset (a bare `rollupOptions`
+      // would be overwritten by the preset's discovered input).
+      rolldownOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return;
+            if (id.includes('react-dom') || id.includes('/scheduler/')) return 'react-vendor';
+            if (id.includes('/react/')) return 'react-vendor';
+            if (id.includes('@dnd-kit')) return 'dnd';
+            if (id.includes('lucide-react') || id.includes('@lobehub/icons')) return 'icons';
+          },
+        },
+      },
     },
   },
 });

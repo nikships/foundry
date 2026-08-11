@@ -42,8 +42,8 @@ describe('the IPC surface', () => {
     expect(new Set(registered).size).toBe(registered.length);
   });
 
-  it('registers 85 channels, so a deleted handler is not a silent capability loss', () => {
-    expect(registered).toHaveLength(85);
+  it('registers 88 channels, so a deleted handler is not a silent capability loss', () => {
+    expect(registered).toHaveLength(88);
   });
 
   it('registers the context-breakdown channel, which the Inspector lane reads', () => {
