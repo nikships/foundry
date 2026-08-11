@@ -7,3 +7,7 @@ assets
 *.icns
 *.png
 *.svg
+
+# Generated design-review artifact: a 2.3MB single-file bundle of three
+# rendered designs. Not source; regenerate rather than hand-edit.
+design-review/
