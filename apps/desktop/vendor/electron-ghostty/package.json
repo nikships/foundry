@@ -1,0 +1,27 @@
+{
+  "name": "electron-ghostty",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Ghostty embedded headlessly in Electron: ghostty owns the PTY, VT parsing, input encoding, fonts and Metal rendering; frames reach a sandboxed <canvas> zero-copy via Electron's sharedTexture module.",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./preload": "./preload.js",
+    "./addon": "./addon.js",
+    "./package.json": "./package.json"
+  },
+  "gypfile": false,
+  "scripts": {
+    "build": "node-gyp rebuild"
+  },
+  "files": [
+    "index.js",
+    "addon.js",
+    "host.js",
+    "preload.js",
+    "protocol.js",
+    "binding.gyp",
+    "src/"
+  ]
+}
