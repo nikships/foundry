@@ -16,6 +16,7 @@ import TranscriptLane from '../components/inspector/TranscriptLane.js';
 import { clockTime, since, truncate } from '../format.js';
 import { Button } from '../components/ui/Button.js';
 import { Dropdown } from '../components/ui/Dropdown.js';
+import { CollapseContext } from '../components/inspector/collapse.js';
 import styles from './InspectorScreen.module.css';
 
 type LaneFilter = 'all' | 'running' | 'failed';
@@ -43,6 +44,7 @@ export default function InspectorScreen({
   const [focusedPhaseId, setFocusedPhaseId] = useState('');
   const [now, setNow] = useState(Date.now());
   const [filesError, setFilesError] = useState('');
+  const [collapseSignal, setCollapseSignal] = useState(0);
 
   // A deep link from the run detail screen pins the picker to that run.
   useEffect(() => {
@@ -107,126 +109,163 @@ export default function InspectorScreen({
           title="No project yet"
           body="Add a git repository from the sidebar. The Inspector follows that project's runs."
         />
+        <footer className={styles.inspectorFooter}>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled
+            title="No project, nothing to collapse"
+            aria-label="Collapse all tool calls"
+          >
+            Collapse all tool calls
+          </Button>
+          <span className={styles.inspectorFooterHint}>
+            Collapses every tool call across all visible agents
+          </span>
+        </footer>
       </div>
     );
   }
 
+  const hasVisibleTools = visibleLanes.length > 0;
+
   return (
-    <div className={styles.inspector}>
-      <header className={styles.inspectorHead}>
-        <p className="eyebrow">
-          <span className="index">04</span>Inspector
-        </p>
-        <Dropdown
-          className={styles.inspectorSelect}
-          value={pickedRunId && runs.some((r) => r.runId === pickedRunId) ? pickedRunId : ''}
-          options={[
-            {
-              value: '',
-              label: runs.some((r) => r.status === 'running')
-                ? 'Follow live run'
-                : 'Follow latest run',
-            },
-            ...runs.map((r) => ({
-              value: r.runId,
-              label: `${r.status === 'running' ? '* ' : ''}${r.pipelineName} · ${r.status} · ${clockTime(r.startedAt)} · ${since(r.startedAt)}`,
-            })),
-          ]}
-          onChange={(next) => {
-            setPickedRunId(next);
-            setFocusedPhaseId('');
-          }}
-          aria-label="Run"
-        />
-        {view.run && (
-          <>
-            <StatusBadge status={view.run.status} />
-            {view.live && <span className={styles.inspectorLive}>Live</span>}
-            <span className={styles.inspectorRequest} title={view.run.request}>
-              {truncate(view.run.request, 80)}
-            </span>
-          </>
+    <CollapseContext.Provider value={collapseSignal}>
+      <div className={styles.inspector}>
+        <header className={styles.inspectorHead}>
+          <p className="eyebrow">
+            <span className="index">04</span>Inspector
+          </p>
+          <Dropdown
+            className={styles.inspectorSelect}
+            value={pickedRunId && runs.some((r) => r.runId === pickedRunId) ? pickedRunId : ''}
+            options={[
+              {
+                value: '',
+                label: runs.some((r) => r.status === 'running')
+                  ? 'Follow live run'
+                  : 'Follow latest run',
+              },
+              ...runs.map((r) => ({
+                value: r.runId,
+                label: `${r.status === 'running' ? '* ' : ''}${r.pipelineName} · ${r.status} · ${clockTime(r.startedAt)} · ${since(r.startedAt)}`,
+              })),
+            ]}
+            onChange={(next) => {
+              setPickedRunId(next);
+              setFocusedPhaseId('');
+            }}
+            aria-label="Run"
+          />
+          {view.run && (
+            <>
+              <StatusBadge status={view.run.status} />
+              {view.live && <span className={styles.inspectorLive}>Live</span>}
+              <span className={styles.inspectorRequest} title={view.run.request}>
+                {truncate(view.run.request, 80)}
+              </span>
+            </>
+          )}
+          <div className={styles.inspectorControls}>
+            <div className={styles.inspectorFilter}>
+              {FILTERS.map((f) => (
+                <button
+                  key={f.id}
+                  className={`${styles.inspectorFilterBtn} ${filter === f.id ? styles.active : ''}`}
+                  onClick={() => setFilter(f.id)}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            {view.run && (
+              <Button size="sm" onClick={() => void revealFiles()}>
+                Raw files
+              </Button>
+            )}
+          </div>
+        </header>
+
+        {(listError || view.error || filesError) && (
+          <div className={styles.inspectorBanner} role="alert">
+            <span>{listError || view.error || filesError}</span>
+            {(listError || view.error) && (
+              <Button size="sm" onClick={() => void retry()}>
+                Retry
+              </Button>
+            )}
+          </div>
         )}
-        <div className={styles.inspectorControls}>
-          <div className={styles.inspectorFilter}>
-            {FILTERS.map((f) => (
-              <button
-                key={f.id}
-                className={`${styles.inspectorFilterBtn} ${filter === f.id ? styles.active : ''}`}
-                onClick={() => setFilter(f.id)}
-              >
-                {f.label}
-              </button>
+
+        {listLoading && !runs.length && !listError && (
+          <div className={styles.inspectorSkeleton} aria-hidden>
+            <div className={styles.skelRow} />
+            <div className={styles.skelRow} />
+            <div className={styles.skelRow} />
+          </div>
+        )}
+        {view.loading && runId && !view.error && (
+          <div className={styles.inspectorSkeleton} aria-hidden>
+            <div className={styles.skelRow} />
+            <div className={styles.skelRow} />
+            <div className={styles.skelRow} />
+          </div>
+        )}
+        {!listLoading && !view.loading && !listError && !view.error && !runId && (
+          <EmptyState
+            art="scenes/empty-state.png"
+            title="No runs yet"
+            body="Start a run from the Runs screen. The Inspector follows the live run automatically, or pick one above."
+          />
+        )}
+        {!view.loading && !view.error && runId && lanes.length === 0 && (
+          <div className={styles.inspectorEmpty}>
+            <p className="faint">No phases match this filter.</p>
+            {filter !== 'all' && (
+              <Button size="sm" onClick={() => setFilter('all')}>
+                Show all phases
+              </Button>
+            )}
+          </div>
+        )}
+        {!view.loading && runId && visibleLanes.length > 0 && (
+          <div className={styles.inspectorGrid}>
+            {visibleLanes.map((phase) => (
+              <TranscriptLane
+                key={phase.phaseId}
+                phase={phase}
+                events={eventsByPhase.get(phase.phaseId) ?? []}
+                envelope={envelopesByPhase.get(phase.phaseId)?.[0]}
+                sessions={view.sessions}
+                now={now}
+                focused={focusedPhaseId === phase.phaseId}
+                onToggleFocus={() =>
+                  setFocusedPhaseId((id) => (id === phase.phaseId ? '' : phase.phaseId))
+                }
+              />
             ))}
           </div>
-          {view.run && (
-            <Button size="sm" onClick={() => void revealFiles()}>
-              Raw files
-            </Button>
-          )}
-        </div>
-      </header>
-
-      {(listError || view.error || filesError) && (
-        <div className={styles.inspectorBanner} role="alert">
-          <span>{listError || view.error || filesError}</span>
-          {(listError || view.error) && (
-            <Button size="sm" onClick={() => void retry()}>
-              Retry
-            </Button>
-          )}
-        </div>
-      )}
-
-      {listLoading && !runs.length && !listError && (
-        <div className={styles.inspectorSkeleton} aria-hidden>
-          <div className={styles.skelRow} />
-          <div className={styles.skelRow} />
-          <div className={styles.skelRow} />
-        </div>
-      )}
-      {view.loading && runId && !view.error && (
-        <div className={styles.inspectorSkeleton} aria-hidden>
-          <div className={styles.skelRow} />
-          <div className={styles.skelRow} />
-          <div className={styles.skelRow} />
-        </div>
-      )}
-      {!listLoading && !view.loading && !listError && !view.error && !runId && (
-        <EmptyState
-          art="scenes/empty-state.png"
-          title="No runs yet"
-          body="Start a run from the Runs screen. The Inspector follows the live run automatically, or pick one above."
-        />
-      )}
-      {!view.loading && !view.error && runId && lanes.length === 0 && (
-        <div className={styles.inspectorEmpty}>
-          <p className="faint">No phases match this filter.</p>
-          {filter !== 'all' && (
-            <Button size="sm" onClick={() => setFilter('all')}>
-              Show all phases
-            </Button>
-          )}
-        </div>
-      )}
-      {!view.loading && runId && visibleLanes.length > 0 && (
-        <div className={styles.inspectorGrid}>
-          {visibleLanes.map((phase) => (
-            <TranscriptLane
-              key={phase.phaseId}
-              phase={phase}
-              events={eventsByPhase.get(phase.phaseId) ?? []}
-              envelope={envelopesByPhase.get(phase.phaseId)?.[0]}
-              sessions={view.sessions}
-              now={now}
-              focused={focusedPhaseId === phase.phaseId}
-              onToggleFocus={() =>
-                setFocusedPhaseId((id) => (id === phase.phaseId ? '' : phase.phaseId))
-              }
-            />
-          ))}
-        </div>
-      )}
-    </div>
+        )}
+        <footer className={styles.inspectorFooter}>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={!hasVisibleTools}
+            onClick={() => setCollapseSignal((n) => n + 1)}
+            aria-label="Collapse all tool calls"
+            title={
+              hasVisibleTools
+                ? 'Collapse every tool call in all visible lanes'
+                : 'No visible tool calls to collapse'
+            }
+          >
+            Collapse all tool calls
+          </Button>
+          <span className={styles.inspectorFooterHint}>
+            Collapses every tool call across all visible agents — re-expand any step individually
+          </span>
+        </footer>
+      </div>
+    </CollapseContext.Provider>
   );
 }
