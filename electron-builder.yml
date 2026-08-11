@@ -28,6 +28,11 @@ asarUnpack:
   # The whole ghostty engine: the .node addon cannot load from asar, and the
   # utilityProcess host (host.js) must be forkable from a real path.
   - 'vendor/electron-ghostty/**'
+  # droid execs this directly as $FOUNDRY_CLI; nothing inside an asar archive
+  # can be exec'd by the OS. afterPack restores the executable bit below.
+  - 'out/main/foundry-cli.js'
+
+afterPack: scripts/after-pack.mjs
 
 mac:
   category: public.app-category.developer-tools

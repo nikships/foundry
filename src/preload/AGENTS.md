@@ -5,6 +5,7 @@ Narrow, named capability bridge between the sandboxed renderer and the main proc
 ## Project Overview
 
 - One typed wrapper per `IPC.*` entry in `src/shared/ipc-contract.ts`. The renderer's capabilities are exactly this list.
+- `ghostty.ts` is the one exception and does **not** go through the bridge: it speaks the vendored terminal package's own `electron-ghostty:*` IPC directly, receiving frames via `sharedTexture` and sending key/mouse/IME input back. See `src/main/smith/AGENTS.md`.
 - Uses `electron.contextBridge` + `electron.ipcRenderer`. Preload is sandboxed and isolated (`contextIsolation: true`, `sandbox: true` in `src/main/main.ts`).
 - Output must stay **CJS** (`bridge.cjs`) — sandboxed preloads cannot be ESM (`electron.vite.config.ts` → `rollupOptions.output.format: 'cjs'`).
 

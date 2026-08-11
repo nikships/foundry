@@ -5,6 +5,11 @@ __pycache__/
 *.so
 .Python
 build/
+# The prebuilt Ghostty terminal engine (Smith) is vendored, not built by this
+# repo's own tooling — the generic build/ rule above would otherwise hide it.
+!vendor/electron-ghostty/build/
+!vendor/electron-ghostty/build/Release/
+!vendor/electron-ghostty/build/Release/ghostty_renderer.node
 develop-eggs/
 dist/
 downloads/

@@ -102,10 +102,17 @@ export class AppContext {
    * The helper binary droid invokes as `$FOUNDRY_CLI`. It builds alongside the
    * main bundle (out/main/foundry-cli.js) and ships in the same directory when
    * packaged, so it is always a sibling of the main entry.
+   *
+   * A packaged main.js runs from inside `app.asar`, which is a single opaque
+   * file — nothing inside it can be `exec`'d by droid, an external process
+   * with no asar awareness. `electron-builder.yml` asarUnpacks this one file
+   * for exactly that reason; mirror `ghosttyVendorDir()`'s convention and
+   * point at its real on-disk path. A no-op in dev, where there is no asar.
    */
   private foundryCliPath(): string {
     const here = dirname(fileURLToPath(import.meta.url));
-    return join(here, 'foundry-cli.js');
+    const raw = join(here, 'foundry-cli.js');
+    return raw.replace(join('app.asar', 'out'), join('app.asar.unpacked', 'out'));
   }
 
   private onRunFinished(run: RunRow): void {
