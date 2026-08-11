@@ -77,12 +77,14 @@ type WireAutonomy = NonNullable<CreateSessionOptions['autonomyLevel']>;
  */
 const AUTONOMY = AUTONOMY_LEVEL satisfies `${WireAutonomy}` as WireAutonomy;
 
-/** Foundry's four efforts named the way the wire wants them. */
+/** Foundry's reasoning efforts named the way the wire wants them. */
 const EFFORTS: Record<ReasoningEffort, SdkReasoningEffort> = {
   off: SdkReasoningEffort.Off,
   low: SdkReasoningEffort.Low,
   medium: SdkReasoningEffort.Medium,
   high: SdkReasoningEffort.High,
+  xhigh: SdkReasoningEffort.ExtraHigh,
+  max: SdkReasoningEffort.Max,
 };
 
 /**

@@ -27,7 +27,7 @@ const ENVELOPE = {
   factoryProtocolVersion: '1.151.0',
 } as const;
 
-const EFFORTS = ['off', 'low', 'medium', 'high'];
+const EFFORTS = ['off', 'low', 'medium', 'high', 'xhigh', 'max'];
 const MODELS = [
   {
     id: 'gpt-fake-default',

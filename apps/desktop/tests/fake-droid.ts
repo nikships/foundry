@@ -68,7 +68,7 @@ const execPermission = (command) => ({
   ],
 });
 
-const EFFORTS = ['off', 'low', 'medium', 'high'];
+const EFFORTS = ['off', 'low', 'medium', 'high', 'xhigh', 'max'];
 const MODELS = [
   { id: 'gpt-fake-default', modelId: 'gpt-fake-default', modelProvider: 'openai', displayName: 'Fake Default', shortDisplayName: 'Default', supportedReasoningEfforts: EFFORTS, defaultReasoningEffort: 'high', isCustom: false },
   { id: 'fake-allowed', modelId: 'fake-allowed', modelProvider: 'anthropic', displayName: 'Fake Allowed', shortDisplayName: 'Allowed', supportedReasoningEfforts: EFFORTS, defaultReasoningEffort: 'medium', isCustom: false },

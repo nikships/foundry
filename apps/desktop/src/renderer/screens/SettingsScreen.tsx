@@ -728,6 +728,8 @@ export default function SettingsScreen({
                             { value: 'low', label: 'Low' },
                             { value: 'medium', label: 'Medium' },
                             { value: 'high', label: 'High' },
+                            { value: 'xhigh', label: 'X-High' },
+                            { value: 'max', label: 'Max' },
                           ]}
                           onChange={(next) => void set({ defaultReasoningEffort: next as never })}
                         />

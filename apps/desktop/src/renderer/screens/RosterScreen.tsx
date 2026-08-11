@@ -420,7 +420,7 @@ export default function RosterScreen({
                       role="radiogroup"
                       aria-label="Reasoning effort"
                     >
-                      {(['off', 'low', 'medium', 'high'] as const).map((level) => (
+                      {(['off', 'low', 'medium', 'high', 'xhigh', 'max'] as const).map((level) => (
                         <button
                           key={level}
                           type="button"
