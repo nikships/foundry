@@ -124,6 +124,11 @@
   scroll-snap-align: start;
 }
 
+.inspectorGrid.inspectorGridFocused > * {
+  flex-basis: 100%;
+  min-width: 100%;
+}
+
 .inspectorEmpty {
   flex: 1;
   display: flex;
@@ -198,8 +203,22 @@
   text-transform: uppercase;
 }
 
+.densityValue {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  min-width: 10px;
+  text-align: center;
+}
+
 .densitySlider {
   width: 100px;
   accent-color: var(--accent);
   cursor: pointer;
+}
+
+.densitySlider:disabled {
+  opacity: 0.45;
+  cursor: default;
 }

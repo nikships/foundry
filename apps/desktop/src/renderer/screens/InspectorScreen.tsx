@@ -47,8 +47,13 @@ export default function InspectorScreen({
   const [collapseSignal, setCollapseSignal] = useState(0);
   const [laneCount, setLaneCount] = useState<number>(() => {
     try {
-      const saved =
+      // Prefer localStorage so the preference survives app restarts, but
+      // fall back to sessionStorage for sessions that already saved there.
+      const fromLocal =
+        typeof localStorage !== 'undefined' ? localStorage.getItem('inspectorLaneCount') : null;
+      const fromSession =
         typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('inspectorLaneCount') : null;
+      const saved = fromLocal ?? fromSession;
       if (saved) {
         const n = parseInt(saved, 10);
         if (n >= 1 && n <= 6) return n;
@@ -61,6 +66,8 @@ export default function InspectorScreen({
 
   useEffect(() => {
     try {
+      if (typeof localStorage !== 'undefined')
+        localStorage.setItem('inspectorLaneCount', String(laneCount));
       if (typeof sessionStorage !== 'undefined')
         sessionStorage.setItem('inspectorLaneCount', String(laneCount));
     } catch {
@@ -146,15 +153,22 @@ export default function InspectorScreen({
           </span>
           <div className={styles.inspectorDensity}>
             <span className={styles.densityLabel}>Lanes</span>
+            <span className={styles.densityValue} aria-hidden>
+              {laneCount}
+            </span>
             <input
               type="range"
               min="1"
               max="6"
               step="1"
               value={laneCount}
-              onChange={(e) => setLaneCount(parseInt(e.target.value, 10))}
+              onChange={(e) => {
+                const n = parseInt(e.target.value, 10);
+                if (!Number.isNaN(n) && n >= 1 && n <= 6) setLaneCount(n);
+              }}
               className={styles.densitySlider}
               disabled
+              title="Lanes per viewport"
               aria-label="Adjust visible lanes density"
             />
           </div>
@@ -164,6 +178,7 @@ export default function InspectorScreen({
   }
 
   const hasVisibleTools = visibleLanes.length > 0;
+  const isFocused = Boolean(focusedPhaseId);
 
   return (
     <CollapseContext.Provider value={collapseSignal}>
@@ -266,7 +281,7 @@ export default function InspectorScreen({
         )}
         {!view.loading && runId && visibleLanes.length > 0 && (
           <div
-            className={styles.inspectorGrid}
+            className={`${styles.inspectorGrid} ${isFocused ? styles.inspectorGridFocused : ''}`}
             style={{ '--lane-count': laneCount } as React.CSSProperties}
           >
             {visibleLanes.map((phase) => (
@@ -305,14 +320,21 @@ export default function InspectorScreen({
           </span>
           <div className={styles.inspectorDensity}>
             <span className={styles.densityLabel}>Lanes</span>
+            <span className={styles.densityValue} aria-hidden>
+              {laneCount}
+            </span>
             <input
               type="range"
               min="1"
               max="6"
               step="1"
               value={laneCount}
-              onChange={(e) => setLaneCount(parseInt(e.target.value, 10))}
+              onChange={(e) => {
+                const n = parseInt(e.target.value, 10);
+                if (!Number.isNaN(n) && n >= 1 && n <= 6) setLaneCount(n);
+              }}
               className={styles.densitySlider}
+              title="Lanes per viewport"
               aria-label="Adjust visible lanes density"
             />
           </div>
