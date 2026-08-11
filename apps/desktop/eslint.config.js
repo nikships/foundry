@@ -91,7 +91,10 @@ export default tseslint.config(
           ],
         },
       ],
-      ...reactHooks.configs.recommended.rules,
+      // Keep the pre-v7 plugin contract. The v7 recommended preset also
+      // enables React Compiler rules, which require a separate code migration.
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
     },
   },
   // The transport seam itself, and the tests that script it.
