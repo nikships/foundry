@@ -385,6 +385,25 @@ export default function RosterScreen({
                           <span className={styles.swatchDot} style={{ background: c }} />
                         </button>
                       ))}
+                      <label
+                        className={`${styles.swatch} ${styles.colorPickerWrapper} ${!COLORS.includes(draft.color) ? styles.on : ''}`}
+                        aria-label="Custom accent color"
+                      >
+                        <span
+                          className={styles.swatchDot}
+                          style={{
+                            background: !COLORS.includes(draft.color)
+                              ? draft.color
+                              : 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)',
+                          }}
+                        />
+                        <input
+                          type="color"
+                          value={draft.color}
+                          onChange={(e) => setDraft({ ...draft, color: e.target.value.toLowerCase() })}
+                          className={styles.colorInput}
+                        />
+                      </label>
                       <span className={styles.swatchHex}>{draft.color}</span>
                     </div>
                     <span className={styles.hint}>
