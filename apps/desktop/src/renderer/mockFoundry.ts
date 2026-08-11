@@ -343,7 +343,7 @@ export function createMockFoundryApi(): FoundryApi {
           id: 'claude-opus-5',
           displayName: 'Claude Opus 5',
           provider: 'anthropic',
-          supportedReasoningEfforts: ['off', 'low', 'medium', 'high'],
+          supportedReasoningEfforts: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
           defaultReasoningEffort: 'high',
           isCustom: false,
           deprecated: false,

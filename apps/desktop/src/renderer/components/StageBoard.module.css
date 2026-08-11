@@ -1,0 +1,517 @@
+.boardContainer {
+  flex: 1;
+  min-height: 480px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--bg-void);
+  padding: 16px;
+}
+
+.boardTrack {
+  display: flex;
+  align-items: stretch;
+  min-width: max-content;
+  gap: 0;
+  height: 100%;
+}
+
+.emptyBoard {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 16px;
+  background: var(--bg-void);
+  flex: 1;
+}
+
+.emptyCard {
+  max-width: 480px;
+  text-align: center;
+  padding: 32px;
+  background: var(--bg-panel);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.emptyTitle {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.emptyDetail {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  margin-bottom: 20px;
+}
+
+.emptyActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* ── Stage Column ─────────────────────────────────────────────────────── */
+
+.stageColumn {
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  flex-shrink: 0;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.columnHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.columnEyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+}
+
+.accentNum {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.columnCount {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.cardList {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  overflow-y: auto;
+}
+
+.emptyStagePlaceholder {
+  padding: 24px 12px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-faint);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-xs);
+}
+
+.columnFooter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.footerAddLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  padding: 0 4px;
+}
+
+.addGhostBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.addGhostBtn:hover {
+  background: var(--bg-surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+/* ── Phase Card ───────────────────────────────────────────────────────── */
+
+.phaseCard {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.phaseCard:hover {
+  border-color: var(--border-strong);
+}
+
+.cardSelected {
+  border-color: var(--accent) !important;
+}
+
+.cardError {
+  border-color: var(--red) !important;
+}
+
+.cardContentBtn {
+  display: block;
+  width: 100%;
+  padding: 10px 10px 8px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.cardHeaderRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.kindGlyphWrap {
+  display: flex;
+  align-items: center;
+}
+
+.phaseName {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.phaseIndex {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.cardSubRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.kindLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.badgeAmber {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-transform: uppercase;
+  padding: 1px 4px;
+  color: var(--amber);
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: var(--radius-xs);
+}
+
+.badgeRed {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-transform: uppercase;
+  padding: 1px 4px;
+  color: var(--red);
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-xs);
+}
+
+.cardDescription {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-dim);
+  margin-top: 6px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.missingDesc {
+  color: var(--red);
+}
+
+.chipsRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+}
+
+.blueChip {
+  color: var(--blue);
+}
+
+.greenChip {
+  color: var(--green);
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.redChip {
+  color: var(--red);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.cardToolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.toolBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.toolBtn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: var(--bg-panel);
+}
+
+.toolBtn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.toolSeparator {
+  width: 1px;
+  height: 12px;
+  background: var(--border-subtle);
+  margin: 0 2px;
+}
+
+.removeToolBtn:hover:not(:disabled) {
+  color: var(--red);
+  border-color: var(--red);
+}
+
+.toolBtnAutoLeft {
+  margin-left: auto;
+}
+
+/* ── Gate / Checkpoint Slot ───────────────────────────────────────────── */
+
+.gateSlot {
+  display: flex;
+  align-items: center;
+  width: 188px;
+  flex-shrink: 0;
+  padding: 0 12px;
+}
+
+.gateSlotActive {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 220px;
+  flex-shrink: 0;
+  padding: 0 12px;
+}
+
+.gateDividerLeft {
+  position: absolute;
+  top: 16px;
+  bottom: 16px;
+  left: 0;
+  border-left: 1px dashed var(--border);
+}
+
+.gateDividerRight {
+  position: absolute;
+  top: 16px;
+  bottom: 16px;
+  right: 0;
+  border-left: 1px dashed var(--border);
+}
+
+.addCheckpointBtn {
+  width: 100%;
+  padding: 16px 12px;
+  text-align: center;
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.addCheckpointBtn:hover {
+  border-color: var(--amber);
+}
+
+.addCheckpointTitle {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+
+.addCheckpointHint {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-faint);
+}
+
+.checkpointCard {
+  width: 100%;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  transition: border-color 0.15s ease;
+}
+
+.checkpointCard:hover {
+  border-color: var(--amber);
+}
+
+.cardAmberBorder {
+  border-color: var(--amber) !important;
+}
+
+.checkpointContentBtn {
+  display: block;
+  width: 100%;
+  padding: 12px 10px 8px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.checkpointGlyph {
+  color: var(--amber);
+  display: flex;
+  align-items: center;
+}
+
+.checkpointLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--amber);
+}
+
+.checkpointDesc {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-dim);
+  margin-top: 4px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.asksSection {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.asksLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.asksQuestion {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text);
+  margin-top: 2px;
+  font-style: italic;
+}
+
+.warningText {
+  font-size: 11px;
+  color: var(--amber);
+  margin-top: 2px;
+}
+
+.closesStageSubtext {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-faint);
+  margin-top: 8px;
+}
+
+.issueCountLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--amber);
+  margin-left: auto;
+  padding-right: 4px;
+}

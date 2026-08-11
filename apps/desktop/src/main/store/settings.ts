@@ -34,7 +34,7 @@ export const appSettingsSchema = z.object({
   detectModel: z.string().min(1),
   engineerName: z.string().min(1).max(80),
   defaultModel: z.string().min(1),
-  defaultReasoningEffort: z.enum(['off', 'low', 'medium', 'high']),
+  defaultReasoningEffort: z.enum(['off', 'low', 'medium', 'high', 'xhigh', 'max']),
   pollCadenceMs: z.number().int().min(250).max(2000),
   turnTimeoutMs: z.number().int().min(300_000).max(3_600_000),
   envelopeRetries: z.number().int().min(0).max(5),

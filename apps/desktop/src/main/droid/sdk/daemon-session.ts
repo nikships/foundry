@@ -157,6 +157,8 @@ const EFFORTS: Record<ReasoningEffort, SdkReasoningEffort> = {
   low: SdkReasoningEffort.Low,
   medium: SdkReasoningEffort.Medium,
   high: SdkReasoningEffort.High,
+  xhigh: SdkReasoningEffort.ExtraHigh,
+  max: SdkReasoningEffort.Max,
 };
 
 const MCP_TOOL_SETTLE_MS = 1_500;

@@ -385,6 +385,37 @@ export default function RosterScreen({
                           <span className={styles.swatchDot} style={{ background: c }} />
                         </button>
                       ))}
+                      {(() => {
+                        const lower = draft.color.toLowerCase();
+                        const isCustom = !COLORS.includes(lower);
+                        const safeValue = /^#[0-9a-fA-F]{6}$/.test(draft.color)
+                          ? draft.color
+                          : '#4fa8b8';
+                        return (
+                          <label
+                            className={`${styles.swatch} ${styles.colorPickerWrapper} ${isCustom ? styles.on : ''}`}
+                            title="Custom accent color"
+                          >
+                            <span
+                              className={styles.swatchDot}
+                              style={{
+                                background: isCustom
+                                  ? draft.color
+                                  : 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)',
+                              }}
+                            />
+                            <input
+                              type="color"
+                              aria-label="Custom accent color"
+                              value={safeValue}
+                              onChange={(e) =>
+                                setDraft({ ...draft, color: e.target.value.toLowerCase() })
+                              }
+                              className={styles.colorInput}
+                            />
+                          </label>
+                        );
+                      })()}
                       <span className={styles.swatchHex}>{draft.color}</span>
                     </div>
                     <span className={styles.hint}>
@@ -420,7 +451,7 @@ export default function RosterScreen({
                       role="radiogroup"
                       aria-label="Reasoning effort"
                     >
-                      {(['off', 'low', 'medium', 'high'] as const).map((level) => (
+                      {(['off', 'low', 'medium', 'high', 'xhigh', 'max'] as const).map((level) => (
                         <button
                           key={level}
                           type="button"

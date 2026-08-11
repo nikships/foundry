@@ -3,519 +3,554 @@ import {
   BUILTIN_ENVELOPE_BLURBS,
   BUILTIN_ENVELOPE_KINDS,
   type AgentDef,
+  type EnvelopeKind,
   type PhaseDef,
+  type PhaseKind,
 } from '@shared/types.js';
 import { api } from '../api.js';
 import { useApp } from '../stores/app.js';
-import { phaseKindColor, KIND_LABEL } from '../derive.js';
-import AgentAvatar from './AgentAvatar.js';
-import { CliIcon } from './BrandIcon.js';
-import { Dropdown, type DropdownOption } from './ui/Dropdown.js';
-import { Field, TextInput, Textarea } from './ui/Field.js';
+import { gateNames } from '../pipeline-view.js';
 import { SegmentedControl } from './ui/SegmentedControl.js';
+import { Button } from './ui/Button.js';
 import styles from './PhaseEditor.module.css';
 
-function EnvelopeGlyph(): React.JSX.Element {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 14 14"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.3"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <rect x="1.5" y="3" width="11" height="8" rx="1.2" />
-      <path d="M1.8 3.6 7 8l5.2-4.4" />
-    </svg>
-  );
+type CommandSource = 'ref' | 'builtin' | 'argv';
+
+function isBuiltinEnvelope(env: string | undefined): env is EnvelopeKind {
+  return env ? (BUILTIN_ENVELOPE_KINDS as readonly string[]).includes(env) : false;
 }
 
 export default function PhaseEditor({
   phase,
   index,
-  open,
   phases,
   agents,
   commands,
   onChange,
-  onToggle,
-  onMove,
   onRemove,
-  onOpenSettings,
 }: {
   phase: PhaseDef;
   index: number;
-  open: boolean;
   phases: PhaseDef[];
   agents: AgentDef[];
   commands: string[];
   onChange: (phase: PhaseDef) => void;
-  onToggle: () => void;
-  onMove: (delta: number) => void;
   onRemove: () => void;
   onOpenSettings?: (pane: string) => void;
 }): React.JSX.Element {
-  const { agentColor, envelopes } = useApp();
-  const [gates, setGates] = useState<{ id: string; description: string }[]>([]);
+  const { envelopes } = useApp();
+  const [catalogGates, setCatalogGates] = useState<{ id: string; description: string }[]>([]);
 
   useEffect(() => {
-    void api.catalog.gates().then(setGates);
+    void api.catalog.gates().then(setCatalogGates);
   }, []);
 
-  const color = useMemo(
-    () => phaseKindColor(phase.kind, agentColor(phase.agent ?? null)),
-    [phase.kind, phase.agent, agentColor],
-  );
-  const earlier = useMemo(() => phases.slice(0, index).map((p) => p.name), [phases, index]);
-  const usesArgv = phase.kind === 'code' && !!phase.command && 'argv' in phase.command;
+  const earlier = useMemo(() => phases.slice(0, index), [phases, index]);
+  const earlierAgents = useMemo(() => earlier.filter((p) => p.kind === 'agent'), [earlier]);
+  const activeGates = useMemo(() => gateNames(phase), [phase]);
+  const inputs = useMemo(() => phase.prompt?.inputs ?? [], [phase.prompt?.inputs]);
 
-  const agentOptions = useMemo<DropdownOption[]>(
-    () =>
-      agents.map((a) => ({
-        value: a.name,
-        label: a.name,
-        description: a.purpose,
-        icon: <AgentAvatar name={a.name} size={22} />,
-      })),
-    [agents],
-  );
+  const availableInputs = useMemo(() => {
+    const standard = ['request', 'handoff_files', 'feedback'];
+    const envelopeInputs = earlier.map((p) => `envelope:${p.name}`);
+    return [...standard, ...envelopeInputs].filter((i) => !inputs.includes(i));
+  }, [earlier, inputs]);
 
-  const envelopeOptions = useMemo<DropdownOption[]>(() => {
-    const builtin: DropdownOption[] = BUILTIN_ENVELOPE_KINDS.map((kind) => ({
-      value: kind,
-      label: kind,
-      description: BUILTIN_ENVELOPE_BLURBS[kind],
-      group: 'Built-in',
-      icon: (
-        <span className={styles.envelopeOptionIcon}>
-          <EnvelopeGlyph />
-        </span>
-      ),
-    }));
-    const custom: DropdownOption[] = envelopes.map((env) => ({
-      value: env.name,
-      label: env.name,
-      description: env.description || undefined,
-      group: 'Custom',
-      icon: (
-        <span className={styles.envelopeOptionIcon}>
-          <EnvelopeGlyph />
-        </span>
-      ),
-    }));
-    return [...builtin, ...custom];
-  }, [envelopes]);
+  const commandSource: CommandSource = useMemo(() => {
+    if (phase.kind !== 'code' || !phase.command) return 'ref';
+    if ('ref' in phase.command) return 'ref';
+    if ('builtin' in phase.command) return 'builtin';
+    return 'argv';
+  }, [phase]);
 
-  const commandOptions = useMemo<DropdownOption[]>(
-    () => commands.map((name) => ({ value: name, label: name })),
-    [commands],
-  );
-
-  const feedbackOptions = useMemo<DropdownOption[]>(
-    () => [
-      { value: '', label: 'Nowhere: a failure ends the run' },
-      ...earlier.map((name) => ({ value: name, label: name })),
-    ],
-    [earlier],
-  );
-
-  const patch = (next: Partial<PhaseDef>): void => onChange({ ...phase, ...next });
-
-  const toggleGate = (id: string): void => {
-    const current = phase.gates ?? [];
-    patch({
-      gates: current.includes(id) ? current.filter((g) => g !== id) : [...current, id],
+  const handleKindChange = (kind: PhaseKind): void => {
+    if (kind === phase.kind) return;
+    if (kind === 'agent') {
+      onChange({
+        name: phase.name,
+        kind: 'agent',
+        description: phase.description,
+        agent: agents[0]?.name ?? 'builder',
+        envelope: 'build',
+        prompt: { template: 'user', inputs: ['request'] },
+        gates: [],
+      });
+      return;
+    }
+    if (kind === 'code') {
+      onChange({
+        name: phase.name,
+        kind: 'code',
+        description: phase.description,
+        command: commands[0] ? { ref: commands[0] } : { builtin: 'git_commit' },
+      });
+      return;
+    }
+    onChange({
+      name: phase.name,
+      kind: 'engineer',
+      description: phase.description,
+      question: '',
     });
   };
 
-  const toggleInput = (name: string): void => {
-    const prompt = phase.prompt ?? { template: 'user' as const, inputs: [] as string[] };
-    const current = prompt.inputs ?? [];
-    patch({
-      prompt: {
-        ...prompt,
-        inputs: current.includes(name) ? current.filter((i) => i !== name) : [...current, name],
-      },
-    });
+  const handleSourceChange = (next: CommandSource): void => {
+    if (next === 'ref') {
+      onChange({
+        ...phase,
+        command: commands[0] ? { ref: commands[0] } : { ref: 'test' },
+      });
+    } else if (next === 'builtin') {
+      onChange({ ...phase, command: { builtin: 'git_commit' } });
+    } else {
+      onChange({ ...phase, command: { argv: ['sh', '-c', 'echo run'] } });
+    }
   };
 
-  const setCommandMode = (mode: 'ref' | 'argv'): void => {
-    if (phase.kind !== 'code') return;
-    patch({
-      command: mode === 'ref' ? { ref: commands[0] ?? '' } : { argv: ['echo', 'hello'] },
-    });
-  };
+  const kindOptions = [
+    { label: 'Agent', on: phase.kind === 'agent', onClick: () => handleKindChange('agent') },
+    { label: 'Command', on: phase.kind === 'code', onClick: () => handleKindChange('code') },
+    {
+      label: 'Checkpoint',
+      on: phase.kind === 'engineer',
+      onClick: () => handleKindChange('engineer'),
+    },
+  ];
 
-  // The CLI is the agent's, not the phase's, so a phase head can say which
-  // harness will actually run it without opening the Roster.
-  const owner =
-    phase.kind === 'agent' ? (agents.find((a) => a.name === phase.agent) ?? null) : null;
-
-  const commandRef = phase.command && 'ref' in phase.command ? phase.command.ref : '';
-  const argvText = phase.command && 'argv' in phase.command ? phase.command.argv.join(' ') : '';
+  const sourceOptions = [
+    { label: 'Project', on: commandSource === 'ref', onClick: () => handleSourceChange('ref') },
+    {
+      label: 'Builtin',
+      on: commandSource === 'builtin',
+      onClick: () => handleSourceChange('builtin'),
+    },
+    { label: 'Argv', on: commandSource === 'argv', onClick: () => handleSourceChange('argv') },
+  ];
 
   return (
-    <>
-      <div
-        className={`${styles.phase} ${open ? styles.open : ''}`}
-        style={{ ['--hue' as string]: color }}
-      >
-        {open && <span className={styles.phaseEdge} aria-hidden />}
-        <div className={styles.rowWrap}>
-          <button className={`row ${styles.head}`} onClick={onToggle} aria-expanded={open}>
-            <span className={styles.phaseNumber}>{String(index + 1).padStart(2, '0')}</span>
-            <span className={styles.phaseIcon} style={{ color }}>
-              {phase.kind === 'agent' ? (
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 14 14"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.3"
-                  aria-hidden
-                >
-                  <rect x="2.5" y="4" width="9" height="7" rx="1.5" />
-                  <path d="M7 4V1.8" />
-                  <circle cx="7" cy="1.4" r="0.9" fill="currentColor" stroke="none" />
-                  <circle cx="5.2" cy="7.2" r="0.7" fill="currentColor" stroke="none" />
-                  <circle cx="8.8" cy="7.2" r="0.7" fill="currentColor" stroke="none" />
-                </svg>
-              ) : phase.kind === 'code' ? (
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 14 14"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.3"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden
-                >
-                  <path d="M3 3.5 6 6.5 3 9.5" />
-                  <path d="M7 10.5h4.5" />
-                </svg>
-              ) : (
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 14 14"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.3"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden
-                >
-                  <path d="M3 12.5v-11" />
-                  <path d="M3 2.2c1.6-1 3.2 1 4.8 0s3-0.6 3.4-0.2v5.6c-0.4-0.4-1.8-0.8-3.4 0.2s-3.2 1-4.8 0" />
-                </svg>
-              )}
-            </span>
-            {phase.kind === 'agent' && <AgentAvatar name={phase.agent ?? null} size={20} />}
-            <span className={styles.phaseName}>{phase.name}</span>
-            <span className={styles.phaseKindDot}>{KIND_LABEL[phase.kind] ?? phase.kind}</span>
-            <span className={styles.summary}>
-              {phase.kind === 'agent' && (
-                <>
-                  {owner && <CliIcon vendor={owner.cli ?? 'droid'} size={12} />}
-                  <span className={styles.sumStrong}>{phase.agent}</span>
-                  <span className={styles.envelopeChip} title="Envelope">
-                    <span className={styles.envelopeChipIcon}>
-                      <EnvelopeGlyph />
-                    </span>
-                    <span className={styles.envelopeChipName}>
-                      {phase.envelope ?? owner?.envelope ?? 'build'}
-                    </span>
-                  </span>
-                </>
-              )}
-              {phase.kind === 'code' && (
-                <>
-                  <span className={styles.sumDim}>$ </span>
-                  <span className={styles.sumStrong}>
-                    {phase.command && 'ref' in phase.command
-                      ? phase.command.ref
-                      : phase.command && 'argv' in phase.command
-                        ? phase.command.argv.join(' ')
-                        : ''}
-                  </span>
-                </>
-              )}
-              {phase.kind === 'engineer' && (
-                <span className={styles.sumStrong}>{phase.question}</span>
-              )}
-              {phase.optional && <span className={styles.sumDim}> · optional</span>}
-            </span>
-            {phase.feedbackTo && (
-              <span className={`badge ${styles.loop}`}>↩ {phase.feedbackTo}</span>
-            )}
-            <svg
-              className={`${styles.chevron} ${open ? styles.up : ''}`}
-              width="12"
-              height="12"
-              viewBox="0 0 14 14"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden
-            >
-              <path d="M3.5 5.5 7 9l3.5-3.5" />
-            </svg>
-          </button>
-          <span className={styles.controls}>
-            <button
-              className={styles.control}
-              disabled={index === 0}
-              title="Move earlier"
-              onClick={(e) => {
-                e.stopPropagation();
-                onMove(-1);
-              }}
-            >
-              ↑
-            </button>
-            <button
-              className={styles.control}
-              disabled={index === phases.length - 1}
-              title="Move later"
-              onClick={(e) => {
-                e.stopPropagation();
-                onMove(1);
-              }}
-            >
-              ↓
-            </button>
-            <button
-              className={`${styles.control} ${styles.danger}`}
-              title="Remove phase"
-              onClick={(e) => {
-                e.stopPropagation();
-                onRemove();
-              }}
-            >
-              ✕
-            </button>
-          </span>
+    <div className={styles.container}>
+      {/* ── Name & Kind ──────────────────────────────────────────────── */}
+      <div className={styles.fieldGroup}>
+        <div className={styles.fieldHeader}>
+          <label htmlFor={`phase-name-${index}`} className={styles.fieldLabel}>
+            Name
+          </label>
+          <span className={styles.fieldHint}>snake_case identifier</span>
         </div>
-        {open && (
-          <div className={styles.body}>
-            <div className={styles.two}>
-              <Field label="Name" hint="Other phases refer to this one by name.">
-                <TextInput value={phase.name} onChange={(e) => patch({ name: e.target.value })} />
-              </Field>
-              {phase.kind === 'agent' && (
-                <Field label="Agent">
-                  <Dropdown
-                    value={phase.agent ?? ''}
-                    options={agentOptions}
-                    onChange={(next) => {
-                      const agent = agents.find((a) => a.name === next);
-                      // Default the phase envelope to the agent's so a reviewer
-                      // phase is not left on build after the agent is swapped.
-                      patch({
-                        agent: next,
-                        envelope: agent?.envelope ?? phase.envelope ?? 'build',
-                      });
-                    }}
-                  />
-                </Field>
-              )}
+        <input
+          id={`phase-name-${index}`}
+          className={styles.monoInput}
+          value={phase.name}
+          onChange={(e) => onChange({ ...phase, name: e.target.value })}
+          placeholder="e.g. build_app"
+        />
+      </div>
+
+      <div className={styles.fieldGroup}>
+        <div className={styles.fieldHeader}>
+          <span className={styles.fieldLabel}>Kind</span>
+        </div>
+        <SegmentedControl options={kindOptions} />
+      </div>
+
+      <div className={styles.fieldGroup}>
+        <div className={styles.fieldHeader}>
+          <label htmlFor={`phase-desc-${index}`} className={styles.fieldLabel}>
+            Description
+          </label>
+          <span className={styles.fieldHint}>required</span>
+        </div>
+        <textarea
+          id={`phase-desc-${index}`}
+          rows={3}
+          className={styles.textarea}
+          placeholder="What this phase does, and why the run needs it."
+          value={phase.description}
+          onChange={(e) => onChange({ ...phase, description: e.target.value })}
+        />
+      </div>
+
+      {/* ── Agent Specific ───────────────────────────────────────────── */}
+      {phase.kind === 'agent' && (
+        <>
+          <div className={styles.fieldGroup}>
+            <div className={styles.fieldHeader}>
+              <label htmlFor={`phase-agent-${index}`} className={styles.fieldLabel}>
+                Agent
+              </label>
+              <span className={styles.fieldHint}>{agents.length} in roster</span>
             </div>
-            {phase.kind === 'agent' && (
-              <Field
-                label="Envelope"
-                hint={
-                  <>
-                    Typed reply this phase must return. Defaults from the agent; override when the
-                    same agent wears different hats.
-                    {onOpenSettings && (
-                      <>
-                        {' '}
-                        <button
-                          type="button"
-                          className={styles.linkBtn}
-                          onClick={() => onOpenSettings('envelopes')}
-                        >
-                          Manage envelopes…
-                        </button>
-                      </>
-                    )}
-                  </>
-                }
-              >
-                <Dropdown
-                  value={phase.envelope ?? owner?.envelope ?? 'build'}
-                  options={envelopeOptions}
-                  onChange={(next) => patch({ envelope: next })}
-                />
-              </Field>
-            )}
-            <Field
-              label="Description"
-              hint="Shown in the run view. A phase nobody can explain is a phase nobody should run."
+            <select
+              id={`phase-agent-${index}`}
+              className={styles.select}
+              value={phase.agent ?? ''}
+              onChange={(e) => onChange({ ...phase, agent: e.target.value })}
             >
-              <TextInput
-                value={phase.description}
-                placeholder="What this phase is for, in one line."
-                onChange={(e) => patch({ description: e.target.value })}
-              />
-            </Field>
-            {phase.kind === 'agent' && (
-              <>
-                <Field
-                  label="Inputs from earlier phases"
-                  hint="Selected envelopes are appended to the prompt unless the agent's template already references them."
-                >
-                  <div className={styles.chips}>
-                    {earlier.map((name) => (
-                      <button
-                        key={name}
-                        className={`${styles.chip} ${phase.prompt?.inputs?.includes(name) ? styles.on : ''}`}
-                        onClick={() => toggleInput(name)}
-                      >
-                        {name}
-                      </button>
-                    ))}
-                    <button
-                      className={`${styles.chip} ${phase.prompt?.inputs?.includes('request') ? styles.on : ''}`}
-                      onClick={() => toggleInput('request')}
-                    >
-                      request
-                    </button>
-                  </div>
-                </Field>
-                <Field
-                  label="Gates"
-                  hint="Gates produce evidence. A failed gate is sent back to the agent as a correction."
-                >
-                  <div className={styles.gates}>
-                    {gates
-                      // command_passes needs a configured argv the editor cannot
-                      // yet set, so offering it only produces a save-blocking error.
-                      .filter((gate) => gate.id !== 'command_passes')
-                      .map((gate) => (
-                        <label key={gate.id} className={styles.gate}>
-                          <input
-                            type="checkbox"
-                            checked={phase.gates?.includes(gate.id) ?? false}
-                            onChange={() => toggleGate(gate.id)}
-                          />
-                          <span>
-                            <code>{gate.id}</code>
-                            <em className="faint">{gate.description}</em>
-                          </span>
-                        </label>
-                      ))}
-                  </div>
-                </Field>
-              </>
-            )}
-            {phase.kind === 'code' && (
-              <Field
-                label="Command"
-                hint={
-                  !usesArgv
-                    ? 'Runs the command configured for the project, so the same pipeline works across repos. Detect or ask an agent from Settings → Project.'
-                    : 'Runs exactly these arguments, with no shell.'
-                }
-              >
-                <SegmentedControl
-                  className={styles.commandModes}
-                  options={[
-                    {
-                      label: 'Project command',
-                      on: !usesArgv,
-                      onClick: () => setCommandMode('ref'),
-                    },
-                    { label: 'Literal', on: usesArgv, onClick: () => setCommandMode('argv') },
-                  ]}
-                />
-                {!usesArgv ? (
-                  commands.length ? (
-                    <Dropdown
-                      value={commandRef}
-                      options={commandOptions}
-                      onChange={(next) => patch({ command: { ref: next } })}
-                    />
-                  ) : (
-                    <p className={`hint ${styles.emptyCmds}`}>
-                      No project commands yet. Switch to Literal, or detect them in Settings →
-                      Project.
-                    </p>
-                  )
-                ) : (
-                  <TextInput
-                    mono
-                    value={argvText}
-                    placeholder="npm test"
-                    onChange={(e) =>
-                      patch({
-                        command: { argv: e.target.value.split(/\s+/).filter(Boolean) },
-                      })
-                    }
-                  />
-                )}
-              </Field>
-            )}
-            {phase.kind === 'engineer' && (
-              <Field label="Question" hint="The run pauses here until someone answers.">
-                <Textarea
-                  value={phase.question ?? ''}
-                  rows={2}
-                  onChange={(e) => patch({ question: e.target.value })}
-                />
-              </Field>
-            )}
-            <div className={styles.two}>
-              <Field
-                label="Send failures back to"
-                hint="The failure output is handed to that phase as a repair request."
-              >
-                <Dropdown
-                  value={phase.feedbackTo ?? ''}
-                  options={feedbackOptions}
-                  onChange={(next) => patch({ feedbackTo: next || undefined })}
-                />
-              </Field>
-              {phase.feedbackTo && (
-                <Field
-                  label="Repair attempts"
-                  hint="After this many attempts the run stops rather than looping."
-                >
-                  <TextInput
-                    type="number"
-                    min={1}
-                    max={5}
-                    value={phase.feedbackRetries ?? 1}
-                    onChange={(e) => patch({ feedbackRetries: Number(e.target.value) })}
-                  />
-                </Field>
+              <option value="">— select agent —</option>
+              {agents.map((a) => (
+                <option key={a.name} value={a.name}>
+                  {a.name} ({a.model})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className={styles.fieldGroup}>
+            <div className={styles.fieldHeader}>
+              <label htmlFor={`phase-envelope-${index}`} className={styles.fieldLabel}>
+                Envelope
+              </label>
+              {isBuiltinEnvelope(phase.envelope) && (
+                <span className={styles.fieldHint}>{BUILTIN_ENVELOPE_BLURBS[phase.envelope]}</span>
               )}
             </div>
-            <label className={styles.optionalToggle}>
+            <select
+              id={`phase-envelope-${index}`}
+              className={styles.select}
+              value={phase.envelope ?? ''}
+              onChange={(e) => onChange({ ...phase, envelope: e.target.value || undefined })}
+            >
+              <option value="">— inherit from agent —</option>
+              <optgroup label="Built-in">
+                {BUILTIN_ENVELOPE_KINDS.map((k) => (
+                  <option key={k} value={k}>
+                    {k}
+                  </option>
+                ))}
+              </optgroup>
+              {envelopes.length > 0 && (
+                <optgroup label="Custom">
+                  {envelopes.map((env) => (
+                    <option key={env.name} value={env.name}>
+                      {env.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+          </div>
+
+          <div className={styles.fieldGroup}>
+            <div className={styles.fieldHeader}>
+              <span className={styles.fieldLabel}>Gates</span>
+              <span className={styles.fieldHint}>{activeGates.length} active</span>
+            </div>
+            <div className={styles.chipRow}>
+              {activeGates.map((gate) => (
+                <button
+                  key={gate}
+                  type="button"
+                  onClick={() =>
+                    onChange({
+                      ...phase,
+                      gates: (phase.gates ?? []).filter((g) =>
+                        typeof g === 'string' ? g !== gate : g.gate !== gate,
+                      ),
+                    })
+                  }
+                  className={styles.removableChip}
+                  title="Remove gate"
+                >
+                  {gate}
+                  <span className={styles.chipClose}>×</span>
+                </button>
+              ))}
+              {activeGates.length === 0 && <span className={styles.mutedText}>none</span>}
+            </div>
+            <select
+              className={`${styles.select} ${styles.selectSm}`}
+              value=""
+              onChange={(e) => {
+                if (e.target.value) {
+                  const next = [...(phase.gates ?? []), e.target.value];
+                  onChange({ ...phase, gates: next });
+                }
+              }}
+            >
+              <option value="">+ add gate</option>
+              {catalogGates
+                .filter((g) => !activeGates.includes(g.id))
+                .map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.id} — {g.description}
+                  </option>
+                ))}
+            </select>
+          </div>
+
+          <div className={styles.fieldGroup}>
+            <div className={styles.fieldHeader}>
+              <span className={styles.fieldLabel}>Prompt inputs</span>
+              <span className={styles.fieldHint}>template: user</span>
+            </div>
+            <div className={styles.chipRow}>
+              {inputs.map((inp) => (
+                <button
+                  key={inp}
+                  type="button"
+                  onClick={() =>
+                    onChange({
+                      ...phase,
+                      prompt: {
+                        template: phase.prompt?.template ?? 'user',
+                        inputs: inputs.filter((i) => i !== inp),
+                      },
+                    })
+                  }
+                  className={styles.removableChip}
+                  title="Remove input"
+                >
+                  {inp}
+                  <span className={styles.chipClose}>×</span>
+                </button>
+              ))}
+            </div>
+            {availableInputs.length > 0 && (
+              <select
+                className={`${styles.select} ${styles.selectSm}`}
+                value=""
+                onChange={(e) => {
+                  if (e.target.value) {
+                    onChange({
+                      ...phase,
+                      prompt: {
+                        template: phase.prompt?.template ?? 'user',
+                        inputs: [...inputs, e.target.value],
+                      },
+                    });
+                  }
+                }}
+              >
+                <option value="">+ add input</option>
+                {availableInputs.map((i) => (
+                  <option key={i} value={i}>
+                    {i}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          <div className={styles.fieldGroup}>
+            <div className={styles.fieldHeader}>
+              <label htmlFor={`phase-retries-${index}`} className={styles.fieldLabel}>
+                Retries
+              </label>
+              <span className={styles.fieldHint}>0–5 on gate failure</span>
+            </div>
+            <input
+              id={`phase-retries-${index}`}
+              type="number"
+              min={0}
+              max={5}
+              className={styles.monoInput}
+              value={phase.retries ?? 0}
+              onChange={(e) => onChange({ ...phase, retries: Number(e.target.value) })}
+            />
+          </div>
+        </>
+      )}
+
+      {/* ── Command Specific ─────────────────────────────────────────── */}
+      {phase.kind === 'code' && (
+        <>
+          <div className={styles.fieldGroup}>
+            <div className={styles.fieldHeader}>
+              <span className={styles.fieldLabel}>Command source</span>
+              {commands.length > 0 && (
+                <span className={styles.fieldHint}>project: {commands.join(', ')}</span>
+              )}
+            </div>
+            <SegmentedControl options={sourceOptions} />
+
+            <div className={styles.subField}>
+              {commandSource === 'ref' && (
+                <select
+                  className={styles.select}
+                  value={phase.command && 'ref' in phase.command ? phase.command.ref : ''}
+                  onChange={(e) => onChange({ ...phase, command: { ref: e.target.value } })}
+                >
+                  <option value="">— pick a command —</option>
+                  {commands.map((cmd) => (
+                    <option key={cmd} value={cmd}>
+                      {cmd}
+                    </option>
+                  ))}
+                  {phase.command &&
+                    'ref' in phase.command &&
+                    !commands.includes(phase.command.ref) && (
+                      <option value={phase.command.ref}>
+                        {phase.command.ref} (not configured)
+                      </option>
+                    )}
+                </select>
+              )}
+
+              {commandSource === 'builtin' && (
+                <select
+                  className={styles.select}
+                  value={
+                    phase.command && 'builtin' in phase.command
+                      ? phase.command.builtin
+                      : 'git_commit'
+                  }
+                  onChange={(e) =>
+                    onChange({
+                      ...phase,
+                      command: {
+                        builtin: e.target.value as 'git_commit' | 'git_status' | 'noop',
+                        messageFrom:
+                          phase.command && 'builtin' in phase.command
+                            ? phase.command.messageFrom
+                            : undefined,
+                      },
+                    })
+                  }
+                >
+                  <option value="git_commit">git_commit</option>
+                  <option value="git_status">git_status</option>
+                  <option value="noop">noop</option>
+                </select>
+              )}
+
+              {commandSource === 'argv' && (
+                <input
+                  className={styles.monoInput}
+                  value={
+                    phase.command && 'argv' in phase.command ? phase.command.argv.join(' ') : ''
+                  }
+                  onChange={(e) =>
+                    onChange({ ...phase, command: { argv: e.target.value.split(' ') } })
+                  }
+                  placeholder="e.g. npm test"
+                />
+              )}
+            </div>
+          </div>
+
+          <div className={styles.fieldGroup}>
+            <div className={styles.fieldHeader}>
+              <label htmlFor={`phase-feedback-${index}`} className={styles.fieldLabel}>
+                Feedback to
+              </label>
+              <span className={styles.fieldHint}>earlier agent phases only</span>
+            </div>
+            <select
+              id={`phase-feedback-${index}`}
+              className={styles.select}
+              value={phase.feedbackTo ?? ''}
+              onChange={(e) =>
+                onChange({
+                  ...phase,
+                  feedbackTo: e.target.value || undefined,
+                  feedbackRetries: e.target.value ? (phase.feedbackRetries ?? 1) : undefined,
+                })
+              }
+            >
+              <option value="">— fail the run on error —</option>
+              {earlierAgents.map((p) => (
+                <option key={p.name} value={p.name}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+
+            {phase.feedbackTo && (
+              <div className={styles.subField}>
+                <div className={styles.fieldHeader}>
+                  <label htmlFor={`phase-fb-retries-${index}`} className={styles.fieldLabel}>
+                    Feedback retries
+                  </label>
+                  <span className={styles.fieldHint}>1–5 attempts</span>
+                </div>
+                <input
+                  id={`phase-fb-retries-${index}`}
+                  type="number"
+                  min={1}
+                  max={5}
+                  className={styles.monoInput}
+                  value={phase.feedbackRetries ?? 1}
+                  onChange={(e) => onChange({ ...phase, feedbackRetries: Number(e.target.value) })}
+                />
+              </div>
+            )}
+          </div>
+
+          <div className={styles.fieldGroup}>
+            <label className={styles.toggleRow}>
               <input
                 type="checkbox"
                 checked={!!phase.optional}
-                onChange={(e) => patch({ optional: e.target.checked })}
+                onChange={(e) => onChange({ ...phase, optional: e.target.checked })}
+                className={styles.checkbox}
               />
-              <span>
-                Optional
-                <em className="faint">
-                  A failure here is recorded and skipped instead of ending the run.
-                </em>
-              </span>
+              <div>
+                <span className={styles.toggleLabel}>Optional</span>
+                <span className={styles.toggleHint}>
+                  Non-zero exit is recorded in the trace but does not fail the run.
+                </span>
+              </div>
             </label>
           </div>
-        )}
+        </>
+      )}
+
+      {/* ── Checkpoint Specific ──────────────────────────────────────── */}
+      {phase.kind === 'engineer' && (
+        <>
+          <div className={styles.fieldGroup}>
+            <div className={styles.fieldHeader}>
+              <label htmlFor={`phase-question-${index}`} className={styles.fieldLabel}>
+                Question
+              </label>
+              <span className={styles.fieldHint}>shown on interrupt sheet</span>
+            </div>
+            <textarea
+              id={`phase-question-${index}`}
+              rows={3}
+              className={styles.textarea}
+              placeholder="What this checkpoint asks the human operator."
+              value={phase.question ?? ''}
+              onChange={(e) => onChange({ ...phase, question: e.target.value })}
+            />
+            {!phase.question?.trim() && (
+              <p className={styles.warningText}>
+                No question set — the interrupt sheet opens with no question text.
+              </p>
+            )}
+          </div>
+
+          <div className={styles.fieldGroup}>
+            <div className={styles.fieldHeader}>
+              <label htmlFor={`phase-timeout-${index}`} className={styles.fieldLabel}>
+                Timeout (minutes)
+              </label>
+              <span className={styles.fieldHint}>optional</span>
+            </div>
+            <input
+              id={`phase-timeout-${index}`}
+              type="number"
+              min={1}
+              className={styles.monoInput}
+              value={phase.timeoutMs ? Math.round(phase.timeoutMs / 60000) : ''}
+              onChange={(e) =>
+                onChange({
+                  ...phase,
+                  timeoutMs: e.target.value ? Number(e.target.value) * 60000 : undefined,
+                })
+              }
+              placeholder="e.g. 30"
+            />
+          </div>
+        </>
+      )}
+
+      {/* ── Danger Zone ──────────────────────────────────────────────── */}
+      <div className={styles.footerAction}>
+        <Button variant="danger" size="sm" onClick={onRemove}>
+          Remove phase
+        </Button>
       </div>
-    </>
+    </div>
   );
 }
