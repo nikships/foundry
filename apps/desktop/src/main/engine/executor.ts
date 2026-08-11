@@ -34,6 +34,7 @@ import { CodePhaseRunner } from './runners/code.js';
 import { EngineerPhaseRunner } from './runners/engineer.js';
 import * as worktreeLib from './worktree.js';
 import type { Envelope } from './envelopes.js';
+import { runCommand } from './commands.js';
 
 export interface ExecutorDeps {
   tracer: Tracer;
@@ -188,6 +189,46 @@ export class Executor {
       branchPointSha: this.handle?.branchPointSha ?? null,
       mode: this.mode,
     });
+
+    // Per-project bootstrap: install deps in a fresh worktree so agents
+    // find their binaries. Fail-fast with evidence; the worktree is kept
+    // for inspection (settle() still decides, but the status is already failed).
+    if (isolate && this.handle && project.setupScript?.trim()) {
+      const script = project.setupScript.trim();
+      tracer.event({ runId, type: 'log', name: 'worktree setup', payload: { script } });
+      const setupEvent = tracer.event({
+        runId,
+        type: 'tool_call',
+        name: 'setup',
+        payload: { script, cwd: this.handle.path },
+      });
+      const result = await runCommand({
+        argv: ['sh', '-c', script],
+        cwd: this.handle.path,
+        timeoutMs: 300_000,
+        name: 'setup',
+        runId,
+        onPid: (pid, command) => tracer.recordProcess({ runId, kind: 'code', name: 'setup', pid, command }),
+      });
+      tracer.writeRunFile(runId, 'setup.log', result.outputTail);
+      tracer.endEvent(setupEvent, {
+        exitCode: result.exitCode,
+        passed: result.passed,
+        result: result.outputTail.slice(-2000),
+      });
+      if (!result.passed) {
+        tracer.event({
+          runId,
+          type: 'error',
+          name: 'setup',
+          payload: { message: `worktree setup failed (exit ${result.exitCode ?? '—'}): ${result.outputTail.slice(-1500)}` },
+        });
+        return this.finish(
+          'failed',
+          `worktree setup failed (exit ${result.exitCode ?? '—'}): ${result.outputTail.slice(-800).trim() || 'see setup.log'}`,
+        );
+      }
+    }
 
     mkdirSync(join(this.cwd, HANDOFF_DIR), { recursive: true });
 

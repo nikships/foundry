@@ -15,6 +15,7 @@ import ModelPicker from '../components/ModelPicker.js';
 import { CliIcon } from '../components/BrandIcon.js';
 import DoctorList from '../components/DoctorList.js';
 import ProjectCommands from '../components/ProjectCommands.js';
+import ProjectSetup from '../components/ProjectSetup.js';
 import { Field, TextInput, Textarea } from '../components/ui/Field.js';
 import { Button } from '../components/ui/Button.js';
 import { Dropdown } from '../components/ui/Dropdown.js';
@@ -1147,6 +1148,17 @@ export default function SettingsScreen({
                         <ProjectCommands
                           project={projectDraft}
                           onChange={(commands) => setProjectDraft({ ...projectDraft, commands })}
+                        />
+                      </Section>
+                      <Section
+                        label="Setup"
+                        note="Script that installs deps in every new worktree, so agents find their binaries."
+                      >
+                        <ProjectSetup
+                          project={projectDraft}
+                          onChange={(setupScript) =>
+                            setProjectDraft({ ...projectDraft, setupScript })
+                          }
                         />
                       </Section>
                       <Section

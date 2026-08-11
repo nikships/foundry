@@ -23,6 +23,7 @@ export const projectSchema = z.object({
   ownRoster: z.boolean(),
   ownPipelines: z.boolean(),
   scaffold: z.boolean().optional(),
+  setupScript: z.string().optional(),
   addedAt: z.string(),
 });
 

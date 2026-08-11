@@ -300,6 +300,12 @@ export interface ProjectDef {
    * soon as a command is found.
    */
   scaffold?: boolean;
+  /**
+   * Shell script run at the worktree root via `sh -c` after every
+   * `git worktree add`. Installs deps so agents find their binaries.
+   * Empty means nothing to run.
+   */
+  setupScript?: string;
   addedAt: string;
 }
 

@@ -13,6 +13,7 @@ import {
 } from '@shared/ipc-contract.js';
 import { runCommand } from '../engine/commands.js';
 import { sniffCommands } from '../engine/detect.js';
+import { sniffSetupScript } from '../engine/setup.js';
 import { adapterFor } from '../cli/index.js';
 import { currentBranch, isRepo } from '../engine/git.js';
 import { checkProject } from '../system/doctor.js';
@@ -21,11 +22,12 @@ import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
 import { noIssues, notifySettings } from './shared.js';
 
-type Ctx = Pick<AppContext, 'projects' | 'settings' | 'window' | 'broadcast' | 'detections'>;
+type Ctx = Pick<AppContext, 'projects' | 'settings' | 'window' | 'broadcast' | 'detections' | 'setups'>;
 
 export function register(ctx: Ctx, handle: Handle): void {
   const projectOf = (projectId: string) => ctx.projects.get(projectId);
   const detections = ctx.detections;
+  const setups = ctx.setups;
 
   handle(IPC.projectsList, () => ctx.projects.list());
 
@@ -218,6 +220,80 @@ export function register(ctx: Ctx, handle: Handle): void {
   handle(IPC.projectsCancelDetection, (detectionId: string) => detections.cancel(detectionId));
 
   handle(IPC.projectsDetection, (detectionId: string) => detections.get(detectionId));
+
+  handle(IPC.projectsSetupScriptGet, (id: string): string => {
+    const project = projectOf(id);
+    return project?.setupScript ?? '';
+  });
+
+  handle(
+    IPC.projectsSetupScriptSave,
+    (id: string, script: string): SaveResult<ProjectDef[]> => {
+      const project = projectOf(id);
+      if (!project) return { ok: false, issues: [{ level: 'error', where: 'project', message: 'project not found' }] };
+      if (script.length > 8000) {
+        return { ok: false, issues: [{ level: 'error', where: 'setupScript', message: 'script too long (max 8000 chars)' }] };
+      }
+      const result = ctx.projects.save({ ...project, setupScript: script });
+      if (!result.ok) return { ok: false, issues: result.issues };
+      notifySettings(ctx);
+      return { ok: true, issues: noIssues, value: result.projects };
+    },
+  );
+
+  handle(IPC.projectsSetupScriptSniff, async (id: string) => {
+    const project = projectOf(id);
+    if (!project) return { script: '', detail: 'project not found', sources: [] as string[] };
+    return sniffSetupScript(project.path);
+  });
+
+  handle(IPC.projectsSetupScriptTry, async (id: string, script: string) => {
+    const project = projectOf(id);
+    if (!project) {
+      return { exitCode: null as number | null, passed: false, outputTail: 'project not found', durationMs: 0 };
+    }
+    if (!script.trim()) {
+      return { exitCode: 0 as number | null, passed: true, outputTail: 'nothing to run', durationMs: 0 };
+    }
+    const result = await runCommand({ argv: ['sh', '-c', script], cwd: project.path, timeoutMs: 300_000 });
+    return {
+      exitCode: result.exitCode,
+      passed: result.passed,
+      outputTail: result.outputTail,
+      durationMs: result.durationMs,
+    };
+  });
+
+  handle(
+    IPC.projectsSetupScriptAskAgent,
+    async (id: string): Promise<{ setupId: string } | { error: string }> => {
+      const project = projectOf(id);
+      if (!project) return { error: 'project not found' };
+      const settings = ctx.settings.get();
+      const vendor = settings.detectCli === 'default' ? settings.defaultCli : settings.detectCli;
+      const cli = settings.clis[vendor];
+      if (!cli) return { error: `no CLI configured for ${vendor}` };
+      let model = settings.detectModel || 'inherit';
+      if (model !== 'inherit') {
+        const known = await adapterFor(vendor)
+          .models(cli.path)
+          .catch(() => []);
+        if (known.length && !known.some((m) => m.id === model)) model = 'inherit';
+      }
+      const session = setups.start({
+        projectId: project.id,
+        projectPath: project.path,
+        settings,
+        vendor,
+        model,
+      });
+      return { setupId: session.setupId };
+    },
+  );
+
+  handle(IPC.projectsSetupProgress, (setupId: string) => setups.get(setupId));
+
+  handle(IPC.projectsSetupCancel, (setupId: string) => setups.cancel(setupId));
 
   handle(IPC.projectsCheck, async (id: string) => {
     const project = projectOf(id);

@@ -162,6 +162,29 @@ export interface DetectionState {
   endedAt?: number;
 }
 
+/** One line of the setup-script generation transcript. Reuses the same union. */
+export type SetupEntry = DetectionEntry;
+
+export interface SetupState {
+  setupId: string;
+  projectId: string;
+  status: 'running' | 'done' | 'cancelled' | 'failed';
+  cli: CliVendor;
+  model: string;
+  entries: SetupEntry[];
+  script: string;
+  rawReply: string;
+  detail: string;
+  startedAt: number;
+  endedAt?: number;
+}
+
+export interface SetupSniffResult {
+  script: string;
+  detail: string;
+  sources: string[];
+}
+
 export interface WorktreeAction {
   ok: boolean;
   detail: string;
@@ -238,6 +261,14 @@ export interface FoundryApi {
     cancelDetection(detectionId: string): Promise<boolean>;
     /** The current state of a detection, for a panel reopened mid-run. */
     detection(detectionId: string): Promise<DetectionState | null>;
+    /** Shell script for the worktree bootstrap, lives in app data per project. */
+    setupScriptGet(id: string): Promise<string>;
+    setupScriptSave(id: string, script: string): Promise<SaveResult<ProjectDef[]>>;
+    setupScriptSniff(id: string): Promise<SetupSniffResult>;
+    setupScriptTry(id: string, script: string): Promise<TryCommandResult>;
+    setupScriptAskAgent(id: string): Promise<{ setupId: string } | { error: string }>;
+    setupProgress(setupId: string): Promise<SetupState | null>;
+    setupCancel(setupId: string): Promise<boolean>;
     check(id: string): Promise<DoctorCheck[]>;
     reveal(path: string): Promise<void>;
   };
@@ -375,6 +406,7 @@ export interface FoundryApi {
    *
    * `detection-progress` is pushed rather than polled because a detection is
    * not a run: it has no trace rows and therefore no `change_id` cursor to walk.
+   * `setup-progress` is the same shape for the worktree bootstrap generator.
    */
   on(
     channel:
@@ -382,7 +414,8 @@ export interface FoundryApi {
       | 'interrupts-changed'
       | 'settings-changed'
       | 'updater-status'
-      | 'detection-progress',
+      | 'detection-progress'
+      | 'setup-progress',
     handler: (data?: unknown) => void,
   ): () => void;
 }
@@ -403,6 +436,13 @@ export const IPC = {
   projectsAskAgentCommands: 'projects:askAgentCommands',
   projectsCancelDetection: 'projects:cancelDetection',
   projectsDetection: 'projects:detection',
+  projectsSetupScriptGet: 'projects:setupScriptGet',
+  projectsSetupScriptSave: 'projects:setupScriptSave',
+  projectsSetupScriptSniff: 'projects:setupScriptSniff',
+  projectsSetupScriptTry: 'projects:setupScriptTry',
+  projectsSetupScriptAskAgent: 'projects:setupScriptAskAgent',
+  projectsSetupProgress: 'projects:setupProgress',
+  projectsSetupCancel: 'projects:setupCancel',
   projectsCheck: 'projects:check',
   projectsReveal: 'projects:reveal',
   rosterList: 'roster:list',
@@ -471,4 +511,5 @@ export const IPC = {
   eventSettingsChanged: 'event:settings-changed',
   eventUpdaterStatus: 'event:updater-status',
   eventDetectionProgress: 'event:detection-progress',
+  eventSetupProgress: 'event:setup-progress',
 } as const;

@@ -239,6 +239,13 @@ export function createMockFoundryApi(): FoundryApi {
       askAgentCommands: async () => ({ error: 'no agent CLI in the web preview' }),
       cancelDetection: async () => false,
       detection: async () => null,
+      setupScriptGet: async () => '',
+      setupScriptSave: async () => ({ ok: true, issues: [], value: [...MOCK_PROJECTS] }),
+      setupScriptSniff: async () => ({ script: '', detail: '(web preview)', sources: [] }),
+      setupScriptTry: async () => ({ exitCode: 0, passed: true, outputTail: '(web preview)', durationMs: 0 }),
+      setupScriptAskAgent: async () => ({ error: 'no agent CLI in the web preview' }),
+      setupProgress: async () => null,
+      setupCancel: async () => false,
       check: async (): Promise<DoctorCheck[]> => [
         {
           id: 'project:git',
