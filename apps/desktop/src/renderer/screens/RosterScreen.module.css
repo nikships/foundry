@@ -311,6 +311,10 @@
   cursor: pointer;
 }
 
+.color-picker-wrapper:focus-within {
+  border-color: var(--line-strong);
+}
+
 .color-input {
   position: absolute;
   top: 0;
@@ -321,6 +325,10 @@
   cursor: pointer;
   border: none;
   padding: 0;
+}
+
+.color-input:focus {
+  outline: none;
 }
 
 .roster-seg {
