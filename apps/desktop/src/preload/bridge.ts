@@ -18,6 +18,9 @@ const EVENT_CHANNELS = {
   'updater-status': IPC.eventUpdaterStatus,
   'detection-progress': IPC.eventDetectionProgress,
   'setup-progress': IPC.eventSetupProgress,
+  'smith-data': IPC.eventSmithData,
+  'smith-status-changed': IPC.eventSmithStatusChanged,
+  'smith-proposals-changed': IPC.eventSmithProposalsChanged,
 } as const;
 
 /** One-way menu commands; the renderer decides what to show. */
@@ -123,6 +126,16 @@ const api: FoundryApi = {
   interrupts: {
     list: () => call(IPC.interruptsList),
     answer: (answer) => call(IPC.interruptsAnswer, answer),
+  },
+  smith: {
+    status: (projectId) => call(IPC.smithStatus, projectId),
+    open: (projectId) => call(IPC.smithOpen, projectId),
+    write: (projectId, data) => call(IPC.smithWrite, projectId, data),
+    resize: (projectId, cols, rows) => call(IPC.smithResize, projectId, cols, rows),
+    buffer: (projectId) => call(IPC.smithBuffer, projectId),
+    kill: (projectId) => call(IPC.smithKill, projectId),
+    proposalsList: () => call(IPC.smithProposalsList),
+    proposalAnswer: (id, answer) => call(IPC.smithProposalAnswer, id, answer),
   },
   doctor: {
     run: () => call(IPC.doctorRun),

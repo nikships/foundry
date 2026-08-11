@@ -576,6 +576,60 @@ export interface ValidationIssue {
   message: string;
 }
 
+// ── Smith (embedded droid terminal) ──────────────────────────────────────────
+
+/**
+ * What Smith proposes writing through the helper CLI. One entity, staged for a
+ * human to approve before the store is touched. `spec` is the entity JSON as the
+ * store would save it (an `AgentDef`, `PipelineDef`, or `EnvelopeDef`), carried
+ * as `unknown` because the card only needs to render and forward it.
+ */
+export interface SmithProposal {
+  id: string;
+  kind: 'agent' | 'pipeline' | 'envelope';
+  mode: 'create' | 'edit';
+  /** The entity's identifying name (agents/envelopes) or id (pipelines). */
+  name: string;
+  /** The entity JSON, validated but not yet saved. */
+  spec: unknown;
+  /** Non-blocking warnings the store surfaced; errors would have refused earlier. */
+  validation: ValidationIssue[];
+  /** True when a stored entity already carries this name/id — approving overwrites it. */
+  overwrites: boolean;
+  /** Which project the proposing session belongs to, so save uses the right scope. */
+  projectId: string;
+  createdAt: string;
+}
+
+/** Why a Smith session cannot show a live terminal, so the modal can guide instead. */
+export type SmithBlockedReason = 'no-project' | 'invalid-path' | 'droid-missing';
+
+/**
+ * A per-project Smith session as the renderer sees it. `blocked` carries a
+ * doctor-style reason when the session cannot spawn (no project, missing repo
+ * path, droid not installed) so the modal renders guidance rather than a dead
+ * terminal.
+ */
+export interface SmithStatus {
+  projectId: string;
+  /** `idle` = spawned and quiet; `busy` = a turn is running (best-effort). */
+  state: 'absent' | 'starting' | 'idle' | 'busy' | 'exited' | 'blocked';
+  /** Present only when `state === 'blocked'`. */
+  blocked?: SmithBlockedReason;
+  /** Human-readable detail for a blocked or exited session. */
+  detail?: string;
+  /** True when the session was resumed from a stored droid session id. */
+  resumed?: boolean;
+  cols?: number;
+  rows?: number;
+}
+
+/** The answer a human gives a proposal card. `note` travels back to droid on reject. */
+export interface SmithProposalAnswer {
+  approved: boolean;
+  note?: string;
+}
+
 // ── Updater ──────────────────────────────────────────────────────────────────
 
 export type UpdateStage = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error';

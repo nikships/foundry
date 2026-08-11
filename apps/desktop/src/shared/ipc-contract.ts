@@ -30,6 +30,9 @@ import type {
   ProjectDef,
   PullRequest,
   RunRow,
+  SmithProposal,
+  SmithProposalAnswer,
+  SmithStatus,
   StartRunInput,
   ToolInfo,
   UpdateStatus,
@@ -379,6 +382,24 @@ export interface FoundryApi {
     list(): Promise<PendingInterrupt[]>;
     answer(answer: InterruptAnswer): Promise<boolean>;
   };
+  smith: {
+    /** Current session status for a project, without spawning anything. */
+    status(projectId: string): Promise<SmithStatus>;
+    /** Ensures a session is spawned for the project; returns its status. */
+    open(projectId: string): Promise<SmithStatus>;
+    /** Terminal input bytes from the renderer to the PTY. */
+    write(projectId: string, data: string): Promise<void>;
+    /** Reflows the PTY to the terminal's measured grid. */
+    resize(projectId: string, cols: number, rows: number): Promise<void>;
+    /** Recent output for repainting scrollback when the modal reopens. */
+    buffer(projectId: string): Promise<string>;
+    /** Ends the session and its PTY. A closed modal does not call this. */
+    kill(projectId: string): Promise<void>;
+    /** The one pending proposal, or null. Only ever one at a time. */
+    proposalsList(): Promise<SmithProposal[]>;
+    /** Approve or reject the pending proposal, unblocking the waiting CLI. */
+    proposalAnswer(id: string, answer: SmithProposalAnswer): Promise<boolean>;
+  };
   doctor: {
     run(): Promise<DoctorCheck[]>;
   };
@@ -415,7 +436,10 @@ export interface FoundryApi {
       | 'settings-changed'
       | 'updater-status'
       | 'detection-progress'
-      | 'setup-progress',
+      | 'setup-progress'
+      | 'smith-data'
+      | 'smith-status-changed'
+      | 'smith-proposals-changed',
     handler: (data?: unknown) => void,
   ): () => void;
 }
@@ -492,6 +516,14 @@ export const IPC = {
   prsFixConflicts: 'prs:fixConflicts',
   interruptsList: 'interrupts:list',
   interruptsAnswer: 'interrupts:answer',
+  smithStatus: 'smith:status',
+  smithOpen: 'smith:open',
+  smithWrite: 'smith:write',
+  smithResize: 'smith:resize',
+  smithBuffer: 'smith:buffer',
+  smithKill: 'smith:kill',
+  smithProposalsList: 'smith:proposalsList',
+  smithProposalAnswer: 'smith:proposalAnswer',
   doctorRun: 'doctor:run',
   maintenanceOrphans: 'maintenance:orphans',
   maintenanceRemoveWorktree: 'maintenance:removeWorktree',
@@ -512,4 +544,7 @@ export const IPC = {
   eventUpdaterStatus: 'event:updater-status',
   eventDetectionProgress: 'event:detection-progress',
   eventSetupProgress: 'event:setup-progress',
+  eventSmithData: 'event:smith-data',
+  eventSmithStatusChanged: 'event:smith-status-changed',
+  eventSmithProposalsChanged: 'event:smith-proposals-changed',
 } as const;
