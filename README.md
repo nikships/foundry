@@ -3,7 +3,7 @@
 > **Describe what you want. Watch it get built.**
 
 <p align="center">
-  <img src="apps/desktop/assets/icon/app-icon-1024.png" alt="Foundry app icon" width="160">
+  <img src="assets/icon/app-icon-1024.png" alt="Foundry app icon" width="160">
 </p>
 
 <p align="center">
@@ -17,7 +17,7 @@ Foundry is a software factory for your Mac. You type a request, pick a pipeline,
 No chat tricks. No scripts to maintain. Just describe the change and judge the result.
 
 <p align="center">
-  <img src="apps/desktop/assets/scenes/onboarding-hero.png" alt="Foundry onboarding" width="720">
+  <img src="assets/scenes/onboarding-hero.png" alt="Foundry onboarding" width="720">
 </p>
 
 ## Download
@@ -39,7 +39,7 @@ All of your code stays on your machine. Runs are local, traces are local, worktr
 5. **Watch and judge** — follow the live waterfall, inspect any phase, and merge when you accept the result
 
 <p align="center">
-  <img src="apps/desktop/assets/scenes/run-success.png" alt="A successful run in Foundry" width="720">
+  <img src="assets/scenes/run-success.png" alt="A successful run in Foundry" width="720">
 </p>
 
 ## How it works
@@ -61,7 +61,7 @@ Foundry ships with seven, all editable:
 | **Full SDLC**             | Plan, build, test, review, and document        | The full chain, with a commit at each boundary |
 
 <p align="center">
-  <img src="apps/desktop/assets/scenes/pipeline-designer.png" alt="Pipeline designer" width="720">
+  <img src="assets/scenes/pipeline-designer.png" alt="Pipeline designer" width="720">
 </p>
 
 The Pipeline Designer is visual and live. Drag to reorder, change acceptance, add a checkpoint where a human decides, and see validation as you type. Changes save automatically.
@@ -82,7 +82,7 @@ There is no separate tester agent. Running tests is a real command in your repo,
 
 ### Powered by Factory Droid
 
-Foundry drives **Factory Droid** through the official [`@factory/droid-sdk`](https://www.npmjs.com/package/@factory/droid-sdk) (`0.7.0`, exact-pinned in `dependencies` — `out/main/main.js` externalizes it as a `require`, not tree-shaken) — the SDK owns wire framing, notifications, and session lifecycle behind `apps/desktop/src/main/droid/sdk/` (the only import site, ESLint-enforced). Transports degrade honestly: **daemon** (default, one app-owned `droid daemon` on `127.0.0.1:37600–37699`, `--parent-pid` so it dies with the app) → **subprocess RPC** (`SdkSession` via `ProcessTransport`) → **oneshot** (`droid exec` argv+parse). A daemon that fails to spawn or authenticate falls back to subprocess with a traced `log` warning (`fallback to subprocess: <reason>`); two protocol failures (`PROTOCOL_FAILURE_LIMIT = 2`) fall back to oneshot — a run never fails because the daemon didn't come up.
+Foundry drives **Factory Droid** through the official [`@factory/droid-sdk`](https://www.npmjs.com/package/@factory/droid-sdk) (`0.7.0`, exact-pinned in `dependencies` — `out/main/main.js` externalizes it as a `require`, not tree-shaken) — the SDK owns wire framing, notifications, and session lifecycle behind `src/main/droid/sdk/` (the only import site, ESLint-enforced). Transports degrade honestly: **daemon** (default, one app-owned `droid daemon` on `127.0.0.1:37600–37699`, `--parent-pid` so it dies with the app) → **subprocess RPC** (`SdkSession` via `ProcessTransport`) → **oneshot** (`droid exec` argv+parse). A daemon that fails to spawn or authenticate falls back to subprocess with a traced `log` warning (`fallback to subprocess: <reason>`); two protocol failures (`PROTOCOL_FAILURE_LIMIT = 2`) fall back to oneshot — a run never fails because the daemon didn't come up.
 
 Settings (Limits / Transport) expose the four knobs:
 
@@ -105,7 +105,7 @@ All transports share the same trace/Inspector contract: one span per `toolUseId`
 The Inspector is a live waterfall. Tool calls stream in mid-phase, envelopes and gate evidence are inspectable per phase, and cost and timing fill in as they are reported. The same view works for live runs and history.
 
 <p align="center">
-  <img src="apps/desktop/assets/scenes/run-failed.png" alt="A failed run showing gate evidence" width="720">
+  <img src="assets/scenes/run-failed.png" alt="A failed run showing gate evidence" width="720">
 </p>
 
 Runs can pause for you at any **Checkpoint** phase — approve, edit, or reject and the factory continues. Notifications and the dock badge tell you when a run needs input or finishes, on your terms.
@@ -121,7 +121,7 @@ Runs can pause for you at any **Checkpoint** phase — approve, edit, or reject 
 Foundry feels at home on the Mac: native windowing, Finder integration, auto-updates with progress and restart, and a clean, fast UI that stays out of your way.
 
 <p align="center">
-  <img src="apps/desktop/assets/scenes/empty-state.png" alt="Foundry empty state" width="480">
+  <img src="assets/scenes/empty-state.png" alt="Foundry empty state" width="480">
 </p>
 
 ## Philosophy

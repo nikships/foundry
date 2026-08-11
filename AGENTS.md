@@ -8,14 +8,14 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 
 **Key concepts:**
 
-- **Pipeline / Phase / Agent / Envelope / Gate** — see `apps/desktop/src/shared/types.ts` and `apps/desktop/src/main/engine/`.
+- **Pipeline / Phase / Agent / Envelope / Gate** — see `src/shared/types.ts` and `src/main/engine/`.
 - **Worktree isolation** — each run gets `.foundry-worktrees/<runId>` on branch `foundry/<runId>`. The base checkout is never mutated; merge/discard is an explicit operator action in `engine/worktree.ts`.
 - **Main owns privilege** — git, disk, child processes, CLIs, and SQLite live in `src/main/`. The renderer (`src/renderer/`) is unprivileged and reaches main only through the typed IPC seam (`src/shared/ipc-contract.ts` → `src/main/ipc/` → `src/preload/bridge.ts` → `src/renderer/api.ts`).
 
 ## Architecture
 
 ```
-apps/desktop/                  ← the application (all commands run here)
+.                              ← the application (repo root)
 ├── src/main/                  ← Node main process (privileged)
 │   ├── engine/                ← sequencing, retries, boundaries, gates, worktrees
 │   ├── droid/ + sdk/          ← Droid transport (daemon → RPC → one-shot)
@@ -38,8 +38,8 @@ apps/desktop/                  ← the application (all commands run here)
 ## Invariants (read before changing sequencing or persistence)
 
 - **Every phase starts `fail`** and becomes `success` only after clean exit, parsed envelope, and passing gates. Boundaries are enforced after the call by diffing git; protected paths always fail.
-- **`Tracer` is the sole SQLite writer.** See `apps/desktop/src/main/trace/AGENTS.md`. WAL lets renderer reads proceed while the writer commits. Polling uses `run_id = ? AND change_id > ? ORDER BY rowid`; `change_id` is the cursor (`MAX(change_id)`), `rowid` is display order. Every insert/update stamps a new `change_id`.
-- **`finish()` settles run status + operator-facing completion together** (notification, banner, `outcome_detail`). Do not update those independently. See `apps/desktop/src/main/AGENTS.md`.
+- **`Tracer` is the sole SQLite writer.** See `src/main/trace/AGENTS.md`. WAL lets renderer reads proceed while the writer commits. Polling uses `run_id = ? AND change_id > ? ORDER BY rowid`; `change_id` is the cursor (`MAX(change_id)`), `rowid` is display order. Every insert/update stamps a new `change_id`.
+- **`finish()` settles run status + operator-facing completion together** (notification, banner, `outcome_detail`). Do not update those independently. See `src/main/AGENTS.md`.
 - **Electron single-instance lock** — a second writer would corrupt the per-project trace (`app.requestSingleInstanceLock()` in `src/main/main.ts`).
 
 ## Setup Commands
@@ -48,28 +48,24 @@ apps/desktop/                  ← the application (all commands run here)
 
 ```bash
 # Clone and install (from repo root)
-npm --prefix apps/desktop ci
-# or
-cd apps/desktop && npm ci
+npm ci
 ```
 
 `.npmrc` allow‑lists install scripts only for `electron`, `esbuild`, and `better-sqlite3`. If Electron's distribution is absent after install:
 
 ```bash
-node apps/desktop/node_modules/electron/install.js
+node node_modules/electron/install.js
 ```
 
-App state lives under `~/Library/Application Support/foundry/` (sharded per project). Assets for the running app are in `apps/desktop/assets/`.
+App state lives under `~/Library/Application Support/foundry/` (sharded per project). Assets for the running app are in `assets/`.
 
-**GUI PATH trap:** a packaged launch inherits launchd's minimal PATH. `src/main/system/env.ts:resolveEnv()` must complete before any CLI lookup/spawn; every spawn uses `spawnEnv()`. See `apps/desktop/src/main/system/AGENTS.md`.
+**GUI PATH trap:** a packaged launch inherits launchd's minimal PATH. `src/main/system/env.ts:resolveEnv()` must complete before any CLI lookup/spawn; every spawn uses `spawnEnv()`. See `src/main/system/AGENTS.md`.
 
 ## Development Workflow
 
-All app commands run from `apps/desktop/`, not the repo root. The Makefile at the repo root provides aliases.
+All app commands run from the repo root.
 
 ```bash
-cd apps/desktop
-
 # Electron app with hot reload
 npm run dev                 # electron-vite dev
 npm run build               # electron-vite build (main + preload + renderer)
@@ -80,11 +76,11 @@ npm run dev:web             # vite --config vite.web.config.ts
 npm run build:web           # vite build --config vite.web.config.ts
 npm run preview:web         # serve last web build
 
-# From repo root (Makefile aliases):
-make dev        # → npm --prefix apps/desktop run dev
-make build      # → npm --prefix apps/desktop run build
+Makefile aliases still work:
+make dev        # → npm run dev
+make build      # → npm run build
 make web        # build:web + preview:web --open
-make check      # → npm --prefix apps/desktop run check
+make check      # → npm run check
 ```
 
 **Path aliases** are configured in both `electron.vite.config.ts` and `tsconfig.json`:
@@ -99,10 +95,9 @@ make check      # → npm --prefix apps/desktop run check
 
 ## Testing Instructions
 
-Framework: **Vitest 4** (`forks` pool, `environment: node`, 30s timeout). Suites live in `apps/desktop/tests/`.
+Framework: **Vitest 4** (`forks` pool, `environment: node`, 30s timeout). Suites live in `tests/`.
 
 ```bash
-cd apps/desktop
 npm test                    # vitest run (all suites)
 npm run test:watch          # vitest watch mode
 npx vitest run -t "<name>"  # focus by test name pattern
@@ -127,7 +122,6 @@ npx vitest run tests/engine.test.ts  # single file
 - **No `any`** unless intentionally justified; use `type` imports where possible (`consistent-type-imports`).
 
 ```bash
-cd apps/desktop
 npm run typecheck           # tsc --noEmit -p tsconfig.json
 npm run lint                # eslint . --max-warnings 0
 npm run lint:fix            # eslint . --fix
@@ -139,7 +133,6 @@ npm run knip                # dead code
 ## Build and Deployment
 
 ```bash
-cd apps/desktop
 npm run build               # electron-vite build (minified via esbuild)
 npm run check:css           # fails if <style> blocks redefine tokens-base.css classes
 npm run audit:deps          # npm audit --audit-level=high (clean env)
@@ -152,7 +145,7 @@ npm run package             # build + icons + electron-builder --mac --arm64 (lo
 
 **CI** (`.github/workflows/ci.yml`, runs on `macos-26`):
 
-- `verify` job from `apps/desktop`: typecheck, lint, format:check, knip, test, build, audit:deps.
+- `verify` job: typecheck, lint, format:check, knip, test, build, audit:deps.
 - `actionlint` on `ubuntu-latest` (1.7.12+, required for `macos-26` label).
 - Pull requests run both jobs unconditionally (no paths filter) so required checks are never unsatisfied.
 
@@ -171,28 +164,28 @@ gh run list --workflow mac-package.yml --limit 5
 
 - **Title:** `[component] Brief description` (e.g. `[engine] fix boundary bypass on renames`).
 - **Body:** use `.github/pull_request_template.md` — fill Summary and How verified. Note any contracts touched (IPC, envelopes, gates, boundaries) and intentional unused exports.
-- **Required checks:** `cd apps/desktop && npm run check` must pass locally; CI `verify` + `actionlint` must be green. CI enforces the same gates (except `check:css` which is local-only).
+- **Required checks:** `npm run check` must pass locally; CI `verify` + `actionlint` must be green. CI enforces the same gates (except `check:css` which is local-only).
 - **Commits:** keep history readable; never `git push --force` to `main`. Match recent commit style.
 
 ## Directory Guide Routing
 
 The nearest `AGENTS.md` takes precedence. Start here, then follow the guide closest to the code you are changing.
 
-| Guide | Scope |
-|---|---|
-| `apps/desktop/AGENTS.md` | Desktop app top-level: checks, process boundaries, install |
-| `apps/desktop/src/main/AGENTS.md` | Main-process invariants + routing to subdirectories |
-| `apps/desktop/src/main/engine/AGENTS.md` | Deterministic runner, envelopes, gates, worktrees |
-| `apps/desktop/src/main/droid/AGENTS.md` | Droid transport, SDK quirks, permissions |
-| `apps/desktop/src/main/cli/AGENTS.md` | Vendor argv / one-shot parse adapters |
-| `apps/desktop/src/main/trace/AGENTS.md` | Tracer, WAL, polling cursor |
-| `apps/desktop/src/main/store/AGENTS.md` | JSON config, JsonStore, builtin restoration |
-| `apps/desktop/src/main/system/AGENTS.md` | PATH, process control, doctor |
-| `apps/desktop/src/main/ipc/AGENTS.md` | Domain routers, IPC channel seam |
-| `apps/desktop/src/renderer/AGENTS.md` | React UI, polling, Inspector, CSS modules |
-| `apps/desktop/src/shared/AGENTS.md` | Pure types, IPC contract |
-| `apps/desktop/src/preload/AGENTS.md` | Narrow CJS bridge |
-| `.github/AGENTS.md` | CI and releases |
+| Guide                       | Scope                                                      |
+| --------------------------- | ---------------------------------------------------------- |
+| `AGENTS.md` (root)          | Top-level: checks, process boundaries, install (this file) |
+| `src/main/AGENTS.md`        | Main-process invariants + routing to subdirectories        |
+| `src/main/engine/AGENTS.md` | Deterministic runner, envelopes, gates, worktrees          |
+| `src/main/droid/AGENTS.md`  | Droid transport, SDK quirks, permissions                   |
+| `src/main/cli/AGENTS.md`    | Vendor argv / one-shot parse adapters                      |
+| `src/main/trace/AGENTS.md`  | Tracer, WAL, polling cursor                                |
+| `src/main/store/AGENTS.md`  | JSON config, JsonStore, builtin restoration                |
+| `src/main/system/AGENTS.md` | PATH, process control, doctor                              |
+| `src/main/ipc/AGENTS.md`    | Domain routers, IPC channel seam                           |
+| `src/renderer/AGENTS.md`    | React UI, polling, Inspector, CSS modules                  |
+| `src/shared/AGENTS.md`      | Pure types, IPC contract                                   |
+| `src/preload/AGENTS.md`     | Narrow CJS bridge                                          |
+| `.github/AGENTS.md`         | CI and releases                                            |
 
 ## Additional Notes
 

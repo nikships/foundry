@@ -11,7 +11,6 @@ Adapters that own vendor argv construction and one-shot output parsing. `types.t
 ## Setup Commands
 
 ```bash
-cd apps/desktop
 npm ci
 # droid CLI must be on PATH for live parsing (tests use fixtures).
 droid --version
@@ -28,7 +27,6 @@ No separate CLI setup — adapters are invoked through the engine/droid layers.
 ## Testing Instructions
 
 ```bash
-cd apps/desktop
 npm test
 npx vitest run tests/cli-vendors.test.ts
 npx vitest run tests/catalog.test.ts
@@ -54,7 +52,6 @@ npx vitest run tests/catalog-discovery.test.ts
 ## Build and Deployment
 
 ```bash
-cd apps/desktop
 npm run typecheck && npm run lint && npm run build
 ```
 

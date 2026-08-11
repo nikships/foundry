@@ -12,7 +12,6 @@ Configuration is JSON, not opaque database state. `JsonStore<T>` caches reads an
 ## Setup Commands
 
 ```bash
-cd apps/desktop
 npm ci
 npm run dev    # stores hydrate from ~/Library/Application Support/foundry/
 ```
@@ -29,7 +28,6 @@ No store-specific setup. Projects are sharded per directory; deleting the suppor
 ## Testing Instructions
 
 ```bash
-cd apps/desktop
 npm test
 npx vitest run -t "builtin|roster|pipeline|settings|envelope|local-store"
 npx vitest run tests/builtins.test.ts
@@ -55,7 +53,6 @@ npx vitest run tests/roster-validate.test.ts
 ## Build and Deployment
 
 ```bash
-cd apps/desktop
 npm run typecheck && npm run lint && npm run build
 ```
 

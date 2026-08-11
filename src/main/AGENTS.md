@@ -11,7 +11,6 @@ Node main-process code. This is the only place that touches git, disk, child pro
 ## Setup Commands
 
 ```bash
-cd apps/desktop
 npm ci
 node node_modules/electron/install.js  # only if Electron dist is absent (allow-scripts gate)
 npm run dev                             # start Electron with this main code
@@ -30,7 +29,6 @@ No separate setup for `src/main/` — it builds as part of `electron-vite build`
 ## Testing Instructions
 
 ```bash
-cd apps/desktop
 npm test                          # all suites (engine/droid/system/store/ipc)
 npx vitest run -t "<pattern>"     # focus
 npx vitest run tests/executor.test.ts  # engine executor with real git repos
@@ -49,14 +47,13 @@ npx vitest run tests/executor.test.ts  # engine executor with real git repos
 
 ## Code Style
 
-- TypeScript `strict`; ESLint flat config (`apps/desktop/eslint.config.js`) — `no-restricted-imports` forbids `@factory/droid-sdk` outside `src/main/droid/sdk/`.
+- TypeScript `strict`; ESLint flat config (`eslint.config.js`) — `no-restricted-imports` forbids `@factory/droid-sdk` outside `src/main/droid/sdk/`.
 - No `eslint-disable` comments — fix the real issue.
 - Imports: use `@main/*`, `@shared/*` aliases (kept in sync with `electron.vite.config.ts` + `tsconfig.json`).
 
 ## Build and Deployment
 
 ```bash
-cd apps/desktop
 npm run typecheck && npm run lint && npm run build
 npm run check  # full gate (also runs tests + audit)
 ```

@@ -11,7 +11,6 @@ Domain routers for the typed IPC seam. The capability flow is single‑way and e
 ## Setup Commands
 
 ```bash
-cd apps/desktop
 npm ci
 npm run dev    # IPC is wired in src/main/main.ts via registerIpc(ctx)
 ```
@@ -33,7 +32,6 @@ Keep routers domain‑scoped; update the shared contract before wiring a new cha
 ## Testing Instructions
 
 ```bash
-cd apps/desktop
 npm test
 npx vitest run -t "ipc"
 npx vitest run tests/ipc-surface.test.ts
@@ -65,7 +63,6 @@ The last two carry progress for work that has **no trace rows** (detection and s
 ## Build and Deployment
 
 ```bash
-cd apps/desktop
 npm run typecheck && npm run lint && npm run build
 ```
 

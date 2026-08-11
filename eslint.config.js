@@ -15,6 +15,9 @@ export default tseslint.config(
       'node_modules/**',
       'coverage/**',
       'assets/**',
+      // Local run worktrees and codegraph pointer — not part of the app.
+      '.foundry-worktrees/**',
+      '.codegraph',
       // Generated / vendor-ish; not hand-edited.
       'package-lock.json',
       // Plain Node ESM helpers without a TS project service.

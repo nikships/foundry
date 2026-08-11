@@ -7,3 +7,5 @@ assets
 *.icns
 *.png
 *.svg
+.foundry-worktrees
+.codegraph

@@ -11,7 +11,6 @@ Narrow, named capability bridge between the sandboxed renderer and the main proc
 ## Setup Commands
 
 ```bash
-cd apps/desktop
 npm ci
 npm run dev     # rebuilds preload on change and reloads the app
 npm run build   # emits out/preload/bridge.cjs
@@ -36,7 +35,6 @@ Rules:
 ## Testing Instructions
 
 ```bash
-cd apps/desktop
 npm test
 npx vitest run -t "ipc"
 npx vitest run tests/ipc-surface.test.ts
@@ -54,7 +52,6 @@ npx vitest run tests/ipc-clone.test.ts
 ## Build and Deployment
 
 ```bash
-cd apps/desktop
 npm run typecheck && npm run lint && npm run build  # emits out/preload/bridge.cjs
 ```
 

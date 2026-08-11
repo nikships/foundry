@@ -8,7 +8,7 @@ on:
   # Path filters intentionally omitted so `v*` tag pushes always package.
   push:
     branches: [main]
-    tags: ["v*"]
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -22,10 +22,6 @@ jobs:
   package:
     name: Build, sign, notarize
     runs-on: macos-26
-    defaults:
-      run:
-        shell: bash
-        working-directory: apps/desktop
 
     steps:
       - name: Checkout
@@ -34,9 +30,9 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version: '22'
           cache: npm
-          cache-dependency-path: apps/desktop/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Set rolling release version
         # electron-updater only offers an update when latest-mac.yml's version
@@ -49,12 +45,12 @@ jobs:
         working-directory: .
         run: |
           set -euo pipefail
-          PREV=$(node -p "require('./apps/desktop/package.json').version")
+          PREV=$(node -p "require('./package.json').version")
           NEW=$(node -p "
-            const [maj, min] = require('./apps/desktop/package.json').version.split('.');
+            const [maj, min] = require('./package.json').version.split('.');
             maj + '.' + min + '.' + process.env.GITHUB_RUN_NUMBER
           ")
-          (cd apps/desktop && npm version "$NEW" --no-git-tag-version --allow-same-version)
+          npm version "$NEW" --no-git-tag-version --allow-same-version
           echo "Version (local only): $PREV -> $NEW"
           echo "RELEASE_SHA=${GITHUB_SHA}" >> "$GITHUB_ENV"
 
@@ -112,10 +108,10 @@ jobs:
       - name: Package (build + icons + electron-builder)
         env:
           # Hash pins Developer ID Application when the P12 also carries App Store certs.
-          CSC_IDENTITY_AUTO_DISCOVERY: "true"
-          CSC_NAME: "734BE283C1325CCCBB7EC1BAF93539843702652A"
+          CSC_IDENTITY_AUTO_DISCOVERY: 'true'
+          CSC_NAME: '734BE283C1325CCCBB7EC1BAF93539843702652A'
           # Explicitly disable publish; CI detection would otherwise try GH releases.
-          EP_DRAFT: "true"
+          EP_DRAFT: 'true'
         run: |
           set -euo pipefail
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
@@ -235,9 +231,9 @@ jobs:
         with:
           name: Foundry-${{ github.run_number }}-arm64
           path: |
-            apps/desktop/dist/Foundry-*-arm64.dmg
-            apps/desktop/dist/*.zip
-            apps/desktop/dist/latest-mac.yml
+            dist/Foundry-*-arm64.dmg
+            dist/*.zip
+            dist/latest-mac.yml
           retention-days: 30
           if-no-files-found: error
 
@@ -253,12 +249,12 @@ jobs:
         working-directory: .
         run: |
           set -euo pipefail
-          SRC_DMG=$(find apps/desktop/dist -maxdepth 1 -type f -name 'Foundry-*-arm64.dmg' -print -quit)
+          SRC_DMG=$(find dist -maxdepth 1 -type f -name 'Foundry-*-arm64.dmg' -print -quit)
           test -f "$SRC_DMG"
-          APP="apps/desktop/dist/mac-arm64/Foundry.app"
+          APP="dist/mac-arm64/Foundry.app"
           test -d "$APP"
 
-          PKG_VERSION=$(node -p "require('./apps/desktop/package.json').version")
+          PKG_VERSION=$(node -p "require('./package.json').version")
           RELEASE_REF="${RELEASE_SHA:-$GITHUB_SHA}"
           SHORT_SHA="${RELEASE_REF::7}"
           RUN="${{ github.run_number }}"
@@ -288,9 +284,9 @@ jobs:
             TAG="${GITHUB_REF_NAME}"
             TITLE="Foundry $TAG"
             NOTES="Signed with Developer ID and notarized by Apple. Apple Silicon only."
-            STABLE_DMG="apps/desktop/dist/Foundry-${TAG}-arm64.dmg"
-            STABLE_ZIP="apps/desktop/dist/Foundry-${TAG}-arm64-mac.zip"
-            YML="apps/desktop/dist/latest-mac.yml"
+            STABLE_DMG="dist/Foundry-${TAG}-arm64.dmg"
+            STABLE_ZIP="dist/Foundry-${TAG}-arm64-mac.zip"
+            YML="dist/latest-mac.yml"
 
             cp "$SRC_DMG" "$STABLE_DMG"
             shasum -a 256 "$STABLE_DMG" | tee "${STABLE_DMG}.sha256"
@@ -318,9 +314,9 @@ jobs:
           TAG="v${PKG_VERSION}"
           TITLE="Foundry ${TAG}"
           NOTES="Continuous build from \`${GITHUB_REF_NAME}\` @ \`${SHORT_SHA}\` (run ${RUN}). Signed with Developer ID and notarized by Apple. Apple Silicon only."
-          STABLE_DMG="apps/desktop/dist/Foundry-${TAG}-arm64.dmg"
-          STABLE_ZIP="apps/desktop/dist/Foundry-${TAG}-arm64-mac.zip"
-          YML="apps/desktop/dist/latest-mac.yml"
+          STABLE_DMG="dist/Foundry-${TAG}-arm64.dmg"
+          STABLE_ZIP="dist/Foundry-${TAG}-arm64-mac.zip"
+          YML="dist/latest-mac.yml"
 
           cp "$SRC_DMG" "$STABLE_DMG"
           shasum -a 256 "$STABLE_DMG" | tee "${STABLE_DMG}.sha256"

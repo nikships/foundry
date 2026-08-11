@@ -12,7 +12,6 @@ Owns launch environment resolution, process control, doctor checks, notification
 ## Setup Commands
 
 ```bash
-cd apps/desktop
 npm ci
 npm run dev    # resolveEnv() runs on startup; check console for [env] warnings
 ```
@@ -29,7 +28,6 @@ No system-specific install; relies on `$SHELL`, `ps`, and platform notifications
 ## Testing Instructions
 
 ```bash
-cd apps/desktop
 npm test
 npx vitest run -t "env|procs|doctor"
 npx vitest run tests/env.test.ts
@@ -54,7 +52,6 @@ Tracked children are registered with argv and the trace `processes` row. Before 
 ## Build and Deployment
 
 ```bash
-cd apps/desktop
 npm run typecheck && npm run lint && npm run build
 ```
 

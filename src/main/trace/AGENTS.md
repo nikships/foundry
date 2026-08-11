@@ -12,7 +12,6 @@
 ## Setup Commands
 
 ```bash
-cd apps/desktop
 npm ci
 npm run dev    # Tracer opens WAL databases for each project on demand
 ```
@@ -28,7 +27,6 @@ No separate trace setup. `better-sqlite3` is a native dep (allow‑listed in `.n
 ## Testing Instructions
 
 ```bash
-cd apps/desktop
 npm test
 npx vitest run -t "trace|tracer"
 npx vitest run tests/transcript.test.ts
@@ -56,7 +54,6 @@ npx vitest run tests/transcript.test.ts
 ## Build and Deployment
 
 ```bash
-cd apps/desktop
 npm run typecheck && npm run lint && npm run build
 ```
 

@@ -12,7 +12,6 @@ Pure types and constants imported by both processes. No `fs`, `child_process`, `
 ## Setup Commands
 
 ```bash
-cd apps/desktop
 npm ci
 npm run typecheck   # validates shared types against all consumers
 ```
@@ -34,7 +33,6 @@ Keep type docs in `types.ts` (especially `BUILTIN_ENVELOPE_BLURBS` next to `enve
 ## Testing Instructions
 
 ```bash
-cd apps/desktop
 npm test
 npx vitest run -t "ipc|envelope|gate|boundary"
 npx vitest run tests/ipc-surface.test.ts
@@ -53,7 +51,6 @@ npx vitest run tests/envelopes.test.ts
 ## Build and Deployment
 
 ```bash
-cd apps/desktop
 npm run typecheck && npm run lint && npm run build
 ```
 

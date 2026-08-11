@@ -13,7 +13,6 @@ Deterministic runner that owns phase sequencing, retries, write boundaries, gate
 ## Setup Commands
 
 ```bash
-cd apps/desktop
 npm ci
 npm run dev        # run the app and exercise the engine via the UI
 npm run test       # or run engine suites directly (see below)
@@ -35,7 +34,6 @@ Other references: `cli/` owns vendor argv, `droid/` owns transport, `store/pipel
 ## Testing Instructions
 
 ```bash
-cd apps/desktop
 npm test
 npx vitest run -t "executor|envelope|gate|boundary|preflight|worktree"
 npx vitest run tests/executor.test.ts
@@ -69,7 +67,6 @@ npx vitest run tests/gates.test.ts
 ## Build and Deployment
 
 ```bash
-cd apps/desktop
 npm run typecheck && npm run lint && npm run build
 npm run check  # full gate
 ```

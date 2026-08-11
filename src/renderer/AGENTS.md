@@ -14,7 +14,6 @@ React 19 renderer. Unprivileged: no `fs`, `child_process`, `electron`, or `src/m
 ## Setup Commands
 
 ```bash
-cd apps/desktop
 npm ci
 
 # Full Electron (renderer served by electron-vite, with HMR)
@@ -37,7 +36,6 @@ npm run build:web && npm run preview:web
 ## Testing Instructions
 
 ```bash
-cd apps/desktop
 npm test
 npm run test:watch
 npx vitest run -t "<renderer|transcript|pipeline-view|keyboard>"
@@ -64,7 +62,6 @@ The last two carry progress for work with no trace rows (detection/setup). Ordin
 ## Build and Deployment
 
 ```bash
-cd apps/desktop
 npm run build         # includes renderer build (chunked: react-vendor, icons)
 npm run check:css     # CSS collision gate (real failure, not advisory)
 npm run build:web     # web-only bundle (out/web)

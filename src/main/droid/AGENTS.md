@@ -12,7 +12,6 @@ Owns Droid transport selection, the shared one-shot runner, permissions, and the
 ## Setup Commands
 
 ```bash
-cd apps/desktop
 npm ci
 # Requires `droid` CLI on PATH and signed in (FACTORY_API_KEY or stored WorkOS JWT).
 droid --version
@@ -30,7 +29,6 @@ npm run dev    # exercise transports through the running app
 ## Testing Instructions
 
 ```bash
-cd apps/desktop
 npm test
 npx vitest run -t "sdk|daemon|droid|permission|mcp"
 npx vitest run tests/sdk-daemon-session.test.ts
@@ -66,7 +64,6 @@ npx vitest run tests/agent-session-transport.test.ts
 ## Build and Deployment
 
 ```bash
-cd apps/desktop
 npm run typecheck && npm run lint && npm run build
 ```
 
