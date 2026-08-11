@@ -2,7 +2,8 @@
  * The Smith proposal preview card. A `foundry-cli create|edit` blocks its droid
  * until a human decides here: the card shows the entity kind, whether approving
  * creates or overwrites, the full definition, any non-blocking validation
- * warnings, and Approve / Reject-with-note.
+ * warnings, and Approve / Reject. A reject simply unblocks the CLI — the user
+ * describes the desired change to droid in the terminal itself.
  *
  * Mounted unconditionally at the end of `App.tsx` (like `InterruptSheet`); it
  * renders nothing until a proposal is pending. On approve, main saves the entity
@@ -19,7 +20,6 @@ import type { SmithProposal } from '@shared/types.js';
 import { api } from '../api.js';
 import { Button } from './ui/Button.js';
 import { ModalShell } from './ui/ModalShell.js';
-import { Textarea } from './ui/Field.js';
 import styles from './SmithProposalCard.module.css';
 
 /** Where a saved proposal should take the user. Consumed by App's deep-link nav. */
@@ -42,7 +42,6 @@ export default function SmithProposalCard({
   onApproved: (target: SmithNavTarget) => void;
 }): React.JSX.Element | null {
   const [proposal, setProposal] = useState<SmithProposal | null>(null);
-  const [note, setNote] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const dialogRef = useRef<HTMLElement>(null);
@@ -58,11 +57,10 @@ export default function SmithProposalCard({
     return api.on('smith-proposals-changed', () => void refresh());
   }, [refresh]);
 
-  // A new proposal must not inherit a note or stale error from the last one.
+  // A new proposal must not inherit a stale error from the last one.
   const proposalId = proposal?.id ?? '';
   useEffect(() => {
     if (!proposalId) return;
-    setNote('');
     setError('');
     setSending(false);
     approveRef.current?.focus();
@@ -75,10 +73,7 @@ export default function SmithProposalCard({
     setSending(true);
     setError('');
     try {
-      const ok = await api.smith.proposalAnswer(proposal.id, {
-        approved,
-        note: approved ? undefined : note.trim() || undefined,
-      });
+      const ok = await api.smith.proposalAnswer(proposal.id, { approved });
       if (!ok) {
         // A refused save leaves the proposal pending: surface why, stay open.
         setError(
@@ -138,19 +133,6 @@ export default function SmithProposalCard({
           ))}
         </div>
       )}
-
-      <label className={styles.noteField}>
-        <span>
-          Rejection note <em className="faint">(sent to droid so it can revise)</em>
-        </span>
-        <Textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          rows={2}
-          disabled={sending}
-          placeholder="Only used when you reject — what should droid change?"
-        />
-      </label>
 
       {error && (
         <p className={styles.error} role="alert">

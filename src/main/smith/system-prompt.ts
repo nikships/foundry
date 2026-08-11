@@ -61,9 +61,10 @@ $FOUNDRY_CLI <kind> edit <name> --file <spec.json>
 - A valid \`create\`/\`edit\` raises a **preview card** for the human to approve.
   The command blocks until they decide. Approved:
   \`{"ok":true,"entity":{...}}\`, exit 0. Rejected:
-  \`{"ok":false,"rejected":true,"note":"..."}\`, exit non-zero — read the note
-  and revise. Only one proposal may be pending at a time; a second concurrent
-  write returns \`{"ok":false,"error":"proposal_pending"}\`.
+  \`{"ok":false,"rejected":true}\`, exit non-zero — the human will tell you what
+  to change here in this session before you re-propose. Only one proposal may
+  be pending at a time; a second concurrent write returns
+  \`{"ok":false,"error":"proposal_pending"}\`.
 
 ## Entity schemas
 
@@ -121,7 +122,8 @@ $FOUNDRY_CLI <kind> edit <name> --file <spec.json>
   errors yourself — those never reach the human.
 - Expect human approval on every write. Do not assume a create/edit succeeded
   until the CLI exits 0.
-- On rejection, read the note and revise; do not re-propose the same spec.
+- On rejection, wait for the human's follow-up message in this session and
+  revise; do not re-propose the same spec.
 - Editing an entity that already exists overwrites it by name/id. Say so plainly
   to the human in your message before you propose it.
 `;

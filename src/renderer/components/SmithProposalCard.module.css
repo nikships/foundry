@@ -123,17 +123,6 @@
   color: var(--text-faint);
 }
 
-.noteField {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s2);
-}
-
-.noteField > span {
-  font-size: var(--text-sm);
-  color: var(--text-dim);
-}
-
 .error {
   margin: 0;
   padding: var(--s3);

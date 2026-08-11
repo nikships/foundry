@@ -245,8 +245,25 @@ export function wireGhosttyRenderer(): void {
     const onWheel = (e: WheelEvent): void => {
       e.preventDefault();
       const p = rel(e);
+      // Ghostty treats non-precision scroll deltas as wheel TICKS (one tick =
+      // one line, multiplied by cell height internally), but DOM wheel events
+      // on macOS trackpads/high-res mice report PIXELS (deltaMode 0). Sending
+      // raw pixels scrolls dozens of lines per gesture, so normalize pixel
+      // deltas to lines first. Fractional ticks are fine — ghostty accumulates
+      // sub-line remainders.
+      const LINE_PX = 17; // ≈ cell height in CSS px at the engine's 13pt font
+      const lines = (d: number): number => {
+        switch (e.deltaMode) {
+          case WheelEvent.DOM_DELTA_LINE:
+            return d;
+          case WheelEvent.DOM_DELTA_PAGE:
+            return d * 24;
+          default:
+            return d / LINE_PX;
+        }
+      };
       // Ghostty expects scroll deltas with up = positive.
-      send('mouse-scroll', slot, { ...p, dx: -e.deltaX, dy: -e.deltaY });
+      send('mouse-scroll', slot, { ...p, dx: -lines(e.deltaX), dy: -lines(e.deltaY) });
     };
     const onMouseDown = (e: MouseEvent): void => {
       canvas.focus();
