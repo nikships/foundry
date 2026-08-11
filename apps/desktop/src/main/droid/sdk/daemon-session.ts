@@ -95,8 +95,20 @@ export interface DaemonHandle {
  */
 export type DaemonMcpServerConfig =
   | { type: 'stdio'; name: string; command: string; args?: string[]; env?: Record<string, string> }
-  | { type: 'http'; name: string; url: string; oauth?: false; headers?: { name: string; value: string }[] }
-  | { type: 'sse'; name: string; url: string; oauth?: false; headers?: { name: string; value: string }[] };
+  | {
+      type: 'http';
+      name: string;
+      url: string;
+      oauth?: false;
+      headers?: { name: string; value: string }[];
+    }
+  | {
+      type: 'sse';
+      name: string;
+      url: string;
+      oauth?: false;
+      headers?: { name: string; value: string }[];
+    };
 
 export interface DaemonSessionsFacade {
   create(options: {

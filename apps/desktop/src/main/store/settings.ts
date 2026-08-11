@@ -28,7 +28,7 @@ const DEFAULT_DAEMON_PORT = 37_643;
 const mcpServerSchema = z.discriminatedUnion('type', [
   z.object({
     id: z.string().min(1),
-    name: z.string().min(1),
+    name: z.string().min(1).max(80),
     disabled: z.boolean(),
     type: z.literal('stdio'),
     command: z.string().min(1),
@@ -37,17 +37,17 @@ const mcpServerSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     id: z.string().min(1),
-    name: z.string().min(1),
+    name: z.string().min(1).max(80),
     disabled: z.boolean(),
     type: z.literal('http'),
-    url: z.string().min(1),
+    url: z.string().min(1).url(),
   }),
   z.object({
     id: z.string().min(1),
-    name: z.string().min(1),
+    name: z.string().min(1).max(80),
     disabled: z.boolean(),
     type: z.literal('sse'),
-    url: z.string().min(1),
+    url: z.string().min(1).url(),
   }),
 ]);
 
@@ -173,7 +173,23 @@ export function migrate(raw: unknown): AppSettings {
   // Out-of-band ports (hand-edited or pre-field files) clamp into the mission
   // range rather than leaving the app with no daemon port at all.
   merged.daemonPort = Math.round(clamp(merged.daemonPort, base.daemonPort, DAEMON_PORT_BAND));
-  if (!Array.isArray(merged.mcpServers)) merged.mcpServers = [];
+  if (!Array.isArray(merged.mcpServers)) {
+    merged.mcpServers = [];
+  } else {
+    // Preserve file even if it was hand-edited to contain garbage: filter to
+    // only entries that pass the strict MCP schema, then deduplicate by name.
+    const seen = new Set<string>();
+    const kept: typeof merged.mcpServers = [];
+    for (const entry of merged.mcpServers) {
+      const parsed = mcpServerSchema.safeParse(entry);
+      if (!parsed.success) continue;
+      const normalized = parsed.data.name.trim().toLowerCase();
+      if (seen.has(normalized)) continue;
+      seen.add(normalized);
+      kept.push(parsed.data);
+    }
+    merged.mcpServers = kept;
+  }
   return merged;
 }
 

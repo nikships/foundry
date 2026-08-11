@@ -6,7 +6,13 @@
  * agent's first phase.
  */
 
-import type { AgentDef, CliVendor, ContextBreakdown, UsageBreakdown, UserMcpServer } from '@shared/types.js';
+import type {
+  AgentDef,
+  CliVendor,
+  ContextBreakdown,
+  UsageBreakdown,
+  UserMcpServer,
+} from '@shared/types.js';
 import type { Tracer } from '../trace/tracer.js';
 import type { Envelope } from '../engine/envelopes.js';
 import type { Snapshot } from '../engine/boundary.js';

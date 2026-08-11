@@ -26,7 +26,8 @@ import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
 import { useTablistNav } from '../hooks/useTablistNav.js';
 import styles from './SettingsScreen.module.css';
 
-type Pane = 'general' | 'clis' | 'defaults' | 'envelopes' | 'mcp' | 'project' | 'maintenance' | 'about';
+type Pane =
+  'general' | 'clis' | 'defaults' | 'envelopes' | 'mcp' | 'project' | 'maintenance' | 'about';
 
 const PANES: { id: Pane; label: string }[] = [
   { id: 'general', label: 'General' },
@@ -1382,6 +1383,13 @@ export default function SettingsScreen({
 }
 
 function newMcpId(): string {
+  const bytes = globalThis.crypto?.getRandomValues
+    ? globalThis.crypto.getRandomValues(new Uint8Array(4))
+    : null;
+  if (bytes)
+    return `mcp_${Array.from(bytes, (b) => b.toString(16).padStart(2, '0'))
+      .join('')
+      .slice(0, 7)}`;
   return `mcp_${Math.random().toString(36).slice(2, 9)}`;
 }
 
@@ -1409,11 +1417,28 @@ function McpSettings({
     setError('');
   };
 
+  const isHttpUrl = (raw: string): boolean => {
+    try {
+      const parsed = new URL(raw);
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  };
+
   const validate = (s: UserMcpServer): string | null => {
     if (!s.name.trim()) return 'Name is required.';
+    if (s.name.trim().length > 80) return 'Name must be 80 characters or fewer.';
     if (s.type === 'stdio' && !s.command.trim()) return 'Command is required for stdio servers.';
     if ((s.type === 'http' || s.type === 'sse') && !s.url.trim()) return 'URL is required.';
-    if (servers.some((x) => x.id !== s.id && x.name === s.name.trim())) return 'Name must be unique.';
+    if ((s.type === 'http' || s.type === 'sse') && !isHttpUrl(s.url.trim()))
+      return 'Enter a valid http(s) URL.';
+    if (
+      servers.some(
+        (x) => x.id !== s.id && x.name.trim().toLowerCase() === s.name.trim().toLowerCase(),
+      )
+    )
+      return 'Name must be unique.';
     return null;
   };
 
@@ -1421,7 +1446,13 @@ function McpSettings({
     if (!draft) return;
     const trimmed: UserMcpServer =
       draft.type === 'stdio'
-        ? { ...draft, name: draft.name.trim(), command: draft.command.trim(), args: draft.args?.filter(Boolean), env: draft.env && Object.keys(draft.env).length ? draft.env : undefined }
+        ? {
+            ...draft,
+            name: draft.name.trim(),
+            command: draft.command.trim(),
+            args: draft.args?.filter(Boolean),
+            env: draft.env && Object.keys(draft.env).length ? draft.env : undefined,
+          }
         : { ...draft, name: draft.name.trim(), url: draft.url.trim() };
     const msg = validate(trimmed);
     if (msg) {
@@ -1429,7 +1460,9 @@ function McpSettings({
       return;
     }
     const exists = servers.some((s) => s.id === trimmed.id);
-    const next = exists ? servers.map((s) => (s.id === trimmed.id ? trimmed : s)) : [...servers, trimmed];
+    const next = exists
+      ? servers.map((s) => (s.id === trimmed.id ? trimmed : s))
+      : [...servers, trimmed];
     saveServers(next);
     setDraft(null);
     setError('');
@@ -1439,43 +1472,40 @@ function McpSettings({
     <>
       <Section label="MCP Servers" note="Tools your agents can use via the Model Context Protocol.">
         <p className={styles.settingsLead}>
-          Add MCP servers to extend what agents can do. Supports stdio (local command), HTTP, and SSE transports.
-          Disabled servers are not passed to the agent.
+          Add MCP servers to extend what agents can do. Supports stdio (local command), HTTP, and
+          SSE transports. Disabled servers are not passed to the agent.
         </p>
-        {servers.length === 0 && !draft && <p className="faint">No MCP servers configured. Add one below.</p>}
+        {servers.length === 0 && !draft && (
+          <p className="faint">No MCP servers configured. Add one below.</p>
+        )}
         {servers.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s3)' }}>
+          <div className={styles.mcpList}>
             {servers.map((s) => (
               <div
                 key={s.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--s3)',
-                  padding: 'var(--s3)',
-                  border: '1px solid var(--line-faint)',
-                  borderRadius: 'var(--r-sm)',
-                  background: s.disabled ? 'transparent' : 'var(--bg-raised)',
-                  opacity: s.disabled ? 0.6 : 1,
-                }}
+                className={`${styles.mcpCard} ${s.disabled ? styles.off : styles.on}`}
               >
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <strong className="mono" style={{ fontSize: 'var(--text-sm)' }}>
-                    {s.name}
-                  </strong>{' '}
-                  <span className="mono faint" style={{ fontSize: 'var(--text-xs)' }}>
-                    {s.type}
-                  </span>
+                <span className={styles.mcpCardMain}>
+                  <strong className={`mono ${styles.mcpCardName}`}>{s.name}</strong>{' '}
+                  <span className={`mono faint ${styles.mcpCardType}`}>{s.type}</span>
                   <br />
-                  <span className="mono faint" style={{ fontSize: 'var(--text-xs)', wordBreak: 'break-all' }}>
-                    {s.type === 'stdio' ? s.command + (s.args?.length ? ` ${s.args.join(' ')}` : '') : s.url}
+                  <span className={`mono faint ${styles.mcpDetail}`}>
+                    {s.type === 'stdio'
+                      ? s.command + (s.args?.length ? ` ${s.args.join(' ')}` : '')
+                      : s.url}
                   </span>
                 </span>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--s2)', fontSize: 'var(--text-xs)' }}>
+                <label className={styles.mcpEnable}>
                   <input
                     type="checkbox"
                     checked={!s.disabled}
-                    onChange={(e) => saveServers(servers.map((x) => (x.id === s.id ? { ...x, disabled: !e.target.checked } : x)))}
+                    onChange={(e) =>
+                      saveServers(
+                        servers.map((x) =>
+                          x.id === s.id ? { ...x, disabled: !e.target.checked } : x,
+                        ),
+                      )
+                    }
                   />
                   Enabled
                 </label>
@@ -1502,8 +1532,11 @@ function McpSettings({
       </Section>
 
       {draft ? (
-        <Section label={servers.some((s) => s.id === draft.id) ? 'Edit server' : 'Add server'} note="All fields are validated before saving.">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s4)', maxWidth: 520 }}>
+        <Section
+          label={servers.some((s) => s.id === draft.id) ? 'Edit server' : 'Add server'}
+          note="All fields are validated before saving."
+        >
+          <div className={styles.mcpForm}>
             <Field label="Name">
               <TextInput
                 value={draft.name}
@@ -1522,16 +1555,31 @@ function McpSettings({
                 onChange={(v) => {
                   const next = v as UserMcpServer['type'];
                   if (next === 'stdio') {
-                    setDraft({ id: draft.id, name: draft.name, disabled: draft.disabled, type: 'stdio', command: '' });
+                    setDraft({
+                      id: draft.id,
+                      name: draft.name,
+                      disabled: draft.disabled,
+                      type: 'stdio',
+                      command: '',
+                    });
                   } else {
-                    setDraft({ id: draft.id, name: draft.name, disabled: draft.disabled, type: next, url: '' });
+                    setDraft({
+                      id: draft.id,
+                      name: draft.name,
+                      disabled: draft.disabled,
+                      type: next,
+                      url: '',
+                    });
                   }
                 }}
               />
             </Field>
             {draft.type === 'stdio' ? (
               <>
-                <Field label="Command" hint="Executable path or command name (e.g. npx, node, python3)">
+                <Field
+                  label="Command"
+                  hint="Executable path or command name (e.g. npx, node, python3)"
+                >
                   <TextInput
                     mono
                     value={draft.command}
@@ -1547,7 +1595,9 @@ function McpSettings({
                     onChange={(e) =>
                       setDraft({
                         ...draft,
-                        args: e.target.value ? e.target.value.split(/\s+/).filter(Boolean) : undefined,
+                        args: e.target.value
+                          ? e.target.value.split(/\s+/).filter(Boolean)
+                          : undefined,
                       })
                     }
                   />
@@ -1575,7 +1625,9 @@ function McpSettings({
                 <TextInput
                   mono
                   value={draft.url}
-                  placeholder={draft.type === 'sse' ? 'https://example.com/sse' : 'https://example.com/mcp'}
+                  placeholder={
+                    draft.type === 'sse' ? 'https://example.com/sse' : 'https://example.com/mcp'
+                  }
                   onChange={(e) => setDraft({ ...draft, url: e.target.value })}
                 />
               </Field>
