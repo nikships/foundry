@@ -3,9 +3,10 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-height: 0;
   overflow: hidden;
-  background: var(--bg-base);
   color: var(--text);
+  background: var(--bg-base);
 }
 
 .emptyContainer {
@@ -13,6 +14,7 @@
   align-items: center;
   justify-content: center;
   height: 100%;
+  padding-top: var(--titlebar-h);
 }
 
 .srOnly {
@@ -24,64 +26,119 @@
   white-space: nowrap;
 }
 
-/* ── Pipeline switcher ────────────────────────────────────────────────── */
-
-.topBar {
+/* The screen gets one compact, real header. It never overlays the canvas or
+   intercepts it, so every visible control remains reachable. */
+.workspaceHeader {
+  z-index: 4;
   display: flex;
-  flex-shrink: 0;
+  flex: none;
   align-items: center;
-  gap: var(--s3);
-  min-height: 44px;
-  padding: var(--s2) var(--s4);
+  justify-content: space-between;
+  gap: 12px;
+  min-height: calc(var(--titlebar-h) + 58px);
+  padding: calc(var(--titlebar-h) + 7px) 12px 7px;
   background: var(--bg-void);
-  border-bottom: 1px solid var(--line);
-  overflow: hidden;
+  border-bottom: 1px solid var(--line-strong);
 }
 
-.topBar :global(.eyebrow) {
-  flex: none;
+.pipelineIdentity {
+  display: grid;
+  grid-template-columns: auto minmax(84px, 1fr);
+  grid-template-rows: 22px 18px;
+  column-gap: 9px;
+  align-items: center;
+  min-width: 0;
+}
+
+.headerEyebrow {
+  grid-row: span 2;
+  align-self: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--eyebrow-tracking);
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.nameInput,
+.descInput {
+  width: 100%;
+  min-width: 0;
+  padding: 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  outline: none;
+}
+
+.nameInput {
+  font-family: var(--font);
+  font-size: var(--text-sm);
+  font-weight: 560;
+}
+
+.descInput {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.nameInput:hover,
+.descInput:hover {
+  background: var(--bg-raised);
+  border-color: var(--line);
+}
+
+.nameInput:focus,
+.descInput:focus {
+  background: var(--bg-input);
+  border-color: var(--accent);
+}
+
+.descInput::placeholder {
+  color: var(--text-ghost);
 }
 
 .pillList {
   display: flex;
-  flex: 1;
   min-width: 0;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: 6px;
+  gap: 5px;
+  padding: 2px 0;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
-  -ms-overflow-style: none;
-  padding: 2px 0;
 }
 
 .pillList::-webkit-scrollbar {
   display: none;
 }
 
-.pillTab {
+.pillTab,
+.newPipelineBtn {
   display: inline-flex;
+  flex: none;
   align-items: center;
   gap: 6px;
   height: 28px;
-  padding: 0 10px;
-  flex: 0 0 auto;
-  max-width: 220px;
-  white-space: nowrap;
+  padding: 0 9px;
   font-family: var(--font-mono);
-  font-size: var(--label-size);
-  font-weight: 500;
-  letter-spacing: var(--label-tracking);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--text-dim);
-  background: var(--bg-raised);
+  background: var(--bg-panel);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  transition:
-    color var(--fast) var(--ease),
-    background var(--fast) var(--ease),
-    border-color var(--fast) var(--ease);
+  cursor: default;
+}
+
+.pillTab {
+  max-width: 180px;
 }
 
 .pillTab:hover {
@@ -96,7 +153,6 @@
 }
 
 .pillName {
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -104,25 +160,17 @@
 
 .pillCount {
   flex: none;
-  font-size: 10px;
+  color: var(--text-ghost);
   font-variant-numeric: tabular-nums;
-  color: var(--text-faint);
 }
 
 .newPipelineBtn {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
   justify-content: center;
   width: 28px;
-  height: 28px;
+  padding: 0;
   color: var(--text-dim);
   background: transparent;
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--r-sm);
-  transition:
-    color var(--fast) var(--ease),
-    border-color var(--fast) var(--ease);
+  border-style: dashed;
 }
 
 .newPipelineBtn:hover {
@@ -130,166 +178,150 @@
   border-color: var(--accent);
 }
 
-.topBarRight {
+.headerActions {
   display: flex;
   flex: none;
   align-items: center;
-  gap: var(--s2);
-  margin-left: auto;
-  white-space: nowrap;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
-.topBarRight :global(.btn) {
-  flex: none;
+.headerActions :global(.saveState) {
+  margin-right: 6px;
 }
 
 .issueCountBtn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
   height: 28px;
   padding: 0 6px;
+  color: var(--text-dim);
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--r-sm);
-  transition: border-color var(--fast) var(--ease);
+  cursor: default;
 }
 
 .issueCountBtn:hover {
   border-color: var(--line-strong);
 }
 
-.pipelineActions {
-  display: flex;
+.actionGhostBtn,
+.dryRunBtn {
+  display: inline-flex;
   align-items: center;
-  gap: var(--s1);
-}
-
-.actionGhostBtn {
-  padding: var(--s1) var(--s2);
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
   font-family: var(--font-mono);
-  font-size: var(--label-size);
-  font-weight: 500;
-  letter-spacing: var(--label-tracking);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-dim);
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
   border-radius: var(--r-sm);
-  transition:
-    color var(--fast) var(--ease),
-    background var(--fast) var(--ease);
+  cursor: default;
 }
 
-.actionGhostBtn:hover {
+.actionGhostBtn:hover,
+.dryRunBtn:hover:not(:disabled) {
   color: var(--text);
   background: var(--bg-raised);
+  border-color: var(--line);
 }
 
 .actionDanger:hover {
   color: var(--red);
 }
 
-/* ── Identity header ──────────────────────────────────────────────────── */
-
-.identityHeader {
-  display: grid;
-  grid-template-columns: minmax(0, 640px) auto;
-  align-items: end;
-  gap: var(--s4);
-  padding: var(--s4) var(--s4);
-  background: var(--bg-panel);
-  border-bottom: 1px solid var(--line);
+.moreActions {
+  position: relative;
 }
 
-.identityInputs {
-  min-width: 0;
-}
-
-.nameInput {
-  width: 100%;
-  padding: 2px 0;
-  font-family: var(--font);
-  font-size: var(--text-xl);
-  font-weight: 500;
-  letter-spacing: -0.01em;
-  color: var(--text);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--r-sm);
-  outline: none;
-  transition: border-color var(--fast) var(--ease);
-}
-
-.nameInput:hover {
-  border-color: var(--line);
-}
-
-.nameInput:focus {
-  border-color: var(--accent);
-}
-
-.descInput {
-  width: 100%;
-  margin-top: var(--s1);
-  padding: 2px 0;
-  font-size: var(--text-sm);
-  color: var(--text-dim);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--r-sm);
-  outline: none;
-  transition: border-color var(--fast) var(--ease);
-}
-
-.descInput::placeholder {
-  color: var(--text-ghost);
-}
-
-.descInput:hover {
-  border-color: var(--line);
-}
-
-.descInput:focus {
-  border-color: var(--accent);
-}
-
-.identityMeta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  justify-content: flex-end;
-}
-
-.metaChip {
+.moreActions > summary {
   display: inline-flex;
   align-items: center;
-  gap: var(--s1);
-  height: 20px;
-  padding: 0 6px;
+  height: 28px;
+  padding: 0 8px;
+  list-style: none;
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: var(--label-tracking);
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-dim);
-  background: var(--bg-raised);
-  border: 1px solid var(--line);
+  border: 1px solid transparent;
   border-radius: var(--r-sm);
+  cursor: default;
 }
 
-.metaChipAccent {
-  color: var(--accent-bright);
-  background: var(--accent-dim);
-  border-color: var(--accent);
+.moreActions > summary::-webkit-details-marker {
+  display: none;
 }
 
-.metaChipGreen {
-  color: var(--green);
-  border-color: var(--green-dim);
+.moreActions > summary:hover,
+.moreActions[open] > summary {
+  color: var(--text);
+  background: var(--bg-raised);
+  border-color: var(--line);
 }
 
-/* ── Board ────────────────────────────────────────────────────────────── */
+.moreActions > div {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 10;
+  display: grid;
+  min-width: 168px;
+  padding: 5px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+}
+
+.moreActions button {
+  height: 29px;
+  padding: 0 8px;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: default;
+}
+
+.moreActions button:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.moreActions .actionDanger:hover {
+  color: var(--red);
+}
+
+.dryRunBtn {
+  color: #020202;
+  background: var(--text);
+  border-color: var(--text);
+}
+
+.dryRunBtn:hover:not(:disabled) {
+  color: #020202;
+  background: #fff;
+  border-color: #fff;
+}
+
+.dryRunBtn:disabled {
+  opacity: 0.38;
+}
 
 .boardWrap {
   position: relative;
@@ -298,8 +330,6 @@
   min-height: 0;
   overflow: hidden;
 }
-
-/* ── Phase sheet ──────────────────────────────────────────────────────── */
 
 .sheetTitle {
   overflow: hidden;
@@ -316,4 +346,28 @@
   letter-spacing: var(--label-tracking);
   text-transform: uppercase;
   color: var(--text-faint);
+}
+
+@media (max-width: 1100px) {
+  .workspaceHeader {
+    gap: 7px;
+    padding-inline: 8px;
+  }
+
+  .headerActions :global(.saveState) {
+    display: none;
+  }
+
+  .actionGhostBtn {
+    padding-inline: 6px;
+  }
+}
+
+@media (max-width: 800px) {
+  .dryRunBtn {
+    width: 28px;
+    justify-content: center;
+    padding: 0;
+    font-size: 0;
+  }
 }

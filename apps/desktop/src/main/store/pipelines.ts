@@ -50,6 +50,16 @@ const phaseSchema = z.object({
   optional: z.boolean().optional(),
 });
 
+const canvasPointSchema = z.object({
+  x: z.number().finite(),
+  y: z.number().finite(),
+});
+
+const canvasSchema = z.object({
+  nodes: z.record(z.string(), canvasPointSchema).optional(),
+  viewport: canvasPointSchema.extend({ zoom: z.number().finite().min(0.2).max(2.5) }).optional(),
+});
+
 export const pipelineSchema = z.object({
   id: z.string().regex(/^[a-z][a-z0-9-]*$/, 'lowercase kebab-case id'),
   name: z.string().min(1),
@@ -67,6 +77,7 @@ export const pipelineSchema = z.object({
   phases: z.array(phaseSchema).min(1, 'a pipeline needs at least one phase'),
   isolation: z.boolean().optional(),
   builtin: z.boolean().optional(),
+  canvas: canvasSchema.optional(),
 });
 
 export class PipelineStore {

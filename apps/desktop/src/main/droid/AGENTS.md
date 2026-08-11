@@ -1,60 +1,78 @@
-# src/main/droid
+# AGENTS.md — src/main/droid
 
-This directory owns Droid transport selection, the shared one-shot runner,
-permissions, and the SDK adapter. `agent.ts` selects daemon by default,
-subprocess RPC when requested or when daemon setup fails, and one-shot after
-two protocol strikes. A strike is counted once for the failing turn; a kill is
-not a strike and must stop all recovery.
+Owns Droid transport selection, the shared one-shot runner, permissions, and the SDK adapter. `agent.ts` selects **daemon** by default, **subprocess RPC** when requested or when daemon setup fails, and **one-shot** after two protocol strikes.
 
-## SDK and daemon boundaries
+## Project Overview
 
-All production `@factory/droid-sdk` imports stay under `sdk/` (SDK tests are
-the exception). Above that boundary, use `TransportSession` and `turn.ts`.
-`protocol.ts` is types/constants, not a hand-rolled JSON-RPC client.
+- Transports: daemon (`SdkDaemonManager` + `SdkDaemonSession`, `127.0.0.1:37600–37699`, `--parent-pid`), subprocess RPC (`SdkSession` via `ProcessTransport`), one-shot (`oneshot.ts` → `droid exec`).
+- SDK boundary: all production `@factory/droid-sdk` imports live under `sdk/` (ESLint `no-restricted-imports`). Above it, code uses `TransportSession` + `turn.ts` + `protocol.ts` types.
+- Notifications → trace events (`events.ts`); permissions → approval `ask_user` flow (`permissions.ts`); catalog/model discovery → `catalog.ts`.
+- `PROTOCOL_FAILURE_LIMIT = 2` — a strike is counted once for the failing turn; a kill is not a strike and must stop all recovery.
 
-The daemon starts lazily as `droid daemon --port <p> --host 127.0.0.1
---parent-pid <app>`, using the configured port and scanning upward only within
-37600–37699. Auth reads `FACTORY_API_KEY` or the stored WorkOS JWT without
-writing or logging the secret. `ensure()` returns a failure reason for
-fallback instead of throwing. The daemon is one traced process, not one row
-per session; a daemon session has no child pid (`kill` interrupts/closes it).
-A roster with a tool allowlist cannot use daemon because its high-level API
-cannot list tools, so it fails closed to subprocess.
+## Setup Commands
 
-Compaction/rewind return successor sessions: swap the handle, re-subscribe
-notifications, and re-apply settings after the successor loads. The SDK
-rejects replacement while a stream is open. The sniffing transport preserves
-init-time models and early notifications and injects context breakdown,
-which is why code must not use the SDK's private client.
+```bash
+cd apps/desktop
+npm ci
+# Requires `droid` CLI on PATH and signed in (FACTORY_API_KEY or stored WorkOS JWT).
+droid --version
+npm run dev    # exercise transports through the running app
+```
 
-## Protocol and policy landmines
+`resolveEnv()` must complete before any `droid` spawn; every spawn uses `spawnEnv()`.
 
-Frames require the factory type/version fields and string request IDs.
-`add_user_message` uses `params.text`; completion must echo the SDK-minted
-turn id. Session settings are flat params, autonomy is stated on every
-create/resume, and `--auto` is cosmetic for JSON-RPC. A bad model is accepted
-at settings time and fails on the turn, while structured-output failure still
-returns text for caller validation. Droid compiles output schemas as Draft-07;
-do not add a 2020-12 `$schema` URI.
+## Development Workflow
 
-Tool allowlists are a complement implemented through `disabledToolIds`, then
-verified with `listTools()`. `ToolSearch` remains available; Foundry's two MCP
-tools are always allowed. Attachments can lag `mcp_status_changed`, so tool
-recomputation is scheduled rather than immediate. Foundry MCP tools use the
-SDK's nested zod 3 and are attached at session create/resume, never by writing
-`~/.factory/mcp.json`.
+- **Daemon** starts lazily as `droid daemon --port <p> --host 127.0.0.1 --parent-pid <app>`, scanning up within `37600–37699`. Auth reads `FACTORY_API_KEY` or stored WorkOS JWT without logging. `ensure()` returns a failure reason for fallback rather than throwing. One traced `processes` row for the daemon, not per-session; a daemon session has no child pid (`kill` interrupts/closes it). A roster with a tool allowlist cannot use daemon (its high-level API cannot list tools) — falls back to subprocess.
+- **Compaction/rewind** return successor sessions: swap the handle, re-subscribe notifications, and re-apply settings after successor loads. SDK rejects replacement while a stream is open.
+- **Sniffing transport** preserves init-time models and early notifications and injects context-breakdown; do not reach into the SDK's private client.
 
-The zero-interrupt policy always returns a decision: in-boundary writes and
-commands allow, out-of-worktree or protected writes deny, and `ask_user` is
-answered with each question's first option. Answers belong on the decision;
-a missing answer is interpreted as cancellation. Permission handlers adapt
-flat Foundry decisions to SDK selections (`proceed_once` or cancel).
+## Testing Instructions
 
-## Tests
+```bash
+cd apps/desktop
+npm test
+npx vitest run -t "sdk|daemon|droid|permission|mcp"
+npx vitest run tests/sdk-daemon-session.test.ts
+npx vitest run tests/sdk-daemon-manager.test.ts
+npx vitest run tests/agent-session-transport.test.ts
+```
 
-`tests/fake-droid.ts` is the real-child handshake fixture; executor tests use
-a separate scripted child for disk side effects; the in-memory transport
-covers session logic. Stub frames must be schema-complete (`createdAt`,
-`updatedAt`, `tokenUsage`, valid tool categories, and matching turn IDs), or
-the SDK silently drops them and the turn hangs. Keep `oneshot.ts`
-vendor-agnostic and put flags in `cli/`.
+- `tests/fake-droid.ts` — real child handshake fixture (exercise protocol framing realistically).
+- Executor tests use a separate scripted child for disk side effects; in-memory transport covers session logic.
+- **Stub frames must be schema-complete** (`createdAt`, `updatedAt`, `tokenUsage`, valid tool categories, matching turn IDs) or the SDK silently drops them and the turn hangs.
+- Keep `oneshot.ts` vendor-agnostic; put flags in `src/main/cli/droid.ts`.
+
+## SDK and Daemon Boundaries
+
+- `protocol.ts` is types/constants, not a hand-rolled JSON-RPC client.
+- Auth never writes or logs the secret; daemon fallback traces `log` with `fallback to subprocess: <reason>` (warning span).
+- Tool allowlists are a complement via `disabledToolIds`, verified by `listTools()`. `ToolSearch` remains available; Foundry's two MCP tools are always allowed. Attachments can lag `mcp_status_changed`, so recomputation is scheduled, not immediate. Foundry MCP tools use the SDK's nested `zod@3` and are attached at session create/resume — never by writing `~/.factory/mcp.json`.
+
+## Protocol and Policy Landmines
+
+- Frames require the factory `type`/`version` fields and string `requestId`s.
+- `add_user_message` uses `params.text`; completion must echo the SDK-minted turn id.
+- Session settings are flat params; autonomy is stated on every `create`/`resume`; `--auto` is cosmetic for JSON-RPC.
+- A bad model is accepted at `settings` time and fails on the turn. Structured-output failure still returns text for caller validation. Droid compiles Draft-07 — do not add a `2020-12` `$schema`.
+- **Zero-interrupt policy** always returns a decision: in-boundary writes/commands → allow; out-of-worktree or protected writes → deny. `ask_user` is answered with each question's first option (`proceed_once` or cancel). A missing answer is interpreted as cancellation.
+
+## Code Style
+
+- Only `sdk/**` imports `@factory/droid-sdk`; everything above uses `TransportSession`.
+- Keep argv/parse in `cli/`, wire framing in `sdk/`, policy in `permissions.ts`.
+- No `eslint-disable`; use `@main/*` / `@shared/*` aliases.
+
+## Build and Deployment
+
+```bash
+cd apps/desktop
+npm run typecheck && npm run lint && npm run build
+```
+
+Transport code is bundled into `out/main/main.js`; `@factory/droid-sdk` is externalized as `require`.
+
+## Additional Notes
+
+- `turn.ts` is the narrow turn helper consumed by the engine; notification shapes follow the Droid protocol types.
+- `catalog.ts` / `oneshot.ts` share parsing conventions with `cli/droid.ts`.

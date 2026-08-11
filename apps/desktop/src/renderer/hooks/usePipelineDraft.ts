@@ -13,12 +13,13 @@ import type {
   DryRunPrompt,
   PhaseDef,
   PhaseKind,
+  PipelineCanvas,
   PipelineDef,
   ValidationIssue,
 } from '@shared/types.js';
 import { api, plain } from '../api.js';
 import { useApp } from '../stores/app.js';
-import { formatClock, newStagePlan } from '../pipeline-view.js';
+import { defaultCanvasPosition, formatClock } from '../pipeline-view.js';
 import { safeGetItem, safeSetItem } from '../local-store.js';
 
 const STORAGE_KEY = 'foundry.pipeline';
@@ -39,7 +40,25 @@ function clonePipeline(p: PipelineDef): PipelineDef {
         : undefined,
       gates: phase.gates ? [...phase.gates] : undefined,
     })),
+    canvas: p.canvas
+      ? {
+          nodes: p.canvas.nodes
+            ? Object.fromEntries(
+                Object.entries(p.canvas.nodes).map(([name, point]) => [name, { ...point }]),
+              )
+            : undefined,
+          viewport: p.canvas.viewport ? { ...p.canvas.viewport } : undefined,
+        }
+      : undefined,
   };
+}
+
+function canvasForPhases(phases: PhaseDef[], canvas: PipelineCanvas | undefined): PipelineCanvas {
+  const nodes = { ...canvas?.nodes };
+  phases.forEach((phase, index) => {
+    nodes[phase.name] ??= defaultCanvasPosition(index);
+  });
+  return { ...canvas, nodes };
 }
 
 function uniqueName(base: string, taken: Set<string>): string {
@@ -102,11 +121,10 @@ export function usePipelineDraft(): {
   closeDryRun: () => void;
   insertPhase: (kind: PhaseKind, at?: number) => number;
   movePhase: (index: number, delta: number) => void;
-  reorderPhase: (from: number, to: number) => void;
-  movePhaseToNewStage: (from: number, boundary: number) => void;
   removePhase: (index: number) => void;
   updatePhase: (index: number, patch: Partial<PhaseDef>) => void;
   updateDraft: (patch: Partial<PipelineDef>) => void;
+  updateCanvas: (canvas: PipelineCanvas) => void;
   setAcceptanceKind: (kind: Acceptance['kind']) => void;
   setAcceptancePhase: (phaseName: string) => void;
   setAcceptanceFlag: (flag: string) => void;
@@ -306,7 +324,22 @@ export function usePipelineDraft(): {
     (index: number, patch: Partial<PhaseDef>): void => {
       if (!draft) return;
       const phases = draft.phases.map((phase, i) => (i === index ? { ...phase, ...patch } : phase));
-      updateDraft({ phases });
+      const previousName = draft.phases[index]?.name;
+      const nextName = phases[index]?.name;
+      const nodes = draft.canvas?.nodes;
+      const canvas =
+        previousName && nextName && previousName !== nextName && nodes?.[previousName]
+          ? {
+              ...draft.canvas,
+              nodes: Object.fromEntries(
+                Object.entries(nodes).map(([name, point]) => [
+                  name === previousName ? nextName : name,
+                  point,
+                ]),
+              ),
+            }
+          : draft.canvas;
+      updateDraft({ phases, canvas });
     },
     [draft, updateDraft],
   );
@@ -320,7 +353,7 @@ export function usePipelineDraft(): {
         at != null ? Math.min(Math.max(0, at), draft.phases.length) : draft.phases.length;
       const phases = [...draft.phases];
       phases.splice(index, 0, phase);
-      updateDraft({ phases });
+      updateDraft({ phases, canvas: canvasForPhases(phases, draft.canvas) });
       setActivePhase(index);
       return index;
     },
@@ -335,51 +368,8 @@ export function usePipelineDraft(): {
       const phases = [...draft.phases];
       const [item] = phases.splice(index, 1);
       phases.splice(target, 0, item);
-      updateDraft({ phases });
+      updateDraft({ phases, canvas: canvasForPhases(draft.phases, draft.canvas) });
       setActivePhase((cur) => (cur === index ? target : cur));
-    },
-    [draft, updateDraft],
-  );
-
-  const reorderPhase = useCallback(
-    (from: number, to: number): void => {
-      if (!draft) return;
-      if (
-        from === to ||
-        from < 0 ||
-        from >= draft.phases.length ||
-        to < 0 ||
-        to >= draft.phases.length
-      ) {
-        return;
-      }
-      const phases = [...draft.phases];
-      const [item] = phases.splice(from, 1);
-      phases.splice(to, 0, item);
-      updateDraft({ phases });
-      setActivePhase((cur) => (cur === from ? to : cur));
-    },
-    [draft, updateDraft],
-  );
-
-  const movePhaseToNewStage = useCallback(
-    (from: number, boundary: number): void => {
-      if (!draft) return;
-      const plan = newStagePlan(draft.phases, from, boundary);
-      if (!plan) return;
-      const phases = [...draft.phases];
-      const [item] = phases.splice(from, 1);
-      const taken = new Set(phases.map((p) => p.name));
-      const insert: PhaseDef[] = [];
-      if (plan.before) {
-        insert.push(blankPhase('engineer', taken));
-        taken.add(insert[0].name);
-      }
-      insert.push(item);
-      if (plan.after) insert.push(blankPhase('engineer', taken));
-      phases.splice(plan.at, 0, ...insert);
-      updateDraft({ phases });
-      setActivePhase(plan.before ? plan.at + 1 : plan.at);
     },
     [draft, updateDraft],
   );
@@ -387,8 +377,19 @@ export function usePipelineDraft(): {
   const removePhase = useCallback(
     (index: number): void => {
       if (!draft) return;
+      const removedName = draft.phases[index]?.name;
       const phases = draft.phases.filter((_, i) => i !== index);
-      updateDraft({ phases });
+      const nodes = draft.canvas?.nodes;
+      const canvas =
+        removedName && nodes?.[removedName]
+          ? {
+              ...draft.canvas,
+              nodes: Object.fromEntries(
+                Object.entries(nodes).filter(([name]) => name !== removedName),
+              ),
+            }
+          : draft.canvas;
+      updateDraft({ phases, canvas });
       setActivePhase((cur) => {
         if (cur === null) return null;
         if (cur === index) return null;
@@ -396,6 +397,11 @@ export function usePipelineDraft(): {
       });
     },
     [draft, updateDraft],
+  );
+
+  const updateCanvas = useCallback(
+    (canvas: PipelineCanvas): void => updateDraft({ canvas }),
+    [updateDraft],
   );
 
   const setAcceptanceKind = useCallback(
@@ -490,11 +496,10 @@ export function usePipelineDraft(): {
     closeDryRun,
     insertPhase,
     movePhase,
-    reorderPhase,
-    movePhaseToNewStage,
     removePhase,
     updatePhase,
     updateDraft,
+    updateCanvas,
     setAcceptanceKind,
     setAcceptancePhase,
     setAcceptanceFlag,

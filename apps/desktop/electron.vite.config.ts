@@ -54,7 +54,6 @@ export default defineConfig({
             if (!id.includes('node_modules')) return;
             if (id.includes('react-dom') || id.includes('/scheduler/')) return 'react-vendor';
             if (id.includes('/react/')) return 'react-vendor';
-            if (id.includes('@dnd-kit')) return 'dnd';
             if (id.includes('lucide-react') || id.includes('@lobehub/icons')) return 'icons';
           },
         },

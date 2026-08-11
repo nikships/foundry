@@ -1,10 +1,66 @@
-# src/preload
+# AGENTS.md — src/preload
 
-The preload is a narrow, named capability bridge: `bridge.ts` emits
-`bridge.cjs` and exposes explicit wrappers for each `IPC.*` constant. The CJS
-output is required because the sandboxed preload cannot be ESM.
+Narrow, named capability bridge between the sandboxed renderer and the main process. `bridge.ts` emits `out/preload/bridge.cjs` and exposes explicit wrappers for each `IPC.*` constant — no generic `invoke(channel, ...)` escape hatch.
 
-Do not add `invoke(channel, ...args)` or business logic here. Add capabilities
-through the shared IPC contract and the main router, then expose the smallest
-typed wrapper needed by the renderer. The IPC directory guide defines the
-canonical flow.
+## Project Overview
+
+- One typed wrapper per `IPC.*` entry in `src/shared/ipc-contract.ts`. The renderer's capabilities are exactly this list.
+- Uses `electron.contextBridge` + `electron.ipcRenderer`. Preload is sandboxed and isolated (`contextIsolation: true`, `sandbox: true` in `src/main/main.ts`).
+- Output must stay **CJS** (`bridge.cjs`) — sandboxed preloads cannot be ESM (`electron.vite.config.ts` → `rollupOptions.output.format: 'cjs'`).
+
+## Setup Commands
+
+```bash
+cd apps/desktop
+npm ci
+npm run dev     # rebuilds preload on change and reloads the app
+npm run build   # emits out/preload/bridge.cjs
+```
+
+No preload-specific setup beyond the app install.
+
+## Development Workflow
+
+To expose a new capability:
+
+1. Define types + an `IPC.*` constant in `src/shared/` (see `src/shared/AGENTS.md`).
+2. Add the domain handler in `src/main/ipc/`.
+3. Add the smallest typed wrapper in `src/preload/bridge.ts` that calls `ipcRenderer.invoke(IPC.xxx, ...)`.
+4. Call it from `src/renderer/api.ts` through `plain()`.
+
+Rules:
+
+- Do not add `invoke(channel, ...args)` forwarding or business logic here.
+- Keep the bridge a flat, named list — one method per capability.
+
+## Testing Instructions
+
+```bash
+cd apps/desktop
+npm test
+npx vitest run -t "ipc"
+npx vitest run tests/ipc-surface.test.ts
+npx vitest run tests/ipc-clone.test.ts
+```
+
+- Surface tests assert every `IPC.*` constant has a wrapper and that payloads survive `structuredClone`.
+
+## Code Style
+
+- Preload is authored in TypeScript ESM and built to CJS — keep imports compatible.
+- Globals: both `node` and `browser` are allowed here (see `eslint.config.js`).
+- No `eslint-disable`; fix the real issue.
+
+## Build and Deployment
+
+```bash
+cd apps/desktop
+npm run typecheck && npm run lint && npm run build  # emits out/preload/bridge.cjs
+```
+
+`electron.vite.config.ts` (`externalizeDepsPlugin()` + `minify: 'esbuild'`) builds this bundle.
+
+## Additional Notes
+
+- The IPC flow is documented in `src/main/ipc/AGENTS.md`: `types.ts` → `ipc-contract.ts` → router → `bridge.ts` → `api.ts` via `plain()`.
+- Menu channels (`foundryMenu`) are one-way `on` subscriptions for app menu → renderer (e.g. `Cmd+N`).

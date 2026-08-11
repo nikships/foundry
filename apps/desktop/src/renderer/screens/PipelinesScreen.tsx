@@ -1,31 +1,14 @@
-/**
- * PipelinesScreen — the stage board.
- *
- * Columns are the phases that run unattended; the element between two columns
- * is the checkpoint that closes the earlier one. The board owns the whole
- * viewport height: everything that is not the board (pipeline settings,
- * acceptance, validation, phase fields) opens in one slide-over sheet so the
- * board behind it stays whole.
- *
- * Key interactions:
- * - Pill tablist in the top bar for fast pipeline switching
- * - In-place editing of pipeline name and description
- * - Horizontal canvas with auto-grouped stages and checkpoint gates
- * - Phase sheet for deep editing, pipeline sheet for acceptance and validation
- * - Debounced auto-save, live validation, and dry-run preview
- */
 import { useCallback, useState } from 'react';
-import { Play, Plus, SlidersHorizontal } from 'lucide-react';
+import { Play, Settings2 } from 'lucide-react';
 import { useApp } from '../stores/app.js';
 import { KIND_LABEL } from '../derive.js';
-import { acceptanceLabel, issuePhaseIndex, phaseComposition } from '../pipeline-view.js';
+import { acceptanceLabel, issuePhaseIndex } from '../pipeline-view.js';
 import { usePipelineDraft } from '../hooks/usePipelineDraft.js';
-import { useTablistNav } from '../hooks/useTablistNav.js';
 import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import EmptyState from '../components/EmptyState.js';
 import PhaseEditor from '../components/PhaseEditor.js';
 import PipelineSheet from '../components/PipelineSheet.js';
-import StageBoard from '../components/StageBoard.js';
+import PipelineCanvas from '../components/PipelineCanvas.js';
 import DryRunSheet from '../components/DryRunSheet.js';
 import { Button } from '../components/ui/Button.js';
 import { IssueCount } from '../components/ui/Issues.js';
@@ -60,11 +43,10 @@ export default function PipelinesScreen({
     preview,
     insertPhase,
     movePhase,
-    reorderPhase,
-    movePhaseToNewStage,
     removePhase,
     updatePhase,
     updateDraft,
+    updateCanvas,
     setAcceptanceKind,
     setAcceptancePhase,
     setAcceptanceFlag,
@@ -72,7 +54,6 @@ export default function PipelinesScreen({
   } = usePipelineDraft();
 
   const [sheet, setSheet] = useState<Sheet>(null);
-  const tablistNav = useTablistNav();
 
   const closeSheet = useCallback(() => setSheet(null), []);
 
@@ -114,87 +95,9 @@ export default function PipelinesScreen({
 
   return (
     <div className={styles.container}>
-      {/* ── Pipeline switcher ───────────────────────────────────────── */}
-      <header className={styles.topBar}>
-        <span className="eyebrow">Pipelines</span>
-
-        <div
-          className={styles.pillList}
-          role="tablist"
-          aria-label="Pipelines"
-          onKeyDown={tablistNav}
-        >
-          {pipelines.map((p) => {
-            const active = p.id === selectedId;
-            return (
-              <button
-                key={p.id}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                tabIndex={active ? 0 : -1}
-                onClick={() => {
-                  closeSheet();
-                  void selectPipeline(p.id);
-                }}
-                className={`${styles.pillTab} ${active ? styles.pillTabActive : ''}`}
-              >
-                <span className={styles.pillName}>{p.name}</span>
-                <span className={styles.pillCount}>{p.phases.length}</span>
-              </button>
-            );
-          })}
-          <button
-            type="button"
-            aria-label="New pipeline"
-            title="Create new pipeline"
-            className={styles.newPipelineBtn}
-            onClick={() => {
-              closeSheet();
-              void createPipeline();
-            }}
-          >
-            <Plus size={14} strokeWidth={1.6} aria-hidden="true" />
-          </button>
-        </div>
-
-        <div className={styles.topBarRight}>
-          <SaveState saving={saving} savedAt={savedAt} />
-
-          <button
-            type="button"
-            className={styles.issueCountBtn}
-            title="Open pipeline settings and validation"
-            onClick={() => setSheet('pipeline')}
-          >
-            <IssueCount errors={errors} warnings={warnings} />
-            <span className={styles.srOnly}>Open pipeline settings and validation</span>
-          </button>
-
-          <div className={styles.pipelineActions}>
-            <button
-              type="button"
-              className={styles.actionGhostBtn}
-              onClick={() => void duplicate()}
-            >
-              Duplicate
-            </button>
-            {pipelines.length > 1 && (
-              <button
-                type="button"
-                className={`${styles.actionGhostBtn} ${styles.actionDanger}`}
-                onClick={() => void confirmDelete()}
-              >
-                Delete
-              </button>
-            )}
-          </div>
-        </div>
-      </header>
-
-      {/* ── Identity header ─────────────────────────────────────────── */}
-      <section className={styles.identityHeader}>
-        <div className={styles.identityInputs}>
+      <header className={styles.workspaceHeader}>
+        <div className={styles.pipelineIdentity}>
+          <span className={styles.headerEyebrow}>Pipelines</span>
           <input
             aria-label="Pipeline name"
             className={styles.nameInput}
@@ -207,48 +110,82 @@ export default function PipelinesScreen({
             className={styles.descInput}
             value={draft.description}
             onChange={(e) => updateDraft({ description: e.target.value })}
-            placeholder="One sentence on what this pipeline is for."
+            placeholder="Describe this run."
           />
         </div>
 
-        <div className={styles.identityMeta}>
-          {draft.builtin ? (
-            <span className={styles.metaChip}>builtin</span>
-          ) : (
-            <span className={`${styles.metaChip} ${styles.metaChipAccent}`}>edited</span>
-          )}
-          <span className={styles.metaChip}>{phaseComposition(draft.phases)}</span>
-          <span
-            className={`${styles.metaChip} ${draft.isolation !== false ? styles.metaChipGreen : ''}`}
-          >
-            {draft.isolation !== false ? 'isolated worktree' : 'runs in place'}
-          </span>
-          <Button
-            size="sm"
-            onClick={() => setSheet('pipeline')}
-            title={acceptanceLabel(draft.acceptance)}
-          >
-            <SlidersHorizontal size={12} strokeWidth={1.6} aria-hidden="true" />
-            Acceptance
-          </Button>
-          <Button size="sm" disabled={draft.phases.length === 0} onClick={() => void preview()}>
-            <Play size={12} strokeWidth={1.6} aria-hidden="true" />
-            Dry run
-          </Button>
-        </div>
-      </section>
+        <div className={styles.headerActions}>
+          <SaveState saving={saving} savedAt={savedAt} />
 
-      {/* ── Stage board ─────────────────────────────────────────────── */}
+          <button
+            type="button"
+            className={styles.issueCountBtn}
+            title="Open acceptance and validation settings"
+            onClick={() => setSheet('pipeline')}
+          >
+            <IssueCount errors={errors} warnings={warnings} />
+            <span className={styles.srOnly}>Open acceptance and validation settings</span>
+          </button>
+
+          <button
+            type="button"
+            className={styles.actionGhostBtn}
+            title={acceptanceLabel(draft.acceptance)}
+            onClick={() => setSheet('pipeline')}
+          >
+            <Settings2 size={13} strokeWidth={1.7} aria-hidden="true" />
+            Settings
+          </button>
+          <details className={styles.moreActions}>
+            <summary>More</summary>
+            <div>
+              <button type="button" onClick={() => void duplicate()}>
+                Duplicate pipeline
+              </button>
+              {pipelines.length > 1 && (
+                <button
+                  type="button"
+                  className={styles.actionDanger}
+                  onClick={() => void confirmDelete()}
+                >
+                  Delete pipeline
+                </button>
+              )}
+            </div>
+          </details>
+          <button
+            type="button"
+            className={styles.dryRunBtn}
+            disabled={draft.phases.length === 0}
+            onClick={() => void preview()}
+          >
+            <Play size={13} strokeWidth={1.7} aria-hidden="true" />
+            Dry run
+          </button>
+        </div>
+      </header>
+
       <main className={styles.boardWrap}>
-        <StageBoard
+        <PipelineCanvas
+          pipelineId={draft.id}
+          pipelines={pipelines}
+          selectedPipelineId={selectedId}
+          onSelectPipeline={(id) => {
+            closeSheet();
+            void selectPipeline(id);
+          }}
+          onCreatePipeline={() => {
+            closeSheet();
+            void createPipeline();
+          }}
           phases={draft.phases}
+          canvas={draft.canvas}
           selectedPhase={activePhase}
           onSelectPhase={openPhase}
-          onAddPhase={(kind, at) => openPhase(insertPhase(kind, at))}
+          onAddPhase={(kind) => openPhase(insertPhase(kind))}
           onMovePhase={movePhase}
-          onReorderPhase={reorderPhase}
-          onNewStagePhase={movePhaseToNewStage}
           onRemovePhase={removePhase}
+          onCanvasChange={updateCanvas}
           agentColor={agentColor}
           issues={issues}
         />

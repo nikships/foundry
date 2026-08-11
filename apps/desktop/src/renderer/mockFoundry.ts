@@ -179,6 +179,8 @@ function defaultMockSettings(): AppSettings {
 
 let mockSettings = defaultMockSettings();
 let onboardingDone = true;
+let mockAgents: AgentDef[] = BUILTIN_AGENTS.map((a) => ({ ...a }));
+let mockPipelines: PipelineDef[] = BUILTIN_PIPELINES.map((p) => ({ ...p }));
 
 const CLIS: CliDescriptor[] = [
   {
@@ -262,25 +264,33 @@ export function createMockFoundryApi(): FoundryApi {
       reveal: async () => {},
     },
     roster: {
-      list: async () => [...BUILTIN_AGENTS],
-      save: async (agent, _projectId): Promise<SaveResult<AgentDef[]>> => ({
-        ok: true,
-        issues: [],
-        value: BUILTIN_AGENTS.map((a) => (a.name === agent.name ? agent : a)),
-      }),
-      rename: async (from, to) => ({
-        ok: true,
-        issues: [],
-        agents: BUILTIN_AGENTS.map((a) => (a.name === from ? { ...a, name: to } : a)),
-        forked: false,
-      }),
-      remove: async (name) => BUILTIN_AGENTS.filter((a) => a.name !== name),
+      list: async () => [...mockAgents],
+      save: async (agent, _projectId): Promise<SaveResult<AgentDef[]>> => {
+        const idx = mockAgents.findIndex((a) => a.name === agent.name);
+        if (idx >= 0) mockAgents[idx] = agent;
+        else mockAgents.push(agent);
+        return { ok: true, issues: [], value: [...mockAgents] };
+      },
+      rename: async (from, to) => {
+        mockAgents = mockAgents.map((a) => (a.name === from ? { ...a, name: to } : a));
+        return { ok: true, issues: [], agents: [...mockAgents], forked: false };
+      },
+      remove: async (name) => {
+        mockAgents = mockAgents.filter((a) => a.name !== name);
+        return [...mockAgents];
+      },
       duplicate: async (name) => {
-        const found = BUILTIN_AGENTS.find((a) => a.name === name) ?? null;
-        return found ? { ...found, name: `${found.name}-copy` } : null;
+        const found = mockAgents.find((a) => a.name === name) ?? null;
+        if (!found) return null;
+        const copy = { ...found, name: `${found.name}-copy` };
+        mockAgents.push(copy);
+        return copy;
       },
       validate: async () => [],
-      reset: async () => [...BUILTIN_AGENTS],
+      reset: async () => {
+        mockAgents = BUILTIN_AGENTS.map((a) => ({ ...a }));
+        return [...mockAgents];
+      },
     },
     envelopes: {
       list: async (): Promise<EnvelopeDef[]> => [],
@@ -322,20 +332,35 @@ export function createMockFoundryApi(): FoundryApi {
         ),
     },
     pipelines: {
-      list: async (): Promise<PipelineDef[]> => [...BUILTIN_PIPELINES],
-      save: async (pipeline): Promise<SaveResult<PipelineDef[]>> => ({
-        ok: true,
-        issues: [],
-        value: BUILTIN_PIPELINES.map((p) => (p.id === pipeline.id ? pipeline : p)),
-      }),
-      remove: async (id) => BUILTIN_PIPELINES.filter((p) => p.id !== id),
+      list: async (): Promise<PipelineDef[]> => [...mockPipelines],
+      save: async (pipeline): Promise<SaveResult<PipelineDef[]>> => {
+        const idx = mockPipelines.findIndex((p) => p.id === pipeline.id);
+        if (idx >= 0) mockPipelines[idx] = pipeline;
+        else mockPipelines.push(pipeline);
+        return { ok: true, issues: [], value: [...mockPipelines] };
+      },
+      remove: async (id) => {
+        mockPipelines = mockPipelines.filter((p) => p.id !== id);
+        return [...mockPipelines];
+      },
       duplicate: async (id) => {
-        const p = BUILTIN_PIPELINES.find((x) => x.id === id) ?? null;
-        return p ? { ...p, id: `${p.id}-copy` } : null;
+        const p = mockPipelines.find((x) => x.id === id) ?? null;
+        if (!p) return null;
+        const copy: PipelineDef = {
+          ...p,
+          id: `${p.id}-copy`,
+          name: `${p.name} (copy)`,
+          builtin: false,
+        };
+        mockPipelines.push(copy);
+        return copy;
       },
       validate: async () => [],
       dryRun: async () => [],
-      reset: async () => [...BUILTIN_PIPELINES],
+      reset: async () => {
+        mockPipelines = BUILTIN_PIPELINES.map((p) => ({ ...p }));
+        return [...mockPipelines];
+      },
     },
     catalog: {
       models: async (): Promise<ModelInfo[]> => [

@@ -98,6 +98,20 @@ export interface PhaseDef {
   optional?: boolean;
 }
 
+/** A freely positioned point on the Pipelines canvas, in canvas coordinates. */
+export interface PipelineCanvasPoint {
+  x: number;
+  y: number;
+}
+
+/** Presentation-only state for the Pipelines canvas. It never affects execution order. */
+export interface PipelineCanvas {
+  /** Phase-name keyed positions. Phase names are unique in a valid pipeline. */
+  nodes?: Record<string, PipelineCanvasPoint>;
+  /** The operator's last pan and zoom level. */
+  viewport?: PipelineCanvasPoint & { zoom: number };
+}
+
 export type Acceptance =
   | { kind: 'phase_flag'; phase: string; flag: 'passed' | 'approved' }
   | { kind: 'all_phases_pass' }
@@ -113,6 +127,8 @@ export interface PipelineDef {
   /** Docs-only chains can opt out of worktree isolation. */
   isolation?: boolean;
   builtin?: boolean;
+  /** Persisted board presentation; deliberately separate from the run definition. */
+  canvas?: PipelineCanvas;
 }
 
 // ── Roster ───────────────────────────────────────────────────────────────────
