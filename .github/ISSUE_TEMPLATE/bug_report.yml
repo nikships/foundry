@@ -1,0 +1,120 @@
+name: Bug report
+description: Something in Foundry behaves incorrectly, crashes, or produces the wrong evidence.
+title: '[component] '
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing. Foundry runs agents against real repositories, so reproduction
+        detail and trace evidence matter more than prose. Fill what you have; leave the rest.
+
+        All commands below run from the repository root. Do not paste secrets
+        (`FACTORY_API_KEY`, WorkOS JWTs, signing credentials) into this issue.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences describing the incorrect behavior.
+      placeholder: Inserting a phase closes the pipeline side panel instead of keeping it open.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Best guess is fine — see the routing table in the root `AGENTS.md`.
+      options:
+        - 'main: engine (sequencing, gates, boundaries, worktrees)'
+        - 'main: droid transport / SDK'
+        - 'main: trace (SQLite, Tracer, polling)'
+        - 'main: store (JSON config, builtins, migrations)'
+        - 'main: system (PATH, process control, doctor)'
+        - 'main: ipc'
+        - 'main: smith (socket, proposals, approval)'
+        - 'renderer (React UI, Inspector)'
+        - 'cli (foundry-cli)'
+        - 'packaging / updater'
+        - 'build, CI, or repository tooling'
+        - "unknown / don't know"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps from a known starting state. Name the pipeline, phase, or screen.
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the run's outcome detail or banner text if a run was involved.
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: |
+        Foundry version (About, or `version` in `package.json`), macOS version, chip,
+        Node version (`node --version`), and `droid` CLI version (`droid --version`).
+      value: |
+        - Foundry version:
+        - macOS version:
+        - Chip (Apple Silicon / Intel):
+        - Node version:
+        - droid CLI version:
+        - Install source (built from source / packaged DMG):
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs, trace evidence, or screenshots
+      description: |
+        Useful sources: the Inspector's phase transcript, the run's envelope, DevTools console
+        output, and the terminal output of `npm run dev`. Redact repository paths you consider
+        sensitive. Attach screenshots for renderer issues.
+      render: text
+
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification already done
+      description: |
+        Which gates did you run, and what did they say? This tells an agent whether the bug
+        is already covered by a failing check or is invisible to the current gate.
+      value: |
+        - [ ] `npm run check` (typecheck, lint, format:check, knip, test, build, check:css, audit:deps)
+        - [ ] `npm test` alone
+        - [ ] Reproduced on a clean checkout of `main`
+        - [ ] Reproduced in `npm run dev:web` (renderer only, no Electron)
+
+        Failing output, if any:
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context
+      description: |
+        Regression range if known (last known-good commit or version), related issues or PRs,
+        and any contract you believe is involved (IPC, envelopes, gates, write boundaries).

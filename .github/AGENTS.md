@@ -9,6 +9,7 @@ Workflows and release automation for Foundry. This guide is discoverable from th
   - `mac-package.yml` — signs, notarizes, and staples an arm64 DMG (`macos-26`)
   - `codeql.yml`, `dependency-review.yml`, `junie-*.yml` — security/hygiene
 - PR template in `.github/pull_request_template.md` (Summary + How verified + Agent notes).
+- Issue forms in `.github/ISSUE_TEMPLATE/`: `bug_report.yml` (reproduction, expected/actual, environment, evidence, verification already run) and `feature_request.yml` (problem, proposal, alternatives, scope, acceptance criteria). `config.yml` keeps blank issues enabled — chores and umbrella tickets fit neither form. Both are pure GitHub forms: no secrets, no external services.
 
 ## Setup Commands
 
@@ -23,7 +24,9 @@ npm run check   # mirrors ci.yml's verify gate
 ## Development Workflow
 
 - `ci.yml` triggers: `push` on `main` (path-filtered for `src/**` + `tests/**` + `scripts/**` + `assets/**` + config + `.github/workflows/**`), plus every `pull_request` on `main` **without** a paths filter. The unfiltered PR trigger is intentional — `verify` + `actionlint` are required checks; a required check that never starts blocks PRs and even admin merges. Both jobs are cheap enough to run on every PR.
-- `verify` runs from the repo root (Node 22, `npm ci`): typecheck, lint, format:check, knip, test, build, `audit:deps` (high/critical only). It does **not** run `check:css` — that gate is local-only.
+- `verify` runs from the repo root (Node 22, `npm ci`): typecheck, lint, format:check, `check:docs`, knip, `test:coverage`, build, `audit:deps` (high/critical only). It does **not** run `check:css` — that gate is local-only.
+- `test:coverage` (not plain `test`) is deliberate: coverage thresholds live in `vitest.config.ts`, so CI and `npm run check` enforce the same floor and neither can drift from the other. Coverage is measured on `src/main`, `src/shared`, and `src/cli`; see the root `AGENTS.md` for scope and floors.
+- `check:docs` is a fast static validator (`scripts/check-docs-commands.mjs`) that fails when a command documented in an `AGENTS.md`, the `README`, the `Makefile`, or a workflow no longer resolves to a real npm script or make target. It executes nothing it reads. It runs early in `verify` because it costs about a second and catches doc drift before the expensive jobs.
 - `actionlint` runs on `ubuntu-latest` via `rhysd/actionlint/scripts/download-actionlint.bash 1.7.12`.
 - Do not add a second local `check` recipe to source guides — `npm run check` is the canonical gate.
 
@@ -31,7 +34,7 @@ npm run check   # mirrors ci.yml's verify gate
 
 ```bash
 # Validate CI locally before pushing
-npm run typecheck && npm run lint && npm run format:check && npm run knip && npm test && npm run build && npm run audit:deps
+npm run typecheck && npm run lint && npm run format:check && npm run check:docs && npm run knip && npm run test:coverage && npm run build && npm run audit:deps
 
 # Lint workflows (requires actionlint)
 bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) 1.7.12

@@ -1,0 +1,4 @@
+# Blank issues stay enabled on purpose: agents and maintainers file structured
+# reports through the forms above, but chores, spikes, and umbrella tickets do
+# not fit either form and should not be forced into one.
+blank_issues_enabled: true

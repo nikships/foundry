@@ -1,0 +1,103 @@
+name: Feature request
+description: Propose new behavior, a new pipeline capability, or a change to an existing contract.
+title: '[component] '
+labels: ['enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Foundry's value is that every phase leaves evidence and every write is bounded.
+        Proposals are easiest to act on when they say what problem they solve and how
+        someone would know the work is done — not just what to build.
+
+        Read the root `AGENTS.md` before proposing changes to sequencing, persistence,
+        or the IPC seam; several invariants there are deliberate.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is hard, slow, unsafe, or impossible today? Describe the situation, not the solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: |
+        What should happen instead, from the operator's point of view. Name the surface
+        (screen, pipeline, phase, gate, CLI op) that changes.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Best guess is fine — see the routing table in the root `AGENTS.md`.
+      options:
+        - 'main: engine (sequencing, gates, boundaries, worktrees)'
+        - 'main: droid transport / SDK'
+        - 'main: trace (SQLite, Tracer, polling)'
+        - 'main: store (JSON config, builtins, migrations)'
+        - 'main: system (PATH, process control, doctor)'
+        - 'main: ipc'
+        - 'main: smith (socket, proposals, approval)'
+        - 'renderer (React UI, Inspector)'
+        - 'cli (foundry-cli)'
+        - 'packaging / updater'
+        - 'build, CI, or repository tooling'
+        - 'cross-cutting / unsure'
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: |
+        Other approaches, and why they are worse. If an existing pipeline, skill, or CLI
+        already gets partway there, say so — extending it is usually preferred over new surface.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: |
+        What is explicitly in and out. Call out anything that would touch a documented
+        contract (IPC channels, envelope shape, gates, write boundaries, store migrations),
+        since those need a deliberate decision rather than an incidental change.
+      value: |
+        In scope:
+
+        -
+
+        Out of scope:
+
+        -
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: |
+        Observable, checkable statements. An agent should be able to read these and know
+        when to stop. Include the verification path (which tests or gates prove it).
+      value: |
+        - [ ]
+        - [ ]
+        - [ ] Covered by a test in `tests/` (name the suite, or say why unit coverage is not possible)
+        - [ ] `npm run check` passes
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context
+      description: Prior art, related issues or PRs, screenshots, or a sketch of the data shape.

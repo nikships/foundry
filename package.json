@@ -8,6 +8,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks || echo 'pre-commit hooks not installed (no git repo?)'",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "start": "electron-vite preview",
@@ -23,11 +24,13 @@
     "audit:deps": "node scripts/audit-deps.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "engine:demo": "tsx scripts/engine-demo.ts",
     "icons": "bash scripts/make-icns.sh",
     "package": "npm run build && npm run icons && electron-builder --mac --arm64",
     "check:css": "node scripts/check-css-collisions.mjs",
-    "check": "npm run typecheck && npm run lint && npm run format:check && npm run knip && npm test && npm run build && npm run check:css && npm run audit:deps"
+    "check:docs": "node scripts/check-docs-commands.mjs",
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm run knip && npm run test:coverage && npm run build && npm run check:css && npm run check:docs && npm run audit:deps"
   },
   "dependencies": {
     "@factory/droid-sdk": "0.7.0",
@@ -46,6 +49,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
+    "@vitest/coverage-v8": "^4.1.10",
     "ajv": "8.20.0",
     "electron": "^43.3.0",
     "electron-builder": "^26.15.3",
