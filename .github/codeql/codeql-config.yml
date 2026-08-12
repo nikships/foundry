@@ -8,5 +8,9 @@ paths-ignore:
   - dist
   - node_modules
   - assets
+  # Standalone marketing site: static, ships no app code, and is not part of
+  # the desktop build. The check itself still runs and reports on every PR —
+  # only the scan scope excludes this folder.
+  - website
   - '**/*.test.ts'
   - tests/fake-droid.ts

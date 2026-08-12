@@ -15,6 +15,9 @@ export default tseslint.config(
       'node_modules/**',
       'coverage/**',
       'assets/**',
+      // Standalone marketing site: its own toolchain and tsconfig, and
+      // deliberately outside the app build, `npm run check`, and CI.
+      'website/**',
       // Local run worktrees and codegraph pointer — not part of the app.
       '.foundry-worktrees/**',
       '.codegraph',
