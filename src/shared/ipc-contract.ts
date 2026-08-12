@@ -19,6 +19,7 @@ import type {
   GateResultRow,
   GhStatus,
   GithubAccount,
+  HostInvocableInventory,
   InterruptAnswer,
   MaintenanceReport,
   ModelInfo,
@@ -320,6 +321,13 @@ export interface FoundryApi {
     /** Models the given CLI can reach. Each vendor answers for itself. */
     models(vendor: CliVendor, force?: boolean): Promise<ModelInfo[]>;
     tools(vendor: CliVendor, model?: string): Promise<ToolInfo[]>;
+    /**
+     * What the operator has installed on the host: skills, custom Droids, and
+     * MCP servers, for per-agent opt-in on the roster. Read-only — there is no
+     * channel that writes any of them, because Foundry never edits the host
+     * install to satisfy a selection.
+     */
+    invocables(): Promise<HostInvocableInventory>;
     /** What each CLI is, where it lives, and what it cannot do. */
     clis(): Promise<CliDescriptor[]>;
     gates(): Promise<{ id: string; description: string }[]>;
@@ -486,6 +494,7 @@ export const IPC = {
   catalogModels: 'catalog:models',
   catalogClis: 'catalog:clis',
   catalogTools: 'catalog:tools',
+  catalogInvocables: 'catalog:invocables',
   catalogGates: 'catalog:gates',
   catalogTemplateVariables: 'catalog:templateVariables',
   runsStart: 'runs:start',

@@ -26,6 +26,7 @@ import { Tracer } from '../trace/tracer.js';
 import { Executor } from './executor.js';
 import { commandMatches, isAlive, killRun } from '../system/procs.js';
 import { breakdownFile, type CapturedBreakdown, type InterruptRequest } from '../droid/agent.js';
+import { readHostInvocables } from '../droid/invocables.js';
 
 export interface RegistryDeps {
   appSupportDir: string;
@@ -144,6 +145,7 @@ export class RunRegistry extends EventEmitter {
       daemonPort: settings.daemonPort,
       transport: settings.transport,
       mcpServers: settings.mcpServers ?? [],
+      readHostInvocables: () => readHostInvocables(),
       agents: input.agents,
       envelopeDefs: input.envelopeDefs,
       project: input.project,

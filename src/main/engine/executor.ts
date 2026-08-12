@@ -19,6 +19,7 @@ import type {
   CommandResult,
   ContextBreakdown,
   EnvelopeDef,
+  HostInvocableInventory,
   PhaseDef,
   PhaseKind,
   PipelineDef,
@@ -26,6 +27,7 @@ import type {
   RunStatus,
   UserMcpServer,
 } from '@shared/types.js';
+import { emptyInventory } from '../droid/invocables.js';
 import type { Tracer } from '../trace/tracer.js';
 import { AgentSession, KILLED_DETAIL, type InterruptRequest, type Mode } from '../droid/agent.js';
 import { decideAcceptance } from './acceptance.js';
@@ -63,6 +65,13 @@ export interface ExecutorDeps {
    */
   transport: 'daemon' | 'subprocess';
   mcpServers: UserMcpServer[];
+  /**
+   * Reads what the operator has installed on the host. Called once per run so
+   * every agent in it sees the same inventory, and so a run is not re-reading
+   * disk per phase. Absent means "assume nothing installed" — the closed
+   * reading, and what the engine demo and unit tests want.
+   */
+  readHostInvocables?: () => Promise<HostInvocableInventory>;
   agents: AgentDef[];
   /** Shared custom envelope library snapshotted at run start. */
   envelopeDefs: EnvelopeDef[];
@@ -95,6 +104,12 @@ export class Executor {
   private readonly phaseIds = new Map<string, string>();
   private readonly feedback = new Map<string, string>();
   private cancelled = false;
+  /**
+   * The host install as it looked when this run started. Snapshotted so an
+   * operator installing a skill mid-run cannot widen what a running agent
+   * reaches, and so every phase agrees on what had to be withheld.
+   */
+  private hostInvocables: HostInvocableInventory = emptyInventory();
   private handle: worktreeLib.WorktreeHandle | null = null;
   private cwd: string;
   private mode: Mode;
@@ -148,6 +163,13 @@ export class Executor {
   async run(): Promise<RunOutcome> {
     const { tracer, pipeline, project, runId } = this.deps;
     const isolate = pipeline.isolation !== false && project.isolation;
+
+    // Read before the first agent exists. A failure here is not fatal: an empty
+    // inventory means nothing is offered and nothing is withheld, which is the
+    // same posture as a host with no `~/.factory` at all.
+    if (this.deps.readHostInvocables) {
+      this.hostInvocables = await this.deps.readHostInvocables().catch(() => emptyInventory());
+    }
 
     if (isolate) {
       try {
@@ -376,7 +398,10 @@ export class Executor {
       envelopes: this.envelopes,
       transport: this.deps.transport,
       daemonPort: this.deps.daemonPort,
+      // Narrowing to this agent's selection happens inside AgentSession; the
+      // globally-disabled ones are dropped here because no agent can select one.
       userMcpServers: this.deps.mcpServers.filter((s) => !s.disabled),
+      hostInvocables: this.hostInvocables,
       onModeChange: (mode) => {
         this.mode = mode;
         this.deps.tracer.setRunMode(this.deps.runId, mode);

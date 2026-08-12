@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { BUILTIN_ENVELOPE_KINDS, type AgentDef, type ValidationIssue } from '@shared/types.js';
 import { JsonStore } from './json-store.js';
 import { BUILTIN_AGENTS } from './builtin-agents.js';
+import { normalizeInvocables } from '../droid/invocables.js';
 
 export const agentSchema = z.object({
   name: z
@@ -45,6 +46,17 @@ export const agentSchema = z.object({
     .optional(),
   tools: z.array(z.string()).optional(),
   disabledTools: z.array(z.string()).optional(),
+  // Host invocables are opt-in per agent. The whole object is optional and each
+  // list defaults to empty, so a roster written before this field existed reads
+  // as "nothing enabled" — the closed default, not a silent grant.
+  invocables: z
+    .object({
+      skills: z.array(z.string()).default([]),
+      droids: z.array(z.string()).default([]),
+      hostMcpServers: z.array(z.string()).default([]),
+      userMcpServers: z.array(z.string()).default([]),
+    })
+    .optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'a hex colour like #5ad2dd'),
   emblem: z.string().optional(),
   builtin: z.boolean().optional(),
@@ -89,9 +101,13 @@ export class RosterStore {
         // An agent forked off a built-in used to inherit `builtin: true`, which
         // hides its own Delete button. The flag says where an agent came from,
         // so a name that was never shipped cannot legitimately carry it.
+        // A hand-edited or pre-field `invocables` is normalised rather than
+        // trusted: a garbage value must land on the closed default, never on an
+        // accidental grant of the operator's whole host install.
         const sanitize = (a: AgentDef): AgentDef => ({
           ...a,
           cli: a.cli && a.cli !== 'droid' ? 'droid' : a.cli,
+          ...(a.invocables === undefined ? {} : { invocables: normalizeInvocables(a.invocables) }),
         });
         const byName = new Map(
           list.map((a) => [

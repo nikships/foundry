@@ -172,9 +172,80 @@ export interface AgentDef {
   /** Empty = droid's default tool set for that model. */
   tools?: string[];
   disabledTools?: string[];
+  /**
+   * Which host-installed invocables this agent may reach. Absent or empty means
+   * none: a Foundry agent inherits nothing from the operator's `~/.factory`
+   * unless it was named here. Selection is per-agent and per-session; the host
+   * install is never edited to satisfy it.
+   */
+  invocables?: AgentInvocables;
   color: string;
   emblem?: string;
   builtin?: boolean;
+}
+
+/**
+ * Per-agent opt-in to host-installed skills, custom Droids, and MCP servers,
+ * plus the operator's own Foundry-defined MCP servers.
+ *
+ * Every list is an allowlist of ids, and the default for all four is empty —
+ * the whole point of the type is that a new agent starts with nothing. The
+ * lists name inventory ids, not paths: what an id resolves to is main's
+ * business (see `readHostInvocables`), so a moved install does not rewrite a
+ * roster.
+ */
+export interface AgentInvocables {
+  /** Host skill ids (the directory name under `~/.factory/skills`). */
+  skills: string[];
+  /** Host custom Droid ids (the file stem under `~/.factory/droids`). */
+  droids: string[];
+  /** Server names from the host's own `~/.factory/mcp.json`. */
+  hostMcpServers: string[];
+  /** `UserMcpServer.id`s from `AppSettings.mcpServers`. */
+  userMcpServers: string[];
+}
+
+/** One host-installed skill, as read off disk for the roster picker. */
+export interface HostSkillInfo {
+  id: string;
+  name: string;
+  description: string;
+  /** Absolute path to the skill directory, shown so an operator can audit it. */
+  location: string;
+}
+
+/** One host-installed custom Droid. */
+export interface HostDroidInfo {
+  id: string;
+  name: string;
+  description: string;
+  location: string;
+}
+
+/** One MCP server defined in the host's `~/.factory/mcp.json`. */
+export interface HostMcpServerInfo {
+  /** The key under `mcpServers`, which is also the server name on the wire. */
+  id: string;
+  name: string;
+  transport: 'stdio' | 'http' | 'sse' | 'unknown';
+  /** `command` for stdio, `url` for http/sse — for display only. */
+  detail: string;
+  /** True when the host file marks it disabled; it is never offered as enabled. */
+  disabled: boolean;
+}
+
+/**
+ * Everything the operator has installed on the host, read-only. Foundry offers
+ * these for per-agent selection and never creates, edits, or deletes them.
+ */
+export interface HostInvocableInventory {
+  skills: HostSkillInfo[];
+  droids: HostDroidInfo[];
+  mcpServers: HostMcpServerInfo[];
+  /** Absolute path of the host config dir the inventory was read from. */
+  factoryDir: string;
+  /** Present when a part of the inventory could not be read. */
+  warnings: string[];
 }
 
 // ── Settings ─────────────────────────────────────────────────────────────────

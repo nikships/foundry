@@ -5,7 +5,7 @@
  * Scripted TransportSession stand-ins — no real daemon, no API key, no model.
  */
 
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -14,7 +14,7 @@ import type { TransportSession, SessionTool } from '../src/main/droid/sdk/transp
 import type { TurnResult } from '../src/main/droid/turn.js';
 import { openDb, projectDbPath, projectRunsDir } from '../src/main/trace/db.js';
 import { Tracer } from '../src/main/trace/tracer.js';
-import type { AgentDef } from '../src/shared/types.js';
+import type { AgentDef, HostInvocableInventory } from '../src/shared/types.js';
 
 const agent: AgentDef = {
   name: 'scout',
@@ -408,5 +408,96 @@ describe('AgentSession transport selection', () => {
     expect(modes).toEqual(['rpc']);
     expect(tracer.run(runId)!.mode).toBe('rpc');
     await session.close();
+  });
+  /**
+   * Per-agent host isolation, at the session level: the overlay is built before
+   * the first turn spawns anything, the operator is told what was withheld, and
+   * the temp directory is gone once the session closes.
+   */
+  describe('host invocable isolation', () => {
+    function inventoryWith(overrides: Partial<HostInvocableInventory> = {}): HostInvocableInventory {
+      return {
+        skills: [],
+        droids: [],
+        mcpServers: [],
+        factoryDir: '/fake/.factory',
+        warnings: [],
+        ...overrides,
+      };
+    }
+
+    it('builds an ephemeral home, traces what it withheld, and removes it on close', async () => {
+      beginRun('rpc');
+      const home = mkdtempSync(join(tmpdir(), 'foundry-iso-home-'));
+      const overlayRoot = mkdtempSync(join(tmpdir(), 'foundry-iso-tmp-'));
+      mkdirSync(join(home, '.factory', 'droids'), { recursive: true });
+      writeFileSync(join(home, '.factory', 'droids', 'reviewer.md'), '# reviewer\n', 'utf8');
+
+      const rpc = scriptedSession({ id: 'rpc-iso' });
+      const session = makeSession({
+        transport: 'subprocess',
+        openRpcSession: async () => rpc,
+        overlayHomeDir: home,
+        overlayTmpRoot: overlayRoot,
+        hostInvocables: inventoryWith({
+          droids: [
+            {
+              id: 'reviewer',
+              name: 'reviewer',
+              description: 'reviews',
+              location: join(home, '.factory', 'droids', 'reviewer.md'),
+            },
+          ],
+        }),
+      });
+
+      const phaseId = tracer.openPhase({
+        runId,
+        seq: 0,
+        name: 'scout',
+        kind: 'agent',
+        owner: 'scout',
+        description: 'd',
+      });
+      await session.send('hello', { phaseId });
+
+      // The overlay exists while the session does.
+      expect(readdirSync(overlayRoot).some((d) => d.startsWith('foundry-home-'))).toBe(true);
+      const isolation = tracer
+        .eventsAfter(runId, 0, 1000)
+        .filter((e) => e.name.includes('isolation'));
+      expect(isolation.length).toBe(1);
+      expect(JSON.stringify(isolation[0]!.payload)).toContain('reviewer');
+
+      await session.close();
+      // …and not after.
+      expect(readdirSync(overlayRoot).some((d) => d.startsWith('foundry-home-'))).toBe(false);
+    });
+
+    it('builds nothing on a host with nothing to withhold', async () => {
+      beginRun('rpc');
+      const overlayRoot = mkdtempSync(join(tmpdir(), 'foundry-iso-none-'));
+      const rpc = scriptedSession({ id: 'rpc-clean' });
+      const session = makeSession({
+        transport: 'subprocess',
+        openRpcSession: async () => rpc,
+        overlayTmpRoot: overlayRoot,
+        hostInvocables: inventoryWith(),
+      });
+      const phaseId = tracer.openPhase({
+        runId,
+        seq: 0,
+        name: 'scout',
+        kind: 'agent',
+        owner: 'scout',
+        description: 'd',
+      });
+      await session.send('hello', { phaseId });
+      expect(readdirSync(overlayRoot)).toEqual([]);
+      expect(tracer.eventsAfter(runId, 0, 1000).filter((e) => e.name.includes('isolation'))).toEqual(
+        [],
+      );
+      await session.close();
+    });
   });
 });

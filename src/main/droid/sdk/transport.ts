@@ -64,6 +64,18 @@ export interface TransportSessionOptions {
   restrictTools?: string[];
   disabledTools?: string[];
   userMcpServers?: UserMcpServer[];
+  /**
+   * Host skills this agent did not select. Their tool ids are resolved off the
+   * live tool list and added to the disabled complement, because a skill cannot
+   * be withheld at spawn time the way a Droid or an MCP server can.
+   */
+  hiddenSkills?: { id: string; name: string }[];
+  /**
+   * Env overrides for anything this session spawns — the ephemeral `HOME` of a
+   * `FactoryHomeOverlay` when this agent runs with host Droids or MCP servers
+   * withheld. Absent means the session spawns with the app's own env.
+   */
+  spawnEnvOverrides?: Record<string, string>;
   onPermission: (ask: PermissionAsk) => PermissionDecision | Promise<PermissionDecision>;
   onNotification?: (n: DroidNotification) => void;
   onExit?: (code: number | null) => void;

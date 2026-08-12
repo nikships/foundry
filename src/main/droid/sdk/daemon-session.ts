@@ -37,6 +37,7 @@ import {
 import { INHERIT_MODEL, type TurnOptions, type TurnResult } from '../turn.js';
 import { DroidProtocolError } from './errors.js';
 import { createFoundryMcpServer, FOUNDRY_TOOL_IDS, type FoundryMcpContext } from './mcp-tools.js';
+import { hiddenSkillToolIds } from '../invocables.js';
 import {
   toAskUserAsk,
   toAskUserResult,
@@ -615,7 +616,8 @@ export class DaemonSession implements TransportSession {
     if (!handle) return;
     const allow = this.opts.restrictTools;
     const explicit = this.opts.disabledTools ?? [];
-    if (!allow?.length && !explicit.length) return;
+    const hiddenSkills = this.opts.hiddenSkills ?? [];
+    if (!allow?.length && !explicit.length && !hiddenSkills.length) return;
 
     const allowed = new Set([...(allow ?? []), ...FOUNDRY_TOOL_IDS]);
     const listed = this.opts.sessions.listTools
@@ -623,12 +625,16 @@ export class DaemonSession implements TransportSession {
       : [];
     // Without a tool list the complement cannot be computed; only apply
     // explicit disables rather than accidentally disabling nothing under a
-    // restricted roster.
+    // restricted roster. AgentSession does not route a skill-hiding agent here
+    // for that reason — it fails closed to subprocess instead.
     const complement =
       allow?.length && listed.length > 0
         ? listed.map((t) => t.id).filter((id) => !allowed.has(id))
         : [];
-    const disabled = [...new Set([...complement, ...explicit])].sort();
+    const skillIds = listed.length ? hiddenSkillToolIds(listed, hiddenSkills) : [];
+    const disabled = [...new Set([...complement, ...explicit, ...skillIds])]
+      .filter((id) => !FOUNDRY_TOOL_IDS.includes(id))
+      .sort();
 
     if (this.appliedDisabledTools?.join('\u0000') === disabled.join('\u0000')) return;
     this.appliedDisabledTools = disabled;
@@ -637,7 +643,9 @@ export class DaemonSession implements TransportSession {
   }
 
   private scheduleToolPolicy(): void {
-    if (!this.opts.restrictTools?.length || this.toolRefresh) return;
+    if ((!this.opts.restrictTools?.length && !this.opts.hiddenSkills?.length) || this.toolRefresh) {
+      return;
+    }
     const timer = setTimeout(() => {
       this.toolRefresh = null;
       // Background reconciliation: same justification as SdkSession — swallow to

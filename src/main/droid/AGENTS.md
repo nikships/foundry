@@ -45,7 +45,8 @@ npx vitest run tests/agent-session-transport.test.ts
 
 - `protocol.ts` is types/constants, not a hand-rolled JSON-RPC client.
 - Auth never writes or logs the secret; daemon fallback traces `log` with `fallback to subprocess: <reason>` (warning span).
-- Tool allowlists are a complement via `disabledToolIds`, verified by `listTools()`. `ToolSearch` remains available; Foundry's two MCP tools are always allowed. Attachments can lag `mcp_status_changed`, so recomputation is scheduled, not immediate. Foundry MCP tools use the SDK's nested `zod@3` and are attached at session create/resume — never by writing `~/.factory/mcp.json`.
+- Tool allowlists are a complement via `disabledToolIds`, verified by `listTools()`. `ToolSearch` remains available; Foundry's two MCP tools are always allowed.
+- **Host invocables are opt-in per agent.** `invocables.ts` reads `~/.factory` (skills, custom Droids, `mcp.json`) as a read-only inventory; `AgentDef.invocables` is an allowlist of ids that defaults to empty, so an agent inherits nothing from the operator's install. Skills are withheld with the settings complement; Droids and host MCP servers are withheld by spawning against a `FactoryHomeOverlay` (`factory-home.ts`) — a temp `$HOME` of symlinks whose `.factory` keeps auth/settings/sessions but carries only the selected `droids/` and a rewritten `mcp.json`. Nothing writes the host install. The daemon fails closed (shared process, one env) for any agent that needs either mechanism, exactly as it does for `restrictTools`. Attachments can lag `mcp_status_changed`, so recomputation is scheduled, not immediate. Foundry MCP tools use the SDK's nested `zod@3` and are attached at session create/resume — never by writing `~/.factory/mcp.json`.
 
 ## Protocol and Policy Landmines
 

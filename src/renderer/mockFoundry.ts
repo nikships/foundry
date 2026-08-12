@@ -378,6 +378,44 @@ export function createMockFoundryApi(): FoundryApi {
         },
       ],
       tools: async () => [],
+      // Web preview has no host to read, so the inventory is a small fixture:
+      // enough for the roster's selection UI to be designed against, and empty
+      // of anything that could imply the preview reached a real `~/.factory`.
+      invocables: async () => ({
+        skills: [
+          {
+            id: 'foundry-ui',
+            name: 'foundry-ui',
+            description: 'Design conventions for Foundry screens.',
+            location: '~/.factory/skills/foundry-ui',
+          },
+          {
+            id: 'pdf-forms',
+            name: 'pdf-forms',
+            description: 'Fill and flatten PDF forms.',
+            location: '~/.factory/skills/pdf-forms',
+          },
+        ],
+        droids: [
+          {
+            id: 'reviewer',
+            name: 'reviewer',
+            description: 'A second pair of eyes on a diff.',
+            location: '~/.factory/droids/reviewer.md',
+          },
+        ],
+        mcpServers: [
+          {
+            id: 'linear',
+            name: 'linear',
+            transport: 'http' as const,
+            detail: 'https://mcp.linear.app/sse',
+            disabled: false,
+          },
+        ],
+        factoryDir: '~/.factory',
+        warnings: [],
+      }),
       clis: async () => [...CLIS],
       gates: async () => [
         { id: 'artifacts_exist', description: 'Every declared artifact exists.' },

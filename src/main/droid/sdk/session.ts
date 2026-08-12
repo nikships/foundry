@@ -40,6 +40,7 @@ import {
 import { spawnEnv } from '../../system/env.js';
 import { register as registerProc } from '../../system/procs.js';
 import { createFoundryMcpServer, FOUNDRY_TOOL_IDS, type FoundryMcpContext } from './mcp-tools.js';
+import { hiddenSkillToolIds } from '../invocables.js';
 import {
   toAskUserAsk,
   toAskUserResult,
@@ -510,7 +511,9 @@ export class SdkSession implements TransportSession {
       droidExecPath: this.opts.droidPath,
       droidExecExtraArgs: ['--auto', AUTONOMY_LEVEL],
       cwd: this.opts.cwd,
-      env: stringEnv(),
+      // The overlay's HOME lands here: the child resolves ~/.factory inside it,
+      // so unselected Droids and MCP servers are not on disk to be loaded.
+      env: stringEnv(this.opts.spawnEnvOverrides),
     });
     await transport.connect();
     this.owned = transport;
@@ -606,15 +609,25 @@ export class SdkSession implements TransportSession {
     if (!session) return;
     const allow = this.opts.restrictTools;
     const explicit = this.opts.disabledTools ?? [];
-    if (!allow?.length && !explicit.length) return;
+    const hiddenSkills = this.opts.hiddenSkills ?? [];
+    if (!allow?.length && !explicit.length && !hiddenSkills.length) return;
 
     // Foundry MCP tools stay available under a restricted roster: the allow
     // set is the roster list extended with the wire ids listTools reports.
     const allowed = new Set([...(allow ?? []), ...FOUNDRY_TOOL_IDS]);
+    // One read serves both subtractions: the allowlist complement and the host
+    // skills this agent did not select.
+    const listed = allow?.length || hiddenSkills.length ? await session.listTools() : [];
     const complement = allow?.length
-      ? (await session.listTools()).map((t) => t.id).filter((id) => !allowed.has(id))
+      ? listed.map((t) => t.id).filter((id) => !allowed.has(id))
       : [];
-    const disabled = [...new Set([...complement, ...explicit])].sort();
+    const skillIds = hiddenSkillToolIds(listed, hiddenSkills);
+    const disabled = [...new Set([...complement, ...explicit, ...skillIds])]
+      // The two Foundry tools are allowed under every policy; a skill or
+      // allowlist subtraction must never be able to take the run's own
+      // progress reporting away.
+      .filter((id) => !FOUNDRY_TOOL_IDS.includes(id))
+      .sort();
 
     if (this.appliedDisabledTools?.join('\u0000') === disabled.join('\u0000')) return;
     this.appliedDisabledTools = disabled;
@@ -627,7 +640,11 @@ export class SdkSession implements TransportSession {
    * announces its server — so the recompute is scheduled, not immediate.
    */
   private scheduleToolPolicy(): void {
-    if (!this.opts.restrictTools?.length || this.toolRefresh) return;
+    // A skill's tool attaches on the same lag an MCP server's does, so a
+    // hidden-skill policy needs the same scheduled recompute an allowlist does.
+    if ((!this.opts.restrictTools?.length && !this.opts.hiddenSkills?.length) || this.toolRefresh) {
+      return;
+    }
     const timer = setTimeout(() => {
       this.toolRefresh = null;
       // Background reconciliation: failure is not surfaced to the turn — the
@@ -738,9 +755,9 @@ function mapUserMcpToSdk(s: UserMcpServer): McpServerConfig {
 }
 
 /** ProcessTransport wants a defined-valued env; `process.env` does not have one. */
-function stringEnv(): Record<string, string> {
+function stringEnv(overrides?: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(spawnEnv())) {
+  for (const [key, value] of Object.entries(spawnEnv(overrides))) {
     if (typeof value === 'string') out[key] = value;
   }
   return out;

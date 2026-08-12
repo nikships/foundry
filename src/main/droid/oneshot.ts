@@ -31,6 +31,13 @@ export interface OneShotOptions {
   reasoningEffort: ReasoningEffort;
   restrictTools?: string[];
   disabledTools?: string[];
+  /**
+   * Env overrides for every turn's child — the ephemeral `HOME` of a
+   * `FactoryHomeOverlay` when host Droids or MCP servers are withheld. One-shot
+   * spawns its own child per turn, so the overlay applies here as directly as it
+   * does to the subprocess transport.
+   */
+  env?: Record<string, string>;
   /** Operator-supplied flags for this vendor, appended to every turn. */
   extraArgs?: string[];
   /** Run id for procs-register so killRun and session.kill overlap. */
@@ -177,7 +184,7 @@ export class OneShotClient {
     return new Promise((resolve) => {
       const child = spawn(this.opts.cliPath, args, {
         cwd: this.opts.cwd,
-        env: spawnEnv(),
+        env: spawnEnv(this.opts.env),
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       this.lastPid = child.pid;

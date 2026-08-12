@@ -3,6 +3,7 @@ import {
   BUILTIN_ENVELOPE_BLURBS,
   BUILTIN_ENVELOPE_KINDS,
   type AgentDef,
+  type AgentInvocables,
   type ModelInfo,
   type ValidationIssue,
 } from '@shared/types.js';
@@ -12,6 +13,7 @@ import AgentAvatar from '../components/AgentAvatar.js';
 import { CliIcon } from '../components/BrandIcon.js';
 import ModelPicker from '../components/ModelPicker.js';
 import BoundaryEditor from '../components/BoundaryEditor.js';
+import InvocablePicker from '../components/InvocablePicker.js';
 import PromptPreview from '../components/PromptPreview.js';
 import { Dropdown, type DropdownOption } from '../components/ui/Dropdown.js';
 import { Field, TextInput, Textarea } from '../components/ui/Field.js';
@@ -21,6 +23,18 @@ import { useTablistNav } from '../hooks/useTablistNav.js';
 import styles from './RosterScreen.module.css';
 
 const COLORS = ['#4fa8b8', '#9b7ede', '#d19a3d', '#3cb87a', '#e0605f', '#5b8fd9'];
+
+/**
+ * What an agent with no recorded selection reaches: nothing. Shared rather than
+ * built per render so the picker's prop identity is stable; the picker only ever
+ * reads it and hands back a fresh object.
+ */
+const EMPTY_INVOCABLES: AgentInvocables = {
+  skills: [],
+  droids: [],
+  hostMcpServers: [],
+  userMcpServers: [],
+};
 
 export default function RosterScreen({
   onOpenSettings,
@@ -560,6 +574,25 @@ export default function RosterScreen({
                 <BoundaryEditor
                   value={draft.writes}
                   onChange={(value) => setDraft({ ...draft, writes: value })}
+                />
+              </section>
+
+              {/* ── host invocables ── */}
+              <section className={styles.rosterSection}>
+                <div className={styles.rosterSectionLabel}>
+                  <p className="eyebrow">
+                    <span className="index">05</span>Host invocables
+                  </p>
+                  <p>
+                    Skills, Droids, and MCP servers this agent may reach. Everything is off until
+                    you turn it on, so a pipeline behaves the same on every machine. Your own
+                    install is never modified.
+                  </p>
+                </div>
+                <InvocablePicker
+                  value={draft.invocables ?? EMPTY_INVOCABLES}
+                  userMcpServers={settings?.mcpServers ?? []}
+                  onChange={(invocables) => setDraft({ ...draft, invocables })}
                 />
               </section>
 
