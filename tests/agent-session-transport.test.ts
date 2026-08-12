@@ -415,7 +415,9 @@ describe('AgentSession transport selection', () => {
    * the temp directory is gone once the session closes.
    */
   describe('host invocable isolation', () => {
-    function inventoryWith(overrides: Partial<HostInvocableInventory> = {}): HostInvocableInventory {
+    function inventoryWith(
+      overrides: Partial<HostInvocableInventory> = {},
+    ): HostInvocableInventory {
       return {
         skills: [],
         droids: [],
@@ -494,9 +496,9 @@ describe('AgentSession transport selection', () => {
       });
       await session.send('hello', { phaseId });
       expect(readdirSync(overlayRoot)).toEqual([]);
-      expect(tracer.eventsAfter(runId, 0, 1000).filter((e) => e.name.includes('isolation'))).toEqual(
-        [],
-      );
+      expect(
+        tracer.eventsAfter(runId, 0, 1000).filter((e) => e.name.includes('isolation')),
+      ).toEqual([]);
       await session.close();
     });
   });

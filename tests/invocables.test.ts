@@ -306,9 +306,9 @@ describe('ephemeral home overlay', () => {
     if (!overlay) throw new Error('expected an overlay');
     made.push(overlay.dir);
     expect(await readdir(join(overlay.dir, '.factory', 'droids'))).toEqual(['reviewer.md']);
-    expect(await readFile(join(overlay.dir, '.factory', 'droids', 'reviewer.md'), 'utf8')).toContain(
-      'Reviews diffs.',
-    );
+    expect(
+      await readFile(join(overlay.dir, '.factory', 'droids', 'reviewer.md'), 'utf8'),
+    ).toContain('Reviews diffs.');
   });
 
   it('writes an explicit empty server map when the host file is unreadable', async () => {
