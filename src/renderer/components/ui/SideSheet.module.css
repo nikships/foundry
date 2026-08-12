@@ -1,9 +1,13 @@
+/* Sits above App.module.css's fixed titlebar (z-50). `overflow: hidden` clips
+   the panel while it is still translated off-screen right, so no ancestor can
+   be scrolled sideways to chase it during the slide-in. */
 .overlay {
   position: absolute;
   inset: 0;
-  z-index: 50;
+  z-index: 60;
   display: flex;
   justify-content: flex-end;
+  overflow: hidden;
   background: rgba(2, 2, 2, 0.6);
   animation: fade var(--fast) var(--ease);
 }
@@ -17,6 +21,11 @@
   }
 }
 
+/* The panel runs the full window height, so its header overlaps the titlebar's
+   -webkit-app-region: drag strip. Electron builds that region from the layout
+   tree and ignores pointer-events, so the strip eats clicks on the close button
+   unless this surface explicitly opts out. Scoped to the panel rather than the
+   overlay so the window is still draggable beside the sheet. */
 .panel {
   display: flex;
   flex-direction: column;
@@ -26,6 +35,7 @@
   background: var(--bg-panel);
   border-left: 1px solid var(--line-strong);
   animation: slideIn var(--normal) var(--ease);
+  -webkit-app-region: no-drag;
 }
 
 @keyframes slideIn {

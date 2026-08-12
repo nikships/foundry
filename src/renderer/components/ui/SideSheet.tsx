@@ -31,7 +31,10 @@ export function SideSheet({
   useEscapeToClose(onClose, open);
 
   useEffect(() => {
-    if (open) closeRef.current?.focus();
+    // preventScroll: the panel is still translated off-screen right on this
+    // tick, and a focus scroll-into-view would drag the whole shell sideways
+    // and snap it back when the slide-in resolves.
+    if (open) closeRef.current?.focus({ preventScroll: true });
   }, [open]);
 
   if (!open) return null;
