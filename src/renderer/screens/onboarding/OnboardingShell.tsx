@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CliIcon } from '../../components/BrandIcon.js';
+import { DroidGlyph } from '../../components/BrandIcon.js';
 import { OnboardingProvider } from './OnboardingContext.js';
 import { Stepper } from './shared.js';
 import { useOnboarding } from './OnboardingContext.js';
@@ -31,7 +31,7 @@ function OnboardingShellInner(): React.JSX.Element {
       </div>
       <header className="ob-top">
         <div className="ob-brand" aria-hidden>
-          <CliIcon vendor="droid" size={13} />
+          <DroidGlyph size={13} />
           <span>Foundry</span>
         </div>
         <Stepper
