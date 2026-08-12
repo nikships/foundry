@@ -25,7 +25,12 @@ import {
   type RequestPermissionRequestParams,
   type StringFramedDroidClientTransport,
 } from '@factory/droid-sdk/node';
-import type { ContextBreakdown, ReasoningEffort, UserMcpServer } from '@shared/types.js';
+import type {
+  ContextBreakdown,
+  ReasoningEffort,
+  ToolPolicySpec,
+  UserMcpServer,
+} from '@shared/types.js';
 import type { McpServerConfig } from '@factory/droid-sdk/node';
 import { INHERIT_MODEL, type TurnOptions, type TurnResult } from '../turn.js';
 import { DroidProtocolError } from './errors.js';
@@ -40,7 +45,7 @@ import {
 import { spawnEnv } from '../../system/env.js';
 import { register as registerProc } from '../../system/procs.js';
 import { createFoundryMcpServer, FOUNDRY_TOOL_IDS, type FoundryMcpContext } from './mcp-tools.js';
-import { hiddenSkillToolIds } from '../invocables.js';
+import { agentPolicy, effectiveDisabledToolIds, isRestrictive } from '../tool-profiles.js';
 import {
   toAskUserAsk,
   toAskUserResult,
@@ -110,6 +115,8 @@ export class SdkSession implements TransportSession {
   /** Set once the roster's model has been refused and given up on. */
   private modelRefused = false;
   private appliedDisabledTools: string[] | null = null;
+  /** The narrowing the phase currently running asked for, if any. */
+  private phasePolicy: ToolPolicySpec | null = null;
   private toolRefresh: NodeJS.Timeout | null = null;
   private toolRefreshDelay = 0;
   /** Kept so a kill that skips session.close still tears the HTTP listener down. */
@@ -453,6 +460,12 @@ export class SdkSession implements TransportSession {
     this.settings = { ...this.settings, ...successor.settings };
     const applied = await this.applySettings();
     if (applied.warning) this.opts.onModelWarning?.(applied.warning);
+    // A successor is a different session id carrying default settings: the
+    // disabled set applied to the retired handle did not come with it. Clearing
+    // the memo is what makes the re-apply actually reach the wire — without it
+    // a compaction silently hands a restricted agent its full tool surface back.
+    this.appliedDisabledTools = null;
+    await this.applyToolPolicy();
   }
 
   /**
@@ -598,6 +611,22 @@ export class SdkSession implements TransportSession {
     return `${this.opts.model} was refused (${reason}); this session runs on ${fallback}`;
   }
 
+  /** This agent's authored policy; `restrictTools` still means `custom`. */
+  private agentPolicy(): ToolPolicySpec {
+    return this.opts.toolPolicy ?? agentPolicy({ tools: this.opts.restrictTools });
+  }
+
+  /**
+   * Narrow to the phase about to run. Re-applied immediately so the turn cannot
+   * start under the previous phase's wider policy.
+   */
+  async setPhaseToolPolicy(policy: ToolPolicySpec | null): Promise<void> {
+    const before = JSON.stringify(this.phasePolicy ?? null);
+    this.phasePolicy = policy;
+    if (JSON.stringify(policy ?? null) === before) return;
+    await this.applyToolPolicy();
+  }
+
   /**
    * The SDK is subtractive only (`restrictToolIds` is stripped by its public
    * schemas), so an allowlist becomes its complement. `updateSettings` accepts
@@ -607,27 +636,30 @@ export class SdkSession implements TransportSession {
   private async applyToolPolicy(): Promise<void> {
     const session = this.session;
     if (!session) return;
-    const allow = this.opts.restrictTools;
     const explicit = this.opts.disabledTools ?? [];
     const hiddenSkills = this.opts.hiddenSkills ?? [];
-    if (!allow?.length && !explicit.length && !hiddenSkills.length) return;
+    const agent = this.agentPolicy();
+    const phase = this.phasePolicy;
+    if (
+      !isRestrictive(agent) &&
+      !isRestrictive(phase) &&
+      !explicit.length &&
+      !hiddenSkills.length
+    ) {
+      return;
+    }
 
-    // Foundry MCP tools stay available under a restricted roster: the allow
-    // set is the roster list extended with the wire ids listTools reports.
-    const allowed = new Set([...(allow ?? []), ...FOUNDRY_TOOL_IDS]);
-    // One read serves both subtractions: the allowlist complement and the host
-    // skills this agent did not select.
-    const listed = allow?.length || hiddenSkills.length ? await session.listTools() : [];
-    const complement = allow?.length
-      ? listed.map((t) => t.id).filter((id) => !allowed.has(id))
-      : [];
-    const skillIds = hiddenSkillToolIds(listed, hiddenSkills);
-    const disabled = [...new Set([...complement, ...explicit, ...skillIds])]
-      // The two Foundry tools are allowed under every policy; a skill or
-      // allowlist subtraction must never be able to take the run's own
-      // progress reporting away.
-      .filter((id) => !FOUNDRY_TOOL_IDS.includes(id))
-      .sort();
+    // One read serves every subtraction: the profile complement, the phase
+    // narrowing, and the host skills this agent did not select.
+    const listed = await session.listTools();
+    const disabled = effectiveDisabledToolIds({
+      tools: listed,
+      agent,
+      phase,
+      explicitDisabled: explicit,
+      hiddenSkills,
+      alwaysAllow: FOUNDRY_TOOL_IDS,
+    });
 
     if (this.appliedDisabledTools?.join('\u0000') === disabled.join('\u0000')) return;
     this.appliedDisabledTools = disabled;
@@ -640,11 +672,13 @@ export class SdkSession implements TransportSession {
    * announces its server — so the recompute is scheduled, not immediate.
    */
   private scheduleToolPolicy(): void {
-    // A skill's tool attaches on the same lag an MCP server's does, so a
-    // hidden-skill policy needs the same scheduled recompute an allowlist does.
-    if ((!this.opts.restrictTools?.length && !this.opts.hiddenSkills?.length) || this.toolRefresh) {
-      return;
-    }
+    // A skill's tool and an MCP server's tool attach on the same lag, so every
+    // subtractive policy needs the same scheduled recompute an allowlist does.
+    const narrows =
+      isRestrictive(this.agentPolicy()) ||
+      isRestrictive(this.phasePolicy) ||
+      !!this.opts.hiddenSkills?.length;
+    if (!narrows || this.toolRefresh) return;
     const timer = setTimeout(() => {
       this.toolRefresh = null;
       // Background reconciliation: failure is not surfaced to the turn — the

@@ -28,6 +28,7 @@ import type {
   UserMcpServer,
 } from '@shared/types.js';
 import { emptyInventory } from '../droid/invocables.js';
+import { phasePolicy } from '../droid/tool-profiles.js';
 import type { Tracer } from '../trace/tracer.js';
 import { AgentSession, KILLED_DETAIL, type InterruptRequest, type Mode } from '../droid/agent.js';
 import { decideAcceptance } from './acceptance.js';
@@ -402,6 +403,7 @@ export class Executor {
       // globally-disabled ones are dropped here because no agent can select one.
       userMcpServers: this.deps.mcpServers.filter((s) => !s.disabled),
       hostInvocables: this.hostInvocables,
+      hasPhaseToolPolicy: this.narrowsSomePhase(agent.name),
       onModeChange: (mode) => {
         this.mode = mode;
         this.deps.tracer.setRunMode(this.deps.runId, mode);
@@ -409,6 +411,19 @@ export class Executor {
     });
     this.sessions.set(agent.name, session);
     return session;
+  }
+
+  /**
+   * Whether any phase this agent owns narrows its tools.
+   *
+   * Asked before the session opens, because a transport that cannot enforce a
+   * narrowing has to be ruled out up front — discovering it at the phase that
+   * needs it would mean either failing that phase or running it wide.
+   */
+  private narrowsSomePhase(agentName: string): boolean {
+    return this.deps.pipeline.phases.some(
+      (phase) => phase.agent === agentName && phasePolicy(phase) !== null,
+    );
   }
 
   /**

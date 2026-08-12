@@ -91,6 +91,15 @@ export interface PhaseDef {
   /** On failure, hand the evidence back to this earlier agent phase. */
   feedbackTo?: string;
   feedbackRetries?: number;
+  /**
+   * Narrows the agent's tool surface for this phase only. A phase can subtract
+   * from what the agent may reach and never add to it: a `full` phase under a
+   * `read-only` agent is still read-only. Absent means the agent's own policy
+   * stands.
+   */
+  toolProfile?: ToolProfile;
+  /** Allowlist for a `custom` phase profile, and a narrowing on its own. */
+  tools?: string[];
   /** Engineer phases: what the sheet asks the human. */
   question?: string;
   timeoutMs?: number;
@@ -173,6 +182,12 @@ export interface AgentDef {
   tools?: string[];
   disabledTools?: string[];
   /**
+   * How wide this agent's system tool surface is. Absent reads as `full`, so a
+   * roster written before profiles existed — and every built-in — behaves
+   * exactly as it did. `custom` takes its allowlist from `tools`.
+   */
+  toolProfile?: ToolProfile;
+  /**
    * Which host-installed invocables this agent may reach. Absent or empty means
    * none: a Foundry agent inherits nothing from the operator's `~/.factory`
    * unless it was named here. Selection is per-agent and per-session; the host
@@ -182,6 +197,34 @@ export interface AgentDef {
   color: string;
   emblem?: string;
   builtin?: boolean;
+}
+
+/**
+ * How much of the CLI's own tool surface an agent or a phase may reach.
+ *
+ * The three named profiles are defined against the categories the CLI reports
+ * for its live tool list, not against a list of tool names, so a tool that
+ * ships later — or arrives from an MCP server mid-session — is classified
+ * rather than missed:
+ *
+ *  - `full`     — everything the model would have had anyway. The default.
+ *  - `read-only`— reading only. No edits, no commands.
+ *  - `review`   — reading plus running commands, so a reviewer can execute the
+ *                 tests it is judging, but cannot change the tree.
+ *  - `custom`   — exactly the ids named in `tools`, and nothing else.
+ */
+export type ToolProfile = 'full' | 'read-only' | 'review' | 'custom';
+
+/**
+ * A tool policy as authored: a profile, plus the allowlist `custom` needs.
+ *
+ * A phase carries the same shape as an agent, and a phase's policy can only
+ * ever narrow the agent's — see `effectiveDisabledToolIds`.
+ */
+export interface ToolPolicySpec {
+  profile?: ToolProfile;
+  /** Tool ids for `custom`. Ignored by the other profiles. */
+  allow?: string[];
 }
 
 /**

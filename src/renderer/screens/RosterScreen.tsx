@@ -14,6 +14,7 @@ import { CliIcon } from '../components/BrandIcon.js';
 import ModelPicker from '../components/ModelPicker.js';
 import BoundaryEditor from '../components/BoundaryEditor.js';
 import InvocablePicker from '../components/InvocablePicker.js';
+import ToolProfilePicker from '../components/ToolProfilePicker.js';
 import PromptPreview from '../components/PromptPreview.js';
 import { Dropdown, type DropdownOption } from '../components/ui/Dropdown.js';
 import { Field, TextInput, Textarea } from '../components/ui/Field.js';
@@ -577,11 +578,31 @@ export default function RosterScreen({
                 />
               </section>
 
+              {/* ── system tools ── */}
+              <section className={styles.rosterSection}>
+                <div className={styles.rosterSectionLabel}>
+                  <p className="eyebrow">
+                    <span className="index">05</span>System tools
+                  </p>
+                  <p>
+                    How much of the CLI&apos;s own tool surface this agent may reach. A pipeline
+                    phase can narrow this further, never widen it.
+                  </p>
+                </div>
+                <ToolProfilePicker
+                  vendor={draftCli}
+                  model={draft.model}
+                  profile={draft.toolProfile}
+                  tools={draft.tools}
+                  onChange={(next) => setDraft({ ...draft, ...next })}
+                />
+              </section>
+
               {/* ── host invocables ── */}
               <section className={styles.rosterSection}>
                 <div className={styles.rosterSectionLabel}>
                   <p className="eyebrow">
-                    <span className="index">05</span>Host invocables
+                    <span className="index">06</span>Host invocables
                   </p>
                   <p>
                     Skills, Droids, and MCP servers this agent may reach. Everything is off until

@@ -46,6 +46,10 @@ export const agentSchema = z.object({
     .optional(),
   tools: z.array(z.string()).optional(),
   disabledTools: z.array(z.string()).optional(),
+  // Absent reads as `full`, so every built-in and every pre-profile roster keeps
+  // the tool surface it had. An unknown value is rejected rather than coerced:
+  // guessing which profile an operator meant is how least privilege gets wider.
+  toolProfile: z.enum(['full', 'read-only', 'review', 'custom']).optional(),
   // Host invocables are opt-in per agent. The whole object is optional and each
   // list defaults to empty, so a roster written before this field existed reads
   // as "nothing enabled" — the closed default, not a silent grant.

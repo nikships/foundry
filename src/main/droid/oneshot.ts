@@ -65,6 +65,13 @@ export class OneShotClient {
   private sessionId: string | null = null;
   private lastPid: number | undefined;
   private readonly adapter: CliAdapter;
+  /**
+   * Allowlist for the turn about to run, when a profile or phase narrows this
+   * agent. One-shot has no session to enumerate tools with, so the narrowing
+   * travels as `--restrict-tools`: an allowlist, which can only ever admit less
+   * than intended and never more.
+   */
+  private narrowed: string[] | null = null;
 
   constructor(private readonly opts: OneShotOptions) {
     this.adapter = adapterFor(opts.vendor);
@@ -72,6 +79,15 @@ export class OneShotClient {
 
   get id(): string | null {
     return this.sessionId;
+  }
+
+  /**
+   * Set the allowlist every subsequent turn spawns with. `null` restores the
+   * roster's own `restrictTools`. Applied per turn because argv is rebuilt per
+   * turn — there is no session to update.
+   */
+  setToolAllowlist(ids: string[] | null): void {
+    this.narrowed = ids && ids.length ? [...ids] : null;
   }
 
   get pid(): number | undefined {
@@ -170,7 +186,9 @@ export class OneShotClient {
       model: withModel ? this.opts.model : 'inherit',
       reasoningEffort: withModel ? this.opts.reasoningEffort : 'off',
       sessionId: this.sessionId,
-      restrictTools: this.opts.restrictTools,
+      // The narrowed allowlist wins when a profile or phase asked for one; it is
+      // already the intersection with whatever the roster allowed.
+      restrictTools: this.narrowed ?? this.opts.restrictTools,
       disabledTools: this.opts.disabledTools,
       extraArgs: this.opts.extraArgs,
     }).argv;

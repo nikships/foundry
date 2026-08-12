@@ -12,6 +12,7 @@ import type {
   CliVendor,
   ContextBreakdown,
   HostInvocableInventory,
+  ToolPolicySpec,
   UsageBreakdown,
   UserMcpServer,
 } from '@shared/types.js';
@@ -22,6 +23,7 @@ import {
   needsSkillComplement,
   normalizeInvocables,
 } from './invocables.js';
+import { agentPolicy, describePolicy, isRestrictive, oneShotAllowlist } from './tool-profiles.js';
 import { createFactoryHomeOverlay, type FactoryHomeOverlay } from './factory-home.js';
 import type { Tracer } from '../trace/tracer.js';
 import type { Envelope } from '../engine/envelopes.js';
@@ -49,6 +51,11 @@ export interface AgentTurnContext extends TurnOptions {
   phaseId: string;
   /** Live text tail for the phase panel; a ring buffer, never stored. */
   onText?: (text: string) => void;
+  /**
+   * The phase's tool narrowing, when it authored one. Applied before the turn
+   * starts, so a phase can never run under the previous phase's wider policy.
+   */
+  toolPolicy?: ToolPolicySpec | null;
 }
 
 /**
@@ -98,6 +105,13 @@ export interface AgentSessionDeps {
    * honest reading for a test or a machine with no `~/.factory`.
    */
   hostInvocables?: HostInvocableInventory;
+  /**
+   * True when some phase in this run narrows this agent's tools. Known only to
+   * the engine (it holds the pipeline), and needed at session-open time: a
+   * transport that cannot enforce a narrowing must be ruled out before the first
+   * turn rather than discovered mid-run.
+   */
+  hasPhaseToolPolicy?: boolean;
   /** Test seam: where overlay directories are created. Defaults to the OS temp dir. */
   overlayTmpRoot?: string;
   /** Test seam: the home the overlay mirrors. Defaults to the real one. */
@@ -204,6 +218,10 @@ export class AgentSession {
    * mid-run roster edit must not change what a running session can reach.
    */
   private readonly selection: AgentInvocables;
+  /** This agent's authored tool policy, resolved once from the roster. */
+  private readonly toolPolicy: ToolPolicySpec;
+  /** The narrowing currently in force, so a repeat is not re-applied. */
+  private appliedPhasePolicy: string | null = null;
   /** The ephemeral home for this agent's children, once built. */
   private overlay: FactoryHomeOverlay | null = null;
   /** Memoises the build so concurrent turns cannot race two overlays. */
@@ -214,6 +232,7 @@ export class AgentSession {
     private readonly deps: AgentSessionDeps,
   ) {
     this.selection = normalizeInvocables(this.agent.invocables);
+    this.toolPolicy = agentPolicy(this.agent);
     // Only droid has a JSON-RPC / daemon client. Every other vendor starts in
     // one-shot rather than discovering it by failing a handshake twice.
     if (!adapterFor(this.vendor).supportsRpc) {
@@ -298,6 +317,54 @@ export class AgentSession {
       // agent would silently run with the operator's full host install. Fail the
       // turn instead, and let the memoised rejection stop later turns too.
       throw new Error(`could not isolate host invocables: ${errorMessage(e)}`);
+    }
+  }
+
+  /**
+   * Narrow this agent's tools to what the phase about to run asked for.
+   *
+   * Each transport enforces it differently, and each has a way to be unable to:
+   *
+   *  - **Subprocess / daemon** enforce it through `setPhaseToolPolicy`, which
+   *    recomputes the complement against the live tool list. A transport that
+   *    does not implement the method cannot enforce anything, so a narrowing
+   *    phase fails the turn rather than running with the agent's wider surface.
+   *    Narrowing agents are kept off the daemon up front, so this is the
+   *    backstop rather than the expected path.
+   *  - **One-shot** has no session to update, so the narrowing travels as the
+   *    per-turn `--restrict-tools` allowlist. That is inherently fail-closed: an
+   *    id the profile table does not know about is excluded, never admitted.
+   */
+  private async applyPhaseToolPolicy(phase: ToolPolicySpec | null): Promise<void> {
+    const fingerprint = JSON.stringify(phase ?? null);
+    const changed = fingerprint !== this.appliedPhasePolicy;
+
+    if (this.mode === 'oneshot') {
+      // The allowlist is the intersection of the agent's policy and the phase's.
+      if (changed) this.oneshot?.setToolAllowlist(oneShotAllowlist(this.toolPolicy, phase));
+      this.appliedPhasePolicy = fingerprint;
+      return;
+    }
+
+    const client = this.rpc;
+    if (!client) return;
+    if (!client.setPhaseToolPolicy) {
+      if (!isRestrictive(phase)) {
+        this.appliedPhasePolicy = fingerprint;
+        return;
+      }
+      throw new Error(
+        'this transport cannot enforce a narrower tool policy for this phase; ' +
+          'refusing to run it under the agent policy instead',
+      );
+    }
+    if (!changed) return;
+    await client.setPhaseToolPolicy(phase);
+    this.appliedPhasePolicy = fingerprint;
+    if (isRestrictive(phase)) {
+      this.agentLog('log', 'tools', {
+        message: `tool policy for this phase: ${describePolicy(this.toolPolicy, phase)}`,
+      });
     }
   }
 
@@ -396,6 +463,15 @@ export class AgentSession {
       return {
         ok: false,
         reason: 'daemon cannot enforce restrictTools (no listTools)',
+      };
+    }
+    // A profile or a phase narrowing is the same complement problem the
+    // allowlist above has: it needs a builtin tool list the daemon's high-level
+    // API does not offer, so it must not be attempted here.
+    if (isRestrictive(this.toolPolicy) || this.deps.hasPhaseToolPolicy) {
+      return {
+        ok: false,
+        reason: 'daemon cannot enforce a tool profile (no listTools)',
       };
     }
     // The daemon is one shared process for the whole app, started with the
@@ -513,6 +589,7 @@ export class AgentSession {
       ...this.turnOpts(),
       userMcpServers: this.selectedUserMcpServers(),
       hiddenSkills: this.hiddenSkills(),
+      toolPolicy: this.toolPolicy,
       spawnEnvOverrides: this.overlay?.env,
       onPermission: (ask) => this.decide(ask),
       onNotification: (n) => this.currentFolder?.absorb(n),
@@ -611,6 +688,8 @@ export class AgentSession {
     this.rpc = null;
     this.oneshot = this.buildOneShot();
     this.setMode('oneshot');
+    // A new transport has none of the narrowing the phase asked for.
+    this.appliedPhasePolicy = null;
     this.persistSession();
   }
 
@@ -621,6 +700,7 @@ export class AgentSession {
   private fallbackToSubprocess(reason: string): void {
     if (this.mode === 'rpc' || this.mode === 'oneshot') return;
     this.rpc = null;
+    this.appliedPhasePolicy = null;
     this.agentLog('log', `fallback to subprocess: ${reason}`, {
       reason,
       failures: this.protocolFailures,
@@ -637,6 +717,7 @@ export class AgentSession {
   private async fallDaemonToRpc(reason: string): Promise<void> {
     const dead = this.rpc;
     this.rpc = null;
+    this.appliedPhasePolicy = null;
     await dead?.close().catch(() => undefined);
     this.agentLog('log', `fallback to subprocess: ${reason}`, {
       reason,
@@ -754,6 +835,7 @@ export class AgentSession {
   async send(prompt: string, ctx: AgentTurnContext): Promise<TurnOutcome> {
     this.currentPhaseId = ctx.phaseId;
     await this.ensureStarted();
+    await this.applyPhaseToolPolicy(ctx.toolPolicy ?? null);
 
     const folder = new EventFolder({
       tracer: this.deps.tracer,
@@ -792,6 +874,10 @@ export class AgentSession {
   ): Promise<TurnResult> {
     while (this.isSdkMode && this.rpc) {
       try {
+        // Re-stated per attempt: a daemon→subprocess fall or a restart replaces
+        // the session, and the replacement has none of the narrowing the phase
+        // asked for. Memoised, so an unchanged policy costs nothing.
+        await this.applyPhaseToolPolicy(ctx.toolPolicy ?? null);
         return await this.rpc.send(prompt, this.deps.turnTimeoutMs, {
           outputFormat: ctx.outputFormat,
         });
@@ -830,6 +916,7 @@ export class AgentSession {
   private async restart(): Promise<void> {
     const dead = this.rpc;
     this.rpc = null;
+    this.appliedPhasePolicy = null;
     // The dead session's own child may still be running (a protocol failure is
     // not always process death), and nothing else will reap it once the field
     // is reassigned.

@@ -25,7 +25,12 @@ import {
   type RequestPermissionHandlerResult,
   type RequestPermissionRequestParams,
 } from '@factory/droid-sdk';
-import type { ContextBreakdown, ReasoningEffort, UserMcpServer } from '@shared/types.js';
+import type {
+  ContextBreakdown,
+  ReasoningEffort,
+  ToolPolicySpec,
+  UserMcpServer,
+} from '@shared/types.js';
 import {
   AUTONOMY_LEVEL,
   type AvailableModel,
@@ -37,7 +42,7 @@ import {
 import { INHERIT_MODEL, type TurnOptions, type TurnResult } from '../turn.js';
 import { DroidProtocolError } from './errors.js';
 import { createFoundryMcpServer, FOUNDRY_TOOL_IDS, type FoundryMcpContext } from './mcp-tools.js';
-import { hiddenSkillToolIds } from '../invocables.js';
+import { agentPolicy, effectiveDisabledToolIds, isRestrictive } from '../tool-profiles.js';
 import {
   toAskUserAsk,
   toAskUserResult,
@@ -207,6 +212,8 @@ export class DaemonSession implements TransportSession {
   private droidDefaultModel: string | null = null;
   private modelRefused = false;
   private appliedDisabledTools: string[] | null = null;
+  /** The narrowing the phase currently running asked for, if any. */
+  private phasePolicy: ToolPolicySpec | null = null;
   private toolRefresh: NodeJS.Timeout | null = null;
   private toolRefreshDelay = 0;
   private foundryServer: ReturnType<typeof createFoundryMcpServer> | null = null;
@@ -500,6 +507,11 @@ export class DaemonSession implements TransportSession {
 
     const applied = await this.applySettings();
     if (applied.warning) this.opts.onModelWarning?.(applied.warning);
+    // The successor is a different session id with default settings: the
+    // disabled set applied to the source did not travel with it, and the memo
+    // would suppress a re-apply that produces the same list. Clear, then apply.
+    this.appliedDisabledTools = null;
+    await this.applyToolPolicy();
   }
 
   async close(): Promise<void> {
@@ -611,30 +623,54 @@ export class DaemonSession implements TransportSession {
     return `${this.opts.model} was refused (${reason}); this session runs on ${fallback}`;
   }
 
+  /** This agent's authored policy; `restrictTools` still means `custom`. */
+  private agentPolicy(): ToolPolicySpec {
+    return this.opts.toolPolicy ?? agentPolicy({ tools: this.opts.restrictTools });
+  }
+
+  /**
+   * Narrow to the phase about to run. The daemon can only honour this when its
+   * facade can list tools; AgentSession keeps a narrowing agent off this
+   * transport for exactly that reason, so reaching here without one is a
+   * no-op rather than a silent widening.
+   */
+  async setPhaseToolPolicy(policy: ToolPolicySpec | null): Promise<void> {
+    const before = JSON.stringify(this.phasePolicy ?? null);
+    this.phasePolicy = policy;
+    if (JSON.stringify(policy ?? null) === before) return;
+    await this.applyToolPolicy();
+  }
+
   private async applyToolPolicy(): Promise<void> {
     const handle = this.handle;
     if (!handle) return;
-    const allow = this.opts.restrictTools;
     const explicit = this.opts.disabledTools ?? [];
     const hiddenSkills = this.opts.hiddenSkills ?? [];
-    if (!allow?.length && !explicit.length && !hiddenSkills.length) return;
+    const agent = this.agentPolicy();
+    const phase = this.phasePolicy;
+    if (
+      !isRestrictive(agent) &&
+      !isRestrictive(phase) &&
+      !explicit.length &&
+      !hiddenSkills.length
+    ) {
+      return;
+    }
 
-    const allowed = new Set([...(allow ?? []), ...FOUNDRY_TOOL_IDS]);
+    // Without a tool list no complement can be computed, so only the explicit
+    // disables land. AgentSession does not route a narrowing agent here for that
+    // reason — it fails closed to subprocess instead.
     const listed = this.opts.sessions.listTools
       ? await this.opts.sessions.listTools(handle.id)
       : [];
-    // Without a tool list the complement cannot be computed; only apply
-    // explicit disables rather than accidentally disabling nothing under a
-    // restricted roster. AgentSession does not route a skill-hiding agent here
-    // for that reason — it fails closed to subprocess instead.
-    const complement =
-      allow?.length && listed.length > 0
-        ? listed.map((t) => t.id).filter((id) => !allowed.has(id))
-        : [];
-    const skillIds = listed.length ? hiddenSkillToolIds(listed, hiddenSkills) : [];
-    const disabled = [...new Set([...complement, ...explicit, ...skillIds])]
-      .filter((id) => !FOUNDRY_TOOL_IDS.includes(id))
-      .sort();
+    const disabled = effectiveDisabledToolIds({
+      tools: listed,
+      agent,
+      phase,
+      explicitDisabled: explicit,
+      hiddenSkills,
+      alwaysAllow: FOUNDRY_TOOL_IDS,
+    });
 
     if (this.appliedDisabledTools?.join('\u0000') === disabled.join('\u0000')) return;
     this.appliedDisabledTools = disabled;
@@ -643,9 +679,11 @@ export class DaemonSession implements TransportSession {
   }
 
   private scheduleToolPolicy(): void {
-    if ((!this.opts.restrictTools?.length && !this.opts.hiddenSkills?.length) || this.toolRefresh) {
-      return;
-    }
+    const narrows =
+      isRestrictive(this.agentPolicy()) ||
+      isRestrictive(this.phasePolicy) ||
+      !!this.opts.hiddenSkills?.length;
+    if (!narrows || this.toolRefresh) return;
     const timer = setTimeout(() => {
       this.toolRefresh = null;
       // Background reconciliation: same justification as SdkSession — swallow to

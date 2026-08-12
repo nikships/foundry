@@ -46,6 +46,10 @@ const phaseSchema = z.object({
   feedbackTo: z.string().optional(),
   feedbackRetries: z.number().int().min(0).max(5).optional(),
   question: z.string().optional(),
+  // A phase may narrow the agent's tool surface for its own turns and can never
+  // widen it, so an unexpected value is rejected rather than coerced.
+  toolProfile: z.enum(['full', 'read-only', 'review', 'custom']).optional(),
+  tools: z.array(z.string()).optional(),
   timeoutMs: z.number().int().min(1000).optional(),
   optional: z.boolean().optional(),
 });

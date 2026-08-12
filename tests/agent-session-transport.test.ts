@@ -14,7 +14,7 @@ import type { TransportSession, SessionTool } from '../src/main/droid/sdk/transp
 import type { TurnResult } from '../src/main/droid/turn.js';
 import { openDb, projectDbPath, projectRunsDir } from '../src/main/trace/db.js';
 import { Tracer } from '../src/main/trace/tracer.js';
-import type { AgentDef, HostInvocableInventory } from '../src/shared/types.js';
+import type { AgentDef, HostInvocableInventory, ToolPolicySpec } from '../src/shared/types.js';
 
 const agent: AgentDef = {
   name: 'scout',
@@ -499,6 +499,101 @@ describe('AgentSession transport selection', () => {
       expect(
         tracer.eventsAfter(runId, 0, 1000).filter((e) => e.name.includes('isolation')),
       ).toEqual([]);
+      await session.close();
+    });
+  });
+  /**
+   * Phase narrowing at the session level: the policy reaches the transport that
+   * can enforce it, and a phase that narrows is refused rather than run wide on
+   * one that cannot.
+   */
+  describe('per-phase tool policy', () => {
+    /** A scripted session that records the narrowings it was handed. */
+    function enforcing(): TransportSession & { policies: (ToolPolicySpec | null)[] } {
+      const base = scriptedSession({ id: 'rpc-policy' });
+      const policies: (ToolPolicySpec | null)[] = [];
+      return Object.assign(base, {
+        policies,
+        async setPhaseToolPolicy(policy: ToolPolicySpec | null) {
+          policies.push(policy);
+        },
+      });
+    }
+
+    function phaseId(): string {
+      return tracer.openPhase({
+        runId,
+        seq: 0,
+        name: 'scout',
+        kind: 'agent',
+        owner: 'scout',
+        description: 'd',
+      });
+    }
+
+    it('hands the phase narrowing to a transport that can enforce it', async () => {
+      beginRun('rpc');
+      const rpc = enforcing();
+      const session = makeSession({ transport: 'subprocess', openRpcSession: async () => rpc });
+
+      await session.send('hello', { phaseId: phaseId(), toolPolicy: { profile: 'read-only' } });
+      expect(rpc.policies).toEqual([{ profile: 'read-only' }]);
+
+      // Same policy again is not re-sent; a different one is.
+      await session.send('again', { phaseId: phaseId(), toolPolicy: { profile: 'read-only' } });
+      expect(rpc.policies).toHaveLength(1);
+      await session.send('third', { phaseId: phaseId(), toolPolicy: null });
+      expect(rpc.policies).toEqual([{ profile: 'read-only' }, null]);
+      await session.close();
+    });
+
+    it('refuses a narrowing phase when the transport cannot enforce it', async () => {
+      beginRun('rpc');
+      // No setPhaseToolPolicy: this transport has no way to apply a narrowing.
+      const rpc = scriptedSession({ id: 'rpc-blind' });
+      const session = makeSession({ transport: 'subprocess', openRpcSession: async () => rpc });
+
+      await expect(
+        session.send('hello', { phaseId: phaseId(), toolPolicy: { profile: 'read-only' } }),
+      ).rejects.toThrow(/cannot enforce a narrower tool policy/);
+      // Failing closed means the turn does not run at all.
+      expect(rpc.sendCalls).toBe(0);
+      await session.close();
+    });
+
+    it('leaves a non-narrowing phase alone on the same transport', async () => {
+      beginRun('rpc');
+      const rpc = scriptedSession({ id: 'rpc-plain' });
+      const session = makeSession({ transport: 'subprocess', openRpcSession: async () => rpc });
+      const outcome = await session.send('hello', { phaseId: phaseId(), toolPolicy: null });
+      expect(outcome.text).toBe('ok');
+      expect(rpc.sendCalls).toBe(1);
+      await session.close();
+    });
+
+    it('keeps a profiled agent off the daemon, which cannot enforce it', async () => {
+      beginRun('daemon');
+      let daemonOpens = 0;
+      const rpc = enforcing();
+      const session = makeSession({
+        agent: { ...agent, toolProfile: 'read-only' },
+        transport: 'daemon',
+        // Production would consult openDaemonProduction, which fails closed for a
+        // profile; the seam stands in for it so the decision is observable here.
+        openDaemonSession: async () => {
+          daemonOpens += 1;
+          return { ok: false, reason: 'daemon cannot enforce a tool profile (no listTools)' };
+        },
+        openRpcSession: async () => rpc,
+      });
+      await session.send('hello', { phaseId: phaseId() });
+      expect(daemonOpens).toBe(1);
+      expect(session.currentMode).toBe('rpc');
+      const fallbacks = tracer
+        .eventsAfter(runId, 0, 1000)
+        .filter((e) => e.name.includes('fallback to subprocess'));
+      expect(fallbacks.length).toBeGreaterThanOrEqual(1);
+      expect(JSON.stringify(fallbacks[0]!.payload)).toContain('tool profile');
       await session.close();
     });
   });
