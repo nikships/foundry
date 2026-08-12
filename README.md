@@ -97,9 +97,6 @@ Pause at any checkpoint. Approve, edit, or reject — the factory keeps going.
   <img src="assets/readme/run-timeline.png" alt="Inspector waterfall — phases, tool calls, costs" width="820">
 </p>
 
-<p align="center">
-  <img src="assets/readme/inspector.png" alt="Accepted run — green checks, commits, ready to merge" width="820">
-</p>
 
 ## Safe by default
 
