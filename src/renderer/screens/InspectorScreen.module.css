@@ -1,0 +1,224 @@
+.inspector {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding: calc(var(--titlebar-h) + var(--s2)) var(--s5) var(--s4);
+  gap: var(--s3);
+}
+
+.inspectorHead {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex: none;
+  flex-wrap: wrap;
+  padding-bottom: var(--s3);
+  border-bottom: 1px solid var(--line-faint);
+}
+
+.inspector-select {
+  max-width: 300px;
+}
+
+.inspectorRequest {
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  line-height: var(--leading);
+}
+
+.inspectorLive {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: var(--r-full);
+  background: var(--accent-dim);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.inspectorControls {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex: none;
+}
+
+.inspectorFilter {
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+.inspectorFilterBtn {
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 5px 12px;
+  cursor: default;
+  transition:
+    color var(--fast) var(--ease),
+    background var(--fast) var(--ease);
+}
+
+.inspectorFilterBtn + .inspectorFilterBtn {
+  border-left: 1px solid var(--line);
+}
+
+.inspectorFilterBtn:hover {
+  color: var(--text-dim);
+}
+
+.inspectorFilterBtn.active {
+  background: var(--bg-raised);
+  color: var(--text);
+}
+
+.inspectorBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s3);
+  border-radius: var(--r-sm);
+  background: var(--red-dim);
+  border: 1px solid color-mix(in srgb, var(--red) 18%, transparent);
+  color: var(--red);
+  font-size: var(--text-sm);
+  line-height: var(--leading);
+}
+
+/* One row of full-height agent columns; ~3 fit, scroll for the rest. */
+.inspectorGrid {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  gap: var(--s3);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x proximity;
+  --lane-count: 3;
+}
+
+.inspectorGrid > * {
+  flex: 1 0 calc((100% - (var(--s3) * (var(--lane-count) - 1))) / var(--lane-count));
+  min-width: min(100%, calc((100% - (var(--s3) * (var(--lane-count) - 1))) / var(--lane-count)));
+  max-width: 100%;
+  height: 100%;
+  min-height: 0;
+  scroll-snap-align: start;
+}
+
+.inspectorGrid.inspectorGridFocused > * {
+  flex-basis: 100%;
+  min-width: 100%;
+}
+
+.inspectorEmpty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s3);
+  color: var(--text-dim);
+  font-size: var(--text-sm);
+  line-height: var(--leading);
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+}
+
+.inspectorEmpty :global(.faint) {
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  font-family: var(--font);
+  letter-spacing: 0;
+}
+
+.inspectorSkeleton {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  padding: var(--s4);
+}
+
+.skelRow {
+  height: 120px;
+  border-radius: var(--r-sm);
+  background: var(--bg-raised);
+  border: 1px solid var(--line-faint);
+  animation: pulse 1.4s var(--ease) infinite;
+}
+
+.inspectorFooter {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s3) var(--s1);
+  border-top: 1px solid var(--line-faint);
+}
+
+.inspectorFooterHint {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  letter-spacing: 0.02em;
+  line-height: var(--leading);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inspectorDensity {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex: none;
+}
+
+.densityLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.densityValue {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  min-width: 10px;
+  text-align: center;
+}
+
+.densitySlider {
+  width: 100px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.densitySlider:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

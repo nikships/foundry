@@ -1,0 +1,88 @@
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s6);
+}
+
+.section + .section {
+  padding-top: var(--s5);
+  border-top: 1px solid var(--line);
+}
+
+.fieldLabel {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin-bottom: var(--s2);
+}
+
+.fieldName {
+  font-family: var(--font-mono);
+  font-size: var(--label-size);
+  font-weight: 500;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.fieldHint {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.optionDescription {
+  margin-top: var(--s2);
+  font-size: var(--text-xs);
+  line-height: var(--leading);
+  color: var(--text-faint);
+}
+
+.targetRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s2);
+  margin-top: var(--s3);
+}
+
+.targetPhase {
+  grid-column: span 2;
+}
+
+.targetPhaseNarrow {
+  grid-column: span 1;
+}
+
+.reading {
+  margin-top: var(--s3);
+  padding: 6px 10px;
+  border-left: 1px solid var(--line);
+  font-size: var(--text-xs);
+  line-height: var(--leading-loose);
+  color: var(--text-dim);
+}
+
+.issueList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.countRow {
+  margin-bottom: var(--s3);
+}
+
+.noIssues {
+  font-size: var(--text-xs);
+  line-height: var(--leading);
+  color: var(--text-faint);
+}
+
+.title {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}

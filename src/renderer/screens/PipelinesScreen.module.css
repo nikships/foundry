@@ -1,0 +1,373 @@
+.container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  color: var(--text);
+  background: var(--bg-base);
+}
+
+.emptyContainer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding-top: var(--titlebar-h);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The screen gets one compact, real header. It never overlays the canvas or
+   intercepts it, so every visible control remains reachable. */
+.workspaceHeader {
+  z-index: 4;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: calc(var(--titlebar-h) + 58px);
+  padding: calc(var(--titlebar-h) + 7px) 12px 7px;
+  background: var(--bg-void);
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.pipelineIdentity {
+  display: grid;
+  grid-template-columns: auto minmax(84px, 1fr);
+  grid-template-rows: 22px 18px;
+  column-gap: 9px;
+  align-items: center;
+  min-width: 0;
+}
+
+.headerEyebrow {
+  grid-row: span 2;
+  align-self: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--eyebrow-tracking);
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.nameInput,
+.descInput {
+  width: 100%;
+  min-width: 0;
+  padding: 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  outline: none;
+}
+
+.nameInput {
+  font-family: var(--font);
+  font-size: var(--text-sm);
+  font-weight: 560;
+}
+
+.descInput {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.nameInput:hover,
+.descInput:hover {
+  background: var(--bg-raised);
+  border-color: var(--line);
+}
+
+.nameInput:focus,
+.descInput:focus {
+  background: var(--bg-input);
+  border-color: var(--accent);
+}
+
+.descInput::placeholder {
+  color: var(--text-ghost);
+}
+
+.pillList {
+  display: flex;
+  min-width: 0;
+  gap: 5px;
+  padding: 2px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.pillList::-webkit-scrollbar {
+  display: none;
+}
+
+.pillTab,
+.newPipelineBtn {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 9px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: default;
+}
+
+.pillTab {
+  max-width: 180px;
+}
+
+.pillTab:hover {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+
+.pillTabActive {
+  color: var(--accent-bright);
+  background: var(--accent-dim);
+  border-color: var(--accent);
+}
+
+.pillName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pillCount {
+  flex: none;
+  color: var(--text-ghost);
+  font-variant-numeric: tabular-nums;
+}
+
+.newPipelineBtn {
+  justify-content: center;
+  width: 28px;
+  padding: 0;
+  color: var(--text-dim);
+  background: transparent;
+  border-style: dashed;
+}
+
+.newPipelineBtn:hover {
+  color: var(--accent-bright);
+  border-color: var(--accent);
+}
+
+.headerActions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.headerActions :global(.saveState) {
+  margin-right: 6px;
+}
+
+.issueCountBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 6px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: default;
+}
+
+.issueCountBtn:hover {
+  border-color: var(--line-strong);
+}
+
+.actionGhostBtn,
+.dryRunBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: default;
+}
+
+.actionGhostBtn:hover,
+.dryRunBtn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-raised);
+  border-color: var(--line);
+}
+
+.actionDanger:hover {
+  color: var(--red);
+}
+
+.moreActions {
+  position: relative;
+}
+
+.moreActions > summary {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 8px;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: default;
+}
+
+.moreActions > summary::-webkit-details-marker {
+  display: none;
+}
+
+.moreActions > summary:hover,
+.moreActions[open] > summary {
+  color: var(--text);
+  background: var(--bg-raised);
+  border-color: var(--line);
+}
+
+.moreActions > div {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 10;
+  display: grid;
+  min-width: 168px;
+  padding: 5px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+}
+
+.moreActions button {
+  height: 29px;
+  padding: 0 8px;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: default;
+}
+
+.moreActions button:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.moreActions .actionDanger:hover {
+  color: var(--red);
+}
+
+.dryRunBtn {
+  color: #020202;
+  background: var(--text);
+  border-color: var(--text);
+}
+
+.dryRunBtn:hover:not(:disabled) {
+  color: #020202;
+  background: #fff;
+  border-color: #fff;
+}
+
+.dryRunBtn:disabled {
+  opacity: 0.38;
+}
+
+.boardWrap {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sheetTitle {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheetTitleKind {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+@media (max-width: 1100px) {
+  .workspaceHeader {
+    gap: 7px;
+    padding-inline: 8px;
+  }
+
+  .headerActions :global(.saveState) {
+    display: none;
+  }
+
+  .actionGhostBtn {
+    padding-inline: 6px;
+  }
+}
+
+@media (max-width: 800px) {
+  .dryRunBtn {
+    width: 28px;
+    justify-content: center;
+    padding: 0;
+    font-size: 0;
+  }
+}

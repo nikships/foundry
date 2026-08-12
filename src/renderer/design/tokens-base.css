@@ -1,0 +1,387 @@
+/*
+ * tokens-base.css — structural tokens only (no colors).
+ * Color tokens live in tokens-factory.css.
+ * Every spacing, radius, type, motion, and layout value is here so a
+ * brand file never needs to re-declare them.
+ */
+
+/* Geist + Geist Mono, vendored in ./fonts (SIL OFL 1.1). The variable files
+ * cover 100–900, so one face per family. */
+@font-face {
+  font-family: 'Geist';
+  src: url('./fonts/Geist-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('./fonts/GeistMono-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* ── type ─────────────────────────────────────────────────────────────── */
+  --font: 'Geist', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 16px;
+  --text-lg: 18px;
+  --text-xl: 22px;
+  --text-2xl: 28px;
+  --text-3xl: 36px;
+
+  --leading-tight: 1.25;
+  --leading: 1.5;
+  --leading-loose: 1.7;
+
+  /* UI chrome (buttons, labels, badges) is uppercase tracked monospace. */
+  --label-size: 11px;
+  --label-tracking: 0.08em;
+  --eyebrow-tracking: 0.16em;
+
+  /* ── space ────────────────────────────────────────────────────────────── */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 20px;
+  --s6: 24px;
+  --s8: 32px;
+  --s10: 40px;
+  --s12: 48px;
+  --s16: 64px;
+
+  /* ── shape — near-square; --r-full is reserved for true circles ──────── */
+  --r-sm: 3px;
+  --r: 4px;
+  --r-lg: 6px;
+  --r-xl: 8px;
+  --r-full: 999px;
+
+  /* ── motion — quick and mechanical ────────────────────────────────────── */
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --fast: 120ms;
+  --normal: 150ms;
+  --slow: 300ms;
+
+  /* ── layout ───────────────────────────────────────────────────────────── */
+  --sidebar-w: 264px;
+  --sidebar-w-collapsed: 56px;
+  --titlebar-h: 52px;
+  --lane-h: 44px;
+  --lane-gap: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --fast: 0ms;
+    --normal: 0ms;
+    --slow: 0ms;
+  }
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--text-base);
+  line-height: var(--leading);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  user-select: none;
+  cursor: default;
+}
+
+input,
+textarea,
+[contenteditable],
+.selectable {
+  user-select: text;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: var(--r-full);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-faint);
+  background-clip: content-box;
+}
+
+:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ── primitives ─────────────────────────────────────────────────────────── */
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.faint {
+  color: var(--text-faint);
+}
+
+/* Numbered section header: orange index + tracked uppercase gray label. */
+.eyebrow {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--eyebrow-tracking);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.eyebrow .index {
+  color: var(--accent);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  height: 34px;
+  padding: 0 var(--s4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--bg-raised);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--label-size);
+  font-weight: 500;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  cursor: default;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition:
+    color var(--fast) var(--ease),
+    background var(--fast) var(--ease),
+    border-color var(--fast) var(--ease);
+}
+.btn:hover:not(:disabled) {
+  color: var(--accent-bright);
+  border-color: color-mix(in srgb, var(--accent) 65%, transparent);
+}
+.btn:active:not(:disabled) {
+  background: var(--bg-active);
+}
+.btn:disabled {
+  opacity: 0.4;
+}
+/* Primary inverts against the dark surface: light fill, black label. */
+.btn.primary {
+  background: var(--text);
+  border-color: var(--text);
+  color: #020202;
+  font-weight: 600;
+}
+.btn.primary:hover:not(:disabled) {
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #020202;
+}
+.btn.primary kbd {
+  color: inherit;
+  opacity: 0.55;
+}
+.btn.danger {
+  color: var(--red);
+  border-color: var(--red-dim);
+}
+.btn.danger:hover:not(:disabled) {
+  color: var(--red);
+  background: var(--red-dim);
+  border-color: var(--red);
+}
+.btn.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-dim);
+}
+.btn.ghost:hover:not(:disabled) {
+  background: transparent;
+  color: var(--accent-bright);
+  border-color: transparent;
+}
+.btn.sm {
+  height: 28px;
+  padding: 0 var(--s3);
+  font-size: 10px;
+}
+/* Keyboard hints sit inside buttons but read as tertiary, not as label. */
+.btn kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0;
+  color: var(--text-faint);
+}
+
+.input,
+.select,
+.textarea {
+  width: 100%;
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  transition: border-color var(--fast) var(--ease);
+}
+.input:focus,
+.select:focus,
+.textarea:focus {
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  outline: none;
+}
+.input.invalid,
+.textarea.invalid {
+  border-color: var(--red);
+}
+.textarea {
+  resize: vertical;
+  line-height: var(--leading);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+.select {
+  appearance: none;
+  padding-right: var(--s8);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text-faint) 50%),
+    linear-gradient(135deg, var(--text-faint) 50%, transparent 50%);
+  background-position:
+    calc(100% - 16px) calc(50% - 1px),
+    calc(100% - 11px) calc(50% - 1px);
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  height: 20px;
+  padding: 0 var(--s2);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.card {
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin-bottom: var(--s5);
+}
+.field > label {
+  font-family: var(--font-mono);
+  font-size: var(--label-size);
+  font-weight: 500;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.field .hint {
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  line-height: var(--leading);
+}
+.field .error {
+  font-size: var(--text-xs);
+  color: var(--red);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+.spread {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+}
+
+.scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

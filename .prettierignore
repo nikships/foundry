@@ -1,0 +1,11 @@
+out
+dist
+node_modules
+coverage
+package-lock.json
+assets
+*.icns
+*.png
+*.svg
+.foundry-worktrees
+.codegraph
