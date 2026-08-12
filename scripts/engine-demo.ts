@@ -140,6 +140,7 @@ async function main(): Promise<void> {
     rewindAfterCorrections: settings.rewindAfterCorrections,
     daemonPort: settings.daemonPort,
     transport: settings.transport,
+    mcpServers: settings.mcpServers ?? [],
     agents,
     envelopeDefs: [],
     project,

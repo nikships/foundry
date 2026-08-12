@@ -6,7 +6,25 @@
  * agent's first phase.
  */
 
-import type { AgentDef, CliVendor, ContextBreakdown, UsageBreakdown } from '@shared/types.js';
+import type {
+  AgentDef,
+  AgentInvocables,
+  CliVendor,
+  ContextBreakdown,
+  HostInvocableInventory,
+  ToolPolicySpec,
+  UsageBreakdown,
+  UserMcpServer,
+} from '@shared/types.js';
+import {
+  emptyInventory,
+  hiddenFromHost,
+  needsHomeOverlay,
+  needsSkillComplement,
+  normalizeInvocables,
+} from './invocables.js';
+import { agentPolicy, describePolicy, isRestrictive, oneShotAllowlist } from './tool-profiles.js';
+import { createFactoryHomeOverlay, type FactoryHomeOverlay } from './factory-home.js';
 import type { Tracer } from '../trace/tracer.js';
 import type { Envelope } from '../engine/envelopes.js';
 import type { Snapshot } from '../engine/boundary.js';
@@ -33,6 +51,11 @@ export interface AgentTurnContext extends TurnOptions {
   phaseId: string;
   /** Live text tail for the phase panel; a ring buffer, never stored. */
   onText?: (text: string) => void;
+  /**
+   * The phase's tool narrowing, when it authored one. Applied before the turn
+   * starts, so a phase can never run under the previous phase's wider policy.
+   */
+  toolPolicy?: ToolPolicySpec | null;
 }
 
 /**
@@ -74,6 +97,25 @@ export interface AgentSessionDeps {
   transport?: 'daemon' | 'subprocess';
   /** Preferred daemon port (37600–37699). Used only when transport is daemon. */
   daemonPort?: number;
+  userMcpServers?: UserMcpServer[];
+  /**
+   * What the operator has installed on the host, snapshotted at run start. The
+   * agent's own selection is checked against it to decide what has to be
+   * withheld. Absent means "nothing installed", which needs no isolation — the
+   * honest reading for a test or a machine with no `~/.factory`.
+   */
+  hostInvocables?: HostInvocableInventory;
+  /**
+   * True when some phase in this run narrows this agent's tools. Known only to
+   * the engine (it holds the pipeline), and needed at session-open time: a
+   * transport that cannot enforce a narrowing must be ruled out before the first
+   * turn rather than discovered mid-run.
+   */
+  hasPhaseToolPolicy?: boolean;
+  /** Test seam: where overlay directories are created. Defaults to the OS temp dir. */
+  overlayTmpRoot?: string;
+  /** Test seam: the home the overlay mirrors. Defaults to the real one. */
+  overlayHomeDir?: string;
   /**
    * Test seam: open a daemon TransportSession without a real DaemonManager.
    * Production leaves this unset.
@@ -128,6 +170,18 @@ function errorMessage(e: unknown): string {
 }
 
 /**
+ * What the overlay withheld, for the trace. Isolation that is invisible is
+ * indistinguishable from a broken install, so the operator is told which host
+ * entries this agent did not get rather than left to infer it from absence.
+ */
+function describeHidden(hidden: { droids: string[]; mcpServers: string[] }): string {
+  const parts: string[] = [];
+  if (hidden.droids.length) parts.push(`droids ${hidden.droids.join(', ')}`);
+  if (hidden.mcpServers.length) parts.push(`mcp ${hidden.mcpServers.join(', ')}`);
+  return parts.join('; ') || 'none';
+}
+
+/**
  * Snapshot paths are worktree-relative; the CLI may report the same file as a
  * cwd-relative or absolute path. Compare after stripping a worktree prefix.
  */
@@ -159,11 +213,26 @@ export class AgentSession {
   private killed = false;
   /** Daemon child is recorded once for the whole app process, not per agent. */
   private daemonProcessRecorded = false;
+  /**
+   * Which host invocables this agent opted into. Read once from the roster: a
+   * mid-run roster edit must not change what a running session can reach.
+   */
+  private readonly selection: AgentInvocables;
+  /** This agent's authored tool policy, resolved once from the roster. */
+  private readonly toolPolicy: ToolPolicySpec;
+  /** The narrowing currently in force, so a repeat is not re-applied. */
+  private appliedPhasePolicy: string | null = null;
+  /** The ephemeral home for this agent's children, once built. */
+  private overlay: FactoryHomeOverlay | null = null;
+  /** Memoises the build so concurrent turns cannot race two overlays. */
+  private overlayBuild: Promise<FactoryHomeOverlay | null> | null = null;
 
   constructor(
     private readonly agent: AgentDef,
     private readonly deps: AgentSessionDeps,
   ) {
+    this.selection = normalizeInvocables(this.agent.invocables);
+    this.toolPolicy = agentPolicy(this.agent);
     // Only droid has a JSON-RPC / daemon client. Every other vendor starts in
     // one-shot rather than discovering it by failing a handshake twice.
     if (!adapterFor(this.vendor).supportsRpc) {
@@ -207,9 +276,127 @@ export class AgentSession {
     return this.isSdkMode && !!this.rpc?.alive;
   }
 
+  /** The host inventory this session was told about; empty when there is none. */
+  private get inventory(): HostInvocableInventory {
+    return this.deps.hostInvocables ?? emptyInventory();
+  }
+
+  /**
+   * Build this agent's ephemeral home, once, before anything spawns.
+   *
+   * Returns null when there is nothing to withhold, which is the common case on
+   * a clean host and keeps the spawn path identical to today's. The build is
+   * memoised on the promise rather than the result so a fallback that re-enters
+   * `ensureStarted` mid-run reuses the same directory instead of building a
+   * second one and leaking the first.
+   */
+  private async ensureIsolation(): Promise<void> {
+    if (this.overlayBuild) {
+      await this.overlayBuild;
+      return;
+    }
+    if (!needsHomeOverlay(this.inventory, this.selection)) {
+      this.overlayBuild = Promise.resolve(null);
+      return;
+    }
+    this.overlayBuild = createFactoryHomeOverlay({
+      inventory: this.inventory,
+      selection: this.selection,
+      homeDir: this.deps.overlayHomeDir,
+      tmpRoot: this.deps.overlayTmpRoot,
+    });
+    try {
+      this.overlay = await this.overlayBuild;
+      if (this.overlay) {
+        this.agentLog('log', 'isolation', {
+          message: `host invocables withheld: ${describeHidden(this.overlay.hidden)}`,
+        });
+      }
+    } catch (e) {
+      // Isolation is a policy, not a nicety: if the overlay cannot be built the
+      // agent would silently run with the operator's full host install. Fail the
+      // turn instead, and let the memoised rejection stop later turns too.
+      throw new Error(`could not isolate host invocables: ${errorMessage(e)}`);
+    }
+  }
+
+  /**
+   * Narrow this agent's tools to what the phase about to run asked for.
+   *
+   * Each transport enforces it differently, and each has a way to be unable to:
+   *
+   *  - **Subprocess / daemon** enforce it through `setPhaseToolPolicy`, which
+   *    recomputes the complement against the live tool list. A transport that
+   *    does not implement the method cannot enforce anything, so a narrowing
+   *    phase fails the turn rather than running with the agent's wider surface.
+   *    Narrowing agents are kept off the daemon up front, so this is the
+   *    backstop rather than the expected path.
+   *  - **One-shot** has no session to update, so the narrowing travels as the
+   *    per-turn `--restrict-tools` allowlist. That is inherently fail-closed: an
+   *    id the profile table does not know about is excluded, never admitted.
+   */
+  private async applyPhaseToolPolicy(phase: ToolPolicySpec | null): Promise<void> {
+    const fingerprint = JSON.stringify(phase ?? null);
+    const changed = fingerprint !== this.appliedPhasePolicy;
+
+    if (this.mode === 'oneshot') {
+      // The allowlist is the intersection of the agent's policy and the phase's.
+      if (changed) this.oneshot?.setToolAllowlist(oneShotAllowlist(this.toolPolicy, phase));
+      this.appliedPhasePolicy = fingerprint;
+      return;
+    }
+
+    const client = this.rpc;
+    if (!client) return;
+    if (!client.setPhaseToolPolicy) {
+      if (!isRestrictive(phase)) {
+        this.appliedPhasePolicy = fingerprint;
+        return;
+      }
+      throw new Error(
+        'this transport cannot enforce a narrower tool policy for this phase; ' +
+          'refusing to run it under the agent policy instead',
+      );
+    }
+    if (!changed) return;
+    await client.setPhaseToolPolicy(phase);
+    this.appliedPhasePolicy = fingerprint;
+    if (isRestrictive(phase)) {
+      this.agentLog('log', 'tools', {
+        message: `tool policy for this phase: ${describePolicy(this.toolPolicy, phase)}`,
+      });
+    }
+  }
+
+  /** Host skills this agent did not select, for the disabled complement. */
+  private hiddenSkills(): { id: string; name: string }[] {
+    return hiddenFromHost(this.inventory, this.selection).skills.map((s) => ({
+      id: s.id,
+      name: s.name,
+    }));
+  }
+
+  /**
+   * The operator's own MCP servers, narrowed to the ones this agent selected.
+   *
+   * PR 71 attaches these in-process at session create, so they are opt-in per
+   * agent by construction: an unselected server is simply never passed, and no
+   * config file is involved in either direction.
+   */
+  private selectedUserMcpServers(): UserMcpServer[] | undefined {
+    const all = this.deps.userMcpServers ?? [];
+    if (!all.length) return undefined;
+    const selected = new Set(this.selection.userMcpServers);
+    const kept = all.filter((server) => selected.has(server.id) && !server.disabled);
+    return kept.length ? kept : undefined;
+  }
+
   /** Started lazily: an agent that never runs a phase never spawns a child. */
   private async ensureStarted(): Promise<void> {
     if (this.killed) throw new RunKilledError();
+    // Before any spawn, on every path: one-shot children get the overlay env as
+    // directly as the subprocess transport does.
+    await this.ensureIsolation();
     if (this.mode === 'oneshot') {
       this.oneshot ??= this.buildOneShot();
       return;
@@ -276,6 +463,34 @@ export class AgentSession {
       return {
         ok: false,
         reason: 'daemon cannot enforce restrictTools (no listTools)',
+      };
+    }
+    // A profile or a phase narrowing is the same complement problem the
+    // allowlist above has: it needs a builtin tool list the daemon's high-level
+    // API does not offer, so it must not be attempted here.
+    if (isRestrictive(this.toolPolicy) || this.deps.hasPhaseToolPolicy) {
+      return {
+        ok: false,
+        reason: 'daemon cannot enforce a tool profile (no listTools)',
+      };
+    }
+    // The daemon is one shared process for the whole app, started with the
+    // app's own environment: a per-agent home cannot be given to it after the
+    // fact, so an agent that needs host Droids or MCP servers withheld cannot
+    // run there. Same fail-closed reasoning as the allowlist above — the
+    // alternative is an agent quietly reaching the operator's whole install.
+    if (needsHomeOverlay(this.inventory, this.selection)) {
+      return {
+        ok: false,
+        reason: 'daemon cannot isolate host droids/MCP servers (shared process)',
+      };
+    }
+    // Hiding a skill needs the disabled complement, which needs a builtin tool
+    // list the daemon's high-level API does not offer.
+    if (needsSkillComplement(this.inventory, this.selection)) {
+      return {
+        ok: false,
+        reason: 'daemon cannot enforce host skill isolation (no listTools)',
       };
     }
 
@@ -372,6 +587,10 @@ export class AgentSession {
     return {
       runId: this.deps.runId,
       ...this.turnOpts(),
+      userMcpServers: this.selectedUserMcpServers(),
+      hiddenSkills: this.hiddenSkills(),
+      toolPolicy: this.toolPolicy,
+      spawnEnvOverrides: this.overlay?.env,
       onPermission: (ask) => this.decide(ask),
       onNotification: (n) => this.currentFolder?.absorb(n),
       onModelWarning: (message) => this.agentLog('log', 'model', { message }),
@@ -434,6 +653,7 @@ export class AgentSession {
       extraArgs: this.deps.cliExtraArgs,
       runId: this.deps.runId,
       ...this.turnOpts(),
+      env: this.overlay?.env,
       onSpawn: (pid, command) => this.recordOneShot(pid, command),
       onChildExit: (pid) => this.endOneShot(pid),
     });
@@ -468,6 +688,8 @@ export class AgentSession {
     this.rpc = null;
     this.oneshot = this.buildOneShot();
     this.setMode('oneshot');
+    // A new transport has none of the narrowing the phase asked for.
+    this.appliedPhasePolicy = null;
     this.persistSession();
   }
 
@@ -478,6 +700,7 @@ export class AgentSession {
   private fallbackToSubprocess(reason: string): void {
     if (this.mode === 'rpc' || this.mode === 'oneshot') return;
     this.rpc = null;
+    this.appliedPhasePolicy = null;
     this.agentLog('log', `fallback to subprocess: ${reason}`, {
       reason,
       failures: this.protocolFailures,
@@ -494,6 +717,7 @@ export class AgentSession {
   private async fallDaemonToRpc(reason: string): Promise<void> {
     const dead = this.rpc;
     this.rpc = null;
+    this.appliedPhasePolicy = null;
     await dead?.close().catch(() => undefined);
     this.agentLog('log', `fallback to subprocess: ${reason}`, {
       reason,
@@ -611,6 +835,7 @@ export class AgentSession {
   async send(prompt: string, ctx: AgentTurnContext): Promise<TurnOutcome> {
     this.currentPhaseId = ctx.phaseId;
     await this.ensureStarted();
+    await this.applyPhaseToolPolicy(ctx.toolPolicy ?? null);
 
     const folder = new EventFolder({
       tracer: this.deps.tracer,
@@ -649,6 +874,10 @@ export class AgentSession {
   ): Promise<TurnResult> {
     while (this.isSdkMode && this.rpc) {
       try {
+        // Re-stated per attempt: a daemon→subprocess fall or a restart replaces
+        // the session, and the replacement has none of the narrowing the phase
+        // asked for. Memoised, so an unchanged policy costs nothing.
+        await this.applyPhaseToolPolicy(ctx.toolPolicy ?? null);
         return await this.rpc.send(prompt, this.deps.turnTimeoutMs, {
           outputFormat: ctx.outputFormat,
         });
@@ -687,6 +916,7 @@ export class AgentSession {
   private async restart(): Promise<void> {
     const dead = this.rpc;
     this.rpc = null;
+    this.appliedPhasePolicy = null;
     // The dead session's own child may still be running (a protocol failure is
     // not always process death), and nothing else will reap it once the field
     // is reassigned.
@@ -888,12 +1118,26 @@ export class AgentSession {
     this.oneshotRows.clear();
     await this.rpc?.close();
     await this.oneshot?.close();
+    // After the children are gone, not before: a live child resolving a symlink
+    // through the overlay would lose its config mid-turn.
+    await this.releaseOverlay();
   }
 
   kill(): void {
     this.killed = true;
     this.rpc?.kill();
     this.oneshot?.kill();
+    // A killed run still calls close(); this is the belt to that braces, so a
+    // kill path that skips close cannot leave a temp directory behind.
+    void this.releaseOverlay();
+  }
+
+  /** Remove the ephemeral home, once. Never throws — cleanup cannot fail a run. */
+  private async releaseOverlay(): Promise<void> {
+    const overlay = this.overlay;
+    if (!overlay) return;
+    this.overlay = null;
+    await overlay.cleanup();
   }
 
   usageIsUnreported(usage: UsageBreakdown): boolean {

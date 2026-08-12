@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import type { AgentDef, EnvelopeDef, PhaseDef } from '@shared/types.js';
 import type { PhaseRunner, RunContext, PhaseJump } from '../phase-context.js';
 import { KILLED_DETAIL, type AgentSession, type Mode } from '../../droid/agent.js';
+import { phasePolicy } from '../../droid/tool-profiles.js';
 import * as boundary from '../boundary.js';
 import {
   correctionMessage,
@@ -238,6 +239,9 @@ export class AgentPhaseRunner implements PhaseRunner {
         outcome = await session.send(prompt, {
           phaseId,
           outputFormat,
+          // A phase may narrow the agent's tool surface for its own turns; it
+          // can never widen it (see effectiveDisabledToolIds).
+          toolPolicy: phasePolicy(phase),
           onText: (text) => this.deps.onLiveText?.(phaseId, text),
         });
       } catch (e) {

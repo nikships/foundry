@@ -5,7 +5,7 @@
  * Scripted TransportSession stand-ins — no real daemon, no API key, no model.
  */
 
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -14,7 +14,7 @@ import type { TransportSession, SessionTool } from '../src/main/droid/sdk/transp
 import type { TurnResult } from '../src/main/droid/turn.js';
 import { openDb, projectDbPath, projectRunsDir } from '../src/main/trace/db.js';
 import { Tracer } from '../src/main/trace/tracer.js';
-import type { AgentDef } from '../src/shared/types.js';
+import type { AgentDef, HostInvocableInventory, ToolPolicySpec } from '../src/shared/types.js';
 
 const agent: AgentDef = {
   name: 'scout',
@@ -408,5 +408,193 @@ describe('AgentSession transport selection', () => {
     expect(modes).toEqual(['rpc']);
     expect(tracer.run(runId)!.mode).toBe('rpc');
     await session.close();
+  });
+  /**
+   * Per-agent host isolation, at the session level: the overlay is built before
+   * the first turn spawns anything, the operator is told what was withheld, and
+   * the temp directory is gone once the session closes.
+   */
+  describe('host invocable isolation', () => {
+    function inventoryWith(
+      overrides: Partial<HostInvocableInventory> = {},
+    ): HostInvocableInventory {
+      return {
+        skills: [],
+        droids: [],
+        mcpServers: [],
+        factoryDir: '/fake/.factory',
+        warnings: [],
+        ...overrides,
+      };
+    }
+
+    it('builds an ephemeral home, traces what it withheld, and removes it on close', async () => {
+      beginRun('rpc');
+      const home = mkdtempSync(join(tmpdir(), 'foundry-iso-home-'));
+      const overlayRoot = mkdtempSync(join(tmpdir(), 'foundry-iso-tmp-'));
+      mkdirSync(join(home, '.factory', 'droids'), { recursive: true });
+      writeFileSync(join(home, '.factory', 'droids', 'reviewer.md'), '# reviewer\n', 'utf8');
+
+      const rpc = scriptedSession({ id: 'rpc-iso' });
+      const session = makeSession({
+        transport: 'subprocess',
+        openRpcSession: async () => rpc,
+        overlayHomeDir: home,
+        overlayTmpRoot: overlayRoot,
+        hostInvocables: inventoryWith({
+          droids: [
+            {
+              id: 'reviewer',
+              name: 'reviewer',
+              description: 'reviews',
+              location: join(home, '.factory', 'droids', 'reviewer.md'),
+            },
+          ],
+        }),
+      });
+
+      const phaseId = tracer.openPhase({
+        runId,
+        seq: 0,
+        name: 'scout',
+        kind: 'agent',
+        owner: 'scout',
+        description: 'd',
+      });
+      await session.send('hello', { phaseId });
+
+      // The overlay exists while the session does.
+      expect(readdirSync(overlayRoot).some((d) => d.startsWith('foundry-home-'))).toBe(true);
+      const isolation = tracer
+        .eventsAfter(runId, 0, 1000)
+        .filter((e) => e.name.includes('isolation'));
+      expect(isolation.length).toBe(1);
+      expect(JSON.stringify(isolation[0]!.payload)).toContain('reviewer');
+
+      await session.close();
+      // …and not after.
+      expect(readdirSync(overlayRoot).some((d) => d.startsWith('foundry-home-'))).toBe(false);
+    });
+
+    it('builds nothing on a host with nothing to withhold', async () => {
+      beginRun('rpc');
+      const overlayRoot = mkdtempSync(join(tmpdir(), 'foundry-iso-none-'));
+      const rpc = scriptedSession({ id: 'rpc-clean' });
+      const session = makeSession({
+        transport: 'subprocess',
+        openRpcSession: async () => rpc,
+        overlayTmpRoot: overlayRoot,
+        hostInvocables: inventoryWith(),
+      });
+      const phaseId = tracer.openPhase({
+        runId,
+        seq: 0,
+        name: 'scout',
+        kind: 'agent',
+        owner: 'scout',
+        description: 'd',
+      });
+      await session.send('hello', { phaseId });
+      expect(readdirSync(overlayRoot)).toEqual([]);
+      expect(
+        tracer.eventsAfter(runId, 0, 1000).filter((e) => e.name.includes('isolation')),
+      ).toEqual([]);
+      await session.close();
+    });
+  });
+  /**
+   * Phase narrowing at the session level: the policy reaches the transport that
+   * can enforce it, and a phase that narrows is refused rather than run wide on
+   * one that cannot.
+   */
+  describe('per-phase tool policy', () => {
+    /** A scripted session that records the narrowings it was handed. */
+    function enforcing(): TransportSession & { policies: (ToolPolicySpec | null)[] } {
+      const base = scriptedSession({ id: 'rpc-policy' });
+      const policies: (ToolPolicySpec | null)[] = [];
+      return Object.assign(base, {
+        policies,
+        async setPhaseToolPolicy(policy: ToolPolicySpec | null) {
+          policies.push(policy);
+        },
+      });
+    }
+
+    function phaseId(): string {
+      return tracer.openPhase({
+        runId,
+        seq: 0,
+        name: 'scout',
+        kind: 'agent',
+        owner: 'scout',
+        description: 'd',
+      });
+    }
+
+    it('hands the phase narrowing to a transport that can enforce it', async () => {
+      beginRun('rpc');
+      const rpc = enforcing();
+      const session = makeSession({ transport: 'subprocess', openRpcSession: async () => rpc });
+
+      await session.send('hello', { phaseId: phaseId(), toolPolicy: { profile: 'read-only' } });
+      expect(rpc.policies).toEqual([{ profile: 'read-only' }]);
+
+      // Same policy again is not re-sent; a different one is.
+      await session.send('again', { phaseId: phaseId(), toolPolicy: { profile: 'read-only' } });
+      expect(rpc.policies).toHaveLength(1);
+      await session.send('third', { phaseId: phaseId(), toolPolicy: null });
+      expect(rpc.policies).toEqual([{ profile: 'read-only' }, null]);
+      await session.close();
+    });
+
+    it('refuses a narrowing phase when the transport cannot enforce it', async () => {
+      beginRun('rpc');
+      // No setPhaseToolPolicy: this transport has no way to apply a narrowing.
+      const rpc = scriptedSession({ id: 'rpc-blind' });
+      const session = makeSession({ transport: 'subprocess', openRpcSession: async () => rpc });
+
+      await expect(
+        session.send('hello', { phaseId: phaseId(), toolPolicy: { profile: 'read-only' } }),
+      ).rejects.toThrow(/cannot enforce a narrower tool policy/);
+      // Failing closed means the turn does not run at all.
+      expect(rpc.sendCalls).toBe(0);
+      await session.close();
+    });
+
+    it('leaves a non-narrowing phase alone on the same transport', async () => {
+      beginRun('rpc');
+      const rpc = scriptedSession({ id: 'rpc-plain' });
+      const session = makeSession({ transport: 'subprocess', openRpcSession: async () => rpc });
+      const outcome = await session.send('hello', { phaseId: phaseId(), toolPolicy: null });
+      expect(outcome.text).toBe('ok');
+      expect(rpc.sendCalls).toBe(1);
+      await session.close();
+    });
+
+    it('keeps a profiled agent off the daemon, which cannot enforce it', async () => {
+      beginRun('daemon');
+      let daemonOpens = 0;
+      const rpc = enforcing();
+      const session = makeSession({
+        agent: { ...agent, toolProfile: 'read-only' },
+        transport: 'daemon',
+        // Production would consult openDaemonProduction, which fails closed for a
+        // profile; the seam stands in for it so the decision is observable here.
+        openDaemonSession: async () => {
+          daemonOpens += 1;
+          return { ok: false, reason: 'daemon cannot enforce a tool profile (no listTools)' };
+        },
+        openRpcSession: async () => rpc,
+      });
+      await session.send('hello', { phaseId: phaseId() });
+      expect(daemonOpens).toBe(1);
+      expect(session.currentMode).toBe('rpc');
+      const fallbacks = tracer
+        .eventsAfter(runId, 0, 1000)
+        .filter((e) => e.name.includes('fallback to subprocess'));
+      expect(fallbacks.length).toBeGreaterThanOrEqual(1);
+      expect(JSON.stringify(fallbacks[0]!.payload)).toContain('tool profile');
+      await session.close();
+    });
   });
 });

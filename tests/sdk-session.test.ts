@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { ProcessExitError, type StringFramedDroidClientTransport } from '@factory/droid-sdk/node';
 import { SdkSession } from '../src/main/droid/sdk/session.js';
 import { SniffingTransport } from '../src/main/droid/sdk/sniffing-transport.js';
+import { FOUNDRY_TOOL_IDS } from '../src/main/droid/sdk/mcp-tools.js';
 import { EventFolder, toUsageBreakdown } from '../src/main/droid/events.js';
 import { evaluate, type PolicyContext } from '../src/main/droid/permissions.js';
 import { openDb, projectDbPath, projectRunsDir } from '../src/main/trace/db.js';
@@ -115,6 +116,12 @@ class ScriptedTransport implements StringFramedDroidClientTransport {
   turnScript: TurnScript = completesWith('{"status":"success"}');
   /** Every tool this session knows about, by `ToolInfo.id`. */
   tools: string[] = [...BUILTIN_TOOLS];
+  /**
+   * What the CLI reports as each tool's category. Profiles are evaluated against
+   * this, so a test that cares about them sets it; everything else keeps the
+   * `other` default it had before categories mattered.
+   */
+  toolCategories: Record<string, string> = {};
   /** droid's own model list for this session, sniffed off the init response. */
   models: typeof MODELS = MODELS;
   /** Model ids a turn will actually run on; anything else 400s at turn time. */
@@ -221,6 +228,16 @@ class ScriptedTransport implements StringFramedDroidClientTransport {
     return [...this.disabled];
   }
 
+  /**
+   * Drop the disabled set without telling the client, the way a successor
+   * session does: `compact` mints a new session id whose settings start from the
+   * CLI's defaults, so anything applied to the retired handle is simply gone.
+   */
+  clearDisabledTools(): void {
+    this.disabled = [];
+    delete this.settings.disabledToolIds;
+  }
+
   private handle(frame: Record<string, unknown>): void {
     const id = String(frame.id);
     const method = String(frame.method);
@@ -272,7 +289,7 @@ class ScriptedTransport implements StringFramedDroidClientTransport {
             llmId: toolId,
             displayName: toolId,
             description: `${toolId} tool`,
-            category: 'other',
+            category: this.toolCategories[toolId] ?? 'other',
             defaultAllowed: true,
             currentlyAllowed: this.allowedTools.includes(toolId),
           })),
@@ -1478,5 +1495,101 @@ describe('structured output', () => {
     await sdk.start();
     const result = await sdk.send('do the thing', 5_000);
     expect(result.structuredOutput).toBeNull();
+  });
+});
+
+/**
+ * Profiles over a real session: the complement is computed from what
+ * `list_tools` reports, a phase narrows it, and a compaction successor gets it
+ * re-applied — the successor case is a regression guard, because settings do not
+ * travel to a new session id and the memo would otherwise suppress the re-send.
+ */
+describe('tool profiles', () => {
+  /** Categories as the CLI reports them for the builtin fixture. */
+  const CATEGORIES: Record<string, string> = {
+    Read: 'read',
+    Grep: 'read',
+    Glob: 'read',
+    LS: 'read',
+    Edit: 'edit',
+    Create: 'edit',
+    Execute: 'execute',
+    ToolSearch: 'other',
+  };
+
+  function profiled(profile: 'read-only' | 'review' | 'full') {
+    const made = session({ toolPolicy: { profile } });
+    made.transport.toolCategories = { ...CATEGORIES };
+    return made;
+  }
+
+  it('a read-only agent loses edit and execute, and keeps reading', async () => {
+    const { sdk, transport } = profiled('read-only');
+    await sdk.start();
+    expect(transport.disabledToolIds.sort()).toEqual(['Create', 'Edit', 'Execute', 'ToolSearch']);
+    const allowed = (await sdk.listTools())
+      .filter((t) => t.allowed)
+      .map((t) => t.id)
+      .sort();
+    // ToolSearch ignores disabledToolIds in the real CLI, hence its presence.
+    expect(allowed).toEqual(['Glob', 'Grep', 'LS', 'Read', 'ToolSearch']);
+  });
+
+  it('a review agent keeps Execute but still cannot edit', async () => {
+    const { sdk, transport } = profiled('review');
+    await sdk.start();
+    expect(transport.disabledToolIds).toContain('Edit');
+    expect(transport.disabledToolIds).not.toContain('Execute');
+  });
+
+  it('a full agent sends no disabled set at all', async () => {
+    const { sdk, transport } = profiled('full');
+    await sdk.start();
+    expect(transport.disabledToolIds).toEqual([]);
+  });
+
+  it('a phase narrows the agent for the turns that follow', async () => {
+    const { sdk, transport } = profiled('review');
+    await sdk.start();
+    expect(transport.disabledToolIds).not.toContain('Execute');
+
+    await sdk.setPhaseToolPolicy({ profile: 'read-only' });
+    expect(transport.disabledToolIds).toContain('Execute');
+
+    // …and clearing the phase restores the agent's own policy, no wider.
+    await sdk.setPhaseToolPolicy(null);
+    expect(transport.disabledToolIds).not.toContain('Execute');
+    expect(transport.disabledToolIds).toContain('Edit');
+  });
+
+  it('a phase cannot widen the agent', async () => {
+    const { sdk, transport } = profiled('read-only');
+    await sdk.start();
+    await sdk.setPhaseToolPolicy({ profile: 'full' });
+    expect(transport.disabledToolIds).toContain('Edit');
+    expect(transport.disabledToolIds).toContain('Execute');
+  });
+
+  it('re-applies the policy on a compaction successor', async () => {
+    const { sdk, transport } = profiled('read-only');
+    await sdk.start();
+    expect(transport.disabledToolIds).toContain('Edit');
+
+    // The successor is a new session id whose settings start from the CLI's
+    // defaults: nothing disabled. Without the re-apply the agent would silently
+    // get its full tool surface back mid-run.
+    transport.clearDisabledTools();
+    expect(transport.disabledToolIds).toEqual([]);
+
+    await sdk.compact();
+    expect(transport.disabledToolIds).toContain('Edit');
+    expect(transport.disabledToolIds).toContain('Execute');
+  });
+
+  it('keeps the Foundry MCP tools under the narrowest profile', async () => {
+    const { sdk, transport } = profiled('read-only');
+    transport.tools = [...transport.tools, ...FOUNDRY_TOOL_IDS];
+    await sdk.start();
+    for (const id of FOUNDRY_TOOL_IDS) expect(transport.disabledToolIds).not.toContain(id);
   });
 });

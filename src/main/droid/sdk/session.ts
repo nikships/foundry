@@ -25,7 +25,13 @@ import {
   type RequestPermissionRequestParams,
   type StringFramedDroidClientTransport,
 } from '@factory/droid-sdk/node';
-import type { ContextBreakdown, ReasoningEffort } from '@shared/types.js';
+import type {
+  ContextBreakdown,
+  ReasoningEffort,
+  ToolPolicySpec,
+  UserMcpServer,
+} from '@shared/types.js';
+import type { McpServerConfig } from '@factory/droid-sdk/node';
 import { INHERIT_MODEL, type TurnOptions, type TurnResult } from '../turn.js';
 import { DroidProtocolError } from './errors.js';
 import {
@@ -39,6 +45,7 @@ import {
 import { spawnEnv } from '../../system/env.js';
 import { register as registerProc } from '../../system/procs.js';
 import { createFoundryMcpServer, FOUNDRY_TOOL_IDS, type FoundryMcpContext } from './mcp-tools.js';
+import { agentPolicy, effectiveDisabledToolIds, isRestrictive } from '../tool-profiles.js';
 import {
   toAskUserAsk,
   toAskUserResult,
@@ -108,6 +115,8 @@ export class SdkSession implements TransportSession {
   /** Set once the roster's model has been refused and given up on. */
   private modelRefused = false;
   private appliedDisabledTools: string[] | null = null;
+  /** The narrowing the phase currently running asked for, if any. */
+  private phasePolicy: ToolPolicySpec | null = null;
   private toolRefresh: NodeJS.Timeout | null = null;
   private toolRefreshDelay = 0;
   /** Kept so a kill that skips session.close still tears the HTTP listener down. */
@@ -176,10 +185,17 @@ export class SdkSession implements TransportSession {
     this.toolRefreshDelay = this.opts.toolRefreshDelayMs ?? MCP_TOOL_SETTLE_MS;
     // Init-time mcpServers only: session-scoped, no config write, no late-tool
     // escape window. Never session.addMcpServer() (writes ~/.factory/mcp.json).
-    const mcpServers = this.opts.foundryMcp
-      ? [createFoundryMcpServer(this.opts.foundryMcp)]
-      : undefined;
-    this.foundryServer = mcpServers?.[0] ?? null;
+    const foundryServer = this.opts.foundryMcp
+      ? createFoundryMcpServer(this.opts.foundryMcp)
+      : null;
+    this.foundryServer = foundryServer;
+    const userServers = (this.opts.userMcpServers ?? [])
+      .filter((s) => !s.disabled)
+      .map(mapUserMcpToSdk);
+    const mcpServers =
+      foundryServer || userServers.length
+        ? [...(foundryServer ? [foundryServer] : []), ...userServers]
+        : undefined;
     const shared = {
       transport: sniffer,
       execArgs: ['--auto', AUTONOMY_LEVEL],
@@ -444,6 +460,12 @@ export class SdkSession implements TransportSession {
     this.settings = { ...this.settings, ...successor.settings };
     const applied = await this.applySettings();
     if (applied.warning) this.opts.onModelWarning?.(applied.warning);
+    // A successor is a different session id carrying default settings: the
+    // disabled set applied to the retired handle did not come with it. Clearing
+    // the memo is what makes the re-apply actually reach the wire — without it
+    // a compaction silently hands a restricted agent its full tool surface back.
+    this.appliedDisabledTools = null;
+    await this.applyToolPolicy();
   }
 
   /**
@@ -502,7 +524,9 @@ export class SdkSession implements TransportSession {
       droidExecPath: this.opts.droidPath,
       droidExecExtraArgs: ['--auto', AUTONOMY_LEVEL],
       cwd: this.opts.cwd,
-      env: stringEnv(),
+      // The overlay's HOME lands here: the child resolves ~/.factory inside it,
+      // so unselected Droids and MCP servers are not on disk to be loaded.
+      env: stringEnv(this.opts.spawnEnvOverrides),
     });
     await transport.connect();
     this.owned = transport;
@@ -587,6 +611,22 @@ export class SdkSession implements TransportSession {
     return `${this.opts.model} was refused (${reason}); this session runs on ${fallback}`;
   }
 
+  /** This agent's authored policy; `restrictTools` still means `custom`. */
+  private agentPolicy(): ToolPolicySpec {
+    return this.opts.toolPolicy ?? agentPolicy({ tools: this.opts.restrictTools });
+  }
+
+  /**
+   * Narrow to the phase about to run. Re-applied immediately so the turn cannot
+   * start under the previous phase's wider policy.
+   */
+  async setPhaseToolPolicy(policy: ToolPolicySpec | null): Promise<void> {
+    const before = JSON.stringify(this.phasePolicy ?? null);
+    this.phasePolicy = policy;
+    if (JSON.stringify(policy ?? null) === before) return;
+    await this.applyToolPolicy();
+  }
+
   /**
    * The SDK is subtractive only (`restrictToolIds` is stripped by its public
    * schemas), so an allowlist becomes its complement. `updateSettings` accepts
@@ -596,17 +636,30 @@ export class SdkSession implements TransportSession {
   private async applyToolPolicy(): Promise<void> {
     const session = this.session;
     if (!session) return;
-    const allow = this.opts.restrictTools;
     const explicit = this.opts.disabledTools ?? [];
-    if (!allow?.length && !explicit.length) return;
+    const hiddenSkills = this.opts.hiddenSkills ?? [];
+    const agent = this.agentPolicy();
+    const phase = this.phasePolicy;
+    if (
+      !isRestrictive(agent) &&
+      !isRestrictive(phase) &&
+      !explicit.length &&
+      !hiddenSkills.length
+    ) {
+      return;
+    }
 
-    // Foundry MCP tools stay available under a restricted roster: the allow
-    // set is the roster list extended with the wire ids listTools reports.
-    const allowed = new Set([...(allow ?? []), ...FOUNDRY_TOOL_IDS]);
-    const complement = allow?.length
-      ? (await session.listTools()).map((t) => t.id).filter((id) => !allowed.has(id))
-      : [];
-    const disabled = [...new Set([...complement, ...explicit])].sort();
+    // One read serves every subtraction: the profile complement, the phase
+    // narrowing, and the host skills this agent did not select.
+    const listed = await session.listTools();
+    const disabled = effectiveDisabledToolIds({
+      tools: listed,
+      agent,
+      phase,
+      explicitDisabled: explicit,
+      hiddenSkills,
+      alwaysAllow: FOUNDRY_TOOL_IDS,
+    });
 
     if (this.appliedDisabledTools?.join('\u0000') === disabled.join('\u0000')) return;
     this.appliedDisabledTools = disabled;
@@ -619,7 +672,13 @@ export class SdkSession implements TransportSession {
    * announces its server — so the recompute is scheduled, not immediate.
    */
   private scheduleToolPolicy(): void {
-    if (!this.opts.restrictTools?.length || this.toolRefresh) return;
+    // A skill's tool and an MCP server's tool attach on the same lag, so every
+    // subtractive policy needs the same scheduled recompute an allowlist does.
+    const narrows =
+      isRestrictive(this.agentPolicy()) ||
+      isRestrictive(this.phasePolicy) ||
+      !!this.opts.hiddenSkills?.length;
+    if (!narrows || this.toolRefresh) return;
     const timer = setTimeout(() => {
       this.toolRefresh = null;
       // Background reconciliation: failure is not surfaced to the turn — the
@@ -719,10 +778,20 @@ function resolvePath(path: string): string {
   }
 }
 
+function mapUserMcpToSdk(s: UserMcpServer): McpServerConfig {
+  if (s.type === 'stdio') {
+    return { name: s.name, command: s.command, args: s.args, env: s.env } as never;
+  }
+  if (s.type === 'sse') {
+    return { type: 'sse', name: s.name, url: s.url } as never;
+  }
+  return { type: 'http', name: s.name, url: s.url } as never;
+}
+
 /** ProcessTransport wants a defined-valued env; `process.env` does not have one. */
-function stringEnv(): Record<string, string> {
+function stringEnv(overrides?: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(spawnEnv())) {
+  for (const [key, value] of Object.entries(spawnEnv(overrides))) {
     if (typeof value === 'string') out[key] = value;
   }
   return out;

@@ -25,7 +25,12 @@ import {
   type RequestPermissionHandlerResult,
   type RequestPermissionRequestParams,
 } from '@factory/droid-sdk';
-import type { ContextBreakdown, ReasoningEffort } from '@shared/types.js';
+import type {
+  ContextBreakdown,
+  ReasoningEffort,
+  ToolPolicySpec,
+  UserMcpServer,
+} from '@shared/types.js';
 import {
   AUTONOMY_LEVEL,
   type AvailableModel,
@@ -37,6 +42,7 @@ import {
 import { INHERIT_MODEL, type TurnOptions, type TurnResult } from '../turn.js';
 import { DroidProtocolError } from './errors.js';
 import { createFoundryMcpServer, FOUNDRY_TOOL_IDS, type FoundryMcpContext } from './mcp-tools.js';
+import { agentPolicy, effectiveDisabledToolIds, isRestrictive } from '../tool-profiles.js';
 import {
   toAskUserAsk,
   toAskUserResult,
@@ -93,13 +99,22 @@ export interface DaemonHandle {
  * SdkMcpServer objects are rejected by the public daemon schema — start them
  * first and pass the resulting HTTP config (type/url/headers).
  */
-export type DaemonMcpServerConfig = {
-  type: 'http';
-  name: string;
-  url: string;
-  oauth?: false;
-  headers?: { name: string; value: string }[];
-};
+export type DaemonMcpServerConfig =
+  | { type: 'stdio'; name: string; command: string; args?: string[]; env?: Record<string, string> }
+  | {
+      type: 'http';
+      name: string;
+      url: string;
+      oauth?: false;
+      headers?: { name: string; value: string }[];
+    }
+  | {
+      type: 'sse';
+      name: string;
+      url: string;
+      oauth?: false;
+      headers?: { name: string; value: string }[];
+    };
 
 export interface DaemonSessionsFacade {
   create(options: {
@@ -197,6 +212,8 @@ export class DaemonSession implements TransportSession {
   private droidDefaultModel: string | null = null;
   private modelRefused = false;
   private appliedDisabledTools: string[] | null = null;
+  /** The narrowing the phase currently running asked for, if any. */
+  private phasePolicy: ToolPolicySpec | null = null;
   private toolRefresh: NodeJS.Timeout | null = null;
   private toolRefreshDelay = 0;
   private foundryServer: ReturnType<typeof createFoundryMcpServer> | null = null;
@@ -245,6 +262,9 @@ export class DaemonSession implements TransportSession {
     // path starts for us; here we start it and pass the HTTP config so the
     // daemon worker can reach the app-local loopback server.
     let mcpServers: DaemonMcpServerConfig[] | undefined;
+    const userServers: DaemonMcpServerConfig[] = (this.opts.userMcpServers ?? [])
+      .filter((s) => !s.disabled)
+      .map(mapUserMcpToDaemon);
     if (this.opts.foundryMcp) {
       const server = createFoundryMcpServer(this.opts.foundryMcp);
       this.foundryServer = server;
@@ -258,11 +278,14 @@ export class DaemonSession implements TransportSession {
             oauth: false,
             headers: config.headers?.map((h) => ({ name: h.name, value: h.value })),
           },
+          ...userServers,
         ];
       } catch (e) {
         await this.closeFoundryServer();
         throw e;
       }
+    } else if (userServers.length) {
+      mcpServers = [...userServers];
     }
 
     const handlers = {
@@ -484,6 +507,11 @@ export class DaemonSession implements TransportSession {
 
     const applied = await this.applySettings();
     if (applied.warning) this.opts.onModelWarning?.(applied.warning);
+    // The successor is a different session id with default settings: the
+    // disabled set applied to the source did not travel with it, and the memo
+    // would suppress a re-apply that produces the same list. Clear, then apply.
+    this.appliedDisabledTools = null;
+    await this.applyToolPolicy();
   }
 
   async close(): Promise<void> {
@@ -595,25 +623,54 @@ export class DaemonSession implements TransportSession {
     return `${this.opts.model} was refused (${reason}); this session runs on ${fallback}`;
   }
 
+  /** This agent's authored policy; `restrictTools` still means `custom`. */
+  private agentPolicy(): ToolPolicySpec {
+    return this.opts.toolPolicy ?? agentPolicy({ tools: this.opts.restrictTools });
+  }
+
+  /**
+   * Narrow to the phase about to run. The daemon can only honour this when its
+   * facade can list tools; AgentSession keeps a narrowing agent off this
+   * transport for exactly that reason, so reaching here without one is a
+   * no-op rather than a silent widening.
+   */
+  async setPhaseToolPolicy(policy: ToolPolicySpec | null): Promise<void> {
+    const before = JSON.stringify(this.phasePolicy ?? null);
+    this.phasePolicy = policy;
+    if (JSON.stringify(policy ?? null) === before) return;
+    await this.applyToolPolicy();
+  }
+
   private async applyToolPolicy(): Promise<void> {
     const handle = this.handle;
     if (!handle) return;
-    const allow = this.opts.restrictTools;
     const explicit = this.opts.disabledTools ?? [];
-    if (!allow?.length && !explicit.length) return;
+    const hiddenSkills = this.opts.hiddenSkills ?? [];
+    const agent = this.agentPolicy();
+    const phase = this.phasePolicy;
+    if (
+      !isRestrictive(agent) &&
+      !isRestrictive(phase) &&
+      !explicit.length &&
+      !hiddenSkills.length
+    ) {
+      return;
+    }
 
-    const allowed = new Set([...(allow ?? []), ...FOUNDRY_TOOL_IDS]);
+    // Without a tool list no complement can be computed, so only the explicit
+    // disables land. AgentSession does not route a narrowing agent here for that
+    // reason — it fails closed to subprocess instead.
     const listed = this.opts.sessions.listTools
       ? await this.opts.sessions.listTools(handle.id)
       : [];
-    // Without a tool list the complement cannot be computed; only apply
-    // explicit disables rather than accidentally disabling nothing under a
-    // restricted roster.
-    const complement =
-      allow?.length && listed.length > 0
-        ? listed.map((t) => t.id).filter((id) => !allowed.has(id))
-        : [];
-    const disabled = [...new Set([...complement, ...explicit])].sort();
+    const disabled = effectiveDisabledToolIds({
+      tools: listed,
+      agent,
+      phase,
+      explicitDisabled: explicit,
+      hiddenSkills,
+      alwaysAllow: FOUNDRY_TOOL_IDS,
+    });
 
     if (this.appliedDisabledTools?.join('\u0000') === disabled.join('\u0000')) return;
     this.appliedDisabledTools = disabled;
@@ -622,7 +679,11 @@ export class DaemonSession implements TransportSession {
   }
 
   private scheduleToolPolicy(): void {
-    if (!this.opts.restrictTools?.length || this.toolRefresh) return;
+    const narrows =
+      isRestrictive(this.agentPolicy()) ||
+      isRestrictive(this.phasePolicy) ||
+      !!this.opts.hiddenSkills?.length;
+    if (!narrows || this.toolRefresh) return;
     const timer = setTimeout(() => {
       this.toolRefresh = null;
       // Background reconciliation: same justification as SdkSession — swallow to
@@ -684,6 +745,16 @@ function asProtocolError(error: unknown): Error {
 function pathsMatch(a: string, b: string): boolean {
   const norm = (p: string): string => p.replace(/\\/g, '/').replace(/\/$/, '');
   return norm(a) === norm(b) || norm(a).endsWith(norm(b)) || norm(b).endsWith(norm(a));
+}
+
+function mapUserMcpToDaemon(s: UserMcpServer): DaemonMcpServerConfig {
+  if (s.type === 'stdio') {
+    return { type: 'stdio', name: s.name, command: s.command, args: s.args, env: s.env };
+  }
+  if (s.type === 'sse') {
+    return { type: 'sse', name: s.name, url: s.url, oauth: false };
+  }
+  return { type: 'http', name: s.name, url: s.url, oauth: false };
 }
 
 // Keep the protocol constant and the enum aligned so a drift fails to compile.
