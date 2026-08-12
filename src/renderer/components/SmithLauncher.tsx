@@ -157,15 +157,8 @@ export default function SmithLauncher({
           />
         </li>
         <li>
-          <span className={styles.stepText}>
-            Point your agent at the skill, or copy the folder into your harness&apos;s skills
-            directory.
-          </span>
-          <CopyRow
-            label="Skill"
-            value={info ? `${info.skillDir}/SKILL.md` : ''}
-            hint="Loading it turns any agent into Smith."
-          />
+          <span className={styles.stepText}>Need the skill?</span>
+          <CopyRow label="Skill" value="npx skills add nikships/foundry" />
         </li>
         <li>
           <span className={styles.stepText}>
