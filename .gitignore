@@ -95,6 +95,8 @@ node_modules/.vite/
 # Vue / Volar
 *.vue.js
 
+# Firebase
+/website/.firebase/
 # Coverage (vitest / cypress)
 coverage/
 *.lcov
