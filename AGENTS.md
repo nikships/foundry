@@ -31,12 +31,14 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 ├── src/shared/                ← pure types & IPC constants (no side effects)
 ├── src/preload/               ← narrow CJS bridge (bridge.cjs) for sandbox
 ├── src/cli/                   ← foundry-cli: the standalone Smith helper binary
-├── skills/                    ← agent skills shipped with the repo (foundry-smith)
+├── skills/                    ← agent skills for users, keep up-to-date with 'smith' capabilities
+├── website/                   ← marketing website for foundry app (do not update unless told to)
 ├── tests/                     ← Vitest suites (real git temp repos + fake-droid)
 └── scripts/                   ← check-css-collisions, check-docs-commands, audit-deps, engine-demo
+
 .githooks/                     ← tracked git hooks (pre-commit); installed by npm run prepare
 .github/workflows/             ← CI (ci.yml) + packaging (mac-package.yml)
-.github/ISSUE_TEMPLATE/        ← bug report + feature request forms
+.github/ISSUE_TEMPLATE/
 ```
 
 **Phase handoffs** are JSON files under `.foundry-handoff/` inside the worktree. A fresh worktree has tracked files only; its project `setupScript` runs as `sh -c` at the worktree root before phases. For projects marked `scaffold`, a missing referenced code command is a warning and that code phase is skipped rather than blocking creation.
@@ -44,8 +46,8 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 ## Invariants (read before changing sequencing or persistence)
 
 - **Every phase starts `fail`** and becomes `success` only after clean exit, parsed envelope, and passing gates. Boundaries are enforced after the call by diffing git; protected paths always fail.
-- **`Tracer` is the sole SQLite writer.** See `src/main/trace/AGENTS.md`. WAL lets renderer reads proceed while the writer commits. Polling uses `run_id = ? AND change_id > ? ORDER BY rowid`; `change_id` is the cursor (`MAX(change_id)`), `rowid` is display order. Every insert/update stamps a new `change_id`.
-- **`finish()` settles run status + operator-facing completion together** (notification, banner, `outcome_detail`). Do not update those independently. See `src/main/AGENTS.md`.
+- `**Tracer` is the sole SQLite writer.** See `src/main/trace/AGENTS.md`. WAL lets renderer reads proceed while the writer commits. Polling uses `run_id = ? AND change_id > ? ORDER BY rowid`; `change_id` is the cursor (`MAX(change_id)`), `rowid` is display order. Every insert/update stamps a new `change_id`.
+- `**finish()` settles run status + operator-facing completion together** (notification, banner, `outcome_detail`). Do not update those independently. See `src/main/AGENTS.md`.
 - **Electron single-instance lock** — a second writer would corrupt the per-project trace (`app.requestSingleInstanceLock()` in `src/main/main.ts`).
 
 ## Setup Commands
@@ -96,17 +98,16 @@ npm run dev                 # electron-vite dev
 npm run build               # electron-vite build (main + preload + renderer)
 npm run start               # electron-vite preview
 
-# Renderer-only in a plain browser (no Electron) — iterate on UI
-npm run dev:web             # vite --config vite.web.config.ts
-npm run build:web           # vite build --config vite.web.config.ts
-npm run preview:web         # serve last web build
-
 Makefile aliases still work:
 make dev        # → npm run dev
 make build      # → npm run build
 make web        # build:web + preview:web --open
 make check      # → npm run check
 ```
+
+Do not run app to validate small fixes.
+
+Use foundry-ui skill to validate larger changes. 
 
 **Path aliases** are configured in both `electron.vite.config.ts` and `tsconfig.json`:
 
@@ -195,44 +196,11 @@ npm run package             # build + icons + electron-builder --mac --arm64 (lo
 
 - Builds, signs, notarizes, and staples an arm64 DMG. Main/manual use run-number versioning and publish a `Latest` release; tags use the tagged `package.json` version. Requires `APPLE_*` + `CERT_P12` secrets and pins the Developer ID certificate SHA‑1.
 
-Useful commands:
-
-```bash
-gh run list --workflow ci.yml --limit 5
-gh run list --workflow mac-package.yml --limit 5
-```
-
 ## Pull Request Guidelines
 
 - **Title:** `[component] Brief description` (e.g. `[engine] fix boundary bypass on renames`).
-- **Body:** use `.github/pull_request_template.md` — fill Summary and How verified. Note any contracts touched (IPC, envelopes, gates, boundaries) and intentional unused exports.
-- **Required checks:** `npm run check` must pass locally; CI `verify` + `actionlint` must be green. CI enforces the same gates (except `check:css` which is local-only).
-- **Commits:** keep history readable; never `git push --force` to `main`. Match recent commit style.
-
-## Directory Guide Routing
-
-The nearest `AGENTS.md` takes precedence. Start here, then follow the guide closest to the code you are changing.
-
-| Guide                       | Scope                                                        |
-| --------------------------- | ------------------------------------------------------------ |
-| `AGENTS.md` (root)          | Top-level: checks, process boundaries, install (this file)   |
-| `src/main/AGENTS.md`        | Main-process invariants + routing to subdirectories          |
-| `src/main/engine/AGENTS.md` | Deterministic runner, envelopes, gates, worktrees            |
-| `src/main/droid/AGENTS.md`  | Droid transport, SDK quirks, permissions                     |
-| `src/main/cli/AGENTS.md`    | Vendor argv / one-shot parse adapters                        |
-| `src/main/trace/AGENTS.md`  | Tracer, WAL, polling cursor                                  |
-| `src/main/store/AGENTS.md`  | JSON config, JsonStore, builtin restoration                  |
-| `src/main/system/AGENTS.md` | PATH, process control, doctor                                |
-| `src/main/ipc/AGENTS.md`    | Domain routers, IPC channel seam                             |
-| `src/main/smith/AGENTS.md`  | Smith's socket, approval queue, and the skill that drives it |
-| `src/renderer/AGENTS.md`    | React UI, polling, Inspector, CSS modules                    |
-| `src/shared/AGENTS.md`      | Pure types, IPC contract                                     |
-| `src/preload/AGENTS.md`     | Narrow CJS bridge                                            |
-| `.github/AGENTS.md`         | CI and releases                                              |
+- **use** `.github/pull_request_template.md`
 
 ## Additional Notes
 
-- `specs/` — run plans; `wiki/` — generated docs (do not hand-edit generated output).
-- `dogfood-output/` — local dogfood artifacts, ignored by git.
 - Never modify or push `.foundry-worktrees/` branches directly — the engine owns them.
-- Secrets: `FACTORY_API_KEY` or stored WorkOS JWT; never log or persist them.
