@@ -97,7 +97,6 @@ Pause at any checkpoint. Approve, edit, or reject — the factory keeps going.
   <img src="assets/readme/run-timeline.png" alt="Inspector waterfall — phases, tool calls, costs" width="820">
 </p>
 
-
 ## Safe by default
 
 - **Your checkout stays clean.** Every run is an isolated worktree on its own branch. Nothing lands on `main` until you merge it.
