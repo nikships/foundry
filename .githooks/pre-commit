@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# Foundry pre-commit hook — fast, scoped feedback on staged files.
+#
+# Runs ESLint and Prettier against the files in this commit only. It is a
+# convenience, NOT the gate: `npm run check` and CI remain authoritative and run
+# the full typecheck, dead-code, coverage, build, and audit suite. Nothing here
+# builds, spawns a model, or touches the network.
+#
+# Installed by `npm run prepare` (sets git's core.hooksPath to .githooks).
+# Install manually with:  git config core.hooksPath .githooks
+#
+# Bypass with:  git commit --no-verify
+# That skips this hook entirely and is legitimate for WIP commits on a branch —
+# CI still runs the real gate, so a bypassed commit cannot land unchecked.
+#
+# Deliberately CHECK-only, never --fix/--write: a hook that rewrote files would
+# clobber unstaged edits in partially staged files. When something fails you get
+# the exact command to fix it. Note the corollary — these tools read the working
+# tree, so for a partially staged file the hook reports on the file as it exists
+# on disk, not on the staged snapshot.
+#
+# Portability: macOS ships bash 3.2, so this avoids `mapfile` (bash 4+) and
+# process substitution, and passes an explicit template to `mktemp` (BSD mktemp
+# rejects a bare invocation). `set -u` is deliberately NOT used: empty array
+# expansion aborts under it in bash 3.2, which would fail the hook open.
+
+set -o pipefail
+
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"
+if [ -z "$repo_root" ]; then
+  echo "pre-commit: not inside a git work tree — skipping." >&2
+  exit 0
+fi
+cd "$repo_root" || exit 1
+
+if [ ! -d node_modules ]; then
+  echo "pre-commit: node_modules missing — skipping lint/format checks."
+  echo "            Run 'npm ci', then 'npm run check' before opening a PR."
+  exit 0
+fi
+
+# Staged, still-present files. ACMR excludes deletions; -z survives spaces.
+list="$(mktemp "${TMPDIR:-/tmp}/foundry-precommit.XXXXXX")" || exit 1
+trap 'rm -f "$list"' EXIT
+
+if ! git diff --cached --name-only --diff-filter=ACMR -z >"$list"; then
+  echo "pre-commit: could not list staged files — aborting commit." >&2
+  exit 1
+fi
+
+staged=()
+while IFS= read -r -d '' path; do
+  if [ -n "$path" ]; then
+    staged[${#staged[@]}]="$path"
+  fi
+done <"$list"
+
+if [ ${#staged[@]} -eq 0 ]; then
+  exit 0
+fi
+
+lintable=()
+for path in "${staged[@]}"; do
+  case "$path" in
+    *.ts | *.tsx | *.js | *.jsx | *.mjs | *.cjs) lintable[${#lintable[@]}]="$path" ;;
+  esac
+done
+
+failed=0
+
+if [ ${#lintable[@]} -gt 0 ]; then
+  echo "pre-commit: eslint (${#lintable[@]} file(s))"
+  if ! npx --no-install eslint --max-warnings 0 --no-warn-ignored "${lintable[@]}"; then
+    echo ""
+    echo "pre-commit: ESLint failed. Fix the reports above, or run:"
+    echo "            npm run lint:fix"
+    failed=1
+  fi
+fi
+
+# --ignore-unknown lets us hand prettier every staged path and let it decide;
+# it also honours .prettierignore, so generated and binary paths are skipped.
+echo "pre-commit: prettier (${#staged[@]} file(s))"
+if ! npx --no-install prettier --check --ignore-unknown "${staged[@]}"; then
+  echo ""
+  echo "pre-commit: Prettier found unformatted files. Fix with:"
+  echo "            npm run format"
+  echo "            (then 'git add' them again)"
+  failed=1
+fi
+
+if [ "$failed" -ne 0 ]; then
+  echo ""
+  echo "pre-commit: commit aborted. Bypass with 'git commit --no-verify' if intentional."
+  exit 1
+fi
+
+echo "pre-commit: ok"

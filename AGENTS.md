@@ -33,8 +33,10 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 ├── src/cli/                   ← foundry-cli: the standalone Smith helper binary
 ├── skills/                    ← agent skills shipped with the repo (foundry-smith)
 ├── tests/                     ← Vitest suites (real git temp repos + fake-droid)
-└── scripts/                   ← check-css-collisions, audit-deps, engine-demo
+└── scripts/                   ← check-css-collisions, check-docs-commands, audit-deps, engine-demo
+.githooks/                     ← tracked git hooks (pre-commit); installed by npm run prepare
 .github/workflows/             ← CI (ci.yml) + packaging (mac-package.yml)
+.github/ISSUE_TEMPLATE/        ← bug report + feature request forms
 ```
 
 **Phase handoffs** are JSON files under `.foundry-handoff/` inside the worktree. A fresh worktree has tracked files only; its project `setupScript` runs as `sh -c` at the worktree root before phases. For projects marked `scaffold`, a missing referenced code command is a warning and that code phase is skipped rather than blocking creation.
@@ -60,6 +62,25 @@ npm ci
 ```bash
 node node_modules/electron/install.js
 ```
+
+`npm ci` also runs `npm run prepare`, which points git at the repo's tracked hooks
+(`git config core.hooksPath .githooks`). If hooks are not firing, run `npm run prepare` by hand — the
+`prepare` step is best-effort and never fails an install.
+
+**Pre-commit hook** (`.githooks/pre-commit`): runs ESLint and Prettier against the **staged files only**,
+so feedback is seconds rather than minutes. It is a convenience, not the gate — `npm run check` and CI
+remain authoritative.
+
+- It is **check-only**, never `--fix`/`--write`: a hook that rewrote files would clobber unstaged edits
+  in a partially staged file. When it fails it prints the fix (`npm run lint:fix`, `npm run format`).
+- Corollary: ESLint and Prettier read the working tree, so for a partially staged file the hook reports
+  on the file **as it exists on disk**, not on the staged snapshot.
+- It skips silently when `node_modules` is absent, and never builds, spawns a model, or touches the network.
+- **Bypass:** `git commit --no-verify` skips it entirely. That is legitimate for WIP commits on a branch —
+  CI still runs the real gate, so a bypassed commit cannot land unchecked.
+- No `husky`/`lint-staged` dependency: `core.hooksPath` is a native git feature, and this repo keeps its
+  dependency and dead-code surface tight. The script targets bash 3.2 (what macOS ships), so it avoids
+  `mapfile` and process substitution.
 
 App state lives under `~/Library/Application Support/foundry/` (sharded per project). Assets for the running app are in `assets/`.
 
@@ -104,9 +125,24 @@ Framework: **Vitest 4** (`forks` pool, `environment: node`, 30s timeout). Suites
 ```bash
 npm test                    # vitest run (all suites)
 npm run test:watch          # vitest watch mode
+npm run test:coverage       # vitest run --coverage (enforces thresholds; part of npm run check)
 npx vitest run -t "<name>"  # focus by test name pattern
 npx vitest run tests/engine.test.ts  # single file
 ```
+
+**Coverage is enforced, not advisory.** `npm run test:coverage` fails when any threshold in
+`vitest.config.ts` is breached, and `npm run check` runs that variant rather than plain `npm test`,
+so local and CI enforce the same floor. An HTML report lands in `coverage/` (gitignored).
+
+- **Scope** — `src/main/**`, `src/shared/**`, `src/cli/**`: the privileged, headless core that
+  Vitest can execute under `environment: node`. `src/renderer/**` and `src/preload/**` are excluded
+  because they only run inside Electron, as is `src/main/main.ts` (app bootstrap). UI verification is
+  tracked separately as an Electron smoke/e2e harness, not by this gate.
+- **Floors** — statements 62, branches 54, functions 61, lines 65. These sit a few points under the
+  measured values and exist to catch regressions, not to certify the codebase. The scope deliberately
+  includes the thin IPC routers that drag the average down rather than excluding them to look better.
+- **Raise them as coverage climbs; never lower them to turn a red run green.** If a change legitimately
+  removes covered code, say so in the PR.
 
 **Conventions:**
 
@@ -139,17 +175,19 @@ npm run knip                # dead code
 ```bash
 npm run build               # electron-vite build (minified via esbuild)
 npm run check:css           # fails if <style> blocks redefine tokens-base.css classes
+npm run check:docs          # fails if a documented command no longer exists
 npm run audit:deps          # npm audit --audit-level=high (clean env)
-npm run check               # full local gate (typecheck + lint + format:check + knip + test + build + check:css + audit:deps)
+npm run check               # full local gate (typecheck + lint + format:check + knip + test:coverage + build + check:css + check:docs + audit:deps)
 npm run package             # build + icons + electron-builder --mac --arm64 (local DMG)
 ```
 
 - `check:css` (`scripts/check-css-collisions.mjs`) walks `src/renderer/**/*.tsx` and fails if an inline `<style>` redefines a class owned by `design/tokens-base.css` (e.g. `.btn`, `.field`). Move it to a `.module.css` file.
+- `check:docs` (`scripts/check-docs-commands.mjs`) keeps this file honest. It parses every `npm run …`, `make …`, and `scripts/…` reference in the `AGENTS.md` guides, `README.md`, the `Makefile`, and `.github/workflows/**`, then asserts each target actually exists — and, in the other direction, that every `package.json` script is documented and every step composed into `npm run check` is named here. Failures print `file:line` plus the fix. It is **static**: nothing documented is ever executed, so GUI and packaging commands (`npm run dev`, `npm run package`) are validated by existence only. `specs/` and `.factory/docs/` are excluded on purpose — they are historical records that describe the repo as it was, including the retired `apps/desktop` layout. Two scripts are intentionally undocumented and allowlisted in the script: `icons` (an implementation detail of `package`) and `engine:demo` (a local scratch harness).
 - `audit:deps` (`scripts/audit-deps.mjs`) spawns `npm audit` in a clean env (strips `npm_config_allow_scripts`) so it works on npm 12.
 
 **CI** (`.github/workflows/ci.yml`, runs on `macos-26`):
 
-- `verify` job: typecheck, lint, format:check, knip, test, build, audit:deps.
+- `verify` job: typecheck, lint, format:check, check:docs, knip, test:coverage, build, audit:deps.
 - `actionlint` on `ubuntu-latest` (1.7.12+, required for `macos-26` label).
 - Pull requests run both jobs unconditionally (no paths filter) so required checks are never unsatisfied.
 

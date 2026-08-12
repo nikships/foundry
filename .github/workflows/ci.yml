@@ -62,11 +62,18 @@ jobs:
       - name: Format
         run: npm run format:check
 
+      - name: Documented commands
+        # Static check that the commands in AGENTS.md / README / Makefile /
+        # workflows still resolve to real npm scripts and make targets.
+        run: npm run check:docs
+
       - name: Dead code (knip)
         run: npm run knip
 
       - name: Test
-        run: npm test
+        # Coverage thresholds live in vitest.config.ts, so the local gate
+        # (npm run check) and CI enforce exactly the same floor.
+        run: npm run test:coverage
 
       - name: Build
         run: npm run build
