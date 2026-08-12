@@ -8,6 +8,7 @@ import {
   PanelLeftOpen,
   Play,
   Settings as SettingsIcon,
+  TerminalSquare,
   Users,
   Workflow,
 } from 'lucide-react';
@@ -123,6 +124,7 @@ export default function Sidebar({
   onOpenSettings,
   onOpenInterruptRun,
   onOpenInspector,
+  onOpenSmith,
   inspectorRunId = '',
 }: {
   view: View;
@@ -136,6 +138,8 @@ export default function Sidebar({
   onOpenInterruptRun?: (runId: string) => void;
   /** Pin the Inspector to a run; the run may live in any project. */
   onOpenInspector?: (runId: string) => void;
+  /** Smith opens the launcher modal rather than switching the View, so it takes its own handler. */
+  onOpenSmith?: () => void;
   /** The run the Inspector is pinned to, so its activity row reads as selected. */
   inspectorRunId?: string;
 }): React.JSX.Element {
@@ -240,6 +244,25 @@ export default function Sidebar({
             </button>
           );
         })}
+        {/*
+         * Smith sits below the views but opens the launcher modal rather than
+         * switching the View, so it is never `.active`. It is a handoff into the
+         * user's own terminal — the app has not embedded one since the skill
+         * replaced it.
+         */}
+        <button
+          type="button"
+          className={`${styles.navItem} ${collapsed ? styles.navItemCollapsed : ''}`}
+          onClick={() => onOpenSmith?.()}
+          title={collapsed ? 'Smith' : undefined}
+          aria-label="Smith"
+        >
+          {collapsed ? (
+            <TerminalSquare size={18} strokeWidth={1.9} aria-hidden className={styles.navEmblem} />
+          ) : (
+            <span className={styles.navLabel}>Smith</span>
+          )}
+        </button>
       </nav>
       {!collapsed && pipelineRuns.length > 0 && (
         <div className={styles.runsSection}>

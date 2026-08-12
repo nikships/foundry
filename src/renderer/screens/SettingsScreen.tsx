@@ -9,6 +9,7 @@ import type {
   ProjectDef,
   UpdateStatus,
 } from '@shared/types.js';
+import { TERMINAL_APPS } from '@shared/types.js';
 import { api, plain } from '../api.js';
 import { useApp } from '../stores/app.js';
 import ModelPicker from '../components/ModelPicker.js';
@@ -127,10 +128,16 @@ function Toggle({
 export default function SettingsScreen({
   pane: initialPane,
   onNewProject,
+  openEnvelope,
+  openNonce = 0,
 }: {
   pane: string;
   /** Create a repository on GitHub instead of pointing at an existing checkout. */
   onNewProject?: () => void;
+  /** Deep link (e.g. a Smith approve) into the envelopes pane: select this envelope. */
+  openEnvelope?: string;
+  /** Bumped per deep-link so re-selecting the same envelope re-fires the effect. */
+  openNonce?: number;
 }): React.JSX.Element {
   const { settings, project, projects, refreshAll, patchSettings, selectProject } = useApp();
   const [pane, setPane] = useState<Pane>((initialPane as Pane) ?? 'general');
@@ -449,7 +456,7 @@ export default function SettingsScreen({
         <div className={styles.settingsScroll}>
           {pane === 'envelopes' ? (
             <div className={styles.envelopesPage}>
-              <EnvelopesSettings />
+              <EnvelopesSettings openEnvelope={openEnvelope} openNonce={openNonce} />
             </div>
           ) : (
             <div className={styles.settingsPage}>
@@ -590,6 +597,35 @@ export default function SettingsScreen({
                               : 'Check for updates'}
                         </Button>
                       )}
+                    </div>
+                  </Section>
+
+                  <Section
+                    label="Terminal"
+                    note="Where Foundry hands you a shell — Smith sessions and Open in terminal."
+                  >
+                    <div className={styles.settingsFields}>
+                      <Field
+                        label="Preferred terminal"
+                        hint="Used by Smith's launcher to open your project directory. Foundry does not embed a terminal; it opens yours."
+                      >
+                        <Dropdown
+                          value={settings.terminalApp}
+                          options={TERMINAL_APPS.map((terminal) => ({
+                            value: terminal.id,
+                            label: terminal.label,
+                            description:
+                              terminal.id === 'terminal'
+                                ? 'Ships with macOS, so it always resolves.'
+                                : `Opens ${terminal.appName}.app — must be installed.`,
+                          }))}
+                          onChange={(next) => {
+                            void patchSettings({
+                              terminalApp: next as AppSettings['terminalApp'],
+                            });
+                          }}
+                        />
+                      </Field>
                     </div>
                   </Section>
 

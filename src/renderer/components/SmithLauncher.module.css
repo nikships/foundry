@@ -1,0 +1,172 @@
+/**
+ * The Smith launcher: a short handoff card, not a workspace. It sits on a normal
+ * (non-priority) ModalShell, so an engineer interrupt or a Smith proposal card
+ * raised while it is open renders above it.
+ */
+
+.dialog {
+  width: min(620px, calc(100vw - 96px));
+  max-height: calc(100vh - 120px);
+  display: flex;
+  flex-direction: column;
+  padding: var(--s6);
+  gap: var(--s4);
+  overflow-y: auto;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s3);
+}
+
+.headerIcon {
+  flex: none;
+  margin-top: 3px;
+  color: var(--accent-bright);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-lg);
+  color: var(--text);
+}
+
+.subtitle {
+  margin: var(--s1) 0 0;
+  max-width: 56ch;
+  color: var(--text-dim);
+  font-size: var(--text-sm);
+  line-height: var(--leading);
+}
+
+.launchRow {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+
+.path {
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.notice {
+  margin: 0;
+  padding: var(--s3);
+  border: 1px solid color-mix(in srgb, var(--amber) 20%, transparent);
+  border-radius: var(--r-sm);
+  background: var(--amber-dim);
+  color: var(--amber);
+  font-size: var(--text-sm);
+}
+
+.notice code {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.error {
+  margin: 0;
+  color: var(--danger, var(--amber));
+  font-size: var(--text-sm);
+}
+
+/* The three steps. Numbers come from the list itself, not a pseudo-element. */
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  margin: 0;
+  padding-left: var(--s5);
+  color: var(--text-dim);
+  font-size: var(--text-sm);
+}
+
+.steps li::marker {
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.stepText {
+  display: block;
+  color: var(--text);
+  line-height: var(--leading);
+}
+
+.block {
+  margin-top: var(--s2);
+}
+
+.blockHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  margin-bottom: var(--s1);
+}
+
+.label {
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: var(--label-size);
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+}
+
+.code {
+  margin: 0;
+  padding: var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: var(--leading);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.hint {
+  margin: var(--s1) 0 0;
+  color: var(--text-dim);
+  font-size: var(--text-xs);
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding-top: var(--s2);
+  border-top: 1px solid var(--line);
+}
+
+.footNote {
+  color: var(--text-dim);
+  font-size: var(--text-xs);
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* An inline text button, so a link inside prose does not look like a control. */
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-bright);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.link:hover {
+  color: var(--text);
+}

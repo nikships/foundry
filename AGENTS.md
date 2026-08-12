@@ -10,6 +10,7 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 
 - **Pipeline / Phase / Agent / Envelope / Gate** — see `src/shared/types.ts` and `src/main/engine/`.
 - **Worktree isolation** — each run gets `.foundry-worktrees/<runId>` on branch `foundry/<runId>`. The base checkout is never mutated; merge/discard is an explicit operator action in `engine/worktree.ts`.
+- **Smith** — Foundry's entity-smith. Not a feature of the app's UI: it is a skill (`skills/foundry-smith/`) the user loads into their own agent, in their own terminal, which drives the app through the `foundry-cli` helper over a unix socket. The app validates each proposal and holds every write behind a native approval card (`src/main/smith/`, `SmithProposalCard`). Read-only ops answer immediately; there is no delete, and projects are list-only. The sidebar's Smith entry opens the user's preferred terminal (Settings → General) at the project root and hands over the bootstrap line and the skill's path — a handoff, not an embedded terminal.
 - **Main owns privilege** — git, disk, child processes, CLIs, and SQLite live in `src/main/`. The renderer (`src/renderer/`) is unprivileged and reaches main only through the typed IPC seam (`src/shared/ipc-contract.ts` → `src/main/ipc/` → `src/preload/bridge.ts` → `src/renderer/api.ts`).
 
 ## Architecture
@@ -20,6 +21,7 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 │   ├── engine/                ← sequencing, retries, boundaries, gates, worktrees
 │   ├── droid/ + sdk/          ← Droid transport (daemon → RPC → one-shot)
 │   ├── cli/                   ← vendor argv + one-shot parse adapters
+│   ├── smith/                 ← Smith's socket, validation, approval queue
 │   ├── trace/                 ← Tracer: sole SQLite writer (WAL)
 │   ├── store/                 ← JSON config (JsonStore, builtins, migrations)
 │   ├── system/                ← PATH resolution, process control, doctor
@@ -28,6 +30,8 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 ├── src/renderer/              ← React 19 (no fs/child_process/electron imports)
 ├── src/shared/                ← pure types & IPC constants (no side effects)
 ├── src/preload/               ← narrow CJS bridge (bridge.cjs) for sandbox
+├── src/cli/                   ← foundry-cli: the standalone Smith helper binary
+├── skills/                    ← agent skills shipped with the repo (foundry-smith)
 ├── tests/                     ← Vitest suites (real git temp repos + fake-droid)
 └── scripts/                   ← check-css-collisions, audit-deps, engine-demo
 .github/workflows/             ← CI (ci.yml) + packaging (mac-package.yml)
@@ -171,21 +175,22 @@ gh run list --workflow mac-package.yml --limit 5
 
 The nearest `AGENTS.md` takes precedence. Start here, then follow the guide closest to the code you are changing.
 
-| Guide                       | Scope                                                      |
-| --------------------------- | ---------------------------------------------------------- |
-| `AGENTS.md` (root)          | Top-level: checks, process boundaries, install (this file) |
-| `src/main/AGENTS.md`        | Main-process invariants + routing to subdirectories        |
-| `src/main/engine/AGENTS.md` | Deterministic runner, envelopes, gates, worktrees          |
-| `src/main/droid/AGENTS.md`  | Droid transport, SDK quirks, permissions                   |
-| `src/main/cli/AGENTS.md`    | Vendor argv / one-shot parse adapters                      |
-| `src/main/trace/AGENTS.md`  | Tracer, WAL, polling cursor                                |
-| `src/main/store/AGENTS.md`  | JSON config, JsonStore, builtin restoration                |
-| `src/main/system/AGENTS.md` | PATH, process control, doctor                              |
-| `src/main/ipc/AGENTS.md`    | Domain routers, IPC channel seam                           |
-| `src/renderer/AGENTS.md`    | React UI, polling, Inspector, CSS modules                  |
-| `src/shared/AGENTS.md`      | Pure types, IPC contract                                   |
-| `src/preload/AGENTS.md`     | Narrow CJS bridge                                          |
-| `.github/AGENTS.md`         | CI and releases                                            |
+| Guide                       | Scope                                                        |
+| --------------------------- | ------------------------------------------------------------ |
+| `AGENTS.md` (root)          | Top-level: checks, process boundaries, install (this file)   |
+| `src/main/AGENTS.md`        | Main-process invariants + routing to subdirectories          |
+| `src/main/engine/AGENTS.md` | Deterministic runner, envelopes, gates, worktrees            |
+| `src/main/droid/AGENTS.md`  | Droid transport, SDK quirks, permissions                     |
+| `src/main/cli/AGENTS.md`    | Vendor argv / one-shot parse adapters                        |
+| `src/main/trace/AGENTS.md`  | Tracer, WAL, polling cursor                                  |
+| `src/main/store/AGENTS.md`  | JSON config, JsonStore, builtin restoration                  |
+| `src/main/system/AGENTS.md` | PATH, process control, doctor                                |
+| `src/main/ipc/AGENTS.md`    | Domain routers, IPC channel seam                             |
+| `src/main/smith/AGENTS.md`  | Smith's socket, approval queue, and the skill that drives it |
+| `src/renderer/AGENTS.md`    | React UI, polling, Inspector, CSS modules                    |
+| `src/shared/AGENTS.md`      | Pure types, IPC contract                                     |
+| `src/preload/AGENTS.md`     | Narrow CJS bridge                                            |
+| `.github/AGENTS.md`         | CI and releases                                              |
 
 ## Additional Notes
 

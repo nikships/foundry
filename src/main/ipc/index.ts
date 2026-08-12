@@ -19,6 +19,7 @@ import * as pipelines from './pipelines.js';
 import * as catalog from './catalog.js';
 import * as runs from './runs.js';
 import * as prs from './prs.js';
+import * as smith from './smith.js';
 import * as maintenance from './maintenance.js';
 import * as appRouter from './app.js';
 
@@ -35,6 +36,8 @@ export function registerIpc(ctx: AppContext): void {
   catalog.register(ctx, handle);
   runs.register(ctx, handle);
   prs.register(ctx, handle);
+  smith.register(ctx, handle);
+  smith.registerLaunch(ctx, handle);
   maintenance.register(ctx, handle);
   appRouter.register(ctx, handle);
 }

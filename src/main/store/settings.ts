@@ -51,6 +51,7 @@ export const appSettingsSchema = z.object({
     needsInput: z.boolean(),
   }),
   dockBadge: z.boolean(),
+  terminalApp: z.enum(['terminal', 'iterm', 'ghostty', 'warp', 'alacritty', 'kitty']),
   appearance: z.enum(['system', 'dark']),
   retentionDays: z.number().int().min(1).max(3650).nullable(),
   onboarded: z.boolean(),
@@ -86,6 +87,8 @@ export function defaultSettings(): AppSettings {
     daemonPort: DEFAULT_DAEMON_PORT,
     notifications: { accepted: true, rejected: true, failed: true, needsInput: true },
     dockBadge: true,
+    // Terminal.app ships with macOS, so the default always resolves.
+    terminalApp: 'terminal',
     appearance: 'system',
     retentionDays: null,
     onboarded: false,

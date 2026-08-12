@@ -1,0 +1,175 @@
+<!doctype html>
+<!--
+  Smith preview template — agent.
+
+  Fill every {{token}} by hand, HTML-escaping the values. Delete any row whose
+  token you have no value for. See SKILL.md § Visual previews.
+
+  Tokens: name, purpose, color, model, reasoning_effort, envelope, writes,
+          system_prompt, user_prompt, mode
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>{{name}} — Foundry agent</title>
+    <style>
+      :root {
+        --bg: #0a0a0a;
+        --panel: #131313;
+        --line: #262626;
+        --text: #ededed;
+        --dim: #8a8a8a;
+        --accent: #ee6018;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 48px 6vw 72px;
+        background: var(--bg);
+        color: var(--text);
+        font:
+          15px/1.6 -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
+      }
+      .mode {
+        display: inline-block;
+        margin-bottom: 20px;
+        padding: 5px 11px;
+        border: 1px solid var(--accent);
+        border-radius: 3px;
+        color: var(--accent);
+        font:
+          600 11px/1 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .head {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding-bottom: 22px;
+        border-bottom: 1px solid var(--line);
+      }
+      .swatch {
+        width: 34px;
+        height: 34px;
+        flex: none;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: {{color}};
+      }
+      h1 {
+        margin: 0;
+        font-size: 27px;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+      }
+      .purpose {
+        margin: 14px 0 34px;
+        max-width: 68ch;
+        color: var(--dim);
+        font-size: 16px;
+      }
+      .grid {
+        display: grid;
+        gap: 1px;
+        margin-bottom: 34px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--line);
+        grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+        overflow: hidden;
+      }
+      .cell {
+        padding: 15px 17px;
+        background: var(--panel);
+      }
+      .label {
+        margin-bottom: 6px;
+        color: var(--dim);
+        font:
+          11px/1 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+        letter-spacing: 0.11em;
+        text-transform: uppercase;
+      }
+      .value {
+        font:
+          14px/1.5 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+        word-break: break-word;
+      }
+      h2 {
+        margin: 30px 0 10px;
+        color: var(--dim);
+        font:
+          11px/1 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+        letter-spacing: 0.11em;
+        text-transform: uppercase;
+      }
+      pre {
+        margin: 0;
+        padding: 18px 20px;
+        border: 1px solid var(--line);
+        border-left: 2px solid var(--accent);
+        border-radius: 6px;
+        background: var(--panel);
+        font:
+          13px/1.65 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+    </style>
+  </head>
+  <body>
+    <span class="mode">{{mode}}</span>
+
+    <div class="head">
+      <span class="swatch"></span>
+      <h1>{{name}}</h1>
+    </div>
+    <p class="purpose">{{purpose}}</p>
+
+    <div class="grid">
+      <div class="cell">
+        <div class="label">Model</div>
+        <div class="value">{{model}}</div>
+      </div>
+      <div class="cell">
+        <div class="label">Reasoning</div>
+        <div class="value">{{reasoning_effort}}</div>
+      </div>
+      <div class="cell">
+        <div class="label">Envelope</div>
+        <div class="value">{{envelope}}</div>
+      </div>
+      <div class="cell">
+        <div class="label">Writes</div>
+        <div class="value">{{writes}}</div>
+      </div>
+    </div>
+
+    <h2>System prompt</h2>
+    <pre>{{system_prompt}}</pre>
+
+    <h2>User prompt</h2>
+    <pre>{{user_prompt}}</pre>
+  </body>
+</html>

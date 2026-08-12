@@ -20,6 +20,8 @@ import { RunRegistry } from './engine/registry.js';
 import { Detections } from './engine/detections.js';
 import { Setups } from './engine/setups.js';
 import { UpdaterService } from './updater.js';
+import { SmithService } from './smith/index.js';
+import { saveProposal } from './ipc/smith.js';
 import { notifyNeedsInput, notifyOutcome, setDockBadge } from './system/notify.js';
 import { shutdownDaemonManager } from './droid/sdk/daemon.js';
 
@@ -39,6 +41,7 @@ export class AppContext {
   readonly detections: Detections;
   readonly setups: Setups;
   readonly updater: UpdaterService;
+  readonly smith: SmithService;
   readonly version: string;
 
   constructor(
@@ -69,6 +72,19 @@ export class AppContext {
 
     this.registry.on('needs-input', (interrupt: { title: string; body: string }) => {
       notifyNeedsInput(interrupt.title, interrupt.body, this.settings.get());
+    });
+
+    // Smith is a skill an agent loads in the user's own terminal; the app only
+    // owns the socket it calls and the card that gates every write.
+    this.smith = new SmithService({
+      supportDir,
+      broadcast: (channel, payload) => this.broadcast(channel, payload),
+      channels: { proposalsChanged: IPC.eventSmithProposalsChanged },
+      // The queue awaits a save; store access lives in the IPC layer, so the
+      // handler is threaded through here rather than importing a store into the
+      // queue.
+      save: (proposal) => saveProposal(this, proposal),
+      socketCtx: this,
     });
   }
 
@@ -132,6 +148,7 @@ export class AppContext {
     this.registry.closeAll();
     this.detections.cancelAll();
     this.setups.cancelAll();
+    this.smith.dispose();
     // Best-effort: disconnect + SIGTERM the app-owned daemon. --parent-pid is
     // the crash backstop; this is the clean quit path. Fire-and-forget so
     // dispose stays sync for before-quit.
