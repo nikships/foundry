@@ -99,8 +99,9 @@ export type Mark = ComponentType<MarkProps>;
 /**
  * Factory ships no mark in lobehub's collection, and droid is the default CLI,
  * so without this the vendor most installs actually run would be the only one
- * with no logo. Taken from Factory's own site mark, currentColor so it sits
- * beside the mono glyphs rather than beside a hole.
+ * with no logo. This is the Factory pinwheel used only as a vendor badge
+ * (same role as the Claude or Codex mark), currentColor so it sits beside
+ * the other mono glyphs.
  */
 function FactoryDroid({ size = 16, className, style }: MarkProps): React.JSX.Element {
   return (
@@ -130,8 +131,33 @@ export const CLI_MARKS: Record<CliVendor, Mark> = {
   droid: FactoryDroid,
 };
 
-/** The Factory pinwheel on its own, for app chrome (titlebar, empty states). */
-export const DroidGlyph: Mark = FactoryDroid;
+/**
+ * Foundry's own mark: three interlocked rings. currentColor so it inherits
+ * the chrome palette (light on the dark titlebar, not the black-on-orange
+ * Dock icon).
+ */
+function FoundryMark({ size = 16, className, style }: MarkProps): React.JSX.Element {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      height={size}
+      style={style}
+      viewBox="0 0 64 64"
+      width={size}
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <g stroke="currentColor" strokeWidth="7.2">
+        <circle cx="32" cy="22" r="13.2" />
+        <circle cx="22.57" cy="38.2" r="13.2" />
+        <circle cx="41.43" cy="38.2" r="13.2" />
+      </g>
+    </svg>
+  );
+}
+
+/** Foundry mark for app chrome (titlebar, empty states, onboarding). */
+export const DroidGlyph: Mark = FoundryMark;
 
 /**
  * Keyed by the `provider` string a CLI's model catalog reports. Aliases for the

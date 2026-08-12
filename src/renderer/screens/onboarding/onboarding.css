@@ -39,7 +39,7 @@
   opacity: 0.3;
 }
 /* Header is the onboarding twin of App.tsx's fixed titlebar: the Foundry
-   pinwheel + wordmark are centered (same gap, mono tracking, and muted
+   mark + wordmark are centered (same gap, mono tracking, and muted
    color as .wordmark), while the stepper lives on the right. Grid keeps
    the brand truly centered even though the stepper has variable width. */
 .ob-top {
