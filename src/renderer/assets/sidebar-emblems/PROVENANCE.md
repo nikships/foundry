@@ -7,14 +7,21 @@ existing `--text-dim` / `--text` / `--amber` tokens.
 
 GitHub #78 asked for AI-generated transparent images. FOU-7 prefers clean
 SVGs with `currentColor`; raster 1x/2x variants are only required if a mark
-cannot be drawn as linework. These eleven slots are all linework, so no PNG
+cannot be drawn as linework. These thirteen slots are all linework, so no PNG
 matte is checked in.
+
+Four marks sit on the rail (Runs, Inspector, Design, Pull Requests) and three
+label Design's tab strip (Pipelines, Agents, Envelopes). Pipelines and Agents
+kept the linework they had when they were rail entries; only where they render
+changed. "Agents" is the user-facing name for the roster crew mark.
 
 | Slot | Emblem | Replaces (lucide) |
 | --- | --- | --- |
 | Runs | Workcell ring + start chevron | `Play` |
+| Design | Drafting square over its rail | — |
 | Pipelines | Three stations on a routed rail | `Workflow` |
-| Roster | Crew of three operators | `Users` |
+| Agents | Crew of three operators | `Users` |
+| Envelopes | Sealed handoff with its typed slot | — |
 | Inspector | Aperture with reticle ticks | `Eye` |
 | Pull Requests | Two heads merging onto one rail | `GitPullRequest` |
 | Smith | Anvil and a single forge spark | `TerminalSquare` |

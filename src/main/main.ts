@@ -113,10 +113,30 @@ function buildMenu(): void {
       label: 'View',
       submenu: [
         { label: 'Runs', accelerator: 'Cmd+1', click: menuClick('menu:view-runs') },
-        { label: 'Pipelines', accelerator: 'Cmd+2', click: menuClick('menu:view-pipelines') },
-        { label: 'Roster', accelerator: 'Cmd+3', click: menuClick('menu:view-roster') },
-        { label: 'Inspector', accelerator: 'Cmd+4', click: menuClick('menu:view-inspector') },
-        { label: 'Pull Requests', accelerator: 'Cmd+5', click: menuClick('menu:view-prs') },
+        { label: 'Inspector', accelerator: 'Cmd+2', click: menuClick('menu:view-inspector') },
+        { label: 'Design', accelerator: 'Cmd+3', click: menuClick('menu:view-design') },
+        { label: 'Pull Requests', accelerator: 'Cmd+4', click: menuClick('menu:view-prs') },
+        { type: 'separator' },
+        {
+          label: 'Design',
+          submenu: [
+            {
+              label: 'Pipelines',
+              accelerator: 'Cmd+Shift+1',
+              click: menuClick('menu:design-pipelines'),
+            },
+            {
+              label: 'Agents',
+              accelerator: 'Cmd+Shift+2',
+              click: menuClick('menu:design-agents'),
+            },
+            {
+              label: 'Envelopes',
+              accelerator: 'Cmd+Shift+3',
+              click: menuClick('menu:design-envelopes'),
+            },
+          ],
+        },
         { type: 'separator' },
         { role: 'reload' },
         { role: 'toggleDevTools' },

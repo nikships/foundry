@@ -1,7 +1,8 @@
 /**
- * Collapsed-rail emblems. Lucide placeholders shipped the 56px rail; these
- * replace them with a single Foundry set: currentColor linework, no baked
- * background or shadow, optical size matched to the old 18px glyphs.
+ * Collapsed-rail emblems, plus the marks Design's tab strip reuses. Lucide
+ * placeholders shipped the 56px rail; these replace them with a single Foundry
+ * set: currentColor linework, no baked background or shadow, optical size
+ * matched to the old 18px glyphs.
  *
  * Provenance: src/renderer/assets/sidebar-emblems/PROVENANCE.md
  */
@@ -48,6 +49,16 @@ export function RunsEmblem(props: EmblemProps): React.JSX.Element {
   );
 }
 
+/** Design — a drafting square over the rail it lays out. */
+export function DesignEmblem(props: EmblemProps): React.JSX.Element {
+  return (
+    <EmblemSvg {...props}>
+      <path d="M4.4 17.9 12 4.6l7.6 13.3z" />
+      <path d="M8.2 17.9 12 11.3l3.8 6.6" />
+    </EmblemSvg>
+  );
+}
+
 /** Pipelines — three stations on a routed rail. */
 export function PipelinesEmblem(props: EmblemProps): React.JSX.Element {
   return (
@@ -70,6 +81,16 @@ export function RosterEmblem(props: EmblemProps): React.JSX.Element {
       <path d="M3.3 17.4c.3-2.1 1.5-3.2 3-3.2" />
       <circle cx="17.9" cy="8.4" r="1.65" />
       <path d="M20.7 17.4c-.3-2.1-1.5-3.2-3-3.2" />
+    </EmblemSvg>
+  );
+}
+
+/** Envelopes — a sealed handoff with its typed slot. */
+export function EnvelopesEmblem(props: EmblemProps): React.JSX.Element {
+  return (
+    <EmblemSvg {...props}>
+      <path d="M4.3 6.9h15.4v10.2H4.3z" />
+      <path d="m4.3 7.6 7.7 5.2 7.7-5.2" />
     </EmblemSvg>
   );
 }
@@ -164,10 +185,19 @@ export function CollapseEmblem(props: EmblemProps): React.JSX.Element {
 
 export const NAV_EMBLEMS = {
   runs: RunsEmblem,
-  pipelines: PipelinesEmblem,
-  roster: RosterEmblem,
   inspector: InspectorEmblem,
+  design: DesignEmblem,
   prs: PullRequestsEmblem,
+} as const;
+
+/**
+ * Design's tab marks. `agents` draws the roster crew: only the user-facing name
+ * changed, so the emblem did not.
+ */
+export const DESIGN_TAB_EMBLEMS = {
+  pipelines: PipelinesEmblem,
+  agents: RosterEmblem,
+  envelopes: EnvelopesEmblem,
 } as const;
 
 export const CHROME_EMBLEMS = {
@@ -181,6 +211,7 @@ export const CHROME_EMBLEMS = {
 
 export const SIDEBAR_EMBLEMS = {
   ...NAV_EMBLEMS,
+  ...DESIGN_TAB_EMBLEMS,
   ...CHROME_EMBLEMS,
 } as const;
 

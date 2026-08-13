@@ -12,6 +12,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import {
   CHROME_EMBLEMS,
+  DESIGN_TAB_EMBLEMS,
   NAV_EMBLEMS,
   SIDEBAR_EMBLEM_SLOTS,
   SIDEBAR_EMBLEMS,
@@ -28,10 +29,12 @@ const provenance = readFileSync(
 
 const REQUIRED_SLOTS: SidebarEmblemSlot[] = [
   'runs',
-  'pipelines',
-  'roster',
   'inspector',
+  'design',
   'prs',
+  'pipelines',
+  'agents',
+  'envelopes',
   'smith',
   'project',
   'settings',
@@ -47,13 +50,10 @@ function markup(Emblem: Emblem): string {
 describe('collapsed-rail emblem catalog', () => {
   it('covers every navigation and chrome slot, including Smith', () => {
     expect([...SIDEBAR_EMBLEM_SLOTS].sort()).toEqual([...REQUIRED_SLOTS].sort());
-    expect(Object.keys(NAV_EMBLEMS).sort()).toEqual([
-      'inspector',
-      'pipelines',
-      'prs',
-      'roster',
-      'runs',
-    ]);
+    expect(Object.keys(NAV_EMBLEMS).sort()).toEqual(['design', 'inspector', 'prs', 'runs']);
+    // Pipelines and Roster left the rail for Design's tab strip; the marks stay
+    // in the same set so the tabs cannot drift from the sidebar's linework.
+    expect(Object.keys(DESIGN_TAB_EMBLEMS).sort()).toEqual(['agents', 'envelopes', 'pipelines']);
     expect(Object.keys(CHROME_EMBLEMS).sort()).toEqual([
       'collapse',
       'expand',

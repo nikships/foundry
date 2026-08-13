@@ -1,4 +1,4 @@
-import type { View } from './App.js';
+import type { DesignTab, View } from './navigation.js';
 
 /** The subset of KeyboardEvent the shortcut helpers read; keeps them testable. */
 export interface ShortcutKey {
@@ -11,11 +11,24 @@ export interface ShortcutKey {
 
 const VIEW_KEYS: Record<string, View> = {
   '1': 'runs',
-  '2': 'pipelines',
-  '3': 'roster',
-  '4': 'inspector',
+  '2': 'inspector',
+  '3': 'design',
+  '4': 'prs',
   ',': 'settings',
 };
+
+const DESIGN_TAB_KEYS: Record<string, DesignTab> = {
+  '1': 'pipelines',
+  '2': 'agents',
+  '3': 'envelopes',
+};
+
+/**
+ * Holding Shift reports the shifted character, not the digit, so a ⌘⇧1 chord
+ * arrives as `!`. Mapping them back keeps the tab chords working on the layouts
+ * that produce these.
+ */
+const SHIFTED_DIGITS: Record<string, string> = { '!': '1', '@': '2', '#': '3' };
 
 /**
  * Mirrors the native menu accelerators (⌘1–⌘4, ⌘,) so the same chords work
@@ -27,6 +40,16 @@ export function viewShortcut(e: ShortcutKey): View | null {
   const mod = e.metaKey || e.ctrlKey;
   if (!mod || e.altKey || e.shiftKey) return null;
   return VIEW_KEYS[e.key] ?? null;
+}
+
+/**
+ * ⌘⇧1–⌘⇧3 select a Design tab. Kept separate from `viewShortcut` because it
+ * only means anything once Design is the active view; the caller decides that.
+ */
+export function designTabShortcut(e: ShortcutKey): DesignTab | null {
+  const mod = e.metaKey || e.ctrlKey;
+  if (!mod || e.altKey || !e.shiftKey) return null;
+  return DESIGN_TAB_KEYS[SHIFTED_DIGITS[e.key] ?? e.key] ?? null;
 }
 
 export function isEditableTarget(target: unknown): boolean {

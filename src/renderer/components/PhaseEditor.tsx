@@ -10,6 +10,7 @@ import {
   type ValidationIssue,
 } from '@shared/types.js';
 import { api } from '../api.js';
+import type { DesignTab } from '../navigation.js';
 import { useApp } from '../stores/app.js';
 import {
   applyPhaseEnvelopeOverride,
@@ -38,6 +39,7 @@ export default function PhaseEditor({
   issues = [],
   onChange,
   onRemove,
+  onOpenDesignTab,
 }: {
   phase: PhaseDef;
   index: number;
@@ -48,7 +50,8 @@ export default function PhaseEditor({
   issues?: ValidationIssue[];
   onChange: (phase: PhaseDef) => void;
   onRemove: () => void;
-  onOpenSettings?: (pane: string) => void;
+  /** Cross-link to a sibling Design tab, e.g. the envelope library. */
+  onOpenDesignTab?: (tab: DesignTab) => void;
 }): React.JSX.Element {
   const { envelopes } = useApp();
   const [catalogGates, setCatalogGates] = useState<{ id: string; description: string }[]>([]);
@@ -266,6 +269,15 @@ export default function PhaseEditor({
                 </optgroup>
               )}
             </select>
+            {onOpenDesignTab && (
+              <button
+                type="button"
+                className={styles.linkBtn}
+                onClick={() => onOpenDesignTab('envelopes')}
+              >
+                Manage envelopes…
+              </button>
+            )}
           </div>
 
           <div className={styles.fieldGroup}>

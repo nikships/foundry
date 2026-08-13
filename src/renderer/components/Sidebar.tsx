@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { View } from '../App.js';
+import { NAV_ITEMS, type NavView, type View } from '../navigation.js';
 import { useApp } from '../stores/app.js';
 import { useAllProjectRuns } from '../stores/run.js';
 import { since, statusColor, statusWord } from '../format.js';
@@ -7,13 +7,9 @@ import { safeGetItem, safeSetItem } from '../local-store.js';
 import {
   CollapseEmblem,
   ExpandEmblem,
-  InspectorEmblem,
+  NAV_EMBLEMS,
   PendingEmblem,
-  PipelinesEmblem,
   ProjectEmblem,
-  PullRequestsEmblem,
-  RosterEmblem,
-  RunsEmblem,
   SettingsEmblem,
   SmithEmblem,
   type Emblem,
@@ -23,13 +19,9 @@ import styles from './Sidebar.module.css';
 
 const SIDEBAR_COLLAPSED_KEY = 'foundry.sidebarCollapsed';
 
-const items: { id: View; label: string; key: string; Emblem: Emblem }[] = [
-  { id: 'runs', label: 'Runs', key: '1', Emblem: RunsEmblem },
-  { id: 'pipelines', label: 'Pipelines', key: '2', Emblem: PipelinesEmblem },
-  { id: 'roster', label: 'Roster', key: '3', Emblem: RosterEmblem },
-  { id: 'inspector', label: 'Inspector', key: '4', Emblem: InspectorEmblem },
-  { id: 'prs', label: 'Pull Requests', key: '5', Emblem: PullRequestsEmblem },
-];
+const items: { id: NavView; label: string; key: string; Emblem: Emblem }[] = NAV_ITEMS.map(
+  (item) => ({ ...item, Emblem: NAV_EMBLEMS[item.id] }),
+);
 
 function SplitProjectOption({
   onAdd,
@@ -128,7 +120,7 @@ export default function Sidebar({
 }: {
   view: View;
   openRunId: string;
-  onNavigate: (view: View) => void;
+  onNavigate: (view: NavView) => void;
   onAddProject: () => void;
   /** Create a repository on GitHub instead of pointing at an existing checkout. */
   onNewProject?: () => void;

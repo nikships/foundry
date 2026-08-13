@@ -1,0 +1,126 @@
+/* One continuous surface — structure from hairlines + type, never tinted columns. */
+.design-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg-base);
+}
+
+.design-header {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: var(--s5);
+  padding: calc(var(--titlebar-h) + var(--s2)) var(--s6) var(--s3);
+}
+
+.design-lead {
+  margin: 0;
+  min-width: 0;
+  flex: 1;
+  font-size: var(--text-xs);
+  line-height: var(--leading);
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* strip — equal flex cells span the full window width and rescale with it */
+.design-tabs {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  padding: 0 var(--s6);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-base);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.design-tab {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  padding: var(--s3) var(--s3);
+  border: none;
+  border-right: 1px solid var(--line-faint);
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  cursor: default;
+  white-space: nowrap;
+  transition: color var(--fast) var(--ease);
+}
+
+.design-tab:last-child {
+  border-right: none;
+}
+
+.design-tab:hover {
+  color: var(--text-dim);
+}
+
+.design-tab.on {
+  color: var(--accent);
+}
+
+.design-tab-emblem {
+  flex: none;
+  opacity: 0.9;
+}
+
+.design-tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.design-tab-key {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  opacity: 0.65;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.design-tab.on::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--accent);
+}
+
+/* The tab owns its own scrolling; the shell only bounds it. */
+.design-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (max-width: 900px) {
+  .design-lead {
+    display: none;
+  }
+  .design-tab-key {
+    display: none;
+  }
+}

@@ -23,20 +23,19 @@ import ProjectSetup from '../components/ProjectSetup.js';
 import { Field, TextInput, Textarea } from '../components/ui/Field.js';
 import { Button } from '../components/ui/Button.js';
 import { Dropdown } from '../components/ui/Dropdown.js';
-import EnvelopesSettings from '../components/EnvelopesSettings.js';
 import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
 import { useTablistNav } from '../hooks/useTablistNav.js';
 import styles from './SettingsScreen.module.css';
 
-type Pane =
-  'general' | 'clis' | 'defaults' | 'envelopes' | 'mcp' | 'project' | 'maintenance' | 'about';
+// Envelopes is deliberately absent: it is an authoring surface, not a
+// preference, and lives in Design alongside the editors that reference it.
+type Pane = 'general' | 'clis' | 'defaults' | 'mcp' | 'project' | 'maintenance' | 'about';
 
 const PANES: { id: Pane; label: string }[] = [
   { id: 'general', label: 'General' },
   { id: 'clis', label: 'Agent CLI' },
   { id: 'defaults', label: 'Agent defaults' },
-  { id: 'envelopes', label: 'Envelopes' },
   { id: 'mcp', label: 'MCP Servers' },
   { id: 'project', label: 'Project' },
   { id: 'maintenance', label: 'Maintenance' },
@@ -133,17 +132,11 @@ function Toggle({
 export default function SettingsScreen({
   pane: initialPane,
   onNewProject,
-  openEnvelope,
-  openNonce = 0,
   onOpenReadiness,
 }: {
   pane: string;
   /** Create a repository on GitHub instead of pointing at an existing checkout. */
   onNewProject?: () => void;
-  /** Deep link (e.g. a Smith approve) into the envelopes pane: select this envelope. */
-  openEnvelope?: string;
-  /** Bumped per deep-link so re-selecting the same envelope re-fires the effect. */
-  openNonce?: number;
   onOpenReadiness?: (projectId: string) => void;
 }): React.JSX.Element {
   const { settings, project, projects, agents, refreshAll, patchSettings, selectProject } =
@@ -469,1038 +462,1015 @@ export default function SettingsScreen({
         </div>
 
         <div className={styles.settingsScroll}>
-          {pane === 'envelopes' ? (
-            <div className={styles.envelopesPage}>
-              <EnvelopesSettings openEnvelope={openEnvelope} openNonce={openNonce} />
-            </div>
-          ) : (
-            <div className={styles.settingsPage}>
-              {pane === 'general' && (
-                <>
-                  <Section
-                    label="Identity"
-                    note="Attached to every run, so a trace says who asked."
-                  >
-                    <div className={styles.settingsFields}>
-                      <Field label="Your name" htmlFor="engineer-name-input">
-                        <TextInput
-                          id="engineer-name-input"
-                          aria-label="Your name"
-                          value={nameDraft}
-                          onChange={(e) => {
-                            setNameDraft(e.target.value);
-                            setNameHint('');
-                          }}
-                          onBlur={() => void commitName()}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              (e.target as HTMLInputElement).blur();
-                            }
+          <div className={styles.settingsPage}>
+            {pane === 'general' && (
+              <>
+                <Section label="Identity" note="Attached to every run, so a trace says who asked.">
+                  <div className={styles.settingsFields}>
+                    <Field label="Your name" htmlFor="engineer-name-input">
+                      <TextInput
+                        id="engineer-name-input"
+                        aria-label="Your name"
+                        value={nameDraft}
+                        onChange={(e) => {
+                          setNameDraft(e.target.value);
+                          setNameHint('');
+                        }}
+                        onBlur={() => void commitName()}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            (e.target as HTMLInputElement).blur();
+                          }
+                        }}
+                      />
+                      <span className={styles.hint}>
+                        Recorded on every run, so a trace says who asked for it. Saved when you
+                        leave the field.
+                      </span>
+                      {nameHint && <span className={styles.settingsWarn}>{nameHint}</span>}
+                    </Field>
+                  </div>
+                </Section>
+
+                <Section label="Checks" note="What Foundry found on this machine at launch.">
+                  <DoctorList
+                    checks={checks}
+                    title="Environment checks"
+                    onRecheck={() => void api.doctor.run().then(setChecks)}
+                    onOpenSettings={(next) => setPaneLive(next as Pane)}
+                  />
+                </Section>
+
+                <Section label="Notifications" note="Only the moments that need you.">
+                  <div className={styles.settingsToggles}>
+                    {(Object.keys(NOTIFY_LABELS) as Array<keyof typeof NOTIFY_LABELS>).map(
+                      (key) => (
+                        <Toggle
+                          key={key}
+                          label={NOTIFY_LABELS[key]}
+                          checked={settings.notifications[key]}
+                          onChange={(value) =>
+                            void set({
+                              notifications: { ...settings.notifications, [key]: value },
+                            })
+                          }
+                        />
+                      ),
+                    )}
+                    <Toggle
+                      label="Show the number of live runs on the dock icon"
+                      checked={settings.dockBadge}
+                      onChange={(value) => void set({ dockBadge: value })}
+                    />
+                  </div>
+                </Section>
+
+                <Section label="Software updates" note="Foundry checks only when you ask it to.">
+                  <div className={styles.settingsSpread}>
+                    <Field>
+                      <strong className={styles.settingsStrong}>
+                        Foundry {version ? `v${version}` : ''}
+                      </strong>
+                      {updateStatus.message && (
+                        <span className={styles.hint}>{updateStatus.message}</span>
+                      )}
+                      {updateStatus.stage === 'available' && updateStatus.version && (
+                        <span className={styles.hint}>
+                          Foundry v{updateStatus.version} is available, download it when ready.
+                        </span>
+                      )}
+                    </Field>
+                    <span
+                      className={`${styles.settingsPill} ${updateTone === 'ok' ? styles.ok : updateTone === 'bad' ? styles.bad : styles.info}`}
+                    >
+                      {updateText}
+                    </span>
+                  </div>
+                  {(updateStatus.stage === 'downloading' || updateStatus.stage === 'ready') && (
+                    <div
+                      className={styles.settingsProgress}
+                      aria-label={
+                        updateStatus.stage === 'downloading'
+                          ? `Downloading ${Math.round(updateStatus.percent ?? 0)} percent`
+                          : 'Update ready to install'
+                      }
+                    >
+                      <div className={styles.settingsTrack}>
+                        <div
+                          className={`${styles.settingsFill} ${updateStatus.stage === 'ready' ? styles.ready : ''}`}
+                          style={{
+                            width: `${updateStatus.stage === 'ready' ? 100 : Math.max(0, Math.min(100, updateStatus.percent ?? 0))}%`,
                           }}
                         />
-                        <span className={styles.hint}>
-                          Recorded on every run, so a trace says who asked for it. Saved when you
-                          leave the field.
-                        </span>
-                        {nameHint && <span className={styles.settingsWarn}>{nameHint}</span>}
-                      </Field>
-                    </div>
-                  </Section>
-
-                  <Section label="Checks" note="What Foundry found on this machine at launch.">
-                    <DoctorList
-                      checks={checks}
-                      title="Environment checks"
-                      onRecheck={() => void api.doctor.run().then(setChecks)}
-                      onOpenSettings={(next) => setPaneLive(next as Pane)}
-                    />
-                  </Section>
-
-                  <Section label="Notifications" note="Only the moments that need you.">
-                    <div className={styles.settingsToggles}>
-                      {(Object.keys(NOTIFY_LABELS) as Array<keyof typeof NOTIFY_LABELS>).map(
-                        (key) => (
-                          <Toggle
-                            key={key}
-                            label={NOTIFY_LABELS[key]}
-                            checked={settings.notifications[key]}
-                            onChange={(value) =>
-                              void set({
-                                notifications: { ...settings.notifications, [key]: value },
-                              })
-                            }
-                          />
-                        ),
-                      )}
-                      <Toggle
-                        label="Show the number of live runs on the dock icon"
-                        checked={settings.dockBadge}
-                        onChange={(value) => void set({ dockBadge: value })}
-                      />
-                    </div>
-                  </Section>
-
-                  <Section label="Software updates" note="Foundry checks only when you ask it to.">
-                    <div className={styles.settingsSpread}>
-                      <Field>
-                        <strong className={styles.settingsStrong}>
-                          Foundry {version ? `v${version}` : ''}
-                        </strong>
-                        {updateStatus.message && (
-                          <span className={styles.hint}>{updateStatus.message}</span>
-                        )}
-                        {updateStatus.stage === 'available' && updateStatus.version && (
-                          <span className={styles.hint}>
-                            Foundry v{updateStatus.version} is available, download it when ready.
-                          </span>
-                        )}
-                      </Field>
-                      <span
-                        className={`${styles.settingsPill} ${updateTone === 'ok' ? styles.ok : updateTone === 'bad' ? styles.bad : styles.info}`}
-                      >
-                        {updateText}
+                      </div>
+                      <span className={`mono faint ${styles.settingsPct}`}>
+                        {updateStatus.stage === 'ready'
+                          ? 'ready'
+                          : `${Math.round(updateStatus.percent ?? 0)}%`}
                       </span>
                     </div>
-                    {(updateStatus.stage === 'downloading' || updateStatus.stage === 'ready') && (
-                      <div
-                        className={styles.settingsProgress}
-                        aria-label={
-                          updateStatus.stage === 'downloading'
-                            ? `Downloading ${Math.round(updateStatus.percent ?? 0)} percent`
-                            : 'Update ready to install'
-                        }
+                  )}
+                  <div className={styles.settingsSubrow}>
+                    {updateStatus.stage === 'ready' ? (
+                      <Button variant="primary" size="sm" onClick={() => void installUpdate()}>
+                        Restart to install
+                      </Button>
+                    ) : updateStatus.stage === 'available' ? (
+                      <Button variant="primary" size="sm" onClick={() => void downloadUpdate()}>
+                        Download update
+                      </Button>
+                    ) : updateStatus.stage === 'downloading' ? (
+                      <span className={styles.hint}>
+                        Installing after the download finishes, you will be asked to restart.
+                      </span>
+                    ) : (
+                      <Button
+                        size="sm"
+                        disabled={updateStatus.stage === 'checking'}
+                        onClick={() => void checkForUpdates()}
                       >
-                        <div className={styles.settingsTrack}>
-                          <div
-                            className={`${styles.settingsFill} ${updateStatus.stage === 'ready' ? styles.ready : ''}`}
-                            style={{
-                              width: `${updateStatus.stage === 'ready' ? 100 : Math.max(0, Math.min(100, updateStatus.percent ?? 0))}%`,
-                            }}
-                          />
-                        </div>
-                        <span className={`mono faint ${styles.settingsPct}`}>
-                          {updateStatus.stage === 'ready'
-                            ? 'ready'
-                            : `${Math.round(updateStatus.percent ?? 0)}%`}
-                        </span>
-                      </div>
+                        {updateStatus.stage === 'checking'
+                          ? 'Checking for updates…'
+                          : updateStatus.stage === 'error'
+                            ? 'Try again'
+                            : 'Check for updates'}
+                      </Button>
                     )}
-                    <div className={styles.settingsSubrow}>
-                      {updateStatus.stage === 'ready' ? (
-                        <Button variant="primary" size="sm" onClick={() => void installUpdate()}>
-                          Restart to install
-                        </Button>
-                      ) : updateStatus.stage === 'available' ? (
-                        <Button variant="primary" size="sm" onClick={() => void downloadUpdate()}>
-                          Download update
-                        </Button>
-                      ) : updateStatus.stage === 'downloading' ? (
-                        <span className={styles.hint}>
-                          Installing after the download finishes, you will be asked to restart.
-                        </span>
-                      ) : (
-                        <Button
-                          size="sm"
-                          disabled={updateStatus.stage === 'checking'}
-                          onClick={() => void checkForUpdates()}
-                        >
-                          {updateStatus.stage === 'checking'
-                            ? 'Checking for updates…'
-                            : updateStatus.stage === 'error'
-                              ? 'Try again'
-                              : 'Check for updates'}
-                        </Button>
-                      )}
-                    </div>
-                  </Section>
+                  </div>
+                </Section>
 
-                  <Section
-                    label="Terminal"
-                    note="Where Foundry hands you a shell — Smith sessions and Open in terminal."
-                  >
-                    <div className={styles.settingsFields}>
-                      <Field
-                        label="Preferred terminal"
-                        hint="Used by Smith's launcher to open your project directory. Foundry does not embed a terminal; it opens yours."
-                      >
-                        <Dropdown
-                          value={settings.terminalApp}
-                          options={TERMINAL_APPS.map((terminal) => ({
-                            value: terminal.id,
-                            label: terminal.label,
-                            description:
-                              terminal.id === 'terminal'
-                                ? 'Ships with macOS, so it always resolves.'
-                                : `Opens ${terminal.appName}.app — must be installed.`,
-                          }))}
-                          onChange={(next) => {
-                            void patchSettings({
-                              terminalApp: next as AppSettings['terminalApp'],
-                            });
-                          }}
-                        />
-                      </Field>
-                    </div>
-                  </Section>
+                <Section
+                  label="Terminal"
+                  note="Where Foundry hands you a shell — Smith sessions and Open in terminal."
+                >
+                  <div className={styles.settingsFields}>
+                    <Field
+                      label="Preferred terminal"
+                      hint="Used by Smith's launcher to open your project directory. Foundry does not embed a terminal; it opens yours."
+                    >
+                      <Dropdown
+                        value={settings.terminalApp}
+                        options={TERMINAL_APPS.map((terminal) => ({
+                          value: terminal.id,
+                          label: terminal.label,
+                          description:
+                            terminal.id === 'terminal'
+                              ? 'Ships with macOS, so it always resolves.'
+                              : `Opens ${terminal.appName}.app — must be installed.`,
+                        }))}
+                        onChange={(next) => {
+                          void patchSettings({
+                            terminalApp: next as AppSettings['terminalApp'],
+                          });
+                        }}
+                      />
+                    </Field>
+                  </div>
+                </Section>
 
-                  <Section
-                    label="Application"
-                    note="Restart after changing settings or installing an update."
-                  >
-                    <p className={styles.hint}>
-                      Restart Foundry after changing settings or installing an update.
-                    </p>
-                    <div className={styles.settingsBtnrow}>
-                      <Button size="sm" onClick={() => void relaunchApp()}>
-                        Relaunch Foundry
-                      </Button>
-                      <Button size="sm" onClick={() => void quitApp()}>
-                        Quit Foundry
-                      </Button>
-                    </div>
-                  </Section>
-                </>
-              )}
-              {pane === 'clis' && (
-                <>
-                  <Section label="Agent CLI" note="Drives agent phases.">
-                    <p className={styles.settingsLead}>
-                      Foundry drives Factory Droid for agent phases. A path is filled in from your
-                      PATH at first launch; correct it here if you keep the binary somewhere
-                      unusual.
-                    </p>
-                  </Section>
-                  {clis.map((cli) => {
-                    const config = settings.clis[cli.id];
-                    const found = checks.find((c) => c.id === `cli:${cli.id}`);
-                    return (
-                      <Section
-                        key={cli.id}
-                        label={cli.label}
-                        note={
-                          found
-                            ? found.ok
-                              ? 'On PATH, ready to drive.'
-                              : 'Not where Foundry expected it.'
-                            : 'Checking…'
-                        }
-                      >
-                        <div className={styles.settingsCliHead}>
-                          <CliIcon vendor={cli.id} size={18} />
-                          <h3>{cli.label}</h3>
-                          {found && (
-                            <span
-                              className={`${styles.settingsPill} ${found.ok ? styles.ok : styles.bad}`}
-                            >
-                              {found.ok ? 'found' : 'not found'}
-                            </span>
-                          )}
-                        </div>
-                        <div className={styles.settingsFields}>
-                          <Field label="Executable">
-                            <TextInput
-                              mono
-                              value={config.path}
-                              onChange={(e) => void setCli(cli.id, { path: e.target.value })}
-                            />
-                            {found && <span className={styles.hint}>{found.detail}</span>}
-                          </Field>
-                          <Field
-                            label="Extra arguments"
-                            hint="For an option this release does not model yet. Passed through verbatim."
-                          >
-                            <TextInput
-                              mono
-                              value={config.extraArgs.join(' ')}
-                              placeholder="appended to every turn"
-                              onChange={(e) =>
-                                void setCli(cli.id, {
-                                  extraArgs: e.target.value.split(/\s+/).filter(Boolean),
-                                })
-                              }
-                            />
-                          </Field>
-                        </div>
-                        {cli.caveats.length > 0 && (
-                          <ul className={styles.caveats}>
-                            {cli.caveats.map((caveat) => (
-                              <li key={caveat}>{caveat}</li>
-                            ))}
-                          </ul>
-                        )}
-                        <div>
-                          <Button size="sm" onClick={() => void api.app.openExternal(cli.docsUrl)}>
-                            Install docs
-                          </Button>
-                        </div>
-                      </Section>
-                    );
-                  })}
-                  <Section label="Checks" note="Re-run after installing or moving a CLI.">
-                    <DoctorList
-                      checks={checks}
-                      title="Environment checks"
-                      onRecheck={() => void api.doctor.run().then(setChecks)}
-                      onOpenSettings={(next) => setPaneLive(next as Pane)}
-                    />
-                  </Section>
-                </>
-              )}
-              {pane === 'defaults' && (
-                <>
-                  <Section label="Agent defaults" note="What an agent set to inherit gets.">
-                    <div className={styles.settingsSpread}>
-                      <p className={styles.settingsLead}>
-                        Used by any agent set to inherit. A per-agent choice always wins.
-                      </p>
-                      <Button size="sm" onClick={() => void refreshModels()}>
-                        Refresh models
-                      </Button>
-                    </div>
-                  </Section>
-                  <Section label="Model" note="Offered by whichever CLI is the default.">
-                    <div className={styles.settingsFields}>
-                      <Field label="Default model">
-                        <ModelPicker
-                          value={settings.defaultModel}
-                          models={models}
-                          allowInherit
-                          emptyHint={`No models from ${settings.defaultCli}. Install and sign in under Agent CLIs, then refresh.`}
-                          onChange={(v) => void set({ defaultModel: v })}
-                          onRefresh={() => void refreshModels()}
-                        />
-                      </Field>
-                      <Field label="Default reasoning effort">
-                        <Dropdown
-                          value={settings.defaultReasoningEffort}
-                          options={[
-                            { value: 'off', label: 'Off' },
-                            { value: 'low', label: 'Low' },
-                            { value: 'medium', label: 'Medium' },
-                            { value: 'high', label: 'High' },
-                            { value: 'xhigh', label: 'X-High' },
-                            { value: 'max', label: 'Max' },
-                          ]}
-                          onChange={(next) => void set({ defaultReasoningEffort: next as never })}
-                        />
-                      </Field>
-                    </div>
-                  </Section>
-                  <Section
-                    label="Readiness"
-                    note="What the Agent Readiness Check uses when a repo is added."
-                  >
-                    <div className={styles.settingsFields}>
-                      <Field label="Readiness model">
-                        <ModelPicker
-                          value={settings.readinessModel}
-                          models={models}
-                          allowInherit
-                          emptyHint={`No models from ${settings.defaultCli}.`}
-                          onChange={(v) => void set({ readinessModel: v })}
-                          onRefresh={() => void refreshModels()}
-                        />
-                      </Field>
-                      <Field label="Readiness reasoning effort">
-                        <Dropdown
-                          value={settings.readinessReasoningEffort}
-                          options={[
-                            { value: 'off', label: 'Off' },
-                            { value: 'low', label: 'Low' },
-                            { value: 'medium', label: 'Medium' },
-                            { value: 'high', label: 'High' },
-                            { value: 'xhigh', label: 'X-High' },
-                            { value: 'max', label: 'Max' },
-                          ]}
-                          onChange={(next) => void set({ readinessReasoningEffort: next as never })}
-                        />
-                      </Field>
-                    </div>
-                  </Section>
-                  <Section
-                    label="Pull requests"
-                    note="Who drafts a PR when a pipeline asks for one."
-                  >
-                    <div className={styles.settingsFields}>
-                      <Field
-                        label="PR writer"
-                        hint="Roster agent used when adding a PR phase. A pipeline that names an agent still wins."
-                        error={
-                          isKnownPrWriter(settings.prAgent, agents)
-                            ? undefined
-                            : "Not in this project's roster. Settings still load; pick a writer that exists."
-                        }
-                      >
-                        <Dropdown
-                          value={settings.prAgent}
-                          options={prWriterOptions(agents, settings.prAgent)}
-                          aria-label="PR writer"
-                          onChange={(next) => void set({ prAgent: next })}
-                        />
-                      </Field>
-                    </div>
-                  </Section>
-                  <Section label="Autonomy" note="How a run behaves once it starts.">
-                    <p className={styles.hint}>
-                      Runs are fully autonomous: once a run starts it never stops to ask permission.
-                      Writes outside an agent&rsquo;s boundary are always reverted, and every
-                      decision the engine makes on your behalf is recorded in the run&rsquo;s
-                      timeline.
-                    </p>
-                  </Section>
-                  <Section label="Limits" note="How hard Foundry tries before a phase fails.">
-                    <div className={styles.settingsFields}>
-                      <Field
-                        label="Envelope retries"
-                        hint="Correction messages sent when a reply will not parse."
-                      >
-                        <TextInput
-                          type="number"
-                          min={0}
-                          max={5}
-                          value={settings.envelopeRetries}
-                          onChange={(e) =>
-                            void setInt(e.target.value, { min: 0, max: 5 }, (envelopeRetries) => ({
-                              envelopeRetries,
-                            }))
-                          }
-                        />
-                      </Field>
-                      <Field
-                        label="Gate retries"
-                        hint="Attempts to fix a gate violation before the phase fails."
-                      >
-                        <TextInput
-                          type="number"
-                          min={0}
-                          max={5}
-                          value={settings.gateRetries}
-                          onChange={(e) =>
-                            void setInt(e.target.value, { min: 0, max: 5 }, (gateRetries) => ({
-                              gateRetries,
-                            }))
-                          }
-                        />
-                      </Field>
-                      <Field
-                        label="Compact context at (%)"
-                        hint="Between phases, an agent this full of context is compacted so the next phase has room."
-                      >
-                        <TextInput
-                          type="number"
-                          min={COMPACTION_PERCENT.min}
-                          max={COMPACTION_PERCENT.max}
-                          value={Math.round(settings.compactionThreshold * 100)}
-                          onChange={(e) =>
-                            void setInt(e.target.value, COMPACTION_PERCENT, (percent) => ({
-                              compactionThreshold: percent / 100,
-                            }))
-                          }
-                        />
-                      </Field>
-                      <Field
-                        label="Rewind after (corrections)"
-                        hint="After this many failed corrections, rewind the session to its phase-start state instead of appending another fix. Set to 0 to disable — the phase simply retries in place."
-                        error={fieldErrors.rewindAfterCorrections}
-                      >
-                        <TextInput
-                          type="number"
-                          min={REWIND_BAND.min}
-                          max={REWIND_BAND.max}
-                          step={1}
-                          value={settings.rewindAfterCorrections}
-                          aria-invalid={fieldErrors.rewindAfterCorrections ? 'true' : undefined}
-                          aria-describedby={
-                            fieldErrors.rewindAfterCorrections
-                              ? 'field-rewindAfterCorrections-error'
-                              : undefined
-                          }
-                          onChange={(e) => {
-                            const raw = e.target.value.trim();
-                            if (raw === '') {
-                              setFieldErrors((m) => ({
-                                ...m,
-                                rewindAfterCorrections:
-                                  'Enter 0–20, or clear to keep the last value.',
-                              }));
-                              return;
-                            }
-                            const n = Number(raw);
-                            if (!Number.isFinite(n)) {
-                              setFieldErrors((m) => ({
-                                ...m,
-                                rewindAfterCorrections: 'That is not a number — enter 0–20.',
-                              }));
-                              return;
-                            }
-                            const clamped = Math.min(
-                              REWIND_BAND.max,
-                              Math.max(REWIND_BAND.min, Math.round(n)),
-                            );
-                            if (Math.round(n) !== n) {
-                              setFieldErrors((m) => ({
-                                ...m,
-                                rewindAfterCorrections: `Rounded to ${clamped}.`,
-                              }));
-                            } else if (n < REWIND_BAND.min || n > REWIND_BAND.max) {
-                              setFieldErrors((m) => ({
-                                ...m,
-                                rewindAfterCorrections: `Clamped to ${clamped}.`,
-                              }));
-                            } else if (n === 0) {
-                              setFieldErrors((m) => ({
-                                ...m,
-                                rewindAfterCorrections:
-                                  'Rewind disabled — corrections append in place.',
-                              }));
-                            } else {
-                              setFieldErrors((m) => {
-                                const next = { ...m };
-                                delete next.rewindAfterCorrections;
-                                return next;
-                              });
-                            }
-                            void (async () => {
-                              const issues = await patchSettings({
-                                rewindAfterCorrections: clamped,
-                              });
-                              if (issues.length) setErrors(issues);
-                              else setErrors([]);
-                              // Do not clear fieldErrors on success here — the
-                              // clamped/disabled notes must survive to explain
-                              // why the input now shows a different number.
-                            })();
-                          }}
-                          onBlur={(e) => {
-                            const raw = e.target.value.trim();
-                            if (!raw) {
-                              setFieldErrors((m) => {
-                                const next = { ...m };
-                                delete next.rewindAfterCorrections;
-                                return next;
-                              });
-                              e.target.value = String(settings.rewindAfterCorrections);
-                              // Force React to treat the re-populated value as
-                              // the current committed one on next onChange.
-                              const tracker = (
-                                e.target as HTMLInputElement & {
-                                  _valueTracker?: { setValue(v: string): void };
-                                }
-                              )._valueTracker;
-                              if (tracker) tracker.setValue(e.target.value);
-                            }
-                          }}
-                        />
-                        {fieldErrors.rewindAfterCorrections && (
+                <Section
+                  label="Application"
+                  note="Restart after changing settings or installing an update."
+                >
+                  <p className={styles.hint}>
+                    Restart Foundry after changing settings or installing an update.
+                  </p>
+                  <div className={styles.settingsBtnrow}>
+                    <Button size="sm" onClick={() => void relaunchApp()}>
+                      Relaunch Foundry
+                    </Button>
+                    <Button size="sm" onClick={() => void quitApp()}>
+                      Quit Foundry
+                    </Button>
+                  </div>
+                </Section>
+              </>
+            )}
+            {pane === 'clis' && (
+              <>
+                <Section label="Agent CLI" note="Drives agent phases.">
+                  <p className={styles.settingsLead}>
+                    Foundry drives Factory Droid for agent phases. A path is filled in from your
+                    PATH at first launch; correct it here if you keep the binary somewhere unusual.
+                  </p>
+                </Section>
+                {clis.map((cli) => {
+                  const config = settings.clis[cli.id];
+                  const found = checks.find((c) => c.id === `cli:${cli.id}`);
+                  return (
+                    <Section
+                      key={cli.id}
+                      label={cli.label}
+                      note={
+                        found
+                          ? found.ok
+                            ? 'On PATH, ready to drive.'
+                            : 'Not where Foundry expected it.'
+                          : 'Checking…'
+                      }
+                    >
+                      <div className={styles.settingsCliHead}>
+                        <CliIcon vendor={cli.id} size={18} />
+                        <h3>{cli.label}</h3>
+                        {found && (
                           <span
-                            id="field-rewindAfterCorrections-error"
-                            role="status"
-                            className={styles.settingsWarn}
+                            className={`${styles.settingsPill} ${found.ok ? styles.ok : styles.bad}`}
                           >
-                            {fieldErrors.rewindAfterCorrections}
+                            {found.ok ? 'found' : 'not found'}
                           </span>
                         )}
-                      </Field>
-                      <Field label="Turn timeout (minutes)">
-                        <TextInput
-                          type="number"
-                          min={5}
-                          max={60}
-                          value={Math.round(settings.turnTimeoutMs / 60000)}
-                          onChange={(e) =>
-                            void setInt(e.target.value, { min: 5, max: 60 }, (minutes) => ({
-                              turnTimeoutMs: minutes * 60_000,
-                            }))
-                          }
-                        />
-                      </Field>
-                      <Field
-                        label="Trace poll cadence (ms)"
-                        hint="How often a live run's view refreshes."
-                      >
-                        <TextInput
-                          type="number"
-                          min={250}
-                          max={2000}
-                          step={50}
-                          value={settings.pollCadenceMs}
-                          onChange={(e) =>
-                            void setInt(
-                              e.target.value,
-                              { min: 250, max: 2000 },
-                              (pollCadenceMs) => ({
-                                pollCadenceMs,
-                              }),
-                            )
-                          }
-                        />
-                      </Field>
-                    </div>
-                  </Section>
-                  <Section
-                    label="Transport"
-                    note="How each agent talks to the droid CLI — and where the daemon listens."
-                  >
-                    <div className={styles.settingsFields}>
-                      <Field
-                        label="Agent transport"
-                        hint="Droid daemon multiplexes many agents over one connection. Subprocess starts a fresh droid process per agent. Daemon is the default; a run still finishes if the daemon is unavailable — it falls back to subprocess automatically."
-                      >
-                        <Dropdown
-                          value={settings.transport}
-                          options={[
-                            {
-                              value: 'daemon',
-                              label: 'Droid daemon (default)',
-                              description:
-                                'Agents share one app-owned daemon. Fastest for parallel runs.',
-                            },
-                            {
-                              value: 'subprocess',
-                              label: 'Subprocess per agent',
-                              description:
-                                'Each agent spawns its own droid process. Use for debugging or when the daemon is unavailable.',
-                            },
-                          ]}
-                          onChange={(next) => {
-                            const patch = {
-                              transport: next as AppSettings['transport'],
-                            } as Partial<AppSettings>;
-                            void (async () => {
-                              const issues = await patchSettings(patch);
-                              if (issues.length) {
-                                setTransportSaveError(issues.join(' · '));
-                              } else {
-                                setTransportSaveError('');
-                                setErrors([]);
-                              }
-                            })();
-                          }}
-                        />
-                        <span className={styles.hint}>
-                          Effective now for the next run. This run is already started.
-                        </span>
-                        {transportSaveError && (
-                          <span role="status" className={styles.settingsWarn}>
-                            {transportSaveError}
-                          </span>
-                        )}
-                      </Field>
-                      <Field
-                        label="Daemon port"
-                        hint="Preferred port for the app-owned daemon. Must be 37600–37699; if busy, the daemon tries the next free port in that band. Change takes effect on next daemon launch."
-                        error={fieldErrors.daemonPort}
-                      >
-                        <TextInput
-                          type="number"
-                          min={DAEMON_PORT_BAND.min}
-                          max={DAEMON_PORT_BAND.max}
-                          value={settings.daemonPort}
-                          aria-invalid={fieldErrors.daemonPort ? 'true' : undefined}
-                          aria-describedby={
-                            fieldErrors.daemonPort ? 'field-daemonPort-error' : undefined
-                          }
-                          onChange={(e) => {
-                            const raw = e.target.value.trim();
-                            if (raw === '') {
-                              setFieldErrors((m) => ({
-                                ...m,
-                                daemonPort: 'Enter 37600–37699, or clear to keep the current port.',
-                              }));
-                              return;
-                            }
-                            const n = Number(raw);
-                            if (!Number.isFinite(n)) {
-                              setFieldErrors((m) => ({
-                                ...m,
-                                daemonPort: 'That is not a number — enter 37600–37699.',
-                              }));
-                              return;
-                            }
-                            const rounded = Math.round(n);
-                            const clamped = Math.min(
-                              DAEMON_PORT_BAND.max,
-                              Math.max(DAEMON_PORT_BAND.min, rounded),
-                            );
-                            if (rounded !== n) {
-                              setFieldErrors((m) => ({
-                                ...m,
-                                daemonPort: `Rounded to ${rounded}.`,
-                              }));
-                            } else if (
-                              rounded < DAEMON_PORT_BAND.min ||
-                              rounded > DAEMON_PORT_BAND.max
-                            ) {
-                              setFieldErrors((m) => ({
-                                ...m,
-                                daemonPort: `Clamped to ${clamped} — the allowed band is ${DAEMON_PORT_BAND.min}–${DAEMON_PORT_BAND.max}.`,
-                              }));
-                            } else {
-                              setFieldErrors((m) => {
-                                const next = { ...m };
-                                delete next.daemonPort;
-                                return next;
-                              });
-                            }
-                            void (async () => {
-                              const result = await patchSettings({ daemonPort: clamped });
-                              // patchSettings already surfaced range errors in the banner;
-                              // clamp-away handling kept our field note visible instead.
-                              if (result.length) setErrors(result);
-                            })();
-                          }}
-                          onBlur={(e) => {
-                            const raw = e.target.value.trim();
-                            if (!raw) {
-                              setFieldErrors((m) => {
-                                const next = { ...m };
-                                delete next.daemonPort;
-                                return next;
-                              });
-                              e.target.value = String(settings.daemonPort);
-                              const tracker = (
-                                e.target as HTMLInputElement & {
-                                  _valueTracker?: { setValue(v: string): void };
-                                }
-                              )._valueTracker;
-                              if (tracker) tracker.setValue(e.target.value);
-                            }
-                          }}
-                        />
-                        {fieldErrors.daemonPort && (
-                          <span
-                            id="field-daemonPort-error"
-                            role="status"
-                            className={styles.settingsWarn}
-                          >
-                            {fieldErrors.daemonPort}
-                          </span>
-                        )}
-                      </Field>
-                    </div>
-                  </Section>
-                </>
-              )}
-              {pane === 'mcp' && <McpSettings settings={settings} onPatch={set} />}
-
-              {pane === 'project' && (
-                <>
-                  {projectDraft ? (
-                    <>
-                      <Section label="Project" note="Where Foundry runs, and what it may touch.">
+                      </div>
+                      <div className={styles.settingsFields}>
+                        <Field label="Executable">
+                          <TextInput
+                            mono
+                            value={config.path}
+                            onChange={(e) => void setCli(cli.id, { path: e.target.value })}
+                          />
+                          {found && <span className={styles.hint}>{found.detail}</span>}
+                        </Field>
                         <Field
-                          label="Project name"
-                          hint="Just for you — rename freely. The path is where Foundry runs."
+                          label="Extra arguments"
+                          hint="For an option this release does not model yet. Passed through verbatim."
                         >
                           <TextInput
-                            value={projectDraft.name}
+                            mono
+                            value={config.extraArgs.join(' ')}
+                            placeholder="appended to every turn"
                             onChange={(e) =>
-                              setProjectDraft({ ...projectDraft, name: e.target.value })
-                            }
-                            placeholder="My project"
-                          />
-                        </Field>
-                        <div className={styles.settingsSubrow}>
-                          <span className={`mono faint ${styles.settingsPath}`}>
-                            {projectDraft.path}
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => void api.projects.reveal(projectDraft.path)}
-                          >
-                            Reveal in Finder
-                          </Button>
-                        </div>
-                      </Section>
-                      <Section
-                        label="Readiness"
-                        note="The marker file is truth. Cached app state never overrides it."
-                      >
-                        <p className={styles.hint}>
-                          {readiness?.ready
-                            ? readiness.marker?.summary ||
-                              'This repository has a valid .agents/agent-ready.json.'
-                            : readiness?.skipped
-                              ? 'Readiness was skipped. The Agent Readiness process can be run again anytime from here.'
-                              : readiness?.markerDetail ||
-                                'No valid .agents/agent-ready.json yet. Pipeline runs may fail until the repo is ready.'}
-                        </p>
-                        {onOpenReadiness && projectDraft && (
-                          <div className={styles.settingsBtnrow}>
-                            <Button size="sm" onClick={() => onOpenReadiness(projectDraft.id)}>
-                              {readiness?.ready ? 'View readiness report' : 'Run readiness check'}
-                            </Button>
-                          </div>
-                        )}
-                      </Section>
-                      <Section label="Checks" note="Run against this repository.">
-                        <DoctorList
-                          checks={projectChecks}
-                          title="Repository checks"
-                          onRecheck={() =>
-                            void api.projects.check(projectDraft.id).then(setProjectChecks)
-                          }
-                          onOpenSettings={(next) => setPaneLive(next as Pane)}
-                        />
-                      </Section>
-                      <Section label="Git" note="Every run branches from the base ref.">
-                        <div className={styles.settingsFields}>
-                          <Field label="Base ref" hint="Every run branches from here.">
-                            <TextInput
-                              mono
-                              value={projectDraft.baseRef}
-                              onChange={(e) =>
-                                setProjectDraft({ ...projectDraft, baseRef: e.target.value })
-                              }
-                            />
-                          </Field>
-                          <Field label="Merge policy">
-                            <Dropdown
-                              value={projectDraft.mergePolicy}
-                              options={[
-                                { value: 'never', label: 'Never merge automatically' },
-                                { value: 'on_accept', label: 'Merge when a run is accepted' },
-                                { value: 'ask', label: 'Ask me each time' },
-                              ]}
-                              onChange={(next) =>
-                                setProjectDraft({
-                                  ...projectDraft,
-                                  mergePolicy: next as ProjectDef['mergePolicy'],
-                                })
-                              }
-                            />
-                          </Field>
-                        </div>
-                      </Section>
-                      <Section label="Commands" note="What a pipeline can run, and who detects it.">
-                        <ProjectCommands
-                          project={projectDraft}
-                          onChange={(commands) => setProjectDraft({ ...projectDraft, commands })}
-                        />
-                      </Section>
-                      <Section
-                        label="Setup"
-                        note="Script that installs deps in every new worktree, so agents find their binaries."
-                      >
-                        <ProjectSetup
-                          project={projectDraft}
-                          onChange={(setupScript) =>
-                            setProjectDraft({ ...projectDraft, setupScript })
-                          }
-                        />
-                      </Section>
-                      <Section
-                        label="Boundaries"
-                        note="Hard limits, whatever an agent's own boundary says."
-                      >
-                        <Field
-                          label="Protected paths"
-                          htmlFor="project-protected-paths"
-                          hint={
-                            <>
-                              One pattern per line. No agent may write these, whatever its own
-                              boundary says. <code>.git/</code>, CI config, and lockfiles are always
-                              protected.
-                            </>
-                          }
-                        >
-                          <Textarea
-                            id="project-protected-paths"
-                            aria-label="Protected paths"
-                            rows={3}
-                            placeholder="e.g. src/**/*.secret&#10;.env*"
-                            value={projectDraft.protectedPaths.join('\n')}
-                            onChange={(e) =>
-                              setProjectDraft({
-                                ...projectDraft,
-                                protectedPaths: e.target.value.split('\n').filter(Boolean),
+                              void setCli(cli.id, {
+                                extraArgs: e.target.value.split(/\s+/).filter(Boolean),
                               })
                             }
                           />
                         </Field>
-                      </Section>
-                      <Section label="Scope" note="Keep configuration local to this project.">
-                        <div className={styles.settingsFields}>
-                          <Toggle
-                            label="Use a project-specific roster"
-                            hint="Starts as a copy of the global roster; changes stay in this project."
-                            checked={projectDraft.ownRoster}
-                            onChange={(value) =>
-                              setProjectDraft({ ...projectDraft, ownRoster: value })
-                            }
-                          />
-                          <Toggle
-                            label="Use project-specific pipelines"
-                            hint="Same idea, for pipelines."
-                            checked={projectDraft.ownPipelines}
-                            onChange={(value) =>
-                              setProjectDraft({ ...projectDraft, ownPipelines: value })
-                            }
-                          />
-                        </div>
-                      </Section>
-                      <div className={styles.settingsFoot}>
-                        <Button variant="danger" onClick={() => void removeProject()}>
-                          Remove project
-                        </Button>
-                        <span className={styles.settingsAutosave}>Changes save automatically</span>
                       </div>
-                    </>
-                  ) : (
-                    <div className={styles.settingsEmpty}>
-                      <p className="faint">
-                        No project selected. Add a git repository you already have, or create a new
-                        one on GitHub.
-                      </p>
-                      <Button variant="primary" onClick={() => void addProject()}>
-                        Add a project…
-                      </Button>
-                      {onNewProject && (
-                        <Button onClick={onNewProject}>Create a new project…</Button>
+                      {cli.caveats.length > 0 && (
+                        <ul className={styles.caveats}>
+                          {cli.caveats.map((caveat) => (
+                            <li key={caveat}>{caveat}</li>
+                          ))}
+                        </ul>
                       )}
-                    </div>
-                  )}
-                </>
-              )}
-              {pane === 'maintenance' && (
-                <>
-                  <Section label="Retention" note="Nothing is deleted behind your back.">
+                      <div>
+                        <Button size="sm" onClick={() => void api.app.openExternal(cli.docsUrl)}>
+                          Install docs
+                        </Button>
+                      </div>
+                    </Section>
+                  );
+                })}
+                <Section label="Checks" note="Re-run after installing or moving a CLI.">
+                  <DoctorList
+                    checks={checks}
+                    title="Environment checks"
+                    onRecheck={() => void api.doctor.run().then(setChecks)}
+                    onOpenSettings={(next) => setPaneLive(next as Pane)}
+                  />
+                </Section>
+              </>
+            )}
+            {pane === 'defaults' && (
+              <>
+                <Section label="Agent defaults" note="What an agent set to inherit gets.">
+                  <div className={styles.settingsSpread}>
+                    <p className={styles.settingsLead}>
+                      Used by any agent set to inherit. A per-agent choice always wins.
+                    </p>
+                    <Button size="sm" onClick={() => void refreshModels()}>
+                      Refresh models
+                    </Button>
+                  </div>
+                </Section>
+                <Section label="Model" note="Offered by whichever CLI is the default.">
+                  <div className={styles.settingsFields}>
+                    <Field label="Default model">
+                      <ModelPicker
+                        value={settings.defaultModel}
+                        models={models}
+                        allowInherit
+                        emptyHint={`No models from ${settings.defaultCli}. Install and sign in under Agent CLIs, then refresh.`}
+                        onChange={(v) => void set({ defaultModel: v })}
+                        onRefresh={() => void refreshModels()}
+                      />
+                    </Field>
+                    <Field label="Default reasoning effort">
+                      <Dropdown
+                        value={settings.defaultReasoningEffort}
+                        options={[
+                          { value: 'off', label: 'Off' },
+                          { value: 'low', label: 'Low' },
+                          { value: 'medium', label: 'Medium' },
+                          { value: 'high', label: 'High' },
+                          { value: 'xhigh', label: 'X-High' },
+                          { value: 'max', label: 'Max' },
+                        ]}
+                        onChange={(next) => void set({ defaultReasoningEffort: next as never })}
+                      />
+                    </Field>
+                  </div>
+                </Section>
+                <Section
+                  label="Readiness"
+                  note="What the Agent Readiness Check uses when a repo is added."
+                >
+                  <div className={styles.settingsFields}>
+                    <Field label="Readiness model">
+                      <ModelPicker
+                        value={settings.readinessModel}
+                        models={models}
+                        allowInherit
+                        emptyHint={`No models from ${settings.defaultCli}.`}
+                        onChange={(v) => void set({ readinessModel: v })}
+                        onRefresh={() => void refreshModels()}
+                      />
+                    </Field>
+                    <Field label="Readiness reasoning effort">
+                      <Dropdown
+                        value={settings.readinessReasoningEffort}
+                        options={[
+                          { value: 'off', label: 'Off' },
+                          { value: 'low', label: 'Low' },
+                          { value: 'medium', label: 'Medium' },
+                          { value: 'high', label: 'High' },
+                          { value: 'xhigh', label: 'X-High' },
+                          { value: 'max', label: 'Max' },
+                        ]}
+                        onChange={(next) => void set({ readinessReasoningEffort: next as never })}
+                      />
+                    </Field>
+                  </div>
+                </Section>
+                <Section label="Pull requests" note="Who drafts a PR when a pipeline asks for one.">
+                  <div className={styles.settingsFields}>
                     <Field
-                      label="Keep run history for"
-                      className={styles.settingsNarrow}
-                      hint="Applies when you press the button below. Nothing is deleted behind your back."
+                      label="PR writer"
+                      hint="Roster agent used when adding a PR phase. A pipeline that names an agent still wins."
+                      error={
+                        isKnownPrWriter(settings.prAgent, agents)
+                          ? undefined
+                          : "Not in this project's roster. Settings still load; pick a writer that exists."
+                      }
                     >
                       <Dropdown
-                        value={String(settings.retentionDays ?? '')}
-                        options={[
-                          { value: '', label: 'Forever' },
-                          { value: '7', label: '7 days' },
-                          { value: '30', label: '30 days' },
-                          { value: '90', label: '90 days' },
-                          { value: '365', label: 'A year' },
-                        ]}
-                        onChange={(next) =>
-                          void set({
-                            retentionDays: next ? Number(next) : null,
-                          })
+                        value={settings.prAgent}
+                        options={prWriterOptions(agents, settings.prAgent)}
+                        aria-label="PR writer"
+                        onChange={(next) => void set({ prAgent: next })}
+                      />
+                    </Field>
+                  </div>
+                </Section>
+                <Section label="Autonomy" note="How a run behaves once it starts.">
+                  <p className={styles.hint}>
+                    Runs are fully autonomous: once a run starts it never stops to ask permission.
+                    Writes outside an agent&rsquo;s boundary are always reverted, and every decision
+                    the engine makes on your behalf is recorded in the run&rsquo;s timeline.
+                  </p>
+                </Section>
+                <Section label="Limits" note="How hard Foundry tries before a phase fails.">
+                  <div className={styles.settingsFields}>
+                    <Field
+                      label="Envelope retries"
+                      hint="Correction messages sent when a reply will not parse."
+                    >
+                      <TextInput
+                        type="number"
+                        min={0}
+                        max={5}
+                        value={settings.envelopeRetries}
+                        onChange={(e) =>
+                          void setInt(e.target.value, { min: 0, max: 5 }, (envelopeRetries) => ({
+                            envelopeRetries,
+                          }))
                         }
                       />
                     </Field>
-                    <div className={styles.settingsSubrow}>
-                      <div className={styles.settingsBtnrow}>
-                        <Button disabled={maintenanceBusy} onClick={() => void applyRetention()}>
-                          {maintenanceBusy ? 'Working…' : 'Apply retention now'}
-                        </Button>
-                        <Button disabled={maintenanceBusy} onClick={() => void compact()}>
-                          {maintenanceBusy ? 'Working…' : 'Compact trace databases'}
-                        </Button>
-                      </div>
-                    </div>
-                  </Section>
-                  <Section
-                    label="Leftover worktrees"
-                    note="Left behind by a crashed or killed run."
-                  >
-                    <p className={styles.hint}>
-                      A worktree left behind by a crashed or killed run. Removing one deletes its
-                      branch and any uncommitted work in it.
-                    </p>
-                    {orphans.length ? (
-                      <ul className={styles.settingsOrphans}>
-                        {orphans.map((orphan) => (
-                          <li key={orphan.path}>
-                            <span className={`mono ${styles.path}`}>{orphan.path}</span>
-                            <span className="mono faint">{orphan.branch}</span>
-                            <Button
-                              variant="danger"
-                              size="sm"
-                              onClick={() => void removeOrphan(orphan)}
-                            >
-                              Remove
-                            </Button>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="faint">None found.</p>
-                    )}
-                    {maintenanceNote && (
-                      <p className={styles.settingsNote}>
-                        <svg
-                          width="12"
-                          height="12"
-                          viewBox="0 0 14 14"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.6"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          aria-hidden
+                    <Field
+                      label="Gate retries"
+                      hint="Attempts to fix a gate violation before the phase fails."
+                    >
+                      <TextInput
+                        type="number"
+                        min={0}
+                        max={5}
+                        value={settings.gateRetries}
+                        onChange={(e) =>
+                          void setInt(e.target.value, { min: 0, max: 5 }, (gateRetries) => ({
+                            gateRetries,
+                          }))
+                        }
+                      />
+                    </Field>
+                    <Field
+                      label="Compact context at (%)"
+                      hint="Between phases, an agent this full of context is compacted so the next phase has room."
+                    >
+                      <TextInput
+                        type="number"
+                        min={COMPACTION_PERCENT.min}
+                        max={COMPACTION_PERCENT.max}
+                        value={Math.round(settings.compactionThreshold * 100)}
+                        onChange={(e) =>
+                          void setInt(e.target.value, COMPACTION_PERCENT, (percent) => ({
+                            compactionThreshold: percent / 100,
+                          }))
+                        }
+                      />
+                    </Field>
+                    <Field
+                      label="Rewind after (corrections)"
+                      hint="After this many failed corrections, rewind the session to its phase-start state instead of appending another fix. Set to 0 to disable — the phase simply retries in place."
+                      error={fieldErrors.rewindAfterCorrections}
+                    >
+                      <TextInput
+                        type="number"
+                        min={REWIND_BAND.min}
+                        max={REWIND_BAND.max}
+                        step={1}
+                        value={settings.rewindAfterCorrections}
+                        aria-invalid={fieldErrors.rewindAfterCorrections ? 'true' : undefined}
+                        aria-describedby={
+                          fieldErrors.rewindAfterCorrections
+                            ? 'field-rewindAfterCorrections-error'
+                            : undefined
+                        }
+                        onChange={(e) => {
+                          const raw = e.target.value.trim();
+                          if (raw === '') {
+                            setFieldErrors((m) => ({
+                              ...m,
+                              rewindAfterCorrections:
+                                'Enter 0–20, or clear to keep the last value.',
+                            }));
+                            return;
+                          }
+                          const n = Number(raw);
+                          if (!Number.isFinite(n)) {
+                            setFieldErrors((m) => ({
+                              ...m,
+                              rewindAfterCorrections: 'That is not a number — enter 0–20.',
+                            }));
+                            return;
+                          }
+                          const clamped = Math.min(
+                            REWIND_BAND.max,
+                            Math.max(REWIND_BAND.min, Math.round(n)),
+                          );
+                          if (Math.round(n) !== n) {
+                            setFieldErrors((m) => ({
+                              ...m,
+                              rewindAfterCorrections: `Rounded to ${clamped}.`,
+                            }));
+                          } else if (n < REWIND_BAND.min || n > REWIND_BAND.max) {
+                            setFieldErrors((m) => ({
+                              ...m,
+                              rewindAfterCorrections: `Clamped to ${clamped}.`,
+                            }));
+                          } else if (n === 0) {
+                            setFieldErrors((m) => ({
+                              ...m,
+                              rewindAfterCorrections:
+                                'Rewind disabled — corrections append in place.',
+                            }));
+                          } else {
+                            setFieldErrors((m) => {
+                              const next = { ...m };
+                              delete next.rewindAfterCorrections;
+                              return next;
+                            });
+                          }
+                          void (async () => {
+                            const issues = await patchSettings({
+                              rewindAfterCorrections: clamped,
+                            });
+                            if (issues.length) setErrors(issues);
+                            else setErrors([]);
+                            // Do not clear fieldErrors on success here — the
+                            // clamped/disabled notes must survive to explain
+                            // why the input now shows a different number.
+                          })();
+                        }}
+                        onBlur={(e) => {
+                          const raw = e.target.value.trim();
+                          if (!raw) {
+                            setFieldErrors((m) => {
+                              const next = { ...m };
+                              delete next.rewindAfterCorrections;
+                              return next;
+                            });
+                            e.target.value = String(settings.rewindAfterCorrections);
+                            // Force React to treat the re-populated value as
+                            // the current committed one on next onChange.
+                            const tracker = (
+                              e.target as HTMLInputElement & {
+                                _valueTracker?: { setValue(v: string): void };
+                              }
+                            )._valueTracker;
+                            if (tracker) tracker.setValue(e.target.value);
+                          }
+                        }}
+                      />
+                      {fieldErrors.rewindAfterCorrections && (
+                        <span
+                          id="field-rewindAfterCorrections-error"
+                          role="status"
+                          className={styles.settingsWarn}
                         >
-                          <path d="M2.5 7.5 5.5 10.5 11.5 3.5" />
-                        </svg>
-                        {maintenanceNote}
+                          {fieldErrors.rewindAfterCorrections}
+                        </span>
+                      )}
+                    </Field>
+                    <Field label="Turn timeout (minutes)">
+                      <TextInput
+                        type="number"
+                        min={5}
+                        max={60}
+                        value={Math.round(settings.turnTimeoutMs / 60000)}
+                        onChange={(e) =>
+                          void setInt(e.target.value, { min: 5, max: 60 }, (minutes) => ({
+                            turnTimeoutMs: minutes * 60_000,
+                          }))
+                        }
+                      />
+                    </Field>
+                    <Field
+                      label="Trace poll cadence (ms)"
+                      hint="How often a live run's view refreshes."
+                    >
+                      <TextInput
+                        type="number"
+                        min={250}
+                        max={2000}
+                        step={50}
+                        value={settings.pollCadenceMs}
+                        onChange={(e) =>
+                          void setInt(e.target.value, { min: 250, max: 2000 }, (pollCadenceMs) => ({
+                            pollCadenceMs,
+                          }))
+                        }
+                      />
+                    </Field>
+                  </div>
+                </Section>
+                <Section
+                  label="Transport"
+                  note="How each agent talks to the droid CLI — and where the daemon listens."
+                >
+                  <div className={styles.settingsFields}>
+                    <Field
+                      label="Agent transport"
+                      hint="Droid daemon multiplexes many agents over one connection. Subprocess starts a fresh droid process per agent. Daemon is the default; a run still finishes if the daemon is unavailable — it falls back to subprocess automatically."
+                    >
+                      <Dropdown
+                        value={settings.transport}
+                        options={[
+                          {
+                            value: 'daemon',
+                            label: 'Droid daemon (default)',
+                            description:
+                              'Agents share one app-owned daemon. Fastest for parallel runs.',
+                          },
+                          {
+                            value: 'subprocess',
+                            label: 'Subprocess per agent',
+                            description:
+                              'Each agent spawns its own droid process. Use for debugging or when the daemon is unavailable.',
+                          },
+                        ]}
+                        onChange={(next) => {
+                          const patch = {
+                            transport: next as AppSettings['transport'],
+                          } as Partial<AppSettings>;
+                          void (async () => {
+                            const issues = await patchSettings(patch);
+                            if (issues.length) {
+                              setTransportSaveError(issues.join(' · '));
+                            } else {
+                              setTransportSaveError('');
+                              setErrors([]);
+                            }
+                          })();
+                        }}
+                      />
+                      <span className={styles.hint}>
+                        Effective now for the next run. This run is already started.
+                      </span>
+                      {transportSaveError && (
+                        <span role="status" className={styles.settingsWarn}>
+                          {transportSaveError}
+                        </span>
+                      )}
+                    </Field>
+                    <Field
+                      label="Daemon port"
+                      hint="Preferred port for the app-owned daemon. Must be 37600–37699; if busy, the daemon tries the next free port in that band. Change takes effect on next daemon launch."
+                      error={fieldErrors.daemonPort}
+                    >
+                      <TextInput
+                        type="number"
+                        min={DAEMON_PORT_BAND.min}
+                        max={DAEMON_PORT_BAND.max}
+                        value={settings.daemonPort}
+                        aria-invalid={fieldErrors.daemonPort ? 'true' : undefined}
+                        aria-describedby={
+                          fieldErrors.daemonPort ? 'field-daemonPort-error' : undefined
+                        }
+                        onChange={(e) => {
+                          const raw = e.target.value.trim();
+                          if (raw === '') {
+                            setFieldErrors((m) => ({
+                              ...m,
+                              daemonPort: 'Enter 37600–37699, or clear to keep the current port.',
+                            }));
+                            return;
+                          }
+                          const n = Number(raw);
+                          if (!Number.isFinite(n)) {
+                            setFieldErrors((m) => ({
+                              ...m,
+                              daemonPort: 'That is not a number — enter 37600–37699.',
+                            }));
+                            return;
+                          }
+                          const rounded = Math.round(n);
+                          const clamped = Math.min(
+                            DAEMON_PORT_BAND.max,
+                            Math.max(DAEMON_PORT_BAND.min, rounded),
+                          );
+                          if (rounded !== n) {
+                            setFieldErrors((m) => ({
+                              ...m,
+                              daemonPort: `Rounded to ${rounded}.`,
+                            }));
+                          } else if (
+                            rounded < DAEMON_PORT_BAND.min ||
+                            rounded > DAEMON_PORT_BAND.max
+                          ) {
+                            setFieldErrors((m) => ({
+                              ...m,
+                              daemonPort: `Clamped to ${clamped} — the allowed band is ${DAEMON_PORT_BAND.min}–${DAEMON_PORT_BAND.max}.`,
+                            }));
+                          } else {
+                            setFieldErrors((m) => {
+                              const next = { ...m };
+                              delete next.daemonPort;
+                              return next;
+                            });
+                          }
+                          void (async () => {
+                            const result = await patchSettings({ daemonPort: clamped });
+                            // patchSettings already surfaced range errors in the banner;
+                            // clamp-away handling kept our field note visible instead.
+                            if (result.length) setErrors(result);
+                          })();
+                        }}
+                        onBlur={(e) => {
+                          const raw = e.target.value.trim();
+                          if (!raw) {
+                            setFieldErrors((m) => {
+                              const next = { ...m };
+                              delete next.daemonPort;
+                              return next;
+                            });
+                            e.target.value = String(settings.daemonPort);
+                            const tracker = (
+                              e.target as HTMLInputElement & {
+                                _valueTracker?: { setValue(v: string): void };
+                              }
+                            )._valueTracker;
+                            if (tracker) tracker.setValue(e.target.value);
+                          }
+                        }}
+                      />
+                      {fieldErrors.daemonPort && (
+                        <span
+                          id="field-daemonPort-error"
+                          role="status"
+                          className={styles.settingsWarn}
+                        >
+                          {fieldErrors.daemonPort}
+                        </span>
+                      )}
+                    </Field>
+                  </div>
+                </Section>
+              </>
+            )}
+            {pane === 'mcp' && <McpSettings settings={settings} onPatch={set} />}
+
+            {pane === 'project' && (
+              <>
+                {projectDraft ? (
+                  <>
+                    <Section label="Project" note="Where Foundry runs, and what it may touch.">
+                      <Field
+                        label="Project name"
+                        hint="Just for you — rename freely. The path is where Foundry runs."
+                      >
+                        <TextInput
+                          value={projectDraft.name}
+                          onChange={(e) =>
+                            setProjectDraft({ ...projectDraft, name: e.target.value })
+                          }
+                          placeholder="My project"
+                        />
+                      </Field>
+                      <div className={styles.settingsSubrow}>
+                        <span className={`mono faint ${styles.settingsPath}`}>
+                          {projectDraft.path}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => void api.projects.reveal(projectDraft.path)}
+                        >
+                          Reveal in Finder
+                        </Button>
+                      </div>
+                    </Section>
+                    <Section
+                      label="Readiness"
+                      note="The marker file is truth. Cached app state never overrides it."
+                    >
+                      <p className={styles.hint}>
+                        {readiness?.ready
+                          ? readiness.marker?.summary ||
+                            'This repository has a valid .agents/agent-ready.json.'
+                          : readiness?.skipped
+                            ? 'Readiness was skipped. The Agent Readiness process can be run again anytime from here.'
+                            : readiness?.markerDetail ||
+                              'No valid .agents/agent-ready.json yet. Pipeline runs may fail until the repo is ready.'}
                       </p>
-                    )}
-                  </Section>
-                </>
-              )}
-              {pane === 'about' && (
-                <>
-                  <Section label="Foundry" note="A software factory you can watch.">
-                    <p className={styles.settingsLead}>
-                      A software factory you can watch. Pipelines are data, agents are
-                      configuration, and every phase leaves evidence you can read.
-                    </p>
-                  </Section>
-                  <Section label="Build" note="What this copy of Foundry is running.">
-                    <dl className={styles.settingsFacts}>
-                      <div className={styles.settingsFact}>
-                        <dt>Version</dt>
-                        <dd className="mono">{version}</dd>
+                      {onOpenReadiness && projectDraft && (
+                        <div className={styles.settingsBtnrow}>
+                          <Button size="sm" onClick={() => onOpenReadiness(projectDraft.id)}>
+                            {readiness?.ready ? 'View readiness report' : 'Run readiness check'}
+                          </Button>
+                        </div>
+                      )}
+                    </Section>
+                    <Section label="Checks" note="Run against this repository.">
+                      <DoctorList
+                        checks={projectChecks}
+                        title="Repository checks"
+                        onRecheck={() =>
+                          void api.projects.check(projectDraft.id).then(setProjectChecks)
+                        }
+                        onOpenSettings={(next) => setPaneLive(next as Pane)}
+                      />
+                    </Section>
+                    <Section label="Git" note="Every run branches from the base ref.">
+                      <div className={styles.settingsFields}>
+                        <Field label="Base ref" hint="Every run branches from here.">
+                          <TextInput
+                            mono
+                            value={projectDraft.baseRef}
+                            onChange={(e) =>
+                              setProjectDraft({ ...projectDraft, baseRef: e.target.value })
+                            }
+                          />
+                        </Field>
+                        <Field label="Merge policy">
+                          <Dropdown
+                            value={projectDraft.mergePolicy}
+                            options={[
+                              { value: 'never', label: 'Never merge automatically' },
+                              { value: 'on_accept', label: 'Merge when a run is accepted' },
+                              { value: 'ask', label: 'Ask me each time' },
+                            ]}
+                            onChange={(next) =>
+                              setProjectDraft({
+                                ...projectDraft,
+                                mergePolicy: next as ProjectDef['mergePolicy'],
+                              })
+                            }
+                          />
+                        </Field>
                       </div>
-                      <div className={styles.settingsFact}>
-                        <dt>Agent harness</dt>
-                        <dd className="mono">droid CLI over stream JSON-RPC</dd>
-                      </div>
-                      <div className={styles.settingsFact}>
-                        <dt>Projects</dt>
-                        <dd className="mono">{projects.length}</dd>
-                      </div>
-                    </dl>
-                  </Section>
-                  <Section label="Elsewhere" note="Docs and the cinematic intro.">
-                    <div className={styles.settingsBtnrow}>
-                      <Button
-                        size="sm"
-                        onClick={() =>
-                          void api.app.openExternal('https://docs.factory.ai/droid-exec/overview')
+                    </Section>
+                    <Section label="Commands" note="What a pipeline can run, and who detects it.">
+                      <ProjectCommands
+                        project={projectDraft}
+                        onChange={(commands) => setProjectDraft({ ...projectDraft, commands })}
+                      />
+                    </Section>
+                    <Section
+                      label="Setup"
+                      note="Script that installs deps in every new worktree, so agents find their binaries."
+                    >
+                      <ProjectSetup
+                        project={projectDraft}
+                        onChange={(setupScript) =>
+                          setProjectDraft({ ...projectDraft, setupScript })
+                        }
+                      />
+                    </Section>
+                    <Section
+                      label="Boundaries"
+                      note="Hard limits, whatever an agent's own boundary says."
+                    >
+                      <Field
+                        label="Protected paths"
+                        htmlFor="project-protected-paths"
+                        hint={
+                          <>
+                            One pattern per line. No agent may write these, whatever its own
+                            boundary says. <code>.git/</code>, CI config, and lockfiles are always
+                            protected.
+                          </>
                         }
                       >
-                        droid CLI documentation
+                        <Textarea
+                          id="project-protected-paths"
+                          aria-label="Protected paths"
+                          rows={3}
+                          placeholder="e.g. src/**/*.secret&#10;.env*"
+                          value={projectDraft.protectedPaths.join('\n')}
+                          onChange={(e) =>
+                            setProjectDraft({
+                              ...projectDraft,
+                              protectedPaths: e.target.value.split('\n').filter(Boolean),
+                            })
+                          }
+                        />
+                      </Field>
+                    </Section>
+                    <Section label="Scope" note="Keep configuration local to this project.">
+                      <div className={styles.settingsFields}>
+                        <Toggle
+                          label="Use a project-specific roster"
+                          hint="Starts as a copy of the global roster; changes stay in this project."
+                          checked={projectDraft.ownRoster}
+                          onChange={(value) =>
+                            setProjectDraft({ ...projectDraft, ownRoster: value })
+                          }
+                        />
+                        <Toggle
+                          label="Use project-specific pipelines"
+                          hint="Same idea, for pipelines."
+                          checked={projectDraft.ownPipelines}
+                          onChange={(value) =>
+                            setProjectDraft({ ...projectDraft, ownPipelines: value })
+                          }
+                        />
+                      </div>
+                    </Section>
+                    <div className={styles.settingsFoot}>
+                      <Button variant="danger" onClick={() => void removeProject()}>
+                        Remove project
                       </Button>
-                      <Button size="sm" onClick={() => void replayIntro()}>
-                        Replay intro
+                      <span className={styles.settingsAutosave}>Changes save automatically</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className={styles.settingsEmpty}>
+                    <p className="faint">
+                      No project selected. Add a git repository you already have, or create a new
+                      one on GitHub.
+                    </p>
+                    <Button variant="primary" onClick={() => void addProject()}>
+                      Add a project…
+                    </Button>
+                    {onNewProject && <Button onClick={onNewProject}>Create a new project…</Button>}
+                  </div>
+                )}
+              </>
+            )}
+            {pane === 'maintenance' && (
+              <>
+                <Section label="Retention" note="Nothing is deleted behind your back.">
+                  <Field
+                    label="Keep run history for"
+                    className={styles.settingsNarrow}
+                    hint="Applies when you press the button below. Nothing is deleted behind your back."
+                  >
+                    <Dropdown
+                      value={String(settings.retentionDays ?? '')}
+                      options={[
+                        { value: '', label: 'Forever' },
+                        { value: '7', label: '7 days' },
+                        { value: '30', label: '30 days' },
+                        { value: '90', label: '90 days' },
+                        { value: '365', label: 'A year' },
+                      ]}
+                      onChange={(next) =>
+                        void set({
+                          retentionDays: next ? Number(next) : null,
+                        })
+                      }
+                    />
+                  </Field>
+                  <div className={styles.settingsSubrow}>
+                    <div className={styles.settingsBtnrow}>
+                      <Button disabled={maintenanceBusy} onClick={() => void applyRetention()}>
+                        {maintenanceBusy ? 'Working…' : 'Apply retention now'}
+                      </Button>
+                      <Button disabled={maintenanceBusy} onClick={() => void compact()}>
+                        {maintenanceBusy ? 'Working…' : 'Compact trace databases'}
                       </Button>
                     </div>
-                    <p className={styles.hint}>
-                      Replay intro walks the cinematic onboarding again: agents, CLIs, environment
-                      checks, and your first project.
+                  </div>
+                </Section>
+                <Section label="Leftover worktrees" note="Left behind by a crashed or killed run.">
+                  <p className={styles.hint}>
+                    A worktree left behind by a crashed or killed run. Removing one deletes its
+                    branch and any uncommitted work in it.
+                  </p>
+                  {orphans.length ? (
+                    <ul className={styles.settingsOrphans}>
+                      {orphans.map((orphan) => (
+                        <li key={orphan.path}>
+                          <span className={`mono ${styles.path}`}>{orphan.path}</span>
+                          <span className="mono faint">{orphan.branch}</span>
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={() => void removeOrphan(orphan)}
+                          >
+                            Remove
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="faint">None found.</p>
+                  )}
+                  {maintenanceNote && (
+                    <p className={styles.settingsNote}>
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 14 14"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden
+                      >
+                        <path d="M2.5 7.5 5.5 10.5 11.5 3.5" />
+                      </svg>
+                      {maintenanceNote}
                     </p>
-                  </Section>
-                </>
-              )}
-              {errors.length > 0 && (
-                <ul className={styles.settingsErrors} role="alert">
-                  {errors.map((error, i) => (
-                    <li key={i}>{error}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
+                  )}
+                </Section>
+              </>
+            )}
+            {pane === 'about' && (
+              <>
+                <Section label="Foundry" note="A software factory you can watch.">
+                  <p className={styles.settingsLead}>
+                    A software factory you can watch. Pipelines are data, agents are configuration,
+                    and every phase leaves evidence you can read.
+                  </p>
+                </Section>
+                <Section label="Build" note="What this copy of Foundry is running.">
+                  <dl className={styles.settingsFacts}>
+                    <div className={styles.settingsFact}>
+                      <dt>Version</dt>
+                      <dd className="mono">{version}</dd>
+                    </div>
+                    <div className={styles.settingsFact}>
+                      <dt>Agent harness</dt>
+                      <dd className="mono">droid CLI over stream JSON-RPC</dd>
+                    </div>
+                    <div className={styles.settingsFact}>
+                      <dt>Projects</dt>
+                      <dd className="mono">{projects.length}</dd>
+                    </div>
+                  </dl>
+                </Section>
+                <Section label="Elsewhere" note="Docs and the cinematic intro.">
+                  <div className={styles.settingsBtnrow}>
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        void api.app.openExternal('https://docs.factory.ai/droid-exec/overview')
+                      }
+                    >
+                      droid CLI documentation
+                    </Button>
+                    <Button size="sm" onClick={() => void replayIntro()}>
+                      Replay intro
+                    </Button>
+                  </div>
+                  <p className={styles.hint}>
+                    Replay intro walks the cinematic onboarding again: agents, CLIs, environment
+                    checks, and your first project.
+                  </p>
+                </Section>
+              </>
+            )}
+            {errors.length > 0 && (
+              <ul className={styles.settingsErrors} role="alert">
+                {errors.map((error, i) => (
+                  <li key={i}>{error}</li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       </div>
     </>

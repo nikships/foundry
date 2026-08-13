@@ -7,8 +7,7 @@ import { DroidGlyph } from './components/BrandIcon.js';
 import RunsScreen from './screens/RunsScreen.js';
 import RunDetailScreen from './screens/RunDetailScreen.js';
 import InspectorScreen from './screens/InspectorScreen.js';
-import PipelinesScreen from './screens/PipelinesScreen.js';
-import RosterScreen from './screens/RosterScreen.js';
+import DesignScreen from './screens/DesignScreen.js';
 import PullRequestsScreen from './screens/PullRequestsScreen.js';
 import SettingsScreen from './screens/SettingsScreen.js';
 import OnboardingShell from './screens/onboarding/OnboardingShell.js';
@@ -20,18 +19,14 @@ import UpdateBanner from './components/UpdateBanner.js';
 import SmithLauncher from './components/SmithLauncher.js';
 import SmithProposalCard, { type SmithNavTarget } from './components/SmithProposalCard.js';
 import type { ProjectDef, UpdateStatus } from '@shared/types.js';
+import {
+  MENU_DESIGN_TABS,
+  MENU_VIEWS,
+  designTabForEntity,
+  type DesignTab,
+  type View,
+} from './navigation.js';
 import styles from './App.module.css';
-
-export type View = 'runs' | 'inspector' | 'pipelines' | 'roster' | 'prs' | 'settings';
-
-const MENU_VIEWS: Record<string, View> = {
-  'menu:settings': 'settings',
-  'menu:view-runs': 'runs',
-  'menu:view-inspector': 'inspector',
-  'menu:view-pipelines': 'pipelines',
-  'menu:view-roster': 'roster',
-  'menu:view-prs': 'prs',
-};
 
 function AppInner(): React.JSX.Element {
   const { ready, settings, interrupts, project, refreshAll, refreshScoped, selectProject } =
@@ -42,8 +37,9 @@ function AppInner(): React.JSX.Element {
   const [openRunId, setOpenRunId] = useState('');
   const [inspectorRunId, setInspectorRunId] = useState('');
   const [settingsPane, setSettingsPane] = useState('general');
+  const [designTab, setDesignTab] = useState<DesignTab>('pipelines');
   const [smithOpen, setSmithOpen] = useState(false);
-  // Deep link for the active project's roster/pipelines/envelope editors after a
+  // Deep link for the active project's pipeline/agent/envelope editors after a
   // Smith approve. The nonce re-fires the target screen's effect on a repeat.
   const [smithNav, setSmithNav] = useState<(SmithNavTarget & { nonce: number }) | null>(null);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ stage: 'idle' });
@@ -87,18 +83,14 @@ function AppInner(): React.JSX.Element {
   // A Smith approve saved the entity; open its editor. The store save already
   // broadcast settings-changed (which refreshes the app), but refresh scoped
   // data too so the target is present before the screen's deep-link effect runs.
+  // Every kind Smith can write now has a Design tab, so this no longer detours
+  // an envelope through Settings.
   const onSmithApproved = useCallback(
     async (target: SmithNavTarget): Promise<void> => {
       await refreshScoped();
       setSmithNav({ ...target, nonce: Date.now() });
-      if (target.kind === 'agent') {
-        setView('roster');
-      } else if (target.kind === 'pipeline') {
-        setView('pipelines');
-      } else {
-        setSettingsPane('envelopes');
-        setView('settings');
-      }
+      setDesignTab(designTabForEntity(target.kind));
+      setView('design');
     },
     [refreshScoped],
   );
@@ -129,6 +121,15 @@ function AppInner(): React.JSX.Element {
     // a deep link from a run pins it to one run.
     if (next === 'inspector') setInspectorRunId('');
   }, []);
+
+  /** Open Design on a specific tab — used by the menu and by cross-links. */
+  const goDesign = useCallback(
+    (tab: DesignTab): void => {
+      setDesignTab(tab);
+      go('design');
+    },
+    [go],
+  );
 
   const openInspector = (runId: string): void => {
     setInspectorRunId(runId);
@@ -169,12 +170,18 @@ function AppInner(): React.JSX.Element {
 
   useGlobalShortcuts({
     onNavigate: go,
+    onDesignTab: goDesign,
     onEscape: escapeBack,
     enabled: ready && !needsOnboarding,
   });
 
   useEffect(() => {
     return menu.on((command) => {
+      const nextTab = MENU_DESIGN_TABS[command];
+      if (nextTab) {
+        goDesign(nextTab);
+        return;
+      }
       const nextView = MENU_VIEWS[command];
       if (nextView) {
         go(nextView);
@@ -187,7 +194,7 @@ function AppInner(): React.JSX.Element {
         void addProject();
       }
     });
-  }, [go, addProject]);
+  }, [go, goDesign, addProject]);
 
   let main: React.JSX.Element | null = null;
   if (view === 'runs' && openRunId) {
@@ -216,26 +223,13 @@ function AppInner(): React.JSX.Element {
     );
   } else if (view === 'inspector') {
     main = <InspectorScreen pinnedRunId={inspectorRunId} />;
-  } else if (view === 'pipelines') {
+  } else if (view === 'design') {
     main = (
-      <PipelinesScreen
-        onOpenSettings={(pane) => {
-          setSettingsPane(pane);
-          go('settings');
-        }}
-        openPipeline={smithNav?.kind === 'pipeline' ? smithNav.name : undefined}
-        openNonce={smithNav?.kind === 'pipeline' ? smithNav.nonce : undefined}
-      />
-    );
-  } else if (view === 'roster') {
-    main = (
-      <RosterScreen
-        onOpenSettings={(pane) => {
-          setSettingsPane(pane);
-          go('settings');
-        }}
-        openAgent={smithNav?.kind === 'agent' ? smithNav.name : undefined}
-        openNonce={smithNav?.kind === 'agent' ? smithNav.nonce : undefined}
+      <DesignScreen
+        tab={designTab}
+        onTabChange={setDesignTab}
+        openTarget={smithNav?.name}
+        openNonce={smithNav?.nonce}
       />
     );
   } else if (view === 'prs') {
@@ -245,8 +239,6 @@ function AppInner(): React.JSX.Element {
       <SettingsScreen
         pane={settingsPane}
         onNewProject={newProject}
-        openEnvelope={smithNav?.kind === 'envelope' ? smithNav.name : undefined}
-        openNonce={smithNav?.kind === 'envelope' ? smithNav.nonce : undefined}
         onOpenReadiness={(id) => setReadinessProjectId(id)}
       />
     );
