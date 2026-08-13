@@ -95,35 +95,8 @@
   padding: var(--s3) var(--s4) 0;
 }
 
-.search {
-  display: flex;
-  align-items: center;
-  gap: var(--s2);
-  height: 32px;
-  padding: 0 var(--s3);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--bg-input);
-  color: var(--text-faint);
-}
-
-.search input {
-  flex: 1;
-  min-width: 0;
-  border: none;
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-  font-size: var(--text-sm);
-  outline: none;
-}
-
-.search input::placeholder {
-  color: var(--text-faint);
-}
-
 .scroll {
-  max-height: 240px;
+  max-height: 270px;
   overflow-y: auto;
   padding-right: 2px;
 }
@@ -213,14 +186,6 @@
 
 .cell.on {
   background: var(--bg-raised);
-}
-
-.empty {
-  margin: 0;
-  padding: var(--s8) 0;
-  text-align: center;
-  font-size: var(--text-xs);
-  color: var(--text-faint);
 }
 
 .upload {

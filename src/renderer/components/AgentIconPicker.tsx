@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Search, Upload, X } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
+import { Check, Upload, X } from 'lucide-react';
 import { api } from '../api.js';
 import {
   EMBLEM_BY_ID,
@@ -37,34 +37,21 @@ export default function AgentIconPicker({
   onColorChange?: (color: string) => void;
   onClose: () => void;
 }): React.JSX.Element {
-  const searchRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const mark = resolveAgentMark(emblem);
   const [tab, setTab] = useState<PickerTab>(mark.kind === 'image' ? 'upload' : 'emblems');
-  const [query, setQuery] = useState('');
   const [dragging, setDragging] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [uploading, setUploading] = useState(false);
 
-  useEffect(() => {
-    searchRef.current?.focus();
-  }, []);
-
   const suggested = useMemo(() => suggestedEmblemIds(name), [name]);
-  const matches = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return EMBLEMS;
-    return EMBLEMS.filter(
-      (e) => e.name.toLowerCase().includes(q) || e.group.toLowerCase().includes(q),
-    );
-  }, [query]);
   const grouped = useMemo(
     () =>
       EMBLEM_GROUPS.map((group) => ({
         group,
-        items: matches.filter((e) => e.group === group),
-      })).filter((g) => g.items.length > 0),
-    [matches],
+        items: EMBLEMS.filter((e) => e.group === group),
+      })),
+    [],
   );
 
   const setEmblem = (next: string | undefined): void => {
@@ -142,17 +129,6 @@ export default function AgentIconPicker({
 
       {tab === 'emblems' ? (
         <div className={styles.emblems} data-testid="agent-mark-picker">
-          <label className={styles.search}>
-            <Search size={13} aria-hidden />
-            <input
-              ref={searchRef}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search emblems"
-              aria-label="Search emblems"
-            />
-          </label>
-
           <div className={styles.scroll}>
             <PickerRow label="Default">
               <button
@@ -177,18 +153,16 @@ export default function AgentIconPicker({
               </button>
             </PickerRow>
 
-            {!query && (
-              <PickerRow label={`Suggested for ${name}`}>
-                <EmblemGrid
-                  items={suggested
-                    .map((id) => EMBLEM_BY_ID[id])
-                    .filter((e): e is EmblemDef => Boolean(e))}
-                  selectedId={mark.kind === 'emblem' ? mark.emblemId : undefined}
-                  color={color}
-                  onPick={setEmblem}
-                />
-              </PickerRow>
-            )}
+            <PickerRow label={`Suggested for ${name}`}>
+              <EmblemGrid
+                items={suggested
+                  .map((id) => EMBLEM_BY_ID[id])
+                  .filter((e): e is EmblemDef => Boolean(e))}
+                selectedId={mark.kind === 'emblem' ? mark.emblemId : undefined}
+                color={color}
+                onPick={setEmblem}
+              />
+            </PickerRow>
 
             {grouped.map((g) => (
               <PickerRow key={g.group} label={g.group}>
@@ -200,10 +174,6 @@ export default function AgentIconPicker({
                 />
               </PickerRow>
             ))}
-
-            {grouped.length === 0 && (
-              <p className={styles.empty}>No emblem matches “{query}”. Upload your own instead.</p>
-            )}
           </div>
         </div>
       ) : (
