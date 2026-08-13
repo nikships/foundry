@@ -28,6 +28,7 @@ import { defaultEmblemFor, isDefaultMark, markLabel } from '../data/emblems.js';
 import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
 import { useTablistNav } from '../hooks/useTablistNav.js';
+import { draftSyncAction } from './roster-draft.js';
 import styles from './RosterScreen.module.css';
 
 const COLORS = ['#4fa8b8', '#9b7ede', '#d19a3d', '#3cb87a', '#e0605f', '#5b8fd9'];
@@ -140,26 +141,24 @@ export default function RosterScreen({
   }, [openAgent, openNonce, agents]);
 
   useEffect(() => {
-    if (!selected) {
-      if (draft !== null && lastSyncedNameRef.current !== null) {
-        // No selection available; clear only if we had a synced one before
-        // (keeps new-agent draft alive until it appears in agents)
-      }
-      if (!agents.length) {
-        setDraft(null);
-        lastSyncedNameRef.current = null;
-      }
+    const action = draftSyncAction({
+      selectedName: selected?.name ?? null,
+      hasAgents: agents.length > 0,
+      lastSyncedName: lastSyncedNameRef.current,
+    });
+    if (action === 'clear') {
+      setDraft(null);
+      lastSyncedNameRef.current = null;
       return;
     }
-    if (lastSyncedNameRef.current !== selected.name) {
-      setDraft(plain({ ...selected }));
-      setNameDraft(selected.name);
-      setRenameError('');
-      setIssues([]);
-      setActionError('');
-      lastSyncedNameRef.current = selected.name;
-    }
-  }, [selected, agents.length, draft]);
+    if (action === 'keep' || !selected) return;
+    setDraft(plain({ ...selected }));
+    setNameDraft(selected.name);
+    setRenameError('');
+    setIssues([]);
+    setActionError('');
+    lastSyncedNameRef.current = selected.name;
+  }, [selected, agents.length]);
 
   useEffect(() => {
     if (!draft) {
@@ -265,6 +264,9 @@ export default function RosterScreen({
 
   const createAgent = async (): Promise<void> => {
     setActionError('');
+    // The pane is about to move off the current agent, so persist its pending
+    // edits first — exactly as an explicit tab switch does.
+    await flush();
     // Counting agents collides after any delete, and save upserts by name, so a
     // collision would silently overwrite an existing agent instead of adding one.
     const taken = new Set(agents.map((a) => a.name));
@@ -286,8 +288,10 @@ export default function RosterScreen({
       const result = await api.roster.save(fresh, projectId || undefined);
       if (result.ok) {
         await refreshScoped();
+        // Only move the selection: stamping `lastSyncedNameRef` here would tell
+        // the sync effect the draft was already loaded from the new agent, and
+        // the pane would keep showing the previous one (FOU-41).
         setSelectedName(fresh.name);
-        lastSyncedNameRef.current = fresh.name;
       } else {
         setIssues(result.issues);
         setActionError(result.issues.map((i) => i.message).join(' '));
