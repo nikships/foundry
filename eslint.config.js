@@ -112,7 +112,7 @@ export default tseslint.config(
   },
   // Main process and tests are Node, not DOM-first.
   {
-    files: ['src/main/**/*.{ts,tsx}', 'tests/**/*.ts', 'scripts/**/*.ts'],
+    files: ['src/main/**/*.{ts,tsx}', 'tests/**/*.ts', 'scripts/**/*.ts', 'playwright.config.ts'],
     languageOptions: {
       globals: {
         ...globals.node,

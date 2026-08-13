@@ -29,7 +29,7 @@ export default defineConfig({
       include: ['src/main/**/*.ts', 'src/shared/**/*.ts', 'src/cli/**/*.ts'],
       exclude: [
         // React UI: not reachable from `environment: 'node'` suites. UI
-        // verification is a separate concern (Electron smoke/e2e harness).
+        // verification is `npm run test:e2e` (Playwright + Electron), not this gate.
         'src/renderer/**',
         // Sandboxed CJS bridge; only meaningful inside a live Electron preload.
         'src/preload/**',

@@ -32,6 +32,7 @@ No separate setup for `src/main/` — it builds as part of `electron-vite build`
 npm test                          # all suites (engine/droid/system/store/ipc)
 npx vitest run -t "<pattern>"     # focus
 npx vitest run tests/executor.test.ts  # engine executor with real git repos
+npm run build && npm run test:e2e # Electron UI smoke (macOS GUI; not in npm run check)
 ```
 
 - Engine/droid tests use **real git temp repos** and `tests/fake-droid.ts`; never use network/model, never mock git.
