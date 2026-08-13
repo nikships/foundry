@@ -82,7 +82,10 @@ export interface PhaseDef {
   /** A phase name identifies; a description explains. Both are required. */
   description: string;
   agent?: string;
-  /** Built-in EnvelopeKind or a custom envelope name from the shared library. */
+  /**
+   * Optional phase override of the agent's envelope. Absent means inherit
+   * `agent.envelope`. The engine resolves `phase.envelope ?? agent.envelope`.
+   */
   envelope?: string;
   gates?: (string | GateSpec)[];
   prompt?: PromptSpec;
@@ -197,6 +200,20 @@ export interface AgentDef {
   color: string;
   emblem?: string;
   builtin?: boolean;
+}
+
+/**
+ * The envelope a phase actually uses. Matches the engine rule
+ * `phase.envelope ?? agent.envelope`. An absent phase envelope is inheritance,
+ * not "no envelope".
+ */
+export function effectivePhaseEnvelope(
+  phase: Pick<PhaseDef, 'envelope' | 'agent'>,
+  agents: ReadonlyArray<Pick<AgentDef, 'name' | 'envelope'>>,
+): string | undefined {
+  if (phase.envelope) return phase.envelope;
+  if (!phase.agent) return undefined;
+  return agents.find((agent) => agent.name === phase.agent)?.envelope;
 }
 
 /**

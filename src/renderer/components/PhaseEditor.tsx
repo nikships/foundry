@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   BUILTIN_ENVELOPE_BLURBS,
   BUILTIN_ENVELOPE_KINDS,
+  effectivePhaseEnvelope,
   type AgentDef,
   type EnvelopeKind,
   type PhaseDef,
@@ -10,7 +11,12 @@ import {
 } from '@shared/types.js';
 import { api } from '../api.js';
 import { useApp } from '../stores/app.js';
-import { gateNames } from '../pipeline-view.js';
+import {
+  applyPhaseEnvelopeOverride,
+  bindPhaseAgent,
+  gateNames,
+  inheritEnvelopeOptionLabel,
+} from '../pipeline-view.js';
 import { SegmentedControl } from './ui/SegmentedControl.js';
 import { Button } from './ui/Button.js';
 import { IssueLine } from './ui/Issues.js';
@@ -69,6 +75,13 @@ export default function PhaseEditor({
     return 'argv';
   }, [phase]);
 
+  const selectedAgent = useMemo(
+    () => agents.find((agent) => agent.name === phase.agent),
+    [agents, phase.agent],
+  );
+  const effectiveEnvelope = effectivePhaseEnvelope(phase, agents);
+  const envelopeOverridden = Boolean(phase.envelope);
+
   const handleKindChange = (kind: PhaseKind): void => {
     if (kind === phase.kind) return;
     if (kind === 'agent') {
@@ -77,7 +90,6 @@ export default function PhaseEditor({
         kind: 'agent',
         description: phase.description,
         agent: agents[0]?.name ?? 'builder',
-        envelope: 'build',
         prompt: { template: 'user', inputs: ['request'] },
         gates: [],
       });
@@ -198,7 +210,7 @@ export default function PhaseEditor({
               id={`phase-agent-${index}`}
               className={styles.select}
               value={phase.agent ?? ''}
-              onChange={(e) => onChange({ ...phase, agent: e.target.value })}
+              onChange={(e) => onChange(bindPhaseAgent(phase, e.target.value))}
             >
               <option value="">— select agent —</option>
               {agents.map((a) => (
@@ -214,17 +226,29 @@ export default function PhaseEditor({
               <label htmlFor={`phase-envelope-${index}`} className={styles.fieldLabel}>
                 Envelope
               </label>
-              {isBuiltinEnvelope(phase.envelope) && (
-                <span className={styles.fieldHint}>{BUILTIN_ENVELOPE_BLURBS[phase.envelope]}</span>
-              )}
+              {envelopeOverridden ? (
+                <span className={styles.fieldHint}>
+                  {isBuiltinEnvelope(phase.envelope)
+                    ? `override · ${BUILTIN_ENVELOPE_BLURBS[phase.envelope]}`
+                    : 'override'}
+                </span>
+              ) : isBuiltinEnvelope(effectiveEnvelope) ? (
+                <span className={styles.fieldHint}>
+                  {selectedAgent
+                    ? `via ${selectedAgent.name} · ${BUILTIN_ENVELOPE_BLURBS[effectiveEnvelope]}`
+                    : BUILTIN_ENVELOPE_BLURBS[effectiveEnvelope]}
+                </span>
+              ) : selectedAgent?.envelope ? (
+                <span className={styles.fieldHint}>via {selectedAgent.name}</span>
+              ) : null}
             </div>
             <select
               id={`phase-envelope-${index}`}
               className={styles.select}
               value={phase.envelope ?? ''}
-              onChange={(e) => onChange({ ...phase, envelope: e.target.value || undefined })}
+              onChange={(e) => onChange(applyPhaseEnvelopeOverride(phase, e.target.value))}
             >
-              <option value="">— inherit from agent —</option>
+              <option value="">{inheritEnvelopeOptionLabel(selectedAgent)}</option>
               <optgroup label="Built-in">
                 {BUILTIN_ENVELOPE_KINDS.map((k) => (
                   <option key={k} value={k}>
