@@ -1,12 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type {
   ModelInfo,
   ReadinessAskAnswer,
+  ReadinessCriterion,
+  ReadinessEntry,
   ReadinessInspectResult,
+  ReadinessPhase,
   ReadinessState,
   ReasoningEffort,
 } from '@shared/types.js';
 import { api } from '../api.js';
+import { duration } from '../format.js';
 import { useApp } from '../stores/app.js';
 import ModelPicker from './ModelPicker.js';
 import { Button } from './ui/Button.js';
@@ -24,10 +28,172 @@ const EFFORTS: { value: ReasoningEffort; label: string }[] = [
   { value: 'max', label: 'Max' },
 ];
 
+const CRITERION_LABELS: Record<string, string> = {
+  lint_format: 'Lint & format',
+  typecheck: 'Typecheck',
+  tests: 'Tests',
+  build: 'Build',
+  setup: 'Setup',
+  agents_md: 'AGENTS.md',
+  env_example: 'Env example',
+  ci_parity: 'CI parity',
+  templates: 'Templates',
+  precommit: 'Pre-commit',
+  coverage: 'Coverage',
+};
+
+const TOOL_ICON: Record<string, string> = {
+  command: '⚙',
+  read: '◇',
+  edit: '✎',
+  search: '⌕',
+  todo: '☑',
+  task: '▸',
+  ask: '?',
+  other: '·',
+};
+
+const LIVE_PHASES = new Set<ReadinessPhase>([
+  'inspecting',
+  'evaluating',
+  'remediating',
+  'verifying',
+  'confirming_merge',
+  'finalizing',
+]);
+
+type StepId = 'check' | 'fix' | 'verify' | 'pr' | 'merge';
+type StepTone = 'pending' | 'current' | 'done' | 'failed' | 'skipped';
+
+const STEPS: { id: StepId; label: string }[] = [
+  { id: 'check', label: 'Check' },
+  { id: 'fix', label: 'Fix' },
+  { id: 'verify', label: 'Verify' },
+  { id: 'pr', label: 'PR' },
+  { id: 'merge', label: 'Merge' },
+];
+
+function stepOf(phase: ReadinessPhase): StepId {
+  switch (phase) {
+    case 'remediating':
+      return 'fix';
+    case 'verifying':
+      return 'verify';
+    case 'pr_ready':
+      return 'pr';
+    case 'awaiting_merge':
+    case 'confirming_merge':
+    case 'finalizing':
+    case 'complete':
+      return 'merge';
+    default:
+      return 'check';
+  }
+}
+
+function stepTone(id: StepId, phase: ReadinessPhase, failedAt?: StepId): StepTone {
+  if (phase === 'skipped') return id === 'check' ? 'skipped' : 'pending';
+  if (phase === 'failed') {
+    const current = failedAt ?? 'check';
+    if (id === current) return 'failed';
+    return STEPS.findIndex((s) => s.id === id) < STEPS.findIndex((s) => s.id === current)
+      ? 'done'
+      : 'pending';
+  }
+  if (phase === 'complete') return 'done';
+  if (phase === 'not_ready') {
+    if (id === 'check') return 'done';
+    if (id === 'fix') return 'current';
+    return 'pending';
+  }
+  const current = stepOf(phase);
+  const here = STEPS.findIndex((s) => s.id === id);
+  const now = STEPS.findIndex((s) => s.id === current);
+  if (here < now) return 'done';
+  if (here === now) return 'current';
+  return 'pending';
+}
+
 function statusClass(status: string): string {
   if (status === 'pass') return styles.pass;
   if (status === 'fail') return styles.fail;
   return styles.na;
+}
+
+function headlineFor(phase: ReadinessPhase, ready: boolean | undefined): string {
+  switch (phase) {
+    case 'complete':
+      return 'This repository is agent-ready';
+    case 'skipped':
+      return 'Readiness skipped';
+    case 'failed':
+      return 'Readiness check failed';
+    case 'awaiting_merge':
+    case 'confirming_merge':
+      return 'The PR is ready';
+    case 'pr_ready':
+      return 'Opening the pull request';
+    case 'finalizing':
+      return 'Finishing up';
+    case 'remediating':
+      return 'Making it ready';
+    case 'verifying':
+      return 'Verifying the fix';
+    case 'evaluating':
+    case 'inspecting':
+      return 'Checking readiness';
+    case 'not_ready':
+      return ready ? 'Ready to write the marker' : 'This repository is not ready yet';
+    default:
+      return 'Agent Readiness Check';
+  }
+}
+
+function progressOf(phase: ReadinessPhase, entries: number): number {
+  switch (phase) {
+    case 'idle':
+    case 'confirming':
+      return 0;
+    case 'inspecting':
+    case 'evaluating':
+      return 0.12;
+    case 'not_ready':
+      return 0.28;
+    case 'remediating':
+      return Math.min(0.68, 0.34 + entries * 0.012);
+    case 'verifying':
+      return 0.74;
+    case 'pr_ready':
+    case 'awaiting_merge':
+    case 'confirming_merge':
+      return 0.86;
+    case 'finalizing':
+      return 0.94;
+    case 'complete':
+    case 'skipped':
+    case 'failed':
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+function currentWork(entries: ReadinessEntry[]): string {
+  const open = [...entries].reverse().find((e) => e.kind === 'tool' && !e.done);
+  if (open) return open.text;
+  return entries[entries.length - 1]?.text ?? '';
+}
+
+function criterionCounts(criteria: ReadinessCriterion[]): {
+  pass: number;
+  fail: number;
+  total: number;
+} {
+  return {
+    pass: criteria.filter((c) => c.status === 'pass' || c.status === 'n/a').length,
+    fail: criteria.filter((c) => c.status === 'fail').length,
+    total: criteria.length,
+  };
 }
 
 export default function ReadinessFlow({
@@ -50,6 +216,8 @@ export default function ReadinessFlow({
   const [askDrafts, setAskDrafts] = useState<Record<number, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [now, setNow] = useState(() => Date.now());
+  const tailRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -91,31 +259,25 @@ export default function ReadinessFlow({
   const phase = state?.phase ?? (inspect?.ready ? 'complete' : 'confirming');
   const evaluation = state?.evaluation;
   const marker = state?.marker ?? inspect?.marker ?? null;
+  const criteria = evaluation?.criteria ?? marker?.criteria ?? [];
+  const live = LIVE_PHASES.has(phase);
+  const headline = headlineFor(phase, evaluation?.ready);
+  const counts = criterionCounts(criteria);
+  const bar = progressOf(phase, state?.entries.length ?? 0);
+  const activity = currentWork(state?.entries ?? []);
 
-  const headline = useMemo(() => {
-    switch (phase) {
-      case 'complete':
-        return 'This repository is agent-ready';
-      case 'skipped':
-        return 'Readiness skipped';
-      case 'failed':
-        return 'Readiness check failed';
-      case 'awaiting_merge':
-      case 'confirming_merge':
-      case 'pr_ready':
-        return 'The PR is ready';
-      case 'remediating':
-      case 'verifying':
-        return 'Making it ready';
-      case 'evaluating':
-      case 'inspecting':
-        return 'Checking readiness';
-      case 'not_ready':
-        return evaluation?.ready ? 'Ready to write the marker' : 'This repository is not ready yet';
-      default:
-        return 'Agent Readiness Check';
-    }
-  }, [phase, evaluation?.ready]);
+  useEffect(() => {
+    if (!live) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [live]);
+
+  useEffect(() => {
+    if (!live) return;
+    tailRef.current?.scrollTo({ top: tailRef.current.scrollHeight });
+  }, [state?.entries, live]);
+
+  const elapsedMs = state?.startedAt ? Math.max(0, (state.endedAt ?? now) - state.startedAt) : 0;
 
   const startEval = async (): Promise<void> => {
     setBusy(true);
@@ -163,6 +325,12 @@ export default function ReadinessFlow({
     setBusy(false);
   };
 
+  const cancel = async (): Promise<void> => {
+    setBusy(true);
+    await api.readiness.cancel(projectId);
+    setBusy(false);
+  };
+
   const answerAsk = async (): Promise<void> => {
     const questions = state?.pendingAsk?.questions ?? [];
     const answers: ReadinessAskAnswer[] = questions.map((q) => ({
@@ -194,7 +362,49 @@ export default function ReadinessFlow({
             inspect?.markerDetail ||
             'Foundry checks whether this repository can support agent-driven pipelines before the first run.'}
         </p>
+        {(live || phase === 'awaiting_merge' || (state?.startedAt && phase !== 'confirming')) && (
+          <p className={styles.meta} data-testid="readiness-meta">
+            {live ? 'Working' : phase === 'awaiting_merge' ? 'Waiting on merge' : 'Elapsed'}
+            {elapsedMs > 0 ? ` · ${duration(elapsedMs)}` : ''}
+            {state?.model && state.model !== 'inherit' ? ` · ${state.model}` : ''}
+            {live && activity ? ` · ${activity}` : ''}
+          </p>
+        )}
       </header>
+
+      <ol className={styles.stepper} data-testid="readiness-stepper">
+        {STEPS.map((step, i) => {
+          const tone = stepTone(
+            step.id,
+            phase,
+            state?.failedPhase ? stepOf(state.failedPhase) : undefined,
+          );
+          return (
+            <li key={step.id} className={`${styles.step} ${styles[tone]}`} data-step={step.id}>
+              {i > 0 && <span className={styles.stepRail} aria-hidden />}
+              <span className={styles.stepDot} aria-hidden>
+                {tone === 'done' ? '✓' : tone === 'failed' ? '✕' : i + 1}
+              </span>
+              <span className={styles.stepLabel}>{step.label}</span>
+            </li>
+          );
+        })}
+      </ol>
+
+      <div
+        className={styles.progress}
+        data-testid="readiness-progress"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(bar * 100)}
+        aria-label="Readiness progress"
+      >
+        <span
+          className={`${styles.progressFill} ${live ? styles.progressLive : ''}`}
+          style={{ width: `${Math.round(bar * 100)}%` }}
+        />
+      </div>
 
       <div className={styles.body}>
         {(phase === 'confirming' || phase === 'idle') && !inspect?.ready && (
@@ -234,27 +444,66 @@ export default function ReadinessFlow({
           </>
         )}
 
-        {(evaluation || marker) && (
-          <ul className={styles.criteria}>
-            {(evaluation?.criteria ?? marker?.criteria ?? []).map((c) => (
-              <li key={c.id} className={styles.criterion}>
-                <span className={`badge ${statusClass(c.status)}`}>{c.status}</span>
-                <div>
-                  <strong className="mono">{c.id}</strong>
-                  <p className={styles.notes}>{c.notes}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
+        {criteria.length > 0 && (
+          <section className={styles.checklist} data-testid="readiness-criteria">
+            <header className={styles.checklistHead}>
+              <h3 className={styles.sectionTitle}>Checklist</h3>
+              <p className={styles.counts}>
+                {counts.fail
+                  ? `${counts.fail} of ${counts.total} still need work`
+                  : `${counts.pass} of ${counts.total} pass or N/A`}
+              </p>
+            </header>
+            <ul className={styles.criteria}>
+              {criteria.map((c) => (
+                <li
+                  key={c.id}
+                  className={`${styles.criterion} ${statusClass(c.status)}`}
+                  title={c.notes}
+                >
+                  <span className={styles.criterionMark} aria-hidden>
+                    {c.status === 'pass' ? '✓' : c.status === 'fail' ? '✕' : '–'}
+                  </span>
+                  <div className={styles.criterionBody}>
+                    <strong>{CRITERION_LABELS[c.id] ?? c.id}</strong>
+                    <p className={styles.notes}>{c.notes}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
 
-        {state?.entries.length ? (
-          <ul className={styles.entries}>
-            {state.entries.slice(-12).map((entry) => (
-              <li key={entry.id}>{entry.text}</li>
-            ))}
-          </ul>
-        ) : null}
+        {(state?.entries.length || live) && (
+          <section className={styles.transcriptWrap}>
+            <header className={styles.checklistHead}>
+              <h3 className={styles.sectionTitle}>What it is doing</h3>
+              {live && <span className={styles.liveTag}>live</span>}
+            </header>
+            <div
+              className={`${styles.transcript} scroll`}
+              ref={tailRef}
+              data-testid="readiness-transcript"
+            >
+              {(state?.entries ?? []).map((entry) => (
+                <div key={entry.id} className={`${styles.line} ${styles[entry.kind] ?? ''}`}>
+                  {entry.kind === 'tool' && (
+                    <span
+                      className={`${styles.transcriptIcon} ${entry.done ? (entry.failed ? styles.failed : styles.ok) : styles.wait}`}
+                    >
+                      {TOOL_ICON[entry.toolKind ?? 'other'] ?? '·'}
+                    </span>
+                  )}
+                  <span className={styles.transcriptText}>{entry.text}</span>
+                </div>
+              ))}
+              {live && <div className={`${styles.line} ${styles.note} ${styles.pulse}`}>…</div>}
+              {!state?.entries.length && !live && (
+                <div className={`${styles.line} ${styles.note}`}>Nothing was reported.</div>
+              )}
+            </div>
+          </section>
+        )}
 
         {state?.pendingAsk && (
           <div className={styles.ask}>
@@ -310,6 +559,16 @@ export default function ReadinessFlow({
       </div>
 
       <footer className={styles.actions}>
+        {live && (
+          <Button
+            variant="ghost"
+            disabled={busy}
+            onClick={() => void cancel()}
+            data-testid="readiness-cancel"
+          >
+            Cancel
+          </Button>
+        )}
         {(phase === 'confirming' || phase === 'idle' || phase === 'not_ready') && (
           <Button variant="ghost" disabled={busy} onClick={() => void skip()}>
             {skipWarn ? 'Skip anyway' : 'Skip for now'}

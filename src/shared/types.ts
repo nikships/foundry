@@ -616,6 +616,11 @@ export interface ReadinessEntry {
   id: string;
   kind: 'text' | 'tool' | 'note' | 'error';
   text: string;
+  /** Tool entries only: what kind of work it was, so the UI can icon it. */
+  toolKind?: 'command' | 'read' | 'edit' | 'search' | 'todo' | 'task' | 'ask' | 'other';
+  /** Tool entries only: set once the result arrives. */
+  done?: boolean;
+  failed?: boolean;
   at: number;
 }
 
@@ -643,6 +648,8 @@ export interface ReadinessState {
   detail: string;
   startedAt: number;
   endedAt?: number;
+  /** The phase that was running when the session failed, so the stepper can mark it. */
+  failedPhase?: ReadinessPhase;
 }
 
 /** Banner/settings status. Always derived from the marker file, never the cache. */

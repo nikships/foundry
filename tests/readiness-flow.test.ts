@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tempDir } from './tmp.js';
 import { describe, expect, it } from 'vitest';
@@ -209,7 +209,7 @@ describe('make it ready, merge polling, and failed confirmation', () => {
 
     let opened = false;
     let merged = false;
-    const { session } = sessionFor(repo, {
+    const { session, snapshots } = sessionFor(repo, {
       openPr: async () => {
         opened = true;
         return {
@@ -235,6 +235,7 @@ describe('make it ready, merge polling, and failed confirmation', () => {
     await session.makeReady();
     expect(opened).toBe(true);
     expect(session.snapshot().phase).toBe('awaiting_merge');
+    expect(snapshots).toContain('pr_ready');
     expect(session.snapshot().pr?.url).toContain('/pull/12');
     expect(readMarker(repo).ok).toBe(false);
 
@@ -279,6 +280,21 @@ describe('make it ready, merge polling, and failed confirmation', () => {
     expect(session.snapshot().phase).toBe('awaiting_merge');
     expect(session.snapshot().markerValid).toBe(true);
     expect(session.snapshot().entries.some((e) => e.text.includes('agent-ready.json'))).toBe(true);
+  });
+
+  it('records the phase that was running when make-ready fails', async () => {
+    const repo = gitRepo('foundry-ready-failphase-');
+    const remediator: ReadinessRemediator = {
+      async run() {
+        return { ok: false, detail: 'agent gave up' };
+      },
+    };
+    const { session } = sessionFor(repo, { remediator });
+    session.inspect();
+    await session.evaluate();
+    await session.makeReady();
+    expect(session.snapshot().phase).toBe('failed');
+    expect(session.snapshot().failedPhase).toBe('remediating');
   });
 
   it('polls until merged and reports a still-open PR', async () => {
@@ -389,6 +405,62 @@ describe('readiness AskUser does not weaken pipeline zero-interrupt', () => {
     await running;
     expect(asked).toBe(true);
     expect(session.snapshot().phase).toBe('awaiting_merge');
+  });
+});
+
+describe('readiness remediator streams mid-turn work', () => {
+  it('folds assistant text and closed tool rows into the session transcript', async () => {
+    const dir = tempDir('foundry-ready-stream-cli-');
+    const js = join(dir, 'fake.mjs');
+    writeFileSync(
+      js,
+      `
+const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
+out({ type: 'system', subtype: 'init', session_id: 's1', model: 'fake-model' });
+out({ type: 'message', role: 'assistant', id: 'm1', text: 'Adding a linter.' });
+out({ type: 'tool_call', id: 'c1', toolId: 'Read', toolName: 'Read', parameters: { file_path: '/repo/package.json' } });
+out({ type: 'tool_result', id: 'c1', toolId: 'Read', isError: false, value: '{}' });
+out({ type: 'message', role: 'assistant', id: 'm2', text: 'Done.' });
+out({ type: 'completion', finalText: 'Done.', session_id: 's1', usage: { input_tokens: 4, output_tokens: 2 } });
+process.exit(0);
+`,
+    );
+    const bin = join(dir, 'droid');
+    writeFileSync(bin, `#!/bin/sh\nexec "${process.execPath}" "${js}" "$@"\n`);
+    chmodSync(bin, 0o755);
+
+    const { createAgentRemediator } = await import('../src/main/readiness/remediator.js');
+    const { __setResolvedEnvForTest } = await import('../src/main/system/env.js');
+    __setResolvedEnvForTest({ path: '/usr/bin:/bin', via: 'login-shell' });
+    try {
+      const settings = defaultSettings();
+      settings.clis.droid = { path: bin, extraArgs: [] };
+      const remediator = createAgentRemediator({ settings, vendor: 'droid' });
+      const entries: { kind: string; text: string; done?: boolean }[] = [];
+      const result = await remediator.run({
+        cwd: dir,
+        evaluation: evaluateRepo(dir),
+        model: 'inherit',
+        reasoningEffort: 'off',
+        onEntry: (entry) => {
+          const full = { ...entry, id: String(entries.length), at: 0 };
+          entries.push(full);
+          return full;
+        },
+        flush: () => {},
+        onAskUser: async () => [],
+        signal: { cancelled: false },
+      });
+      expect(result.ok).toBe(true);
+      expect(entries.some((e) => e.kind === 'text' && e.text.includes('Adding a linter'))).toBe(
+        true,
+      );
+      const tool = entries.find((e) => e.kind === 'tool');
+      expect(tool?.text).toContain('package.json');
+      expect(tool?.done).toBe(true);
+    } finally {
+      __setResolvedEnvForTest(null);
+    }
   });
 });
 
