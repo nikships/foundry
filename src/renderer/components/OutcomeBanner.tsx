@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import type { GhStatus, PhaseRow, RunRow } from '@shared/types.js';
+import type { EnvelopeRow, GhStatus, PhaseRow, RunRow } from '@shared/types.js';
 import { useBrandedAsset } from '../hooks/useBrandedAsset.js';
-import { truncate } from '../format.js';
+import { manualPrDraft } from '../pr-draft.js';
 import { Button } from './ui/Button.js';
 import styles from './OutcomeBanner.module.css';
 
@@ -49,18 +49,10 @@ function explanationFor(run: RunRow, phases: PhaseRow[]): string {
   }
 }
 
-function defaultPrTitle(run: RunRow): string {
-  return `${run.pipelineName}: ${truncate(run.request, 64)}`;
-}
-
-function defaultPrBody(run: RunRow): string {
-  const outcome = run.outcomeDetail ? `${run.outcomeDetail}\n\n` : '';
-  return `${run.request}\n\n${outcome}---\nOpened by Foundry from run ${run.runId} (branch \`${run.branch ?? ''}\`).`;
-}
-
 export default function OutcomeBanner({
   run,
   phases,
+  envelopes = [],
   worktreeBusy,
   worktreeMessage,
   worktreeError = false,
@@ -74,6 +66,8 @@ export default function OutcomeBanner({
 }: {
   run: RunRow;
   phases: PhaseRow[];
+  /** Successful `pr` envelopes prefill the manual form when auto-create failed. */
+  envelopes?: EnvelopeRow[];
   worktreeBusy: boolean;
   worktreeMessage: string;
   worktreeError?: boolean;
@@ -95,8 +89,9 @@ export default function OutcomeBanner({
   const [prBody, setPrBody] = useState('');
 
   const openPrForm = (): void => {
-    setPrTitle(defaultPrTitle(run));
-    setPrBody(defaultPrBody(run));
+    const draft = manualPrDraft(run, envelopes, phases);
+    setPrTitle(draft.title);
+    setPrBody(draft.body);
     setPrFormOpen(true);
   };
 
