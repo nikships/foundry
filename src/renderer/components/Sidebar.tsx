@@ -1,35 +1,34 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  Bell,
-  Eye,
-  Folder,
-  GitPullRequest,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Play,
-  Settings as SettingsIcon,
-  TerminalSquare,
-  Users,
-  Workflow,
-} from 'lucide-react';
 import type { View } from '../App.js';
 import { useApp } from '../stores/app.js';
 import { useAllProjectRuns } from '../stores/run.js';
 import { since, statusColor, statusWord } from '../format.js';
 import { safeGetItem, safeSetItem } from '../local-store.js';
+import {
+  CollapseEmblem,
+  ExpandEmblem,
+  InspectorEmblem,
+  PendingEmblem,
+  PipelinesEmblem,
+  ProjectEmblem,
+  PullRequestsEmblem,
+  RosterEmblem,
+  RunsEmblem,
+  SettingsEmblem,
+  SmithEmblem,
+  type Emblem,
+} from './SidebarEmblems.js';
 import { Dropdown, type DropdownOption } from './ui/Dropdown.js';
 import styles from './Sidebar.module.css';
 
 const SIDEBAR_COLLAPSED_KEY = 'foundry.sidebarCollapsed';
 
-type NavIcon = typeof Play;
-
-const items: { id: View; label: string; key: string; Icon: NavIcon }[] = [
-  { id: 'runs', label: 'Runs', key: '1', Icon: Play },
-  { id: 'pipelines', label: 'Pipelines', key: '2', Icon: Workflow },
-  { id: 'roster', label: 'Roster', key: '3', Icon: Users },
-  { id: 'inspector', label: 'Inspector', key: '4', Icon: Eye },
-  { id: 'prs', label: 'Pull Requests', key: '5', Icon: GitPullRequest },
+const items: { id: View; label: string; key: string; Emblem: Emblem }[] = [
+  { id: 'runs', label: 'Runs', key: '1', Emblem: RunsEmblem },
+  { id: 'pipelines', label: 'Pipelines', key: '2', Emblem: PipelinesEmblem },
+  { id: 'roster', label: 'Roster', key: '3', Emblem: RosterEmblem },
+  { id: 'inspector', label: 'Inspector', key: '4', Emblem: InspectorEmblem },
+  { id: 'prs', label: 'Pull Requests', key: '5', Emblem: PullRequestsEmblem },
 ];
 
 function SplitProjectOption({
@@ -199,7 +198,7 @@ export default function Sidebar({
             aria-label="Project"
             placeholder={projectTitle}
             triggerClassName={styles.emblemProjectTrigger}
-            renderValue={() => <Folder size={18} strokeWidth={1.8} aria-hidden />}
+            renderValue={() => <ProjectEmblem className={styles.navEmblem} />}
           />
         </div>
       ) : (
@@ -223,7 +222,7 @@ export default function Sidebar({
       <nav className={styles.nav} aria-label="Primary">
         {items.map((item) => {
           const active = view === item.id;
-          const Icon = item.Icon;
+          const Emblem = item.Emblem;
           return (
             <button
               key={item.id}
@@ -234,7 +233,7 @@ export default function Sidebar({
               aria-current={active ? 'page' : undefined}
             >
               {collapsed ? (
-                <Icon size={18} strokeWidth={1.9} aria-hidden className={styles.navEmblem} />
+                <Emblem className={styles.navEmblem} />
               ) : (
                 <>
                   <span className={styles.navLabel}>{item.label}</span>
@@ -258,7 +257,7 @@ export default function Sidebar({
           aria-label="Smith"
         >
           {collapsed ? (
-            <TerminalSquare size={18} strokeWidth={1.9} aria-hidden className={styles.navEmblem} />
+            <SmithEmblem className={styles.navEmblem} />
           ) : (
             <span className={styles.navLabel}>Smith</span>
           )}
@@ -311,7 +310,7 @@ export default function Sidebar({
             aria-label={`${pendingCount} ${pendingCount === 1 ? 'run needs' : 'runs need'} you`}
             onClick={() => onOpenInterruptRun?.(firstWaiting.runId)}
           >
-            <Bell size={18} strokeWidth={1.9} aria-hidden />
+            <PendingEmblem className={styles.navEmblem} />
             <span className={styles.pendingBadge} aria-hidden>
               {pendingCount > 9 ? '9+' : String(pendingCount)}
             </span>
@@ -335,9 +334,9 @@ export default function Sidebar({
         title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
         {collapsed ? (
-          <PanelLeftOpen size={18} strokeWidth={1.9} aria-hidden />
+          <ExpandEmblem className={styles.navEmblem} />
         ) : (
-          <PanelLeftClose size={16} strokeWidth={1.9} aria-hidden />
+          <CollapseEmblem size={16} className={styles.navEmblem} />
         )}
       </button>
       <button
@@ -348,7 +347,7 @@ export default function Sidebar({
         aria-current={view === 'settings' ? 'page' : undefined}
       >
         {collapsed ? (
-          <SettingsIcon size={18} strokeWidth={1.9} aria-hidden className={styles.navEmblem} />
+          <SettingsEmblem className={styles.navEmblem} />
         ) : (
           <>
             <span>Settings</span>

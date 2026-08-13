@@ -181,6 +181,7 @@
   align-self: center;
 }
 .nav-emblem {
+  display: block;
   flex: none;
 }
 .settings-item {
