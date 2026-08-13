@@ -87,27 +87,270 @@ export function selectsNothing(selection: AgentInvocables): boolean {
   );
 }
 
-/** Read `name`/`description` out of YAML front matter, when there is any. */
-function frontMatter(text: string): { name?: string; description?: string } {
-  if (!text.startsWith('---')) return {};
-  const end = text.indexOf('\n---', 3);
-  if (end < 0) return {};
-  const out: { name?: string; description?: string } = {};
-  for (const line of text.slice(3, end).split('\n')) {
-    const match = /^\s*(name|description)\s*:\s*(.*)$/.exec(line);
-    if (!match) continue;
-    const value = match[2].trim().replace(/^['"]|['"]$/g, '');
-    if (!value) continue;
-    if (match[1] === 'name') out.name = value;
-    else out.description = value;
+/**
+ * Strip common base indentation and fold/literal-join block scalar lines according to style.
+ */
+function parseBlockScalar(lines: string[], style: '>' | '|', chomping: string): string {
+  let baseIndent = -1;
+  for (const line of lines) {
+    if (line.trim().length > 0) {
+      const match = /^([ \t]+)/.exec(line);
+      baseIndent = match ? match[1].length : 0;
+      break;
+    }
   }
+
+  if (baseIndent === -1) return '';
+
+  const stripped: string[] = [];
+  for (const line of lines) {
+    if (line.trim().length === 0) {
+      stripped.push('');
+    } else {
+      let spaces = 0;
+      while (
+        spaces < baseIndent &&
+        spaces < line.length &&
+        (line[spaces] === ' ' || line[spaces] === '\t')
+      ) {
+        spaces++;
+      }
+      stripped.push(line.slice(spaces));
+    }
+  }
+
+  let result = '';
+  if (style === '|') {
+    result = stripped.join('\n');
+  } else {
+    for (let i = 0; i < stripped.length; i++) {
+      const line = stripped[i];
+      if (line === '') {
+        result += '\n';
+      } else {
+        if (result.length > 0 && !result.endsWith('\n')) {
+          if (/^[ \t]/.test(line)) {
+            result += '\n' + line;
+          } else {
+            result += ' ' + line;
+          }
+        } else {
+          result += line;
+        }
+      }
+    }
+  }
+
+  if (chomping === '+') {
+    return result;
+  }
+  return result.trimEnd();
+}
+
+/**
+ * Remove matching quotes around a YAML scalar and resolve basic escapes.
+ */
+function unquoteYamlString(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("'") && trimmed.endsWith("'") && trimmed.length >= 2) {
+    const inner = trimmed.slice(1, -1);
+    return inner
+      .replace(/\r?\n[ \t]*/g, ' ')
+      .replace(/''/g, "'")
+      .trim();
+  }
+  if (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length >= 2) {
+    const inner = trimmed.slice(1, -1);
+    return inner
+      .replace(/\r?\n[ \t]*/g, ' ')
+      .replace(/\\([\\"/nrt])/g, (_, ch: string) => {
+        switch (ch) {
+          case '"':
+            return '"';
+          case '\\':
+            return '\\';
+          case 'n':
+            return '\n';
+          case 'r':
+            return '\r';
+          case 't':
+            return '\t';
+          case '/':
+            return '/';
+          default:
+            return ch;
+        }
+      })
+      .trim();
+  }
+  return trimmed;
+}
+
+/**
+ * Read `name`/`description` out of YAML front matter, supporting single-line,
+ * folded (`>-`, `>`), literal (`|-`, `|`), and multiline indented scalars.
+ */
+export function frontMatter(text: string): { name?: string; description?: string } {
+  if (!text.startsWith('---')) return {};
+  const match = /^---[ \t]*(?:\r?\n([\s\S]*?))?\r?\n---(?:[ \t]*(?:\r?\n|$)|$)/.exec(text);
+  if (!match || !match[1]) return {};
+
+  const lines = match[1].split(/\r?\n/);
+  const out: { name?: string; description?: string } = {};
+
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (/^\s*(?:#.*)?$/.test(line)) {
+      i++;
+      continue;
+    }
+
+    const keyMatch = /^([a-zA-Z0-9_-]+)\s*:\s*(.*)$/.exec(line);
+    if (!keyMatch) {
+      i++;
+      continue;
+    }
+
+    const key = keyMatch[1];
+    const rawVal = keyMatch[2].trim();
+    i++;
+
+    const isTargetKey = key === 'name' || key === 'description';
+
+    const blockMatch = /^([>|])([+-]?)([0-9]*)$/.exec(rawVal);
+    if (blockMatch) {
+      const style = blockMatch[1] as '>' | '|';
+      const chomping = blockMatch[2];
+      const blockLines: string[] = [];
+
+      while (i < lines.length) {
+        const nextLine = lines[i];
+        if (nextLine.length > 0 && !/^\s/.test(nextLine)) {
+          break;
+        }
+        blockLines.push(nextLine);
+        i++;
+      }
+
+      if (isTargetKey) {
+        const parsed = parseBlockScalar(blockLines, style, chomping);
+        if (parsed) {
+          out[key as 'name' | 'description'] = parsed;
+        }
+      }
+      continue;
+    }
+
+    if (rawVal.startsWith('"') || rawVal.startsWith("'")) {
+      const quoteChar = rawVal[0];
+      let fullQuoted = rawVal;
+
+      const isClosed = (str: string, q: string): boolean => {
+        if (str.length < 2 || !str.endsWith(q)) return false;
+        if (q === "'") {
+          const inner = str.slice(1, -1);
+          const trailingQuotes = (inner.match(/'*$/)?.[0] || '').length;
+          return trailingQuotes % 2 === 0;
+        } else {
+          let backslashes = 0;
+          for (let p = str.length - 2; p >= 0 && str[p] === '\\'; p--) {
+            backslashes++;
+          }
+          return backslashes % 2 === 0;
+        }
+      };
+
+      if (!isClosed(fullQuoted, quoteChar)) {
+        while (i < lines.length) {
+          const nextLine = lines[i];
+          if (
+            nextLine.length > 0 &&
+            !/^\s/.test(nextLine) &&
+            /^[a-zA-Z0-9_-]+\s*:/.test(nextLine)
+          ) {
+            break;
+          }
+          fullQuoted += '\n' + nextLine;
+          i++;
+          if (isClosed(fullQuoted, quoteChar)) break;
+        }
+      }
+
+      if (isTargetKey) {
+        const unquoted = unquoteYamlString(fullQuoted);
+        if (unquoted) {
+          out[key as 'name' | 'description'] = unquoted;
+        }
+      }
+      continue;
+    }
+
+    if (rawVal === '') {
+      const blockLines: string[] = [];
+      while (i < lines.length) {
+        const nextLine = lines[i];
+        if (nextLine.length > 0 && !/^\s/.test(nextLine)) {
+          break;
+        }
+        blockLines.push(nextLine);
+        i++;
+      }
+
+      if (isTargetKey) {
+        const parts: string[] = [];
+        for (const bl of blockLines) {
+          const t = bl.trim();
+          if (t) parts.push(t);
+        }
+        const joined = parts.join(' ');
+        if (joined) {
+          out[key as 'name' | 'description'] = joined;
+        }
+      }
+    } else {
+      const continuationLines: string[] = [rawVal];
+      while (i < lines.length) {
+        const nextLine = lines[i];
+        if (nextLine.length > 0 && !/^\s/.test(nextLine)) {
+          break;
+        }
+        if (nextLine.trim() === '') {
+          let hasMoreIndented = false;
+          for (let j = i + 1; j < lines.length; j++) {
+            if (lines[j].trim() === '') continue;
+            if (/^\s/.test(lines[j])) hasMoreIndented = true;
+            break;
+          }
+          if (!hasMoreIndented) break;
+        }
+        continuationLines.push(nextLine.trim());
+        i++;
+      }
+
+      if (isTargetKey) {
+        const joined = continuationLines.filter(Boolean).join(' ').trim();
+        if (joined) {
+          out[key as 'name' | 'description'] = joined;
+        }
+      }
+    }
+  }
+
   return out;
 }
 
 /** First markdown heading or first non-empty prose line, as a fallback label. */
-function firstProse(text: string): string {
-  const body = text.startsWith('---') ? text.slice(text.indexOf('\n---', 3) + 4) : text;
-  for (const line of body.split('\n')) {
+export function firstProse(text: string): string {
+  let body = text;
+  if (text.startsWith('---')) {
+    const match = /^---[ \t]*(?:\r?\n[\s\S]*?)?\r?\n---(?:[ \t]*(?:\r?\n|$)|$)/.exec(text);
+    if (match) {
+      body = text.slice(match[0].length);
+    }
+  }
+  for (const line of body.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     if (trimmed.startsWith('#')) return trimmed.replace(/^#+\s*/, '').trim();
