@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import {
   BUILTIN_ENVELOPE_KINDS,
+  effectivePhaseEnvelope,
   type AgentDef,
   type PipelineDef,
   type ValidationIssue,
@@ -270,16 +271,15 @@ export function validate(
         where: 'acceptance',
         message: `acceptance names phase "${acceptance.phase}", which does not exist`,
       });
-    } else if (
-      acceptance.kind === 'phase_flag' &&
-      acceptance.flag === 'approved' &&
-      target.envelope !== 'review'
-    ) {
-      issues.push({
-        level: 'warning',
-        where: 'acceptance',
-        message: `"approved" comes from a review envelope; "${target.name}" declares ${target.envelope ?? 'none'}`,
-      });
+    } else if (acceptance.kind === 'phase_flag' && acceptance.flag === 'approved') {
+      const declared = effectivePhaseEnvelope(target, agents);
+      if (declared !== 'review') {
+        issues.push({
+          level: 'warning',
+          where: 'acceptance',
+          message: `"approved" comes from a review envelope; "${target.name}" declares ${declared ?? 'none'}`,
+        });
+      }
     }
   }
   return issues;

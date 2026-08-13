@@ -29,7 +29,7 @@ export default function PipelinesScreen({
   /** Bumped per deep-link so re-selecting the same pipeline re-fires the effect. */
   openNonce?: number;
 } = {}): React.JSX.Element {
-  const { agentColor, agents } = useApp();
+  const { agentByName, agentColor, agents } = useApp();
   const {
     pipelines,
     selectedId,
@@ -193,6 +193,7 @@ export default function PipelinesScreen({
           onRemovePhase={removePhase}
           onCanvasChange={updateCanvas}
           agentColor={agentColor}
+          agentEnvelope={(name) => (name ? agentByName(name)?.envelope : undefined)}
           issues={issues}
         />
       </main>

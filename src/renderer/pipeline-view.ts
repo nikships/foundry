@@ -1,5 +1,12 @@
 /** Pure view-model helpers for the pipeline workbench. */
-import type { Acceptance, PhaseDef, PipelineCanvasPoint, PipelineDef } from '@shared/types.js';
+import type {
+  Acceptance,
+  AgentDef,
+  PhaseDef,
+  PhaseKind,
+  PipelineCanvasPoint,
+  PipelineDef,
+} from '@shared/types.js';
 
 /** Composition line: "3 agents · 1 command · 1 checkpoint". */
 export function phaseComposition(phases: PhaseDef[]): string {
@@ -27,6 +34,83 @@ export function commandText(phase: PhaseDef): string {
 /** Extract gate names from a phase definition. */
 export function gateNames(phase: PhaseDef): string[] {
   return (phase.gates ?? []).map((g) => (typeof g === 'string' ? g : g.gate));
+}
+
+function uniquePhaseName(base: string, taken: Set<string>): string {
+  if (!taken.has(base)) return base;
+  let n = 2;
+  while (taken.has(`${base}_${n}`)) n += 1;
+  return `${base}_${n}`;
+}
+
+/** Default phase inserted by the pipeline workbench. Agent phases inherit. */
+export function blankPhase(kind: PhaseKind, taken: Set<string>): PhaseDef {
+  if (kind === 'agent') {
+    return {
+      name: uniquePhaseName('new_agent', taken),
+      kind: 'agent',
+      description: '',
+      agent: 'builder',
+      prompt: { template: 'user', inputs: ['request'] },
+      gates: [],
+    };
+  }
+  if (kind === 'code') {
+    return {
+      name: uniquePhaseName('new_command', taken),
+      kind: 'code',
+      description: '',
+      command: { ref: 'test' },
+    };
+  }
+  return {
+    name: uniquePhaseName('new_checkpoint', taken),
+    kind: 'engineer',
+    description: '',
+    question: '',
+  };
+}
+
+/** First picker option: inherit the selected agent's envelope. */
+export function inheritEnvelopeOptionLabel(
+  agent: Pick<AgentDef, 'name' | 'envelope'> | undefined,
+): string {
+  if (!agent) return 'Inherit from agent';
+  return `Inherit from ${agent.name} (${agent.envelope})`;
+}
+
+/** Bind a phase to an agent without pinning or rewriting an envelope override. */
+export function bindPhaseAgent(phase: PhaseDef, agentName: string): PhaseDef {
+  return { ...phase, agent: agentName || undefined };
+}
+
+/** Set or clear a phase envelope override. Empty value means inherit. */
+export function applyPhaseEnvelopeOverride(phase: PhaseDef, value: string): PhaseDef {
+  return { ...phase, envelope: value || undefined };
+}
+
+/** Canvas chip for the effective envelope, plus whether it is a phase override. */
+export function phaseEnvelopeChip(
+  phase: Pick<PhaseDef, 'envelope' | 'agent'>,
+  inherited: string | undefined,
+): { label: string; overridden: boolean; title: string } {
+  if (phase.envelope) {
+    return {
+      label: phase.envelope,
+      overridden: true,
+      title: `Override · ${phase.envelope}`,
+    };
+  }
+  if (inherited) {
+    return {
+      label: inherited,
+      overridden: false,
+      title: phase.agent
+        ? `Inherited from ${phase.agent} (${inherited})`
+        : `Inherited (${inherited})`,
+    };
+  }
+  return { label: 'inherit', overridden: false, title: 'Inherit from agent' };
 }
 
 /**

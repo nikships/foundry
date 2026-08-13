@@ -5,13 +5,18 @@ import {
   acceptanceLabel,
   acceptanceReads,
   acceptanceSummary,
+  applyPhaseEnvelopeOverride,
+  bindPhaseAgent,
+  blankPhase,
   commandText,
   defaultCanvasPosition,
   formatClock,
   formatTimeout,
   gateNames,
+  inheritEnvelopeOptionLabel,
   issuePhaseIndex,
   phaseComposition,
+  phaseEnvelopeChip,
 } from '../src/renderer/pipeline-view.js';
 
 describe('pipeline-view', () => {
@@ -177,6 +182,70 @@ describe('pipeline-view', () => {
       expect(defaultCanvasPosition(0)).toEqual({ x: 96, y: 168 });
       expect(defaultCanvasPosition(1)).toEqual({ x: 448, y: 168 });
       expect(defaultCanvasPosition(2)).toEqual({ x: 800, y: 168 });
+    });
+  });
+
+  describe('phase envelope inheritance', () => {
+    const agentPhase: PhaseDef = {
+      name: 'build',
+      kind: 'agent',
+      description: 'Implement the change.',
+      agent: 'builder',
+    };
+
+    it('creates a new agent phase without a pinned envelope', () => {
+      const created = blankPhase('agent', new Set());
+      expect(created.kind).toBe('agent');
+      expect(created.envelope).toBeUndefined();
+      expect(created.agent).toBe('builder');
+    });
+
+    it('labels the inherit option with the selected agent envelope', () => {
+      expect(inheritEnvelopeOptionLabel({ name: 'builder', envelope: 'build' })).toBe(
+        'Inherit from builder (build)',
+      );
+      expect(inheritEnvelopeOptionLabel(undefined)).toBe('Inherit from agent');
+    });
+
+    it('does not pin or rewrite an explicit override when the agent changes', () => {
+      const overridden = { ...agentPhase, envelope: 'scout' };
+      expect(bindPhaseAgent(overridden, 'reviewer')).toEqual({
+        ...overridden,
+        agent: 'reviewer',
+      });
+    });
+
+    it('persists an explicit envelope selection as a phase override', () => {
+      expect(applyPhaseEnvelopeOverride(agentPhase, 'review').envelope).toBe('review');
+    });
+
+    it('clears an override when inherit is selected', () => {
+      const overridden = { ...agentPhase, envelope: 'review' };
+      expect(applyPhaseEnvelopeOverride(overridden, '').envelope).toBeUndefined();
+    });
+
+    it('shows the inherited envelope on the canvas chip', () => {
+      expect(phaseEnvelopeChip(agentPhase, 'build')).toEqual({
+        label: 'build',
+        overridden: false,
+        title: 'Inherited from builder (build)',
+      });
+    });
+
+    it('marks an explicit override on the canvas chip', () => {
+      expect(phaseEnvelopeChip({ ...agentPhase, envelope: 'scout' }, 'build')).toEqual({
+        label: 'scout',
+        overridden: true,
+        title: 'Override · scout',
+      });
+    });
+
+    it('falls back to inherit when no agent envelope is available', () => {
+      expect(phaseEnvelopeChip({ ...agentPhase, agent: undefined }, undefined)).toEqual({
+        label: 'inherit',
+        overridden: false,
+        title: 'Inherit from agent',
+      });
     });
   });
 });

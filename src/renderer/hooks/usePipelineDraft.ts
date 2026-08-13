@@ -19,7 +19,7 @@ import type {
 } from '@shared/types.js';
 import { api, plain } from '../api.js';
 import { useApp } from '../stores/app.js';
-import { defaultCanvasPosition, formatClock } from '../pipeline-view.js';
+import { blankPhase, defaultCanvasPosition, formatClock } from '../pipeline-view.js';
 import { safeGetItem, safeSetItem } from '../local-store.js';
 
 const STORAGE_KEY = 'foundry.pipeline';
@@ -66,34 +66,6 @@ function uniqueName(base: string, taken: Set<string>): string {
   let n = 2;
   while (taken.has(`${base}_${n}`)) n += 1;
   return `${base}_${n}`;
-}
-
-export function blankPhase(kind: PhaseKind, taken: Set<string>): PhaseDef {
-  if (kind === 'agent') {
-    return {
-      name: uniqueName('new_agent', taken),
-      kind: 'agent',
-      description: '',
-      agent: 'builder',
-      envelope: 'build',
-      prompt: { template: 'user', inputs: ['request'] },
-      gates: [],
-    };
-  }
-  if (kind === 'code') {
-    return {
-      name: uniqueName('new_command', taken),
-      kind: 'code',
-      description: '',
-      command: { ref: 'test' },
-    };
-  }
-  return {
-    name: uniqueName('new_checkpoint', taken),
-    kind: 'engineer',
-    description: '',
-    question: '',
-  };
 }
 
 export function usePipelineDraft(deepLink?: {

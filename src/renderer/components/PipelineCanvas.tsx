@@ -25,6 +25,7 @@ import {
   formatTimeout,
   gateNames,
   issuePhaseIndex,
+  phaseEnvelopeChip,
 } from '../pipeline-view.js';
 import { EnvelopeGlyph, PhaseGlyph } from './PhaseGlyphs.js';
 import styles from './PipelineCanvas.module.css';
@@ -134,6 +135,7 @@ function NodeCard({
   onRemove,
   shouldIgnoreClick,
   agentColor,
+  agentEnvelope,
   issues,
 }: {
   phase: PhaseDef;
@@ -146,12 +148,14 @@ function NodeCard({
   onRemove: () => void;
   shouldIgnoreClick: () => boolean;
   agentColor: (name: string | null) => string;
+  agentEnvelope: (name: string | null) => string | undefined;
   issues: ValidationIssue[];
 }): React.JSX.Element {
   const phaseIssues = issues.filter((issue) => issuePhaseIndex(issue.where) === index);
   const hasError = phaseIssues.some((issue) => issue.level === 'error');
   const hasWarning = phaseIssues.some((issue) => issue.level === 'warning');
   const color = phaseKindColor(phase.kind, agentColor(phase.agent ?? null));
+  const envelopeChip = phaseEnvelopeChip(phase, agentEnvelope(phase.agent ?? null));
   const checkpoint = phase.kind === 'engineer';
 
   return (
@@ -205,9 +209,10 @@ function NodeCard({
             {phase.kind === 'agent' && (
               <>
                 <Chip color={agentColor(phase.agent ?? null)}>{phase.agent ?? 'no agent'}</Chip>
-                <Chip title="Envelope">
+                <Chip title={envelopeChip.title}>
                   <EnvelopeGlyph />
-                  {phase.envelope ?? 'inherit'}
+                  {envelopeChip.label}
+                  {envelopeChip.overridden && <span className={styles.overrideMark}>ovr</span>}
                 </Chip>
                 {gateNames(phase).length > 0 && <Chip>{gateNames(phase).length} gates</Chip>}
               </>
@@ -276,6 +281,7 @@ export default function PipelineCanvas({
   onRemovePhase,
   onCanvasChange,
   agentColor,
+  agentEnvelope,
   issues,
 }: {
   pipelineId: string;
@@ -292,6 +298,7 @@ export default function PipelineCanvas({
   onRemovePhase: (index: number) => void;
   onCanvasChange: (canvas: PipelineCanvasState) => void;
   agentColor: (name: string | null) => string;
+  agentEnvelope: (name: string | null) => string | undefined;
   issues: ValidationIssue[];
 }): React.JSX.Element {
   const boardRef = useRef<HTMLDivElement>(null);
@@ -596,6 +603,7 @@ export default function PipelineCanvas({
             onRemove={() => onRemovePhase(index)}
             shouldIgnoreClick={() => shouldIgnoreClick(phase.name)}
             agentColor={agentColor}
+            agentEnvelope={agentEnvelope}
             issues={issues}
           />
         ))}
