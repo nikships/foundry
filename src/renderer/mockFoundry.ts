@@ -19,6 +19,8 @@ import type {
   PhaseRow,
   UpdateStatus,
   PendingInterrupt,
+  ReadinessInspectResult,
+  ReadinessState,
 } from '@shared/types.js';
 import type { FoundryApi, SaveResult, EventPage, RunDetail } from '@shared/ipc-contract.js';
 import { BUILTIN_AGENTS } from '../main/store/builtin-agents.js';
@@ -158,6 +160,8 @@ function defaultMockSettings(): AppSettings {
     defaultCli: 'droid',
     detectCli: 'default',
     detectModel: 'inherit',
+    readinessModel: 'inherit',
+    readinessReasoningEffort: 'high',
     engineerName: 'web-preview',
     prAgent: 'pr_writer',
     defaultModel: 'inherit',
@@ -265,6 +269,35 @@ export function createMockFoundryApi(): FoundryApi {
         },
       ],
       reveal: async () => {},
+    },
+    readiness: {
+      inspect: async (projectId): Promise<ReadinessInspectResult | null> => ({
+        projectId,
+        markerValid: true,
+        marker: {
+          schemaVersion: 1,
+          generatedAt: nowIso(-86_400_000),
+          commit: 'abc1234',
+          agent: { harness: 'droid', model: 'inherit', reasoningEffort: 'high' },
+          verdict: 'ready',
+          summary: 'Demo project is already agent-ready.',
+          stack: { languages: ['typescript'], monorepo: false, packages: [] },
+          criteria: [],
+        },
+        markerDetail: 'valid agent-ready marker',
+        skipped: false,
+        validatedCache: true,
+        ready: true,
+      }),
+      evaluate: async () => ({ error: 'no agent CLI in the web preview' }),
+      makeReady: async () => ({ error: 'no agent CLI in the web preview' }),
+      cancel: async () => false,
+      get: async (): Promise<ReadinessState | null> => null,
+      skip: async () => null,
+      retry: async () => ({ error: 'no agent CLI in the web preview' }),
+      confirmMerge: async () => null,
+      answerAsk: async () => false,
+      dismiss: async () => false,
     },
     roster: {
       list: async () => [...mockAgents],

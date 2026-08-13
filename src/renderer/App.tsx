@@ -14,6 +14,7 @@ import SettingsScreen from './screens/SettingsScreen.js';
 import OnboardingShell from './screens/onboarding/OnboardingShell.js';
 import InterruptSheet from './components/InterruptSheet.js';
 import NewProjectWizard from './components/NewProjectWizard.js';
+import ReadinessFlow from './components/ReadinessFlow.js';
 import ConfirmModal from './components/ConfirmModal.js';
 import UpdateBanner from './components/UpdateBanner.js';
 import SmithLauncher from './components/SmithLauncher.js';
@@ -37,6 +38,7 @@ function AppInner(): React.JSX.Element {
     useApp();
   const [view, setView] = useState<View>('runs');
   const [creatingProject, setCreatingProject] = useState(false);
+  const [readinessProjectId, setReadinessProjectId] = useState('');
   const [openRunId, setOpenRunId] = useState('');
   const [inspectorRunId, setInspectorRunId] = useState('');
   const [settingsPane, setSettingsPane] = useState('general');
@@ -138,6 +140,7 @@ function AppInner(): React.JSX.Element {
     if (added) {
       await refreshAll();
       selectProject(added.id);
+      setReadinessProjectId(added.id);
     }
   }, [refreshAll, selectProject]);
 
@@ -149,6 +152,7 @@ function AppInner(): React.JSX.Element {
     async (project: ProjectDef): Promise<void> => {
       await refreshAll();
       selectProject(project.id);
+      setReadinessProjectId(project.id);
     },
     [refreshAll, selectProject],
   );
@@ -205,6 +209,9 @@ function AppInner(): React.JSX.Element {
           setSettingsPane(pane);
           go('settings');
         }}
+        onOpenReadiness={() => {
+          if (project?.id) setReadinessProjectId(project.id);
+        }}
       />
     );
   } else if (view === 'inspector') {
@@ -240,6 +247,7 @@ function AppInner(): React.JSX.Element {
         onNewProject={newProject}
         openEnvelope={smithNav?.kind === 'envelope' ? smithNav.name : undefined}
         openNonce={smithNav?.kind === 'envelope' ? smithNav.nonce : undefined}
+        onOpenReadiness={(id) => setReadinessProjectId(id)}
       />
     );
   }
@@ -304,6 +312,9 @@ function AppInner(): React.JSX.Element {
       {activeInterrupt && <InterruptSheet interrupt={activeInterrupt} />}
       {creatingProject && (
         <NewProjectWizard onClose={() => setCreatingProject(false)} onCreated={projectCreated} />
+      )}
+      {readinessProjectId && (
+        <ReadinessFlow projectId={readinessProjectId} onClose={() => setReadinessProjectId('')} />
       )}
       <ConfirmModal />
       {showBanner && (

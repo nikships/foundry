@@ -64,6 +64,8 @@ export const appSettingsSchema = z.object({
   defaultCli: z.literal('droid'),
   detectCli: z.enum(['default', 'droid']),
   detectModel: z.string().min(1),
+  readinessModel: z.string().min(1),
+  readinessReasoningEffort: z.enum(['off', 'low', 'medium', 'high', 'xhigh', 'max']),
   engineerName: z.string().min(1).max(80),
   prAgent: z
     .string()
@@ -114,6 +116,8 @@ export function defaultSettings(): AppSettings {
     defaultCli: 'droid',
     detectCli: 'default',
     detectModel: 'inherit',
+    readinessModel: 'inherit',
+    readinessReasoningEffort: 'high',
     engineerName: process.env.USER || 'engineer',
     prAgent: DEFAULT_PR_AGENT,
     defaultModel: 'inherit',
@@ -171,6 +175,17 @@ export function migrate(raw: unknown): AppSettings {
   // to the shipped builtin rather than leaving the app with no PR writer.
   if (typeof merged.prAgent !== 'string' || !/^[a-z][a-z0-9_-]*$/.test(merged.prAgent)) {
     merged.prAgent = DEFAULT_PR_AGENT;
+  }
+  if (!merged.readinessModel) merged.readinessModel = base.readinessModel;
+  if (
+    merged.readinessReasoningEffort !== 'off' &&
+    merged.readinessReasoningEffort !== 'low' &&
+    merged.readinessReasoningEffort !== 'medium' &&
+    merged.readinessReasoningEffort !== 'high' &&
+    merged.readinessReasoningEffort !== 'xhigh' &&
+    merged.readinessReasoningEffort !== 'max'
+  ) {
+    merged.readinessReasoningEffort = base.readinessReasoningEffort;
   }
   delete (merged as { droidPath?: string }).droidPath;
   // Foundry no longer has autonomy modes: runs are always fully autonomous.

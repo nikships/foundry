@@ -124,5 +124,9 @@ export async function findOrphans(input: {
       const runId = w.path.split('/').pop() ?? null;
       return { path: w.path, branch: w.branch, runId, projectId: input.projectId };
     })
-    .filter((w) => !w.runId || !active.has(w.runId));
+    .filter((w) => {
+      const name = w.path.split('/').pop() ?? '';
+      if (name.startsWith('ready-')) return false;
+      return !w.runId || !active.has(w.runId);
+    });
 }

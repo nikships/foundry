@@ -110,6 +110,16 @@
   justify-content: space-between;
   border: 1px solid color-mix(in srgb, var(--amber) 18%, transparent);
 }
+.readinessBanner {
+  composes: notice;
+  margin: 0 var(--s6) var(--s3);
+}
+.readinessReady {
+  composes: readinessBanner;
+  background: color-mix(in srgb, var(--green) 12%, var(--bg-panel));
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 18%, transparent);
+}
 .notice p {
   margin: 0;
   line-height: var(--leading);

@@ -22,6 +22,7 @@ import * as prs from './prs.js';
 import * as smith from './smith.js';
 import * as maintenance from './maintenance.js';
 import * as appRouter from './app.js';
+import * as readiness from './readiness.js';
 
 export function registerIpc(ctx: AppContext): void {
   const handle: Handle = (channel, fn) => {
@@ -30,6 +31,7 @@ export function registerIpc(ctx: AppContext): void {
 
   settings.register(ctx, handle);
   projects.register(ctx, handle);
+  readiness.register(ctx, handle);
   roster.register(ctx, handle);
   envelopes.register(ctx, handle);
   pipelines.register(ctx, handle);

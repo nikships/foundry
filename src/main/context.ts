@@ -19,6 +19,7 @@ import { EnvelopeStore } from './store/envelopes.js';
 import { RunRegistry } from './engine/registry.js';
 import { Detections } from './engine/detections.js';
 import { Setups } from './engine/setups.js';
+import { ReadinessSessions } from './readiness/sessions.js';
 import { UpdaterService } from './updater.js';
 import { SmithService } from './smith/index.js';
 import { saveProposal } from './ipc/smith.js';
@@ -40,6 +41,7 @@ export class AppContext {
   readonly registry: RunRegistry;
   readonly detections: Detections;
   readonly setups: Setups;
+  readonly readiness: ReadinessSessions;
   readonly updater: UpdaterService;
   readonly smith: SmithService;
   readonly version: string;
@@ -57,6 +59,9 @@ export class AppContext {
     this.updater = new UpdaterService((channel, payload) => this.broadcast(channel, payload));
     this.detections = new Detections((state) => this.broadcast(IPC.eventDetectionProgress, state));
     this.setups = new Setups((state) => this.broadcast(IPC.eventSetupProgress, state));
+    this.readiness = new ReadinessSessions((state) =>
+      this.broadcast(IPC.eventReadinessProgress, state),
+    );
 
     this.registry = new RunRegistry({
       appSupportDir: supportDir,
@@ -148,6 +153,7 @@ export class AppContext {
     this.registry.closeAll();
     this.detections.cancelAll();
     this.setups.cancelAll();
+    this.readiness.cancelAll();
     this.smith.dispose();
     // Best-effort: disconnect + SIGTERM the app-owned daemon. --parent-pid is
     // the crash backstop; this is the clean quit path. Fire-and-forget so

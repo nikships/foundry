@@ -19,6 +19,7 @@ const EVENT_CHANNELS = {
   'detection-progress': IPC.eventDetectionProgress,
   'setup-progress': IPC.eventSetupProgress,
   'smith-proposals-changed': IPC.eventSmithProposalsChanged,
+  'readiness-progress': IPC.eventReadinessProgress,
 } as const;
 
 /** One-way menu commands; the renderer decides what to show. */
@@ -61,6 +62,18 @@ const api: FoundryApi = {
     setupCancel: (setupId) => call(IPC.projectsSetupCancel, setupId),
     check: (id) => call(IPC.projectsCheck, id),
     reveal: (path) => call(IPC.projectsReveal, path),
+  },
+  readiness: {
+    inspect: (projectId) => call(IPC.readinessInspect, projectId),
+    evaluate: (projectId, opts) => call(IPC.readinessEvaluate, projectId, opts),
+    makeReady: (projectId) => call(IPC.readinessMakeReady, projectId),
+    cancel: (projectId) => call(IPC.readinessCancel, projectId),
+    get: (projectId) => call(IPC.readinessGet, projectId),
+    skip: (projectId) => call(IPC.readinessSkip, projectId),
+    retry: (projectId) => call(IPC.readinessRetry, projectId),
+    confirmMerge: (projectId) => call(IPC.readinessConfirmMerge, projectId),
+    answerAsk: (projectId, answers) => call(IPC.readinessAnswerAsk, projectId, answers),
+    dismiss: (projectId) => call(IPC.readinessDismiss, projectId),
   },
   roster: {
     list: (projectId) => call(IPC.rosterList, projectId),

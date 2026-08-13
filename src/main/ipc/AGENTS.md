@@ -43,7 +43,7 @@ npx vitest run tests/ipc-clone.test.ts
 
 ## Push Channels
 
-Exactly seven push channels (from main → renderer):
+Exactly eight push channels (from main → renderer):
 
 - `runs-changed`
 - `interrupts-changed`
@@ -52,8 +52,9 @@ Exactly seven push channels (from main → renderer):
 - `detection-progress`
 - `setup-progress`
 - `smith-proposals-changed`
+- `readiness-progress`
 
-`detection-progress` and `setup-progress` carry progress for work that has **no trace rows** (detection and setup). `smith-proposals-changed` tells the renderer the one-slot proposal queue moved, so the approval card can appear or dismiss. Ordinary run data is **polled** via the `change_id` cursor (see `src/main/trace/AGENTS.md` + `src/renderer/stores/run.tsx`). Do not add a new push channel without updating this list and the bridge.
+`detection-progress`, `setup-progress`, and `readiness-progress` carry progress for work that has **no trace rows** (detection, setup, and the Agent Readiness Check). `smith-proposals-changed` tells the renderer the one-slot proposal queue moved, so the approval card can appear or dismiss. Ordinary run data is **polled** via the `change_id` cursor (see `src/main/trace/AGENTS.md` + `src/renderer/stores/run.tsx`). Do not add a new push channel without updating this list and the bridge.
 
 ## Code Style
 

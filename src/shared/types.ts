@@ -376,6 +376,13 @@ export interface AppSettings {
   detectCli: CliVendor | 'default';
   /** Model for detection. `inherit` lets the chosen CLI pick its own. */
   detectModel: string;
+  /**
+   * Model for the Agent Readiness Check. `inherit` follows `defaultModel`.
+   * Changing it in the readiness flow can optionally write this default.
+   */
+  readinessModel: string;
+  /** Reasoning effort for readiness evaluation and remediation. */
+  readinessReasoningEffort: ReasoningEffort;
   /** Recorded on every run so a trace says who asked for it. */
   engineerName: string;
   /**
@@ -499,12 +506,154 @@ export interface ProjectDef {
    */
   scaffold?: boolean;
   /**
+   * Cache only: last time Foundry saw a valid `.agents/agent-ready.json`.
+   * The marker file is the source of truth; this never overrides it.
+   */
+  readinessValidated?: boolean;
+  /**
+   * The operator explicitly skipped the readiness flow. Re-runnable from
+   * project settings; the Runs banner still reflects the marker file.
+   */
+  readinessSkipped?: boolean;
+  /**
    * Shell script run at the worktree root via `sh -c` after every
    * `git worktree add`. Installs deps so agents find their binaries.
    * Empty means nothing to run.
    */
   setupScript?: string;
   addedAt: string;
+}
+
+// ── Agent readiness (project onboarding, not a pipeline phase) ───────────────
+
+/** Criteria the readiness check must judge. N/A is a recorded adaptation. */
+export const READINESS_CRITERION_IDS = [
+  'lint_format',
+  'typecheck',
+  'tests',
+  'build',
+  'setup',
+  'agents_md',
+  'env_example',
+  'ci_parity',
+  'templates',
+  'precommit',
+  'coverage',
+] as const;
+
+export type ReadinessCriterionId = (typeof READINESS_CRITERION_IDS)[number];
+
+export type ReadinessCriterionStatus = 'pass' | 'fail' | 'n/a';
+
+export interface ReadinessCriterion {
+  id: ReadinessCriterionId;
+  status: ReadinessCriterionStatus;
+  measurement?: Record<string, unknown>;
+  notes: string;
+}
+
+export interface AgentReadyStack {
+  languages: string[];
+  monorepo: boolean;
+  packages: string[];
+}
+
+/**
+ * Portable proof that a repo is ready for agent-driven work. Lives at
+ * `.agents/agent-ready.json` and travels with the repo.
+ */
+export interface AgentReadyMarker {
+  schemaVersion: 1;
+  generatedAt: string;
+  commit: string;
+  agent: { harness: string; model: string; reasoningEffort: string };
+  verdict: 'ready';
+  summary: string;
+  stack: AgentReadyStack;
+  criteria: ReadinessCriterion[];
+}
+
+export interface ReadinessEvaluation {
+  stack: AgentReadyStack;
+  criteria: ReadinessCriterion[];
+  ready: boolean;
+  summary: string;
+}
+
+export type ReadinessPhase =
+  | 'idle'
+  | 'inspecting'
+  | 'confirming'
+  | 'evaluating'
+  | 'not_ready'
+  | 'remediating'
+  | 'verifying'
+  | 'pr_ready'
+  | 'awaiting_merge'
+  | 'confirming_merge'
+  | 'finalizing'
+  | 'complete'
+  | 'skipped'
+  | 'failed';
+
+export interface ReadinessAskQuestion {
+  index: number;
+  question: string;
+  options: string[];
+}
+
+export interface ReadinessPendingAsk {
+  askId: string;
+  questions: ReadinessAskQuestion[];
+}
+
+export interface ReadinessAskAnswer {
+  index: number;
+  answer: string;
+}
+
+export interface ReadinessEntry {
+  id: string;
+  kind: 'text' | 'tool' | 'note' | 'error';
+  text: string;
+  at: number;
+}
+
+export interface ReadinessPr {
+  number: number;
+  url: string;
+  merged: boolean;
+}
+
+export interface ReadinessState {
+  sessionId: string;
+  projectId: string;
+  phase: ReadinessPhase;
+  model: string;
+  reasoningEffort: ReasoningEffort;
+  marker: AgentReadyMarker | null;
+  markerValid: boolean;
+  markerDetail: string;
+  evaluation: ReadinessEvaluation | null;
+  entries: ReadinessEntry[];
+  pendingAsk: ReadinessPendingAsk | null;
+  pr: ReadinessPr | null;
+  mergeDetail: string;
+  skipDetail: string;
+  detail: string;
+  startedAt: number;
+  endedAt?: number;
+}
+
+/** Banner/settings status. Always derived from the marker file, never the cache. */
+export interface ReadinessInspectResult {
+  projectId: string;
+  markerValid: boolean;
+  marker: AgentReadyMarker | null;
+  markerDetail: string;
+  skipped: boolean;
+  validatedCache: boolean;
+  ready: boolean;
 }
 
 // ── Trace rows (what the renderer polls) ─────────────────────────────────────

@@ -256,6 +256,44 @@ export async function viewPr(
   };
 }
 
+export interface PrMergeState {
+  number: number;
+  url: string;
+  merged: boolean;
+  state: string;
+}
+
+/** Merge confirmation: state + mergedAt, used by readiness (not run PRs). */
+export async function viewPrMergeState(
+  repo: string,
+  ref: string | number,
+  opts: GhOptions = {},
+): Promise<PrMergeState | null> {
+  const bin = opts.bin ?? 'gh';
+  const r = await gh(
+    bin,
+    repo,
+    ['pr', 'view', String(ref), '--json', 'number,url,state,mergedAt'],
+    30_000,
+  );
+  if (!r.ok) return null;
+  const parsed = safeParse<{
+    number?: number;
+    url?: string;
+    state?: string;
+    mergedAt?: string | null;
+  }>(r.stdout);
+  if (!parsed || typeof parsed.number !== 'number' || typeof parsed.url !== 'string') return null;
+  const state = parsed.state ?? '';
+  const merged = state.toUpperCase() === 'MERGED' || Boolean(parsed.mergedAt);
+  return {
+    number: parsed.number,
+    url: parsed.url,
+    merged,
+    state: state || (merged ? 'MERGED' : 'OPEN'),
+  };
+}
+
 /**
  * Push the branch, then open the PR. The push always runs first — gh can only
  * create a PR for a head GitHub has seen — and a branch whose PR already

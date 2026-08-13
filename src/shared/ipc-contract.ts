@@ -30,6 +30,10 @@ import type {
   PrMergeMethod,
   ProjectDef,
   PullRequest,
+  ReadinessAskAnswer,
+  ReadinessInspectResult,
+  ReadinessState,
+  ReasoningEffort,
   RunRow,
   SmithLaunchInfo,
   SmithProposal,
@@ -276,6 +280,26 @@ export interface FoundryApi {
     check(id: string): Promise<DoctorCheck[]>;
     reveal(path: string): Promise<void>;
   };
+  readiness: {
+    /** Marker-file status. Cache never wins over the file. */
+    inspect(projectId: string): Promise<ReadinessInspectResult | null>;
+    /**
+     * Starts the dedicated evaluation. Returns as soon as the session exists;
+     * progress arrives on `readiness-progress`.
+     */
+    evaluate(
+      projectId: string,
+      opts?: { model?: string; reasoningEffort?: ReasoningEffort; saveAsDefault?: boolean },
+    ): Promise<{ sessionId: string } | { error: string }>;
+    makeReady(projectId: string): Promise<{ sessionId: string } | { error: string }>;
+    cancel(projectId: string): Promise<boolean>;
+    get(projectId: string): Promise<ReadinessState | null>;
+    skip(projectId: string): Promise<ReadinessState | null>;
+    retry(projectId: string): Promise<{ sessionId: string } | { error: string }>;
+    confirmMerge(projectId: string): Promise<ReadinessState | null>;
+    answerAsk(projectId: string, answers: ReadinessAskAnswer[]): Promise<boolean>;
+    dismiss(projectId: string): Promise<boolean>;
+  };
   roster: {
     list(projectId?: string): Promise<AgentDef[]>;
     save(agent: AgentDef, projectId?: string): Promise<SaveResult<AgentDef[]>>;
@@ -431,6 +455,7 @@ export interface FoundryApi {
    * `detection-progress` is pushed rather than polled because a detection is
    * not a run: it has no trace rows and therefore no `change_id` cursor to walk.
    * `setup-progress` is the same shape for the worktree bootstrap generator.
+   * `readiness-progress` is the same shape for the Agent Readiness Check.
    */
   on(
     channel:
@@ -440,7 +465,8 @@ export interface FoundryApi {
       | 'updater-status'
       | 'detection-progress'
       | 'setup-progress'
-      | 'smith-proposals-changed',
+      | 'smith-proposals-changed'
+      | 'readiness-progress',
     handler: (data?: unknown) => void,
   ): () => void;
 }
@@ -470,6 +496,16 @@ export const IPC = {
   projectsSetupCancel: 'projects:setupCancel',
   projectsCheck: 'projects:check',
   projectsReveal: 'projects:reveal',
+  readinessInspect: 'readiness:inspect',
+  readinessEvaluate: 'readiness:evaluate',
+  readinessMakeReady: 'readiness:makeReady',
+  readinessCancel: 'readiness:cancel',
+  readinessGet: 'readiness:get',
+  readinessSkip: 'readiness:skip',
+  readinessRetry: 'readiness:retry',
+  readinessConfirmMerge: 'readiness:confirmMerge',
+  readinessAnswerAsk: 'readiness:answerAsk',
+  readinessDismiss: 'readiness:dismiss',
   rosterList: 'roster:list',
   rosterSave: 'roster:save',
   rosterRename: 'roster:rename',
@@ -543,4 +579,5 @@ export const IPC = {
   eventDetectionProgress: 'event:detection-progress',
   eventSetupProgress: 'event:setup-progress',
   eventSmithProposalsChanged: 'event:smith-proposals-changed',
+  eventReadinessProgress: 'event:readiness-progress',
 } as const;
