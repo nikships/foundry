@@ -291,7 +291,7 @@ export interface ToolPolicySpec {
  * roster.
  */
 export interface AgentInvocables {
-  /** Host skill ids (the directory name under `~/.factory/skills`). */
+  /** Host skill ids (the directory name under `~/.factory/skills` or `~/.agents/skills`). */
   skills: string[];
   /** Host custom Droid ids (the file stem under `~/.factory/droids`). */
   droids: string[];
