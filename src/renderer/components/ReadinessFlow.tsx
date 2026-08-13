@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type {
+  ModelInfo,
   ReadinessAskAnswer,
   ReadinessInspectResult,
   ReadinessState,
@@ -7,6 +8,7 @@ import type {
 } from '@shared/types.js';
 import { api } from '../api.js';
 import { useApp } from '../stores/app.js';
+import ModelPicker from './ModelPicker.js';
 import { Button } from './ui/Button.js';
 import { Dropdown } from './ui/Dropdown.js';
 import { Field, TextInput } from './ui/Field.js';
@@ -42,6 +44,7 @@ export default function ReadinessFlow({
   const [effort, setEffort] = useState<ReasoningEffort>(
     settings?.readinessReasoningEffort ?? 'high',
   );
+  const [models, setModels] = useState<ModelInfo[]>([]);
   const [saveDefault, setSaveDefault] = useState(false);
   const [skipWarn, setSkipWarn] = useState(false);
   const [askDrafts, setAskDrafts] = useState<Record<number, string>>({});
@@ -65,6 +68,25 @@ export default function ReadinessFlow({
       off();
     };
   }, [projectId]);
+
+  // Readiness always runs on the default CLI (see readiness/sessions.ts), so the
+  // picker must offer that CLI's catalog rather than a free-typed model id.
+  const defaultCli = settings?.defaultCli;
+  useEffect(() => {
+    if (!defaultCli) return;
+    let cancelled = false;
+    void api.catalog.models(defaultCli).then((next) => {
+      if (!cancelled) setModels(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [defaultCli]);
+
+  const refreshModels = async (): Promise<void> => {
+    if (!defaultCli) return;
+    setModels(await api.catalog.models(defaultCli, true));
+  };
 
   const phase = state?.phase ?? (inspect?.ready ? 'complete' : 'confirming');
   const evaluation = state?.evaluation;
@@ -184,11 +206,13 @@ export default function ReadinessFlow({
             </p>
             <div className={styles.fields}>
               <Field label="Model">
-                <TextInput
-                  mono
+                <ModelPicker
                   value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  placeholder="inherit"
+                  models={models}
+                  allowInherit
+                  emptyHint={`No models from ${defaultCli ?? 'the default CLI'}. Install and sign in under Settings → Agent CLIs, then refresh.`}
+                  onChange={setModel}
+                  onRefresh={() => void refreshModels()}
                 />
               </Field>
               <Field label="Reasoning effort">
