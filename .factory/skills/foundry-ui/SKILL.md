@@ -1,6 +1,6 @@
 ---
 name: foundry-ui
-description: Launch the Foundry native Electron app and drive it with agent-browser for UI testing, navigation, and screenshots. Use when asked to launch Foundry, look at / verify the app UI, navigate its screens (Runs, Run detail, Inspector, Pipelines, Roster, Settings, Onboarding), or capture screenshots of the desktop app. Never use a web browser for this; drive the real Electron app.
+description: Use whenever you need to verify something in UI.
 ---
 
 # Foundry Desktop App: Launch, Navigate, Screenshot
@@ -26,6 +26,14 @@ The automated counterpart of this skill is `npm run test:e2e` (Playwright
 regression; use this skill for interactive exploration. Do not open a web
 browser either way.
 
+**Do not write a throwaway Playwright spec to stand in for this skill.** They
+are not interchangeable: `tests/e2e/` holds committed regression specs, while
+validating your own change is what this skill is for (AGENTS.md: "Use
+foundry-ui skill to validate larger changes", "do not add a second harness").
+If launching seems blocked, work the checklist below rather than switching
+harnesses — every reported "the launch is blocked" case so far has been one of
+the traps listed there.
+
 ```bash
 cd /path/to/foundry
 
@@ -35,14 +43,32 @@ pgrep -fl "electron ." || true
 # 1. Build if out/ is missing or stale
 [ -d out/main ] || npm run build
 
-# 2. Launch with CDP (background it; it never exits on its own)
-./node_modules/.bin/electron . --remote-debugging-port=9250 &
+# 2. Launch with CDP. Plain `&` is correct. Redirect output so the DevTools
+#    listener line on stderr does not look like a crash.
+./node_modules/.bin/electron . --remote-debugging-port=9250 \
+  > /tmp/electron.log 2>&1 &
 
-# 3. Connect (wait for the window)
+# 3. Connect (wait for the window). Safe to run in a later shell call.
 sleep 4
+curl -s http://127.0.0.1:9250/json/version   # liveness proof, not $?
 agent-browser connect 9250
 agent-browser tab   # expect: [t1] Foundry - file://.../out/renderer/index.html
 ```
+
+**Backgrounding works, including across separate tool calls.** A plain `&`
+launch keeps running after the shell call that started it returns; step 3 above
+connects fine from a later call. Before concluding the app was killed, prove it
+with `pgrep -fl "electron \."` and a `curl` of the CDP port. Three things
+routinely masquerade as an environment blocker:
+
+- **`setsid` does not exist on macOS.** `nohup setsid electron . &` fails with
+  `nohup: setsid: No such file or directory` — nothing ever launched. Do not
+  reach for `setsid`; plain `&` is what works here.
+- **`$!` is often the wrong PID.** `nohup` and `setsid` fork, and `open -n -a`
+  hands off to launchd and exits immediately. In all three the app may be
+  running while the PID you captured is gone. Match on `pgrep -fl` instead.
+- **stderr is not death.** Electron prints `DevTools listening on ws://…` to
+  stderr at startup. That line means the launch succeeded.
 
 Variants:
 
@@ -233,6 +259,13 @@ Roster → CLIs → Ready → Project.
   flag, or another instance held the single-instance lock so your process
   exited immediately (`pgrep -fl "electron ."` to check; use a separate
   `--user-data-dir` to run alongside).
+- **"the launch keeps getting killed"**: check this before believing it. Run
+  `pgrep -fl "electron \."` and `curl -s http://127.0.0.1:9250/json/version`.
+  Plain `&` backgrounding survives across tool calls, so a vanished `$!` is
+  usually `setsid` (absent on macOS), a fork, or `open -n -a` handing off to
+  launchd — not the app dying. See the traps under **Launch**. If the app is
+  genuinely not running, the log you redirected to `/tmp/electron.log` says
+  why; read it rather than switching to another harness.
 - **Blank/stale UI after code changes**: `electron .` serves the last build;
   run `npm run build` and relaunch. For live HMR use `npm run dev` (but flag
   passthrough for the debug port is unreliable; prefer built launches).

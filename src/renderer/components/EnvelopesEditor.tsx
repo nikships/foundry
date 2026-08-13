@@ -20,19 +20,13 @@ import {
 } from '@shared/types.js';
 import { api, plain } from '../api.js';
 import { useApp } from '../stores/app.js';
-import { Dropdown } from './ui/Dropdown.js';
+import { addField as appendField } from '../custom-fields.js';
+import CustomFieldsEditor from './CustomFieldsEditor.js';
 import { Field, TextInput } from './ui/Field.js';
 import { Button } from './ui/Button.js';
 import { confirmManager } from '../hooks/useConfirmAction.js';
 import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
 import styles from './EnvelopesEditor.module.css';
-
-const FIELD_TYPES: { value: CustomEnvelopeField['type']; label: string }[] = [
-  { value: 'string', label: 'Text' },
-  { value: 'number', label: 'Number' },
-  { value: 'boolean', label: 'Yes-no' },
-  { value: 'string[]', label: 'List of text' },
-];
 
 const BASE_FIELDS: { name: string; type: string; hint: string }[] = [
   { name: 'status', type: 'success | fail', hint: 'Required outcome flag' },
@@ -246,10 +240,6 @@ function uniqueName(base: string, existing: Set<string>): string {
   return `${base}_${n}`;
 }
 
-function fieldTypeLabel(type: CustomEnvelopeField['type']): string {
-  return FIELD_TYPES.find((t) => t.value === type)?.label ?? type;
-}
-
 export default function EnvelopesEditor({
   openEnvelope,
   openNonce = 0,
@@ -459,27 +449,9 @@ export default function EnvelopesEditor({
     lastSyncedRef.current = next;
   };
 
-  const patchField = (index: number, patch: Partial<CustomEnvelopeField>): void => {
-    if (!draft) return;
-    const fields = draft.fields.map((f, i) => (i === index ? { ...f, ...patch } : f));
-    setDraft({ ...draft, fields });
-  };
-
   const addField = (): void => {
     if (!draft) return;
-    const used = new Set(draft.fields.map((f) => f.name));
-    let n = 1;
-    let name = 'field';
-    while (used.has(name)) name = `field_${n++}`;
-    setDraft({
-      ...draft,
-      fields: [...draft.fields, { name, type: 'string', required: true, description: '' }],
-    });
-  };
-
-  const removeField = (index: number): void => {
-    if (!draft) return;
-    setDraft({ ...draft, fields: draft.fields.filter((_, i) => i !== index) });
+    setDraft({ ...draft, fields: appendField(draft.fields) });
   };
 
   const duplicateCurrent = async (): Promise<void> => {
@@ -822,82 +794,12 @@ export default function EnvelopesEditor({
                       </div>
                     )}
 
-                    {draft.fields.map((field, index) => (
-                      <div key={`${field.name}-${index}`} className={styles.envelopeFieldRow}>
-                        <div className={styles.envelopeFieldGrid}>
-                          <label className={styles.envelopeFieldLabel}>
-                            <span>Name</span>
-                            <TextInput
-                              className="mono"
-                              value={field.name}
-                              disabled={busy}
-                              onChange={(e) =>
-                                patchField(index, {
-                                  name: e.target.value
-                                    .toLowerCase()
-                                    .replace(/[^a-z0-9_]/g, '')
-                                    .replace(/^[^a-z]+/, ''),
-                                })
-                              }
-                            />
-                          </label>
-                          <label className={styles.envelopeFieldLabel}>
-                            <span>Type</span>
-                            <Dropdown
-                              value={field.type}
-                              disabled={busy}
-                              options={FIELD_TYPES.map((t) => ({
-                                value: t.value,
-                                label: t.label,
-                              }))}
-                              onChange={(next) =>
-                                patchField(index, {
-                                  type: next as CustomEnvelopeField['type'],
-                                })
-                              }
-                            />
-                          </label>
-                          <label
-                            className={`${styles.envelopeFieldLabel} ${styles.envelopeFieldReq}`}
-                          >
-                            <span>Required</span>
-                            <button
-                              type="button"
-                              role="switch"
-                              aria-checked={field.required}
-                              className={`${styles.envelopeSwitch} ${field.required ? styles.on : ''}`}
-                              disabled={busy}
-                              onClick={() => patchField(index, { required: !field.required })}
-                            >
-                              <span className={styles.envelopeSwitchKnob} />
-                              <span className={styles.envelopeSwitchText}>
-                                {field.required ? 'Yes' : 'No'}
-                              </span>
-                            </button>
-                          </label>
-                          <label
-                            className={`${styles.envelopeFieldLabel} ${styles.envelopeFieldHintCol}`}
-                          >
-                            <span>Hint in example JSON</span>
-                            <TextInput
-                              value={field.description ?? ''}
-                              disabled={busy}
-                              placeholder={`e.g. ${fieldTypeLabel(field.type).toLowerCase()} the agent should fill`}
-                              onChange={(e) => patchField(index, { description: e.target.value })}
-                            />
-                          </label>
-                        </div>
-                        <button
-                          type="button"
-                          className={styles.envelopeFieldRemove}
-                          disabled={busy}
-                          onClick={() => removeField(index)}
-                          aria-label={`Remove field ${field.name || index + 1}`}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ))}
+                    <CustomFieldsEditor
+                      idPrefix={`envelope-${draft.name}`}
+                      fields={draft.fields}
+                      disabled={busy}
+                      onChange={(fields) => setDraft({ ...draft, fields })}
+                    />
                   </div>
                 </div>
 

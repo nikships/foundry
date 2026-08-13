@@ -85,6 +85,7 @@ const api: FoundryApi = {
     remove: (name, projectId) => call(IPC.rosterRemove, name, projectId),
     duplicate: (name, projectId) => call(IPC.rosterDuplicate, name, projectId),
     validate: (agent) => call(IPC.rosterValidate, agent),
+    preview: (agent) => call(IPC.rosterPreview, agent),
     reset: () => call(IPC.rosterReset),
   },
   envelopes: {

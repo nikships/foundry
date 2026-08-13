@@ -1,5 +1,6 @@
 import type { AgentDef } from '@shared/types.js';
 import { IPC, type RenameResult, type SaveResult } from '@shared/ipc-contract.js';
+import { exampleFor } from '../engine/envelopes.js';
 import { validate as validateAgent } from '../store/roster.js';
 import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
@@ -45,6 +46,13 @@ export function register(ctx: Ctx, handle: Handle): void {
   );
 
   handle(IPC.rosterValidate, (agent: AgentDef) => validateAgent(agent, knownEnvelopeNames()));
+
+  // Rendered from the draft rather than the saved agent so the preview tracks
+  // an unsaved edit, and through `exampleFor` so it is the same text the run
+  // embeds in the prompt.
+  handle(IPC.rosterPreview, (agent: AgentDef) =>
+    exampleFor(agent.envelope, agent.customFields, ctx.envelopes.list()),
+  );
 
   handle(IPC.rosterReset, () => {
     const agents = ctx.roster.resetToBuiltins();
