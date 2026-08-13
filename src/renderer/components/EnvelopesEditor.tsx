@@ -28,13 +28,6 @@ import { confirmManager } from '../hooks/useConfirmAction.js';
 import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
 import styles from './EnvelopesEditor.module.css';
 
-const BASE_FIELDS: { name: string; type: string; hint: string }[] = [
-  { name: 'status', type: 'success | fail', hint: 'Required outcome flag' },
-  { name: 'summary', type: 'text', hint: 'One sentence on what you did' },
-  { name: 'artifacts', type: 'list of text', hint: 'Paths created or updated' },
-  { name: 'notes_for_next_agent', type: 'text', hint: 'What the next phase needs to know' },
-];
-
 const BUILTIN_BLURBS: Record<EnvelopeKind, string> = {
   generic: 'Bare outcome — status, summary, artifacts, handoff note.',
   brief: 'Adds a rewritten request, its constraints, and acceptance criteria.',
@@ -769,20 +762,6 @@ export default function EnvelopesEditor({
                   </div>
 
                   <div className={styles.envelopeFieldStack}>
-                    {BASE_FIELDS.map((f) => (
-                      <div
-                        key={f.name}
-                        className={`${styles.envelopeFieldRow} ${styles.envelopeLocked}`}
-                      >
-                        <div className={styles.envelopeFieldMain}>
-                          <span className={`mono ${styles.envelopeFieldName}`}>{f.name}</span>
-                          <span className={styles.envelopeFieldMeta}>{f.type}</span>
-                          <span className={styles.envelopeFieldHint}>{f.hint}</span>
-                        </div>
-                        <span className={styles.envelopeFieldLock}>Base · always present</span>
-                      </div>
-                    ))}
-
                     {draft.fields.length === 0 && (
                       <div className={styles.envelopeFieldEmpty}>
                         <p>

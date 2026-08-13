@@ -142,6 +142,11 @@ describe('the envelope editor', () => {
     expect(envelopesSrc).toContain("from './EnvelopesEditor.module.css'");
     expect(envelopesSrc).not.toContain('SettingsScreen.module.css');
   });
+
+  it('hides always-present base fields from the field list so the editor focuses on custom fields', () => {
+    expect(envelopesSrc).not.toContain('BASE_FIELDS');
+    expect(envelopesSrc).not.toContain('Base · always present');
+  });
 });
 
 describe('the native menu', () => {
