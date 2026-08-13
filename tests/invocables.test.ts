@@ -16,6 +16,8 @@ import {
   frontMatter,
   hiddenFromHost,
   hiddenSkillToolIds,
+  hostAgentsDir,
+  hostFactoryDir,
   needsHomeOverlay,
   needsSkillComplement,
   normalizeInvocables,
@@ -35,6 +37,7 @@ afterEach(async () => {
 async function fakeHome(
   opts: {
     skills?: Record<string, string>;
+    agentsSkills?: Record<string, string>;
     droids?: Record<string, string>;
     mcp?: string;
   } = {},
@@ -56,6 +59,14 @@ async function fakeHome(
     for (const [id, body] of Object.entries(opts.skills)) {
       await mkdir(join(factory, 'skills', id), { recursive: true });
       await writeFile(join(factory, 'skills', id, 'SKILL.md'), body, 'utf8');
+    }
+  }
+  if (opts.agentsSkills) {
+    const agents = join(home, '.agents');
+    await mkdir(agents, { recursive: true });
+    for (const [id, body] of Object.entries(opts.agentsSkills)) {
+      await mkdir(join(agents, 'skills', id), { recursive: true });
+      await writeFile(join(agents, 'skills', id, 'SKILL.md'), body, 'utf8');
     }
   }
   if (opts.droids) {
@@ -130,6 +141,67 @@ describe('host inventory', () => {
     await mkdir(join(home, '.factory', 'skills', 'not-a-skill'), { recursive: true });
     const inventory = await readHostInvocables({ homeDir: home });
     expect(inventory.skills.map((s) => s.id)).not.toContain('not-a-skill');
+  });
+
+  it('reads skills from both ~/.factory/skills and ~/.agents/skills, sorted by id', async () => {
+    const home = await fakeHome({
+      skills: {
+        'factory-skill': '---\nname: Factory Skill\ndescription: A factory skill.\n---\n',
+      },
+      agentsSkills: {
+        'agents-skill': '---\nname: Agents Skill\ndescription: An agents skill.\n---\n',
+      },
+    });
+    const inventory = await readHostInvocables({ homeDir: home });
+    expect(inventory.skills.map((s) => s.id)).toEqual(['agents-skill', 'factory-skill']);
+    expect(inventory.skills[0]).toMatchObject({
+      id: 'agents-skill',
+      name: 'Agents Skill',
+      description: 'An agents skill.',
+      location: join(home, '.agents', 'skills', 'agents-skill'),
+    });
+    expect(inventory.skills[1]).toMatchObject({
+      id: 'factory-skill',
+      name: 'Factory Skill',
+      description: 'A factory skill.',
+      location: join(home, '.factory', 'skills', 'factory-skill'),
+    });
+  });
+
+  it('deduplicates skills by id with ~/.factory taking precedence over ~/.agents', async () => {
+    const home = await fakeHome({
+      skills: {
+        shared: '---\nname: Factory Shared\ndescription: Factory version.\n---\n',
+      },
+      agentsSkills: {
+        shared: '---\nname: Agents Shared\ndescription: Agents version.\n---\n',
+        unique: '---\nname: Agents Unique\ndescription: Only in agents.\n---\n',
+      },
+    });
+    const inventory = await readHostInvocables({ homeDir: home });
+    expect(inventory.skills.map((s) => s.id)).toEqual(['shared', 'unique']);
+    expect(inventory.skills.find((s) => s.id === 'shared')).toMatchObject({
+      name: 'Factory Shared',
+      description: 'Factory version.',
+      location: join(home, '.factory', 'skills', 'shared'),
+    });
+  });
+
+  it('reads skills when only ~/.agents/skills exists', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'foundry-agents-only-'));
+    made.push(home);
+    const agents = join(home, '.agents', 'skills', 'agent-only');
+    await mkdir(agents, { recursive: true });
+    await writeFile(join(agents, 'SKILL.md'), '---\nname: Agent Only\n---\n', 'utf8');
+
+    const inventory = await readHostInvocables({ homeDir: home });
+    expect(inventory.skills.map((s) => s.id)).toEqual(['agent-only']);
+    expect(inventory.warnings).toEqual([]);
+  });
+
+  it('exports hostFactoryDir and hostAgentsDir', () => {
+    expect(hostFactoryDir('/test/home')).toBe('/test/home/.factory');
+    expect(hostAgentsDir('/test/home')).toBe('/test/home/.agents');
   });
 });
 

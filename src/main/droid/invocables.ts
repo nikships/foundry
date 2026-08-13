@@ -2,12 +2,12 @@
  * The host's installed skills, custom Droids, and MCP servers — read, never
  * written.
  *
- * Droid discovers all three from the operator's `~/.factory`, which means a
- * Foundry agent would otherwise inherit whatever that person happens to have
- * installed: a different context bill and a different tool surface on every
- * machine, for a pipeline that is supposed to be reproducible. So Foundry reads
- * the install as an inventory, offers it per agent, and enables nothing by
- * default.
+ * Droid discovers all three from the operator's `~/.factory` and `~/.agents`,
+ * which means a Foundry agent would otherwise inherit whatever that person
+ * happens to have installed: a different context bill and a different tool
+ * surface on every machine, for a pipeline that is supposed to be reproducible.
+ * So Foundry reads the install as an inventory, offers it per agent, and enables
+ * nothing by default.
  *
  * Two hard rules live here:
  *
@@ -17,8 +17,8 @@
  *     operator's install is left exactly as it was found.
  *  2. **Never throw.** A missing directory, a hand-edited `mcp.json` full of
  *     garbage, or an unreadable skill is a warning on the inventory, not a
- *     failed run. An operator with no `~/.factory` at all gets an empty
- *     inventory, which is the correct answer.
+ *     failed run. An operator with no `~/.factory` or `~/.agents` at all gets an
+ *     empty inventory, which is the correct answer.
  */
 
 import { readdir, readFile, stat } from 'node:fs/promises';
@@ -35,6 +35,11 @@ import type {
 /** The config directory droid reads. Overridable so tests never touch a real one. */
 export function hostFactoryDir(home: string = homedir()): string {
   return join(home, '.factory');
+}
+
+/** The directory where agent skills may also live. */
+export function hostAgentsDir(home: string = homedir()): string {
+  return join(home, '.agents');
 }
 
 /** An empty selection: what every agent gets until an operator opts in. */
@@ -369,37 +374,45 @@ function oneLine(text: string, max = 160): string {
 /**
  * Skills are directories with a `SKILL.md`. A directory without one is not a
  * skill and is skipped silently — droid ignores it too.
+ *
+ * Reads from all provided roots (e.g. `~/.factory/skills` and `~/.agents/skills`)
+ * in order, deduplicating by skill id so the earlier root takes precedence.
  */
-async function readSkills(factoryDir: string, warnings: string[]): Promise<HostSkillInfo[]> {
-  const root = join(factoryDir, 'skills');
-  let entries: string[];
-  try {
-    entries = await readdir(root);
-  } catch {
-    return [];
-  }
+async function readSkills(roots: string[], warnings: string[]): Promise<HostSkillInfo[]> {
   const out: HostSkillInfo[] = [];
-  for (const id of entries.sort()) {
-    if (id.startsWith('.')) continue;
-    const dir = join(root, id);
+  const seen = new Set<string>();
+
+  for (const root of roots) {
+    let entries: string[];
     try {
-      if (!(await stat(dir)).isDirectory()) continue;
-      const text = await readFile(join(dir, 'SKILL.md'), 'utf8');
-      const meta = frontMatter(text);
-      out.push({
-        id,
-        name: meta.name || id,
-        description: oneLine(meta.description || firstProse(text)),
-        location: dir,
-      });
-    } catch (e) {
-      // A skill directory with no readable SKILL.md is not offered, but the
-      // operator is told why rather than left wondering where it went.
-      if (isMissing(e)) continue;
-      warnings.push(`skill "${id}" could not be read: ${message(e)}`);
+      entries = await readdir(root);
+    } catch {
+      continue;
+    }
+    for (const id of entries.sort()) {
+      if (id.startsWith('.')) continue;
+      if (seen.has(id)) continue;
+      const dir = join(root, id);
+      try {
+        if (!(await stat(dir)).isDirectory()) continue;
+        const text = await readFile(join(dir, 'SKILL.md'), 'utf8');
+        const meta = frontMatter(text);
+        out.push({
+          id,
+          name: meta.name || id,
+          description: oneLine(meta.description || firstProse(text)),
+          location: dir,
+        });
+        seen.add(id);
+      } catch (e) {
+        // A skill directory with no readable SKILL.md is not offered, but the
+        // operator is told why rather than left wondering where it went.
+        if (isMissing(e)) continue;
+        warnings.push(`skill "${id}" could not be read: ${message(e)}`);
+      }
     }
   }
-  return out;
+  return out.sort((a, b) => a.id.localeCompare(b.id));
 }
 
 /** Custom Droids are markdown files (`~/.factory/droids/<id>.md`). */
@@ -490,12 +503,13 @@ async function readHostMcpServers(
  * longer installed.
  */
 export async function readHostInvocables(
-  opts: { homeDir?: string } = {},
+  opts: { homeDir?: string; factoryDir?: string; agentsDir?: string } = {},
 ): Promise<HostInvocableInventory> {
-  const factoryDir = hostFactoryDir(opts.homeDir);
+  const factoryDir = opts.factoryDir ?? hostFactoryDir(opts.homeDir);
+  const agentsDir = opts.agentsDir ?? hostAgentsDir(opts.homeDir);
   const warnings: string[] = [];
   const [skills, droids, mcpServers] = await Promise.all([
-    readSkills(factoryDir, warnings),
+    readSkills([join(factoryDir, 'skills'), join(agentsDir, 'skills')], warnings),
     readDroids(factoryDir, warnings),
     readHostMcpServers(factoryDir, warnings),
   ]);

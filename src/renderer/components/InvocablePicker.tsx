@@ -117,7 +117,7 @@ export default function InvocablePicker({
 
       <Group
         title="Skills"
-        empty="No skills in ~/.factory/skills."
+        empty="No skills in ~/.factory/skills or ~/.agents/skills."
         rows={skills}
         selected={value.skills}
         onToggle={(id, on) => toggle('skills', id, on)}
