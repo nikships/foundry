@@ -39,6 +39,9 @@ import { EngineerPhaseRunner } from './runners/engineer.js';
 import * as worktreeLib from './worktree.js';
 import type { Envelope } from './envelopes.js';
 import { runCommand } from './commands.js';
+import { openPr, type GhOptions } from '../system/gh.js';
+import type { PrAction } from '@shared/ipc-contract.js';
+import { effectivePhaseEnvelope } from '@shared/types.js';
 
 export interface ExecutorDeps {
   tracer: Tracer;
@@ -85,6 +88,8 @@ export interface ExecutorDeps {
   askHuman: (req: InterruptRequest) => Promise<{ approve: boolean; text?: string }>;
   onLiveText?: (phaseId: string, text: string) => void;
   onRunFinished?: (status: RunStatus) => void;
+  /** Test seam: the fake gh script stands in for the real binary. */
+  gh?: GhOptions;
 }
 
 export interface RunOutcome {
@@ -305,6 +310,13 @@ export class Executor {
       const phase = pipeline.phases[index]!;
       const jump = await this.runPhase(phase);
       if (jump.kind === 'abort') {
+        // FOU-15: a PR phase that could not create/discover the PR is a hard
+        // fail with the exact error. Do not let a prior acceptance flag
+        // (e.g. production_check.approved) mark the run accepted.
+        if (this.phaseEnvelope(phase) === 'pr') {
+          await this.closeSessions();
+          return this.finish('rejected', jump.detail);
+        }
         detail = jump.detail;
         break;
       }
@@ -356,13 +368,47 @@ export class Executor {
       request: this.deps.request,
       cwd: this.cwd,
       handoffDir: HANDOFF_DIR,
+      branch: this.handle?.branch ?? null,
+      baseRef: this.deps.project.baseRef,
       envelopes: this.envelopes,
       commandResults: this.commandResults,
       feedback: this.feedback,
       cancelled: () => this.cancelled,
       phaseId: (name: string) => this.phaseId(name),
       askHuman: (req) => this.deps.askHuman(req),
+      recordPr: (input) => this.recordPr(input),
     };
+  }
+
+  private phaseEnvelope(phase: PhaseDef): string | undefined {
+    return effectivePhaseEnvelope(phase, this.deps.agents);
+  }
+
+  /**
+   * Push `foundry/<runId>` from the project checkout (worktrees share that
+   * git dir) and create or discover the branch PR. No fallbacks: missing
+   * branch, remote, gh, or a refused push/create is the exact error.
+   */
+  private async recordPr(input: { title: string; body: string }): Promise<PrAction> {
+    const branch = this.handle?.branch ?? null;
+    if (!branch) {
+      return { ok: false, detail: 'this run has no branch to open a PR from' };
+    }
+    const title = input.title.trim();
+    const body = input.body.trim();
+    if (!title || !body) {
+      return { ok: false, detail: 'the pr envelope is missing a title or body' };
+    }
+    return openPr(
+      this.deps.project.path,
+      {
+        branch,
+        baseRef: this.deps.project.baseRef,
+        title,
+        body,
+      },
+      this.deps.gh,
+    );
   }
 
   private observeMode(mode: Mode): void {

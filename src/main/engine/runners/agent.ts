@@ -178,6 +178,12 @@ export class AgentPhaseRunner implements PhaseRunner {
           return { kind: 'abort', detail: lastError };
         }
         this.writeHandoff(ctx, phaseId, phase.name, envelope);
+        const opened = await this.recordPrIfNeeded(phase, envelopeKind, envelope, phaseId, ctx);
+        if (!opened.ok) {
+          lastError = opened.detail;
+          tracer.closePhase(phaseId, 'fail', lastError);
+          return { kind: 'abort', detail: lastError };
+        }
         tracer.closePhase(phaseId, 'success');
         return { kind: 'next' };
       }
@@ -418,6 +424,44 @@ export class AgentPhaseRunner implements PhaseRunner {
     return reports;
   }
 
+  /**
+   * After a valid `pr` envelope, the engine — not the agent — pushes the run
+   * branch and creates or discovers the PR. Envelope success is not enough:
+   * FOU-15 requires `prNumber`/`prUrl` or the exact failure.
+   */
+  private async recordPrIfNeeded(
+    phase: PhaseDef,
+    envelopeKind: string,
+    envelope: Envelope,
+    phaseId: string,
+    ctx: RunContext,
+  ): Promise<{ ok: true } | { ok: false; detail: string }> {
+    if (envelopeKind !== 'pr') return { ok: true };
+    const title = typeof envelope.title === 'string' ? envelope.title : '';
+    const body = typeof envelope.body === 'string' ? envelope.body : '';
+    const result = await ctx.recordPr({ title, body });
+    ctx.tracer.event({
+      runId: ctx.runId,
+      phaseId,
+      type: 'log',
+      name: 'pr create',
+      payload: {
+        phase: phase.name,
+        detail: result.detail,
+        number: result.number ?? null,
+        url: result.url ?? null,
+      },
+    });
+    if (!result.ok || result.number == null || !result.url) {
+      return {
+        ok: false,
+        detail: result.detail || 'gh pr create did not return a pull request number and URL',
+      };
+    }
+    ctx.tracer.setPr(ctx.runId, result.number, result.url);
+    return { ok: true };
+  }
+
   private renderContext(phase: PhaseDef, ctx: RunContext): RenderContext {
     return {
       request: ctx.request,
@@ -425,6 +469,8 @@ export class AgentPhaseRunner implements PhaseRunner {
       worktree: ctx.cwd,
       handoffDir: ctx.handoffDir,
       handoffFiles: this.handoffFiles(ctx),
+      branch: ctx.branch,
+      baseRef: ctx.baseRef,
       envelopes: ctx.envelopes,
       feedback: ctx.feedback.get(phase.name),
       envelopeDefs: this.deps.envelopeDefs,

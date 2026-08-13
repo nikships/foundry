@@ -130,6 +130,75 @@ function reviewPhase(afterProductionCheck = false): PhaseDef {
   };
 }
 
+function documentPhase(): PhaseDef {
+  return {
+    name: 'document',
+    kind: 'agent',
+    agent: 'documenter',
+    description: "Write down what changed for the reader who arrives without this run's context.",
+    envelope: 'document',
+    gates: ['artifacts_exist', 'files_non_empty'],
+    prompt: { template: 'user', inputs: ['request', 'envelope:build'] },
+  };
+}
+
+function commitDocsPhase(): PhaseDef {
+  return {
+    name: 'commit_docs',
+    kind: 'code',
+    description: 'Commit the documentation separately so docs churn stays out of the code diff.',
+    command: { builtin: 'git_commit', messageFrom: 'envelope:document.summary' },
+  };
+}
+
+/**
+ * Drafts the PR envelope, then the engine pushes `foundry/<runId>` and runs
+ * `gh pr create`. `afterProductionCheck` adds that handoff so the body can
+ * describe the ship-bar pass, not only the build.
+ */
+function prPhase(afterProductionCheck = false): PhaseDef {
+  const inputs = ['request', 'envelope:plan', 'envelope:build'];
+  if (afterProductionCheck) inputs.push('envelope:production_check');
+  return {
+    name: 'open_pr',
+    kind: 'agent',
+    agent: 'pr_writer',
+    description:
+      'Open a pull request with a human-readable title and body, following the repo PR template when present.',
+    envelope: 'pr',
+    prompt: { template: 'user', inputs },
+  };
+}
+
+function refineBuildShipPhases(): PhaseDef[] {
+  return [
+    refinePhase(),
+    planPhase(true),
+    commitPlanPhase(),
+    buildPhase(),
+    testPhase(),
+    commitBuildPhase('Commit the implementation once its tests are green.'),
+    productionCheckPhase(),
+    commitPolishPhase(),
+  ];
+}
+
+function fullSdlcPhases(): PhaseDef[] {
+  return [
+    refinePhase(),
+    planPhase(true),
+    commitPlanPhase(),
+    buildPhase(),
+    testPhase("Run the project's test command and send failures back to the builder as evidence."),
+    commitBuildPhase('Commit the implementation once its tests are green.'),
+    productionCheckPhase(),
+    commitPolishPhase(),
+    reviewPhase(true),
+    documentPhase(),
+    commitDocsPhase(),
+  ];
+}
+
 export const BUILTIN_PIPELINES: PipelineDef[] = [
   {
     id: 'prompt',
@@ -215,16 +284,16 @@ export const BUILTIN_PIPELINES: PipelineDef[] = [
       'Sharpen the request first, implement it, then hold the result to the ship bar before it counts.',
     acceptance: { kind: 'phase_flag', phase: 'production_check', flag: 'approved' },
     builtin: true,
-    phases: [
-      refinePhase(),
-      planPhase(true),
-      commitPlanPhase(),
-      buildPhase(),
-      testPhase(),
-      commitBuildPhase('Commit the implementation once its tests are green.'),
-      productionCheckPhase(),
-      commitPolishPhase(),
-    ],
+    phases: refineBuildShipPhases(),
+  },
+  {
+    id: 'refine-build-ship-pr',
+    name: 'Refine → Build → Ship → PR',
+    description:
+      'Sharpen the request, implement it, hold it to the ship bar, then open the pull request.',
+    acceptance: { kind: 'phase_flag', phase: 'production_check', flag: 'approved' },
+    builtin: true,
+    phases: [...refineBuildShipPhases(), prPhase(true)],
   },
   {
     id: 'full-sdlc',
@@ -233,35 +302,14 @@ export const BUILTIN_PIPELINES: PipelineDef[] = [
       'Refine, plan, build, test, polish, review, and document, committing at each meaningful boundary.',
     acceptance: { kind: 'phase_flag', phase: 'review', flag: 'approved' },
     builtin: true,
-    phases: [
-      refinePhase(),
-      planPhase(true),
-      commitPlanPhase(),
-      buildPhase(),
-      testPhase(
-        "Run the project's test command and send failures back to the builder as evidence.",
-      ),
-      commitBuildPhase('Commit the implementation once its tests are green.'),
-      productionCheckPhase(),
-      commitPolishPhase(),
-      reviewPhase(true),
-      {
-        name: 'document',
-        kind: 'agent',
-        agent: 'documenter',
-        description:
-          "Write down what changed for the reader who arrives without this run's context.",
-        envelope: 'document',
-        gates: ['artifacts_exist', 'files_non_empty'],
-        prompt: { template: 'user', inputs: ['request', 'envelope:build'] },
-      },
-      {
-        name: 'commit_docs',
-        kind: 'code',
-        description:
-          'Commit the documentation separately so docs churn stays out of the code diff.',
-        command: { builtin: 'git_commit', messageFrom: 'envelope:document.summary' },
-      },
-    ],
+    phases: fullSdlcPhases(),
+  },
+  {
+    id: 'full-sdlc-pr',
+    name: 'Full SDLC → PR',
+    description: 'The full chain, then open a pull request with a human-readable title and body.',
+    acceptance: { kind: 'phase_flag', phase: 'review', flag: 'approved' },
+    builtin: true,
+    phases: [...fullSdlcPhases(), prPhase(true)],
   },
 ];

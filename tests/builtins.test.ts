@@ -75,6 +75,71 @@ describe('shipped pipelines', () => {
     expect(refiner?.writes).toEqual([]);
   });
 
+  it('keeps the shipped refine-build-ship and full-sdlc chains unchanged', () => {
+    const ship = BUILTIN_PIPELINES.find((p) => p.id === 'refine-build-ship');
+    const sdlc = BUILTIN_PIPELINES.find((p) => p.id === 'full-sdlc');
+    expect(ship?.phases.map((p) => p.name)).toEqual([
+      'refine',
+      'plan',
+      'commit_plan',
+      'build',
+      'test',
+      'commit_build',
+      'production_check',
+      'commit_polish',
+    ]);
+    expect(sdlc?.phases.map((p) => p.name)).toEqual([
+      'refine',
+      'plan',
+      'commit_plan',
+      'build',
+      'test',
+      'commit_build',
+      'production_check',
+      'commit_polish',
+      'review',
+      'document',
+      'commit_docs',
+    ]);
+    expect(ship?.phases.some((p) => p.name === 'open_pr')).toBe(false);
+    expect(sdlc?.phases.some((p) => p.name === 'open_pr')).toBe(false);
+  });
+
+  it('adds PR-enabled copies that append an open_pr phase on the PR envelope', () => {
+    const shipPr = BUILTIN_PIPELINES.find((p) => p.id === 'refine-build-ship-pr');
+    const sdlcPr = BUILTIN_PIPELINES.find((p) => p.id === 'full-sdlc-pr');
+    const ship = BUILTIN_PIPELINES.find((p) => p.id === 'refine-build-ship');
+    const sdlc = BUILTIN_PIPELINES.find((p) => p.id === 'full-sdlc');
+
+    expect(shipPr?.name).toBe('Refine → Build → Ship → PR');
+    expect(sdlcPr?.name).toBe('Full SDLC → PR');
+    expect(shipPr?.acceptance).toEqual(ship?.acceptance);
+    expect(sdlcPr?.acceptance).toEqual(sdlc?.acceptance);
+    expect(shipPr?.phases.map((p) => p.name)).toEqual([
+      ...(ship?.phases.map((p) => p.name) ?? []),
+      'open_pr',
+    ]);
+    expect(sdlcPr?.phases.map((p) => p.name)).toEqual([
+      ...(sdlc?.phases.map((p) => p.name) ?? []),
+      'open_pr',
+    ]);
+
+    for (const pipeline of [shipPr, sdlcPr]) {
+      const openPr = pipeline?.phases.find((p) => p.name === 'open_pr');
+      expect(openPr).toMatchObject({
+        kind: 'agent',
+        agent: 'pr_writer',
+        envelope: 'pr',
+      });
+      expect(openPr?.prompt?.inputs).toEqual([
+        'request',
+        'envelope:plan',
+        'envelope:build',
+        'envelope:production_check',
+      ]);
+    }
+  });
+
   it('ships a read-only pr_writer that drafts a pr envelope', () => {
     const writer = BUILTIN_AGENTS.find((a) => a.name === 'pr_writer');
     expect(writer).toBeDefined();
