@@ -3,9 +3,14 @@
  * renderer ever reaches git directly.
  */
 
+import { execFile } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
+import { promisify } from 'node:util';
+import { spawnEnv } from '../system/env.js';
 import { runCommand } from './commands.js';
+
+const exec = promisify(execFile);
 
 export interface GitResult {
   ok: boolean;
@@ -111,6 +116,36 @@ export async function changedPaths(cwd: string): Promise<string[]> {
 
 export async function addAll(cwd: string): Promise<GitResult> {
   return git(cwd, ['add', '-A']);
+}
+
+/** Stages a path git would otherwise skip because an ignore rule covers it. */
+export async function addPathForce(cwd: string, path: string): Promise<GitResult> {
+  return git(cwd, ['add', '-f', '--', path]);
+}
+
+/**
+ * A file's full contents at `ref`, or null when the ref does not carry it.
+ *
+ * Deliberately not `runCommand`: that keeps only the last 4 KB of output, which
+ * would hand back a truncated file that no longer parses as JSON.
+ */
+export async function showFileAtRef(
+  cwd: string,
+  ref: string,
+  path: string,
+): Promise<string | null> {
+  try {
+    const { stdout } = await exec('git', ['show', `${ref}:${path}`], {
+      cwd,
+      encoding: 'utf8',
+      env: spawnEnv(),
+      maxBuffer: 8 * 1024 * 1024,
+      timeout: 30_000,
+    });
+    return stdout;
+  } catch {
+    return null;
+  }
 }
 
 export async function commit(cwd: string, message: string): Promise<GitResult> {

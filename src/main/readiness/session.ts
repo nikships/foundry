@@ -19,7 +19,12 @@ import { currentBranch, fastForwardBase, preferredRemote } from '../engine/git.j
 import { answersComplete, answersFromUser, parkAskUser } from './ask-user.js';
 import { evaluateRepo } from './evaluate.js';
 import { ensureMarkerIgnored } from './ignore.js';
-import { markerFromEvaluation, readMarker, writeMarker } from './marker.js';
+import {
+  AGENT_READY_PATH,
+  markerFromEvaluation,
+  readMarkerAtBaseRef,
+  writeMarker,
+} from './marker.js';
 import { mergeCheckFromView, pollPrMerged, type PrMergeView } from './merge.js';
 import {
   commitReadinessWork,
@@ -183,9 +188,14 @@ export class ReadinessSession {
     this.deps.persist(next);
   }
 
-  inspect(): ReadinessState {
-    this.setPhase('inspecting', 'Checking .agents/agent-ready.json');
-    const read = readMarker(this.deps.project.path);
+  /** The marker as committed on the base ref: the same check `inspectProject` runs. */
+  private async readAuthoritativeMarker(): Promise<ReturnType<typeof readMarkerAtBaseRef>> {
+    return readMarkerAtBaseRef(this.deps.project.path, this.deps.project.baseRef);
+  }
+
+  async inspect(): Promise<ReadinessState> {
+    this.setPhase('inspecting', `Checking ${AGENT_READY_PATH} on ${this.deps.project.baseRef}`);
+    const read = await this.readAuthoritativeMarker();
     this.state.marker = read.marker;
     this.state.markerValid = read.ok;
     this.state.markerDetail = read.detail;
@@ -211,10 +221,22 @@ export class ReadinessSession {
       const evaluation = evaluateRepo(this.deps.project.path);
       this.state.evaluation = evaluation;
       if (evaluation.ready) {
+        // A green checklist plus a committed marker is already the finished
+        // state; asking for "Make it ready" again would be busywork.
+        const read = await this.readAuthoritativeMarker();
+        if (read.ok && read.marker) {
+          this.state.marker = read.marker;
+          this.state.markerValid = true;
+          this.state.markerDetail = read.detail;
+          this.persist({ readinessValidated: true, readinessSkipped: false });
+          this.push({ kind: 'note', text: evaluation.summary });
+          this.setPhase('complete', 'Repository is already agent-ready.');
+          return this.snapshot();
+        }
         this.push({ kind: 'note', text: evaluation.summary });
         this.setPhase(
           'not_ready',
-          'The repo looks ready. Make it ready will write the marker and open a PR so the proof is committed.',
+          `Every check passes, but ${AGENT_READY_PATH} is not committed on ${this.deps.project.baseRef} yet (${read.detail}). Make it ready commits the proof so runs branching from that ref can see it.`,
         );
       } else {
         this.push({ kind: 'note', text: evaluation.summary });
@@ -231,6 +253,20 @@ export class ReadinessSession {
     if (this.cancelSignal.cancelled) return this.snapshot();
     if (!this.state.evaluation) await this.evaluate();
     if (this.cancelSignal.cancelled || this.state.phase === 'failed') return this.snapshot();
+    if (this.state.phase === 'complete') return this.snapshot();
+
+    // The marker can land on the base ref between evaluation and this click
+    // (the operator pulls in another terminal). Remediating then would open a
+    // second readiness PR against a repo that is already ready.
+    const already = await this.readAuthoritativeMarker();
+    if (already.ok && already.marker) {
+      this.state.marker = already.marker;
+      this.state.markerValid = true;
+      this.state.markerDetail = already.detail;
+      this.persist({ readinessValidated: true, readinessSkipped: false });
+      this.setPhase('complete', 'Repository is already agent-ready.');
+      return this.snapshot();
+    }
 
     const project = this.deps.project;
     this.setPhase('remediating', 'Creating an isolated branch');
@@ -311,10 +347,19 @@ export class ReadinessSession {
       reasoningEffort: this.state.reasoningEffort,
     });
     writeMarker(this.worktree.path, marker);
-    this.state.marker = marker;
-    this.state.markerValid = true;
-    this.state.markerDetail = 'marker written after verification';
     await commitReadinessWork(this.worktree.path, 'chore: mark repository agent-ready');
+
+    // The PR is only proof if the marker is actually in the commit it carries.
+    const committed = await readMarkerAtBaseRef(this.worktree.path, 'HEAD');
+    this.state.marker = committed.marker;
+    this.state.markerValid = committed.ok;
+    this.state.markerDetail = committed.detail;
+    if (!committed.ok) {
+      const why = `The marker did not survive the commit: ${committed.detail}`;
+      this.setPhase('failed', why);
+      this.push({ kind: 'error', text: why });
+      return;
+    }
 
     this.setPhase('pr_ready', 'Opening a pull request with the readiness proof');
     this.push({ kind: 'note', text: 'Opening the readiness pull request…' });
@@ -396,35 +441,52 @@ export class ReadinessSession {
     return this.snapshot();
   }
 
+  /**
+   * A merged PR is not proof on its own: the completion verdict comes from
+   * re-reading the marker on the base ref after the fast-forward, which is the
+   * exact check `inspectProject()` runs for the Runs banner. Anything short of
+   * a valid marker there stays `failed` with the reason, so the session and the
+   * Runs page can never disagree.
+   */
   private async finalize(detail: string): Promise<void> {
     this.setPhase('finalizing', 'Updating the local base branch');
+    let ffDetail = '';
     try {
       const remote = await preferredRemote(this.deps.project.path);
       if (remote) {
         const ff = await fastForwardBase(this.deps.project.path, remote, this.deps.project.baseRef);
+        ffDetail = ff.ok ? '' : ff.stdout.trim() || 'could not fast-forward';
         this.push({
           kind: 'note',
-          text: ff.ok
-            ? `${this.deps.project.baseRef} fast-forwarded`
-            : ff.stdout.trim() || 'could not fast-forward',
+          text: ff.ok ? `${this.deps.project.baseRef} fast-forwarded` : ffDetail,
         });
       }
       if (this.worktree) {
         await discardReadinessWorktree(this.deps.project.path, this.worktree);
         this.worktree = null;
       }
-      const read = readMarker(this.deps.project.path);
-      this.state.marker = read.marker;
-      this.state.markerValid = read.ok;
-      this.state.markerDetail = read.ok
-        ? read.detail
-        : `${detail} Local marker not visible yet: ${read.detail}`;
     } catch (e) {
-      this.push({ kind: 'note', text: (e as Error).message });
+      ffDetail = (e as Error).message;
+      this.push({ kind: 'note', text: ffDetail });
     }
+
+    const read = await this.readAuthoritativeMarker();
+    this.state.marker = read.marker;
+    this.state.markerValid = read.ok;
+    this.state.markerDetail = read.detail;
+    if (!read.ok) {
+      this.persist({ readinessValidated: false });
+      const why = ffDetail
+        ? `${read.detail} (${ffDetail})`
+        : `${read.detail}. Pull ${this.deps.project.baseRef}, then retry — runs branch from that ref, so the marker has to be committed there.`;
+      this.setPhase('failed', why);
+      this.push({ kind: 'error', text: why });
+      return;
+    }
+
     this.persist({ readinessValidated: true, readinessSkipped: false });
     this.setPhase('complete', detail || 'Repository is agent-ready.');
-    this.push({ kind: 'note', text: this.state.evaluation?.summary || 'Ready.' });
+    this.push({ kind: 'note', text: this.state.marker?.summary || 'Ready.' });
   }
 
   skip(): ReadinessState {

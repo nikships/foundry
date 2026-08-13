@@ -16,8 +16,19 @@ zero-interrupt policy.
 
 ## Invariants
 
-- The marker file is truth. `ProjectDef.readinessValidated` is a cache.
-- Marker is written last, after verification, then the PR is opened.
+- **The marker on the project's base ref is truth.** Run worktrees branch from
+  that ref, so a marker present only in the operator's checkout proves nothing.
+  `readMarkerAtBaseRef()` is the single reader; `inspectProject()` (the Runs
+  banner) and `ReadinessSession` finalization both go through it, so the modal
+  and the Runs page cannot disagree. `ProjectDef.readinessValidated` is a cache
+  and never outranks the file. Only when the base ref cannot be resolved at all
+  does it fall back to the working checkout, and it says so in the detail.
+- **A merged PR is not proof.** `finalize()` re-reads the base ref after the
+  fast-forward and stays `failed` with the reason unless a valid marker is
+  there — `readinessValidated: true` is never persisted otherwise.
+- Marker is written last, after verification, then the PR is opened. It is
+  force-added (`git add -f`) because repos commonly gitignore `.agents/`, which
+  would otherwise drop the proof from the commit the PR carries.
 - AskUser exemption is scoped to readiness sessions. `permissions.evaluate`
   still auto-answers pipeline runs.
 - Do not write SQLite. Do not call the run executor.

@@ -26,6 +26,66 @@ function write(root: string, rel: string, body: string): void {
   writeFileSync(full, body);
 }
 
+/** A bare origin so `fastForwardBase` has a real remote to pull the merge from. */
+function addOriginRemote(repo: string): string {
+  const bare = tempDir('foundry-ready-origin-');
+  sh(bare, ['git', 'init', '-q', '--bare', '-b', 'main']);
+  sh(repo, ['git', 'remote', 'add', 'origin', bare]);
+  sh(repo, ['git', 'push', '-q', '-u', 'origin', 'main']);
+  return bare;
+}
+
+/** The live `foundry-ready/<id>` branch the session created. */
+function branchOf(repo: string): string {
+  const found = sh(repo, [
+    'git',
+    'branch',
+    '--list',
+    'foundry-ready/*',
+    '--format=%(refname:short)',
+  ])
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (!found[0]) throw new Error('no readiness branch exists');
+  return found[0];
+}
+
+/**
+ * Stands in for the PR actually landing: the readiness branch is one commit
+ * ahead of main, so pointing origin's main at it is exactly the fast-forward a
+ * merged PR produces.
+ */
+function mergeReadinessBranchIntoOrigin(repo: string, bare: string, branch: string): void {
+  sh(bare, ['git', 'fetch', '-q', repo, `${branch}:main`]);
+}
+
+function commitAll(root: string, message: string): void {
+  sh(root, ['git', 'add', '-A']);
+  sh(root, ['git', 'commit', '-qm', message]);
+}
+
+/** A marker that validates against the repo's own evaluation. */
+function markerJson(repo: string): string {
+  return JSON.stringify(
+    {
+      schemaVersion: 1,
+      generatedAt: '2026-08-11T05:00:00Z',
+      commit: 'abc',
+      agent: { harness: 'droid', model: 'inherit', reasoningEffort: 'high' },
+      verdict: 'ready',
+      summary: 'Ready.',
+      stack: { languages: ['typescript'], monorepo: false, packages: [] },
+      criteria: evaluateRepo(repo).criteria.map((c) => ({
+        ...c,
+        status: c.status === 'fail' ? 'pass' : c.status,
+      })),
+    },
+    null,
+    2,
+  );
+}
+
 function gitRepo(prefix: string): string {
   const dir = tempDir(prefix);
   sh(dir, ['git', 'init', '-q', '-b', 'main']);
@@ -98,62 +158,213 @@ function sessionFor(
 }
 
 describe('readiness inspect and cache', () => {
-  it('stays confirming when the checklist is green but the marker is missing', () => {
+  it('stays confirming when the checklist is green but the marker is missing', async () => {
     const repo = gitRepo('foundry-ready-valid-');
     seedReadyFiles(repo);
     expect(evaluateRepo(repo).ready).toBe(true);
     const { session, project } = sessionFor(repo);
-    const state = session.inspect();
+    const state = await session.inspect();
     expect(state.phase).toBe('confirming');
     expect(state.markerValid).toBe(false);
     expect(project.readinessValidated).toBe(false);
   });
 
-  it('treats a valid committed marker as ready and sets the cache', () => {
+  it('treats a valid committed marker as ready and sets the cache', async () => {
     const repo = gitRepo('foundry-ready-mark-');
     seedReadyFiles(repo);
     const { session, project } = sessionFor(repo);
-    session.inspect();
+    await session.inspect();
     expect(session.snapshot().phase).toBe('confirming');
 
-    write(
-      repo,
-      '.agents/agent-ready.json',
-      JSON.stringify(
-        {
-          schemaVersion: 1,
-          generatedAt: '2026-08-11T05:00:00Z',
-          commit: 'abc',
-          agent: { harness: 'droid', model: 'inherit', reasoningEffort: 'high' },
-          verdict: 'ready',
-          summary: 'Ready.',
-          stack: { languages: ['typescript'], monorepo: false, packages: [] },
-          criteria: evaluateRepo(repo).criteria.map((c) => ({
-            ...c,
-            status: c.status === 'fail' ? 'pass' : c.status,
-          })),
-        },
-        null,
-        2,
-      ),
-    );
+    write(repo, '.agents/agent-ready.json', markerJson(repo));
+    commitAll(repo, 'add marker');
+
     const again = sessionFor(repo);
-    const state = again.session.inspect();
+    const state = await again.session.inspect();
     expect(state.phase).toBe('complete');
     expect(state.markerValid).toBe(true);
     expect(again.project.readinessValidated).toBe(true);
-    expect(inspectProject(again.project).ready).toBe(true);
+    expect((await inspectProject(again.project)).ready).toBe(true);
     expect(project.readinessValidated).toBe(false);
   });
 
-  it('never lets a validated cache override a missing marker', () => {
+  it('never lets a validated cache override a missing marker', async () => {
     const repo = gitRepo('foundry-ready-stale-');
     const project = defaultProject(repo);
     project.readinessValidated = true;
-    const status = inspectProject(project);
+    const status = await inspectProject(project);
     expect(status.ready).toBe(false);
     expect(status.validatedCache).toBe(true);
     expect(status.markerValid).toBe(false);
+  });
+});
+
+describe('the base ref is the authority, not the checked-out branch', () => {
+  it('reports ready from the base ref while a feature branch omits the marker', async () => {
+    const repo = gitRepo('foundry-ready-baseref-');
+    seedReadyFiles(repo);
+    write(repo, '.agents/agent-ready.json', markerJson(repo));
+    commitAll(repo, 'ready with marker');
+
+    sh(repo, ['git', 'checkout', '-qb', 'feature/no-marker']);
+    sh(repo, ['git', 'rm', '-q', '-r', '.agents']);
+    sh(repo, ['git', 'commit', '-qm', 'drop marker on the feature branch']);
+    expect(readMarker(repo).ok).toBe(false);
+
+    const project = defaultProject(repo);
+    project.baseRef = 'main';
+    const status = await inspectProject(project);
+    expect(status.ready).toBe(true);
+    expect(status.markerSource).toBe('base-ref');
+    expect(status.markerRef).toBe('main');
+
+    const { session } = sessionFor(repo);
+    expect((await session.inspect()).phase).toBe('complete');
+  });
+
+  it('is not ready when the marker exists only in the working checkout', async () => {
+    const repo = gitRepo('foundry-ready-uncommitted-');
+    seedReadyFiles(repo);
+    write(repo, '.agents/agent-ready.json', markerJson(repo));
+    expect(readMarker(repo).ok).toBe(true);
+
+    const project = defaultProject(repo);
+    project.baseRef = 'main';
+    const status = await inspectProject(project);
+    expect(status.ready).toBe(false);
+    expect(status.markerSource).toBe('base-ref');
+    expect(status.markerDetail).toMatch(/not committed on main/);
+  });
+
+  it('is not ready when the base-ref marker is malformed', async () => {
+    const repo = gitRepo('foundry-ready-malformed-');
+    seedReadyFiles(repo);
+    write(repo, '.agents/agent-ready.json', '{ "schemaVersion": 1, ');
+    commitAll(repo, 'add a broken marker');
+
+    const project = defaultProject(repo);
+    project.baseRef = 'main';
+    const status = await inspectProject(project);
+    expect(status.ready).toBe(false);
+    expect(status.markerDetail).toMatch(/not valid JSON/);
+
+    const { session, project: sessionProject } = sessionFor(repo);
+    expect((await session.inspect()).phase).toBe('confirming');
+    expect(sessionProject.readinessValidated).toBe(false);
+  });
+
+  it('reads HEAD, not the working checkout, when the base ref does not resolve', async () => {
+    const repo = gitRepo('foundry-ready-noref-');
+    seedReadyFiles(repo);
+    write(repo, '.agents/agent-ready.json', markerJson(repo));
+    commitAll(repo, 'ready with marker');
+
+    const project = defaultProject(repo);
+    project.baseRef = 'nonexistent-ref';
+    const status = await inspectProject(project);
+    expect(status.ready).toBe(true);
+    expect(status.markerSource).toBe('base-ref');
+    expect(status.markerRef).toBe('HEAD');
+    expect(status.markerDetail).toMatch(/does not resolve/);
+  });
+
+  it('does not report ready off an uncommitted marker when the base ref is misconfigured', async () => {
+    const repo = gitRepo('foundry-ready-badref-');
+    seedReadyFiles(repo);
+    commitAll(repo, 'ready files, no marker');
+    // Only on disk. A run branches from HEAD here, so it would never see this.
+    write(repo, '.agents/agent-ready.json', markerJson(repo));
+    expect(readMarker(repo).ok).toBe(true);
+
+    const project = defaultProject(repo);
+    project.baseRef = 'not-a-real-branch';
+    const status = await inspectProject(project);
+    expect(status.ready).toBe(false);
+    expect(status.markerSource).toBe('base-ref');
+  });
+
+  it('falls back to the working checkout only when the repo has no commits', async () => {
+    const repo = tempDir('foundry-ready-nocommits-');
+    sh(repo, ['git', 'init', '-q', '-b', 'main']);
+    seedReadyFiles(repo);
+    write(repo, '.agents/agent-ready.json', markerJson(repo));
+
+    const project = defaultProject(repo);
+    project.baseRef = 'main';
+    const status = await inspectProject(project);
+    expect(status.markerSource).toBe('worktree');
+    expect(status.markerDetail).toMatch(/no commits/);
+  });
+
+  it('skips a redundant Make it ready when the checklist and the base marker agree', async () => {
+    const repo = gitRepo('foundry-ready-noredundant-');
+    seedReadyFiles(repo);
+    write(repo, '.agents/agent-ready.json', markerJson(repo));
+    commitAll(repo, 'ready with marker');
+
+    const { session, project } = sessionFor(repo);
+    const state = await session.evaluate();
+    expect(state.evaluation?.ready).toBe(true);
+    expect(state.phase).toBe('complete');
+    expect(project.readinessValidated).toBe(true);
+  });
+
+  it('refuses to remediate a session that already completed', async () => {
+    const repo = gitRepo('foundry-ready-nodoubleready-');
+    seedReadyFiles(repo);
+    write(repo, '.agents/agent-ready.json', markerJson(repo));
+    commitAll(repo, 'ready with marker');
+
+    let openedPrs = 0;
+    const { session } = sessionFor(repo, {
+      openPr: async () => {
+        openedPrs += 1;
+        return { ok: true, detail: 'opened', number: 99, url: 'https://example.com/99' };
+      },
+    });
+    await session.inspect();
+    expect(session.snapshot().phase).toBe('complete');
+
+    const after = await session.makeReady();
+    expect(after.phase).toBe('complete');
+    expect(openedPrs).toBe(0);
+    expect(sh(repo, ['git', 'branch', '--list', 'foundry-ready/*']).trim()).toBe('');
+  });
+
+  it('re-checks the base ref before remediating, in case the marker landed meanwhile', async () => {
+    const repo = gitRepo('foundry-ready-raced-');
+    seedReadyFiles(repo);
+    commitAll(repo, 'ready files, no marker');
+
+    let openedPrs = 0;
+    const { session } = sessionFor(repo, {
+      openPr: async () => {
+        openedPrs += 1;
+        return { ok: true, detail: 'opened', number: 98, url: 'https://example.com/98' };
+      },
+    });
+    const evaluated = await session.evaluate();
+    expect(evaluated.phase).toBe('not_ready');
+
+    // The operator commits the marker in another terminal before clicking.
+    write(repo, '.agents/agent-ready.json', markerJson(repo));
+    commitAll(repo, 'marker landed out of band');
+
+    const after = await session.makeReady();
+    expect(after.phase).toBe('complete');
+    expect(openedPrs).toBe(0);
+  });
+
+  it('explains the missing base-ref marker when the checklist is already green', async () => {
+    const repo = gitRepo('foundry-ready-greennomarker-');
+    seedReadyFiles(repo);
+    commitAll(repo, 'ready files');
+
+    const { session } = sessionFor(repo);
+    const state = await session.evaluate();
+    expect(state.evaluation?.ready).toBe(true);
+    expect(state.phase).toBe('not_ready');
+    expect(state.detail).toMatch(/not committed on main/);
   });
 });
 
@@ -161,7 +372,7 @@ describe('onboarding transitions, skip, and retry', () => {
   it('evaluates a missing marker into not_ready', async () => {
     const repo = gitRepo('foundry-ready-eval-');
     const { session, snapshots } = sessionFor(repo);
-    session.inspect();
+    await session.inspect();
     await session.evaluate();
     expect(session.snapshot().phase).toBe('not_ready');
     expect(session.snapshot().evaluation?.ready).toBe(false);
@@ -172,7 +383,7 @@ describe('onboarding transitions, skip, and retry', () => {
   it('skips explicitly and can be retried', async () => {
     const repo = gitRepo('foundry-ready-skip-');
     const { session, project } = sessionFor(repo);
-    session.inspect();
+    await session.inspect();
     await session.evaluate();
     const skipped = session.skip();
     expect(skipped.phase).toBe('skipped');
@@ -206,6 +417,7 @@ describe('make it ready, merge polling, and failed confirmation', () => {
     seedReadyFiles(repo);
     sh(repo, ['git', 'add', '-A']);
     sh(repo, ['git', 'commit', '-qm', 'ready files']);
+    const remote = addOriginRemote(repo);
 
     let opened = false;
     let merged = false;
@@ -227,7 +439,7 @@ describe('make it ready, merge polling, and failed confirmation', () => {
       }),
     });
 
-    session.inspect();
+    await session.inspect();
     await session.evaluate();
     expect(session.snapshot().evaluation?.ready).toBe(true);
     expect(readMarker(repo).ok).toBe(false);
@@ -243,10 +455,89 @@ describe('make it ready, merge polling, and failed confirmation', () => {
     expect(refused.phase).toBe('awaiting_merge');
     expect(refused.mergeDetail).toMatch(/still/i);
 
+    // The PR landing is what puts the marker on the base ref; simulate that on
+    // the bare origin so the fast-forward has something real to pull.
+    mergeReadinessBranchIntoOrigin(repo, remote, branchOf(repo));
+
     merged = true;
     const done = await session.confirmMerge();
     expect(done.phase).toBe('complete');
     expect(session.snapshot().pr?.merged).toBe(true);
+    expect(session.snapshot().markerValid).toBe(true);
+    expect(readMarker(repo).ok).toBe(true);
+  });
+
+  it('refuses to complete when the merged PR never landed the marker on the base ref', async () => {
+    const repo = gitRepo('foundry-ready-nomarker-merge-');
+    seedReadyFiles(repo);
+    sh(repo, ['git', 'add', '-A']);
+    sh(repo, ['git', 'commit', '-qm', 'ready files']);
+    addOriginRemote(repo);
+
+    const { session, project } = sessionFor(repo, {
+      openPr: async () => ({
+        ok: true,
+        detail: 'opened',
+        number: 21,
+        url: 'https://github.com/acme/widgets/pull/21',
+      }),
+      viewPrMerge: async () => ({
+        number: 21,
+        url: 'https://github.com/acme/widgets/pull/21',
+        merged: true,
+        state: 'MERGED',
+      }),
+    });
+
+    await session.inspect();
+    await session.evaluate();
+    await session.makeReady();
+
+    // Nothing was merged into origin, so the fast-forward brings back no marker.
+    const done = await session.confirmMerge();
+    expect(done.phase).toBe('failed');
+    expect(done.detail).toMatch(/not committed on main/);
+    expect(project.readinessValidated).toBe(false);
+    expect((await inspectProject(project)).ready).toBe(false);
+  });
+
+  it('commits the marker even when the repo gitignores .agents', async () => {
+    const repo = gitRepo('foundry-ready-gitignored-');
+    seedReadyFiles(repo);
+    write(repo, '.gitignore', '.agents/\n.foundry-worktrees/\n');
+    sh(repo, ['git', 'add', '-A']);
+    sh(repo, ['git', 'commit', '-qm', 'ready files with .agents ignored']);
+    const remote = addOriginRemote(repo);
+
+    const { session } = sessionFor(repo, {
+      openPr: async () => ({
+        ok: true,
+        detail: 'opened',
+        number: 30,
+        url: 'https://github.com/acme/widgets/pull/30',
+      }),
+      viewPrMerge: async () => ({
+        number: 30,
+        url: 'https://github.com/acme/widgets/pull/30',
+        merged: true,
+        state: 'MERGED',
+      }),
+    });
+
+    await session.inspect();
+    await session.evaluate();
+    await session.makeReady();
+    expect(session.snapshot().phase).toBe('awaiting_merge');
+
+    const branch = branchOf(repo);
+    expect(sh(repo, ['git', 'ls-tree', '--name-only', '-r', branch])).toContain(
+      '.agents/agent-ready.json',
+    );
+
+    mergeReadinessBranchIntoOrigin(repo, remote, branch);
+    const done = await session.confirmMerge();
+    expect(done.phase).toBe('complete');
+    expect(done.markerValid).toBe(true);
   });
 
   it('exempts the marker from .prettierignore when the repo already uses prettier', async () => {
@@ -270,7 +561,7 @@ describe('make it ready, merge polling, and failed confirmation', () => {
         state: 'OPEN',
       }),
     });
-    session.inspect();
+    await session.inspect();
     await session.evaluate();
     expect(session.snapshot().evaluation?.ready).toBe(true);
     await session.makeReady();
@@ -302,7 +593,7 @@ describe('make it ready, merge polling, and failed confirmation', () => {
         state: 'OPEN',
       }),
     });
-    session.inspect();
+    await session.inspect();
     await session.evaluate();
     expect(session.snapshot().evaluation?.ready).toBe(false);
     await session.makeReady();
@@ -319,7 +610,7 @@ describe('make it ready, merge polling, and failed confirmation', () => {
       },
     };
     const { session } = sessionFor(repo, { remediator });
-    session.inspect();
+    await session.inspect();
     await session.evaluate();
     await session.makeReady();
     expect(session.snapshot().phase).toBe('failed');
@@ -424,7 +715,7 @@ describe('readiness AskUser does not weaken pipeline zero-interrupt', () => {
         state: 'OPEN',
       }),
     });
-    session.inspect();
+    await session.inspect();
     await session.evaluate();
     const running = session.makeReady();
     await viWaitFor(() => session.snapshot().pendingAsk !== null);
