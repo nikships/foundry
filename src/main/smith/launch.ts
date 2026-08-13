@@ -1,10 +1,11 @@
 /**
  * Resolving what a user needs to start a Smith session in their own terminal.
  *
- * The app cannot start the agent for them any more — that is the point of the
- * skill — but it does know three things they cannot guess: where the helper
- * binary ended up, where the skill shipped, and which socket to talk to. This
- * module resolves those and formats the shell line that wires them together.
+ * The app does not own the agent — that is the point of the skill — but it knows
+ * three things the user cannot guess: where the helper binary ended up, where the
+ * skill shipped, and which socket to talk to. This module resolves those and
+ * formats the shell that wires them together, for both handoffs: the bootstrap
+ * line a user pastes, and the session script a prepared terminal is handed.
  *
  * The string builders are pure so the quoting is testable; only the path
  * resolvers touch `import.meta.url`.
@@ -71,5 +72,73 @@ export function smithBootstrap(input: { cliPath: string; projectId?: string }): 
   if (input.projectId) {
     lines.push(`export FOUNDRY_SMITH_PROJECT=${shellQuote(input.projectId)}`);
   }
+  return lines.join('\n');
+}
+
+/**
+ * The `foundry-cli` shim written into the session directory.
+ *
+ * The bootstrap's shell *function* is the right shape for a human pasting into
+ * their own shell, and the wrong shape here: the agent runs each command in a
+ * shell it spawns itself, which inherits the environment but not a function
+ * defined in the shell that launched it. An executable on PATH is inherited by
+ * every descendant, which is exactly the reach the agent needs.
+ */
+export function smithShimScript(cliPath: string): string {
+  return `#!/bin/sh\nexec node ${shellQuote(cliPath)} "$@"\n`;
+}
+
+/**
+ * The opening instruction the agent is started with.
+ *
+ * It names the skill by absolute path rather than by name because the user's
+ * agent may not have it installed — reading the copy that shipped inside the app
+ * is the one route that always exists. Scope is stated as already-settled, since
+ * the launcher exported it; without that the skill's own rule ("confirm scope
+ * before your first write") sends the agent asking a question the app already
+ * answered.
+ */
+export function smithPrompt(input: { skillDir: string; projectName?: string }): string {
+  const scope = input.projectName
+    ? `You are scoped to the "${input.projectName}" project; FOUNDRY_SMITH_PROJECT is already exported, so do not ask which project to use.`
+    : `No project is selected, so you are in global scope.`;
+  return [
+    `Read ${join(input.skillDir, 'SKILL.md')} and take on the Smith persona it describes.`,
+    `Foundry is running and foundry-cli is already on your PATH. ${scope}`,
+    `Then run agent list, pipeline list, and envelope list so you know what exists,`,
+    `give me a one-line summary of what you found, and wait for what I need.`,
+  ].join(' ');
+}
+
+/**
+ * The script the prepared terminal runs: put the shim on PATH, pin the scope and
+ * socket, then hand the window to the agent.
+ *
+ * The trailing `exec <shell> -i` is not decoration. Without it the window closes
+ * the instant the agent exits, so an agent that fails to start takes its own
+ * error message with it; with it, the user is left in a shell in the right
+ * directory with the scope still exported.
+ */
+export function smithSessionScript(input: {
+  binDir: string;
+  projectPath: string;
+  socketPath: string;
+  agentPath: string;
+  prompt: string;
+  shell: string;
+  projectId?: string;
+}): string {
+  const lines = [
+    `export PATH=${shellQuote(input.binDir)}:"$PATH"`,
+    `export FOUNDRY_SMITH_SOCKET=${shellQuote(input.socketPath)}`,
+  ];
+  if (input.projectId) {
+    lines.push(`export FOUNDRY_SMITH_PROJECT=${shellQuote(input.projectId)}`);
+  }
+  lines.push(
+    `cd ${shellQuote(input.projectPath)} || exit 1`,
+    `${shellQuote(input.agentPath)} ${shellQuote(input.prompt)}`,
+    `exec ${shellQuote(input.shell)} -i`,
+  );
   return lines.join('\n');
 }

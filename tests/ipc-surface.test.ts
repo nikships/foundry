@@ -42,8 +42,8 @@ describe('the IPC surface', () => {
     expect(new Set(registered).size).toBe(registered.length);
   });
 
-  it('registers 102 channels, so a deleted handler is not a silent capability loss', () => {
-    expect(registered).toHaveLength(102);
+  it('registers 103 channels, so a deleted handler is not a silent capability loss', () => {
+    expect(registered).toHaveLength(103);
   });
 
   it('registers the scope-copies channel the Design scope control reads', () => {
