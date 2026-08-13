@@ -10,10 +10,13 @@ import {
 import { api, plain } from '../api.js';
 import type { DesignTab } from '../navigation.js';
 import { useApp } from '../stores/app.js';
+import { addField, validateCustomFields, shadowedLibraryFields } from '../custom-fields.js';
 import AgentAvatar from '../components/AgentAvatar.js';
 import { CliIcon } from '../components/BrandIcon.js';
 import ModelPicker from '../components/ModelPicker.js';
 import BoundaryEditor from '../components/BoundaryEditor.js';
+import CustomFieldsEditor from '../components/CustomFieldsEditor.js';
+import { Button } from '../components/ui/Button.js';
 import InvocablePicker from '../components/InvocablePicker.js';
 import ToolProfilePicker from '../components/ToolProfilePicker.js';
 import PromptPreview from '../components/PromptPreview.js';
@@ -70,7 +73,41 @@ export default function RosterScreen({
     () => agents.find((a) => a.name === selectedName) ?? null,
     [agents, selectedName],
   );
-  const errors = useMemo(() => issues.filter((i) => i.level === 'error'), [issues]);
+  /**
+   * `agentSchema` rejects a malformed field name but accepts a duplicate or a
+   * name that shadows a base field, both of which the engine would silently
+   * collapse into one key. Those are caught here so autosave is blocked on
+   * them rather than persisting a shape the agent cannot satisfy.
+   */
+  const fieldIssues = useMemo(
+    () => validateCustomFields(draft?.customFields),
+    [draft?.customFields],
+  );
+
+  /**
+   * Store issues plus the field checks below. Deduped on `where` because
+   * `agentSchema` already reports a malformed field name at the same path;
+   * showing both would put two lines on one problem.
+   */
+  const allIssues = useMemo(() => {
+    const claimed = new Set(issues.map((i) => i.where));
+    return [...issues, ...fieldIssues.filter((i) => !claimed.has(i.where))];
+  }, [issues, fieldIssues]);
+  const errors = useMemo(() => allIssues.filter((i) => i.level === 'error'), [allIssues]);
+
+  /**
+   * A custom envelope's own fields are shadowed by an agent field of the same
+   * name (the engine's precedence), which is a legitimate override but an
+   * invisible one — so the editor names it rather than leaving it to a run.
+   */
+  const shadowed = useMemo(
+    () =>
+      shadowedLibraryFields(
+        draft?.customFields,
+        envelopes.find((e) => e.name === draft?.envelope)?.fields,
+      ),
+    [draft?.customFields, draft?.envelope, envelopes],
+  );
   const envelopeOptions = useMemo<DropdownOption[]>(() => {
     const builtin: DropdownOption[] = BUILTIN_ENVELOPE_KINDS.map((kind) => ({
       value: kind,
@@ -561,11 +598,64 @@ export default function RosterScreen({
                 </div>
               </section>
 
+              {/* ── extra envelope fields ── */}
+              <section className={styles.rosterSection}>
+                <div className={styles.rosterSectionLabel}>
+                  <p className="eyebrow">
+                    <span className="index">04</span>Extra fields
+                  </p>
+                  <p>
+                    Added to the <code>{draft.envelope}</code> envelope for this agent only. Use
+                    these when one agent must report something the shared envelope does not carry;
+                    change the envelope itself when every agent using it should.
+                  </p>
+                </div>
+                <div className={styles.rosterStack}>
+                  <CustomFieldsEditor
+                    idPrefix={`agent-${draft.name}`}
+                    fields={draft.customFields ?? []}
+                    onChange={(customFields) => setDraft({ ...draft, customFields })}
+                  />
+                  {(draft.customFields?.length ?? 0) === 0 && (
+                    <p className={styles.rosterFieldsEmpty}>
+                      No extra fields. This agent returns the {draft.envelope} envelope as defined.
+                    </p>
+                  )}
+                  <div className={styles.rosterFieldsFoot}>
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        setDraft({ ...draft, customFields: addField(draft.customFields ?? []) })
+                      }
+                    >
+                      Add field
+                    </Button>
+                    <span className={styles.hint}>
+                      {shadowed.length > 0 ? (
+                        <>
+                          {shadowed.map((n) => (
+                            <code key={n}>{n}</code>
+                          ))}{' '}
+                          {shadowed.length === 1 ? 'overrides a field' : 'override fields'} of the
+                          same name on the <code>{draft.envelope}</code> envelope.
+                        </>
+                      ) : (
+                        <>
+                          Names are snake_case and must not reuse a base field (<code>status</code>,{' '}
+                          <code>summary</code>, <code>artifacts</code>,{' '}
+                          <code>notes_for_next_agent</code>).
+                        </>
+                      )}
+                    </span>
+                  </div>
+                </div>
+              </section>
+
               {/* ── write boundary ── */}
               <section className={styles.rosterSection}>
                 <div className={styles.rosterSectionLabel}>
                   <p className="eyebrow">
-                    <span className="index">04</span>Write boundary
+                    <span className="index">05</span>Write boundary
                   </p>
                   <p>Paths this agent may modify. Everything else is refused at the tool layer.</p>
                 </div>
@@ -579,7 +669,7 @@ export default function RosterScreen({
               <section className={styles.rosterSection}>
                 <div className={styles.rosterSectionLabel}>
                   <p className="eyebrow">
-                    <span className="index">05</span>System tools
+                    <span className="index">06</span>System tools
                   </p>
                   <p>
                     How much of the CLI&apos;s own tool surface this agent may reach. A pipeline
@@ -599,7 +689,7 @@ export default function RosterScreen({
               <section className={styles.rosterSection}>
                 <div className={styles.rosterSectionLabel}>
                   <p className="eyebrow">
-                    <span className="index">06</span>Host invocables
+                    <span className="index">07</span>Host invocables
                   </p>
                   <p>
                     Skills, Droids, and MCP servers this agent may reach. Everything is off until
@@ -616,9 +706,9 @@ export default function RosterScreen({
 
               {/* ── validation + autosave ── */}
               <div className={styles.rosterStatusbar}>
-                {issues.length > 0 ? (
+                {allIssues.length > 0 ? (
                   <ul className={styles.issues}>
-                    {issues.map((issue, i) => (
+                    {allIssues.map((issue, i) => (
                       <li key={i} className={issue.level}>
                         <strong>{issue.where}</strong> {issue.message}
                       </li>

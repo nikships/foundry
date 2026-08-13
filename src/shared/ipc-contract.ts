@@ -311,6 +311,13 @@ export interface FoundryApi {
     remove(name: string, projectId?: string): Promise<AgentDef[]>;
     duplicate(name: string, projectId?: string): Promise<AgentDef | null>;
     validate(agent: AgentDef): Promise<ValidationIssue[]>;
+    /**
+     * The JSON envelope this agent must return: its selected envelope extended
+     * with its own `customFields`, from the same schema path a run parses
+     * against. The agent's extra fields only exist on the effective shape, so
+     * the renderer cannot derive this from the def alone.
+     */
+    preview(agent: AgentDef): Promise<string>;
     reset(): Promise<AgentDef[]>;
   };
   envelopes: {
@@ -512,6 +519,7 @@ export const IPC = {
   rosterRemove: 'roster:remove',
   rosterDuplicate: 'roster:duplicate',
   rosterValidate: 'roster:validate',
+  rosterPreview: 'roster:preview',
   rosterReset: 'roster:reset',
   envelopesList: 'envelopes:list',
   envelopesSave: 'envelopes:save',

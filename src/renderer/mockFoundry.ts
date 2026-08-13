@@ -323,6 +323,20 @@ export function createMockFoundryApi(): FoundryApi {
         return copy;
       },
       validate: async () => [],
+      preview: async (agent) =>
+        JSON.stringify(
+          {
+            status: 'success',
+            summary: 'one sentence on what you did',
+            artifacts: ['relative/path/you/created.md'],
+            notes_for_next_agent: 'what the next phase needs to know',
+            ...Object.fromEntries(
+              (agent.customFields ?? []).map((f) => [f.name, f.description || 'value']),
+            ),
+          },
+          null,
+          2,
+        ),
       reset: async () => {
         mockAgents = BUILTIN_AGENTS.map((a) => ({ ...a }));
         return [...mockAgents];
