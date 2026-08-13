@@ -34,7 +34,10 @@ export interface ReadinessRemediator {
     evaluation: ReadinessEvaluation;
     model: string;
     reasoningEffort: ReasoningEffort;
-    onEntry: (entry: Omit<ReadinessEntry, 'id' | 'at'>) => void;
+    /** Returns the live entry so stream absorption can patch text and tool status. */
+    onEntry: (entry: Omit<ReadinessEntry, 'id' | 'at'>) => ReadinessEntry;
+    /** Re-emit after an in-place patch (text delta, tool result). */
+    flush: () => void;
     onAskUser: (params: Record<string, unknown>) => Promise<ReadinessAskAnswer[]>;
     signal: { cancelled: boolean };
   }): Promise<{ ok: boolean; detail: string }>;
@@ -69,7 +72,7 @@ function shortId(): string {
 export class ReadinessSession {
   readonly sessionId = shortId();
   private readonly state: ReadinessState;
-  private cancelled = false;
+  private readonly cancelSignal = { cancelled: false };
   private worktree: ReadinessWorktree | null = null;
   private askWaiter: {
     resolve: (answers: ReadinessAskAnswer[]) => void;
@@ -108,7 +111,7 @@ export class ReadinessSession {
   snapshot(): ReadinessState {
     return {
       ...this.state,
-      entries: [...this.state.entries],
+      entries: this.state.entries.map((e) => ({ ...e })),
       evaluation: this.state.evaluation
         ? {
             ...this.state.evaluation,
@@ -145,6 +148,9 @@ export class ReadinessSession {
   }
 
   private setPhase(phase: ReadinessPhase, detail: string): void {
+    if (phase === 'failed' && this.state.phase !== 'failed') {
+      this.state.failedPhase = this.state.phase;
+    }
     this.state.phase = phase;
     this.state.detail = detail;
     if (phase === 'complete' || phase === 'skipped' || phase === 'failed') {
@@ -153,13 +159,19 @@ export class ReadinessSession {
     this.emit();
   }
 
-  private push(entry: Omit<ReadinessEntry, 'id' | 'at'>): void {
-    this.state.entries.push({
+  private push(entry: Omit<ReadinessEntry, 'id' | 'at'>): ReadinessEntry {
+    const full: ReadinessEntry = {
       ...entry,
       id: shortId(),
       at: (this.deps.io?.now ?? Date.now)(),
-    });
+    };
+    this.state.entries.push(full);
     if (this.state.entries.length > MAX_ENTRIES) this.state.entries.shift();
+    this.emit();
+    return full;
+  }
+
+  private flush(): void {
     this.emit();
   }
 
@@ -188,7 +200,7 @@ export class ReadinessSession {
   }
 
   async evaluate(): Promise<ReadinessState> {
-    if (this.cancelled) return this.snapshot();
+    if (this.cancelSignal.cancelled) return this.snapshot();
     this.setPhase('evaluating', 'Evaluating repository readiness');
     this.push({
       kind: 'note',
@@ -215,12 +227,12 @@ export class ReadinessSession {
   }
 
   async makeReady(): Promise<ReadinessState> {
-    if (this.cancelled) return this.snapshot();
+    if (this.cancelSignal.cancelled) return this.snapshot();
     if (!this.state.evaluation) await this.evaluate();
-    if (this.cancelled || this.state.phase === 'failed') return this.snapshot();
+    if (this.cancelSignal.cancelled || this.state.phase === 'failed') return this.snapshot();
 
     const project = this.deps.project;
-    this.setPhase('remediating', 'Working in an isolated branch');
+    this.setPhase('remediating', 'Creating an isolated branch');
     try {
       this.worktree = await createReadinessWorktree({
         repo: project.path,
@@ -231,6 +243,12 @@ export class ReadinessSession {
         kind: 'note',
         text: `Isolated on ${this.worktree.branch}`,
       });
+      this.setPhase(
+        'remediating',
+        this.state.evaluation?.ready
+          ? 'Writing the marker on the isolated branch'
+          : 'The agent is fixing the repository on an isolated branch',
+      );
 
       const remediator = this.deps.io?.remediator;
       if (remediator && this.state.evaluation && !this.state.evaluation.ready) {
@@ -240,10 +258,11 @@ export class ReadinessSession {
           model: this.state.model,
           reasoningEffort: this.state.reasoningEffort,
           onEntry: (entry) => this.push(entry),
+          flush: () => this.flush(),
           onAskUser: (params) => this.waitForAsk(params),
-          signal: { cancelled: this.cancelled },
+          signal: this.cancelSignal,
         });
-        if (this.cancelled) return this.snapshot();
+        if (this.cancelSignal.cancelled) return this.snapshot();
         if (!result.ok) {
           this.setPhase('failed', result.detail);
           this.push({ kind: 'error', text: result.detail });
@@ -265,6 +284,7 @@ export class ReadinessSession {
   private async verifyAndOpenPr(): Promise<void> {
     if (!this.worktree) throw new Error('no readiness worktree');
     this.setPhase('verifying', 'Re-running the checklist before writing the marker');
+    this.push({ kind: 'note', text: 'Re-running the checklist in the isolated worktree…' });
     const evaluation = evaluateRepo(this.worktree.path);
     this.state.evaluation = evaluation;
     if (!evaluation.ready) {
@@ -288,6 +308,8 @@ export class ReadinessSession {
     this.state.markerDetail = 'marker written after verification';
     await commitReadinessWork(this.worktree.path, 'chore: mark repository agent-ready');
 
+    this.setPhase('pr_ready', 'Opening a pull request with the readiness proof');
+    this.push({ kind: 'note', text: 'Opening the readiness pull request…' });
     const openPr = this.deps.io?.openPr;
     if (!openPr) {
       this.setPhase('failed', 'Cannot open a pull request: no GitHub helper is configured.');
@@ -324,7 +346,9 @@ export class ReadinessSession {
     const check = await pollPrMerged({
       view: () => view(this.deps.project.path, prNumber),
       isCancelled: () =>
-        this.cancelled || this.state.phase === 'complete' || this.state.phase === 'failed',
+        this.cancelSignal.cancelled ||
+        this.state.phase === 'complete' ||
+        this.state.phase === 'failed',
       sleep: this.deps.io?.sleep,
       intervalMs,
       onTick: (next) => {
@@ -335,7 +359,7 @@ export class ReadinessSession {
       },
     });
     this.pollRunning = false;
-    if (check.merged && !this.cancelled) await this.finalize(check.detail);
+    if (check.merged && !this.cancelSignal.cancelled) await this.finalize(check.detail);
   }
 
   async confirmMerge(): Promise<ReadinessState> {
@@ -396,7 +420,7 @@ export class ReadinessSession {
   }
 
   skip(): ReadinessState {
-    this.cancelled = true;
+    this.cancelSignal.cancelled = true;
     this.failAsk('skipped');
     this.persist({ readinessSkipped: true });
     this.state.skipDetail =
@@ -408,8 +432,9 @@ export class ReadinessSession {
   }
 
   async retry(): Promise<ReadinessState> {
-    this.cancelled = false;
+    this.cancelSignal.cancelled = false;
     this.state.endedAt = undefined;
+    this.state.failedPhase = undefined;
     this.state.skipDetail = '';
     this.state.mergeDetail = '';
     this.state.pr = null;
@@ -437,7 +462,7 @@ export class ReadinessSession {
 
   cancel(): void {
     if (this.state.phase === 'complete' || this.state.phase === 'failed') return;
-    this.cancelled = true;
+    this.cancelSignal.cancelled = true;
     this.failAsk('cancelled');
     this.setPhase('failed', 'cancelled');
     this.push({ kind: 'note', text: 'Cancelled.' });
