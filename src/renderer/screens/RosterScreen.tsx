@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { RotateCcw } from 'lucide-react';
 import {
   BUILTIN_ENVELOPE_BLURBS,
   BUILTIN_ENVELOPE_KINDS,
@@ -23,6 +24,7 @@ import ToolProfilePicker from '../components/ToolProfilePicker.js';
 import PromptPreview from '../components/PromptPreview.js';
 import { Dropdown, type DropdownOption } from '../components/ui/Dropdown.js';
 import { Field, TextInput, Textarea } from '../components/ui/Field.js';
+import { defaultEmblemFor, isDefaultMark, markLabel } from '../data/emblems.js';
 import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
 import { useTablistNav } from '../hooks/useTablistNav.js';
@@ -64,6 +66,11 @@ export default function RosterScreen({
   const [actionError, setActionError] = useState('');
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [showPreview, setShowPreview] = useState(false);
+  const [pickerAnchor, setPickerAnchor] = useState<{
+    agentName: string;
+    top: number;
+    left: number;
+  } | null>(null);
   const agentsRef = useRef<AgentDef[]>(agents);
   agentsRef.current = agents;
   const projectIdRef = useRef(projectId);
@@ -194,6 +201,21 @@ export default function RosterScreen({
     onIssues: setIssues,
     onError: (e) => setIssues([{ level: 'error', where: 'save', message: (e as Error).message }]),
   });
+
+  const togglePicker = (el: HTMLElement, agentName: string): void => {
+    if (pickerAnchor && pickerAnchor.agentName === agentName) {
+      setPickerAnchor(null);
+      return;
+    }
+    const r = el.getBoundingClientRect();
+    const PICKER_W = 392;
+    const PICKER_H = 480;
+    const rawLeft = r.left;
+    const rawTop = r.bottom + 8;
+    const left = Math.max(12, Math.min(rawLeft, window.innerWidth - PICKER_W - 12));
+    const top = Math.max(12, Math.min(rawTop, window.innerHeight - PICKER_H - 12));
+    setPickerAnchor({ agentName, top, left });
+  };
 
   const selectAgent = (name: string): void => {
     if (name === selectedName) return;
@@ -351,25 +373,49 @@ export default function RosterScreen({
             <div className={styles.rosterPage}>
               {/* ── title row ── */}
               <div className={styles.rosterHead}>
-                <div className={styles.rosterHeadMain}>
-                  <div className={styles.rosterHeadTitlerow}>
-                    <h1
-                      className={styles.rosterTitle}
-                      style={{ color: draft.color ?? 'var(--accent)' }}
-                    >
-                      {draft.name}
-                    </h1>
-                    <span className={styles.rosterHeadMeta}>
-                      <CliIcon vendor={draftCli} size={13} />
-                      {draftCli} · {draft.envelope}
-                    </span>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 'var(--s4)',
+                    minWidth: 0,
+                  }}
+                >
+                  <button
+                    type="button"
+                    data-mark-trigger
+                    aria-label={`Change mark for ${draft.name}`}
+                    onClick={(e) => togglePicker(e.currentTarget, draft.name)}
+                    className={styles.avatarTrigger}
+                  >
+                    <AgentAvatar
+                      name={draft.name}
+                      emblem={draft.emblem}
+                      color={draft.color}
+                      size={52}
+                    />
+                    <span className={styles.avatarTriggerOverlay} aria-hidden />
+                  </button>
+                  <div className={styles.rosterHeadMain}>
+                    <div className={styles.rosterHeadTitlerow}>
+                      <h1
+                        className={styles.rosterTitle}
+                        style={{ color: draft.color ?? 'var(--accent)' }}
+                      >
+                        {draft.name}
+                      </h1>
+                      <span className={styles.rosterHeadMeta}>
+                        <CliIcon vendor={draftCli} size={13} />
+                        {draftCli} · {draft.envelope}
+                      </span>
+                    </div>
+                    <p className={styles.rosterHeadSub}>
+                      {draft.purpose || 'No purpose yet.'}{' '}
+                      <span className={styles.rosterHeadTag}>
+                        {draft.builtin ? 'Shipped with Foundry, editable' : 'Custom agent'}
+                      </span>
+                    </p>
                   </div>
-                  <p className={styles.rosterHeadSub}>
-                    {draft.purpose || 'No purpose yet.'}{' '}
-                    <span className={styles.rosterHeadTag}>
-                      {draft.builtin ? 'Shipped with Foundry, editable' : 'Custom agent'}
-                    </span>
-                  </p>
                 </div>
                 <div className={styles.rosterHeadActions}>
                   <button
@@ -407,6 +453,69 @@ export default function RosterScreen({
                   <p>How this agent is referenced in pipelines and run logs.</p>
                 </div>
                 <div className={styles.rosterFields}>
+                  <Field label="Mark" className={styles.span2}>
+                    <div className={styles.identityMarkRow}>
+                      <button
+                        type="button"
+                        data-mark-trigger
+                        aria-label={`Change mark for ${draft.name}`}
+                        onClick={(e) => togglePicker(e.currentTarget, draft.name)}
+                        className={styles.avatarTrigger}
+                      >
+                        <AgentAvatar
+                          name={draft.name}
+                          emblem={draft.emblem}
+                          color={draft.color}
+                          size={44}
+                        />
+                        <span className={styles.avatarTriggerOverlay} aria-hidden />
+                      </button>
+                      <div className={styles.identityMarkInfo}>
+                        <div className={styles.identityMarkMeta}>
+                          <span className={styles.identityMarkLabel}>
+                            {markLabel(draft.emblem)}
+                          </span>
+                          <span className={styles.identityMarkDot} aria-hidden>
+                            ·
+                          </span>
+                          <button
+                            type="button"
+                            data-mark-trigger
+                            onClick={(e) => togglePicker(e.currentTarget, draft.name)}
+                            className={styles.changeMarkBtn}
+                          >
+                            Change mark
+                          </button>
+                          {!isDefaultMark({
+                            name: draft.name,
+                            emblem: draft.emblem,
+                            builtin: draft.builtin,
+                          }) && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setDraft({
+                                  ...draft,
+                                  emblem: defaultEmblemFor({
+                                    name: draft.name,
+                                    builtin: draft.builtin,
+                                  }),
+                                })
+                              }
+                              className={styles.resetMarkBtn}
+                            >
+                              <RotateCcw size={11} />
+                              Reset
+                            </button>
+                          )}
+                        </div>
+                        <span className={styles.hint}>
+                          An emblem, a custom upload, or the initial letter. Shown wherever this
+                          agent appears.
+                        </span>
+                      </div>
+                    </div>
+                  </Field>
                   <Field label="Name">
                     <TextInput
                       mono
@@ -492,19 +601,6 @@ export default function RosterScreen({
                     </div>
                     <span className={styles.hint}>
                       Used for this agent's lane in the waterfall.
-                    </span>
-                  </Field>
-                  <Field label="Mark" className={styles.span2}>
-                    <AgentIconPicker
-                      name={draft.name}
-                      emblem={draft.emblem}
-                      color={draft.color}
-                      builtin={draft.builtin}
-                      onChange={(emblem) => setDraft({ ...draft, emblem })}
-                    />
-                    <span className={styles.hint}>
-                      An emblem, a custom upload, or the initial letter. Shown wherever this agent
-                      appears.
                     </span>
                   </Field>
                 </div>
@@ -764,6 +860,18 @@ export default function RosterScreen({
         )}
         {showPreview && draft && (
           <PromptPreview agent={draft} onClose={() => setShowPreview(false)} />
+        )}
+        {pickerAnchor && draft && (
+          <AgentIconPicker
+            name={draft.name}
+            emblem={draft.emblem}
+            color={draft.color}
+            builtin={draft.builtin}
+            onChange={(emblem) => setDraft({ ...draft, emblem })}
+            onColorChange={(color) => setDraft({ ...draft, color })}
+            onClose={() => setPickerAnchor(null)}
+            anchor={{ top: pickerAnchor.top, left: pickerAnchor.left }}
+          />
         )}
       </div>
     </>

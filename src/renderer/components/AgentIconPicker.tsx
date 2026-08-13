@@ -1,14 +1,11 @@
-import { useMemo, useRef, useState } from 'react';
-import { RotateCcw, Search, Upload } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Check, Search, Upload, X } from 'lucide-react';
 import { api } from '../api.js';
 import {
-  defaultEmblemFor,
   EMBLEM_BY_ID,
   EMBLEM_GROUPS,
   EMBLEMS,
   IMAGE_EMBLEM_PREFIX,
-  isDefaultMark,
-  markLabel,
   resolveAgentMark,
   suggestedEmblemIds,
   type EmblemDef,
@@ -18,21 +15,30 @@ import { Emblem } from './Emblem.js';
 import { SegmentedControl } from './ui/SegmentedControl.js';
 import styles from './AgentIconPicker.module.css';
 
+const COLORS = ['#4fa8b8', '#9b7ede', '#d19a3d', '#3cb87a', '#e0605f', '#5b8fd9'];
+
 type PickerTab = 'emblems' | 'upload';
 
 export default function AgentIconPicker({
   name,
   emblem,
   color,
-  builtin,
   onChange,
+  onColorChange,
+  onClose,
+  anchor,
 }: {
   name: string;
   emblem?: string;
   color: string;
   builtin?: boolean;
   onChange: (emblem: string | undefined) => void;
+  onColorChange?: (color: string) => void;
+  onClose: () => void;
+  anchor?: { top: number; left: number };
 }): React.JSX.Element {
+  const ref = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const mark = resolveAgentMark(emblem);
   const [tab, setTab] = useState<PickerTab>(mark.kind === 'image' ? 'upload' : 'emblems');
@@ -40,6 +46,28 @@ export default function AgentIconPicker({
   const [dragging, setDragging] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    searchRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') onClose();
+    };
+    const onDown = (e: MouseEvent): void => {
+      const target = e.target as HTMLElement;
+      // Triggers toggle themselves; closing here too would reopen on click.
+      if (target.closest('[data-mark-trigger]')) return;
+      if (ref.current && !ref.current.contains(target)) onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onDown);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onDown);
+    };
+  }, [onClose]);
 
   const suggested = useMemo(() => suggestedEmblemIds(name), [name]);
   const matches = useMemo(() => {
@@ -91,23 +119,21 @@ export default function AgentIconPicker({
     }
   };
 
-  const reset = (): void => setEmblem(defaultEmblemFor({ name, builtin }));
+  const posStyle = anchor
+    ? { top: `${anchor.top}px`, left: `${anchor.left}px` }
+    : { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' };
 
   return (
-    <div className={styles.picker} data-testid="agent-mark-picker">
+    <div
+      ref={ref}
+      role="dialog"
+      aria-label={`Mark for ${name}`}
+      className={styles.picker}
+      style={posStyle}
+      data-testid="agent-mark-picker"
+    >
       <div className={styles.head}>
-        <AgentAvatar name={name} emblem={emblem} color={color} size={44} />
-        <div className={styles.headCopy}>
-          <span className={styles.markLabel}>{markLabel(emblem)}</span>
-          <div className={styles.headActions}>
-            {!isDefaultMark({ name, emblem, builtin }) && (
-              <button type="button" className={styles.textBtn} onClick={reset}>
-                <RotateCcw size={11} />
-                Reset
-              </button>
-            )}
-          </div>
-        </div>
+        <AgentAvatar name={name} emblem={emblem} color={color} size={40} />
         <div className={styles.sizes} aria-hidden>
           {[
             { size: 24, label: 'List' },
@@ -120,21 +146,26 @@ export default function AgentIconPicker({
             </div>
           ))}
         </div>
+        <button type="button" onClick={onClose} aria-label="Close" className={styles.closeBtn}>
+          <X size={14} />
+        </button>
       </div>
 
-      <SegmentedControl
-        className={styles.tabs}
-        options={[
-          { label: 'Emblems', on: tab === 'emblems', onClick: () => setTab('emblems') },
-          { label: 'Custom image', on: tab === 'upload', onClick: () => setTab('upload') },
-        ]}
-      />
+      <div className={styles.tabs}>
+        <SegmentedControl
+          options={[
+            { label: 'Emblems', on: tab === 'emblems', onClick: () => setTab('emblems') },
+            { label: 'Custom image', on: tab === 'upload', onClick: () => setTab('upload') },
+          ]}
+        />
+      </div>
 
       {tab === 'emblems' ? (
         <div className={styles.emblems}>
           <label className={styles.search}>
             <Search size={13} aria-hidden />
             <input
+              ref={searchRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search emblems"
@@ -269,6 +300,44 @@ export default function AgentIconPicker({
           />
         </div>
       )}
+
+      {onColorChange && (
+        <div className={styles.accentRow}>
+          <span className={styles.accentLabel}>Accent</span>
+          <div className={styles.accentSwatches}>
+            {COLORS.map((c) => {
+              const on = c.toLowerCase() === color.toLowerCase();
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  aria-label={`Accent ${c}`}
+                  aria-pressed={on}
+                  onClick={() => onColorChange(c)}
+                  className={styles.accentSwatch}
+                  style={{
+                    borderColor: on ? c : 'rgba(255,255,255,0.09)',
+                    background: `color-mix(in srgb, ${c} ${on ? 30 : 16}%, #0a0a0a)`,
+                  }}
+                >
+                  {on ? (
+                    <Check size={12} style={{ color: c }} />
+                  ) : (
+                    <span className={styles.accentDot} style={{ background: c }} />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className={styles.footer}>
+        <span className={styles.footerAutosave}>Saved automatically</span>
+        <button type="button" onClick={onClose} className={styles.doneBtn}>
+          Done
+        </button>
+      </div>
     </div>
   );
 }

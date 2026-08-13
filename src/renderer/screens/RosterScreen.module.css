@@ -170,6 +170,98 @@
   padding: var(--s8) 0;
   flex-wrap: wrap;
 }
+.avatar-trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  padding: 0;
+  border-radius: var(--r-full);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform var(--fast) var(--ease);
+}
+.avatar-trigger:hover {
+  transform: scale(1.05);
+}
+.avatar-trigger-overlay {
+  position: absolute;
+  inset: -2px;
+  border-radius: var(--r-full);
+  border: 1.5px solid transparent;
+  pointer-events: none;
+  transition: border-color var(--fast) var(--ease);
+}
+.avatar-trigger:hover .avatar-trigger-overlay {
+  border-color: var(--accent);
+}
+.identity-mark-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+}
+.identity-mark-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  min-width: 0;
+}
+.identity-mark-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+.identity-mark-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.identity-mark-dot {
+  color: var(--text-ghost);
+}
+.change-mark-btn {
+  height: 24px;
+  padding: 0 var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    border-color var(--fast) var(--ease),
+    color var(--fast) var(--ease);
+}
+.change-mark-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent-bright);
+}
+.reset-mark-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 var(--s1);
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color var(--fast) var(--ease);
+}
+.reset-mark-btn:hover {
+  color: var(--text);
+}
 .roster-head-main {
   min-width: 0;
 }

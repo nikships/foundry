@@ -1,34 +1,37 @@
 .picker {
+  position: fixed;
+  z-index: 95;
+  width: 392px;
+  max-width: calc(100vw - 24px);
+  background: var(--bg-panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  box-shadow:
+    0 16px 36px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
   display: flex;
   flex-direction: column;
-  gap: var(--s4);
+  animation: popover-in var(--fast) var(--ease);
+  outline: none;
+}
+
+@keyframes popover-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 .head {
   display: flex;
   align-items: center;
   gap: var(--s4);
-}
-
-.headCopy {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.markLabel {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-}
-
-.headActions {
-  display: flex;
-  align-items: center;
-  gap: var(--s2);
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--line);
 }
 
 .sizes {
@@ -42,7 +45,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 0.08em;
@@ -50,14 +53,37 @@
   color: var(--text-faint);
 }
 
+.closeBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-left: var(--s2);
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition:
+    background var(--fast) var(--ease),
+    color var(--fast) var(--ease);
+}
+
+.closeBtn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
 .tabs {
-  margin-top: var(--s1);
+  padding: var(--s3) var(--s4) 0;
 }
 
 .emblems {
   display: flex;
   flex-direction: column;
   gap: var(--s3);
+  padding: var(--s3) var(--s4) 0;
 }
 
 .search {
@@ -88,7 +114,7 @@
 }
 
 .scroll {
-  max-height: 260px;
+  max-height: 232px;
   overflow-y: auto;
   padding-right: 2px;
 }
@@ -119,7 +145,10 @@
   color: var(--text-dim);
   font-family: var(--font-mono);
   font-size: 11px;
-  cursor: default;
+  cursor: pointer;
+  transition:
+    border-color var(--fast) var(--ease),
+    color var(--fast) var(--ease);
 }
 
 .initial:hover {
@@ -160,12 +189,16 @@
   border-radius: var(--r-sm);
   background: var(--bg-input);
   color: var(--text-dim);
-  cursor: default;
+  cursor: pointer;
+  transition:
+    border-color var(--fast) var(--ease),
+    background var(--fast) var(--ease),
+    color var(--fast) var(--ease);
 }
 
 .cell:hover {
   border-color: var(--line-strong);
-  background: var(--bg-raised);
+  background: var(--bg-hover);
   color: var(--text);
 }
 
@@ -185,6 +218,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--s2);
+  padding: var(--s3) var(--s4) 0;
 }
 
 .currentImage {
@@ -209,6 +243,7 @@
 }
 
 .currentPath {
+  margin: 2px 0 0;
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--text-faint);
@@ -225,6 +260,9 @@
   background: var(--bg-input);
   text-align: center;
   color: var(--text-faint);
+  transition:
+    border-color var(--fast) var(--ease),
+    background var(--fast) var(--ease);
 }
 
 .drop.dragging {
@@ -255,7 +293,10 @@
   font-weight: 500;
   letter-spacing: var(--label-tracking);
   text-transform: uppercase;
-  cursor: default;
+  cursor: pointer;
+  transition:
+    border-color var(--fast) var(--ease),
+    color var(--fast) var(--ease);
 }
 
 .choose:hover:not(:disabled) {
@@ -280,7 +321,8 @@
   font-size: 10px;
   letter-spacing: var(--label-tracking);
   text-transform: uppercase;
-  cursor: default;
+  cursor: pointer;
+  transition: color var(--fast) var(--ease);
 }
 
 .textBtn:hover:not(:disabled) {
@@ -305,11 +347,84 @@
   color: var(--red);
 }
 
-@media (max-width: 720px) {
-  .grid {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-  }
-  .sizes {
-    display: none;
-  }
+/* ── Accent Row ── */
+.accentRow {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-top: var(--s3);
+  padding: var(--s3) var(--s4);
+  border-top: 1px solid var(--line);
+}
+
+.accentLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.accentSwatches {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.accentSwatch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: var(--r-full);
+  border: 1px solid;
+  cursor: pointer;
+  transition: transform var(--fast) var(--ease);
+}
+
+.accentSwatch:hover {
+  transform: scale(1.08);
+}
+
+.accentDot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-full);
+}
+
+/* ── Footer ── */
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--s2) var(--s4);
+  border-top: 1px solid var(--line);
+}
+
+.footerAutosave {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.doneBtn {
+  height: 28px;
+  padding: 0 var(--s3);
+  border: none;
+  border-radius: var(--r-sm);
+  background: var(--text);
+  color: var(--bg-void);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: opacity var(--fast) var(--ease);
+}
+
+.doneBtn:hover {
+  opacity: 0.9;
 }
