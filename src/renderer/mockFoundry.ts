@@ -159,6 +159,7 @@ function defaultMockSettings(): AppSettings {
     detectCli: 'default',
     detectModel: 'inherit',
     engineerName: 'web-preview',
+    prAgent: 'pr_writer',
     defaultModel: 'inherit',
     defaultReasoningEffort: 'medium',
     pollCadenceMs: 500,

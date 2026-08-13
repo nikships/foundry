@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SettingsStore, defaultSettings, migrate } from '../src/main/store/settings.js';
+import { DEFAULT_PR_AGENT } from '../src/shared/types.js';
 
 let dir: string;
 
@@ -177,6 +178,39 @@ describe('transport', () => {
 
   it('repairs a stored garbage transport back to daemon', () => {
     expect(migrate({ ...defaultSettings(), transport: 'carrier-pigeon' }).transport).toBe('daemon');
+  });
+});
+
+describe('prAgent', () => {
+  it('defaults to pr_writer on a fresh install', () => {
+    expect(defaultSettings().prAgent).toBe(DEFAULT_PR_AGENT);
+  });
+
+  it('reads pr_writer for a settings file written before the field existed', () => {
+    const stored = { ...defaultSettings() } as Record<string, unknown>;
+    delete stored.prAgent;
+    expect(migrate(stored).prAgent).toBe(DEFAULT_PR_AGENT);
+    expect(seed(stored).get().prAgent).toBe(DEFAULT_PR_AGENT);
+  });
+
+  it('keeps a valid custom writer name', () => {
+    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
+    expect(store.patch({ prAgent: 'my_writer' })).toMatchObject({ ok: true });
+    expect(store.get().prAgent).toBe('my_writer');
+  });
+
+  it('refuses an invalid writer name rather than storing it', () => {
+    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
+    for (const value of ['', 'PR Writer', '1writer', 'MyWriter']) {
+      expect(store.patch({ prAgent: value }).ok).toBe(false);
+    }
+    expect(store.get().prAgent).toBe(DEFAULT_PR_AGENT);
+  });
+
+  it('repairs a stored garbage writer name back to pr_writer', () => {
+    expect(migrate({ ...defaultSettings(), prAgent: 'PR Writer' }).prAgent).toBe(DEFAULT_PR_AGENT);
+    expect(migrate({ ...defaultSettings(), prAgent: '' }).prAgent).toBe(DEFAULT_PR_AGENT);
+    expect(migrate({ ...defaultSettings(), prAgent: 12 as never }).prAgent).toBe(DEFAULT_PR_AGENT);
   });
 });
 

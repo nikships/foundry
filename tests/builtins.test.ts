@@ -11,6 +11,7 @@ import { BUILTIN_PIPELINES } from '../src/main/store/builtin-pipelines.js';
 import { validate as validatePipeline } from '../src/main/store/pipelines.js';
 import { validate as validateAgent } from '../src/main/store/roster.js';
 import { exampleFor, schemaFor } from '../src/main/engine/envelopes.js';
+import { PR_FALLBACK_HEADINGS, PR_TEMPLATE_SEARCH_PATHS } from '../src/shared/types.js';
 
 /** Every `{ref}` any shipped pipeline reaches for, so none is a false warning. */
 const COMMAND_NAMES = [
@@ -72,5 +73,28 @@ describe('shipped pipelines', () => {
   it('keeps the refiner read-only, since sharpening a request is not doing the work', () => {
     const refiner = BUILTIN_AGENTS.find((a) => a.name === 'refiner');
     expect(refiner?.writes).toEqual([]);
+  });
+
+  it('ships a read-only pr_writer that drafts a pr envelope', () => {
+    const writer = BUILTIN_AGENTS.find((a) => a.name === 'pr_writer');
+    expect(writer).toBeDefined();
+    expect(writer?.envelope).toBe('pr');
+    expect(writer?.writes).toEqual([]);
+    expect(writer?.builtin).toBe(true);
+    expect(writer?.userPrompt).toContain('{{request}}');
+    expect(writer?.userPrompt).toContain('{{envelope:plan}}');
+    expect(writer?.userPrompt).toContain('{{envelope:build}}');
+    expect(writer?.systemPrompt).toContain('Do not create, edit, or delete any file');
+    expect(writer?.systemPrompt).toContain('no raw `git diff`');
+    expect(writer?.systemPrompt).toContain('no invented issue numbers');
+
+    const listed = [...(writer?.systemPrompt.matchAll(/`([^`]+)`/g) ?? [])].map((m) => m[1]);
+    expect(
+      listed.filter((path) => (PR_TEMPLATE_SEARCH_PATHS as readonly string[]).includes(path)),
+    ).toEqual([...PR_TEMPLATE_SEARCH_PATHS]);
+
+    for (const heading of PR_FALLBACK_HEADINGS) {
+      expect(writer?.systemPrompt).toContain(`## ${heading}`);
+    }
   });
 });

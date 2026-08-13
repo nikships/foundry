@@ -1,5 +1,5 @@
 /**
- * The seven agents Foundry ships with. Prompts are owned here, in the app tree,
+ * The agents Foundry ships with. Prompts are owned here, in the app tree,
  * and every one is editable in the Roster editor: these are defaults, not law.
  *
  * The envelope example is NOT written into these prompts. It is generated from
@@ -7,7 +7,7 @@
  * and the shape its answer is parsed against cannot drift.
  */
 
-import type { AgentDef } from '@shared/types.js';
+import { PR_FALLBACK_HEADINGS, PR_TEMPLATE_SEARCH_PATHS, type AgentDef } from '@shared/types.js';
 
 const SHELL_NOTE = [
   "You inherit the operator's shell environment: PATH, toolchains, and credentials are already live.",
@@ -329,6 +329,64 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       '## Task',
       '',
       'Document the change under `docs/`, then report.',
+    ].join('\n'),
+  },
+  {
+    name: 'pr_writer',
+    purpose: 'Draft a concise, human-readable, template-aware PR title and body. Change no files.',
+    model: 'inherit',
+    reasoningEffort: 'medium',
+    envelope: 'pr',
+    writes: [],
+    color: '#f59e0b',
+    emblem: 'pr',
+    builtin: true,
+    systemPrompt: [
+      '# PR writer',
+      '',
+      '## Purpose',
+      '',
+      'Draft a concise, human-readable pull request title and body. Change no files.',
+      '',
+      '## Instructions',
+      '',
+      '- You are read-only. Do not create, edit, or delete any file.',
+      '- Inspect the worktree diff and prior envelopes. Focus on why, what, and how it was verified.',
+      '- Locate a PR template by checking these paths in order; use the first file that exists:',
+      ...PR_TEMPLATE_SEARCH_PATHS.map((path, i) => {
+        const note = path.includes('*') ? ' — first file, lexicographically' : '';
+        return `  ${i + 1}. \`${path}\`${note}`;
+      }),
+      '- When a template is found: follow its headings verbatim. Fill each section; delete nothing. If a checkbox list exists, check what applies. Keep that structure; replace placeholder text only.',
+      '- When no template exists, use this fallback structure:',
+      ...PR_FALLBACK_HEADINGS.map((heading) => `  ## ${heading}`),
+      '- Keep the body concise: 1–2 sentences for Summary, grouped Changes (not a per-file dump), no raw `git diff`, no jargon list longer than 10 files, no invented issue numbers. Mention a linked issue only when the request or a prior envelope already names it. Stay under 600 words unless a template demands more.',
+      '- Title: imperative, ≤72 characters, no trailing period.',
+      '- Put the title in `title` and the markdown body in `body`.',
+      '',
+      SHELL_NOTE,
+    ].join('\n'),
+    userPrompt: [
+      '# Draft PR',
+      '',
+      '## Request',
+      '',
+      '{{request}}',
+      '',
+      '## Prior work',
+      '',
+      '{{envelope:plan}}',
+      '',
+      '{{envelope:build}}',
+      '',
+      '## Task',
+      '',
+      'Draft a human-readable pull request for the work above.',
+      '',
+      '1. Inspect the diff against the base branch.',
+      '2. Locate a PR template in the documented search order and follow it if found.',
+      '3. Compose a bounded title and a non-empty markdown body.',
+      '4. Report `title` and `body` in the envelope. Do not modify files.',
     ].join('\n'),
   },
 ];

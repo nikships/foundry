@@ -9,9 +9,10 @@ export type PhaseKind = 'agent' | 'code' | 'engineer';
 export type PhaseStatus = 'queued' | 'running' | 'success' | 'fail' | 'skipped';
 export type RunStatus = 'running' | 'accepted' | 'rejected' | 'failed' | 'killed';
 export type ReasoningEffort = 'off' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-export type EnvelopeKind = 'generic' | 'brief' | 'plan' | 'build' | 'scout' | 'review' | 'document';
+export type EnvelopeKind =
+  'generic' | 'brief' | 'plan' | 'build' | 'scout' | 'review' | 'document' | 'pr';
 
-/** The seven built-in envelope kinds. Custom envelopes are named strings outside this set. */
+/** Built-in envelope kinds. Custom envelopes are named strings outside this set. */
 export const BUILTIN_ENVELOPE_KINDS: readonly EnvelopeKind[] = [
   'generic',
   'brief',
@@ -20,6 +21,7 @@ export const BUILTIN_ENVELOPE_KINDS: readonly EnvelopeKind[] = [
   'scout',
   'review',
   'document',
+  'pr',
 ] as const;
 
 /** One-line blurbs for picker UIs. Keep in sync with `engine/envelopes.ts` schemas. */
@@ -31,7 +33,35 @@ export const BUILTIN_ENVELOPE_BLURBS: Record<EnvelopeKind, string> = {
   scout: 'Findings from reading the repo, one per entry',
   review: 'Approve or block, with per-requirement findings',
   document: 'Path of the doc written and the files it covers',
+  pr: 'Bounded title and a non-empty markdown pull-request body',
 };
+
+/** Hard schema bound for `pr.title`. Style guidance is tighter (≤72). */
+export const PR_TITLE_MAX = 120;
+
+/** Default roster name for the PR writer setting. */
+export const DEFAULT_PR_AGENT = 'pr_writer';
+
+/**
+ * Repository-relative PR template locations, first match wins.
+ * A glob means the first matching file in lexicographic order.
+ */
+export const PR_TEMPLATE_SEARCH_PATHS = [
+  '.github/PULL_REQUEST_TEMPLATE.md',
+  '.github/pull_request_template.md',
+  '.github/PULL_REQUEST_TEMPLATE/*.md',
+  'docs/pull_request_template.md',
+  'PULL_REQUEST_TEMPLATE.md',
+] as const;
+
+/** Headings the writer uses when no repository template exists. */
+export const PR_FALLBACK_HEADINGS = [
+  'Summary',
+  'Motivation',
+  'Changes',
+  'Verification',
+  'Risk',
+] as const;
 
 /**
  * Which agent CLI drives a phase.
@@ -348,6 +378,11 @@ export interface AppSettings {
   detectModel: string;
   /** Recorded on every run so a trace says who asked for it. */
   engineerName: string;
+  /**
+   * Roster name used when a pipeline (or later UI) needs a PR writer.
+   * Defaults to the shipped `pr_writer` builtin.
+   */
+  prAgent: string;
   defaultModel: string;
   defaultReasoningEffort: ReasoningEffort;
   pollCadenceMs: number;

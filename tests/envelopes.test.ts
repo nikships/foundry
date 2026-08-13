@@ -11,6 +11,7 @@ import {
   schemaFor,
   schemas,
 } from '../src/main/engine/envelopes.js';
+import { BUILTIN_ENVELOPE_KINDS, PR_TITLE_MAX } from '../src/shared/types.js';
 
 describe('envelope extraction', () => {
   it('takes the last balanced object when prose surrounds it', () => {
@@ -65,6 +66,32 @@ describe('envelope parsing', () => {
     );
     expect(ok.ok).toBe(true);
     expect(ok.envelope).toMatchObject({ constraints: [], acceptance_criteria: [] });
+  });
+
+  it('requires a bounded title and non-empty body on a pr envelope', () => {
+    expect(parseEnvelope('{"status":"success","summary":"drafted"}', 'pr').ok).toBe(false);
+    expect(parseEnvelope('{"status":"success","title":"","body":"## Summary"}', 'pr').ok).toBe(
+      false,
+    );
+    expect(parseEnvelope('{"status":"success","title":"Add rate limit","body":""}', 'pr').ok).toBe(
+      false,
+    );
+    const tooLong = 'x'.repeat(PR_TITLE_MAX + 1);
+    expect(
+      parseEnvelope(
+        JSON.stringify({ status: 'success', title: tooLong, body: '## Summary\nDone.' }),
+        'pr',
+      ).ok,
+    ).toBe(false);
+    const ok = parseEnvelope(
+      '{"status":"success","title":"Add rate limiting","body":"## Summary\\nCaps burst traffic."}',
+      'pr',
+    );
+    expect(ok.ok).toBe(true);
+    expect(ok.envelope).toMatchObject({
+      title: 'Add rate limiting',
+      body: '## Summary\nCaps burst traffic.',
+    });
   });
 
   it('reports no-json distinctly from invalid-json', () => {
@@ -182,7 +209,7 @@ describe('custom envelope library defs', () => {
 });
 
 describe('generated examples', () => {
-  const kinds = ['generic', 'brief', 'plan', 'build', 'scout', 'review', 'document'] as const;
+  const kinds = BUILTIN_ENVELOPE_KINDS;
 
   it('carries every schema field for each built-in kind', () => {
     for (const kind of kinds) {
@@ -218,7 +245,7 @@ describe('dry-run placeholders', () => {
   });
 
   it('satisfies the schema of the kind it stands in for', () => {
-    for (const kind of ['generic', 'brief', 'plan', 'build', 'scout', 'review', 'document']) {
+    for (const kind of BUILTIN_ENVELOPE_KINDS) {
       const result = schemaFor(kind).safeParse(placeholderEnvelope('x', kind));
       expect(result.success, `${kind} placeholder must validate`).toBe(true);
     }
@@ -226,15 +253,7 @@ describe('dry-run placeholders', () => {
 });
 
 describe('json schema derivation', () => {
-  const BUILTIN_KINDS = [
-    'generic',
-    'brief',
-    'plan',
-    'build',
-    'scout',
-    'review',
-    'document',
-  ] as const;
+  const BUILTIN_KINDS = BUILTIN_ENVELOPE_KINDS;
 
   // ajv is the only 2020-12 validator in the tree; a fresh instance per compile
   // keeps schemas from colliding on the anonymous $id ajv derives.
@@ -297,6 +316,7 @@ describe('json schema derivation', () => {
       scout: [...base, 'findings'],
       review: [...base, 'approved', 'findings', 'blocking'],
       document: [...base, 'document_path', 'documented_files'],
+      pr: [...base, 'title', 'body'],
     };
     for (const kind of BUILTIN_KINDS) {
       expect(jsonSchemaFor(kind).required, `${kind} required`).toEqual(expected[kind]);
@@ -318,6 +338,10 @@ describe('json schema derivation', () => {
       const minimal: Record<string, unknown> = { status: 'success' };
       if (kind === 'brief') minimal.improved_request = 'do the thing';
       if (kind === 'review') minimal.approved = true;
+      if (kind === 'pr') {
+        minimal.title = 'Add the thing';
+        minimal.body = '## Summary\nAdds the thing.';
+      }
 
       expect(schemas[kind].safeParse(minimal).success, `${kind} zod fills defaults`).toBe(true);
       expect(compile(jsonSchemaFor(kind))(minimal), `${kind} json schema demands defaults`).toBe(
@@ -331,6 +355,8 @@ describe('json schema derivation', () => {
       { kind: 'generic', omit: 'status', instance: JSON.parse(exampleFor('generic')) },
       { kind: 'brief', omit: 'improved_request', instance: JSON.parse(exampleFor('brief')) },
       { kind: 'review', omit: 'approved', instance: JSON.parse(exampleFor('review')) },
+      { kind: 'pr', omit: 'title', instance: JSON.parse(exampleFor('pr')) },
+      { kind: 'pr', omit: 'body', instance: JSON.parse(exampleFor('pr')) },
     ];
     for (const { kind, omit, instance } of cases) {
       const broken = { ...(instance as Record<string, unknown>) };

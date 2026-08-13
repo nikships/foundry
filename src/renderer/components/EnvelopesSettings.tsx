@@ -45,6 +45,7 @@ const BUILTIN_BLURBS: Record<EnvelopeKind, string> = {
   scout: 'Adds findings — a list of what was discovered.',
   review: 'Adds approved, structured findings, and blocking issues.',
   document: 'Adds document_path and the files that were documented.',
+  pr: 'Adds a bounded title and a non-empty markdown pull-request body.',
 };
 
 /** Starter shapes so an empty library is not a blank form. */
@@ -211,6 +212,20 @@ const BUILTIN_EXTRA_FIELDS: Record<EnvelopeKind, CustomEnvelopeField[]> = {
       type: 'string[]',
       required: false,
       description: 'src/file/you/documented.ts',
+    },
+  ],
+  pr: [
+    {
+      name: 'title',
+      type: 'string',
+      required: true,
+      description: 'imperative PR title, ≤72 chars, no trailing period',
+    },
+    {
+      name: 'body',
+      type: 'string',
+      required: true,
+      description: 'markdown PR body — follow the repo template, or the fallback headings',
     },
   ],
 };
