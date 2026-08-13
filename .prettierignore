@@ -15,3 +15,4 @@ test-results
 # Standalone marketing site — has its own toolchain and is not part of the
 # desktop app build, the repo gate, or CI. See website/README.md.
 website
+.agents/agent-ready.json

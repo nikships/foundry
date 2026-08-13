@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-13T09:01:36.613Z",
+  "commit": "c9ea508d6fa4892c2cd573adb10d85a1132d00ce",
+  "agent": {
+    "harness": "droid",
+    "model": "inherit",
+    "reasoningEffort": "high"
+  },
+  "verdict": "ready",
+  "summary": "javascript, typescript monorepo. All 11 readiness criteria pass or are recorded N/A.",
+  "stack": {
+    "languages": [
+      "javascript",
+      "typescript"
+    ],
+    "monorepo": true,
+    "packages": [
+      "website"
+    ]
+  },
+  "criteria": [
+    {
+      "id": "lint_format",
+      "status": "pass",
+      "notes": "Lint/format tooling is configured.",
+      "measurement": {
+        "command": "npm run lint",
+        "via": "package.json"
+      }
+    },
+    {
+      "id": "typecheck",
+      "status": "pass",
+      "notes": "TypeScript typecheck is documented.",
+      "measurement": {
+        "command": "npm run typecheck"
+      }
+    },
+    {
+      "id": "tests",
+      "status": "pass",
+      "notes": "A documented test command or test files exist.",
+      "measurement": {
+        "command": "npm test",
+        "tests": 64
+      }
+    },
+    {
+      "id": "build",
+      "status": "pass",
+      "notes": "A documented build command exists.",
+      "measurement": {
+        "command": "npm run build"
+      }
+    },
+    {
+      "id": "setup",
+      "status": "pass",
+      "notes": "A clone-to-running sequence is documented or scripted.",
+      "measurement": {
+        "hasInstall": true,
+        "hasDev": true
+      }
+    },
+    {
+      "id": "agents_md",
+      "status": "pass",
+      "notes": "Root AGENTS.md plus 14 nested file(s).",
+      "measurement": {
+        "nested": 14
+      }
+    },
+    {
+      "id": "env_example",
+      "status": "n/a",
+      "notes": "No environment files detected; an example file is not required."
+    },
+    {
+      "id": "ci_parity",
+      "status": "pass",
+      "notes": "GitHub Actions workflows mirror local checks (.github/workflows/ci.yml, .github/workflows/codeql.yml, .github/workflows/dependency-review.yml, .github/workflows/junie-review.yml, .github/workflows/junie-tag.yml, .github/workflows/mac-package.yml).",
+      "measurement": {
+        "workflows": [
+          ".github/workflows/ci.yml",
+          ".github/workflows/codeql.yml",
+          ".github/workflows/dependency-review.yml",
+          ".github/workflows/junie-review.yml",
+          ".github/workflows/junie-tag.yml",
+          ".github/workflows/mac-package.yml"
+        ]
+      }
+    },
+    {
+      "id": "templates",
+      "status": "pass",
+      "notes": "Issue and pull request templates are present under .github/."
+    },
+    {
+      "id": "precommit",
+      "status": "pass",
+      "notes": "Pre-commit hooks are configured."
+    },
+    {
+      "id": "coverage",
+      "status": "pass",
+      "notes": "Test coverage is measured and a threshold is configured."
+    }
+  ]
+}
