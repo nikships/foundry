@@ -18,6 +18,7 @@ import type { PrAction } from '@shared/ipc-contract.js';
 import { currentBranch, fastForwardBase, preferredRemote } from '../engine/git.js';
 import { answersComplete, answersFromUser, parkAskUser } from './ask-user.js';
 import { evaluateRepo } from './evaluate.js';
+import { ensureMarkerIgnored } from './ignore.js';
 import { markerFromEvaluation, readMarker, writeMarker } from './marker.js';
 import { mergeCheckFromView, pollPrMerged, type PrMergeView } from './merge.js';
 import {
@@ -294,6 +295,13 @@ export class ReadinessSession {
       return;
     }
 
+    const ignored = ensureMarkerIgnored(this.worktree.path);
+    if (ignored.length) {
+      this.push({
+        kind: 'note',
+        text: `Exempting the marker from ${ignored.join(', ')} so CI gates stay green`,
+      });
+    }
     this.push({ kind: 'note', text: 'Writing .agents/agent-ready.json last…' });
     const commit = (await readinessHeadSha(this.worktree.path)) || 'HEAD';
     const marker = markerFromEvaluation(evaluation, {

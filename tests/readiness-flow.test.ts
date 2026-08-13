@@ -249,6 +249,35 @@ describe('make it ready, merge polling, and failed confirmation', () => {
     expect(session.snapshot().pr?.merged).toBe(true);
   });
 
+  it('exempts the marker from .prettierignore when the repo already uses prettier', async () => {
+    const repo = gitRepo('foundry-ready-prettier-');
+    seedReadyFiles(repo);
+    write(repo, '.prettierrc.json', '{ "printWidth": 100 }\n');
+    sh(repo, ['git', 'add', '-A']);
+    sh(repo, ['git', 'commit', '-qm', 'ready files']);
+
+    const { session } = sessionFor(repo, {
+      openPr: async () => ({
+        ok: true,
+        detail: 'opened',
+        number: 5,
+        url: 'https://github.com/acme/widgets/pull/5',
+      }),
+      viewPrMerge: async () => ({
+        number: 5,
+        url: 'https://github.com/acme/widgets/pull/5',
+        merged: false,
+        state: 'OPEN',
+      }),
+    });
+    session.inspect();
+    await session.evaluate();
+    expect(session.snapshot().evaluation?.ready).toBe(true);
+    await session.makeReady();
+    expect(session.snapshot().phase).toBe('awaiting_merge');
+    expect(session.snapshot().entries.some((e) => e.text.includes('Exempting'))).toBe(true);
+  });
+
   it('lets an injected remediator fix a failing repo, then writes the marker last', async () => {
     const repo = gitRepo('foundry-ready-fix-');
     const remediator: ReadinessRemediator = {
