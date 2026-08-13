@@ -13,7 +13,14 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { fastForwardBase, headSha, preferredRemote } from '../src/main/engine/git.js';
 import * as worktree from '../src/main/engine/worktree.js';
-import { ghStatus, listOpenPrs, mergePr, openPr, summarizeChecks } from '../src/main/system/gh.js';
+import {
+  ghStatus,
+  listOpenPrs,
+  mergePr,
+  openPr,
+  summarizeChecks,
+  viewPr,
+} from '../src/main/system/gh.js';
 import { makeFakeGh } from './fake-gh.js';
 
 function sh(cwd: string, argv: string[]): string {
@@ -147,6 +154,58 @@ describe('openPr', () => {
     expect(result.ok).toBe(true);
     expect(result.number).toBe(41);
     expect(result.detail).toContain('already exists');
+  });
+});
+
+describe('viewPr', () => {
+  it('maps gh json to a typed ref for a run branch', async () => {
+    const { repo } = scratchRepoWithOrigin();
+    const handle = await runBranch(repo, 'run_view1');
+    const gh = makeFakeGh({
+      prView: {
+        number: 93,
+        url: 'https://github.com/acme/widgets/pull/93',
+        headRefName: handle.branch,
+        baseRefName: 'main',
+      },
+    });
+
+    const ref = await viewPr(repo, handle.branch, { bin: gh.bin });
+
+    expect(ref).toEqual({
+      number: 93,
+      url: 'https://github.com/acme/widgets/pull/93',
+      headRefName: handle.branch,
+      baseRefName: 'main',
+    });
+    const view = gh.calls().find((argv) => argv[0] === 'pr' && argv[1] === 'view');
+    expect(view).toContain(handle.branch);
+    expect(view).toContain('number,url,headRefName,baseRefName');
+  });
+
+  it('answers null when the branch has no PR, so the manual fallback still applies', async () => {
+    const { repo } = scratchRepoWithOrigin();
+    const handle = await runBranch(repo, 'run_view2');
+    const gh = makeFakeGh({ prView: null });
+
+    // A null here is what leaves RunRow.prUrl unset after a pr phase, which is
+    // the signal OutcomeBanner uses to keep offering "Open PR…".
+    expect(await viewPr(repo, handle.branch, { bin: gh.bin })).toBeNull();
+  });
+
+  it('accepts a PR number as well as a branch', async () => {
+    const { repo } = scratchRepoWithOrigin();
+    const gh = makeFakeGh({
+      prView: { number: 12, url: 'https://github.com/acme/widgets/pull/12' },
+    });
+
+    const ref = await viewPr(repo, 12, { bin: gh.bin });
+
+    expect(ref?.number).toBe(12);
+    // Absent head/base in gh's answer must not become undefined on the row.
+    expect(ref?.headRefName).toBe('');
+    expect(ref?.baseRefName).toBe('');
+    expect(gh.calls().find((argv) => argv[0] === 'pr' && argv[1] === 'view')).toContain('12');
   });
 });
 
