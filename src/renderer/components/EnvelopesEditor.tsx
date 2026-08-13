@@ -253,6 +253,8 @@ export default function EnvelopesEditor({
   const [busy, setBusy] = useState(false);
   const envelopesRef = useRef(envelopes);
   envelopesRef.current = envelopes;
+  const selectionRef = useRef(selection);
+  selectionRef.current = selection;
   const lastSyncedRef = useRef<string | null>(null);
 
   const selectedCustom = useMemo(() => {
@@ -343,18 +345,28 @@ export default function EnvelopesEditor({
     save: (d) => api.envelopes.save(d),
     onSuccess: async (saved) => {
       setIssues([]);
-      if (selection.kind === 'custom' && selection.isNew) {
+      // refreshAll adds the new envelope to the library, which must settle
+      // first: a late-arriving stale save for the previously selected envelope
+      // could otherwise slip through as a later flush (FOU-40).
+      await refreshAll();
+      if (
+        selectionRef.current.kind === 'custom' &&
+        selectionRef.current.isNew &&
+        selectionRef.current.name === saved.name
+      ) {
         setSelection({ kind: 'custom', name: saved.name, isNew: false });
       }
       lastSyncedRef.current = saved.name;
-      await refreshAll();
     },
     onIssues: setIssues,
     onError: (e) => setIssues([{ level: 'error', where: 'save', message: (e as Error).message }]),
   });
 
-  const beginDraft = (def: EnvelopeDef, opts: { focusName?: boolean } = {}): void => {
-    void flush();
+  const beginDraft = async (
+    def: EnvelopeDef,
+    opts: { focusName?: boolean } = {},
+  ): Promise<void> => {
+    await flush();
     cancel();
     setSelection({ kind: 'custom', name: def.name, isNew: true });
     setDraft(plain({ ...def, fields: def.fields.map((f) => ({ ...f })) }));
@@ -371,10 +383,10 @@ export default function EnvelopesEditor({
     }
   };
 
-  const startBlank = (): void => {
+  const startBlank = async (): Promise<void> => {
     const existing = new Set(envelopes.map((e) => e.name));
     const name = uniqueName('my_envelope', existing);
-    beginDraft(
+    await beginDraft(
       {
         name,
         description: '',
@@ -391,10 +403,10 @@ export default function EnvelopesEditor({
     );
   };
 
-  const startFromStarter = (starter: (typeof STARTERS)[number]): void => {
+  const startFromStarter = async (starter: (typeof STARTERS)[number]): Promise<void> => {
     const existing = new Set(envelopes.map((e) => e.name));
     const name = uniqueName(starter.def.name, existing);
-    beginDraft(
+    await beginDraft(
       {
         ...starter.def,
         name,
@@ -404,16 +416,16 @@ export default function EnvelopesEditor({
     );
   };
 
-  const selectCustom = (name: string): void => {
+  const selectCustom = async (name: string): Promise<void> => {
     if (selection.kind === 'custom' && selection.name === name && !selection.isNew) return;
-    void flush();
+    await flush();
     setSelection({ kind: 'custom', name, isNew: false });
     lastSyncedRef.current = null;
     setActionError('');
   };
 
-  const selectBuiltin = (name: EnvelopeKind): void => {
-    void flush();
+  const selectBuiltin = async (name: EnvelopeKind): Promise<void> => {
+    await flush();
     setSelection({ kind: 'builtin', name });
     setDraft(null);
     setActionError('');
@@ -469,10 +481,10 @@ export default function EnvelopesEditor({
     }
   };
 
-  const extendBuiltin = (kind: EnvelopeKind): void => {
+  const extendBuiltin = async (kind: EnvelopeKind): Promise<void> => {
     const existing = new Set(envelopes.map((e) => e.name));
     const name = uniqueName(`${kind}_custom`, existing);
-    beginDraft(
+    await beginDraft(
       {
         name,
         description: `Custom shape starting from ${kind}`,
@@ -543,7 +555,7 @@ export default function EnvelopesEditor({
               live preview below is exactly what the agent is shown.
             </p>
           </div>
-          <Button size="sm" variant="primary" onClick={startBlank} disabled={busy}>
+          <Button size="sm" variant="primary" onClick={() => void startBlank()} disabled={busy}>
             New envelope
           </Button>
         </header>
@@ -567,7 +579,7 @@ export default function EnvelopesEditor({
                       <button
                         type="button"
                         className={`${styles.envelopeItem} ${on ? styles.on : ''}`}
-                        onClick={() => selectCustom(env.name)}
+                        onClick={() => void selectCustom(env.name)}
                       >
                         <strong className="mono">{env.name}</strong>
                         <em>
@@ -606,7 +618,7 @@ export default function EnvelopesEditor({
                     <button
                       type="button"
                       className={`${styles.envelopeItem} ${styles.envelopeBuiltinBtn} ${on ? styles.on : ''}`}
-                      onClick={() => selectBuiltin(kind)}
+                      onClick={() => void selectBuiltin(kind)}
                     >
                       <strong className="mono">{kind}</strong>
                       <em>{BUILTIN_BLURBS[kind]}</em>
@@ -635,7 +647,7 @@ export default function EnvelopesEditor({
                       key={starter.id}
                       type="button"
                       className={styles.envelopeStarter}
-                      onClick={() => startFromStarter(starter)}
+                      onClick={() => void startFromStarter(starter)}
                     >
                       <strong>{starter.title}</strong>
                       <span>{starter.blurb}</span>
@@ -645,7 +657,7 @@ export default function EnvelopesEditor({
                   <button
                     type="button"
                     className={styles.envelopeStarterBlank}
-                    onClick={startBlank}
+                    onClick={() => void startBlank()}
                   >
                     <strong>Start blank</strong>
                     <span>Generic base plus the fields you add.</span>
@@ -659,7 +671,7 @@ export default function EnvelopesEditor({
                 <p>
                   Select an envelope to edit, or inspect a built-in to see the JSON agents return.
                 </p>
-                <Button size="sm" onClick={startBlank}>
+                <Button size="sm" onClick={() => void startBlank()}>
                   New envelope
                 </Button>
               </div>
@@ -674,7 +686,7 @@ export default function EnvelopesEditor({
                     <p className={styles.envelopeInspectBlurb}>{BUILTIN_BLURBS[selection.name]}</p>
                   </div>
                   <div className={styles.envelopeActions}>
-                    <Button size="sm" onClick={() => extendBuiltin(selection.name)}>
+                    <Button size="sm" onClick={() => void extendBuiltin(selection.name)}>
                       Start from this
                     </Button>
                   </div>
