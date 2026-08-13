@@ -8,6 +8,9 @@
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   overflow: hidden;
+  /* Lane width, not the viewport, is what squeezes the header at 3–5 lanes. */
+  container-type: inline-size;
+  container-name: lane;
 }
 
 .lane:global(.running) {
@@ -25,10 +28,16 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: var(--s3);
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s3);
   padding: var(--s3) var(--s3);
   border-bottom: 1px solid var(--line);
   background: var(--bg-raised);
+  flex: none;
+  min-width: 0;
+}
+
+.laneAvatar {
   flex: none;
 }
 
@@ -36,6 +45,7 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  flex: 1 1 8rem;
   gap: 2px;
 }
 
@@ -55,15 +65,22 @@
   display: flex;
   gap: var(--s2);
   align-items: center;
+  min-width: 0;
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.04em;
   color: var(--text-faint);
   white-space: nowrap;
+}
+
+.laneOwner {
+  min-width: 0;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .laneCli {
+  flex: none;
   padding: 1px 6px;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
@@ -73,9 +90,11 @@
   letter-spacing: 0.08em;
   color: var(--text-faint);
   background: transparent;
+  white-space: nowrap;
 }
 
 .laneModel {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   text-transform: none;
@@ -86,12 +105,24 @@
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: var(--s3);
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  flex: 1 1 10rem;
+  min-width: 0;
+}
+
+.laneCtx,
+.laneStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
   flex: none;
 }
 
 .laneTokens,
 .laneElapsed {
+  flex: none;
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--text-faint);
@@ -103,6 +134,7 @@
   display: flex;
   align-items: center;
   gap: 5px;
+  flex: none;
 }
 
 .laneContextBar {
@@ -144,6 +176,28 @@
   background: var(--bg-hover);
   color: var(--text);
   border-color: var(--line-strong);
+}
+
+/* Secondary metadata hides as whole units. Identity (phase, owner) and
+ * status stay; the CLI pill is never clipped mid-glyph. */
+@container lane (max-width: 340px) {
+  .laneTokens,
+  .laneContext,
+  .laneModel {
+    display: none;
+  }
+}
+
+@container lane (max-width: 280px) {
+  .laneElapsed {
+    display: none;
+  }
+}
+
+@container lane (max-width: 240px) {
+  .laneCli {
+    display: none;
+  }
 }
 
 .laneScroll {
