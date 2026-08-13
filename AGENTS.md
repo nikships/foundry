@@ -108,7 +108,12 @@ make check      # → npm run check
 
 Do not run app to validate small fixes.
 
-Use foundry-ui skill to validate larger changes. 
+Use foundry-ui skill to validate larger changes. Drive the real app with that
+skill (CDP + agent-browser) rather than writing a scratch Playwright spec:
+`tests/e2e/` is for committed regression specs, and the skill is the harness
+for checking your own work. If the launch looks blocked, the skill's
+Troubleshooting section covers the usual causes; verify with
+`pgrep -fl "electron \."` before concluding the environment is at fault.
 
 **Path aliases** are configured in both `electron.vite.config.ts` and `tsconfig.json`:
 
