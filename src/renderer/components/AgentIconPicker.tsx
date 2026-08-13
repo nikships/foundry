@@ -6,12 +6,14 @@ import {
   EMBLEM_GROUPS,
   EMBLEMS,
   IMAGE_EMBLEM_PREFIX,
+  markLabel,
   resolveAgentMark,
   suggestedEmblemIds,
   type EmblemDef,
 } from '../data/emblems.js';
 import AgentAvatar from './AgentAvatar.js';
 import { Emblem } from './Emblem.js';
+import { ModalShell } from './ui/ModalShell.js';
 import { SegmentedControl } from './ui/SegmentedControl.js';
 import styles from './AgentIconPicker.module.css';
 
@@ -26,7 +28,6 @@ export default function AgentIconPicker({
   onChange,
   onColorChange,
   onClose,
-  anchor,
 }: {
   name: string;
   emblem?: string;
@@ -35,9 +36,7 @@ export default function AgentIconPicker({
   onChange: (emblem: string | undefined) => void;
   onColorChange?: (color: string) => void;
   onClose: () => void;
-  anchor?: { top: number; left: number };
 }): React.JSX.Element {
-  const ref = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const mark = resolveAgentMark(emblem);
@@ -50,24 +49,6 @@ export default function AgentIconPicker({
   useEffect(() => {
     searchRef.current?.focus();
   }, []);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose();
-    };
-    const onDown = (e: MouseEvent): void => {
-      const target = e.target as HTMLElement;
-      // Triggers toggle themselves; closing here too would reopen on click.
-      if (target.closest('[data-mark-trigger]')) return;
-      if (ref.current && !ref.current.contains(target)) onClose();
-    };
-    document.addEventListener('keydown', onKey);
-    document.addEventListener('mousedown', onDown);
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.removeEventListener('mousedown', onDown);
-    };
-  }, [onClose]);
 
   const suggested = useMemo(() => suggestedEmblemIds(name), [name]);
   const matches = useMemo(() => {
@@ -119,21 +100,20 @@ export default function AgentIconPicker({
     }
   };
 
-  const posStyle = anchor
-    ? { top: `${anchor.top}px`, left: `${anchor.left}px` }
-    : { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' };
-
   return (
-    <div
-      ref={ref}
-      role="dialog"
-      aria-label={`Mark for ${name}`}
-      className={styles.picker}
-      style={posStyle}
-      data-testid="agent-mark-picker"
+    <ModalShell
+      onClose={onClose}
+      className={styles.pickerModal}
+      ariaLabelledBy="agent-mark-modal-title"
     >
       <div className={styles.head}>
         <AgentAvatar name={name} emblem={emblem} color={color} size={40} />
+        <div className={styles.headCopy}>
+          <h2 id="agent-mark-modal-title" className={styles.headTitle}>
+            Mark · {name}
+          </h2>
+          <span className={styles.headLabel}>{markLabel(emblem)}</span>
+        </div>
         <div className={styles.sizes} aria-hidden>
           {[
             { size: 24, label: 'List' },
@@ -161,7 +141,7 @@ export default function AgentIconPicker({
       </div>
 
       {tab === 'emblems' ? (
-        <div className={styles.emblems}>
+        <div className={styles.emblems} data-testid="agent-mark-picker">
           <label className={styles.search}>
             <Search size={13} aria-hidden />
             <input
@@ -227,7 +207,7 @@ export default function AgentIconPicker({
           </div>
         </div>
       ) : (
-        <div className={styles.upload}>
+        <div className={styles.upload} data-testid="agent-mark-picker">
           {mark.kind === 'image' ? (
             <div className={styles.currentImage}>
               <AgentAvatar name={name} emblem={emblem} color={color} size={44} />
@@ -338,7 +318,7 @@ export default function AgentIconPicker({
           Done
         </button>
       </div>
-    </div>
+    </ModalShell>
   );
 }
 

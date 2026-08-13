@@ -1,37 +1,46 @@
-.picker {
-  position: fixed;
-  z-index: 95;
-  width: 392px;
-  max-width: calc(100vw - 24px);
-  background: var(--bg-panel);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-md);
-  box-shadow:
-    0 16px 36px rgba(0, 0, 0, 0.6),
-    0 0 0 1px rgba(255, 255, 255, 0.05);
+.pickerModal {
+  width: min(440px, calc(100vw - 48px));
+  max-height: calc(100vh - 80px);
   display: flex;
   flex-direction: column;
-  animation: popover-in var(--fast) var(--ease);
+  background: var(--bg-panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.8),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
+  overflow: hidden;
   outline: none;
-}
-
-@keyframes popover-in {
-  from {
-    opacity: 0;
-    transform: scale(0.97) translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
 }
 
 .head {
   display: flex;
   align-items: center;
-  gap: var(--s4);
-  padding: var(--s3) var(--s4);
+  gap: var(--s3);
+  padding: var(--s4);
   border-bottom: 1px solid var(--line);
+}
+
+.headCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.headTitle {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.headLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
 }
 
 .sizes {
@@ -57,9 +66,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  margin-left: var(--s2);
+  width: 28px;
+  height: 28px;
+  margin-left: var(--s1);
   border: none;
   border-radius: var(--r-sm);
   background: transparent;
@@ -114,7 +123,7 @@
 }
 
 .scroll {
-  max-height: 232px;
+  max-height: 240px;
   overflow-y: auto;
   padding-right: 2px;
 }
@@ -401,6 +410,7 @@
   justify-content: space-between;
   padding: var(--s2) var(--s4);
   border-top: 1px solid var(--line);
+  background: var(--bg-raised);
 }
 
 .footerAutosave {

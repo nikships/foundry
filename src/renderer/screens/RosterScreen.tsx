@@ -66,11 +66,7 @@ export default function RosterScreen({
   const [actionError, setActionError] = useState('');
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [showPreview, setShowPreview] = useState(false);
-  const [pickerAnchor, setPickerAnchor] = useState<{
-    agentName: string;
-    top: number;
-    left: number;
-  } | null>(null);
+  const [showIconPicker, setShowIconPicker] = useState(false);
   const agentsRef = useRef<AgentDef[]>(agents);
   agentsRef.current = agents;
   const projectIdRef = useRef(projectId);
@@ -201,21 +197,6 @@ export default function RosterScreen({
     onIssues: setIssues,
     onError: (e) => setIssues([{ level: 'error', where: 'save', message: (e as Error).message }]),
   });
-
-  const togglePicker = (el: HTMLElement, agentName: string): void => {
-    if (pickerAnchor && pickerAnchor.agentName === agentName) {
-      setPickerAnchor(null);
-      return;
-    }
-    const r = el.getBoundingClientRect();
-    const PICKER_W = 392;
-    const PICKER_H = 480;
-    const rawLeft = r.left;
-    const rawTop = r.bottom + 8;
-    const left = Math.max(12, Math.min(rawLeft, window.innerWidth - PICKER_W - 12));
-    const top = Math.max(12, Math.min(rawTop, window.innerHeight - PICKER_H - 12));
-    setPickerAnchor({ agentName, top, left });
-  };
 
   const selectAgent = (name: string): void => {
     if (name === selectedName) return;
@@ -385,7 +366,7 @@ export default function RosterScreen({
                     type="button"
                     data-mark-trigger
                     aria-label={`Change mark for ${draft.name}`}
-                    onClick={(e) => togglePicker(e.currentTarget, draft.name)}
+                    onClick={() => setShowIconPicker(true)}
                     className={styles.avatarTrigger}
                   >
                     <AgentAvatar
@@ -459,7 +440,7 @@ export default function RosterScreen({
                         type="button"
                         data-mark-trigger
                         aria-label={`Change mark for ${draft.name}`}
-                        onClick={(e) => togglePicker(e.currentTarget, draft.name)}
+                        onClick={() => setShowIconPicker(true)}
                         className={styles.avatarTrigger}
                       >
                         <AgentAvatar
@@ -481,7 +462,7 @@ export default function RosterScreen({
                           <button
                             type="button"
                             data-mark-trigger
-                            onClick={(e) => togglePicker(e.currentTarget, draft.name)}
+                            onClick={() => setShowIconPicker(true)}
                             className={styles.changeMarkBtn}
                           >
                             Change mark
@@ -861,7 +842,7 @@ export default function RosterScreen({
         {showPreview && draft && (
           <PromptPreview agent={draft} onClose={() => setShowPreview(false)} />
         )}
-        {pickerAnchor && draft && (
+        {showIconPicker && draft && (
           <AgentIconPicker
             name={draft.name}
             emblem={draft.emblem}
@@ -869,8 +850,7 @@ export default function RosterScreen({
             builtin={draft.builtin}
             onChange={(emblem) => setDraft({ ...draft, emblem })}
             onColorChange={(color) => setDraft({ ...draft, color })}
-            onClose={() => setPickerAnchor(null)}
-            anchor={{ top: pickerAnchor.top, left: pickerAnchor.left }}
+            onClose={() => setShowIconPicker(false)}
           />
         )}
       </div>
