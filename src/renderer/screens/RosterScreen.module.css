@@ -425,6 +425,35 @@
   font-size: var(--text-xs);
   color: var(--text-faint);
 }
+
+/* extra fields */
+.roster-fields-empty {
+  margin: 0;
+  padding: var(--s4);
+  border: 1px dashed var(--line);
+  border-radius: var(--r-sm);
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+}
+.roster-fields-foot {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+.roster-fields-foot .hint {
+  flex: 1;
+  min-width: 20ch;
+}
+.roster-fields-foot code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 1px 4px;
+  border-radius: var(--r-sm);
+  background: var(--bg-raised);
+  color: var(--accent);
+}
+
 .link-btn {
   display: inline;
   padding: 0;

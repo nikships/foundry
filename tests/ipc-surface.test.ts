@@ -42,8 +42,12 @@ describe('the IPC surface', () => {
     expect(new Set(registered).size).toBe(registered.length);
   });
 
-  it('registers 100 channels, so a deleted handler is not a silent capability loss', () => {
-    expect(registered).toHaveLength(100);
+  it('registers 101 channels, so a deleted handler is not a silent capability loss', () => {
+    expect(registered).toHaveLength(101);
+  });
+
+  it('registers the roster preview channel the agent editor reads', () => {
+    expect(registered).toContain(IPC.rosterPreview);
   });
 
   it('registers the host-invocable inventory channel the roster picker reads', () => {

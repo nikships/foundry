@@ -1,0 +1,156 @@
+/* Row editor for custom envelope fields. Shared by the envelope library and
+   the agent editor, so the two surfaces cannot drift visually. */
+
+.field-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.field-row {
+  display: flex;
+  align-items: stretch;
+  gap: var(--s3);
+  padding: var(--s3);
+  border: 1px solid var(--line-faint);
+  border-radius: var(--r-sm);
+  background: var(--bg-raised);
+}
+
+.field-row.locked {
+  background: transparent;
+  border-style: dashed;
+  opacity: 0.78;
+}
+
+.field-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s2) var(--s3);
+}
+
+.field-name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.field-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.field-hint {
+  flex: 1 1 100%;
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+
+.field-grid {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(110px, 0.8fr) auto minmax(160px, 1.4fr);
+  gap: var(--s3);
+  align-items: end;
+}
+
+.field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
+
+.field-label :global(.input),
+.field-label :global(.select) {
+  width: 100%;
+  font-size: var(--text-sm);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.field-req {
+  min-width: 88px;
+}
+
+.field-hint-col {
+  min-width: 0;
+}
+
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px 0 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  cursor: default;
+  transition:
+    border-color var(--fast) var(--ease),
+    background var(--fast) var(--ease),
+    color var(--fast) var(--ease);
+}
+
+.switch.on {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.switch-knob {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--r-full);
+  background: var(--text-faint);
+  transition: background var(--fast) var(--ease);
+}
+
+.switch.on .switch-knob {
+  background: var(--accent);
+}
+
+.switch-text {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.field-remove {
+  flex: none;
+  align-self: center;
+  padding: 6px 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: default;
+  transition: color var(--fast) var(--ease);
+}
+
+.field-remove:hover {
+  color: var(--red);
+}

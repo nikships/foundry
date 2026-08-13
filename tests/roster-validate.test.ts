@@ -46,3 +46,74 @@ describe('roster.validate', () => {
     expect(issues[0]!.where).toBe('envelope');
   });
 });
+
+/**
+ * `customFields` reaches the store from the agent editor and from a Smith
+ * proposal, which validates through this same function before raising a card.
+ * These pin what the schema does and does not catch — the gap the editor's own
+ * checks cover (`src/renderer/custom-fields.ts`).
+ */
+describe('roster.validate on customFields', () => {
+  const withFields = (customFields: AgentDef['customFields']): AgentDef => ({
+    ...base,
+    customFields,
+  });
+
+  it('accepts a well-formed field, so a Smith proposal carrying one passes', () => {
+    expect(
+      validate(
+        withFields([
+          { name: 'risk_level', type: 'string', required: true, description: 'low|med|high' },
+        ]),
+      ),
+    ).toEqual([]);
+  });
+
+  it('accepts every supported type', () => {
+    expect(
+      validate(
+        withFields([
+          { name: 'a', type: 'string', required: true },
+          { name: 'b', type: 'number', required: false },
+          { name: 'c', type: 'boolean', required: true },
+          { name: 'd', type: 'string[]', required: false },
+        ]),
+      ),
+    ).toEqual([]);
+  });
+
+  it('rejects a name that is not snake_case', () => {
+    const issues = validate(withFields([{ name: 'Risk Level', type: 'string', required: true }]));
+    expect(issues.some((i) => i.where.startsWith('customFields'))).toBe(true);
+    expect(issues.every((i) => i.level === 'error')).toBe(true);
+  });
+
+  it('rejects an unsupported type', () => {
+    const issues = validate(withFields([{ name: 'due', type: 'date' as never, required: true }]));
+    expect(issues.some((i) => i.where.startsWith('customFields'))).toBe(true);
+  });
+
+  it('accepts an absent list, which is every agent that adds nothing', () => {
+    expect(validate(withFields(undefined))).toEqual([]);
+  });
+
+  /**
+   * Documents a real gap rather than asserting desired behaviour: the schema is
+   * per-field, so neither of these is caught here. The engine merges by name,
+   * so both would silently collapse. The editor blocks them before save.
+   */
+  it('does NOT catch a duplicate name — the editor is what blocks it', () => {
+    expect(
+      validate(
+        withFields([
+          { name: 'x', type: 'string', required: true },
+          { name: 'x', type: 'number', required: true },
+        ]),
+      ),
+    ).toEqual([]);
+  });
+
+  it('does NOT catch a field shadowing a base field — likewise', () => {
+    expect(validate(withFields([{ name: 'status', type: 'string', required: true }]))).toEqual([]);
+  });
+});
