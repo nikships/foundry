@@ -614,15 +614,16 @@ export default function SettingsScreen({
                   <div className={styles.settingsFields}>
                     <Field
                       label="Preferred terminal"
-                      hint="Used by Smith's launcher to open your project directory. Foundry does not embed a terminal; it opens yours."
+                      hint="Used by Smith's launcher. Ghostty is handed a ready-made session; the others open your project directory and you paste the bootstrap line."
                     >
                       <Dropdown
                         value={settings.terminalApp}
                         options={TERMINAL_APPS.map((terminal) => ({
                           value: terminal.id,
                           label: terminal.label,
-                          description:
-                            terminal.id === 'terminal'
+                          description: terminal.prepared
+                            ? `Starts the Smith session for you — must be installed.`
+                            : terminal.id === 'terminal'
                               ? 'Ships with macOS, so it always resolves.'
                               : `Opens ${terminal.appName}.app — must be installed.`,
                         }))}
