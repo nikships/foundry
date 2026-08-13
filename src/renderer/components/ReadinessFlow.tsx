@@ -533,17 +533,32 @@ export default function ReadinessFlow({
         )}
 
         {state?.pr && (
-          <p className={styles.link}>
-            <button
-              type="button"
-              className="link"
-              onClick={() => void api.app.openExternal(state.pr!.url)}
-            >
-              {state.pr.url}
-            </button>
-          </p>
+          <section className={styles.pr} data-testid="readiness-pr">
+            <div className={styles.prMain}>
+              <div className={styles.prTitleRow}>
+                <span className={styles.prNumber}>PR #{state.pr.number}</span>
+                <span
+                  className={`${styles.prState} ${state.pr.merged ? styles.prMerged : styles.prOpen}`}
+                >
+                  {state.pr.merged ? 'Merged' : 'Open'}
+                </span>
+              </div>
+              <button
+                type="button"
+                className={styles.prUrl}
+                title={state.pr.url}
+                onClick={() => void api.app.openExternal(state.pr!.url)}
+              >
+                {state.pr.url}
+              </button>
+              {state.mergeDetail && <p className={styles.prNote}>{state.mergeDetail}</p>}
+            </div>
+            <Button size="sm" onClick={() => void api.app.openExternal(state.pr!.url)}>
+              Open on GitHub
+            </Button>
+          </section>
         )}
-        {state?.mergeDetail && <p className={styles.lead}>{state.mergeDetail}</p>}
+        {!state?.pr && state?.mergeDetail && <p className={styles.lead}>{state.mergeDetail}</p>}
         {phase === 'skipped' && (
           <p className={styles.warn}>
             The Agent Readiness process can be run again anytime from project settings.

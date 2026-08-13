@@ -309,9 +309,73 @@
   grid-template-columns: 1fr 1fr;
   gap: var(--s3);
 }
-.link {
+.pr {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  padding: var(--s3) var(--s4);
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+.prMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+.prTitleRow {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+.prNumber {
   font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text);
+}
+.prState {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  padding: 1px var(--s2);
+  border-radius: var(--r-full);
+}
+.prOpen {
+  color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 14%, transparent);
+}
+.prMerged {
+  color: var(--green);
+  background: color-mix(in srgb, var(--green) 14%, transparent);
+}
+.prUrl {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 0;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.prUrl:hover {
+  color: var(--accent-bright);
+  text-decoration: underline;
+}
+.prNote {
+  margin: 2px 0 0;
   font-size: 12px;
+  color: var(--text-dim);
+  line-height: var(--leading);
 }
 .pass {
   color: var(--green);

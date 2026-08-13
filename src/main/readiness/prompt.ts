@@ -14,6 +14,7 @@ Rules:
 - CI parity is sacred. Checks that pass locally must pass in GitHub Actions — existing, newly created, or edited.
 - Adapt per repo. Apply the checklist in a language- and monorepo-aware way. Record every N/A ruling with reasoning. Typecheck is N/A only when no type system applies.
 - Do not write \`.agents/agent-ready.json\`. Foundry writes that marker itself after it re-runs verification.
+- Exempt the marker from every gate. Because Foundry writes \`.agents/agent-ready.json\` after your turn and after verification, no local check ever sees it — but CI will, and a formatter or linter that rejects it turns your PR red. Add \`.agents/agent-ready.json\` (or \`.agents/\`) to every ignore file the repo's gates read: \`.prettierignore\`, \`.eslintignore\` or the flat config's \`ignores\`, and any equivalent for the repo's formatter, linter, spell checker, or license-header check. Create the ignore file if it does not exist. Do this even when the criterion it protects already passes.
 - Do not weaken zero-interrupt behavior of pipeline runs. You are only this onboarding agent.
 
 Checklist (all must pass or be recorded N/A):
@@ -44,6 +45,8 @@ export function readinessRemediatePrompt(evaluation: ReadinessEvaluation): strin
     failed.length
       ? `Fix these first: ${failed.map((c) => c.id).join(', ')}.`
       : 'All criteria already pass. Make sure the repo stays green; do not write the marker file.',
+    '',
+    'Before you finish, make sure .agents/agent-ready.json is ignored by every gate the repo runs (.prettierignore, eslint ignores, and any other formatter/linter/spell-check ignore list). Foundry writes that file after verification, so CI is the first check that sees it.',
     '',
     'When you are done, reply with a short summary of what you changed. Do not write .agents/agent-ready.json.',
   ]
