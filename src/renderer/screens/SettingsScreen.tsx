@@ -13,6 +13,7 @@ import type {
 } from '@shared/types.js';
 import { TERMINAL_APPS } from '@shared/types.js';
 import { api, plain } from '../api.js';
+import { isKnownPrWriter, prWriterOptions } from '../pr-draft.js';
 import { useApp } from '../stores/app.js';
 import ModelPicker from '../components/ModelPicker.js';
 import { CliIcon } from '../components/BrandIcon.js';
@@ -145,7 +146,8 @@ export default function SettingsScreen({
   openNonce?: number;
   onOpenReadiness?: (projectId: string) => void;
 }): React.JSX.Element {
-  const { settings, project, projects, refreshAll, patchSettings, selectProject } = useApp();
+  const { settings, project, projects, agents, refreshAll, patchSettings, selectProject } =
+    useApp();
   const [pane, setPane] = useState<Pane>((initialPane as Pane) ?? 'general');
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [clis, setClis] = useState<CliDescriptor[]>([]);
@@ -812,6 +814,29 @@ export default function SettingsScreen({
                             { value: 'max', label: 'Max' },
                           ]}
                           onChange={(next) => void set({ readinessReasoningEffort: next as never })}
+                        />
+                      </Field>
+                    </div>
+                  </Section>
+                  <Section
+                    label="Pull requests"
+                    note="Who drafts a PR when a pipeline asks for one."
+                  >
+                    <div className={styles.settingsFields}>
+                      <Field
+                        label="PR writer"
+                        hint="Roster agent used when adding a PR phase. A pipeline that names an agent still wins."
+                        error={
+                          isKnownPrWriter(settings.prAgent, agents)
+                            ? undefined
+                            : "Not in this project's roster. Settings still load; pick a writer that exists."
+                        }
+                      >
+                        <Dropdown
+                          value={settings.prAgent}
+                          options={prWriterOptions(agents, settings.prAgent)}
+                          aria-label="PR writer"
+                          onChange={(next) => void set({ prAgent: next })}
                         />
                       </Field>
                     </div>

@@ -260,6 +260,7 @@ export default function RunDetailScreen({
         <OutcomeBanner
           run={view.run}
           phases={view.phases}
+          envelopes={view.envelopes}
           worktreeBusy={worktreeBusy}
           worktreeMessage={worktreeMessage}
           worktreeError={worktreeError}
