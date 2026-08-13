@@ -136,6 +136,10 @@ npm run test:coverage       # vitest run --coverage (enforces thresholds; part o
 npx vitest run -t "<name>"  # focus by test name pattern
 npx vitest run tests/engine.test.ts  # single file
 
+# Run the suite with capped workers; the default parallelism can be killed locally.
+npx vitest run --maxWorkers=2
+npx vitest run --coverage --maxWorkers=2
+
 # Electron UI smoke — Playwright + the built app. Needs a macOS GUI session.
 # Not part of `npm run check`; do not add it there.
 npm run build && npm run test:e2e
