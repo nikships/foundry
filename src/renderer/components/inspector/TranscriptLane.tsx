@@ -113,13 +113,19 @@ export default function TranscriptLane({
   return (
     <section className={`${styles.lane} ${phase.status} ${focused ? 'focused' : ''}`}>
       <header className={styles.laneHead}>
-        <AgentAvatar name={phase.owner} size={26} />
+        <span className={styles.laneAvatar}>
+          <AgentAvatar name={phase.owner} size={26} />
+        </span>
         <div className={styles.laneTitle}>
-          <span className={styles.lanePhase}>{phase.name}</span>
+          <span className={styles.lanePhase} title={phase.name}>
+            {phase.name}
+          </span>
           <span className={styles.laneAgent}>
-            {phase.owner ?? 'code'}
+            <span className={styles.laneOwner}>{phase.owner ?? 'code'}</span>
             <span className={styles.laneCli}>{cli}</span>
-            <span className={styles.laneModel}>{model}</span>
+            <span className={styles.laneModel} title={model}>
+              {model}
+            </span>
           </span>
         </div>
         <div className={styles.laneStats}>
@@ -127,16 +133,22 @@ export default function TranscriptLane({
             <span className={styles.laneTokens}>{tokens(tokenCount)} tok</span>
           )}
           <ContextBar session={session} />
-          {session && <ContextBreakdownDisclosure runId={session.runId} agent={session.agent} />}
+          {session && (
+            <span className={styles.laneCtx}>
+              <ContextBreakdownDisclosure runId={session.runId} agent={session.agent} />
+            </span>
+          )}
           {elapsed != null && <span className={styles.laneElapsed}>{duration(elapsed)}</span>}
-          <StatusBadge status={phase.status} />
-          <button
-            className={styles.laneFocus}
-            onClick={onToggleFocus}
-            title={focused ? 'Back to all lanes' : 'Focus this lane'}
-          >
-            {focused ? '✕' : '⤢'}
-          </button>
+          <span className={styles.laneStatus}>
+            <StatusBadge status={phase.status} />
+            <button
+              className={styles.laneFocus}
+              onClick={onToggleFocus}
+              title={focused ? 'Back to all lanes' : 'Focus this lane'}
+            >
+              {focused ? '✕' : '⤢'}
+            </button>
+          </span>
         </div>
       </header>
       <div className={styles.laneScroll} ref={scrollRef} onScroll={onScroll}>
