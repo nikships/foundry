@@ -20,14 +20,18 @@ You are not running inside Foundry. You are in the user's own terminal, talking
 to the Foundry app over a local socket. That means two things you must handle
 explicitly rather than assume:
 
-- **Scope.** Foundry entities can be global or owned by one project. You do not
-  inherit a project. Run `foundry-cli project list` and confirm with the user
-  which project you are scoped to — or that you are working globally — before
-  your first write. Once settled, pass it as `--project <id>` (or export
+- **Scope.** Foundry entities can be global or owned by one project. If your
+  opening prompt says `FOUNDRY_SMITH_PROJECT` is already exported (a prepared
+  Ghostty session launched from Foundry), you already have your scope — confirm
+  it with `echo $FOUNDRY_SMITH_PROJECT` and do not re-ask or re-derive it.
+  Otherwise, run `foundry-cli project list` and confirm with the user which
+  project you are scoped to — or that you are working globally — before your
+  first write. Once settled, pass it as `--project <id>` (or export
   `FOUNDRY_SMITH_PROJECT`) on every call.
 - **Inventory.** Nothing is baked into this document. At the start of a session,
-  run `agent list`, `pipeline list`, and `envelope list` so you know what already
-  exists before you propose something that collides with it.
+  verify your wiring first (see Setup), then run `agent list`, `pipeline list`,
+  and `envelope list` so you know what already exists before you propose
+  something that collides with it.
 
 Read the rest of this skill before your first write. It is the whole contract:
 the app validates what you send and a human approves it, but neither of them
@@ -64,15 +68,52 @@ need more depth than this, read the repo's own `AGENTS.md`.
 closed, every command exits 2 with `Foundry is not running`. That is not an error
 to work around — ask the user to launch the app.
 
-**Shortcut: the app can set this up for you.** Foundry's sidebar has a **Smith**
-entry. With Ghostty as the preferred terminal it starts the whole session — a
-window at the project root, `foundry-cli` already on `PATH`, the scope and socket
-already exported, and the agent already told to read this file. Every other
-terminal gets the directory opened and a copyable bootstrap line instead.
+**How you were launched — check wiring before you define anything.**
 
-Either way, **check before resolving anything by hand**: run
-`foundry-cli project list`. If it answers, you are already wired up and must not
-redefine `foundry-cli` or re-derive the scope.
+Smith sessions start one of two ways. Your opening prompt tells you which — trust
+it over this document:
+
+1. **Prepared session (Ghostty — Foundry's "Start Smith" button).**
+   Foundry already put `foundry-cli` on your `PATH` as a shim, exported
+   `FOUNDRY_SMITH_PROJECT` and `FOUNDRY_SMITH_SOCKET`, `cd`'d to the project
+   root, and instructed your harness to read this file. You are wired.
+
+   Verify with a single call. Do not redefine `foundry-cli`, do not re-derive
+   the scope, and do not inspect the shim:
+
+   ```bash
+   foundry-cli project list
+   ```
+
+   - If it prints JSON, you are live — go to Inventory.
+   - If it fails with `node: command not found` or `env: node: No such file`,
+     your `PATH` is the GUI's minimal one (launchd). Repair it **once** and
+     retry — do not start diagnosing the install:
+
+     ```bash
+     export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+     foundry-cli project list
+     ```
+
+   Only if `foundry-cli` itself is `command not found` should you fall through
+   to "Finding the CLI" below.
+
+2. **Manual handoff (every other terminal).**
+   Foundry opened the project directory and showed the user a bootstrap line.
+   If `foundry-cli project list` is `command not found`, define the helper
+   exactly as the launcher shows and export the scope it gives you:
+
+   ```bash
+   foundry-cli() { node '/Applications/Foundry.app/Contents/Resources/app.asar.unpacked/out/main/foundry-cli.js' "$@"; }
+   export FOUNDRY_SMITH_PROJECT='proj_...'
+   ```
+
+   Then verify with `foundry-cli project list`.
+
+Either way, **if `foundry-cli project list` answers, you are wired — do not
+redefine `foundry-cli`, do not re-export the scope, and do not run extra
+diagnostics** (`which`, `ls`, `cat` of the shim). Extra checks only create
+noise; the JSON response is the proof.
 
 **Socket path.** The CLI defaults to the app's real support-dir path:
 
@@ -83,7 +124,9 @@ redefine `foundry-cli` or re-derive the scope.
 Set `FOUNDRY_SMITH_SOCKET` to override it (see Troubleshooting — a dev instance
 launched with a custom `--user-data-dir` needs this).
 
-**Finding the CLI.** It ships inside the app; you invoke it with `node`.
+**Finding the CLI (fallback only).** In a prepared session the shim on `PATH` is
+the entry point — use `foundry-cli` directly. Only when `command -v foundry-cli`
+finds nothing should you invoke the helper with `node` by absolute path:
 
 ```bash
 # Packaged app (the common case)
@@ -93,9 +136,8 @@ node "/Applications/Foundry.app/Contents/Resources/app.asar.unpacked/out/main/fo
 node <repo>/out/main/foundry-cli.js agent list     # run `npm run build` first if out/ is missing
 ```
 
-Resolve the path once, then define `foundry-cli` for the rest of the session so
-every later command reads the way this document writes them. This is the same line
-the app's Smith launcher hands over:
+If you must define `foundry-cli` by hand, do it once so later commands read as
+this document writes them:
 
 ```bash
 foundry-cli() { node '/Applications/Foundry.app/Contents/Resources/app.asar.unpacked/out/main/foundry-cli.js' "$@"; }
@@ -273,7 +315,10 @@ substitute for the approval card.
   are yours to fix and should never reach the human.
 - **`show` before `edit`.** Start from the real current definition, not from
   memory or from what you proposed earlier in the session.
-- **Confirm scope before your first write**, then keep passing it.
+- **Confirm scope once, then keep it.** In a prepared session your prompt
+  already states the scope — a quick `echo $FOUNDRY_SMITH_PROJECT` is
+  confirmation enough. Otherwise confirm with the user before your first write.
+  Either way, keep passing `--project <id>` (or keep the export) on every call.
 - **Expect approval on every write.** Do not assume, do not batch, do not
   pre-announce success.
 - **On rejection, wait for guidance** and revise. Do not re-propose the same spec.
@@ -287,11 +332,12 @@ substitute for the approval card.
 
 ## Troubleshooting
 
-| Symptom                                                 | Cause and fix                                                                                                                                                                                               |
-| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `{"ok":false,"error":"Foundry is not running"}`, exit 2 | The app is closed, or it runs on a non-default support dir. Ask the user to launch it; for a dev instance started with `--user-data-dir`, set `FOUNDRY_SMITH_SOCKET=<that dir>/foundry/smith/foundry.sock`. |
-| `proposal_pending`                                      | A card is already open in the app. Wait for the human to answer it.                                                                                                                                         |
-| `no agent named "x"` on `show`                          | Wrong scope. `project list`, then retry with the right `--project <id>`.                                                                                                                                    |
-| Validation complains about an unknown agent in a phase  | The phase's `agent` must exist in the _same_ scope as the pipeline. `agent list --project <id>` to check.                                                                                                   |
-| `node: ... foundry-cli.js: no such file`                | Wrong install path, or a dev checkout that was never built (`npm run build`).                                                                                                                               |
-| Exit 3                                                  | Your command line, not the app: check kind, name position, and `--file`.                                                                                                                                    |
+| Symptom                                                 | Cause and fix                                                                                                                                                                                                                                                                            |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `{"ok":false,"error":"Foundry is not running"}`, exit 2 | The app is closed, or it runs on a non-default support dir. Ask the user to launch it; for a dev instance started with `--user-data-dir`, set `FOUNDRY_SMITH_SOCKET=<that dir>/foundry/smith/foundry.sock`.                                                                              |
+| `node: command not found` or `env: node: No such file`  | GUI-launched shell has launchd's minimal PATH — `node` lives in `/opt/homebrew/bin` or `/usr/local/bin` and is invisible. Fix once: `export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"` then retry the same `foundry-cli` command. Do not redefine `foundry-cli` or inspect the shim. |
+| `proposal_pending`                                      | A card is already open in the app. Wait for the human to answer it.                                                                                                                                                                                                                      |
+| `no agent named "x"` on `show`                          | Wrong scope. `project list`, then retry with the right `--project <id>`.                                                                                                                                                                                                                 |
+| Validation complains about an unknown agent in a phase  | The phase's `agent` must exist in the _same_ scope as the pipeline. `agent list --project <id>` to check.                                                                                                                                                                                |
+| `node: ... foundry-cli.js: no such file`                | Wrong install path, or a dev checkout that was never built (`npm run build`).                                                                                                                                                                                                            |
+| Exit 3                                                  | Your command line, not the app: check kind, name position, and `--file`.                                                                                                                                                                                                                 |
