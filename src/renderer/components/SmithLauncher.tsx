@@ -1,14 +1,20 @@
 /**
- * The Smith launcher. Sits where the embedded terminal's modal used to, and does
- * the one job the app still has in starting a session: get the user into their
- * own terminal, in the right directory, holding the three things they cannot
- * guess — the helper CLI's resolved path, where the skill shipped, and the
- * project scope.
+ * The Smith launcher. Does the one job the app still has in starting a session:
+ * get the user into their own terminal, in the right directory, holding the three
+ * things they cannot guess — the helper CLI's resolved path, where the skill
+ * shipped, and the project scope.
  *
- * Deliberately not a terminal, and deliberately not a wizard. One button that
- * opens the emulator, two copyable blocks, and a note about where to change the
- * emulator. Everything it shows is resolved fresh by main on open, because the
- * app can be moved and the preference can change between opens.
+ * This is the fallback, not the front door. The sidebar's Smith button starts the
+ * session outright when the preferred terminal can be handed one, and only opens
+ * this when it could not: no project, an emulator that takes no command, a
+ * missing agent CLI, or a launch that failed. So it renders one of two shapes,
+ * decided by main's `canAutoStart` — a retry button for the prepared case, and
+ * the manual handoff (open the directory, paste the bootstrap) for the rest,
+ * because typing into those emulators means AppleScript a vendor update can break.
+ *
+ * Deliberately not a terminal, and deliberately not a wizard. Everything it shows
+ * is resolved fresh by main on open, because the app can be moved and the
+ * preference can change between opens.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -58,17 +64,20 @@ function CopyRow({
 
 export default function SmithLauncher({
   projectId,
+  initialError = '',
   onClose,
   onOpenSettings,
 }: {
   /** The active project. Empty means nothing is selected. */
   projectId: string;
+  /** An error from the sidebar's one-click start, so the reason is not lost on the way here. */
+  initialError?: string;
   onClose: () => void;
   /** Opens the settings pane holding the terminal preference. */
   onOpenSettings?: (pane: string) => void;
 }): React.JSX.Element {
   const [info, setInfo] = useState<SmithLaunchInfo | null>(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(initialError);
   const [opening, setOpening] = useState(false);
 
   useEffect(() => {
@@ -92,6 +101,7 @@ export default function SmithLauncher({
   const project = info?.project ?? null;
   const terminal = info?.terminal;
   const blocked = !project ? 'no-project' : !project.exists ? 'missing-path' : '';
+  const autoStart = !!info?.canAutoStart;
 
   return (
     <ModalShell onClose={onClose} ariaLabelledBy="smith-launcher-title" className={styles.dialog}>
@@ -102,8 +112,9 @@ export default function SmithLauncher({
             Start a Smith session
           </h2>
           <p className={styles.subtitle}>
-            Smith runs in your terminal, on whichever agent you like. Foundry stays listening and
-            approves every write.
+            {autoStart
+              ? `Foundry opens ${terminal?.label}, starts your agent in this project, and has it load the Smith skill. Foundry stays listening and approves every write.`
+              : 'Smith runs in your terminal, on whichever agent you like. Foundry stays listening and approves every write.'}
           </p>
         </div>
       </header>
@@ -125,9 +136,16 @@ export default function SmithLauncher({
           variant="primary"
           onClick={() => void openTerminal()}
           disabled={!!blocked || opening}
+          data-testid="smith-launch"
         >
           <TerminalSquare size={14} aria-hidden />
-          {opening ? 'Opening…' : `Open ${terminal?.label ?? 'Terminal'}`}
+          {opening
+            ? autoStart
+              ? 'Starting…'
+              : 'Opening…'
+            : autoStart
+              ? 'Start Smith'
+              : `Open ${terminal?.label ?? 'Terminal'}`}
         </Button>
         {project && <span className={styles.path}>{project.path}</span>}
       </div>
@@ -147,29 +165,47 @@ export default function SmithLauncher({
         </p>
       )}
 
-      <ol className={styles.steps}>
-        <li>
-          <span className={styles.stepText}>Paste this into the new shell.</span>
-          <CopyRow
-            label="Bootstrap"
-            value={info?.bootstrap ?? ''}
-            hint="Defines foundry-cli and scopes it to this project."
-          />
-        </li>
-        <li>
-          <span className={styles.stepText}>Need the skill?</span>
-          <CopyRow label="Skill" value="npx skills add nikships/foundry" />
-        </li>
-        <li>
-          <span className={styles.stepText}>
-            Ask it to create or edit an agent, pipeline, or envelope. Each write raises an approval
-            card here.
-          </span>
-        </li>
-      </ol>
+      {autoStart ? (
+        <div className={styles.block}>
+          <span className={styles.label}>Sent to your agent</span>
+          <pre className={`${styles.code} selectable`}>{info?.prompt}</pre>
+          <p className={styles.hint}>
+            The window is left in a shell at the project root when the agent exits, with{' '}
+            <code>foundry-cli</code> still on its PATH. Ask Smith to create or edit an agent,
+            pipeline, or envelope — each write raises an approval card here.
+          </p>
+        </div>
+      ) : (
+        <ol className={styles.steps}>
+          <li>
+            <span className={styles.stepText}>Paste this into the new shell.</span>
+            <CopyRow
+              label="Bootstrap"
+              value={info?.bootstrap ?? ''}
+              hint="Defines foundry-cli and scopes it to this project."
+            />
+          </li>
+          <li>
+            <span className={styles.stepText}>Need the skill?</span>
+            <CopyRow label="Skill" value="npx skills add nikships/foundry" />
+          </li>
+          <li>
+            <span className={styles.stepText}>
+              Ask it to create or edit an agent, pipeline, or envelope. Each write raises an
+              approval card here.
+            </span>
+          </li>
+        </ol>
+      )}
 
       <footer className={styles.footer}>
         <span className={styles.footNote}>
+          {info?.autoStartBlocked === 'terminal' && (
+            <>Only Ghostty can be handed a ready-made session; the rest get the manual handoff. </>
+          )}
+          {info?.autoStartBlocked === 'agent-cli' && (
+            <>Foundry could not find your agent CLI, so it cannot start the session for you. </>
+          )}
           Terminal preference lives in{' '}
           <button type="button" className={styles.link} onClick={() => onOpenSettings?.('general')}>
             Settings → General

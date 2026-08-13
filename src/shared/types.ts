@@ -944,13 +944,21 @@ export interface TerminalAppInfo {
    * user typed.
    */
   appName: string;
+  /**
+   * Whether Foundry can start the session itself rather than only opening a
+   * directory at it. That needs an emulator which runs a command given on its
+   * own command line — on macOS, Ghostty's documented `open -na Ghostty.app
+   * --args -e <command>`. The others take a directory and nothing else, so they
+   * keep the copyable handoff.
+   */
+  prepared?: true;
 }
 
 /** Terminal.app first: it is the only one guaranteed to be installed. */
 export const TERMINAL_APPS: readonly TerminalAppInfo[] = [
   { id: 'terminal', label: 'Terminal', appName: 'Terminal' },
   { id: 'iterm', label: 'iTerm2', appName: 'iTerm' },
-  { id: 'ghostty', label: 'Ghostty', appName: 'Ghostty' },
+  { id: 'ghostty', label: 'Ghostty', appName: 'Ghostty', prepared: true },
   { id: 'warp', label: 'Warp', appName: 'Warp' },
   { id: 'alacritty', label: 'Alacritty', appName: 'Alacritty' },
   { id: 'kitty', label: 'kitty', appName: 'kitty' },
@@ -1008,9 +1016,32 @@ export interface SmithLaunchInfo {
   bootstrap: string;
   /** The terminal the launch button will use, and whether it is actually installed. */
   terminal: TerminalAppInfo & { installed: boolean };
+  /**
+   * True when this launch will start the agent itself: the chosen terminal
+   * supports being handed a command, and the agent CLI resolved to a real file.
+   * False falls back to opening the directory and letting the user paste.
+   */
+  canAutoStart: boolean;
+  /** Why an auto-start is unavailable, for the launcher to say so plainly. */
+  autoStartBlocked?: 'terminal' | 'agent-cli';
+  /** The opening instruction the agent is started with, shown before it is sent. */
+  prompt: string;
   /** The project the session would scope to; null means no project is selected. */
   project: { id: string; name: string; path: string; exists: boolean } | null;
 }
+
+/**
+ * What the sidebar's Smith click did.
+ *
+ * `started` is the whole point of the prepared path: there is nothing to show,
+ * because the session is already up in the user's terminal. Every other outcome
+ * carries the reason the launcher has to open — so the modal is the exception,
+ * not a toll booth in front of the common case.
+ */
+export type SmithStartResult =
+  | { status: 'started' }
+  | { status: 'needs-launcher'; reason: SmithLaunchInfo['autoStartBlocked'] | 'project' }
+  | { status: 'error'; error: string };
 
 // ── Updater ──────────────────────────────────────────────────────────────────
 

@@ -8,13 +8,24 @@
  * inside `app.asar` is not a file on disk at all.
  */
 
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { TERMINAL_APPS } from '../src/shared/types.js';
-import { resolveFromMainDir, shellQuote, smithBootstrap } from '../src/main/smith/launch.js';
+import {
+  resolveFromMainDir,
+  shellQuote,
+  smithBootstrap,
+  smithPrompt,
+  smithSessionScript,
+  smithShimScript,
+} from '../src/main/smith/launch.js';
+import { prepareSession } from '../src/main/smith/session.js';
 import {
   openDirectoryInTerminal,
+  preparedTerminalArgv,
+  runCommandInTerminal,
   terminalFor,
   terminalInstalled,
 } from '../src/main/system/terminal.js';
@@ -65,6 +76,137 @@ describe('smithBootstrap', () => {
     expect(smithBootstrap({ cliPath: '/Applications/My Foundry.app/cli.js' })).toContain(
       `node '/Applications/My Foundry.app/cli.js'`,
     );
+  });
+});
+
+describe('smithShimScript', () => {
+  it('is an executable script, not a function definition — an agent spawns its own shells', () => {
+    const script = smithShimScript('/app/out/main/foundry-cli.js');
+    expect(script.startsWith('#!/bin/sh\n')).toBe(true);
+    expect(script).toContain(`exec node '/app/out/main/foundry-cli.js' "$@"`);
+    expect(script).not.toContain('foundry-cli()');
+  });
+
+  it('quotes a path with a space so the shim does not exec two words', () => {
+    expect(smithShimScript('/Applications/My Foundry.app/cli.js')).toContain(
+      `node '/Applications/My Foundry.app/cli.js'`,
+    );
+  });
+});
+
+describe('smithPrompt', () => {
+  it('points at the shipped SKILL.md by absolute path, since the user may not have it installed', () => {
+    const prompt = smithPrompt({ skillDir: '/app/skills/foundry-smith' });
+    expect(prompt).toContain('/app/skills/foundry-smith/SKILL.md');
+    expect(prompt).toContain('Smith persona');
+  });
+
+  it('states the scope as settled, so the agent does not re-ask what the launcher exported', () => {
+    const prompt = smithPrompt({ skillDir: '/skills', projectName: 'foundry' });
+    expect(prompt).toContain('"foundry" project');
+    expect(prompt).toContain('do not ask which project');
+  });
+
+  it('says global scope when no project is selected rather than naming nothing', () => {
+    const prompt = smithPrompt({ skillDir: '/skills' });
+    expect(prompt).toContain('global scope');
+    expect(prompt).not.toContain('FOUNDRY_SMITH_PROJECT is already exported');
+  });
+});
+
+describe('smithSessionScript', () => {
+  const base = {
+    binDir: '/support/smith/bin',
+    projectPath: '/repos/foundry',
+    socketPath: '/support/smith/foundry.sock',
+    agentPath: '/usr/local/bin/droid',
+    prompt: 'Read /skills/SKILL.md and become Smith.',
+    shell: '/bin/zsh',
+    projectId: 'proj_1a2b',
+  };
+
+  it('puts the shim ahead of the inherited PATH so foundry-cli resolves to ours', () => {
+    expect(smithSessionScript(base).split('\n')[0]).toBe(
+      `export PATH='/support/smith/bin':"$PATH"`,
+    );
+  });
+
+  it('pins the socket and the scope, so a dev instance is reached and --project is not needed', () => {
+    const lines = smithSessionScript(base).split('\n');
+    expect(lines).toContain(`export FOUNDRY_SMITH_SOCKET='/support/smith/foundry.sock'`);
+    expect(lines).toContain(`export FOUNDRY_SMITH_PROJECT='proj_1a2b'`);
+  });
+
+  it('omits the scope export in global scope rather than exporting empty', () => {
+    const script = smithSessionScript({ ...base, projectId: undefined });
+    expect(script).not.toContain('FOUNDRY_SMITH_PROJECT');
+  });
+
+  it('exits rather than continuing in the wrong directory when cd fails', () => {
+    expect(smithSessionScript(base)).toContain(`cd '/repos/foundry' || exit 1`);
+  });
+
+  it('passes the prompt as one quoted argument, apostrophes and all', () => {
+    const script = smithSessionScript({ ...base, prompt: "Smith's job" });
+    expect(script).toContain(`'/usr/local/bin/droid' 'Smith'\\''s job'`);
+  });
+
+  it('ends by exec-ing an interactive shell, so a failed agent leaves its error on screen', () => {
+    const lines = smithSessionScript(base).split('\n');
+    expect(lines.at(-1)).toBe(`exec '/bin/zsh' -i`);
+  });
+});
+
+describe('prepareSession', () => {
+  const dirs: string[] = [];
+  const makeDir = (): string => {
+    const dir = mkdtempSync(join(tmpdir(), 'smith-session-'));
+    dirs.push(dir);
+    return dir;
+  };
+  afterAll(() => {
+    for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
+  });
+
+  const prepare = (sessionDir: string) =>
+    prepareSession({
+      sessionDir,
+      cliPath: '/app/out/main/foundry-cli.js',
+      agentPath: '/usr/local/bin/droid',
+      prompt: 'become Smith',
+      projectPath: '/repos/foundry',
+      socketPath: join(sessionDir, 'foundry.sock'),
+      shell: '/bin/zsh',
+      projectId: 'proj_1a2b',
+    });
+
+  it('writes the shim with the exec bit, since PATH lookup executes it rather than sourcing it', () => {
+    const session = prepare(makeDir());
+    const shim = join(session.binDir, 'foundry-cli');
+    expect(existsSync(shim)).toBe(true);
+    expect(statSync(shim).mode & 0o111).toBeGreaterThan(0);
+  });
+
+  it('writes a script that references the shim directory it just created', () => {
+    const session = prepare(makeDir());
+    expect(readFileSync(session.scriptPath, 'utf8')).toContain(shellQuote(session.binDir));
+  });
+
+  it('rewrites rather than accumulates, so a moved app cannot leave a stale shim', () => {
+    const dir = makeDir();
+    prepare(dir);
+    const second = prepareSession({
+      sessionDir: dir,
+      cliPath: '/moved/foundry-cli.js',
+      agentPath: '/usr/local/bin/droid',
+      prompt: 'become Smith',
+      projectPath: '/repos/foundry',
+      socketPath: join(dir, 'foundry.sock'),
+      shell: '/bin/zsh',
+    });
+    const shim = readFileSync(join(second.binDir, 'foundry-cli'), 'utf8');
+    expect(shim).toContain('/moved/foundry-cli.js');
+    expect(shim).not.toContain('/app/out/main/foundry-cli.js');
   });
 });
 
@@ -130,6 +272,39 @@ describe('terminal selection', () => {
   it('reports an obviously absent application as not installed', () => {
     expect(terminalInstalled('NoSuchTerminalApp-9f3a')).toBe(false);
   });
+
+  it('finds Terminal.app, which lives only under /System/Applications/Utilities', () => {
+    // The fallback emulator reporting as missing is worse than a wrong label:
+    // it is the one app every macOS install has.
+    expect(terminalInstalled('Terminal')).toBe(true);
+  });
+
+  it('flags only emulators with a documented command flag as prepared', () => {
+    // Adding `prepared` to one without it means opening a window that ignores
+    // the session entirely, so the catalog is pinned rather than described.
+    expect(TERMINAL_APPS.filter((t) => t.prepared).map((t) => t.id)).toEqual(['ghostty']);
+  });
+});
+
+describe('preparedTerminalArgv', () => {
+  const argv = preparedTerminalArgv({
+    appName: 'Ghostty',
+    directoryPath: '/repos/foundry',
+    command: ['/bin/sh', '/support/smith/session.sh'],
+  });
+
+  it('passes -n, without which a running instance ignores --args and opens a bare window', () => {
+    expect(argv[0]).toBe('-na');
+    expect(argv[1]).toBe('Ghostty.app');
+  });
+
+  it('puts -e last, since everything after it is taken as the command', () => {
+    expect(argv.slice(-3)).toEqual(['-e', '/bin/sh', '/support/smith/session.sh']);
+  });
+
+  it('sets the working directory so the agent starts in the project, not $HOME', () => {
+    expect(argv).toContain('--working-directory=/repos/foundry');
+  });
 });
 
 describe('openDirectoryInTerminal', () => {
@@ -143,5 +318,25 @@ describe('openDirectoryInTerminal', () => {
 
   it('rejects an empty path instead of opening the emulator at nothing', async () => {
     await expect(openDirectoryInTerminal('', 'Terminal')).rejects.toThrow('No directory to open');
+  });
+});
+
+describe('runCommandInTerminal', () => {
+  // Same contract as the directory handoff: reject so the launcher can say why,
+  // and check before spawning so no window is ever opened at a bad session.
+  it('rejects a directory that is not there', async () => {
+    await expect(
+      runCommandInTerminal({
+        appName: 'Ghostty',
+        directoryPath: '/tmp/definitely-not-here-8c21',
+        command: ['/bin/sh', '/tmp/session.sh'],
+      }),
+    ).rejects.toThrow(/Directory does not exist/);
+  });
+
+  it('rejects an empty command rather than opening a window with nothing in it', async () => {
+    await expect(
+      runCommandInTerminal({ appName: 'Ghostty', directoryPath: tmpdir(), command: [] }),
+    ).rejects.toThrow('No command to run');
   });
 });

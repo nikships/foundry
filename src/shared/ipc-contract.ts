@@ -36,6 +36,7 @@ import type {
   ReasoningEffort,
   RunRow,
   SmithLaunchInfo,
+  SmithStartResult,
   SmithProposal,
   SmithProposalAnswer,
   StartRunInput,
@@ -434,6 +435,12 @@ export interface FoundryApi {
      * CLI and skill paths, the bootstrap line, and the chosen terminal.
      */
     launchInfo(projectId: string): Promise<SmithLaunchInfo>;
+    /**
+     * The sidebar's Smith click. Starts the session outright when the preferred
+     * terminal can be handed one, and otherwise reports that the launcher has to
+     * take over. One call so the common path costs no modal.
+     */
+    start(projectId: string): Promise<SmithStartResult>;
     /** Opens the project directory in the preferred terminal. */
     openTerminal(projectId: string): Promise<{ ok: boolean; error?: string }>;
     /** The one pending proposal, or an empty list. Only ever one at a time. */
@@ -571,6 +578,7 @@ export const IPC = {
   interruptsList: 'interrupts:list',
   interruptsAnswer: 'interrupts:answer',
   smithLaunchInfo: 'smith:launchInfo',
+  smithStart: 'smith:start',
   smithOpenTerminal: 'smith:openTerminal',
   smithProposalsList: 'smith:proposalsList',
   smithProposalAnswer: 'smith:proposalAnswer',
