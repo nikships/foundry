@@ -5,9 +5,9 @@
  * Scripted TransportSession stand-ins — no real daemon, no API key, no model.
  */
 
-import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tempDir } from './tmp.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AgentSession, type Mode, type OpenDaemonResult } from '../src/main/droid/agent.js';
 import type { TransportSession, SessionTool } from '../src/main/droid/sdk/transport.js';
@@ -125,8 +125,8 @@ describe('AgentSession transport selection', () => {
   let modes: Mode[];
 
   beforeEach(() => {
-    support = mkdtempSync(join(tmpdir(), 'foundry-agent-transport-'));
-    worktree = mkdtempSync(join(tmpdir(), 'foundry-agent-wt-'));
+    support = tempDir('foundry-agent-transport-');
+    worktree = tempDir('foundry-agent-wt-');
     const db = openDb(projectDbPath(support, 'proj'));
     tracer = new Tracer(db, projectRunsDir(support, 'proj'));
     runId = `run_${Math.random().toString(36).slice(2, 8)}`;
@@ -430,8 +430,8 @@ describe('AgentSession transport selection', () => {
 
     it('builds an ephemeral home, traces what it withheld, and removes it on close', async () => {
       beginRun('rpc');
-      const home = mkdtempSync(join(tmpdir(), 'foundry-iso-home-'));
-      const overlayRoot = mkdtempSync(join(tmpdir(), 'foundry-iso-tmp-'));
+      const home = tempDir('foundry-iso-home-');
+      const overlayRoot = tempDir('foundry-iso-tmp-');
       mkdirSync(join(home, '.factory', 'droids'), { recursive: true });
       writeFileSync(join(home, '.factory', 'droids', 'reviewer.md'), '# reviewer\n', 'utf8');
 
@@ -478,7 +478,7 @@ describe('AgentSession transport selection', () => {
 
     it('builds nothing on a host with nothing to withhold', async () => {
       beginRun('rpc');
-      const overlayRoot = mkdtempSync(join(tmpdir(), 'foundry-iso-none-'));
+      const overlayRoot = tempDir('foundry-iso-none-');
       const rpc = scriptedSession({ id: 'rpc-clean' });
       const session = makeSession({
         transport: 'subprocess',

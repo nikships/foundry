@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tempDir } from './tmp.js';
 import { describe, expect, it } from 'vitest';
 import {
   ALWAYS_PROTECTED,
@@ -19,7 +19,7 @@ function sh(cwd: string, argv: string[]): string {
 }
 
 function tempRepo(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'foundry-boundary-'));
+  const dir = tempDir('foundry-boundary-');
   sh(dir, ['git', 'init', '-q', '-b', 'main']);
   sh(dir, ['git', 'config', 'user.email', 'test@foundry.local']);
   sh(dir, ['git', 'config', 'user.name', 'Foundry Test']);

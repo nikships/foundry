@@ -1,6 +1,6 @@
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tempDir } from './tmp.js';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { GATES, runGates, violationsOf, gateCorrection } from '../src/main/engine/gates.js';
 import type { Envelope } from '../src/main/engine/envelopes.js';
@@ -8,7 +8,7 @@ import type { Envelope } from '../src/main/engine/envelopes.js';
 let dir: string;
 
 beforeAll(() => {
-  dir = mkdtempSync(join(tmpdir(), 'foundry-gates-'));
+  dir = tempDir('foundry-gates-');
   mkdirSync(join(dir, 'specs'), { recursive: true });
   writeFileSync(join(dir, 'specs', 'plan.md'), '# a real plan\n');
   writeFileSync(join(dir, 'specs', 'empty.md'), '');

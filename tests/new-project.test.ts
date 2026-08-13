@@ -7,16 +7,17 @@
  * the destination is already occupied.
  */
 
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { tempDir } from './tmp.js';
 import { describe, expect, it } from 'vitest';
 import { createRepo, githubAccount, repoNameIssue } from '../src/main/system/gh.js';
 import { currentBranch, isRepo, refExists } from '../src/main/engine/git.js';
 import { makeFakeGh } from './fake-gh.js';
 
 function parentDir(): string {
-  return mkdtempSync(join(tmpdir(), 'foundry-newproject-'));
+  return tempDir('foundry-newproject-');
 }
 
 describe('repoNameIssue', () => {

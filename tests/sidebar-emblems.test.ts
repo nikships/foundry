@@ -106,7 +106,10 @@ describe('Sidebar wiring', () => {
       'aria-label={collapsed ? `${item.label} ⌘${item.key}` : undefined}',
     );
     expect(sidebarSrc).toContain('aria-label="Smith"');
-    expect(sidebarSrc).toContain('aria-label="Project"');
+    // The project picker names itself after the active project, so assert the
+    // binding and its no-project fallback rather than a literal attribute.
+    expect(sidebarSrc).toContain('aria-label={projectAriaLabel}');
+    expect(sidebarSrc).toMatch(/projectAriaLabel = .*: 'Project';/);
     expect(sidebarSrc).toContain("aria-label={collapsed ? 'Settings ⌘,' : undefined}");
     expect(sidebarSrc).toContain("aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}");
   });

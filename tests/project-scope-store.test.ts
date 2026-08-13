@@ -10,9 +10,8 @@
  * two cases apart — is pinned with it.
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { rmSync } from 'node:fs';
+import { tempDir } from './tmp.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RosterStore } from '../src/main/store/roster.js';
 import { PipelineStore } from '../src/main/store/pipelines.js';
@@ -21,7 +20,7 @@ let dir = '';
 const PROJECT = 'proj-1';
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'foundry-scope-'));
+  dir = tempDir('foundry-scope-');
 });
 
 afterEach(() => {

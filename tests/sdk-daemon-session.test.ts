@@ -6,9 +6,7 @@
  * parity with the subprocess SdkSession surface.
  */
 
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { tempDir } from './tmp.js';
 import { describe, expect, it } from 'vitest';
 import {
   AutonomyLevel,
@@ -854,7 +852,7 @@ describe('turns (VAL-DAEMON-004 parity pieces)', () => {
   });
 
   it('feeds EventFolder the same notification vocabulary as subprocess', async () => {
-    const support = mkdtempSync(join(tmpdir(), 'foundry-daemon-sess-'));
+    const support = tempDir('foundry-daemon-sess-');
     const tracer = new Tracer(
       openDb(projectDbPath(support, 'proj')),
       projectRunsDir(support, 'proj'),

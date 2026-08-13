@@ -7,9 +7,9 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tempDir } from './tmp.js';
 import { describe, expect, it } from 'vitest';
 import { fastForwardBase, headSha, preferredRemote } from '../src/main/engine/git.js';
 import * as worktree from '../src/main/engine/worktree.js';
@@ -38,7 +38,7 @@ function initRepo(dir: string): void {
 
 /** A working repo whose `origin` is a local bare repo, so push works offline. */
 function scratchRepoWithOrigin(): { repo: string; bare: string } {
-  const dir = mkdtempSync(join(tmpdir(), 'foundry-gh-'));
+  const dir = tempDir('foundry-gh-');
   const bare = join(dir, 'origin.git');
   const repo = join(dir, 'repo');
   // `-b main` matters twice over: the bare repo's HEAD must point at a branch
@@ -116,7 +116,7 @@ describe('openPr', () => {
   });
 
   it('refuses without a remote and never reaches gh', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'foundry-gh-noremote-'));
+    const dir = tempDir('foundry-gh-noremote-');
     initRepo(dir);
     const handle = await runBranch(dir, 'run_pr2');
     const gh = makeFakeGh();
@@ -313,7 +313,7 @@ describe('fastForwardBase', () => {
   /** Two clones of one bare origin: `ahead` pushes, `behind` catches up. */
   function twoClones(): { behind: string; ahead: string; bare: string } {
     const { repo: ahead, bare } = scratchRepoWithOrigin();
-    const dir = mkdtempSync(join(tmpdir(), 'foundry-gh-clone-'));
+    const dir = tempDir('foundry-gh-clone-');
     sh(dir, ['git', 'clone', '-q', bare, 'behind']);
     const behind = join(dir, 'behind');
     sh(behind, ['git', 'config', 'user.email', 'test@foundry.local']);

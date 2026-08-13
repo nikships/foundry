@@ -5,9 +5,9 @@
  * unit under test.
  */
 
-import { mkdtempSync, readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tempDir } from './tmp.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openDb, projectDbPath, projectRunsDir } from '../src/main/trace/db.js';
 import { Tracer } from '../src/main/trace/tracer.js';
@@ -35,7 +35,7 @@ let phaseId: string;
 let now: number;
 
 beforeEach(() => {
-  const support = mkdtempSync(join(tmpdir(), 'foundry-transcript-'));
+  const support = tempDir('foundry-transcript-');
   tracer = new Tracer(openDb(projectDbPath(support, 'proj')), projectRunsDir(support, 'proj'));
   runsDir = projectRunsDir(support, 'proj');
   runId = 'run_transcript_test';
@@ -267,7 +267,7 @@ describe('the change_id cursor', () => {
   });
 
   it('continues the sequence when the db is reopened', () => {
-    const support = mkdtempSync(join(tmpdir(), 'foundry-transcript-'));
+    const support = tempDir('foundry-transcript-');
     const dbPath = projectDbPath(support, 'proj');
     const dir = projectRunsDir(support, 'proj');
     const first = new Tracer(openDb(dbPath), dir);

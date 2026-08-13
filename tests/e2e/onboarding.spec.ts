@@ -1,12 +1,10 @@
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { tempDir } from '../tmp.js';
 import { expect, test, type ElectronApplication } from '@playwright/test';
 import { launchFoundry } from './harness.js';
 
 test.describe('onboarding / readiness', () => {
   test('walks welcome through the doctor readiness screen', async () => {
-    const userDataDir = mkdtempSync(join(tmpdir(), 'foundry-e2e-onboard-'));
+    const userDataDir = tempDir('foundry-e2e-onboard-');
     let app: ElectronApplication | undefined;
     try {
       const launched = await launchFoundry(userDataDir);

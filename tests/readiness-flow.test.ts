@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tempDir } from './tmp.js';
 import { describe, expect, it } from 'vitest';
 import { defaultProject } from '../src/main/store/projects.js';
 import { ProjectStore } from '../src/main/store/projects.js';
@@ -27,7 +27,7 @@ function write(root: string, rel: string, body: string): void {
 }
 
 function gitRepo(prefix: string): string {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
+  const dir = tempDir(prefix);
   sh(dir, ['git', 'init', '-q', '-b', 'main']);
   sh(dir, ['git', 'config', 'user.email', 'test@foundry.local']);
   sh(dir, ['git', 'config', 'user.name', 'Foundry Test']);
@@ -187,7 +187,7 @@ describe('onboarding transitions, skip, and retry', () => {
 
 describe('persistence', () => {
   it('round-trips skipped and validated flags through the project store', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'foundry-ready-store-'));
+    const dir = tempDir('foundry-ready-store-');
     const store = new ProjectStore(dir);
     const added = store.add('/tmp/some-repo');
     expect(added.readinessSkipped).toBeUndefined();

@@ -8,9 +8,9 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tempDir } from '../tmp.js';
 import { SettingsStore } from '../../src/main/store/settings.js';
 import { ProjectStore } from '../../src/main/store/projects.js';
 import { openDb, projectDbPath, projectRunsDir } from '../../src/main/trace/db.js';
@@ -48,7 +48,7 @@ export interface SeededFixture {
 }
 
 function scratchRepo(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'foundry-e2e-repo-'));
+  const dir = tempDir('foundry-e2e-repo-');
   const git = (argv: string[]): void => {
     execFileSync('git', argv, { cwd: dir, encoding: 'utf8' });
   };
@@ -67,7 +67,7 @@ function scratchRepo(): string {
  * The live app stores state at `<userData>/foundry/` (see `src/main/main.ts`).
  */
 export function seedOnboardedFixture(userDataDir?: string): SeededFixture {
-  const root = userDataDir ?? mkdtempSync(join(tmpdir(), 'foundry-e2e-app-'));
+  const root = userDataDir ?? tempDir('foundry-e2e-app-');
   const supportDir = join(root, 'foundry');
   mkdirSync(supportDir, { recursive: true });
 

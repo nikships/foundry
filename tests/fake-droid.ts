@@ -12,9 +12,9 @@
  * comes back without it.
  */
 
-import { writeFileSync, chmodSync, mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
+import { tempDir } from './tmp.js';
 
 export type FakeScenario =
   | 'happy'
@@ -213,7 +213,7 @@ function runTurn(_prompt) {
 
 /** Writes an executable stand-in and returns its path. */
 export function writeFakeDroid(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'foundry-fake-droid-'));
+  const dir = tempDir('foundry-fake-droid-');
   const js = join(dir, 'fake-droid.mjs');
   writeFileSync(js, SCRIPT);
   const bin = join(dir, 'droid');

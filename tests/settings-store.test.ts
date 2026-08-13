@@ -4,9 +4,9 @@
  * dropping the key must not cost them the rest of their configuration.
  */
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tempDir } from './tmp.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SettingsStore, defaultSettings, migrate } from '../src/main/store/settings.js';
 import { DEFAULT_PR_AGENT } from '../src/shared/types.js';
@@ -14,7 +14,7 @@ import { DEFAULT_PR_AGENT } from '../src/shared/types.js';
 let dir: string;
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'foundry-settings-'));
+  dir = tempDir('foundry-settings-');
 });
 
 afterEach(() => {

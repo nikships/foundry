@@ -5,9 +5,9 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { tempDir } from './tmp.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openDb, projectDbPath, projectRunsDir, type Db } from '../src/main/trace/db.js';
 import { Tracer } from '../src/main/trace/tracer.js';
@@ -43,7 +43,7 @@ function sh(cwd: string, argv: string[]): string {
 }
 
 function scratchRepo(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'foundry-exec-'));
+  const dir = tempDir('foundry-exec-');
   sh(dir, ['git', 'init', '-q', '-b', 'main']);
   sh(dir, ['git', 'config', 'user.email', 'test@foundry.local']);
   sh(dir, ['git', 'config', 'user.name', 'Foundry Test']);
@@ -54,7 +54,7 @@ function scratchRepo(): string {
 }
 
 function emptyRepo(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'foundry-empty-exec-'));
+  const dir = tempDir('foundry-empty-exec-');
   sh(dir, ['git', 'init', '-q', '-b', 'main']);
   sh(dir, ['git', 'config', 'user.email', 'test@foundry.local']);
   sh(dir, ['git', 'config', 'user.name', 'Foundry Test']);
@@ -220,7 +220,7 @@ function scriptedDroid(
   asks: ScriptedAsk[][] = [],
   options: ScriptedDroidOptions = {},
 ): string {
-  const dir = mkdtempSync(join(tmpdir(), 'foundry-scripted-'));
+  const dir = tempDir('foundry-scripted-');
   const state = join(dir, 'turn-count');
   writeFileSync(state, '0');
   const script = `
@@ -581,7 +581,7 @@ function prEnvelope(over: Record<string, unknown> = {}): string {
 
 /** Point the scratch checkout at a local bare origin so push works offline. */
 function addOrigin(repo: string): string {
-  const dir = mkdtempSync(join(tmpdir(), 'foundry-exec-origin-'));
+  const dir = tempDir('foundry-exec-origin-');
   const bare = join(dir, 'origin.git');
   sh(dir, ['git', 'init', '-q', '--bare', '-b', 'main', 'origin.git']);
   sh(repo, ['git', 'remote', 'add', 'origin', bare]);
@@ -621,7 +621,7 @@ let h: Harness;
 
 beforeEach(() => {
   const repo = scratchRepo();
-  const support = mkdtempSync(join(tmpdir(), 'foundry-support-'));
+  const support = tempDir('foundry-support-');
   const db = openDb(projectDbPath(support, repo));
   h = {
     repo,
@@ -1360,7 +1360,7 @@ describe('zero-interrupt runs', () => {
   ];
 
   it('settles with no human prompt and traces all four auto-decisions', async () => {
-    const outside = join(mkdtempSync(join(tmpdir(), 'foundry-outside-')), 'escaped.txt');
+    const outside = join(tempDir('foundry-outside-'), 'escaped.txt');
     const droid = scriptedDroid([buildEnvelope()], [], [everyAsk(outside)]);
     let humanAsked = 0;
 

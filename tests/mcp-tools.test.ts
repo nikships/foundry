@@ -3,9 +3,9 @@
  * the typed-overload contract (args once, clean errors on bad input).
  */
 
-import { mkdtempSync, readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tempDir } from './tmp.js';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   createFoundryMcpServer,
@@ -43,8 +43,8 @@ interface ServerLike {
 }
 
 function openTracer(): { tracer: Tracer; runId: string; phaseId: string } {
-  const support = mkdtempSync(join(tmpdir(), 'foundry-mcp-'));
-  const repo = mkdtempSync(join(tmpdir(), 'foundry-mcp-repo-'));
+  const support = tempDir('foundry-mcp-');
+  const repo = tempDir('foundry-mcp-repo-');
   const db = openDb(projectDbPath(support, repo));
   const tracer = new Tracer(db, projectRunsDir(support, repo));
   const runId = `run_mcp_${Date.now().toString(36)}`;

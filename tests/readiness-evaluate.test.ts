@@ -1,12 +1,12 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tempDir } from './tmp.js';
 import { describe, expect, it } from 'vitest';
 import { detectStack, evaluateRepo } from '../src/main/readiness/evaluate.js';
 import { indexRepo } from '../src/main/readiness/evaluate.js';
 
 function scratch(prefix: string): string {
-  return mkdtempSync(join(tmpdir(), prefix));
+  return tempDir(prefix);
 }
 
 function write(root: string, rel: string, body: string): void {

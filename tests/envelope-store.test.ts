@@ -3,9 +3,8 @@
  * These tests pin CRUD, validation rails, and duplicate naming.
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { rmSync } from 'node:fs';
+import { tempDir } from './tmp.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { EnvelopeStore, validate } from '../src/main/store/envelopes.js';
 import type { EnvelopeDef } from '../src/shared/types.js';
@@ -24,7 +23,7 @@ const def = (over: Partial<EnvelopeDef> = {}): EnvelopeDef => ({
 });
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'foundry-envelopes-'));
+  dir = tempDir('foundry-envelopes-');
   store = new EnvelopeStore(dir);
 });
 

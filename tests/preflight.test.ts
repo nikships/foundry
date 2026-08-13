@@ -1,6 +1,6 @@
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tempDir } from './tmp.js';
 import { describe, expect, it } from 'vitest';
 import {
   ensureMissingCommands,
@@ -154,7 +154,7 @@ describe('preflightForRun', () => {
 
 describe('ensureMissingCommands', () => {
   it('fills a missing test ref from a nested Swift package without an agent', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'foundry-preflight-'));
+    const dir = tempDir('foundry-preflight-');
     const pkg = join(dir, 'App');
     mkdirSync(pkg);
     writeFileSync(
@@ -184,7 +184,7 @@ let package = Package(
   });
 
   it('never overwrites an existing command name', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'foundry-preflight-'));
+    const dir = tempDir('foundry-preflight-');
     writeFileSync(
       join(dir, 'package.json'),
       JSON.stringify({ name: 'x', scripts: { test: 'vitest run', lint: 'eslint .' } }),

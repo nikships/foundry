@@ -5,9 +5,9 @@
  * These tests pin that a rename moves or forks, never accumulates.
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { tempDir } from './tmp.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RosterStore } from '../src/main/store/roster.js';
 import { PipelineStore } from '../src/main/store/pipelines.js';
@@ -31,7 +31,7 @@ const custom = (name: string): AgentDef => ({
 });
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'foundry-roster-'));
+  dir = tempDir('foundry-roster-');
   roster = new RosterStore(dir);
 });
 

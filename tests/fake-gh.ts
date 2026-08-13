@@ -5,9 +5,9 @@
  * was actually asked to do (and in what order).
  */
 
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tempDir } from './tmp.js';
 
 export interface FakeGhConfig {
   /** `gh auth status` fails when false. */
@@ -132,7 +132,7 @@ export interface FakeGh {
 }
 
 export function makeFakeGh(config: FakeGhConfig = {}): FakeGh {
-  const dir = mkdtempSync(join(tmpdir(), 'fake-gh-'));
+  const dir = tempDir('fake-gh-');
   const bin = join(dir, 'gh');
   writeFileSync(bin, SCRIPT);
   chmodSync(bin, 0o755);

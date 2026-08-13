@@ -5,9 +5,9 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tempDir } from './tmp.js';
 import { describe, expect, it } from 'vitest';
 import { changedPaths, currentBranch, excludeLocally } from '../src/main/engine/git.js';
 import * as worktree from '../src/main/engine/worktree.js';
@@ -17,7 +17,7 @@ function sh(cwd: string, argv: string[]): string {
 }
 
 function scratchRepo(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'foundry-worktree-'));
+  const dir = tempDir('foundry-worktree-');
   sh(dir, ['git', 'init', '-q', '-b', 'main']);
   sh(dir, ['git', 'config', 'user.email', 'test@foundry.local']);
   sh(dir, ['git', 'config', 'user.name', 'Foundry Test']);
@@ -29,7 +29,7 @@ function scratchRepo(): string {
 }
 
 function emptyScratchRepo(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'foundry-empty-worktree-'));
+  const dir = tempDir('foundry-empty-worktree-');
   sh(dir, ['git', 'init', '-q', '-b', 'main']);
   sh(dir, ['git', 'config', 'user.email', 'test@foundry.local']);
   sh(dir, ['git', 'config', 'user.name', 'Foundry Test']);

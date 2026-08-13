@@ -4,9 +4,9 @@
  */
 
 import { createCipheriv, randomBytes } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tempDir } from './tmp.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { resolveDaemonAuth } from '../src/main/droid/sdk/auth.js';
 
@@ -18,7 +18,7 @@ afterEach(() => {
 });
 
 function seedStoredAuth(token: string): string {
-  home = mkdtempSync(join(tmpdir(), 'foundry-daemon-auth-'));
+  home = tempDir('foundry-daemon-auth-');
   const factoryDir = join(home, '.factory');
   mkdirSync(factoryDir, { recursive: true });
   const key = randomBytes(32);
@@ -60,13 +60,13 @@ describe('resolveDaemonAuth', () => {
   });
 
   it('returns null when neither env key nor stored auth is available', () => {
-    home = mkdtempSync(join(tmpdir(), 'foundry-daemon-auth-empty-'));
+    home = tempDir('foundry-daemon-auth-empty-');
     mkdirSync(join(home, '.factory'), { recursive: true });
     expect(resolveDaemonAuth({ env: {}, homeDir: home })).toBeNull();
   });
 
   it('returns null when the stored file is corrupt rather than throwing', () => {
-    home = mkdtempSync(join(tmpdir(), 'foundry-daemon-auth-bad-'));
+    home = tempDir('foundry-daemon-auth-bad-');
     const factoryDir = join(home, '.factory');
     mkdirSync(factoryDir, { recursive: true });
     writeFileSync(join(factoryDir, 'auth.v2.key'), Buffer.alloc(32).toString('base64'), 'utf8');

@@ -1,6 +1,6 @@
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { tempDir } from './tmp.js';
 import { describe, expect, it } from 'vitest';
 import {
   mergeCommandsFillMissing,
@@ -9,7 +9,7 @@ import {
 } from '../src/main/engine/detect.js';
 
 function repo(files: Record<string, string>): string {
-  const dir = mkdtempSync(join(tmpdir(), 'foundry-detect-'));
+  const dir = tempDir('foundry-detect-');
   for (const [name, body] of Object.entries(files)) {
     const full = join(dir, name);
     mkdirSync(dirname(full), { recursive: true });

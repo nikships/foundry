@@ -7,9 +7,7 @@
  * turn instead of hanging all only exist on this path.
  */
 
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { tempDir } from './tmp.js';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { SdkSession } from '../src/main/droid/sdk/session.js';
 import { toUsageBreakdown } from '../src/main/droid/events.js';
@@ -21,7 +19,7 @@ const open: SdkSession[] = [];
 
 beforeAll(() => {
   fakeDroid = writeFakeDroid();
-  cwd = mkdtempSync(join(tmpdir(), 'foundry-sdk-child-'));
+  cwd = tempDir('foundry-sdk-child-');
 });
 
 afterEach(async () => {

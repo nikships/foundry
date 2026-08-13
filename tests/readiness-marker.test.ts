@@ -1,6 +1,6 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tempDir } from './tmp.js';
 import { describe, expect, it } from 'vitest';
 import { READINESS_CRITERION_IDS, type AgentReadyMarker } from '../src/shared/types.js';
 import {
@@ -37,7 +37,7 @@ describe('agent-ready marker validation', () => {
   });
 
   it('rejects missing files as not ready', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'foundry-marker-missing-'));
+    const dir = tempDir('foundry-marker-missing-');
     const result = readMarker(dir);
     expect(result.ok).toBe(false);
     expect(result.detail).toContain('missing');
@@ -68,7 +68,7 @@ describe('agent-ready marker validation', () => {
   });
 
   it('round-trips a written marker from disk', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'foundry-marker-write-'));
+    const dir = tempDir('foundry-marker-write-');
     mkdirSync(join(dir, '.agents'));
     writeMarker(dir, validMarker());
     const result = readMarker(dir);
@@ -98,7 +98,7 @@ describe('agent-ready marker validation', () => {
   });
 
   it('treats a file that is not an object as invalid', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'foundry-marker-arr-'));
+    const dir = tempDir('foundry-marker-arr-');
     mkdirSync(join(dir, '.agents'));
     writeFileSync(join(dir, '.agents', 'agent-ready.json'), '[]\n');
     expect(readMarker(dir).ok).toBe(false);

@@ -5,9 +5,9 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tempDir } from './tmp.js';
 import { describe, expect, it } from 'vitest';
 import { currentBranch, headSha, parseStatus, refExists } from '../src/main/engine/git.js';
 
@@ -61,7 +61,7 @@ describe('parseStatus', () => {
 
 describe('git inspection helpers', () => {
   it('detects branch on an empty repository with no commits', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'foundry-git-test-'));
+    const dir = tempDir('foundry-git-test-');
     sh(dir, ['git', 'init', '-q', '-b', 'main']);
 
     expect(await currentBranch(dir)).toBe('main');
@@ -71,7 +71,7 @@ describe('git inspection helpers', () => {
   });
 
   it('detects branch and sha on a normal repository with commits', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'foundry-git-test-'));
+    const dir = tempDir('foundry-git-test-');
     sh(dir, ['git', 'init', '-q', '-b', 'main']);
     sh(dir, ['git', 'config', 'user.email', 'test@foundry.local']);
     sh(dir, ['git', 'config', 'user.name', 'Foundry Test']);
@@ -87,7 +87,7 @@ describe('git inspection helpers', () => {
   });
 
   it('detects detached HEAD state', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'foundry-git-test-'));
+    const dir = tempDir('foundry-git-test-');
     sh(dir, ['git', 'init', '-q', '-b', 'main']);
     sh(dir, ['git', 'config', 'user.email', 'test@foundry.local']);
     sh(dir, ['git', 'config', 'user.name', 'Foundry Test']);

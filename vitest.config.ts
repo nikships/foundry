@@ -14,6 +14,10 @@ export default defineConfig({
     environment: 'node',
     testTimeout: 30_000,
     pool: 'forks',
+    // Sweeps the scratch directories handed out by `tests/tmp.ts`. Suites build
+    // real git repos on disk, and an abandoned repo also strands a
+    // `git fsmonitor--daemon` for anyone with `core.fsmonitor` enabled.
+    setupFiles: ['tests/setup-tmp.ts'],
     server: {
       // @lobehub/icons ships bare directory specifiers, which the bundler
       // resolves and node's ESM loader refuses. Inlining hands them to vite,

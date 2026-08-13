@@ -8,9 +8,9 @@
  * something the panel can explain.
  */
 
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tempDir } from './tmp.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DetectSession, type DetectionState } from '../src/main/engine/detect-session.js';
 import { defaultSettings } from '../src/main/store/settings.js';
@@ -22,7 +22,7 @@ import type { AppSettings } from '../src/shared/types.js';
  * real CLI does (captured from it), then the `completion` envelope.
  */
 function writeFakeCli(opts: { reply?: string; exitCode?: number; stderr?: string }): string {
-  const dir = mkdtempSync(join(tmpdir(), 'foundry-fake-cli-'));
+  const dir = tempDir('foundry-fake-cli-');
   const js = join(dir, 'fake.mjs');
   writeFileSync(
     js,
@@ -51,7 +51,7 @@ process.exit(code);
 
 /** A repo whose manifests answer, so a skip-the-agent regression is visible. */
 function repoWithManifest(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'foundry-detect-repo-'));
+  const dir = tempDir('foundry-detect-repo-');
   mkdirSync(dir, { recursive: true });
   writeFileSync(
     join(dir, 'package.json'),

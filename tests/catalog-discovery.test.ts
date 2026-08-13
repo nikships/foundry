@@ -8,9 +8,9 @@
  * module shells out to, including a hard-coded binary).
  */
 
-import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tempDir } from './tmp.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { CliVendor, PipelineDef, ToolInfo } from '../src/shared/types.js';
 import { IPC } from '../src/shared/ipc-contract.js';
@@ -36,7 +36,7 @@ let argvLog: string;
  * that still shells out leaves a trace even if it swallows the failure.
  */
 function writeArgvShim(): { bin: string; log: string } {
-  const dir = mkdtempSync(join(tmpdir(), 'foundry-argv-shim-'));
+  const dir = tempDir('foundry-argv-shim-');
   const log = join(dir, 'argv.log');
   const bin = join(dir, 'droid');
   writeFileSync(bin, `#!/bin/sh\nprintf '%s\\n' "$*" >> "${log}"\nexit 0\n`);
@@ -158,7 +158,7 @@ describe('a live agent session', () => {
 
   function agentSession(): AgentSession {
     fakeDroid = writeFakeDroid();
-    const support = mkdtempSync(join(tmpdir(), 'foundry-discovery-'));
+    const support = tempDir('foundry-discovery-');
     const tracer = new Tracer(
       openDb(projectDbPath(support, 'proj')),
       projectRunsDir(support, 'proj'),
@@ -198,7 +198,7 @@ describe('a live agent session', () => {
       {
         cliPath: fakeDroid,
         runId,
-        worktree: mkdtempSync(join(tmpdir(), 'foundry-discovery-wt-')),
+        worktree: tempDir('foundry-discovery-wt-'),
         turnTimeoutMs: 20_000,
         tracer,
         policy: { protectedPaths: [] },

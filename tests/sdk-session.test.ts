@@ -6,9 +6,7 @@
  * that look like completed ones).
  */
 
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { tempDir } from './tmp.js';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ProcessExitError, type StringFramedDroidClientTransport } from '@factory/droid-sdk/node';
 import { SdkSession } from '../src/main/droid/sdk/session.js';
@@ -623,7 +621,7 @@ describe('session lifecycle', () => {
   });
 
   it('refuses a resumed session whose persisted cwd is not the run worktree', async () => {
-    const worktree = mkdtempSync(join(tmpdir(), 'foundry-sdk-worktree-'));
+    const worktree = tempDir('foundry-sdk-worktree-');
     const { sdk, transport } = session({ cwd: worktree });
     transport.cwd = '/somewhere/else';
     await expect(sdk.start('carried-over-session')).rejects.toThrow(/worktree/);
@@ -772,7 +770,7 @@ describe('notifications', () => {
   });
 
   it('folds tool calls into one span per toolUseId with the final input', async () => {
-    const support = mkdtempSync(join(tmpdir(), 'foundry-sdk-trace-'));
+    const support = tempDir('foundry-sdk-trace-');
     const tracer = new Tracer(
       openDb(projectDbPath(support, 'proj')),
       projectRunsDir(support, 'proj'),

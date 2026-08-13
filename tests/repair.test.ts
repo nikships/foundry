@@ -7,9 +7,9 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tempDir } from './tmp.js';
 import { describe, expect, it } from 'vitest';
 import { headSha, isAncestor, resolveRef, status } from '../src/main/engine/git.js';
 import { rebaseOntoBase, type RepairAgent } from '../src/main/engine/repair.js';
@@ -28,7 +28,7 @@ function trySh(cwd: string, argv: string[]): void {
 }
 
 function scratchRepo(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'foundry-repair-'));
+  const dir = tempDir('foundry-repair-');
   sh(dir, ['git', 'init', '-q', '-b', 'main']);
   sh(dir, ['git', 'config', 'user.email', 'test@foundry.local']);
   sh(dir, ['git', 'config', 'user.name', 'Foundry Test']);

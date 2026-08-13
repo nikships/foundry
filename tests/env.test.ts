@@ -9,9 +9,10 @@
  * failure that made command detection look broken.
  */
 
-import { mkdtempSync, writeFileSync, chmodSync } from 'node:fs';
+import { writeFileSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { tempDir } from './tmp.js';
 import { afterEach, describe, expect, it } from 'vitest';
 import { __setResolvedEnvForTest, resolvedEnv, spawnEnv } from '../src/main/system/env.js';
 import { runCommand } from '../src/main/engine/commands.js';
@@ -20,7 +21,7 @@ afterEach(() => __setResolvedEnvForTest(null));
 
 /** A directory holding one executable that exists nowhere on the real PATH. */
 function binDir(name: string): string {
-  const dir = mkdtempSync(join(tmpdir(), 'foundry-bin-'));
+  const dir = tempDir('foundry-bin-');
   const file = join(dir, name);
   writeFileSync(file, '#!/bin/sh\necho found-me\n');
   chmodSync(file, 0o755);
