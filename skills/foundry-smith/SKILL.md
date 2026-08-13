@@ -65,10 +65,14 @@ closed, every command exits 2 with `Foundry is not running`. That is not an erro
 to work around — ask the user to launch the app.
 
 **Shortcut: the app can set this up for you.** Foundry's sidebar has a **Smith**
-entry that opens the user's terminal at the project root and hands them a
-ready-made bootstrap line plus the path to this skill. If they used it, the
-`foundry-cli` command already exists in the shell and the project scope is already
-exported — check with `foundry-cli project list` before resolving anything by hand.
+entry. With Ghostty as the preferred terminal it starts the whole session — a
+window at the project root, `foundry-cli` already on `PATH`, the scope and socket
+already exported, and the agent already told to read this file. Every other
+terminal gets the directory opened and a copyable bootstrap line instead.
+
+Either way, **check before resolving anything by hand**: run
+`foundry-cli project list`. If it answers, you are already wired up and must not
+redefine `foundry-cli` or re-derive the scope.
 
 **Socket path.** The CLI defaults to the app's real support-dir path:
 

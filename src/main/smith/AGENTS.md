@@ -10,9 +10,9 @@ Smith is Foundry's entity-smith: an agent that creates and edits Foundry's own e
 - **Approval**: `proposals.ts` is a one-slot queue. A `create`/`edit` blocks the calling CLI on a promise until a human answers the card in the renderer.
 - **The helper**: `src/cli/foundry-cli.ts` (+ `src/cli/args.ts`) is the standalone binary the agent invokes. It is not spawned by the app; it is run by the agent, from outside.
 - **The instructions**: `skills/foundry-smith/SKILL.md` is where the CLI, the entity schemas, and the approval contract are documented for the agent. It replaced a per-spawn generated system prompt, so it is now the _only_ place an agent learns this surface.
-- **The handoff**: `launch.ts` resolves what a user cannot guess — the helper binary's path, where the skill shipped, the socket — and formats the shell bootstrap. `src/main/system/terminal.ts` opens their preferred emulator at the project root (`open -a <App> <dir>`). The sidebar's Smith entry and `SmithLauncher` are the UI for it.
+- **The handoff**: `launch.ts` resolves what a user cannot guess — the helper binary's path, where the skill shipped, the socket — and formats both the copyable bootstrap and the prepared session script. `session.ts` writes that script plus a `foundry-cli` shim under `<supportDir>/smith/`. `src/main/system/terminal.ts` either opens the preferred emulator at the project root (`open -a <App> <dir>`) or, for an emulator flagged `prepared`, hands it the script to run. The sidebar's Smith entry calls `smith:start`, which launches directly and answers `needs-launcher` only when it could not; `SmithLauncher` is the fallback that reason opens.
 
-There is no session, no PTY, no terminal, and no process supervision in this directory. Opening the user's terminal app at a directory is a handoff, not ownership: the app does not hold the process, feed it input, or read its output. If a change here wants any of that, it is the wrong change.
+There is no session, no PTY, and no process supervision in this directory. Handing the terminal a command is still a handoff, not ownership: `open` exits immediately, the app does not hold the process, feed it input, or read its output, and nothing is registered in `procs.ts`. If a change here wants any of that, it is the wrong change.
 
 ## Setup Commands
 
@@ -67,7 +67,9 @@ npx vitest run tests/smith-launch.test.ts      # shell quoting + asar path rewri
 - **Exit 2 means "not running", and only that.** `ENOENT`/`ECONNREFUSED` map to it; a real protocol error is exit 1 with the app's own message.
 - **Settings stores a terminal `id`, never an application name.** `terminalFor()` maps the id to the `appName` handed to `open -a`, and falls back to Terminal.app for an id we no longer know — so a hand-edited settings file can never put an arbitrary string on that command line. (`execFile` takes an argument array, so it would not be shell-interpreted either; this is the second lock.)
 - **The skill has to ship in the bundle, unpacked.** The user's agent reads `SKILL.md` from disk, from outside the app, so `skills/**` is in electron-builder's `files` _and_ its `asarUnpack`. `resolveFromMainDir()` rewrites `app.asar` → `app.asar.unpacked` for both the skill and the CLI; a path left pointing inside the archive is not a file at all.
-- **Do not inject a command into the launched terminal.** It means AppleScript for Terminal/iTerm and a different flag per emulator, each silently breakable by a vendor update. The bootstrap line is copyable instead, and works in all six.
+- **Only inject a command where the emulator's own command line takes one.** `TERMINAL_APPS` flags that with `prepared`, and today only Ghostty carries it (`open -na Ghostty.app --args --working-directory=<dir> -e <cmd>`, documented in its `--help`). Terminal and iTerm would need AppleScript that types into a window — breakable by a vendor update and gated on the Automation permission — and the rest have no macOS-side equivalent, so they keep the copyable bootstrap. Do not add `prepared` to an emulator without a documented flag for it.
+- **A prepared session's shim is an executable on PATH, not a shell function.** The bootstrap's function is right for a human's own shell and wrong for an agent, which spawns its own shells for each command: a function does not survive that, an executable inherited through the environment does.
+- **The auto-start requires an absolute, existing agent CLI.** `findCli()` falls back to a bare name when nothing is installed, and a script that sets its own PATH cannot be trusted to resolve one. Absent it, `canAutoStart` is false and the launcher shows the manual handoff rather than opening a window that dies on its first line.
 
 ## Code Style
 
@@ -90,11 +92,11 @@ Smith spans three places beyond this directory. Change them together.
 
 | Location                                      | Responsibility                                                           |
 | --------------------------------------------- | ------------------------------------------------------------------------ |
-| `src/main/ipc/smith.ts`                       | 4 invoke channels + 1 event; `saveProposal` store write                  |
+| `src/main/ipc/smith.ts`                       | 5 invoke channels + 1 event; `saveProposal` store write                  |
 | `src/main/system/terminal.ts`                 | `open -a <App> <dir>`; the emulator catalog and install check            |
 | `src/cli/`                                    | The helper binary + its pure arg parsing (**not** `src/main/cli/`)       |
 | `src/renderer/components/SmithProposalCard.*` | The approval card — where a write is allowed or refused                  |
-| `src/renderer/components/SmithLauncher.*`     | The sidebar handoff: open a terminal, copy the bootstrap and skill path  |
+| `src/renderer/components/SmithLauncher.*`     | The fallback handoff, shown only when the one-click start cannot run     |
 | `skills/foundry-smith/`                       | The skill an agent loads: persona, CLI reference, schemas, HTML previews |
 
 `src/cli/` is the helper binary; `src/main/cli/` is vendor argv construction. They are unrelated despite the name.

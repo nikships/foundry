@@ -39,6 +39,8 @@ function AppInner(): React.JSX.Element {
   const [settingsPane, setSettingsPane] = useState('general');
   const [designTab, setDesignTab] = useState<DesignTab>('pipelines');
   const [smithOpen, setSmithOpen] = useState(false);
+  /** Why the sidebar's one-click start failed, carried into the launcher. */
+  const [smithError, setSmithError] = useState('');
   // Deep link for the active project's pipeline/agent/envelope editors after a
   // Smith approve. The nonce re-fires the target screen's effect on a repeat.
   const [smithNav, setSmithNav] = useState<(SmithNavTarget & { nonce: number }) | null>(null);
@@ -52,6 +54,13 @@ function AppInner(): React.JSX.Element {
   const activeInterrupt = interrupts[0] ?? null;
   const bannerKey = `${updateStatus.stage}:${updateStatus.version ?? ''}`;
   const showBanner = updateStatus.stage !== 'idle' && updateDismissedKey !== bannerKey;
+
+  /** One transient status line, replacing whatever it was showing. */
+  const showToast = useCallback((message: string): void => {
+    setToast(message);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 4000);
+  }, []);
 
   useEffect(() => {
     void api.updater.getStatus().then((s) => {
@@ -69,16 +78,31 @@ function AppInner(): React.JSX.Element {
           : next.message && next.message !== 'No update available'
             ? next.message
             : "You're up to date";
-        setToast(msg ?? "You're up to date");
-        if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-        toastTimerRef.current = setTimeout(() => setToast(null), 4000);
+        showToast(msg ?? "You're up to date");
       }
       prevStageRef.current = next.stage;
       setUpdateStatus(next);
     });
-  }, []);
+  }, [showToast]);
 
-  const openSmith = useCallback((): void => setSmithOpen(true), []);
+  /**
+   * The sidebar's Smith click. With a terminal that takes a command this starts
+   * the session and shows nothing — the window itself is the feedback, and a
+   * modal in front of it would only be something to dismiss. The launcher opens
+   * exactly when the click could not finish the job, carrying the reason.
+   */
+  const openSmith = useCallback(async (): Promise<void> => {
+    const result = await api.smith.start(project?.id ?? '');
+    if (result.status === 'started') {
+      showToast('Smith is starting in your terminal.');
+      return;
+    }
+    // A failed launch is the one case worth carrying into the modal: the click
+    // already tried, so the launcher opens holding the reason rather than an
+    // untouched button the user has to press to learn what went wrong.
+    setSmithError(result.status === 'error' ? result.error : '');
+    setSmithOpen(true);
+  }, [project?.id, showToast]);
 
   // A Smith approve saved the entity; open its editor. The store save already
   // broadcast settings-changed (which refreshes the app), but refresh scoped
@@ -272,7 +296,7 @@ function AppInner(): React.JSX.Element {
             }}
             onOpenInterruptRun={openRun}
             onOpenInspector={openInspector}
-            onOpenSmith={openSmith}
+            onOpenSmith={() => void openSmith()}
             inspectorRunId={inspectorRunId}
           />
           <div className={styles.sidebarDivider} aria-hidden />
@@ -302,6 +326,7 @@ function AppInner(): React.JSX.Element {
       {smithOpen && (
         <SmithLauncher
           projectId={project?.id ?? ''}
+          initialError={smithError}
           onClose={() => setSmithOpen(false)}
           onOpenSettings={(pane) => {
             setSmithOpen(false);

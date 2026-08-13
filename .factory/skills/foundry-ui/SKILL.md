@@ -292,7 +292,11 @@ CDP cannot drive (if stuck, `press Escape` won't help; you must dismiss it
 manually or kill the app).
 
 **Do not click Smith** (`nav-smith`) unless you intend to launch the user's
-preferred terminal. It is a handoff, not an in-app view.
+preferred terminal. It is a handoff, not an in-app view — and with Ghostty
+preferred it opens a window and spawns a real agent CLI immediately, with no
+modal to back out of. The `SmithLauncher` modal appears only when that start
+could not run (no project, a terminal that takes no command, a missing agent
+CLI, or a failed launch).
 
 ## Screens
 
