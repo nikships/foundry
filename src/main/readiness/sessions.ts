@@ -9,7 +9,7 @@ import type {
   ReadinessInspectResult,
   ReadinessState,
 } from '@shared/types.js';
-import { readMarker } from './marker.js';
+import { readMarkerAtBaseRef } from './marker.js';
 import { createAgentRemediator, resolveReadinessModel } from './remediator.js';
 import { ReadinessSession, type ReadinessIo } from './session.js';
 import * as ghLib from '../system/gh.js';
@@ -18,8 +18,14 @@ import type { PrMergeView } from './merge.js';
 const KEEP_MS = 10 * 60_000;
 const MAX_KEPT = 20;
 
-export function inspectProject(project: ProjectDef): ReadinessInspectResult {
-  const read = readMarker(project.path);
+/**
+ * The single readiness verdict. Reads the marker from the project's base ref —
+ * the ref run worktrees branch from — so a feature branch that never carried
+ * the marker still reports ready, and a marker that only exists in the working
+ * checkout never does.
+ */
+export async function inspectProject(project: ProjectDef): Promise<ReadinessInspectResult> {
+  const read = await readMarkerAtBaseRef(project.path, project.baseRef);
   return {
     projectId: project.id,
     markerValid: read.ok,
@@ -28,6 +34,8 @@ export function inspectProject(project: ProjectDef): ReadinessInspectResult {
     skipped: !!project.readinessSkipped,
     validatedCache: !!project.readinessValidated,
     ready: read.ok,
+    markerSource: read.source,
+    markerRef: read.ref,
   };
 }
 

@@ -1,13 +1,17 @@
 /**
  * `.agents/agent-ready.json` — portable proof a repo can host agent-driven work.
  *
- * The file is the source of truth. App-side flags only cache a successful read.
- * A missing, corrupt, or schema-mismatched file is not ready.
+ * The committed file on the project's base ref is the source of truth: run
+ * worktrees branch from that ref, so a marker only present in the operator's
+ * current checkout proves nothing about what a run would inherit. App-side
+ * flags only cache a successful read. A missing, corrupt, or schema-mismatched
+ * file is not ready.
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
+import { refExists, showFileAtRef } from '../engine/git.js';
 import {
   READINESS_CRITERION_IDS,
   type AgentReadyMarker,
@@ -50,6 +54,10 @@ export interface MarkerRead {
   ok: boolean;
   marker: AgentReadyMarker | null;
   detail: string;
+  /** Where the answer came from, so the UI can explain a base-ref failure. */
+  source?: 'base-ref' | 'worktree';
+  /** The ref the marker was read from, when it was read from git. */
+  ref?: string;
 }
 
 export function markerFilePath(repo: string): string {
@@ -112,6 +120,48 @@ export function readMarker(repo: string): MarkerRead {
     return { ok: false, marker: null, detail: `missing ${AGENT_READY_PATH}` };
   }
   return parseMarkerText(text);
+}
+
+/**
+ * The authoritative readiness answer: the marker as committed on `baseRef`.
+ *
+ * Run worktrees are created from the base ref, so that is the only tree whose
+ * marker describes what a run will actually see. The working checkout is used
+ * only when the base ref cannot be resolved at all (no commits yet, or a ref
+ * that no longer exists), and the result says so.
+ */
+export async function readMarkerAtBaseRef(repo: string, baseRef: string): Promise<MarkerRead> {
+  const ref = baseRef.trim();
+  if (!ref) {
+    const local = readMarker(repo);
+    return { ...local, source: 'worktree', detail: `${local.detail} (no base ref configured)` };
+  }
+  if (!(await refExists(repo, ref))) {
+    const local = readMarker(repo);
+    return {
+      ...local,
+      source: 'worktree',
+      ref,
+      detail: `${local.detail} (base ref "${ref}" does not exist; read the working checkout instead)`,
+    };
+  }
+  const text = await showFileAtRef(repo, ref, AGENT_READY_PATH);
+  if (text === null) {
+    return {
+      ok: false,
+      marker: null,
+      source: 'base-ref',
+      ref,
+      detail: `${AGENT_READY_PATH} is not committed on ${ref}`,
+    };
+  }
+  const parsed = parseMarkerText(text);
+  return {
+    ...parsed,
+    source: 'base-ref',
+    ref,
+    detail: parsed.ok ? `${parsed.detail} on ${ref}` : `${parsed.detail} (on ${ref})`,
+  };
 }
 
 export function serializeMarker(marker: AgentReadyMarker): string {

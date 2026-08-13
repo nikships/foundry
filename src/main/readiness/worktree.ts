@@ -8,6 +8,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   addAll,
+  addPathForce,
   addWorktree,
   commit,
   deleteBranch,
@@ -17,6 +18,7 @@ import {
   removeWorktree,
 } from '../engine/git.js';
 import { WORKTREE_DIR } from '../engine/worktree.js';
+import { AGENT_READY_PATH } from './marker.js';
 
 export interface ReadinessWorktree {
   path: string;
@@ -52,8 +54,16 @@ export async function createReadinessWorktree(input: {
   return { path, branch, baseRef: input.baseRef };
 }
 
+/**
+ * `git add -A` is not enough for the marker. Plenty of repos ignore `.agents/`
+ * wholesale (it is where agent scratch usually lives), so the proof file would
+ * be written, silently skipped by the add, and the readiness PR would merge
+ * carrying no marker at all — leaving the session "complete" while every later
+ * inspection says not ready. The marker is force-added for that reason.
+ */
 export async function commitReadinessWork(cwd: string, message: string): Promise<void> {
   await addAll(cwd);
+  if (existsSync(join(cwd, AGENT_READY_PATH))) await addPathForce(cwd, AGENT_READY_PATH);
   const result = await commit(cwd, message);
   if (!result.ok) {
     throw new Error(result.stdout.trim() || 'readiness commit failed');

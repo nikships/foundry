@@ -1,0 +1,124 @@
+import { describe, expect, it } from 'vitest';
+import type {
+  AgentReadyMarker,
+  ReadinessInspectResult,
+  ReadinessPhase,
+} from '../src/shared/types.js';
+import { READINESS_CRITERION_IDS } from '../src/shared/types.js';
+import {
+  READINESS_CHECKING_MESSAGE,
+  isReadinessLive,
+  isReadinessTerminal,
+  readinessBanner,
+} from '../src/renderer/readiness-view.js';
+
+function marker(summary: string): AgentReadyMarker {
+  return {
+    schemaVersion: 1,
+    generatedAt: '2026-08-13T00:00:00Z',
+    commit: 'abc1234',
+    agent: { harness: 'droid', model: 'inherit', reasoningEffort: 'high' },
+    verdict: 'ready',
+    summary,
+    stack: { languages: ['swift'], monorepo: false, packages: [] },
+    criteria: READINESS_CRITERION_IDS.map((id) => ({ id, status: 'pass' as const, notes: 'ok' })),
+  };
+}
+
+function inspect(over: Partial<ReadinessInspectResult> = {}): ReadinessInspectResult {
+  return {
+    projectId: 'p1',
+    markerValid: false,
+    marker: null,
+    markerDetail: 'missing .agents/agent-ready.json',
+    skipped: false,
+    validatedCache: false,
+    ready: false,
+    ...over,
+  };
+}
+
+describe('readiness phase classification', () => {
+  const live: ReadinessPhase[] = [
+    'inspecting',
+    'evaluating',
+    'remediating',
+    'verifying',
+    'pr_ready',
+    'awaiting_merge',
+    'confirming_merge',
+    'finalizing',
+  ];
+  const terminal: ReadinessPhase[] = ['complete', 'skipped', 'failed'];
+
+  it('treats every in-flight phase as live and none of them as terminal', () => {
+    for (const phase of live) {
+      expect(isReadinessLive(phase)).toBe(true);
+      expect(isReadinessTerminal(phase)).toBe(false);
+    }
+  });
+
+  it('treats settled phases as terminal so the banner re-inspects', () => {
+    for (const phase of terminal) {
+      expect(isReadinessTerminal(phase)).toBe(true);
+      expect(isReadinessLive(phase)).toBe(false);
+    }
+  });
+
+  it('leaves the pre-check phases out of both sets', () => {
+    for (const phase of ['idle', 'confirming', 'not_ready'] as ReadinessPhase[]) {
+      expect(isReadinessLive(phase)).toBe(false);
+      expect(isReadinessTerminal(phase)).toBe(false);
+    }
+  });
+});
+
+describe('readinessBanner', () => {
+  it('shows the marker summary and offers no action when ready', () => {
+    const banner = readinessBanner(
+      inspect({ ready: true, markerValid: true, marker: marker('Swift package is ready.') }),
+    );
+    expect(banner.tone).toBe('ready');
+    expect(banner.message).toBe('Swift package is ready.');
+    expect(banner.action).toBeNull();
+  });
+
+  it('falls back to generic ready copy when the marker has no summary', () => {
+    const bare = { ...marker('x'), summary: '' } as AgentReadyMarker;
+    const banner = readinessBanner(inspect({ ready: true, markerValid: true, marker: bare }));
+    expect(banner.message).toBe('This project is agent-ready.');
+  });
+
+  it('offers Check readiness when not ready', () => {
+    const banner = readinessBanner(inspect());
+    expect(banner.tone).toBe('warn');
+    expect(banner.action).toBe('Check readiness');
+    expect(banner.message).toMatch(/not agent-ready/);
+  });
+
+  it('offers Re-run readiness once the project was skipped', () => {
+    expect(readinessBanner(inspect({ skipped: true })).action).toBe('Re-run readiness');
+  });
+
+  it('holds a checking state that outranks a stale ready verdict', () => {
+    const banner = readinessBanner(
+      inspect({ ready: true, markerValid: true, marker: marker('Ready.') }),
+      { checking: true },
+    );
+    expect(banner.message).toBe(READINESS_CHECKING_MESSAGE);
+    expect(banner.tone).toBe('warn');
+    expect(banner.action).toBeNull();
+  });
+
+  it('surfaces the failure detail from a failed session instead of generic copy', () => {
+    const banner = readinessBanner(inspect(), {
+      note: '.agents/agent-ready.json is not committed on main',
+    });
+    expect(banner.message).toBe('.agents/agent-ready.json is not committed on main');
+    expect(banner.action).toBe('Check readiness');
+  });
+
+  it('ignores a blank note', () => {
+    expect(readinessBanner(inspect(), { note: '   ' }).message).toMatch(/not agent-ready/);
+  });
+});

@@ -21,18 +21,26 @@ export function register(ctx: Ctx, handle: Handle): void {
 
   const projectOf = (projectId: string) => ctx.projects.get(projectId);
 
-  handle(IPC.readinessInspect, (projectId: string): ReadinessInspectResult | null => {
-    const project = projectOf(projectId);
-    if (!project) return null;
-    const result = inspectProject(project);
-    if (result.ready && (!project.readinessValidated || project.readinessSkipped)) {
-      persist({ ...project, readinessValidated: true, readinessSkipped: false });
-    } else if (!result.ready && project.readinessValidated) {
-      persist({ ...project, readinessValidated: false });
-    }
-    const latest = projectOf(projectId) ?? project;
-    return inspectProject(latest);
-  });
+  handle(
+    IPC.readinessInspect,
+    async (projectId: string): Promise<ReadinessInspectResult | null> => {
+      const project = projectOf(projectId);
+      if (!project) return null;
+      const result = await inspectProject(project);
+      if (result.ready && (!project.readinessValidated || project.readinessSkipped)) {
+        persist({ ...project, readinessValidated: true, readinessSkipped: false });
+      } else if (!result.ready && project.readinessValidated) {
+        persist({ ...project, readinessValidated: false });
+      }
+      const latest = projectOf(projectId) ?? project;
+      // The cache moved; re-read so the caller sees the flags it will render.
+      return {
+        ...result,
+        skipped: !!latest.readinessSkipped,
+        validatedCache: !!latest.readinessValidated,
+      };
+    },
+  );
 
   handle(
     IPC.readinessEvaluate,
@@ -53,7 +61,7 @@ export function register(ctx: Ctx, handle: Handle): void {
       const session = ctx.readiness.open(project, settings, persist);
       ctx.readiness.applyModel(session, settings, opts);
       const current = session.snapshot();
-      if (current.phase === 'idle') session.inspect();
+      if (current.phase === 'idle') await session.inspect();
       if (session.snapshot().phase === 'complete') {
         return { sessionId: session.sessionId };
       }
@@ -69,7 +77,7 @@ export function register(ctx: Ctx, handle: Handle): void {
       if (!project) return { error: 'project not found' };
       const settings = ctx.settings.get();
       const session = ctx.readiness.open(project, settings, persist);
-      if (session.snapshot().phase === 'idle') session.inspect();
+      if (session.snapshot().phase === 'idle') await session.inspect();
       void session.makeReady();
       return { sessionId: session.sessionId };
     },

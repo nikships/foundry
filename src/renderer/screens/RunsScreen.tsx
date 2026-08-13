@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import type { ReadinessInspectResult, ValidationIssue } from '@shared/types.js';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { ReadinessInspectResult, ReadinessState, ValidationIssue } from '@shared/types.js';
 import { api } from '../api.js';
 import { useApp } from '../stores/app.js';
 import { useRunList } from '../stores/run.js';
@@ -10,6 +10,7 @@ import PipelineRibbon from '../components/PipelineRibbon.js';
 import EmptyState from '../components/EmptyState.js';
 import { Button } from '../components/ui/Button.js';
 import { Dropdown } from '../components/ui/Dropdown.js';
+import { isReadinessLive, isReadinessTerminal, readinessBanner } from '../readiness-view.js';
 import styles from './RunsScreen.module.css';
 
 export default function RunsScreen({
@@ -37,6 +38,8 @@ export default function RunsScreen({
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
   const [preflight, setPreflight] = useState<ValidationIssue[]>([]);
   const [readiness, setReadiness] = useState<ReadinessInspectResult | null>(null);
+  const [readinessChecking, setReadinessChecking] = useState(false);
+  const [readinessNote, setReadinessNote] = useState('');
 
   const {
     runs,
@@ -59,9 +62,16 @@ export default function RunsScreen({
     if (selectedPipeline) localStorage.setItem('foundry.pipeline', selectedPipeline);
   }, [selectedPipeline]);
 
+  const refreshReadiness = useCallback(async (): Promise<void> => {
+    if (!projectId) return;
+    setReadiness(await api.readiness.inspect(projectId));
+  }, [projectId]);
+
   useEffect(() => {
     if (!projectId) {
       setReadiness(null);
+      setReadinessChecking(false);
+      setReadinessNote('');
       return;
     }
     let cancelled = false;
@@ -72,6 +82,26 @@ export default function RunsScreen({
       cancelled = true;
     };
   }, [projectId, project?.path, project?.readinessValidated, project?.readinessSkipped]);
+
+  // The modal and this banner read different sources (live session vs. the
+  // committed marker), so a finished check has to re-inspect here or the page
+  // keeps showing the pre-check verdict until the project is switched.
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    const off = api.on('readiness-progress', (data) => {
+      const next = data as ReadinessState;
+      if (cancelled || next?.projectId !== projectId) return;
+      setReadinessChecking(isReadinessLive(next.phase));
+      if (!isReadinessTerminal(next.phase)) return;
+      setReadinessNote(next.phase === 'failed' ? next.detail : '');
+      void refreshReadiness();
+    });
+    return () => {
+      cancelled = true;
+      off();
+    };
+  }, [projectId, refreshReadiness]);
 
   // Live preflight so missing commands and broken refs show before Start is hit.
   useEffect(() => {
@@ -101,6 +131,14 @@ export default function RunsScreen({
   const blockingPreflight = useMemo(
     () => preflight.filter((i) => i.level === 'error'),
     [preflight],
+  );
+
+  const banner = useMemo(
+    () =>
+      readiness
+        ? readinessBanner(readiness, { checking: readinessChecking, note: readinessNote })
+        : null,
+    [readiness, readinessChecking, readinessNote],
   );
 
   const requestOk = request.trim().length > 0;
@@ -173,16 +211,18 @@ export default function RunsScreen({
           Show archived
         </label>
       </header>
-      {project && readiness && (
-        <div className={readiness.ready ? styles.readinessReady : styles.readinessBanner}>
-          <p>
-            {readiness.ready
-              ? readiness.marker?.summary || 'This project is agent-ready.'
-              : 'This project is not agent-ready. Pipeline runs may fail mid-flight until the checklist is green.'}
-          </p>
-          {!readiness.ready && onOpenReadiness && (
+      {project && banner && (
+        <div
+          className={banner.tone === 'ready' ? styles.readinessReady : styles.readinessBanner}
+          data-testid="readiness-banner"
+          data-ready={readinessChecking ? 'checking' : banner.tone === 'ready' ? 'yes' : 'no'}
+          role="status"
+          aria-live="polite"
+        >
+          <p>{banner.message}</p>
+          {banner.action && onOpenReadiness && (
             <Button size="sm" onClick={onOpenReadiness}>
-              {readiness.skipped ? 'Re-run readiness' : 'Check readiness'}
+              {banner.action}
             </Button>
           )}
         </div>

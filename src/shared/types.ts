@@ -658,7 +658,10 @@ export interface ReadinessState {
   failedPhase?: ReadinessPhase;
 }
 
-/** Banner/settings status. Always derived from the marker file, never the cache. */
+/**
+ * Banner/settings status. Always derived from the marker committed on the
+ * project's base ref, never from the cache.
+ */
 export interface ReadinessInspectResult {
   projectId: string;
   markerValid: boolean;
@@ -667,6 +670,10 @@ export interface ReadinessInspectResult {
   skipped: boolean;
   validatedCache: boolean;
   ready: boolean;
+  /** Which tree answered: the base ref, or the working checkout as a fallback. */
+  markerSource?: 'base-ref' | 'worktree';
+  /** The ref the marker was read from, when git answered. */
+  markerRef?: string;
 }
 
 // ── Trace rows (what the renderer polls) ─────────────────────────────────────
