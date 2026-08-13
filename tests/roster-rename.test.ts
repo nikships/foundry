@@ -148,6 +148,21 @@ describe('pipeline references', () => {
   });
 });
 
+describe('loading a roster written before pr_writer shipped', () => {
+  it('restores the missing builtin without clobbering the rest of the file', () => {
+    const older = BUILTIN_AGENTS.filter((a) => a.name !== 'pr_writer');
+    expect(older.some((a) => a.name === 'pr_writer')).toBe(false);
+    new JsonStore<AgentDef[]>(join(dir, 'roster.json'), () => []).write(older);
+
+    const reloaded = new RosterStore(dir);
+    const writer = reloaded.get('pr_writer');
+    expect(writer?.builtin).toBe(true);
+    expect(writer?.envelope).toBe('pr');
+    expect(writer?.writes).toEqual([]);
+    expect(reloaded.get('planner')?.builtin).toBe(true);
+  });
+});
+
 describe('loading a roster written by the broken build', () => {
   it('clears builtin on a name that was never shipped, so it can be deleted', () => {
     const stranded = { ...BUILTIN_AGENTS[0]!, name: 'jjl', builtin: true };

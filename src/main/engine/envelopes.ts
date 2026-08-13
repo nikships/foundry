@@ -15,6 +15,7 @@
 import { z } from 'zod';
 import {
   BUILTIN_ENVELOPE_KINDS,
+  PR_TITLE_MAX,
   type CustomEnvelopeField,
   type EnvelopeDef,
   type EnvelopeKind,
@@ -61,6 +62,11 @@ export const schemas = {
     document_path: z.string().default(''),
     documented_files: z.array(z.string()).default([]),
   }),
+  pr: z.object({
+    ...base,
+    title: z.string().min(1).max(PR_TITLE_MAX),
+    body: z.string().min(1),
+  }),
 } satisfies Record<EnvelopeKind, z.ZodTypeAny>;
 
 export type Envelope = z.infer<typeof schemas.generic> & Record<string, unknown>;
@@ -83,6 +89,8 @@ const FIELD_HINTS: Record<string, unknown> = {
   blocking: ['a problem that must be fixed before this can ship'],
   document_path: 'docs/what-you-wrote.md',
   documented_files: ['src/file/you/documented.ts'],
+  title: 'imperative PR title, ≤72 chars, no trailing period',
+  body: 'markdown PR body — follow the repo template, or the fallback headings',
 };
 
 const REVIEW_FINDINGS_HINT = [

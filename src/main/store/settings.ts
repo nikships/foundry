@@ -5,7 +5,13 @@
 
 import { join } from 'node:path';
 import { z } from 'zod';
-import { type AppSettings, type CliConfig, type CliVendor, CLI_VENDOR_IDS } from '@shared/types.js';
+import {
+  DEFAULT_PR_AGENT,
+  type AppSettings,
+  type CliConfig,
+  type CliVendor,
+  CLI_VENDOR_IDS,
+} from '@shared/types.js';
 import { defaultCliConfig } from '../cli/index.js';
 import { JsonStore } from './json-store.js';
 
@@ -59,6 +65,13 @@ export const appSettingsSchema = z.object({
   detectCli: z.enum(['default', 'droid']),
   detectModel: z.string().min(1),
   engineerName: z.string().min(1).max(80),
+  prAgent: z
+    .string()
+    .min(1)
+    .regex(
+      /^[a-z][a-z0-9_-]*$/,
+      'lowercase letters, digits, dash, underscore; must start with a letter',
+    ),
   defaultModel: z.string().min(1),
   defaultReasoningEffort: z.enum(['off', 'low', 'medium', 'high', 'xhigh', 'max']),
   pollCadenceMs: z.number().int().min(250).max(2000),
@@ -102,6 +115,7 @@ export function defaultSettings(): AppSettings {
     detectCli: 'default',
     detectModel: 'inherit',
     engineerName: process.env.USER || 'engineer',
+    prAgent: DEFAULT_PR_AGENT,
     defaultModel: 'inherit',
     defaultReasoningEffort: 'medium',
     pollCadenceMs: 500,
@@ -153,6 +167,11 @@ export function migrate(raw: unknown): AppSettings {
   }
   if (!merged.detectCli) merged.detectCli = base.detectCli;
   if (!merged.detectModel) merged.detectModel = base.detectModel;
+  // Pre-field files and hand-edits that leave a garbage writer name fall back
+  // to the shipped builtin rather than leaving the app with no PR writer.
+  if (typeof merged.prAgent !== 'string' || !/^[a-z][a-z0-9_-]*$/.test(merged.prAgent)) {
+    merged.prAgent = DEFAULT_PR_AGENT;
+  }
   delete (merged as { droidPath?: string }).droidPath;
   // Foundry no longer has autonomy modes: runs are always fully autonomous.
   delete (merged as { defaultAutonomy?: string }).defaultAutonomy;
