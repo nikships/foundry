@@ -12,6 +12,8 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   emptyInvocables,
+  firstProse,
+  frontMatter,
   hiddenFromHost,
   hiddenSkillToolIds,
   needsHomeOverlay,
@@ -387,5 +389,230 @@ describe('ephemeral home overlay', () => {
     await symlink(join(home, '.factory', 'skills'), join(overlay.dir, 'extra-link'));
     await overlay.cleanup();
     expect(await readdir(join(home, '.factory', 'skills'))).toEqual(['pdf-forms', 'scraper']);
+  });
+});
+
+describe('YAML front matter parsing', () => {
+  it('parses folded block scalars with chomping (>-)', () => {
+    const text = [
+      '---',
+      'name: scrutiny-feature-reviewer',
+      'description: >-',
+      '  Code review for a single feature during mission validation. Used only within missions.',
+      'model: inherit',
+      '---',
+      '# Scrutiny Feature Reviewer',
+    ].join('\n');
+
+    expect(frontMatter(text)).toEqual({
+      name: 'scrutiny-feature-reviewer',
+      description:
+        'Code review for a single feature during mission validation. Used only within missions.',
+    });
+  });
+
+  it('folds multiline block scalars (>) across lines and preserves more-indented lines', () => {
+    const text = [
+      '---',
+      'name: validator',
+      'description: >',
+      '  First line of description',
+      '  that wraps across lines.',
+      '',
+      '  Second paragraph with',
+      '    more indented code line.',
+      '---',
+    ].join('\n');
+
+    expect(frontMatter(text)).toEqual({
+      name: 'validator',
+      description:
+        'First line of description that wraps across lines.\nSecond paragraph with\n  more indented code line.',
+    });
+  });
+
+  it('preserves trailing newlines for block scalars with keep chomping (+)', () => {
+    const text = [
+      '---',
+      'name: keep-chomping',
+      'description: >+',
+      '  Line one.',
+      '',
+      '',
+      '---',
+    ].join('\n');
+
+    expect(frontMatter(text)).toEqual({
+      name: 'keep-chomping',
+      description: 'Line one.\n\n',
+    });
+  });
+
+  it('parses literal block scalars (|- and |)', () => {
+    const text = [
+      '---',
+      'name: reviewer',
+      'description: |-',
+      '  Line one.',
+      '  Line two.',
+      '---',
+    ].join('\n');
+
+    expect(frontMatter(text)).toEqual({
+      name: 'reviewer',
+      description: 'Line one.\nLine two.',
+    });
+  });
+
+  it('parses plain indented multiline scalars without indicator', () => {
+    const text = [
+      '---',
+      'name: simplifier',
+      'description:',
+      '  First line of plain description.',
+      '  Second line of plain description.',
+      '---',
+    ].join('\n');
+
+    expect(frontMatter(text)).toEqual({
+      name: 'simplifier',
+      description: 'First line of plain description. Second line of plain description.',
+    });
+  });
+
+  it('parses plain continuation lines following an inline value', () => {
+    const text = [
+      '---',
+      'name: simplifier',
+      'description: First line of description',
+      '  that continues indented.',
+      '---',
+    ].join('\n');
+
+    expect(frontMatter(text)).toEqual({
+      name: 'simplifier',
+      description: 'First line of description that continues indented.',
+    });
+  });
+
+  it('unquotes double-quoted and single-quoted scalars with escapes', () => {
+    const doubleQuoted = [
+      '---',
+      'name: "my-droid"',
+      'description: "A \\"quoted\\" description with \\n newlines"',
+      '---',
+    ].join('\n');
+    expect(frontMatter(doubleQuoted)).toEqual({
+      name: 'my-droid',
+      description: 'A "quoted" description with \n newlines',
+    });
+
+    const singleQuoted = ['---', "name: 'my-droid'", "description: 'It''s an agent'", '---'].join(
+      '\n',
+    );
+    expect(frontMatter(singleQuoted)).toEqual({
+      name: 'my-droid',
+      description: "It's an agent",
+    });
+  });
+
+  it('handles CRLF line endings in frontmatter', () => {
+    const text = '---\r\nname: crlf-droid\r\ndescription: >-\r\n  Folded text\r\n---\r\n# CRLF';
+    expect(frontMatter(text)).toEqual({
+      name: 'crlf-droid',
+      description: 'Folded text',
+    });
+  });
+
+  it('ignores comments and unrecognised keys', () => {
+    const text = [
+      '---',
+      '# Droid metadata',
+      'model: inherit',
+      'tools: [read, write]',
+      'name: test-agent',
+      '# description below',
+      'description: >-',
+      '  A test agent.',
+      '---',
+    ].join('\n');
+    expect(frontMatter(text)).toEqual({
+      name: 'test-agent',
+      description: 'A test agent.',
+    });
+  });
+
+  it('returns empty object when frontmatter is missing or unclosed', () => {
+    expect(frontMatter('# No frontmatter')).toEqual({});
+    expect(frontMatter('---\nname: unclosed')).toEqual({});
+    expect(frontMatter('')).toEqual({});
+  });
+});
+
+describe('firstProse fallback extraction', () => {
+  it('extracts first heading after frontmatter', () => {
+    const text = '---\nname: foo\n---\n\n# The Main Heading\n\nSome body text.';
+    expect(firstProse(text)).toBe('The Main Heading');
+  });
+
+  it('extracts first prose line when no heading is present', () => {
+    const text = '---\nname: foo\n---\n\nSome body prose line.';
+    expect(firstProse(text)).toBe('Some body prose line.');
+  });
+
+  it('extracts first heading when there is no frontmatter', () => {
+    const text = '# Standalone Heading\n\nBody text.';
+    expect(firstProse(text)).toBe('Standalone Heading');
+  });
+
+  it('skips delimiter lines when frontmatter is unclosed and finds first real line', () => {
+    const text = '---\nname: unclosed\n\n# Fallback Title\n';
+    expect(firstProse(text)).toBe('name: unclosed');
+
+    const textWithHeadingOnly = '---\n\n# Fallback Title\n';
+    expect(firstProse(textWithHeadingOnly)).toBe('Fallback Title');
+  });
+});
+
+describe('custom droids with folded YAML frontmatter', () => {
+  it('correctly reads custom droid description from folded YAML frontmatter', async () => {
+    const home = await fakeHome({
+      droids: {
+        'scrutiny-feature-reviewer': [
+          '---',
+          'name: scrutiny-feature-reviewer',
+          'description: >-',
+          '  Code review for a single feature during mission validation. Used only within missions.',
+          'model: inherit',
+          '---',
+          '# Scrutiny Feature Reviewer',
+        ].join('\n'),
+        'user-testing-flow-validator': [
+          '---',
+          'name: user-testing-flow-validator',
+          'description: >-',
+          '  Test validation contract assertions through designated contract surfaces during mission validation. Used only within missions.',
+          'model: inherit',
+          '---',
+          '# User Testing Flow Validator',
+        ].join('\n'),
+      },
+    });
+
+    const inventory = await readHostInvocables({ homeDir: home });
+    const scrutiny = inventory.droids.find((d) => d.id === 'scrutiny-feature-reviewer');
+    const validator = inventory.droids.find((d) => d.id === 'user-testing-flow-validator');
+
+    expect(scrutiny).toBeDefined();
+    expect(scrutiny?.name).toBe('scrutiny-feature-reviewer');
+    expect(scrutiny?.description).toBe(
+      'Code review for a single feature during mission validation. Used only within missions.',
+    );
+
+    expect(validator).toBeDefined();
+    expect(validator?.name).toBe('user-testing-flow-validator');
+    expect(validator?.description).toBe(
+      'Test validation contract assertions through designated contract surfaces during mission validation. Used only within missions.',
+    );
   });
 });
