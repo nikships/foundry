@@ -219,6 +219,7 @@ export function frontMatter(text: string): { name?: string; description?: string
 
     const isTargetKey = key === 'name' || key === 'description';
 
+    // 1. Block scalar: starts with > or | (optional numeric indent indicator is ignored)
     const blockMatch = /^([>|])([+-]?)([0-9]*)$/.exec(rawVal);
     if (blockMatch) {
       const style = blockMatch[1] as '>' | '|';
@@ -352,7 +353,7 @@ export function firstProse(text: string): string {
   }
   for (const line of body.split(/\r?\n/)) {
     const trimmed = line.trim();
-    if (!trimmed) continue;
+    if (!trimmed || trimmed === '---') continue;
     if (trimmed.startsWith('#')) return trimmed.replace(/^#+\s*/, '').trim();
     return trimmed;
   }

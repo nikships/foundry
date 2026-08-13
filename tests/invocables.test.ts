@@ -411,7 +411,7 @@ describe('YAML front matter parsing', () => {
     });
   });
 
-  it('folds multiline block scalars (>) across lines', () => {
+  it('folds multiline block scalars (>) across lines and preserves more-indented lines', () => {
     const text = [
       '---',
       'name: validator',
@@ -419,13 +419,32 @@ describe('YAML front matter parsing', () => {
       '  First line of description',
       '  that wraps across lines.',
       '',
-      '  Second paragraph.',
+      '  Second paragraph with',
+      '    more indented code line.',
       '---',
     ].join('\n');
 
     expect(frontMatter(text)).toEqual({
       name: 'validator',
-      description: 'First line of description that wraps across lines.\nSecond paragraph.',
+      description:
+        'First line of description that wraps across lines.\nSecond paragraph with\n  more indented code line.',
+    });
+  });
+
+  it('preserves trailing newlines for block scalars with keep chomping (+)', () => {
+    const text = [
+      '---',
+      'name: keep-chomping',
+      'description: >+',
+      '  Line one.',
+      '',
+      '',
+      '---',
+    ].join('\n');
+
+    expect(frontMatter(text)).toEqual({
+      name: 'keep-chomping',
+      description: 'Line one.\n\n',
     });
   });
 
@@ -544,6 +563,14 @@ describe('firstProse fallback extraction', () => {
   it('extracts first heading when there is no frontmatter', () => {
     const text = '# Standalone Heading\n\nBody text.';
     expect(firstProse(text)).toBe('Standalone Heading');
+  });
+
+  it('skips delimiter lines when frontmatter is unclosed and finds first real line', () => {
+    const text = '---\nname: unclosed\n\n# Fallback Title\n';
+    expect(firstProse(text)).toBe('name: unclosed');
+
+    const textWithHeadingOnly = '---\n\n# Fallback Title\n';
+    expect(firstProse(textWithHeadingOnly)).toBe('Fallback Title');
   });
 });
 
