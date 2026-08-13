@@ -63,6 +63,16 @@ export interface RenameResult {
   forked?: boolean;
 }
 
+/**
+ * Result of persisting a user-uploaded agent mark. On success, `emblem` is the
+ * `image:<file>` pointer to store on `AgentDef.emblem`.
+ */
+export interface AgentMarkUploadResult {
+  ok: boolean;
+  emblem?: string;
+  error?: string;
+}
+
 export interface RunDetail {
   run: RunRow | null;
   phases: PhaseRow[];
@@ -327,6 +337,13 @@ export interface FoundryApi {
      */
     preview(agent: AgentDef): Promise<string>;
     reset(): Promise<AgentDef[]>;
+    /**
+     * Persist a user-uploaded mark. Returns `image:<file>` to store on
+     * `AgentDef.emblem`. The bytes live under the support dir, not the roster.
+     */
+    uploadMark(bytesB64: string, mime: string): Promise<AgentMarkUploadResult>;
+    /** Best-effort delete of a previously uploaded mark. */
+    removeMark(emblem: string): Promise<boolean>;
   };
   envelopes: {
     list(): Promise<EnvelopeDef[]>;
@@ -536,6 +553,8 @@ export const IPC = {
   rosterValidate: 'roster:validate',
   rosterPreview: 'roster:preview',
   rosterReset: 'roster:reset',
+  rosterUploadMark: 'roster:uploadMark',
+  rosterRemoveMark: 'roster:removeMark',
   envelopesList: 'envelopes:list',
   envelopesSave: 'envelopes:save',
   envelopesRemove: 'envelopes:remove',

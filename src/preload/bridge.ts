@@ -87,6 +87,8 @@ const api: FoundryApi = {
     validate: (agent) => call(IPC.rosterValidate, agent),
     preview: (agent) => call(IPC.rosterPreview, agent),
     reset: () => call(IPC.rosterReset),
+    uploadMark: (bytesB64, mime) => call(IPC.rosterUploadMark, bytesB64, mime),
+    removeMark: (emblem) => call(IPC.rosterRemoveMark, emblem),
   },
   envelopes: {
     list: () => call(IPC.envelopesList),

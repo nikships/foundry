@@ -12,6 +12,7 @@ import type { DesignTab } from '../navigation.js';
 import { useApp } from '../stores/app.js';
 import { addField, validateCustomFields, shadowedLibraryFields } from '../custom-fields.js';
 import AgentAvatar from '../components/AgentAvatar.js';
+import AgentIconPicker from '../components/AgentIconPicker.js';
 import { CliIcon } from '../components/BrandIcon.js';
 import ModelPicker from '../components/ModelPicker.js';
 import BoundaryEditor from '../components/BoundaryEditor.js';
@@ -491,6 +492,19 @@ export default function RosterScreen({
                     </div>
                     <span className={styles.hint}>
                       Used for this agent's lane in the waterfall.
+                    </span>
+                  </Field>
+                  <Field label="Mark" className={styles.span2}>
+                    <AgentIconPicker
+                      name={draft.name}
+                      emblem={draft.emblem}
+                      color={draft.color}
+                      builtin={draft.builtin}
+                      onChange={(emblem) => setDraft({ ...draft, emblem })}
+                    />
+                    <span className={styles.hint}>
+                      An emblem, a custom upload, or the initial letter. Shown wherever this agent
+                      appears.
                     </span>
                   </Field>
                 </div>

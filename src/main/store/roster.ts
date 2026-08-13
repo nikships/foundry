@@ -63,7 +63,18 @@ export const agentSchema = z.object({
     })
     .optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'a hex colour like #5ad2dd'),
-  emblem: z.string().optional(),
+  // Absent / `monogram` = initial; a library id or shipped portrait token;
+  // `image:<file>` = a user upload. Empty string is treated as absent.
+  emblem: z.preprocess(
+    (val) => (val === '' ? undefined : val),
+    z
+      .string()
+      .regex(
+        /^(monogram|[a-z][a-z0-9_-]*|image:[a-z0-9]+\.(png|jpg|webp|gif|svg))$/,
+        'monogram, a library or portrait id, or image:<file>',
+      )
+      .optional(),
+  ),
   builtin: z.boolean().optional(),
 });
 

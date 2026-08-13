@@ -342,6 +342,16 @@ export function createMockFoundryApi(): FoundryApi {
         mockAgents = BUILTIN_AGENTS.map((a) => ({ ...a }));
         return [...mockAgents];
       },
+      uploadMark: async (bytesB64, mime) => {
+        if (!mime.startsWith('image/')) {
+          return { ok: false, error: 'Use a PNG, JPEG, WebP, GIF, or SVG image.' };
+        }
+        return {
+          ok: true,
+          emblem: `image:preview-${bytesB64.length}.${mime.split('/')[1] ?? 'png'}`,
+        };
+      },
+      removeMark: async () => true,
     },
     envelopes: {
       list: async (): Promise<EnvelopeDef[]> => [],
