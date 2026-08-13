@@ -6,6 +6,7 @@
  * project that opted in is fully independent of later app-level edits.
  */
 
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { BUILTIN_ENVELOPE_KINDS, type AgentDef, type ValidationIssue } from '@shared/types.js';
@@ -141,6 +142,16 @@ export class RosterStore {
 
   private storeFor(opts: { projectId?: string; ownRoster?: boolean } = {}): JsonStore<AgentDef[]> {
     return opts.projectId && opts.ownRoster ? this.projectStore(opts.projectId) : this.appStore;
+  }
+
+  /**
+   * Whether this project already has a roster file on disk. Turning `ownRoster`
+   * off leaves the copy in place, so re-enabling restores that older copy
+   * instead of seeding a fresh one — the UI has to say which is about to
+   * happen, and only the file's existence distinguishes them.
+   */
+  hasProjectCopy(projectId: string): boolean {
+    return existsSync(this.projectStore(projectId).filePath);
   }
 
   list(opts: { projectId?: string; ownRoster?: boolean } = {}): AgentDef[] {

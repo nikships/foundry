@@ -15,6 +15,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { DESIGN_TABS, type DesignTab } from '../navigation.js';
 import { DESIGN_TAB_EMBLEMS } from '../components/SidebarEmblems.js';
 import { useTablistNav } from '../hooks/useTablistNav.js';
+import { useApp } from '../stores/app.js';
+import DesignScopeControl from '../components/DesignScopeControl.js';
 import EnvelopesEditor from '../components/EnvelopesEditor.js';
 import PipelinesScreen from './PipelinesScreen.js';
 import RosterScreen from './RosterScreen.js';
@@ -34,6 +36,7 @@ export default function DesignScreen({
   openNonce?: number;
 }): React.JSX.Element {
   const onTablistKey = useTablistNav();
+  const { project, refreshScoped } = useApp();
   // A cross-link carries its own target; a plain tab click must not re-apply
   // the previous one, so the deep link is consumed by the tab it was aimed at.
   const [consumedNonce, setConsumedNonce] = useState(0);
@@ -70,6 +73,7 @@ export default function DesignScreen({
           <span className="index">03</span>Design
         </p>
         <p className={styles.designLead}>{active.blurb}</p>
+        <DesignScopeControl tab={tab} project={project} onChanged={refreshScoped} />
       </header>
 
       <div

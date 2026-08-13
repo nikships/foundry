@@ -279,6 +279,13 @@ export interface FoundryApi {
     setupCancel(setupId: string): Promise<boolean>;
     check(id: string): Promise<DoctorCheck[]>;
     reveal(path: string): Promise<void>;
+    /**
+     * Whether this project already has its own roster/pipelines file on disk.
+     * Turning a scope flag off leaves the copy in place, so re-enabling
+     * restores that older copy rather than re-seeding from the current global
+     * set — the scope control has to say which is about to happen.
+     */
+    scopeCopies(id: string): Promise<{ roster: boolean; pipelines: boolean }>;
   };
   readiness: {
     /** Marker-file status. Cache never wins over the file. */
@@ -503,6 +510,7 @@ export const IPC = {
   projectsSetupCancel: 'projects:setupCancel',
   projectsCheck: 'projects:check',
   projectsReveal: 'projects:reveal',
+  projectsScopeCopies: 'projects:scopeCopies',
   readinessInspect: 'readiness:inspect',
   readinessEvaluate: 'readiness:evaluate',
   readinessMakeReady: 'readiness:makeReady',

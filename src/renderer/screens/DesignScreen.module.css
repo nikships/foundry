@@ -27,6 +27,11 @@
   white-space: nowrap;
 }
 
+/* The scope badge keeps its width; the lead gives way first. */
+.design-header > :last-child {
+  flex: none;
+}
+
 /* strip — equal flex cells span the full window width and rescale with it */
 .design-tabs {
   flex: none;

@@ -4,6 +4,7 @@
  * a Python script now fire at edit time, where a human can still fix them.
  */
 
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 import {
@@ -120,6 +121,15 @@ export class PipelineStore {
     opts: { projectId?: string; ownPipelines?: boolean } = {},
   ): JsonStore<PipelineDef[]> {
     return opts.projectId && opts.ownPipelines ? this.projectStore(opts.projectId) : this.appStore;
+  }
+
+  /**
+   * Whether this project already has a pipelines file on disk. Turning
+   * `ownPipelines` off leaves the copy in place, so re-enabling restores that
+   * older copy rather than seeding a fresh one; the UI must say which.
+   */
+  hasProjectCopy(projectId: string): boolean {
+    return existsSync(this.projectStore(projectId).filePath);
   }
 
   list(opts: { projectId?: string; ownPipelines?: boolean } = {}): PipelineDef[] {

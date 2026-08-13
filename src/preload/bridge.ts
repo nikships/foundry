@@ -64,6 +64,7 @@ const api: FoundryApi = {
     setupCancel: (setupId) => call(IPC.projectsSetupCancel, setupId),
     check: (id) => call(IPC.projectsCheck, id),
     reveal: (path) => call(IPC.projectsReveal, path),
+    scopeCopies: (id) => call(IPC.projectsScopeCopies, id),
   },
   readiness: {
     inspect: (projectId) => call(IPC.readinessInspect, projectId),

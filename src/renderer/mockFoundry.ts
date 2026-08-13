@@ -269,6 +269,7 @@ export function createMockFoundryApi(): FoundryApi {
         },
       ],
       reveal: async () => {},
+      scopeCopies: async () => ({ roster: false, pipelines: false }),
     },
     readiness: {
       inspect: async (projectId): Promise<ReadinessInspectResult | null> => ({

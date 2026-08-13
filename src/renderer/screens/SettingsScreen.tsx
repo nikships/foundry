@@ -1297,24 +1297,43 @@ export default function SettingsScreen({
                         />
                       </Field>
                     </Section>
-                    <Section label="Scope" note="Keep configuration local to this project.">
+                    {/*
+                      Read-only on purpose. Scope decides where an edit lands, so
+                      it belongs where the editing happens; the control moved to
+                      the Design header and this is the status it reports.
+                    */}
+                    <Section
+                      label="Scope"
+                      note="Where this project's agents and pipelines are saved."
+                    >
                       <div className={styles.settingsFields}>
-                        <Toggle
-                          label="Use a project-specific roster"
-                          hint="Starts as a copy of the global roster; changes stay in this project."
-                          checked={projectDraft.ownRoster}
-                          onChange={(value) =>
-                            setProjectDraft({ ...projectDraft, ownRoster: value })
-                          }
-                        />
-                        <Toggle
-                          label="Use project-specific pipelines"
-                          hint="Same idea, for pipelines."
-                          checked={projectDraft.ownPipelines}
-                          onChange={(value) =>
-                            setProjectDraft({ ...projectDraft, ownPipelines: value })
-                          }
-                        />
+                        <Field label="Agents">
+                          <p className={styles.settingsStatic}>
+                            {projectDraft.ownRoster ? 'This project only' : 'Global'}
+                          </p>
+                          <span className="hint">
+                            {projectDraft.ownRoster
+                              ? 'A copy belonging to this project. Later changes to the global agents do not reach it.'
+                              : 'Shared by every project.'}
+                          </span>
+                        </Field>
+                        <Field label="Pipelines">
+                          <p className={styles.settingsStatic}>
+                            {projectDraft.ownPipelines ? 'This project only' : 'Global'}
+                          </p>
+                          <span className="hint">
+                            {projectDraft.ownPipelines
+                              ? 'A copy belonging to this project. Later changes to the global pipelines do not reach it.'
+                              : 'Shared by every project.'}
+                          </span>
+                        </Field>
+                        <Field label="Change it" className={styles.span2}>
+                          <span className="hint">
+                            Change scope in <strong>Design</strong> (<kbd>⌘3</kbd>), on the Agents
+                            or Pipelines tab — the badge beside the heading. It is set there because
+                            that is where the edits it affects are made.
+                          </span>
+                        </Field>
                       </div>
                     </Section>
                     <div className={styles.settingsFoot}>

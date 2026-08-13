@@ -24,7 +24,14 @@ import { noIssues, notifySettings } from './shared.js';
 
 type Ctx = Pick<
   AppContext,
-  'projects' | 'settings' | 'window' | 'broadcast' | 'detections' | 'setups'
+  | 'projects'
+  | 'settings'
+  | 'window'
+  | 'broadcast'
+  | 'detections'
+  | 'setups'
+  | 'roster'
+  | 'pipelines'
 >;
 
 export function register(ctx: Ctx, handle: Handle): void {
@@ -326,4 +333,9 @@ export function register(ctx: Ctx, handle: Handle): void {
   handle(IPC.projectsReveal, (path: string) => {
     if (existsSync(path)) shell.openPath(path);
   });
+
+  handle(IPC.projectsScopeCopies, (id: string) => ({
+    roster: ctx.roster.hasProjectCopy(id),
+    pipelines: ctx.pipelines.hasProjectCopy(id),
+  }));
 }
