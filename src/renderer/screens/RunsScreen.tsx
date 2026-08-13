@@ -10,7 +10,12 @@ import PipelineRibbon from '../components/PipelineRibbon.js';
 import EmptyState from '../components/EmptyState.js';
 import { Button } from '../components/ui/Button.js';
 import { Dropdown } from '../components/ui/Dropdown.js';
-import { isReadinessLive, isReadinessTerminal, readinessBanner } from '../readiness-view.js';
+import {
+  isReadinessLive,
+  isReadinessTerminal,
+  readinessBanner,
+  readinessFailureNote,
+} from '../readiness-view.js';
 import styles from './RunsScreen.module.css';
 
 export default function RunsScreen({
@@ -67,11 +72,17 @@ export default function RunsScreen({
     setReadiness(await api.readiness.inspect(projectId));
   }, [projectId]);
 
+  // Both flags describe one project's session, so they reset with the project.
+  // Leaving them would render the previous project's "checking" state — which
+  // also hides the Check readiness button — over the new project's banner.
+  useEffect(() => {
+    setReadinessChecking(false);
+    setReadinessNote('');
+  }, [projectId]);
+
   useEffect(() => {
     if (!projectId) {
       setReadiness(null);
-      setReadinessChecking(false);
-      setReadinessNote('');
       return;
     }
     let cancelled = false;
@@ -94,7 +105,7 @@ export default function RunsScreen({
       if (cancelled || next?.projectId !== projectId) return;
       setReadinessChecking(isReadinessLive(next.phase));
       if (!isReadinessTerminal(next.phase)) return;
-      setReadinessNote(next.phase === 'failed' ? next.detail : '');
+      setReadinessNote(readinessFailureNote(next));
       void refreshReadiness();
     });
     return () => {

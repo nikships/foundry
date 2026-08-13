@@ -122,29 +122,7 @@ export function readMarker(repo: string): MarkerRead {
   return parseMarkerText(text);
 }
 
-/**
- * The authoritative readiness answer: the marker as committed on `baseRef`.
- *
- * Run worktrees are created from the base ref, so that is the only tree whose
- * marker describes what a run will actually see. The working checkout is used
- * only when the base ref cannot be resolved at all (no commits yet, or a ref
- * that no longer exists), and the result says so.
- */
-export async function readMarkerAtBaseRef(repo: string, baseRef: string): Promise<MarkerRead> {
-  const ref = baseRef.trim();
-  if (!ref) {
-    const local = readMarker(repo);
-    return { ...local, source: 'worktree', detail: `${local.detail} (no base ref configured)` };
-  }
-  if (!(await refExists(repo, ref))) {
-    const local = readMarker(repo);
-    return {
-      ...local,
-      source: 'worktree',
-      ref,
-      detail: `${local.detail} (base ref "${ref}" does not exist; read the working checkout instead)`,
-    };
-  }
+async function readAtRef(repo: string, ref: string, note: string): Promise<MarkerRead> {
   const text = await showFileAtRef(repo, ref, AGENT_READY_PATH);
   if (text === null) {
     return {
@@ -152,7 +130,7 @@ export async function readMarkerAtBaseRef(repo: string, baseRef: string): Promis
       marker: null,
       source: 'base-ref',
       ref,
-      detail: `${AGENT_READY_PATH} is not committed on ${ref}`,
+      detail: `${AGENT_READY_PATH} is not committed on ${ref}${note}`,
     };
   }
   const parsed = parseMarkerText(text);
@@ -160,7 +138,38 @@ export async function readMarkerAtBaseRef(repo: string, baseRef: string): Promis
     ...parsed,
     source: 'base-ref',
     ref,
-    detail: parsed.ok ? `${parsed.detail} on ${ref}` : `${parsed.detail} (on ${ref})`,
+    detail: parsed.ok ? `${parsed.detail} on ${ref}${note}` : `${parsed.detail} (on ${ref}${note})`,
+  };
+}
+
+/**
+ * The authoritative readiness answer: the marker as committed on `baseRef`.
+ *
+ * Run worktrees are created from the base ref, so that is the only tree whose
+ * marker describes what a run will actually see.
+ *
+ * When the base ref cannot be resolved (misconfigured, renamed, or deleted),
+ * the answer comes from `HEAD` rather than the working checkout, because
+ * `addWorktree()` branches from HEAD in exactly that situation — HEAD is what a
+ * run would inherit. Reading the filesystem there would report ready off an
+ * uncommitted marker, which is the failure this whole path exists to prevent.
+ * The bare filesystem is used only for a repo with no commits at all, where
+ * there is no tree to read.
+ */
+export async function readMarkerAtBaseRef(repo: string, baseRef: string): Promise<MarkerRead> {
+  const ref = baseRef.trim();
+  if (ref && (await refExists(repo, ref))) return readAtRef(repo, ref, '');
+
+  const why = ref ? `base ref "${ref}" does not resolve` : 'no base ref configured';
+  if (await refExists(repo, 'HEAD')) {
+    return readAtRef(repo, 'HEAD', `; ${why}, so HEAD was used`);
+  }
+  const local = readMarker(repo);
+  return {
+    ...local,
+    source: 'worktree',
+    ...(ref ? { ref } : {}),
+    detail: `${local.detail} (${why} and the repository has no commits)`,
   };
 }
 

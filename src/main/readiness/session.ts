@@ -253,6 +253,20 @@ export class ReadinessSession {
     if (this.cancelSignal.cancelled) return this.snapshot();
     if (!this.state.evaluation) await this.evaluate();
     if (this.cancelSignal.cancelled || this.state.phase === 'failed') return this.snapshot();
+    if (this.state.phase === 'complete') return this.snapshot();
+
+    // The marker can land on the base ref between evaluation and this click
+    // (the operator pulls in another terminal). Remediating then would open a
+    // second readiness PR against a repo that is already ready.
+    const already = await this.readAuthoritativeMarker();
+    if (already.ok && already.marker) {
+      this.state.marker = already.marker;
+      this.state.markerValid = true;
+      this.state.markerDetail = already.detail;
+      this.persist({ readinessValidated: true, readinessSkipped: false });
+      this.setPhase('complete', 'Repository is already agent-ready.');
+      return this.snapshot();
+    }
 
     const project = this.deps.project;
     this.setPhase('remediating', 'Creating an isolated branch');

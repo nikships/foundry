@@ -3,6 +3,7 @@ import type {
   AgentReadyMarker,
   ReadinessInspectResult,
   ReadinessPhase,
+  ReadinessState,
 } from '../src/shared/types.js';
 import { READINESS_CRITERION_IDS } from '../src/shared/types.js';
 import {
@@ -10,6 +11,7 @@ import {
   isReadinessLive,
   isReadinessTerminal,
   readinessBanner,
+  readinessFailureNote,
 } from '../src/renderer/readiness-view.js';
 
 function marker(summary: string): AgentReadyMarker {
@@ -38,14 +40,34 @@ function inspect(over: Partial<ReadinessInspectResult> = {}): ReadinessInspectRe
   };
 }
 
+function state(over: Partial<ReadinessState> = {}): ReadinessState {
+  return {
+    sessionId: 's1',
+    projectId: 'p1',
+    phase: 'failed',
+    model: 'inherit',
+    reasoningEffort: 'high',
+    marker: null,
+    markerValid: false,
+    markerDetail: '',
+    evaluation: null,
+    entries: [],
+    pendingAsk: null,
+    pr: null,
+    mergeDetail: '',
+    skipDetail: '',
+    detail: '',
+    startedAt: 0,
+    ...over,
+  };
+}
+
 describe('readiness phase classification', () => {
   const live: ReadinessPhase[] = [
     'inspecting',
     'evaluating',
     'remediating',
     'verifying',
-    'pr_ready',
-    'awaiting_merge',
     'confirming_merge',
     'finalizing',
   ];
@@ -70,6 +92,54 @@ describe('readiness phase classification', () => {
       expect(isReadinessLive(phase)).toBe(false);
       expect(isReadinessTerminal(phase)).toBe(false);
     }
+  });
+
+  it('does not call waiting on the operator live', () => {
+    // These wait on a human merging the PR for unbounded wall-clock time, so
+    // claiming "checking" would hide the Check readiness button indefinitely.
+    for (const phase of ['pr_ready', 'awaiting_merge'] as ReadinessPhase[]) {
+      expect(isReadinessLive(phase)).toBe(false);
+      expect(isReadinessTerminal(phase)).toBe(false);
+    }
+  });
+});
+
+describe('readinessFailureNote', () => {
+  it('surfaces a verification failure', () => {
+    const note = readinessFailureNote(
+      state({ failedPhase: 'verifying', detail: 'Verification still failing: tests' }),
+    );
+    expect(note).toBe('Verification still failing: tests');
+  });
+
+  it('surfaces a finalization failure', () => {
+    const note = readinessFailureNote(
+      state({ failedPhase: 'finalizing', detail: 'not committed on main' }),
+    );
+    expect(note).toBe('not committed on main');
+  });
+
+  it('says nothing for a cancelled session', () => {
+    // cancel() fails from whatever phase was running and sets detail to
+    // "cancelled"; that word is not an explanation of repository readiness.
+    expect(readinessFailureNote(state({ failedPhase: 'evaluating', detail: 'cancelled' }))).toBe(
+      '',
+    );
+  });
+
+  it('says nothing for a remediation failure', () => {
+    expect(
+      readinessFailureNote(state({ failedPhase: 'remediating', detail: 'agent gave up' })),
+    ).toBe('');
+  });
+
+  it('says nothing for a non-failed session', () => {
+    expect(readinessFailureNote(state({ phase: 'complete', detail: 'Ready.' }))).toBe('');
+    expect(readinessFailureNote(state({ phase: 'skipped', detail: 'skipped' }))).toBe('');
+  });
+
+  it('says nothing when no failed phase was recorded', () => {
+    expect(readinessFailureNote(state({ detail: 'something' }))).toBe('');
   });
 });
 

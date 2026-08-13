@@ -9,15 +9,19 @@
  * they can be tested without a DOM.
  */
 
-import type { ReadinessInspectResult, ReadinessPhase } from '@shared/types.js';
+import type { ReadinessInspectResult, ReadinessPhase, ReadinessState } from '@shared/types.js';
 
+/**
+ * Deliberately the same set `ReadinessFlow` treats as live, and for the same
+ * reason: `pr_ready` and `awaiting_merge` are waiting on the operator to merge,
+ * not on work in flight. Calling those "checking" would claim progress for
+ * unbounded wall-clock time while hiding the button that starts a check.
+ */
 const LIVE_PHASES = new Set<ReadinessPhase>([
   'inspecting',
   'evaluating',
   'remediating',
   'verifying',
-  'pr_ready',
-  'awaiting_merge',
   'confirming_merge',
   'finalizing',
 ]);
@@ -32,6 +36,22 @@ export function isReadinessLive(phase: ReadinessPhase): boolean {
 /** A settled session: the banner must re-inspect rather than trust its old answer. */
 export function isReadinessTerminal(phase: ReadinessPhase): boolean {
   return TERMINAL_PHASES.has(phase);
+}
+
+/**
+ * The phases whose failure detail explains why readiness could not be
+ * confirmed. A session can also end `failed` because the operator cancelled or
+ * the remediating agent gave up; neither says anything about the repository, and
+ * `cancel()` sets the detail to the bare word "cancelled", which would otherwise
+ * become the banner's entire message.
+ */
+const VALIDATION_PHASES = new Set<ReadinessPhase>(['verifying', 'finalizing']);
+
+/** The banner note for a settled session, or '' when it has nothing to add. */
+export function readinessFailureNote(state: ReadinessState): string {
+  if (state.phase !== 'failed') return '';
+  if (!state.failedPhase || !VALIDATION_PHASES.has(state.failedPhase)) return '';
+  return state.detail;
 }
 
 export interface ReadinessBanner {

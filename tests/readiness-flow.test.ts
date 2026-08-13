@@ -253,7 +253,7 @@ describe('the base ref is the authority, not the checked-out branch', () => {
     expect(sessionProject.readinessValidated).toBe(false);
   });
 
-  it('falls back to the working checkout when the base ref does not exist', async () => {
+  it('reads HEAD, not the working checkout, when the base ref does not resolve', async () => {
     const repo = gitRepo('foundry-ready-noref-');
     seedReadyFiles(repo);
     write(repo, '.agents/agent-ready.json', markerJson(repo));
@@ -263,8 +263,37 @@ describe('the base ref is the authority, not the checked-out branch', () => {
     project.baseRef = 'nonexistent-ref';
     const status = await inspectProject(project);
     expect(status.ready).toBe(true);
+    expect(status.markerSource).toBe('base-ref');
+    expect(status.markerRef).toBe('HEAD');
+    expect(status.markerDetail).toMatch(/does not resolve/);
+  });
+
+  it('does not report ready off an uncommitted marker when the base ref is misconfigured', async () => {
+    const repo = gitRepo('foundry-ready-badref-');
+    seedReadyFiles(repo);
+    commitAll(repo, 'ready files, no marker');
+    // Only on disk. A run branches from HEAD here, so it would never see this.
+    write(repo, '.agents/agent-ready.json', markerJson(repo));
+    expect(readMarker(repo).ok).toBe(true);
+
+    const project = defaultProject(repo);
+    project.baseRef = 'not-a-real-branch';
+    const status = await inspectProject(project);
+    expect(status.ready).toBe(false);
+    expect(status.markerSource).toBe('base-ref');
+  });
+
+  it('falls back to the working checkout only when the repo has no commits', async () => {
+    const repo = tempDir('foundry-ready-nocommits-');
+    sh(repo, ['git', 'init', '-q', '-b', 'main']);
+    seedReadyFiles(repo);
+    write(repo, '.agents/agent-ready.json', markerJson(repo));
+
+    const project = defaultProject(repo);
+    project.baseRef = 'main';
+    const status = await inspectProject(project);
     expect(status.markerSource).toBe('worktree');
-    expect(status.markerDetail).toMatch(/does not exist/);
+    expect(status.markerDetail).toMatch(/no commits/);
   });
 
   it('skips a redundant Make it ready when the checklist and the base marker agree', async () => {
@@ -278,6 +307,52 @@ describe('the base ref is the authority, not the checked-out branch', () => {
     expect(state.evaluation?.ready).toBe(true);
     expect(state.phase).toBe('complete');
     expect(project.readinessValidated).toBe(true);
+  });
+
+  it('refuses to remediate a session that already completed', async () => {
+    const repo = gitRepo('foundry-ready-nodoubleready-');
+    seedReadyFiles(repo);
+    write(repo, '.agents/agent-ready.json', markerJson(repo));
+    commitAll(repo, 'ready with marker');
+
+    let openedPrs = 0;
+    const { session } = sessionFor(repo, {
+      openPr: async () => {
+        openedPrs += 1;
+        return { ok: true, detail: 'opened', number: 99, url: 'https://example.com/99' };
+      },
+    });
+    await session.inspect();
+    expect(session.snapshot().phase).toBe('complete');
+
+    const after = await session.makeReady();
+    expect(after.phase).toBe('complete');
+    expect(openedPrs).toBe(0);
+    expect(sh(repo, ['git', 'branch', '--list', 'foundry-ready/*']).trim()).toBe('');
+  });
+
+  it('re-checks the base ref before remediating, in case the marker landed meanwhile', async () => {
+    const repo = gitRepo('foundry-ready-raced-');
+    seedReadyFiles(repo);
+    commitAll(repo, 'ready files, no marker');
+
+    let openedPrs = 0;
+    const { session } = sessionFor(repo, {
+      openPr: async () => {
+        openedPrs += 1;
+        return { ok: true, detail: 'opened', number: 98, url: 'https://example.com/98' };
+      },
+    });
+    const evaluated = await session.evaluate();
+    expect(evaluated.phase).toBe('not_ready');
+
+    // The operator commits the marker in another terminal before clicking.
+    write(repo, '.agents/agent-ready.json', markerJson(repo));
+    commitAll(repo, 'marker landed out of band');
+
+    const after = await session.makeReady();
+    expect(after.phase).toBe('complete');
+    expect(openedPrs).toBe(0);
   });
 
   it('explains the missing base-ref marker when the checklist is already green', async () => {
