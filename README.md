@@ -94,7 +94,7 @@ No black box. The Inspector is a live waterfall — tool calls streaming mid-pha
 Pause at any checkpoint. Approve, edit, or reject — the factory keeps going.
 
 <p align="center">
-  <img src="assets/readme/run-timeline.png" alt="Inspector waterfall — phases, tool calls, costs" width="820">
+  <img width="1552" height="1052" alt="image" src="https://github.com/user-attachments/assets/c2b40fad-626a-4857-8c00-14171e0d570b" />
 </p>
 
 ## Safe by default
