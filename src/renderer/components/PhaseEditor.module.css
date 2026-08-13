@@ -33,6 +33,20 @@
   color: var(--text-faint);
 }
 
+.link-btn {
+  align-self: flex-start;
+  display: inline;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .monoInput {
   width: 100%;
   padding: 6px 10px;

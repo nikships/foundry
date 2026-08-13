@@ -1,5 +1,9 @@
 /**
- * Settings → Envelopes: shared library of named custom envelopes.
+ * Design → Envelopes: shared library of named custom envelopes.
+ *
+ * An envelope is the typed return shape of an agent phase, so this is a
+ * designer rather than a preference — it sits beside the pipeline and agent
+ * editors that reference it, not in Settings.
  *
  * Built-ins are inspectable (same JSON the agent sees). Customs get a field
  * editor, live preview, duplicate, and usage-aware delete. Empty library opens
@@ -21,7 +25,7 @@ import { Field, TextInput } from './ui/Field.js';
 import { Button } from './ui/Button.js';
 import { confirmManager } from '../hooks/useConfirmAction.js';
 import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
-import styles from '../screens/SettingsScreen.module.css';
+import styles from './EnvelopesEditor.module.css';
 
 const FIELD_TYPES: { value: CustomEnvelopeField['type']; label: string }[] = [
   { value: 'string', label: 'Text' },
@@ -246,7 +250,7 @@ function fieldTypeLabel(type: CustomEnvelopeField['type']): string {
   return FIELD_TYPES.find((t) => t.value === type)?.label ?? type;
 }
 
-export default function EnvelopesSettings({
+export default function EnvelopesEditor({
   openEnvelope,
   openNonce = 0,
 }: {
@@ -564,374 +568,382 @@ export default function EnvelopesSettings({
   };
 
   return (
-    <div className={styles.envelopeShell}>
-      <header className={styles.envelopeHeader}>
-        <div>
-          <h2 className={styles.envelopeTitle}>Envelopes</h2>
-          <p className={styles.envelopeLead}>
-            Named JSON shapes agents must return. Pick one on a roster agent or pipeline phase — the
-            live preview below is exactly what the agent is shown.
-          </p>
-        </div>
-        <Button size="sm" variant="primary" onClick={startBlank} disabled={busy}>
-          New envelope
-        </Button>
-      </header>
-
-      <div className={styles.envelopeLayout}>
-        {/* ── library rail ───────────────────────────────────────────── */}
-        <aside className={styles.envelopeList} aria-label="Envelope library">
-          <div className={styles.envelopeListHead}>
-            <span>Your library</span>
-            <span className={styles.envelopeCount}>{envelopes.length}</span>
+    <div className={styles.envelopesPage}>
+      <div className={styles.envelopeShell}>
+        <header className={styles.envelopeHeader}>
+          <div>
+            <h2 className={styles.envelopeTitle}>Envelopes</h2>
+            <p className={styles.envelopeLead}>
+              Named JSON shapes agents must return. Pick one on an agent or a pipeline phase — the
+              live preview below is exactly what the agent is shown.
+            </p>
           </div>
-          {envelopes.length === 0 ? (
-            <p className={styles.envelopeListEmpty}>None yet — start from a template or blank.</p>
-          ) : (
+          <Button size="sm" variant="primary" onClick={startBlank} disabled={busy}>
+            New envelope
+          </Button>
+        </header>
+
+        <div className={styles.envelopeLayout}>
+          {/* ── library rail ───────────────────────────────────────────── */}
+          <aside className={styles.envelopeList} aria-label="Envelope library">
+            <div className={styles.envelopeListHead}>
+              <span>Your library</span>
+              <span className={styles.envelopeCount}>{envelopes.length}</span>
+            </div>
+            {envelopes.length === 0 ? (
+              <p className={styles.envelopeListEmpty}>None yet — start from a template or blank.</p>
+            ) : (
+              <ul className={styles.envelopeItems}>
+                {envelopes.map((env) => {
+                  const on =
+                    selection.kind === 'custom' && selection.name === env.name && !selection.isNew;
+                  return (
+                    <li key={env.name}>
+                      <button
+                        type="button"
+                        className={`${styles.envelopeItem} ${on ? styles.on : ''}`}
+                        onClick={() => selectCustom(env.name)}
+                      >
+                        <strong className="mono">{env.name}</strong>
+                        <em>
+                          {env.description?.trim() ||
+                            (env.fields.length
+                              ? `${env.fields.length} field${env.fields.length === 1 ? '' : 's'}`
+                              : 'No extra fields')}
+                        </em>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            {isNew && draft && !envelopes.some((e) => e.name === draft.name) && (
+              <ul className={styles.envelopeItems}>
+                <li>
+                  <div className={`${styles.envelopeItem} ${styles.on} ${styles.envelopeDraft}`}>
+                    <strong className="mono">{draft.name}</strong>
+                    <em>Unsaved draft</em>
+                  </div>
+                </li>
+              </ul>
+            )}
+
+            <div className={styles.envelopeListHead}>
+              <span>Built-in</span>
+              <span className={styles.envelopeCountMuted}>inspect</span>
+            </div>
             <ul className={styles.envelopeItems}>
-              {envelopes.map((env) => {
-                const on =
-                  selection.kind === 'custom' && selection.name === env.name && !selection.isNew;
+              {BUILTIN_ENVELOPE_KINDS.map((kind) => {
+                const on = selection.kind === 'builtin' && selection.name === kind;
                 return (
-                  <li key={env.name}>
+                  <li key={kind}>
                     <button
                       type="button"
-                      className={`${styles.envelopeItem} ${on ? styles.on : ''}`}
-                      onClick={() => selectCustom(env.name)}
+                      className={`${styles.envelopeItem} ${styles.envelopeBuiltinBtn} ${on ? styles.on : ''}`}
+                      onClick={() => selectBuiltin(kind)}
                     >
-                      <strong className="mono">{env.name}</strong>
-                      <em>
-                        {env.description?.trim() ||
-                          (env.fields.length
-                            ? `${env.fields.length} field${env.fields.length === 1 ? '' : 's'}`
-                            : 'No extra fields')}
-                      </em>
+                      <strong className="mono">{kind}</strong>
+                      <em>{BUILTIN_BLURBS[kind]}</em>
                     </button>
                   </li>
                 );
               })}
             </ul>
-          )}
+          </aside>
 
-          {isNew && draft && !envelopes.some((e) => e.name === draft.name) && (
-            <ul className={styles.envelopeItems}>
-              <li>
-                <div className={`${styles.envelopeItem} ${styles.on} ${styles.envelopeDraft}`}>
-                  <strong className="mono">{draft.name}</strong>
-                  <em>Unsaved draft</em>
+          {/* ── main pane ──────────────────────────────────────────────── */}
+          <div className={styles.envelopeEditor}>
+            {showEmptyHero && (
+              <div className={styles.envelopeHero}>
+                <div className={styles.envelopeHeroCopy}>
+                  <h3>Shape what agents return</h3>
+                  <p>
+                    Built-ins cover plan, build, review, and friends. When a phase needs a field
+                    they do not have — severity, a checklist, next steps — define it once here and
+                    pick it from any agent or phase.
+                  </p>
                 </div>
-              </li>
-            </ul>
-          )}
-
-          <div className={styles.envelopeListHead}>
-            <span>Built-in</span>
-            <span className={styles.envelopeCountMuted}>inspect</span>
-          </div>
-          <ul className={styles.envelopeItems}>
-            {BUILTIN_ENVELOPE_KINDS.map((kind) => {
-              const on = selection.kind === 'builtin' && selection.name === kind;
-              return (
-                <li key={kind}>
+                <div className={styles.envelopeStarters}>
+                  {STARTERS.map((starter) => (
+                    <button
+                      key={starter.id}
+                      type="button"
+                      className={styles.envelopeStarter}
+                      onClick={() => startFromStarter(starter)}
+                    >
+                      <strong>{starter.title}</strong>
+                      <span>{starter.blurb}</span>
+                      <em className="mono">+ {starter.def.name}</em>
+                    </button>
+                  ))}
                   <button
                     type="button"
-                    className={`${styles.envelopeItem} ${styles.envelopeBuiltinBtn} ${on ? styles.on : ''}`}
-                    onClick={() => selectBuiltin(kind)}
+                    className={styles.envelopeStarterBlank}
+                    onClick={startBlank}
                   >
-                    <strong className="mono">{kind}</strong>
-                    <em>{BUILTIN_BLURBS[kind]}</em>
+                    <strong>Start blank</strong>
+                    <span>Generic base plus the fields you add.</span>
                   </button>
-                </li>
-              );
-            })}
-          </ul>
-        </aside>
+                </div>
+              </div>
+            )}
 
-        {/* ── main pane ──────────────────────────────────────────────── */}
-        <div className={styles.envelopeEditor}>
-          {showEmptyHero && (
-            <div className={styles.envelopeHero}>
-              <div className={styles.envelopeHeroCopy}>
-                <h3>Shape what agents return</h3>
+            {selection.kind === 'none' && !showEmptyHero && (
+              <div className={styles.envelopeIdle}>
                 <p>
-                  Built-ins cover plan, build, review, and friends. When a phase needs a field they
-                  do not have — severity, a checklist, next steps — define it once here and pick it
-                  from any agent or phase.
+                  Select an envelope to edit, or inspect a built-in to see the JSON agents return.
                 </p>
+                <Button size="sm" onClick={startBlank}>
+                  New envelope
+                </Button>
               </div>
-              <div className={styles.envelopeStarters}>
-                {STARTERS.map((starter) => (
-                  <button
-                    key={starter.id}
-                    type="button"
-                    className={styles.envelopeStarter}
-                    onClick={() => startFromStarter(starter)}
-                  >
-                    <strong>{starter.title}</strong>
-                    <span>{starter.blurb}</span>
-                    <em className="mono">+ {starter.def.name}</em>
-                  </button>
-                ))}
-                <button type="button" className={styles.envelopeStarterBlank} onClick={startBlank}>
-                  <strong>Start blank</strong>
-                  <span>Generic base plus the fields you add.</span>
-                </button>
-              </div>
-            </div>
-          )}
+            )}
 
-          {selection.kind === 'none' && !showEmptyHero && (
-            <div className={styles.envelopeIdle}>
-              <p>
-                Select an envelope to edit, or inspect a built-in to see the JSON agents return.
-              </p>
-              <Button size="sm" onClick={startBlank}>
-                New envelope
-              </Button>
-            </div>
-          )}
-
-          {selection.kind === 'builtin' && (
-            <div className={styles.envelopeInspect}>
-              <div className={styles.envelopeInspectHead}>
-                <div>
-                  <p className={styles.envelopeBadge}>Built-in</p>
-                  <h3 className="mono">{selection.name}</h3>
-                  <p className={styles.envelopeInspectBlurb}>{BUILTIN_BLURBS[selection.name]}</p>
-                </div>
-                <div className={styles.envelopeActions}>
-                  <Button size="sm" onClick={() => extendBuiltin(selection.name)}>
-                    Start from this
-                  </Button>
-                </div>
-              </div>
-              <p className={styles.envelopePreviewLabel}>
-                JSON the agent is shown — read-only. Built-ins cannot be edited; start from this to
-                add your own fields on a custom envelope.
-              </p>
-              <pre className={`mono ${styles.envelopePreviewCode}`}>{builtinExample || '…'}</pre>
-              {selection.name === 'review' && (
-                <p className={styles.hint}>
-                  Review findings are structured objects in the built-in. A custom starting point
-                  flattens them to a list of text so you stay inside the four field types.
-                </p>
-              )}
-            </div>
-          )}
-
-          {isEditing && draft && (
-            <>
-              <div className={styles.envelopeEditHead}>
-                <div className={styles.envelopeEditIdentity}>
-                  <Field
-                    label="Name"
-                    htmlFor="envelope-name-input"
-                    hint={
-                      isNew
-                        ? 'Lowercase, digits, dash, underscore. Locked after the first save — duplicate to rename.'
-                        : 'Immutable after creation. Duplicate if you need a new name.'
-                    }
-                  >
-                    <TextInput
-                      id="envelope-name-input"
-                      className="mono"
-                      value={nameDraft}
-                      disabled={!isNew || busy}
-                      onChange={(e) => setNameDraft(e.target.value)}
-                      onBlur={commitName}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          commitName();
-                        }
-                      }}
-                    />
-                  </Field>
-                  <Field label="Description" hint="One line in the library list.">
-                    <TextInput
-                      value={draft.description ?? ''}
-                      disabled={busy}
-                      placeholder="What this shape is for"
-                      onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-                    />
-                  </Field>
-                </div>
-                <div className={styles.envelopeActions}>
-                  {!isNew && (
-                    <Button size="sm" onClick={() => void duplicateCurrent()} disabled={busy}>
-                      Duplicate
-                    </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    onClick={() => void removeEnvelope()}
-                    disabled={busy}
-                  >
-                    {isNew ? 'Discard' : 'Delete'}
-                  </Button>
-                </div>
-              </div>
-
-              <div className={styles.envelopeFields}>
-                <div className={styles.envelopeFieldsHead}>
+            {selection.kind === 'builtin' && (
+              <div className={styles.envelopeInspect}>
+                <div className={styles.envelopeInspectHead}>
                   <div>
-                    <span>Fields</span>
-                    <p className={styles.envelopeFieldsNote}>
-                      Every envelope already carries the four base fields. Add only what is unique
-                      to this shape.
-                    </p>
+                    <p className={styles.envelopeBadge}>Built-in</p>
+                    <h3 className="mono">{selection.name}</h3>
+                    <p className={styles.envelopeInspectBlurb}>{BUILTIN_BLURBS[selection.name]}</p>
                   </div>
-                  <Button size="sm" onClick={addField} disabled={busy}>
-                    Add field
-                  </Button>
+                  <div className={styles.envelopeActions}>
+                    <Button size="sm" onClick={() => extendBuiltin(selection.name)}>
+                      Start from this
+                    </Button>
+                  </div>
                 </div>
-
-                <div className={styles.envelopeFieldStack}>
-                  {BASE_FIELDS.map((f) => (
-                    <div
-                      key={f.name}
-                      className={`${styles.envelopeFieldRow} ${styles.envelopeLocked}`}
-                    >
-                      <div className={styles.envelopeFieldMain}>
-                        <span className={`mono ${styles.envelopeFieldName}`}>{f.name}</span>
-                        <span className={styles.envelopeFieldMeta}>{f.type}</span>
-                        <span className={styles.envelopeFieldHint}>{f.hint}</span>
-                      </div>
-                      <span className={styles.envelopeFieldLock}>Base · always present</span>
-                    </div>
-                  ))}
-
-                  {draft.fields.length === 0 && (
-                    <div className={styles.envelopeFieldEmpty}>
-                      <p>No custom fields yet. Add one, or the agent only returns the base four.</p>
-                      <Button size="sm" onClick={addField}>
-                        Add field
-                      </Button>
-                    </div>
-                  )}
-
-                  {draft.fields.map((field, index) => (
-                    <div key={`${field.name}-${index}`} className={styles.envelopeFieldRow}>
-                      <div className={styles.envelopeFieldGrid}>
-                        <label className={styles.envelopeFieldLabel}>
-                          <span>Name</span>
-                          <TextInput
-                            className="mono"
-                            value={field.name}
-                            disabled={busy}
-                            onChange={(e) =>
-                              patchField(index, {
-                                name: e.target.value
-                                  .toLowerCase()
-                                  .replace(/[^a-z0-9_]/g, '')
-                                  .replace(/^[^a-z]+/, ''),
-                              })
-                            }
-                          />
-                        </label>
-                        <label className={styles.envelopeFieldLabel}>
-                          <span>Type</span>
-                          <Dropdown
-                            value={field.type}
-                            disabled={busy}
-                            options={FIELD_TYPES.map((t) => ({
-                              value: t.value,
-                              label: t.label,
-                            }))}
-                            onChange={(next) =>
-                              patchField(index, {
-                                type: next as CustomEnvelopeField['type'],
-                              })
-                            }
-                          />
-                        </label>
-                        <label
-                          className={`${styles.envelopeFieldLabel} ${styles.envelopeFieldReq}`}
-                        >
-                          <span>Required</span>
-                          <button
-                            type="button"
-                            role="switch"
-                            aria-checked={field.required}
-                            className={`${styles.envelopeSwitch} ${field.required ? styles.on : ''}`}
-                            disabled={busy}
-                            onClick={() => patchField(index, { required: !field.required })}
-                          >
-                            <span className={styles.envelopeSwitchKnob} />
-                            <span className={styles.envelopeSwitchText}>
-                              {field.required ? 'Yes' : 'No'}
-                            </span>
-                          </button>
-                        </label>
-                        <label
-                          className={`${styles.envelopeFieldLabel} ${styles.envelopeFieldHintCol}`}
-                        >
-                          <span>Hint in example JSON</span>
-                          <TextInput
-                            value={field.description ?? ''}
-                            disabled={busy}
-                            placeholder={`e.g. ${fieldTypeLabel(field.type).toLowerCase()} the agent should fill`}
-                            onChange={(e) => patchField(index, { description: e.target.value })}
-                          />
-                        </label>
-                      </div>
-                      <button
-                        type="button"
-                        className={styles.envelopeFieldRemove}
-                        disabled={busy}
-                        onClick={() => removeField(index)}
-                        aria-label={`Remove field ${field.name || index + 1}`}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className={styles.envelopePreviewBlock}>
-                <div className={styles.envelopePreviewHead}>
-                  <span>Live preview</span>
-                  <em>Same schema path used at parse time — what the agent must return.</em>
-                </div>
-                <pre className={`mono ${styles.envelopePreviewCode}`}>{example || '…'}</pre>
-              </div>
-
-              <div className={styles.envelopeStatusbar}>
-                {issues.length > 0 ? (
-                  <ul className={styles.envelopeIssues}>
-                    {issues.map((issue, i) => (
-                      <li key={i} className={issue.level}>
-                        <strong>{issue.where}</strong> {issue.message}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <span className={styles.envelopeStatusOk}>
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 14 14"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.6"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden
-                    >
-                      <path d="M2.5 7.5 5.5 10.5 11.5 3.5" />
-                    </svg>
-                    No validation issues
-                  </span>
+                <p className={styles.envelopePreviewLabel}>
+                  JSON the agent is shown — read-only. Built-ins cannot be edited; start from this
+                  to add your own fields on a custom envelope.
+                </p>
+                <pre className={`mono ${styles.envelopePreviewCode}`}>{builtinExample || '…'}</pre>
+                {selection.name === 'review' && (
+                  <p className={styles.hint}>
+                    Review findings are structured objects in the built-in. A custom starting point
+                    flattens them to a list of text so you stay inside the four field types.
+                  </p>
                 )}
-                {actionError && <p className={styles.envelopeActionErr}>{actionError}</p>}
-                <span className={styles.envelopeAutosave}>
-                  {isNew ? 'Saves when valid' : 'Changes save automatically'}
-                </span>
               </div>
-            </>
-          )}
+            )}
+
+            {isEditing && draft && (
+              <>
+                <div className={styles.envelopeEditHead}>
+                  <div className={styles.envelopeEditIdentity}>
+                    <Field
+                      label="Name"
+                      htmlFor="envelope-name-input"
+                      hint={
+                        isNew
+                          ? 'Lowercase, digits, dash, underscore. Locked after the first save — duplicate to rename.'
+                          : 'Immutable after creation. Duplicate if you need a new name.'
+                      }
+                    >
+                      <TextInput
+                        id="envelope-name-input"
+                        className="mono"
+                        value={nameDraft}
+                        disabled={!isNew || busy}
+                        onChange={(e) => setNameDraft(e.target.value)}
+                        onBlur={commitName}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            commitName();
+                          }
+                        }}
+                      />
+                    </Field>
+                    <Field label="Description" hint="One line in the library list.">
+                      <TextInput
+                        value={draft.description ?? ''}
+                        disabled={busy}
+                        placeholder="What this shape is for"
+                        onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                      />
+                    </Field>
+                  </div>
+                  <div className={styles.envelopeActions}>
+                    {!isNew && (
+                      <Button size="sm" onClick={() => void duplicateCurrent()} disabled={busy}>
+                        Duplicate
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      onClick={() => void removeEnvelope()}
+                      disabled={busy}
+                    >
+                      {isNew ? 'Discard' : 'Delete'}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className={styles.envelopeFields}>
+                  <div className={styles.envelopeFieldsHead}>
+                    <div>
+                      <span>Fields</span>
+                      <p className={styles.envelopeFieldsNote}>
+                        Every envelope already carries the four base fields. Add only what is unique
+                        to this shape.
+                      </p>
+                    </div>
+                    <Button size="sm" onClick={addField} disabled={busy}>
+                      Add field
+                    </Button>
+                  </div>
+
+                  <div className={styles.envelopeFieldStack}>
+                    {BASE_FIELDS.map((f) => (
+                      <div
+                        key={f.name}
+                        className={`${styles.envelopeFieldRow} ${styles.envelopeLocked}`}
+                      >
+                        <div className={styles.envelopeFieldMain}>
+                          <span className={`mono ${styles.envelopeFieldName}`}>{f.name}</span>
+                          <span className={styles.envelopeFieldMeta}>{f.type}</span>
+                          <span className={styles.envelopeFieldHint}>{f.hint}</span>
+                        </div>
+                        <span className={styles.envelopeFieldLock}>Base · always present</span>
+                      </div>
+                    ))}
+
+                    {draft.fields.length === 0 && (
+                      <div className={styles.envelopeFieldEmpty}>
+                        <p>
+                          No custom fields yet. Add one, or the agent only returns the base four.
+                        </p>
+                        <Button size="sm" onClick={addField}>
+                          Add field
+                        </Button>
+                      </div>
+                    )}
+
+                    {draft.fields.map((field, index) => (
+                      <div key={`${field.name}-${index}`} className={styles.envelopeFieldRow}>
+                        <div className={styles.envelopeFieldGrid}>
+                          <label className={styles.envelopeFieldLabel}>
+                            <span>Name</span>
+                            <TextInput
+                              className="mono"
+                              value={field.name}
+                              disabled={busy}
+                              onChange={(e) =>
+                                patchField(index, {
+                                  name: e.target.value
+                                    .toLowerCase()
+                                    .replace(/[^a-z0-9_]/g, '')
+                                    .replace(/^[^a-z]+/, ''),
+                                })
+                              }
+                            />
+                          </label>
+                          <label className={styles.envelopeFieldLabel}>
+                            <span>Type</span>
+                            <Dropdown
+                              value={field.type}
+                              disabled={busy}
+                              options={FIELD_TYPES.map((t) => ({
+                                value: t.value,
+                                label: t.label,
+                              }))}
+                              onChange={(next) =>
+                                patchField(index, {
+                                  type: next as CustomEnvelopeField['type'],
+                                })
+                              }
+                            />
+                          </label>
+                          <label
+                            className={`${styles.envelopeFieldLabel} ${styles.envelopeFieldReq}`}
+                          >
+                            <span>Required</span>
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={field.required}
+                              className={`${styles.envelopeSwitch} ${field.required ? styles.on : ''}`}
+                              disabled={busy}
+                              onClick={() => patchField(index, { required: !field.required })}
+                            >
+                              <span className={styles.envelopeSwitchKnob} />
+                              <span className={styles.envelopeSwitchText}>
+                                {field.required ? 'Yes' : 'No'}
+                              </span>
+                            </button>
+                          </label>
+                          <label
+                            className={`${styles.envelopeFieldLabel} ${styles.envelopeFieldHintCol}`}
+                          >
+                            <span>Hint in example JSON</span>
+                            <TextInput
+                              value={field.description ?? ''}
+                              disabled={busy}
+                              placeholder={`e.g. ${fieldTypeLabel(field.type).toLowerCase()} the agent should fill`}
+                              onChange={(e) => patchField(index, { description: e.target.value })}
+                            />
+                          </label>
+                        </div>
+                        <button
+                          type="button"
+                          className={styles.envelopeFieldRemove}
+                          disabled={busy}
+                          onClick={() => removeField(index)}
+                          aria-label={`Remove field ${field.name || index + 1}`}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className={styles.envelopePreviewBlock}>
+                  <div className={styles.envelopePreviewHead}>
+                    <span>Live preview</span>
+                    <em>Same schema path used at parse time — what the agent must return.</em>
+                  </div>
+                  <pre className={`mono ${styles.envelopePreviewCode}`}>{example || '…'}</pre>
+                </div>
+
+                <div className={styles.envelopeStatusbar}>
+                  {issues.length > 0 ? (
+                    <ul className={styles.envelopeIssues}>
+                      {issues.map((issue, i) => (
+                        <li key={i} className={issue.level}>
+                          <strong>{issue.where}</strong> {issue.message}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <span className={styles.envelopeStatusOk}>
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 14 14"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden
+                      >
+                        <path d="M2.5 7.5 5.5 10.5 11.5 3.5" />
+                      </svg>
+                      No validation issues
+                    </span>
+                  )}
+                  {actionError && <p className={styles.envelopeActionErr}>{actionError}</p>}
+                  <span className={styles.envelopeAutosave}>
+                    {isNew ? 'Saves when valid' : 'Changes save automatically'}
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -28,10 +28,12 @@ const MENU_CHANNELS = [
   'menu:new-run',
   'menu:add-project',
   'menu:view-runs',
-  'menu:view-pipelines',
-  'menu:view-roster',
   'menu:view-inspector',
+  'menu:view-design',
   'menu:view-prs',
+  'menu:design-pipelines',
+  'menu:design-agents',
+  'menu:design-envelopes',
 ] as const;
 
 const api: FoundryApi = {

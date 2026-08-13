@@ -8,6 +8,7 @@ import {
   type ValidationIssue,
 } from '@shared/types.js';
 import { api, plain } from '../api.js';
+import type { DesignTab } from '../navigation.js';
 import { useApp } from '../stores/app.js';
 import AgentAvatar from '../components/AgentAvatar.js';
 import { CliIcon } from '../components/BrandIcon.js';
@@ -38,11 +39,12 @@ const EMPTY_INVOCABLES: AgentInvocables = {
 };
 
 export default function RosterScreen({
-  onOpenSettings,
+  onOpenDesignTab,
   openAgent,
   openNonce = 0,
 }: {
-  onOpenSettings?: (pane: string) => void;
+  /** Cross-link to a sibling Design tab, e.g. the envelope library. */
+  onOpenDesignTab?: (tab: DesignTab) => void;
   /** Deep link (e.g. a Smith approve): select this agent when it resolves. */
   openAgent?: string;
   /** Bumped per deep-link so re-selecting the same agent re-fires the effect. */
@@ -259,12 +261,7 @@ export default function RosterScreen({
   return (
     <>
       <div className={styles.rosterScreen}>
-        <header className={styles.rosterHeader}>
-          <p className="eyebrow">
-            <span className="index">03</span>Roster
-          </p>
-        </header>
-        {/* ── agent strip: the whole roster, one horizontal band ── */}
+        {/* ── agent strip: every agent, one horizontal band ── */}
         <div
           className={styles.rosterTabs}
           role="tablist"
@@ -511,13 +508,13 @@ export default function RosterScreen({
                     />
                     <span className={styles.hint}>
                       The typed reply this agent must return. Parsed and validated on every turn.
-                      {onOpenSettings && (
+                      {onOpenDesignTab && (
                         <>
                           {' '}
                           <button
                             type="button"
                             className={styles.linkBtn}
-                            onClick={() => onOpenSettings('envelopes')}
+                            onClick={() => onOpenDesignTab('envelopes')}
                           >
                             Manage envelopes…
                           </button>

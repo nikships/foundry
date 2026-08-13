@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { Play, Settings2 } from 'lucide-react';
 import { useApp } from '../stores/app.js';
+import type { DesignTab } from '../navigation.js';
 import { KIND_LABEL } from '../derive.js';
 import { acceptanceLabel, issuePhaseIndex } from '../pipeline-view.js';
 import { usePipelineDraft } from '../hooks/usePipelineDraft.js';
@@ -19,11 +20,12 @@ import styles from './PipelinesScreen.module.css';
 type Sheet = 'phase' | 'pipeline' | null;
 
 export default function PipelinesScreen({
-  onOpenSettings,
+  onOpenDesignTab,
   openPipeline,
   openNonce = 0,
 }: {
-  onOpenSettings?: (pane: string) => void;
+  /** Cross-link to a sibling Design tab, e.g. the envelope library. */
+  onOpenDesignTab?: (tab: DesignTab) => void;
   /** Deep link (e.g. a Smith approve): select this pipeline id when it resolves. */
   openPipeline?: string;
   /** Bumped per deep-link so re-selecting the same pipeline re-fires the effect. */
@@ -241,7 +243,7 @@ export default function PipelinesScreen({
               removePhase(activePhase);
               closeSheet();
             }}
-            onOpenSettings={onOpenSettings}
+            onOpenDesignTab={onOpenDesignTab}
           />
         )}
       </SideSheet>
