@@ -34,6 +34,7 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 ├── skills/                    ← agent skills for users, keep up-to-date with 'smith' capabilities
 ├── website/                   ← marketing website for foundry app (do not update unless told to)
 ├── tests/                     ← Vitest suites (real git temp repos + fake-droid)
+│   └── e2e/                   ← Playwright Electron UI smoke (not in npm run check)
 └── scripts/                   ← check-css-collisions, check-docs-commands, audit-deps, engine-demo
 
 .githooks/                     ← tracked git hooks (pre-commit); installed by npm run prepare
@@ -129,6 +130,10 @@ npm run test:watch          # vitest watch mode
 npm run test:coverage       # vitest run --coverage (enforces thresholds; part of npm run check)
 npx vitest run -t "<name>"  # focus by test name pattern
 npx vitest run tests/engine.test.ts  # single file
+
+# Electron UI smoke — Playwright + the built app. Needs a macOS GUI session.
+# Not part of `npm run check`; do not add it there.
+npm run build && npm run test:e2e
 ```
 
 **Coverage is enforced, not advisory.** `npm run test:coverage` fails when any threshold in
@@ -137,8 +142,9 @@ so local and CI enforce the same floor. An HTML report lands in `coverage/` (git
 
 - **Scope** — `src/main/**`, `src/shared/**`, `src/cli/**`: the privileged, headless core that
   Vitest can execute under `environment: node`. `src/renderer/**` and `src/preload/**` are excluded
-  because they only run inside Electron, as is `src/main/main.ts` (app bootstrap). UI verification is
-  tracked separately as an Electron smoke/e2e harness, not by this gate.
+  because they only run inside Electron, as is `src/main/main.ts` (app bootstrap). UI verification
+  is `npm run test:e2e` (Playwright launching `out/` against isolated fixtures). The fixture seeder
+  itself is covered by `tests/e2e-fixture.test.ts` inside the Vitest gate.
 - **Floors** — statements 62, branches 54, functions 61, lines 65. These sit a few points under the
   measured values and exist to catch regressions, not to certify the codebase. The scope deliberately
   includes the thin IPC routers that drag the average down rather than excluding them to look better.
@@ -148,6 +154,7 @@ so local and CI enforce the same floor. An HTML report lands in `coverage/` (git
 **Conventions:**
 
 - Tests use **real git temp repositories** and `tests/fake-droid.ts` (real child handshake fixture). Never use a network or model; do not mock git. Follow the executor pattern in `tests/executor.test.ts` for new engine behavior.
+- **Electron UI smoke** (`tests/e2e/*.spec.ts`, `@playwright/test` + `_electron.launch()`): isolated `--user-data-dir`, seeded stores + WAL trace, no model or network. Onboarding walks Welcome → Ready; Inspector opens a seeded run and asserts the phase transcript. Failures write `test-results/` + `playwright-report/` (screenshot, trace, video). Interactive agent driving of the same app is the `foundry-ui` skill (CDP + agent-browser); do not add a second harness. The `e2e` CI job on `macos-26` is advisory — not a required check, not part of `npm run check`.
 - `@lobehub/icons` is inlined via `server.deps.inline` so bare directory specifiers resolve under Vite.
 - `tests/cli-vendors.test.ts` owns CLI adapter fixtures; `tests/fake-droid.ts` owns the handshake fixture.
 - New engine phase/gate behavior needs a dedicated executor test with a real worktree snapshot.
@@ -189,8 +196,9 @@ npm run package             # build + icons + electron-builder --mac --arm64 (lo
 **CI** (`.github/workflows/ci.yml`, runs on `macos-26`):
 
 - `verify` job: typecheck, lint, format:check, check:docs, knip, test:coverage, build, audit:deps.
+- `e2e` job: `npm run build` then `npm run test:e2e` on `macos-26`. Advisory — not a required check. Artifacts (`playwright-report/`, `test-results/`) upload on every run.
 - `actionlint` on `ubuntu-latest` (1.7.12+, required for `macos-26` label).
-- Pull requests run both jobs unconditionally (no paths filter) so required checks are never unsatisfied.
+- Pull requests run `verify` + `actionlint` + `e2e` unconditionally (no paths filter) so required checks are never unsatisfied. Only `verify` and `actionlint` are required.
 
 **Packaging** (`.github/workflows/mac-package.yml`, `macos-26`, `main` / `v*` / manual):
 

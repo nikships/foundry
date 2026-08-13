@@ -42,7 +42,7 @@ npx vitest run -t "<renderer|transcript|pipeline-view|keyboard>"
 ```
 
 - Vitest runs with `pool: forks`, `environment: node`. Renderer tests must account for the Node/forks environment rather than assuming `jsdom`/browser DOM.
-- Keep UI tests focused on hooks/stores/derivation; prefer manual verification in `npm run dev:web` for visual work.
+- Keep UI tests focused on hooks/stores/derivation. The real-window smoke is `npm run test:e2e` (Playwright launching the built Electron app). Interactive checks use the `foundry-ui` skill (CDP + agent-browser), not a web browser.
 
 ## Push Channels
 

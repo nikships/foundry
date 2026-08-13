@@ -21,6 +21,11 @@ Build output must exist (`npm run build` emits `out/`; `electron .` loads
 `out/main/main.js`, so rebuild after source changes). The app enforces a
 single-instance lock per user-data dir.
 
+The automated counterpart of this skill is `npm run test:e2e` (Playwright
+`_electron.launch()` against isolated fixtures in `tests/e2e/`). Use that for
+regression; use this skill for interactive exploration. Do not open a web
+browser either way.
+
 ```bash
 cd /path/to/foundry
 

@@ -25,6 +25,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
     "engine:demo": "tsx scripts/engine-demo.ts",
     "icons": "bash scripts/make-icns.sh",
     "package": "npm run build && npm run icons && electron-builder --mac --arm64",
@@ -44,6 +45,7 @@
   "devDependencies": {
     "@eslint/js": "^9.39.5",
     "@lobehub/icons": "^5.15.0",
+    "@playwright/test": "^1.62.1",
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^26.2.0",
     "@types/react": "^19.2.18",
