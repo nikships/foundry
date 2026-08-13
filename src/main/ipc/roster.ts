@@ -1,14 +1,27 @@
 import type { AgentDef } from '@shared/types.js';
-import { IPC, type RenameResult, type SaveResult } from '@shared/ipc-contract.js';
+import {
+  IPC,
+  type AgentMarkUploadResult,
+  type RenameResult,
+  type SaveResult,
+} from '@shared/ipc-contract.js';
 import { exampleFor } from '../engine/envelopes.js';
 import { validate as validateAgent } from '../store/roster.js';
+import { removeAgentMark, saveAgentMark } from '../store/agent-marks.js';
 import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
 import { noIssues, notifySettings } from './shared.js';
 
 type Ctx = Pick<
   AppContext,
-  'roster' | 'rosterFor' | 'rosterScope' | 'pipelines' | 'pipelineScope' | 'envelopes' | 'broadcast'
+  | 'roster'
+  | 'rosterFor'
+  | 'rosterScope'
+  | 'pipelines'
+  | 'pipelineScope'
+  | 'envelopes'
+  | 'broadcast'
+  | 'supportDir'
 >;
 
 export function register(ctx: Ctx, handle: Handle): void {
@@ -59,4 +72,12 @@ export function register(ctx: Ctx, handle: Handle): void {
     notifySettings(ctx);
     return agents;
   });
+
+  handle(IPC.rosterUploadMark, (bytesB64: string, mime: string): AgentMarkUploadResult =>
+    saveAgentMark(ctx.supportDir, bytesB64, mime),
+  );
+
+  handle(IPC.rosterRemoveMark, (emblem: string): boolean =>
+    removeAgentMark(ctx.supportDir, emblem),
+  );
 }

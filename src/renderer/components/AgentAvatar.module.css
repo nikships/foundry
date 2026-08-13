@@ -8,10 +8,13 @@
   flex: none;
   font-weight: 600;
 }
-.avatar.emblem {
+.avatar.portrait {
   box-shadow:
     0 0 0 1px var(--bg-void),
     var(--shadow-sm);
+}
+.avatar.glyph {
+  overflow: visible;
 }
 .avatar img {
   width: 118%;

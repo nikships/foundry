@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { RotateCcw } from 'lucide-react';
 import {
   BUILTIN_ENVELOPE_BLURBS,
   BUILTIN_ENVELOPE_KINDS,
@@ -12,6 +13,7 @@ import type { DesignTab } from '../navigation.js';
 import { useApp } from '../stores/app.js';
 import { addField, validateCustomFields, shadowedLibraryFields } from '../custom-fields.js';
 import AgentAvatar from '../components/AgentAvatar.js';
+import AgentIconPicker from '../components/AgentIconPicker.js';
 import { CliIcon } from '../components/BrandIcon.js';
 import ModelPicker from '../components/ModelPicker.js';
 import BoundaryEditor from '../components/BoundaryEditor.js';
@@ -22,6 +24,7 @@ import ToolProfilePicker from '../components/ToolProfilePicker.js';
 import PromptPreview from '../components/PromptPreview.js';
 import { Dropdown, type DropdownOption } from '../components/ui/Dropdown.js';
 import { Field, TextInput, Textarea } from '../components/ui/Field.js';
+import { defaultEmblemFor, isDefaultMark, markLabel } from '../data/emblems.js';
 import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
 import { useTablistNav } from '../hooks/useTablistNav.js';
@@ -63,6 +66,7 @@ export default function RosterScreen({
   const [actionError, setActionError] = useState('');
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [showPreview, setShowPreview] = useState(false);
+  const [showIconPicker, setShowIconPicker] = useState(false);
   const agentsRef = useRef<AgentDef[]>(agents);
   agentsRef.current = agents;
   const projectIdRef = useRef(projectId);
@@ -350,25 +354,49 @@ export default function RosterScreen({
             <div className={styles.rosterPage}>
               {/* ── title row ── */}
               <div className={styles.rosterHead}>
-                <div className={styles.rosterHeadMain}>
-                  <div className={styles.rosterHeadTitlerow}>
-                    <h1
-                      className={styles.rosterTitle}
-                      style={{ color: draft.color ?? 'var(--accent)' }}
-                    >
-                      {draft.name}
-                    </h1>
-                    <span className={styles.rosterHeadMeta}>
-                      <CliIcon vendor={draftCli} size={13} />
-                      {draftCli} · {draft.envelope}
-                    </span>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 'var(--s4)',
+                    minWidth: 0,
+                  }}
+                >
+                  <button
+                    type="button"
+                    data-mark-trigger
+                    aria-label={`Change mark for ${draft.name}`}
+                    onClick={() => setShowIconPicker(true)}
+                    className={styles.avatarTrigger}
+                  >
+                    <AgentAvatar
+                      name={draft.name}
+                      emblem={draft.emblem}
+                      color={draft.color}
+                      size={52}
+                    />
+                    <span className={styles.avatarTriggerOverlay} aria-hidden />
+                  </button>
+                  <div className={styles.rosterHeadMain}>
+                    <div className={styles.rosterHeadTitlerow}>
+                      <h1
+                        className={styles.rosterTitle}
+                        style={{ color: draft.color ?? 'var(--accent)' }}
+                      >
+                        {draft.name}
+                      </h1>
+                      <span className={styles.rosterHeadMeta}>
+                        <CliIcon vendor={draftCli} size={13} />
+                        {draftCli} · {draft.envelope}
+                      </span>
+                    </div>
+                    <p className={styles.rosterHeadSub}>
+                      {draft.purpose || 'No purpose yet.'}{' '}
+                      <span className={styles.rosterHeadTag}>
+                        {draft.builtin ? 'Shipped with Foundry, editable' : 'Custom agent'}
+                      </span>
+                    </p>
                   </div>
-                  <p className={styles.rosterHeadSub}>
-                    {draft.purpose || 'No purpose yet.'}{' '}
-                    <span className={styles.rosterHeadTag}>
-                      {draft.builtin ? 'Shipped with Foundry, editable' : 'Custom agent'}
-                    </span>
-                  </p>
                 </div>
                 <div className={styles.rosterHeadActions}>
                   <button
@@ -406,6 +434,69 @@ export default function RosterScreen({
                   <p>How this agent is referenced in pipelines and run logs.</p>
                 </div>
                 <div className={styles.rosterFields}>
+                  <Field label="Mark" className={styles.span2}>
+                    <div className={styles.identityMarkRow}>
+                      <button
+                        type="button"
+                        data-mark-trigger
+                        aria-label={`Change mark for ${draft.name}`}
+                        onClick={() => setShowIconPicker(true)}
+                        className={styles.avatarTrigger}
+                      >
+                        <AgentAvatar
+                          name={draft.name}
+                          emblem={draft.emblem}
+                          color={draft.color}
+                          size={44}
+                        />
+                        <span className={styles.avatarTriggerOverlay} aria-hidden />
+                      </button>
+                      <div className={styles.identityMarkInfo}>
+                        <div className={styles.identityMarkMeta}>
+                          <span className={styles.identityMarkLabel}>
+                            {markLabel(draft.emblem)}
+                          </span>
+                          <span className={styles.identityMarkDot} aria-hidden>
+                            ·
+                          </span>
+                          <button
+                            type="button"
+                            data-mark-trigger
+                            onClick={() => setShowIconPicker(true)}
+                            className={styles.changeMarkBtn}
+                          >
+                            Change mark
+                          </button>
+                          {!isDefaultMark({
+                            name: draft.name,
+                            emblem: draft.emblem,
+                            builtin: draft.builtin,
+                          }) && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setDraft({
+                                  ...draft,
+                                  emblem: defaultEmblemFor({
+                                    name: draft.name,
+                                    builtin: draft.builtin,
+                                  }),
+                                })
+                              }
+                              className={styles.resetMarkBtn}
+                            >
+                              <RotateCcw size={11} />
+                              Reset
+                            </button>
+                          )}
+                        </div>
+                        <span className={styles.hint}>
+                          An emblem, a custom upload, or the initial letter. Shown wherever this
+                          agent appears.
+                        </span>
+                      </div>
+                    </div>
+                  </Field>
                   <Field label="Name">
                     <TextInput
                       mono
@@ -750,6 +841,17 @@ export default function RosterScreen({
         )}
         {showPreview && draft && (
           <PromptPreview agent={draft} onClose={() => setShowPreview(false)} />
+        )}
+        {showIconPicker && draft && (
+          <AgentIconPicker
+            name={draft.name}
+            emblem={draft.emblem}
+            color={draft.color}
+            builtin={draft.builtin}
+            onChange={(emblem) => setDraft({ ...draft, emblem })}
+            onColorChange={(color) => setDraft({ ...draft, color })}
+            onClose={() => setShowIconPicker(false)}
+          />
         )}
       </div>
     </>

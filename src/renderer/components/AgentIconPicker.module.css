@@ -1,0 +1,440 @@
+.pickerModal {
+  width: min(440px, calc(100vw - 48px));
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.8),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+  outline: none;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s4);
+  border-bottom: 1px solid var(--line);
+}
+
+.headCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.headTitle {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.headLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.sizes {
+  margin-left: auto;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s3);
+}
+
+.size {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.closeBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-left: var(--s1);
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition:
+    background var(--fast) var(--ease),
+    color var(--fast) var(--ease);
+}
+
+.closeBtn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.tabs {
+  padding: var(--s3) var(--s4) 0;
+}
+
+.emblems {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4) 0;
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  height: 32px;
+  padding: 0 var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  color: var(--text-faint);
+}
+
+.search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  outline: none;
+}
+
+.search input::placeholder {
+  color: var(--text-faint);
+}
+
+.scroll {
+  max-height: 240px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.row {
+  margin-bottom: var(--s3);
+}
+
+.rowLabel {
+  margin: 0 0 var(--s2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--eyebrow-tracking);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.initial {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  height: 36px;
+  padding: 0 var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    border-color var(--fast) var(--ease),
+    color var(--fast) var(--ease);
+}
+
+.initial:hover {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.initial.on {
+  border-color: var(--text-dim);
+  background: var(--bg-raised);
+  color: var(--text);
+}
+
+.initialDot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid;
+  border-radius: var(--r-full);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition:
+    border-color var(--fast) var(--ease),
+    background var(--fast) var(--ease),
+    color var(--fast) var(--ease);
+}
+
+.cell:hover {
+  border-color: var(--line-strong);
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.cell.on {
+  background: var(--bg-raised);
+}
+
+.empty {
+  margin: 0;
+  padding: var(--s8) 0;
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+
+.upload {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s3) var(--s4) 0;
+}
+
+.currentImage {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+}
+
+.currentCopy {
+  min-width: 0;
+  flex: 1;
+}
+
+.currentCopy p {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+
+.currentPath {
+  margin: 2px 0 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s8) var(--s4);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  text-align: center;
+  color: var(--text-faint);
+  transition:
+    border-color var(--fast) var(--ease),
+    background var(--fast) var(--ease);
+}
+
+.drop.dragging {
+  border-color: var(--accent);
+  background: var(--bg-raised);
+}
+
+.drop p {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+
+.dropHint {
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+
+.choose {
+  height: 28px;
+  padding: 0 var(--s3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--bg-raised);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    border-color var(--fast) var(--ease),
+    color var(--fast) var(--ease);
+}
+
+.choose:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.choose:disabled {
+  opacity: 0.55;
+}
+
+.textBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 var(--s2);
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color var(--fast) var(--ease);
+}
+
+.textBtn:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.textBtn.danger:hover:not(:disabled) {
+  color: var(--red);
+}
+
+.textBtn:disabled {
+  opacity: 0.55;
+}
+
+.file {
+  display: none;
+}
+
+.error {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--red);
+}
+
+/* ── Accent Row ── */
+.accentRow {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-top: var(--s3);
+  padding: var(--s3) var(--s4);
+  border-top: 1px solid var(--line);
+}
+
+.accentLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.accentSwatches {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.accentSwatch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: var(--r-full);
+  border: 1px solid;
+  cursor: pointer;
+  transition: transform var(--fast) var(--ease);
+}
+
+.accentSwatch:hover {
+  transform: scale(1.08);
+}
+
+.accentDot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-full);
+}
+
+/* ── Footer ── */
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--s2) var(--s4);
+  border-top: 1px solid var(--line);
+  background: var(--bg-raised);
+}
+
+.footerAutosave {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.doneBtn {
+  height: 28px;
+  padding: 0 var(--s3);
+  border: none;
+  border-radius: var(--r-sm);
+  background: var(--text);
+  color: var(--bg-void);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: opacity var(--fast) var(--ease);
+}
+
+.doneBtn:hover {
+  opacity: 0.9;
+}

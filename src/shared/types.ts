@@ -228,6 +228,12 @@ export interface AgentDef {
    */
   invocables?: AgentInvocables;
   color: string;
+  /**
+   * How this agent is drawn. Absent or `monogram` is the initial letter.
+   * A library id (`anvil`, `loupe`, …) is stroke linework. `image:<file>` is
+   * a user upload under the support dir. Any other safe token is the painted
+   * portrait at `agents/<token>.png` (what the shipped roster stores).
+   */
   emblem?: string;
   builtin?: boolean;
 }

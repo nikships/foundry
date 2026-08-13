@@ -7,8 +7,9 @@
 
 import { app, BrowserWindow } from 'electron';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { AGENT_MARKS_DIR } from './store/agent-marks.js';
 import type { AgentDef, AppSettings, PipelineDef, RunRow } from '@shared/types.js';
 import { IPC } from '@shared/ipc-contract.js';
 import { SettingsStore } from './store/settings.js';
@@ -114,7 +115,17 @@ export class AppContext {
    * without the renderer knowing where the app lives on disk.
    */
   assetUrl(relPath: string): string {
-    const full = join(this.assetsRoot, relPath.replace(/^\/+/, ''));
+    const cleaned = relPath.replace(/^\/+/, '');
+    // User-uploaded marks live next to roster.json, not in the packaged tree.
+    if (cleaned.startsWith(`${AGENT_MARKS_DIR}/`)) {
+      const file = cleaned.slice(AGENT_MARKS_DIR.length + 1);
+      if (file && file === basename(file) && !file.includes('..')) {
+        const full = join(this.supportDir, AGENT_MARKS_DIR, file);
+        if (existsSync(full)) return pathToFileURL(full).toString();
+      }
+      return '';
+    }
+    const full = join(this.assetsRoot, cleaned);
     if (existsSync(full)) return pathToFileURL(full).toString();
     // An empty string renders as a silently missing image, which looks like a
     // styling bug rather than a packaging one. Say where it looked.
