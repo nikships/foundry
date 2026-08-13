@@ -186,7 +186,7 @@ export default function RunDetailScreen({
   return (
     <div className={styles.screen}>
       <header className={styles.head}>
-        <Button variant="ghost" size="sm" className="back" onClick={onBack}>
+        <Button variant="ghost" size="sm" className="back" onClick={onBack} data-testid="run-back">
           ← Runs
         </Button>
         <span className={styles.headSep} aria-hidden />
@@ -208,6 +208,7 @@ export default function RunDetailScreen({
           className={styles.inspectorBtn}
           onClick={() => onOpenInspector(runId)}
           title="Open live transcript in Inspector"
+          data-testid="run-open-inspector"
         >
           Inspector{' '}
           <span className={styles.inspectorExt} aria-hidden>

@@ -44,6 +44,8 @@ export interface DropdownProps {
   placeholder?: string;
   /** Override the closed-face content. Defaults to the selected option's label. */
   renderValue?: (option: DropdownOption | null) => ReactNode;
+  /** Test ID for the trigger button, so agent-browser can target it reliably. */
+  'data-testid'?: string;
 }
 
 interface MenuPos {
@@ -75,6 +77,7 @@ export function Dropdown({
   'aria-invalid': ariaInvalid,
   placeholder = 'Select…',
   renderValue,
+  'data-testid': dataTestId,
 }: DropdownProps): React.JSX.Element {
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -281,6 +284,7 @@ export function Dropdown({
         aria-controls={open ? listId : undefined}
         aria-label={ariaLabel}
         aria-invalid={ariaInvalid}
+        data-testid={dataTestId}
         onClick={toggle}
         onKeyDown={onTriggerKeyDown}
       >

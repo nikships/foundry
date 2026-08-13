@@ -172,6 +172,7 @@ export default function Sidebar({
   ];
 
   const projectTitle = project?.name ?? 'Project';
+  const projectAriaLabel = project ? `Project: ${project.name}` : 'Project';
 
   return (
     <aside className={`${styles.sidebar} ${collapsed ? styles.collapsed : ''}`}>
@@ -187,10 +188,11 @@ export default function Sidebar({
               }
               selectProject(next);
             }}
-            aria-label="Project"
+            aria-label={projectAriaLabel}
             placeholder={projectTitle}
             triggerClassName={styles.emblemProjectTrigger}
             renderValue={() => <ProjectEmblem className={styles.navEmblem} />}
+            data-testid="project-selector"
           />
         </div>
       ) : (
@@ -206,8 +208,9 @@ export default function Sidebar({
               }
               selectProject(next);
             }}
-            aria-label="Project"
+            aria-label={projectAriaLabel}
             placeholder="Select or add project…"
+            data-testid="project-selector"
           />
         </div>
       )}
@@ -223,6 +226,7 @@ export default function Sidebar({
               title={collapsed ? `${item.label} (⌘${item.key})` : undefined}
               aria-label={collapsed ? `${item.label} ⌘${item.key}` : undefined}
               aria-current={active ? 'page' : undefined}
+              data-testid={`nav-${item.id}`}
             >
               {collapsed ? (
                 <Emblem className={styles.navEmblem} />
@@ -247,6 +251,7 @@ export default function Sidebar({
           onClick={() => onOpenSmith?.()}
           title={collapsed ? 'Smith' : undefined}
           aria-label="Smith"
+          data-testid="nav-smith"
         >
           {collapsed ? (
             <SmithEmblem className={styles.navEmblem} />
@@ -324,6 +329,7 @@ export default function Sidebar({
         onClick={toggleCollapsed}
         aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        data-testid="sidebar-collapse"
       >
         {collapsed ? (
           <ExpandEmblem className={styles.navEmblem} />
@@ -337,6 +343,7 @@ export default function Sidebar({
         title={collapsed ? 'Settings (⌘,)' : undefined}
         aria-label={collapsed ? 'Settings ⌘,' : undefined}
         aria-current={view === 'settings' ? 'page' : undefined}
+        data-testid="nav-settings"
       >
         {collapsed ? (
           <SettingsEmblem className={styles.navEmblem} />

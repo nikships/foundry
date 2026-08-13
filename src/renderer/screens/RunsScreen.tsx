@@ -196,6 +196,8 @@ export default function RunsScreen({
             rows={3}
             placeholder="What should the factory build? Be specific: the request is the whole brief."
             onKeyDown={onKeydown}
+            aria-label="Run request"
+            data-testid="run-request"
           />
           <div className={styles.controls}>
             <Dropdown
@@ -208,6 +210,7 @@ export default function RunsScreen({
               }))}
               onChange={(next) => setSelectedPipeline(next)}
               aria-label="Pipeline"
+              data-testid="run-pipeline"
             />
             {pipeline && <PipelineRibbon pipeline={pipeline} />}
             <Button
@@ -216,6 +219,7 @@ export default function RunsScreen({
               disabled={!canStart || starting}
               title={startDisabledReason || undefined}
               onClick={() => void start()}
+              data-testid="run-start"
             >
               {starting ? 'Starting…' : 'Start run'}
               {canStart && !starting && <kbd>⌘↵</kbd>}

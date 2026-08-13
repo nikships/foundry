@@ -318,6 +318,7 @@ export default function RosterScreen({
                   className={`${styles.rosterCell} ${isActive ? styles.on : ''}`}
                   style={{ ['--hue' as string]: agent.color ?? 'var(--accent)' }}
                   onClick={() => selectAgent(agent.name)}
+                  data-testid={`agent-tab-${agent.name}`}
                 >
                   <AgentAvatar name={agent.name} size={30} />
                   <span className={styles.rosterCellWho}>
@@ -333,7 +334,12 @@ export default function RosterScreen({
                 </button>
               );
             })}
-            <button type="button" className={styles.rosterNew} onClick={() => void createAgent()}>
+            <button
+              type="button"
+              className={styles.rosterNew}
+              onClick={() => void createAgent()}
+              data-testid="agent-new"
+            >
               + New agent
             </button>
           </div>
@@ -404,6 +410,7 @@ export default function RosterScreen({
                     <TextInput
                       mono
                       value={nameDraft}
+                      aria-label="Agent name"
                       onChange={(e) => {
                         setNameDraft(e.target.value);
                         setRenameError('');
@@ -428,6 +435,7 @@ export default function RosterScreen({
                   <Field label="Purpose">
                     <TextInput
                       value={draft.purpose}
+                      aria-label="Agent purpose"
                       onChange={(e) => setDraft({ ...draft, purpose: e.target.value })}
                     />
                     <span className={styles.hint}>
@@ -575,6 +583,7 @@ export default function RosterScreen({
                     <Textarea
                       value={draft.systemPrompt}
                       rows={7}
+                      aria-label="System prompt"
                       onChange={(e) => setDraft({ ...draft, systemPrompt: e.target.value })}
                     />
                     <span className={styles.hint}>
@@ -585,6 +594,7 @@ export default function RosterScreen({
                     <Textarea
                       value={draft.userPrompt}
                       rows={6}
+                      aria-label="User prompt template"
                       onChange={(e) => setDraft({ ...draft, userPrompt: e.target.value })}
                     />
                     <span className={styles.hint}>

@@ -651,6 +651,7 @@ export default function PipelineCanvas({
               aria-expanded={pickerOpen}
               aria-haspopup="listbox"
               aria-label="Select pipeline"
+              data-testid="pipeline-selector"
             >
               <Layers size={13} strokeWidth={1.7} aria-hidden="true" />
               <span className={styles.pipelinePickerName}>
@@ -674,6 +675,7 @@ export default function PipelineCanvas({
                         role="option"
                         aria-selected={active}
                         className={`${styles.pipelineOption} ${active ? styles.pipelineOptionActive : ''}`}
+                        data-testid={`pipeline-option-${p.id}`}
                         onClick={() => {
                           setPickerOpen(false);
                           onSelectPipeline(p.id);
@@ -690,6 +692,7 @@ export default function PipelineCanvas({
                   <button
                     type="button"
                     className={styles.pipelinePickerNew}
+                    data-testid="pipeline-new"
                     onClick={() => {
                       setPickerOpen(false);
                       onCreatePipeline();

@@ -95,6 +95,7 @@ export default function DesignScreen({
               className={`${styles.designTab} ${on ? styles.on : ''}`}
               onClick={() => selectTab(t.id)}
               title={`${t.label} (⌘⇧${t.key})`}
+              data-testid={`tab-${t.id}`}
             >
               <Emblem size={15} className={styles.designTabEmblem} />
               <span className={styles.designTabLabel}>{t.label}</span>

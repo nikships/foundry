@@ -100,18 +100,88 @@ agent-browser click @eN
 agent-browser screenshot /tmp/shot.png
 ```
 
+### `click` is 30x slower than alternatives — avoid it
+
+**`agent-browser click` takes ~5 seconds every time** due to a DOM-stability
+wait that never resolves early in this app. `press`, `fill`, `type`, and `eval`
+all complete in ~0.17s. Measured:
+
+| Method      | Time     | When to use                                 |
+| ----------- | -------- | ------------------------------------------- |
+| `press`     | 0.17s    | All navigation (shortcuts)                  |
+| `fill`      | 0.17s    | Text fields                                 |
+| `type`      | 0.17s    | Keystroke-level input                       |
+| `eval`      | 0.17s    | Clicking elements with no keyboard shortcut |
+| **`click`** | **5.2s** | **Last resort only**                        |
+
+**Click an element via `eval` instead of `click`:**
+
+```bash
+# By data-testid (preferred — stable across label changes):
+agent-browser eval 'document.querySelector("[data-testid=\"agent-tab-builder\"]").click()'
+
+# By role + text (when no data-testid):
+agent-browser eval '[...document.querySelectorAll("[role=tab]")].find(t => t.textContent.includes("builder")).click()'
+```
+
+### Fast navigation cheat sheet
+
+Every screen is reachable via keyboard shortcuts, which are instant:
+
+```bash
+# Top-level views (sidebar):
+agent-browser press Meta+1        # Runs
+agent-browser press Meta+2        # Inspector
+agent-browser press Meta+3        # Design
+agent-browser press Meta+4        # Pull Requests
+agent-browser press "Meta+,"      # Settings (quote the comma)
+
+# Design sub-tabs (must be on Design first, or they switch you there):
+agent-browser press 'Meta+Shift+1'  # Design → Pipelines
+agent-browser press 'Meta+Shift+2'  # Design → Agents
+agent-browser press 'Meta+Shift+3'  # Design → Envelopes
+```
+
+### `data-testid` reference
+
+Stable selectors on key interactive elements. Use with `eval` +
+`querySelector` for reliable, instant clicks:
+
+| `data-testid`          | Element                                     |
+| ---------------------- | ------------------------------------------- |
+| `nav-runs`             | Sidebar → Runs button                       |
+| `nav-inspector`        | Sidebar → Inspector button                  |
+| `nav-design`           | Sidebar → Design button                     |
+| `nav-prs`              | Sidebar → Pull Requests button              |
+| `nav-smith`            | Sidebar → Smith button                      |
+| `nav-settings`         | Sidebar → Settings button                   |
+| `project-selector`     | Project dropdown trigger                    |
+| `sidebar-collapse`     | Collapse/expand sidebar toggle              |
+| `tab-pipelines`        | Design → Pipelines tab                      |
+| `tab-agents`           | Design → Agents tab                         |
+| `tab-envelopes`        | Design → Envelopes tab                      |
+| `agent-tab-{name}`     | Agent roster tab (e.g. `agent-tab-builder`) |
+| `agent-new`            | "+ New agent" button                        |
+| `pipeline-selector`    | Pipeline picker dropdown trigger            |
+| `pipeline-option-{id}` | Pipeline option in the picker dropdown      |
+| `pipeline-new`         | "New pipeline" button in the picker         |
+| `run-request`          | Run composer request textarea               |
+| `run-pipeline`         | Run composer pipeline dropdown              |
+| `run-start`            | "Start run" button                          |
+| `run-back`             | Run detail ← Runs button                    |
+| `run-open-inspector`   | Run detail → Inspector deep-link button     |
+
+### Other driving notes
+
 - Refs renumber on every snapshot; always re-snapshot after navigating.
 - There is exactly one CDP target (no webviews); `tab` shows one page.
-- `click "text=..."` selectors are unreliable here; click sidebar/@refs.
+- `click "text=..."` selectors are unreliable and slow; use `eval` with
+  `data-testid` or `press` for all interaction.
 - The UI is the dark Factory theme; screenshots are mostly black with
   light text. That is correct, not a rendering failure.
-- View shortcuts work through CDP: `agent-browser press Meta+1` (Runs),
-  `Meta+2` (Pipelines), `Meta+3` (Roster), `Meta+4` (Inspector),
-  `press "Meta+,"` (Settings — quote the comma). Handled in the renderer, so
-  they fire for synthetic input even though the native menu also claims them.
 - Escape ladder: an open overlay (Dry run / Prompt preview) closes first;
   otherwise a focused field blurs; otherwise Run detail goes back to Runs.
-- Tab strips (Pipelines / Roster / Settings) are roving-tabindex tablists:
+- Tab strips (Design / Agents / Settings) are roving-tabindex tablists:
   focus the selected tab and use ArrowLeft/ArrowRight (wrap), Home/End;
   selection follows focus.
 
@@ -120,28 +190,32 @@ agent-browser screenshot /tmp/shot.png
 No URL routing; one window, view state in React. The left sidebar is always
 present (except during Onboarding):
 
-| Sidebar button (snapshot label) | View                     | CDP shortcut     |
-| ------------------------------- | ------------------------ | ---------------- |
-| `button "Runs ⌘1"`              | Runs list + run composer | `press Meta+1`   |
-| `button "Pipelines ⌘2"`         | Pipeline editor          | `press Meta+2`   |
-| `button "Roster ⌘3"`            | Agent roster editor      | `press Meta+3`   |
-| `button "Inspector ⌘4"`         | Live trace viewer        | `press Meta+4`   |
-| `button "Settings ⌘,"`          | Settings panes           | `press "Meta+,"` |
+| Sidebar button              | View                           | CDP shortcut     |
+| --------------------------- | ------------------------------ | ---------------- |
+| `button "Runs ⌘1"`          | Runs list + run composer       | `press Meta+1`   |
+| `button "Inspector ⌘2"`     | Live trace viewer              | `press Meta+2`   |
+| `button "Design ⌘3"`        | Pipeline/agent/envelope editor | `press Meta+3`   |
+| `button "Pull Requests ⌘4"` | PR list                        | `press Meta+4`   |
+| `button "Settings ⌘,"`      | Settings panes                 | `press "Meta+,"` |
 
-The sidebar also has the project `combobox` (switch active project) and
-`button "Add another project…"` — **do not click the latter in automation**:
-it opens a native folder picker CDP cannot drive (if stuck, `press Escape`
-won't help; you must dismiss it manually or kill the app).
+Design has three sub-tabs, each with its own shortcut:
+`press 'Meta+Shift+1'` (Pipelines), `'Meta+Shift+2'` (Agents),
+`'Meta+Shift+3'` (Envelopes).
+
+The sidebar also has the project dropdown (`data-testid="project-selector"`,
+shows the active project name) and the Add Project option inside it — **do not
+trigger the Add Project flow in automation**: it opens a native folder picker
+CDP cannot drive (if stuck, `press Escape` won't help; you must dismiss it
+manually or kill the app).
 
 ## Screens
 
 ### Runs (home, default view)
 
 - Heading "Runs", `checkbox "Show archived"`.
-- Composer: `textbox "What should the factory build? ..."`, pipeline
-  `combobox` (Prompt / Scout / Plan / Plan → Build / Plan → Build → Test /
-  Plan → Build → Review / Full SDLC), `button "Start run"` (disabled while
-  the textbox is empty).
+- Composer: `data-testid="run-request"` textarea, pipeline dropdown
+  (`data-testid="run-pipeline"`), `data-testid="run-start"` button
+  (disabled while the textarea is empty).
 - One button per past run; the label packs status, pipeline, age, prompt
   excerpt, `run_*` id, duration, tokens. Click it to open Run detail.
 
@@ -152,9 +226,10 @@ CLIs and spends real tokens. Never start a run unless explicitly asked.
 
 Click a run row on Runs. Contains:
 
-- `button "← Runs"` (back), `button "Inspector"` (deep-link this run into the
-  Inspector), `button "Cost"` (toggles per-phase cost table: Model / Turns /
-  In / Out / Cache read / Thinking / Credits; becomes `"Hide cost"`).
+- `data-testid="run-back"` (← Runs), `data-testid="run-open-inspector"`
+  (deep-link this run into the Inspector), `button "Cost"` (toggles per-phase
+  cost table: Model / Turns / In / Out / Cache read / Thinking / Credits;
+  becomes `"Hide cost"`).
 - Outcome banner ("Accepted — 'review' approved the work", `merged` chip).
 - Phase Gantt: one `button` per phase, labels like `planner plan 1m 34s`,
   `builder build ×2 3m 17s`, `commit_plan 1.1s`. Click to select a phase.
@@ -174,42 +249,35 @@ Live trace viewer, cards per phase in a two-column masonry. Top bar:
   command across the run; toggle again to go back).
 - `⤢` buttons expand individual tool-call cards.
 
-### Pipelines
+### Design (Pipelines / Agents / Envelopes)
 
-Tabs across the top, one per pipeline with phase count: `tab "Prompt 1"`,
-`tab "Scout 1"`, `tab "Plan 2"`, ... `tab "Full SDLC 8"`, plus
-`button "+ New pipeline"`, `button "Dry run"`, `button "Duplicate"`.
+Three sub-tabs under one view, switched via `Meta+Shift+1/2/3` or
+`data-testid="tab-pipelines"`, `tab-agents`, `tab-envelopes`.
 
-- Editor: name/description textboxes, a horizontal phase ribbon
-  (`button "01 plan AGENT droid planner · plan"` ...), add buttons `Agent` /
-  `Command` / `Checkpoint`.
-- PHASES region: each phase row expands to name textbox, agent combobox
-  (planner/builder/scout/reviewer/documenter), envelope combobox
-  (plan/build/review/scout/document/generic), description, input chips,
-  gate checkboxes (`artifacts_exist`, `files_non_empty`, `json_parses`,
-  `diff_matches_claims`, `verdict_consistent`), failure-routing combobox,
-  `Optional` checkbox, reorder `↑`/`↓` and delete `✕`.
-- ACCEPTANCE region: policy combobox (Every phase passed / The last phase
-  passed / envelope reports success / envelope sets a flag + phase & flag
-  comboboxes), `Isolated git worktree` checkbox.
+**Pipelines** (`tab-pipelines`):
+
+- Pipeline picker: `data-testid="pipeline-selector"` (shows current pipeline
+  name + phase count), `data-testid="pipeline-option-{id}"` per pipeline,
+  `data-testid="pipeline-new"` to create one.
+- Editor: name/description textboxes (`aria-label="Pipeline name"`,
+  `aria-label="Pipeline description"`), a horizontal phase ribbon, add
+  buttons Agent / Command / Checkpoint.
 - `Dry run` opens an overlay showing the exact SYSTEM/USER prompt each agent
-  phase would receive against a sample request. Nothing is sent; safe to
-  click. Close with `Esc` or the `Close` button.
-- Edits save automatically ("Changes save automatically" in the footer);
-  validation status bottom-left ("This pipeline is ready to run").
+  phase would receive. Nothing is sent; safe to click. Close with `Esc`.
+- Edits save automatically; validation status bottom-left.
 
-### Roster
+**Agents** (`tab-agents`):
 
-Tabs per agent (`tab "planner ..."`, builder, scout, reviewer, documenter) +
-`button "+ New agent"`. Per agent:
-
-- `button "Preview prompt"` — overlay with the rendered SYSTEM/USER prompt
-  (safe, close with Esc). `button "Duplicate"`.
-- IDENTITY: name, purpose, accent color buttons.
-- EXECUTION: CLI vendor combobox (Factory droid / Claude Code / OpenAI Codex /
-  JetBrains Junie / Grok Build), model combobox + `Refresh`, reasoning-effort
-  radios (OFF/LOW/MEDIUM/HIGH), envelope-kind combobox.
-- PROMPTS: two large textboxes (system prompt, user template).
+- Agent tabs: `data-testid="agent-tab-{name}"` (e.g. `agent-tab-builder`).
+  `data-testid="agent-new"` to create one.
+- `Preview prompt` — overlay with the rendered SYSTEM/USER prompt (safe,
+  close with Esc). `Duplicate`.
+- IDENTITY: `aria-label="Agent name"`, `aria-label="Agent purpose"`,
+  accent color buttons.
+- EXECUTION: CLI vendor combobox, model combobox + Refresh, reasoning-effort
+  radios, envelope-kind combobox.
+- PROMPTS: `aria-label="System prompt"` and `aria-label="User prompt template"`
+  textareas.
 
 Renaming a shipped agent copies it under the new name (pipelines keep
 working); changing CLI vendor resets the model choice.
