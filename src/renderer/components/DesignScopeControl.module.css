@@ -1,0 +1,99 @@
+/* Scope badge + its confirm popover, in the Design header. */
+
+.scope {
+  position: relative;
+  flex: none;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: default;
+  white-space: nowrap;
+  transition:
+    border-color var(--fast) var(--ease),
+    color var(--fast) var(--ease);
+}
+
+.badge:hover:not(:disabled) {
+  border-color: var(--text-faint);
+  color: var(--text);
+}
+
+.badge:disabled {
+  opacity: 0.75;
+}
+
+.badge-project {
+  color: var(--text-faint);
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badge-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: var(--r-full);
+  background: var(--text-faint);
+}
+
+.badge.project .badge-dot {
+  background: var(--accent);
+}
+
+.badge.project .badge-label {
+  color: var(--accent);
+}
+
+.pop {
+  position: absolute;
+  top: calc(100% + var(--s2));
+  right: 0;
+  z-index: 40;
+  width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  padding: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md, 8px);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-lg, 0 12px 32px rgb(0 0 0 / 45%));
+}
+
+.pop-now {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading);
+  color: var(--text);
+}
+
+.pop-note {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: var(--leading);
+  color: var(--text-faint);
+}
+
+.pop-error {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--red);
+}
+
+.pop-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s2);
+}

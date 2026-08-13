@@ -143,6 +143,15 @@
   grid-template-columns: 1fr 1fr;
   gap: var(--s4);
 }
+.settingsFields .span2 {
+  grid-column: span 2;
+}
+/* A reported value rather than an editable one — the control lives in Design. */
+.settingsStatic {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text);
+}
 
 @media (max-width: 1120px) {
   .settingsSection {
@@ -152,6 +161,9 @@
   .settingsFields,
   .two {
     grid-template-columns: 1fr;
+  }
+  .settingsFields .span2 {
+    grid-column: span 1;
   }
 }
 .hint {
