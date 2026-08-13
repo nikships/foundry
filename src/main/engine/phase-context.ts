@@ -10,6 +10,7 @@ import type { ProjectDef, PipelineDef } from '@shared/types.js';
 import type { Envelope } from './envelopes.js';
 import type { CommandResult } from '@shared/types.js';
 import type { InterruptRequest } from '../droid/agent.js';
+import type { PrAction } from '@shared/ipc-contract.js';
 
 export interface RunContext {
   readonly tracer: Tracer;
@@ -20,6 +21,10 @@ export interface RunContext {
   /** The worktree when isolated, the checkout otherwise. */
   readonly cwd: string;
   readonly handoffDir: string;
+  /** Isolated run branch (`foundry/<runId>`), or null when isolation is off. */
+  readonly branch: string | null;
+  /** Project base ref the PR targets. */
+  readonly baseRef: string;
 
   /** Envelopes from completed phases, by phase name. Runners write here. */
   readonly envelopes: Map<string, Envelope>;
@@ -34,6 +39,11 @@ export interface RunContext {
   phaseId(name: string): string;
   /** Raises the interrupt sheet. Only engineer phases reach it. */
   askHuman(req: InterruptRequest): Promise<{ approve: boolean; text?: string }>;
+  /**
+   * Push the run branch and open (or discover) the PR. Engine-owned: the
+   * agent only drafts title/body. Failure is the exact gh/git error.
+   */
+  recordPr(input: { title: string; body: string }): Promise<PrAction>;
 }
 
 /** Where the walk goes after a phase. Unchanged from executor.ts. */

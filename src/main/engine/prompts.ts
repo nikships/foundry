@@ -14,6 +14,10 @@ export interface RenderContext {
   worktree: string;
   handoffDir: string;
   handoffFiles: string[];
+  /** Isolated run branch, when the pipeline created one. */
+  branch?: string | null;
+  /** Project base ref the PR (if any) will target. */
+  baseRef?: string;
   /** Envelopes from earlier phases, by phase name. */
   envelopes: Map<string, Envelope>;
   /** Set when a code phase sent failure evidence back to this agent. */
@@ -34,6 +38,8 @@ export const TEMPLATE_VARIABLES = [
   },
   { token: '{{envelope:plan}}', description: "A prior phase's envelope as pretty JSON." },
   { token: '{{envelope:plan.summary}}', description: 'One field from a prior envelope.' },
+  { token: '{{branch}}', description: 'The isolated run branch (`foundry/<runId>`), if any.' },
+  { token: '{{base_ref}}', description: 'The project base ref a pull request will target.' },
 ];
 
 /** `envelope:build.commit_message` reads one field; `envelope:build` the whole. */
@@ -75,6 +81,10 @@ export function renderTemplate(template: string, ctx: RenderContext): string {
           : '(none yet)';
       case 'feedback':
         return ctx.feedback ?? '(no feedback)';
+      case 'branch':
+        return ctx.branch ?? '(none)';
+      case 'base_ref':
+        return ctx.baseRef ?? '(none)';
       default:
         if (token.startsWith('envelope:')) {
           return resolveEnvelopeRef(token, ctx.envelopes) ?? '(not available)';

@@ -28,6 +28,8 @@ import type {
   ProjectDef,
 } from '../src/shared/types.js';
 import { CLI_VENDOR_IDS } from '../src/shared/types.js';
+import type { GhOptions } from '../src/main/system/gh.js';
+import { makeFakeGh } from './fake-gh.js';
 
 function sh(cwd: string, argv: string[]): string {
   try {
@@ -565,6 +567,48 @@ function reviewEnvelope(approved: boolean): string {
   });
 }
 
+function prEnvelope(over: Record<string, unknown> = {}): string {
+  return JSON.stringify({
+    status: 'success',
+    summary: 'drafted the pull request',
+    artifacts: [],
+    notes_for_next_agent: '',
+    title: 'Add the thing',
+    body: '## Summary\n\nIt works.\n',
+    ...over,
+  });
+}
+
+/** Point the scratch checkout at a local bare origin so push works offline. */
+function addOrigin(repo: string): string {
+  const dir = mkdtempSync(join(tmpdir(), 'foundry-exec-origin-'));
+  const bare = join(dir, 'origin.git');
+  sh(dir, ['git', 'init', '-q', '--bare', '-b', 'main', 'origin.git']);
+  sh(repo, ['git', 'remote', 'add', 'origin', bare]);
+  sh(repo, ['git', 'push', '-qu', 'origin', 'main']);
+  return bare;
+}
+
+function prWriter(): AgentDef {
+  return buildAgent({
+    name: 'pr_writer',
+    purpose: 'draft a pr',
+    envelope: 'pr',
+    writes: [],
+    userPrompt: 'Draft a PR for {{request}} on {{branch}} against {{base_ref}}.',
+  });
+}
+
+function openPrPhase(over: Partial<PhaseDef> = {}): PhaseDef {
+  return agentPhase('open_pr', {
+    agent: 'pr_writer',
+    envelope: 'pr',
+    description: 'Open a pull request with a human-readable title and body.',
+    prompt: { template: 'user', inputs: ['request', 'envelope:plan', 'envelope:build'] },
+    ...over,
+  });
+}
+
 interface Harness {
   repo: string;
   project: ProjectDef;
@@ -632,6 +676,7 @@ interface RunInput {
   /** Defaults to subprocess so unit tests never spawn a real daemon. */
   transport?: 'daemon' | 'subprocess';
   mcpServers?: import('../src/shared/types.js').UserMcpServer[]; // eslint-disable-line @typescript-eslint/consistent-type-imports
+  gh?: GhOptions;
 }
 
 function run(input: RunInput): Promise<{ status: string; runId: string }> {
@@ -674,6 +719,7 @@ function start(input: RunInput): {
     runId,
     engineer: 'test',
     askHuman: input.askHuman ?? (async () => ({ approve: true })),
+    gh: input.gh,
   });
   return { executor, runId, done: executor.run().then((o) => ({ status: o.status, runId })) };
 }
@@ -2842,5 +2888,227 @@ describe('missing droid binary (VAL-PROD-012)', () => {
     const payloads = events(outcome.runId).map((e) => JSON.stringify(e.payload));
     const combined = payloads.join('\n');
     expect(combined).toMatch(/spawn|ENOENT|not found|unresolvable|executable|droid/i);
+  });
+});
+
+/**
+ * FOU-17 — the PR phase is an ordinary agent phase whose envelope the engine
+ * acts on: it pushes `foundry/<runId>` and runs `gh pr create`, then records
+ * the number and URL on the run. FOU-15 governs the failures: every one is a
+ * hard fail carrying the exact error, and none of them invents a PR.
+ */
+describe('open_pr phase (FOU-17)', () => {
+  it('pushes the run branch, creates the PR, and records its number and url', async () => {
+    const bare = addOrigin(h.repo);
+    const droid = scriptedDroid([prEnvelope()]);
+    const gh = makeFakeGh({ createUrl: 'https://github.com/acme/widgets/pull/42' });
+
+    const outcome = await run({
+      droidPath: droid,
+      agents: [prWriter()],
+      gh: { bin: gh.bin },
+      pipeline: pipe([openPrPhase()], {
+        description: 'draft and open the pull request',
+        acceptance: { kind: 'envelope_status', phase: 'open_pr' },
+      }),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    const row = h.tracer.run(outcome.runId)!;
+    expect(row.prNumber).toBe(42);
+    expect(row.prUrl).toBe('https://github.com/acme/widgets/pull/42');
+
+    // gh could only have seen a head the engine had already pushed.
+    const branch = `foundry/${outcome.runId}`;
+    expect(sh(bare, ['git', 'rev-parse', `refs/heads/${branch}`]).trim()).toBeTruthy();
+
+    // The envelope's title and body are what reached `gh pr create`, and the
+    // PR targets the project base ref rather than whatever gh would default to.
+    const create = gh.calls().find((argv) => argv[0] === 'pr' && argv[1] === 'create')!;
+    expect(create).toBeDefined();
+    expect(create).toContain('--head');
+    expect(create).toContain(branch);
+    expect(create).toContain('--base');
+    expect(create).toContain('main');
+    expect(create).toContain('Add the thing');
+    expect(create.join('\n')).toContain('## Summary');
+  });
+
+  it('renders the run branch and base ref into the writer prompt', async () => {
+    addOrigin(h.repo);
+    const droid = scriptedDroid([prEnvelope()]);
+    const gh = makeFakeGh({ createUrl: 'https://github.com/acme/widgets/pull/8' });
+
+    const outcome = await run({
+      droidPath: droid,
+      agents: [prWriter()],
+      gh: { bin: gh.bin },
+      pipeline: pipe([openPrPhase()], {
+        description: 'render branch and base ref',
+        acceptance: { kind: 'envelope_status', phase: 'open_pr' },
+      }),
+    });
+
+    const prompt = h.tracer.readPrompt(outcome.runId, 'pr_writer', 'open_pr');
+    expect(prompt).toContain(`foundry/${outcome.runId}`);
+    expect(prompt).toContain('against main');
+  });
+
+  it('reuses the existing PR for a branch instead of opening a second one', async () => {
+    addOrigin(h.repo);
+    const droid = scriptedDroid([prEnvelope()]);
+    // `gh pr create` failing on an existing PR is how a re-run looks; openPr
+    // answers with the PR already there rather than a duplicate or an error.
+    const gh = makeFakeGh({
+      createError: 'a pull request for branch already exists',
+      prView: {
+        number: 7,
+        url: 'https://github.com/acme/widgets/pull/7',
+        headRefName: 'foundry/x',
+        baseRefName: 'main',
+      },
+    });
+
+    const outcome = await run({
+      droidPath: droid,
+      agents: [prWriter()],
+      gh: { bin: gh.bin },
+      pipeline: pipe([openPrPhase()], {
+        description: 'discover the pull request that already exists',
+        acceptance: { kind: 'envelope_status', phase: 'open_pr' },
+      }),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    const row = h.tracer.run(outcome.runId)!;
+    expect(row.prNumber).toBe(7);
+    expect(row.prUrl).toBe('https://github.com/acme/widgets/pull/7');
+    // Deduplication is a discovery, not a second create.
+    expect(gh.calls().filter((argv) => argv[0] === 'pr' && argv[1] === 'create')).toHaveLength(1);
+  });
+
+  it('hard fails with the exact gh error, records no PR, and keeps the worktree', async () => {
+    addOrigin(h.repo);
+    const droid = scriptedDroid([prEnvelope()]);
+    const gh = makeFakeGh({ createError: 'GraphQL: Resource not accessible by integration' });
+
+    const outcome = await run({
+      droidPath: droid,
+      agents: [prWriter()],
+      gh: { bin: gh.bin },
+      pipeline: pipe([openPrPhase()], {
+        description: 'surface a refused pull request',
+        acceptance: { kind: 'envelope_status', phase: 'open_pr' },
+      }),
+    });
+
+    expect(outcome.status).toBe('rejected');
+    const row = h.tracer.run(outcome.runId)!;
+    expect(row.prNumber).toBeNull();
+    expect(row.prUrl).toBeNull();
+    // The operator gets gh's own words, not a paraphrase.
+    expect(row.outcomeDetail).toContain('Resource not accessible by integration');
+    const phase = h.tracer.phases(outcome.runId)[0]!;
+    expect(phase.status).toBe('fail');
+    expect(phase.error).toContain('Resource not accessible by integration');
+    // The manual "Open PR…" fallback needs the branch and worktree intact.
+    expect(row.branch).toBe(`foundry/${outcome.runId}`);
+    expect(existsSync(row.worktreePath!)).toBe(true);
+  });
+
+  it('fails without reaching gh when the repo has no remote to push to', async () => {
+    const droid = scriptedDroid([prEnvelope()]);
+    const gh = makeFakeGh();
+
+    const outcome = await run({
+      droidPath: droid,
+      agents: [prWriter()],
+      gh: { bin: gh.bin },
+      pipeline: pipe([openPrPhase()], {
+        description: 'a checkout with nowhere to push',
+        acceptance: { kind: 'envelope_status', phase: 'open_pr' },
+      }),
+    });
+
+    expect(outcome.status).toBe('rejected');
+    expect(h.tracer.run(outcome.runId)!.outcomeDetail).toContain('no git remote');
+    expect(gh.calls().some((argv) => argv[0] === 'pr' && argv[1] === 'create')).toBe(false);
+  });
+
+  /**
+   * The failure this phase exists to prevent: a chain whose acceptance is an
+   * earlier phase's flag must not settle accepted when the PR never opened.
+   */
+  it('rejects the whole run even when an earlier phase already approved it', async () => {
+    addOrigin(h.repo);
+    const droid = scriptedDroid([reviewEnvelope(true), prEnvelope()]);
+    const gh = makeFakeGh({ createError: 'could not create pull request' });
+
+    const outcome = await run({
+      droidPath: droid,
+      agents: [buildAgent({ name: 'reviewer', envelope: 'review', writes: [] }), prWriter()],
+      gh: { bin: gh.bin },
+      pipeline: pipe(
+        [
+          agentPhase('review', {
+            agent: 'reviewer',
+            envelope: 'review',
+            description: 'Approve the work so acceptance would otherwise pass.',
+          }),
+          openPrPhase({ prompt: { template: 'user', inputs: ['request'] } }),
+        ],
+        {
+          description: 'approved work whose pull request could not be opened',
+          acceptance: { kind: 'phase_flag', phase: 'review', flag: 'approved' },
+        },
+      ),
+    });
+
+    expect(outcome.status).toBe('rejected');
+    expect(h.tracer.run(outcome.runId)!.prUrl).toBeNull();
+    expect(h.tracer.phases(outcome.runId).map((p) => p.status)).toEqual(['success', 'fail']);
+  });
+
+  it('never opens a PR for a pipeline that runs without isolation', async () => {
+    addOrigin(h.repo);
+    const droid = scriptedDroid([prEnvelope()]);
+    const gh = makeFakeGh();
+
+    const outcome = await run({
+      droidPath: droid,
+      agents: [prWriter()],
+      gh: { bin: gh.bin },
+      pipeline: pipe([openPrPhase()], {
+        description: 'no worktree, so there is no run branch to open a PR from',
+        isolation: false,
+        acceptance: { kind: 'envelope_status', phase: 'open_pr' },
+      }),
+    });
+
+    expect(outcome.status).toBe('rejected');
+    expect(h.tracer.run(outcome.runId)!.outcomeDetail).toContain('no branch');
+    expect(gh.calls()).toEqual([]);
+  });
+
+  it('fails a pr envelope whose title or body is blank rather than opening an empty PR', async () => {
+    addOrigin(h.repo);
+    // A schema-valid envelope can still carry whitespace, which would become a
+    // PR with no title. The engine refuses before touching the remote.
+    const droid = scriptedDroid([prEnvelope({ title: '   ' })]);
+    const gh = makeFakeGh();
+
+    const outcome = await run({
+      droidPath: droid,
+      agents: [prWriter()],
+      gh: { bin: gh.bin },
+      pipeline: pipe([openPrPhase()], {
+        description: 'a blank title must not reach gh',
+        acceptance: { kind: 'envelope_status', phase: 'open_pr' },
+      }),
+    });
+
+    expect(outcome.status).toBe('rejected');
+    expect(h.tracer.run(outcome.runId)!.outcomeDetail).toContain('title or body');
+    expect(gh.calls()).toEqual([]);
   });
 });
