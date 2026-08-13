@@ -18,8 +18,10 @@ export interface FakeGhConfig {
   prView?: {
     number: number;
     url: string;
-    headRefName: string;
-    baseRefName: string;
+    headRefName?: string;
+    baseRefName?: string;
+    state?: string;
+    mergedAt?: string | null;
   } | null;
   /** `gh pr create` prints this URL; a `createError` makes it fail instead. */
   createUrl?: string;

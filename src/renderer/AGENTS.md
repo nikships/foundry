@@ -46,11 +46,11 @@ npx vitest run -t "<renderer|transcript|pipeline-view|keyboard>"
 
 ## Push Channels
 
-Exactly seven main→renderer channels (subscribed via `window.foundry.on`):
+Exactly eight main→renderer channels (subscribed via `window.foundry.on`):
 
-- `runs-changed`, `interrupts-changed`, `settings-changed`, `updater-status`, `detection-progress`, `setup-progress`, `smith-proposals-changed`
+- `runs-changed`, `interrupts-changed`, `settings-changed`, `updater-status`, `detection-progress`, `setup-progress`, `smith-proposals-changed`, `readiness-progress`
 
-`detection-progress` and `setup-progress` carry progress for work with no trace rows (detection/setup); `smith-proposals-changed` drives `SmithProposalCard`. Ordinary run data is **polled** via `change_id`, not pushed. Keep `mockFoundry.ts` in sync when adding channels.
+`detection-progress`, `setup-progress`, and `readiness-progress` carry progress for work with no trace rows (detection/setup/readiness); `smith-proposals-changed` drives `SmithProposalCard`. Ordinary run data is **polled** via `change_id`, not pushed. Keep `mockFoundry.ts` in sync when adding channels.
 
 ## Code Style
 

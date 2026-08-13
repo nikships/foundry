@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ValidationIssue } from '@shared/types.js';
+import type { ReadinessInspectResult, ValidationIssue } from '@shared/types.js';
 import { api } from '../api.js';
 import { useApp } from '../stores/app.js';
 import { useRunList } from '../stores/run.js';
@@ -17,12 +17,14 @@ export default function RunsScreen({
   onAddProject,
   onNewProject,
   onOpenSettings,
+  onOpenReadiness,
 }: {
   onOpen: (runId: string) => void;
   onAddProject?: () => void;
   /** Create a repository on GitHub instead of pointing at an existing checkout. */
   onNewProject?: () => void;
   onOpenSettings?: (pane: string) => void;
+  onOpenReadiness?: () => void;
 }): React.JSX.Element {
   const { pipelines, project, projectId, refreshAll } = useApp();
   const [request, setRequest] = useState('');
@@ -34,6 +36,7 @@ export default function RunsScreen({
   const [startNote, setStartNote] = useState('');
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
   const [preflight, setPreflight] = useState<ValidationIssue[]>([]);
+  const [readiness, setReadiness] = useState<ReadinessInspectResult | null>(null);
 
   const {
     runs,
@@ -55,6 +58,20 @@ export default function RunsScreen({
   useEffect(() => {
     if (selectedPipeline) localStorage.setItem('foundry.pipeline', selectedPipeline);
   }, [selectedPipeline]);
+
+  useEffect(() => {
+    if (!projectId) {
+      setReadiness(null);
+      return;
+    }
+    let cancelled = false;
+    void api.readiness.inspect(projectId).then((next) => {
+      if (!cancelled) setReadiness(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, project?.path, project?.readinessValidated, project?.readinessSkipped]);
 
   // Live preflight so missing commands and broken refs show before Start is hit.
   useEffect(() => {
@@ -156,6 +173,20 @@ export default function RunsScreen({
           Show archived
         </label>
       </header>
+      {project && readiness && (
+        <div className={readiness.ready ? styles.readinessReady : styles.readinessBanner}>
+          <p>
+            {readiness.ready
+              ? readiness.marker?.summary || 'This project is agent-ready.'
+              : 'This project is not agent-ready. Pipeline runs may fail mid-flight until the checklist is green.'}
+          </p>
+          {!readiness.ready && onOpenReadiness && (
+            <Button size="sm" onClick={onOpenReadiness}>
+              {readiness.skipped ? 'Re-run readiness' : 'Check readiness'}
+            </Button>
+          )}
+        </div>
+      )}
       {project ? (
         <section className={`${styles.composer} card`}>
           <textarea

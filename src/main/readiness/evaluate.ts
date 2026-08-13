@@ -1,0 +1,561 @@
+/**
+ * Language- and monorepo-aware static readiness evaluation.
+ *
+ * This is the dedicated evaluation — not a pipeline phase and not a model call.
+ * The agent uses the same checklist when remediating; tests can assert the
+ * verdict from repo contents alone.
+ */
+
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import type {
+  AgentReadyStack,
+  ReadinessCriterion,
+  ReadinessCriterionId,
+  ReadinessEvaluation,
+} from '@shared/types.js';
+import { READINESS_CRITERION_IDS } from '@shared/types.js';
+
+const SKIP_DIRS = new Set([
+  'node_modules',
+  '.git',
+  '.build',
+  'build',
+  'dist',
+  'target',
+  'vendor',
+  'DerivedData',
+  'checkouts',
+  '.foundry-worktrees',
+  'coverage',
+  'out',
+  '.next',
+  '.turbo',
+]);
+
+export interface RepoFileIndex {
+  files: Set<string>;
+  dirs: Set<string>;
+}
+
+export function indexRepo(root: string, maxFiles = 8_000): RepoFileIndex {
+  const files = new Set<string>();
+  const dirs = new Set<string>();
+  const walk = (abs: string): void => {
+    if (files.size >= maxFiles) return;
+    let entries: string[] = [];
+    try {
+      entries = readdirSync(abs);
+    } catch {
+      return;
+    }
+    for (const name of entries) {
+      if (SKIP_DIRS.has(name)) continue;
+      const child = join(abs, name);
+      let stat;
+      try {
+        stat = statSync(child);
+      } catch {
+        continue;
+      }
+      const rel = relative(root, child).replaceAll('\\', '/');
+      if (stat.isDirectory()) {
+        dirs.add(rel);
+        walk(child);
+      } else if (stat.isFile()) {
+        files.add(rel);
+      }
+    }
+  };
+  walk(root);
+  return { files, dirs };
+}
+
+function read(root: string, rel: string): string | null {
+  try {
+    return readFileSync(join(root, rel), 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+function hasAny(index: RepoFileIndex, names: string[]): boolean {
+  return names.some((n) => index.files.has(n) || index.dirs.has(n));
+}
+
+function filesMatching(index: RepoFileIndex, test: (rel: string) => boolean): string[] {
+  return [...index.files].filter(test);
+}
+
+function parseJson(text: string | null): Record<string, unknown> | null {
+  if (!text) return null;
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+export function detectStack(root: string, index: RepoFileIndex): AgentReadyStack {
+  const languages: string[] = [];
+  const packages: string[] = [];
+  let monorepo = false;
+
+  const pkg = parseJson(read(root, 'package.json'));
+  if (pkg) {
+    languages.push('javascript');
+    const deps = {
+      ...((pkg.dependencies as Record<string, unknown> | undefined) ?? {}),
+      ...((pkg.devDependencies as Record<string, unknown> | undefined) ?? {}),
+    };
+    if (index.files.has('tsconfig.json') || 'typescript' in deps) languages.push('typescript');
+    const workspaces = pkg.workspaces;
+    if (Array.isArray(workspaces) || (workspaces && typeof workspaces === 'object')) {
+      monorepo = true;
+    }
+  }
+  if (index.files.has('pnpm-workspace.yaml') || index.files.has('lerna.json')) monorepo = true;
+  if (index.files.has('nx.json') || index.files.has('turbo.json')) monorepo = true;
+  if (
+    index.files.has('pyproject.toml') ||
+    index.files.has('requirements.txt') ||
+    index.files.has('setup.py')
+  ) {
+    languages.push('python');
+  }
+  if (index.files.has('go.mod')) languages.push('go');
+  if (index.files.has('Cargo.toml')) languages.push('rust');
+  if (index.files.has('Package.swift')) languages.push('swift');
+  if (index.files.has('Gemfile')) languages.push('ruby');
+
+  const nestedPackages = filesMatching(
+    index,
+    (rel) => rel.endsWith('/package.json') && rel !== 'package.json',
+  );
+  for (const rel of nestedPackages) {
+    const dir = rel.slice(0, -'/package.json'.length);
+    if (dir && !dir.includes('node_modules')) packages.push(dir);
+  }
+  if (packages.length > 1) monorepo = true;
+  if (languages.length > 1) monorepo = true;
+  if (!languages.length) languages.push('shell');
+
+  return { languages: [...new Set(languages)], monorepo, packages };
+}
+
+function scriptsOf(root: string): Record<string, string> {
+  const pkg = parseJson(read(root, 'package.json'));
+  const scripts = pkg?.scripts;
+  if (!scripts || typeof scripts !== 'object') return {};
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(scripts as Record<string, unknown>)) {
+    if (typeof v === 'string') out[k] = v;
+  }
+  return out;
+}
+
+function makefile(root: string): string {
+  return read(root, 'Makefile') ?? read(root, 'makefile') ?? '';
+}
+
+function criterion(
+  id: ReadinessCriterionId,
+  status: ReadinessCriterion['status'],
+  notes: string,
+  measurement?: Record<string, unknown>,
+): ReadinessCriterion {
+  return measurement ? { id, status, notes, measurement } : { id, status, notes };
+}
+
+function lintFormat(
+  root: string,
+  index: RepoFileIndex,
+  stack: AgentReadyStack,
+): ReadinessCriterion {
+  const scripts = scriptsOf(root);
+  const lintKey = ['lint', 'format', 'lint:fix', 'prettier'].find((k) => scripts[k]);
+  const lintScript = lintKey ? scripts[lintKey] : undefined;
+  const configs = [
+    'eslint.config.js',
+    'eslint.config.mjs',
+    'eslint.config.cjs',
+    'eslint.config.ts',
+    '.eslintrc',
+    '.eslintrc.js',
+    '.eslintrc.cjs',
+    '.eslintrc.json',
+    '.prettierrc',
+    '.prettierrc.js',
+    '.prettierrc.cjs',
+    '.prettierrc.json',
+    'prettier.config.js',
+    'biome.json',
+    'biome.jsonc',
+    'ruff.toml',
+    '.ruff.toml',
+    '.flake8',
+    '.golangci.yml',
+    '.golangci.yaml',
+    'rustfmt.toml',
+    '.swiftlint.yml',
+  ];
+  const pyproject = read(root, 'pyproject.toml') ?? '';
+  const hasPyLint = /\[tool\.(ruff|black|isort|flake8)\]/.test(pyproject);
+  const make = makefile(root);
+  const hasMake = /\b(lint|fmt|format)\b/.test(make);
+  if (lintScript || hasAny(index, configs) || hasPyLint || hasMake) {
+    return criterion('lint_format', 'pass', 'Lint/format tooling is configured.', {
+      command: lintKey ? `npm run ${lintKey}` : undefined,
+      via: lintKey ? 'package.json' : hasPyLint ? 'pyproject.toml' : 'config',
+    });
+  }
+  return criterion(
+    'lint_format',
+    'fail',
+    `No lint/format command or config found for ${stack.languages.join(', ')}.`,
+  );
+}
+
+function typecheck(root: string, index: RepoFileIndex, stack: AgentReadyStack): ReadinessCriterion {
+  const scripts = scriptsOf(root);
+  const typeScript = stack.languages.includes('typescript');
+  const python = stack.languages.includes('python');
+  if (typeScript) {
+    const typeKey = ['typecheck', 'type-check', 'tsc'].find((k) => scripts[k]);
+    if (index.files.has('tsconfig.json') && (typeKey || /tsc/.test(JSON.stringify(scripts)))) {
+      return criterion('typecheck', 'pass', 'TypeScript typecheck is documented.', {
+        command: typeKey ? `npm run ${typeKey}` : 'npx tsc --noEmit',
+      });
+    }
+    if (index.files.has('tsconfig.json')) {
+      return criterion(
+        'typecheck',
+        'fail',
+        'tsconfig.json exists but no documented typecheck command.',
+      );
+    }
+    return criterion('typecheck', 'fail', 'TypeScript is in use but tsconfig.json is missing.');
+  }
+  if (python) {
+    const pyproject = read(root, 'pyproject.toml') ?? '';
+    if (
+      index.files.has('mypy.ini') ||
+      index.files.has('pyrightconfig.json') ||
+      /\[tool\.(mypy|pyright)\]/.test(pyproject)
+    ) {
+      return criterion('typecheck', 'pass', 'Python typechecker is configured.');
+    }
+    return criterion(
+      'typecheck',
+      'n/a',
+      'Python repo without a published typecheck policy; recorded as not applicable.',
+    );
+  }
+  if (stack.languages.includes('go')) {
+    return criterion(
+      'typecheck',
+      'pass',
+      'Go is compiled; `go test` / `go vet` cover the type system.',
+      {
+        command: 'go vet ./...',
+      },
+    );
+  }
+  if (stack.languages.includes('rust')) {
+    return criterion(
+      'typecheck',
+      'pass',
+      'Rust is compiled; `cargo check` covers the type system.',
+      {
+        command: 'cargo check',
+      },
+    );
+  }
+  return criterion('typecheck', 'n/a', 'No typed language applies in this repository.');
+}
+
+function tests(root: string, index: RepoFileIndex, stack: AgentReadyStack): ReadinessCriterion {
+  const scripts = scriptsOf(root);
+  const testScript = scripts.test || scripts.tests || scripts.vitest || scripts.jest;
+  const testFiles = filesMatching(
+    index,
+    (rel) =>
+      /\.(test|spec)\.[cm]?[jt]sx?$/.test(rel) ||
+      /_test\.go$/.test(rel) ||
+      /test_.*\.py$/.test(rel) ||
+      /_test\.py$/.test(rel) ||
+      /Tests\.swift$/.test(rel),
+  );
+  const dirs = ['tests', 'test', '__tests__', 'spec'].some((d) => index.dirs.has(d));
+  if (testScript || testFiles.length || dirs) {
+    const command = testScript
+      ? `npm test`
+      : stack.languages.includes('go')
+        ? 'go test ./...'
+        : stack.languages.includes('rust')
+          ? 'cargo test'
+          : stack.languages.includes('python')
+            ? 'pytest'
+            : undefined;
+    return criterion('tests', 'pass', 'A documented test command or test files exist.', {
+      command,
+      tests: testFiles.length || undefined,
+    });
+  }
+  return criterion(
+    'tests',
+    'fail',
+    `No tests or test command found for ${stack.languages.join(', ')}.`,
+  );
+}
+
+function build(root: string, index: RepoFileIndex, stack: AgentReadyStack): ReadinessCriterion {
+  const scripts = scriptsOf(root);
+  const buildScript = scripts.build || scripts.compile || scripts.bundle;
+  if (buildScript) {
+    return criterion('build', 'pass', 'A documented build command exists.', {
+      command: 'npm run build',
+    });
+  }
+  if (stack.languages.includes('go')) {
+    return criterion('build', 'pass', 'Go modules build with `go build`.', {
+      command: 'go build ./...',
+    });
+  }
+  if (stack.languages.includes('rust')) {
+    return criterion('build', 'pass', 'Cargo builds the crate.', { command: 'cargo build' });
+  }
+  if (
+    stack.languages.includes('swift') &&
+    (index.files.has('Package.swift') ||
+      filesMatching(index, (r) => r.endsWith('.xcodeproj/project.pbxproj')).length)
+  ) {
+    return criterion('build', 'pass', 'Swift package / Xcode project can be built.', {
+      command: 'swift build',
+    });
+  }
+  if (makefile(root).match(/\bbuild\b/)) {
+    return criterion('build', 'pass', 'Makefile documents a build target.', {
+      command: 'make build',
+    });
+  }
+  if (stack.languages.includes('javascript') && !stack.languages.includes('typescript')) {
+    return criterion('build', 'n/a', 'Interpreted JavaScript package; no compile step required.');
+  }
+  if (stack.languages.every((l) => l === 'shell' || l === 'python')) {
+    return criterion('build', 'n/a', 'No compile/build step applies.');
+  }
+  return criterion('build', 'fail', 'No documented build command found.');
+}
+
+function setup(root: string, index: RepoFileIndex): ReadinessCriterion {
+  const docs = `${read(root, 'README.md') ?? ''}\n${read(root, 'AGENTS.md') ?? ''}`;
+  const scripts = scriptsOf(root);
+  const hasInstall =
+    /\b(npm ci|npm install|pnpm i|pnpm install|yarn install|bun install|bundle install|pip install|uv sync|cargo fetch)\b/i.test(
+      docs,
+    );
+  const hasDev = Boolean(scripts.dev || scripts.start || scripts.serve);
+  if (hasInstall || hasDev || makefile(root).match(/\b(setup|install|bootstrap)\b/)) {
+    return criterion('setup', 'pass', 'A clone-to-running sequence is documented or scripted.', {
+      hasInstall,
+      hasDev,
+    });
+  }
+  if (index.files.has('package.json')) {
+    return criterion(
+      'setup',
+      'fail',
+      'package.json exists but no documented install → dev/run sequence was found.',
+    );
+  }
+  return criterion('setup', 'fail', 'No single-command setup (install → run) is documented.');
+}
+
+function agentsMd(index: RepoFileIndex, stack: AgentReadyStack): ReadinessCriterion {
+  if (!index.files.has('AGENTS.md')) {
+    return criterion('agents_md', 'fail', 'Root AGENTS.md is required.');
+  }
+  const nested = filesMatching(index, (rel) => rel.endsWith('/AGENTS.md'));
+  const notes = stack.monorepo
+    ? nested.length
+      ? `Root AGENTS.md plus ${nested.length} nested file(s).`
+      : 'Root AGENTS.md present; nested AGENTS.md files are encouraged in this monorepo.'
+    : 'Root AGENTS.md is present.';
+  return criterion('agents_md', 'pass', notes, { nested: nested.length });
+}
+
+function envExample(index: RepoFileIndex): ReadinessCriterion {
+  const hasExample = hasAny(index, ['.env.example', '.env.sample', '.env.template']);
+  const hasEnv = hasAny(index, ['.env', '.env.local', '.env.development']);
+  if (hasExample) {
+    return criterion(
+      'env_example',
+      'pass',
+      'Environment variables are documented via an example file.',
+    );
+  }
+  if (hasEnv) {
+    return criterion(
+      'env_example',
+      'fail',
+      'An .env file exists but there is no .env.example documenting required variables.',
+    );
+  }
+  return criterion(
+    'env_example',
+    'n/a',
+    'No environment files detected; an example file is not required.',
+  );
+}
+
+function ciParity(root: string, index: RepoFileIndex): ReadinessCriterion {
+  const workflows = filesMatching(
+    index,
+    (rel) => rel.startsWith('.github/workflows/') && /\.ya?ml$/.test(rel),
+  );
+  if (!workflows.length) {
+    return criterion(
+      'ci_parity',
+      'fail',
+      'No GitHub Actions workflows found under .github/workflows/.',
+    );
+  }
+  const body = workflows.map((rel) => read(root, rel) ?? '').join('\n');
+  const scripts = scriptsOf(root);
+  const expected = ['lint', 'test', 'typecheck', 'build', 'format'].filter((name) => scripts[name]);
+  const missing = expected.filter(
+    (name) => !body.includes(name) && !body.includes(`npm run ${name}`),
+  );
+  if (expected.length && missing.length === expected.length) {
+    return criterion(
+      'ci_parity',
+      'fail',
+      `Workflows exist (${workflows.join(', ')}) but do not mention local check scripts: ${missing.join(', ')}.`,
+      { workflows },
+    );
+  }
+  return criterion(
+    'ci_parity',
+    'pass',
+    `GitHub Actions workflows mirror local checks (${workflows.join(', ')}).`,
+    {
+      workflows,
+    },
+  );
+}
+
+function templates(index: RepoFileIndex): ReadinessCriterion {
+  const issue =
+    index.dirs.has('.github/ISSUE_TEMPLATE') ||
+    index.files.has('.github/ISSUE_TEMPLATE.md') ||
+    index.files.has('ISSUE_TEMPLATE.md') ||
+    filesMatching(index, (rel) => rel.startsWith('.github/ISSUE_TEMPLATE/')).length > 0;
+  const pr =
+    index.files.has('.github/pull_request_template.md') ||
+    index.files.has('.github/PULL_REQUEST_TEMPLATE.md') ||
+    index.files.has('pull_request_template.md') ||
+    index.files.has('PULL_REQUEST_TEMPLATE.md') ||
+    index.dirs.has('.github/PULL_REQUEST_TEMPLATE') ||
+    filesMatching(index, (rel) => rel.startsWith('.github/PULL_REQUEST_TEMPLATE/')).length > 0;
+  if (issue && pr) {
+    return criterion(
+      'templates',
+      'pass',
+      'Issue and pull request templates are present under .github/.',
+    );
+  }
+  const missing = [!issue ? 'issue templates' : null, !pr ? 'PR template' : null].filter(Boolean);
+  return criterion('templates', 'fail', `Missing ${missing.join(' and ')}.`);
+}
+
+function precommit(index: RepoFileIndex): ReadinessCriterion {
+  if (
+    index.dirs.has('.husky') ||
+    index.files.has('.pre-commit-config.yaml') ||
+    index.dirs.has('.githooks') ||
+    index.files.has('lefthook.yml') ||
+    index.files.has('.lefthook.yml')
+  ) {
+    return criterion('precommit', 'pass', 'Pre-commit hooks are configured.');
+  }
+  return criterion(
+    'precommit',
+    'fail',
+    'No pre-commit hooks found (.husky, .githooks, pre-commit, or lefthook).',
+  );
+}
+
+function coverage(
+  root: string,
+  index: RepoFileIndex,
+  testStatus: ReadinessCriterion['status'],
+): ReadinessCriterion {
+  if (testStatus !== 'pass') {
+    return criterion('coverage', 'n/a', 'Coverage is not applicable until tests exist.');
+  }
+  const vitest = read(root, 'vitest.config.ts') ?? read(root, 'vitest.config.mts') ?? '';
+  const jest = parseJson(read(root, 'jest.config.json'));
+  const pkg = parseJson(read(root, 'package.json'));
+  const pkgText = read(root, 'package.json') ?? '';
+  const pyproject = read(root, 'pyproject.toml') ?? '';
+  const has =
+    /thresholds?\s*:/.test(vitest) ||
+    /coverageThreshold/.test(JSON.stringify(jest ?? {})) ||
+    /coverageThreshold/.test(pkgText) ||
+    /--coverage/.test(JSON.stringify(pkg?.scripts ?? {})) ||
+    /\[tool\.coverage/.test(pyproject) ||
+    /--cov/.test(pyproject) ||
+    index.files.has('codecov.yml') ||
+    index.files.has('.codecov.yml') ||
+    index.files.has('coverage.toml');
+  if (has) {
+    return criterion(
+      'coverage',
+      'pass',
+      'Test coverage is measured and a threshold is configured.',
+    );
+  }
+  return criterion(
+    'coverage',
+    'fail',
+    'Tests exist but no coverage measurement or threshold was found.',
+  );
+}
+
+export function evaluateRepo(root: string): ReadinessEvaluation {
+  if (!existsSync(root)) {
+    return {
+      stack: { languages: [], monorepo: false, packages: [] },
+      criteria: READINESS_CRITERION_IDS.map((id) =>
+        criterion(id, 'fail', `repository path does not exist: ${root}`),
+      ),
+      ready: false,
+      summary: 'Repository path is missing.',
+    };
+  }
+  const index = indexRepo(root);
+  const stack = detectStack(root, index);
+  const list: ReadinessCriterion[] = [];
+  list.push(lintFormat(root, index, stack));
+  list.push(typecheck(root, index, stack));
+  const testCrit = tests(root, index, stack);
+  list.push(testCrit);
+  list.push(build(root, index, stack));
+  list.push(setup(root, index));
+  list.push(agentsMd(index, stack));
+  list.push(envExample(index));
+  list.push(ciParity(root, index));
+  list.push(templates(index));
+  list.push(precommit(index));
+  list.push(coverage(root, index, testCrit.status));
+
+  const failed = list.filter((c) => c.status === 'fail');
+  const ready = failed.length === 0;
+  const lang = stack.languages.join(', ') || 'unknown';
+  const shape = stack.monorepo ? 'monorepo' : 'single package';
+  const summary = ready
+    ? `${lang} ${shape}. All ${list.length} readiness criteria pass or are recorded N/A.`
+    : `${lang} ${shape}. ${failed.length} criterion(s) need work: ${failed.map((c) => c.id).join(', ')}.`;
+  return { stack, criteria: list, ready, summary };
+}

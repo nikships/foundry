@@ -72,6 +72,22 @@ describe('settings written before autonomy was removed', () => {
   });
 });
 
+describe('readiness defaults', () => {
+  it('defaults to inherit / high on a fresh install', () => {
+    expect(defaultSettings().readinessModel).toBe('inherit');
+    expect(defaultSettings().readinessReasoningEffort).toBe('high');
+  });
+
+  it('fills readiness fields for a settings file written before they existed', () => {
+    const stored = { ...defaultSettings() } as Record<string, unknown>;
+    delete stored.readinessModel;
+    delete stored.readinessReasoningEffort;
+    const migrated = migrate(stored);
+    expect(migrated.readinessModel).toBe('inherit');
+    expect(migrated.readinessReasoningEffort).toBe('high');
+  });
+});
+
 describe('the compaction threshold', () => {
   it('defaults to 0.8 on a fresh install', () => {
     expect(defaultSettings().compactionThreshold).toBe(0.8);

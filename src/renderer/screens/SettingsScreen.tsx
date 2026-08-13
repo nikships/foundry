@@ -7,6 +7,7 @@ import type {
   ModelInfo,
   OrphanWorktree,
   ProjectDef,
+  ReadinessInspectResult,
   UpdateStatus,
   UserMcpServer,
 } from '@shared/types.js';
@@ -133,6 +134,7 @@ export default function SettingsScreen({
   onNewProject,
   openEnvelope,
   openNonce = 0,
+  onOpenReadiness,
 }: {
   pane: string;
   /** Create a repository on GitHub instead of pointing at an existing checkout. */
@@ -141,6 +143,7 @@ export default function SettingsScreen({
   openEnvelope?: string;
   /** Bumped per deep-link so re-selecting the same envelope re-fires the effect. */
   openNonce?: number;
+  onOpenReadiness?: (projectId: string) => void;
 }): React.JSX.Element {
   const { settings, project, projects, refreshAll, patchSettings, selectProject } = useApp();
   const [pane, setPane] = useState<Pane>((initialPane as Pane) ?? 'general');
@@ -153,6 +156,7 @@ export default function SettingsScreen({
   const [version, setVersion] = useState('');
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ stage: 'idle' });
   const [projectDraft, setProjectDraft] = useState<ProjectDef | null>(null);
+  const [readiness, setReadiness] = useState<ReadinessInspectResult | null>(null);
   const [maintenanceNote, setMaintenanceNote] = useState('');
   const [nameDraft, setNameDraft] = useState('');
   const [nameHint, setNameHint] = useState('');
@@ -196,6 +200,7 @@ export default function SettingsScreen({
     if (!project) {
       setProjectDraft(null);
       setProjectChecks([]);
+      setReadiness(null);
       lastProjectSyncedIdRef.current = null;
       return;
     }
@@ -203,9 +208,11 @@ export default function SettingsScreen({
       setProjectDraft(plain({ ...project }));
       lastProjectSyncedIdRef.current = project.id;
       void api.projects.check(project.id).then(setProjectChecks);
+      void api.readiness.inspect(project.id).then(setReadiness);
       return;
     }
     void api.projects.check(project.id).then(setProjectChecks);
+    void api.readiness.inspect(project.id).then(setReadiness);
   }, [project]);
 
   // Live auto-save for the Project pane. Visual state is the source of truth,
@@ -309,7 +316,10 @@ export default function SettingsScreen({
     await runAppAction(async () => {
       const added = await api.projects.add();
       await refreshAll();
-      if (added) selectProject(added.id);
+      if (added) {
+        selectProject(added.id);
+        onOpenReadiness?.(added.id);
+      }
     });
   };
   const refreshModels = async (): Promise<void> => {
@@ -775,6 +785,37 @@ export default function SettingsScreen({
                       </Field>
                     </div>
                   </Section>
+                  <Section
+                    label="Readiness"
+                    note="What the Agent Readiness Check uses when a repo is added."
+                  >
+                    <div className={styles.settingsFields}>
+                      <Field label="Readiness model">
+                        <ModelPicker
+                          value={settings.readinessModel}
+                          models={models}
+                          allowInherit
+                          emptyHint={`No models from ${settings.defaultCli}.`}
+                          onChange={(v) => void set({ readinessModel: v })}
+                          onRefresh={() => void refreshModels()}
+                        />
+                      </Field>
+                      <Field label="Readiness reasoning effort">
+                        <Dropdown
+                          value={settings.readinessReasoningEffort}
+                          options={[
+                            { value: 'off', label: 'Off' },
+                            { value: 'low', label: 'Low' },
+                            { value: 'medium', label: 'Medium' },
+                            { value: 'high', label: 'High' },
+                            { value: 'xhigh', label: 'X-High' },
+                            { value: 'max', label: 'Max' },
+                          ]}
+                          onChange={(next) => void set({ readinessReasoningEffort: next as never })}
+                        />
+                      </Field>
+                    </div>
+                  </Section>
                   <Section label="Autonomy" note="How a run behaves once it starts.">
                     <p className={styles.hint}>
                       Runs are fully autonomous: once a run starts it never stops to ask permission.
@@ -1147,6 +1188,27 @@ export default function SettingsScreen({
                             Reveal in Finder
                           </Button>
                         </div>
+                      </Section>
+                      <Section
+                        label="Readiness"
+                        note="The marker file is truth. Cached app state never overrides it."
+                      >
+                        <p className={styles.hint}>
+                          {readiness?.ready
+                            ? readiness.marker?.summary ||
+                              'This repository has a valid .agents/agent-ready.json.'
+                            : readiness?.skipped
+                              ? 'Readiness was skipped. The Agent Readiness process can be run again anytime from here.'
+                              : readiness?.markerDetail ||
+                                'No valid .agents/agent-ready.json yet. Pipeline runs may fail until the repo is ready.'}
+                        </p>
+                        {onOpenReadiness && projectDraft && (
+                          <div className={styles.settingsBtnrow}>
+                            <Button size="sm" onClick={() => onOpenReadiness(projectDraft.id)}>
+                              {readiness?.ready ? 'View readiness report' : 'Run readiness check'}
+                            </Button>
+                          </div>
+                        )}
                       </Section>
                       <Section label="Checks" note="Run against this repository.">
                         <DoctorList
