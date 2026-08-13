@@ -228,7 +228,12 @@ export default function RunDetailScreen({
             {killing ? 'Killing…' : 'Kill run'}
           </Button>
         )}
-        <Button variant="ghost" size="sm" onClick={() => setShowCost(!showCost)}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowCost(!showCost)}
+          data-testid="run-cost"
+        >
           {showCost ? 'Hide cost' : 'Cost'}
         </Button>
       </header>

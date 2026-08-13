@@ -207,6 +207,7 @@ export default function InspectorScreen({
               setFocusedPhaseId('');
             }}
             aria-label="Run"
+            data-testid="inspector-run"
           />
           {view.run && (
             <>
@@ -224,13 +225,18 @@ export default function InspectorScreen({
                   key={f.id}
                   className={`${styles.inspectorFilterBtn} ${filter === f.id ? styles.active : ''}`}
                   onClick={() => setFilter(f.id)}
+                  data-testid={`inspector-filter-${f.id}`}
                 >
                   {f.label}
                 </button>
               ))}
             </div>
             {view.run && (
-              <Button size="sm" onClick={() => void revealFiles()}>
+              <Button
+                size="sm"
+                onClick={() => void revealFiles()}
+                data-testid="inspector-raw-files"
+              >
                 Raw files
               </Button>
             )}

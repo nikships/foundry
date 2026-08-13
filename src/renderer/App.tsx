@@ -238,6 +238,7 @@ function AppInner(): React.JSX.Element {
     main = (
       <SettingsScreen
         pane={settingsPane}
+        onPaneChange={setSettingsPane}
         onNewProject={newProject}
         onOpenReadiness={(id) => setReadinessProjectId(id)}
       />
@@ -275,7 +276,16 @@ function AppInner(): React.JSX.Element {
             inspectorRunId={inspectorRunId}
           />
           <div className={styles.sidebarDivider} aria-hidden />
-          <main className={styles.content}>{main}</main>
+          <main
+            className={styles.content}
+            data-testid="app-view"
+            data-view={openRunId && view === 'runs' ? 'run-detail' : view}
+            data-open-run={openRunId || undefined}
+            data-design-tab={view === 'design' ? designTab : undefined}
+            data-settings-pane={view === 'settings' ? settingsPane : undefined}
+          >
+            {main}
+          </main>
         </>
       ) : (
         <div className={styles.loading}>

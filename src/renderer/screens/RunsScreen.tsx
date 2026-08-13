@@ -302,7 +302,13 @@ export default function RunsScreen({
             />
           )}
           {runs.map((run) => (
-            <button key={run.runId} className={styles.run} onClick={() => onOpen(run.runId)}>
+            <button
+              key={run.runId}
+              className={styles.run}
+              onClick={() => onOpen(run.runId)}
+              data-testid={`run-row-${run.runId}`}
+              data-run-id={run.runId}
+            >
               <div className={styles.runMain}>
                 <div className={styles.runTop}>
                   <StatusBadge status={run.status} />

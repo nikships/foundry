@@ -131,10 +131,13 @@ function Toggle({
 
 export default function SettingsScreen({
   pane: initialPane,
+  onPaneChange,
   onNewProject,
   onOpenReadiness,
 }: {
   pane: string;
+  /** Keep the shell's `data-settings-pane` marker in sync with tab clicks. */
+  onPaneChange?: (pane: string) => void;
   /** Create a repository on GitHub instead of pointing at an existing checkout. */
   onNewProject?: () => void;
   onOpenReadiness?: (projectId: string) => void;
@@ -243,7 +246,10 @@ export default function SettingsScreen({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [transportSaveError, setTransportSaveError] = useState('');
 
-  const setPaneLive = (next: Pane): void => setPane(next);
+  const setPaneLive = (next: Pane): void => {
+    setPane(next);
+    onPaneChange?.(next);
+  };
   const onTablistKey = useTablistNav();
   const set = async (patch: Parameters<typeof patchSettings>[0]): Promise<void> => {
     // Always replace the banner: a successful patch must clear a prior failure.
@@ -455,6 +461,7 @@ export default function SettingsScreen({
               tabIndex={pane === p.id ? 0 : -1}
               className={`${styles.settingsTab} ${pane === p.id ? styles.on : ''}`}
               onClick={() => setPaneLive(p.id)}
+              data-testid={`settings-tab-${p.id}`}
             >
               <span className={styles.settingsTabLabel}>{p.label}</span>
             </button>

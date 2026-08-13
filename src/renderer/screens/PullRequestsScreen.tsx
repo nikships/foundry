@@ -271,7 +271,13 @@ export default function PullRequestsScreen({
         </p>
         <div className={styles.headRight}>
           {gh?.repo && <span className={`mono faint ${styles.repo}`}>{gh.repo}</span>}
-          <Button size="sm" disabled={loading} onClick={() => void refresh()}>
+          <Button
+            size="sm"
+            disabled={loading}
+            onClick={() => void refresh()}
+            data-testid="prs-refresh"
+            data-loading={loading ? 'true' : 'false'}
+          >
             {loading ? 'Refreshing…' : 'Refresh'}
           </Button>
         </div>

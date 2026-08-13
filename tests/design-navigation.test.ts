@@ -28,6 +28,11 @@ const rosterSrc = read('src/renderer/screens/RosterScreen.tsx');
 const phaseEditorSrc = read('src/renderer/components/PhaseEditor.tsx');
 const envelopesSrc = read('src/renderer/components/EnvelopesEditor.tsx');
 const appSrc = read('src/renderer/App.tsx');
+const runsSrc = read('src/renderer/screens/RunsScreen.tsx');
+const inspectorSrc = read('src/renderer/screens/InspectorScreen.tsx');
+const prsSrc = read('src/renderer/screens/PullRequestsScreen.tsx');
+const runDetailSrc = read('src/renderer/screens/RunDetailScreen.tsx');
+const phaseDrawerSrc = read('src/renderer/components/PhaseDrawer.tsx');
 
 describe('the sidebar', () => {
   it('exposes Runs, Inspector, Design, and Pull Requests, in that order', () => {
@@ -80,6 +85,10 @@ describe('Settings', () => {
     for (const pane of ['general', 'clis', 'defaults', 'mcp', 'project', 'maintenance', 'about']) {
       expect(settingsSrc).toContain(`id: '${pane}'`);
     }
+  });
+
+  it('exposes a data-testid on every pane tab for CDP automation', () => {
+    expect(settingsSrc).toContain('data-testid={`settings-tab-${p.id}`}');
   });
 });
 
@@ -174,6 +183,33 @@ describe('the native menu', () => {
       'menu:add-project',
     ]);
     for (const command of forwarded) expect(handled.has(command), command).toBe(true);
+  });
+});
+
+describe('CDP automation hooks', () => {
+  it('stamps the current view on main so a snapshot is not required to know where you are', () => {
+    expect(appSrc).toContain('data-testid="app-view"');
+    expect(appSrc).toContain('data-view=');
+    expect(appSrc).toContain("data-view={openRunId && view === 'runs' ? 'run-detail' : view}");
+    expect(appSrc).toContain('data-open-run={openRunId || undefined}');
+    expect(appSrc).toContain("data-design-tab={view === 'design' ? designTab : undefined}");
+    expect(appSrc).toContain("data-settings-pane={view === 'settings' ? settingsPane : undefined}");
+    expect(appSrc).toContain('onPaneChange={setSettingsPane}');
+    expect(settingsSrc).toContain('onPaneChange?.(next)');
+  });
+
+  it('lets a run row be clicked by id instead of concatenated snapshot text', () => {
+    expect(runsSrc).toContain('data-testid={`run-row-${run.runId}`}');
+    expect(runsSrc).toContain('data-run-id={run.runId}');
+  });
+
+  it('gives Inspector, PRs, and run-detail panes stable testids', () => {
+    expect(inspectorSrc).toContain('data-testid="inspector-run"');
+    expect(inspectorSrc).toContain('data-testid={`inspector-filter-${f.id}`}');
+    expect(inspectorSrc).toContain('data-testid="inspector-raw-files"');
+    expect(prsSrc).toContain('data-testid="prs-refresh"');
+    expect(runDetailSrc).toContain('data-testid="run-cost"');
+    expect(phaseDrawerSrc).toContain('data-testid={`phase-tab-${t.id}`}');
   });
 });
 

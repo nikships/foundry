@@ -152,12 +152,14 @@ export default function PhaseDrawer({
         <p className={`eyebrow ${styles.eyebrow}`}>
           <span className="index">01</span>Phase detail
         </p>
-        <nav className={styles.tabs}>
+        <nav className={styles.tabs} data-testid="phase-tabs">
           {tabs.map((t) => (
             <button
               key={t.id}
               className={`${styles.tab} ${tab === t.id ? styles.active : ''}`}
               onClick={() => setTab(t.id)}
+              data-testid={`phase-tab-${t.id}`}
+              aria-pressed={tab === t.id}
             >
               {t.label}
               {t.count ? <span className={styles.count}>{t.count}</span> : null}
