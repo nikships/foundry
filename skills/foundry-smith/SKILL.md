@@ -62,6 +62,79 @@ describe a change, pick a pipeline, and a team of bounded agents executes it.
 That is the vocabulary to use when someone asks you to explain Foundry. When you
 need more depth than this, read the repo's own `AGENTS.md`.
 
+## Runs and worktrees — finding an agent's work
+
+Every run is **isolated in its own git worktree** on its own branch. The base
+checkout is never mutated, and merging or discarding is an explicit human action.
+When the user asks you to "make a PR from what the agent did" or "the work is
+on a worktree," do not guess — locate it:
+
+1. **Resolve the project root.** `foundry-cli project list` returns
+   `entities[].path` for every project. In a prepared session
+   `$FOUNDRY_SMITH_PROJECT` already tells you the id — match it to that list to
+   get the absolute path. All later `git` commands must use `git -C <that path>`.
+
+2. **List worktrees.** The source of truth is git, not the trace DB:
+
+   ```bash
+   git -C <project_path> worktree list --verbose
+   git -C <project_path> branch -a | grep foundry-
+   ```
+
+   Foundry worktrees live under `<project_path>/.foundry-worktrees/<branch>` and
+   branches are named `foundry-*` (e.g. `foundry-ready/<hash>`). Do not assume a
+   global `~/Library/Application Support/foundry/foundry/runs` directory — per-
+   project state is `~/Library/Application Support/foundry/foundry/projects/<project_id>/trace.db`
+   and may be empty for in-flight runs; `git worktree list` is always correct.
+
+3. **Inspect each candidate.** A worktree can look "clean" by `git log
+master..HEAD` (no commits yet) while still holding all of the agent's work as
+   unstaged + untracked files. Check all three:
+
+   ```bash
+   git -C <wt> status --short --branch
+   git -C <wt> diff --stat HEAD          # staged + unstaged vs HEAD
+   git -C <wt> ls-files --others --exclude-standard  # untracked
+   ```
+
+   Also compare candidates with `git -C <wt> diff --stat` and `diff -u <wt-a>/path <wt-b>/path`
+   for key files, plus `stat -f "%m %N" <project_path>/.foundry-worktrees/*` for
+   mtimes. If two worktrees differ and the request is ambiguous ("the readiness
+   agent"), ask the user which to ship rather than merging them.
+
+4. **Dry-run the commit.** Before staging, confirm `.gitignore` keeps build
+   artifacts out:
+
+   ```bash
+   git -C <wt> add --dry-run -A
+   git -C <wt> check-ignore -v .build 2>&1 | head
+   ```
+
+   `.build/`, `.swiftpm/`, `dist/`, `.DS_Store` must stay ignored. If the
+   worktree's `.swiftlint.yml` does not exclude `.build`/`DerivedSources`, the
+   pre-commit hook will lint generated `test_entry_point.swift` and fail — fix
+   the config rather than bypassing the hook.
+
+5. **Commit, push, PR — from the worktree.** The worktree is a full checkout
+   with its own `HEAD` branch:
+   ```bash
+   git -C <wt> add -A
+   git -C <wt> commit -m "chore: …"
+   git -C <wt> push -u origin $(git -C <wt> rev-parse --abbrev-ref HEAD)
+   ```
+   `gh` is a Homebrew binary subject to the same GUI `PATH` issue as `node` (see
+   Setup). Ensure it is visible first:
+   ```bash
+   export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+   gh auth status   # or /opt/homebrew/bin/gh auth status as fallback
+   gh pr create --repo <owner/repo> --head <branch> --base master \
+     --title "…" --body-file /tmp/pr-body.md
+   ```
+   Derive `owner/repo` from `git -C <wt> remote -v`. Use the worktree's own PR
+   template (`.github/pull_request_template.md`) when present, and fill its
+   checklist from evidence (`swift build`/`swift test`/`swiftlint` results,
+   coverage thresholds) rather than leaving it blank.
+
 ## Setup
 
 **The Foundry app must be running.** The socket only exists while it is; if it is
@@ -332,12 +405,20 @@ substitute for the approval card.
 
 ## Troubleshooting
 
-| Symptom                                                 | Cause and fix                                                                                                                                                                                                                                                                            |
-| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `{"ok":false,"error":"Foundry is not running"}`, exit 2 | The app is closed, or it runs on a non-default support dir. Ask the user to launch it; for a dev instance started with `--user-data-dir`, set `FOUNDRY_SMITH_SOCKET=<that dir>/foundry/smith/foundry.sock`.                                                                              |
-| `node: command not found` or `env: node: No such file`  | GUI-launched shell has launchd's minimal PATH — `node` lives in `/opt/homebrew/bin` or `/usr/local/bin` and is invisible. Fix once: `export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"` then retry the same `foundry-cli` command. Do not redefine `foundry-cli` or inspect the shim. |
-| `proposal_pending`                                      | A card is already open in the app. Wait for the human to answer it.                                                                                                                                                                                                                      |
-| `no agent named "x"` on `show`                          | Wrong scope. `project list`, then retry with the right `--project <id>`.                                                                                                                                                                                                                 |
-| Validation complains about an unknown agent in a phase  | The phase's `agent` must exist in the _same_ scope as the pipeline. `agent list --project <id>` to check.                                                                                                                                                                                |
-| `node: ... foundry-cli.js: no such file`                | Wrong install path, or a dev checkout that was never built (`npm run build`).                                                                                                                                                                                                            |
-| Exit 3                                                  | Your command line, not the app: check kind, name position, and `--file`.                                                                                                                                                                                                                 |
+| Symptom                                                                                        | Cause and fix                                                                                                                                                                                                                                                                                             |
+| ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `{"ok":false,"error":"Foundry is not running"}`, exit 2                                        | The app is closed, or it runs on a non-default support dir. Ask the user to launch it; for a dev instance started with `--user-data-dir`, set `FOUNDRY_SMITH_SOCKET=<that dir>/foundry/smith/foundry.sock`.                                                                                               |
+| `node: command not found` or `env: node: No such file`                                         | GUI-launched shell has launchd's minimal PATH — `node` lives in `/opt/homebrew/bin` or `/usr/local/bin` and is invisible. Fix once: `export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"` then retry the same `foundry-cli` command. Do not redefine `foundry-cli` or inspect the shim.                  |
+| `gh: command not found` / `swiftlint: command not found` / any Homebrew tool missing           | Same cause as above (launchd PATH). Apply the same `export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"` once per session before any `gh`, `swiftlint`, or other Homebrew binary — `gh` and `swiftlint` are needed to ship worktrees. Retry with `/opt/homebrew/bin/gh auth status` as fallback.         |
+| `proposal_pending`                                                                             | A card is already open in the app. Wait for the human to answer it.                                                                                                                                                                                                                                       |
+| `no agent named "x"` on `show`                                                                 | Wrong scope. `project list`, then retry with the right `--project <id>`.                                                                                                                                                                                                                                  |
+| Validation complains about an unknown agent in a phase                                         | The phase's `agent` must exist in the _same_ scope as the pipeline. `agent list --project <id>` to check.                                                                                                                                                                                                 |
+| `node: ... foundry-cli.js: no such file`                                                       | Wrong install path, or a dev checkout that was never built (`npm run build`).                                                                                                                                                                                                                             |
+| Exit 3                                                                                         | Your command line, not the app: check kind, name position, and `--file`.                                                                                                                                                                                                                                  |
+| `git worktree list` shows only the base checkout / `~/Library/.../runs` is missing             | That path does not exist in this app — per-project state is `~/Library/Application Support/foundry/foundry/projects/<project_id>/trace.db`. The source of truth for "where is the work" is always `git -C <project_path> worktree list --verbose` and `git -C <project_path> branch -a \| grep foundry-`. |
+| `git log master..HEAD` is empty but the user says "the agent did work"                         | The agent's work is often still unstaged + untracked (no commits yet). The diff is in `git -C <wt> status --short`, `git -C <wt> diff --stat HEAD`, and `git -C <wt> ls-files --others --exclude-standard` — not in the log. `git -C <wt> add --dry-run -A` previews what a commit would capture.         |
+| `git -C <wt> add -A` would include `.build/` or `dist/`                                        | The worktree's `.gitignore` (or `.swiftlint.yml` `excluded:`) should ignore `.build/`, `.swiftpm/`, `dist/`, `.DS_Store`, `.agents/`. Verify with `git -C <wt> check-ignore -v .build`. If missing, fix `.gitignore` before committing — never force-add build artifacts.                                 |
+| `swiftlint lint --strict` fails on `.build/.../DerivedSources/test_entry_point.swift`          | `.swiftlint.yml` must `excluded:` all generated dirs (`.build`, `.swiftpm`, `dist`, `.agents` etc.). Fix the config and re-run — do not `--no-verify` or `commit --no-verify` around the pre-commit hook. The hook (` .githooks/pre-commit` or `.pre-commit-config.yaml`) is the correct gate.            |
+| Multiple `foundry-*` worktrees / branches exist and the request is ambiguous ("the readiness") | Compare them (`git -C <wt> diff --stat`, `diff -u <wt-a>/file <wt-b>/file`, `stat -f "%m %N" <project>/.foundry-worktrees/*` for mtimes) and ask the user to pick one. Do not merge two worktrees' untracked files into one commit.                                                                       |
+| `gh pr create` fails: `gh: not authenticated` / `Resource not accessible`                      | Run `gh auth status` (or `/opt/homebrew/bin/gh auth status` after the PATH fix). `gh` uses the keyring token and the remote from `git -C <wt> remote -v` — derive `owner/repo` from there and pass `--repo owner/repo --head <branch> --base master` explicitly.                                          |
+| `git push` says "no upstream" or pushes the wrong branch                                       | Commit and push from inside the worktree: `git -C <wt> rev-parse --abbrev-ref HEAD` is the branch name. `git -C <wt> push -u origin <that-branch>` sets the upstream. Do not push from the base checkout with a guessed branch name.                                                                      |

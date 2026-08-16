@@ -166,37 +166,6 @@ describe('rewindAfterCorrections', () => {
   });
 });
 
-describe('transport', () => {
-  it('defaults to daemon on a fresh install', () => {
-    expect(defaultSettings().transport).toBe('daemon');
-  });
-
-  it('reads daemon for a settings file written before the field existed', () => {
-    const stored = { ...defaultSettings() } as Record<string, unknown>;
-    delete stored.transport;
-    expect(migrate(stored).transport).toBe('daemon');
-    expect(seed(stored).get().transport).toBe('daemon');
-  });
-
-  it('accepts subprocess and daemon', () => {
-    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
-    expect(store.patch({ transport: 'subprocess' })).toMatchObject({ ok: true });
-    expect(store.get().transport).toBe('subprocess');
-    expect(store.patch({ transport: 'daemon' })).toMatchObject({ ok: true });
-    expect(store.get().transport).toBe('daemon');
-  });
-
-  it('refuses an unknown transport rather than storing it', () => {
-    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
-    expect(store.patch({ transport: 'pigeon' as 'daemon' }).ok).toBe(false);
-    expect(store.get().transport).toBe('daemon');
-  });
-
-  it('repairs a stored garbage transport back to daemon', () => {
-    expect(migrate({ ...defaultSettings(), transport: 'carrier-pigeon' }).transport).toBe('daemon');
-  });
-});
-
 describe('prAgent', () => {
   it('defaults to pr_writer on a fresh install', () => {
     expect(defaultSettings().prAgent).toBe(DEFAULT_PR_AGENT);

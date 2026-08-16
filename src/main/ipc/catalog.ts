@@ -3,7 +3,6 @@ import { IPC } from '@shared/ipc-contract.js';
 import { GATE_DESCRIPTIONS } from '../engine/gates.js';
 import { TEMPLATE_VARIABLES } from '../engine/prompts.js';
 import { invalidateCatalog } from '../droid/catalog.js';
-import { readHostInvocables } from '../droid/invocables.js';
 import { adapterFor, allAdapters, cliConfigFor } from '../cli/index.js';
 import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
@@ -37,10 +36,6 @@ export function register(ctx: Ctx, handle: Handle): void {
       caveats: a.caveats,
     })),
   );
-  // Read-only by design: Foundry offers the operator's installed skills, Droids
-  // and MCP servers for per-agent selection and never creates, edits, or removes
-  // one. There is deliberately no write counterpart to this channel.
-  handle(IPC.catalogInvocables, () => readHostInvocables());
   handle(IPC.catalogGates, () =>
     Object.entries(GATE_DESCRIPTIONS).map(([id, description]) => ({ id, description })),
   );

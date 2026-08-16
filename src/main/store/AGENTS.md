@@ -60,4 +60,4 @@ Store code bundles into `out/main/main.js`; no separate build.
 
 ## Additional Notes
 
-- `settings.ts` owns transport knobs (`compactionThreshold`, `rewindAfterCorrections`, `transport`, `daemonPort`) surfaced in Settings → Limits/Transport.
+- `settings.ts` owns transport knobs (`compactionThreshold`, `rewindAfterCorrections`, `daemonPort`) surfaced in Settings → Limits/Transport. There is no transport choice: agent phases are daemon-only (see `src/main/droid/AGENTS.md`).

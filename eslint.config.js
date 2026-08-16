@@ -82,9 +82,9 @@ export default tseslint.config(
       'react/jsx-key': 'error',
       'react/jsx-no-target-blank': 'error',
       'react/no-unknown-property': 'error',
-      // The SDK is one transport behind one seam. Importing it anywhere else
-      // spreads its error classes and session types through the app, and the
-      // engine stops being able to swap transports.
+      // The SDK sits behind one seam. Importing it anywhere else spreads its
+      // error classes and session types through the app, and the daemon stops
+      // being replaceable without touching every layer.
       'no-restricted-imports': [
         'error',
         {
@@ -92,7 +92,7 @@ export default tseslint.config(
             {
               group: ['@factory/droid-sdk', '@factory/droid-sdk/*'],
               message:
-                'Import @factory/droid-sdk only under src/main/droid/sdk/ (and its tests); the rest of the app talks to SdkSession.',
+                'Import @factory/droid-sdk only under src/main/droid/sdk/ (and its tests); the rest of the app talks to TransportSession.',
             },
           ],
         },
@@ -105,7 +105,7 @@ export default tseslint.config(
   },
   // The transport seam itself, and the tests that script it.
   {
-    files: ['src/main/droid/sdk/**/*.ts', 'tests/sdk-*.test.ts'],
+    files: ['src/main/droid/sdk/**/*.ts', 'tests/sdk-*.test.ts', 'tests/scripted-*.ts'],
     rules: {
       'no-restricted-imports': 'off',
     },

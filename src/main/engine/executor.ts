@@ -19,7 +19,6 @@ import type {
   CommandResult,
   ContextBreakdown,
   EnvelopeDef,
-  HostInvocableInventory,
   PhaseDef,
   PhaseKind,
   PipelineDef,
@@ -27,10 +26,14 @@ import type {
   RunStatus,
   UserMcpServer,
 } from '@shared/types.js';
-import { emptyInventory } from '../droid/invocables.js';
-import { phasePolicy } from '../droid/tool-profiles.js';
 import type { Tracer } from '../trace/tracer.js';
-import { AgentSession, KILLED_DETAIL, type InterruptRequest, type Mode } from '../droid/agent.js';
+import {
+  AgentSession,
+  KILLED_DETAIL,
+  type InterruptRequest,
+  type Mode,
+  type OpenDaemonResult,
+} from '../droid/agent.js';
 import { decideAcceptance } from './acceptance.js';
 import type { PhaseRunner, RunContext, PhaseJump } from './phase-context.js';
 import { AgentPhaseRunner } from './runners/agent.js';
@@ -63,19 +66,7 @@ export interface ExecutorDeps {
    * scans up within the band when this port is busy.
    */
   daemonPort: number;
-  /**
-   * How droid agents talk to the CLI. Default is daemon; `subprocess` forces
-   * SdkSession. See AppSettings.transport.
-   */
-  transport: 'daemon' | 'subprocess';
   mcpServers: UserMcpServer[];
-  /**
-   * Reads what the operator has installed on the host. Called once per run so
-   * every agent in it sees the same inventory, and so a run is not re-reading
-   * disk per phase. Absent means "assume nothing installed" — the closed
-   * reading, and what the engine demo and unit tests want.
-   */
-  readHostInvocables?: () => Promise<HostInvocableInventory>;
   agents: AgentDef[];
   /** Shared custom envelope library snapshotted at run start. */
   envelopeDefs: EnvelopeDef[];
@@ -90,6 +81,12 @@ export interface ExecutorDeps {
   onRunFinished?: (status: RunStatus) => void;
   /** Test seam: the fake gh script stands in for the real binary. */
   gh?: GhOptions;
+  /**
+   * Test seam: supply the daemon's session facade instead of connecting to a
+   * real `droid daemon`. Production leaves this unset — a real run has no other
+   * transport, so there is nothing here to fall back to.
+   */
+  openDaemonSessions?: (agent: AgentDef) => Promise<OpenDaemonResult>;
 }
 
 export interface RunOutcome {
@@ -115,7 +112,6 @@ export class Executor {
    * operator installing a skill mid-run cannot widen what a running agent
    * reaches, and so every phase agrees on what had to be withheld.
    */
-  private hostInvocables: HostInvocableInventory = emptyInventory();
   private handle: worktreeLib.WorktreeHandle | null = null;
   private cwd: string;
   private mode: Mode;
@@ -123,9 +119,9 @@ export class Executor {
 
   constructor(private readonly deps: ExecutorDeps) {
     this.cwd = deps.project.path;
-    // runs.mode starts as the settings preference; AgentSession may fall back
-    // (daemon → rpc → oneshot) and observeMode patches the row to match.
-    this.mode = deps.transport === 'subprocess' ? 'rpc' : 'daemon';
+    // Agent runs are daemon-only; the field stays so the run row keeps saying
+    // which transport answered rather than leaving the reader to assume.
+    this.mode = 'daemon';
     this.runners = {
       agent: new AgentPhaseRunner({
         agents: deps.agents,
@@ -134,7 +130,6 @@ export class Executor {
         rewindAfterCorrections: deps.rewindAfterCorrections,
         sessionFor: (agent) => this.sessionFor(agent),
         onLiveText: deps.onLiveText,
-        onModeObserved: (mode) => this.observeMode(mode),
       }),
       code: new CodePhaseRunner(),
       engineer: new EngineerPhaseRunner(),
@@ -152,8 +147,7 @@ export class Executor {
 
   /**
    * What is occupying one agent's context right now, plus the transport that
-   * answered — a one-shot session has no conversation to account for, and the
-   * caller needs to tell that apart from a request that went unanswered.
+   * answered.
    *
    * `null` when this run never started a session for that agent: a disclosure
    * must not spawn a child to have something to show.
@@ -169,13 +163,6 @@ export class Executor {
   async run(): Promise<RunOutcome> {
     const { tracer, pipeline, project, runId } = this.deps;
     const isolate = pipeline.isolation !== false && project.isolation;
-
-    // Read before the first agent exists. A failure here is not fatal: an empty
-    // inventory means nothing is offered and nothing is withheld, which is the
-    // same posture as a host with no `~/.factory` at all.
-    if (this.deps.readHostInvocables) {
-      this.hostInvocables = await this.deps.readHostInvocables().catch(() => emptyInventory());
-    }
 
     if (isolate) {
       try {
@@ -411,12 +398,6 @@ export class Executor {
     );
   }
 
-  private observeMode(mode: Mode): void {
-    if (mode === this.mode) return;
-    this.mode = mode;
-    this.deps.tracer.setRunMode(this.deps.runId, mode);
-  }
-
   private phaseId(name: string): string {
     const id = this.phaseIds.get(name);
     if (!id) throw new Error(`phase "${name}" was never queued`);
@@ -434,6 +415,7 @@ export class Executor {
         ? this.deps.defaultModel
         : agent.model;
     const effectiveAgent = { ...agent, model };
+    const openDaemonSessions = this.deps.openDaemonSessions;
     const session = new AgentSession(effectiveAgent, {
       cliPath: cli.path,
       cliExtraArgs: cli.extraArgs,
@@ -443,33 +425,14 @@ export class Executor {
       tracer: this.deps.tracer,
       policy: { protectedPaths: this.deps.project.protectedPaths },
       envelopes: this.envelopes,
-      transport: this.deps.transport,
       daemonPort: this.deps.daemonPort,
-      // Narrowing to this agent's selection happens inside AgentSession; the
-      // globally-disabled ones are dropped here because no agent can select one.
       userMcpServers: this.deps.mcpServers.filter((s) => !s.disabled),
-      hostInvocables: this.hostInvocables,
-      hasPhaseToolPolicy: this.narrowsSomePhase(agent.name),
-      onModeChange: (mode) => {
-        this.mode = mode;
-        this.deps.tracer.setRunMode(this.deps.runId, mode);
-      },
+      ...(openDaemonSessions
+        ? { openDaemonSessions: () => openDaemonSessions(effectiveAgent) }
+        : {}),
     });
     this.sessions.set(agent.name, session);
     return session;
-  }
-
-  /**
-   * Whether any phase this agent owns narrows its tools.
-   *
-   * Asked before the session opens, because a transport that cannot enforce a
-   * narrowing has to be ruled out up front — discovering it at the phase that
-   * needs it would mean either failing that phase or running it wide.
-   */
-  private narrowsSomePhase(agentName: string): boolean {
-    return this.deps.pipeline.phases.some(
-      (phase) => phase.agent === agentName && phasePolicy(phase) !== null,
-    );
   }
 
   /**

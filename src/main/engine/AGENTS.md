@@ -41,7 +41,7 @@ npx vitest run tests/envelopes.test.ts
 npx vitest run tests/gates.test.ts
 ```
 
-- Use **real git temp repos** + `tests/fake-droid.ts` (real child handshake fixture). Scripted child helpers simulate disk side effects; in-memory transport covers session logic. Do NOT mock git or use network/model.
+- Use **real git temp repos** + `tests/scripted-agent.ts`, an in-memory daemon whose scripted turns perform real disk side effects inside the worktree, so boundary checks are real. Do NOT mock git or use network/model.
 - Compaction, rewind, and boundary tests need snapshot/restore of the worktree to be realistic.
 
 ## Invariants

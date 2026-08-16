@@ -35,8 +35,8 @@ npx vitest run tests/executor.test.ts  # engine executor with real git repos
 npm run build && npm run test:e2e # Electron UI smoke (macOS GUI; not in npm run check)
 ```
 
-- Engine/droid tests use **real git temp repos** and `tests/fake-droid.ts`; never use network/model, never mock git.
-- `tests/cli-vendors.test.ts` owns CLI fixtures; `tests/fake-droid.ts` owns the handshake.
+- Engine/droid tests use **real git temp repos** and `tests/scripted-agent.ts` (in-memory daemon); never use network/model, never mock git.
+- `tests/cli-vendors.test.ts` owns CLI fixtures; `tests/scripted-daemon.ts` owns the daemon handshake.
 - Adding a phase kind or gate: update `src/shared/types.ts`, `engine/registry.ts`, and add a real-git executor test.
 
 ## Cross-Cutting Invariants
@@ -67,7 +67,7 @@ Main is minified via `esbuild` in `electron.vite.config.ts` (`externalizeDepsPlu
 | ----------------- | --------------------------------------------------------- |
 | `engine/`         | Sequencing, retries, boundaries, gates, setup, acceptance |
 | `cli/`            | Vendor argv construction + one-shot output parsing        |
-| `droid/` + `sdk/` | Daemon/RPC/one-shot transport, SDK quirks, permissions    |
+| `droid/` + `sdk/` | Daemon transport (no fallback), SDK quirks, permissions   |
 | `smith/`          | Entity-smith socket, validation, proposal queue           |
 | `ipc/`            | Domain routers, named channel seam                        |
 | `store/`          | JSON config, migrations, builtin restoration              |

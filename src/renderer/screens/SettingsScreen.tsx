@@ -244,7 +244,6 @@ export default function SettingsScreen({
   // non-range invalid value (e.g. "abc" parsed as null) that never reaches
   // Zod can still show the operator why nothing saved.
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [transportSaveError, setTransportSaveError] = useState('');
 
   const setPaneLive = (next: Pane): void => {
     setPane(next);
@@ -253,12 +252,7 @@ export default function SettingsScreen({
   const onTablistKey = useTablistNav();
   const set = async (patch: Parameters<typeof patchSettings>[0]): Promise<void> => {
     // Always replace the banner: a successful patch must clear a prior failure.
-    const next = await patchSettings(patch);
-    setErrors(next);
-    if (next.length === 0) {
-      setTransportSaveError('');
-    }
-    return;
+    setErrors(await patchSettings(patch));
   };
   const setInt = async (
     raw: string,
@@ -1022,55 +1016,8 @@ export default function SettingsScreen({
                     </Field>
                   </div>
                 </Section>
-                <Section
-                  label="Transport"
-                  note="How each agent talks to the droid CLI — and where the daemon listens."
-                >
+                <Section label="Transport" note="Where the app-owned droid daemon listens.">
                   <div className={styles.settingsFields}>
-                    <Field
-                      label="Agent transport"
-                      hint="Droid daemon multiplexes many agents over one connection. Subprocess starts a fresh droid process per agent. Daemon is the default; a run still finishes if the daemon is unavailable — it falls back to subprocess automatically."
-                    >
-                      <Dropdown
-                        value={settings.transport}
-                        options={[
-                          {
-                            value: 'daemon',
-                            label: 'Droid daemon (default)',
-                            description:
-                              'Agents share one app-owned daemon. Fastest for parallel runs.',
-                          },
-                          {
-                            value: 'subprocess',
-                            label: 'Subprocess per agent',
-                            description:
-                              'Each agent spawns its own droid process. Use for debugging or when the daemon is unavailable.',
-                          },
-                        ]}
-                        onChange={(next) => {
-                          const patch = {
-                            transport: next as AppSettings['transport'],
-                          } as Partial<AppSettings>;
-                          void (async () => {
-                            const issues = await patchSettings(patch);
-                            if (issues.length) {
-                              setTransportSaveError(issues.join(' · '));
-                            } else {
-                              setTransportSaveError('');
-                              setErrors([]);
-                            }
-                          })();
-                        }}
-                      />
-                      <span className={styles.hint}>
-                        Effective now for the next run. This run is already started.
-                      </span>
-                      {transportSaveError && (
-                        <span role="status" className={styles.settingsWarn}>
-                          {transportSaveError}
-                        </span>
-                      )}
-                    </Field>
                     <Field
                       label="Daemon port"
                       hint="Preferred port for the app-owned daemon. Must be 37600–37699; if busy, the daemon tries the next free port in that band. Change takes effect on next daemon launch."
