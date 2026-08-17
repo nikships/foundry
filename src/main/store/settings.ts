@@ -84,6 +84,8 @@ export const appSettingsSchema = z.object({
   /** 0 disables; the useful range stops well before a phase's retry budgets. */
   rewindAfterCorrections: z.number().int().min(0).max(20),
   daemonPort: z.number().int().min(DAEMON_PORT_BAND[0]).max(DAEMON_PORT_BAND[1]),
+  /** Empty is unset. A non-empty value is the daemon credential. */
+  factoryApiKey: z.string().trim().max(2048),
   notifications: z.object({
     accepted: z.boolean(),
     rejected: z.boolean(),
@@ -128,6 +130,7 @@ export function defaultSettings(): AppSettings {
     compactionThreshold: 0.8,
     rewindAfterCorrections: 2,
     daemonPort: DEFAULT_DAEMON_PORT,
+    factoryApiKey: '',
     notifications: { accepted: true, rejected: true, failed: true, needsInput: true },
     dockBadge: true,
     // Terminal.app ships with macOS, so the default always resolves.
@@ -203,6 +206,13 @@ export function migrate(raw: unknown): AppSettings {
   // Out-of-band ports (hand-edited or pre-field files) clamp into the mission
   // range rather than leaving the app with no daemon port at all.
   merged.daemonPort = Math.round(clamp(merged.daemonPort, base.daemonPort, DAEMON_PORT_BAND));
+  // Pre-field files and hand-edits that leave a non-string fall back to unset
+  // rather than failing the next save on a value the operator never typed.
+  if (typeof merged.factoryApiKey !== 'string') {
+    merged.factoryApiKey = '';
+  } else {
+    merged.factoryApiKey = merged.factoryApiKey.trim().slice(0, 2048);
+  }
   if (!Array.isArray(merged.mcpServers)) {
     merged.mcpServers = [];
   } else {

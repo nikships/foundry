@@ -8,12 +8,18 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tempDir } from './tmp.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { resolveDaemonAuth } from '../src/main/droid/sdk/auth.js';
+import {
+  __resetSettingsApiKeyForTest,
+  resolveDaemonAuth,
+  setSettingsApiKey,
+  settingsApiKeyForSpawn,
+} from '../src/main/droid/sdk/auth.js';
 
 let home: string;
 
 afterEach(() => {
   if (home) rmSync(home, { recursive: true, force: true });
+  __resetSettingsApiKeyForTest();
   vi.restoreAllMocks();
 });
 
@@ -94,5 +100,33 @@ describe('resolveDaemonAuth', () => {
         expect(JSON.stringify(call)).not.toContain(secret);
       }
     }
+  });
+
+  it('prefers a Settings key over env and the stored JWT', () => {
+    seedStoredAuth('stored-jwt-token');
+    const cred = resolveDaemonAuth({
+      env: { FACTORY_API_KEY: 'fk-from-env-key-value' },
+      homeDir: home,
+      settingsKey: 'fk-from-settings-key-value',
+    });
+    expect(cred).toEqual({ apiKey: 'fk-from-settings-key-value', source: 'settings' });
+  });
+
+  it('treats a blank Settings key as unset and falls through to env', () => {
+    const cred = resolveDaemonAuth({
+      env: { FACTORY_API_KEY: 'fk-from-env-key-value' },
+      homeDir: home,
+      settingsKey: '   ',
+    });
+    expect(cred).toEqual({ apiKey: 'fk-from-env-key-value', source: 'env' });
+  });
+
+  it('uses the module Settings key when the option is omitted', () => {
+    setSettingsApiKey('  fk-module-settings-key  ');
+    expect(resolveDaemonAuth({ env: {}, homeDir: home })).toEqual({
+      apiKey: 'fk-module-settings-key',
+      source: 'settings',
+    });
+    expect(settingsApiKeyForSpawn()).toEqual({ FACTORY_API_KEY: 'fk-module-settings-key' });
   });
 });

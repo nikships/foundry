@@ -231,7 +231,8 @@ export class DaemonManager {
       return {
         ok: false,
         reason: 'auth_missing',
-        detail: 'no FACTORY_API_KEY and no decryptable stored auth',
+        detail:
+          'no Factory API key in Settings, no FACTORY_API_KEY, and no decryptable stored auth',
       };
     }
 

@@ -301,6 +301,12 @@ export interface AppSettings {
    * 37600–37699; when busy the manager scans up within that band.
    */
   daemonPort: number;
+  /**
+   * Factory API key (`fk-…`) used to authenticate the local `droid daemon`.
+   * Empty means unset: Foundry then uses `FACTORY_API_KEY` or a `droid login`
+   * session. Stored locally in settings.json; never logged.
+   */
+  factoryApiKey: string;
   notifications: { accepted: boolean; rejected: boolean; failed: boolean; needsInput: boolean };
   dockBadge: boolean;
   /** Which terminal emulator "Open in terminal" hands a directory to. */

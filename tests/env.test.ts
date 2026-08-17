@@ -14,10 +14,18 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { tempDir } from './tmp.js';
 import { afterEach, describe, expect, it } from 'vitest';
-import { __setResolvedEnvForTest, resolvedEnv, spawnEnv } from '../src/main/system/env.js';
+import {
+  __setResolvedEnvForTest,
+  resolvedEnv,
+  setSpawnEnvExtra,
+  spawnEnv,
+} from '../src/main/system/env.js';
 import { runCommand } from '../src/main/engine/commands.js';
 
-afterEach(() => __setResolvedEnvForTest(null));
+afterEach(() => {
+  __setResolvedEnvForTest(null);
+  setSpawnEnvExtra({});
+});
 
 /** A directory holding one executable that exists nowhere on the real PATH. */
 function binDir(name: string): string {
@@ -40,6 +48,13 @@ describe('spawnEnv', () => {
     __setResolvedEnvForTest({ path: '/custom/bin', via: 'login-shell' });
     expect(spawnEnv({ PATH: '/override' }).PATH).toBe('/override');
     expect(spawnEnv({ FOUNDRY_TEST: 'yes' }).FOUNDRY_TEST).toBe('yes');
+  });
+
+  it('injects Settings extras after PATH and before caller overrides', () => {
+    __setResolvedEnvForTest({ path: '/custom/bin', via: 'login-shell' });
+    setSpawnEnvExtra({ FACTORY_API_KEY: 'fk-from-settings' });
+    expect(spawnEnv().FACTORY_API_KEY).toBe('fk-from-settings');
+    expect(spawnEnv({ FACTORY_API_KEY: 'fk-override' }).FACTORY_API_KEY).toBe('fk-override');
   });
 
   it('falls back to the inherited PATH before resolution finishes, rather than throwing', () => {

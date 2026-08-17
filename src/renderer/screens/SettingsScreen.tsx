@@ -158,6 +158,8 @@ export default function SettingsScreen({
   const [maintenanceNote, setMaintenanceNote] = useState('');
   const [nameDraft, setNameDraft] = useState('');
   const [nameHint, setNameHint] = useState('');
+  const [apiKeyDraft, setApiKeyDraft] = useState('');
+  const [apiKeyHint, setApiKeyHint] = useState('');
   const [maintenanceBusy, setMaintenanceBusy] = useState(false);
 
   useEffect(() => {
@@ -239,6 +241,11 @@ export default function SettingsScreen({
     setNameDraft(settings?.engineerName ?? '');
     setNameHint('');
   }, [settings?.engineerName]);
+
+  useEffect(() => {
+    setApiKeyDraft(settings?.factoryApiKey ?? '');
+    setApiKeyHint('');
+  }, [settings?.factoryApiKey]);
 
   // Drives the error banner `patchSettings` returns. Kept locally so a
   // non-range invalid value (e.g. "abc" parsed as null) that never reaches
@@ -362,6 +369,26 @@ export default function SettingsScreen({
     }
     setNameHint('');
     await set({ engineerName: next });
+  };
+
+  const commitApiKey = async (): Promise<void> => {
+    const next = apiKeyDraft.trim();
+    if (next === (settings?.factoryApiKey ?? '').trim()) {
+      setApiKeyHint('');
+      setApiKeyDraft(next);
+      return;
+    }
+    if (next.length > 2048) {
+      setApiKeyHint('Keep it under 2048 characters.');
+      return;
+    }
+    setApiKeyHint(
+      next
+        ? 'Saved. The next run will use this key.'
+        : 'Cleared. Foundry will use FACTORY_API_KEY or a droid login session.',
+    );
+    await set({ factoryApiKey: next });
+    void api.doctor.run().then(setChecks);
   };
 
   const applyRetentionAction = useConfirmAction(
@@ -656,6 +683,78 @@ export default function SettingsScreen({
                     Foundry drives Factory Droid for agent phases. A path is filled in from your
                     PATH at first launch; correct it here if you keep the binary somewhere unusual.
                   </p>
+                </Section>
+                <Section
+                  label="Authentication"
+                  note="The droid daemon will not start without a Factory credential."
+                >
+                  <div className={styles.settingsFields}>
+                    <Field
+                      label="Factory API key"
+                      htmlFor="factory-api-key-input"
+                      hint="Used to authenticate the local droid daemon. Takes precedence over FACTORY_API_KEY and a droid login session. Stored only on this Mac."
+                    >
+                      <TextInput
+                        id="factory-api-key-input"
+                        aria-label="Factory API key"
+                        type="password"
+                        autoComplete="off"
+                        spellCheck={false}
+                        mono
+                        value={apiKeyDraft}
+                        placeholder="fk-…"
+                        onChange={(e) => {
+                          setApiKeyDraft(e.target.value);
+                          setApiKeyHint('');
+                        }}
+                        onBlur={() => void commitApiKey()}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            (e.target as HTMLInputElement).blur();
+                          }
+                        }}
+                      />
+                      {apiKeyHint && (
+                        <span
+                          className={
+                            apiKeyHint === 'Keep it under 2048 characters.'
+                              ? styles.settingsWarn
+                              : styles.hint
+                          }
+                        >
+                          {apiKeyHint}
+                        </span>
+                      )}
+                    </Field>
+                  </div>
+                  <div className={styles.settingsBtnrow}>
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        void api.app.openExternal('https://app.factory.ai/settings/api-keys')
+                      }
+                    >
+                      Get a key
+                    </Button>
+                    {!!settings.factoryApiKey && (
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setApiKeyDraft('');
+                          void (async () => {
+                            setApiKeyHint(
+                              'Cleared. Foundry will use FACTORY_API_KEY or a droid login session.',
+                            );
+                            await set({ factoryApiKey: '' });
+                            void api.doctor.run().then(setChecks);
+                          })();
+                        }}
+                      >
+                        Clear key
+                      </Button>
+                    )}
+                  </div>
                 </Section>
                 {clis.map((cli) => {
                   const config = settings.clis[cli.id];
