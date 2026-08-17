@@ -22,6 +22,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import type { ModelInfo, ToolInfo } from '@shared/types.js';
 import type { AvailableModel } from './protocol.js';
+import { airgapEnabled } from './airgap.js';
 import { spawnEnv } from '../system/env.js';
 
 const execFileAsync = promisify(execFile);
@@ -306,6 +307,9 @@ export function mergeCustomModels(base: ModelInfo[], custom: CustomModelEntry[])
  * session has since reported, then settings.json — which stays on top because
  * it is the only source of a custom model's reasoning efforts.
  *
+ * Airgap mode narrows the result to BYOK entries, because a Factory-hosted
+ * model in an airgapped picker is a run that fails on its first turn.
+ *
  * Only the two subprocess/disk layers are cached; a session that starts after a
  * refresh must still reach the next reader.
  */
@@ -318,9 +322,24 @@ export async function loadDroidCatalog(droidPath: string, force = false): Promis
       droidPath,
     };
   }
-  return mergeCustomModels(mergeSessionModels(cache.help, sessionModels), cache.custom);
+  const merged = mergeCustomModels(mergeSessionModels(cache.help, sessionModels), cache.custom);
+  return airgapEnabled() ? customOnly(merged) : merged;
 }
 
 export function isKnownModel(models: ModelInfo[], id: string): boolean {
   return models.some((m) => m.id === id);
+}
+
+/**
+ * BYOK-only view of a catalog. An airgapped CLI reaches no Factory endpoint, so
+ * every hosted model in the list is one the next turn would fail on.
+ *
+ * The `--help` scrape already comes back with an empty `Available Models:`
+ * section under airgap, so this mostly agrees with the CLI rather than
+ * overruling it. It is applied anyway because the other two layers are not
+ * self-limiting: a stale `sessionModels` from before the toggle would survive
+ * in memory, and a hand-written `customModels` entry is trusted wholesale.
+ */
+export function customOnly(models: ModelInfo[]): ModelInfo[] {
+  return models.filter((m) => m.isCustom);
 }

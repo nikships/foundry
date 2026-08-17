@@ -1,10 +1,11 @@
 /**
  * Credential used to authenticate a local `droid daemon` WebSocket connection.
  *
- * Prefer a Factory API key from Settings, then `FACTORY_API_KEY` (fk-* keys
- * are accepted on the wire). Otherwise decrypt the WorkOS JWT the CLI stores
- * under `~/.factory` — read-only; this module never writes there and never
- * logs the secret.
+ * Airgap mode wins over everything: the daemon has no Factory identity to
+ * check, so it takes a placeholder. Otherwise prefer a Factory API key from
+ * Settings, then `FACTORY_API_KEY` (fk-* keys are accepted on the wire).
+ * Otherwise decrypt the WorkOS JWT the CLI stores under `~/.factory` —
+ * read-only; this module never writes there and never logs the secret.
  *
  * Recipe verified against CLI 0.189 / SDK 0.7.0 (research/daemon.md):
  * AES-256-GCM over `iv:tag:ciphertext` with the 32-byte key at auth.v2.key.
@@ -14,8 +15,9 @@ import { createDecipheriv } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { AIRGAP_TOKEN, airgapEnabled } from '../airgap.js';
 
-export type DaemonAuthSource = 'settings' | 'env' | 'stored';
+export type DaemonAuthSource = 'settings' | 'env' | 'stored' | 'airgap';
 
 /** App-settings key, applied on launch and whenever Settings saves a new one. */
 let settingsApiKey = '';
@@ -54,6 +56,8 @@ export interface ResolveDaemonAuthOptions {
    * `setSettingsApiKey` is used. An explicit empty string means "unset".
    */
   settingsKey?: string;
+  /** Defaults to the module airgap flag. Injected in tests. */
+  airgap?: boolean;
 }
 
 /**
@@ -63,6 +67,11 @@ export interface ResolveDaemonAuthOptions {
 export function resolveDaemonAuth(
   opts: ResolveDaemonAuthOptions = {},
 ): DaemonAuthCredential | null {
+  // An airgapped daemon authenticates nobody, so a real key would be checked
+  // against a Factory endpoint it will never reach. The placeholder is what
+  // makes "no credential configured" a supported state rather than a failure.
+  if (opts.airgap ?? airgapEnabled()) return { apiKey: AIRGAP_TOKEN, source: 'airgap' };
+
   const fromSettings = (opts.settingsKey !== undefined ? opts.settingsKey : settingsApiKey).trim();
   if (fromSettings) return { apiKey: fromSettings, source: 'settings' };
 

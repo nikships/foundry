@@ -174,6 +174,7 @@ function defaultMockSettings(): AppSettings {
     rewindAfterCorrections: 2,
     daemonPort: 37_643,
     factoryApiKey: '',
+    airgapMode: false,
     notifications: { accepted: true, rejected: true, failed: true, needsInput: true },
     dockBadge: true,
     terminalApp: 'terminal',

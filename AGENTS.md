@@ -53,7 +53,7 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 
 ## Setup Commands
 
-**Requirements:** macOS 26+, Apple Silicon, `git`, `droid` CLI installed, a Factory API key in Settings (or `FACTORY_API_KEY` / `droid login`), Node 22.
+**Requirements:** macOS 26+, Apple Silicon, `git`, `droid` CLI installed, a Factory API key in Settings (or `FACTORY_API_KEY` / `droid login`), Node 22. Airgap mode (Settings → Agent CLI) replaces the credential requirement with a BYOK `customModels` entry in `~/.factory/settings.json`; see `src/main/droid/AGENTS.md`.
 
 ```bash
 # Clone and install (from repo root)

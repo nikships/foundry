@@ -686,13 +686,34 @@ export default function SettingsScreen({
                 </Section>
                 <Section
                   label="Authentication"
-                  note="The droid daemon will not start without a Factory credential."
+                  note={
+                    settings.airgapMode
+                      ? 'Airgap mode: the daemon starts with no Factory credential.'
+                      : 'The droid daemon will not start without a Factory credential.'
+                  }
                 >
+                  <div className={styles.settingsToggles}>
+                    <Toggle
+                      label="Airgap mode (BYOK only)"
+                      hint="Runs droid with FACTORY_AIRGAP_ENABLED=1: no Factory credential, no request ever leaves for a Factory endpoint. Only the custom models in ~/.factory/settings.json are offered, so pipelines pinned to a Factory-hosted model will fail."
+                      checked={settings.airgapMode}
+                      onChange={(value) => {
+                        void (async () => {
+                          await set({ airgapMode: value });
+                          void api.doctor.run().then(setChecks);
+                        })();
+                      }}
+                    />
+                  </div>
                   <div className={styles.settingsFields}>
                     <Field
                       label="Factory API key"
                       htmlFor="factory-api-key-input"
-                      hint="Used to authenticate the local droid daemon. Takes precedence over FACTORY_API_KEY and a droid login session. Stored only on this Mac."
+                      hint={
+                        settings.airgapMode
+                          ? 'Unused while airgap mode is on: an airgapped daemon authenticates against nothing. Kept so turning airgap off restores it.'
+                          : 'Used to authenticate the local droid daemon. Takes precedence over FACTORY_API_KEY and a droid login session. Stored only on this Mac.'
+                      }
                     >
                       <TextInput
                         id="factory-api-key-input"
@@ -701,6 +722,7 @@ export default function SettingsScreen({
                         autoComplete="off"
                         spellCheck={false}
                         mono
+                        disabled={settings.airgapMode}
                         value={apiKeyDraft}
                         placeholder="fk-…"
                         onChange={(e) => {

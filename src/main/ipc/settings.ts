@@ -11,7 +11,8 @@ type Ctx = Pick<AppContext, 'settings' | 'broadcast' | 'syncFactoryAuth'>;
 export function register(ctx: Ctx, handle: Handle): void {
   handle(IPC.settingsGet, () => ctx.settings.get());
   handle(IPC.settingsPatch, (patch: Partial<AppSettings>): SaveResult<AppSettings> => {
-    const previousKey = ctx.settings.get().factoryApiKey.trim();
+    const previous = ctx.settings.get();
+    const previousKey = previous.factoryApiKey.trim();
     const result = ctx.settings.patch(patch);
     if (!result.ok) {
       return {
@@ -22,7 +23,10 @@ export function register(ctx: Ctx, handle: Handle): void {
     // A new droid path can mean a different model table.
     if (patch.clis) invalidateCatalog();
     const nextKey = result.settings.factoryApiKey.trim();
-    if (previousKey !== nextKey) {
+    // Airgap decides both the daemon credential and which models exist, so it
+    // needs the same treatment as a key change: re-sync, drop the catalog, and
+    // retire a daemon that came up under the old rule.
+    if (previous.airgapMode !== result.settings.airgapMode || previousKey !== nextKey) {
       ctx.syncFactoryAuth();
       invalidateCatalog();
       // Drop a daemon that authenticated with the previous credential.
