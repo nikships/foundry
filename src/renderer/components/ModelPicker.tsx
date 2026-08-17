@@ -9,6 +9,7 @@ export default function ModelPicker({
   value,
   models,
   allowInherit,
+  disabled,
   emptyHint,
   onChange,
   onRefresh,
@@ -16,6 +17,7 @@ export default function ModelPicker({
   value: string;
   models: ModelInfo[];
   allowInherit?: boolean;
+  disabled?: boolean;
   /** Shown when the catalog is empty (CLI missing or unauthenticated). */
   emptyHint?: string;
   onChange: (value: string) => void;
@@ -80,6 +82,7 @@ export default function ModelPicker({
           value={value}
           options={options}
           onChange={onChange}
+          disabled={disabled}
           aria-invalid={catalogEmpty && !allowInherit ? true : undefined}
           aria-label="Model"
         />

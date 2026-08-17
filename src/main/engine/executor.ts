@@ -23,6 +23,7 @@ import type {
   PhaseKind,
   PipelineDef,
   ProjectDef,
+  ReasoningEffort,
   RunStatus,
   UserMcpServer,
 } from '@shared/types.js';
@@ -44,13 +45,14 @@ import type { Envelope } from './envelopes.js';
 import { runCommand } from './commands.js';
 import { openPr, type GhOptions } from '../system/gh.js';
 import type { PrAction } from '@shared/ipc-contract.js';
-import { effectivePhaseEnvelope } from '@shared/types.js';
+import { effectivePhaseEnvelope, resolveAgentExecution } from '@shared/types.js';
 
 export interface ExecutorDeps {
   tracer: Tracer;
   /** Where each CLI lives and how it is invoked. Agents name the vendor. */
   clis: Record<CliVendor, CliConfig>;
   defaultModel?: string;
+  defaultReasoningEffort?: ReasoningEffort;
   turnTimeoutMs: number;
   envelopeRetries: number;
   gateRetries: number;
@@ -410,11 +412,15 @@ export class Executor {
 
     const vendor = agent.cli ?? 'droid';
     const cli = this.deps.clis[vendor] ?? this.deps.clis.droid;
-    const model =
-      agent.model === 'inherit' && this.deps.defaultModel && this.deps.defaultModel !== 'inherit'
-        ? this.deps.defaultModel
-        : agent.model;
-    const effectiveAgent = { ...agent, model };
+    const resolved = resolveAgentExecution(agent, {
+      model: this.deps.defaultModel,
+      reasoningEffort: this.deps.defaultReasoningEffort ?? 'medium',
+    });
+    const effectiveAgent = {
+      ...agent,
+      model: resolved.model,
+      reasoningEffort: resolved.reasoningEffort,
+    };
     const openDaemonSessions = this.deps.openDaemonSessions;
     const session = new AgentSession(effectiveAgent, {
       cliPath: cli.path,

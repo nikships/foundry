@@ -29,6 +29,7 @@ export const agentSchema = z.object({
   ),
   model: z.string().min(1),
   reasoningEffort: z.enum(['off', 'low', 'medium', 'high', 'xhigh', 'max']),
+  inheritDefaults: z.boolean().optional(),
   systemPrompt: z.string().min(1),
   userPrompt: z.string().min(1),
   writes: z.array(z.string()).nullable(),

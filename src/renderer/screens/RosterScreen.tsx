@@ -262,7 +262,8 @@ export default function RosterScreen({
       purpose: 'Describe what this agent is for in one line.',
       cli: settings?.defaultCli ?? 'droid',
       model: 'inherit',
-      reasoningEffort: 'medium',
+      reasoningEffort: settings?.defaultReasoningEffort ?? 'medium',
+      inheritDefaults: true,
       systemPrompt: 'You are a careful engineer. State what you did and what you did not do.',
       userPrompt: 'Work on: {{request}}',
       writes: null,
@@ -585,43 +586,72 @@ export default function RosterScreen({
                   <p>Model selection and reasoning effort for this agent.</p>
                 </div>
                 <div className={styles.rosterFields}>
+                  <Field label="Defaults" className={styles.span2}>
+                    <label className={styles.rosterCheck}>
+                      <input
+                        type="checkbox"
+                        checked={!!draft.inheritDefaults}
+                        onChange={(e) => setDraft({ ...draft, inheritDefaults: e.target.checked })}
+                      />
+                      Inherit model and reasoning from Settings
+                    </label>
+                    <span className={styles.hint}>
+                      Uses the default model and reasoning from Settings → Agent defaults.
+                    </span>
+                  </Field>
                   <Field label="Model">
                     <ModelPicker
-                      value={draft.model}
+                      value={
+                        draft.inheritDefaults ? (settings?.defaultModel ?? 'inherit') : draft.model
+                      }
                       models={models}
                       allowInherit
+                      disabled={!!draft.inheritDefaults}
                       emptyHint="No models available from Factory Droid. Check Settings, or use Inherit."
                       onChange={(value) => setDraft({ ...draft, model: value })}
                       onRefresh={() => void api.catalog.models(draftCli, true).then(setModels)}
                     />
-                    <span className={styles.hint}>“Inherit” uses Factory Droid's default.</span>
+                    <span className={styles.hint}>
+                      {draft.inheritDefaults
+                        ? 'Following Settings → Agent defaults.'
+                        : '“Inherit” uses Factory Droid’s default.'}
+                    </span>
                   </Field>
                   <Field label="Reasoning effort">
                     <div
-                      className={styles.rosterSeg}
+                      className={`${styles.rosterSeg} ${draft.inheritDefaults ? styles.disabled : ''}`}
                       role="radiogroup"
                       aria-label="Reasoning effort"
+                      aria-disabled={draft.inheritDefaults || undefined}
                     >
-                      {(['off', 'low', 'medium', 'high', 'xhigh', 'max'] as const).map((level) => (
-                        <button
-                          key={level}
-                          type="button"
-                          role="radio"
-                          aria-checked={draft.reasoningEffort === level}
-                          className={`${styles.rosterSegBtn} ${draft.reasoningEffort === level ? styles.on : ''}`}
-                          onClick={() =>
-                            setDraft({
-                              ...draft,
-                              reasoningEffort: level as AgentDef['reasoningEffort'],
-                            })
-                          }
-                        >
-                          {level}
-                        </button>
-                      ))}
+                      {(['off', 'low', 'medium', 'high', 'xhigh', 'max'] as const).map((level) => {
+                        const selected = draft.inheritDefaults
+                          ? (settings?.defaultReasoningEffort ?? 'medium') === level
+                          : draft.reasoningEffort === level;
+                        return (
+                          <button
+                            key={level}
+                            type="button"
+                            role="radio"
+                            aria-checked={selected}
+                            disabled={!!draft.inheritDefaults}
+                            className={`${styles.rosterSegBtn} ${selected ? styles.on : ''}`}
+                            onClick={() =>
+                              setDraft({
+                                ...draft,
+                                reasoningEffort: level as AgentDef['reasoningEffort'],
+                              })
+                            }
+                          >
+                            {level}
+                          </button>
+                        );
+                      })}
                     </div>
                     <span className={styles.hint}>
-                      Higher effort costs more thinking tokens and takes longer.
+                      {draft.inheritDefaults
+                        ? 'Following Settings → Agent defaults.'
+                        : 'Higher effort costs more thinking tokens and takes longer.'}
                     </span>
                   </Field>
                   <Field label="Envelope kind">

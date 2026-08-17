@@ -291,6 +291,9 @@ have to be perfect. You do have to be close.
 - `model` (string, **required**) — a model id, or `"inherit"`.
 - `reasoningEffort` (**required**) — one of `off`, `low`, `medium`, `high`,
   `xhigh`, `max`.
+- `inheritDefaults` (boolean, optional) — when true, a run uses Settings →
+  Agent defaults for both model and reasoning. Stored `model` /
+  `reasoningEffort` are the fallback when this is off.
 - `systemPrompt` (string, **required**) — the role.
 - `userPrompt` (string, **required**) — the task template; may reference declared
   inputs like `{{request}}`.
@@ -299,7 +302,8 @@ have to be perfect. You do have to be close.
 - `envelope` (string, **required**) — a built-in kind (`generic`, `brief`,
   `plan`, `build`, `scout`, `review`, `document`) or a custom envelope's name.
 - `color` (string, **required**) — hex, e.g. `#5ad2dd`.
-- Optional: `cli`, `tools`, `disabledTools`, `customFields`, `emblem`.
+- Optional: `cli`, `inheritDefaults`, `tools`, `disabledTools`, `customFields`,
+  `emblem`.
 
 ### pipeline (`PipelineDef`)
 

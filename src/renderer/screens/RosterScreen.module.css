@@ -453,12 +453,26 @@
   outline: none;
 }
 
+.roster-check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+.roster-check input {
+  accent-color: var(--accent);
+}
+
 .roster-seg {
   display: flex;
   height: 34px;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
   overflow: hidden;
+}
+.roster-seg.disabled {
+  opacity: 0.55;
 }
 .roster-seg-btn {
   flex: 1;
@@ -484,6 +498,9 @@
 .roster-seg-btn.on {
   color: var(--text);
   background: color-mix(in srgb, #ffffff 4.5%, transparent);
+}
+.roster-seg-btn:disabled {
+  cursor: not-allowed;
 }
 
 .roster-statusbar {
