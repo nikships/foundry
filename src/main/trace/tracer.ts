@@ -24,6 +24,7 @@ import type {
   PhaseRow,
   PhaseStatus,
   PipelineDef,
+  RunMode,
   RunRow,
   RunStatus,
   UsageBreakdown,
@@ -93,7 +94,7 @@ export class Tracer {
     branch: string | null;
     baseRef: string | null;
     branchPointSha?: string | null;
-    mode: 'daemon' | 'rpc' | 'oneshot';
+    mode: RunMode;
   }): void {
     this.db
       .prepare(
@@ -145,7 +146,7 @@ export class Tracer {
     this.db.prepare('UPDATE runs SET branch_point_sha = ? WHERE run_id = ?').run(sha, runId);
   }
 
-  setRunMode(runId: string, mode: 'daemon' | 'rpc' | 'oneshot'): void {
+  setRunMode(runId: string, mode: RunMode): void {
     this.db.prepare('UPDATE runs SET mode = ? WHERE run_id = ?').run(mode, runId);
   }
 
@@ -530,7 +531,7 @@ export class Tracer {
     reasoningEffort: string;
     cli: CliVendor;
     droidSessionId: string | null;
-    mode: 'daemon' | 'rpc' | 'oneshot';
+    mode: RunMode;
     color: string;
   }): void {
     this.db
@@ -586,7 +587,7 @@ export class Tracer {
       // Rows written before agents could pick a CLI were all droid.
       cli: (r.cli as CliVendor) ?? 'droid',
       droidSessionId: r.droid_session_id,
-      mode: (r.mode as 'daemon' | 'rpc' | 'oneshot') ?? 'rpc',
+      mode: (r.mode as RunMode) ?? 'rpc',
       color: r.color,
       contextTokens: r.context_tokens ?? 0,
       contextWindow: r.context_window ?? 0,
@@ -882,7 +883,7 @@ function mapRun(r: RawRun): RunRow {
     prUrl: r.pr_url ?? null,
     merged: !!r.merged,
     archived: !!r.archived,
-    mode: (r.mode as 'daemon' | 'rpc' | 'oneshot') ?? 'rpc',
+    mode: (r.mode as RunMode) ?? 'rpc',
     startedAt: r.started_at,
     endedAt: r.ended_at,
     totalTokens: r.total_tokens,

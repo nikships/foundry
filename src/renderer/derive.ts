@@ -19,6 +19,7 @@ const EMPTY: PhaseUsage = {
   cacheReadTokens: 0,
   thinkingTokens: 0,
   credits: 0,
+  cost: 0,
   reported: false,
   totalTokens: 0,
   turns: 0,
@@ -38,6 +39,7 @@ export function usageFor(events: EventRow[]): PhaseUsage {
     sum.cacheReadTokens += usage.cacheReadTokens ?? 0;
     sum.thinkingTokens += usage.thinkingTokens ?? 0;
     sum.credits += usage.credits ?? 0;
+    sum.cost += usage.cost ?? 0;
     // One reporting turn is enough to show real numbers for the phase.
     sum.reported = sum.reported || !!usage.reported;
   }

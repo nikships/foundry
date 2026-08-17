@@ -161,6 +161,7 @@ export function toUsageBreakdown(usage: TokenUsage | null | undefined): UsageBre
       cacheReadTokens: 0,
       thinkingTokens: 0,
       credits: 0,
+      cost: 0,
       reported: false,
     };
   }
@@ -171,6 +172,8 @@ export function toUsageBreakdown(usage: TokenUsage | null | undefined): UsageBre
     cacheReadTokens: usage.cacheReadTokens ?? 0,
     thinkingTokens: usage.thinkingTokens ?? 0,
     credits: usage.factoryCredits ?? 0,
+    // droid prices in credits and never reports a dollar figure.
+    cost: 0,
     reported: true,
   };
 }
