@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { validate } from '../src/main/store/roster.js';
-import type { AgentDef } from '../src/shared/types.js';
+import { resolveAgentExecution, type AgentDef } from '../src/shared/types.js';
 
 const base: AgentDef = {
   name: 'builder',
@@ -44,6 +44,46 @@ describe('roster.validate', () => {
     expect(issues).toHaveLength(1);
     expect(issues[0]!.level).toBe('warning');
     expect(issues[0]!.where).toBe('envelope');
+  });
+
+  it('accepts inheritDefaults so the Execution checkbox can persist', () => {
+    expect(validate({ ...base, inheritDefaults: true })).toEqual([]);
+    expect(validate({ ...base, inheritDefaults: false })).toEqual([]);
+  });
+});
+
+describe('resolveAgentExecution', () => {
+  const defaults = { model: 'gpt-5.4', reasoningEffort: 'high' as const };
+
+  it('follows Settings for both knobs when inheritDefaults is on', () => {
+    expect(
+      resolveAgentExecution(
+        { model: 'claude-opus', reasoningEffort: 'low', inheritDefaults: true },
+        defaults,
+      ),
+    ).toEqual({ model: 'gpt-5.4', reasoningEffort: 'high' });
+  });
+
+  it('lets the CLI pick the model when Settings also inherit', () => {
+    expect(
+      resolveAgentExecution(
+        { model: 'claude-opus', reasoningEffort: 'low', inheritDefaults: true },
+        { model: 'inherit', reasoningEffort: 'medium' },
+      ),
+    ).toEqual({ model: 'inherit', reasoningEffort: 'medium' });
+  });
+
+  it('inherits only the model when the checkbox is off', () => {
+    expect(resolveAgentExecution({ model: 'inherit', reasoningEffort: 'low' }, defaults)).toEqual({
+      model: 'gpt-5.4',
+      reasoningEffort: 'low',
+    });
+  });
+
+  it('keeps an explicit model and reasoning when nothing inherits', () => {
+    expect(
+      resolveAgentExecution({ model: 'claude-opus', reasoningEffort: 'max' }, defaults),
+    ).toEqual({ model: 'claude-opus', reasoningEffort: 'max' });
   });
 });
 

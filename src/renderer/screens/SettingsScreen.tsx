@@ -837,7 +837,8 @@ export default function SettingsScreen({
                 <Section label="Agent defaults" note="What an agent set to inherit gets.">
                   <div className={styles.settingsSpread}>
                     <p className={styles.settingsLead}>
-                      Used by any agent set to inherit. A per-agent choice always wins.
+                      Used by any agent that inherits model or reasoning. A per-agent choice always
+                      wins.
                     </p>
                     <Button size="sm" onClick={() => void refreshModels()}>
                       Refresh models

@@ -196,6 +196,12 @@ export interface AgentDef {
   cli?: CliVendor;
   model: string;
   reasoningEffort: ReasoningEffort;
+  /**
+   * When true, a run uses Settings → Agent defaults for both model and
+   * reasoning. Stored `model` / `reasoningEffort` remain the fallback when this
+   * is off. Absent on rosters written before the checkbox existed.
+   */
+  inheritDefaults?: boolean;
   systemPrompt: string;
   userPrompt: string;
   writes: WriteBoundary;
@@ -225,6 +231,30 @@ export function effectivePhaseEnvelope(
   if (phase.envelope) return phase.envelope;
   if (!phase.agent) return undefined;
   return agents.find((agent) => agent.name === phase.agent)?.envelope;
+}
+
+/**
+ * What a run actually uses for this agent. `inheritDefaults` takes both knobs
+ * from Settings → Agent defaults. Otherwise only `model: "inherit"` follows the
+ * default model; reasoning stays on the agent.
+ */
+export function resolveAgentExecution(
+  agent: Pick<AgentDef, 'model' | 'reasoningEffort' | 'inheritDefaults'>,
+  defaults: { model?: string; reasoningEffort: ReasoningEffort },
+): { model: string; reasoningEffort: ReasoningEffort } {
+  if (agent.inheritDefaults) {
+    return {
+      model: defaults.model && defaults.model !== 'inherit' ? defaults.model : 'inherit',
+      reasoningEffort: defaults.reasoningEffort,
+    };
+  }
+  return {
+    model:
+      agent.model === 'inherit' && defaults.model && defaults.model !== 'inherit'
+        ? defaults.model
+        : agent.model,
+    reasoningEffort: agent.reasoningEffort,
+  };
 }
 
 // ── Settings ─────────────────────────────────────────────────────────────────
