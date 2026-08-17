@@ -78,6 +78,18 @@ export interface ResolvedEnv {
 let resolved: ResolvedEnv | null = null;
 
 /**
+ * Extra variables merged into every child env after PATH and before caller
+ * overrides. Used for the Factory API key from Settings so `droid exec` and
+ * the daemon see the same credential without mutating `process.env`.
+ */
+let spawnExtra: Record<string, string> = {};
+
+/** Replace the extra env overlay. Pass `{}` to clear. */
+export function setSpawnEnvExtra(vars: Record<string, string>): void {
+  spawnExtra = { ...vars };
+}
+
+/**
  * `-i` (interactive) matters as much as `-l`: many people put their PATH in
  * `.zshrc`, which a non-interactive login shell never reads. stdin is closed so
  * a profile that prompts cannot block startup.
@@ -148,7 +160,7 @@ export function resolvedEnv(): ResolvedEnv {
 export function spawnEnv(
   overrides?: Record<string, string | undefined>,
 ): NodeJS.ProcessEnv & Record<string, string | undefined> {
-  return { ...process.env, PATH: resolvedEnv().path, ...overrides };
+  return { ...process.env, PATH: resolvedEnv().path, ...spawnExtra, ...overrides };
 }
 
 /** Test seam: lets a test pin a PATH without spawning the user's shell. */

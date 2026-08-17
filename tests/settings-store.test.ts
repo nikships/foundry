@@ -230,3 +230,38 @@ describe('daemonPort', () => {
     expect(migrate({ ...defaultSettings(), daemonPort: 99_999 }).daemonPort).toBe(37_699);
   });
 });
+
+describe('factoryApiKey', () => {
+  it('defaults to empty on a fresh install', () => {
+    expect(defaultSettings().factoryApiKey).toBe('');
+  });
+
+  it('reads empty for a settings file written before the field existed', () => {
+    const stored = { ...defaultSettings() } as Record<string, unknown>;
+    delete stored.factoryApiKey;
+    expect(migrate(stored).factoryApiKey).toBe('');
+    expect(seed(stored).get().factoryApiKey).toBe('');
+  });
+
+  it('accepts a trimmed key and stores it', () => {
+    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
+    expect(store.patch({ factoryApiKey: '  fk-test-key  ' })).toMatchObject({ ok: true });
+    expect(store.get().factoryApiKey).toBe('fk-test-key');
+  });
+
+  it('refuses a key longer than 2048 characters rather than storing it', () => {
+    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
+    expect(store.patch({ factoryApiKey: 'k'.repeat(2049) }).ok).toBe(false);
+    expect(store.get().factoryApiKey).toBe('');
+  });
+
+  it('repairs a stored non-string back to empty', () => {
+    expect(migrate({ ...defaultSettings(), factoryApiKey: 12 as never }).factoryApiKey).toBe('');
+  });
+
+  it('trims and truncates a stored oversized string on read', () => {
+    const stored = { ...defaultSettings(), factoryApiKey: `  ${'k'.repeat(2100)}  ` };
+    expect(migrate(stored).factoryApiKey).toHaveLength(2048);
+    expect(migrate(stored).factoryApiKey.startsWith('k')).toBe(true);
+  });
+});

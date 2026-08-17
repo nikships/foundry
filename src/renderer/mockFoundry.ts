@@ -173,6 +173,7 @@ function defaultMockSettings(): AppSettings {
     compactionThreshold: 0.8,
     rewindAfterCorrections: 2,
     daemonPort: 37_643,
+    factoryApiKey: '',
     notifications: { accepted: true, rejected: true, failed: true, needsInput: true },
     dockBadge: true,
     terminalApp: 'terminal',

@@ -45,13 +45,14 @@ async function checkCli(
   };
   if (!version) return [found];
 
-  // Auth lives in each CLI's own config; a key in the environment is the
-  // override. Foundry never reads either, it only reports which one is present.
+  // Settings key wins, then an env var, then the CLI's own login files.
+  const settingsKey = vendor === 'droid' && settings.factoryApiKey.trim().length > 0;
   const envKey = adapter.authEnvVars.find((name) => !!process.env[name]);
   const configPath = adapter.authPaths().find((p) => existsSync(p));
-  const authed = !!envKey || !!configPath;
+  const authed = settingsKey || !!envKey || !!configPath;
   let detail = `no credentials found: ${adapter.label} cannot reach a model`;
-  if (envKey) detail = `${envKey} is set in the environment`;
+  if (settingsKey) detail = 'Factory API key is set in Settings';
+  else if (envKey) detail = `${envKey} is set in the environment`;
   else if (configPath) detail = `signed in, config at ${configPath}`;
 
   return [
@@ -62,7 +63,11 @@ async function checkCli(
       ok: authed,
       detail,
       blocking: isDefault && !authed,
-      fix: authed ? undefined : { kind: 'open-url', value: adapter.authUrl },
+      fix: authed
+        ? undefined
+        : vendor === 'droid'
+          ? { kind: 'open-settings', value: 'clis' }
+          : { kind: 'open-url', value: adapter.authUrl },
     },
   ];
 }

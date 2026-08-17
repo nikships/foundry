@@ -25,7 +25,7 @@ Foundry's own MCP servers (`userMcpServers`) survive all of this: they are attac
 
 ```bash
 npm ci
-# Requires `droid` CLI on PATH and signed in (FACTORY_API_KEY or stored WorkOS JWT).
+# Requires `droid` CLI on PATH and a Factory credential (Settings API key, FACTORY_API_KEY, or stored WorkOS JWT).
 droid --version
 npm run dev    # exercise the transport through the running app
 ```
@@ -34,7 +34,7 @@ npm run dev    # exercise the transport through the running app
 
 ## Development Workflow
 
-- **Daemon** starts lazily as `droid daemon --port <p> --host 127.0.0.1 --parent-pid <app>`, scanning up within `37600–37699`. Auth reads `FACTORY_API_KEY` or stored WorkOS JWT without logging. `ensure()` returns a failure reason rather than throwing, and `agent.ts` turns that reason into a failed turn. One traced `processes` row for the daemon, not per-session; a daemon session has no child pid (`kill` interrupts/closes it).
+- **Daemon** starts lazily as `droid daemon --port <p> --host 127.0.0.1 --parent-pid <app>`, scanning up within `37600–37699`. Auth reads Settings `factoryApiKey`, then `FACTORY_API_KEY`, then a stored WorkOS JWT, without logging. `ensure()` returns a failure reason rather than throwing, and `agent.ts` turns that reason into a failed turn. One traced `processes` row for the daemon, not per-session; a daemon session has no child pid (`kill` interrupts/closes it).
 - **Compaction/rewind** return successor sessions: swap the handle, re-subscribe notifications, and re-apply settings after the successor loads. The SDK rejects replacement while a stream is open, so both only happen between turns.
 
 ## Testing Instructions

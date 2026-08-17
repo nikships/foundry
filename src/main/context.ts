@@ -25,7 +25,9 @@ import { UpdaterService } from './updater.js';
 import { SmithService } from './smith/index.js';
 import { saveProposal } from './ipc/smith.js';
 import { notifyNeedsInput, notifyOutcome, setDockBadge } from './system/notify.js';
+import { setSettingsApiKey, settingsApiKeyForSpawn } from './droid/sdk/auth.js';
 import { shutdownDaemonManager } from './droid/sdk/daemon.js';
+import { setSpawnEnvExtra } from './system/env.js';
 
 export interface Scope {
   projectId?: string;
@@ -52,6 +54,8 @@ export class AppContext {
     private readonly assetsRoot: string,
   ) {
     this.settings = new SettingsStore(supportDir);
+    // Must land before any droid spawn so the first pipeline sees the key.
+    this.syncFactoryAuth();
     this.projects = new ProjectStore(supportDir);
     this.roster = new RosterStore(supportDir);
     this.pipelines = new PipelineStore(supportDir);
@@ -158,6 +162,16 @@ export class AppContext {
 
   currentSettings(): AppSettings {
     return this.settings.get();
+  }
+
+  /**
+   * Push the Settings API key into daemon auth and every child env. Call on
+   * launch and whenever the stored key changes; a live daemon is dropped so
+   * the next turn reconnects with the new credential.
+   */
+  syncFactoryAuth(): void {
+    setSettingsApiKey(this.settings.get().factoryApiKey);
+    setSpawnEnvExtra(settingsApiKeyForSpawn());
   }
 
   dispose(): void {

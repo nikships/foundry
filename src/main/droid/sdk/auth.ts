@@ -1,9 +1,10 @@
 /**
  * Credential used to authenticate a local `droid daemon` WebSocket connection.
  *
- * Prefer `FACTORY_API_KEY` when set (fk-* keys are accepted on the wire).
- * Otherwise decrypt the WorkOS JWT the CLI stores under `~/.factory` —
- * read-only; this module never writes there and never logs the secret.
+ * Prefer a Factory API key from Settings, then `FACTORY_API_KEY` (fk-* keys
+ * are accepted on the wire). Otherwise decrypt the WorkOS JWT the CLI stores
+ * under `~/.factory` — read-only; this module never writes there and never
+ * logs the secret.
  *
  * Recipe verified against CLI 0.189 / SDK 0.7.0 (research/daemon.md):
  * AES-256-GCM over `iv:tag:ciphertext` with the 32-byte key at auth.v2.key.
@@ -14,7 +15,25 @@ import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-export type DaemonAuthSource = 'env' | 'stored';
+export type DaemonAuthSource = 'settings' | 'env' | 'stored';
+
+/** App-settings key, applied on launch and whenever Settings saves a new one. */
+let settingsApiKey = '';
+
+/** Remember the key from Settings so resolveDaemonAuth and child env stay in sync. */
+export function setSettingsApiKey(key: string | undefined): void {
+  settingsApiKey = (key ?? '').trim();
+}
+
+/** `FACTORY_API_KEY` overlay for `spawnEnv`, or empty when Settings has no key. */
+export function settingsApiKeyForSpawn(): Record<string, string> {
+  return settingsApiKey ? { FACTORY_API_KEY: settingsApiKey } : {};
+}
+
+/** Test seam: drop module state so suites cannot leak a key into the next case. */
+export function __resetSettingsApiKeyForTest(): void {
+  settingsApiKey = '';
+}
 
 export interface DaemonAuthCredential {
   /**
@@ -30,15 +49,23 @@ export interface ResolveDaemonAuthOptions {
   env?: NodeJS.ProcessEnv;
   /** Defaults to the real home directory. Injected so tests never touch ~/.factory. */
   homeDir?: string;
+  /**
+   * Key from AppSettings.factoryApiKey. When omitted, the last value passed to
+   * `setSettingsApiKey` is used. An explicit empty string means "unset".
+   */
+  settingsKey?: string;
 }
 
 /**
  * Resolve a daemon auth credential without side effects.
- * Returns null when neither the env key nor a decryptable stored JWT is present.
+ * Returns null when neither Settings, the env key, nor a decryptable stored JWT is present.
  */
 export function resolveDaemonAuth(
   opts: ResolveDaemonAuthOptions = {},
 ): DaemonAuthCredential | null {
+  const fromSettings = (opts.settingsKey !== undefined ? opts.settingsKey : settingsApiKey).trim();
+  if (fromSettings) return { apiKey: fromSettings, source: 'settings' };
+
   const env = opts.env ?? process.env;
   const fromEnv = env.FACTORY_API_KEY?.trim();
   if (fromEnv) return { apiKey: fromEnv, source: 'env' };
