@@ -1,13 +1,25 @@
 # AGENTS.md — src/main/droid
 
-Owns Droid transport selection, the shared one-shot runner, permissions, and the SDK adapter. `agent.ts` selects **daemon** by default, **subprocess RPC** when requested or when daemon setup fails, and **one-shot** after two protocol strikes.
+Owns the Droid transport, the shared one-shot runner, permissions, and the SDK adapter. **Agent phases run on the daemon and nowhere else.**
 
 ## Project Overview
 
-- Transports: daemon (`SdkDaemonManager` + `SdkDaemonSession`, `127.0.0.1:37600–37699`, `--parent-pid`), subprocess RPC (`SdkSession` via `ProcessTransport`), one-shot (`oneshot.ts` → `droid exec`).
+- **One agent transport: the daemon.** `agent.ts` opens a daemon session (`sdk/daemon.ts` + `sdk/daemon-session.ts`, `127.0.0.1:37600–37699`, `--parent-pid`). If it cannot be reached, or a turn fails on it, the turn fails. There is no fallback ladder.
+- `oneshot.ts` (`droid exec`) is still used, but never for an agent phase: detection (`engine/detect-session.ts`), project setup (`engine/setup-session.ts`), readiness repair (`readiness/remediator.ts`, `engine/repair.ts`), and the summariser in `ipc/runs.ts`. Those are one-off text calls with no write boundary to enforce.
 - SDK boundary: all production `@factory/droid-sdk` imports live under `sdk/` (ESLint `no-restricted-imports`). Above it, code uses `TransportSession` + `turn.ts` + `protocol.ts` types.
 - Notifications → trace events (`events.ts`); permissions → approval `ask_user` flow (`permissions.ts`); catalog/model discovery → `catalog.ts`.
-- `PROTOCOL_FAILURE_LIMIT = 2` — a strike is counted once for the failing turn; a kill is not a strike and must stop all recovery.
+
+## Why there is no fallback
+
+Foundry used to degrade daemon → subprocess → one-shot whenever the daemon could not do something. Only the daemon and subprocess transports route tool calls through `permissions.ts`; **one-shot does not consult it at all**. A run that slid to one-shot silently traded Foundry's write-boundary policy for the CLI's coarser `--auto` gate, and the operator was told nothing. The observed failure was worse than theoretical: an unrelated per-agent setting pushed every run onto that path, and a run then died with `insufficient permission to proceed` from a layer that has no permission model.
+
+The features that could not be enforced on the daemon were deleted rather than kept as fallback triggers:
+
+- **Tool profiles / allowlists / phase narrowing** (`tool-profiles.ts`, `AgentDef.tools`, `PhaseDef.toolProfile`). The daemon's `droid.mcp.listTools` returns MCP tools only, never builtins, so a profile could not be computed, let alone verified.
+- **Host invocable selection** (`invocables.ts`, `factory-home.ts`). Withholding host skills / Droids / MCP servers needed a per-agent `$HOME` overlay. The daemon is one shared process with one environment, so it can never have one.
+- **The `transport` setting.** A user-facing toggle whose only effect was to leave the daemon.
+
+Foundry's own MCP servers (`userMcpServers`) survive all of this: they are attached in-process at session create/resume, never by writing `~/.factory/mcp.json`, so they cost no transport.
 
 ## Setup Commands
 
@@ -15,16 +27,15 @@ Owns Droid transport selection, the shared one-shot runner, permissions, and the
 npm ci
 # Requires `droid` CLI on PATH and signed in (FACTORY_API_KEY or stored WorkOS JWT).
 droid --version
-npm run dev    # exercise transports through the running app
+npm run dev    # exercise the transport through the running app
 ```
 
 `resolveEnv()` must complete before any `droid` spawn; every spawn uses `spawnEnv()`.
 
 ## Development Workflow
 
-- **Daemon** starts lazily as `droid daemon --port <p> --host 127.0.0.1 --parent-pid <app>`, scanning up within `37600–37699`. Auth reads `FACTORY_API_KEY` or stored WorkOS JWT without logging. `ensure()` returns a failure reason for fallback rather than throwing. One traced `processes` row for the daemon, not per-session; a daemon session has no child pid (`kill` interrupts/closes it). A roster with a tool allowlist cannot use daemon (its high-level API cannot list tools) — falls back to subprocess.
-- **Compaction/rewind** return successor sessions: swap the handle, re-subscribe notifications, and re-apply settings after successor loads. SDK rejects replacement while a stream is open.
-- **Sniffing transport** preserves init-time models and early notifications and injects context-breakdown; do not reach into the SDK's private client.
+- **Daemon** starts lazily as `droid daemon --port <p> --host 127.0.0.1 --parent-pid <app>`, scanning up within `37600–37699`. Auth reads `FACTORY_API_KEY` or stored WorkOS JWT without logging. `ensure()` returns a failure reason rather than throwing, and `agent.ts` turns that reason into a failed turn. One traced `processes` row for the daemon, not per-session; a daemon session has no child pid (`kill` interrupts/closes it).
+- **Compaction/rewind** return successor sessions: swap the handle, re-subscribe notifications, and re-apply settings after the successor loads. The SDK rejects replacement while a stream is open, so both only happen between turns.
 
 ## Testing Instructions
 
@@ -36,24 +47,23 @@ npx vitest run tests/sdk-daemon-manager.test.ts
 npx vitest run tests/agent-session-transport.test.ts
 ```
 
-- `tests/fake-droid.ts` — real child handshake fixture (exercise protocol framing realistically).
-- Executor tests use a separate scripted child for disk side effects; in-memory transport covers session logic.
+- `tests/scripted-daemon.ts` — a scripted `DaemonSessionsFacade` for `DaemonSession` unit tests.
+- `tests/scripted-agent.ts` — `ScriptedAgent`, the in-memory daemon the executor tests run against. It performs the turn's disk side effects inside the worktree and answers asks through the real permission handlers, so boundary and policy assertions are real.
+- Both fixtures are in-memory: no daemon, no API key, no model, no child process.
 - **Stub frames must be schema-complete** (`createdAt`, `updatedAt`, `tokenUsage`, valid tool categories, matching turn IDs) or the SDK silently drops them and the turn hangs.
 - Keep `oneshot.ts` vendor-agnostic; put flags in `src/main/cli/droid.ts`.
 
 ## SDK and Daemon Boundaries
 
 - `protocol.ts` is types/constants, not a hand-rolled JSON-RPC client.
-- Auth never writes or logs the secret; daemon fallback traces `log` with `fallback to subprocess: <reason>` (warning span).
-- Tool allowlists are a complement via `disabledToolIds`, verified by `listTools()`. `ToolSearch` remains available; Foundry's two MCP tools are always allowed.
-- **Tool profiles are per agent and per phase.** `tool-profiles.ts` owns the single computation (`effectiveDisabledToolIds`): profiles (`full` / `read-only` / `review` / `custom`) are evaluated against the categories `list_tools` reports (`read` / `edit` / `execute` / `other`), so MCP and skill tools that appear at runtime are classified rather than missed. `PhaseDef.toolProfile` / `PhaseDef.tools` intersect with the agent's policy — a phase can only subtract. Profile complements, explicit `disabledTools`, and FOU-24's withheld skills compose by union, so no policy can hand back what another took away. Applied before the first turn, before every RPC attempt (a daemon→subprocess fall replaces the session), and after a compaction/rewind successor — the successor path also clears `appliedDisabledTools`, because a new session id starts from the CLI's defaults and the memo would otherwise suppress the re-send. Fail-closed: a profiled or phase-narrowed agent never uses the daemon (no builtin `listTools`), a transport without `setPhaseToolPolicy` refuses a narrowing phase rather than running it wide, and one-shot carries the narrowing as a `--restrict-tools` allowlist, which can only under-admit.
-- **Host invocables are opt-in per agent.** `invocables.ts` reads `~/.factory` (skills, custom Droids, `mcp.json`) as a read-only inventory; `AgentDef.invocables` is an allowlist of ids that defaults to empty, so an agent inherits nothing from the operator's install. Skills are withheld with the settings complement; Droids and host MCP servers are withheld by spawning against a `FactoryHomeOverlay` (`factory-home.ts`) — a temp `$HOME` of symlinks whose `.factory` keeps auth/settings/sessions but carries only the selected `droids/` and a rewritten `mcp.json`. Nothing writes the host install. The daemon fails closed (shared process, one env) for any agent that needs either mechanism, exactly as it does for `restrictTools`. Attachments can lag `mcp_status_changed`, so recomputation is scheduled, not immediate. Foundry MCP tools use the SDK's nested `zod@3` and are attached at session create/resume — never by writing `~/.factory/mcp.json`.
+- Auth never writes or logs the secret.
+- `AgentSession.Mode` is a deliberate one-member union (`'daemon'`). The trace, the run row, and the renderer all record which mode a run used; keeping the field makes the guarantee legible instead of implicit. Trace rows written before this change still carry `'rpc'` / `'oneshot'`, which is why the `RunRow` / `AgentSessionRow` types keep those members.
 
 ## Protocol and Policy Landmines
 
 - Frames require the factory `type`/`version` fields and string `requestId`s.
 - `add_user_message` uses `params.text`; completion must echo the SDK-minted turn id.
-- Session settings are flat params; autonomy is stated on every `create`/`resume`; `--auto` is cosmetic for JSON-RPC.
+- Session settings are flat params; autonomy is stated on every `create`/`resume`.
 - A bad model is accepted at `settings` time and fails on the turn. Structured-output failure still returns text for caller validation. Droid compiles Draft-07 — do not add a `2020-12` `$schema`.
 - **Zero-interrupt policy** always returns a decision: in-boundary writes/commands → allow; out-of-worktree or protected writes → deny. `ask_user` is answered with each question's first option (`proceed_once` or cancel). A missing answer is interpreted as cancellation.
 

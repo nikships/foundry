@@ -25,12 +25,7 @@ import {
   type RequestPermissionHandlerResult,
   type RequestPermissionRequestParams,
 } from '@factory/droid-sdk';
-import type {
-  ContextBreakdown,
-  ReasoningEffort,
-  ToolPolicySpec,
-  UserMcpServer,
-} from '@shared/types.js';
+import type { ContextBreakdown, ReasoningEffort, UserMcpServer } from '@shared/types.js';
 import {
   AUTONOMY_LEVEL,
   type AvailableModel,
@@ -41,8 +36,7 @@ import {
 } from '../protocol.js';
 import { INHERIT_MODEL, type TurnOptions, type TurnResult } from '../turn.js';
 import { DroidProtocolError } from './errors.js';
-import { createFoundryMcpServer, FOUNDRY_TOOL_IDS, type FoundryMcpContext } from './mcp-tools.js';
-import { agentPolicy, effectiveDisabledToolIds, isRestrictive } from '../tool-profiles.js';
+import { createFoundryMcpServer, type FoundryMcpContext } from './mcp-tools.js';
 import {
   toAskUserAsk,
   toAskUserResult,
@@ -164,7 +158,6 @@ export interface DaemonSessionOptions extends TransportSessionOptions {
   /** Models known at create/resume time when the facade can supply them. */
   availableModels?: AvailableModel[];
   foundryMcp?: FoundryMcpContext;
-  toolRefreshDelayMs?: number;
 }
 
 const EFFORTS: Record<ReasoningEffort, SdkReasoningEffort> = {
@@ -175,8 +168,6 @@ const EFFORTS: Record<ReasoningEffort, SdkReasoningEffort> = {
   xhigh: SdkReasoningEffort.ExtraHigh,
   max: SdkReasoningEffort.Max,
 };
-
-const MCP_TOOL_SETTLE_MS = 1_500;
 
 /**
  * Connection-level safety net: any ask that reaches it (no per-session
@@ -211,11 +202,7 @@ export class DaemonSession implements TransportSession {
   private models: AvailableModel[] = [];
   private droidDefaultModel: string | null = null;
   private modelRefused = false;
-  private appliedDisabledTools: string[] | null = null;
   /** The narrowing the phase currently running asked for, if any. */
-  private phasePolicy: ToolPolicySpec | null = null;
-  private toolRefresh: NodeJS.Timeout | null = null;
-  private toolRefreshDelay = 0;
   private foundryServer: ReturnType<typeof createFoundryMcpServer> | null = null;
   private userMessageId: string | null = null;
 
@@ -255,7 +242,6 @@ export class DaemonSession implements TransportSession {
 
   async start(existingSessionId?: string | null): Promise<void> {
     this.closed = false;
-    this.toolRefreshDelay = this.opts.toolRefreshDelayMs ?? MCP_TOOL_SETTLE_MS;
 
     // Daemon create/resume validates mcpServers against the wire schema only
     // (stdio/http/sse). SdkMcpServer is an in-process object the subprocess
@@ -322,7 +308,6 @@ export class DaemonSession implements TransportSession {
 
     const applied = await this.applySettings();
     if (applied.warning) this.opts.onModelWarning?.(applied.warning);
-    await this.applyToolPolicy();
   }
 
   async applySettings(): Promise<{ model: string; warning?: string }> {
@@ -507,16 +492,9 @@ export class DaemonSession implements TransportSession {
 
     const applied = await this.applySettings();
     if (applied.warning) this.opts.onModelWarning?.(applied.warning);
-    // The successor is a different session id with default settings: the
-    // disabled set applied to the source did not travel with it, and the memo
-    // would suppress a re-apply that produces the same list. Clear, then apply.
-    this.appliedDisabledTools = null;
-    await this.applyToolPolicy();
   }
 
   async close(): Promise<void> {
-    if (this.toolRefresh) clearTimeout(this.toolRefresh);
-    this.toolRefresh = null;
     this.unsubNotifications?.();
     this.unsubNotifications = null;
     const handle = this.handle;
@@ -623,77 +601,6 @@ export class DaemonSession implements TransportSession {
     return `${this.opts.model} was refused (${reason}); this session runs on ${fallback}`;
   }
 
-  /** This agent's authored policy; `restrictTools` still means `custom`. */
-  private agentPolicy(): ToolPolicySpec {
-    return this.opts.toolPolicy ?? agentPolicy({ tools: this.opts.restrictTools });
-  }
-
-  /**
-   * Narrow to the phase about to run. The daemon can only honour this when its
-   * facade can list tools; AgentSession keeps a narrowing agent off this
-   * transport for exactly that reason, so reaching here without one is a
-   * no-op rather than a silent widening.
-   */
-  async setPhaseToolPolicy(policy: ToolPolicySpec | null): Promise<void> {
-    const before = JSON.stringify(this.phasePolicy ?? null);
-    this.phasePolicy = policy;
-    if (JSON.stringify(policy ?? null) === before) return;
-    await this.applyToolPolicy();
-  }
-
-  private async applyToolPolicy(): Promise<void> {
-    const handle = this.handle;
-    if (!handle) return;
-    const explicit = this.opts.disabledTools ?? [];
-    const hiddenSkills = this.opts.hiddenSkills ?? [];
-    const agent = this.agentPolicy();
-    const phase = this.phasePolicy;
-    if (
-      !isRestrictive(agent) &&
-      !isRestrictive(phase) &&
-      !explicit.length &&
-      !hiddenSkills.length
-    ) {
-      return;
-    }
-
-    // Without a tool list no complement can be computed, so only the explicit
-    // disables land. AgentSession does not route a narrowing agent here for that
-    // reason — it fails closed to subprocess instead.
-    const listed = this.opts.sessions.listTools
-      ? await this.opts.sessions.listTools(handle.id)
-      : [];
-    const disabled = effectiveDisabledToolIds({
-      tools: listed,
-      agent,
-      phase,
-      explicitDisabled: explicit,
-      hiddenSkills,
-      alwaysAllow: FOUNDRY_TOOL_IDS,
-    });
-
-    if (this.appliedDisabledTools?.join('\u0000') === disabled.join('\u0000')) return;
-    this.appliedDisabledTools = disabled;
-    if (disabled.length === 0) return;
-    await this.updateSettings({ disabledToolIds: disabled });
-  }
-
-  private scheduleToolPolicy(): void {
-    const narrows =
-      isRestrictive(this.agentPolicy()) ||
-      isRestrictive(this.phasePolicy) ||
-      !!this.opts.hiddenSkills?.length;
-    if (!narrows || this.toolRefresh) return;
-    const timer = setTimeout(() => {
-      this.toolRefresh = null;
-      // Background reconciliation: same justification as SdkSession — swallow to
-      // avoid unhandled rejection; correctness checked via listTools re-read.
-      void this.applyToolPolicy().catch(() => undefined);
-    }, this.toolRefreshDelay);
-    timer.unref?.();
-    this.toolRefresh = timer;
-  }
-
   private async onPermission(
     params: RequestPermissionRequestParams,
   ): Promise<RequestPermissionHandlerResult> {
@@ -709,9 +616,6 @@ export class DaemonSession implements TransportSession {
   private deliver(notification: DroidNotification): void {
     this.noteUserMessage(notification);
     this.collector?.absorb(notification);
-    if (notification.type === 'settings_updated' || notification.type === 'mcp_status_changed') {
-      this.scheduleToolPolicy();
-    }
     this.opts.onNotification?.(notification);
   }
 

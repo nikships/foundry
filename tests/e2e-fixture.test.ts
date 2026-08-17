@@ -13,7 +13,6 @@ import { E2E_REQUEST, E2E_RUN_ID, E2E_TRANSCRIPT, seedOnboardedFixture } from '.
 
 interface SeededSettings {
   onboarded: boolean;
-  transport: string;
   clis: { droid: { path: string } };
 }
 
@@ -36,7 +35,6 @@ describe('e2e fixture seed', () => {
       readFileSync(join(fixture.supportDir, 'settings.json'), 'utf8'),
     ) as SeededSettings;
     expect(settings.onboarded).toBe(true);
-    expect(settings.transport).toBe('subprocess');
     expect(settings.clis.droid.path).toBe(fixture.fakeDroidPath);
     expect(existsSync(fixture.fakeDroidPath)).toBe(true);
 

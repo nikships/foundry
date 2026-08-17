@@ -79,7 +79,6 @@ export function seedOnboardedFixture(userDataDir?: string): SeededFixture {
   const patched = settings.patch({
     onboarded: true,
     engineerName: 'e2e',
-    transport: 'subprocess',
     clis: {
       ...current.clis,
       droid: { path: fakeDroidPath, extraArgs: [] },

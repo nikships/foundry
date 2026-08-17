@@ -64,7 +64,7 @@ const MOCK_RUNS: RunRow[] = [
     prUrl: 'https://github.com/foundry-demo/demo/pull/12',
     merged: false,
     archived: false,
-    mode: 'oneshot',
+    mode: 'daemon',
     startedAt: nowIso(-3_600_000),
     endedAt: nowIso(-300_000),
     totalTokens: 41280,
@@ -94,7 +94,7 @@ const MOCK_RUNS: RunRow[] = [
     prUrl: null,
     merged: false,
     archived: false,
-    mode: 'oneshot',
+    mode: 'daemon',
     startedAt: nowIso(-120_000),
     endedAt: null,
     totalTokens: 1800,
@@ -172,7 +172,6 @@ function defaultMockSettings(): AppSettings {
     gateRetries: 2,
     compactionThreshold: 0.8,
     rewindAfterCorrections: 2,
-    transport: 'daemon',
     daemonPort: 37_643,
     notifications: { accepted: true, rejected: true, failed: true, needsInput: true },
     dockBadge: true,
@@ -437,44 +436,6 @@ export function createMockFoundryApi(): FoundryApi {
         },
       ],
       tools: async () => [],
-      // Web preview has no host to read, so the inventory is a small fixture:
-      // enough for the roster's selection UI to be designed against, and empty
-      // of anything that could imply the preview reached a real `~/.factory`.
-      invocables: async () => ({
-        skills: [
-          {
-            id: 'foundry-ui',
-            name: 'foundry-ui',
-            description: 'Design conventions for Foundry screens.',
-            location: '~/.factory/skills/foundry-ui',
-          },
-          {
-            id: 'pdf-forms',
-            name: 'pdf-forms',
-            description: 'Fill and flatten PDF forms.',
-            location: '~/.factory/skills/pdf-forms',
-          },
-        ],
-        droids: [
-          {
-            id: 'reviewer',
-            name: 'reviewer',
-            description: 'A second pair of eyes on a diff.',
-            location: '~/.factory/droids/reviewer.md',
-          },
-        ],
-        mcpServers: [
-          {
-            id: 'linear',
-            name: 'linear',
-            transport: 'http' as const,
-            detail: 'https://mcp.linear.app/sse',
-            disabled: false,
-          },
-        ],
-        factoryDir: '~/.factory',
-        warnings: [],
-      }),
       clis: async () => [...CLIS],
       gates: async () => [
         { id: 'artifacts_exist', description: 'Every declared artifact exists.' },

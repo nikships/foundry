@@ -1,20 +1,23 @@
 /**
- * AgentSession transport selection + protocol-failure ladder
- * (architecture §2 / §9.3, VAL-DAEMON-013).
+ * AgentSession has exactly one transport.
  *
- * Scripted TransportSession stand-ins — no real daemon, no API key, no model.
+ * Foundry used to degrade daemon → subprocess → one-shot whenever the daemon
+ * could not do something. Only the daemon and subprocess transports consult
+ * `permissions.ts`, so a run that reached one-shot quietly swapped Foundry's
+ * write-boundary policy for the CLI's coarser `--auto` gate and said nothing.
+ * These tests pin the replacement guarantee: the daemon is the only transport,
+ * and when it cannot be opened or a turn fails on it, the turn fails loudly.
+ *
+ * Scripted daemon facade — no real daemon, no API key, no model.
  */
 
-import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { tempDir } from './tmp.js';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { AgentSession, type Mode, type OpenDaemonResult } from '../src/main/droid/agent.js';
-import type { TransportSession, SessionTool } from '../src/main/droid/sdk/transport.js';
-import type { TurnResult } from '../src/main/droid/turn.js';
 import { openDb, projectDbPath, projectRunsDir } from '../src/main/trace/db.js';
 import { Tracer } from '../src/main/trace/tracer.js';
-import type { AgentDef, HostInvocableInventory, ToolPolicySpec } from '../src/shared/types.js';
+import type { AgentDef } from '../src/shared/types.js';
+import { ScriptedAgent } from './scripted-agent.js';
 
 const agent: AgentDef = {
   name: 'scout',
@@ -28,101 +31,11 @@ const agent: AgentDef = {
   color: '#abc',
 };
 
-function emptyUsage(): TurnResult {
-  return {
-    text: 'ok',
-    usage: null,
-    reason: 'completed',
-    interrupted: false,
-    structuredOutput: null,
-  };
-}
-
-interface ScriptedOpts {
-  id?: string;
-  /** How many send() calls throw before succeeding. */
-  failSends?: number;
-  failStart?: boolean;
-  tools?: SessionTool[];
-}
-
-function scriptedSession(opts: ScriptedOpts = {}): TransportSession & {
-  sendCalls: number;
-  startCalls: number;
-  closed: boolean;
-} {
-  let fails = opts.failSends ?? 0;
-  let alive = true;
-  let closed = false;
-  const session = {
-    sendCalls: 0,
-    startCalls: 0,
-    get closed() {
-      return closed;
-    },
-    id: opts.id ?? `sess_${Math.random().toString(36).slice(2, 8)}`,
-    get alive() {
-      return alive && !closed;
-    },
-    pid: undefined as number | undefined,
-    lastUserMessageId: null as string | null,
-    availableModels: [],
-    activeModel: 'scripted',
-    async start() {
-      session.startCalls += 1;
-      if (opts.failStart) throw new Error('handshake refused');
-    },
-    async send() {
-      session.sendCalls += 1;
-      if (fails > 0) {
-        fails -= 1;
-        throw new Error('protocol boom');
-      }
-      return emptyUsage();
-    },
-    async applySettings() {
-      return { model: 'scripted' };
-    },
-    async contextStats() {
-      return null;
-    },
-    async contextBreakdown() {
-      return null;
-    },
-    async compact() {
-      return null;
-    },
-    async getRewindInfo() {
-      return null;
-    },
-    async rewind() {
-      return null;
-    },
-    async listTools() {
-      return opts.tools ?? [];
-    },
-    async interrupt() {},
-    async close() {
-      closed = true;
-      alive = false;
-    },
-    kill() {
-      closed = true;
-      alive = false;
-    },
-    spawnArgs() {
-      return [];
-    },
-  };
-  return session;
-}
-
-describe('AgentSession transport selection', () => {
+describe('AgentSession is daemon-only', () => {
   let support: string;
   let tracer: Tracer;
   let worktree: string;
   let runId: string;
-  let modes: Mode[];
 
   beforeEach(() => {
     support = tempDir('foundry-agent-transport-');
@@ -130,11 +43,6 @@ describe('AgentSession transport selection', () => {
     const db = openDb(projectDbPath(support, 'proj'));
     tracer = new Tracer(db, projectRunsDir(support, 'proj'));
     runId = `run_${Math.random().toString(36).slice(2, 8)}`;
-    modes = [];
-  });
-
-  afterEach(async () => {
-    // nothing to kill — scripted sessions only
   });
 
   function beginRun(mode: Mode = 'daemon'): void {
@@ -157,444 +65,108 @@ describe('AgentSession transport selection', () => {
     });
   }
 
-  function makeSession(
-    overrides: Partial<ConstructorParameters<typeof AgentSession>[1]> & {
-      agent?: AgentDef;
-    } = {},
-  ): AgentSession {
-    const { agent: agentOverride, ...deps } = overrides;
-    return new AgentSession(agentOverride ?? agent, {
+  function makeSession(open: () => Promise<OpenDaemonResult>): AgentSession {
+    return new AgentSession(agent, {
       cliPath: 'droid-not-used',
       runId,
       worktree,
       turnTimeoutMs: 5_000,
       tracer,
       policy: { protectedPaths: [] },
-      onModeChange: (mode) => {
-        modes.push(mode);
-        tracer.setRunMode(runId, mode);
-      },
-      ...deps,
+      openDaemonSessions: open,
     });
   }
 
-  it('defaults to daemon mode and keeps it when the daemon session opens', async () => {
-    beginRun('daemon');
-    const daemon = scriptedSession({ id: 'daemon-1' });
-    const session = makeSession({
-      transport: 'daemon',
-      openDaemonSession: async (): Promise<OpenDaemonResult> => ({
-        ok: true,
-        session: daemon,
-      }),
-      openRpcSession: async () => {
-        throw new Error('rpc must not open when daemon succeeds');
-      },
-    });
-    expect(session.currentMode).toBe('daemon');
+  it('runs the turn on the daemon and reports daemon mode', async () => {
+    beginRun();
+    const daemon = new ScriptedAgent(['ok']);
+    const session = makeSession(async () => ({ ok: true, sessions: daemon }));
 
-    const phaseId = tracer.openPhase({
-      runId,
-      seq: 0,
-      name: 'scout',
-      kind: 'agent',
-      owner: 'scout',
-      description: 'd',
-    });
-    const outcome = await session.send('hello', { phaseId });
+    const outcome = await session.send('go', { phaseId: 'p1' });
+
     expect(outcome.text).toBe('ok');
     expect(session.currentMode).toBe('daemon');
-    expect(daemon.sendCalls).toBe(1);
-    // Constructor already chose daemon, so onModeChange stays quiet; the run
-    // row still reflects the settings default written at startRun.
-    expect(modes).toEqual([]);
     expect(tracer.run(runId)!.mode).toBe('daemon');
     expect(tracer.agentSessions(runId)[0]!.mode).toBe('daemon');
     await session.close();
   });
 
-  it('transport=subprocess forces SdkSession and never opens the daemon', async () => {
-    beginRun('rpc');
-    let daemonOpens = 0;
-    const rpc = scriptedSession({ id: 'rpc-1' });
-    const session = makeSession({
-      transport: 'subprocess',
-      openDaemonSession: async () => {
-        daemonOpens += 1;
-        return { ok: false, reason: 'should not be called' };
-      },
-      openRpcSession: async () => rpc,
-    });
-    expect(session.currentMode).toBe('rpc');
+  it('fails the turn when the daemon cannot be reached, rather than degrading', async () => {
+    beginRun();
+    const session = makeSession(async () => ({ ok: false, reason: 'connect_failed: no daemon' }));
 
-    const phaseId = tracer.openPhase({
-      runId,
-      seq: 0,
-      name: 'scout',
-      kind: 'agent',
-      owner: 'scout',
-      description: 'd',
-    });
-    await session.send('hello', { phaseId });
-    expect(daemonOpens).toBe(0);
-    expect(session.currentMode).toBe('rpc');
-    expect(rpc.sendCalls).toBe(1);
-    expect(tracer.run(runId)!.mode).toBe('rpc');
-    expect(tracer.agentSessions(runId)[0]!.mode).toBe('rpc');
+    await expect(session.send('go', { phaseId: 'p1' })).rejects.toThrow(
+      /daemon unavailable: connect_failed: no daemon/,
+    );
+    // The run never claims a transport it did not get onto.
+    expect(tracer.run(runId)!.mode).toBe('daemon');
     await session.close();
   });
 
-  it('falls back to subprocess with a traced warning when the daemon is blocked', async () => {
-    beginRun('daemon');
-    const rpc = scriptedSession({ id: 'rpc-fallback' });
-    const session = makeSession({
-      transport: 'daemon',
-      openDaemonSession: async () => ({
-        ok: false,
-        reason: 'daemon connect_failed: refused',
-      }),
-      openRpcSession: async () => rpc,
+  it('fails the turn when reaching the daemon throws', async () => {
+    beginRun();
+    const session = makeSession(async () => {
+      throw new Error('websocket refused');
     });
 
-    const phaseId = tracer.openPhase({
-      runId,
-      seq: 0,
-      name: 'scout',
-      kind: 'agent',
-      owner: 'scout',
-      description: 'd',
-    });
-    await session.send('hello', { phaseId });
-    expect(session.currentMode).toBe('rpc');
-    expect(rpc.sendCalls).toBe(1);
-    expect(modes).toEqual(['rpc']);
-    expect(tracer.run(runId)!.mode).toBe('rpc');
-    expect(tracer.agentSessions(runId)[0]!.mode).toBe('rpc');
-
-    const fallbacks = tracer
-      .eventsAfter(runId, 0, 1000)
-      .filter((e) => e.type === 'log' && e.name.includes('fallback to subprocess'));
-    expect(fallbacks.length).toBeGreaterThanOrEqual(1);
-    expect(fallbacks[0]!.name).toContain('daemon connect_failed');
+    await expect(session.send('go', { phaseId: 'p1' })).rejects.toThrow(
+      /daemon unavailable: websocket refused/,
+    );
     await session.close();
   });
 
-  it('fails closed to subprocess when restrictTools cannot be enforced on daemon', async () => {
-    beginRun('daemon');
-    const rpc = scriptedSession({ id: 'rpc-restrict' });
-    // No openDaemonSession seam: production openDaemonProduction short-circuits
-    // on restrictTools before any DaemonManager.ensure() / spawn.
-    const session = makeSession({
-      transport: 'daemon',
-      agent: { ...agent, tools: ['Read'] },
-      openRpcSession: async () => rpc,
-    });
+  it('fails the turn when the daemon session will not start', async () => {
+    beginRun();
+    const daemon = new ScriptedAgent(['ok']);
+    // A facade whose create always refuses is how a daemon that is up but
+    // unable to open a session presents itself.
+    const refusing = Object.create(daemon) as ScriptedAgent;
+    refusing.create = async () => {
+      throw new Error('session limit reached');
+    };
+    const session = makeSession(async () => ({ ok: true, sessions: refusing }));
 
-    const phaseId = tracer.openPhase({
-      runId,
-      seq: 0,
-      name: 'scout',
-      kind: 'agent',
-      owner: 'scout',
-      description: 'd',
-    });
-    await session.send('hello', { phaseId });
-    expect(session.currentMode).toBe('rpc');
-    expect(rpc.sendCalls).toBe(1);
-    const fallbacks = tracer
-      .eventsAfter(runId, 0, 1000)
-      .filter((e) => e.type === 'log' && e.name.includes('restrictTools'));
-    expect(fallbacks.length).toBeGreaterThanOrEqual(1);
-    expect(fallbacks[0]!.name).toContain('fallback to subprocess');
+    await expect(session.send('go', { phaseId: 'p1' })).rejects.toThrow(
+      /daemon session start failed: session limit reached/,
+    );
     await session.close();
   });
 
-  it('degrades daemon → rpc → oneshot across two protocol strikes (VAL-DAEMON-013)', async () => {
-    beginRun('daemon');
-    const daemon = scriptedSession({ id: 'd-ladder', failSends: 1 });
-    const rpc = scriptedSession({ id: 'r-ladder', failSends: 1 });
-    // After two strikes the session is oneshot; without a real CLI the oneshot
-    // send fails. Capture that and still verify the ladder via mode + events.
+  it('surfaces a mid-turn transport failure instead of retrying it elsewhere', async () => {
+    beginRun();
+    const daemon = new ScriptedAgent(['never reached'], [], [], { dieOnTurns: [0] });
+    const session = makeSession(async () => ({ ok: true, sessions: daemon }));
 
-    const session = makeSession({
-      transport: 'daemon',
-      openDaemonSession: async () => ({ ok: true, session: daemon }),
-      openRpcSession: async () => rpc,
-    });
-    expect(session.currentMode).toBe('daemon');
-
-    const phaseId = tracer.openPhase({
-      runId,
-      seq: 0,
-      name: 'scout',
-      kind: 'agent',
-      owner: 'scout',
-      description: 'd',
-    });
-
-    await session.send('hello', { phaseId }).catch((e: Error) => e);
-
-    // Initial daemon is the constructor default (no onModeChange); transitions
-    // fire only for the falls: daemon→rpc, then rpc→oneshot.
-    expect(modes).toEqual(['rpc', 'oneshot']);
-    expect(session.currentMode).toBe('oneshot');
-    expect(daemon.sendCalls).toBe(1);
-    expect(rpc.sendCalls).toBe(1);
-    expect(tracer.run(runId)!.mode).toBe('oneshot');
-    expect(tracer.agentSessions(runId)[0]!.mode).toBe('oneshot');
-
-    const events = tracer.eventsAfter(runId, 0, 1000).filter((e) => e.type === 'log');
-    const subprocessFallback = events.filter((e) => e.name.includes('fallback to subprocess'));
-    const oneshotFallback = events.filter((e) => e.name.includes('fallback to one-shot'));
-    expect(subprocessFallback.length).toBeGreaterThanOrEqual(1);
-    expect(oneshotFallback.length).toBeGreaterThanOrEqual(1);
-    // Ordering: subprocess fallback (daemon→rpc) before oneshot fallback.
-    const subIdx = events.findIndex((e) => e.name.includes('fallback to subprocess'));
-    const oneIdx = events.findIndex((e) => e.name.includes('fallback to one-shot'));
-    expect(subIdx).toBeGreaterThanOrEqual(0);
-    expect(oneIdx).toBeGreaterThan(subIdx);
-
+    await expect(session.send('go', { phaseId: 'p1' })).rejects.toThrow(/died mid-turn/);
+    // No fallback event exists to be written, because no fallback exists.
+    const names = tracer.eventsAfter(runId, 0).map((e) => e.name);
+    expect(names.some((n) => /fallback/.test(n))).toBe(false);
     await session.close();
   });
 
-  it('stays on daemon when there are zero protocol strikes', async () => {
-    beginRun('daemon');
-    const daemon = scriptedSession({ id: 'd-stable' });
-    const session = makeSession({
-      transport: 'daemon',
-      openDaemonSession: async () => ({ ok: true, session: daemon }),
-      openRpcSession: async () => {
-        throw new Error('rpc must not open on a healthy daemon path');
-      },
-    });
-    const phaseId = tracer.openPhase({
-      runId,
-      seq: 0,
-      name: 'scout',
-      kind: 'agent',
-      owner: 'scout',
-      description: 'd',
-    });
-    await session.send('one', { phaseId });
-    await session.send('two', { phaseId });
-    expect(session.currentMode).toBe('daemon');
-    expect(daemon.sendCalls).toBe(2);
-    expect(modes.filter((m) => m === 'rpc' || m === 'oneshot')).toEqual([]);
+  it('keeps one daemon session across turns rather than reopening per turn', async () => {
+    beginRun();
+    const daemon = new ScriptedAgent(['one', 'two']);
+    const session = makeSession(async () => ({ ok: true, sessions: daemon }));
+
+    await session.send('first', { phaseId: 'p1' });
+    await session.send('second', { phaseId: 'p1' });
+
+    expect(daemon.sessionOpens).toBe(1);
+    expect(daemon.turnRequests.map((t) => t.text)).toEqual(['first', 'second']);
     await session.close();
   });
 
-  it('a single daemon strike falls to rpc and completes the turn there', async () => {
-    beginRun('daemon');
-    const daemon = scriptedSession({ id: 'd-one-strike', failSends: 1 });
-    const rpc = scriptedSession({ id: 'r-recover' });
-    const session = makeSession({
-      transport: 'daemon',
-      openDaemonSession: async () => ({ ok: true, session: daemon }),
-      openRpcSession: async () => rpc,
-    });
-    const phaseId = tracer.openPhase({
-      runId,
-      seq: 0,
-      name: 'scout',
-      kind: 'agent',
-      owner: 'scout',
-      description: 'd',
-    });
-    const outcome = await session.send('hello', { phaseId });
-    expect(outcome.text).toBe('ok');
-    expect(session.currentMode).toBe('rpc');
-    expect(daemon.sendCalls).toBe(1);
-    expect(rpc.sendCalls).toBe(1);
-    expect(modes).toEqual(['rpc']);
-    expect(tracer.run(runId)!.mode).toBe('rpc');
+  it('refuses to answer a turn once the run has been killed', async () => {
+    beginRun();
+    const daemon = new ScriptedAgent(['ok']);
+    const session = makeSession(async () => ({ ok: true, sessions: daemon }));
+
+    session.kill();
+    await expect(session.send('go', { phaseId: 'p1' })).rejects.toThrow(/the run was killed/);
+    // A killed run must not spend a turn: that is money, and a result the run
+    // could still have been settled on.
+    expect(daemon.turnRequests).toHaveLength(0);
     await session.close();
-  });
-  /**
-   * Per-agent host isolation, at the session level: the overlay is built before
-   * the first turn spawns anything, the operator is told what was withheld, and
-   * the temp directory is gone once the session closes.
-   */
-  describe('host invocable isolation', () => {
-    function inventoryWith(
-      overrides: Partial<HostInvocableInventory> = {},
-    ): HostInvocableInventory {
-      return {
-        skills: [],
-        droids: [],
-        mcpServers: [],
-        factoryDir: '/fake/.factory',
-        warnings: [],
-        ...overrides,
-      };
-    }
-
-    it('builds an ephemeral home, traces what it withheld, and removes it on close', async () => {
-      beginRun('rpc');
-      const home = tempDir('foundry-iso-home-');
-      const overlayRoot = tempDir('foundry-iso-tmp-');
-      mkdirSync(join(home, '.factory', 'droids'), { recursive: true });
-      writeFileSync(join(home, '.factory', 'droids', 'reviewer.md'), '# reviewer\n', 'utf8');
-
-      const rpc = scriptedSession({ id: 'rpc-iso' });
-      const session = makeSession({
-        transport: 'subprocess',
-        openRpcSession: async () => rpc,
-        overlayHomeDir: home,
-        overlayTmpRoot: overlayRoot,
-        hostInvocables: inventoryWith({
-          droids: [
-            {
-              id: 'reviewer',
-              name: 'reviewer',
-              description: 'reviews',
-              location: join(home, '.factory', 'droids', 'reviewer.md'),
-            },
-          ],
-        }),
-      });
-
-      const phaseId = tracer.openPhase({
-        runId,
-        seq: 0,
-        name: 'scout',
-        kind: 'agent',
-        owner: 'scout',
-        description: 'd',
-      });
-      await session.send('hello', { phaseId });
-
-      // The overlay exists while the session does.
-      expect(readdirSync(overlayRoot).some((d) => d.startsWith('foundry-home-'))).toBe(true);
-      const isolation = tracer
-        .eventsAfter(runId, 0, 1000)
-        .filter((e) => e.name.includes('isolation'));
-      expect(isolation.length).toBe(1);
-      expect(JSON.stringify(isolation[0]!.payload)).toContain('reviewer');
-
-      await session.close();
-      // …and not after.
-      expect(readdirSync(overlayRoot).some((d) => d.startsWith('foundry-home-'))).toBe(false);
-    });
-
-    it('builds nothing on a host with nothing to withhold', async () => {
-      beginRun('rpc');
-      const overlayRoot = tempDir('foundry-iso-none-');
-      const rpc = scriptedSession({ id: 'rpc-clean' });
-      const session = makeSession({
-        transport: 'subprocess',
-        openRpcSession: async () => rpc,
-        overlayTmpRoot: overlayRoot,
-        hostInvocables: inventoryWith(),
-      });
-      const phaseId = tracer.openPhase({
-        runId,
-        seq: 0,
-        name: 'scout',
-        kind: 'agent',
-        owner: 'scout',
-        description: 'd',
-      });
-      await session.send('hello', { phaseId });
-      expect(readdirSync(overlayRoot)).toEqual([]);
-      expect(
-        tracer.eventsAfter(runId, 0, 1000).filter((e) => e.name.includes('isolation')),
-      ).toEqual([]);
-      await session.close();
-    });
-  });
-  /**
-   * Phase narrowing at the session level: the policy reaches the transport that
-   * can enforce it, and a phase that narrows is refused rather than run wide on
-   * one that cannot.
-   */
-  describe('per-phase tool policy', () => {
-    /** A scripted session that records the narrowings it was handed. */
-    function enforcing(): TransportSession & { policies: (ToolPolicySpec | null)[] } {
-      const base = scriptedSession({ id: 'rpc-policy' });
-      const policies: (ToolPolicySpec | null)[] = [];
-      return Object.assign(base, {
-        policies,
-        async setPhaseToolPolicy(policy: ToolPolicySpec | null) {
-          policies.push(policy);
-        },
-      });
-    }
-
-    function phaseId(): string {
-      return tracer.openPhase({
-        runId,
-        seq: 0,
-        name: 'scout',
-        kind: 'agent',
-        owner: 'scout',
-        description: 'd',
-      });
-    }
-
-    it('hands the phase narrowing to a transport that can enforce it', async () => {
-      beginRun('rpc');
-      const rpc = enforcing();
-      const session = makeSession({ transport: 'subprocess', openRpcSession: async () => rpc });
-
-      await session.send('hello', { phaseId: phaseId(), toolPolicy: { profile: 'read-only' } });
-      expect(rpc.policies).toEqual([{ profile: 'read-only' }]);
-
-      // Same policy again is not re-sent; a different one is.
-      await session.send('again', { phaseId: phaseId(), toolPolicy: { profile: 'read-only' } });
-      expect(rpc.policies).toHaveLength(1);
-      await session.send('third', { phaseId: phaseId(), toolPolicy: null });
-      expect(rpc.policies).toEqual([{ profile: 'read-only' }, null]);
-      await session.close();
-    });
-
-    it('refuses a narrowing phase when the transport cannot enforce it', async () => {
-      beginRun('rpc');
-      // No setPhaseToolPolicy: this transport has no way to apply a narrowing.
-      const rpc = scriptedSession({ id: 'rpc-blind' });
-      const session = makeSession({ transport: 'subprocess', openRpcSession: async () => rpc });
-
-      await expect(
-        session.send('hello', { phaseId: phaseId(), toolPolicy: { profile: 'read-only' } }),
-      ).rejects.toThrow(/cannot enforce a narrower tool policy/);
-      // Failing closed means the turn does not run at all.
-      expect(rpc.sendCalls).toBe(0);
-      await session.close();
-    });
-
-    it('leaves a non-narrowing phase alone on the same transport', async () => {
-      beginRun('rpc');
-      const rpc = scriptedSession({ id: 'rpc-plain' });
-      const session = makeSession({ transport: 'subprocess', openRpcSession: async () => rpc });
-      const outcome = await session.send('hello', { phaseId: phaseId(), toolPolicy: null });
-      expect(outcome.text).toBe('ok');
-      expect(rpc.sendCalls).toBe(1);
-      await session.close();
-    });
-
-    it('keeps a profiled agent off the daemon, which cannot enforce it', async () => {
-      beginRun('daemon');
-      let daemonOpens = 0;
-      const rpc = enforcing();
-      const session = makeSession({
-        agent: { ...agent, toolProfile: 'read-only' },
-        transport: 'daemon',
-        // Production would consult openDaemonProduction, which fails closed for a
-        // profile; the seam stands in for it so the decision is observable here.
-        openDaemonSession: async () => {
-          daemonOpens += 1;
-          return { ok: false, reason: 'daemon cannot enforce a tool profile (no listTools)' };
-        },
-        openRpcSession: async () => rpc,
-      });
-      await session.send('hello', { phaseId: phaseId() });
-      expect(daemonOpens).toBe(1);
-      expect(session.currentMode).toBe('rpc');
-      const fallbacks = tracer
-        .eventsAfter(runId, 0, 1000)
-        .filter((e) => e.name.includes('fallback to subprocess'));
-      expect(fallbacks.length).toBeGreaterThanOrEqual(1);
-      expect(JSON.stringify(fallbacks[0]!.payload)).toContain('tool profile');
-      await session.close();
-    });
   });
 });

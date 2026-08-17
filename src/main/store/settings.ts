@@ -83,7 +83,6 @@ export const appSettingsSchema = z.object({
   compactionThreshold: z.number().min(COMPACTION_BAND[0]).max(COMPACTION_BAND[1]),
   /** 0 disables; the useful range stops well before a phase's retry budgets. */
   rewindAfterCorrections: z.number().int().min(0).max(20),
-  transport: z.enum(['daemon', 'subprocess']),
   daemonPort: z.number().int().min(DAEMON_PORT_BAND[0]).max(DAEMON_PORT_BAND[1]),
   notifications: z.object({
     accepted: z.boolean(),
@@ -128,7 +127,6 @@ export function defaultSettings(): AppSettings {
     gateRetries: 2,
     compactionThreshold: 0.8,
     rewindAfterCorrections: 2,
-    transport: 'daemon',
     daemonPort: DEFAULT_DAEMON_PORT,
     notifications: { accepted: true, rejected: true, failed: true, needsInput: true },
     dockBadge: true,
@@ -202,11 +200,6 @@ export function migrate(raw: unknown): AppSettings {
   merged.rewindAfterCorrections = Math.round(
     clamp(merged.rewindAfterCorrections, base.rewindAfterCorrections, [0, 20]),
   );
-  // Pre-field files and hand-edits that leave a garbage string fall back to the
-  // daemon default rather than leaving the app with no transport at all.
-  if (merged.transport !== 'daemon' && merged.transport !== 'subprocess') {
-    merged.transport = base.transport;
-  }
   // Out-of-band ports (hand-edited or pre-field files) clamp into the mission
   // range rather than leaving the app with no daemon port at all.
   merged.daemonPort = Math.round(clamp(merged.daemonPort, base.daemonPort, DAEMON_PORT_BAND));

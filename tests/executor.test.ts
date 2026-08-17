@@ -5,8 +5,8 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { tempDir } from './tmp.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openDb, projectDbPath, projectRunsDir, type Db } from '../src/main/trace/db.js';
@@ -30,6 +30,12 @@ import type {
 import { CLI_VENDOR_IDS } from '../src/shared/types.js';
 import type { GhOptions } from '../src/main/system/gh.js';
 import { makeFakeGh } from './fake-gh.js';
+import {
+  ScriptedAgent,
+  type AskReply,
+  type ScriptedAgentOptions,
+  type ScriptedAsk,
+} from './scripted-agent.js';
 
 function sh(cwd: string, argv: string[]): string {
   try {
@@ -62,134 +68,70 @@ function emptyRepo(): string {
 }
 
 /**
- * One permission ask the scripted agent raises mid-turn, and what it does with
- * the answer. `writeIfAllowed` models an agent that respects a denial: the file
- * appears only when the policy allowed the write, so a leaked deny is visible
- * on disk rather than only in the trace.
+ * The scripted agent for the run currently under construction.
+ *
+ * Agent runs are daemon-only, so a test scripts the daemon rather than a child
+ * process: `run({ droid })` hands this to the executor's `openDaemonSessions`
+ * seam and the engine drives the production `DaemonSession` on top of it.
+ * Returned by `scriptedDroid` so every existing test keeps its shape — the
+ * value is now the agent itself instead of a path to a stub binary.
  */
-interface ScriptedAsk {
-  method: 'droid.request_permission' | 'droid.ask_user';
-  params: Record<string, unknown>;
-  writeIfAllowed?: string;
-}
-
-/** Where `scriptedDroid` records every server-request reply it received. */
-const ASK_REPLIES_FILE = 'ask-replies.jsonl';
-
-interface AskReply {
-  method: string;
-  result: Record<string, unknown> | null;
+function scriptedDroid(
+  turns: string[],
+  sideEffects: (string | null)[] = [],
+  asks: ScriptedAsk[][] = [],
+  options: ScriptedAgentOptions = {},
+): ScriptedAgent {
+  return new ScriptedAgent(turns, sideEffects, asks, options);
 }
 
 /** The replies the scripted agent got back, in the order it raised the asks. */
-function askReplies(droidPath: string): AskReply[] {
-  const path = join(dirname(droidPath), ASK_REPLIES_FILE);
-  if (!existsSync(path)) return [];
-  return readFileSync(path, 'utf8')
-    .split('\n')
-    .filter((line) => line.trim())
-    .map((line) => JSON.parse(line) as AskReply);
+function askReplies(agent: ScriptedAgent): AskReply[] {
+  return agent.askReplies;
 }
 
-interface ScriptedDroidOptions {
-  /** Turn indexes (0-based) on which the child dies mid-turn, answering nothing. */
-  dieOnTurns?: number[];
-  /** Context occupancy the session reports, against a 100k window. */
-  contextUsed?: number;
-  /** What it reports once compaction has run; defaults to a tenth of the used. */
-  contextUsedAfterCompaction?: number;
-  /** Compaction the CLI refuses, the way a session too short to compact would. */
-  compactFails?: boolean;
-  /** Turn indexes that are acknowledged but never completed, so the turn times out. */
-  stallOnTurns?: number[];
-  /** Held-back handshake, so a test can act while the session is still starting. */
-  handshakeDelayMs?: number;
-  /** Structured output the CLI reports per turn index; `null` reports none. */
-  structuredOutputs?: (unknown | null)[];
-  /**
-   * Completion reason per turn index. A `structured_output_*` reason is how
-   * the CLI says it could not shape the reply, and the SDK turns it into the
-   * `error_structured_output` subtype.
-   */
-  turnReasons?: (string | null)[];
-  /** Files get_rewind_info advertises and execute_rewind can restore (path → bytes). */
-  rewindFiles?: Record<string, string>;
-  /** Paths get_rewind_info lists as created after the rewind anchor. */
-  rewindCreatedFiles?: string[];
-  /** Rewind the CLI refuses, so the engine must fall back to append-style. */
-  rewindFails?: boolean;
+/** Every turn the engine sent, in order — the wire, not the trace. */
+function turnRequests(agent: ScriptedAgent): {
+  text: string;
+  outputFormat?: unknown;
+  sessionId: string;
+}[] {
+  return agent.turnRequests;
 }
-
-/** Where `scriptedDroid` records the params of every turn the client sent. */
-const TURN_REQUESTS_FILE = 'turn-requests.jsonl';
-
-/** Every `add_user_message` the client sent, in order — the wire, not the trace. */
-function turnRequests(droidPath: string): Record<string, unknown>[] {
-  const path = join(dirname(droidPath), TURN_REQUESTS_FILE);
-  if (!existsSync(path)) return [];
-  return readFileSync(path, 'utf8')
-    .split('\n')
-    .filter((line) => line.trim())
-    .map((line) => JSON.parse(line) as Record<string, unknown>);
-}
-
-/** Where `scriptedDroid` records every wire event in the order it saw it. */
-const WIRE_FILE = 'wire.jsonl';
 
 /**
- * The session's wire history: every request the client sent plus the turn
- * completions the stub answered with, in order. Whether compaction happened
+ * The session's wire history: every request the engine made plus the turn
+ * boundaries the agent answered with, in order. Whether compaction happened
  * mid-turn is only knowable from this ordering.
  */
-function wireLog(droidPath: string): string[] {
-  const path = join(dirname(droidPath), WIRE_FILE);
-  if (!existsSync(path)) return [];
-  return readFileSync(path, 'utf8')
-    .split('\n')
-    .filter((line) => line.trim());
+function wireLog(agent: ScriptedAgent): string[] {
+  return agent.wire;
 }
-
-/** Where the stub records on-disk file bytes at the start of each turn. */
-const CONTENT_AT_TURN_FILE = 'content-at-turn.jsonl';
 
 /** Per-turn snapshots of watched files, so a test can see pre-retry restores. */
-function contentAtTurns(droidPath: string): { turn: number; files: Record<string, string> }[] {
-  const path = join(dirname(droidPath), CONTENT_AT_TURN_FILE);
-  if (!existsSync(path)) return [];
-  return readFileSync(path, 'utf8')
-    .split('\n')
-    .filter((line) => line.trim())
-    .map((line) => JSON.parse(line) as { turn: number; files: Record<string, string> });
+function contentAtTurns(agent: ScriptedAgent): {
+  turn: number;
+  files: Record<string, string | null>;
+}[] {
+  return agent.contentAtTurns;
 }
 
-/** Marker the stub writes as soon as it is spawned, before any handshake. */
-const SPAWN_MARKER_FILE = 'spawned';
-
-/** Marker the stub writes the moment a turn starts, in either transport. */
-const TURN_MARKER_FILE = 'turn-started';
-
-/** `"<transport> <turn index>"` per turn the scripted agent has begun. */
-function turnMarkers(droidPath: string): string[] {
-  const path = join(dirname(droidPath), TURN_MARKER_FILE);
-  if (!existsSync(path)) return [];
-  return readFileSync(path, 'utf8')
-    .split('\n')
-    .filter((line) => line.trim());
+/** `"daemon <turn index>"` per turn the scripted agent has begun. */
+function turnMarkers(agent: ScriptedAgent): string[] {
+  return agent.turnMarkers;
 }
 
 /** Whether the scripted agent has begun a turn, i.e. a turn is in flight. */
-function turnStarted(droidPath: string): boolean {
-  return turnMarkers(droidPath).length > 0;
+function turnStarted(agent: ScriptedAgent): boolean {
+  return agent.turnStarted;
 }
 
-/** How many scripted children have reached their handshake, restarts included. */
-function handshakeCount(droidPath: string): number {
-  const path = join(dirname(droidPath), SPAWN_MARKER_FILE);
-  if (!existsSync(path)) return 0;
-  return readFileSync(path, 'utf8').split('\n').filter(Boolean).length;
+/** How many sessions the run has opened, resumes included. */
+function handshakeCount(agent: ScriptedAgent): number {
+  return agent.sessionOpens;
 }
 
-/** Waits for a condition the scripted child reports through the filesystem. */
+/** Waits for a condition the scripted agent reports. */
 async function until(predicate: () => boolean, what: string, timeoutMs = 10_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -197,295 +139,6 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 10_000)
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
   throw new Error(`timed out waiting for ${what}`);
-}
-
-/**
- * Droid stand-in whose whole behaviour is a list of scripted turns, so a
- * pipeline's control flow can be tested without a model in the loop.
- *
- * It answers both transports off one argv: the SDK spawns it with
- * `--input-format stream-jsonrpc` and drives the JSON-RPC handshake, while the
- * one-shot fallback spawns it per turn and reads a single terminal object. The
- * shared turn counter on disk is what lets a session degrade mid-phase and
- * still continue the script where it left off.
- *
- * Every frame here has to satisfy the CLI's real zod schemas, because the SDK
- * validates and silently drops what does not — in particular the completion
- * must echo back the `messageId` the SDK minted for the turn, or the turn never
- * resolves.
- */
-function scriptedDroid(
-  turns: string[],
-  sideEffects: (string | null)[] = [],
-  asks: ScriptedAsk[][] = [],
-  options: ScriptedDroidOptions = {},
-): string {
-  const dir = tempDir('foundry-scripted-');
-  const state = join(dir, 'turn-count');
-  writeFileSync(state, '0');
-  const script = `
-const { appendFileSync, readFileSync, writeFileSync, mkdirSync } = require('node:fs');
-const { dirname, isAbsolute, join } = require('node:path');
-const V = { jsonrpc: '2.0', factoryApiVersion: '1.0.0', factoryProtocolVersion: '1.151.0' };
-const TURNS = ${JSON.stringify(turns)};
-const EFFECTS = ${JSON.stringify(sideEffects)};
-const ASKS = ${JSON.stringify(asks)};
-const STATE = ${JSON.stringify(state)};
-const REPLIES = ${JSON.stringify(join(dir, ASK_REPLIES_FILE))};
-const TURN_MARKER = ${JSON.stringify(join(dir, TURN_MARKER_FILE))};
-const SPAWN_MARKER = ${JSON.stringify(join(dir, SPAWN_MARKER_FILE))};
-const TURN_REQUESTS = ${JSON.stringify(join(dir, TURN_REQUESTS_FILE))};
-const WIRE = ${JSON.stringify(join(dir, WIRE_FILE))};
-const HANDSHAKE_DELAY = ${JSON.stringify(options.handshakeDelayMs ?? 0)};
-const DIE_ON = ${JSON.stringify(options.dieOnTurns ?? [])};
-const STALL_ON = ${JSON.stringify(options.stallOnTurns ?? [])};
-const STRUCTURED = ${JSON.stringify(options.structuredOutputs ?? [])};
-const REASONS = ${JSON.stringify(options.turnReasons ?? [])};
-const CONTEXT_LIMIT = 100000;
-const CONTEXT_USED = ${JSON.stringify(options.contextUsed ?? 1234)};
-const CONTEXT_USED_COMPACTED = ${JSON.stringify(
-    options.contextUsedAfterCompaction ?? Math.round((options.contextUsed ?? 1234) / 10),
-  )};
-const COMPACT_FAILS = ${JSON.stringify(options.compactFails ?? false)};
-const REWIND_FILES = ${JSON.stringify(options.rewindFiles ?? {})};
-const REWIND_CREATED = ${JSON.stringify(options.rewindCreatedFiles ?? [])};
-const REWIND_FAILS = ${JSON.stringify(options.rewindFails ?? false)};
-const CONTENT_AT_TURN = ${JSON.stringify(join(dir, CONTENT_AT_TURN_FILE))};
-const EFFORTS = ['off', 'low', 'medium', 'high', 'xhigh', 'max'];
-const MODELS = [{ id: 'scripted', displayName: 'Scripted', shortDisplayName: 'Scripted', modelProvider: 'anthropic', supportedReasoningEfforts: EFFORTS, defaultReasoningEffort: 'medium', isCustom: false }];
-const SETTINGS = { modelId: 'scripted', reasoningEffort: 'medium', autonomyLevel: 'high' };
-const USAGE = { inputTokens: 100, outputTokens: 20, cacheCreationTokens: 0, cacheReadTokens: 0, thinkingTokens: 0, factoryCredits: 1 };
-// The SDK spawns with the stream-jsonrpc formats; the one-shot fallback does not.
-const RPC = process.argv.includes('stream-jsonrpc');
-const workdir = process.cwd();
-const { createHash } = require('node:crypto');
-
-const write = (path, contents) => {
-  const target = isAbsolute(path) ? path : join(workdir, path);
-  mkdirSync(dirname(target), { recursive: true });
-  writeFileSync(target, contents ?? 'written by the scripted agent\\n');
-};
-
-const takeTurn = () => {
-  const n = Number(readFileSync(STATE, 'utf8')) || 0;
-  writeFileSync(STATE, String(n + 1));
-  // The marker is how a test knows a turn is actually in flight, and which
-  // transport ran it, without racing the engine.
-  appendFileSync(TURN_MARKER, (RPC ? 'rpc' : 'oneshot') + ' ' + n + '\\n');
-  return n;
-};
-const textFor = (n) => TURNS[Math.min(n, TURNS.length - 1)];
-const recordWatchedContent = (n) => {
-  const paths = Object.keys(REWIND_FILES);
-  if (!paths.length) return;
-  const files = {};
-  for (const rel of paths) {
-    const target = isAbsolute(rel) ? rel : join(workdir, rel);
-    try { files[rel] = readFileSync(target, 'utf8'); } catch { files[rel] = null; }
-  }
-  appendFileSync(CONTENT_AT_TURN, JSON.stringify({ turn: n, files }) + '\\n');
-};
-const availableRewindFiles = () => Object.entries(REWIND_FILES).map(([filePath, content]) => {
-  const buf = Buffer.from(content, 'utf8');
-  return { filePath, contentHash: createHash('sha256').update(buf).digest('hex'), size: buf.byteLength };
-});
-
-if (!RPC) {
-  const n = takeTurn();
-  const effect = EFFECTS[n];
-  if (effect) write(effect);
-  // A stalled one-shot turn stays alive and silent, so a kill can land on it.
-  if (STALL_ON.includes(n)) { setInterval(() => {}, 1000); return; }
-  process.stdout.write(JSON.stringify({ type: 'completion', finalText: textFor(n), session_id: 's1', usage: { input_tokens: 100, output_tokens: 20 } }) + '\\n');
-  process.exit(0);
-}
-
-const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
-// Every request in, every turn boundary out: the only record of what happened
-// between two turns rather than inside one.
-const wire = (entry) => appendFileSync(WIRE, entry + '\\n');
-const notify = (n) => out({ ...V, type: 'notification', method: 'droid.session_notification', params: { sessionId, notification: n } });
-const pending = new Map();
-let askSeq = 0;
-let buffer = '';
-let turnId = null;
-let sessionId = 's1';
-let compactions = 0;
-let rewinds = 0;
-
-/** Raises each ask in order, waiting for the answer, then finishes the turn. */
-const raiseAsks = (list, done) => {
-  const next = (i) => {
-    if (i >= list.length) return done();
-    const ask = list[i];
-    const id = 'srv-' + askSeq++;
-    pending.set(id, (result) => {
-      // The reply the agent actually received, not the trace: cancelled vs
-      // answers is what decides whether the agent asks again.
-      appendFileSync(REPLIES, JSON.stringify({ method: ask.method, result: result ?? null }) + '\\n');
-      const allowed = !!result && result.selectedOption !== undefined && result.selectedOption !== 'cancel';
-      if (ask.writeIfAllowed && allowed) write(ask.writeIfAllowed);
-      next(i + 1);
-    });
-    out({ ...V, type: 'request', id, method: ask.method, params: ask.params });
-  };
-  next(0);
-};
-
-const finish = (n) => {
-  const messageId = 'm' + n;
-  notify({ type: 'create_message', message: { id: messageId, role: 'assistant', content: [{ type: 'text', text: textFor(n) }], createdAt: 1, updatedAt: 1 } });
-  const structured = STRUCTURED[n];
-  if (structured !== undefined && structured !== null) {
-    notify({ type: 'structured_output', messageId, structuredOutput: structured });
-  }
-  notify({ type: 'session_token_usage_changed', sessionId, tokenUsage: USAGE });
-  wire('turn_completed ' + n);
-  notify({ type: 'agent_turn_completed', reason: REASONS[n] || 'completed', turnId, tokenUsage: USAGE, cumulativeTokenUsage: USAGE });
-};
-
-const runTurn = () => {
-  const n = takeTurn();
-  recordWatchedContent(n);
-  if (DIE_ON.includes(n)) { setTimeout(() => process.exit(9), 20); return; }
-  if (STALL_ON.includes(n)) return;
-  const effect = EFFECTS[n];
-  if (effect) write(effect);
-  raiseAsks(ASKS[n] || [], () => finish(n));
-};
-
-process.stdin.on('data', (chunk) => {
-  buffer += chunk.toString();
-  let i;
-  while ((i = buffer.indexOf('\\n')) >= 0) {
-    const line = buffer.slice(0, i); buffer = buffer.slice(i + 1);
-    if (!line.trim()) continue;
-    let msg; try { msg = JSON.parse(line); } catch { continue; }
-    const { id, method, params = {} } = msg;
-    if (msg.type === 'response' && pending.has(id)) {
-      const resolve = pending.get(id);
-      pending.delete(id);
-      resolve(msg.result);
-      continue;
-    }
-    if (method) wire(method);
-    if (method === 'droid.initialize_session' || method === 'droid.load_session') {
-      // A resumed session handshakes with load_session, so both are marked: a
-      // restart's child is only visible to a test through the second one.
-      appendFileSync(SPAWN_MARKER, method + '\\n');
-      if (method === 'droid.load_session' && params.sessionId) sessionId = params.sessionId;
-      const result = method === 'droid.initialize_session'
-        ? { sessionId, session: { messages: [] }, settings: SETTINGS, availableModels: MODELS }
-        : { session: { messages: [] }, settings: SETTINGS, availableModels: MODELS, cwd: workdir };
-      const answer = () => out({ ...V, type: 'response', id, result });
-      if (HANDSHAKE_DELAY) setTimeout(answer, HANDSHAKE_DELAY); else answer();
-    } else if (method === 'droid.compact_session') {
-      if (COMPACT_FAILS) {
-        out({ ...V, type: 'response', id, error: { code: -32603, message: 'nothing to compact' } });
-      } else {
-        compactions++;
-        // A successor id the source handle is retired for: the next turn has to
-        // arrive on it, and load_session is how the SDK adopts it.
-        out({ ...V, type: 'response', id, result: { newSessionId: 's' + (compactions + 1), removedCount: 7 } });
-      }
-    } else if (method === 'droid.get_rewind_info') {
-      if (REWIND_FAILS) {
-        out({ ...V, type: 'response', id, error: { code: -32603, message: 'rewind info unavailable' } });
-      } else {
-        out({
-          ...V,
-          type: 'response',
-          id,
-          result: {
-            availableFiles: availableRewindFiles(),
-            createdFiles: REWIND_CREATED.map((filePath) => ({ filePath })),
-            evictedFiles: [],
-          },
-        });
-      }
-    } else if (method === 'droid.execute_rewind') {
-      if (REWIND_FAILS) {
-        out({ ...V, type: 'response', id, error: { code: -32603, message: 'rewind refused' } });
-      } else {
-        rewinds++;
-        const restore = Array.isArray(params.filesToRestore) ? params.filesToRestore : [];
-        let restoredCount = 0;
-        for (const file of restore) {
-          const rel = file && file.filePath;
-          if (rel && Object.prototype.hasOwnProperty.call(REWIND_FILES, rel)) {
-            write(rel, REWIND_FILES[rel]);
-            restoredCount++;
-          }
-        }
-        const del = Array.isArray(params.filesToDelete) ? params.filesToDelete : [];
-        let deletedCount = 0;
-        for (const file of del) {
-          const rel = file && file.filePath;
-          if (!rel) continue;
-          try {
-            const target = isAbsolute(rel) ? rel : join(workdir, rel);
-            require('node:fs').rmSync(target, { force: true });
-            deletedCount++;
-          } catch { /* best-effort */ }
-        }
-        // Successor id the source handle is retired for — same swap as compact.
-        out({
-          ...V,
-          type: 'response',
-          id,
-          result: {
-            newSessionId: 'rw' + rewinds,
-            restoredCount,
-            deletedCount,
-            failedRestoreCount: 0,
-            failedDeleteCount: 0,
-          },
-        });
-      }
-    } else if (method === 'droid.update_session_settings') {
-      notify({ type: 'settings_updated', requestId: id, settings: SETTINGS });
-      out({ ...V, type: 'response', id, result: {} });
-    } else if (method === 'droid.list_tools') {
-      out({ ...V, type: 'response', id, result: { tools: [{ id: 'execute-cli', llmId: 'Execute', displayName: 'Execute', description: 'run a command', category: 'execute', defaultAllowed: true, currentlyAllowed: true }] } });
-    } else if (method === 'droid.get_context_breakdown') {
-      out({ ...V, type: 'response', id, result: { modelId: 'scripted', modelDisplayName: 'Scripted', contextBudget: CONTEXT_LIMIT, usedTokens: 1200, freeTokens: CONTEXT_LIMIT - 1200, categories: [{ name: 'System prompt', tokens: 900, colorKey: 'systemPrompt' }], skills: [], mcpServers: [], droids: [] } });
-    } else if (method === 'droid.get_context_stats') {
-      const used = compactions ? CONTEXT_USED_COMPACTED : CONTEXT_USED;
-      out({ ...V, type: 'response', id, result: { used, remaining: CONTEXT_LIMIT - used, limit: CONTEXT_LIMIT, accuracy: 'estimated', updatedAt: '2026-08-09T00:00:00.000Z' } });
-    } else if (method === 'droid.add_user_message') {
-      turnId = params.messageId;
-      wire('turn_started ' + params.messageId + ' session=' + sessionId);
-      // User create_message is how SdkSession learns the rewind anchor id.
-      notify({
-        type: 'create_message',
-        message: {
-          id: params.messageId,
-          role: 'user',
-          content: [{ type: 'text', text: String(params.text || '') }],
-          createdAt: 1,
-          updatedAt: 1,
-        },
-      });
-      // The params as they arrived: whether a turn carried an output schema is
-      // only knowable from the wire, not from any observable side effect.
-      appendFileSync(TURN_REQUESTS, JSON.stringify(params) + '\\n');
-      out({ ...V, type: 'response', id, result: {} });
-      runTurn();
-    } else if (method === 'droid.close_session') {
-      out({ ...V, type: 'response', id, result: {} });
-      setTimeout(() => process.exit(0), 10);
-    } else {
-      out({ ...V, type: 'response', id, result: {} });
-    }
-  }
-});
-`;
-  const js = join(dir, 'scripted.cjs');
-  writeFileSync(js, script);
-  const bin = join(dir, 'droid');
-  writeFileSync(bin, `#!/bin/sh\nexec "${process.execPath}" "${js}" "$@"\n`);
-  chmodSync(bin, 0o755);
-  return bin;
 }
 
 /** A `droid.request_permission` ask in the CLI's real nested shape. */
@@ -647,23 +300,15 @@ function processRows(runId: string): ProcessRow[] {
     .all(runId) as ProcessRow[];
 }
 
-/** Whether a pid is still a live process, without signalling it. */
-function alive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 type AskHuman = ConstructorParameters<typeof Executor>[0]['askHuman'];
 
 interface RunInput {
   pipeline: PipelineDef;
   agents?: AgentDef[];
   envelopeDefs?: EnvelopeDef[];
-  droidPath?: string;
+  droid?: ScriptedAgent;
+  /** Reason the daemon could not be reached, when the run must fail to open one. */
+  daemonUnavailable?: string;
   request?: string;
   project?: Partial<ProjectDef>;
   askHuman?: AskHuman;
@@ -673,8 +318,6 @@ interface RunInput {
   compactionThreshold?: number;
   rewindAfterCorrections?: number;
   daemonPort?: number;
-  /** Defaults to subprocess so unit tests never spawn a real daemon. */
-  transport?: 'daemon' | 'subprocess';
   mcpServers?: import('../src/shared/types.js').UserMcpServer[]; // eslint-disable-line @typescript-eslint/consistent-type-imports
   gh?: GhOptions;
 }
@@ -694,10 +337,9 @@ function start(input: RunInput): {
   done: Promise<{ status: string; runId: string }>;
 } {
   const runId = `run_${Math.random().toString(36).slice(2, 8)}`;
-  // These tests exercise droid, so every vendor points at the same stub: an
-  // agent that names another CLI would otherwise spawn a binary the test
-  // environment does not have.
-  const path = input.droidPath ?? 'droid-not-used';
+  // No child is spawned: the scripted agent answers behind the daemon facade.
+  // The path is still set because CliConfig requires one and the trace shows it.
+  const path = 'droid-not-used';
   const clis = {} as Record<CliVendor, CliConfig>;
   for (const vendor of CLI_VENDOR_IDS) clis[vendor] = { path, extraArgs: [] };
   const executor = new Executor({
@@ -709,7 +351,10 @@ function start(input: RunInput): {
     compactionThreshold: input.compactionThreshold ?? 0.8,
     rewindAfterCorrections: input.rewindAfterCorrections ?? 2,
     daemonPort: input.daemonPort ?? 37_643,
-    transport: input.transport ?? 'subprocess',
+    openDaemonSessions: async () =>
+      input.daemonUnavailable
+        ? { ok: false, reason: input.daemonUnavailable }
+        : { ok: true, sessions: input.droid ?? new ScriptedAgent([]) },
     mcpServers: input.mcpServers ?? [],
     agents: input.agents ?? [buildAgent()],
     envelopeDefs: input.envelopeDefs ?? [],
@@ -921,7 +566,7 @@ describe('agent phases', () => {
   it('parses an envelope, runs gates, and records both', async () => {
     const droid = scriptedDroid([buildEnvelope({ changed_files: ['made.txt'] })], ['made.txt']);
     const outcome = await run({
-      droidPath: droid,
+      droid,
       pipeline: pipe(
         [
           agentPhase('build', {
@@ -947,7 +592,7 @@ describe('agent phases', () => {
   it('corrects a malformed reply in the same session and then succeeds', async () => {
     const droid = scriptedDroid(['I will explain in prose instead of JSON.', buildEnvelope()]);
     const outcome = await run({
-      droidPath: droid,
+      droid,
       pipeline: pipe(
         [
           agentPhase('build', {
@@ -970,7 +615,7 @@ describe('agent phases', () => {
   it('fails the phase when no attempt ever produces a valid envelope', async () => {
     const droid = scriptedDroid(['never json']);
     const outcome = await run({
-      droidPath: droid,
+      droid,
       pipeline: pipe(
         [agentPhase('build', { description: 'Prove success is earned, never assumed.' })],
         {
@@ -999,7 +644,7 @@ describe('agent phases', () => {
       },
     ];
     const outcome = await run({
-      droidPath: droid,
+      droid,
       envelopeDefs: defs,
       agents: [buildAgent({ envelope: 'severity_report' })],
       pipeline: pipe(
@@ -1033,7 +678,7 @@ describe('agent phases', () => {
   it('fails when the agent itself reports failure', async () => {
     const droid = scriptedDroid([buildEnvelope({ status: 'fail', summary: 'could not do it' })]);
     const outcome = await run({
-      droidPath: droid,
+      droid,
       pipeline: pipe(
         [agentPhase('build', { description: 'Prove a self-reported failure is not overridden.' })],
         {
@@ -1052,7 +697,7 @@ describe('agent phases', () => {
       ['forbidden/x.txt', 'forbidden/x.txt', 'forbidden/x.txt'],
     );
     const outcome = await run({
-      droidPath: droid,
+      droid,
       agents: [buildAgent({ writes: ['allowed/'] })],
       pipeline: pipe(
         [
@@ -1081,7 +726,7 @@ describe('agent phases', () => {
       ['allowed/x.txt'],
     );
     const outcome = await run({
-      droidPath: droid,
+      droid,
       agents: [buildAgent({ writes: ['allowed/'] })],
       pipeline: pipe(
         [
@@ -1110,7 +755,7 @@ describe('agent phases', () => {
       [null, 'real.txt'],
     );
     const outcome = await run({
-      droidPath: droid,
+      droid,
       pipeline: pipe(
         [
           agentPhase('build', {
@@ -1171,7 +816,7 @@ describe('the repair loop', () => {
     const droid = scriptedDroid([envelope, envelope], [null, 'fix.txt']);
 
     const outcome = await run({
-      droidPath: droid,
+      droid,
       project: { commands: [{ name: 'test', argv: ['./check.sh'] }] },
       pipeline: repairPipeline(2),
     });
@@ -1190,7 +835,7 @@ describe('the repair loop', () => {
     const envelope = buildEnvelope({ summary: 'tried', commit_message: 'x' });
     const droid = scriptedDroid([envelope]);
     const outcome = await run({
-      droidPath: droid,
+      droid,
       project: { commands: [{ name: 'test', argv: ['./check.sh'] }] },
       pipeline: pipe(
         [
@@ -1224,7 +869,7 @@ describe('acceptance criteria', () => {
   it('rejects a run whose reviewer did not approve, even though every phase ran', async () => {
     const droid = scriptedDroid([reviewEnvelope(false)]);
     const outcome = await run({
-      droidPath: droid,
+      droid,
       agents: [buildAgent({ name: 'reviewer', envelope: 'review' })],
       pipeline: pipe(
         [
@@ -1250,7 +895,6 @@ describe('acceptance criteria', () => {
 describe('engineer phases', () => {
   it('records what the human decided and carries their notes forward', async () => {
     const outcome = await run({
-      droidPath: 'unused',
       agents: [],
       request: 'ask me',
       turnTimeoutMs: 5000,
@@ -1280,7 +924,6 @@ describe('engineer phases', () => {
 
   it('fails the run when the human rejects', async () => {
     const outcome = await run({
-      droidPath: 'unused',
       agents: [],
       request: 'ask me',
       turnTimeoutMs: 5000,
@@ -1365,7 +1008,7 @@ describe('zero-interrupt runs', () => {
     let humanAsked = 0;
 
     const outcome = await run({
-      droidPath: droid,
+      droid,
       pipeline: pipe(
         [agentPhase('build', { description: 'Raise every kind of ask a run can raise.' })],
         {
@@ -1441,7 +1084,7 @@ describe('the safety net under a zero-interrupt policy', () => {
       ['forbidden/slipped.txt', 'forbidden/slipped.txt'],
     );
     const outcome = await run({
-      droidPath: droid,
+      droid,
       agents: [buildAgent({ writes: ['allowed/'] })],
       pipeline: pipe(
         [
@@ -1471,7 +1114,7 @@ describe('the safety net under a zero-interrupt policy', () => {
       ['.foundry/stash.json', '.foundry/stash.json', '.foundry/stash.json'],
     );
     const outcome = await run({
-      droidPath: droid,
+      droid,
       agents: [buildAgent({ writes: null })],
       pipeline: pipe(
         [
@@ -1498,7 +1141,7 @@ describe('the trace record', () => {
   it('writes prompts, envelopes, and events to disk as the raw record', async () => {
     const droid = scriptedDroid([buildEnvelope({ summary: 'ok', commit_message: 'x' })]);
     const outcome = await run({
-      droidPath: droid,
+      droid,
       pipeline: pipe(
         [
           agentPhase('build', {
@@ -1555,7 +1198,7 @@ describe('the trace record', () => {
       ['index.ts'],
     );
     const outcome = await run({
-      droidPath: droid,
+      droid,
       project: { ...defaultProject(empty), mergePolicy: 'auto' },
       pipeline: pipe([agentPhase('build', { description: 'build initial project' })], {
         acceptance: { kind: 'all_phases_pass' },
@@ -1573,35 +1216,35 @@ describe('the trace record', () => {
  * mode, that the child is recorded and reaped, and that a flapping transport
  * degrades exactly twice before giving up on it.
  */
-describe('the SDK transport under the executor', () => {
-  it('runs agent phases over RPC, not the one-shot fallback', async () => {
+describe('the daemon transport under the executor', () => {
+  it('runs agent phases on the daemon', async () => {
     const droid = scriptedDroid([buildEnvelope()]);
     const outcome = await run({
-      droidPath: droid,
+      droid,
       pipeline: pipe(
-        [agentPhase('build', { description: 'Prove the agent phase drove the SDK transport.' })],
+        [agentPhase('build', { description: 'Prove the agent phase drove the daemon.' })],
         {
-          description: 'one agent phase over the SDK',
+          description: 'one agent phase over the daemon',
           acceptance: { kind: 'envelope_status', phase: 'build' },
         },
       ),
     });
 
     expect(outcome.status).toBe('accepted');
-    expect(h.tracer.run(outcome.runId)!.mode).toBe('rpc');
+    expect(h.tracer.run(outcome.runId)!.mode).toBe('daemon');
     const sessions = h.tracer.agentSessions(outcome.runId);
     expect(sessions).toHaveLength(1);
-    expect(sessions[0]!.mode).toBe('rpc');
-    // The session id only exists if the SDK's own handshake completed.
+    expect(sessions[0]!.mode).toBe('daemon');
+    // The session id only exists if the daemon handshake completed.
     expect(sessions[0]!.droidSessionId).toBe('s1');
   });
 
-  it('records the droid child with a real pid and its --auto spawn command', async () => {
+  it('records no per-agent child, because the daemon is one shared process', async () => {
     const droid = scriptedDroid([buildEnvelope()]);
     const outcome = await run({
-      droidPath: droid,
+      droid,
       pipeline: pipe(
-        [agentPhase('build', { description: 'Prove the child is recorded for the kill path.' })],
+        [agentPhase('build', { description: 'Prove no per-agent child is spawned.' })],
         {
           description: 'one agent phase',
           acceptance: { kind: 'envelope_status', phase: 'build' },
@@ -1609,178 +1252,77 @@ describe('the SDK transport under the executor', () => {
       ),
     });
 
-    const rows = processRows(outcome.runId).filter((r) => r.kind === 'droid');
-    expect(rows).toHaveLength(1);
-    expect(rows[0]!.name).toBe('builder');
-    expect(rows[0]!.pid).toBeGreaterThan(0);
-    expect(rows[0]!.command).toContain(droid);
-    // Runs are always autonomous; the flag is part of what `ps` should show.
-    expect(rows[0]!.command).toContain('--auto high');
-    expect(rows[0]!.ended_at).not.toBeNull();
+    expect(outcome.status).toBe('accepted');
+    // DaemonManager records the daemon once for the whole app, and this run
+    // never started one — so a run leaves no droid process rows of its own.
+    expect(processRows(outcome.runId).filter((r) => r.kind === 'droid')).toHaveLength(0);
     expect(h.tracer.openProcesses(outcome.runId)).toHaveLength(0);
   });
 
-  it('leaves no droid child alive after an accepted run settles', async () => {
-    const droid = scriptedDroid([buildEnvelope()]);
+  it('keeps one session across a correction rather than reopening', async () => {
+    const droid = scriptedDroid(['prose, not JSON', buildEnvelope()]);
     const outcome = await run({
-      droidPath: droid,
-      pipeline: pipe(
-        [agentPhase('build', { description: 'Settle cleanly and close the child.' })],
-        {
-          description: 'an accepted run',
-          acceptance: { kind: 'envelope_status', phase: 'build' },
-        },
-      ),
+      droid,
+      pipeline: pipe([agentPhase('build', { description: 'Correct in the live session.' })], {
+        description: 'a correction inside one session',
+        acceptance: { kind: 'envelope_status', phase: 'build' },
+      }),
     });
 
     expect(outcome.status).toBe('accepted');
-    const pids = processRows(outcome.runId)
-      .filter((r) => r.kind === 'droid')
-      .map((r) => r.pid);
-    expect(pids.length).toBeGreaterThan(0);
-    for (const pid of pids) expect(alive(pid)).toBe(false);
+    const sessions = h.tracer.agentSessions(outcome.runId);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]!.mode).toBe('daemon');
+    expect(
+      events(outcome.runId).some(
+        (e) => e.type === 'correction' && e.name === 'envelope did not parse',
+      ),
+    ).toBe(true);
+    // One session for the whole phase: a reopen would have handshaked twice.
+    expect(handshakeCount(droid)).toBe(1);
   });
 
-  it('leaves no droid child alive after a failed run settles', async () => {
-    // Never a valid envelope: the phase burns its budget and the run is rejected.
-    const droid = scriptedDroid(['not an envelope at all']);
+  it('fails the phase when a turn stalls, rather than degrading to another transport', async () => {
+    // Turn 0 is acknowledged and never answered, so the turn times out. There
+    // is nothing weaker to retry it on, and inventing one silently would swap
+    // the operator's permission policy for the CLI's coarser gate.
+    const droid = scriptedDroid([buildEnvelope()], [], [], { stallOnTurns: [0] });
     const outcome = await run({
-      droidPath: droid,
+      droid,
+      turnTimeoutMs: 1500,
+      pipeline: pipe([agentPhase('build', { description: 'Prove a stalled turn fails loudly.' })], {
+        description: 'a transport that stalls',
+        acceptance: { kind: 'envelope_status', phase: 'build' },
+      }),
+    });
+
+    expect(outcome.status).toBe('rejected');
+    expect(h.tracer.run(outcome.runId)!.mode).toBe('daemon');
+    // The run never claims a transport it did not use.
+    expect(h.tracer.agentSessions(outcome.runId)[0]!.mode).toBe('daemon');
+    const failures = events(outcome.runId).filter((e) => e.name === 'builder: turn failed');
+    expect(failures.length).toBeGreaterThan(0);
+    expect(String(failures[0]!.payload.message)).toMatch(/timed out/i);
+    expect(h.tracer.openProcesses(outcome.runId)).toHaveLength(0);
+  });
+
+  it('fails the phase when the session dies mid-turn', async () => {
+    const droid = scriptedDroid([buildEnvelope(), buildEnvelope()], [], [], { dieOnTurns: [0] });
+    const outcome = await run({
+      droid,
       pipeline: pipe(
-        [agentPhase('build', { description: 'Fail the phase and still close the child.' })],
+        [agentPhase('build', { description: 'Prove a dead session is not papered over.' })],
         {
-          description: 'a rejected run',
+          description: 'a transport that dies',
           acceptance: { kind: 'envelope_status', phase: 'build' },
         },
       ),
     });
 
     expect(outcome.status).toBe('rejected');
-    const pids = processRows(outcome.runId)
-      .filter((r) => r.kind === 'droid')
-      .map((r) => r.pid);
-    expect(pids.length).toBeGreaterThan(0);
-    for (const pid of pids) expect(alive(pid)).toBe(false);
-  });
-
-  it('keeps one session across a correction rather than restarting', async () => {
-    const droid = scriptedDroid(['prose, not JSON', buildEnvelope()]);
-    const outcome = await run({
-      droidPath: droid,
-      pipeline: pipe(
-        [agentPhase('build', { description: 'Correct in the live session over the SDK.' })],
-        {
-          description: 'a correction inside one session',
-          acceptance: { kind: 'envelope_status', phase: 'build' },
-        },
-      ),
-    });
-
-    expect(outcome.status).toBe('accepted');
-    const sessions = h.tracer.agentSessions(outcome.runId);
-    expect(sessions).toHaveLength(1);
-    expect(sessions[0]!.mode).toBe('rpc');
-    expect(
-      events(outcome.runId).some(
-        (e) => e.type === 'correction' && e.name === 'envelope did not parse',
-      ),
-    ).toBe(true);
-    // One child for the whole phase: a restart would have recorded a second.
-    expect(processRows(outcome.runId).filter((r) => r.kind === 'droid')).toHaveLength(1);
-  });
-
-  it('restarts the session in RPC after a single stalled turn', async () => {
-    // Turn 0 is acknowledged and never answered, so the turn times out; the
-    // restarted session picks the script up at turn 1.
-    const droid = scriptedDroid([buildEnvelope(), buildEnvelope()], [], [], { stallOnTurns: [0] });
-    const outcome = await run({
-      droidPath: droid,
-      turnTimeoutMs: 1500,
-      pipeline: pipe(
-        [agentPhase('build', { description: 'Prove one strike does not cost RPC mode.' })],
-        {
-          description: 'a transport that stalls once',
-          acceptance: { kind: 'envelope_status', phase: 'build' },
-        },
-      ),
-    });
-
-    expect(outcome.status).toBe('accepted');
-    // One strike is survivable: the run stays on the RPC transport throughout.
-    expect(h.tracer.run(outcome.runId)!.mode).toBe('rpc');
-    const fallbacks = events(outcome.runId).filter(
-      (e) => e.name === 'builder: fallback to one-shot',
-    );
-    expect(fallbacks).toHaveLength(1);
-    expect(String(fallbacks[0]!.payload.reason)).toContain('retrying after');
-    // The stalled child is replaced, and both children are reaped. The
-    // replaced one is only closed out by the exit hook, since settlement can
-    // only ever close the row of the session that is current at the end.
-    const rows = processRows(outcome.runId).filter((r) => r.kind === 'droid');
-    expect(rows).toHaveLength(2);
-    for (const row of rows) {
-      expect(row.ended_at).not.toBeNull();
-      expect(alive(row.pid)).toBe(false);
-    }
-    expect(h.tracer.openProcesses(outcome.runId)).toHaveLength(0);
-  });
-
-  it('retries the first mid-turn death, then degrades to one-shot on the second', async () => {
-    // Turn 0 and turn 1 kill the child mid-turn; turn 2 is the one-shot reply.
-    const droid = scriptedDroid([buildEnvelope(), buildEnvelope(), buildEnvelope()], [], [], {
-      dieOnTurns: [0, 1],
-    });
-    const outcome = await run({
-      droidPath: droid,
-      pipeline: pipe(
-        [agentPhase('build', { description: 'Prove two strikes cost the RPC transport.' })],
-        {
-          description: 'a transport that dies twice',
-          acceptance: { kind: 'envelope_status', phase: 'build' },
-        },
-      ),
-    });
-
-    expect(outcome.status).toBe('accepted');
-    expect(h.tracer.run(outcome.runId)!.mode).toBe('oneshot');
-    expect(h.tracer.agentSessions(outcome.runId)[0]!.mode).toBe('oneshot');
-
-    const fallbacks = events(outcome.runId).filter(
-      (e) => e.name === 'builder: fallback to one-shot',
-    );
-    // Strike one retries in RPC, strike two switches: two log events, in order.
-    expect(fallbacks).toHaveLength(2);
-    expect(String(fallbacks[0]!.payload.reason)).toContain('retrying after');
-    expect(fallbacks[0]!.payload.failures).toBe(1);
-    expect(fallbacks[1]!.payload.failures).toBe(2);
-  });
-
-  it('records the one-shot fallback child as its own process row', async () => {
-    const droid = scriptedDroid([buildEnvelope(), buildEnvelope(), buildEnvelope()], [], [], {
-      dieOnTurns: [0, 1],
-    });
-    const outcome = await run({
-      droidPath: droid,
-      pipeline: pipe(
-        [agentPhase('build', { description: 'Prove the fallback child is visible to the sweep.' })],
-        {
-          description: 'a transport that dies twice',
-          acceptance: { kind: 'envelope_status', phase: 'build' },
-        },
-      ),
-    });
-
-    expect(outcome.status).toBe('accepted');
-    // A fallback child the kill path cannot see is a child that survives a kill.
-    // `stream-jsonrpc` is the RPC child's format and starts with the same text.
-    const fallbackRows = processRows(outcome.runId).filter(
-      (r) => !r.command.includes('stream-jsonrpc'),
-    );
-    expect(fallbackRows).toHaveLength(1);
-    expect(fallbackRows[0]!.name).toBe('builder');
-    expect(fallbackRows[0]!.pid).toBeGreaterThan(0);
-    expect(fallbackRows[0]!.ended_at).not.toBeNull();
-    expect(alive(fallbackRows[0]!.pid)).toBe(false);
+    expect(h.tracer.run(outcome.runId)!.mode).toBe('daemon');
+    // No fallback events exist to be logged, because no fallback exists.
+    expect(events(outcome.runId).some((e) => /fallback/.test(e.name))).toBe(false);
     expect(h.tracer.openProcesses(outcome.runId)).toHaveLength(0);
   });
 });
@@ -1815,7 +1357,7 @@ describe('compaction between phases', () => {
       contextUsed: 85_000,
       contextUsedAfterCompaction: 8_500,
     });
-    const outcome = await run({ droidPath: droid, pipeline: twoPhases() });
+    const outcome = await run({ droid, pipeline: twoPhases() });
 
     expect(outcome.status).toBe('accepted');
     // One compaction, in the one window there was for it.
@@ -1839,7 +1381,7 @@ describe('compaction between phases', () => {
       contextUsed: 85_000,
       contextUsedAfterCompaction: 8_500,
     });
-    const outcome = await run({ droidPath: droid, pipeline: twoPhases() });
+    const outcome = await run({ droid, pipeline: twoPhases() });
 
     const rows = compactions(outcome.runId);
     expect(rows).toHaveLength(1);
@@ -1853,7 +1395,7 @@ describe('compaction between phases', () => {
     const droid = scriptedDroid([buildEnvelope(), buildEnvelope()], [], [], {
       contextUsed: 40_000,
     });
-    const outcome = await run({ droidPath: droid, pipeline: twoPhases() });
+    const outcome = await run({ droid, pipeline: twoPhases() });
 
     expect(outcome.status).toBe('accepted');
     expect(wireLog(droid)).not.toContain('droid.compact_session');
@@ -1866,7 +1408,7 @@ describe('compaction between phases', () => {
       contextUsed: 60_000,
     });
     const outcome = await run({
-      droidPath: droid,
+      droid,
       compactionThreshold: 0.5,
       pipeline: twoPhases(),
     });
@@ -1882,7 +1424,7 @@ describe('compaction between phases', () => {
       contextUsed: 90_000,
       contextUsedAfterCompaction: 9_000,
     });
-    const outcome = await run({ droidPath: droid, pipeline: twoPhases() });
+    const outcome = await run({ droid, pipeline: twoPhases() });
 
     expect(outcome.status).toBe('accepted');
     const log = wireLog(droid);
@@ -1906,7 +1448,7 @@ describe('compaction between phases', () => {
       contextUsed: 85_000,
       contextUsedAfterCompaction: 8_500,
     });
-    const outcome = await run({ droidPath: droid, pipeline: twoPhases() });
+    const outcome = await run({ droid, pipeline: twoPhases() });
 
     expect(outcome.status).toBe('accepted');
     const turns = wireLog(droid).filter((l) => l.startsWith('turn_started'));
@@ -1925,8 +1467,9 @@ describe('compaction between phases', () => {
         (e) => e.type === 'correction' && e.name === 'envelope did not parse',
       ),
     ).toBe(true);
-    // A swap is not a restart: no second child was spawned for it.
-    expect(processRows(outcome.runId).filter((r) => r.kind === 'droid')).toHaveLength(1);
+    // A swap is not a reopen: the successor is adopted on the same daemon
+    // connection, so the run never handshakes a third session.
+    expect(handshakeCount(droid)).toBe(2);
   });
 
   it('carries on with the run when the session refuses to compact', async () => {
@@ -1934,7 +1477,7 @@ describe('compaction between phases', () => {
       contextUsed: 85_000,
       compactFails: true,
     });
-    const outcome = await run({ droidPath: droid, pipeline: twoPhases() });
+    const outcome = await run({ droid, pipeline: twoPhases() });
 
     // A failed compaction costs the run nothing: the next phase runs on the
     // session it already had and acceptance decides the outcome as usual.
@@ -1948,26 +1491,6 @@ describe('compaction between phases', () => {
     const failures = events(outcome.runId).filter((e) => e.name === 'builder: compaction failed');
     expect(failures).toHaveLength(1);
     expect(String(failures[0]!.payload.message)).toContain('nothing to compact');
-  });
-
-  it('never attempts compaction for a session that degraded to one-shot', async () => {
-    // Two stalled turns cost the RPC transport, and a stalled child stays ALIVE
-    // and answering — so a session that reached one-shot while still holding a
-    // usable RPC handle would happily report 95% and be compacted. The guard is
-    // on the transport, not on stats happening to be unavailable.
-    const droid = scriptedDroid(
-      [buildEnvelope(), buildEnvelope(), buildEnvelope(), buildEnvelope()],
-      [],
-      [],
-      { stallOnTurns: [0, 1], contextUsed: 95_000 },
-    );
-    const outcome = await run({ droidPath: droid, turnTimeoutMs: 1500, pipeline: twoPhases() });
-
-    expect(outcome.status).toBe('accepted');
-    expect(h.tracer.agentSessions(outcome.runId)[0]!.mode).toBe('oneshot');
-    // The stalled children were alive when the session gave up on them.
-    expect(wireLog(droid)).not.toContain('droid.compact_session');
-    expect(compactions(outcome.runId)).toHaveLength(0);
   });
 });
 
@@ -1998,7 +1521,7 @@ describe('structured-output envelopes', () => {
   it('constrains agent turns with the envelope schema and no other phase', async () => {
     const droid = scriptedDroid([buildEnvelope()]);
     const outcome = await run({
-      droidPath: droid,
+      droid,
       pipeline: pipe(
         [
           agentPhase('build', { description: 'Carry the envelope schema on the wire.' }),
@@ -2034,7 +1557,7 @@ describe('structured-output envelopes', () => {
       { name: 'severity', type: 'string' as const, required: true, description: 'low|med|high' },
     ];
     const outcome = await run({
-      droidPath: droid,
+      droid,
       agents: [buildAgent({ customFields: custom })],
       pipeline: pipe(
         [agentPhase('build', { description: 'Constrain the turn with the extended schema.' })],
@@ -2054,7 +1577,7 @@ describe('structured-output envelopes', () => {
   it('still shows the agent the generated example beside the schema', async () => {
     const droid = scriptedDroid([buildEnvelope()]);
     const outcome = await run({
-      droidPath: droid,
+      droid,
       pipeline: pipe(
         [agentPhase('build', { description: 'Keep the prompt example alongside the constraint.' })],
         {
@@ -2078,7 +1601,7 @@ describe('structured-output envelopes', () => {
   it('accepts a valid structured reply whose text carries no envelope at all', async () => {
     const droid = scriptedDroid([NO_JSON], [], [], { structuredOutputs: [structuredBuild] });
     const outcome = await run({
-      droidPath: droid,
+      droid,
       pipeline: pipe(
         [agentPhase('build', { description: 'Settle the phase from the structured reply.' })],
         {
@@ -2112,7 +1635,7 @@ describe('structured-output envelopes', () => {
     };
     const droid = scriptedDroid([NO_JSON], [], [], { structuredOutputs: [structuredReview] });
     const outcome = await run({
-      droidPath: droid,
+      droid,
       agents: [buildAgent({ name: 'reviewer', envelope: 'review' })],
       pipeline: pipe(
         [
@@ -2145,7 +1668,7 @@ describe('structured-output envelopes', () => {
       structuredOutputs: [bogus, null],
     });
     const outcome = await run({
-      droidPath: droid,
+      droid,
       pipeline: pipe(
         [agentPhase('build', { description: 'Never trust a transport’s conformance claim.' })],
         {
@@ -2168,7 +1691,7 @@ describe('structured-output envelopes', () => {
       turnReasons: ['structured_output_invalid'],
     });
     const outcome = await run({
-      droidPath: droid,
+      droid,
       pipeline: pipe(
         [agentPhase('build', { description: 'Fall back to the text on the same attempt.' })],
         {
@@ -2189,7 +1712,7 @@ describe('structured-output envelopes', () => {
       turnReasons: ['structured_output_missing', 'structured_output_missing'],
     });
     const outcome = await run({
-      droidPath: droid,
+      droid,
       envelopeRetries: 1,
       pipeline: pipe(
         [agentPhase('build', { description: 'Prove a schema failure has no budget of its own.' })],
@@ -2212,7 +1735,7 @@ describe('structured-output envelopes', () => {
     // The pre-SDK baseline for this scenario, unchanged by the wire constraint.
     const droid = scriptedDroid(['I will explain in prose instead of JSON.', buildEnvelope()]);
     const outcome = await run({
-      droidPath: droid,
+      droid,
       pipeline: pipe(
         [agentPhase('build', { description: 'Hold the envelope retry rate where it was.' })],
         {
@@ -2259,7 +1782,7 @@ describe('correction instrumentation', () => {
       [null, 'forbidden/slipped.txt', null, 'real.txt'],
     );
     const outcome = await run({
-      droidPath: droid,
+      droid,
       agents: [buildAgent({ writes: ['allowed/', 'real.txt'] })],
       envelopeRetries: 1,
       pipeline: pipe(
@@ -2300,7 +1823,7 @@ describe('correction instrumentation', () => {
       buildEnvelope({ summary: 'phase two' }),
     ]);
     const outcome = await run({
-      droidPath: droid,
+      droid,
       pipeline: pipe(
         [
           agentPhase('first', {
@@ -2333,7 +1856,7 @@ describe('correction instrumentation', () => {
  * kill has fired, or the operator's kill settles as an accepted run.
  */
 describe('killing a run mid-turn', () => {
-  it('settles killed instead of being rescued by the one-shot fallback', async () => {
+  it('settles killed rather than recovering the turn', async () => {
     // Turn 0 is acknowledged and never answered, so the kill lands mid-turn.
     // Turn 1 would succeed: without the short-circuit, a recovery attempt
     // finishes the phase and the run settles accepted.
@@ -2341,7 +1864,7 @@ describe('killing a run mid-turn', () => {
       stallOnTurns: [0],
     });
     const started = start({
-      droidPath: droid,
+      droid,
       pipeline: pipe(
         [agentPhase('build', { description: 'Prove a kill is not a transport failure.' })],
         {
@@ -2360,29 +1883,19 @@ describe('killing a run mid-turn', () => {
     expect(row.status).toBe('killed');
     expect(row.outcomeDetail).toBe('the run was killed');
 
-    // No recovery of any kind: not a restart, not a degrade to one-shot.
-    expect(events(outcome.runId).filter((e) => e.name === 'builder: fallback to one-shot')).toEqual(
-      [],
-    );
     // The killed turn is not filed as an agent failure: a kill is what the
     // operator asked for, so the timeline must not read like a broken agent.
     expect(events(outcome.runId).filter((e) => e.name === 'builder: turn failed')).toEqual([]);
     // Only the one turn the kill landed on was ever spent.
-    expect(turnMarkers(droid)).toEqual(['rpc 0']);
-    expect(h.tracer.run(outcome.runId)!.mode).toBe('rpc');
-    const rows = processRows(outcome.runId).filter((r) => r.kind === 'droid');
-    expect(rows).toHaveLength(1);
-    for (const r of rows) {
-      expect(r.ended_at).not.toBeNull();
-      expect(alive(r.pid)).toBe(false);
-    }
+    expect(turnMarkers(droid)).toEqual(['daemon 0']);
+    expect(h.tracer.run(outcome.runId)!.mode).toBe('daemon');
     expect(h.tracer.openProcesses(outcome.runId)).toHaveLength(0);
   });
 
   it('does not accept a run whose remaining phases never ran', async () => {
     const droid = scriptedDroid([buildEnvelope(), buildEnvelope()], [], [], { stallOnTurns: [1] });
     const started = start({
-      droidPath: droid,
+      droid,
       pipeline: pipe(
         [
           agentPhase('build', { description: 'Pass before the kill lands.' }),
@@ -2397,7 +1910,8 @@ describe('killing a run mid-turn', () => {
     });
 
     await until(
-      () => turnStarted(droid) && h.tracer.phases(started.runId)[0]?.status === 'success',
+      () =>
+        turnMarkers(droid).length === 2 && h.tracer.phases(started.runId)[0]?.status === 'success',
       'the first phase to pass and the second turn to start',
     );
     started.executor.cancel();
@@ -2407,97 +1921,23 @@ describe('killing a run mid-turn', () => {
     expect(h.tracer.run(outcome.runId)!.outcomeDetail).toBe('the run was killed');
   });
 
-  it('settles killed when the kill lands during a one-shot turn', async () => {
-    // Two deaths degrade the session to one-shot, and the one-shot turn then
-    // stalls: the kill lands on a fallback child, not an RPC one.
-    const droid = scriptedDroid([buildEnvelope(), buildEnvelope(), buildEnvelope()], [], [], {
-      dieOnTurns: [0, 1],
-      stallOnTurns: [2],
-    });
-    const started = start({
-      droidPath: droid,
-      pipeline: pipe(
-        [agentPhase('build', { description: 'Prove the fallback turn is killable too.' })],
-        {
-          description: 'a kill during the one-shot fallback',
-          acceptance: { kind: 'envelope_status', phase: 'build' },
-        },
-      ),
-    });
-
-    await until(
-      () => turnMarkers(droid).some((line) => line.startsWith('oneshot')),
-      'the one-shot fallback turn to start',
-    );
-    const fallbackPid = h.tracer
-      .openProcesses(started.runId)
-      .find((p) => !p.command.includes('stream-jsonrpc'))?.pid;
-    expect(fallbackPid).toBeGreaterThan(0);
-    started.executor.cancel();
-    const outcome = await started.done;
-
-    expect(outcome.status).toBe('killed');
-    expect(h.tracer.run(outcome.runId)!.outcomeDetail).toBe('the run was killed');
-    expect(alive(fallbackPid!)).toBe(false);
-    expect(h.tracer.openProcesses(outcome.runId)).toHaveLength(0);
-  });
-
-  it('kills the child a recovery path spawned while the kill was landing', async () => {
-    // The kill lands during the restarted session's handshake, so `kill()` runs
-    // before that child exists: nothing else would ever reap it.
-    const droid = scriptedDroid([buildEnvelope(), buildEnvelope()], [], [], {
-      dieOnTurns: [0],
-      handshakeDelayMs: 1500,
-    });
-    const started = start({
-      droidPath: droid,
-      pipeline: pipe(
-        [agentPhase('build', { description: 'Prove an in-flight restart is reaped by the kill.' })],
-        {
-          description: 'a kill racing a transport restart',
-          acceptance: { kind: 'envelope_status', phase: 'build' },
-        },
-      ),
-    });
-
-    // The first child dies on turn 0; the restart's handshake is the second,
-    // and it is still in flight while the delay runs.
-    await until(() => handshakeCount(droid) === 2, 'the restarted session to reach its handshake');
-    started.executor.cancel();
-    const outcome = await started.done;
-
-    expect(outcome.status).toBe('killed');
-    // The restarted child is never prompted: a turn spent after the kill is
-    // both real money and a result the run could still be settled on.
-    expect(turnMarkers(droid)).toHaveLength(1);
-    // Two children, both recorded and both reaped — including the one that did
-    // not exist yet when `kill()` ran.
-    const rows = processRows(outcome.runId);
-    expect(rows).toHaveLength(2);
-    for (const row of rows) {
-      expect(row.ended_at).not.toBeNull();
-      expect(alive(row.pid)).toBe(false);
-    }
-    expect(h.tracer.openProcesses(outcome.runId)).toHaveLength(0);
-  });
-
-  it('leaves no droid child alive and no process row open after a kill', async () => {
+  it('never spends a turn after the kill landed', async () => {
     const droid = scriptedDroid([buildEnvelope(), buildEnvelope()], [], [], { stallOnTurns: [0] });
     const started = start({
-      droidPath: droid,
-      pipeline: pipe([agentPhase('build', { description: 'Prove the kill reaps the child.' })], {
-        description: 'a killed run leaves nothing behind',
+      droid,
+      pipeline: pipe([agentPhase('build', { description: 'Prove no turn outlives the kill.' })], {
+        description: 'a killed run spends nothing more',
         acceptance: { kind: 'envelope_status', phase: 'build' },
       }),
     });
 
     await until(() => turnStarted(droid), 'the scripted agent to start its turn');
-    const before = h.tracer.openProcesses(started.runId);
-    expect(before).toHaveLength(1);
     started.executor.cancel();
     await started.done;
 
-    expect(alive(before[0]!.pid)).toBe(false);
+    // A turn spent after the kill is both real money and a result the run
+    // could still be settled on.
+    expect(turnMarkers(droid)).toHaveLength(1);
     expect(h.tracer.openProcesses(started.runId)).toHaveLength(0);
   });
 });
@@ -2522,7 +1962,7 @@ describe('the context breakdown an agent leaves behind', () => {
   it('records the breakdown each turn produced with the run files', async () => {
     const droid = scriptedDroid([buildEnvelope()]);
     const outcome = await run({
-      droidPath: droid,
+      droid,
       pipeline: pipe([agentPhase('build', { description: 'Produce one turn to snapshot.' })], {
         description: 'a run whose breakdown is kept',
         acceptance: { kind: 'envelope_status', phase: 'build' },
@@ -2534,7 +1974,9 @@ describe('the context breakdown an agent leaves behind', () => {
       capturedAt: string;
       breakdown: { usedTokens: number; categories: { name: string }[] };
     }>(outcome.runId, breakdownFile('builder'));
-    expect(captured?.breakdown.usedTokens).toBe(1200);
+    // The daemon derives context stats from the breakdown, so the occupancy
+    // the agent reports and the one the snapshot keeps are the same number.
+    expect(captured?.breakdown.usedTokens).toBe(1234);
     expect(captured?.breakdown.categories[0]!.name).toBe('System prompt');
     expect(Date.parse(captured!.capturedAt)).toBeGreaterThan(0);
   });
@@ -2542,7 +1984,7 @@ describe('the context breakdown an agent leaves behind', () => {
   it('answers for a finished run from that record, marked as not live', async () => {
     const droid = scriptedDroid([buildEnvelope()]);
     const outcome = await run({
-      droidPath: droid,
+      droid,
       pipeline: pipe([agentPhase('build', { description: 'Produce one turn to snapshot.' })], {
         description: 'a finished run still explains its context',
         acceptance: { kind: 'envelope_status', phase: 'build' },
@@ -2550,7 +1992,7 @@ describe('the context breakdown an agent leaves behind', () => {
     });
 
     const result = await registry().contextBreakdown(h.project, outcome.runId, 'builder');
-    expect(result.breakdown?.usedTokens).toBe(1200);
+    expect(result.breakdown?.usedTokens).toBe(1234);
     expect(result.live).toBe(false);
     expect(result.capturedAt).toBeTruthy();
     expect(result.reason).toBeUndefined();
@@ -2600,7 +2042,7 @@ describe('rewind correction policy', () => {
       { rewindFiles: { 'watched.txt': PHASE_START } },
     );
     const outcome = await run({
-      droidPath: droid,
+      droid,
       envelopeRetries: 2,
       pipeline: seedThenBuild(),
     });
@@ -2639,7 +2081,7 @@ describe('rewind correction policy', () => {
       { rewindFiles: { 'watched.txt': PHASE_START } },
     );
     const outcome = await run({
-      droidPath: droid,
+      droid,
       envelopeRetries: 2,
       pipeline: seedThenBuild(),
     });
@@ -2662,7 +2104,7 @@ describe('rewind correction policy', () => {
       rewindFails: true,
     });
     const outcome = await run({
-      droidPath: droid,
+      droid,
       envelopeRetries: 2,
       pipeline: seedThenBuild(),
     });
@@ -2684,7 +2126,7 @@ describe('rewind correction policy', () => {
       rewindFiles: { 'watched.txt': PHASE_START },
     });
     const outcome = await run({
-      droidPath: droid,
+      droid,
       envelopeRetries: 2,
       rewindAfterCorrections: 0,
       pipeline: seedThenBuild(),
@@ -2702,7 +2144,7 @@ describe('rewind correction policy', () => {
       rewindFiles: { 'watched.txt': PHASE_START },
     });
     const outcome = await run({
-      droidPath: droid,
+      droid,
       envelopeRetries: 2,
       rewindAfterCorrections: 2,
       pipeline: seedThenBuild(),
@@ -2717,31 +2159,6 @@ describe('rewind correction policy', () => {
       (e) => e.name === 'envelope did not parse',
     );
     expect(envelopeCorrections).toHaveLength(3);
-  });
-
-  it('never attempts rewind for a session that degraded to one-shot', async () => {
-    // Two stalled turns force oneshot; further envelope failures must stay append-style.
-    const droid = scriptedDroid(
-      ['ignored', 'ignored', 'prose', 'still prose', buildEnvelope()],
-      [],
-      [],
-      {
-        stallOnTurns: [0, 1],
-        rewindFiles: { 'watched.txt': PHASE_START },
-      },
-    );
-    const outcome = await run({
-      droidPath: droid,
-      turnTimeoutMs: 1500,
-      envelopeRetries: 2,
-      rewindAfterCorrections: 2,
-      pipeline: seedThenBuild(),
-    });
-    expect(outcome.status).toBe('accepted');
-    expect(h.tracer.run(outcome.runId)!.mode).toBe('oneshot');
-    expect(wireLog(droid)).not.toContain('droid.get_rewind_info');
-    expect(wireLog(droid)).not.toContain('droid.execute_rewind');
-    expect(corrections(outcome.runId).some((e) => e.payload.rewind === true)).toBe(false);
   });
 });
 
@@ -2763,7 +2180,7 @@ describe('rewind and compaction coexist (VAL-CROSS-009)', () => {
       },
     );
     const outcome = await run({
-      droidPath: droid,
+      droid,
       envelopeRetries: 2,
       compactionThreshold: 0.8,
       rewindAfterCorrections: 2,
@@ -2832,50 +2249,20 @@ describe('rewind and compaction coexist (VAL-CROSS-009)', () => {
   });
 });
 
-/** VAL-CROSS-011 — non-droid / oneshot vendor still starts oneshot with the honest span. */
-describe('non-droid vendor oneshot path (VAL-CROSS-011)', () => {
-  it('completes as oneshot with the honest tool lineage when rpc is exhausted', async () => {
-    // Two rpc strikes exhaust the ladder; the surviving turn is the oneshot
-    // path. A non-droid vendor (supportsRpc false) would start there directly;
-    // this exercises the same trace shape the validator asserts.
-    const droid = scriptedDroid([buildEnvelope(), buildEnvelope(), buildEnvelope()], [], [], {
-      dieOnTurns: [0, 1],
-    });
+/**
+ * VAL-PROD-012 — an unreachable daemon surfaces as a settled failure, not a
+ * hang and not a quiet downgrade. The daemon is the only transport an agent run
+ * has, so "cannot start it" has to reach the operator as a failed run carrying
+ * the reason; the old behaviour (fall through to a subprocess, then to a
+ * one-shot child that never consults `permissions.ts`) finished the run under a
+ * weaker policy than was configured and said nothing.
+ */
+describe('unreachable daemon (VAL-PROD-012)', () => {
+  it('settles failed with a legible outcome_detail rather than degrading', async () => {
     const outcome = await run({
-      droidPath: droid,
-      pipeline: pipe(
-        [agentPhase('build', { description: 'exhaust rpc so the turn lands oneshot' })],
-        {
-          description: 'oneshot honest span',
-          acceptance: { kind: 'envelope_status', phase: 'build' },
-        },
-      ),
-    });
-    expect(outcome.status).toBe('accepted');
-    expect(h.tracer.run(outcome.runId)!.mode).toBe('oneshot');
-    const row = h.db
-      .prepare('SELECT mode FROM agent_sessions WHERE run_id = ?')
-      .get(outcome.runId) as { mode: string };
-    expect(row.mode).toBe('oneshot');
-    // One-shot fallback is an honest single turn: no mid-turn rpc spans,
-    // run settles, mode reflects reality (not stuck on daemon/rpc).
-    const fallbackEvents = events(outcome.runId).filter(
-      (e) => e.name === 'builder: fallback to one-shot',
-    );
-    expect(fallbackEvents.length).toBeGreaterThanOrEqual(1);
-    // The process rows show the fallback child is tracked.
-    const rows = processRows(outcome.runId);
-    expect(rows.length).toBeGreaterThanOrEqual(1);
-  });
-});
-
-/** VAL-PROD-012 — missing droid binary surfaces as a settled failure, not a hang. */
-describe('missing droid binary (VAL-PROD-012)', () => {
-  it('settles failed with a legible outcome_detail when the binary is unresolvable', async () => {
-    const outcome = await run({
-      droidPath: '/nonexistent/droid',
-      pipeline: pipe([agentPhase('build', { description: 'binary is missing' })], {
-        description: 'missing droid binary',
+      daemonUnavailable: 'droid daemon exited before it accepted a connection',
+      pipeline: pipe([agentPhase('build', { description: 'daemon cannot start' })], {
+        description: 'unreachable daemon',
         acceptance: { kind: 'envelope_status', phase: 'build' },
       }),
     });
@@ -2885,9 +2272,11 @@ describe('missing droid binary (VAL-PROD-012)', () => {
     const row = h.tracer.run(outcome.runId)!;
     expect(row.outcomeDetail).toBeTruthy();
     // The trace explains the root cause rather than masking it.
-    const payloads = events(outcome.runId).map((e) => JSON.stringify(e.payload));
-    const combined = payloads.join('\n');
-    expect(combined).toMatch(/spawn|ENOENT|not found|unresolvable|executable|droid/i);
+    const combined = events(outcome.runId)
+      .map((e) => JSON.stringify(e.payload))
+      .join('\n');
+    expect(combined).toMatch(/daemon unavailable/i);
+    expect(combined).toMatch(/exited before it accepted a connection/i);
   });
 });
 
@@ -2904,7 +2293,7 @@ describe('open_pr phase (FOU-17)', () => {
     const gh = makeFakeGh({ createUrl: 'https://github.com/acme/widgets/pull/42' });
 
     const outcome = await run({
-      droidPath: droid,
+      droid,
       agents: [prWriter()],
       gh: { bin: gh.bin },
       pipeline: pipe([openPrPhase()], {
@@ -2940,7 +2329,7 @@ describe('open_pr phase (FOU-17)', () => {
     const gh = makeFakeGh({ createUrl: 'https://github.com/acme/widgets/pull/8' });
 
     const outcome = await run({
-      droidPath: droid,
+      droid,
       agents: [prWriter()],
       gh: { bin: gh.bin },
       pipeline: pipe([openPrPhase()], {
@@ -2970,7 +2359,7 @@ describe('open_pr phase (FOU-17)', () => {
     });
 
     const outcome = await run({
-      droidPath: droid,
+      droid,
       agents: [prWriter()],
       gh: { bin: gh.bin },
       pipeline: pipe([openPrPhase()], {
@@ -2993,7 +2382,7 @@ describe('open_pr phase (FOU-17)', () => {
     const gh = makeFakeGh({ createError: 'GraphQL: Resource not accessible by integration' });
 
     const outcome = await run({
-      droidPath: droid,
+      droid,
       agents: [prWriter()],
       gh: { bin: gh.bin },
       pipeline: pipe([openPrPhase()], {
@@ -3021,7 +2410,7 @@ describe('open_pr phase (FOU-17)', () => {
     const gh = makeFakeGh();
 
     const outcome = await run({
-      droidPath: droid,
+      droid,
       agents: [prWriter()],
       gh: { bin: gh.bin },
       pipeline: pipe([openPrPhase()], {
@@ -3045,7 +2434,7 @@ describe('open_pr phase (FOU-17)', () => {
     const gh = makeFakeGh({ createError: 'could not create pull request' });
 
     const outcome = await run({
-      droidPath: droid,
+      droid,
       agents: [buildAgent({ name: 'reviewer', envelope: 'review', writes: [] }), prWriter()],
       gh: { bin: gh.bin },
       pipeline: pipe(
@@ -3075,7 +2464,7 @@ describe('open_pr phase (FOU-17)', () => {
     const gh = makeFakeGh();
 
     const outcome = await run({
-      droidPath: droid,
+      droid,
       agents: [prWriter()],
       gh: { bin: gh.bin },
       pipeline: pipe([openPrPhase()], {
@@ -3098,7 +2487,7 @@ describe('open_pr phase (FOU-17)', () => {
     const gh = makeFakeGh();
 
     const outcome = await run({
-      droidPath: droid,
+      droid,
       agents: [prWriter()],
       gh: { bin: gh.bin },
       pipeline: pipe([openPrPhase()], {

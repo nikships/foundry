@@ -26,7 +26,6 @@ import { Tracer } from '../trace/tracer.js';
 import { Executor } from './executor.js';
 import { commandMatches, isAlive, killRun } from '../system/procs.js';
 import { breakdownFile, type CapturedBreakdown, type InterruptRequest } from '../droid/agent.js';
-import { readHostInvocables } from '../droid/invocables.js';
 
 export interface RegistryDeps {
   appSupportDir: string;
@@ -118,7 +117,7 @@ export class RunRegistry extends EventEmitter {
     if (!answer) return { breakdown: null, reason: 'not_started' };
     return {
       breakdown: null,
-      reason: answer.mode === 'oneshot' ? 'no_session_context' : 'unanswered',
+      reason: 'unanswered',
     };
   }
 
@@ -143,9 +142,7 @@ export class RunRegistry extends EventEmitter {
       compactionThreshold: settings.compactionThreshold,
       rewindAfterCorrections: settings.rewindAfterCorrections,
       daemonPort: settings.daemonPort,
-      transport: settings.transport,
       mcpServers: settings.mcpServers ?? [],
-      readHostInvocables: () => readHostInvocables(),
       agents: input.agents,
       envelopeDefs: input.envelopeDefs,
       project: input.project,

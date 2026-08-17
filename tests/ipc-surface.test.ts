@@ -42,8 +42,8 @@ describe('the IPC surface', () => {
     expect(new Set(registered).size).toBe(registered.length);
   });
 
-  it('registers 105 channels, so a deleted handler is not a silent capability loss', () => {
-    expect(registered).toHaveLength(105);
+  it('registers 104 channels, so a deleted handler is not a silent capability loss', () => {
+    expect(registered).toHaveLength(104);
   });
 
   it('registers the scope-copies channel the Design scope control reads', () => {
@@ -57,10 +57,6 @@ describe('the IPC surface', () => {
   it('registers the mark-upload channels the Identity picker uses', () => {
     expect(registered).toContain(IPC.rosterUploadMark);
     expect(registered).toContain(IPC.rosterRemoveMark);
-  });
-
-  it('registers the host-invocable inventory channel the roster picker reads', () => {
-    expect(registered).toContain(IPC.catalogInvocables);
   });
 
   it('registers the context-breakdown channel, which the Inspector lane reads', () => {

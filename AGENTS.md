@@ -19,7 +19,7 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 .                              ← the application (repo root)
 ├── src/main/                  ← Node main process (privileged)
 │   ├── engine/                ← sequencing, retries, boundaries, gates, worktrees
-│   ├── droid/ + sdk/          ← Droid transport (daemon → RPC → one-shot)
+│   ├── droid/ + sdk/          ← Droid transport (daemon only; no fallback)
 │   ├── cli/                   ← vendor argv + one-shot parse adapters
 │   ├── smith/                 ← Smith's socket, validation, approval queue
 │   ├── trace/                 ← Tracer: sole SQLite writer (WAL)
@@ -33,7 +33,7 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 ├── src/cli/                   ← foundry-cli: the standalone Smith helper binary
 ├── skills/                    ← agent skills for users, keep up-to-date with 'smith' capabilities
 ├── website/                   ← marketing website for foundry app (do not update unless told to)
-├── tests/                     ← Vitest suites (real git temp repos + fake-droid)
+├── tests/                     ← Vitest suites (real git temp repos + scripted daemon)
 │   └── e2e/                   ← Playwright Electron UI smoke (not in npm run check)
 └── scripts/                   ← check-css-collisions, check-docs-commands, audit-deps, engine-demo
 
@@ -162,10 +162,10 @@ so local and CI enforce the same floor. An HTML report lands in `coverage/` (git
 
 **Conventions:**
 
-- Tests use **real git temp repositories** and `tests/fake-droid.ts` (real child handshake fixture). Never use a network or model; do not mock git. Follow the executor pattern in `tests/executor.test.ts` for new engine behavior.
+- Tests use **real git temp repositories** and `tests/scripted-agent.ts` (an in-memory daemon that performs real disk side effects in the worktree and answers asks through the real permission handlers). Never use a network or model; do not mock git. Follow the executor pattern in `tests/executor.test.ts` for new engine behavior.
 - **Electron UI smoke** (`tests/e2e/*.spec.ts`, `@playwright/test` + `_electron.launch()`): isolated `--user-data-dir`, seeded stores + WAL trace, no model or network. Onboarding walks Welcome → Ready; Inspector opens a seeded run and asserts the phase transcript. Failures write `test-results/` + `playwright-report/` (screenshot, trace, video). Interactive agent driving of the same app is the `foundry-ui` skill (CDP + agent-browser); do not add a second harness. The `e2e` CI job on `macos-26` is advisory — not a required check, not part of `npm run check`.
 - `@lobehub/icons` is inlined via `server.deps.inline` so bare directory specifiers resolve under Vite.
-- `tests/cli-vendors.test.ts` owns CLI adapter fixtures; `tests/fake-droid.ts` owns the handshake fixture.
+- `tests/cli-vendors.test.ts` owns CLI adapter fixtures; `tests/scripted-daemon.ts` and `tests/scripted-agent.ts` own the daemon fixtures.
 - New engine phase/gate behavior needs a dedicated executor test with a real worktree snapshot.
 
 **What to run before submitting:** `npm run check` (see below) — it already runs the full Vitest suite.

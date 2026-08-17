@@ -7,8 +7,7 @@ import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AgentDef, EnvelopeDef, PhaseDef } from '@shared/types.js';
 import type { PhaseRunner, RunContext, PhaseJump } from '../phase-context.js';
-import { KILLED_DETAIL, type AgentSession, type Mode } from '../../droid/agent.js';
-import { phasePolicy } from '../../droid/tool-profiles.js';
+import { KILLED_DETAIL, type AgentSession } from '../../droid/agent.js';
 import * as boundary from '../boundary.js';
 import {
   correctionMessage,
@@ -35,7 +34,6 @@ export interface AgentRunnerDeps {
   sessionFor: (agent: AgentDef) => AgentSession;
   onLiveText?: (phaseId: string, text: string) => void;
   /** Reports the transport mode when a session falls back mid-turn. */
-  onModeObserved: (mode: Mode) => void;
 }
 
 /** Counts the rewind path leaves on a correction event when it ran. */
@@ -247,7 +245,6 @@ export class AgentPhaseRunner implements PhaseRunner {
           outputFormat,
           // A phase may narrow the agent's tool surface for its own turns; it
           // can never widen it (see effectiveDisabledToolIds).
-          toolPolicy: phasePolicy(phase),
           onText: (text) => this.deps.onLiveText?.(phaseId, text),
         });
       } catch (e) {
@@ -264,7 +261,6 @@ export class AgentPhaseRunner implements PhaseRunner {
         return { ok: false, detail: `the agent turn failed: ${(e as Error).message}` };
       }
 
-      this.deps.onModeObserved(session.currentMode);
       this.notePhaseAnchor(session, phaseState);
 
       const usageEventId = ctx.tracer.recordUsage(ctx.runId, phaseId, agent.name, outcome.usage);

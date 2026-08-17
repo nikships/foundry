@@ -112,7 +112,6 @@ const api: FoundryApi = {
   catalog: {
     models: (vendor, force) => call(IPC.catalogModels, vendor, force),
     tools: (vendor, model) => call(IPC.catalogTools, vendor, model),
-    invocables: () => call(IPC.catalogInvocables),
     clis: () => call(IPC.catalogClis),
     gates: () => call(IPC.catalogGates),
     templateVariables: () => call(IPC.catalogTemplateVariables),

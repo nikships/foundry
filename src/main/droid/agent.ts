@@ -1,6 +1,5 @@
 /**
- * Adapter boundary: `send(turn) -> events + final text`, identical for JSON-RPC
- * or one-shot. The executor cannot tell which mode is active.
+ * Adapter boundary: `send(turn) -> events + final text` over the droid daemon.
  *
  * A session belongs to one agent for the whole run and starts lazily on that
  * agent's first phase.
@@ -8,54 +7,48 @@
 
 import type {
   AgentDef,
-  AgentInvocables,
   CliVendor,
   ContextBreakdown,
-  HostInvocableInventory,
-  ToolPolicySpec,
   UsageBreakdown,
   UserMcpServer,
 } from '@shared/types.js';
-import {
-  emptyInventory,
-  hiddenFromHost,
-  needsHomeOverlay,
-  needsSkillComplement,
-  normalizeInvocables,
-} from './invocables.js';
-import { agentPolicy, describePolicy, isRestrictive, oneShotAllowlist } from './tool-profiles.js';
-import { createFactoryHomeOverlay, type FactoryHomeOverlay } from './factory-home.js';
 import type { Tracer } from '../trace/tracer.js';
 import type { Envelope } from '../engine/envelopes.js';
 import type { Snapshot } from '../engine/boundary.js';
-import { adapterFor } from '../cli/index.js';
 import {
   type PermissionAsk,
   type PermissionDecision,
   type TurnOptions,
   type TurnResult,
 } from './turn.js';
-import { OneShotClient } from './oneshot.js';
 import { noteSessionModels, noteSessionTools } from './catalog.js';
 import { EventFolder, toUsageBreakdown } from './events.js';
 import { evaluate, type PolicyContext } from './permissions.js';
-import { SdkSession } from './sdk/session.js';
-import { DaemonSession, getDaemonManager, type DaemonEnsureResult } from './sdk/daemon.js';
+import { getDaemonManager, type DaemonEnsureResult } from './sdk/daemon.js';
+import { DaemonSession, type DaemonSessionsFacade } from './sdk/daemon-session.js';
 import type { TransportSession, TransportSessionOptions } from './sdk/transport.js';
-import { isTransportFailure } from './sdk/errors.js';
 import type { ContextStatsResult } from './protocol.js';
 
-export type Mode = 'daemon' | 'rpc' | 'oneshot';
+/**
+ * The only transport an agent run uses.
+ *
+ * This is deliberately a one-member union rather than a removed concept: the
+ * trace, the run row, and the renderer all record which mode a run used, and
+ * keeping the field makes the guarantee legible instead of implicit.
+ *
+ * Foundry used to degrade daemon → subprocess → one-shot whenever the daemon
+ * could not enforce some policy. That was worse than it sounds: only the
+ * daemon and subprocess transports consult `permissions.ts`, so a run that
+ * reached one-shot silently swapped Foundry's write-boundary policy for the
+ * CLI's coarser `--auto` gate. A quiet downgrade of the security model is not
+ * a fallback, so there is no longer anything to fall back to.
+ */
+export type Mode = 'daemon';
 
 export interface AgentTurnContext extends TurnOptions {
   phaseId: string;
   /** Live text tail for the phase panel; a ring buffer, never stored. */
   onText?: (text: string) => void;
-  /**
-   * The phase's tool narrowing, when it authored one. Applied before the turn
-   * starts, so a phase can never run under the previous phase's wider policy.
-   */
-  toolPolicy?: ToolPolicySpec | null;
 }
 
 /**
@@ -70,9 +63,9 @@ export interface InterruptRequest {
   body: string;
 }
 
-/** Outcome of opening a daemon-backed TransportSession (production or test). */
+/** Outcome of reaching the daemon and getting a facade to open sessions on. */
 export type OpenDaemonResult =
-  { ok: true; session: TransportSession } | { ok: false; reason: string };
+  { ok: true; sessions: DaemonSessionsFacade } | { ok: false; reason: string };
 
 export interface AgentSessionDeps {
   /** Path to the binary this agent's CLI lives at. */
@@ -90,45 +83,18 @@ export interface AgentSessionDeps {
    * MCP `read_phase_context` tool reads it; absent means an empty chain.
    */
   envelopes?: ReadonlyMap<string, Envelope>;
-  /**
-   * Settings preference. Default `daemon`. `subprocess` forces SdkSession and
-   * never touches DaemonManager.
-   */
-  transport?: 'daemon' | 'subprocess';
-  /** Preferred daemon port (37600–37699). Used only when transport is daemon. */
+  /** Preferred daemon port (37600–37699). */
   daemonPort?: number;
   userMcpServers?: UserMcpServer[];
   /**
-   * What the operator has installed on the host, snapshotted at run start. The
-   * agent's own selection is checked against it to decide what has to be
-   * withheld. Absent means "nothing installed", which needs no isolation — the
-   * honest reading for a test or a machine with no `~/.factory`.
+   * Test seam: supply the daemon's session facade instead of connecting to a
+   * real `droid daemon`. The session built on top of it is the production
+   * `DaemonSession` with the production permission wiring, so a test exercises
+   * the real transport rather than a stand-in for it. Production leaves this
+   * unset.
    */
-  hostInvocables?: HostInvocableInventory;
-  /**
-   * True when some phase in this run narrows this agent's tools. Known only to
-   * the engine (it holds the pipeline), and needed at session-open time: a
-   * transport that cannot enforce a narrowing must be ruled out before the first
-   * turn rather than discovered mid-run.
-   */
-  hasPhaseToolPolicy?: boolean;
-  /** Test seam: where overlay directories are created. Defaults to the OS temp dir. */
-  overlayTmpRoot?: string;
-  /** Test seam: the home the overlay mirrors. Defaults to the real one. */
-  overlayHomeDir?: string;
-  /**
-   * Test seam: open a daemon TransportSession without a real DaemonManager.
-   * Production leaves this unset.
-   */
-  openDaemonSession?: () => Promise<OpenDaemonResult>;
-  /**
-   * Test seam: open a subprocess SdkSession stand-in. Production leaves this
-   * unset and constructs SdkSession directly.
-   */
-  openRpcSession?: () => Promise<TransportSession>;
+  openDaemonSessions?: () => Promise<OpenDaemonResult>;
 }
-
-const PROTOCOL_FAILURE_LIMIT = 2;
 
 /** Where an agent's last context breakdown is kept among the run's raw records. */
 export function breakdownFile(agent: string): string {
@@ -143,9 +109,8 @@ export interface CapturedBreakdown {
 
 /**
  * Why a turn stopped when the operator ended the run, and the detail the run
- * settles with. A kill is a verdict, not a transport flap: the dead child must
- * never be restarted or answered one-shot, or the kill settles as an accepted
- * run.
+ * settles with. A kill is a verdict, not a transport flap: the killed turn must
+ * never be retried, or the kill settles as an accepted run.
  */
 export const KILLED_DETAIL = 'the run was killed';
 
@@ -170,18 +135,6 @@ function errorMessage(e: unknown): string {
 }
 
 /**
- * What the overlay withheld, for the trace. Isolation that is invisible is
- * indistinguishable from a broken install, so the operator is told which host
- * entries this agent did not get rather than left to infer it from absence.
- */
-function describeHidden(hidden: { droids: string[]; mcpServers: string[] }): string {
-  const parts: string[] = [];
-  if (hidden.droids.length) parts.push(`droids ${hidden.droids.join(', ')}`);
-  if (hidden.mcpServers.length) parts.push(`mcp ${hidden.mcpServers.join(', ')}`);
-  return parts.join('; ') || 'none';
-}
-
-/**
  * Snapshot paths are worktree-relative; the CLI may report the same file as a
  * cwd-relative or absolute path. Compare after stripping a worktree prefix.
  */
@@ -201,48 +154,19 @@ function stripWorktreePrefix(path: string, worktree: string): string {
 
 export class AgentSession {
   private rpc: TransportSession | null = null;
-  private oneshot: OneShotClient | null = null;
-  private mode: Mode = 'rpc';
-  private protocolFailures = 0;
+  private readonly mode: Mode = 'daemon';
   private droidSessionId: string | null = null;
   private processRowId: number | null = null;
-  /** One row per one-shot turn: each turn is its own child process. */
-  private readonly oneshotRows = new Map<number, number>();
   private currentFolder: EventFolder | null = null;
   private currentPhaseId: string | null = null;
   private killed = false;
   /** Daemon child is recorded once for the whole app process, not per agent. */
   private daemonProcessRecorded = false;
-  /**
-   * Which host invocables this agent opted into. Read once from the roster: a
-   * mid-run roster edit must not change what a running session can reach.
-   */
-  private readonly selection: AgentInvocables;
-  /** This agent's authored tool policy, resolved once from the roster. */
-  private readonly toolPolicy: ToolPolicySpec;
-  /** The narrowing currently in force, so a repeat is not re-applied. */
-  private appliedPhasePolicy: string | null = null;
-  /** The ephemeral home for this agent's children, once built. */
-  private overlay: FactoryHomeOverlay | null = null;
-  /** Memoises the build so concurrent turns cannot race two overlays. */
-  private overlayBuild: Promise<FactoryHomeOverlay | null> | null = null;
 
   constructor(
     private readonly agent: AgentDef,
     private readonly deps: AgentSessionDeps,
-  ) {
-    this.selection = normalizeInvocables(this.agent.invocables);
-    this.toolPolicy = agentPolicy(this.agent);
-    // Only droid has a JSON-RPC / daemon client. Every other vendor starts in
-    // one-shot rather than discovering it by failing a handshake twice.
-    if (!adapterFor(this.vendor).supportsRpc) {
-      this.mode = 'oneshot';
-    } else if ((this.deps.transport ?? 'daemon') === 'subprocess') {
-      this.mode = 'rpc';
-    } else {
-      this.mode = 'daemon';
-    }
-  }
+  ) {}
 
   /** A roster written before agents could pick a CLI means droid. */
   private get vendor(): CliVendor {
@@ -257,243 +181,81 @@ export class AgentSession {
     return this.droidSessionId;
   }
 
-  /** Daemon and subprocess SdkSession both expose a live conversation. */
-  private get isSdkMode(): boolean {
-    return this.mode === 'daemon' || this.mode === 'rpc';
-  }
-
-  /**
-   * Last user-message id on the live SDK session. One-shot has no message id
-   * stream, so this is always null outside daemon/rpc.
-   */
+  /** Last user-message id on the live daemon session, if one is open yet. */
   get lastUserMessageId(): string | null {
-    if (!this.isSdkMode || !this.rpc) return null;
-    return this.rpc.lastUserMessageId;
+    return this.rpc?.lastUserMessageId ?? null;
   }
 
-  /** Rewind needs a live SDK session; one-shot never qualifies. */
+  /** Rewind needs a live session, which only exists once a turn has opened one. */
   get canRewind(): boolean {
-    return this.isSdkMode && !!this.rpc?.alive;
-  }
-
-  /** The host inventory this session was told about; empty when there is none. */
-  private get inventory(): HostInvocableInventory {
-    return this.deps.hostInvocables ?? emptyInventory();
+    return !!this.rpc?.alive;
   }
 
   /**
-   * Build this agent's ephemeral home, once, before anything spawns.
+   * The operator's own MCP servers.
    *
-   * Returns null when there is nothing to withhold, which is the common case on
-   * a clean host and keeps the spawn path identical to today's. The build is
-   * memoised on the promise rather than the result so a fallback that re-enters
-   * `ensureStarted` mid-run reuses the same directory instead of building a
-   * second one and leaking the first.
-   */
-  private async ensureIsolation(): Promise<void> {
-    if (this.overlayBuild) {
-      await this.overlayBuild;
-      return;
-    }
-    if (!needsHomeOverlay(this.inventory, this.selection)) {
-      this.overlayBuild = Promise.resolve(null);
-      return;
-    }
-    this.overlayBuild = createFactoryHomeOverlay({
-      inventory: this.inventory,
-      selection: this.selection,
-      homeDir: this.deps.overlayHomeDir,
-      tmpRoot: this.deps.overlayTmpRoot,
-    });
-    try {
-      this.overlay = await this.overlayBuild;
-      if (this.overlay) {
-        this.agentLog('log', 'isolation', {
-          message: `host invocables withheld: ${describeHidden(this.overlay.hidden)}`,
-        });
-      }
-    } catch (e) {
-      // Isolation is a policy, not a nicety: if the overlay cannot be built the
-      // agent would silently run with the operator's full host install. Fail the
-      // turn instead, and let the memoised rejection stop later turns too.
-      throw new Error(`could not isolate host invocables: ${errorMessage(e)}`);
-    }
-  }
-
-  /**
-   * Narrow this agent's tools to what the phase about to run asked for.
-   *
-   * Each transport enforces it differently, and each has a way to be unable to:
-   *
-   *  - **Subprocess / daemon** enforce it through `setPhaseToolPolicy`, which
-   *    recomputes the complement against the live tool list. A transport that
-   *    does not implement the method cannot enforce anything, so a narrowing
-   *    phase fails the turn rather than running with the agent's wider surface.
-   *    Narrowing agents are kept off the daemon up front, so this is the
-   *    backstop rather than the expected path.
-   *  - **One-shot** has no session to update, so the narrowing travels as the
-   *    per-turn `--restrict-tools` allowlist. That is inherently fail-closed: an
-   *    id the profile table does not know about is excluded, never admitted.
-   */
-  private async applyPhaseToolPolicy(phase: ToolPolicySpec | null): Promise<void> {
-    const fingerprint = JSON.stringify(phase ?? null);
-    const changed = fingerprint !== this.appliedPhasePolicy;
-
-    if (this.mode === 'oneshot') {
-      // The allowlist is the intersection of the agent's policy and the phase's.
-      if (changed) this.oneshot?.setToolAllowlist(oneShotAllowlist(this.toolPolicy, phase));
-      this.appliedPhasePolicy = fingerprint;
-      return;
-    }
-
-    const client = this.rpc;
-    if (!client) return;
-    if (!client.setPhaseToolPolicy) {
-      if (!isRestrictive(phase)) {
-        this.appliedPhasePolicy = fingerprint;
-        return;
-      }
-      throw new Error(
-        'this transport cannot enforce a narrower tool policy for this phase; ' +
-          'refusing to run it under the agent policy instead',
-      );
-    }
-    if (!changed) return;
-    await client.setPhaseToolPolicy(phase);
-    this.appliedPhasePolicy = fingerprint;
-    if (isRestrictive(phase)) {
-      this.agentLog('log', 'tools', {
-        message: `tool policy for this phase: ${describePolicy(this.toolPolicy, phase)}`,
-      });
-    }
-  }
-
-  /** Host skills this agent did not select, for the disabled complement. */
-  private hiddenSkills(): { id: string; name: string }[] {
-    return hiddenFromHost(this.inventory, this.selection).skills.map((s) => ({
-      id: s.id,
-      name: s.name,
-    }));
-  }
-
-  /**
-   * The operator's own MCP servers, narrowed to the ones this agent selected.
-   *
-   * PR 71 attaches these in-process at session create, so they are opt-in per
-   * agent by construction: an unselected server is simply never passed, and no
-   * config file is involved in either direction.
+   * Attached in-process at session create, never by writing the host's
+   * `~/.factory/mcp.json`. Servers the operator disabled in Settings are
+   * dropped here rather than handed over and ignored.
    */
   private selectedUserMcpServers(): UserMcpServer[] | undefined {
-    const all = this.deps.userMcpServers ?? [];
-    if (!all.length) return undefined;
-    const selected = new Set(this.selection.userMcpServers);
-    const kept = all.filter((server) => selected.has(server.id) && !server.disabled);
+    const kept = (this.deps.userMcpServers ?? []).filter((server) => !server.disabled);
     return kept.length ? kept : undefined;
   }
 
   /** Started lazily: an agent that never runs a phase never spawns a child. */
   private async ensureStarted(): Promise<void> {
     if (this.killed) throw new RunKilledError();
-    // Before any spawn, on every path: one-shot children get the overlay env as
-    // directly as the subprocess transport does.
-    await this.ensureIsolation();
-    if (this.mode === 'oneshot') {
-      this.oneshot ??= this.buildOneShot();
-      return;
-    }
     if (this.rpc?.alive) return;
-
-    if (this.mode === 'daemon') {
-      const opened = await this.openDaemon();
-      if (opened) return;
-      // openDaemon already fell back to rpc with a traced reason.
-    }
-
-    await this.startRpcSession();
+    await this.openDaemon();
   }
 
   /**
-   * Try the daemon path. Returns true when a live DaemonSession is installed.
-   * Any failure falls back to subprocess with a traced warning and leaves
-   * mode='rpc' so the caller can open SdkSession — a run never dies because
-   * the daemon did not come up.
+   * Open the daemon session, or fail the turn.
+   *
+   * There is deliberately no fallback. The alternatives were a subprocess or a
+   * one-shot child, and one-shot does not consult `permissions.ts` at all — so
+   * "keep the run alive" meant "finish the run under a weaker policy than the
+   * operator configured, without telling them". A daemon that cannot come up is
+   * an environment fault worth surfacing, not something to paper over.
    */
-  private async openDaemon(): Promise<boolean> {
+  private async openDaemon(): Promise<void> {
+    let opened: OpenDaemonResult;
     try {
-      const opened = this.deps.openDaemonSession
-        ? await this.deps.openDaemonSession()
-        : await this.openDaemonProduction();
-      if (!opened.ok) {
-        this.fallbackToSubprocess(opened.reason);
-        return false;
-      }
-      const client = opened.session;
-      try {
-        await client.start(this.droidSessionId);
-      } catch (e) {
-        await client.close().catch(() => undefined);
-        if (this.killed) throw new RunKilledError();
-        this.fallbackToSubprocess(`daemon session start failed: ${errorMessage(e)}`);
-        return false;
-      }
-      this.rpc = client;
-      this.droidSessionId = client.id;
-      // No per-session child pid: DaemonManager records the daemon once.
-      this.setMode('daemon');
-      this.persistSession();
-      await this.publishDiscovery(client);
-      if (this.killed) {
-        await this.close();
-        throw new RunKilledError();
-      }
-      return true;
+      opened = this.deps.openDaemonSessions
+        ? await this.deps.openDaemonSessions()
+        : await this.connectDaemon();
     } catch (e) {
       if (e instanceof RunKilledError) throw e;
-      this.fallbackToSubprocess(`daemon unavailable: ${errorMessage(e)}`);
-      return false;
+      throw new Error(`daemon unavailable: ${errorMessage(e)}`);
+    }
+    if (!opened.ok) throw new Error(`daemon unavailable: ${opened.reason}`);
+
+    const client: TransportSession = new DaemonSession({
+      sessions: opened.sessions,
+      ...this.transportOpts(),
+      foundryMcp: this.foundryMcpOpts(),
+    });
+    try {
+      await client.start(this.droidSessionId);
+    } catch (e) {
+      await client.close().catch(() => undefined);
+      if (this.killed) throw new RunKilledError();
+      throw new Error(`daemon session start failed: ${errorMessage(e)}`);
+    }
+
+    this.rpc = client;
+    this.droidSessionId = client.id;
+    // No per-session child pid: DaemonManager records the daemon once.
+    this.persistSession();
+    await this.publishDiscovery(client);
+    if (this.killed) {
+      await this.close();
+      throw new RunKilledError();
     }
   }
 
-  private async openDaemonProduction(): Promise<OpenDaemonResult> {
-    // Restrictive allowlists need listTools to compute the disabled complement.
-    // The daemon high-level API has no builtin listTools (only MCP listTools),
-    // so a roster with restrictTools must fail closed to subprocess rather than
-    // silently run unenforced.
-    if (this.agent.tools?.length) {
-      return {
-        ok: false,
-        reason: 'daemon cannot enforce restrictTools (no listTools)',
-      };
-    }
-    // A profile or a phase narrowing is the same complement problem the
-    // allowlist above has: it needs a builtin tool list the daemon's high-level
-    // API does not offer, so it must not be attempted here.
-    if (isRestrictive(this.toolPolicy) || this.deps.hasPhaseToolPolicy) {
-      return {
-        ok: false,
-        reason: 'daemon cannot enforce a tool profile (no listTools)',
-      };
-    }
-    // The daemon is one shared process for the whole app, started with the
-    // app's own environment: a per-agent home cannot be given to it after the
-    // fact, so an agent that needs host Droids or MCP servers withheld cannot
-    // run there. Same fail-closed reasoning as the allowlist above — the
-    // alternative is an agent quietly reaching the operator's whole install.
-    if (needsHomeOverlay(this.inventory, this.selection)) {
-      return {
-        ok: false,
-        reason: 'daemon cannot isolate host droids/MCP servers (shared process)',
-      };
-    }
-    // Hiding a skill needs the disabled complement, which needs a builtin tool
-    // list the daemon's high-level API does not offer.
-    if (needsSkillComplement(this.inventory, this.selection)) {
-      return {
-        ok: false,
-        reason: 'daemon cannot enforce host skill isolation (no listTools)',
-      };
-    }
-
+  private async connectDaemon(): Promise<OpenDaemonResult> {
     const manager = getDaemonManager({
       droidPath: this.deps.cliPath,
       port: this.deps.daemonPort ?? 37_643,
@@ -512,75 +274,14 @@ export class AgentSession {
 
     const ensured: DaemonEnsureResult = await manager.ensure();
     if (!ensured.ok) {
-      return { ok: false, reason: `daemon ${ensured.reason}: ${ensured.detail}` };
+      return { ok: false, reason: `${ensured.reason}: ${ensured.detail}` };
     }
     const sessions = ensured.droid.sessions;
     if (!sessions) {
       return { ok: false, reason: 'daemon connection has no sessions facade' };
     }
-    // Double-check: a future facade that gains listTools can serve restricted
-    // rosters; until then the early return above already caught them. If a
-    // restricted roster somehow reached here without listTools, still fail closed.
-    if (this.agent.tools?.length && !sessions.listTools) {
-      return {
-        ok: false,
-        reason: 'daemon cannot enforce restrictTools (no listTools)',
-      };
-    }
 
-    return {
-      ok: true,
-      session: new DaemonSession({
-        sessions,
-        ...this.transportOpts(),
-        foundryMcp: this.foundryMcpOpts(),
-      }),
-    };
-  }
-
-  private async startRpcSession(): Promise<void> {
-    const client = this.deps.openRpcSession
-      ? await this.deps.openRpcSession()
-      : new SdkSession({
-          droidPath: this.deps.cliPath,
-          ...this.transportOpts(),
-          onExit: () => this.onRpcExit(),
-          foundryMcp: this.foundryMcpOpts(),
-        });
-
-    try {
-      await client.start(this.droidSessionId);
-    } catch (e) {
-      // A session that never started leaves a child behind when the failure
-      // was the handshake rather than the spawn.
-      await client.close().catch(() => undefined);
-      if (this.killed) throw new RunKilledError();
-      this.countFailure(e);
-      this.noteOneShotFallback(`session start failed: ${errorMessage(e)}`);
-      this.switchToOneShot();
-      return;
-    }
-
-    this.rpc = client;
-    this.droidSessionId = client.id;
-    this.setMode('rpc');
-    if (client.pid) {
-      this.processRowId = this.deps.tracer.recordProcess({
-        runId: this.deps.runId,
-        kind: 'droid',
-        name: this.agent.name,
-        pid: client.pid,
-        command: `${this.deps.cliPath} ${client.spawnArgs().join(' ')}`,
-      });
-    }
-    this.persistSession();
-    await this.publishDiscovery(client);
-    // A kill that landed while this child was still handshaking never saw it:
-    // `kill()` only reaches the sessions that existed when it ran.
-    if (this.killed) {
-      await this.close();
-      throw new RunKilledError();
-    }
+    return { ok: true, sessions };
   }
 
   private transportOpts(): TransportSessionOptions {
@@ -588,9 +289,6 @@ export class AgentSession {
       runId: this.deps.runId,
       ...this.turnOpts(),
       userMcpServers: this.selectedUserMcpServers(),
-      hiddenSkills: this.hiddenSkills(),
-      toolPolicy: this.toolPolicy,
-      spawnEnvOverrides: this.overlay?.env,
       onPermission: (ask) => this.decide(ask),
       onNotification: (n) => this.currentFolder?.absorb(n),
       onModelWarning: (message) => this.agentLog('log', 'model', { message }),
@@ -640,134 +338,8 @@ export class AgentSession {
       cwd: this.deps.worktree,
       model: this.agent.model,
       reasoningEffort: this.agent.reasoningEffort,
-      restrictTools: this.agent.tools?.length ? this.agent.tools : undefined,
-      disabledTools: this.agent.disabledTools?.length ? this.agent.disabledTools : undefined,
       onStderr: (text: string) => this.logStderr(text),
     };
-  }
-
-  private buildOneShot(): OneShotClient {
-    const client = new OneShotClient({
-      vendor: this.vendor,
-      cliPath: this.deps.cliPath,
-      extraArgs: this.deps.cliExtraArgs,
-      runId: this.deps.runId,
-      ...this.turnOpts(),
-      env: this.overlay?.env,
-      onSpawn: (pid, command) => this.recordOneShot(pid, command),
-      onChildExit: (pid) => this.endOneShot(pid),
-    });
-    client.adopt(this.droidSessionId);
-    return client;
-  }
-
-  /** A one-shot child is as killable as an RPC one, so it gets a row too. */
-  private recordOneShot(pid: number, command: string): void {
-    this.oneshotRows.set(
-      pid,
-      this.deps.tracer.recordProcess({
-        runId: this.deps.runId,
-        kind: 'droid',
-        name: this.agent.name,
-        pid,
-        command,
-      }),
-    );
-  }
-
-  private endOneShot(pid: number): void {
-    const rowId = this.oneshotRows.get(pid);
-    if (rowId === undefined) return;
-    this.oneshotRows.delete(pid);
-    this.deps.tracer.endProcess(rowId);
-  }
-
-  private switchToOneShot(): void {
-    if (this.mode === 'oneshot') return;
-    this.rpc?.kill();
-    this.rpc = null;
-    this.oneshot = this.buildOneShot();
-    this.setMode('oneshot');
-    // A new transport has none of the narrowing the phase asked for.
-    this.appliedPhasePolicy = null;
-    this.persistSession();
-  }
-
-  /**
-   * Daemon path is unavailable (start/auth/allowlist). Mode becomes rpc so the
-   * next ensureStarted opens SdkSession; the run continues.
-   */
-  private fallbackToSubprocess(reason: string): void {
-    if (this.mode === 'rpc' || this.mode === 'oneshot') return;
-    this.rpc = null;
-    this.appliedPhasePolicy = null;
-    this.agentLog('log', `fallback to subprocess: ${reason}`, {
-      reason,
-      failures: this.protocolFailures,
-    });
-    this.setMode('rpc');
-    this.persistSession();
-  }
-
-  /**
-   * A daemon-mode protocol strike: drop the daemon session and open a
-   * subprocess SdkSession for the retry. Counts as one strike already via
-   * countFailure; does not itself increment.
-   */
-  private async fallDaemonToRpc(reason: string): Promise<void> {
-    const dead = this.rpc;
-    this.rpc = null;
-    this.appliedPhasePolicy = null;
-    await dead?.close().catch(() => undefined);
-    this.agentLog('log', `fallback to subprocess: ${reason}`, {
-      reason,
-      failures: this.protocolFailures,
-    });
-    this.setMode('rpc');
-    this.persistSession();
-    await this.ensureStarted();
-  }
-
-  /** Notify only when the mode actually changes — avoids duplicate rpc events. */
-  private setMode(mode: Mode): void {
-    if (this.mode === mode) return;
-    this.mode = mode;
-    this.deps.onModeChange?.(mode);
-  }
-
-  private noteOneShotFallback(reason: string): void {
-    this.agentLog('log', 'fallback to one-shot', {
-      reason,
-      failures: this.protocolFailures,
-    });
-  }
-
-  /**
-   * One strike against the RPC transport. Strikes are only ever counted here,
-   * on the turn that failed: a dying child both rejects the in-flight turn and
-   * fires its exit callback, and counting in both places would spend the whole
-   * budget on a single death. A child that dies between turns is not a strike —
-   * the next turn silently restarts it and nothing was lost.
-   *
-   * The SDK reports a broken transport as four unrelated classes rather than
-   * one wrapper, so they are recognised explicitly; anything else still costs a
-   * strike, but is filed as unclassified so a new SDK error class shows up in
-   * the trace instead of blending in.
-   */
-  private countFailure(error: unknown): void {
-    this.protocolFailures++;
-    if (isTransportFailure(error)) return;
-    this.agentLog('log', 'protocol', {
-      message: errorMessage(error),
-      unclassified: true,
-      failures: this.protocolFailures,
-    });
-  }
-
-  private onRpcExit(): void {
-    if (this.processRowId === null) return;
-    this.deps.tracer.endProcess(this.processRowId);
-    this.processRowId = null;
   }
 
   private logStderr(text: string): void {
@@ -835,7 +407,6 @@ export class AgentSession {
   async send(prompt: string, ctx: AgentTurnContext): Promise<TurnOutcome> {
     this.currentPhaseId = ctx.phaseId;
     await this.ensureStarted();
-    await this.applyPhaseToolPolicy(ctx.toolPolicy ?? null);
 
     const folder = new EventFolder({
       tracer: this.deps.tracer,
@@ -847,7 +418,7 @@ export class AgentSession {
     this.currentFolder = folder;
 
     try {
-      const result = await this.transportSend(prompt, folder, ctx);
+      const result = await this.transportSend(prompt, folder, ctx.outputFormat);
       folder.closeDangling('turn ended before this call reported a result');
       await this.refreshContext();
       return {
@@ -862,105 +433,31 @@ export class AgentSession {
   }
 
   /**
-   * Protocol-failure ladder across daemon + rpc:
-   *   daemon strike → rpc (same turn retries on subprocess)
-   *   two total strikes → oneshot for the rest of the run
-   * A flapping transport must not be retried forever.
+   * Send one turn on the daemon session.
+   *
+   * A transport failure fails the turn. It used to demote the session and retry
+   * on a weaker transport, which meant an operator could not tell a healthy run
+   * from one that had quietly lost its permission policy; the engine's own
+   * retry//gate machinery is the right place to decide what a failed turn means.
    */
   private async transportSend(
     prompt: string,
     folder: EventFolder,
-    ctx: AgentTurnContext,
+    outputFormat: AgentTurnContext['outputFormat'],
   ): Promise<TurnResult> {
-    while (this.isSdkMode && this.rpc) {
-      try {
-        // Re-stated per attempt: a daemon→subprocess fall or a restart replaces
-        // the session, and the replacement has none of the narrowing the phase
-        // asked for. Memoised, so an unchanged policy costs nothing.
-        await this.applyPhaseToolPolicy(ctx.toolPolicy ?? null);
-        return await this.rpc.send(prompt, this.deps.turnTimeoutMs, {
-          outputFormat: ctx.outputFormat,
-        });
-      } catch (e) {
-        const message = errorMessage(e);
-        // A killed child rejects its turn like any dead one. Recovering here
-        // would hand the operator's kill to the one-shot fallback, which can
-        // finish the phase and settle the run accepted.
-        if (this.killed) {
-          folder.closeDangling(KILLED_DETAIL);
-          throw new RunKilledError();
-        }
-        this.countFailure(e);
-        folder.closeDangling(`transport failed: ${message}`);
-        if (this.protocolFailures >= PROTOCOL_FAILURE_LIMIT) {
-          this.noteOneShotFallback(message);
-          this.switchToOneShot();
-          break;
-        }
-        if (this.mode === 'daemon') {
-          // One daemon strike drops to subprocess; the counter carries over.
-          await this.fallDaemonToRpc(message);
-          continue;
-        }
-        this.noteOneShotFallback(`retrying after ${message}`);
-        // A restart that cannot come back up has already switched the mode, so
-        // the loop condition ends the RPC attempts rather than spinning.
-        await this.restart();
+    const client = this.rpc;
+    if (!client) throw new Error('daemon session is not open');
+    try {
+      return await client.send(prompt, this.deps.turnTimeoutMs, { outputFormat });
+    } catch (e) {
+      if (this.killed) {
+        folder.closeDangling(KILLED_DETAIL);
+        throw new RunKilledError();
       }
+      const message = errorMessage(e);
+      folder.closeDangling(`transport failed: ${message}`);
+      throw e;
     }
-
-    return this.sendOneShot(prompt, ctx.phaseId, folder);
-  }
-
-  /** Drop the dead RPC child and start a fresh one for the next attempt. */
-  private async restart(): Promise<void> {
-    const dead = this.rpc;
-    this.rpc = null;
-    this.appliedPhasePolicy = null;
-    // The dead session's own child may still be running (a protocol failure is
-    // not always process death), and nothing else will reap it once the field
-    // is reassigned.
-    await dead?.close().catch(() => undefined);
-    await this.ensureStarted();
-  }
-
-  private async sendOneShot(
-    prompt: string,
-    phaseId: string,
-    folder: EventFolder,
-  ): Promise<TurnResult> {
-    if (this.killed) throw new RunKilledError();
-    const oneshot = (this.oneshot ??= this.buildOneShot());
-    // A vendor with a stream normaliser gets its mid-turn events folded into
-    // real trace rows; one without keeps the single honest span that says
-    // there is nothing to show until the turn ends. The normaliser is built
-    // per turn: folding can carry state, and sessions share the adapter.
-    const streamFactory = adapterFor(this.vendor).stream;
-    const spanId = streamFactory
-      ? null
-      : this.deps.tracer.event({
-          runId: this.deps.runId,
-          phaseId,
-          type: 'tool_call',
-          name: `${this.agent.name}: one-shot turn`,
-          payload: {
-            mode: 'oneshot',
-            note: 'mid-turn tool visibility is unavailable for this CLI',
-          },
-        });
-    const normalise = streamFactory?.();
-    const result = await oneshot.send(
-      prompt,
-      this.deps.turnTimeoutMs,
-      normalise ? (line) => folder.absorbAll(normalise(line)) : undefined,
-    );
-    // A kill that landed mid-turn leaves whatever the child printed first; it
-    // is not an answer the phase may be settled on.
-    if (this.killed) throw new RunKilledError();
-    this.droidSessionId = oneshot.id ?? this.droidSessionId;
-    this.persistSession();
-    if (spanId) this.deps.tracer.endEvent(spanId, { reason: result.reason });
-    return result;
   }
 
   private async refreshContext(): Promise<void> {
@@ -996,22 +493,21 @@ export class AgentSession {
   }
 
   /**
-   * How full this agent's context is, or `null` when there is nothing to
-   * measure. A one-shot session has no context to report: every turn is its
-   * own child, so occupancy is not a property it has.
+   * How full this agent's context is, or `null` before the first turn has
+   * opened a session to measure.
    */
   async contextStats(): Promise<ContextStatsResult | null> {
-    if (!this.isSdkMode || !this.rpc) return null;
+    if (!this.rpc) return null;
     return this.rpc.contextStats();
   }
 
   /**
    * What is occupying this agent's context, for the Inspector's disclosure.
-   * `null` for a one-shot session (no conversation to account for) and for a
-   * transport that did not answer — a breakdown is a view, never a run input.
+   * `null` before a session exists, and when the daemon does not answer — a
+   * breakdown is a view, never a run input.
    */
   async contextBreakdown(): Promise<ContextBreakdown | null> {
-    if (!this.isSdkMode || !this.rpc) return null;
+    if (!this.rpc) return null;
     return this.rpc.contextBreakdown();
   }
 
@@ -1026,7 +522,7 @@ export class AgentSession {
    * carries on.
    */
   async compact(before: ContextStatsResult): Promise<{ removedCount: number } | null> {
-    if (!this.isSdkMode || !this.rpc) return null;
+    if (!this.rpc) return null;
     try {
       const outcome = await this.rpc.compact();
       if (!outcome) return null;
@@ -1060,12 +556,12 @@ export class AgentSession {
   }
 
   /**
-   * Rewind the live SDK session to `messageId`, restoring the phase-start files
+   * Rewind the live session to `messageId`, restoring the phase-start files
    * the snapshot still knows about, and continue on the successor. Same
    * swap-and-persist mechanics as compaction.
    *
-   * Returns null when rewind is impossible (one-shot / no session / no
-   * messageId) or when the CLI refuses — the caller then falls back to an
+   * Returns null when rewind is impossible (no session yet, or no messageId)
+   * or when the daemon refuses — the caller then falls back to an
    * append-style correction. A failure here must never fail the phase.
    */
   async rewind(input: { messageId: string; snapshot: Snapshot }): Promise<{
@@ -1114,30 +610,12 @@ export class AgentSession {
       this.deps.tracer.endProcess(this.processRowId);
       this.processRowId = null;
     }
-    for (const rowId of this.oneshotRows.values()) this.deps.tracer.endProcess(rowId);
-    this.oneshotRows.clear();
     await this.rpc?.close();
-    await this.oneshot?.close();
-    // After the children are gone, not before: a live child resolving a symlink
-    // through the overlay would lose its config mid-turn.
-    await this.releaseOverlay();
   }
 
   kill(): void {
     this.killed = true;
     this.rpc?.kill();
-    this.oneshot?.kill();
-    // A killed run still calls close(); this is the belt to that braces, so a
-    // kill path that skips close cannot leave a temp directory behind.
-    void this.releaseOverlay();
-  }
-
-  /** Remove the ephemeral home, once. Never throws — cleanup cannot fail a run. */
-  private async releaseOverlay(): Promise<void> {
-    const overlay = this.overlay;
-    if (!overlay) return;
-    this.overlay = null;
-    await overlay.cleanup();
   }
 
   usageIsUnreported(usage: UsageBreakdown): boolean {

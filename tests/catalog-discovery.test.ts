@@ -26,7 +26,7 @@ import {
 import { AgentSession } from '../src/main/droid/agent.js';
 import { openDb, projectDbPath, projectRunsDir } from '../src/main/trace/db.js';
 import { Tracer } from '../src/main/trace/tracer.js';
-import { writeFakeDroid } from './fake-droid.js';
+import { ScriptedAgent } from './scripted-agent.js';
 
 let shim: string;
 let argvLog: string;
@@ -140,7 +140,6 @@ describe('the model catalog', () => {
 });
 
 describe('a live agent session', () => {
-  let fakeDroid: string;
   let phaseId: string;
   const sessions: AgentSession[] = [];
 
@@ -156,8 +155,7 @@ describe('a live agent session', () => {
     while (sessions.length > 0) await sessions.pop()?.close();
   });
 
-  function agentSession(): AgentSession {
-    fakeDroid = writeFakeDroid();
+  function agentSession(daemon: ScriptedAgent): AgentSession {
     const support = tempDir('foundry-discovery-');
     const tracer = new Tracer(
       openDb(projectDbPath(support, 'proj')),
@@ -173,7 +171,7 @@ describe('a live agent session', () => {
       worktreePath: null,
       branch: null,
       baseRef: 'main',
-      mode: 'rpc',
+      mode: 'daemon',
     });
     phaseId = tracer.openPhase({
       runId,
@@ -196,38 +194,32 @@ describe('a live agent session', () => {
         color: '#fff',
       },
       {
-        cliPath: fakeDroid,
+        cliPath: 'droid-not-used',
         runId,
         worktree: tempDir('foundry-discovery-wt-'),
         turnTimeoutMs: 20_000,
         tracer,
         policy: { protectedPaths: [] },
-        // Unit tests force subprocess so they never touch DaemonManager.
-        transport: 'subprocess',
+        openDaemonSessions: async () => ({ ok: true, sessions: daemon }),
       },
     );
     sessions.push(session);
     return session;
   }
 
-  it('feeds its own models and tools to the catalog', async () => {
-    const session = agentSession();
+  it('feeds its own tools to the catalog without spawning a child', async () => {
+    const daemon = new ScriptedAgent(['done']);
+    const session = agentSession(daemon);
     await session.send('do the thing', { phaseId });
-
-    const models = await loadDroidCatalog(shim);
-    // The shim prints no model table, so anything here that is not a BYOK entry
-    // from the real settings.json came off the session's own init response.
-    expect(
-      models
-        .filter((m) => !m.isCustom)
-        .map((m) => m.id)
-        .sort(),
-    ).toEqual(['fake-allowed', 'gpt-fake-default']);
 
     const tools = await toolsHandler(shim)('droid');
     // `ToolInfo.id` is the llmId the roster names, not the CLI's internal id.
     expect(tools.map((t) => t.id)).toEqual(['Execute']);
-    // The model scrape is still a child; enumerating tools never is again.
-    expect(shimInvocations()).toEqual(['exec --help']);
+    // The list came off the live session, over the daemon connection.
+    expect(daemon.wire).toContain('droid.list_tools');
+    // Enumerating tools is never a child, and the daemon is not one either:
+    // the whole point of the session-fed catalog is that nothing is spawned.
+    expect(shimInvocations()).toEqual([]);
+    expect(takeDiscoverySpawns()).toEqual([]);
   });
 });

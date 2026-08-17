@@ -124,15 +124,6 @@ export interface PhaseDef {
   /** On failure, hand the evidence back to this earlier agent phase. */
   feedbackTo?: string;
   feedbackRetries?: number;
-  /**
-   * Narrows the agent's tool surface for this phase only. A phase can subtract
-   * from what the agent may reach and never add to it: a `full` phase under a
-   * `read-only` agent is still read-only. Absent means the agent's own policy
-   * stands.
-   */
-  toolProfile?: ToolProfile;
-  /** Allowlist for a `custom` phase profile, and a narrowing on its own. */
-  tools?: string[];
   /** Engineer phases: what the sheet asks the human. */
   question?: string;
   timeoutMs?: number;
@@ -211,22 +202,6 @@ export interface AgentDef {
   /** Built-in EnvelopeKind or a custom envelope name from the shared library. */
   envelope: string;
   customFields?: CustomEnvelopeField[];
-  /** Empty = droid's default tool set for that model. */
-  tools?: string[];
-  disabledTools?: string[];
-  /**
-   * How wide this agent's system tool surface is. Absent reads as `full`, so a
-   * roster written before profiles existed — and every built-in — behaves
-   * exactly as it did. `custom` takes its allowlist from `tools`.
-   */
-  toolProfile?: ToolProfile;
-  /**
-   * Which host-installed invocables this agent may reach. Absent or empty means
-   * none: a Foundry agent inherits nothing from the operator's `~/.factory`
-   * unless it was named here. Selection is per-agent and per-session; the host
-   * install is never edited to satisfy it.
-   */
-  invocables?: AgentInvocables;
   color: string;
   /**
    * How this agent is drawn. Absent or `monogram` is the initial letter.
@@ -250,98 +225,6 @@ export function effectivePhaseEnvelope(
   if (phase.envelope) return phase.envelope;
   if (!phase.agent) return undefined;
   return agents.find((agent) => agent.name === phase.agent)?.envelope;
-}
-
-/**
- * How much of the CLI's own tool surface an agent or a phase may reach.
- *
- * The three named profiles are defined against the categories the CLI reports
- * for its live tool list, not against a list of tool names, so a tool that
- * ships later — or arrives from an MCP server mid-session — is classified
- * rather than missed:
- *
- *  - `full`     — everything the model would have had anyway. The default.
- *  - `read-only`— reading only. No edits, no commands.
- *  - `review`   — reading plus running commands, so a reviewer can execute the
- *                 tests it is judging, but cannot change the tree.
- *  - `custom`   — exactly the ids named in `tools`, and nothing else.
- */
-export type ToolProfile = 'full' | 'read-only' | 'review' | 'custom';
-
-/**
- * A tool policy as authored: a profile, plus the allowlist `custom` needs.
- *
- * A phase carries the same shape as an agent, and a phase's policy can only
- * ever narrow the agent's — see `effectiveDisabledToolIds`.
- */
-export interface ToolPolicySpec {
-  profile?: ToolProfile;
-  /** Tool ids for `custom`. Ignored by the other profiles. */
-  allow?: string[];
-}
-
-/**
- * Per-agent opt-in to host-installed skills, custom Droids, and MCP servers,
- * plus the operator's own Foundry-defined MCP servers.
- *
- * Every list is an allowlist of ids, and the default for all four is empty —
- * the whole point of the type is that a new agent starts with nothing. The
- * lists name inventory ids, not paths: what an id resolves to is main's
- * business (see `readHostInvocables`), so a moved install does not rewrite a
- * roster.
- */
-export interface AgentInvocables {
-  /** Host skill ids (the directory name under `~/.factory/skills` or `~/.agents/skills`). */
-  skills: string[];
-  /** Host custom Droid ids (the file stem under `~/.factory/droids`). */
-  droids: string[];
-  /** Server names from the host's own `~/.factory/mcp.json`. */
-  hostMcpServers: string[];
-  /** `UserMcpServer.id`s from `AppSettings.mcpServers`. */
-  userMcpServers: string[];
-}
-
-/** One host-installed skill, as read off disk for the roster picker. */
-export interface HostSkillInfo {
-  id: string;
-  name: string;
-  description: string;
-  /** Absolute path to the skill directory, shown so an operator can audit it. */
-  location: string;
-}
-
-/** One host-installed custom Droid. */
-export interface HostDroidInfo {
-  id: string;
-  name: string;
-  description: string;
-  location: string;
-}
-
-/** One MCP server defined in the host's `~/.factory/mcp.json`. */
-export interface HostMcpServerInfo {
-  /** The key under `mcpServers`, which is also the server name on the wire. */
-  id: string;
-  name: string;
-  transport: 'stdio' | 'http' | 'sse' | 'unknown';
-  /** `command` for stdio, `url` for http/sse — for display only. */
-  detail: string;
-  /** True when the host file marks it disabled; it is never offered as enabled. */
-  disabled: boolean;
-}
-
-/**
- * Everything the operator has installed on the host, read-only. Foundry offers
- * these for per-agent selection and never creates, edits, or deletes them.
- */
-export interface HostInvocableInventory {
-  skills: HostSkillInfo[];
-  droids: HostDroidInfo[];
-  mcpServers: HostMcpServerInfo[];
-  /** Absolute path of the host config dir the inventory was read from. */
-  factoryDir: string;
-  /** Present when a part of the inventory could not be read. */
-  warnings: string[];
 }
 
 // ── Settings ─────────────────────────────────────────────────────────────────
@@ -413,13 +296,6 @@ export interface AppSettings {
    * correction turn. `0` disables rewind entirely.
    */
   rewindAfterCorrections: number;
-  /**
-   * How droid agent sessions talk to the CLI. `daemon` (default) multiplexes
-   * over one app-owned `droid daemon`; `subprocess` forces a ProcessTransport
-   * SdkSession per agent. Daemon start/auth failure falls back to subprocess
-   * automatically — a run never fails because the daemon did not come up.
-   */
-  transport: 'daemon' | 'subprocess';
   /**
    * Preferred local port for the app-owned `droid daemon`. Must sit inside
    * 37600–37699; when busy the manager scans up within that band.
@@ -698,6 +574,11 @@ export interface RunRow {
   prUrl: string | null;
   merged: boolean;
   archived: boolean;
+  /**
+   * New runs are always `daemon`. `rpc` and `oneshot` are historical: they are
+   * the transports Foundry used to silently degrade to, and rows written before
+   * that was removed still carry them.
+   */
   mode: 'daemon' | 'rpc' | 'oneshot';
   startedAt: string;
   endedAt: string | null;
@@ -797,6 +678,11 @@ export interface AgentSessionRow {
   cli: CliVendor;
   /** The vendor's own session id, whatever it calls one. */
   droidSessionId: string | null;
+  /**
+   * New runs are always `daemon`. `rpc` and `oneshot` are historical: they are
+   * the transports Foundry used to silently degrade to, and rows written before
+   * that was removed still carry them.
+   */
   mode: 'daemon' | 'rpc' | 'oneshot';
   color: string;
   contextTokens: number;
