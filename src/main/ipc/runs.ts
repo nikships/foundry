@@ -1,6 +1,7 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { shell } from 'electron';
-import type { InterruptAnswer, StartRunInput } from '@shared/types.js';
+import type { InterruptAnswer, ProjectDef, StartRunInput } from '@shared/types.js';
 import {
   IPC,
   type ContextBreakdownResult,
@@ -8,13 +9,20 @@ import {
   type RunDetail,
   type WorktreeAction,
 } from '@shared/ipc-contract.js';
-import { DETECT_PROMPT, DETECT_TOOLS, parseDetectReply } from '../engine/detect.js';
+import {
+  applyCommandDrifts,
+  DETECT_PROMPT,
+  DETECT_TOOLS,
+  parseCommandDrift,
+  parseDetectReply,
+} from '../engine/detect.js';
 import { ensureMissingCommands, missingCommandRefs, preflightForRun } from '../engine/preflight.js';
 import { OneShotClient } from '../droid/oneshot.js';
 import { resolveRef } from '../engine/git.js';
 import { rebaseOntoBase, repairAgent } from '../engine/repair.js';
 import * as worktreeLib from '../engine/worktree.js';
 import type { AppContext } from '../context.js';
+import type { EventInput } from '../trace/tracer.js';
 import type { Handle } from './shared.js';
 import { noIssues, notifyRuns, notifySettings } from './shared.js';
 
@@ -204,7 +212,10 @@ export function register(ctx: Ctx, handle: Handle): void {
         baseRef: run.baseRef ?? project.baseRef,
         branchPointSha: run.branchPointSha ?? '',
       });
-      if (outcome.merged) tracer.setMerged(runId, true);
+      if (outcome.merged) {
+        tracer.setMerged(runId, true);
+        applyStoredCommandDrift(ctx, project, tracer.runDir(runId), runId, tracer);
+      }
       tracer.event({
         runId,
         type: 'log',
@@ -257,7 +268,10 @@ export function register(ctx: Ctx, handle: Handle): void {
       baseRef,
       branchPointSha: ontoSha,
     });
-    if (merged.merged) tracer.setMerged(runId, true);
+    if (merged.merged) {
+      tracer.setMerged(runId, true);
+      applyStoredCommandDrift(ctx, project, tracer.runDir(runId), runId, tracer);
+    }
     tracer.event({
       runId,
       type: 'log',
@@ -316,4 +330,29 @@ export function register(ctx: Ctx, handle: Handle): void {
 
   handle(IPC.interruptsList, () => ctx.registry.interrupts());
   handle(IPC.interruptsAnswer, (answer: InterruptAnswer) => ctx.registry.answer(answer));
+}
+
+function applyStoredCommandDrift(
+  ctx: Ctx,
+  project: ProjectDef,
+  runDir: string,
+  runId: string,
+  tracer: { event: (input: EventInput) => string },
+): void {
+  const file = join(runDir, 'command-drift.json');
+  if (!existsSync(file)) return;
+  const drifts = parseCommandDrift(readFileSync(file, 'utf8'));
+  if (!drifts.length) return;
+  const saved = ctx.projects.save({
+    ...project,
+    commands: applyCommandDrifts(project.commands, drifts),
+  });
+  if (!saved.ok) return;
+  tracer.event({
+    runId,
+    type: 'log',
+    name: 'command_drift_applied',
+    payload: { names: drifts.map((d) => d.name) },
+  });
+  notifySettings(ctx);
 }

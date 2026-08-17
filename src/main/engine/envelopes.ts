@@ -83,7 +83,7 @@ const FIELD_HINTS: Record<string, unknown> = {
   improved_request: 'the rewritten request, standalone and ready to hand to the next phase',
   constraints: ['a rule the work must respect'],
   acceptance_criteria: ['how anyone can tell this is done'],
-  changed_files: ['src/file/you/edited.ts'],
+  changed_files: ['src/file/you/edited.ts', 'path/you/deleted.ts'],
   findings: ['what you found, one per entry'],
   approved: true,
   blocking: ['a problem that must be fixed before this can ship'],

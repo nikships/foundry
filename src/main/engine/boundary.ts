@@ -12,7 +12,14 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { BoundaryViolation, WriteBoundary } from '@shared/types.js';
-import { changedPaths, resolveRef, revertPath } from './git.js';
+import {
+  changedPaths,
+  checkoutPath,
+  pathExistsAtRef,
+  resolveRef,
+  revertPath,
+  status,
+} from './git.js';
 
 /** Always protected, whatever an agent's boundary says. */
 export const ALWAYS_PROTECTED = ['.foundry/', '.git/', '.foundry-worktrees/'];
@@ -156,4 +163,40 @@ export function boundaryCorrection(violations: BoundaryViolation[]): string {
     '',
     'Redo the work touching only the paths you are allowed to write, then reply with the envelope JSON only.',
   ].join('\n');
+}
+
+const HANDOFF_PREFIX = '.foundry-handoff';
+
+function isHandoffPath(path: string): boolean {
+  return path === HANDOFF_PREFIX || path.startsWith(`${HANDOFF_PREFIX}/`);
+}
+
+export interface RestoreResult {
+  restored: number;
+  cleaned: number;
+}
+
+/**
+ * Put the worktree back to phase start after an SDK rewind.
+ *
+ * The daemon only restores files that were already dirty at phase start
+ * (`snapshot.files`). Clean tracked deletions and new untracked files are
+ * invisible to that list. Git still knows: checkout anything that existed
+ * at `headSha` and was not dirty at start; revert anything that did not.
+ * Handoff files and paths that were already dirty stay put.
+ */
+export async function restoreToPhaseStart(cwd: string, snap: Snapshot): Promise<RestoreResult> {
+  if (!snap.headSha) return { restored: 0, cleaned: 0 };
+  const now = await status(cwd);
+  let restored = 0;
+  let cleaned = 0;
+  for (const entry of now) {
+    if (isHandoffPath(entry.path) || snap.paths.has(entry.path)) continue;
+    if (await pathExistsAtRef(cwd, snap.headSha, entry.path)) {
+      if ((await checkoutPath(cwd, snap.headSha, entry.path)).ok) restored += 1;
+      continue;
+    }
+    if (await revertPath(cwd, entry.path)) cleaned += 1;
+  }
+  return { restored, cleaned };
 }

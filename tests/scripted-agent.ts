@@ -76,6 +76,8 @@ export interface ScriptedAgentOptions {
   rewindCreatedFiles?: string[];
   /** Rewind the daemon refuses, so the engine must fall back to append-style. */
   rewindFails?: boolean;
+  /** Paths to delete at the start of each turn, parallel to sideEffects. */
+  deleteEffects?: (string | null)[];
 }
 
 const CONTEXT_LIMIT = 100_000;
@@ -284,6 +286,8 @@ export class ScriptedAgent implements DaemonSessionsFacade {
     // needs to land on, so the turn parks rather than resolving.
     if (this.options.stallOnTurns?.includes(n)) return handle.stall();
 
+    const doomed = this.options.deleteEffects?.[n];
+    if (doomed) deleteFrom(handle.cwd, doomed);
     const effect = this.sideEffects[n];
     if (effect) writeInto(handle.cwd, effect);
 
@@ -564,6 +568,10 @@ function writeInto(cwd: string | undefined, path: string, contents?: string): vo
   const target = resolveIn(cwd, path);
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(target, contents ?? 'written by the scripted agent\n');
+}
+
+function deleteFrom(cwd: string | undefined, path: string): void {
+  rmSync(resolveIn(cwd, path), { force: true });
 }
 
 function sleep(ms: number): Promise<void> {

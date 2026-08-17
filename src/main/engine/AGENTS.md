@@ -54,7 +54,8 @@ npx vitest run tests/gates.test.ts
   - list = allowlist with segment `*` and recursive `**` matching
   - Violations are reverted and the phase fails. Permission evaluation is NOT the enforcement mechanism.
 - **Compaction between phases only**, never while a stream is open.
-- **Rewind** (SDK) happens only on the configured correction number, restores files from the phase-start snapshot, and falls back to append-style correction on failure. One-shot sessions never rewind.
+- **Rewind** (SDK) happens only on the configured correction number and falls back to append-style correction on failure. One-shot sessions never rewind. After a successful SDK rewind, `restoreToPhaseStart` checks out clean-at-start tracked deletions from `snapshot.headSha` and reverts new untracked files. The daemon only restores files that were already dirty at phase start; Foundry owns the rest.
+- **`{ref}` commands stay frozen unless the worktree sniff disagrees.** `resolveRefCommand` re-sniffs before the code phase. Matching or missing sniff keeps the project argv. A different sniff winner is run-scoped drift (`command-drift.json`); merge applies it to project settings. Agents never choose argv.
 - **Kill outranks acceptance.** Once cancellation fires, stop recovery and settle `killed`; do not let a protocol fallback complete the run.
 - **Setup script** (`setupScript` via `sh -c` at worktree root) runs before agent phases; failure keeps the worktree for inspection. A `scaffold` project treats a missing referenced code command as a warning and skips that code phase.
 
@@ -75,6 +76,6 @@ No engine-specific build step; it bundles as part of `out/main/main.js`.
 
 ## Additional Notes
 
-- **Command detection is separate from runs:** manifest sniffing is free, but `DetectSession` always asks an agent and runs against the base checkout with `DETECT_TOOLS` read-only restrictions. Detection has no worktree/trace rows/cursor; its progress is pushed via `detection-progress`.
+- **Command detection is separate from runs:** manifest sniffing is free, but `DetectSession` always asks an agent and runs against the base checkout with `DETECT_TOOLS` read-only restrictions. Detection has no worktree/trace rows/cursor; its progress is pushed via `detection-progress`. A later `{ref}` phase may re-sniff the worktree only to detect that the frozen argv is stale.
 - **Acceptance** lives in `acceptance.ts` (post-phase checks beyond per-phase gates).
 - **Preflight** (`preflight.ts`) validates the run can start before touching git.

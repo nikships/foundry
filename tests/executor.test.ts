@@ -517,6 +517,34 @@ describe('code phases', () => {
     expect(h.tracer.phases(outcome.runId)[0]!.error).toContain('exit 3');
   });
 
+  it('runs the worktree sniff when the frozen project command is stale', async () => {
+    writeFileSync(
+      join(h.repo, 'package.json'),
+      JSON.stringify({ name: 'x', scripts: { test: 'node -e "process.exit(0)"' } }),
+    );
+    sh(h.repo, ['git', 'add', '-A']);
+    sh(h.repo, ['git', 'commit', '-qm', 'add package.json']);
+    const outcome = await run({
+      project: { commands: [{ name: 'test', argv: ['swift', 'test'] }] },
+      pipeline: pipe(
+        [
+          codePhase(
+            'test',
+            { ref: 'test' },
+            { description: 'Run the command the worktree now actually has.' },
+          ),
+        ],
+        { description: 'stale swift test against a node repo' },
+      ),
+    });
+    expect(outcome.status).toBe('accepted');
+    const drift = events(outcome.runId).find((e) => e.name === 'command_drift');
+    expect(drift).toBeDefined();
+    expect(drift!.payload.from).toEqual(['swift', 'test']);
+    expect(drift!.payload.to).toEqual(['npm', 'test']);
+    expect(existsSync(join(h.tracer.runDir(outcome.runId), 'command-drift.json'))).toBe(true);
+  });
+
   it('runs inside a worktree on its own branch by default', async () => {
     const outcome = await run({
       pipeline: pipe(
@@ -587,6 +615,31 @@ describe('agent phases', () => {
     const gates = h.tracer.gateResults(outcome.runId);
     expect(gates[0]!.gate).toBe('diff_matches_claims');
     expect(gates[0]!.passed).toBe(true);
+  });
+
+  it('accepts a claimed deletion as a matching change', async () => {
+    const droid = scriptedDroid([buildEnvelope({ changed_files: ['README.md'] })], [], [], {
+      deleteEffects: ['README.md'],
+    });
+    const outcome = await run({
+      droid,
+      pipeline: pipe(
+        [
+          agentPhase('build', {
+            description: 'Delete a tracked file and claim the deletion.',
+            gates: ['diff_matches_claims'],
+          }),
+        ],
+        {
+          description: 'rewrite-style deletion claim',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
+    });
+    expect(outcome.status).toBe('accepted');
+    expect(h.tracer.gateResults(outcome.runId)[0]!.passed).toBe(true);
+    const worktree = h.tracer.run(outcome.runId)!.worktreePath!;
+    expect(existsSync(join(worktree, 'README.md'))).toBe(false);
   });
 
   it('corrects a malformed reply in the same session and then succeeds', async () => {
@@ -2096,6 +2149,48 @@ describe('rewind correction policy', () => {
     // And the intermediate attempts really did dirty it.
     expect(snapshots[0]!.files['watched.txt']).toBe(PHASE_START);
     expect(snapshots[1]!.files['watched.txt']).toBe('written by the scripted agent\n');
+  });
+
+  it('restores a clean-tree tracked deletion that SDK rewind cannot see', async () => {
+    const kept = 'keep me\n';
+    writeFileSync(join(h.repo, 'old.txt'), kept);
+    sh(h.repo, ['git', 'add', '-A']);
+    sh(h.repo, ['git', 'commit', '-qm', 'add old']);
+    const droid = scriptedDroid(
+      ['prose', 'still prose', buildEnvelope({ changed_files: [] })],
+      ['new.txt', 'new.txt', null],
+      [],
+      {
+        rewindFiles: { 'old.txt': kept },
+        rewindCreatedFiles: ['new.txt'],
+        deleteEffects: ['old.txt', 'old.txt', null],
+      },
+    );
+    const outcome = await run({
+      droid,
+      envelopeRetries: 2,
+      pipeline: pipe(
+        [
+          agentPhase('build', {
+            description: 'Delete a committed file, fail twice, then succeed after rewind.',
+          }),
+        ],
+        {
+          description: 'clean-tree deletion plus rewind',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
+    });
+    expect(outcome.status).toBe('accepted');
+    const snapshots = contentAtTurns(droid);
+    expect(snapshots[2]!.files['old.txt']).toBe(kept);
+    const worktree = h.tracer.run(outcome.runId)!.worktreePath!;
+    expect(existsSync(join(worktree, 'old.txt'))).toBe(true);
+    expect(existsSync(join(worktree, 'new.txt'))).toBe(false);
+    const rewound = events(outcome.runId).find(
+      (e) => e.type === 'correction' && e.payload.rewind === true,
+    );
+    expect(rewound?.payload.worktreeRestoredCount).toBe(1);
   });
 
   it('falls back to append-style correction when rewind fails', async () => {

@@ -114,6 +114,19 @@ export async function changedPaths(cwd: string): Promise<string[]> {
   return (await status(cwd)).map((s) => s.path);
 }
 
+/** True when `ref` carries `path` as a blob. */
+export async function pathExistsAtRef(cwd: string, ref: string, path: string): Promise<boolean> {
+  return (await git(cwd, ['cat-file', '-e', `${ref}:${path}`])).ok;
+}
+
+export async function checkoutPath(cwd: string, ref: string, path: string): Promise<GitResult> {
+  return git(cwd, ['checkout', ref, '--', path]);
+}
+
+export async function cleanPath(cwd: string, path: string): Promise<GitResult> {
+  return git(cwd, ['clean', '-fd', '--', path]);
+}
+
 export async function addAll(cwd: string): Promise<GitResult> {
   return git(cwd, ['add', '-A']);
 }
