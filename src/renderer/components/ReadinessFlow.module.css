@@ -294,6 +294,9 @@
   justify-content: flex-end;
   margin-top: auto;
 }
+.exit {
+  margin-right: auto;
+}
 .warn {
   margin: 0;
   font-size: var(--text-sm);
