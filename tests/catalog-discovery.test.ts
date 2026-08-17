@@ -23,10 +23,10 @@ import {
   noteSessionTools,
   takeDiscoverySpawns,
 } from '../src/main/droid/catalog.js';
-import { AgentSession } from '../src/main/droid/agent.js';
+import { AgentSession } from '../src/main/pi/session.js';
 import { openDb, projectDbPath, projectRunsDir } from '../src/main/trace/db.js';
 import { Tracer } from '../src/main/trace/tracer.js';
-import { ScriptedAgent } from './scripted-agent.js';
+import { ScriptedAgent } from './scripted-transport.js';
 
 let shim: string;
 let argvLog: string;
@@ -155,7 +155,7 @@ describe('a live agent session', () => {
     while (sessions.length > 0) await sessions.pop()?.close();
   });
 
-  function agentSession(daemon: ScriptedAgent): AgentSession {
+  function agentSession(scripted: ScriptedAgent): AgentSession {
     const support = tempDir('foundry-discovery-');
     const tracer = new Tracer(
       openDb(projectDbPath(support, 'proj')),
@@ -171,7 +171,7 @@ describe('a live agent session', () => {
       worktreePath: null,
       branch: null,
       baseRef: 'main',
-      mode: 'daemon',
+      mode: 'pi',
     });
     phaseId = tracer.openPhase({
       runId,
@@ -194,13 +194,23 @@ describe('a live agent session', () => {
         color: '#fff',
       },
       {
-        cliPath: 'droid-not-used',
         runId,
         worktree: tempDir('foundry-discovery-wt-'),
         turnTimeoutMs: 20_000,
         tracer,
-        policy: { protectedPaths: [] },
-        openDaemonSessions: async () => ({ ok: true, sessions: daemon }),
+        protectedPaths: [],
+        transport: (req) => scripted.transport(req),
+        onTools: (tools) =>
+          noteSessionTools(
+            tools.map(({ id, displayName, description, category, defaultAllowed }) => ({
+              id,
+              llmId: id,
+              displayName,
+              description,
+              category,
+              defaultAllowed,
+            })),
+          ),
       },
     );
     sessions.push(session);
@@ -208,16 +218,16 @@ describe('a live agent session', () => {
   }
 
   it('feeds its own tools to the catalog without spawning a child', async () => {
-    const daemon = new ScriptedAgent(['done']);
-    const session = agentSession(daemon);
+    const scripted = new ScriptedAgent(['done']);
+    const session = agentSession(scripted);
     await session.send('do the thing', { phaseId });
 
     const tools = await toolsHandler(shim)('droid');
-    // `ToolInfo.id` is the llmId the roster names, not the CLI's internal id.
-    expect(tools.map((t) => t.id)).toEqual(['Execute']);
-    // The list came off the live session, over the daemon connection.
-    expect(daemon.wire).toContain('droid.list_tools');
-    // Enumerating tools is never a child, and the daemon is not one either:
+    // `ToolInfo.id` is the name a roster's allowlist uses.
+    expect(tools.map((t) => t.id)).toEqual(['bash']);
+    // The list came off the live session rather than a discovery command.
+    expect(scripted.wire).toContain('list_tools');
+    // Enumerating tools is never a child, and neither is the agent runtime:
     // the whole point of the session-fed catalog is that nothing is spawned.
     expect(shimInvocations()).toEqual([]);
     expect(takeDiscoverySpawns()).toEqual([]);

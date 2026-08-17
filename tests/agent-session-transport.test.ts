@@ -2,22 +2,23 @@
  * AgentSession has exactly one transport.
  *
  * Foundry used to degrade daemon → subprocess → one-shot whenever the daemon
- * could not do something. Only the daemon and subprocess transports consult
- * `permissions.ts`, so a run that reached one-shot quietly swapped Foundry's
- * write-boundary policy for the CLI's coarser `--auto` gate and said nothing.
- * These tests pin the replacement guarantee: the daemon is the only transport,
- * and when it cannot be opened or a turn fails on it, the turn fails loudly.
+ * could not do something. Only two of those transports consulted the policy, so
+ * a run that reached one-shot quietly swapped Foundry's write-boundary policy
+ * for the CLI's coarser `--auto` gate and said nothing. These tests pin the
+ * replacement guarantee: the injected transport is the only one, and when it
+ * cannot be opened or a turn fails on it, the turn fails loudly.
  *
- * Scripted daemon facade — no real daemon, no API key, no model.
+ * Scripted transport — no agent runtime, no credentials, no model.
  */
 
 import { tempDir } from './tmp.js';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { AgentSession, type Mode, type OpenDaemonResult } from '../src/main/droid/agent.js';
+import { AgentSession, type Mode, type TransportRequest } from '../src/main/pi/session.js';
+import type { AgentTransport } from '../src/main/pi/transport.js';
 import { openDb, projectDbPath, projectRunsDir } from '../src/main/trace/db.js';
 import { Tracer } from '../src/main/trace/tracer.js';
 import type { AgentDef } from '../src/shared/types.js';
-import { ScriptedAgent } from './scripted-agent.js';
+import { ScriptedAgent } from './scripted-transport.js';
 
 const agent: AgentDef = {
   name: 'scout',
@@ -31,11 +32,12 @@ const agent: AgentDef = {
   color: '#abc',
 };
 
-describe('AgentSession is daemon-only', () => {
+describe('AgentSession has one transport', () => {
   let support: string;
   let tracer: Tracer;
   let worktree: string;
   let runId: string;
+  let phaseId: string;
 
   beforeEach(() => {
     support = tempDir('foundry-agent-transport-');
@@ -45,7 +47,7 @@ describe('AgentSession is daemon-only', () => {
     runId = `run_${Math.random().toString(36).slice(2, 8)}`;
   });
 
-  function beginRun(mode: Mode = 'daemon'): void {
+  function beginRun(mode: Mode = 'pi'): void {
     tracer.startRun({
       runId,
       projectId: 'proj',
@@ -63,110 +65,123 @@ describe('AgentSession is daemon-only', () => {
       baseRef: 'main',
       mode,
     });
+    // A real phase row: the trace's events reference one, so a turn folded
+    // against an invented id would fail on the foreign key rather than on
+    // whatever the test is about.
+    phaseId = tracer.openPhase({
+      runId,
+      seq: 0,
+      name: 'scout',
+      kind: 'agent',
+      owner: agent.name,
+      description: 'look around',
+    });
   }
 
-  function makeSession(open: () => Promise<OpenDaemonResult>): AgentSession {
+  function makeSession(transport: (req: TransportRequest) => AgentTransport): AgentSession {
     return new AgentSession(agent, {
-      cliPath: 'droid-not-used',
       runId,
       worktree,
       turnTimeoutMs: 5_000,
       tracer,
-      policy: { protectedPaths: [] },
-      openDaemonSessions: open,
+      protectedPaths: [],
+      transport,
     });
   }
 
-  it('runs the turn on the daemon and reports daemon mode', async () => {
-    beginRun();
-    const daemon = new ScriptedAgent(['ok']);
-    const session = makeSession(async () => ({ ok: true, sessions: daemon }));
+  function sessionOn(scripted: ScriptedAgent): AgentSession {
+    return makeSession((req) => scripted.transport(req));
+  }
 
-    const outcome = await session.send('go', { phaseId: 'p1' });
+  it('runs the turn on the transport and records which one answered', async () => {
+    beginRun();
+    const scripted = new ScriptedAgent(['ok']);
+    const session = sessionOn(scripted);
+
+    const outcome = await session.send('go', { phaseId });
 
     expect(outcome.text).toBe('ok');
-    expect(session.currentMode).toBe('daemon');
-    expect(tracer.run(runId)!.mode).toBe('daemon');
-    expect(tracer.agentSessions(runId)[0]!.mode).toBe('daemon');
+    expect(session.currentMode).toBe('pi');
+    expect(tracer.run(runId)!.mode).toBe('pi');
+    expect(tracer.agentSessions(runId)[0]!.mode).toBe('pi');
     await session.close();
   });
 
-  it('fails the turn when the daemon cannot be reached, rather than degrading', async () => {
+  it('fails the turn when the session cannot be opened, rather than degrading', async () => {
     beginRun();
-    const session = makeSession(async () => ({ ok: false, reason: 'connect_failed: no daemon' }));
+    const scripted = new ScriptedAgent(['never reached'], [], [], {
+      unavailable: 'no model provider is configured',
+    });
+    const session = sessionOn(scripted);
 
-    await expect(session.send('go', { phaseId: 'p1' })).rejects.toThrow(
-      /daemon unavailable: connect_failed: no daemon/,
+    await expect(session.send('go', { phaseId })).rejects.toThrow(
+      /agent session start failed: no model provider is configured/,
     );
-    // The run never claims a transport it did not get onto.
-    expect(tracer.run(runId)!.mode).toBe('daemon');
+    // The run never claims a transport it did not get onto, and no turn was spent.
+    expect(tracer.run(runId)!.mode).toBe('pi');
+    expect(scripted.turnRequests).toHaveLength(0);
     await session.close();
   });
 
-  it('fails the turn when reaching the daemon throws', async () => {
+  it('fails the turn when building the transport throws', async () => {
     beginRun();
-    const session = makeSession(async () => {
-      throw new Error('websocket refused');
+    const session = makeSession(() => {
+      throw new Error('runtime state directory is not writable');
     });
 
-    await expect(session.send('go', { phaseId: 'p1' })).rejects.toThrow(
-      /daemon unavailable: websocket refused/,
-    );
-    await session.close();
-  });
-
-  it('fails the turn when the daemon session will not start', async () => {
-    beginRun();
-    const daemon = new ScriptedAgent(['ok']);
-    // A facade whose create always refuses is how a daemon that is up but
-    // unable to open a session presents itself.
-    const refusing = Object.create(daemon) as ScriptedAgent;
-    refusing.create = async () => {
-      throw new Error('session limit reached');
-    };
-    const session = makeSession(async () => ({ ok: true, sessions: refusing }));
-
-    await expect(session.send('go', { phaseId: 'p1' })).rejects.toThrow(
-      /daemon session start failed: session limit reached/,
+    await expect(session.send('go', { phaseId })).rejects.toThrow(
+      /runtime state directory is not writable/,
     );
     await session.close();
   });
 
   it('surfaces a mid-turn transport failure instead of retrying it elsewhere', async () => {
     beginRun();
-    const daemon = new ScriptedAgent(['never reached'], [], [], { dieOnTurns: [0] });
-    const session = makeSession(async () => ({ ok: true, sessions: daemon }));
+    const scripted = new ScriptedAgent(['never reached'], [], [], { dieOnTurns: [0] });
+    const session = sessionOn(scripted);
 
-    await expect(session.send('go', { phaseId: 'p1' })).rejects.toThrow(/died mid-turn/);
+    await expect(session.send('go', { phaseId })).rejects.toThrow(/died mid-turn/);
     // No fallback event exists to be written, because no fallback exists.
     const names = tracer.eventsAfter(runId, 0).map((e) => e.name);
     expect(names.some((n) => /fallback/.test(n))).toBe(false);
     await session.close();
   });
 
-  it('keeps one daemon session across turns rather than reopening per turn', async () => {
+  it('keeps one session across turns rather than reopening per turn', async () => {
     beginRun();
-    const daemon = new ScriptedAgent(['one', 'two']);
-    const session = makeSession(async () => ({ ok: true, sessions: daemon }));
+    const scripted = new ScriptedAgent(['one', 'two']);
+    const session = sessionOn(scripted);
 
-    await session.send('first', { phaseId: 'p1' });
-    await session.send('second', { phaseId: 'p1' });
+    await session.send('first', { phaseId });
+    await session.send('second', { phaseId });
 
-    expect(daemon.sessionOpens).toBe(1);
-    expect(daemon.turnRequests.map((t) => t.text)).toEqual(['first', 'second']);
+    expect(scripted.sessionOpens).toBe(1);
+    expect(scripted.turnRequests.map((t) => t.text)).toEqual(['first', 'second']);
+    await session.close();
+  });
+
+  it('opens no session at all for an agent that never runs a phase', async () => {
+    beginRun();
+    const scripted = new ScriptedAgent(['ok']);
+    const session = sessionOn(scripted);
+
+    // Lazily started: a roster agent no phase names must cost nothing.
+    expect(scripted.sessionOpens).toBe(0);
+    expect(session.sessionId).toBeNull();
+    expect(await session.contextStats()).toBeNull();
     await session.close();
   });
 
   it('refuses to answer a turn once the run has been killed', async () => {
     beginRun();
-    const daemon = new ScriptedAgent(['ok']);
-    const session = makeSession(async () => ({ ok: true, sessions: daemon }));
+    const scripted = new ScriptedAgent(['ok']);
+    const session = sessionOn(scripted);
 
     session.kill();
-    await expect(session.send('go', { phaseId: 'p1' })).rejects.toThrow(/the run was killed/);
+    await expect(session.send('go', { phaseId })).rejects.toThrow(/the run was killed/);
     // A killed run must not spend a turn: that is money, and a result the run
     // could still have been settled on.
-    expect(daemon.turnRequests).toHaveLength(0);
+    expect(scripted.turnRequests).toHaveLength(0);
     await session.close();
   });
 });

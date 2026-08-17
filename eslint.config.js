@@ -7,6 +7,18 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
 import eslintConfigPrettier from 'eslint-config-prettier';
 
+const DROID_SDK_IMPORTS = {
+  group: ['@factory/droid-sdk', '@factory/droid-sdk/*'],
+  message:
+    'Import @factory/droid-sdk only under src/main/droid/sdk/ (and its tests); the rest of the app talks to TransportSession.',
+};
+
+const PI_IMPORTS = {
+  group: ['@earendil-works/pi-*', '@earendil-works/pi-*/*'],
+  message:
+    'Import @earendil-works/pi-* only under src/main/pi/ (and its tests); the rest of the app talks to AgentTransport.',
+};
+
 export default tseslint.config(
   {
     ignores: [
@@ -82,32 +94,29 @@ export default tseslint.config(
       'react/jsx-key': 'error',
       'react/jsx-no-target-blank': 'error',
       'react/no-unknown-property': 'error',
-      // The SDK sits behind one seam. Importing it anywhere else spreads its
-      // error classes and session types through the app, and the daemon stops
-      // being replaceable without touching every layer.
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [
-            {
-              group: ['@factory/droid-sdk', '@factory/droid-sdk/*'],
-              message:
-                'Import @factory/droid-sdk only under src/main/droid/sdk/ (and its tests); the rest of the app talks to TransportSession.',
-            },
-          ],
-        },
-      ],
+      // Each agent runtime sits behind one seam. Importing one anywhere else
+      // spreads its error classes and session types through the app, and the
+      // runtime stops being replaceable without touching every layer.
+      'no-restricted-imports': ['error', { patterns: [DROID_SDK_IMPORTS, PI_IMPORTS] }],
       // Keep the pre-v7 plugin contract. The v7 recommended preset also
       // enables React Compiler rules, which require a separate code migration.
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
     },
   },
-  // The transport seam itself, and the tests that script it.
+  // The droid seam itself, and the tests that script it. Each seam is exempt
+  // only from its own package, so neither can reach into the other's.
   {
     files: ['src/main/droid/sdk/**/*.ts', 'tests/sdk-*.test.ts', 'tests/scripted-*.ts'],
     rules: {
-      'no-restricted-imports': 'off',
+      'no-restricted-imports': ['error', { patterns: [PI_IMPORTS] }],
+    },
+  },
+  // The pi seam, and the tests that exercise it directly.
+  {
+    files: ['src/main/pi/**/*.ts', 'tests/pi-*.test.ts'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [DROID_SDK_IMPORTS] }],
     },
   },
   // Main process and tests are Node, not DOM-first.
