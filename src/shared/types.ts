@@ -337,6 +337,13 @@ export interface AppSettings {
    * session. Stored locally in settings.json; never logged.
    */
   factoryApiKey: string;
+  /**
+   * Run droid with no Factory credential (`FACTORY_AIRGAP_ENABLED=1`). The CLI
+   * then reaches no Factory endpoint and every Factory-hosted model disappears:
+   * the only models left are the BYOK `customModels` in
+   * `~/.factory/settings.json`, so the pickers show those alone.
+   */
+  airgapMode: boolean;
   notifications: { accepted: boolean; rejected: boolean; failed: boolean; needsInput: boolean };
   dockBadge: boolean;
   /** Which terminal emulator "Open in terminal" hands a directory to. */

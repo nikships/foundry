@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import type { AppSettings, CliVendor, DoctorCheck, ProjectDef } from '@shared/types.js';
 import { CLI_VENDOR_IDS } from '@shared/types.js';
 import { adapterFor } from '../cli/index.js';
-import { cliVersion } from '../droid/catalog.js';
+import { cliVersion, customModels } from '../droid/catalog.js';
 import { currentBranch, isRepo, refExists, listWorktrees } from '../engine/git.js';
 import { runCommand } from '../engine/commands.js';
 import { resolvedEnv } from './env.js';
@@ -44,6 +44,28 @@ async function checkCli(
     fix: version ? undefined : { kind: 'open-url', value: adapter.docsUrl },
   };
   if (!version) return [found];
+
+  // An airgapped droid authenticates against nothing, so a credential is not
+  // the prerequisite — a BYOK model is. Reporting "no credentials" here would
+  // block onboarding on a key the operator deliberately does not have.
+  if (vendor === 'droid' && settings.airgapMode) {
+    const models = await customModels();
+    return [
+      found,
+      {
+        id: `auth:${vendor}`,
+        label: `${adapter.label} custom models`,
+        ok: models.length > 0,
+        detail: models.length
+          ? `airgap mode: ${models.length} BYOK model${models.length === 1 ? '' : 's'} in ~/.factory/settings.json`
+          : 'airgap mode is on but ~/.factory/settings.json defines no customModels: droid can reach no model at all',
+        blocking: isDefault && models.length === 0,
+        fix: models.length
+          ? undefined
+          : { kind: 'open-url', value: 'https://docs.factory.ai/model-independence/byok' },
+      },
+    ];
+  }
 
   // Settings key wins, then an env var, then the CLI's own login files.
   const settingsKey = vendor === 'droid' && settings.factoryApiKey.trim().length > 0;

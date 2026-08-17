@@ -26,6 +26,7 @@ import { SmithService } from './smith/index.js';
 import { saveProposal } from './ipc/smith.js';
 import { notifyNeedsInput, notifyOutcome, setDockBadge } from './system/notify.js';
 import { setSettingsApiKey, settingsApiKeyForSpawn } from './droid/sdk/auth.js';
+import { airgapEnvForSpawn, setAirgapMode } from './droid/airgap.js';
 import { shutdownDaemonManager } from './droid/sdk/daemon.js';
 import { setSpawnEnvExtra } from './system/env.js';
 
@@ -165,13 +166,20 @@ export class AppContext {
   }
 
   /**
-   * Push the Settings API key into daemon auth and every child env. Call on
-   * launch and whenever the stored key changes; a live daemon is dropped so
-   * the next turn reconnects with the new credential.
+   * Push the Settings API key and airgap flag into daemon auth and every child
+   * env. Call on launch and whenever either changes; a live daemon is dropped
+   * so the next turn reconnects with the new credential.
+   *
+   * Airgap is applied first because it decides whether the key is a credential
+   * or dead weight. A stored key is withheld from the child entirely while the
+   * mode is on: the CLI would ignore it anyway, and an operator who asked for
+   * no Factory credential should not have one handed to a subprocess.
    */
   syncFactoryAuth(): void {
-    setSettingsApiKey(this.settings.get().factoryApiKey);
-    setSpawnEnvExtra(settingsApiKeyForSpawn());
+    const settings = this.settings.get();
+    setAirgapMode(settings.airgapMode);
+    setSettingsApiKey(settings.factoryApiKey);
+    setSpawnEnvExtra(settings.airgapMode ? airgapEnvForSpawn() : settingsApiKeyForSpawn());
   }
 
   dispose(): void {

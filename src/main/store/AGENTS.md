@@ -60,4 +60,4 @@ Store code bundles into `out/main/main.js`; no separate build.
 
 ## Additional Notes
 
-- `settings.ts` owns transport knobs (`compactionThreshold`, `rewindAfterCorrections`, `daemonPort`) surfaced in Settings → Limits/Transport, and the Factory API key (`factoryApiKey`) surfaced in Settings → Agent CLI. There is no transport choice: agent phases are daemon-only (see `src/main/droid/AGENTS.md`).
+- `settings.ts` owns transport knobs (`compactionThreshold`, `rewindAfterCorrections`, `daemonPort`) surfaced in Settings → Limits/Transport, and the Factory API key (`factoryApiKey`) plus `airgapMode` surfaced in Settings → Agent CLI. `airgapMode` runs droid BYOK-only with no Factory credential; see `src/main/droid/AGENTS.md`. There is no transport choice: agent phases are daemon-only (see `src/main/droid/AGENTS.md`).

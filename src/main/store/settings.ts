@@ -86,6 +86,8 @@ export const appSettingsSchema = z.object({
   daemonPort: z.number().int().min(DAEMON_PORT_BAND[0]).max(DAEMON_PORT_BAND[1]),
   /** Empty is unset. A non-empty value is the daemon credential. */
   factoryApiKey: z.string().trim().max(2048),
+  /** BYOK-only: no Factory credential, no Factory-hosted models. */
+  airgapMode: z.boolean(),
   notifications: z.object({
     accepted: z.boolean(),
     rejected: z.boolean(),
@@ -131,6 +133,7 @@ export function defaultSettings(): AppSettings {
     rewindAfterCorrections: 2,
     daemonPort: DEFAULT_DAEMON_PORT,
     factoryApiKey: '',
+    airgapMode: false,
     notifications: { accepted: true, rejected: true, failed: true, needsInput: true },
     dockBadge: true,
     // Terminal.app ships with macOS, so the default always resolves.
@@ -213,6 +216,10 @@ export function migrate(raw: unknown): AppSettings {
   } else {
     merged.factoryApiKey = merged.factoryApiKey.trim().slice(0, 2048);
   }
+  // Absent in files written before airgap mode existed; anything non-boolean is
+  // a hand-edit, and defaulting it off keeps a typo from silently cutting the
+  // app off from every Factory-hosted model.
+  if (typeof merged.airgapMode !== 'boolean') merged.airgapMode = base.airgapMode;
   if (!Array.isArray(merged.mcpServers)) {
     merged.mcpServers = [];
   } else {

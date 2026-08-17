@@ -34,7 +34,8 @@ npm run dev    # exercise the transport through the running app
 
 ## Development Workflow
 
-- **Daemon** starts lazily as `droid daemon --port <p> --host 127.0.0.1 --parent-pid <app>`, scanning up within `37600–37699`. Auth reads Settings `factoryApiKey`, then `FACTORY_API_KEY`, then a stored WorkOS JWT, without logging. `ensure()` returns a failure reason rather than throwing, and `agent.ts` turns that reason into a failed turn. One traced `processes` row for the daemon, not per-session; a daemon session has no child pid (`kill` interrupts/closes it).
+- **Daemon** starts lazily as `droid daemon --port <p> --host 127.0.0.1 --parent-pid <app>`, scanning up within `37600–37699`. Auth reads airgap first, then Settings `factoryApiKey`, then `FACTORY_API_KEY`, then a stored WorkOS JWT, without logging. `ensure()` returns a failure reason rather than throwing, and `agent.ts` turns that reason into a failed turn. One traced `processes` row for the daemon, not per-session; a daemon session has no child pid (`kill` interrupts/closes it).
+- **Airgap mode** (`airgap.ts`, Settings → Agent CLI) runs droid with `FACTORY_AIRGAP_ENABLED=1`. The CLI then short-circuits every auth path to a synthetic identity, reads no keyring or `~/.factory/auth.v2.*`, and throws on any request aimed at a Factory endpoint. Three layers read the one flag: `sdk/auth.ts` returns the `airgapped-token` placeholder (the daemon accepts any non-empty string but rejects an empty one), `catalog.ts` narrows the picker to BYOK `customModels`, and `system/doctor.ts` checks for a custom model instead of a credential. A stored Factory key is withheld from child environments while the mode is on. Verified against CLI 0.197.0.
 - **Compaction/rewind** return successor sessions: swap the handle, re-subscribe notifications, and re-apply settings after the successor loads. The SDK rejects replacement while a stream is open, so both only happen between turns.
 
 ## Testing Instructions
