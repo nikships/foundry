@@ -6,6 +6,12 @@
  * meaningless. Detection happens once, the human confirms (or start preflight
  * accepts a fill-missing candidate), and the argv becomes data.
  *
+ * The freeze is about who chooses the argv, not about ignoring a worktree that
+ * is no longer the project that was detected. Before a `{ref}` phase runs,
+ * `resolveRefCommand` re-sniffs the worktree. If the sniff winner disagrees
+ * with the frozen argv, this run uses the sniff winner and records drift.
+ * The agent still cannot pick an argv.
+ *
  * Manifests answer for most repos in milliseconds and for free, so the agent is
  * a fallback for the repos they cannot answer, not the first move. Nested
  * package roots matter: many native apps keep Package.swift / package.json one
@@ -350,6 +356,91 @@ export function mergeCommandsFillMissing(
   const extra = candidates.filter((c) => !have.has(c.name) && (!allow || allow.has(c.name)));
   if (!extra.length) return existing;
   return [...existing, ...extra.map(({ name, argv }) => ({ name, argv }))];
+}
+
+function argvEqual(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((value, i) => value === b[i]);
+}
+
+export interface CommandDriftRecord {
+  name: string;
+  from: string[];
+  to: string[];
+  source: string;
+}
+
+export type ResolvedRefCommand =
+  | { ok: true; argv: string[]; drifted: false }
+  | { ok: true; argv: string[]; drifted: true; drift: CommandDriftRecord }
+  | { ok: false; reason: 'missing' };
+
+/**
+ * Frozen project argv wins when it still matches the worktree sniff, or when
+ * sniff has nothing to say. When both exist and disagree, the worktree wins
+ * for this run — that is a stack change, not an agent choosing a command.
+ */
+export function resolveRefCommand(
+  name: string,
+  projectCommands: { name: string; argv: string[] }[],
+  sniffed: CommandCandidate[],
+): ResolvedRefCommand {
+  const frozen = projectCommands.find((c) => c.name === name);
+  const sniff = sniffed.find((c) => c.name === name);
+  if (frozen && sniff && !argvEqual(frozen.argv, sniff.argv)) {
+    return {
+      ok: true,
+      argv: sniff.argv,
+      drifted: true,
+      drift: { name, from: frozen.argv, to: sniff.argv, source: sniff.source },
+    };
+  }
+  if (frozen) return { ok: true, argv: frozen.argv, drifted: false };
+  return { ok: false, reason: 'missing' };
+}
+
+export function applyCommandDrifts(
+  commands: { name: string; argv: string[] }[],
+  drifts: CommandDriftRecord[],
+): { name: string; argv: string[] }[] {
+  if (!drifts.length) return commands;
+  const byName = new Map(drifts.map((d) => [d.name, d]));
+  return commands.map((command) => {
+    const drift = byName.get(command.name);
+    return drift ? { name: command.name, argv: [...drift.to] } : command;
+  });
+}
+
+export function parseCommandDrift(raw: string): CommandDriftRecord[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  const out: CommandDriftRecord[] = [];
+  for (const item of parsed) {
+    if (!item || typeof item !== 'object') continue;
+    const rec = item as { name?: unknown; from?: unknown; to?: unknown; source?: unknown };
+    if (typeof rec.name !== 'string' || !rec.name) continue;
+    if (!Array.isArray(rec.from) || !Array.isArray(rec.to)) continue;
+    const from = rec.from.filter((a): a is string => typeof a === 'string');
+    const to = rec.to.filter((a): a is string => typeof a === 'string');
+    if (
+      !from.length ||
+      !to.length ||
+      from.length !== rec.from.length ||
+      to.length !== rec.to.length
+    )
+      continue;
+    out.push({
+      name: rec.name,
+      from,
+      to,
+      source: typeof rec.source === 'string' ? rec.source : '',
+    });
+  }
+  return out;
 }
 
 export const DETECT_PROMPT = `Identify the shell commands this repository uses to verify itself: tests, linting, type checking, and building.

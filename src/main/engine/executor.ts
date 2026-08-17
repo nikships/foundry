@@ -41,6 +41,7 @@ import { CodePhaseRunner } from './runners/code.js';
 import { EngineerPhaseRunner } from './runners/engineer.js';
 import * as worktreeLib from './worktree.js';
 import type { Envelope } from './envelopes.js';
+import type { CommandDriftRecord } from './detect.js';
 import { runCommand } from './commands.js';
 import { openPr, type GhOptions } from '../system/gh.js';
 import type { PrAction } from '@shared/ipc-contract.js';
@@ -106,6 +107,7 @@ export class Executor {
   private readonly commandResults = new Map<string, CommandResult>();
   private readonly phaseIds = new Map<string, string>();
   private readonly feedback = new Map<string, string>();
+  private readonly commandDrift = new Map<string, CommandDriftRecord>();
   private cancelled = false;
   /**
    * The host install as it looked when this run started. Snapshotted so an
@@ -360,6 +362,7 @@ export class Executor {
       envelopes: this.envelopes,
       commandResults: this.commandResults,
       feedback: this.feedback,
+      commandDrift: this.commandDrift,
       cancelled: () => this.cancelled,
       phaseId: (name: string) => this.phaseId(name),
       askHuman: (req) => this.deps.askHuman(req),

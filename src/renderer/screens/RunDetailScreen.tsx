@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { GhStatus } from '@shared/types.js';
+import type { EventRow, GhStatus } from '@shared/types.js';
 import { api } from '../api.js';
 import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useApp } from '../stores/app.js';
@@ -131,7 +131,12 @@ export default function RunDetailScreen({
   };
 
   const mergeWorktree = useConfirmAction(
-    'Merge this run’s branch into the project base ref? Uncommitted work in the worktree is included only if the merge path commits it first.',
+    () => {
+      const base =
+        'Merge this run’s branch into the project base ref? Uncommitted work in the worktree is included only if the merge path commits it first.';
+      const extra = commandDriftConfirm(view.events);
+      return extra ? `${base}\n\n${extra}` : base;
+    },
     async (): Promise<void> => {
       if (worktreeBusy) return;
       const result = await withWorktree('Merged.', () => api.runs.mergeWorktree(projectId, runId));
@@ -309,4 +314,20 @@ export default function RunDetailScreen({
       </div>
     </div>
   );
+}
+
+function commandDriftConfirm(events: EventRow[]): string {
+  const drifts = events.filter((event) => event.name === 'command_drift');
+  if (!drifts.length) return '';
+  const lines = drifts.map((event) => {
+    const name = typeof event.payload.name === 'string' ? event.payload.name : 'command';
+    const from = Array.isArray(event.payload.from)
+      ? event.payload.from.filter((a): a is string => typeof a === 'string').join(' ')
+      : '?';
+    const to = Array.isArray(event.payload.to)
+      ? event.payload.to.filter((a): a is string => typeof a === 'string').join(' ')
+      : '?';
+    return `${name}: ${from} → ${to}`;
+  });
+  return `This will also update project commands to match the worktree:\n${lines.join('\n')}`;
 }

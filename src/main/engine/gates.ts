@@ -128,16 +128,24 @@ const diff_matches_claims: GateFn = async (envelope, ctx) => {
 
   const checks: GateCheck[] = claimed.map((f) => {
     const exists = existsSync(resolveIn(ctx.cwd, f));
-    if (!exists) {
-      return { item: f, ok: false, note: 'claimed changed but does not exist on disk' };
-    }
     const inDiff = ctx.changedPaths.some((c) => pathsMatch(c, f));
+    if (inDiff && exists) {
+      return { item: f, ok: true, note: 'exists and appears in the diff' };
+    }
+    if (inDiff && !exists) {
+      return { item: f, ok: true, note: 'deleted, and that is a valid claim' };
+    }
+    if (exists) {
+      return {
+        item: f,
+        ok: true,
+        note: 'exists (git reports no change: may be unchanged content)',
+      };
+    }
     return {
       item: f,
-      ok: true,
-      note: inDiff
-        ? 'exists and appears in the diff'
-        : 'exists (git reports no change: may be unchanged content)',
+      ok: false,
+      note: 'claimed but neither on disk nor in the diff',
     };
   });
 
@@ -224,7 +232,8 @@ export const GATE_DESCRIPTIONS: Record<string, string> = {
   artifacts_exist: 'Every path the envelope declares as an artifact exists on disk.',
   files_non_empty: 'Declared artifacts have content, not just a name.',
   json_parses: 'Declared .json artifacts actually parse.',
-  diff_matches_claims: 'Files claimed as changed exist, and nothing changed is left unclaimed.',
+  diff_matches_claims:
+    'Files claimed as changed appear in the git diff (including deletions), and nothing changed is left unclaimed.',
   verdict_consistent: 'A review cannot approve while it also lists blocking items.',
   command_passes: 'A configured command exits 0 against the phase result.',
 };

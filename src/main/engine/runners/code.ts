@@ -7,6 +7,7 @@
 import type { PhaseDef } from '@shared/types.js';
 import type { PhaseRunner, RunContext, PhaseJump } from '../phase-context.js';
 import { BUILTIN_ARGV, runCommand } from '../commands.js';
+import { resolveRefCommand, sniffCommands } from '../detect.js';
 import { feedbackEnvelope } from '../envelopes.js';
 import { resolveEnvelopeRef } from '../prompts.js';
 
@@ -38,7 +39,7 @@ export class CodePhaseRunner implements PhaseRunner {
     const phaseId = ctx.phaseId(phase.name);
     tracer.beginQueuedPhase(phaseId);
 
-    const resolved = this.resolveCommand(phase, ctx);
+    const resolved = await this.resolveCommand(phase, ctx);
     if (!resolved.ok) {
       tracer.closePhase(phaseId, 'fail', resolved.detail);
       return { kind: 'abort', detail: resolved.detail };
@@ -132,32 +133,13 @@ export class CodePhaseRunner implements PhaseRunner {
     return { kind: 'abort', detail: `${phase.name} exited ${result.exitCode}` };
   }
 
-  private resolveCommand(phase: PhaseDef, ctx: RunContext): CommandResolution {
+  private async resolveCommand(phase: PhaseDef, ctx: RunContext): Promise<CommandResolution> {
     const spec = phase.command;
     if (!spec) return { ok: false, detail: `code phase "${phase.name}" has no command` };
     if ('argv' in spec) return { ok: true, argv: spec.argv };
 
     if ('ref' in spec) {
-      const command = ctx.project.commands.find((c) => c.name === spec.ref);
-      if (!command) {
-        // A project Foundry created empty has no test command because it has no
-        // code yet. Failing the run would mean a new repo could never use the
-        // pipeline meant to fill it; skipping records the gap honestly and lets
-        // the phase become real as soon as the command exists.
-        if (ctx.project.scaffold) {
-          return {
-            ok: true,
-            skip: true,
-            argv: [],
-            detail: `no "${spec.ref}" command in this project yet — nothing to run`,
-          };
-        }
-        return {
-          ok: false,
-          detail: `project command "${spec.ref}" is not configured — set it in Settings → Project`,
-        };
-      }
-      return { ok: true, argv: command.argv };
+      return this.resolveRef(spec.ref, phase.name, ctx);
     }
 
     const builder = BUILTIN_ARGV[spec.builtin];
@@ -170,5 +152,49 @@ export class CodePhaseRunner implements PhaseRunner {
       return { ok: true, argv: gitCommitArgv(message) };
     }
     return { ok: true, argv: builder({}) };
+  }
+
+  private async resolveRef(
+    name: string,
+    phaseName: string,
+    ctx: RunContext,
+  ): Promise<CommandResolution> {
+    const sniffed = await sniffCommands(ctx.cwd);
+    const resolved = resolveRefCommand(name, ctx.project.commands, sniffed);
+    if (!resolved.ok) {
+      if (ctx.project.scaffold) {
+        return {
+          ok: true,
+          skip: true,
+          argv: [],
+          detail: `no "${name}" command in this project yet — nothing to run`,
+        };
+      }
+      return {
+        ok: false,
+        detail: `project command "${name}" is not configured — set it in Settings → Project`,
+      };
+    }
+    if (resolved.drifted) {
+      ctx.commandDrift.set(name, resolved.drift);
+      ctx.tracer.writeRunFile(
+        ctx.runId,
+        'command-drift.json',
+        `${JSON.stringify([...ctx.commandDrift.values()], null, 2)}\n`,
+      );
+      ctx.tracer.event({
+        runId: ctx.runId,
+        phaseId: ctx.phaseId(phaseName),
+        type: 'log',
+        name: 'command_drift',
+        payload: {
+          name,
+          from: resolved.drift.from,
+          to: resolved.drift.to,
+          source: resolved.drift.source,
+        },
+      });
+    }
+    return { ok: true, argv: resolved.argv };
   }
 }

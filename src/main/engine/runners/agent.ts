@@ -42,6 +42,8 @@ export interface RewindTrace {
   deletedCount: number;
   failedRestoreCount: number;
   failedDeleteCount: number;
+  worktreeRestoredCount?: number;
+  worktreeCleanedCount?: number;
 }
 
 /**
@@ -355,12 +357,20 @@ export class AgentPhaseRunner implements PhaseRunner {
     });
     if (!outcome) return null;
 
+    // SDK rewind restores dirty-at-start files only. Foundry then puts
+    // clean-at-start tracked deletions and new untracked files back too.
+    const worktree = await boundary.restoreToPhaseStart(ctx.cwd, phaseState.before);
+
     // Files are back to phase-start content: the retry's boundary baseline is
     // the restored tree, not the corrupted intermediate.
     phaseState.before = await boundary.snapshot(ctx.cwd);
     // Successor conversation still carries the anchor message id.
     phaseState.anchorMessageId = messageId;
-    return outcome;
+    return {
+      ...outcome,
+      worktreeRestoredCount: worktree.restored,
+      worktreeCleanedCount: worktree.cleaned,
+    };
   }
 
   /**
@@ -511,5 +521,9 @@ function rewindPayload(rewind: RewindTrace | null): Record<string, unknown> {
     deletedCount: rewind.deletedCount,
     ...(rewind.failedRestoreCount ? { failedRestoreCount: rewind.failedRestoreCount } : {}),
     ...(rewind.failedDeleteCount ? { failedDeleteCount: rewind.failedDeleteCount } : {}),
+    ...(rewind.worktreeRestoredCount
+      ? { worktreeRestoredCount: rewind.worktreeRestoredCount }
+      : {}),
+    ...(rewind.worktreeCleanedCount ? { worktreeCleanedCount: rewind.worktreeCleanedCount } : {}),
   };
 }

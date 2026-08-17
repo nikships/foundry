@@ -3,8 +3,11 @@ import { dirname, join } from 'node:path';
 import { tempDir } from './tmp.js';
 import { describe, expect, it } from 'vitest';
 import {
+  applyCommandDrifts,
   mergeCommandsFillMissing,
+  parseCommandDrift,
   parseDetectReply,
+  resolveRefCommand,
   sniffCommands,
 } from '../src/main/engine/detect.js';
 
@@ -257,5 +260,75 @@ describe('parseDetectReply', () => {
       ]),
     );
     expect(out.commands.map((c) => c.name)).toEqual(['test', 'build', 'e2e']);
+  });
+});
+
+describe('resolveRefCommand', () => {
+  it('keeps the frozen argv when sniff agrees or has nothing to say', () => {
+    const frozen = [{ name: 'test', argv: ['./check.sh'] }];
+    expect(resolveRefCommand('test', frozen, [])).toEqual({
+      ok: true,
+      argv: ['./check.sh'],
+      drifted: false,
+    });
+    expect(
+      resolveRefCommand('test', frozen, [
+        { name: 'test', argv: ['./check.sh'], source: 'check.sh' },
+      ]),
+    ).toMatchObject({ drifted: false, argv: ['./check.sh'] });
+  });
+
+  it('uses the worktree sniff when it disagrees with the frozen argv', () => {
+    const resolved = resolveRefCommand(
+      'test',
+      [{ name: 'test', argv: ['swift', 'test'] }],
+      [{ name: 'test', argv: ['npm', 'test'], source: 'package.json' }],
+    );
+    expect(resolved).toEqual({
+      ok: true,
+      argv: ['npm', 'test'],
+      drifted: true,
+      drift: {
+        name: 'test',
+        from: ['swift', 'test'],
+        to: ['npm', 'test'],
+        source: 'package.json',
+      },
+    });
+  });
+
+  it('reports missing when the project has no such command', () => {
+    expect(resolveRefCommand('test', [], [])).toEqual({ ok: false, reason: 'missing' });
+  });
+});
+
+describe('command drift records', () => {
+  it('replaces only the drifted names', () => {
+    expect(
+      applyCommandDrifts(
+        [
+          { name: 'test', argv: ['swift', 'test'] },
+          { name: 'lint', argv: ['make', 'lint'] },
+        ],
+        [{ name: 'test', from: ['swift', 'test'], to: ['npm', 'test'], source: 'package.json' }],
+      ),
+    ).toEqual([
+      { name: 'test', argv: ['npm', 'test'] },
+      { name: 'lint', argv: ['make', 'lint'] },
+    ]);
+  });
+
+  it('ignores malformed drift files rather than throwing', () => {
+    expect(parseCommandDrift('not json')).toEqual([]);
+    expect(parseCommandDrift('{"name":"test"}')).toEqual([]);
+    expect(
+      parseCommandDrift(
+        JSON.stringify([
+          { name: 'test', from: ['swift', 'test'], to: ['npm', 'test'], source: 'package.json' },
+        ]),
+      ),
+    ).toEqual([
+      { name: 'test', from: ['swift', 'test'], to: ['npm', 'test'], source: 'package.json' },
+    ]);
   });
 });

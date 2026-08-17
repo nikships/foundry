@@ -127,7 +127,7 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       '- Make the smallest change that satisfies the request; do not refactor unrelated code.',
       '- When fixing test failures, address every reported failure, not the first one.',
       '- Verify your work runs before reporting, and judge that by exit status.',
-      '- `changed_files` must list every file you touched. A gate checks this against git.',
+      '- `changed_files` must list every path git will report, including files you deleted. A deletion is a change. A gate checks this against git.',
       '',
       SHELL_NOTE,
     ].join('\n'),
@@ -144,7 +144,7 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       '',
       '## Task',
       '',
-      'Implement the work described above, then report. List every file you changed.',
+      'Implement the work described above, then report. List every file you changed, including deletions.',
     ].join('\n'),
   },
   {

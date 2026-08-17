@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tempDir } from './tmp.js';
 import { describe, expect, it } from 'vitest';
@@ -10,6 +10,7 @@ import {
   isAllowed,
   isProtected,
   matchesPattern,
+  restoreToPhaseStart,
   snapshot,
 } from '../src/main/engine/boundary.js';
 import { resolveRef } from '../src/main/engine/git.js';
@@ -146,5 +147,40 @@ describe('phase-start snapshot', () => {
     expect(snap.headSha).toBe(head);
     expect(snap.paths.size).toBe(0);
     expect(snap.files).toEqual([]);
+  });
+});
+
+describe('restoreToPhaseStart', () => {
+  it('restores a clean-tree deletion and removes a new untracked file', async () => {
+    const dir = tempRepo();
+    writeFileSync(join(dir, 'old.txt'), 'keep me\n');
+    sh(dir, ['git', 'add', '-A']);
+    sh(dir, ['git', 'commit', '-qm', 'add old']);
+    const snap = await snapshot(dir);
+    expect(snap.paths.size).toBe(0);
+
+    unlinkSync(join(dir, 'old.txt'));
+    writeFileSync(join(dir, 'new.txt'), 'rewrite\n');
+    mkdirSync(join(dir, '.foundry-handoff'));
+    writeFileSync(join(dir, '.foundry-handoff', 'plan.json'), '{}');
+
+    const result = await restoreToPhaseStart(dir, snap);
+    expect(result.restored).toBe(1);
+    expect(result.cleaned).toBe(1);
+    expect(existsSync(join(dir, 'old.txt'))).toBe(true);
+    expect(existsSync(join(dir, 'new.txt'))).toBe(false);
+    expect(existsSync(join(dir, '.foundry-handoff', 'plan.json'))).toBe(true);
+  });
+
+  it('leaves paths that were already dirty at phase start alone', async () => {
+    const dir = tempRepo();
+    writeFileSync(join(dir, 'dirty.txt'), 'phase start\n');
+    const snap = await snapshot(dir);
+    expect(snap.paths.has('dirty.txt')).toBe(true);
+
+    writeFileSync(join(dir, 'dirty.txt'), 'agent changed it\n');
+    const result = await restoreToPhaseStart(dir, snap);
+    expect(result).toEqual({ restored: 0, cleaned: 0 });
+    expect(readFileSync(join(dir, 'dirty.txt'), 'utf8')).toBe('agent changed it\n');
   });
 });

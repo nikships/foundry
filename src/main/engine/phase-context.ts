@@ -11,6 +11,7 @@ import type { Envelope } from './envelopes.js';
 import type { CommandResult } from '@shared/types.js';
 import type { InterruptRequest } from '../droid/agent.js';
 import type { PrAction } from '@shared/ipc-contract.js';
+import type { CommandDriftRecord } from './detect.js';
 
 export interface RunContext {
   readonly tracer: Tracer;
@@ -32,6 +33,11 @@ export interface RunContext {
   readonly commandResults: Map<string, CommandResult>;
   /** Failure evidence a code phase routed back to an agent phase. */
   readonly feedback: Map<string, string>;
+  /**
+   * `{ref}` commands whose worktree sniff disagreed with the frozen project
+   * argv. Run-scoped: never written to project settings until merge.
+   */
+  readonly commandDrift: Map<string, CommandDriftRecord>;
 
   /** True once cancel() ran; runners must bail at their next await point. */
   cancelled(): boolean;

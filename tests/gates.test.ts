@@ -62,12 +62,31 @@ describe('json_parses', () => {
 });
 
 describe('diff_matches_claims', () => {
-  it('fails a claim for a file that does not exist', async () => {
+  it('fails a claim for a path that is neither on disk nor in the diff', async () => {
     const checks = await GATES.diff_matches_claims!(
       { ...base, changed_files: ['specs/ghost.md'] },
-      ctx(['specs/ghost.md']),
+      ctx(),
     );
     expect(checks[0]!.ok).toBe(false);
+    expect(checks[0]!.note).toContain('neither on disk nor in the diff');
+  });
+
+  it('accepts a claimed deletion that git reports and that is gone from disk', async () => {
+    const checks = await GATES.diff_matches_claims!(
+      { ...base, changed_files: ['gone.swift'] },
+      ctx(['gone.swift']),
+    );
+    expect(checks[0]!.ok).toBe(true);
+    expect(checks[0]!.note).toContain('deleted');
+  });
+
+  it('still accepts a claimed path that exists and appears in the diff', async () => {
+    const checks = await GATES.diff_matches_claims!(
+      { ...base, changed_files: ['specs/plan.md'] },
+      ctx(['specs/plan.md']),
+    );
+    expect(checks[0]!.ok).toBe(true);
+    expect(checks[0]!.note).toContain('exists and appears in the diff');
   });
 
   it('reports changes git saw that the envelope never claimed', async () => {
