@@ -145,7 +145,12 @@ export default function RunDetailScreen({
   );
 
   const fixMerge = useConfirmAction(
-    'Have an agent rebase this run’s branch onto the base and merge it? The agent works only inside the run’s worktree, and a repair that doesn’t verify is rolled back.',
+    () => {
+      const base =
+        'Have an agent rebase this run’s branch onto the base and merge it? The agent works only inside the run’s worktree, and a repair that doesn’t verify is rolled back.';
+      const extra = commandDriftConfirm(view.events);
+      return extra ? `${base}\n\n${extra}` : base;
+    },
     async (): Promise<void> => {
       if (worktreeBusy) return;
       const result = await withWorktree(
