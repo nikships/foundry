@@ -12,10 +12,10 @@
 import type { ReadinessInspectResult, ReadinessPhase, ReadinessState } from '@shared/types.js';
 
 /**
- * Deliberately the same set `ReadinessFlow` treats as live, and for the same
- * reason: `pr_ready` and `awaiting_merge` are waiting on the operator to merge,
- * not on work in flight. Calling those "checking" would claim progress for
- * unbounded wall-clock time while hiding the button that starts a check.
+ * In-flight work. `ReadinessFlow` and the Runs banner share this set.
+ * `pr_ready` and `awaiting_merge` wait on the operator to merge, not on work
+ * in flight — calling those "checking" would claim progress for unbounded
+ * wall-clock time while hiding the button that starts a check.
  */
 const LIVE_PHASES = new Set<ReadinessPhase>([
   'inspecting',
@@ -36,6 +36,21 @@ export function isReadinessLive(phase: ReadinessPhase): boolean {
 /** A settled session: the banner must re-inspect rather than trust its old answer. */
 export function isReadinessTerminal(phase: ReadinessPhase): boolean {
   return TERMINAL_PHASES.has(phase);
+}
+
+export type ReadinessExitAction = {
+  kind: 'cancel' | 'close';
+  label: 'Cancel' | 'Close';
+};
+
+/**
+ * The readiness modal is not backdrop-dismissible, so every phase needs a
+ * visible exit. In-flight work is cancelled on the way out; waiting and
+ * settled phases just close. Skip, Retry, and OK stay separate actions.
+ */
+export function readinessExitAction(phase: ReadinessPhase): ReadinessExitAction {
+  if (isReadinessLive(phase)) return { kind: 'cancel', label: 'Cancel' };
+  return { kind: 'close', label: 'Close' };
 }
 
 /**

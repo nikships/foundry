@@ -11,6 +11,7 @@ import {
   isReadinessLive,
   isReadinessTerminal,
   readinessBanner,
+  readinessExitAction,
   readinessFailureNote,
 } from '../src/renderer/readiness-view.js';
 
@@ -100,6 +101,61 @@ describe('readiness phase classification', () => {
     for (const phase of ['pr_ready', 'awaiting_merge'] as ReadinessPhase[]) {
       expect(isReadinessLive(phase)).toBe(false);
       expect(isReadinessTerminal(phase)).toBe(false);
+    }
+  });
+});
+
+describe('readinessExitAction', () => {
+  const allPhases: ReadinessPhase[] = [
+    'idle',
+    'inspecting',
+    'confirming',
+    'evaluating',
+    'not_ready',
+    'remediating',
+    'verifying',
+    'pr_ready',
+    'awaiting_merge',
+    'confirming_merge',
+    'finalizing',
+    'complete',
+    'skipped',
+    'failed',
+  ];
+
+  it('gives every phase a visible cancel or close action', () => {
+    for (const phase of allPhases) {
+      const exit = readinessExitAction(phase);
+      expect(['cancel', 'close']).toContain(exit.kind);
+      expect(exit.label).toBe(exit.kind === 'cancel' ? 'Cancel' : 'Close');
+    }
+  });
+
+  it('cancels in-flight work instead of leaving it running behind a closed modal', () => {
+    for (const phase of [
+      'inspecting',
+      'evaluating',
+      'remediating',
+      'verifying',
+      'confirming_merge',
+      'finalizing',
+    ] as ReadinessPhase[]) {
+      expect(readinessExitAction(phase)).toEqual({ kind: 'cancel', label: 'Cancel' });
+    }
+  });
+
+  it('closes waiting and settled phases without cancelling', () => {
+    for (const phase of [
+      'idle',
+      'confirming',
+      'not_ready',
+      'pr_ready',
+      'awaiting_merge',
+      'complete',
+      'skipped',
+      'failed',
+    ] as ReadinessPhase[]) {
+      expect(readinessExitAction(phase)).toEqual({ kind: 'close', label: 'Close' });
     }
   });
 });

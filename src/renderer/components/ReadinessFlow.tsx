@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   ModelInfo,
   ReadinessAskAnswer,
@@ -11,6 +11,8 @@ import type {
 } from '@shared/types.js';
 import { api } from '../api.js';
 import { duration } from '../format.js';
+import { useEscapeToClose } from '../hooks/useEscapeToClose.js';
+import { isReadinessLive, readinessExitAction } from '../readiness-view.js';
 import { useApp } from '../stores/app.js';
 import ModelPicker from './ModelPicker.js';
 import { Button } from './ui/Button.js';
@@ -52,15 +54,6 @@ const TOOL_ICON: Record<string, string> = {
   ask: '?',
   other: '·',
 };
-
-const LIVE_PHASES = new Set<ReadinessPhase>([
-  'inspecting',
-  'evaluating',
-  'remediating',
-  'verifying',
-  'confirming_merge',
-  'finalizing',
-]);
 
 type StepId = 'check' | 'fix' | 'verify' | 'pr' | 'merge';
 type StepTone = 'pending' | 'current' | 'done' | 'failed' | 'skipped';
@@ -260,7 +253,8 @@ export default function ReadinessFlow({
   const evaluation = state?.evaluation;
   const marker = state?.marker ?? inspect?.marker ?? null;
   const criteria = evaluation?.criteria ?? marker?.criteria ?? [];
-  const live = LIVE_PHASES.has(phase);
+  const live = isReadinessLive(phase);
+  const exit = readinessExitAction(phase);
   const headline = headlineFor(phase, evaluation?.ready);
   const counts = criterionCounts(criteria);
   const bar = progressOf(phase, state?.entries.length ?? 0);
@@ -325,11 +319,18 @@ export default function ReadinessFlow({
     setBusy(false);
   };
 
-  const cancel = async (): Promise<void> => {
-    setBusy(true);
-    await api.readiness.cancel(projectId);
-    setBusy(false);
+  const dismiss = async (): Promise<void> => {
+    await api.readiness.dismiss(projectId);
+    await refreshAll();
+    onClose();
   };
+
+  const leave = useCallback(async (): Promise<void> => {
+    if (exit.kind === 'cancel') await api.readiness.cancel(projectId);
+    onClose();
+  }, [exit.kind, onClose, projectId]);
+
+  useEscapeToClose(() => void leave(), true);
 
   const answerAsk = async (): Promise<void> => {
     const questions = state?.pendingAsk?.questions ?? [];
@@ -342,18 +343,23 @@ export default function ReadinessFlow({
     setAskDrafts({});
   };
 
-  const dismiss = async (): Promise<void> => {
-    await api.readiness.dismiss(projectId);
-    await refreshAll();
-    onClose();
-  };
-
   return (
     <ModalShell dismissible={false} ariaLabelledBy="readiness-title" className={styles.dialog}>
       <header className={styles.head}>
-        <p className="eyebrow">
-          <span className="index">00</span>Agent Readiness
-        </p>
+        <div className="spread">
+          <p className="eyebrow">
+            <span className="index">00</span>Agent Readiness
+          </p>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void leave()}
+            data-testid="readiness-close"
+            title={exit.kind === 'cancel' ? 'Cancel and close (Esc)' : 'Close (Esc)'}
+          >
+            Close
+          </Button>
+        </div>
         <h2 id="readiness-title" className={styles.title}>
           {headline}
         </h2>
@@ -574,16 +580,14 @@ export default function ReadinessFlow({
       </div>
 
       <footer className={styles.actions}>
-        {live && (
-          <Button
-            variant="ghost"
-            disabled={busy}
-            onClick={() => void cancel()}
-            data-testid="readiness-cancel"
-          >
-            Cancel
-          </Button>
-        )}
+        <Button
+          variant="ghost"
+          className={styles.exit}
+          onClick={() => void leave()}
+          data-testid={exit.kind === 'cancel' ? 'readiness-cancel' : 'readiness-dismiss'}
+        >
+          {exit.label}
+        </Button>
         {(phase === 'confirming' || phase === 'idle' || phase === 'not_ready') && (
           <Button variant="ghost" disabled={busy} onClick={() => void skip()}>
             {skipWarn ? 'Skip anyway' : 'Skip for now'}
@@ -612,11 +616,6 @@ export default function ReadinessFlow({
         {(phase === 'complete' || phase === 'skipped') && (
           <Button variant="primary" onClick={() => void dismiss()}>
             OK
-          </Button>
-        )}
-        {phase === 'failed' && (
-          <Button variant="ghost" onClick={onClose}>
-            Close
           </Button>
         )}
       </footer>
