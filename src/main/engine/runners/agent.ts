@@ -7,7 +7,7 @@ import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AgentDef, EnvelopeDef, PhaseDef } from '@shared/types.js';
 import type { PhaseRunner, RunContext, PhaseJump } from '../phase-context.js';
-import { KILLED_DETAIL, type AgentSession } from '../../droid/agent.js';
+import { KILLED_DETAIL, type AgentSession } from '../../pi/session.js';
 import * as boundary from '../boundary.js';
 import {
   correctionMessage,

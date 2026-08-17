@@ -33,8 +33,11 @@ import {
   KILLED_DETAIL,
   type InterruptRequest,
   type Mode,
-  type OpenDaemonResult,
-} from '../droid/agent.js';
+  type TransportRequest,
+} from '../pi/session.js';
+import { PiTransport } from '../pi/pi-transport.js';
+import type { AgentTransport } from '../pi/transport.js';
+import { noteSessionModels, noteSessionTools } from '../droid/catalog.js';
 import { decideAcceptance } from './acceptance.js';
 import type { PhaseRunner, RunContext, PhaseJump } from './phase-context.js';
 import { AgentPhaseRunner } from './runners/agent.js';
@@ -66,9 +69,12 @@ export interface ExecutorDeps {
   rewindAfterCorrections: number;
   /**
    * Preferred port for the app-owned droid daemon (37600–37699). DaemonManager
-   * scans up within the band when this port is busy.
+   * scans up within the band when this port is busy. Only the one-shot droid
+   * call sites still use it.
    */
   daemonPort: number;
+  /** Foundry's Application Support directory; the agent runtime's state lives under it. */
+  supportDir: string;
   mcpServers: UserMcpServer[];
   agents: AgentDef[];
   /** Shared custom envelope library snapshotted at run start. */
@@ -85,11 +91,11 @@ export interface ExecutorDeps {
   /** Test seam: the fake gh script stands in for the real binary. */
   gh?: GhOptions;
   /**
-   * Test seam: supply the daemon's session facade instead of connecting to a
-   * real `droid daemon`. Production leaves this unset — a real run has no other
+   * Test seam: supply the transport each agent session drives. Production
+   * leaves this unset and gets `PiTransport` — a real run has no other
    * transport, so there is nothing here to fall back to.
    */
-  openDaemonSessions?: (agent: AgentDef) => Promise<OpenDaemonResult>;
+  transport?: (input: TransportRequest) => AgentTransport;
 }
 
 export interface RunOutcome {
@@ -123,9 +129,10 @@ export class Executor {
 
   constructor(private readonly deps: ExecutorDeps) {
     this.cwd = deps.project.path;
-    // Agent runs are daemon-only; the field stays so the run row keeps saying
-    // which transport answered rather than leaving the reader to assume.
-    this.mode = 'daemon';
+    // Agent phases run on the in-process agent runtime; the field stays so the
+    // run row keeps saying which transport answered rather than leaving the
+    // reader to assume.
+    this.mode = 'pi';
     this.runners = {
       agent: new AgentPhaseRunner({
         agents: deps.agents,
@@ -413,8 +420,6 @@ export class Executor {
     const existing = this.sessions.get(agent.name);
     if (existing) return existing;
 
-    const vendor = agent.cli ?? 'droid';
-    const cli = this.deps.clis[vendor] ?? this.deps.clis.droid;
     const resolved = resolveAgentExecution(agent, {
       model: this.deps.defaultModel,
       reasoningEffort: this.deps.defaultReasoningEffort ?? 'medium',
@@ -424,24 +429,71 @@ export class Executor {
       model: resolved.model,
       reasoningEffort: resolved.reasoningEffort,
     };
-    const openDaemonSessions = this.deps.openDaemonSessions;
     const session = new AgentSession(effectiveAgent, {
-      cliPath: cli.path,
-      cliExtraArgs: cli.extraArgs,
       runId: this.deps.runId,
       worktree: this.cwd,
       turnTimeoutMs: this.deps.turnTimeoutMs,
       tracer: this.deps.tracer,
-      policy: { protectedPaths: this.deps.project.protectedPaths },
-      envelopes: this.envelopes,
-      daemonPort: this.deps.daemonPort,
-      userMcpServers: this.deps.mcpServers.filter((s) => !s.disabled),
-      ...(openDaemonSessions
-        ? { openDaemonSessions: () => openDaemonSessions(effectiveAgent) }
-        : {}),
+      protectedPaths: this.deps.project.protectedPaths,
+      transport: (req) => this.transportFor(req),
+      // A live session is the only model and tool list that reflects what this
+      // install can reach today, so the catalog the roster picker reads is
+      // refreshed from it rather than from a discovery child.
+      onModels: (models) =>
+        noteSessionModels(
+          models.map((model) => ({
+            id: model.id,
+            modelId: model.id,
+            modelProvider: model.provider,
+            displayName: model.displayName,
+            supportedReasoningEfforts: model.supportedReasoningEfforts,
+            defaultReasoningEffort: model.defaultReasoningEffort,
+          })),
+        ),
+      onTools: (tools) =>
+        noteSessionTools(
+          tools.map(({ id, displayName, description, category, defaultAllowed }) => ({
+            id,
+            // One id, the name a roster's allowlist uses; the runtime exposes no
+            // separate internal id and none is needed.
+            llmId: id,
+            displayName,
+            description,
+            category,
+            defaultAllowed,
+          })),
+        ),
     });
     this.sessions.set(agent.name, session);
     return session;
+  }
+
+  /**
+   * The transport every agent session drives. Sessions files land in the run's
+   * own trace directory, so a run's conversation is one of its artifacts and
+   * the user's own agent install is never written to.
+   */
+  private transportFor(req: TransportRequest): AgentTransport {
+    if (this.deps.transport) return this.deps.transport(req);
+    return new PiTransport({
+      cwd: req.cwd,
+      runId: req.runId,
+      model: req.agent.model,
+      reasoningEffort: req.agent.reasoningEffort,
+      supportDir: this.deps.supportDir,
+      sessionDir: join(this.deps.tracer.runDir(req.runId), 'sessions'),
+      userMcpServers: this.deps.mcpServers.filter((s) => !s.disabled),
+      onPermission: req.onPermission,
+      onEvent: req.onEvent,
+      onModelWarning: req.onModelWarning,
+      tools: {
+        runId: req.runId,
+        agentName: req.agent.name,
+        phaseId: req.phaseId,
+        envelopes: () => this.envelopes,
+        tracer: this.deps.tracer,
+      },
+    });
   }
 
   /**

@@ -139,6 +139,7 @@ async function main(): Promise<void> {
     compactionThreshold: settings.compactionThreshold,
     rewindAfterCorrections: settings.rewindAfterCorrections,
     daemonPort: settings.daemonPort,
+    supportDir: appSupport,
     mcpServers: settings.mcpServers ?? [],
     agents,
     envelopeDefs: [],
