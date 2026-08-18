@@ -28,12 +28,13 @@ function ContextBar({
   return (
     <span
       className={styles.laneContext}
-      title={`${used.toLocaleString()} of ${session.contextWindow.toLocaleString()} context tokens`}
+      title={`Tokens used so far in this step: ${used.toLocaleString()} of ${session.contextWindow.toLocaleString()}`}
     >
-      <span className={styles.laneContextBar}>
+      <span className={styles.laneContextName}>Context</span>
+      <span className={styles.laneContextBar} aria-hidden>
         <span className={styles.laneContextFill} style={{ width: `${pct}%` }} />
       </span>
-      <span className={styles.laneContextLabel}>{pct}%</span>
+      <span className={styles.laneContextLabel}>{pct}% used</span>
     </span>
   );
 }

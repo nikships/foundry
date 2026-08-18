@@ -67,6 +67,13 @@ describe('inspector lane header overflow', () => {
     expect(tsx).toMatch(/title=\{phase\.name\}/);
   });
 
+  it('labels the context meter as tokens used, not remaining', () => {
+    expect(tsx).toMatch(/Tokens used so far in this step/);
+    expect(tsx).toMatch(/\{pct\}% used/);
+    expect(tsx).toMatch(/styles\.laneContextName\}>Context/);
+    expect(tsx).not.toMatch(/remaining/);
+  });
+
   it('names the transport that answered', () => {
     expect(tsx).toMatch(/session\?\.mode \?\? 'pi'/);
     expect(tsx).toMatch(/styles\.laneCli\}>\{transport\}/);
