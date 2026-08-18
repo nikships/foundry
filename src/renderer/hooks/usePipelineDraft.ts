@@ -5,7 +5,8 @@
  * Pipelines in Foundry are held in the app store, but active editing happens on
  * a local draft. Edits are debounced and saved via IPC (`api.pipelines.save`),
  * validated live against project commands and roster, and flushed before
- * pipeline switches.
+ * pipeline switches. Canvas pan, zoom, and card placement are presentation:
+ * they update the draft and a local cache, but they do not write the pipeline.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
@@ -19,10 +20,39 @@ import type {
 } from '@shared/types.js';
 import { api, plain } from '../api.js';
 import { useApp } from '../stores/app.js';
-import { blankPhase, defaultCanvasPosition, formatClock } from '../pipeline-view.js';
+import {
+  applyPipelineDraftPatch,
+  blankPhase,
+  defaultCanvasPosition,
+  formatClock,
+  pipelineFlowEquals,
+} from '../pipeline-view.js';
 import { safeGetItem, safeSetItem } from '../local-store.js';
 
 const STORAGE_KEY = 'foundry.pipeline';
+const canvasStorageKey = (id: string): string => `foundry.pipeline.canvas.${id}`;
+
+function readStoredCanvas(id: string): PipelineCanvas | undefined {
+  const raw = safeGetItem(canvasStorageKey(id));
+  if (!raw) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+    return parsed as PipelineCanvas;
+  } catch {
+    return undefined;
+  }
+}
+
+function persistCanvas(id: string, canvas: PipelineCanvas | undefined): void {
+  if (!canvas) return;
+  safeSetItem(canvasStorageKey(id), JSON.stringify(canvas));
+}
+
+function withLocalCanvas(pipeline: PipelineDef): PipelineDef {
+  const stored = readStoredCanvas(pipeline.id);
+  return stored ? { ...pipeline, canvas: stored } : pipeline;
+}
 
 function clonePipeline(p: PipelineDef): PipelineDef {
   return {
@@ -157,7 +187,7 @@ export function usePipelineDraft(deepLink?: {
     const currentId = selected?.id ?? null;
     if (currentId !== prevSelectedIdRef.current) {
       prevSelectedIdRef.current = currentId;
-      setDraft(selected ? clonePipeline(selected) : null);
+      setDraft(selected ? withLocalCanvas(clonePipeline(selected)) : null);
       setActivePhase(null);
     }
   }, [selected]);
@@ -239,9 +269,13 @@ export function usePipelineDraft(deepLink?: {
   const updateDraft = useCallback(
     (patch: Partial<PipelineDef>): void => {
       if (!draft) return;
-      const next: PipelineDef = { ...draft, ...patch };
+      const { next, needsSave } = applyPipelineDraftPatch(draft, patch);
       setDraft(next);
-      scheduleSave(next);
+      if (next.canvas && next.canvas !== draft.canvas) persistCanvas(next.id, next.canvas);
+      // A pending flow save should pick up the latest presentation, but
+      // viewport / card placement alone must not start one.
+      if (pendingSaveRef.current) pendingSaveRef.current = next;
+      if (needsSave) scheduleSave(next);
     },
     [draft, scheduleSave],
   );
@@ -455,7 +489,7 @@ export function usePipelineDraft(deepLink?: {
 
   const isDirty = useMemo(() => {
     if (!draft || !selected) return false;
-    return JSON.stringify(draft) !== JSON.stringify(selected);
+    return !pipelineFlowEquals(draft, selected);
   }, [draft, selected]);
 
   return {

@@ -6,6 +6,7 @@ import {
   acceptanceReads,
   acceptanceSummary,
   applyPhaseEnvelopeOverride,
+  applyPipelineDraftPatch,
   bindPhaseAgent,
   blankPhase,
   commandText,
@@ -17,6 +18,7 @@ import {
   issuePhaseIndex,
   phaseComposition,
   phaseEnvelopeChip,
+  pipelineFlowEquals,
 } from '../src/renderer/pipeline-view.js';
 
 describe('pipeline-view', () => {
@@ -246,6 +248,72 @@ describe('pipeline-view', () => {
         overridden: false,
         title: 'Inherit from agent',
       });
+    });
+  });
+
+  describe('pipelineFlowEquals', () => {
+    const flow: PipelineDef = {
+      id: 'review',
+      name: 'Review',
+      description: 'A review chain.',
+      acceptance: { kind: 'last_phase_pass' },
+      phases: [
+        { name: 'plan', kind: 'agent', description: 'Write the plan.' },
+        { name: 'build', kind: 'agent', description: 'Apply the plan.' },
+      ],
+    };
+
+    it('ignores viewport and card placement', () => {
+      const panned: PipelineDef = {
+        ...flow,
+        canvas: { viewport: { x: 40, y: -12, zoom: 1.4 } },
+      };
+      const dragged: PipelineDef = {
+        ...flow,
+        canvas: { nodes: { plan: { x: 10, y: 20 }, build: { x: 400, y: 20 } } },
+      };
+      expect(pipelineFlowEquals(flow, panned)).toBe(true);
+      expect(pipelineFlowEquals(panned, dragged)).toBe(true);
+    });
+
+    it('treats rerouting or other flow edits as a change', () => {
+      const rerouted: PipelineDef = {
+        ...flow,
+        phases: [flow.phases[1]!, flow.phases[0]!],
+      };
+      const renamed: PipelineDef = { ...flow, name: 'Ship' };
+      expect(pipelineFlowEquals(flow, rerouted)).toBe(false);
+      expect(pipelineFlowEquals(flow, renamed)).toBe(false);
+    });
+  });
+
+  describe('applyPipelineDraftPatch', () => {
+    const draft: PipelineDef = {
+      id: 'review',
+      name: 'Review',
+      description: 'A review chain.',
+      acceptance: { kind: 'last_phase_pass' },
+      phases: [{ name: 'plan', kind: 'agent', description: 'Write the plan.' }],
+    };
+
+    it('does not ask for a save when only the canvas moved', () => {
+      expect(
+        applyPipelineDraftPatch(draft, {
+          canvas: { viewport: { x: 8, y: 16, zoom: 0.8 }, nodes: { plan: { x: 96, y: 40 } } },
+        }).needsSave,
+      ).toBe(false);
+    });
+
+    it('asks for a save when persisted flow content changes', () => {
+      expect(applyPipelineDraftPatch(draft, { name: 'Ship' }).needsSave).toBe(true);
+      expect(
+        applyPipelineDraftPatch(draft, {
+          phases: [
+            draft.phases[0]!,
+            { name: 'build', kind: 'agent', description: 'Apply the plan.' },
+          ],
+        }).needsSave,
+      ).toBe(true);
     });
   });
 });

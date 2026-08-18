@@ -234,3 +234,30 @@ export function formatClock(date: Date): string {
 export function defaultCanvasPosition(index: number): PipelineCanvasPoint {
   return { x: 96 + index * 352, y: 168 };
 }
+
+/**
+ * Persisted flow content: everything a save should react to.
+ *
+ * `canvas` is board presentation (pan, zoom, card placement). It never
+ * changes execution order, so viewport-only interactions must not dirty
+ * the draft or write the pipeline document.
+ */
+function pipelineFlowContent(pipeline: PipelineDef): Omit<PipelineDef, 'canvas'> {
+  const flow = { ...pipeline };
+  delete flow.canvas;
+  return flow;
+}
+
+/** True when two pipelines have the same persisted flow, ignoring presentation. */
+export function pipelineFlowEquals(a: PipelineDef, b: PipelineDef): boolean {
+  return JSON.stringify(pipelineFlowContent(a)) === JSON.stringify(pipelineFlowContent(b));
+}
+
+/** Apply a draft patch and say whether it should write the pipeline document. */
+export function applyPipelineDraftPatch(
+  draft: PipelineDef,
+  patch: Partial<PipelineDef>,
+): { next: PipelineDef; needsSave: boolean } {
+  const next = { ...draft, ...patch };
+  return { next, needsSave: !pipelineFlowEquals(draft, next) };
+}
