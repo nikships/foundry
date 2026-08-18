@@ -34,6 +34,7 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 ├── src/preload/               ← narrow CJS bridge (bridge.cjs) for sandbox
 ├── src/cli/                   ← foundry-cli: the standalone Smith helper binary
 ├── skills/                    ← agent skills for users, keep up-to-date with 'smith' capabilities
+├── references/                ← pinned copies of pi-coding-agent vendor docs (read before touching src/main/pi)
 ├── website/                   ← marketing website for foundry app (do not update unless told to)
 ├── tests/                     ← Vitest suites (real git temp repos + scripted transport)
 │   └── e2e/                   ← Playwright Electron UI smoke (not in npm run check)
@@ -125,7 +126,7 @@ Troubleshooting section covers the usual causes; verify with
 
 **Preload must stay CJS** (`out/preload/bridge.cjs`) because sandboxed preloads cannot be ESM.
 
-**Agent-runtime import boundary** (ESLint `no-restricted-imports`): only `src/main/pi/**` may import `@earendil-works/pi-*`. Everything above it talks to `pi/transport.ts`'s `AgentTransport`, so the runtime stays replaceable without touching every layer.
+**Agent-runtime import boundary** (ESLint `no-restricted-imports`): only `src/main/pi/**` may import `@earendil-works/pi-*`. Everything above it talks to `pi/transport.ts`'s `AgentTransport`, so the runtime stays replaceable without touching every layer. Before changing `src/main/pi/**` or anything that names `@earendil-works/pi-*`, read `src/main/pi/AGENTS.md` and the pinned vendor docs in `references/` (start at `references/README.md`). Those files are copies of `@earendil-works/pi-coding-agent@0.84.2` — do not fetch live pi.dev or GitHub docs; the pin is the contract. Foundry uses the in-process SDK (`createAgentSession`), not RPC and not a child process.
 
 ## Testing Instructions
 
@@ -227,3 +228,4 @@ npm run package             # build + icons + fetch:bridge + electron-builder --
 
 - Never modify or push `.foundry-worktrees/` branches directly — the engine owns them.
 - Don't update the Website, unless specifically asked to do so. Instead file a GitHub issue for what  needs to be changed if you believe one is required
+- Pi vendor docs live in `references/`. Recopy them from `node_modules/@earendil-works/pi-coding-agent/docs/` when the package pin bumps.

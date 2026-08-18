@@ -12,6 +12,9 @@ assets
 playwright-report
 test-results
 
+# Vendored copies of @earendil-works/pi-coding-agent docs. Do not reformat.
+references
+
 # Standalone marketing site — has its own toolchain and is not part of the
 # desktop app build, the repo gate, or CI. See website/README.md.
 website

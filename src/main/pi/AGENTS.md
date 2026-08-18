@@ -2,6 +2,8 @@
 
 Every agent call in the app, long-lived or one-shot. Pi runs **in this process**: no child process, no wire protocol, no MCP server. This directory is the only place in the app allowed to name `@earendil-works/pi-*`.
 
+**Read the pinned vendor docs in `references/` before changing this directory.** Start at `references/README.md`, then `references/sdk.md` and `references/extensions.md`. Those files are copies of `@earendil-works/pi-coding-agent@0.84.2`. Do not consult live pi.dev or GitHub docs — they may be ahead of the pin. Foundry does not use RPC mode.
+
 Two session shapes live here. A **run** holds a session across many turns (`session.ts` over `transport.ts`). A **one-shot** opens a session, asks one question, and disposes it (`oneshot.ts`); that is detection, setup generation, the run-start command fill, rebase repair, and the readiness fix. They share model selection, event translation, and the tool lists, so the two cannot drift.
 
 ## Project Overview
@@ -91,6 +93,7 @@ npm run typecheck && npm run lint && npm run build
 
 ## Additional Notes
 
+- Pinned official docs for this layer: `references/` at the repo root. Recopy from `node_modules/@earendil-works/pi-coding-agent/docs/` when the package pin bumps.
 - `session.ts` writes a per-agent context breakdown file next to the stream; the renderer reads it for the context gauge.
 - Model and thinking level are stated once at create and never drift, so `applySettings()` has nothing to re-assert and simply reports the active model.
 - A model the install cannot reach is a **warning plus a fallback**, not a failed run: the trace records what actually ran.
