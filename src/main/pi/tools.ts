@@ -28,6 +28,17 @@ export const FOUNDRY_TOOL_NAMES = [
 ] as const;
 export type FoundryToolName = (typeof FOUNDRY_TOOL_NAMES)[number];
 
+/** Pi's built-ins. A phase runs all of them; none of them prompts a human. */
+export const BUILTIN_TOOLS = ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls'] as const;
+
+/**
+ * The read-only subset, and the whole of what a detection or a setup session
+ * gets. The tool list is the allowlist: an editing or shell tool is not merely
+ * denied by policy, it is absent from the registry, so a session that runs
+ * against the operator's own checkout has nothing that could write to it.
+ */
+export const READ_ONLY_TOOLS = ['read', 'grep', 'find', 'ls'] as const;
+
 /** One entry of the chain `read_phase_context` returns. */
 export interface PhaseContextEntry {
   phase: string;

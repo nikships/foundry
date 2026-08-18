@@ -24,7 +24,7 @@ import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
 import { notifyRuns } from './shared.js';
 
-type Ctx = Pick<AppContext, 'projects' | 'registry' | 'settings' | 'broadcast'>;
+type Ctx = Pick<AppContext, 'projects' | 'registry' | 'settings' | 'broadcast' | 'oneShot'>;
 
 export function register(ctx: Ctx, handle: Handle): void {
   const projectOf = (projectId: string) => ctx.projects.get(projectId);
@@ -198,7 +198,7 @@ export function register(ctx: Ctx, handle: Handle): void {
       branch: pr.headRefName,
       ontoSha,
       ontoLabel: `${remote}/${baseRef}`,
-      agent: repairAgent(settings, run.worktreePath),
+      agent: repairAgent(ctx.oneShot, settings, run.worktreePath),
       timeoutMs: settings.turnTimeoutMs,
     });
     tracer.event({ runId, type: 'log', name: 'agent fix', payload: { detail: outcome.detail } });

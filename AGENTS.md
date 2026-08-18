@@ -19,9 +19,9 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 .                              ← the application (repo root)
 ├── src/main/                  ← Node main process (privileged)
 │   ├── engine/                ← sequencing, retries, boundaries, gates, worktrees
-│   ├── pi/                    ← the agent transport agent phases run on (in-process; no fallback)
-│   ├── droid/ + sdk/          ← Droid one-shot calls (detection, setup, repair, summaries)
-│   ├── cli/                   ← vendor argv + one-shot parse adapters
+│   ├── pi/                    ← every agent call, in-process: run sessions and one-shots (no fallback)
+│   ├── droid/ + sdk/          ← model catalog, daemon policy, SDK adapter (no agent calls left)
+│   ├── cli/                   ← install descriptors for CLIs the app does not run
 │   ├── smith/                 ← Smith's socket, validation, approval queue
 │   ├── trace/                 ← Tracer: sole SQLite writer (WAL)
 │   ├── store/                 ← JSON config (JsonStore, builtins, migrations)

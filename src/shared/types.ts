@@ -538,12 +538,20 @@ export interface ReadinessAskAnswer {
   answer: string;
 }
 
+/**
+ * What kind of work one tool call in a live transcript was, so a panel can
+ * icon it without knowing tool names. Deliberately coarse and shared by every
+ * transcript the app renders — detection, setup, and the readiness fix — so
+ * their icon maps cannot drift apart.
+ */
+export type TranscriptToolKind = 'command' | 'read' | 'edit' | 'search' | 'other';
+
 export interface ReadinessEntry {
   id: string;
   kind: 'text' | 'tool' | 'note' | 'error';
   text: string;
   /** Tool entries only: what kind of work it was, so the UI can icon it. */
-  toolKind?: 'command' | 'read' | 'edit' | 'search' | 'todo' | 'task' | 'ask' | 'other';
+  toolKind?: TranscriptToolKind;
   /** Tool entries only: set once the result arrives. */
   done?: boolean;
   failed?: boolean;

@@ -12,8 +12,10 @@ import { join } from 'node:path';
 import { tempDir } from './tmp.js';
 import { describe, expect, it } from 'vitest';
 import { headSha, isAncestor, resolveRef, status } from '../src/main/engine/git.js';
-import { rebaseOntoBase, type RepairAgent } from '../src/main/engine/repair.js';
+import { rebaseOntoBase, repairAgent, type RepairAgent } from '../src/main/engine/repair.js';
 import * as worktree from '../src/main/engine/worktree.js';
+import { defaultSettings } from '../src/main/store/settings.js';
+import { scriptedOneShots } from './scripted-oneshot.js';
 
 function sh(cwd: string, argv: string[]): string {
   return execFileSync(argv[0]!, argv.slice(1), { cwd, encoding: 'utf8' });
@@ -164,5 +166,30 @@ describe('rebaseOntoBase', () => {
     expect(outcome.detail).toContain('timed out');
     expect(await headSha(handle.path)).toBe(before);
     expect(await resolveRef(handle.path, 'HEAD')).toBe(before);
+  });
+});
+
+describe('repairAgent', () => {
+  it('opens a write-capable session scoped to the run’s own worktree', async () => {
+    const { handle, ontoSha } = await divergedRun(false);
+    const oneShots = scriptedOneShots([
+      { work: () => sh(handle.path, ['git', 'rebase', ontoSha]), text: 'Rebased cleanly.' },
+    ]);
+
+    const outcome = await rebaseOntoBase({
+      worktreePath: handle.path,
+      branch: handle.branch,
+      ontoSha,
+      ontoLabel: 'main',
+      agent: repairAgent(oneShots.factory, defaultSettings(), handle.path),
+      timeoutMs: 60_000,
+    });
+
+    expect(outcome.ok).toBe(true);
+    // A rebase is commands and writes, so this is the one one-shot that needs
+    // them — and the run's own worktree is the only place it may make them.
+    expect(oneShots.calls).toHaveLength(1);
+    expect(oneShots.calls[0]!.access).toBe('write');
+    expect(oneShots.calls[0]!.cwd).toBe(handle.path);
   });
 });

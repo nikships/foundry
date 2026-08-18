@@ -51,19 +51,7 @@ export function foundryExtension(opts: FoundryExtensionOptions): FoundryExtensio
     pi.registerTool(reportProgressTool(opts.tools));
     pi.registerTool(readPhaseContextTool(opts.tools));
     install(pending);
-
-    // Everything the model asks for passes through here, including Foundry's
-    // own tools: a policy with a hole in it is not a policy.
-    pi.on('tool_call', async (event) => {
-      const decision = await opts.decide({
-        tool: event.toolName,
-        input: { ...event.input },
-        ...commandOf(event.input),
-        ...pathOf(event.input),
-      });
-      if (decision.outcome === 'allow') return;
-      return { block: true, reason: decision.reason };
-    });
+    installPolicy(pi, opts.decide);
   };
 
   return {
@@ -73,6 +61,34 @@ export function foundryExtension(opts: FoundryExtensionOptions): FoundryExtensio
       install(tool);
     },
   };
+}
+
+/**
+ * The policy without Foundry's tools, for a session that has no phase to
+ * answer for: a repair rebase or a readiness fix runs in its own worktree and
+ * has no envelope to submit, but its writes are still ruled on.
+ */
+export function policyOnlyExtension(decide: FoundryExtensionOptions['decide']): {
+  factory: ExtensionFactory;
+} {
+  return { factory: (pi) => installPolicy(pi, decide) };
+}
+
+/**
+ * Everything the model asks for passes through here, including Foundry's own
+ * tools: a policy with a hole in it is not a policy.
+ */
+function installPolicy(pi: ExtensionAPI, decide: FoundryExtensionOptions['decide']): void {
+  pi.on('tool_call', async (event) => {
+    const decision = await decide({
+      tool: event.toolName,
+      input: { ...event.input },
+      ...commandOf(event.input),
+      ...pathOf(event.input),
+    });
+    if (decision.outcome === 'allow') return;
+    return { block: true, reason: decision.reason };
+  });
 }
 
 function commandOf(input: Record<string, unknown>): { command?: string } {

@@ -11,10 +11,10 @@
  */
 
 import type { AppSettings } from '@shared/types.js';
-import { OneShotClient } from '../droid/oneshot.js';
+import type { OneShotFactory } from '../pi/oneshot.js';
 import { abortRebase, isAncestor, resolveRef, status } from './git.js';
 
-/** The one method a repair needs; OneShotClient satisfies it structurally. */
+/** The one method a repair needs; a one-shot session satisfies it structurally. */
 export interface RepairAgent {
   send(text: string, timeoutMs: number): Promise<{ text: string }>;
 }
@@ -25,20 +25,22 @@ export interface RepairOutcome {
 }
 
 /**
- * The repair agent on the operator's default CLI. A rebase is commands and
- * writes; the blast radius is the worktree it is spawned in, and nothing it
- * claims is believed: `rebaseOntoBase` re-derives the outcome from git
- * afterwards.
+ * The repair agent, write-capable inside the run's own worktree.
+ *
+ * A rebase is commands and writes, so this is the one one-shot that needs
+ * them — the policy keeps them inside `cwd`, and the run worktree is already
+ * the only place this run's work lives. Nothing the agent claims is believed:
+ * `rebaseOntoBase` re-derives the outcome from git afterwards.
  */
-export function repairAgent(settings: AppSettings, cwd: string): OneShotClient {
-  const vendor = settings.defaultCli;
-  const cli = settings.clis[vendor];
+export function repairAgent(
+  oneShot: OneShotFactory,
+  settings: AppSettings,
+  cwd: string,
+): RepairAgent {
   const model = settings.defaultModel || 'inherit';
-  return new OneShotClient({
-    vendor,
-    cliPath: cli.path,
-    extraArgs: cli.extraArgs,
+  return oneShot({
     cwd,
+    access: 'write',
     model,
     reasoningEffort: model === 'inherit' ? 'off' : settings.defaultReasoningEffort,
   });

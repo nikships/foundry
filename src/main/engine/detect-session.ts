@@ -13,14 +13,11 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import type { AppSettings, CliVendor } from '@shared/types.js';
-import { adapterFor } from '../cli/index.js';
-import { OneShotClient } from '../droid/oneshot.js';
-import { labelToolCall, toolKind, type ToolKind } from '../droid/events.js';
-import type { DroidNotification, ToolUse } from '../droid/protocol.js';
+import type { AppSettings, CliVendor, TranscriptToolKind } from '@shared/types.js';
+import type { OneShotFactory, OneShotSession } from '../pi/oneshot.js';
+import { foldTranscript } from '../pi/transcript.js';
 import {
   DETECT_PROMPT,
-  DETECT_TOOLS,
   parseDetectReply,
   sniffCommands,
   type CommandCandidate,
@@ -34,7 +31,7 @@ export interface DetectionEntry {
   kind: 'text' | 'tool' | 'note' | 'error';
   text: string;
   /** Tool entries only: what kind of work it was, so the UI can icon it. */
-  toolKind?: ToolKind;
+  toolKind?: TranscriptToolKind;
   /** Tool entries only: set once the result arrives. */
   done?: boolean;
   failed?: boolean;
@@ -93,20 +90,20 @@ export interface DetectSessionDeps {
   projectPath: string;
   existingCommands: string[];
   settings: AppSettings;
-  /** Which CLI to drive, already resolved from the project's preference. */
+  /** Which runtime answered, recorded so the panel can say what ran. */
   vendor: CliVendor;
-  /** Model id, or `inherit` to let the CLI choose. */
+  /** Model id, or `inherit` to let this install choose. */
   model: string;
+  /** How the turn is opened. Injected so a test drives one with no model. */
+  oneShot: OneShotFactory;
   onChange: (state: DetectionState) => void;
 }
 
 export class DetectSession {
   readonly detectionId = `det_${shortId()}`;
   private readonly state: DetectionState;
-  private client: OneShotClient | null = null;
+  private session: OneShotSession | null = null;
   private cancelled = false;
-  /** toolUseId → transcript entry, so a result closes the line it opened. */
-  private readonly openTools = new Map<string, DetectionEntry>();
 
   constructor(private readonly deps: DetectSessionDeps) {
     this.state = {
@@ -151,7 +148,7 @@ export class DetectSession {
   cancel(): void {
     if (this.state.status === 'done' || this.state.status === 'failed') return;
     this.cancelled = true;
-    this.client?.kill();
+    this.session?.abort();
     this.state.status = 'cancelled';
     this.state.detail = 'cancelled';
     this.state.endedAt = Date.now();
@@ -182,9 +179,7 @@ export class DetectSession {
   }
 
   private async ask(): Promise<void> {
-    const { settings, vendor, model } = this.deps;
-    const adapter = adapterFor(vendor);
-    const cli = settings.clis[vendor];
+    const { settings, model } = this.deps;
 
     // Manifests are free and usually right, so they are given to the agent as
     // context to confirm or correct. They are never a reason to skip the agent:
@@ -199,31 +194,25 @@ export class DetectSession {
 
     this.push({
       kind: 'note',
-      text: `Asking ${adapter.label}${model === 'inherit' ? '' : ` (${model})`}…`,
+      text: `Asking the agent${model === 'inherit' ? '' : ` (${model})`}…`,
     });
 
-    const normalise = adapter.stream?.();
-    this.client = new OneShotClient({
-      vendor,
-      cliPath: cli.path,
-      extraArgs: cli.extraArgs,
+    // Detection runs against the operator's own checkout, where nothing would
+    // revert a write, so the session is opened with no tool that could make one.
+    this.session = this.deps.oneShot({
       cwd: this.deps.projectPath,
-      restrictTools: DETECT_TOOLS,
+      access: 'read',
       model,
       reasoningEffort: model === 'inherit' ? 'off' : settings.defaultReasoningEffort,
-      onStderr: (text) => {
-        const trimmed = text.trim();
-        // The policy-refusal retry reports itself here; surfacing it is the
+      onEvent: (event) => this.absorb(event),
+      onWarning: (warning) => {
+        // A model substitution reports itself here; surfacing it is the
         // difference between "no commands found" and "that model is blocked".
-        if (trimmed) this.push({ kind: 'note', text: trimmed.slice(0, 500) });
+        this.push({ kind: 'note', text: warning.slice(0, 500) });
       },
     });
 
-    const turn = await this.client.send(
-      this.prompt(sniffed),
-      DETECT_TIMEOUT_MS,
-      normalise ? (line) => this.absorb(normalise(line)) : undefined,
-    );
+    const turn = await this.session.send(this.prompt(sniffed), DETECT_TIMEOUT_MS);
     if (this.cancelled) return;
 
     const reply = parseDetectReply(turn.text);
@@ -277,50 +266,12 @@ export class DetectSession {
     return parts.join('\n');
   }
 
-  /** Folds the vendor's normalised notifications into transcript lines. */
-  private absorb(notifications: DroidNotification[]): void {
-    for (const n of notifications) {
-      switch (n.type) {
-        case 'assistant_text_delta': {
-          const delta = (n as { textDelta?: string }).textDelta ?? '';
-          if (!delta.trim()) break;
-          const last = this.state.entries[this.state.entries.length - 1];
-          // Vendors that emit per-token deltas would otherwise produce one
-          // transcript line per token.
-          if (last?.kind === 'text') {
-            last.text += delta;
-            this.emit();
-          } else {
-            this.push({ kind: 'text', text: delta });
-          }
-          break;
-        }
-        case 'tool_call': {
-          const tool = (n as { toolUse?: ToolUse }).toolUse;
-          if (!tool?.id || this.openTools.has(tool.id)) break;
-          const entry = this.push({
-            kind: 'tool',
-            text: labelToolCall(tool),
-            toolKind: toolKind(tool.name),
-          });
-          this.openTools.set(tool.id, entry);
-          break;
-        }
-        case 'tool_result': {
-          const r = n as { toolUseId?: string; isError?: boolean };
-          const open = r.toolUseId ? this.openTools.get(r.toolUseId) : undefined;
-          if (!open || !r.toolUseId) break;
-          open.done = true;
-          open.failed = !!r.isError;
-          this.openTools.delete(r.toolUseId);
-          this.emit();
-          break;
-        }
-        default:
-          break;
-      }
-    }
-  }
+  /** Folds the session's events into transcript lines. */
+  private readonly absorb = foldTranscript<DetectionEntry>({
+    push: (row) => this.push(row),
+    flush: () => this.emit(),
+    last: () => this.state.entries[this.state.entries.length - 1] ?? null,
+  });
 
   /**
    * Running a proposal is the point: a command that passes here is evidence,

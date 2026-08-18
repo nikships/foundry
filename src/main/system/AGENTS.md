@@ -21,7 +21,7 @@ No system-specific install; relies on `$SHELL`, `ps`, and platform notifications
 
 ## Development Workflow
 
-- Every spawn (commands, catalog, one-shot, SDK sessions, process helpers, `which` lookups) must go through `spawnEnv()` with the `resolveEnv()` result — never `process.env` directly.
+- Every spawn (project commands, catalog, detection verification, SDK sessions, process helpers, `which` lookups) must go through `spawnEnv()` with the `resolveEnv()` result — never `process.env` directly.
 - New tracked spawns: register argv alongside the `processes` trace row so the recycle check can verify.
 - Kill order: children before parents; keep registry and trace lifecycle in sync. Do not add an untracked spawn site.
 - Doctor checks stay advisory — do not block app startup on failure.

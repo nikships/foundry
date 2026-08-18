@@ -9,6 +9,7 @@ import type {
   ReadinessInspectResult,
   ReadinessState,
 } from '@shared/types.js';
+import type { OneShotFactory } from '../pi/oneshot.js';
 import { readMarkerAtBaseRef } from './marker.js';
 import { createAgentRemediator, resolveReadinessModel } from './remediator.js';
 import { ReadinessSession, type ReadinessIo } from './session.js';
@@ -39,9 +40,9 @@ export async function inspectProject(project: ProjectDef): Promise<ReadinessInsp
   };
 }
 
-export function defaultReadinessIo(settings: AppSettings): ReadinessIo {
+export function defaultReadinessIo(oneShot: OneShotFactory): ReadinessIo {
   return {
-    remediator: createAgentRemediator({ settings, vendor: settings.defaultCli }),
+    remediator: createAgentRemediator({ oneShot }),
     openPr: (repo, input) => ghLib.openPr(repo, input),
     viewPrMerge: async (repo, ref): Promise<PrMergeView | null> => {
       const viewed = await ghLib.viewPrMergeState(repo, ref);
@@ -54,7 +55,10 @@ export class ReadinessSessions {
   private readonly sessions = new Map<string, ReadinessSession>();
   private readonly endedAt = new Map<string, number>();
 
-  constructor(private readonly onProgress: (state: ReadinessState) => void) {}
+  constructor(
+    private readonly oneShot: OneShotFactory,
+    private readonly onProgress: (state: ReadinessState) => void,
+  ) {}
 
   get(projectId: string): ReadinessState | null {
     return this.sessions.get(projectId)?.snapshot() ?? null;
@@ -80,7 +84,7 @@ export class ReadinessSessions {
       project,
       settings,
       persist,
-      io: io ?? defaultReadinessIo(settings),
+      io: io ?? defaultReadinessIo(this.oneShot),
       onChange: (state) => {
         if (state.phase === 'complete' || state.phase === 'skipped' || state.phase === 'failed') {
           this.endedAt.set(state.projectId, Date.now());

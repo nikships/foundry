@@ -29,7 +29,7 @@ Typical change flow for a new phase kind or gate:
 3. Wire runners in `runners/` and prompt rendering in `prompts.ts`.
 4. Add a real-git executor test in `tests/executor.test.ts`.
 
-Other references: `cli/` owns vendor argv, `pi/` owns the agent transport, `store/pipelines.ts:dryRun()` renders prompts without spending a run.
+Other references: `pi/` owns every agent call (the transport a phase runs on and the one-shot detection, setup, and repair use), `store/pipelines.ts:dryRun()` renders prompts without spending a run.
 
 ## Testing Instructions
 
@@ -61,7 +61,7 @@ npx vitest run tests/gates.test.ts
 
 ## Code Style
 
-- Keep vendor argv parsing in `cli/`, transport work in `pi/` (or `droid/` for one-shot calls) — not here.
+- Keep session work in `pi/` — the transport for phases, the one-shot seam for detection, setup, and repair — not here. `detect-session.ts`, `setup-session.ts`, and `repair.ts` take an `OneShotFactory` rather than building one, which is what lets a test drive them without a model.
 - Gate and envelope modules export plain values/types consumable from tests; avoid coupling them to `AppContext`.
 - No `eslint-disable`; address real issues. Use `@main/*` / `@shared/*` aliases.
 

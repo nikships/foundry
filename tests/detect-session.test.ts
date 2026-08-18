@@ -1,53 +1,27 @@
 /**
- * "Ask AI to find commands", end to end against a fake `droid exec`.
+ * "Ask AI to find commands", end to end against a scripted one-shot session.
  *
  * The bug this replaces: the handler only asked an agent when manifest
  * sniffing found nothing, so in any repo with a package.json or Makefile the
  * button did a silent manifest lookup and returned in milliseconds. These tests
  * pin the agent as unconditional, the transcript as populated, and a failure as
  * something the panel can explain.
+ *
+ * The session is scripted rather than spawned: what is under test is what
+ * `DetectSession` does with a turn, and a real one would need a credential, a
+ * network, and a model. The tools it is allowed are asserted here too, because
+ * detection runs against the operator's own checkout and nothing would revert a
+ * write it made.
  */
 
-import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tempDir } from './tmp.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DetectSession, type DetectionState } from '../src/main/engine/detect-session.js';
 import { defaultSettings } from '../src/main/store/settings.js';
 import { __setResolvedEnvForTest } from '../src/main/system/env.js';
-import type { AppSettings } from '../src/shared/types.js';
-
-/**
- * A stand-in for `droid exec -o stream-json`: prints the same line shapes the
- * real CLI does (captured from it), then the `completion` envelope.
- */
-function writeFakeCli(opts: { reply?: string; exitCode?: number; stderr?: string }): string {
-  const dir = tempDir('foundry-fake-cli-');
-  const js = join(dir, 'fake.mjs');
-  writeFileSync(
-    js,
-    `
-const reply = ${JSON.stringify(opts.reply ?? '')};
-const stderr = ${JSON.stringify(opts.stderr ?? '')};
-const code = ${opts.exitCode ?? 0};
-if (stderr) process.stderr.write(stderr);
-if (code === 0) {
-  const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
-  out({ type: 'system', subtype: 'init', session_id: 's1', model: 'fake-model' });
-  out({ type: 'message', role: 'assistant', id: 'm1', text: 'Reading the manifests.' });
-  out({ type: 'tool_call', id: 'c1', toolId: 'Read', toolName: 'Read', parameters: { file_path: '/repo/package.json' } });
-  out({ type: 'tool_result', id: 'c1', toolId: 'Read', isError: false, value: '{}' });
-  out({ type: 'message', role: 'assistant', id: 'm2', text: reply });
-  out({ type: 'completion', finalText: reply, session_id: 's1', usage: { input_tokens: 10, output_tokens: 2 } });
-}
-process.exit(code);
-`,
-  );
-  const bin = join(dir, 'droid');
-  writeFileSync(bin, `#!/bin/sh\nexec "${process.execPath}" "${js}" "$@"\n`);
-  chmodSync(bin, 0o755);
-  return bin;
-}
+import { say, scriptedOneShots, toolCall, type ScriptedTurn } from './scripted-oneshot.js';
 
 /** A repo whose manifests answer, so a skip-the-agent regression is visible. */
 function repoWithManifest(): string {
@@ -60,46 +34,63 @@ function repoWithManifest(): string {
   return dir;
 }
 
-function settingsWith(cliPath: string): AppSettings {
-  const base = defaultSettings();
-  return { ...base, clis: { ...base.clis, droid: { path: cliPath, extraArgs: [] } } };
+/** What the agent would have read on its way to an answer. */
+function readingTurn(reply: string): ScriptedTurn {
+  return {
+    events: [
+      ...say('Reading the manifests.'),
+      ...toolCall({
+        callId: 'c1',
+        tool: 'read',
+        args: { path: '/repo/package.json' },
+        result: '{}',
+      }),
+    ],
+    text: reply,
+  };
 }
 
 async function run(opts: {
-  cliPath: string;
+  turn: ScriptedTurn;
   projectPath: string;
   existingCommands?: string[];
-}): Promise<DetectionState> {
+}): Promise<{ state: DetectionState; oneShots: ReturnType<typeof scriptedOneShots> }> {
+  const oneShots = scriptedOneShots([opts.turn]);
   const states: DetectionState[] = [];
   const session = new DetectSession({
     projectId: 'p1',
     projectPath: opts.projectPath,
     existingCommands: opts.existingCommands ?? [],
-    settings: settingsWith(opts.cliPath),
+    settings: defaultSettings(),
     vendor: 'droid',
     model: 'inherit',
+    oneShot: oneShots.factory,
     onChange: (state) => states.push(state),
   });
   await session.run();
   expect(states.length).toBeGreaterThan(0);
-  return session.snapshot();
+  return { state: session.snapshot(), oneShots };
+}
+
+function commandsReply(
+  commands: { name: string; argv: string[]; source?: string }[],
+): ScriptedTurn {
+  return readingTurn(JSON.stringify({ commands }));
 }
 
 beforeEach(() => {
-  // The fake CLI is a shell script needing /bin; the commands it proposes are
-  // shell builtins, so a minimal PATH is enough and keeps the test hermetic.
+  // The commands the fixtures propose are shell builtins, so a minimal PATH is
+  // enough to verify them and keeps the test hermetic.
   __setResolvedEnvForTest({ path: '/usr/bin:/bin', via: 'login-shell' });
 });
 afterEach(() => __setResolvedEnvForTest(null));
 
 describe('DetectSession', () => {
   it('asks the agent even when the manifests already answered', async () => {
-    const cli = writeFakeCli({
-      reply: JSON.stringify({
-        commands: [{ name: 'test', argv: ['echo', 'from-agent'], source: 'AGENTS.md' }],
-      }),
+    const { state } = await run({
+      turn: commandsReply([{ name: 'test', argv: ['echo', 'from-agent'], source: 'AGENTS.md' }]),
+      projectPath: repoWithManifest(),
     });
-    const state = await run({ cliPath: cli, projectPath: repoWithManifest() });
 
     // The manifest said `npm test`; the agent said `echo from-agent`. The
     // agent's answer is the one that comes back.
@@ -107,40 +98,75 @@ describe('DetectSession', () => {
     expect(state.status).toBe('done');
   });
 
-  it('shows the manifest findings as context rather than as the answer', async () => {
-    const cli = writeFakeCli({
-      reply: JSON.stringify({ commands: [{ name: 'test', argv: ['echo', 'ok'] }] }),
+  it('cannot write or run anything in the operator’s own checkout', async () => {
+    const projectPath = repoWithManifest();
+    const { oneShots } = await run({
+      turn: commandsReply([{ name: 'test', argv: ['true'] }]),
+      projectPath,
     });
-    const state = await run({ cliPath: cli, projectPath: repoWithManifest() });
+
+    // Detection has no worktree and no boundary diff, so a write here would be
+    // permanent. Read-only is a session that has no tool that could make one.
+    expect(oneShots.calls).toHaveLength(1);
+    expect(oneShots.calls[0]!.access).toBe('read');
+    expect(oneShots.calls[0]!.cwd).toBe(projectPath);
+  });
+
+  it('shows the manifest findings as context rather than as the answer', async () => {
+    const { state } = await run({
+      turn: commandsReply([{ name: 'test', argv: ['echo', 'ok'] }]),
+      projectPath: repoWithManifest(),
+    });
     expect(state.entries.some((e) => e.text.includes('Manifests suggest'))).toBe(true);
   });
 
   it('builds a transcript of what the agent read, not just a final answer', async () => {
-    const cli = writeFakeCli({
-      reply: JSON.stringify({ commands: [{ name: 'test', argv: ['echo', 'ok'] }] }),
+    const { state } = await run({
+      turn: commandsReply([{ name: 'test', argv: ['echo', 'ok'] }]),
+      projectPath: repoWithManifest(),
     });
-    const state = await run({ cliPath: cli, projectPath: repoWithManifest() });
 
     expect(
       state.entries.some((e) => e.kind === 'text' && e.text.includes('Reading the manifests')),
     ).toBe(true);
     const tool = state.entries.find((e) => e.kind === 'tool');
     expect(tool?.text).toContain('package.json');
+    expect(tool?.toolKind).toBe('read');
     // A tool row must close, or the panel shows a call that never returns.
     expect(tool?.done).toBe(true);
     expect(tool?.failed).toBe(false);
   });
 
-  it('verifies each proposal by running it, and records the evidence', async () => {
-    const cli = writeFakeCli({
-      reply: JSON.stringify({
-        commands: [
-          { name: 'test', argv: ['true'], source: 'AGENTS.md' },
-          { name: 'lint', argv: ['false'], source: 'AGENTS.md' },
-        ],
-      }),
+  it('keeps a failed tool call visible as failed', async () => {
+    const { state } = await run({
+      turn: {
+        events: toolCall({
+          callId: 'c1',
+          tool: 'read',
+          args: { path: '/repo/missing.json' },
+          result: 'no such file',
+          isError: true,
+        }),
+        text: JSON.stringify({ commands: [{ name: 'test', argv: ['true'] }] }),
+      },
+      projectPath: repoWithManifest(),
     });
-    const state = await run({ cliPath: cli, projectPath: repoWithManifest() });
+
+    const tool = state.entries.find((e) => e.kind === 'tool');
+    expect(tool?.done).toBe(true);
+    // A failure folded as a success reads as an agent that found something it
+    // did not.
+    expect(tool?.failed).toBe(true);
+  });
+
+  it('verifies each proposal by running it, and records the evidence', async () => {
+    const { state } = await run({
+      turn: commandsReply([
+        { name: 'test', argv: ['true'], source: 'AGENTS.md' },
+        { name: 'lint', argv: ['false'], source: 'AGENTS.md' },
+      ]),
+      projectPath: repoWithManifest(),
+    });
 
     const byName = Object.fromEntries(state.proposals.map((p) => [p.name, p]));
     expect(byName.test!.verify).toBe('pass');
@@ -150,12 +176,10 @@ describe('DetectSession', () => {
   });
 
   it('separates a command that could not be spawned from one that ran and failed', async () => {
-    const cli = writeFakeCli({
-      reply: JSON.stringify({
-        commands: [{ name: 'test', argv: ['definitely-not-a-real-binary'] }],
-      }),
+    const { state } = await run({
+      turn: commandsReply([{ name: 'test', argv: ['definitely-not-a-real-binary'] }]),
+      projectPath: repoWithManifest(),
     });
-    const state = await run({ cliPath: cli, projectPath: repoWithManifest() });
 
     const proposal = state.proposals[0]!;
     expect(proposal.verify).toBe('fail');
@@ -166,18 +190,18 @@ describe('DetectSession', () => {
   });
 
   it('keeps a name outside the four roles, since a project command is free-form', async () => {
-    const cli = writeFakeCli({
-      reply: JSON.stringify({ commands: [{ name: 'e2e', argv: ['true'], source: 'README' }] }),
+    const { state } = await run({
+      turn: commandsReply([{ name: 'e2e', argv: ['true'], source: 'README' }]),
+      projectPath: repoWithManifest(),
     });
-    const state = await run({ cliPath: cli, projectPath: repoWithManifest() });
     expect(state.proposals.map((p) => p.name)).toEqual(['e2e']);
   });
 
   it('reports why a proposal was dropped instead of returning an empty list', async () => {
-    const cli = writeFakeCli({
-      reply: JSON.stringify({ commands: [{ name: 'test', argv: ['npm', 'test', '&&', 'lint'] }] }),
+    const { state } = await run({
+      turn: commandsReply([{ name: 'test', argv: ['npm', 'test', '&&', 'lint'] }]),
+      projectPath: repoWithManifest(),
     });
-    const state = await run({ cliPath: cli, projectPath: repoWithManifest() });
 
     expect(state.proposals).toEqual([]);
     expect(state.rejected).toHaveLength(1);
@@ -186,22 +210,72 @@ describe('DetectSession', () => {
   });
 
   it('keeps the raw reply when the answer cannot be parsed at all', async () => {
-    const cli = writeFakeCli({ reply: 'I had a look but there are no tests here.' });
-    const state = await run({ cliPath: cli, projectPath: repoWithManifest() });
+    const { state } = await run({
+      turn: { text: 'I had a look but there are no tests here.' },
+      projectPath: repoWithManifest(),
+    });
 
     expect(state.status).toBe('failed');
     expect(state.rawReply).toContain('no tests here');
     expect(state.detail).toMatch(/no JSON/);
   });
 
-  it('surfaces a CLI that refused to run rather than reporting no commands found', async () => {
-    const cli = writeFakeCli({
-      exitCode: 1,
-      stderr: 'Model blocked by organization policy: \n\nRun droid settings.',
+  it('surfaces a turn that could not run rather than reporting no commands found', async () => {
+    const { state } = await run({
+      turn: { throws: 'the model ended the turn with an error: blocked by organization policy' },
+      projectPath: repoWithManifest(),
     });
-    const state = await run({ cliPath: cli, projectPath: repoWithManifest() });
 
     expect(state.status).toBe('failed');
-    expect(state.detail).toContain('Model blocked by organization policy');
+    expect(state.detail).toContain('blocked by organization policy');
+    expect(state.entries.some((e) => e.kind === 'error')).toBe(true);
+  });
+
+  it('reports a model substitution as a note, not as a silent downgrade', async () => {
+    const { state } = await run({
+      turn: {
+        warning: 'gpt-9 is not available to this install; this session runs on anthropic/sonnet',
+        text: JSON.stringify({ commands: [{ name: 'test', argv: ['true'] }] }),
+      },
+      projectPath: repoWithManifest(),
+    });
+
+    expect(state.entries.some((e) => e.text.includes('is not available to this install'))).toBe(
+      true,
+    );
+  });
+
+  it('cancels the turn in flight and stops before verifying anything', async () => {
+    const oneShots = scriptedOneShots([{ hangUntilAbort: true }]);
+    const session = new DetectSession({
+      projectId: 'p1',
+      projectPath: repoWithManifest(),
+      existingCommands: [],
+      settings: defaultSettings(),
+      vendor: 'droid',
+      model: 'inherit',
+      oneShot: oneShots.factory,
+      onChange: () => {},
+    });
+
+    const running = session.run();
+    // The turn is held open, so the cancel has something to interrupt: a
+    // cancel that only lands after the answer proves nothing.
+    await vi_waitFor(() => oneShots.calls.length === 1);
+    session.cancel();
+    await running;
+
+    const state = session.snapshot();
+    expect(state.status).toBe('cancelled');
+    expect(state.proposals).toEqual([]);
+    expect(state.entries.some((e) => e.text === 'Cancelled.')).toBe(true);
   });
 });
+
+async function vi_waitFor(check: () => boolean, timeoutMs = 2_000): Promise<void> {
+  const start = Date.now();
+  while (!check()) {
+    if (Date.now() - start > timeoutMs) throw new Error('timed out waiting for the session');
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
