@@ -11,16 +11,17 @@ import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { AGENT_MARKS_DIR } from './store/agent-marks.js';
 import type { AgentDef, AppSettings, PipelineDef, RunRow } from '@shared/types.js';
-import { IPC } from '@shared/ipc-contract.js';
+import { IPC, type DetectionState, type SetupState } from '@shared/ipc-contract.js';
 import { SettingsStore } from './store/settings.js';
 import { ProjectStore } from './store/projects.js';
 import { RosterStore } from './store/roster.js';
 import { PipelineStore } from './store/pipelines.js';
 import { EnvelopeStore } from './store/envelopes.js';
 import { RunRegistry } from './engine/registry.js';
-import { Detections } from './engine/detections.js';
-import { Setups } from './engine/setups.js';
+import { createDetections, type DetectStart } from './engine/detect-session.js';
+import { createSetups, type SetupStart } from './engine/setup-session.js';
 import { ReadinessSessions } from './readiness/sessions.js';
+import type { PanelRegistry } from './session/index.js';
 import { piOneShots } from './pi/pi-oneshot.js';
 import type { OneShotFactory } from './pi/oneshot.js';
 import { UpdaterService } from './updater.js';
@@ -42,8 +43,8 @@ export class AppContext {
   readonly pipelines: PipelineStore;
   readonly envelopes: EnvelopeStore;
   readonly registry: RunRegistry;
-  readonly detections: Detections;
-  readonly setups: Setups;
+  readonly detections: PanelRegistry<DetectStart, DetectionState>;
+  readonly setups: PanelRegistry<SetupStart, SetupState>;
   readonly readiness: ReadinessSessions;
   readonly updater: UpdaterService;
   readonly smith: SmithService;
@@ -76,10 +77,10 @@ export class AppContext {
     });
     this.updater = new UpdaterService((channel, payload) => this.broadcast(channel, payload));
     this.oneShot = piOneShots(supportDir);
-    this.detections = new Detections(this.oneShot, (state) =>
+    this.detections = createDetections(this.oneShot, (state) =>
       this.broadcast(IPC.eventDetectionProgress, state),
     );
-    this.setups = new Setups(this.oneShot, (state) =>
+    this.setups = createSetups(this.oneShot, (state) =>
       this.broadcast(IPC.eventSetupProgress, state),
     );
     this.readiness = new ReadinessSessions(this.oneShot, (state) =>

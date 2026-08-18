@@ -4,8 +4,9 @@
  * The bug this replaces: the handler only asked an agent when manifest
  * sniffing found nothing, so in any repo with a package.json or Makefile the
  * button did a silent manifest lookup and returned in milliseconds. These tests
- * pin the agent as unconditional, the transcript as populated, and a failure as
- * something the panel can explain.
+ * pin the agent as unconditional, the parse as explained, and a failure as
+ * something the panel can show. Transcript fold and registry sweep live in
+ * `panel-session.test.ts`.
  *
  * The session is scripted rather than spawned: what is under test is what
  * `DetectSession` does with a turn, and a real one would need a credential, a
@@ -119,45 +120,6 @@ describe('DetectSession', () => {
     expect(state.entries.some((e) => e.text.includes('Manifests suggest'))).toBe(true);
   });
 
-  it('builds a transcript of what the agent read, not just a final answer', async () => {
-    const { state } = await run({
-      turn: commandsReply([{ name: 'test', argv: ['echo', 'ok'] }]),
-      projectPath: repoWithManifest(),
-    });
-
-    expect(
-      state.entries.some((e) => e.kind === 'text' && e.text.includes('Reading the manifests')),
-    ).toBe(true);
-    const tool = state.entries.find((e) => e.kind === 'tool');
-    expect(tool?.text).toContain('package.json');
-    expect(tool?.toolKind).toBe('read');
-    // A tool row must close, or the panel shows a call that never returns.
-    expect(tool?.done).toBe(true);
-    expect(tool?.failed).toBe(false);
-  });
-
-  it('keeps a failed tool call visible as failed', async () => {
-    const { state } = await run({
-      turn: {
-        events: toolCall({
-          callId: 'c1',
-          tool: 'read',
-          args: { path: '/repo/missing.json' },
-          result: 'no such file',
-          isError: true,
-        }),
-        text: JSON.stringify({ commands: [{ name: 'test', argv: ['true'] }] }),
-      },
-      projectPath: repoWithManifest(),
-    });
-
-    const tool = state.entries.find((e) => e.kind === 'tool');
-    expect(tool?.done).toBe(true);
-    // A failure folded as a success reads as an agent that found something it
-    // did not.
-    expect(tool?.failed).toBe(true);
-  });
-
   it('verifies each proposal by running it, and records the evidence', async () => {
     const { state } = await run({
       turn: commandsReply([
@@ -228,20 +190,6 @@ describe('DetectSession', () => {
     expect(state.status).toBe('failed');
     expect(state.detail).toContain('blocked by organization policy');
     expect(state.entries.some((e) => e.kind === 'error')).toBe(true);
-  });
-
-  it('reports a model substitution as a note, not as a silent downgrade', async () => {
-    const { state } = await run({
-      turn: {
-        warning: 'gpt-9 is not available to this install; this session runs on anthropic/sonnet',
-        text: JSON.stringify({ commands: [{ name: 'test', argv: ['true'] }] }),
-      },
-      projectPath: repoWithManifest(),
-    });
-
-    expect(state.entries.some((e) => e.text.includes('is not available to this install'))).toBe(
-      true,
-    );
   });
 
   it('cancels the turn in flight and stops before verifying anything', async () => {
