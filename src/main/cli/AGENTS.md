@@ -1,53 +1,37 @@
 # AGENTS.md — src/main/cli
 
-Adapters that own vendor argv construction and one-shot output parsing. `types.ts` is the seam, `index.ts` is the registry. RPC wire behavior lives in `src/main/droid/sdk/`, not here.
+Descriptors for agent CLIs the app **does not run**. `types.ts` is the contract, `index.ts` is the registry.
+
+This directory used to own vendor argv construction and one-shot stdout parsing, so a `droid exec` child could be spawned for a turn. Nothing spawns one now: agent phases run on `src/main/pi/`'s in-process transport, and every one-shot call site opens a short-lived session there. The argv, the parse, and the stream normalisers went with the code that called them.
 
 ## Project Overview
 
-- One adapter per `CliVendor` (currently `droid`). Adapters build `argv` for `exec` and parse `result`/`completion` output into the uniform `CliOutput` shape.
-- The engine and Droid transport consume this interface; adapters never manage sessions or notifications.
-- Catalog and model discovery helpers (`models()`, `tools()`) support roster/pipeline UIs.
-
-## Setup Commands
-
-```bash
-npm ci
-# droid CLI must be on PATH for live parsing (tests use fixtures).
-droid --version
-```
-
-No separate CLI setup — adapters are invoked through the engine/droid layers.
+- One descriptor per `CliVendor` (currently `droid`): where the binary lives, how it says it is authenticated, where to send someone whose install is broken, and which models it publishes.
+- The readers are Settings (roster model pickers), `system/doctor.ts` (install and auth probes), and `store/settings.ts` (the configured path).
+- Nothing here builds an argument, spawns a process, or parses output.
 
 ## Development Workflow
 
-- Add flags in the vendor adapter file (`droid.ts`), not in callers.
-- Keep fixtures alongside `tests/cli-vendors.test.ts` — do not add wire framing here.
-- `types.ts` defines the adapter contract (`argv`, `parse`, `models`, `tools`, `supportsRpc`); `index.ts` re-exports the vendor map (`CLI_VENDOR_IDS` must stay in sync with `src/shared/types.ts`).
+- This directory is on its way out. Settings, the doctor, and the model picker move to Pi's own provider and credential model; when they do, this goes with them. Treat it as a shim, not a seam to extend.
+- Add a field only if the doctor or Settings actually reads it. A descriptor that describes something nothing asks about is dead weight that the next migration has to carry.
+- `CLI_VENDOR_IDS` lives in `src/shared/types.ts` because the renderer names vendors too. Keep the registry in sync with it; do not define a second copy.
 
 ## Testing Instructions
 
 ```bash
-npm test
 npx vitest run tests/cli-vendors.test.ts
 npx vitest run tests/catalog.test.ts
 npx vitest run tests/catalog-discovery.test.ts
 ```
 
-- `tests/cli-vendors.test.ts` owns all argv/parse fixtures — add cases there.
-- Do not shell out to `droid` in tests; parse synthetic output strings.
-
-## Droid‑Specific Compatibility
-
-- Only Droid sets `supportsRpc`; it means an SDK transport exists, not that this adapter owns protocol framing. A degraded session still uses `argv`/`parse`.
-- `droid exec -o json` ends with `result`, while `-o stream-json` ends with `completion` + `finalText`; `parse()` must accept both.
-- One-shot usage reports `input_tokens` but RPC reports `inputTokens`; map the fields before recording token usage.
-- `models()` is a subprocess (`droid models` or equivalent). `tools()` reads the last live session catalog, ignores the passed `binary`/`model`, and is honestly empty before a session runs.
+- `tests/cli-vendors.test.ts` covers the registry: every contract vendor has a descriptor, an unknown one falls back rather than crashing, and probed paths are absolute (a relative one resolves against whatever directory the app launched from).
+- Do not shell out to `droid` in tests.
 
 ## Code Style
 
-- Vendor files are pure argv/parse — no `fs`, no `better-sqlite3`, no Electron.
+- Descriptor data and lookups only — no `fs` writes, no `child_process`, no `better-sqlite3`, no Electron.
 - No `eslint-disable`; fix the real issue. Use `@main/*` / `@shared/*` aliases.
-- Do not duplicate constants in `src/shared/types.ts` — import them.
+- Do not duplicate constants from `src/shared/types.ts` — import them.
 
 ## Build and Deployment
 
@@ -55,8 +39,9 @@ npx vitest run tests/catalog-discovery.test.ts
 npm run typecheck && npm run lint && npm run build
 ```
 
-No standalone build; adapters bundle into `out/main/main.js`.
+No standalone build; this bundles into `out/main/main.js`.
 
 ## Additional Notes
 
-- `index.ts` CLI registry feeds both the roster UI and the engine's vendor lookup — keep `CLI_VENDOR_IDS` in `src/shared/types.ts` synchronized.
+- `supportsRpc` is true for droid alone and means an SDK client exists in `src/main/droid/sdk/`, not that anything here frames protocol.
+- `tools()` reads the last live session's catalog and ignores its arguments; it is honestly empty before a session has run.

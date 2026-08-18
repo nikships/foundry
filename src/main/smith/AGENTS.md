@@ -99,7 +99,7 @@ Smith spans three places beyond this directory. Change them together.
 | `src/renderer/components/SmithLauncher.*`     | The fallback handoff, shown only when the one-click start cannot run     |
 | `skills/foundry-smith/`                       | The skill an agent loads: persona, CLI reference, schemas, HTML previews |
 
-`src/cli/` is the helper binary; `src/main/cli/` is vendor argv construction. They are unrelated despite the name.
+`src/cli/` is the helper binary; `src/main/cli/` holds CLI install descriptors. They are unrelated despite the name.
 
 ## Additional Notes
 

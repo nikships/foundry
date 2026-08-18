@@ -1,19 +1,21 @@
 # AGENTS.md — src/main/droid
 
-Owns the shared one-shot Droid runner, the model catalog, permissions, and the SDK adapter. **Agent phases no longer run here** — they run in-process on the agent transport in `src/main/pi/`.
+Owns the model catalog, the daemon permission policy, and the SDK adapter. **No agent call runs here any more** — phases run in-process on the transport in `src/main/pi/`, and the one-shot call sites (detection, setup, the run-start fill, repair, the readiness fix) run on the one-shot seam in the same directory.
 
 ## Project Overview
 
-- `oneshot.ts` (`droid exec`) is what this directory is still for: detection (`engine/detect-session.ts`), project setup (`engine/setup-session.ts`), readiness repair (`readiness/remediator.ts`, `engine/repair.ts`), and the summariser in `ipc/runs.ts`. Those are one-off text calls with no write boundary to enforce.
-- **The daemon (`sdk/daemon.ts` + `sdk/daemon-session.ts`, `127.0.0.1:37600–37699`, `--parent-pid`) no longer carries any agent phase.** It is still built and still shut down with the app; the call sites above are what remain to migrate, and until they are gone this code stays.
+- `catalog.ts` is what this directory is mostly still for: model and tool discovery, which Settings and the roster read and which the agent transport reports into.
+- `permissions.ts` is the daemon's zero-interrupt policy. `pi/policy.ts` is the equivalent for the agent transport; they are separate implementations because the tool vocabularies differ.
+- **The daemon (`sdk/daemon.ts` + `sdk/daemon-session.ts`, `127.0.0.1:37600–37699`, `--parent-pid`) carries no agent work at all.** It is still built and still shut down with the app. It stays until the last consumers of the droid credential and catalog move to Pi's own provider model; expect this directory to shrink to nothing after that.
+- `oneshot.ts` is **gone**. Its five call sites now open short-lived Pi sessions through `pi/oneshot.ts`, which gives them a live transcript, a real tool allowlist, and a policy seam that `droid exec` never had.
 - SDK boundary: all production `@factory/droid-sdk` imports live under `sdk/` (ESLint `no-restricted-imports`). Above it, code uses `TransportSession` + `turn.ts` + `protocol.ts` types. A second, independent boundary keeps `@earendil-works/pi-*` inside `src/main/pi/`.
 - Notifications → trace events (`events.ts`); permissions → approval `ask_user` flow (`permissions.ts`); catalog/model discovery → `catalog.ts`, which the agent transport also reports into.
 
 ## Why there is no fallback
 
-Foundry used to degrade daemon → subprocess → one-shot whenever the daemon could not do something. Only the daemon and subprocess transports route tool calls through `permissions.ts`; **one-shot does not consult it at all**. A run that slid to one-shot silently traded Foundry's write-boundary policy for the CLI's coarser `--auto` gate, and the operator was told nothing. The observed failure was worse than theoretical: an unrelated per-agent setting pushed every run onto that path, and a run then died with `insufficient permission to proceed` from a layer that has no permission model.
+Foundry used to degrade daemon → subprocess → one-shot whenever the daemon could not do something. Only the daemon and subprocess transports route tool calls through `permissions.ts`; **`droid exec` did not consult it at all**. A run that slid to one-shot silently traded Foundry's write-boundary policy for the CLI's coarser `--auto` gate, and the operator was told nothing. The observed failure was worse than theoretical: an unrelated per-agent setting pushed every run onto that path, and a run then died with `insufficient permission to proceed` from a layer that has no permission model.
 
-The same rule holds now that agent phases have moved: the transport in `pi/` either runs the turn or the turn fails. Nothing falls back to `oneshot.ts`, because it has no policy seam to fall back to.
+The same rule holds now that every agent call has moved: the session in `pi/` either runs the turn or the turn fails. That is also why the short-lived calls moved — a Pi one-shot has the policy seam and the tool allowlist that `droid exec` structurally could not offer.
 
 The features that could not be enforced on the daemon were deleted rather than kept as fallback triggers:
 
@@ -49,9 +51,8 @@ npx vitest run tests/sdk-daemon-manager.test.ts
 ```
 
 - `tests/scripted-daemon.ts` — a scripted `DaemonSessionsFacade` for `DaemonSession` unit tests.
-- The fixture is in-memory: no daemon, no API key, no model, no child process. Agent-phase behaviour is exercised through `tests/scripted-transport.ts` against `src/main/pi/`.
+- The fixture is in-memory: no daemon, no API key, no model, no child process. Agent-phase behaviour is exercised through `tests/scripted-transport.ts`, and one-shot behaviour through `tests/scripted-oneshot.ts`, both against `src/main/pi/`.
 - **Stub frames must be schema-complete** (`createdAt`, `updatedAt`, `tokenUsage`, valid tool categories, matching turn IDs) or the SDK silently drops them and the turn hangs.
-- Keep `oneshot.ts` vendor-agnostic; put flags in `src/main/cli/droid.ts`.
 
 ## SDK and Daemon Boundaries
 
@@ -70,7 +71,7 @@ npx vitest run tests/sdk-daemon-manager.test.ts
 ## Code Style
 
 - Only `sdk/**` imports `@factory/droid-sdk`; everything above uses `TransportSession`. Do not import `@earendil-works/pi-*` here — that seam is `src/main/pi/`.
-- Keep argv/parse in `cli/`, wire framing in `sdk/`, policy in `permissions.ts`.
+- Keep install descriptors in `cli/`, wire framing in `sdk/`, policy in `permissions.ts`.
 - No `eslint-disable`; use `@main/*` / `@shared/*` aliases.
 
 ## Build and Deployment
@@ -84,4 +85,4 @@ Transport code is bundled into `out/main/main.js`; `@factory/droid-sdk` is exter
 ## Additional Notes
 
 - `turn.ts` is the narrow turn helper consumed by the engine; notification shapes follow the Droid protocol types.
-- `catalog.ts` / `oneshot.ts` share parsing conventions with `cli/droid.ts`.
+- `catalog.ts` is what `cli/droid.ts` delegates its `models()` and `tools()` to.
