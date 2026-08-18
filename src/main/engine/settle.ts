@@ -351,10 +351,12 @@ async function runRepair(
 }
 
 /**
- * The one place a run becomes merged. Drift is applied here so every landing
- * path — local merge, repair-then-merge, GitHub merge — updates project
- * commands the same way. Callers must not apply drift without going through
- * this, and must not call this unless the run actually landed.
+ * Where an operator-landed run becomes merged. Drift is applied here so every
+ * landing path this module owns — local merge, repair-then-merge, GitHub
+ * merge — updates project commands the same way. Callers must not apply drift
+ * without going through this, and must not call this unless the run actually
+ * landed. (The executor's auto-merge policy still settles inside `finish()`
+ * and does not pass through here.)
  */
 function markLanded(scoped: SettleScope, hooks: SettleHooks, runId: string): void {
   scoped.tracer.setMerged(runId, true);
@@ -366,16 +368,35 @@ function applyStoredCommandDrift(scoped: SettleScope, hooks: SettleHooks, runId:
   if (!existsSync(file)) return;
   const drifts = parseCommandDrift(readFileSync(file, 'utf8'));
   if (!drifts.length) return;
+  // A run can land long after it was recorded — a PR merged on GitHub weeks
+  // later, most likely. Only apply a drift whose `from` still matches the
+  // project's current argv; anything else would clobber a newer edit.
+  const commandArgv = new Map(scoped.project.commands.map((c) => [c.name, c.argv]));
+  const fresh = drifts.filter((d) => argvEqual(commandArgv.get(d.name), d.from));
+  const stale = drifts.filter((d) => !fresh.includes(d));
+  if (stale.length) {
+    scoped.tracer.event({
+      runId,
+      type: 'log',
+      name: 'command_drift_skipped',
+      payload: { names: stale.map((d) => d.name) },
+    });
+  }
+  if (!fresh.length) return;
   const saved = hooks.saveProject({
     ...scoped.project,
-    commands: applyCommandDrifts(scoped.project.commands, drifts),
+    commands: applyCommandDrifts(scoped.project.commands, fresh),
   });
   if (!saved.ok) return;
   scoped.tracer.event({
     runId,
     type: 'log',
     name: 'command_drift_applied',
-    payload: { names: drifts.map((d) => d.name) },
+    payload: { names: fresh.map((d) => d.name) },
   });
   hooks.notifySettings();
+}
+
+function argvEqual(current: string[] | undefined, from: string[]): boolean {
+  return !!current && current.length === from.length && current.every((v, i) => v === from[i]);
 }

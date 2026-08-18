@@ -233,6 +233,28 @@ describe('landRun via merge', () => {
     expect(h.notifies.runs).toBe(0);
   });
 
+  it('skips a stale drift whose from no longer matches the project argv', async () => {
+    const h = harness();
+    const handle = await committedRun(h.repo, 'run_a');
+    const runId = h.seed(handle);
+    h.writeDrift(runId);
+    // The operator edited the command after the run recorded its drift.
+    h.hooks.saveProject({
+      ...h.project,
+      commands: [{ name: 'test', argv: ['cargo', 'test'] }],
+    });
+
+    const outcome = await landRun(h.scoped, h.hooks, { via: 'merge', runId });
+
+    expect(outcome.ok).toBe(true);
+    expect(h.tracer.run(runId)!.merged).toBe(true);
+    expect(h.project.commands[0]!.argv).toEqual(['cargo', 'test']);
+    const names = events(h.tracer, runId).map((e) => e.name);
+    expect(names).toContain('command_drift_skipped');
+    expect(names).not.toContain('command_drift_applied');
+    expect(h.notifies.settings).toBe(0);
+  });
+
   it('still lands when project save refuses the drift', async () => {
     const h = harness();
     const handle = await committedRun(h.repo, 'run_a');
@@ -350,6 +372,40 @@ describe('landRun via ghMerge', () => {
     expect(events(h.tracer, runId).some((e) => e.name === 'command_drift_applied')).toBe(true);
     expect(h.notifies.runs).toBe(1);
     expect(h.notifies.settings).toBe(1);
+  });
+
+  it('lands a run whose worktree was already discarded and still applies drift', async () => {
+    const { repo } = scratchRepoWithOrigin();
+    const handle = await committedRun(repo, 'run_a');
+    sh(repo, ['git', 'push', '-qu', 'origin', handle.branch]);
+    const gh = makeFakeGh({
+      prView: {
+        number: 8,
+        url: 'https://github.com/acme/widgets/pull/8',
+        headRefName: handle.branch,
+        baseRefName: 'main',
+      },
+    });
+    const h = harness(repo, { gh: { bin: gh.bin } });
+    const runId = h.seed(handle);
+    h.writeDrift(runId);
+    await worktree.discard(repo, handle);
+    h.tracer.setWorktree(runId, null, handle.branch);
+
+    const outcome = await landRun(h.scoped, h.hooks, {
+      via: 'ghMerge',
+      prNumber: 8,
+      method: 'squash',
+    });
+
+    expect(outcome.ok).toBe(true);
+    expect(outcome.detail).not.toContain('worktree removed');
+    const run = h.tracer.run(runId)!;
+    expect(run.merged).toBe(true);
+    expect(run.worktreePath).toBeNull();
+    expect(h.project.commands[0]!.argv).toEqual(['npm', 'test']);
+    expect(events(h.tracer, runId).some((e) => e.name === 'command_drift_applied')).toBe(true);
+    expect(h.notifies.runs).toBe(1);
   });
 
   it('does not notify or mutate the run when gh refuses the merge', async () => {
