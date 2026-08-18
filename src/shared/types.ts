@@ -580,7 +580,6 @@ export interface RunRow {
   startedAt: string;
   endedAt: string | null;
   totalTokens: number;
-  totalCost: number;
   /** Denormalised for the run list; cheap because phases are few. */
   phaseSummary?: { name: string; status: PhaseStatus; kind: PhaseKind }[];
 }
@@ -705,8 +704,6 @@ export interface UsageBreakdown {
   cacheCreationTokens: number;
   cacheReadTokens: number;
   thinkingTokens: number;
-  /** What the turn cost in USD, as the provider's own rate card prices it. */
-  cost: number;
   /** Providers that omit usage get an honest gap, not a zero. */
   reported: boolean;
 }

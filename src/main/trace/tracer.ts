@@ -122,7 +122,7 @@ export class Tracer {
   }
 
   /**
-   * Settles run status, tokens, and cost in one statement. Callers derive
+   * Settles run status and tokens in one statement. Callers derive
    * `accepted` from the pipeline's own acceptance criterion; nothing else in
    * the app may write `runs.status` for a terminal state.
    */
@@ -147,10 +147,6 @@ export class Tracer {
 
   setRunMode(runId: string, mode: RunMode): void {
     this.db.prepare('UPDATE runs SET mode = ? WHERE run_id = ?').run(mode, runId);
-  }
-
-  setRunCost(runId: string, cost: number): void {
-    this.db.prepare('UPDATE runs SET total_cost = ? WHERE run_id = ?').run(cost, runId);
   }
 
   setWorktree(runId: string, path: string | null, branch: string | null): void {
@@ -352,7 +348,7 @@ export class Tracer {
   /**
    * Spanning events (tool calls) get their end time filled in on completion.
    * Tokens are left alone unless a caller passes them, so patching a payload
-   * never silently erases what a turn cost.
+   * never silently erases a turn's token count.
    */
   endEvent(eventId: string, payloadPatch?: Record<string, unknown>, tokens?: number): void {
     const existing = this.db
@@ -645,8 +641,8 @@ export class Tracer {
   }
 
   /**
-   * Tokens are billed per turn, so this is written whether or not the turn's
-   * envelope parsed: the spend happened either way. The returned id lets the
+   * Tokens are counted per turn, so this is written whether or not the turn's
+   * envelope parsed: the usage happened either way. The returned id lets the
    * caller patch in the envelope verdict once it knows it.
    */
   recordUsage(runId: string, phaseId: string, agent: string, usage: UsageBreakdown): string {
@@ -771,7 +767,6 @@ interface RawRun {
   started_at: string;
   ended_at: string | null;
   total_tokens: number;
-  total_cost: number;
 }
 
 interface RawPhase {
@@ -888,7 +883,6 @@ function mapRun(r: RawRun): RunRow {
     startedAt: r.started_at,
     endedAt: r.ended_at,
     totalTokens: r.total_tokens,
-    totalCost: r.total_cost,
   };
 }
 

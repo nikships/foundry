@@ -219,7 +219,6 @@ Stable selectors on key interactive elements. Use with `eval` +
 | `run-row-{runId}`          | One past-run row on Runs                    |
 | `run-back`                 | Run detail ← Runs button                    |
 | `run-open-inspector`       | Run detail → Inspector deep-link button     |
-| `run-cost`                 | Run detail Cost / Hide cost toggle          |
 | `phase-tab-timeline`       | Run detail → Timeline                       |
 | `phase-tab-envelope`       | Run detail → Envelope                       |
 | `phase-tab-gates`          | Run detail → Gates                          |
@@ -319,9 +318,7 @@ Open via `run-row-{runId}`. `data-view` becomes `run-detail` and
 `data-open-run` is the full id. Contains:
 
 - `data-testid="run-back"` (← Runs), `data-testid="run-open-inspector"`
-  (deep-link this run into the Inspector), `data-testid="run-cost"` (toggles
-  per-phase cost table: Model / Turns / In / Out / Cache read / Thinking /
-  Credits; label becomes `"Hide cost"`).
+  (deep-link this run into the Inspector).
 - Outcome banner ("Accepted — 'review' approved the work", `merged` chip).
 - Phase Gantt: one `button` per phase, labels like `planner plan 1m 34s`,
   `builder build ×2 3m 17s`, `commit_plan 1.1s`. Click to select a phase.

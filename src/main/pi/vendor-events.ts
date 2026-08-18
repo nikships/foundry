@@ -51,7 +51,7 @@ export class VendorEventReader {
   /** `bash_execution_update` is a chunk; the Inspector wants accumulated text. */
   private readonly bashOutput = new Map<string, string>();
 
-  /** What this turn has cost so far, or null before any usage was reported. */
+  /** What this turn used so far, or null before any usage was reported. */
   get turnUsage(): TurnUsage | null {
     return this.usage;
   }
@@ -159,7 +159,6 @@ function addUsage(current: TurnUsage | null, usage: PiUsage | undefined): TurnUs
     cacheCreationTokens: 0,
     cacheReadTokens: 0,
     thinkingTokens: 0,
-    cost: 0,
   };
   return {
     inputTokens: base.inputTokens + usage.input,
@@ -167,7 +166,6 @@ function addUsage(current: TurnUsage | null, usage: PiUsage | undefined): TurnUs
     cacheCreationTokens: base.cacheCreationTokens + usage.cacheWrite,
     cacheReadTokens: base.cacheReadTokens + usage.cacheRead,
     thinkingTokens: base.thinkingTokens + (usage.reasoning ?? 0),
-    cost: base.cost + usage.cost.total,
   };
 }
 

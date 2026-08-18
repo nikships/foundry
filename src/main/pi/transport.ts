@@ -74,8 +74,6 @@ export interface TurnUsage {
   cacheCreationTokens: number;
   cacheReadTokens: number;
   thinkingTokens: number;
-  /** USD, as the provider's rate card prices this turn. */
-  cost: number;
 }
 
 export interface TurnResult {

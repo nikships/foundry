@@ -536,17 +536,17 @@ describe('running a turn', () => {
   it('sums usage across the turn’s messages rather than reporting the last one', async () => {
     const h = harness();
     await h.transport.start();
-    const usage = (input: number, cost: number) => ({
+    const usage = (input: number) => ({
       input,
       output: 10,
       cacheWrite: 1,
       cacheRead: 2,
       reasoning: 3,
-      cost: { total: cost },
+      cost: { total: 0 },
     });
     h.session.turn = (s) => {
-      s.emit({ type: 'message_end', message: { role: 'assistant', usage: usage(100, 0.01) } });
-      s.emit({ type: 'message_end', message: { role: 'assistant', usage: usage(50, 0.005) } });
+      s.emit({ type: 'message_end', message: { role: 'assistant', usage: usage(100) } });
+      s.emit({ type: 'message_end', message: { role: 'assistant', usage: usage(50) } });
       s.say('done');
     };
     const result = await h.transport.send('go', 1000);
@@ -558,7 +558,6 @@ describe('running a turn', () => {
       cacheCreationTokens: 2,
       cacheReadTokens: 4,
       thinkingTokens: 6,
-      cost: 0.015,
     });
   });
 
@@ -580,8 +579,8 @@ describe('running a turn', () => {
     await h.transport.send('first', 1000);
     const second = await h.transport.send('second', 1000);
     // Usage is per turn in the trace; carrying it forward would make the last
-    // phase of a run look like it cost the whole run.
-    expect(second.usage).toMatchObject({ inputTokens: 10, cost: 0.001 });
+    // phase of a run look like it used the whole run.
+    expect(second.usage).toMatchObject({ inputTokens: 10 });
   });
 
   it('reports no usage for a turn the provider never accounted for', async () => {

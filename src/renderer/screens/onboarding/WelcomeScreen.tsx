@@ -79,7 +79,7 @@ export default function WelcomeScreen(): React.JSX.Element {
               style={{ ['--d' as string]: '120ms' } as React.CSSProperties}
             >
               Describe a change. A pipeline of agents carries it out in an isolated worktree. Every
-              phase leaves evidence you can read: prompts, tools, gates, and cost.
+              phase leaves evidence you can read: prompts, tools, and gates.
             </p>
 
             <ul className={styles.obWelcomeProof}>

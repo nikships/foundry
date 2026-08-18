@@ -7,7 +7,7 @@
 - Each project has its own `trace.db` (under `~/Library/Application Support/foundry/`). Schema lives in `db.ts`; event/process persistence lives in `tracer.ts`.
 - Events are pulled by the renderer via `run_id = ? AND change_id > ? ORDER BY rowid` — a polling cursor merge (see `src/renderer/stores/run.tsx`).
 - Tool results patch their opening span and thinking deltas append in place — both require a new `change_id`.
-- Cost, duration, and model are **derived** from events (in `src/renderer/derive.ts`), not denormalized, so retries remain visible.
+- Usage, duration, and model are **derived** from events (in `src/renderer/derive.ts`), not denormalized, so retries remain visible.
 
 ## Setup Commands
 
@@ -21,8 +21,8 @@ No separate trace setup. `better-sqlite3` is a native dep (allow‑listed in `.n
 ## Development Workflow
 
 - All writes go through `Tracer`. Open questions: check `tracer.ts` for the allowed tables/methods.
-- Adding a new event: update `src/shared/types.ts` (shape), `tracer.ts` (writer), `src/renderer/derive.ts` (cost/duration/model derivation), and `src/renderer/inspector/entries.tsx` (`TranscriptEntry` switch — default silently drops unknown events).
-- Do not add a `total_tokens` / `total_cost` column — derive from events.
+- Adding a new event: update `src/shared/types.ts` (shape), `tracer.ts` (writer), `src/renderer/derive.ts` (usage/duration/model derivation), and `src/renderer/inspector/entries.tsx` (`TranscriptEntry` switch — default silently drops unknown events).
+- Do not add a denormalized cost column. Usage is derived from events.
 
 ## Testing Instructions
 
@@ -43,7 +43,7 @@ npx vitest run tests/trace-cursor.test.ts
   - `rowid` = display ordering (insertion order).
   - Caller advances to `max(change_id)` observed and merges by `eventId`.
 - **In‑place patching:** every insert AND update must stamp a new `change_id`, otherwise the renderer's poll misses the patch.
-- **No denormalized totals.** Cost/duration/model are event-derived so retries remain inspectable.
+- **No denormalized totals.** Usage/duration/model are event-derived so retries remain inspectable.
 
 ## Code Style
 

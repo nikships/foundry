@@ -10,7 +10,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { EventRow, UsageBreakdown } from '@shared/types.js';
-import { clockTime, tokens, usd } from '../../format.js';
+import { clockTime, tokens } from '../../format.js';
 import { isAutoAllowPolicy } from '../../derive.js';
 import { useCollapseSignal } from './collapse.js';
 
@@ -781,7 +781,6 @@ function UsageRow({ event }: { event: EventRow }): React.JSX.Element | null {
   const total = usage.inputTokens + usage.outputTokens + usage.cacheReadTokens;
   const parts = [`${tokens(total)} tokens`];
   if (usage.thinkingTokens) parts.push(`${tokens(usage.thinkingTokens)} thinking`);
-  if (usage.cost) parts.push(usd(usage.cost));
   return (
     <div className="te usage">
       <span className="te-tag">turn</span>

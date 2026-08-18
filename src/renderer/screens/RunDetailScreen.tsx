@@ -4,12 +4,11 @@ import { api } from '../api.js';
 import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useApp } from '../stores/app.js';
 import { useRun } from '../stores/run.js';
-import { clockTime, duration, tokens, usd } from '../format.js';
-import { runDuration, usageFor } from '../derive.js';
+import { clockTime, duration, tokens } from '../format.js';
+import { runDuration } from '../derive.js';
 import Waterfall from '../components/Waterfall.js';
 import PhaseDrawer from '../components/PhaseDrawer.js';
 import StatusBadge from '../components/StatusBadge.js';
-import CostTable from '../components/CostTable.js';
 import OutcomeBanner from '../components/OutcomeBanner.js';
 import { Button } from '../components/ui/Button.js';
 import styles from './RunDetailScreen.module.css';
@@ -26,7 +25,6 @@ export default function RunDetailScreen({
   const { projectId } = useApp();
   const { view, eventsByPhase, envelopesByPhase, gatesByPhase } = useRun(projectId, runId);
   const [selectedPhaseId, setSelectedPhaseId] = useState('');
-  const [showCost, setShowCost] = useState(false);
   const [worktreeBusy, setWorktreeBusy] = useState(false);
   const [worktreeMessage, setWorktreeMessage] = useState('');
   const [worktreeError, setWorktreeError] = useState(false);
@@ -80,14 +78,6 @@ export default function RunDetailScreen({
   const selectedPhase = useMemo(
     () => view.phases.find((p) => p.phaseId === selectedPhaseId) ?? null,
     [view.phases, selectedPhaseId],
-  );
-  const totalCost = useMemo(
-    () =>
-      view.phases.reduce(
-        (sum, phase) => sum + usageFor(eventsByPhase.get(phase.phaseId) ?? []).cost,
-        0,
-      ),
-    [view.phases, eventsByPhase],
   );
 
   const kill = useConfirmAction(
@@ -226,7 +216,7 @@ export default function RunDetailScreen({
           </span>
         </Button>
         <div className={styles.grow} />
-        {(view.live || showCost) && <span className={styles.actionSep} aria-hidden />}
+        {view.live && <span className={styles.actionSep} aria-hidden />}
         {view.live && (
           <Button
             variant="danger"
@@ -238,14 +228,6 @@ export default function RunDetailScreen({
             {killing ? 'Killing…' : 'Kill run'}
           </Button>
         )}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setShowCost(!showCost)}
-          data-testid="run-cost"
-        >
-          {showCost ? 'Hide cost' : 'Cost'}
-        </Button>
       </header>
       {bannerError && (
         <p className={styles.actionErr} role="alert">
@@ -263,7 +245,6 @@ export default function RunDetailScreen({
           <div className={`${styles.facts} mono faint`}>
             <span>{duration(runDuration(view.run, now))}</span>
             {view.run.totalTokens ? <span>{tokens(view.run.totalTokens)} tokens</span> : null}
-            {totalCost ? <span>{usd(totalCost)}</span> : null}
             {view.run.branch && (
               <button className={styles.link} onClick={() => void openWorktree()}>
                 {view.run.branch}
@@ -289,7 +270,6 @@ export default function RunDetailScreen({
           onOpenUrl={openUrl}
         />
       )}
-      {showCost && <CostTable phases={view.phases} eventsByPhase={eventsByPhase} />}
       <div className={styles.split}>
         <div className={`${styles.left} scroll`}>
           {view.run && (

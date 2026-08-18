@@ -94,7 +94,6 @@ const usage: TurnUsage = {
   cacheCreationTokens: 3,
   cacheReadTokens: 4,
   thinkingTokens: 5,
-  cost: 0.0012,
 };
 
 function feed(folder: EventFolder, events: TransportEvent[]): void {
@@ -154,12 +153,11 @@ describe('usage', () => {
       cacheCreationTokens: 0,
       cacheReadTokens: 0,
       thinkingTokens: 0,
-      cost: 0,
       reported: false,
     });
   });
 
-  it('carries the real cost through', () => {
+  it('carries the real token counts through', () => {
     expect(toUsageBreakdown(usage)).toEqual({ ...usage, reported: true });
   });
 });

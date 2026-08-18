@@ -135,38 +135,32 @@ describe('a pi tool call in the timeline', () => {
   });
 });
 
-describe('what a turn cost', () => {
+describe('what a turn used', () => {
   const usage = (over: Partial<UsageBreakdown> = {}): UsageBreakdown => ({
     inputTokens: 1_000,
     outputTokens: 200,
     cacheCreationTokens: 0,
     cacheReadTokens: 800,
     thinkingTokens: 0,
-    cost: 0,
     reported: true,
     ...over,
   });
 
-  it('is stated in dollars, which is what a pi turn reports', () => {
-    const html = render(event('agent_end', { usage: usage({ cost: 0.42 }) }));
-    expect(html).toContain('$0.42');
-  });
-
-  it('shows sub-cent turns at a precision that is not just $0.00', () => {
-    const html = render(event('agent_end', { usage: usage({ cost: 0.0031 }) }));
-    expect(html).toContain('$0.0031');
-  });
-
-  it('omits the figure for a turn that reported no cost', () => {
-    const html = render(event('agent_end', { usage: usage({ cost: 0 }) }));
+  it('states token counts, including thinking when the model reported any', () => {
+    const html = render(event('agent_end', { usage: usage({ thinkingTokens: 400 }) }));
     expect(html).toContain('tokens');
-    expect(html).not.toContain('$');
+    expect(html).toContain('thinking');
+  });
+
+  it('omits thinking when the turn reported none', () => {
+    const html = render(event('agent_end', { usage: usage() }));
+    expect(html).toContain('tokens');
+    expect(html).not.toContain('thinking');
   });
 
   it('says usage was unreported rather than showing a zero', () => {
     const html = render(event('agent_end', { usage: usage({ reported: false }) }));
     expect(html).toContain('usage unreported by this model');
-    expect(html).not.toContain('$');
   });
 });
 
@@ -226,7 +220,6 @@ describe('the entry switch', () => {
                 cacheCreationTokens: 0,
                 cacheReadTokens: 0,
                 thinkingTokens: 0,
-                cost: 0,
                 reported: true,
               },
             }

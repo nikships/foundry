@@ -2,7 +2,7 @@
  * Views derived from trace rows. Usage is not a column on `phases`: it lives in
  * the `agent_end` events, one per turn, so a phase that took three turns has
  * three of them. Summing here keeps the trace normalised and keeps a retry's
- * real cost visible instead of overwriting it.
+ * real usage visible instead of overwriting it.
  */
 
 import type { EventRow, PhaseRow, RunRow, UsageBreakdown } from '@shared/types.js';
@@ -18,7 +18,6 @@ const EMPTY: PhaseUsage = {
   cacheCreationTokens: 0,
   cacheReadTokens: 0,
   thinkingTokens: 0,
-  cost: 0,
   reported: false,
   totalTokens: 0,
   turns: 0,
@@ -37,7 +36,6 @@ export function usageFor(events: EventRow[]): PhaseUsage {
     sum.cacheCreationTokens += usage.cacheCreationTokens ?? 0;
     sum.cacheReadTokens += usage.cacheReadTokens ?? 0;
     sum.thinkingTokens += usage.thinkingTokens ?? 0;
-    sum.cost += usage.cost ?? 0;
     // One reporting turn is enough to show real numbers for the phase.
     sum.reported = sum.reported || !!usage.reported;
   }

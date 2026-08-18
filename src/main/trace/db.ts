@@ -33,8 +33,7 @@ CREATE TABLE IF NOT EXISTS runs (
   pr_url                 TEXT,
   started_at             TEXT,
   ended_at               TEXT,
-  total_tokens           INTEGER DEFAULT 0,
-  total_cost             REAL DEFAULT 0
+  total_tokens           INTEGER DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS phases (
   phase_id    TEXT PRIMARY KEY,

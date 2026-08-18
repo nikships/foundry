@@ -61,10 +61,8 @@ export type ModelsJson = { providers?: Record<string, unknown> } & Record<string
 /**
  * Cost is reported as zero for every Bridge model.
  *
- * These run against a subscription the operator already pays for, so a
- * per-token price would be fiction: the trace would accumulate a dollar figure
- * that no invoice will ever show. Zero says "this turn cost no marginal money",
- * which is true.
+ * These run against a subscription the operator already pays for. Pi's
+ * models.json still requires a rate card; zeros are the honest one.
  */
 const SUBSCRIPTION_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } as const;
 

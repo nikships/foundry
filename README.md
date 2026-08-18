@@ -88,7 +88,7 @@ You're not locked in — open the Roster, retune the prompt, change the model, t
 
 ## Watch every move
 
-No black box. The Inspector is a live waterfall — tool calls streaming mid-phase, envelopes and gate evidence inspectable per phase, cost and timing filling in as you go. Same view for live runs and history.
+No black box. The Inspector is a live waterfall — tool calls streaming mid-phase, envelopes and gate evidence inspectable per phase, tokens and timing filling in as you go. Same view for live runs and history.
 
 Pause at any checkpoint. Approve, edit, or reject — the factory keeps going.
 

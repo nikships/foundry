@@ -67,7 +67,6 @@ const MOCK_RUNS: RunRow[] = [
     startedAt: nowIso(-3_600_000),
     endedAt: nowIso(-300_000),
     totalTokens: 41280,
-    totalCost: 0,
     phaseSummary: [
       { name: 'plan', status: 'success', kind: 'agent' },
       { name: 'commit_plan', status: 'success', kind: 'code' },
@@ -97,7 +96,6 @@ const MOCK_RUNS: RunRow[] = [
     startedAt: nowIso(-120_000),
     endedAt: null,
     totalTokens: 1800,
-    totalCost: 0,
     phaseSummary: [{ name: 'diagnose', status: 'running', kind: 'agent' }],
   },
 ];

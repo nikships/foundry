@@ -178,7 +178,7 @@ export default function ProjectScreen(): React.JSX.Element {
           </h1>
           <p className={styles.obProjectLead}>
             Foundry runs every change in an isolated git worktree and leaves the evidence behind —
-            prompts, tools, gates, cost. Choose the repository it should start with.
+            prompts, tools, gates. Choose the repository it should start with.
           </p>
         </header>
 

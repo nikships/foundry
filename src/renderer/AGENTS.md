@@ -7,7 +7,7 @@ React 19 renderer. Unprivileged: no `fs`, `child_process`, `electron`, or `src/m
 - **React 19 + Vite + CSS Modules** (`localsConvention: 'camelCase'` — `.phase-edge` → `styles.phaseEdge`).
 - App shell: `App.tsx` + screens (`screens/`), components (`components/`), design tokens (`design/tokens.css`, `tokens-base.css`), hooks, stores, and `pipeline-view.ts`.
 - Bridge: `api.ts` wraps `window.foundry` and eagerly `plain()`-clones args so structured‑clone errors are visible before IPC.
-- Trace consumption: `stores/run.tsx` polls `runs:events` with a `change_id` cursor and merges by `eventId`; `derive.ts` derives cost/duration/model from events (no denormalized columns). `inspector/entries.tsx` renders `TranscriptEntry` per event — new events need a switch case or the default silently drops them.
+- Trace consumption: `stores/run.tsx` polls `runs:events` with a `change_id` cursor and merges by `eventId`; `derive.ts` derives usage/duration/model from events (no denormalized columns). `inspector/entries.tsx` renders `TranscriptEntry` per event — new events need a switch case or the default silently drops them.
 - Mock: `mockFoundry.ts` backs `window.foundry` when `window.foundry` is absent (vite web preview). Keep it in sync with `FoundryApi`; do not import Node/main behavior into it.
 - Factory tokens imported statically in `main.tsx`; keep provider icon + CSS imports narrow.
 

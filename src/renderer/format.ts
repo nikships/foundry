@@ -44,20 +44,6 @@ export function tokens(n: number | null | undefined): string {
   return `${(n / 1_000_000).toFixed(2)}M`;
 }
 
-/**
- * A turn's cost in dollars, as the provider's own rate card prices it.
- *
- * Sub-cent amounts keep four decimals rather than rounding to `$0.00`: a phase
- * that cost three tenths of a cent did cost something, and a table full of
- * zeroes reads as "cost is not tracked". Zero itself is shown as `$0` because a
- * subscription-served turn costs no marginal money, which is a real answer.
- */
-export function usd(n: number | null | undefined): string {
-  if (n == null) return '—';
-  if (n === 0) return '$0';
-  return n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`;
-}
-
 export function truncate(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 }

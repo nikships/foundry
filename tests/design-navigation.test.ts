@@ -227,7 +227,8 @@ describe('CDP automation hooks', () => {
     expect(inspectorSrc).toContain('data-testid={`inspector-filter-${f.id}`}');
     expect(inspectorSrc).toContain('data-testid="inspector-raw-files"');
     expect(prsSrc).toContain('data-testid="prs-refresh"');
-    expect(runDetailSrc).toContain('data-testid="run-cost"');
+    expect(runDetailSrc).toContain('data-testid="run-back"');
+    expect(runDetailSrc).toContain('data-testid="run-open-inspector"');
     expect(phaseDrawerSrc).toContain('data-testid={`phase-tab-${t.id}`}');
   });
 });

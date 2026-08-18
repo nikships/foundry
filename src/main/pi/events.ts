@@ -126,7 +126,6 @@ export function toUsageBreakdown(usage: TurnUsage | null | undefined): UsageBrea
       cacheCreationTokens: 0,
       cacheReadTokens: 0,
       thinkingTokens: 0,
-      cost: 0,
       reported: false,
     };
   }
@@ -136,7 +135,6 @@ export function toUsageBreakdown(usage: TurnUsage | null | undefined): UsageBrea
     cacheCreationTokens: usage.cacheCreationTokens,
     cacheReadTokens: usage.cacheReadTokens,
     thinkingTokens: usage.thinkingTokens,
-    cost: usage.cost,
     reported: true,
   };
 }

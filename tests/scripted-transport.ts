@@ -89,7 +89,6 @@ const USAGE = {
   cacheCreationTokens: 0,
   cacheReadTokens: 0,
   thinkingTokens: 0,
-  cost: 0.0012,
 };
 
 /**
