@@ -3,8 +3,10 @@
 //
 // The binary is vendored, not committed: a 58 MB Go binary in git history is a
 // clone tax every contributor pays forever, and a checksum in package.json says
-// exactly as much about what ships. `npm run fetch:bridge` is a packaging step,
-// never part of `npm run check` — the gate must stay offline.
+// exactly as much about what ships. The matching models.json is fetched from
+// the same tag and written beside it, so a CLIProxyAPI bump is enough for new
+// models to appear. `npm run fetch:bridge` is a packaging step, never part of
+// `npm run check` — the gate must stay offline.
 //
 // Fail-closed is the whole point. A mismatched checksum leaves nothing
 // executable on disk: the partial download is deleted and the process exits
@@ -48,6 +50,7 @@ if (!cfg?.version || !cfg?.archiveSha256 || !cfg?.binarySha256) {
 const { force, bump, bumpVersion } = parseArgs(process.argv.slice(2));
 const destDir = join(repoRoot, cfg.dir ?? 'resources/bridge');
 const destBinary = join(destDir, cfg.binary ?? 'cli-proxy-api');
+const destCatalog = join(destDir, 'models.json');
 const binaryName = cfg.binary ?? 'cli-proxy-api';
 const releaseBaseUrl =
   cfg.releaseBaseUrl ?? 'https://github.com/router-for-me/CLIProxyAPI/releases/download';
@@ -60,7 +63,16 @@ if (bump && !force && targetVersion === cfg.version) {
 }
 
 if (!bump && !force && existsSync(destBinary) && sha256OfFile(destBinary) === cfg.binarySha256) {
-  console.log(`bridge ${cfg.version} already present and verified: ${rel(destBinary)}`);
+  if (existsSync(destCatalog) && catalogLooksValid(destCatalog)) {
+    console.log(`bridge ${cfg.version} already present and verified: ${rel(destBinary)}`);
+    process.exit(0);
+  }
+  // Binary is fine; only the catalog is missing (an older fetch). Pull it
+  // without re-downloading 58 MB so a bump of this script is enough.
+  console.log(`bridge ${cfg.version} present; fetching models catalog`);
+  mkdirSync(destDir, { recursive: true });
+  fetchCatalog(cfg.version, destCatalog);
+  console.log(`catalog installed: ${rel(destCatalog)}`);
   process.exit(0);
 }
 
@@ -82,6 +94,7 @@ try {
     writePin(targetVersion, fetched.archiveSha, fetched.binarySha);
   }
   install(fetched.extracted);
+  fetchCatalog(targetVersion, destCatalog);
   if (bump) {
     console.log(
       `bridge pin ${cfg.version} -> ${targetVersion}\n  archiveSha256 ${fetched.archiveSha}\n  binarySha256  ${fetched.binarySha}\n  installed     ${rel(destBinary)} (${fetched.size} bytes)`,
@@ -152,6 +165,47 @@ function install(extracted) {
   rmSync(destBinary, { force: true });
   copyFileSync(extracted, destBinary);
   chmodSync(destBinary, 0o755);
+}
+
+/**
+ * The model catalog that ships with this CLIProxyAPI tag.
+ *
+ * Foundry does not keep its own model list. This file is what a Claude or
+ * Antigravity login expands into, so a version bump is enough for new models
+ * to appear. The path is the one this tag embeds; it is not the live
+ * router-for-me/models tip, which can run ahead of the binary.
+ */
+function fetchCatalog(version, dest) {
+  const url = `https://raw.githubusercontent.com/router-for-me/CLIProxyAPI/v${version}/internal/registry/models/models.json`;
+  const tmp = `${dest}.${process.pid}.tmp`;
+  console.log(`downloading ${url}`);
+  const args = ['-fL', '--retry', '3', '--retry-delay', '5', '-o', tmp, url];
+  if (process.env.GH_TOKEN) {
+    args.splice(args.length - 2, 0, '-H', `Authorization: Bearer ${process.env.GH_TOKEN}`);
+  }
+  try {
+    execFileSync('curl', args, { stdio: ['ignore', 'inherit', 'inherit'] });
+    if (!catalogLooksValid(tmp)) {
+      rmSync(tmp, { force: true });
+      fail(`catalog for v${version} was not a CLIProxyAPI models.json`);
+    }
+    rmSync(dest, { force: true });
+    copyFileSync(tmp, dest);
+  } finally {
+    rmSync(tmp, { force: true });
+  }
+}
+
+function catalogLooksValid(path) {
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf8'));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
+    return ['claude', 'antigravity', 'xai', 'kimi', 'codex-pro'].some((key) =>
+      Array.isArray(parsed[key]),
+    );
+  } catch {
+    return false;
+  }
 }
 
 function writePin(version, archiveSha256, binarySha256) {

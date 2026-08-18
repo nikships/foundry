@@ -22,6 +22,7 @@
 
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { loadBridgeCatalog, modelsForProvider, type CliproxyCatalog } from './catalog.js';
 import {
   BRIDGE_PROVIDERS,
   isBridgeProviderId,
@@ -71,6 +72,7 @@ const SUBSCRIPTION_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } a
 export function generateProviders(
   authenticated: readonly BridgeProviderId[],
   baseUrl: string,
+  catalog: CliproxyCatalog,
 ): Record<string, GeneratedProvider> {
   const wanted = new Set(authenticated);
   const out: Record<string, GeneratedProvider> = {};
@@ -83,7 +85,7 @@ export function generateProviders(
       baseUrl: `${trimSlash(baseUrl)}${provider.baseUrlSuffix}`,
       api: provider.api,
       apiKey: 'foundry-bridge',
-      models: provider.models.map((model) => ({
+      models: modelsForProvider(catalog, provider.id).map((model) => ({
         id: model.id,
         name: model.name,
         reasoning: model.reasoning,
@@ -179,8 +181,16 @@ export function regenerateModels(input: {
   modelsPath: string;
   authenticated: readonly BridgeProviderId[];
   baseUrl: string;
+  /** Test seam. Production reads the catalog `fetch:bridge` left next to the binary. */
+  catalog?: CliproxyCatalog;
 }): WriteModelsResult {
-  const generated = generateProviders(input.authenticated, input.baseUrl);
+  const catalog = input.catalog ?? loadBridgeCatalog();
+  if (input.authenticated.length > 0 && Object.keys(catalog).length === 0) {
+    console.warn(
+      '[bridge] no CLIProxyAPI model catalog; run npm run fetch:bridge so subscription logins expose models',
+    );
+  }
+  const generated = generateProviders(input.authenticated, input.baseUrl, catalog);
   const merged = mergeModelsJson(readModelsJson(input.modelsPath), generated);
   return writeModelsJson(input.modelsPath, merged);
 }

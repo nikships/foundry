@@ -6,7 +6,8 @@ The Bridge turns an operator's provider **subscriptions** (Claude, ChatGPT, Gemi
 
 - `paths.ts` — where the binary, config, and auth material live. The binary is **resolved, never assumed**: packaged under `process.resourcesPath/bridge/`, in dev under the checkout's `resources/bridge/`, and null when neither is an executable file.
 - `config.ts` — the generated YAML the child is started with. Hand-emitted so the bytes are stable; pinned to `127.0.0.1` with remote management off.
-- `providers.ts` — the one table: login flag, the `type` values CLIProxyAPI writes into auth files, the pi API kind, base-URL suffix, and the models. A provider is loggable and reachable from the same row or not at all.
+- `providers.ts` — the one table: login flag, the `type` values CLIProxyAPI writes into auth files, the pi API kind, and the base-URL suffix. A provider is loggable and reachable from the same row or not at all. Models are not listed here.
+- `catalog.ts` — projects CLIProxyAPI's `models.json` (vendored next to the binary by `fetch:bridge`) onto those logins. A new model in that file appears on the next regeneration; Foundry does not keep its own allowlist.
 - `manager.ts` — the child's lifecycle: `ensure()` with coalescing, port scan, health poll, SIGTERM→SIGKILL.
 - `auth.ts` — provider login/logout, account reading, and the debounced auth-directory watcher.
 - `models.ts` — generating and merging the `bridge-*` half of pi's `models.json`.
@@ -20,7 +21,7 @@ npm run fetch:bridge   # downloads + checksums the pinned CLIProxyAPI into resou
 npm run dev
 ```
 
-`fetch:bridge` is **fail-closed**: a checksum mismatch leaves nothing executable on disk and exits non-zero. The version and both hashes (archive and extracted binary) are pinned in `package.json` under `config.bridge`; `node scripts/fetch-bridge.mjs --bump` recomputes both from a new upstream release (the `update-cliproxyapi.yml` workflow opens that as a PR). `resources/bridge/` is gitignored and shipped through electron-builder `extraResources`, with the binary listed in `mac.binaries` so hardened-runtime signing covers it. `mac-package.yml` must fetch the binary before electron-builder runs.
+`fetch:bridge` is **fail-closed**: a checksum mismatch leaves nothing executable on disk and exits non-zero. The version and both hashes (archive and extracted binary) are pinned in `package.json` under `config.bridge`; `node scripts/fetch-bridge.mjs --bump` recomputes both from a new upstream release (the `update-cliproxyapi.yml` workflow opens that as a PR). The same tag's `internal/registry/models/models.json` is written beside the binary — that file is the model catalog, so bumping CLIProxyAPI is enough for new models to appear. `resources/bridge/` is gitignored and shipped through electron-builder `extraResources`, with the binary listed in `mac.binaries` so hardened-runtime signing covers it. `mac-package.yml` must fetch the binary before electron-builder runs.
 
 A checkout that never ran the fetch simply has no Bridge: `bridgeBinaryPath()` returns null and `ensure()` answers `binary_missing`. That is a supported state, not a broken install.
 
@@ -46,6 +47,7 @@ A checkout that never ran the fetch simply has no Bridge: `bridgeBinaryPath()` r
 ```bash
 npx vitest run tests/bridge-manager.test.ts
 npx vitest run tests/bridge-models.test.ts
+npx vitest run tests/bridge-catalog.test.ts
 npx vitest run tests/bridge-service.test.ts
 npx vitest run tests/bridge-process-row.test.ts
 npx vitest run tests/pi-catalog.test.ts

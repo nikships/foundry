@@ -8,6 +8,7 @@ import { ProviderIcon } from '../../components/BrandIcon.js';
 import { Button } from '../../components/ui/Button.js';
 import { Dropdown } from '../../components/ui/Dropdown.js';
 import { Field, TextInput } from '../../components/ui/Field.js';
+import { modelLabel } from '../../format.js';
 import { useOnboarding } from './OnboardingContext.js';
 import { StepFooter } from './shared.js';
 import styles from './ProvidersScreen.module.css';
@@ -215,9 +216,6 @@ export default function ProvidersScreen(): React.JSX.Element {
       <div className={styles.obProviderFacts}>
         <div className={styles.obFactsRow}>
           <span className={styles.obFactsK}>Models</span>
-          <span className={`${styles.obFactsV} mono`} data-testid="onboarding-model-count">
-            {models.length}
-          </span>
           <span className={`${styles.obPill} ${hasUsableModel ? styles.ok : ''}`}>
             {hasUsableModel ? 'ready to run' : 'none reachable'}
           </span>
@@ -227,6 +225,26 @@ export default function ProvidersScreen(): React.JSX.Element {
             </Button>
           </span>
         </div>
+        <ul
+          className={styles.obModelList}
+          data-testid="onboarding-models"
+          aria-label={
+            models.length
+              ? `${models.length} reachable model${models.length === 1 ? '' : 's'}`
+              : 'No models reachable'
+          }
+        >
+          {models.length === 0 ? (
+            <li className={styles.obModelEmpty}>No models reachable yet.</li>
+          ) : (
+            models.map((model) => (
+              <li key={model.id} className={styles.obModel} title={model.id}>
+                <ProviderIcon provider={model.provider} size={14} />
+                <span>{model.displayName || modelLabel(model.id)}</span>
+              </li>
+            ))
+          )}
+        </ul>
         <div className={styles.obFactsLegend}>
           <span className={styles.obLegend}>
             <span className={`${styles.obDot} ${styles.obDotOk}`} /> Connected

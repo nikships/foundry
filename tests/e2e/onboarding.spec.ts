@@ -24,9 +24,9 @@ test.describe('onboarding / readiness', () => {
 
       await expect(window.getByRole('heading', { name: 'Give the factory a model' })).toBeVisible();
 
-      const count = window.getByTestId('onboarding-model-count');
+      const catalog = window.getByTestId('onboarding-models');
       const next = window.getByRole('button', { name: /Continue/ });
-      await expect(count).toBeVisible();
+      await expect(catalog).toBeVisible();
 
       // The step gates on a reachable model, and whether one exists is a
       // property of the machine rather than of the fixture: `--user-data-dir`
@@ -34,16 +34,16 @@ test.describe('onboarding / readiness', () => {
       // from their environment. So the assertion is the gate itself — Continue
       // is available exactly when a model is — which holds both on a developer's
       // credentialled Mac and on a CI runner with nothing.
-      if ((await count.textContent()) === '0') {
+      if (await window.getByText('none reachable').isVisible()) {
         await expect(next).toBeDisabled();
-        await expect(window.getByText('none reachable')).toBeVisible();
+        await expect(catalog).toHaveText('No models reachable yet.');
 
         // A syntactically plausible but fabricated key. pi lists a provider's
         // models once a credential exists for it and the refresh runs with
         // network off, so this reaches no provider and spends nothing.
         await window.getByLabel('Provider API key').fill('sk-ant-e2e-not-a-real-key');
         await window.getByRole('button', { name: 'Save key' }).click();
-        await expect(count).not.toHaveText('0', { timeout: 20_000 });
+        await expect(catalog).not.toHaveText('No models reachable yet.', { timeout: 20_000 });
       }
 
       await expect(window.getByText('ready to run')).toBeVisible();

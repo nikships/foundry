@@ -16,7 +16,7 @@
  */
 
 import { existsSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 /** Directory holding every Bridge-owned file for this support dir. */
 export function bridgeStateDir(supportDir: string): string {
@@ -65,6 +65,21 @@ export function bridgeBinaryPath(repoRoot = process.cwd()): string | null {
     } catch {
       // Unreadable candidate: try the next one.
     }
+  }
+  return null;
+}
+
+/**
+ * CLIProxyAPI's models.json, vendored next to the binary by `fetch:bridge`.
+ *
+ * Same candidate order as the binary so a packaged app and a dev checkout
+ * resolve a matching pair. Null when `fetch:bridge` has not run (or failed
+ * to write the catalog), which `loadBridgeCatalog` treats as empty.
+ */
+export function bridgeCatalogPath(repoRoot = process.cwd()): string | null {
+  for (const binary of bridgeBinaryCandidates(repoRoot)) {
+    const catalog = join(dirname(binary), 'models.json');
+    if (existsSync(catalog)) return catalog;
   }
   return null;
 }

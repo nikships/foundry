@@ -9,9 +9,11 @@
 
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { authenticatedProviders, readAccounts } from '../src/main/bridge/auth.js';
+import { parseCliproxyCatalog } from '../src/main/bridge/catalog.js';
 import {
   generateProviders,
   mergeModelsJson,
@@ -19,6 +21,15 @@ import {
   regenerateModels,
   writeModelsJson,
 } from '../src/main/bridge/models.js';
+
+const catalog = parseCliproxyCatalog(
+  JSON.parse(
+    readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), 'fixtures/cliproxy-models.json'),
+      'utf8',
+    ),
+  ),
+);
 
 const dirs: string[] = [];
 
@@ -90,13 +101,30 @@ describe('bridge account reading', () => {
 
 describe('models.json generation', () => {
   it('emits only authenticated providers, prefixed so built-ins cannot collide', () => {
-    const providers = generateProviders(['claude', 'kimi'], BASE_URL);
+    const providers = generateProviders(['claude', 'kimi'], BASE_URL, catalog);
     expect(Object.keys(providers)).toEqual(['bridge-claude', 'bridge-kimi']);
     expect(providers['bridge-claude']?.models.length).toBeGreaterThan(0);
   });
 
+  it('projects the catalog for each authenticated login, not a Foundry-side allowlist', () => {
+    const providers = generateProviders(['gemini', 'grok'], BASE_URL, catalog);
+    expect(providers['bridge-gemini']?.models.map((model) => model.id)).toEqual([
+      'gemini-3.7-flash-high',
+      'claude-sonnet-4-6',
+    ]);
+    expect(providers['bridge-grok']?.models.map((model) => model.id)).toEqual([
+      'grok-4.6',
+      'grok-4.5',
+    ]);
+    // The `gemini` channel is a different executor; an Antigravity login
+    // must not grow it just because the catalog file also lists it.
+    expect(providers['bridge-gemini']?.models.map((model) => model.id)).not.toContain(
+      'gemini-2.5-pro',
+    );
+  });
+
   it('points Anthropic at the root and OpenAI-shaped providers at /v1', () => {
-    const providers = generateProviders(['claude', 'codex', 'gemini'], BASE_URL);
+    const providers = generateProviders(['claude', 'codex', 'gemini'], BASE_URL, catalog);
     // The Anthropic SDK appends /v1/messages itself; a /v1 base would 404.
     expect(providers['bridge-claude']?.baseUrl).toBe(BASE_URL);
     expect(providers['bridge-claude']?.api).toBe('anthropic-messages');
@@ -106,7 +134,9 @@ describe('models.json generation', () => {
   });
 
   it('prices every model at zero, because the subscription is already paid', () => {
-    for (const provider of Object.values(generateProviders(['claude', 'codex'], BASE_URL))) {
+    for (const provider of Object.values(
+      generateProviders(['claude', 'codex'], BASE_URL, catalog),
+    )) {
       for (const model of provider.models) {
         expect(model.cost).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
       }
@@ -114,8 +144,8 @@ describe('models.json generation', () => {
   });
 
   it('is deterministic regardless of the order the providers arrive in', () => {
-    const a = JSON.stringify(generateProviders(['grok', 'claude', 'codex'], BASE_URL));
-    const b = JSON.stringify(generateProviders(['codex', 'grok', 'claude'], BASE_URL));
+    const a = JSON.stringify(generateProviders(['grok', 'claude', 'codex'], BASE_URL, catalog));
+    const b = JSON.stringify(generateProviders(['codex', 'grok', 'claude'], BASE_URL, catalog));
     expect(a).toBe(b);
   });
 
@@ -128,7 +158,7 @@ describe('models.json generation', () => {
         },
         somethingFutureVersionsAdd: 42,
       },
-      generateProviders(['claude'], BASE_URL),
+      generateProviders(['claude'], BASE_URL, catalog),
     );
 
     expect(merged.providers?.ollama).toEqual({
@@ -145,7 +175,7 @@ describe('models.json generation', () => {
 describe('writing models.json', () => {
   it('reports no change for an identical document, so pi is not refreshed', () => {
     const path = join(tempDir(), 'models.json');
-    const document = mergeModelsJson(null, generateProviders(['claude'], BASE_URL));
+    const document = mergeModelsJson(null, generateProviders(['claude'], BASE_URL, catalog));
 
     expect(writeModelsJson(path, document).changed).toBe(true);
     expect(writeModelsJson(path, document).changed).toBe(false);
@@ -154,7 +184,7 @@ describe('writing models.json', () => {
   it('leaves no temp file behind', () => {
     const dir = tempDir();
     const path = join(dir, 'models.json');
-    writeModelsJson(path, mergeModelsJson(null, generateProviders(['claude'], BASE_URL)));
+    writeModelsJson(path, mergeModelsJson(null, generateProviders(['claude'], BASE_URL, catalog)));
     expect(readModelsJson(path)).not.toBeNull();
     expect(readFileSync(path, 'utf8').endsWith('\n')).toBe(true);
   });
@@ -168,6 +198,7 @@ describe('writing models.json', () => {
       modelsPath: path,
       authenticated: ['claude'],
       baseUrl: BASE_URL,
+      catalog,
     });
     expect(result.changed).toBe(true);
     expect(readModelsJson(path)?.providers).toHaveProperty('bridge-claude');
@@ -176,8 +207,13 @@ describe('writing models.json', () => {
   it('drops a provider’s models once its last account is gone', () => {
     const dir = tempDir();
     const path = join(dir, 'models.json');
-    regenerateModels({ modelsPath: path, authenticated: ['claude'], baseUrl: BASE_URL });
-    const after = regenerateModels({ modelsPath: path, authenticated: [], baseUrl: BASE_URL });
+    regenerateModels({ modelsPath: path, authenticated: ['claude'], baseUrl: BASE_URL, catalog });
+    const after = regenerateModels({
+      modelsPath: path,
+      authenticated: [],
+      baseUrl: BASE_URL,
+      catalog,
+    });
 
     expect(after.changed).toBe(true);
     expect(readModelsJson(path)?.providers).toEqual({});
