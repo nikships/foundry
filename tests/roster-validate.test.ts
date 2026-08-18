@@ -15,12 +15,15 @@ const base: AgentDef = {
 };
 
 describe('roster.validate', () => {
-  it('accepts a well-formed agent including optional cli', () => {
-    expect(validate({ ...base, cli: 'droid' })).toEqual([]);
+  it('accepts a well-formed agent', () => {
+    expect(validate(base)).toEqual([]);
   });
 
-  it('coerces legacy or unknown cli values to droid during validation', () => {
-    expect(validate({ ...base, cli: 'claude' as never })).toEqual([]);
+  it('still accepts a roster written before the CLI field was dropped', () => {
+    // Every agent turn runs on one in-process runtime now, so `cli` names
+    // nothing. A stored roster that still carries it has to keep loading:
+    // rejecting it would lock an operator out of their own agents.
+    expect(validate({ ...base, cli: 'droid' } as AgentDef)).toEqual([]);
   });
 
   it('rejects an invalid name and empty purpose before save', () => {

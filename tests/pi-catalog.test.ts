@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { modelKey, reasoningEffortsFor, toModelInfo } from '../src/main/pi/catalog.js';
+import { modelKey, providerOf, reasoningEffortsFor, toModelInfo } from '../src/main/pi/catalog.js';
 
 type PiModel = Parameters<typeof toModelInfo>[0];
 
@@ -76,5 +76,33 @@ describe('the agent model catalog', () => {
 
   it('carries the context window through, which the gauge needs', () => {
     expect(toModelInfo(model()).contextWindow).toBe(1_000_000);
+  });
+});
+
+describe('providerOf', () => {
+  it('reads the lab out of a proxied id that only carries the family name', () => {
+    // A model reached through a proxy keeps its own identity in the id and the
+    // display name; the provider id says who served it, which is not a brand.
+    expect(providerOf('bridge-claude/opus-5', 'Opus 5')).toBe('claude');
+    expect(providerOf('bridge-grok/grok-4.5', 'Grok 4.5')).toBe('grok');
+  });
+
+  it('covers every brand it can name, so the picker never has a blank mark', () => {
+    expect(providerOf('gemini-2.5-pro')).toBe('gemini');
+    expect(providerOf('gemma-3')).toBe('gemma');
+    expect(providerOf('palm-2')).toBe('palm');
+    expect(providerOf('kimi-k2')).toBe('kimi');
+    expect(providerOf('glm-4.6')).toBe('zai');
+    expect(providerOf('deepseek-v4-pro')).toBe('deepseek');
+    expect(providerOf('minimax-m3')).toBe('minimax');
+    expect(providerOf('nemotron-3-ultra')).toBe('nvidia');
+    expect(providerOf('llama-4')).toBe('meta');
+    expect(providerOf('gpt-5-codex')).toBe('openai');
+  });
+
+  it('falls back to openai for a name it cannot place', () => {
+    // A wrong-but-drawn mark beats an empty slot: the picker's row would
+    // otherwise be the only one with nothing where every other model has a logo.
+    expect(providerOf('something-nobody-has-heard-of')).toBe('openai');
   });
 });

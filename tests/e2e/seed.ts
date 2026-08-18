@@ -91,7 +91,7 @@ export function seedOnboardedFixture(userDataDir?: string): SeededFixture {
       worktreePath: null,
       branch: null,
       baseRef: 'main',
-      mode: 'oneshot',
+      mode: 'pi',
     });
     const phaseId = tracer.openPhase({
       runId: E2E_RUN_ID,

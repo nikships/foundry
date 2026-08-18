@@ -20,7 +20,7 @@ function marker(summary: string): AgentReadyMarker {
     schemaVersion: 1,
     generatedAt: '2026-08-13T00:00:00Z',
     commit: 'abc1234',
-    agent: { harness: 'droid', model: 'inherit', reasoningEffort: 'high' },
+    agent: { harness: 'pi', model: 'inherit', reasoningEffort: 'high' },
     verdict: 'ready',
     summary,
     stack: { languages: ['swift'], monorepo: false, packages: [] },
