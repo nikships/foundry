@@ -447,6 +447,60 @@ export function createMockFoundryApi(): FoundryApi {
         { token: '{{request}}', description: 'The original request.' },
         { token: '{{run_id}}', description: 'Run id.' },
       ],
+      agentModels: async (): Promise<ModelInfo[]> => [
+        {
+          id: 'bridge-claude/claude-opus-5',
+          displayName: 'Claude Opus 5',
+          provider: 'claude',
+          supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+          defaultReasoningEffort: 'medium',
+          isCustom: true,
+          deprecated: false,
+          contextWindow: 1_000_000,
+        },
+      ],
+    },
+    bridge: {
+      // The web preview has no child process, so the Bridge reads as installed
+      // and connected: the pane is explorable without pretending a login worked.
+      state: async () => ({
+        running: true,
+        port: 37_717,
+        pid: 4242,
+        baseUrl: 'http://127.0.0.1:37717',
+        providers: [
+          {
+            id: 'claude',
+            label: 'Claude',
+            icon: 'claude',
+            authenticated: true,
+            loginInFlight: false,
+            accounts: [
+              {
+                id: 'claude-demo.json',
+                provider: 'claude',
+                label: 'demo@example.com',
+                expired: false,
+                disabled: false,
+              },
+            ],
+          },
+          {
+            id: 'codex',
+            label: 'ChatGPT (Codex)',
+            icon: 'openai',
+            authenticated: false,
+            loginInFlight: false,
+            accounts: [],
+          },
+        ],
+      }),
+      ensure: async () => ({ ok: true, detail: 'Web preview' }),
+      connect: async () => ({ ok: false, detail: 'Web preview cannot open a login.' }),
+      disconnect: async () => ({ ok: false, detail: 'Web preview' }),
+      cancelLogin: async () => false,
+      setApiKey: async () => ({ ok: false, detail: 'Web preview' }),
+      clearApiKey: async () => ({ ok: false, detail: 'Web preview' }),
     },
     runs: {
       start: async () => ({

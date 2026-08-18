@@ -7,7 +7,7 @@ import { adapterFor, allAdapters, cliConfigFor } from '../cli/index.js';
 import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
 
-type Ctx = Pick<AppContext, 'settings'>;
+type Ctx = Pick<AppContext, 'settings' | 'supportDir'>;
 
 export function register(ctx: Ctx, handle: Handle): void {
   handle(IPC.catalogModels, (vendor: CliVendor, force?: boolean) => {
@@ -40,4 +40,17 @@ export function register(ctx: Ctx, handle: Handle): void {
     Object.entries(GATE_DESCRIPTIONS).map(([id, description]) => ({ id, description })),
   );
   handle(IPC.catalogTemplateVariables, () => TEMPLATE_VARIABLES);
+  handle(IPC.catalogAgentModels, async () => {
+    // Loaded lazily: building pi's runtime restores catalogs off disk, and a
+    // renderer that never opens the model picker should not pay for it.
+    const { availableModels } = await import('../pi/catalog.js');
+    try {
+      return await availableModels(ctx.supportDir);
+    } catch {
+      // An unbuildable runtime (a half-written catalog, no credentials at all)
+      // is an empty picker, not a failed call: the pane says "no models" rather
+      // than showing an error the operator cannot act on.
+      return [];
+    }
+  });
 }

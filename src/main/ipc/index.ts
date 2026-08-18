@@ -17,6 +17,7 @@ import * as roster from './roster.js';
 import * as envelopes from './envelopes.js';
 import * as pipelines from './pipelines.js';
 import * as catalog from './catalog.js';
+import * as bridge from './bridge.js';
 import * as runs from './runs.js';
 import * as prs from './prs.js';
 import * as smith from './smith.js';
@@ -36,6 +37,7 @@ export function registerIpc(ctx: AppContext): void {
   envelopes.register(ctx, handle);
   pipelines.register(ctx, handle);
   catalog.register(ctx, handle);
+  bridge.register(ctx, handle);
   runs.register(ctx, handle);
   prs.register(ctx, handle);
   smith.register(ctx, handle);

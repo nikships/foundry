@@ -28,10 +28,21 @@
     "test:e2e": "playwright test",
     "engine:demo": "tsx scripts/engine-demo.ts",
     "icons": "bash scripts/make-icns.sh",
-    "package": "npm run build && npm run icons && electron-builder --mac --arm64",
+    "fetch:bridge": "node scripts/fetch-bridge.mjs",
+    "package": "npm run build && npm run icons && npm run fetch:bridge && electron-builder --mac --arm64",
     "check:css": "node scripts/check-css-collisions.mjs",
     "check:docs": "node scripts/check-docs-commands.mjs",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm run knip && npm run test:coverage && npm run build && npm run check:css && npm run check:docs && npm run audit:deps"
+  },
+  "config": {
+    "bridge": {
+      "version": "7.2.135",
+      "releaseBaseUrl": "https://github.com/router-for-me/CLIProxyAPI/releases/download",
+      "dir": "resources/bridge",
+      "binary": "cli-proxy-api",
+      "archiveSha256": "c5f6e785cf7568c177d5c31aa75c389c4bb1b1dee9e0133887b9bce3200475dd",
+      "binarySha256": "5f24ebf3ed2caeee6ff63b5eaba7ccdb66f3ccb7af273ba1f70d68dc2f3531fb"
+    }
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "0.84.2",

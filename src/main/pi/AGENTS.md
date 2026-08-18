@@ -27,6 +27,7 @@ Two session shapes live here. A **run** holds a session across many turns (`sess
 - `transcript.ts` — `foldTranscript`, the shared folder from neutral events to live transcript rows. Detection, setup, and readiness all show the same panel because they all fold the same way.
 - `events.ts` — folds the neutral event stream into trace rows, with the throttles and caps that keep a chatty turn from flooding SQLite; writes the raw stream to `<agent>/stream.jsonl`. Runs only; a one-shot has no trace.
 - `runtime.ts` — the single memoized `ModelRuntime`, pinned under Foundry's Application Support directory.
+- `catalog.ts` — what the runtime can actually reach (`getAvailable()` → `ModelInfo`), plus the credential operations that change that answer. `login(providerId, 'api_key', …)` is the path that **persists** a direct key; `setRuntimeApiKey` only sets an in-memory override that dies with the process.
 
 ## Setup Commands
 
@@ -58,6 +59,7 @@ npx vitest run tests/pi-tools.test.ts
 npx vitest run tests/pi-events.test.ts
 npx vitest run tests/pi-extension.test.ts
 npx vitest run tests/pi-runtime.test.ts
+npx vitest run tests/pi-catalog.test.ts
 npx vitest run tests/pi-transport.test.ts
 npx vitest run tests/pi-oneshot.test.ts
 npx vitest run tests/agent-session-transport.test.ts
