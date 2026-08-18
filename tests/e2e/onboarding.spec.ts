@@ -55,8 +55,10 @@ test.describe('onboarding / readiness', () => {
       await expect(window.getByRole('button', { name: 'Re-check environment' })).toBeVisible();
       // A checkout that skipped `fetch:bridge` has no Bridge binary, and that
       // must not be what stops onboarding: the usable-model check is the only
-      // provider check allowed to block.
-      await expect(window.getByText('Usable models')).toBeVisible();
+      // provider check allowed to block. `.first()` because when that check
+      // fails (a runner with no credentials), the Blocked divider repeats the
+      // label alongside the check row itself.
+      await expect(window.getByText('Usable models').first()).toBeVisible();
     } finally {
       await app?.close();
     }
