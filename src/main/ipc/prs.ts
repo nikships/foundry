@@ -6,23 +6,13 @@
  * agrees with GitHub afterwards.
  */
 
-import type { PrMergeMethod } from '@shared/types.js';
+import type { GhStatus, PrMergeMethod } from '@shared/types.js';
 import { IPC, type PrAction, type PrList } from '@shared/ipc-contract.js';
-import type { GhStatus } from '@shared/types.js';
-import {
-  deleteRemoteBranch,
-  fastForwardBase,
-  fetchRef,
-  preferredRemote,
-  pushBranchForceWithLease,
-  resolveRef,
-} from '../engine/git.js';
-import { rebaseOntoBase, repairAgent } from '../engine/repair.js';
-import * as worktreeLib from '../engine/worktree.js';
+import { landRun, repairBranch } from '../engine/settle.js';
 import * as ghLib from '../system/gh.js';
 import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
-import { notifyRuns } from './shared.js';
+import { notifyRuns, settleHooks } from './shared.js';
 
 type Ctx = Pick<AppContext, 'projects' | 'registry' | 'settings' | 'broadcast' | 'oneShot'>;
 
@@ -85,67 +75,7 @@ export function register(ctx: Ctx, handle: Handle): void {
     async (projectId: string, prNumber: number, method: PrMergeMethod): Promise<PrAction> => {
       const scoped = tracerOf(projectId);
       if (!scoped) return { ok: false, detail: 'project not found' };
-      const { project, tracer } = scoped;
-
-      const merged = await ghLib.mergePr(project.path, prNumber, method);
-      if (!merged.ok) return { ok: false, detail: merged.detail, number: prNumber };
-
-      const notes = [merged.detail];
-      const branch = merged.headRefName;
-      const isFoundryBranch = !!branch && branch.startsWith('foundry/');
-
-      // A foundry branch maps 1:1 to a run; settle its local leftovers the
-      // same way an in-app merge would, so nothing lingers in Maintenance.
-      if (isFoundryBranch) {
-        const runId = branch.slice('foundry/'.length);
-        const run = tracer.run(runId);
-        if (run) {
-          if (run.worktreePath) {
-            const removed = await worktreeLib.discard(project.path, {
-              path: run.worktreePath,
-              branch,
-              baseRef: run.baseRef ?? project.baseRef,
-              branchPointSha: run.branchPointSha ?? '',
-            });
-            tracer.setWorktree(runId, null, branch);
-            if (removed.removed) notes.push('worktree removed');
-          }
-          tracer.setMerged(runId, true);
-          tracer.event({
-            runId,
-            type: 'log',
-            name: 'pr merge',
-            payload: { detail: `${merged.detail} via ${method}` },
-          });
-        }
-      }
-
-      // The PR merged either way; everything below is local/remote cleanup,
-      // and a skipped or failed step must say so rather than pass silently.
-      const remote = await preferredRemote(project.path);
-      if (!remote) {
-        notes.push('no git remote found: skipped branch cleanup and base fast-forward');
-      } else {
-        // Only foundry branches are Foundry's to clean up on the remote.
-        if (isFoundryBranch && branch) {
-          const del = await deleteRemoteBranch(project.path, remote, branch);
-          if (!del.ok) {
-            notes.push(
-              `could not delete remote ${branch}: ${del.stdout.trim().split('\n')[0] || 'see git'}`,
-            );
-          }
-        }
-        const baseRef = merged.baseRefName || project.baseRef;
-        const ff = await fastForwardBase(project.path, remote, baseRef);
-        notes.push(
-          ff.ok
-            ? `${baseRef} fast-forwarded`
-            : `could not fast-forward ${baseRef}: ${ff.stdout.trim().split('\n')[0] || 'see git'}`,
-        );
-      }
-
-      notifyRuns(ctx);
-      return { ok: true, detail: notes.join('; '), number: prNumber, url: merged.url };
+      return landRun(scoped, settleHooks(ctx), { via: 'ghMerge', prNumber, method });
     },
   );
 
@@ -158,70 +88,6 @@ export function register(ctx: Ctx, handle: Handle): void {
   handle(IPC.prsFixConflicts, async (projectId: string, prNumber: number): Promise<PrAction> => {
     const scoped = tracerOf(projectId);
     if (!scoped) return { ok: false, detail: 'project not found' };
-    const { project, tracer } = scoped;
-
-    const pr = await ghLib.viewPr(project.path, prNumber);
-    if (!pr)
-      return { ok: false, detail: `could not read PR #${prNumber} via gh`, number: prNumber };
-    if (!pr.headRefName.startsWith('foundry/')) {
-      return {
-        ok: false,
-        detail: `#${prNumber} is not a foundry run branch — resolve it where the branch lives`,
-        number: prNumber,
-      };
-    }
-    const runId = pr.headRefName.slice('foundry/'.length);
-    const run = tracer.run(runId);
-    if (!run?.worktreePath) {
-      return {
-        ok: false,
-        detail: "this run's worktree is gone, so there is nowhere local to repair the branch",
-        number: prNumber,
-      };
-    }
-
-    const remote = await preferredRemote(project.path);
-    if (!remote) return { ok: false, detail: 'this repo has no git remote', number: prNumber };
-    const baseRef = pr.baseRefName || project.baseRef;
-    const fetched = await fetchRef(project.path, remote, baseRef);
-    if (!fetched.ok) {
-      return { ok: false, detail: `could not fetch ${baseRef} from ${remote}`, number: prNumber };
-    }
-    const ontoSha = await resolveRef(project.path, 'FETCH_HEAD');
-    if (!ontoSha) {
-      return { ok: false, detail: `could not resolve the fetched ${baseRef}`, number: prNumber };
-    }
-
-    const settings = ctx.settings.get();
-    const outcome = await rebaseOntoBase({
-      worktreePath: run.worktreePath,
-      branch: pr.headRefName,
-      ontoSha,
-      ontoLabel: `${remote}/${baseRef}`,
-      agent: repairAgent(ctx.oneShot, settings, run.worktreePath),
-      timeoutMs: settings.turnTimeoutMs,
-    });
-    tracer.event({ runId, type: 'log', name: 'agent fix', payload: { detail: outcome.detail } });
-    if (!outcome.ok) {
-      notifyRuns(ctx);
-      return { ok: false, detail: outcome.detail, number: prNumber };
-    }
-
-    tracer.setBranchPoint(runId, ontoSha);
-    const pushed = await pushBranchForceWithLease(project.path, remote, pr.headRefName);
-    notifyRuns(ctx);
-    if (!pushed.ok) {
-      return {
-        ok: false,
-        detail: `${outcome.detail}; but the push was refused: ${pushed.stdout.trim().split('\n')[0] || 'see git'}`,
-        number: prNumber,
-      };
-    }
-    return {
-      ok: true,
-      detail: `${outcome.detail}; pushed — GitHub is recomputing mergeability`,
-      number: prNumber,
-      url: pr.url,
-    };
+    return repairBranch(scoped, settleHooks(ctx), { prNumber, then: 'push' });
   });
 }

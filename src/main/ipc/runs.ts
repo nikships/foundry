@@ -1,7 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync } from 'node:fs';
 import { shell } from 'electron';
-import type { InterruptAnswer, ProjectDef, StartRunInput } from '@shared/types.js';
+import type { InterruptAnswer, StartRunInput } from '@shared/types.js';
 import {
   IPC,
   type ContextBreakdownResult,
@@ -9,20 +8,13 @@ import {
   type RunDetail,
   type WorktreeAction,
 } from '@shared/ipc-contract.js';
-import {
-  applyCommandDrifts,
-  DETECT_PROMPT,
-  parseCommandDrift,
-  parseDetectReply,
-} from '../engine/detect.js';
+import { DETECT_PROMPT, parseDetectReply } from '../engine/detect.js';
 import { ensureMissingCommands, missingCommandRefs, preflightForRun } from '../engine/preflight.js';
-import { resolveRef } from '../engine/git.js';
-import { rebaseOntoBase, repairAgent } from '../engine/repair.js';
+import { landRun } from '../engine/settle.js';
 import * as worktreeLib from '../engine/worktree.js';
 import type { AppContext } from '../context.js';
-import type { EventInput } from '../trace/tracer.js';
 import type { Handle } from './shared.js';
-import { noIssues, notifyRuns, notifySettings } from './shared.js';
+import { noIssues, notifyRuns, notifySettings, settleHooks } from './shared.js';
 
 type Ctx = Pick<
   AppContext,
@@ -200,28 +192,7 @@ export function register(ctx: Ctx, handle: Handle): void {
     async (projectId: string, runId: string): Promise<WorktreeAction> => {
       const scoped = tracerOf(projectId);
       if (!scoped) return { ok: false, detail: 'project not found' };
-      const { project, tracer } = scoped;
-      const run = tracer.run(runId);
-      if (!run?.worktreePath || !run.branch)
-        return { ok: false, detail: 'this run has no worktree' };
-      const outcome = await worktreeLib.merge(project.path, {
-        path: run.worktreePath,
-        branch: run.branch,
-        baseRef: run.baseRef ?? project.baseRef,
-        branchPointSha: run.branchPointSha ?? '',
-      });
-      if (outcome.merged) {
-        tracer.setMerged(runId, true);
-        applyStoredCommandDrift(ctx, project, tracer.runDir(runId), runId, tracer);
-      }
-      tracer.event({
-        runId,
-        type: 'log',
-        name: 'worktree merge',
-        payload: { detail: outcome.detail },
-      });
-      notifyRuns(ctx);
-      return { ok: outcome.merged, detail: outcome.detail };
+      return landRun(scoped, settleHooks(ctx), { via: 'merge', runId });
     },
   );
 
@@ -234,55 +205,7 @@ export function register(ctx: Ctx, handle: Handle): void {
   handle(IPC.runsFixMerge, async (projectId: string, runId: string): Promise<WorktreeAction> => {
     const scoped = tracerOf(projectId);
     if (!scoped) return { ok: false, detail: 'project not found' };
-    const { project, tracer } = scoped;
-    const run = tracer.run(runId);
-    if (!run?.worktreePath || !run.branch) return { ok: false, detail: 'this run has no worktree' };
-    if (run.merged) return { ok: false, detail: 'this run is already merged' };
-
-    const baseRef = run.baseRef ?? project.baseRef;
-    const ontoSha = await resolveRef(project.path, baseRef);
-    if (!ontoSha) return { ok: false, detail: `${baseRef} does not resolve in this repo` };
-
-    const settings = ctx.settings.get();
-    const outcome = await rebaseOntoBase({
-      worktreePath: run.worktreePath,
-      branch: run.branch,
-      ontoSha,
-      ontoLabel: baseRef,
-      agent: repairAgent(ctx.oneShot, settings, run.worktreePath),
-      timeoutMs: settings.turnTimeoutMs,
-    });
-    tracer.event({ runId, type: 'log', name: 'agent fix', payload: { detail: outcome.detail } });
-    if (!outcome.ok) {
-      notifyRuns(ctx);
-      return { ok: false, detail: outcome.detail };
-    }
-
-    // The branch now sits on the base tip; record that and land the merge.
-    tracer.setBranchPoint(runId, ontoSha);
-    const merged = await worktreeLib.merge(project.path, {
-      path: run.worktreePath,
-      branch: run.branch,
-      baseRef,
-      branchPointSha: ontoSha,
-    });
-    if (merged.merged) {
-      tracer.setMerged(runId, true);
-      applyStoredCommandDrift(ctx, project, tracer.runDir(runId), runId, tracer);
-    }
-    tracer.event({
-      runId,
-      type: 'log',
-      name: 'worktree merge',
-      payload: { detail: merged.detail },
-    });
-    notifyRuns(ctx);
-    return {
-      ok: merged.merged,
-      detail: merged.merged
-        ? `${outcome.detail}; merged into ${baseRef}`
-        : `${outcome.detail}; but the merge still failed: ${merged.detail}`,
-    };
+    return landRun(scoped, settleHooks(ctx), { via: 'fixMerge', runId });
   });
 
   handle(
@@ -328,29 +251,4 @@ export function register(ctx: Ctx, handle: Handle): void {
 
   handle(IPC.interruptsList, () => ctx.registry.interrupts());
   handle(IPC.interruptsAnswer, (answer: InterruptAnswer) => ctx.registry.answer(answer));
-}
-
-function applyStoredCommandDrift(
-  ctx: Ctx,
-  project: ProjectDef,
-  runDir: string,
-  runId: string,
-  tracer: { event: (input: EventInput) => string },
-): void {
-  const file = join(runDir, 'command-drift.json');
-  if (!existsSync(file)) return;
-  const drifts = parseCommandDrift(readFileSync(file, 'utf8'));
-  if (!drifts.length) return;
-  const saved = ctx.projects.save({
-    ...project,
-    commands: applyCommandDrifts(project.commands, drifts),
-  });
-  if (!saved.ok) return;
-  tracer.event({
-    runId,
-    type: 'log',
-    name: 'command_drift_applied',
-    payload: { names: drifts.map((d) => d.name) },
-  });
-  notifySettings(ctx);
 }

@@ -5,7 +5,7 @@ Deterministic runner that owns phase sequencing, retries, write boundaries, gate
 ## Project Overview
 
 - Phases: `agent` (LLM through the `pi/` agent transport), `code` (shell `CommandSpec`), `engineer` (code + gates). Registry owns phase/gate definitions; `executor.ts` + `runners/*` drive execution. `rewinder.ts` (`PhaseRewinder`) owns correction rollback for an agent phase.
-- Worktree: `.foundry-worktrees/<runId>` on `foundry/<runId>`; `.foundry-handoff/` JSON files pass envelopes between phases. `worktree.ts` owns create/merge/discard.
+- Worktree: `.foundry-worktrees/<runId>` on `foundry/<runId>`; `.foundry-handoff/` JSON files pass envelopes between phases. `worktree.ts` owns create/merge/discard. `settle.ts` owns landing a finished run (`landRun` / `repairBranch`) so the IPC routers stay logic-free.
 - Envelopes: Zod schemas in `envelopes.ts`; `jsonSchemaFor()` exposes defaults as required and emits no `$schema` dialect (pi compiles the schema itself and does not want a dialect declared). Example, output constraint, and parser come from the same definition.
 - Gates: return evidence (`GateCheck`), not a verdict; unknown gate → fail (`gates.ts`).
 - Context: `phase-context.ts` / `prompts.ts` render prompts from templates + `request` / `envelope:<phase>` / `handoff_files` / `feedback`.
@@ -35,7 +35,7 @@ Other references: `pi/` owns every agent call (the transport a phase runs on and
 
 ```bash
 npm test
-npx vitest run -t "executor|envelope|gate|boundary|rewinder|preflight|worktree"
+npx vitest run -t "executor|envelope|gate|boundary|rewinder|preflight|worktree|settle"
 npx vitest run tests/executor.test.ts
 npx vitest run tests/rewinder.test.ts
 npx vitest run tests/envelopes.test.ts
@@ -43,6 +43,7 @@ npx vitest run tests/gates.test.ts
 npx vitest run tests/panel-session.test.ts
 npx vitest run tests/detect-session.test.ts
 npx vitest run tests/setup-session.test.ts
+npx vitest run tests/settle.test.ts
 ```
 
 - Use **real git temp repos** + `tests/scripted-transport.ts`, an in-memory `AgentTransport` whose scripted turns perform real disk side effects inside the worktree, so boundary checks are real. Do NOT mock git or use network/model.
@@ -59,14 +60,15 @@ npx vitest run tests/setup-session.test.ts
   - Violations are reverted and the phase fails. Permission evaluation is NOT the enforcement mechanism.
 - **Compaction between phases only**, never while a stream is open.
 - **Rewind** is owned by `PhaseRewinder` (`rewinder.ts`), constructed with the worktree and session. It happens only on the configured correction number and falls back to append-style correction on failure. One-shot sessions never rewind. After a successful transport rewind, `restoreToPhaseStart` checks out clean-at-start tracked deletions from `snapshot.headSha` and reverts new untracked files, then the baseline is re-snapshotted and the phase anchor re-pinned. The transport only restores files that were already dirty at phase start; Foundry owns the rest. The agent runner only calls `rewindIfDue` before a retry turn.
-- **`{ref}` commands stay frozen unless the worktree sniff disagrees.** `resolveRefCommand` re-sniffs before the code phase. Matching or missing sniff keeps the project argv. A different sniff winner is run-scoped drift (`command-drift.json`); merge applies it to project settings. Agents never choose argv.
+- **`{ref}` commands stay frozen unless the worktree sniff disagrees.** `resolveRefCommand` re-sniffs before the code phase. Matching or missing sniff keeps the project argv. A different sniff winner is run-scoped drift (`command-drift.json`); `landRun` applies it to project settings after `merged=true`, whether the landing was a local merge or a GitHub merge. Agents never choose argv.
+- **Settlement invariants live in `settle.ts`.** `setBranchPoint` before a post-repair merge, `setWorktree(null)` after discard, drift only after `merged=true`, `notifyRuns` after every tracer write.
 - **Kill outranks acceptance.** Once cancellation fires, stop recovery and settle `killed`; do not let a protocol fallback complete the run.
 - **Setup script** (`setupScript` via `sh -c` at worktree root) runs before agent phases; failure keeps the worktree for inspection. A `scaffold` project treats a missing referenced code command as a warning and skips that code phase.
 
 ## Code Style
 
 - Keep session work in `pi/` (the transport) and `session/` (the live panel). `detect-session.ts` and `setup-session.ts` are thin ask-and-parse strategies on `PanelSession`; they take an `OneShotFactory` rather than building one, which is what lets a test drive them without a model. Repair does the same.
-- Gate and envelope modules export plain values/types consumable from tests; avoid coupling them to `AppContext`.
+- Gate, envelope, and settlement modules export plain values/types consumable from tests; avoid coupling them to `AppContext`. `settle.ts` takes `SettleHooks` so notify/save/one-shot are injected.
 - No `eslint-disable`; address real issues. Use `@main/*` / `@shared/*` aliases.
 
 ## Build and Deployment
