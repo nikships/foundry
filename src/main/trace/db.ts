@@ -11,8 +11,6 @@ import { dirname, join } from 'node:path';
 
 export type Db = Database.Database;
 
-const SCHEMA_VERSION = 1;
-
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS runs (
   run_id                 TEXT PRIMARY KEY,
@@ -26,11 +24,13 @@ CREATE TABLE IF NOT EXISTS runs (
   worktree_path          TEXT,
   branch                 TEXT,
   base_ref               TEXT,
-  mode                   TEXT DEFAULT 'rpc',
+  mode                   TEXT DEFAULT 'pi',
   merged                 INTEGER DEFAULT 0,
   archived               INTEGER DEFAULT 0,
   branch_point_sha       TEXT,
   outcome_detail         TEXT,
+  pr_number              INTEGER,
+  pr_url                 TEXT,
   started_at             TEXT,
   ended_at               TEXT,
   total_tokens           INTEGER DEFAULT 0,
@@ -60,7 +60,8 @@ CREATE TABLE IF NOT EXISTS events (
   payload_json TEXT,
   tokens       INTEGER DEFAULT 0,
   started_at   TEXT,
-  ended_at     TEXT
+  ended_at     TEXT,
+  change_id    INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS envelopes (
   envelope_id  TEXT PRIMARY KEY,
@@ -88,9 +89,8 @@ CREATE TABLE IF NOT EXISTS agent_sessions (
   agent            TEXT NOT NULL,
   model            TEXT,
   reasoning_effort TEXT,
-  cli              TEXT DEFAULT 'droid',
-  droid_session_id TEXT,
-  mode             TEXT DEFAULT 'rpc',
+  agent_session_id TEXT,
+  mode             TEXT DEFAULT 'pi',
   color            TEXT,
   context_tokens   INTEGER DEFAULT 0,
   context_window   INTEGER DEFAULT 0,
@@ -108,41 +108,16 @@ CREATE TABLE IF NOT EXISTS processes (
   started_at TEXT,
   ended_at   TEXT
 );
-CREATE TABLE IF NOT EXISTS migrations (
-  version    INTEGER PRIMARY KEY,
-  applied_at TEXT
-);
 -- rowid cannot be indexed, but rows within one run_id are already rowid-ordered,
 -- which is exactly what the renderer's cursor query walks.
 CREATE INDEX IF NOT EXISTS idx_events_run ON events(run_id);
+CREATE INDEX IF NOT EXISTS idx_events_change ON events(run_id, change_id);
 CREATE INDEX IF NOT EXISTS idx_phases_run_seq ON phases(run_id, seq);
 CREATE INDEX IF NOT EXISTS idx_envelopes_phase ON envelopes(phase_id);
 CREATE INDEX IF NOT EXISTS idx_gates_phase ON gate_results(phase_id);
 CREATE INDEX IF NOT EXISTS idx_runs_started ON runs(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_processes_open ON processes(ended_at) WHERE ended_at IS NULL;
 `;
-
-/** Additive changes only: CREATE TABLE IF NOT EXISTS never revisits a table. */
-const COLUMN_MIGRATIONS: [table: string, column: string, decl: string][] = [
-  ['runs', 'mode', "TEXT DEFAULT 'rpc'"],
-  ['runs', 'pipeline_name', 'TEXT'],
-  // Recorded so a later merge can still tell whether the base has moved.
-  ['runs', 'branch_point_sha', 'TEXT'],
-  ['runs', 'outcome_detail', 'TEXT'],
-  // Which CLI drove the agent. Older rows predate the choice and were all droid,
-  // so the default backfills them correctly rather than leaving them blank.
-  ['agent_sessions', 'cli', "TEXT DEFAULT 'droid'"],
-  // Per-row revision the poll cursor walks. Backfilled from rowid below, so a
-  // pre-existing db answers the change query exactly as it answered the rowid
-  // one until new writes land.
-  ['events', 'change_id', 'INTEGER'],
-  // Set once a PR has been opened for the run's branch via gh.
-  ['runs', 'pr_number', 'INTEGER'],
-  ['runs', 'pr_url', 'TEXT'],
-];
-
-/** Indexes for columns added after the initial schema, created once present. */
-const LATE_INDEXES = ['CREATE INDEX IF NOT EXISTS idx_events_change ON events(run_id, change_id)'];
 
 export function projectHash(projectPath: string): string {
   return createHash('sha256').update(projectPath).digest('hex').slice(0, 16);
@@ -156,25 +131,7 @@ export function openDb(dbPath: string): Db {
   db.pragma('busy_timeout = 5000');
   db.pragma('foreign_keys = ON');
   db.exec(SCHEMA);
-  migrate(db);
   return db;
-}
-
-function migrate(db: Db): void {
-  for (const [table, column, decl] of COLUMN_MIGRATIONS) {
-    const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
-    if (!cols.some((c) => c.name === column)) {
-      db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
-    }
-  }
-  // A NULL change_id means the row predates revisions; its rowid is the truth
-  // about when it appeared, so the cursor ordering is preserved.
-  db.exec('UPDATE events SET change_id = rowid WHERE change_id IS NULL');
-  for (const sql of LATE_INDEXES) db.exec(sql);
-  db.prepare('INSERT OR IGNORE INTO migrations (version, applied_at) VALUES (?, ?)').run(
-    SCHEMA_VERSION,
-    new Date().toISOString(),
-  );
 }
 
 export function projectDbPath(appSupportDir: string, projectPath: string): string {

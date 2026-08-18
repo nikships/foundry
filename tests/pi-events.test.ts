@@ -154,16 +154,13 @@ describe('usage', () => {
       cacheCreationTokens: 0,
       cacheReadTokens: 0,
       thinkingTokens: 0,
-      credits: 0,
       cost: 0,
       reported: false,
     });
   });
 
-  it('carries the real cost through and leaves credits at zero', () => {
-    // Credits are droid's accounting unit; this runtime prices in dollars, and
-    // reporting a fabricated credit figure would make the cost table lie.
-    expect(toUsageBreakdown(usage)).toEqual({ ...usage, credits: 0, reported: true });
+  it('carries the real cost through', () => {
+    expect(toUsageBreakdown(usage)).toEqual({ ...usage, reported: true });
   });
 });
 

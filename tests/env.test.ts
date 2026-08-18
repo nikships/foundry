@@ -47,7 +47,7 @@ describe('spawnEnv', () => {
   it('carries no credential overlay, because no credential is the app’s to hand out', () => {
     // Provider credentials live in pi's own store and the Bridge's auth
     // directory. A spawn overlay would put one in the environment of every
-    // child the app starts, which is exactly what the migration removed.
+    // child the app starts.
     __setResolvedEnvForTest({ path: '/custom/bin', via: 'login-shell' });
     expect(spawnEnv().FACTORY_API_KEY).toBe(process.env.FACTORY_API_KEY);
   });

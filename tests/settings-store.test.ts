@@ -1,8 +1,6 @@
 /**
- * Settings written by an older build must still load. Autonomy, CLI paths, a
- * daemon port and a Factory API key were all settings once; a file that still
- * carries them is a file a real user has on disk, and dropping those keys must
- * not cost them the rest of their configuration.
+ * Settings hydrate from disk with shipped defaults for anything missing or
+ * out of band. A hand-edited extra key must not enter memory or fail a save.
  */
 
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -33,108 +31,42 @@ function seed(raw: Record<string, unknown>): SettingsStore {
   return new SettingsStore(dir);
 }
 
-const legacy = () => ({
-  ...defaultSettings(),
-  defaultAutonomy: 'low',
-  engineerName: 'ada',
-  turnTimeoutMs: 900_000,
-});
-
-describe('settings written before autonomy was removed', () => {
-  it('loads without error and keeps the operator’s other values', () => {
-    const settings = seed(legacy()).get();
+describe('unknown keys on disk', () => {
+  it('keeps the operator’s other values and drops the extra key', () => {
+    const settings = migrate({
+      ...defaultSettings(),
+      engineerName: 'ada',
+      notASetting: 'nope',
+    });
     expect(settings.engineerName).toBe('ada');
-    expect(settings.turnTimeoutMs).toBe(900_000);
+    expect('notASetting' in settings).toBe(false);
   });
 
-  it('drops the stale key rather than carrying it forward', () => {
-    const settings = migrate(legacy());
-    expect('defaultAutonomy' in settings).toBe(false);
-  });
-
-  it('does not write the stale key back to disk on the next patch', () => {
-    const store = seed(legacy());
+  it('does not write the extra key back to disk on the next patch', () => {
+    const store = seed({
+      ...defaultSettings(),
+      engineerName: 'ada',
+      notASetting: 'nope',
+    });
     const result = store.patch({ engineerName: 'grace' });
     expect(result.ok).toBe(true);
     const onDisk = JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf8')) as Record<
       string,
       unknown
     >;
-    expect(onDisk.defaultAutonomy).toBeUndefined();
+    expect(onDisk.notASetting).toBeUndefined();
     expect(onDisk.engineerName).toBe('grace');
   });
 
-  it('strips it from a patch that tries to reintroduce it', () => {
-    const store = seed(legacy());
-    const result = store.patch({ defaultAutonomy: 'high' } as never);
-    expect(result.ok).toBe(true);
-    expect(result.ok && 'defaultAutonomy' in result.settings).toBe(false);
-  });
-});
-
-describe('settings written before the migration to pi', () => {
-  const droidEra = () => ({
-    ...defaultSettings(),
-    engineerName: 'ada',
-    turnTimeoutMs: 900_000,
-    clis: { droid: { path: '/custom/bin/droid', extraArgs: [] } },
-    defaultCli: 'droid',
-    detectCli: 'default',
-    daemonPort: 37_650,
-    factoryApiKey: 'fk-a-real-key',
-    mcpServers: [{ id: 'mcp_1', name: 'local', type: 'stdio', command: 'npx' }],
-    droidPath: '/custom/bin/droid',
-  });
-
-  it('drops every retired key, credential included', () => {
-    const settings = migrate(droidEra()) as unknown as Record<string, unknown>;
-    for (const key of [
-      'clis',
-      'defaultCli',
-      'detectCli',
-      'daemonPort',
-      'factoryApiKey',
-      'mcpServers',
-      'droidPath',
-    ]) {
-      expect(key in settings, key).toBe(false);
-    }
-  });
-
-  it('keeps everything the operator actually still configures', () => {
-    const settings = migrate(droidEra());
-    expect(settings.engineerName).toBe('ada');
-    expect(settings.turnTimeoutMs).toBe(900_000);
-    expect(settings.defaultModel).toBe('inherit');
-  });
-
-  // A credential left in settings.json is a credential nothing reads and
-  // everything can see, so the first write after an upgrade has to remove it.
-  it('removes the stored Factory key from disk on the next patch', () => {
-    const store = seed(droidEra());
-    expect(store.patch({ engineerName: 'grace' }).ok).toBe(true);
-    const onDisk = JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf8')) as Record<
-      string,
-      unknown
-    >;
-    expect(onDisk.factoryApiKey).toBeUndefined();
-    expect(onDisk.clis).toBeUndefined();
-    expect(onDisk.daemonPort).toBeUndefined();
-    expect(onDisk.mcpServers).toBeUndefined();
-    expect(onDisk.engineerName).toBe('grace');
-  });
-
-  it('strips a patch that tries to reintroduce one', () => {
+  it('strips a patch that tries to introduce one', () => {
     const store = seed(defaultSettings() as unknown as Record<string, unknown>);
-    const result = store.patch({ factoryApiKey: 'fk-again' } as never);
+    const result = store.patch({ notASetting: 'nope' } as never);
     expect(result.ok).toBe(true);
-    expect(result.ok && 'factoryApiKey' in result.settings).toBe(false);
+    expect(result.ok && 'notASetting' in result.settings).toBe(false);
   });
 
   it('reads a model id as an opaque provider/model string', () => {
-    // Model ids are no longer validated against a CLI's catalog: a stored
-    // `bridge-claude/claude-opus-5` must survive a read untouched.
-    const settings = migrate({ ...droidEra(), defaultModel: 'bridge-claude/claude-opus-5' });
+    const settings = migrate({ ...defaultSettings(), defaultModel: 'bridge-claude/claude-opus-5' });
     expect(settings.defaultModel).toBe('bridge-claude/claude-opus-5');
   });
 });
@@ -145,7 +77,7 @@ describe('readiness defaults', () => {
     expect(defaultSettings().readinessReasoningEffort).toBe('high');
   });
 
-  it('fills readiness fields for a settings file written before they existed', () => {
+  it('fills readiness fields when they are missing', () => {
     const stored = { ...defaultSettings() } as Record<string, unknown>;
     delete stored.readinessModel;
     delete stored.readinessReasoningEffort;
@@ -160,7 +92,7 @@ describe('the compaction threshold', () => {
     expect(defaultSettings().compactionThreshold).toBe(0.8);
   });
 
-  it('reads 0.8 for a settings file written before the field existed', () => {
+  it('reads 0.8 when the field is missing', () => {
     const stored = { ...defaultSettings() } as Record<string, unknown>;
     delete stored.compactionThreshold;
     expect(migrate(stored).compactionThreshold).toBe(0.8);
@@ -183,8 +115,8 @@ describe('the compaction threshold', () => {
   });
 
   it('clamps a stored value that is out of band into it', () => {
-    // Hand-edited files and files from a build with a different band still have
-    // to load: a threshold of 2 would mean compaction could never fire.
+    // A hand-edited out-of-band value still has to load: a threshold of 2
+    // would mean compaction could never fire.
     expect(migrate({ ...defaultSettings(), compactionThreshold: 2 }).compactionThreshold).toBe(
       0.95,
     );
@@ -200,7 +132,7 @@ describe('rewindAfterCorrections', () => {
     expect(defaultSettings().rewindAfterCorrections).toBe(2);
   });
 
-  it('reads 2 for a settings file written before the field existed', () => {
+  it('reads 2 when the field is missing', () => {
     const stored = { ...defaultSettings() } as Record<string, unknown>;
     delete stored.rewindAfterCorrections;
     expect(migrate(stored).rewindAfterCorrections).toBe(2);
@@ -238,7 +170,7 @@ describe('prAgent', () => {
     expect(defaultSettings().prAgent).toBe(DEFAULT_PR_AGENT);
   });
 
-  it('reads pr_writer for a settings file written before the field existed', () => {
+  it('reads pr_writer when the field is missing', () => {
     const stored = { ...defaultSettings() } as Record<string, unknown>;
     delete stored.prAgent;
     expect(migrate(stored).prAgent).toBe(DEFAULT_PR_AGENT);
@@ -271,7 +203,7 @@ describe('bridgePort', () => {
     expect(defaultSettings().bridgePort).toBe(DEFAULT_BRIDGE_PORT);
   });
 
-  it('fills the default for a settings file written before the field existed', () => {
+  it('fills the default when the field is missing', () => {
     const stored = { ...defaultSettings() } as Record<string, unknown>;
     delete stored.bridgePort;
     expect(migrate(stored).bridgePort).toBe(DEFAULT_BRIDGE_PORT);
@@ -298,12 +230,5 @@ describe('bridgePort', () => {
     expect(migrate({ ...defaultSettings(), bridgePort: 'busy' as never }).bridgePort).toBe(
       DEFAULT_BRIDGE_PORT,
     );
-  });
-
-  // The daemon port was in a different band, so carrying it forward would put
-  // the Bridge on a port its manager never scans.
-  it('does not inherit a stored daemonPort', () => {
-    const settings = migrate({ ...defaultSettings(), daemonPort: 37_650 });
-    expect(settings.bridgePort).toBe(DEFAULT_BRIDGE_PORT);
   });
 });

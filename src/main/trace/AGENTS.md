@@ -4,7 +4,7 @@
 
 ## Project Overview
 
-- Each project has its own `trace.db` (under `~/Library/Application Support/foundry/`). Schema + migrations live in `db.ts`; event/process persistence lives in `tracer.ts`.
+- Each project has its own `trace.db` (under `~/Library/Application Support/foundry/`). Schema lives in `db.ts`; event/process persistence lives in `tracer.ts`.
 - Events are pulled by the renderer via `run_id = ? AND change_id > ? ORDER BY rowid` — a polling cursor merge (see `src/renderer/stores/run.tsx`).
 - Tool results patch their opening span and thinking deltas append in place — both require a new `change_id`.
 - Cost, duration, and model are **derived** from events (in `src/renderer/derive.ts`), not denormalized, so retries remain visible.

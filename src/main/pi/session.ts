@@ -27,13 +27,7 @@ import type {
   TurnResult,
 } from './transport.js';
 
-/**
- * Which agent runtime answered for a run.
- *
- * Kept as a named mode rather than dropped because the trace, the run row, and
- * the renderer all record it: a run's transport is part of what happened, and
- * an operator reading an old run should not have to infer it from the date.
- */
+/** Which agent runtime answered for a run. */
 export type Mode = 'pi';
 
 export interface AgentTurnContext {

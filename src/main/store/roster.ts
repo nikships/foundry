@@ -42,8 +42,7 @@ export const agentSchema = z.object({
     .optional(),
   tools: z.array(z.string()).optional(),
   disabledTools: z.array(z.string()).optional(),
-  // Absent reads as `full`, so every built-in and every pre-profile roster keeps
-  // the tool surface it had. An unknown value is rejected rather than coerced:
+  // Absent reads as `full`. An unknown value is rejected rather than coerced:
   // guessing which profile an operator meant is how least privilege gets wider.
   toolProfile: z.enum(['full', 'read-only', 'review', 'custom']).optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'a hex colour like #5ad2dd'),
@@ -165,9 +164,9 @@ export class RosterStore {
    * A rename is not a save under a new key: `save` upserts by name, so it would
    * append a second agent and leave the original behind.
    *
-   * A shipped agent forks instead of moving, because `migrate` restores any
-   * absent built-in on the next read — renaming one in place would bring the
-   * old name back on the next launch, silently, as a duplicate.
+   * A shipped agent forks instead of moving, because a missing built-in is
+   * restored on the next read — renaming one in place would bring the old
+   * name back on the next launch, silently, as a duplicate.
    */
   rename(
     from: string,

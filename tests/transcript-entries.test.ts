@@ -90,9 +90,9 @@ describe('a pi tool call in the timeline', () => {
     return render({ ...row, name: `${name}: target` });
   };
 
-  // The renderer classifies off the row's own name, and pi's tool names are not
-  // droid's. `toolKind` is main's answer for the same tool; the two are read by
-  // the same operator on the same row, so they must not disagree.
+  // The renderer classifies off the row's own name. `toolKind` is main's
+  // answer for the same tool; the two are read by the same operator on the
+  // same row, so they must not disagree.
   const RENDERED_CLASS: Record<string, string> = {
     command: 'te command',
     read: 'te read',
@@ -112,8 +112,8 @@ describe('a pi tool call in the timeline', () => {
   });
 
   it('reads a bash call as a command rather than an anonymous tool row', () => {
-    // droid called it Execute; pi calls it bash. The `$` prompt is the whole
-    // difference between a shell line and a generic row.
+    // The `$` prompt is the whole difference between a shell line and a
+    // generic row.
     const html = toolCall('bash', { args: { command: 'npm test' } });
     expect(html).toContain('npm test');
     expect(html).toContain('$');
@@ -142,7 +142,6 @@ describe('what a turn cost', () => {
     cacheCreationTokens: 0,
     cacheReadTokens: 800,
     thinkingTokens: 0,
-    credits: 0,
     cost: 0,
     reported: true,
     ...over,
@@ -151,7 +150,6 @@ describe('what a turn cost', () => {
   it('is stated in dollars, which is what a pi turn reports', () => {
     const html = render(event('agent_end', { usage: usage({ cost: 0.42 }) }));
     expect(html).toContain('$0.42');
-    expect(html).not.toContain('credits');
   });
 
   it('shows sub-cent turns at a precision that is not just $0.00', () => {
@@ -159,10 +157,8 @@ describe('what a turn cost', () => {
     expect(html).toContain('$0.0031');
   });
 
-  // Historical rows from the droid transport carry credits and no cost. Printing
-  // "$0" for them would state a price that was never measured.
   it('omits the figure for a turn that reported no cost', () => {
-    const html = render(event('agent_end', { usage: usage({ credits: 42 }) }));
+    const html = render(event('agent_end', { usage: usage({ cost: 0 }) }));
     expect(html).toContain('tokens');
     expect(html).not.toContain('$');
   });
@@ -206,7 +202,6 @@ describe('the entry switch', () => {
                 cacheCreationTokens: 0,
                 cacheReadTokens: 0,
                 thinkingTokens: 0,
-                credits: 0,
                 cost: 0,
                 reported: true,
               },

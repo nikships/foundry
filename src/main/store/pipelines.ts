@@ -96,10 +96,10 @@ export class PipelineStore {
       () => BUILTIN_PIPELINES.map((p) => ({ ...p })),
       (raw) => {
         const list = Array.isArray(raw) ? (raw as PipelineDef[]) : [];
-        // The flag says where a pipeline came from, so an id this build no
-        // longer ships (or never shipped) cannot legitimately carry it. A
-        // retired builtin becomes an ordinary deletable pipeline rather than
-        // one migration would resurrect; its content is user state and stays.
+        // The flag says where a pipeline came from, so an id this build does
+        // not ship cannot legitimately carry it. A leftover builtin becomes
+        // an ordinary deletable pipeline rather than one a restore of missing
+        // shipped ids would fight over; its content is user state and stays.
         const shipped = new Set(BUILTIN_PIPELINES.map((p) => p.id));
         const byId = new Map(
           list.map((p) => [p.id, shipped.has(p.id) ? p : { ...p, builtin: false }]),

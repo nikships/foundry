@@ -24,7 +24,7 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 │   ├── readiness/             ← agent-readiness evaluation and its marker
 │   ├── smith/                 ← Smith's socket, validation, approval queue
 │   ├── trace/                 ← Tracer: sole SQLite writer (WAL)
-│   ├── store/                 ← JSON config (JsonStore, builtins, migrations)
+│   ├── store/                 ← JSON config (JsonStore, builtins)
 │   ├── system/                ← PATH resolution, process control, doctor
 │   ├── ipc/                   ← domain routers, named channel seam
 │   └── updater.ts             ← electron-updater

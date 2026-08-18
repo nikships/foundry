@@ -87,9 +87,8 @@ describe('the agent runtime under a packaged launch', () => {
   });
 
   it('depends on no agent runtime but pi', () => {
-    // The acceptance criterion for the migration, asserted where it cannot rot:
-    // a second runtime reintroduced as a dependency fails here rather than in
-    // review.
+    // A second runtime reintroduced as a dependency fails here rather than
+    // in review.
     const pkg = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8')) as {
       dependencies: Record<string, string>;
       devDependencies: Record<string, string>;

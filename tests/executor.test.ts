@@ -2323,17 +2323,15 @@ describe('rewind and compaction coexist (VAL-CROSS-009)', () => {
     expect(byId.size).toBe(replayed.length);
 
     // One agent_sessions row for the agent, re-persisted by both the rewind and
-    // the compaction rather than duplicated by either. The column is still
-    // named `droid_session_id`: renaming it would rewrite every trace already
-    // on disk, so the neutral name lives on the reader instead.
+    // the compaction rather than duplicated by either.
     const sessions = h.db
       .prepare(
-        'SELECT agent, droid_session_id FROM agent_sessions WHERE run_id = ? ORDER BY last_used_at',
+        'SELECT agent, agent_session_id FROM agent_sessions WHERE run_id = ? ORDER BY last_used_at',
       )
-      .all(runId) as { agent: string; droid_session_id: string }[];
+      .all(runId) as { agent: string; agent_session_id: string }[];
     expect(sessions.some((s) => s.agent === 'builder')).toBe(true);
     const builder = sessions.find((s) => s.agent === 'builder')!;
-    expect(builder.droid_session_id).toBeTruthy();
+    expect(builder.agent_session_id).toBeTruthy();
 
     expect(h.tracer.run(runId)!.outcomeDetail).toBeTruthy();
   });

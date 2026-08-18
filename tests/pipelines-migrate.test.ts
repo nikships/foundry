@@ -1,9 +1,7 @@
 /**
- * The shipped pipeline set was replaced wholesale (five PR-ending chains), so
- * migration has two jobs on a file written by an older build: seed the new
- * builtins without touching user work, and strip `builtin` from ids this build
- * no longer ships so the leftovers are ordinary, deletable pipelines instead of
- * entries a reset or a missing-builtin restore would fight over.
+ * A pipelines file is user state plus shipped seeds. Loading it must restore
+ * any missing builtin, leave user work alone, and strip `builtin` from an id
+ * this build does not ship so a leftover cannot be resurrected by a reset.
  */
 
 import { rmSync } from 'node:fs';
@@ -25,8 +23,8 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-/** The retired `plan-build` chain as an older build wrote it. */
-const retired = (): PipelineDef => ({
+/** A leftover pipeline whose id this build does not ship. */
+const leftover = (): PipelineDef => ({
   id: 'plan-build',
   name: 'Plan → Build',
   description: 'Spec first, then implement it, with each step committed separately.',
@@ -65,9 +63,9 @@ function writeStored(list: PipelineDef[]): void {
   new JsonStore<PipelineDef[]>(join(dir, 'pipelines.json'), () => []).write(list);
 }
 
-describe('loading a pipelines file from before the PR-chain revamp', () => {
-  it('seeds every new shipped chain', () => {
-    writeStored([retired(), userPipeline()]);
+describe('loading a pipelines file', () => {
+  it('seeds every shipped chain that is missing', () => {
+    writeStored([leftover(), userPipeline()]);
     const store = new PipelineStore(dir);
     const ids = new Set(store.list().map((p) => p.id));
     for (const shipped of BUILTIN_PIPELINES) {
@@ -75,14 +73,13 @@ describe('loading a pipelines file from before the PR-chain revamp', () => {
     }
   });
 
-  it('keeps the retired chain but strips builtin, so the user can delete it', () => {
-    writeStored([retired(), userPipeline()]);
+  it('keeps an unshipped leftover but strips builtin, so the user can delete it', () => {
+    writeStored([leftover(), userPipeline()]);
     const store = new PipelineStore(dir);
 
     const old = store.list().find((p) => p.id === 'plan-build');
     expect(old).toBeDefined();
     expect(old!.builtin).toBe(false);
-    // Deletion sticks: nothing restores an id this build does not ship.
     store.remove('plan-build');
     expect(new PipelineStore(dir).list().some((p) => p.id === 'plan-build')).toBe(false);
   });

@@ -79,9 +79,6 @@ export default function TranscriptLane({
     : '';
 
   const session = sessions.find((s) => s.agent === phase.owner);
-  // The transport that answered, which for a run recorded before the migration
-  // is not pi. Showing the mode the row carries is more honest than relabelling
-  // an old run as something it never was.
   const transport = session?.mode ?? 'pi';
   const model = modelLabel(session?.model);
   const elapsed = phaseDuration(phase, now);

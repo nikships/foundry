@@ -523,11 +523,6 @@ export class Tracer {
 
   // ── agent sessions ────────────────────────────────────────────────────────
 
-  /**
-   * `droid_session_id` is the storage column, kept so rows written before the
-   * migration still read. Callers name the neutral `agentSessionId`: what a
-   * session id means has not changed, only whose it is.
-   */
   upsertAgentSession(input: {
     runId: string;
     agent: string;
@@ -539,11 +534,11 @@ export class Tracer {
   }): void {
     this.db
       .prepare(
-        `INSERT INTO agent_sessions (run_id, agent, model, reasoning_effort, droid_session_id, mode, color, created_at, last_used_at)
+        `INSERT INTO agent_sessions (run_id, agent, model, reasoning_effort, agent_session_id, mode, color, created_at, last_used_at)
          VALUES (?,?,?,?,?,?,?,?,?)
          ON CONFLICT(run_id, agent) DO UPDATE SET
            model = excluded.model, reasoning_effort = excluded.reasoning_effort,
-           droid_session_id = excluded.droid_session_id, mode = excluded.mode,
+           agent_session_id = excluded.agent_session_id, mode = excluded.mode,
            last_used_at = excluded.last_used_at`,
       )
       .run(
@@ -585,8 +580,8 @@ export class Tracer {
       agent: r.agent,
       model: r.model,
       reasoningEffort: r.reasoning_effort,
-      agentSessionId: r.droid_session_id,
-      mode: (r.mode as RunMode) ?? 'rpc',
+      agentSessionId: r.agent_session_id,
+      mode: (r.mode as RunMode) ?? 'pi',
       color: r.color,
       contextTokens: r.context_tokens ?? 0,
       contextWindow: r.context_window ?? 0,
@@ -607,9 +602,7 @@ export class Tracer {
    */
   recordProcess(input: {
     runId: string | null;
-    // `droid` is historical: no current writer emits it, but rows carrying it
-    // are still read back by the kill path and the relaunch sweep.
-    kind: 'engine' | 'droid' | 'code' | 'bridge';
+    kind: 'engine' | 'code' | 'bridge';
     name: string;
     pid: number;
     command: string;
@@ -808,7 +801,7 @@ interface RawEvent {
   tokens: number;
   started_at: string;
   ended_at: string | null;
-  change_id: number | null;
+  change_id: number;
 }
 
 interface RawEnvelope {
@@ -839,7 +832,7 @@ interface RawAgentSession {
   agent: string;
   model: string;
   reasoning_effort: string;
-  droid_session_id: string | null;
+  agent_session_id: string | null;
   mode: string | null;
   color: string;
   context_tokens: number;
@@ -891,7 +884,7 @@ function mapRun(r: RawRun): RunRow {
     prUrl: r.pr_url ?? null,
     merged: !!r.merged,
     archived: !!r.archived,
-    mode: (r.mode as RunMode) ?? 'rpc',
+    mode: (r.mode as RunMode) ?? 'pi',
     startedAt: r.started_at,
     endedAt: r.ended_at,
     totalTokens: r.total_tokens,
@@ -919,9 +912,7 @@ function mapPhase(r: RawPhase): PhaseRow {
 function mapEvent(r: RawEvent): EventRow {
   return {
     rowid: r.rowid,
-    // Rows written before revisions existed were backfilled from rowid at open,
-    // so the fallback only guards a row inserted by a crashed older build.
-    changeId: r.change_id ?? r.rowid,
+    changeId: r.change_id,
     eventId: r.event_id,
     runId: r.run_id,
     phaseId: r.phase_id,

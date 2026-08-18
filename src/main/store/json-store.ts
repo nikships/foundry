@@ -13,7 +13,7 @@ export class JsonStore<T> {
   constructor(
     private readonly path: string,
     private readonly fallback: () => T,
-    /** Applied on read, so a file written by an older build still loads. */
+    /** Applied on read so a hand-edited or incomplete file still loads. */
     private readonly migrate: (raw: unknown) => T = (raw) => raw as T,
   ) {}
 

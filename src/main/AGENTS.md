@@ -71,7 +71,7 @@ Main is minified via `esbuild` in `electron.vite.config.ts` (`externalizeDepsPlu
 | `bridge/`    | Vendored CLIProxyAPI: provider OAuth → local endpoint     |
 | `smith/`     | Entity-smith socket, validation, proposal queue           |
 | `ipc/`       | Domain routers, named channel seam                        |
-| `store/`     | JSON config, migrations, builtin restoration              |
+| `store/`     | JSON config, builtin restoration                          |
 | `system/`    | PATH, process control, doctor, notifications, dock badge  |
 | `trace/`     | SQLite WAL writer (`Tracer`)                              |
 

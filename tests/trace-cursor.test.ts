@@ -111,40 +111,19 @@ describe('the change_id cursor', () => {
   });
 });
 
-describe('historical run modes', () => {
-  it('reads back a run recorded by a transport this build no longer has', () => {
-    // `daemon`, `rpc`, and `oneshot` rows predate the migration to pi. Narrowing
-    // `RunMode` to `pi` would make every run already in the trace unreadable.
-    for (const mode of ['daemon', 'rpc', 'oneshot'] as const) {
-      const id = `run_${mode}`;
-      tracer.startRun({
-        runId: id,
-        projectId: 'proj',
-        pipeline,
-        request: 'do it',
-        engineer: 'tester',
-        worktreePath: null,
-        branch: null,
-        baseRef: 'main',
-        mode,
-      });
-      expect(tracer.run(id)!.mode).toBe(mode);
-    }
-  });
-
-  it('reads back an agent session recorded against the old transport', () => {
+describe('agent sessions', () => {
+  it('reads back the session id under the neutral column name', () => {
     tracer.upsertAgentSession({
       runId,
       agent: 'builder',
       model: 'inherit',
       reasoningEffort: 'medium',
-      agentSessionId: 'legacy-session',
-      mode: 'daemon',
+      agentSessionId: 'sess-1',
+      mode: 'pi',
       color: '#fff',
     });
     const [session] = tracer.agentSessions(runId);
-    expect(session!.mode).toBe('daemon');
-    // The storage column is still `droid_session_id`; readers see a neutral name.
-    expect(session!.agentSessionId).toBe('legacy-session');
+    expect(session!.mode).toBe('pi');
+    expect(session!.agentSessionId).toBe('sess-1');
   });
 });

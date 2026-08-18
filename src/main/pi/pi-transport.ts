@@ -1,18 +1,15 @@
 /**
  * `AgentTransport` over an in-process Pi agent session.
  *
- * The agent runs inside this process rather than behind a daemon or a child,
- * which is the point of the migration: no wire protocol, no second permission
+ * The agent runs inside this process: no wire protocol, no second permission
  * model, no MCP server to stand up for two tools. Everything below is the
  * translation between what `AgentSession` asks for and what Pi offers, kept in
  * one file so nothing above it names a vendor.
  *
- * Two things are deliberately different from the daemon transport:
- * - Compaction happens in place. Pi compacts the same session rather than
- *   handing back a successor, so there is nothing to swap or re-persist.
- * - Rewind is a leaf move in the session tree, not a file restore. Pi keeps no
- *   file snapshots, so the worktree half is `boundary.restoreToPhaseStart`'s
- *   job (it already was, for everything the daemon could not restore either).
+ * Compaction happens in place. Pi compacts the same session rather than
+ * handing back a successor, so there is nothing to swap or re-persist.
+ * Rewind is a leaf move in the session tree, not a file restore. Pi keeps no
+ * file snapshots, so the worktree half is `boundary.restoreToPhaseStart`'s job.
  */
 
 import {

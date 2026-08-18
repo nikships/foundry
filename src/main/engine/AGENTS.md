@@ -6,7 +6,7 @@ Deterministic runner that owns phase sequencing, retries, write boundaries, gate
 
 - Phases: `agent` (LLM through the `pi/` agent transport), `code` (shell `CommandSpec`), `engineer` (code + gates). Registry owns phase/gate definitions; `executor.ts` + `runners/*` drive execution.
 - Worktree: `.foundry-worktrees/<runId>` on `foundry/<runId>`; `.foundry-handoff/` JSON files pass envelopes between phases. `worktree.ts` owns create/merge/discard.
-- Envelopes: Zod schemas in `envelopes.ts`; `jsonSchemaFor()` exposes defaults as required and emits no `$schema` dialect (both agent runtimes compile the schema themselves and neither wants a dialect declared). Example, output constraint, and parser come from the same definition.
+- Envelopes: Zod schemas in `envelopes.ts`; `jsonSchemaFor()` exposes defaults as required and emits no `$schema` dialect (pi compiles the schema itself and does not want a dialect declared). Example, output constraint, and parser come from the same definition.
 - Gates: return evidence (`GateCheck`), not a verdict; unknown gate → fail (`gates.ts`).
 - Context: `phase-context.ts` / `prompts.ts` render prompts from templates + `request` / `envelope:<phase>` / `handoff_files` / `feedback`.
 

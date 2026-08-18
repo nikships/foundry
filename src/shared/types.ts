@@ -8,14 +8,8 @@
 export type PhaseKind = 'agent' | 'code' | 'engineer';
 export type PhaseStatus = 'queued' | 'running' | 'success' | 'fail' | 'skipped';
 export type RunStatus = 'running' | 'accepted' | 'rejected' | 'failed' | 'killed';
-/**
- * Which agent transport answered for a run.
- *
- * New runs are always `pi`: agent phases run on the in-process Pi runtime.
- * `daemon`, `rpc`, and `oneshot` are historical — rows written by earlier
- * builds still carry them, so the union is only ever widened, never narrowed.
- */
-export type RunMode = 'pi' | 'daemon' | 'rpc' | 'oneshot';
+/** Which agent transport answered for a run. Agent phases run in-process on pi. */
+export type RunMode = 'pi';
 export type ReasoningEffort = 'off' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export type EnvelopeKind =
   'generic' | 'brief' | 'plan' | 'build' | 'scout' | 'review' | 'document' | 'pr';
@@ -181,7 +175,7 @@ export interface AgentDef {
   /**
    * When true, a run uses Settings → Agent defaults for both model and
    * reasoning. Stored `model` / `reasoningEffort` remain the fallback when this
-   * is off. Absent on rosters written before the checkbox existed.
+   * is off. Absent means off.
    */
   inheritDefaults?: boolean;
   systemPrompt: string;
@@ -663,10 +657,7 @@ export interface AgentSessionRow {
   agent: string;
   model: string;
   reasoningEffort: string;
-  /**
-   * The agent runtime's own session id. Stored in the `droid_session_id`
-   * column, which predates the migration and is kept so old rows still read.
-   */
+  /** The agent runtime's own session id. */
   agentSessionId: string | null;
   mode: RunMode;
   color: string;
@@ -699,12 +690,6 @@ export interface UsageBreakdown {
   cacheCreationTokens: number;
   cacheReadTokens: number;
   thinkingTokens: number;
-  /**
-   * Factory credits, which only the droid transport ever reported. Kept so the
-   * cost views can still read historical `agent_end` rows; a Pi turn reports
-   * `cost` in dollars instead and leaves this at zero.
-   */
-  credits: number;
   /** What the turn cost in USD, as the provider's own rate card prices it. */
   cost: number;
   /** Providers that omit usage get an honest gap, not a zero. */

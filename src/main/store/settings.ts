@@ -19,25 +19,6 @@ const COMPACTION_BAND = [0.5, 0.95] as const;
 /** Mission-bounded band for the app-owned Bridge; the manager scans up in it. */
 const BRIDGE_PORT_BAND = [BRIDGE_PORT_MIN, BRIDGE_PORT_MAX] as const;
 
-/**
- * Keys earlier builds stored that this one no longer honours.
- *
- * Deleted on read rather than ignored: the schema is strict on patch, so a
- * stale key that survived into memory would fail the operator's next save on a
- * value they never set — and `factoryApiKey` in particular must leave the file
- * rather than sit there as a credential nothing reads.
- */
-const RETIRED_KEYS = [
-  'clis',
-  'defaultCli',
-  'detectCli',
-  'daemonPort',
-  'factoryApiKey',
-  'mcpServers',
-  'droidPath',
-  'defaultAutonomy',
-] as const;
-
 export const appSettingsSchema = z.object({
   detectModel: z.string().min(1),
   readinessModel: z.string().min(1),
@@ -100,22 +81,21 @@ export function defaultSettings(): AppSettings {
 }
 
 /**
- * Reads a stored file into the current shape.
- *
- * Two jobs, and the second is why this runs on every read rather than once: a
- * file written before the migration to pi still carries CLI paths, a daemon
- * port, and a Factory API key. Those keys are deleted here, so they are gone
- * from memory immediately and gone from disk on the next write, rather than
- * lingering as a credential nothing reads and the strict patch schema rejects.
+ * Reads a stored file into the current shape. Unknown keys are dropped so a
+ * hand-edited file cannot smuggle fields the schema never declared; missing
+ * or out-of-band values fall back to the shipped defaults rather than
+ * leaving the app with no setting at all.
  */
 export function migrate(raw: unknown): AppSettings {
   const base = defaultSettings();
-  const stored = (raw ?? {}) as Partial<AppSettings>;
-  const merged = { ...base, ...stored } as AppSettings & Record<string, unknown>;
-  for (const key of RETIRED_KEYS) delete merged[key];
+  const stored = raw && typeof raw === 'object' ? (raw as Partial<AppSettings>) : {};
+  const merged = { ...base };
+  for (const key of Object.keys(base) as (keyof AppSettings)[]) {
+    if (Object.hasOwn(stored, key) && stored[key] !== undefined) {
+      Object.assign(merged, { [key]: stored[key] });
+    }
+  }
   if (!merged.detectModel) merged.detectModel = base.detectModel;
-  // Pre-field files and hand-edits that leave a garbage writer name fall back
-  // to the shipped builtin rather than leaving the app with no PR writer.
   if (typeof merged.prAgent !== 'string' || !/^[a-z][a-z0-9_-]*$/.test(merged.prAgent)) {
     merged.prAgent = DEFAULT_PR_AGENT;
   }
@@ -137,13 +117,9 @@ export function migrate(raw: unknown): AppSettings {
     base.compactionThreshold,
     COMPACTION_BAND,
   );
-  // Same read-time clamp as the threshold: a hand-edited negative must not
-  // disable validation by leaving the app with no integer at all.
   merged.rewindAfterCorrections = Math.round(
     clamp(merged.rewindAfterCorrections, base.rewindAfterCorrections, [0, 20]),
   );
-  // Out-of-band ports (hand-edited or pre-field files) clamp into the mission
-  // range rather than leaving the app with no Bridge port at all.
   merged.bridgePort = Math.round(clamp(merged.bridgePort, base.bridgePort, BRIDGE_PORT_BAND));
   return merged;
 }

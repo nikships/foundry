@@ -26,34 +26,21 @@ function args(event: EventRow): Record<string, unknown> {
  * The kind of work a tool call is, for display formatting.
  *
  * `payload.kind` is authoritative — pi's event mapper classifies every call it
- * emits. The name heuristics below only run for a row that predates that field,
- * and they cover pi's tool set (`bash`, `read`, `edit`, `write`, `grep`, `find`,
- * `ls`, `report_progress`, `read_phase_context`, `submit_envelope`) plus the
- * names historical droid rows recorded. Anything else returns `other`, which
- * renders the tool's own name rather than hiding the call.
+ * emits. The name heuristics below only run when that field is missing, and
+ * they cover pi's tool set. Anything else returns `other`, which renders the
+ * tool's own name rather than hiding the call.
  */
 function inferKind(event: EventRow): string {
   const kind = str(event.payload.kind);
   if (kind) return kind;
   if (Array.isArray(event.payload.argv)) return 'command';
   const head = event.name.split(':', 1)[0]!.toLowerCase();
-  if (head === 'bash' || head === 'execute') return 'command';
+  if (head === 'bash') return 'command';
   if (head === 'read') return 'read';
-  if (
-    head === 'edit' ||
-    head === 'create' ||
-    head === 'write' ||
-    head === 'multiedit' ||
-    head === 'applypatch'
-  )
-    return 'edit';
-  if (head === 'grep' || head === 'find' || head === 'glob' || head === 'ls' || head === 'search')
-    return 'search';
+  if (head === 'edit' || head === 'write') return 'edit';
+  if (head === 'grep' || head === 'find' || head === 'ls') return 'search';
   if (head === 'report_progress') return 'progress';
   if (head === 'submit_envelope' || head === 'read_phase_context') return 'envelope';
-  if (head === 'todowrite' || head === 'todo') return 'todo';
-  if (head === 'task' || head === 'subagent') return 'task';
-  if (head === 'askuser' || head === 'ask') return 'ask';
   return 'other';
 }
 
@@ -124,40 +111,6 @@ interface DiffLine {
   text: string;
 }
 
-function parseJsonDiffLines(rawResult: string): DiffLine[] | null {
-  if (!rawResult || !rawResult.trim().startsWith('{')) return null;
-  try {
-    const parsed = JSON.parse(rawResult) as {
-      diffLines?: Array<{
-        type?: string;
-        content?: string;
-      }>;
-    };
-    if (parsed && Array.isArray(parsed.diffLines)) {
-      const out: DiffLine[] = [];
-      for (const item of parsed.diffLines) {
-        const t = String(item.type ?? '').toLowerCase();
-        const diffType: DiffLine['type'] =
-          t === 'added' || t === 'add'
-            ? 'add'
-            : t === 'removed' || t === 'deleted' || t === 'del'
-              ? 'del'
-              : t === 'hunk'
-                ? 'hunk'
-                : 'ctx';
-        out.push({
-          type: diffType,
-          text: String(item.content ?? ''),
-        });
-      }
-      return out;
-    }
-  } catch {
-    // Ignore JSON parse errors
-  }
-  return null;
-}
-
 function computeDiff(
   oldStr?: string,
   newStr?: string,
@@ -165,18 +118,6 @@ function computeDiff(
   rawResult?: string,
 ): { lines: DiffLine[]; addCount: number; delCount: number } {
   let lines: DiffLine[] = [];
-
-  // Rows from before the migration carry structured diffLines JSON in the raw
-  // tool result; a current row does not, and falls through to the text parse.
-  if (rawResult) {
-    const jsonLines = parseJsonDiffLines(rawResult);
-    if (jsonLines) {
-      lines = jsonLines;
-      const addCount = lines.filter((l) => l.type === 'add').length;
-      const delCount = lines.filter((l) => l.type === 'del').length;
-      return { lines, addCount, delCount };
-    }
-  }
 
   if (oldStr !== undefined || newStr !== undefined) {
     const oldLines = (oldStr ?? '').split('\n');

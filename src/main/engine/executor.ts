@@ -116,9 +116,6 @@ export class Executor {
 
   constructor(private readonly deps: ExecutorDeps) {
     this.cwd = deps.project.path;
-    // Agent phases run on the in-process agent runtime; the field stays so the
-    // run row keeps saying which transport answered rather than leaving the
-    // reader to assume.
     this.mode = 'pi';
     this.runners = {
       agent: new AgentPhaseRunner({
