@@ -58,7 +58,7 @@ interface MenuPos {
 
 const MENU_GAP = 4;
 const VIEWPORT_PAD = 8;
-const MIN_MENU_WIDTH = 180;
+const MIN_MENU_WIDTH = 320;
 
 /**
  * Themed listbox that replaces native `<select>`. The closed face reuses the
@@ -110,7 +110,7 @@ export function Dropdown({
     const openUp = spaceBelow < 200 && spaceAbove > spaceBelow;
     const maxHeight = Math.max(
       140,
-      Math.min(320, openUp ? spaceAbove - MENU_GAP : spaceBelow - MENU_GAP),
+      Math.min(480, openUp ? spaceAbove - MENU_GAP : spaceBelow - MENU_GAP),
     );
     const width = Math.min(Math.max(rect.width, MIN_MENU_WIDTH), viewportW - VIEWPORT_PAD * 2);
     let left = rect.left;
