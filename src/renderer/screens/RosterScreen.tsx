@@ -13,7 +13,7 @@ import { useApp } from '../stores/app.js';
 import { addField, validateCustomFields, shadowedLibraryFields } from '../custom-fields.js';
 import AgentAvatar from '../components/AgentAvatar.js';
 import AgentIconPicker from '../components/AgentIconPicker.js';
-import { CliIcon } from '../components/BrandIcon.js';
+import { ProviderIcon } from '../components/BrandIcon.js';
 import ModelPicker from '../components/ModelPicker.js';
 import BoundaryEditor from '../components/BoundaryEditor.js';
 import CustomFieldsEditor from '../components/CustomFieldsEditor.js';
@@ -25,10 +25,23 @@ import { defaultEmblemFor, isDefaultMark, markLabel } from '../data/emblems.js';
 import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
 import { useTablistNav } from '../hooks/useTablistNav.js';
+import { modelLabel } from '../format.js';
 import { draftSyncAction } from './roster-draft.js';
 import styles from './RosterScreen.module.css';
 
 const COLORS = ['#4fa8b8', '#9b7ede', '#d19a3d', '#3cb87a', '#e0605f', '#5b8fd9'];
+
+/**
+ * The brand behind a stored model id, for the roster's badge.
+ *
+ * Read off the catalog rather than parsed out of the id: `bridge-claude/…` and
+ * `anthropic/…` are the same brand, and only the catalog knows that. An id no
+ * connected provider offers has no mark, which is the same honest gap a missing
+ * logo leaves everywhere else.
+ */
+function providerFor(model: string, models: ModelInfo[]): string {
+  return models.find((m) => m.id === model)?.provider ?? '';
+}
 
 export default function RosterScreen({
   onOpenDesignTab,
@@ -159,10 +172,9 @@ export default function RosterScreen({
     };
   }, [draft]);
 
-  const draftCli = draft?.cli ?? 'droid';
   useEffect(() => {
-    void api.catalog.models(draftCli).then(setModels);
-  }, [draftCli]);
+    void api.catalog.agentModels().then(setModels);
+  }, []);
 
   // Live auto-save: every valid edit persists shortly after typing stops.
   // Visual truth is the source of truth. `flush` is called on switch/rename,
@@ -260,7 +272,6 @@ export default function RosterScreen({
     const fresh: AgentDef = {
       name: `agent-${n}`,
       purpose: 'Describe what this agent is for in one line.',
-      cli: settings?.defaultCli ?? 'droid',
       model: 'inherit',
       reasoningEffort: settings?.defaultReasoningEffort ?? 'medium',
       inheritDefaults: true,
@@ -318,10 +329,10 @@ export default function RosterScreen({
                   <span className={styles.rosterCellWho}>
                     <span className={styles.rosterCellName}>{agent.name}</span>
                     <span className={styles.rosterCellRole}>{agent.purpose}</span>
-                    <span className={styles.rosterCellCli}>
+                    <span className={styles.rosterCellModel}>
                       {isActive && <span className={styles.rosterCellDot} aria-hidden />}
-                      <CliIcon vendor={agent.cli ?? 'droid'} size={11} />
-                      {agent.cli ?? 'droid'}
+                      <ProviderIcon provider={providerFor(agent.model, models)} size={11} />
+                      {agent.model === 'inherit' ? 'inherit' : modelLabel(agent.model)}
                     </span>
                   </span>
                   {isActive && <span className={styles.rosterCellUnderline} aria-hidden />}
@@ -376,8 +387,9 @@ export default function RosterScreen({
                         {draft.name}
                       </h1>
                       <span className={styles.rosterHeadMeta}>
-                        <CliIcon vendor={draftCli} size={13} />
-                        {draftCli} · {draft.envelope}
+                        <ProviderIcon provider={providerFor(draft.model, models)} size={13} />
+                        {draft.model === 'inherit' ? 'inherit' : modelLabel(draft.model)} ·{' '}
+                        {draft.envelope}
                       </span>
                     </div>
                     <p className={styles.rosterHeadSub}>
@@ -607,14 +619,14 @@ export default function RosterScreen({
                       models={models}
                       allowInherit
                       disabled={!!draft.inheritDefaults}
-                      emptyHint="No models available from Factory Droid. Check Settings, or use Inherit."
+                      emptyHint="No models are reachable. Connect a provider under Settings → Providers, or use Inherit."
                       onChange={(value) => setDraft({ ...draft, model: value })}
-                      onRefresh={() => void api.catalog.models(draftCli, true).then(setModels)}
+                      onRefresh={() => void api.catalog.agentModels().then(setModels)}
                     />
                     <span className={styles.hint}>
                       {draft.inheritDefaults
                         ? 'Following Settings → Agent defaults.'
-                        : '“Inherit” uses Factory Droid’s default.'}
+                        : '“Inherit” uses the default model from Settings.'}
                     </span>
                   </Field>
                   <Field label="Reasoning effort">

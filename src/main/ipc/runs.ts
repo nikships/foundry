@@ -12,12 +12,10 @@ import {
 import {
   applyCommandDrifts,
   DETECT_PROMPT,
-  DETECT_TOOLS,
   parseCommandDrift,
   parseDetectReply,
 } from '../engine/detect.js';
 import { ensureMissingCommands, missingCommandRefs, preflightForRun } from '../engine/preflight.js';
-import { OneShotClient } from '../droid/oneshot.js';
 import { resolveRef } from '../engine/git.js';
 import { rebaseOntoBase, repairAgent } from '../engine/repair.js';
 import * as worktreeLib from '../engine/worktree.js';
@@ -36,7 +34,11 @@ type Ctx = Pick<
   | 'settings'
   | 'envelopes'
   | 'broadcast'
+  | 'oneShot'
 >;
+
+/** Matches `DetectSession`: the same question deserves the same patience. */
+const DETECT_FILL_TIMEOUT_MS = 300_000;
 
 const emptyDetail: RunDetail = {
   run: null,
@@ -80,22 +82,18 @@ export function register(ctx: Ctx, handle: Handle): void {
         useAgent: !scaffold,
         detectWithAgent: async () => {
           const settings = ctx.settings.get();
-          // Start-time fill honours the operator's detection choice, so the
-          // CLI that answers here is the one the Project pane says it will be.
-          const vendor =
-            settings.detectCli === 'default' ? settings.defaultCli : settings.detectCli;
-          const cli = settings.clis[vendor];
+          // Start-time fill honours the operator's detection model, so what
+          // answers here is what the Project pane says will answer.
           const model = settings.detectModel || 'inherit';
-          const client = new OneShotClient({
-            vendor,
-            cliPath: cli.path,
-            extraArgs: cli.extraArgs,
+          // Same read-only session detection itself opens: this runs against
+          // the operator's checkout, and nothing would revert a write there.
+          const session = ctx.oneShot({
             cwd: projectPath,
-            restrictTools: DETECT_TOOLS,
+            access: 'read',
             model,
             reasoningEffort: model === 'inherit' ? 'off' : settings.defaultReasoningEffort,
           });
-          const turn = await client.send(DETECT_PROMPT, 300_000);
+          const turn = await session.send(DETECT_PROMPT, DETECT_FILL_TIMEOUT_MS);
           return parseDetectReply(turn.text).commands;
         },
         save: (next) => {
@@ -251,7 +249,7 @@ export function register(ctx: Ctx, handle: Handle): void {
       branch: run.branch,
       ontoSha,
       ontoLabel: baseRef,
-      agent: repairAgent(settings, run.worktreePath),
+      agent: repairAgent(ctx.oneShot, settings, run.worktreePath),
       timeoutMs: settings.turnTimeoutMs,
     });
     tracer.event({ runId, type: 'log', name: 'agent fix', payload: { detail: outcome.detail } });

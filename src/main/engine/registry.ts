@@ -25,7 +25,7 @@ import { openDb, projectDbPath, projectRunsDir } from '../trace/db.js';
 import { Tracer } from '../trace/tracer.js';
 import { Executor } from './executor.js';
 import { commandMatches, isAlive, killRun } from '../system/procs.js';
-import { breakdownFile, type CapturedBreakdown, type InterruptRequest } from '../droid/agent.js';
+import { breakdownFile, type CapturedBreakdown, type InterruptRequest } from '../pi/session.js';
 
 export interface RegistryDeps {
   appSupportDir: string;
@@ -134,7 +134,6 @@ export class RunRegistry extends EventEmitter {
 
     const executor = new Executor({
       tracer,
-      clis: settings.clis,
       defaultModel: settings.defaultModel,
       defaultReasoningEffort: settings.defaultReasoningEffort,
       turnTimeoutMs: settings.turnTimeoutMs,
@@ -142,8 +141,7 @@ export class RunRegistry extends EventEmitter {
       gateRetries: settings.gateRetries,
       compactionThreshold: settings.compactionThreshold,
       rewindAfterCorrections: settings.rewindAfterCorrections,
-      daemonPort: settings.daemonPort,
-      mcpServers: settings.mcpServers ?? [],
+      supportDir: this.deps.appSupportDir,
       agents: input.agents,
       envelopeDefs: input.envelopeDefs,
       project: input.project,

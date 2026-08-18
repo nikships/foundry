@@ -1,5 +1,5 @@
 /**
- * The Smith proposal preview card. A `foundry-cli create|edit` blocks its droid
+ * The Smith proposal preview card. A `foundry-cli create|edit` blocks its agent
  * until a human decides here: the card shows the entity kind, whether approving
  * creates or overwrites, the full definition, any non-blocking validation
  * warnings, and Approve / Reject. A reject simply unblocks the CLI — the user
@@ -81,7 +81,7 @@ export default function SmithProposalCard({
         // A refused save leaves the proposal pending: surface why, stay open.
         setError(
           approved
-            ? 'The store refused this entity. droid can revise and re-propose, or you can reject.'
+            ? 'The store refused this entity. The agent can revise and re-propose, or you can reject.'
             : 'Could not send that answer. Try again.',
         );
         setSending(false);

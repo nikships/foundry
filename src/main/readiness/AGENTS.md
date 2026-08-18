@@ -11,7 +11,7 @@ zero-interrupt policy.
 - `session.ts` / `sessions.ts` — onboarding state machine + live registry.
 - `worktree.ts` — isolated `foundry-ready/<id>` worktree via `engine/git.ts`.
 - `merge.ts` — PR merge polling through the operator's `gh`.
-- `ask-user.ts` — parks `droid.ask_user` for a real UI; pipeline policy is untouched.
+- `ask-user.ts` — parks an agent's question for a real UI; pipeline policy is untouched.
 - `prompt.ts` / `remediator.ts` — "Make it ready" agent turn.
 
 ## Invariants

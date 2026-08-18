@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { DroidGlyph } from '../../components/BrandIcon.js';
+import { FoundryGlyph } from '../../components/BrandIcon.js';
 import { OnboardingProvider } from './OnboardingContext.js';
 import { Stepper } from './shared.js';
 import { useOnboarding } from './OnboardingContext.js';
@@ -8,7 +8,7 @@ import './onboarding.css';
 import WelcomeScreen from './WelcomeScreen.js';
 import FactoryScreen from './FactoryScreen.js';
 import RosterScreen from './RosterScreen.js';
-import CliScreen from './CliScreen.js';
+import ProvidersScreen from './ProvidersScreen.js';
 import DoctorScreen from './DoctorScreen.js';
 import ProjectScreen from './ProjectScreen.js';
 
@@ -16,7 +16,7 @@ const STEP_COMPONENTS: Record<string, React.ComponentType> = {
   welcome: WelcomeScreen,
   factory: FactoryScreen,
   roster: RosterScreen,
-  clis: CliScreen,
+  providers: ProvidersScreen,
   doctor: DoctorScreen,
   project: ProjectScreen,
 };
@@ -31,7 +31,7 @@ function OnboardingShellInner(): React.JSX.Element {
       </div>
       <header className="ob-top">
         <div className="ob-brand" aria-hidden>
-          <DroidGlyph size={13} />
+          <FoundryGlyph size={13} />
           <span>Foundry</span>
         </div>
         <Stepper

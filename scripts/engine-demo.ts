@@ -4,7 +4,7 @@
  *
  *   bun run engine:demo              two code phases in a scratch repo
  *   bun run engine:demo --sweep      simulate a crash, then sweep
- *   bun run engine:demo --agent      real droid agent phase (needs auth)
+ *   bun run engine:demo --agent      real pi agent phase (needs a provider)
  */
 
 import { execFileSync, spawn } from 'node:child_process';
@@ -15,11 +15,10 @@ import { openDb, projectDbPath, projectRunsDir } from '../src/main/trace/db.js';
 import { Tracer } from '../src/main/trace/tracer.js';
 import { Executor } from '../src/main/engine/executor.js';
 import { RunRegistry } from '../src/main/engine/registry.js';
-import { shutdownDaemonManager } from '../src/main/droid/sdk/daemon.js';
 import { BUILTIN_AGENTS } from '../src/main/store/builtin-agents.js';
 import { defaultProject } from '../src/main/store/projects.js';
 import { defaultSettings } from '../src/main/store/settings.js';
-import type { CliVendor, PipelineDef, ProjectDef } from '../src/shared/types.js';
+import type { PipelineDef, ProjectDef } from '../src/shared/types.js';
 
 const args = new Set(process.argv.slice(2));
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -114,13 +113,9 @@ async function main(): Promise<void> {
 
   // Honour FOUNDRY_DEMO_MODEL so the demo is not bound to the caller's policy.
   const modelOverride = process.env.FOUNDRY_DEMO_MODEL;
-  // FOUNDRY_DEMO_CLI drives the demo on a different vendor, which is the
-  // cheapest way to smoke test a new adapter against a real repo.
-  const cliOverride = process.env.FOUNDRY_DEMO_CLI as CliVendor | undefined;
   const agents = BUILTIN_AGENTS.map((a) => ({
     ...a,
     ...(modelOverride ? { model: modelOverride } : {}),
-    ...(cliOverride ? { cli: cliOverride, model: modelOverride ?? 'inherit' } : {}),
   }));
 
   const useAgent = args.has('--agent');
@@ -132,14 +127,12 @@ async function main(): Promise<void> {
   const runId = `run_demo_${Date.now().toString(36)}`;
   const executor = new Executor({
     tracer,
-    clis: settings.clis,
     turnTimeoutMs: 10 * 60_000,
     envelopeRetries: 2,
     gateRetries: 1,
     compactionThreshold: settings.compactionThreshold,
     rewindAfterCorrections: settings.rewindAfterCorrections,
-    daemonPort: settings.daemonPort,
-    mcpServers: settings.mcpServers ?? [],
+    supportDir: appSupport,
     agents,
     envelopeDefs: [],
     project,
@@ -198,9 +191,6 @@ async function main(): Promise<void> {
     .trim()
     .split('\n')[0];
   console.log(`git log: ${head}`);
-  // Match AppContext.dispose: tear down the app-owned daemon so --parent-pid
-  // is not the only reaper for a clean demo exit.
-  await shutdownDaemonManager();
   process.exit(outcome.status === 'accepted' ? 0 : 1);
 }
 
@@ -216,7 +206,7 @@ async function sweepDemo(tracer: Tracer, appSupport: string, project: ProjectDef
     worktreePath: null,
     branch: null,
     baseRef: 'main',
-    mode: 'rpc',
+    mode: 'pi',
   });
   const victim = spawn('sleep', ['300']);
   const rowId = tracer.recordProcess({

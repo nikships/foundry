@@ -1,11 +1,11 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import type { CliDescriptor, DoctorCheck, ProjectDef } from '@shared/types.js';
+import type { DoctorCheck, ModelInfo, ProjectDef } from '@shared/types.js';
+import type { BridgeState } from '@shared/ipc-contract.js';
 import type { StepId } from './shared.js';
 import { STEPS } from './shared.js';
 import { api } from '../../api.js';
 import { useConfirmAction } from '../../hooks/useConfirmAction.js';
 import { useApp } from '../../stores/app.js';
-import type { CliVendor } from '@shared/types.js';
 
 export type OnboardingContextValue = {
   stepIndex: number;
@@ -16,15 +16,23 @@ export type OnboardingContextValue = {
   entered: boolean;
   // shared domain state
   checks: DoctorCheck[];
-  clis: CliDescriptor[];
   checking: boolean;
   recheck: () => Promise<void>;
   blockingCount: number;
   canLeaveDoctor: boolean;
   doctorHint: string;
-  defaultCli: CliVendor;
-  defaultCliLabel: string;
-  pickCli: (v: CliVendor) => Promise<void>;
+  // providers step
+  bridge: BridgeState | null;
+  models: ModelInfo[];
+  /** True once at least one model has a working credential. */
+  hasUsableModel: boolean;
+  providersHint: string;
+  providerBusy: string | null;
+  connectProvider: (providerId: string) => Promise<void>;
+  cancelProviderLogin: (providerId: string) => Promise<void>;
+  startBridge: () => Promise<void>;
+  saveProviderKey: (providerId: string, apiKey: string) => Promise<void>;
+  refreshProviders: () => Promise<void>;
   // project step
   name: string;
   setName: (s: string) => void;
@@ -70,10 +78,11 @@ export function OnboardingProvider({
   setStepIndex: (n: number) => void;
   onDone: () => void;
 }): React.JSX.Element {
-  const { projects, settings, refreshAll, patchSettings, selectProject, selectedProjectId } =
-    useApp();
+  const { projects, settings, refreshAll, selectProject, selectedProjectId } = useApp();
   const [checks, setChecks] = useState<DoctorCheck[]>([]);
-  const [clis, setClis] = useState<CliDescriptor[]>([]);
+  const [bridge, setBridge] = useState<BridgeState | null>(null);
+  const [models, setModels] = useState<ModelInfo[]>([]);
+  const [providerBusy, setProviderBusy] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [checking, setChecking] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -91,8 +100,10 @@ export function OnboardingProvider({
   const step: StepId = STEPS[stepIndex]!.id;
 
   const blocking = useMemo(() => checks.filter((c) => !c.ok && c.blocking), [checks]);
-  const defaultCli = (settings?.defaultCli ?? 'droid') as CliVendor;
-  const defaultCliLabel = clis.find((c) => c.id === defaultCli)?.label ?? defaultCli;
+  const hasUsableModel = models.length > 0;
+  const providersHint = hasUsableModel
+    ? ''
+    : 'Connect a provider or store an API key — a run needs at least one usable model.';
   const canLeaveDoctor = !checking && blocking.length === 0;
   const doctorHint = checking
     ? 'Still checking the environment…'
@@ -107,12 +118,25 @@ export function OnboardingProvider({
 
   useEffect(() => {
     setName(settings?.engineerName ?? '');
-    void Promise.all([api.doctor.run(), api.catalog.clis()]).then(([nextChecks, nextClis]) => {
+    void api.doctor.run().then((nextChecks) => {
       setChecks(nextChecks);
-      setClis(nextClis);
       setChecking(false);
     });
   }, [settings?.engineerName]);
+
+  /**
+   * A login lands minutes after `connect` returned, in a browser this window
+   * does not own, so the providers step re-reads its whole world on
+   * `bridge-changed` rather than trusting the action's own result.
+   */
+  useEffect(() => {
+    const reload = (): void => {
+      void api.bridge.state().then(setBridge);
+      void api.catalog.agentModels().then(setModels);
+    };
+    reload();
+    return api.on('bridge-changed', reload);
+  }, []);
 
   useEffect(() => {
     setNameDrafts((prev) => {
@@ -179,14 +203,47 @@ export function OnboardingProvider({
       setChecking(false);
     }
   };
-  const pickCli = async (vendor: CliVendor): Promise<void> => {
+  const refreshProviders = async (): Promise<void> => {
+    setBridge(await api.bridge.state());
+    setModels(await api.catalog.agentModels());
+  };
+
+  /** One busy key and one error line for every provider action on this step. */
+  const runProviderAction = async (
+    key: string,
+    action: () => Promise<{ ok: boolean; detail: string }>,
+  ): Promise<void> => {
+    if (providerBusy) return;
+    setProviderBusy(key);
     setError('');
     try {
-      const issues = await patchSettings({ defaultCli: vendor });
-      if (issues.length) setError(issues.join(' '));
+      const result = await action();
+      if (!result.ok) setError(result.detail);
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setProviderBusy(null);
+      await refreshProviders();
+      void api.doctor.run().then(setChecks);
     }
+  };
+
+  const startBridge = async (): Promise<void> => {
+    await runProviderAction('bridge', () => api.bridge.ensure());
+  };
+  const connectProvider = async (providerId: string): Promise<void> => {
+    await runProviderAction(providerId, () => api.bridge.connect(providerId));
+  };
+  const saveProviderKey = async (providerId: string, apiKey: string): Promise<void> => {
+    const key = apiKey.trim();
+    if (!key) return;
+    await runProviderAction(`key:${providerId}`, () => api.bridge.setApiKey(providerId, key));
+  };
+  const cancelProviderLogin = async (providerId: string): Promise<void> => {
+    await runProviderAction(providerId, async () => {
+      const cancelled = await api.bridge.cancelLogin(providerId);
+      return { ok: true, detail: cancelled ? 'sign-in cancelled' : 'no sign-in was in flight' };
+    });
   };
   const addProject = async (): Promise<void> => {
     if (busy) return;
@@ -323,15 +380,21 @@ export function OnboardingProvider({
     back,
     entered,
     checks,
-    clis,
     checking,
     recheck,
     blockingCount: blocking.length,
     canLeaveDoctor,
     doctorHint,
-    defaultCli,
-    defaultCliLabel,
-    pickCli,
+    bridge,
+    models,
+    hasUsableModel,
+    providersHint,
+    providerBusy,
+    connectProvider,
+    cancelProviderLogin,
+    startBridge,
+    saveProviderKey,
+    refreshProviders,
     name,
     setName,
     selectedId,

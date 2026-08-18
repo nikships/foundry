@@ -7,7 +7,7 @@ import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AgentDef, EnvelopeDef, PhaseDef } from '@shared/types.js';
 import type { PhaseRunner, RunContext, PhaseJump } from '../phase-context.js';
-import { KILLED_DETAIL, type AgentSession } from '../../droid/agent.js';
+import { KILLED_DETAIL, type AgentSession } from '../../pi/session.js';
 import * as boundary from '../boundary.js';
 import {
   correctionMessage,
@@ -378,8 +378,8 @@ export class AgentPhaseRunner implements PhaseRunner {
    * the primary path — but "the transport shaped it" is a claim, not a
    * verdict, so it is validated against the same zod schema the text path uses
    * and a rejection falls back to reading the text, on the same retry budget.
-   * A reply droid could not shape at all arrives with nothing here, which is
-   * the same fallback by a different route.
+   * A reply the transport could not shape at all arrives with nothing here,
+   * which is the same fallback by a different route.
    */
   private envelopeFrom(
     outcome: { text: string; structuredOutput: Record<string, unknown> | null },

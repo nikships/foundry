@@ -1,15 +1,13 @@
 /**
  * The IPC channel names and their payload types, imported by both sides so a
  * renaming cannot silently break a call. The renderer never touches disk, git,
- * or droid: everything it can do is in this list.
+ * or the agent runtime: everything it can do is in this list.
  */
 
 import type {
   AgentDef,
   AgentSessionRow,
   AppSettings,
-  CliDescriptor,
-  CliVendor,
   ContextBreakdown,
   DoctorCheck,
   DryRunPrompt,
@@ -39,7 +37,7 @@ import type {
   SmithProposal,
   SmithProposalAnswer,
   StartRunInput,
-  ToolInfo,
+  TranscriptToolKind,
   UpdateStatus,
   ValidationIssue,
 } from './types.js';
@@ -140,7 +138,7 @@ export interface DetectionEntry {
   id: string;
   kind: 'text' | 'tool' | 'note' | 'error';
   text: string;
-  toolKind?: 'command' | 'read' | 'edit' | 'search' | 'other';
+  toolKind?: TranscriptToolKind;
   done?: boolean;
   failed?: boolean;
   at: number;
@@ -166,8 +164,7 @@ export interface DetectionState {
   detectionId: string;
   projectId: string;
   status: 'running' | 'verifying' | 'done' | 'cancelled' | 'failed';
-  /** Which CLI and model actually ran, which may differ from what was asked. */
-  cli: CliVendor;
+  /** Which model actually ran, which may differ from what was asked. */
   model: string;
   entries: DetectionEntry[];
   proposals: DetectionProposal[];
@@ -187,7 +184,6 @@ export interface SetupState {
   setupId: string;
   projectId: string;
   status: 'running' | 'done' | 'cancelled' | 'failed';
-  cli: CliVendor;
   model: string;
   entries: SetupEntry[];
   script: string;
@@ -246,6 +242,77 @@ export interface PrList {
   ok: boolean;
   detail: string;
   prs: PullRequest[];
+}
+
+/**
+ * One account the Bridge holds for a provider. Deliberately metadata only: the
+ * auth files behind it carry refresh and access tokens, and nothing that could
+ * reconstruct one crosses this seam.
+ */
+export interface BridgeAccountInfo {
+  id: string;
+  provider: string;
+  /** The provider's own name for the account: an email, a login, or the id. */
+  label: string;
+  expiresAt?: string;
+  expired: boolean;
+  disabled: boolean;
+}
+
+export interface BridgeProviderInfo {
+  id: string;
+  label: string;
+  /** Icon key, matching the picker's provider marks. */
+  icon: string;
+  authenticated: boolean;
+  accounts: BridgeAccountInfo[];
+  loginInFlight: boolean;
+}
+
+/** Why the Bridge is not serving, when it is not. */
+export type BridgeUnavailable =
+  'binary_missing' | 'spawn_failed' | 'port_exhausted' | 'health_timeout';
+
+/**
+ * The reason in the operator's terms, for `${copy}: ${state.detail}`.
+ *
+ * Shared rather than owned by either side because the doctor, the Providers
+ * pane, and the onboarding step all report the same failure. A `detail` that
+ * had to read well on its own would restate the reason, which is the doubled
+ * sentence this split exists to avoid.
+ */
+export const BRIDGE_UNAVAILABLE_COPY: Record<BridgeUnavailable, string> = {
+  binary_missing: 'the vendored Bridge binary is not installed',
+  spawn_failed: 'the Bridge binary would not launch',
+  port_exhausted: 'no port in the Bridge\u2019s range was free',
+  health_timeout: 'the Bridge started but never answered on its port',
+};
+
+export interface BridgeState {
+  running: boolean;
+  port: number | null;
+  pid: number | null;
+  /** Present only when the last start attempt failed. */
+  reason?: BridgeUnavailable;
+  detail?: string;
+  baseUrl: string | null;
+  providers: BridgeProviderInfo[];
+}
+
+export interface BridgeActionResult {
+  ok: boolean;
+  detail: string;
+}
+
+/**
+ * One direct API key pi holds, as metadata. Deliberately no value and no
+ * masked prefix: the renderer needs to know a key exists so it can offer to
+ * replace or clear it, and anything more would put a secret on this seam.
+ */
+export interface StoredProviderKey {
+  providerId: string;
+  /** pi's own credential kind, e.g. `api_key` or `oauth`. */
+  type: string;
 }
 
 export interface FoundryApi {
@@ -373,13 +440,44 @@ export interface FoundryApi {
     reset(): Promise<PipelineDef[]>;
   };
   catalog: {
-    /** Models the given CLI can reach. Each vendor answers for itself. */
-    models(vendor: CliVendor, force?: boolean): Promise<ModelInfo[]>;
-    tools(vendor: CliVendor, model?: string): Promise<ToolInfo[]>;
-    /** What each CLI is, where it lives, and what it cannot do. */
-    clis(): Promise<CliDescriptor[]>;
     gates(): Promise<{ id: string; description: string }[]>;
     templateVariables(): Promise<{ token: string; description: string }[]>;
+    /**
+     * Models the agent transport can actually reach: pi's built-ins with a
+     * credential plus everything the Bridge has generated. Every model picker
+     * in the app reads this one list.
+     */
+    agentModels(): Promise<ModelInfo[]>;
+  };
+  bridge: {
+    /** Bridge status plus every provider and its accounts. Starts nothing. */
+    state(): Promise<BridgeState>;
+    /** Starts the Bridge if it is not already running. */
+    ensure(): Promise<BridgeActionResult>;
+    /**
+     * Begins a provider's OAuth flow in the operator's browser. Returns as soon
+     * as the browser is open; the account lands asynchronously and the state
+     * call reports it.
+     */
+    connect(provider: string): Promise<BridgeActionResult>;
+    /** Removes a provider's accounts and drops its models from the catalog. */
+    disconnect(provider: string): Promise<BridgeActionResult>;
+    /** SIGTERMs an in-flight login the operator abandoned. */
+    cancelLogin(provider: string): Promise<boolean>;
+    /**
+     * Stores a direct provider API key in pi's credential store — the path for
+     * an operator who has a key rather than a subscription. The key is written
+     * by pi and never held, logged, or echoed back.
+     */
+    setApiKey(providerId: string, apiKey: string): Promise<BridgeActionResult>;
+    /** Removes a stored direct key. */
+    clearApiKey(providerId: string): Promise<BridgeActionResult>;
+    /**
+     * Which providers pi holds a credential for, as metadata. The values never
+     * leave the main process, so a key row can say "set" without the renderer
+     * ever having held one.
+     */
+    storedKeys(): Promise<StoredProviderKey[]>;
   };
   runs: {
     start(
@@ -496,7 +594,11 @@ export interface FoundryApi {
       | 'detection-progress'
       | 'setup-progress'
       | 'smith-proposals-changed'
-      | 'readiness-progress',
+      | 'readiness-progress'
+      // A login completes in a browser, minutes after the call that started it
+      // returned. Nothing polls the auth directory, so this is how a Settings
+      // pane learns the account landed.
+      | 'bridge-changed',
     handler: (data?: unknown) => void,
   ): () => void;
 }
@@ -561,11 +663,17 @@ export const IPC = {
   pipelinesValidate: 'pipelines:validate',
   pipelinesDryRun: 'pipelines:dryRun',
   pipelinesReset: 'pipelines:reset',
-  catalogModels: 'catalog:models',
-  catalogClis: 'catalog:clis',
-  catalogTools: 'catalog:tools',
   catalogGates: 'catalog:gates',
   catalogTemplateVariables: 'catalog:templateVariables',
+  catalogAgentModels: 'catalog:agentModels',
+  bridgeState: 'bridge:state',
+  bridgeEnsure: 'bridge:ensure',
+  bridgeConnect: 'bridge:connect',
+  bridgeDisconnect: 'bridge:disconnect',
+  bridgeCancelLogin: 'bridge:cancelLogin',
+  bridgeSetApiKey: 'bridge:setApiKey',
+  bridgeClearApiKey: 'bridge:clearApiKey',
+  bridgeStoredKeys: 'bridge:storedKeys',
   runsStart: 'runs:start',
   runsList: 'runs:list',
   runsDetail: 'runs:detail',
@@ -614,4 +722,5 @@ export const IPC = {
   eventSetupProgress: 'event:setup-progress',
   eventSmithProposalsChanged: 'event:smith-proposals-changed',
   eventReadinessProgress: 'event:readiness-progress',
+  eventBridgeChanged: 'event:bridge-changed',
 } as const;

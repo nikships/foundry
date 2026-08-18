@@ -8,6 +8,14 @@
 export type PhaseKind = 'agent' | 'code' | 'engineer';
 export type PhaseStatus = 'queued' | 'running' | 'success' | 'fail' | 'skipped';
 export type RunStatus = 'running' | 'accepted' | 'rejected' | 'failed' | 'killed';
+/**
+ * Which agent transport answered for a run.
+ *
+ * New runs are always `pi`: agent phases run on the in-process Pi runtime.
+ * `daemon`, `rpc`, and `oneshot` are historical — rows written by earlier
+ * builds still carry them, so the union is only ever widened, never narrowed.
+ */
+export type RunMode = 'pi' | 'daemon' | 'rpc' | 'oneshot';
 export type ReasoningEffort = 'off' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export type EnvelopeKind =
   'generic' | 'brief' | 'plan' | 'build' | 'scout' | 'review' | 'document' | 'pr';
@@ -62,30 +70,6 @@ export const PR_FALLBACK_HEADINGS = [
   'Verification',
   'Risk',
 ] as const;
-
-/**
- * Which agent CLI drives a phase.
- */
-export type CliVendor = 'droid';
-
-export const CLI_VENDOR_IDS: CliVendor[] = ['droid'];
-
-/**
- * What the renderer is allowed to know about a CLI. The adapter itself stays in
- * the main process, because it holds functions and argv, neither of which
- * survives the structured-clone bridge.
- */
-export interface CliDescriptor {
-  id: CliVendor;
-  label: string;
-  binary: string;
-  docsUrl: string;
-  authEnvVars: string[];
-  /** True only for droid, the one vendor with mid-turn tool visibility. */
-  supportsRpc: boolean;
-  /** What this CLI cannot do that droid can, shown next to the picker. */
-  caveats: string[];
-}
 
 /** How a code phase names the process it runs. */
 export type CommandSpec =
@@ -192,8 +176,6 @@ export type WriteBoundary = string[] | null;
 export interface AgentDef {
   name: string;
   purpose: string;
-  /** Absent on rosters written before multi-CLI support; read as `droid`. */
-  cli?: CliVendor;
   model: string;
   reasoningEffort: ReasoningEffort;
   /**
@@ -259,41 +241,11 @@ export function resolveAgentExecution(
 
 // ── Settings ─────────────────────────────────────────────────────────────────
 
-export interface CliConfig {
-  /** Absolute path or bare name; resolved once per install by a PATH lookup. */
-  path: string;
-  /**
-   * Flags appended verbatim to every turn for this CLI. The escape hatch for a
-   * vendor that grows an option Foundry does not model yet, so an operator is
-   * never blocked on a release of this app.
-   */
-  extraArgs: string[];
-}
-
-export type UserMcpServer =
-  | {
-      id: string;
-      name: string;
-      disabled: boolean;
-      type: 'stdio';
-      command: string;
-      args?: string[];
-      env?: Record<string, string>;
-    }
-  | { id: string; name: string; disabled: boolean; type: 'http'; url: string }
-  | { id: string; name: string; disabled: boolean; type: 'sse'; url: string };
-
 export interface AppSettings {
-  /** One entry per vendor. An agent names the vendor; this says where it lives. */
-  clis: Record<CliVendor, CliConfig>;
-  /** The vendor a newly created agent starts on. */
-  defaultCli: CliVendor;
   /**
-   * Which CLI answers "Ask AI to find commands". `default` follows `defaultCli`,
-   * so an operator who never opens this setting still gets a working button.
+   * Model for detection, as a `provider/model` id from the agent catalog.
+   * `inherit` follows `defaultModel`.
    */
-  detectCli: CliVendor | 'default';
-  /** Model for detection. `inherit` lets the chosen CLI pick its own. */
   detectModel: string;
   /**
    * Model for the Agent Readiness Check. `inherit` follows `defaultModel`.
@@ -327,23 +279,14 @@ export interface AppSettings {
    */
   rewindAfterCorrections: number;
   /**
-   * Preferred local port for the app-owned `droid daemon`. Must sit inside
-   * 37600–37699; when busy the manager scans up within that band.
+   * Preferred local port for the app-owned Bridge. Must sit inside
+   * 37700–37799; when busy the manager scans up within that band.
+   *
+   * No credential lives here. Provider OAuth material is the Bridge's own auth
+   * directory and direct API keys are pi's credential store, so `settings.json`
+   * stays a file an operator can read, copy, and check into a dotfile repo.
    */
-  daemonPort: number;
-  /**
-   * Factory API key (`fk-…`) used to authenticate the local `droid daemon`.
-   * Empty means unset: Foundry then uses `FACTORY_API_KEY` or a `droid login`
-   * session. Stored locally in settings.json; never logged.
-   */
-  factoryApiKey: string;
-  /**
-   * Run droid with no Factory credential (`FACTORY_AIRGAP_ENABLED=1`). The CLI
-   * then reaches no Factory endpoint and every Factory-hosted model disappears:
-   * the only models left are the BYOK `customModels` in
-   * `~/.factory/settings.json`, so the pickers show those alone.
-   */
-  airgapMode: boolean;
+  bridgePort: number;
   notifications: { accepted: boolean; rejected: boolean; failed: boolean; needsInput: boolean };
   dockBadge: boolean;
   /** Which terminal emulator "Open in terminal" hands a directory to. */
@@ -351,7 +294,6 @@ export interface AppSettings {
   appearance: 'system' | 'dark';
   retentionDays: number | null;
   onboarded: boolean;
-  mcpServers: UserMcpServer[];
 }
 
 export type MergePolicy = 'auto' | 'ask' | 'never';
@@ -537,12 +479,20 @@ export interface ReadinessAskAnswer {
   answer: string;
 }
 
+/**
+ * What kind of work one tool call in a live transcript was, so a panel can
+ * icon it without knowing tool names. Deliberately coarse and shared by every
+ * transcript the app renders — detection, setup, and the readiness fix — so
+ * their icon maps cannot drift apart.
+ */
+export type TranscriptToolKind = 'command' | 'read' | 'edit' | 'search' | 'other';
+
 export interface ReadinessEntry {
   id: string;
   kind: 'text' | 'tool' | 'note' | 'error';
   text: string;
   /** Tool entries only: what kind of work it was, so the UI can icon it. */
-  toolKind?: 'command' | 'read' | 'edit' | 'search' | 'todo' | 'task' | 'ask' | 'other';
+  toolKind?: TranscriptToolKind;
   /** Tool entries only: set once the result arrives. */
   done?: boolean;
   failed?: boolean;
@@ -617,12 +567,7 @@ export interface RunRow {
   prUrl: string | null;
   merged: boolean;
   archived: boolean;
-  /**
-   * New runs are always `daemon`. `rpc` and `oneshot` are historical: they are
-   * the transports Foundry used to silently degrade to, and rows written before
-   * that was removed still carry them.
-   */
-  mode: 'daemon' | 'rpc' | 'oneshot';
+  mode: RunMode;
   startedAt: string;
   endedAt: string | null;
   totalTokens: number;
@@ -718,15 +663,12 @@ export interface AgentSessionRow {
   agent: string;
   model: string;
   reasoningEffort: string;
-  cli: CliVendor;
-  /** The vendor's own session id, whatever it calls one. */
-  droidSessionId: string | null;
   /**
-   * New runs are always `daemon`. `rpc` and `oneshot` are historical: they are
-   * the transports Foundry used to silently degrade to, and rows written before
-   * that was removed still carry them.
+   * The agent runtime's own session id. Stored in the `droid_session_id`
+   * column, which predates the migration and is kept so old rows still read.
    */
-  mode: 'daemon' | 'rpc' | 'oneshot';
+  agentSessionId: string | null;
+  mode: RunMode;
   color: string;
   contextTokens: number;
   contextWindow: number;
@@ -735,10 +677,13 @@ export interface AgentSessionRow {
 }
 
 /**
- * What is actually occupying an agent's context window, as droid accounts for
- * it. The occupancy figures are droid's own estimate and can differ from
- * `AgentSessionRow.contextTokens` by a token or two: they are two reads of a
- * moving number, so a view shows one of them, never a difference between them.
+ * What is occupying an agent's context window, as pi accounts for it.
+ *
+ * Pi reports one estimate for the whole conversation rather than a per-source
+ * composition, so this is four numbers and the model they belong to. The
+ * occupancy can differ from `AgentSessionRow.contextTokens` by a token or two:
+ * they are two reads of a moving number, so a view shows one of them, never a
+ * difference between them.
  */
 export interface ContextBreakdown {
   modelId: string;
@@ -746,11 +691,6 @@ export interface ContextBreakdown {
   contextBudget: number;
   usedTokens: number;
   freeTokens: number;
-  lastCallCompactionTokens?: number;
-  categories: { name: string; tokens: number; colorKey: string }[];
-  skills: { name: string; location: string; tokens: number }[];
-  mcpServers: { name: string; toolCount: number; tokens: number }[];
-  droids: { name: string; location: string; tokens: number }[];
 }
 
 export interface UsageBreakdown {
@@ -759,7 +699,14 @@ export interface UsageBreakdown {
   cacheCreationTokens: number;
   cacheReadTokens: number;
   thinkingTokens: number;
+  /**
+   * Factory credits, which only the droid transport ever reported. Kept so the
+   * cost views can still read historical `agent_end` rows; a Pi turn reports
+   * `cost` in dollars instead and leaves this at zero.
+   */
   credits: number;
+  /** What the turn cost in USD, as the provider's own rate card prices it. */
+  cost: number;
   /** Providers that omit usage get an honest gap, not a zero. */
   reported: boolean;
 }
@@ -793,24 +740,16 @@ export interface ModelInfo {
   contextWindow?: number;
 }
 
-export interface ToolInfo {
-  id: string;
-  llmId: string;
-  displayName: string;
-  description: string;
-  category: string;
-  defaultAllowed: boolean;
-}
-
 export interface DoctorCheck {
   id: string;
   label: string;
   ok: boolean;
   detail: string;
   /**
-   * A failure that stops onboarding. Only the default CLI and git qualify: an
-   * uninstalled fourth CLI is a fact about the machine, not a broken setup, and
-   * blocking on one would make the app unusable to anyone who wants a subset.
+   * A failure that stops onboarding. Only git and a reachable model qualify: a
+   * provider the operator never signed into is a fact about the machine, not a
+   * broken setup, and blocking on one would make the app unusable to anyone who
+   * wants a subset.
    */
   blocking?: boolean;
   fix?: { kind: 'open-url' | 'open-settings' | 'run'; value: string };

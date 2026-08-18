@@ -10,7 +10,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { EventRow, UsageBreakdown } from '@shared/types.js';
-import { clockTime, credits, tokens } from '../../format.js';
+import { clockTime, tokens, usd } from '../../format.js';
 import { useCollapseSignal } from './collapse.js';
 
 function str(value: unknown): string {
@@ -23,7 +23,14 @@ function args(event: EventRow): Record<string, unknown> {
 }
 
 /**
- * Infer kind of tool work for display formatting.
+ * The kind of work a tool call is, for display formatting.
+ *
+ * `payload.kind` is authoritative — pi's event mapper classifies every call it
+ * emits. The name heuristics below only run for a row that predates that field,
+ * and they cover pi's tool set (`bash`, `read`, `edit`, `write`, `grep`, `find`,
+ * `ls`, `report_progress`, `read_phase_context`, `submit_envelope`) plus the
+ * names historical droid rows recorded. Anything else returns `other`, which
+ * renders the tool's own name rather than hiding the call.
  */
 function inferKind(event: EventRow): string {
   const kind = str(event.payload.kind);
@@ -40,7 +47,10 @@ function inferKind(event: EventRow): string {
     head === 'applypatch'
   )
     return 'edit';
-  if (head === 'grep' || head === 'glob' || head === 'ls' || head === 'search') return 'search';
+  if (head === 'grep' || head === 'find' || head === 'glob' || head === 'ls' || head === 'search')
+    return 'search';
+  if (head === 'report_progress') return 'progress';
+  if (head === 'submit_envelope' || head === 'read_phase_context') return 'envelope';
   if (head === 'todowrite' || head === 'todo') return 'todo';
   if (head === 'task' || head === 'subagent') return 'task';
   if (head === 'askuser' || head === 'ask') return 'ask';
@@ -156,7 +166,8 @@ function computeDiff(
 ): { lines: DiffLine[]; addCount: number; delCount: number } {
   let lines: DiffLine[] = [];
 
-  // Check if rawResult has structured diffLines JSON from droid tool_result
+  // Rows from before the migration carry structured diffLines JSON in the raw
+  // tool result; a current row does not, and falls through to the text parse.
   if (rawResult) {
     const jsonLines = parseJsonDiffLines(rawResult);
     if (jsonLines) {
@@ -819,7 +830,7 @@ function UsageRow({ event }: { event: EventRow }): React.JSX.Element | null {
     return (
       <div className="te usage">
         <span className="te-tag">turn</span>
-        <span className="te-banner-detail">usage unreported by this CLI</span>
+        <span className="te-banner-detail">usage unreported by this model</span>
         <Time iso={event.startedAt} />
       </div>
     );
@@ -827,7 +838,7 @@ function UsageRow({ event }: { event: EventRow }): React.JSX.Element | null {
   const total = usage.inputTokens + usage.outputTokens + usage.cacheReadTokens;
   const parts = [`${tokens(total)} tokens`];
   if (usage.thinkingTokens) parts.push(`${tokens(usage.thinkingTokens)} thinking`);
-  if (usage.credits) parts.push(`${credits(usage.credits)} credits`);
+  if (usage.cost) parts.push(usd(usage.cost));
   return (
     <div className="te usage">
       <span className="te-tag">turn</span>

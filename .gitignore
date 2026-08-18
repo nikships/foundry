@@ -163,6 +163,10 @@ apps/inkwell/inkwell.db*
 # electron-vite build output
 out/
 
+# Vendored Bridge binary (CLIProxyAPI). Pinned by version + sha256 in
+# package.json and fetched with `npm run fetch:bridge`; never committed.
+/resources/bridge/
+
 # AI
 .junie/
 .omo/

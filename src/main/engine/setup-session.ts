@@ -6,18 +6,16 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import type { AppSettings, CliVendor } from '@shared/types.js';
-import { adapterFor } from '../cli/index.js';
-import { OneShotClient } from '../droid/oneshot.js';
-import { labelToolCall, toolKind, type ToolKind } from '../droid/events.js';
-import type { DroidNotification, ToolUse } from '../droid/protocol.js';
-import { SETUP_PROMPT, SETUP_TOOLS, parseSetupReply, sniffSetupScript } from './setup.js';
+import type { AppSettings, TranscriptToolKind } from '@shared/types.js';
+import type { OneShotFactory, OneShotSession } from '../pi/oneshot.js';
+import { foldTranscript } from '../pi/transcript.js';
+import { SETUP_PROMPT, parseSetupReply, sniffSetupScript } from './setup.js';
 
 export interface SetupEntry {
   id: string;
   kind: 'text' | 'tool' | 'note' | 'error';
   text: string;
-  toolKind?: ToolKind;
+  toolKind?: TranscriptToolKind;
   done?: boolean;
   failed?: boolean;
   at: number;
@@ -29,7 +27,7 @@ export interface SetupState {
   setupId: string;
   projectId: string;
   status: SetupStatus;
-  cli: CliVendor;
+  /** The model that actually ran, not the one that was requested. */
   model: string;
   entries: SetupEntry[];
   script: string;
@@ -50,24 +48,23 @@ export interface SetupSessionDeps {
   projectId: string;
   projectPath: string;
   settings: AppSettings;
-  vendor: CliVendor;
   model: string;
+  /** How the turn is opened. Injected so a test drives one with no model. */
+  oneShot: OneShotFactory;
   onChange: (state: SetupState) => void;
 }
 
 export class SetupSession {
   readonly setupId = `setup_${shortId()}`;
   private readonly state: SetupState;
-  private client: OneShotClient | null = null;
+  private session: OneShotSession | null = null;
   private cancelled = false;
-  private readonly openTools = new Map<string, SetupEntry>();
 
   constructor(private readonly deps: SetupSessionDeps) {
     this.state = {
       setupId: this.setupId,
       projectId: deps.projectId,
       status: 'running',
-      cli: deps.vendor,
       model: deps.model,
       entries: [],
       script: '',
@@ -99,7 +96,7 @@ export class SetupSession {
   cancel(): void {
     if (this.state.status === 'done' || this.state.status === 'failed') return;
     this.cancelled = true;
-    this.client?.kill();
+    this.session?.abort();
     this.state.status = 'cancelled';
     this.state.detail = 'cancelled';
     this.state.endedAt = Date.now();
@@ -121,9 +118,7 @@ export class SetupSession {
   }
 
   private async ask(): Promise<void> {
-    const { settings, vendor, model } = this.deps;
-    const adapter = adapterFor(vendor);
-    const cli = settings.clis[vendor];
+    const { settings, model } = this.deps;
 
     const sniffed = await sniffSetupScript(this.deps.projectPath);
     if (sniffed.script) {
@@ -135,33 +130,25 @@ export class SetupSession {
 
     this.push({
       kind: 'note',
-      text: `Asking ${adapter.label}${model === 'inherit' ? '' : ` (${model})`}…`,
+      text: `Asking the agent${model === 'inherit' ? '' : ` (${model})`}…`,
     });
 
-    const normalise = adapter.stream?.();
-    this.client = new OneShotClient({
-      vendor,
-      cliPath: cli.path,
-      extraArgs: cli.extraArgs,
+    // Reads the operator's own checkout to propose a script; it never runs one,
+    // so the session is opened without a tool that could.
+    this.session = this.deps.oneShot({
       cwd: this.deps.projectPath,
-      restrictTools: SETUP_TOOLS,
+      access: 'read',
       model,
       reasoningEffort: model === 'inherit' ? 'off' : settings.defaultReasoningEffort,
-      onStderr: (text) => {
-        const trimmed = text.trim();
-        if (trimmed) this.push({ kind: 'note', text: trimmed.slice(0, 500) });
-      },
+      onEvent: (event) => this.absorb(event),
+      onWarning: (warning) => this.push({ kind: 'note', text: warning.slice(0, 500) }),
     });
 
     const prompt = sniffed.script
       ? `${SETUP_PROMPT}\n\nManifests suggested this script; confirm, correct, or replace it:\n${sniffed.script}`
       : SETUP_PROMPT;
 
-    const turn = await this.client.send(
-      prompt,
-      SETUP_TIMEOUT_MS,
-      normalise ? (line) => this.absorb(normalise(line)) : undefined,
-    );
+    const turn = await this.session.send(prompt, SETUP_TIMEOUT_MS);
     if (this.cancelled) return;
 
     const parsed = parseSetupReply(turn.text);
@@ -181,45 +168,9 @@ export class SetupSession {
       : 'no install step needed for this repo';
   }
 
-  private absorb(notifications: DroidNotification[]): void {
-    for (const n of notifications) {
-      switch (n.type) {
-        case 'assistant_text_delta': {
-          const delta = (n as { textDelta?: string }).textDelta ?? '';
-          if (!delta.trim()) break;
-          const last = this.state.entries[this.state.entries.length - 1];
-          if (last?.kind === 'text') {
-            last.text += delta;
-            this.emit();
-          } else {
-            this.push({ kind: 'text', text: delta });
-          }
-          break;
-        }
-        case 'tool_call': {
-          const tool = (n as { toolUse?: ToolUse }).toolUse;
-          if (!tool?.id || this.openTools.has(tool.id)) break;
-          const entry = this.push({
-            kind: 'tool',
-            text: labelToolCall(tool),
-            toolKind: toolKind(tool.name),
-          });
-          this.openTools.set(tool.id, entry);
-          break;
-        }
-        case 'tool_result': {
-          const r = n as { toolUseId?: string; isError?: boolean };
-          const open = r.toolUseId ? this.openTools.get(r.toolUseId) : undefined;
-          if (!open || !r.toolUseId) break;
-          open.done = true;
-          open.failed = !!r.isError;
-          this.openTools.delete(r.toolUseId);
-          this.emit();
-          break;
-        }
-        default:
-          break;
-      }
-    }
-  }
+  private readonly absorb = foldTranscript<SetupEntry>({
+    push: (row) => this.push(row),
+    flush: () => this.emit(),
+    last: () => this.state.entries[this.state.entries.length - 1] ?? null,
+  });
 }

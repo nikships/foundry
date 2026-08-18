@@ -60,4 +60,5 @@ Store code bundles into `out/main/main.js`; no separate build.
 
 ## Additional Notes
 
-- `settings.ts` owns transport knobs (`compactionThreshold`, `rewindAfterCorrections`, `daemonPort`) surfaced in Settings → Limits/Transport, and the Factory API key (`factoryApiKey`) plus `airgapMode` surfaced in Settings → Agent CLI. `airgapMode` runs droid BYOK-only with no Factory credential; see `src/main/droid/AGENTS.md`. There is no transport choice: agent phases are daemon-only (see `src/main/droid/AGENTS.md`).
+- `settings.ts` owns transport knobs (`compactionThreshold`, `rewindAfterCorrections`, `bridgePort`) surfaced in Settings → Limits/Transport. There is no transport choice: agent phases run in-process on pi (see `src/main/pi/AGENTS.md`).
+- **No credential is a setting.** Provider API keys go to pi's credential store through `bridge.setApiKey`, and subscription tokens live in the Bridge's auth directory. `migrate()` deletes `RETIRED_KEYS` (`clis`, `defaultCli`, `detectCli`, `daemonPort`, `factoryApiKey`, `mcpServers`, `droidPath`, `defaultAutonomy`) on every read, so a `factoryApiKey` written by an older build leaves memory immediately and leaves disk on the next write. Deleting rather than ignoring is deliberate: the patch schema is strict, so a stale key that survived into memory would fail the operator's next save on a value they never set.

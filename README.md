@@ -107,7 +107,7 @@ Failed runs keep their worktree so you can open it, learn, and discard deliberat
 
 ## Get started in 60 seconds
 
-**Requirements:** macOS 26+, Apple Silicon, `git`, and the [droid](https://docs.factory.ai) CLI installed and signed in.
+**Requirements:** macOS 26+, Apple Silicon, `git`, and a model provider signed in through Settings → Providers.
 
 1. [Download `Foundry.dmg`](https://github.com/nikships/foundry/releases) and drag to Applications
 2. Open Foundry, add any git repo as a project

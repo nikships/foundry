@@ -42,8 +42,32 @@ describe('the IPC surface', () => {
     expect(new Set(registered).size).toBe(registered.length);
   });
 
-  it('registers 104 channels, so a deleted handler is not a silent capability loss', () => {
-    expect(registered).toHaveLength(104);
+  it('registers 110 channels, so a deleted handler is not a silent capability loss', () => {
+    expect(registered).toHaveLength(110);
+  });
+
+  it('registers the Bridge channels Settings connects providers through', () => {
+    expect(registered).toContain(IPC.bridgeState);
+    expect(registered).toContain(IPC.bridgeConnect);
+    expect(registered).toContain(IPC.bridgeDisconnect);
+    expect(registered).toContain(IPC.bridgeSetApiKey);
+    // The Providers pane shows which keys are set without ever reading one, so
+    // the list channel is as load-bearing as the write.
+    expect(registered).toContain(IPC.bridgeStoredKeys);
+  });
+
+  it('no longer offers the CLI channels the picker used to read', () => {
+    // Models come off pi's catalog and tools off the live session. A surviving
+    // handler here would be a second, stale source for both.
+    for (const channel of registered) {
+      expect(channel).not.toBe('catalog:clis');
+      expect(channel).not.toBe('catalog:models');
+      expect(channel).not.toBe('catalog:tools');
+    }
+  });
+
+  it('registers the agent-model channel the picker reads', () => {
+    expect(registered).toContain(IPC.catalogAgentModels);
   });
 
   it('registers the scope-copies channel the Design scope control reads', () => {

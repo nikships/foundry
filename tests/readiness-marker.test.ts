@@ -16,7 +16,7 @@ function validMarker(over: Partial<AgentReadyMarker> = {}): AgentReadyMarker {
     schemaVersion: 1,
     generatedAt: '2026-08-11T05:00:00Z',
     commit: 'abc1234',
-    agent: { harness: 'droid', model: 'inherit', reasoningEffort: 'high' },
+    agent: { harness: 'pi', model: 'inherit', reasoningEffort: 'high' },
     verdict: 'ready',
     summary: 'TypeScript repo is ready.',
     stack: { languages: ['typescript'], monorepo: false, packages: [] },

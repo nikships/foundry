@@ -1,6 +1,6 @@
 /**
- * Write boundaries: the inner, per-agent safety envelope. Droid's own --auto
- * level is the outer one.
+ * Write boundaries: the per-agent safety envelope, enforced by this app rather
+ * than by the runtime's own permission prompts.
  *
  * Enforced in code after every agent phase, not asked of the agent: snapshot
  * git status at phase start, diff it at phase end, classify each change against
@@ -177,11 +177,11 @@ export interface RestoreResult {
 }
 
 /**
- * Put the worktree back to phase start after an SDK rewind.
+ * Put the worktree back to phase start after a session rewind.
  *
- * The daemon only restores files that were already dirty at phase start
- * (`snapshot.files`). Clean tracked deletions and new untracked files are
- * invisible to that list. Git still knows: checkout anything that existed
+ * A rewind restores the conversation, not the disk, and `snapshot.files` only
+ * lists what was already dirty at phase start. Clean tracked deletions and new
+ * untracked files are invisible to that list. Git still knows: checkout anything that existed
  * at `headSha` and was not dirty at start; revert anything that did not.
  * Handoff files and paths that were already dirty stay put.
  */

@@ -5,7 +5,7 @@ Node main-process code. This is the only place that touches git, disk, child pro
 ## Project Overview
 
 - Owns the Electron lifecycle (`main.ts`), project registry, run orchestration, and all privileged I/O.
-- Subsystems (see siblings): `engine/` (sequencing/gates/worktrees), `droid/` (Droid transport), `cli/` (vendor argv/parse), `smith/` (entity-smith socket + approval queue), `trace/` (SQLite WAL), `store/` (JSON config), `system/` (PATH/procs/doctor), `ipc/` (routers), `updater.ts` (auto-update).
+- Subsystems (see siblings): `engine/` (sequencing/gates/worktrees), `pi/` (every agent call, run sessions and one-shots alike), `readiness/` (agent-readiness evaluation), `smith/` (entity-smith socket + approval queue), `trace/` (SQLite WAL), `store/` (JSON config), `system/` (PATH/procs/doctor), `ipc/` (routers), `updater.ts` (auto-update).
 - State: `~/Library/Application Support/foundry/` (sharded per project). A run's file I/O belongs in `.foundry-worktrees/<runId>` on `foundry/<runId>`; merge/discard lives in `engine/worktree.ts`.
 
 ## Setup Commands
@@ -29,14 +29,14 @@ No separate setup for `src/main/` — it builds as part of `electron-vite build`
 ## Testing Instructions
 
 ```bash
-npm test                          # all suites (engine/droid/system/store/ipc)
+npm test                          # all suites (engine/pi/system/store/ipc)
 npx vitest run -t "<pattern>"     # focus
 npx vitest run tests/executor.test.ts  # engine executor with real git repos
 npm run build && npm run test:e2e # Electron UI smoke (macOS GUI; not in npm run check)
 ```
 
-- Engine/droid tests use **real git temp repos** and `tests/scripted-agent.ts` (in-memory daemon); never use network/model, never mock git.
-- `tests/cli-vendors.test.ts` owns CLI fixtures; `tests/scripted-daemon.ts` owns the daemon handshake.
+- Engine/agent tests use **real git temp repos** and `tests/scripted-transport.ts` (an in-memory `AgentTransport`); never use network/model, never mock git.
+- `tests/scripted-transport.ts` owns the agent-transport fixture; `tests/doctor.test.ts` owns the provider-doctor fixtures.
 - Adding a phase kind or gate: update `src/shared/types.ts`, `engine/registry.ts`, and add a real-git executor test.
 
 ## Cross-Cutting Invariants
@@ -48,7 +48,7 @@ npm run build && npm run test:e2e # Electron UI smoke (macOS GUI; not in npm run
 
 ## Code Style
 
-- TypeScript `strict`; ESLint flat config (`eslint.config.js`) — `no-restricted-imports` forbids `@factory/droid-sdk` outside `src/main/droid/sdk/`.
+- TypeScript `strict`; ESLint flat config (`eslint.config.js`) — `no-restricted-imports` forbids `@earendil-works/pi-*` outside `src/main/pi/`.
 - No `eslint-disable` comments — fix the real issue.
 - Imports: use `@main/*`, `@shared/*` aliases (kept in sync with `electron.vite.config.ts` + `tsconfig.json`).
 
@@ -63,16 +63,17 @@ Main is minified via `esbuild` in `electron.vite.config.ts` (`externalizeDepsPlu
 
 ## Routing
 
-| Subdirectory      | Responsibility                                            |
-| ----------------- | --------------------------------------------------------- |
-| `engine/`         | Sequencing, retries, boundaries, gates, setup, acceptance |
-| `cli/`            | Vendor argv construction + one-shot output parsing        |
-| `droid/` + `sdk/` | Daemon transport (no fallback), SDK quirks, permissions   |
-| `smith/`          | Entity-smith socket, validation, proposal queue           |
-| `ipc/`            | Domain routers, named channel seam                        |
-| `store/`          | JSON config, migrations, builtin restoration              |
-| `system/`         | PATH, process control, doctor, notifications, dock badge  |
-| `trace/`          | SQLite WAL writer (`Tracer`)                              |
+| Subdirectory | Responsibility                                            |
+| ------------ | --------------------------------------------------------- |
+| `engine/`    | Sequencing, retries, boundaries, gates, setup, acceptance |
+| `pi/`        | Every agent call: run sessions, one-shots, policy, tools  |
+| `readiness/` | Agent-readiness evaluation, marker, remediation session   |
+| `bridge/`    | Vendored CLIProxyAPI: provider OAuth → local endpoint     |
+| `smith/`     | Entity-smith socket, validation, proposal queue           |
+| `ipc/`       | Domain routers, named channel seam                        |
+| `store/`     | JSON config, migrations, builtin restoration              |
+| `system/`    | PATH, process control, doctor, notifications, dock badge  |
+| `trace/`     | SQLite WAL writer (`Tracer`)                              |
 
 Adjacent `src/preload/`, `src/renderer/`, `src/shared/` guides cover the other sides of the process boundary.
 

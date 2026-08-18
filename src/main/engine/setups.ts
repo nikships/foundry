@@ -3,6 +3,7 @@
  * for the worktree bootstrap's one-click AI path.
  */
 
+import type { OneShotFactory } from '../pi/oneshot.js';
 import { SetupSession, type SetupState, type SetupSessionDeps } from './setup-session.js';
 
 const KEEP_MS = 10 * 60_000;
@@ -12,12 +13,16 @@ export class Setups {
   private readonly sessions = new Map<string, SetupSession>();
   private readonly endedAt = new Map<string, number>();
 
-  constructor(private readonly onProgress: (state: SetupState) => void) {}
+  constructor(
+    private readonly oneShot: OneShotFactory,
+    private readonly onProgress: (state: SetupState) => void,
+  ) {}
 
-  start(deps: Omit<SetupSessionDeps, 'onChange'>): SetupSession {
+  start(deps: Omit<SetupSessionDeps, 'onChange' | 'oneShot'>): SetupSession {
     this.sweep();
     const session = new SetupSession({
       ...deps,
+      oneShot: this.oneShot,
       onChange: (state) => {
         if (state.status !== 'running') {
           this.endedAt.set(state.setupId, Date.now());

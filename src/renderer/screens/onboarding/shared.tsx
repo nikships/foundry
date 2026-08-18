@@ -2,13 +2,13 @@ import { useBrandedAsset } from '../../hooks/useBrandedAsset.js';
 import { useOnboarding } from './OnboardingContext.js';
 import { Button } from '../../components/ui/Button.js';
 
-export type StepId = 'welcome' | 'factory' | 'roster' | 'clis' | 'doctor' | 'project';
+export type StepId = 'welcome' | 'factory' | 'roster' | 'providers' | 'doctor' | 'project';
 
 export const STEPS: { id: StepId; label: string }[] = [
   { id: 'welcome', label: 'Welcome' },
   { id: 'factory', label: 'Factory' },
   { id: 'roster', label: 'Roster' },
-  { id: 'clis', label: 'CLIs' },
+  { id: 'providers', label: 'Providers' },
   { id: 'doctor', label: 'Ready' },
   { id: 'project', label: 'Project' },
 ];
@@ -45,7 +45,7 @@ export function sceneForStep(step: StepId): string {
   if (step === 'welcome') return 'scenes/onboarding-hero.png';
   if (step === 'factory') return 'scenes/pipeline-designer.png';
   if (step === 'roster') return 'scenes/run-success.png';
-  if (step === 'clis') return 'scenes/onboarding-hero.png';
+  if (step === 'providers') return 'scenes/onboarding-hero.png';
   if (step === 'doctor') return 'scenes/empty-state.png';
   return 'scenes/pipeline-designer.png';
 }

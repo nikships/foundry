@@ -4,10 +4,10 @@ Pure types and constants imported by both processes. No `fs`, `child_process`, `
 
 ## Project Overview
 
-- `types.ts` — source of truth for pipelines, phases, agents, envelopes, gates, boundaries, runs, events, CLI descriptors, projects, and settings.
+- `types.ts` — source of truth for pipelines, phases, agents, envelopes, gates, boundaries, runs, events, projects, and settings.
 - `ipc-contract.ts` — `FoundryApi` interface + `IPC.*` channel constants. Both processes import the constants so a rename cannot silently break a call.
 - Boundary values: `null` (unrestricted except protected paths), `[]` (read-only), or an allowlist with `*` (single segment) / `**` (recursive).
-- `AgentDef.cli` is optional and defaults to `droid`; keep `CLI_VENDOR_IDS` synchronized with `src/main/cli/index.ts`.
+- Model ids are opaque `provider/model` strings from pi's catalog; shared code never validates them against a vendor list. `AgentDef.cli` survives only so historical rows still read — nothing dispatches on it.
 
 ## Setup Commands
 
@@ -39,7 +39,7 @@ npx vitest run tests/ipc-surface.test.ts
 npx vitest run tests/envelopes.test.ts
 ```
 
-- Shared types are tested indirectly through engine/droid/ipc suites.
+- Shared types are tested indirectly through the engine, pi, and ipc suites.
 - When adding an envelope or gate, add argv/parse fixtures or schema tests rather than DOM tests.
 
 ## Code Style
@@ -59,4 +59,4 @@ Shared code is bundled into both `out/main/main.js` and the renderer chunk via V
 ## Additional Notes
 
 - Boundaries and protected paths are enforced post-call by diffing git — not by permission policy. See `src/main/engine/AGENTS.md`.
-- `CLI_VENDOR_IDS` and `cli/index.ts` must agree on supported vendors.
+- `AppSettings` carries no credential. Provider keys live in pi's credential store and subscription tokens in the Bridge's auth directory; a key in `settings.json` would be a key nothing reads and everything can see.

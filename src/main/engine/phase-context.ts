@@ -9,7 +9,7 @@ import type { Tracer } from '../trace/tracer.js';
 import type { ProjectDef, PipelineDef } from '@shared/types.js';
 import type { Envelope } from './envelopes.js';
 import type { CommandResult } from '@shared/types.js';
-import type { InterruptRequest } from '../droid/agent.js';
+import type { InterruptRequest } from '../pi/session.js';
 import type { PrAction } from '@shared/ipc-contract.js';
 import type { CommandDriftRecord } from './detect.js';
 

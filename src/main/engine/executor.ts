@@ -14,8 +14,6 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type {
   AgentDef,
-  CliConfig,
-  CliVendor,
   CommandResult,
   ContextBreakdown,
   EnvelopeDef,
@@ -25,7 +23,6 @@ import type {
   ProjectDef,
   ReasoningEffort,
   RunStatus,
-  UserMcpServer,
 } from '@shared/types.js';
 import type { Tracer } from '../trace/tracer.js';
 import {
@@ -33,8 +30,10 @@ import {
   KILLED_DETAIL,
   type InterruptRequest,
   type Mode,
-  type OpenDaemonResult,
-} from '../droid/agent.js';
+  type TransportRequest,
+} from '../pi/session.js';
+import { PiTransport } from '../pi/pi-transport.js';
+import type { AgentTransport } from '../pi/transport.js';
 import { decideAcceptance } from './acceptance.js';
 import type { PhaseRunner, RunContext, PhaseJump } from './phase-context.js';
 import { AgentPhaseRunner } from './runners/agent.js';
@@ -50,8 +49,6 @@ import { effectivePhaseEnvelope, resolveAgentExecution } from '@shared/types.js'
 
 export interface ExecutorDeps {
   tracer: Tracer;
-  /** Where each CLI lives and how it is invoked. Agents name the vendor. */
-  clis: Record<CliVendor, CliConfig>;
   defaultModel?: string;
   defaultReasoningEffort?: ReasoningEffort;
   turnTimeoutMs: number;
@@ -64,12 +61,8 @@ export interface ExecutorDeps {
    * instead of appending another correction. `0` disables.
    */
   rewindAfterCorrections: number;
-  /**
-   * Preferred port for the app-owned droid daemon (37600–37699). DaemonManager
-   * scans up within the band when this port is busy.
-   */
-  daemonPort: number;
-  mcpServers: UserMcpServer[];
+  /** Foundry's Application Support directory; the agent runtime's state lives under it. */
+  supportDir: string;
   agents: AgentDef[];
   /** Shared custom envelope library snapshotted at run start. */
   envelopeDefs: EnvelopeDef[];
@@ -85,11 +78,11 @@ export interface ExecutorDeps {
   /** Test seam: the fake gh script stands in for the real binary. */
   gh?: GhOptions;
   /**
-   * Test seam: supply the daemon's session facade instead of connecting to a
-   * real `droid daemon`. Production leaves this unset — a real run has no other
+   * Test seam: supply the transport each agent session drives. Production
+   * leaves this unset and gets `PiTransport` — a real run has no other
    * transport, so there is nothing here to fall back to.
    */
-  openDaemonSessions?: (agent: AgentDef) => Promise<OpenDaemonResult>;
+  transport?: (input: TransportRequest) => AgentTransport;
 }
 
 export interface RunOutcome {
@@ -123,9 +116,10 @@ export class Executor {
 
   constructor(private readonly deps: ExecutorDeps) {
     this.cwd = deps.project.path;
-    // Agent runs are daemon-only; the field stays so the run row keeps saying
-    // which transport answered rather than leaving the reader to assume.
-    this.mode = 'daemon';
+    // Agent phases run on the in-process agent runtime; the field stays so the
+    // run row keeps saying which transport answered rather than leaving the
+    // reader to assume.
+    this.mode = 'pi';
     this.runners = {
       agent: new AgentPhaseRunner({
         agents: deps.agents,
@@ -413,8 +407,6 @@ export class Executor {
     const existing = this.sessions.get(agent.name);
     if (existing) return existing;
 
-    const vendor = agent.cli ?? 'droid';
-    const cli = this.deps.clis[vendor] ?? this.deps.clis.droid;
     const resolved = resolveAgentExecution(agent, {
       model: this.deps.defaultModel,
       reasoningEffort: this.deps.defaultReasoningEffort ?? 'medium',
@@ -424,24 +416,43 @@ export class Executor {
       model: resolved.model,
       reasoningEffort: resolved.reasoningEffort,
     };
-    const openDaemonSessions = this.deps.openDaemonSessions;
     const session = new AgentSession(effectiveAgent, {
-      cliPath: cli.path,
-      cliExtraArgs: cli.extraArgs,
       runId: this.deps.runId,
       worktree: this.cwd,
       turnTimeoutMs: this.deps.turnTimeoutMs,
       tracer: this.deps.tracer,
-      policy: { protectedPaths: this.deps.project.protectedPaths },
-      envelopes: this.envelopes,
-      daemonPort: this.deps.daemonPort,
-      userMcpServers: this.deps.mcpServers.filter((s) => !s.disabled),
-      ...(openDaemonSessions
-        ? { openDaemonSessions: () => openDaemonSessions(effectiveAgent) }
-        : {}),
+      protectedPaths: this.deps.project.protectedPaths,
+      transport: (req) => this.transportFor(req),
     });
     this.sessions.set(agent.name, session);
     return session;
+  }
+
+  /**
+   * The transport every agent session drives. Sessions files land in the run's
+   * own trace directory, so a run's conversation is one of its artifacts and
+   * the user's own agent install is never written to.
+   */
+  private transportFor(req: TransportRequest): AgentTransport {
+    if (this.deps.transport) return this.deps.transport(req);
+    return new PiTransport({
+      cwd: req.cwd,
+      runId: req.runId,
+      model: req.agent.model,
+      reasoningEffort: req.agent.reasoningEffort,
+      supportDir: this.deps.supportDir,
+      sessionDir: join(this.deps.tracer.runDir(req.runId), 'sessions'),
+      onPermission: req.onPermission,
+      onEvent: req.onEvent,
+      onModelWarning: req.onModelWarning,
+      tools: {
+        runId: req.runId,
+        agentName: req.agent.name,
+        phaseId: req.phaseId,
+        envelopes: () => this.envelopes,
+        tracer: this.deps.tracer,
+      },
+    });
   }
 
   /**

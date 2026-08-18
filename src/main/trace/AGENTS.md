@@ -29,7 +29,7 @@ No separate trace setup. `better-sqlite3` is a native dep (allow‑listed in `.n
 ```bash
 npm test
 npx vitest run -t "trace|tracer"
-npx vitest run tests/transcript.test.ts
+npx vitest run tests/trace-cursor.test.ts
 ```
 
 - Trace tests use real SQLite databases (temp files). Assert on rows and `change_id` advancement, not mocks.

@@ -2,9 +2,10 @@
  * Isolated Foundry app-support fixtures for Electron UI smoke.
  *
  * Writes the same JSON stores and WAL trace the live app reads, so a spec can
- * open Inspector without a model, network account, or engine run. The seeded
- * droid binary is `tests/fake-droid.ts` so an accidental Start run cannot
- * spend tokens.
+ * open Inspector without a model, network account, or engine run. No credential
+ * is seeded and no agent binary is named: a run started by accident has no
+ * model to reach and stops at the doctor's blocking check rather than spending
+ * anything.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -15,7 +16,6 @@ import { SettingsStore } from '../../src/main/store/settings.js';
 import { ProjectStore } from '../../src/main/store/projects.js';
 import { openDb, projectDbPath, projectRunsDir } from '../../src/main/trace/db.js';
 import { Tracer } from '../../src/main/trace/tracer.js';
-import { writeFakeDroid } from '../fake-droid.js';
 import type { PipelineDef } from '../../src/shared/types.js';
 
 export const E2E_RUN_ID = 'run_e2e_inspector';
@@ -44,7 +44,6 @@ export interface SeededFixture {
   projectPath: string;
   projectId: string;
   runId: string;
-  fakeDroidPath: string;
 }
 
 function scratchRepo(): string {
@@ -72,18 +71,9 @@ export function seedOnboardedFixture(userDataDir?: string): SeededFixture {
   mkdirSync(supportDir, { recursive: true });
 
   const projectPath = scratchRepo();
-  const fakeDroidPath = writeFakeDroid();
 
   const settings = new SettingsStore(supportDir);
-  const current = settings.get();
-  const patched = settings.patch({
-    onboarded: true,
-    engineerName: 'e2e',
-    clis: {
-      ...current.clis,
-      droid: { path: fakeDroidPath, extraArgs: [] },
-    },
-  });
+  const patched = settings.patch({ onboarded: true, engineerName: 'e2e' });
   if (!patched.ok) {
     throw new Error(`failed to seed settings: ${patched.issues.join('; ')}`);
   }
@@ -101,7 +91,7 @@ export function seedOnboardedFixture(userDataDir?: string): SeededFixture {
       worktreePath: null,
       branch: null,
       baseRef: 'main',
-      mode: 'oneshot',
+      mode: 'pi',
     });
     const phaseId = tracer.openPhase({
       runId: E2E_RUN_ID,
@@ -158,6 +148,5 @@ export function seedOnboardedFixture(userDataDir?: string): SeededFixture {
     projectPath,
     projectId: project.id,
     runId: E2E_RUN_ID,
-    fakeDroidPath,
   };
 }

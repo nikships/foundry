@@ -216,11 +216,11 @@ export function schemaFor(
  * defaults for anything omitted). Conforming to this schema therefore always
  * parses; the text-parse fallback covers replies that do not conform.
  *
- * No `$schema` dialect is declared. droid compiles an output constraint with a
- * Draft-07 ajv and rejects the whole request when it cannot resolve the dialect
- * URI — a live turn on CLI 0.189.0 answered `The requested structured output
- * schema is invalid.` for the 2020-12 URI zod stamps on. Every envelope body is
- * identical under both dialects, so declaring none is what both accept.
+ * No `$schema` dialect is declared, and the one zod stamps on is stripped. A
+ * structured-output schema crosses into whichever validator the provider runs,
+ * and a Draft-07 one rejects the whole request rather than just the dialect
+ * line when it cannot resolve a 2020-12 URI. Every envelope body here is
+ * identical under both dialects, so declaring none is what all of them accept.
  */
 export function jsonSchemaFor(
   kind: string,

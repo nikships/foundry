@@ -4,7 +4,7 @@
 
 Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that turns a prompt into reviewed code in an isolated run. You describe the change, pick a pipeline, and a team of specialized agents executes it. Pipelines are declarative recipes of phases — not scripts — and every phase leaves evidence.
 
-**Stack:** Electron + Vite (`electron-vite`), React 19, TypeScript 6 (strict), `better-sqlite3` + WAL, Zod 4, `@factory/droid-sdk` 0.7.0 (exact-pinned), `lucide-react`.
+**Stack:** Electron + Vite (`electron-vite`), React 19, TypeScript 6 (strict), `better-sqlite3` + WAL, Zod 4, `@earendil-works/pi-coding-agent` 0.84.2 (exact-pinned), `lucide-react`.
 
 **Key concepts:**
 
@@ -19,8 +19,9 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 .                              ← the application (repo root)
 ├── src/main/                  ← Node main process (privileged)
 │   ├── engine/                ← sequencing, retries, boundaries, gates, worktrees
-│   ├── droid/ + sdk/          ← Droid transport (daemon only; no fallback)
-│   ├── cli/                   ← vendor argv + one-shot parse adapters
+│   ├── pi/                    ← every agent call, in-process: run sessions and one-shots (no fallback)
+│   ├── bridge/                ← vendored CLIProxyAPI: provider OAuth → local endpoint pi calls
+│   ├── readiness/             ← agent-readiness evaluation and its marker
 │   ├── smith/                 ← Smith's socket, validation, approval queue
 │   ├── trace/                 ← Tracer: sole SQLite writer (WAL)
 │   ├── store/                 ← JSON config (JsonStore, builtins, migrations)
@@ -33,7 +34,7 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 ├── src/cli/                   ← foundry-cli: the standalone Smith helper binary
 ├── skills/                    ← agent skills for users, keep up-to-date with 'smith' capabilities
 ├── website/                   ← marketing website for foundry app (do not update unless told to)
-├── tests/                     ← Vitest suites (real git temp repos + scripted daemon)
+├── tests/                     ← Vitest suites (real git temp repos + scripted transport)
 │   └── e2e/                   ← Playwright Electron UI smoke (not in npm run check)
 └── scripts/                   ← check-css-collisions, check-docs-commands, audit-deps, engine-demo
 
@@ -53,7 +54,7 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 
 ## Setup Commands
 
-**Requirements:** macOS 26+, Apple Silicon, `git`, `droid` CLI installed, a Factory API key in Settings (or `FACTORY_API_KEY` / `droid login`), Node 22. Airgap mode (Settings → Agent CLI) replaces the credential requirement with a BYOK `customModels` entry in `~/.factory/settings.json`; see `src/main/droid/AGENTS.md`.
+**Requirements:** macOS 26+, Apple Silicon, `git`, Node 22, and a model provider signed in through Settings → Providers (the Bridge's OAuth, or a direct API key).
 
 ```bash
 # Clone and install (from repo root)
@@ -123,7 +124,7 @@ Troubleshooting section covers the usual causes; verify with
 
 **Preload must stay CJS** (`out/preload/bridge.cjs`) because sandboxed preloads cannot be ESM.
 
-**SDK import boundary:** only `src/main/droid/sdk/**` may import `@factory/droid-sdk` (ESLint `no-restricted-imports`). Everything above it uses `droid/turn.ts` and protocol notification types.
+**Agent-runtime import boundary** (ESLint `no-restricted-imports`): only `src/main/pi/**` may import `@earendil-works/pi-*`. Everything above it talks to `pi/transport.ts`'s `AgentTransport`, so the runtime stays replaceable without touching every layer.
 
 ## Testing Instructions
 
@@ -162,10 +163,10 @@ so local and CI enforce the same floor. An HTML report lands in `coverage/` (git
 
 **Conventions:**
 
-- Tests use **real git temp repositories** and `tests/scripted-agent.ts` (an in-memory daemon that performs real disk side effects in the worktree and answers asks through the real permission handlers). Never use a network or model; do not mock git. Follow the executor pattern in `tests/executor.test.ts` for new engine behavior.
+- Tests use **real git temp repositories** and `tests/scripted-transport.ts` (an in-memory `AgentTransport` that performs real disk side effects in the worktree and answers asks through the real policy). Never use a network or model; do not mock git. Follow the executor pattern in `tests/executor.test.ts` for new engine behavior.
 - **Electron UI smoke** (`tests/e2e/*.spec.ts`, `@playwright/test` + `_electron.launch()`): isolated `--user-data-dir`, seeded stores + WAL trace, no model or network. Onboarding walks Welcome → Ready; Inspector opens a seeded run and asserts the phase transcript. Failures write `test-results/` + `playwright-report/` (screenshot, trace, video). Interactive agent driving of the same app is the `foundry-ui` skill (CDP + agent-browser); do not add a second harness. The `e2e` CI job on `macos-26` is advisory — not a required check, not part of `npm run check`.
 - `@lobehub/icons` is inlined via `server.deps.inline` so bare directory specifiers resolve under Vite.
-- `tests/cli-vendors.test.ts` owns CLI adapter fixtures; `tests/scripted-daemon.ts` and `tests/scripted-agent.ts` own the daemon fixtures.
+- `tests/scripted-transport.ts` owns the agent-transport fixture. `tests/doctor.test.ts` owns the provider-doctor fixtures, injected as `ProviderDoctorDeps` so no Bridge, port, or credential is involved.
 - New engine phase/gate behavior needs a dedicated executor test with a real worktree snapshot.
 
 **What to run before submitting:** `npm run check` (see below) — it already runs the full Vitest suite.
@@ -173,7 +174,7 @@ so local and CI enforce the same floor. An HTML report lands in `coverage/` (git
 ## Code Style
 
 - **TypeScript strict** (`noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`). `tsc --noEmit` must pass.
-- **ESLint (flat config)** — `eslint.config.js` with `typescript-eslint`, `eslint-plugin-react`, `eslint-plugin-react-hooks`. Rules: `@typescript-eslint/no-explicit-any: error`, `no-console: warn` (allow `warn`/`error` only), `no-restricted-imports` for `@factory/droid-sdk`. Never use `eslint-disable` comments — fix the real issue.
+- **ESLint (flat config)** — `eslint.config.js` with `typescript-eslint`, `eslint-plugin-react`, `eslint-plugin-react-hooks`. Rules: `@typescript-eslint/no-explicit-any: error`, `no-console: warn` (allow `warn`/`error` only), `no-restricted-imports` for `@earendil-works/pi-*`. Never use `eslint-disable` comments — fix the real issue.
 - **Prettier** — `prettier --check .` must pass. Run `npm run format` to fix.
 - **Knip** — `npm run knip` flags dead code / unused exports. Intentional unused exports need an explicit comment or pr-template note so a bot doesn't remove them.
 - **No `any`** unless intentionally justified; use `type` imports where possible (`consistent-type-imports`).
@@ -195,12 +196,14 @@ npm run check:css           # fails if <style> blocks redefine tokens-base.css c
 npm run check:docs          # fails if a documented command no longer exists
 npm run audit:deps          # npm audit --audit-level=high (clean env)
 npm run check               # full local gate (typecheck + lint + format:check + knip + test:coverage + build + check:css + check:docs + audit:deps)
-npm run package             # build + icons + electron-builder --mac --arm64 (local DMG)
+npm run fetch:bridge        # downloads + checksums the pinned CLIProxyAPI into resources/bridge/
+npm run package             # build + icons + fetch:bridge + electron-builder --mac --arm64 (local DMG)
 ```
 
 - `check:css` (`scripts/check-css-collisions.mjs`) walks `src/renderer/**/*.tsx` and fails if an inline `<style>` redefines a class owned by `design/tokens-base.css` (e.g. `.btn`, `.field`). Move it to a `.module.css` file.
 - `check:docs` (`scripts/check-docs-commands.mjs`) keeps this file honest. It parses every `npm run …`, `make …`, and `scripts/…` reference in the `AGENTS.md` guides, `README.md`, the `Makefile`, and `.github/workflows/**`, then asserts each target actually exists — and, in the other direction, that every `package.json` script is documented and every step composed into `npm run check` is named here. Failures print `file:line` plus the fix. It is **static**: nothing documented is ever executed, so GUI and packaging commands (`npm run dev`, `npm run package`) are validated by existence only. `specs/` and `.factory/docs/` are excluded on purpose — they are historical records that describe the repo as it was, including the retired `apps/desktop` layout. Two scripts are intentionally undocumented and allowlisted in the script: `icons` (an implementation detail of `package`) and `engine:demo` (a local scratch harness).
 - `audit:deps` (`scripts/audit-deps.mjs`) spawns `npm audit` in a clean env (strips `npm_config_allow_scripts`) so it works on npm 12.
+- `fetch:bridge` (`scripts/fetch-bridge.mjs`) downloads the CLIProxyAPI release pinned in `package.json` → `config.bridge` and verifies both the archive and the extracted binary against their recorded sha256. It is **fail-closed**: a mismatch leaves nothing executable behind and exits non-zero. `resources/bridge/` is gitignored; `electron-builder.yml` ships it as `extraResources` and signs it through `mac.binaries`. A checkout that skipped it simply has no Bridge — the manager reports `binary_missing` and the app runs on whatever other credentials pi has.
 
 **CI** (`.github/workflows/ci.yml`, runs on `macos-26`):
 

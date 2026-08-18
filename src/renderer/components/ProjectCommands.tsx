@@ -4,21 +4,13 @@ import type {
   DetectionProposal,
   DetectionState,
 } from '@shared/ipc-contract.js';
-import type {
-  CliVendor,
-  CliDescriptor,
-  ModelInfo,
-  ProjectCommand,
-  ProjectDef,
-} from '@shared/types.js';
+import type { ModelInfo, ProjectCommand, ProjectDef } from '@shared/types.js';
 import { api } from '../api.js';
 import { useApp } from '../stores/app.js';
 import { duration } from '../format.js';
-import { CliIcon } from './BrandIcon.js';
 import ModelPicker from './ModelPicker.js';
 import DetectionPanel from './DetectionPanel.js';
 import { CodeBlock } from './ui/CodeBlock.js';
-import { Dropdown } from './ui/Dropdown.js';
 import { Field, TextInput } from './ui/Field.js';
 import { Button } from './ui/Button.js';
 import styles from './ProjectCommands.module.css';
@@ -47,30 +39,20 @@ export default function ProjectCommands({
   const [starting, setStarting] = useState(false);
   const [detectError, setDetectError] = useState('');
   const [showRaw, setShowRaw] = useState(false);
-  const [clis, setClis] = useState<CliDescriptor[]>([]);
   const [models, setModels] = useState<ModelInfo[]>([]);
 
   // Which detection this component is showing. A stale session's progress must
   // not paint over a newer one the user just started.
   const detectionIdRef = useRef<string>('');
 
-  const detectCli = settings?.detectCli ?? 'default';
   const detectModel = settings?.detectModel ?? 'inherit';
-  const effectiveCli: CliVendor =
-    detectCli === 'default' ? (settings?.defaultCli ?? 'droid') : detectCli;
 
-  useEffect(() => {
-    void api.catalog.clis().then(setClis);
-  }, []);
-
-  // The model list belongs to whichever CLI will answer, so switching the CLI
-  // has to reload it rather than leave ids this vendor never published.
   useEffect(() => {
     void api.catalog
-      .models(effectiveCli)
+      .agentModels()
       .then(setModels)
       .catch(() => setModels([]));
-  }, [effectiveCli]);
+  }, []);
 
   useEffect(() => {
     return api.on('detection-progress', (data) => {
@@ -125,12 +107,6 @@ export default function ProjectCommands({
   const cancelDetection = (): void => {
     if (!detectionIdRef.current) return;
     void api.projects.cancelDetection(detectionIdRef.current);
-  };
-
-  const setDetectCli = (value: string): void => {
-    // `inherit` is the only model id every vendor accepts, so switching CLI
-    // resets it rather than carrying an id the new vendor would reject.
-    void patchSettings({ detectCli: value as CliVendor | 'default', detectModel: 'inherit' });
   };
 
   const upsert = useCallback((list: ProjectCommand[], entry: ProjectCommand): ProjectCommand[] => {
@@ -286,7 +262,7 @@ export default function ProjectCommands({
             <Button
               size="sm"
               disabled={starting || detectionLive}
-              title={`Asks ${effectiveCli} to read the repo and propose commands.`}
+              title="Asks an agent to read the repo and propose commands."
               onClick={() => void askAgent()}
             >
               {starting || detectionLive ? 'Asking AI…' : 'Ask AI to find commands'}
@@ -300,34 +276,12 @@ export default function ProjectCommands({
           Detection reads the repo read-only, against your checkout rather than a worktree.
         </span>
         <div className={`${styles.two} ${styles.detectPicker}`}>
-          <Field label="CLI vendor" htmlFor="detect-cli-select">
-            <div className={styles.cliPick}>
-              <Dropdown
-                id="detect-cli-select"
-                className={styles.cliDropdown}
-                aria-label="Command Detection CLI"
-                value={detectCli}
-                options={[
-                  {
-                    value: 'default',
-                    label: `Follow the default CLI (${settings?.defaultCli ?? 'droid'})`,
-                  },
-                  ...clis.map((cli) => ({
-                    value: cli.id,
-                    label: cli.label,
-                  })),
-                ]}
-                onChange={setDetectCli}
-              />
-              <CliIcon vendor={effectiveCli} size={18} />
-            </div>
-          </Field>
           <Field label="Model">
             <ModelPicker
               value={detectModel}
               models={models}
               allowInherit
-              emptyHint={`No models listed for ${effectiveCli}. Install and sign in to it, or leave this on inherit.`}
+              emptyHint="No models are reachable. Connect a provider under Settings → Providers, or leave this on inherit."
               onChange={(model) => void patchSettings({ detectModel: model })}
             />
           </Field>

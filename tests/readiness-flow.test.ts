@@ -1,8 +1,9 @@
 import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tempDir } from './tmp.js';
 import { describe, expect, it } from 'vitest';
+import type { ReadinessEntry } from '../src/shared/types.js';
 import { defaultProject } from '../src/main/store/projects.js';
 import { ProjectStore } from '../src/main/store/projects.js';
 import { defaultSettings } from '../src/main/store/settings.js';
@@ -12,9 +13,11 @@ import { readMarker } from '../src/main/readiness/marker.js';
 import { mergeCheckFromView, pollPrMerged } from '../src/main/readiness/merge.js';
 import { inspectProject } from '../src/main/readiness/sessions.js';
 import { ReadinessSession, type ReadinessRemediator } from '../src/main/readiness/session.js';
-import { evaluate } from '../src/main/droid/permissions.js';
+import { createAgentRemediator } from '../src/main/readiness/remediator.js';
+import { evaluate } from '../src/main/pi/policy.js';
 import { makeFakeGh } from './fake-gh.js';
 import { viewPrMergeState } from '../src/main/system/gh.js';
+import { say, scriptedOneShots, toolCall } from './scripted-oneshot.js';
 
 function sh(cwd: string, argv: string[]): string {
   return execFileSync(argv[0]!, argv.slice(1), { cwd, encoding: 'utf8' });
@@ -72,7 +75,7 @@ function markerJson(repo: string): string {
       schemaVersion: 1,
       generatedAt: '2026-08-11T05:00:00Z',
       commit: 'abc',
-      agent: { harness: 'droid', model: 'inherit', reasoningEffort: 'high' },
+      agent: { harness: 'pi', model: 'inherit', reasoningEffort: 'high' },
       verdict: 'ready',
       summary: 'Ready.',
       stack: { languages: ['typescript'], monorepo: false, packages: [] },
@@ -670,20 +673,21 @@ describe('readiness AskUser does not weaken pipeline zero-interrupt', () => {
     expect(mapped[0]?.answer).toBe('gitlab');
   });
 
-  it('still auto-answers droid.ask_user for pipeline runs', () => {
+  it('denies an asking tool in a pipeline run rather than parking it', () => {
+    // Readiness parks a question because a human is watching it. A pipeline run
+    // has nobody to answer, and the policy has no "wait" outcome, so an
+    // interactive tool is unrecognised and fails closed — the parking above
+    // must never become the pipeline's path.
     const outcome = evaluate(
       {
-        method: 'droid.ask_user',
-        params: {
+        tool: 'ask_user',
+        input: {
           questions: [{ index: 0, question: 'which CI?', options: ['github', 'gitlab'] }],
         },
       },
       { worktree: '/repo', writes: null, protectedPaths: [] },
     );
-    expect(outcome.decision).toEqual({
-      outcome: 'allow',
-      answers: [{ index: 0, question: 'which CI?', answer: 'github' }],
-    });
+    expect(outcome.decision.outcome).toBe('deny');
   });
 
   it('surfaces a parked ask on the session and resumes only after a real answer', async () => {
@@ -729,58 +733,89 @@ describe('readiness AskUser does not weaken pipeline zero-interrupt', () => {
 });
 
 describe('readiness remediator streams mid-turn work', () => {
-  it('folds assistant text and closed tool rows into the session transcript', async () => {
-    const dir = tempDir('foundry-ready-stream-cli-');
-    const js = join(dir, 'fake.mjs');
-    writeFileSync(
-      js,
-      `
-const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
-out({ type: 'system', subtype: 'init', session_id: 's1', model: 'fake-model' });
-out({ type: 'message', role: 'assistant', id: 'm1', text: 'Adding a linter.' });
-out({ type: 'tool_call', id: 'c1', toolId: 'Read', toolName: 'Read', parameters: { file_path: '/repo/package.json' } });
-out({ type: 'tool_result', id: 'c1', toolId: 'Read', isError: false, value: '{}' });
-out({ type: 'message', role: 'assistant', id: 'm2', text: 'Done.' });
-out({ type: 'completion', finalText: 'Done.', session_id: 's1', usage: { input_tokens: 4, output_tokens: 2 } });
-process.exit(0);
-`,
-    );
-    const bin = join(dir, 'droid');
-    writeFileSync(bin, `#!/bin/sh\nexec "${process.execPath}" "${js}" "$@"\n`);
-    chmodSync(bin, 0o755);
+  /** Drives one remediation turn and collects the transcript it produced. */
+  async function remediate(
+    turns: Parameters<typeof scriptedOneShots>[0],
+    signal: { cancelled: boolean } = { cancelled: false },
+  ) {
+    const dir = tempDir('foundry-ready-remediate-');
+    const oneShots = scriptedOneShots(turns);
+    const remediator = createAgentRemediator({ oneShot: oneShots.factory });
+    const entries: ReadinessEntry[] = [];
+    const result = await remediator.run({
+      cwd: dir,
+      evaluation: evaluateRepo(dir),
+      model: 'inherit',
+      reasoningEffort: 'off',
+      onEntry: (entry) => {
+        const full = { ...entry, id: String(entries.length), at: 0 } as ReadinessEntry;
+        entries.push(full);
+        return full;
+      },
+      flush: () => {},
+      onAskUser: async () => [],
+      signal,
+    });
+    return { result, entries, oneShots, dir };
+  }
 
-    const { createAgentRemediator } = await import('../src/main/readiness/remediator.js');
-    const { __setResolvedEnvForTest } = await import('../src/main/system/env.js');
-    __setResolvedEnvForTest({ path: '/usr/bin:/bin', via: 'login-shell' });
-    try {
-      const settings = defaultSettings();
-      settings.clis.droid = { path: bin, extraArgs: [] };
-      const remediator = createAgentRemediator({ settings, vendor: 'droid' });
-      const entries: { kind: string; text: string; done?: boolean }[] = [];
-      const result = await remediator.run({
-        cwd: dir,
-        evaluation: evaluateRepo(dir),
-        model: 'inherit',
-        reasoningEffort: 'off',
-        onEntry: (entry) => {
-          const full = { ...entry, id: String(entries.length), at: 0 };
-          entries.push(full);
-          return full;
-        },
-        flush: () => {},
-        onAskUser: async () => [],
-        signal: { cancelled: false },
-      });
-      expect(result.ok).toBe(true);
-      expect(entries.some((e) => e.kind === 'text' && e.text.includes('Adding a linter'))).toBe(
-        true,
-      );
-      const tool = entries.find((e) => e.kind === 'tool');
-      expect(tool?.text).toContain('package.json');
-      expect(tool?.done).toBe(true);
-    } finally {
-      __setResolvedEnvForTest(null);
-    }
+  it('folds assistant text and closed tool rows into the session transcript', async () => {
+    const { result, entries } = await remediate([
+      {
+        events: [
+          ...say('Adding a linter.'),
+          ...toolCall({
+            callId: 'c1',
+            tool: 'read',
+            args: { path: '/repo/package.json' },
+            result: '{}',
+          }),
+        ],
+        text: 'Done.',
+      },
+    ]);
+
+    expect(result.ok).toBe(true);
+    expect(entries.some((e) => e.kind === 'text' && e.text.includes('Adding a linter'))).toBe(true);
+    const tool = entries.find((e) => e.kind === 'tool');
+    expect(tool?.text).toContain('package.json');
+    // A tool row that never closes reads as work still in flight after the
+    // session has been disposed.
+    expect(tool?.done).toBe(true);
+    expect(tool?.failed).toBe(false);
+  });
+
+  it('runs write-capable, but only inside the readiness worktree it was handed', async () => {
+    const { oneShots, dir } = await remediate([{ text: 'Done.' }]);
+    // The whole job is to change the repository, so unlike detection this one
+    // needs write tools. The isolated branch is what makes that safe.
+    expect(oneShots.calls[0]!.access).toBe('write');
+    expect(oneShots.calls[0]!.cwd).toBe(dir);
+  });
+
+  it('reports an interrupted turn as a failure rather than a finished fix', async () => {
+    const { result } = await remediate([{ interrupted: true, reason: 'aborted' }]);
+    expect(result.ok).toBe(false);
+    expect(result.detail).toBe('aborted');
+  });
+
+  it('aborts the turn in flight when the session is cancelled', async () => {
+    const signal = { cancelled: false };
+    // The turn is held open until the abort lands, which is what the 250ms
+    // cancellation poll exists to deliver; a turn that answered first would
+    // prove nothing about cancellation.
+    setTimeout(() => {
+      signal.cancelled = true;
+    }, 10);
+    const { result } = await remediate([{ hangUntilAbort: true }], signal);
+    expect(result.ok).toBe(false);
+    expect(result.detail).toBe('cancelled');
+  });
+
+  it('reports a turn that could not run at all', async () => {
+    const { result } = await remediate([{ throws: 'no model is available to this install' }]);
+    expect(result.ok).toBe(false);
+    expect(result.detail).toContain('no model is available');
   });
 });
 

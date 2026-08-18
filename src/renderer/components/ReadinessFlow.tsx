@@ -230,23 +230,21 @@ export default function ReadinessFlow({
     };
   }, [projectId]);
 
-  // Readiness always runs on the default CLI (see readiness/sessions.ts), so the
-  // picker must offer that CLI's catalog rather than a free-typed model id.
-  const defaultCli = settings?.defaultCli;
+  // The picker offers what a run can actually reach rather than a free-typed
+  // model id, so a readiness evaluation cannot be started on a model whose
+  // provider has no credential.
   useEffect(() => {
-    if (!defaultCli) return;
     let cancelled = false;
-    void api.catalog.models(defaultCli).then((next) => {
+    void api.catalog.agentModels().then((next) => {
       if (!cancelled) setModels(next);
     });
     return () => {
       cancelled = true;
     };
-  }, [defaultCli]);
+  }, []);
 
   const refreshModels = async (): Promise<void> => {
-    if (!defaultCli) return;
-    setModels(await api.catalog.models(defaultCli, true));
+    setModels(await api.catalog.agentModels());
   };
 
   const phase = state?.phase ?? (inspect?.ready ? 'complete' : 'confirming');
@@ -426,7 +424,7 @@ export default function ReadinessFlow({
                   value={model}
                   models={models}
                   allowInherit
-                  emptyHint={`No models from ${defaultCli ?? 'the default CLI'}. Install and sign in under Settings → Agent CLIs, then refresh.`}
+                  emptyHint="No models are reachable. Connect a provider under Settings → Providers, then refresh."
                   onChange={setModel}
                   onRefresh={() => void refreshModels()}
                 />

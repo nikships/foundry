@@ -5,20 +5,9 @@
 
 import { join } from 'node:path';
 import { z } from 'zod';
-import {
-  DEFAULT_PR_AGENT,
-  type AppSettings,
-  type CliConfig,
-  type CliVendor,
-  CLI_VENDOR_IDS,
-} from '@shared/types.js';
-import { defaultCliConfig } from '../cli/index.js';
+import { DEFAULT_PR_AGENT, type AppSettings } from '@shared/types.js';
+import { BRIDGE_PORT_MAX, BRIDGE_PORT_MIN, DEFAULT_BRIDGE_PORT } from '../bridge/manager.js';
 import { JsonStore } from './json-store.js';
-
-const cliConfigSchema = z.object({
-  path: z.string().min(1),
-  extraArgs: z.array(z.string()),
-});
 
 /**
  * The band a compaction threshold is useful in. Below it a run compacts more
@@ -27,42 +16,29 @@ const cliConfigSchema = z.object({
  */
 const COMPACTION_BAND = [0.5, 0.95] as const;
 
-/** Mission-bounded band for the app-owned droid daemon (see architecture §9.1). */
-const DAEMON_PORT_BAND = [37_600, 37_699] as const;
-const DEFAULT_DAEMON_PORT = 37_643;
+/** Mission-bounded band for the app-owned Bridge; the manager scans up in it. */
+const BRIDGE_PORT_BAND = [BRIDGE_PORT_MIN, BRIDGE_PORT_MAX] as const;
 
-const mcpServerSchema = z.discriminatedUnion('type', [
-  z.object({
-    id: z.string().min(1),
-    name: z.string().min(1).max(80),
-    disabled: z.boolean(),
-    type: z.literal('stdio'),
-    command: z.string().min(1),
-    args: z.array(z.string()).optional(),
-    env: z.record(z.string(), z.string()).optional(),
-  }),
-  z.object({
-    id: z.string().min(1),
-    name: z.string().min(1).max(80),
-    disabled: z.boolean(),
-    type: z.literal('http'),
-    url: z.string().min(1).url(),
-  }),
-  z.object({
-    id: z.string().min(1),
-    name: z.string().min(1).max(80),
-    disabled: z.boolean(),
-    type: z.literal('sse'),
-    url: z.string().min(1).url(),
-  }),
-]);
+/**
+ * Keys earlier builds stored that this one no longer honours.
+ *
+ * Deleted on read rather than ignored: the schema is strict on patch, so a
+ * stale key that survived into memory would fail the operator's next save on a
+ * value they never set — and `factoryApiKey` in particular must leave the file
+ * rather than sit there as a credential nothing reads.
+ */
+const RETIRED_KEYS = [
+  'clis',
+  'defaultCli',
+  'detectCli',
+  'daemonPort',
+  'factoryApiKey',
+  'mcpServers',
+  'droidPath',
+  'defaultAutonomy',
+] as const;
 
 export const appSettingsSchema = z.object({
-  clis: z.object({
-    droid: cliConfigSchema,
-  }),
-  defaultCli: z.literal('droid'),
-  detectCli: z.enum(['default', 'droid']),
   detectModel: z.string().min(1),
   readinessModel: z.string().min(1),
   readinessReasoningEffort: z.enum(['off', 'low', 'medium', 'high', 'xhigh', 'max']),
@@ -83,11 +59,7 @@ export const appSettingsSchema = z.object({
   compactionThreshold: z.number().min(COMPACTION_BAND[0]).max(COMPACTION_BAND[1]),
   /** 0 disables; the useful range stops well before a phase's retry budgets. */
   rewindAfterCorrections: z.number().int().min(0).max(20),
-  daemonPort: z.number().int().min(DAEMON_PORT_BAND[0]).max(DAEMON_PORT_BAND[1]),
-  /** Empty is unset. A non-empty value is the daemon credential. */
-  factoryApiKey: z.string().trim().max(2048),
-  /** BYOK-only: no Factory credential, no Factory-hosted models. */
-  airgapMode: z.boolean(),
+  bridgePort: z.number().int().min(BRIDGE_PORT_BAND[0]).max(BRIDGE_PORT_BAND[1]),
   notifications: z.object({
     accepted: z.boolean(),
     rejected: z.boolean(),
@@ -99,25 +71,10 @@ export const appSettingsSchema = z.object({
   appearance: z.enum(['system', 'dark']),
   retentionDays: z.number().int().min(1).max(3650).nullable(),
   onboarded: z.boolean(),
-  mcpServers: z.array(mcpServerSchema),
 });
-
-/**
- * Resolves the path for droid at first launch so executing runs never require
- * a trip to Settings first. An absent binary resolves to its bare name and the
- * doctor explains it.
- */
-function defaultClis(): Record<CliVendor, CliConfig> {
-  const clis = {} as Record<CliVendor, CliConfig>;
-  for (const vendor of CLI_VENDOR_IDS) clis[vendor] = defaultCliConfig(vendor);
-  return clis;
-}
 
 export function defaultSettings(): AppSettings {
   return {
-    clis: defaultClis(),
-    defaultCli: 'droid',
-    detectCli: 'default',
     detectModel: 'inherit',
     readinessModel: 'inherit',
     readinessReasoningEffort: 'high',
@@ -131,9 +88,7 @@ export function defaultSettings(): AppSettings {
     gateRetries: 2,
     compactionThreshold: 0.8,
     rewindAfterCorrections: 2,
-    daemonPort: DEFAULT_DAEMON_PORT,
-    factoryApiKey: '',
-    airgapMode: false,
+    bridgePort: DEFAULT_BRIDGE_PORT,
     notifications: { accepted: true, rejected: true, failed: true, needsInput: true },
     dockBadge: true,
     // Terminal.app ships with macOS, so the default always resolves.
@@ -141,39 +96,23 @@ export function defaultSettings(): AppSettings {
     appearance: 'system',
     retentionDays: null,
     onboarded: false,
-    mcpServers: [],
   };
 }
 
 /**
- * Settings files written before multi-CLI support carry a single `droidPath`.
- * Carrying it over matters: a user who pointed Foundry at a non-standard droid
- * build would otherwise silently get whatever is on PATH after an update.
+ * Reads a stored file into the current shape.
  *
- * Retired keys are deleted here rather than ignored: the schema is strict on
- * patch, so a stale key that survived the read would fail the operator's next
- * save on a value they never set.
+ * Two jobs, and the second is why this runs on every read rather than once: a
+ * file written before the migration to pi still carries CLI paths, a daemon
+ * port, and a Factory API key. Those keys are deleted here, so they are gone
+ * from memory immediately and gone from disk on the next write, rather than
+ * lingering as a credential nothing reads and the strict patch schema rejects.
  */
 export function migrate(raw: unknown): AppSettings {
   const base = defaultSettings();
-  const stored = (raw ?? {}) as Partial<AppSettings> & {
-    droidPath?: string;
-    defaultAutonomy?: string;
-  };
-  const clis = { ...base.clis };
-  for (const vendor of CLI_VENDOR_IDS) {
-    const kept = stored.clis?.[vendor];
-    if (kept?.path) clis[vendor] = { path: kept.path, extraArgs: kept.extraArgs ?? [] };
-  }
-  if (stored.droidPath && !stored.clis?.droid) {
-    clis.droid = { path: stored.droidPath, extraArgs: clis.droid.extraArgs };
-  }
-  const merged: AppSettings = { ...base, ...stored, clis } as AppSettings;
-  merged.defaultCli = 'droid';
-  if (merged.detectCli !== 'default' && merged.detectCli !== 'droid') {
-    merged.detectCli = 'default';
-  }
-  if (!merged.detectCli) merged.detectCli = base.detectCli;
+  const stored = (raw ?? {}) as Partial<AppSettings>;
+  const merged = { ...base, ...stored } as AppSettings & Record<string, unknown>;
+  for (const key of RETIRED_KEYS) delete merged[key];
   if (!merged.detectModel) merged.detectModel = base.detectModel;
   // Pre-field files and hand-edits that leave a garbage writer name fall back
   // to the shipped builtin rather than leaving the app with no PR writer.
@@ -191,9 +130,6 @@ export function migrate(raw: unknown): AppSettings {
   ) {
     merged.readinessReasoningEffort = base.readinessReasoningEffort;
   }
-  delete (merged as { droidPath?: string }).droidPath;
-  // Foundry no longer has autonomy modes: runs are always fully autonomous.
-  delete (merged as { defaultAutonomy?: string }).defaultAutonomy;
   // A read is not a save, so an out-of-band value is clamped rather than
   // rejected: refusing it here would leave the app with no threshold at all.
   merged.compactionThreshold = clamp(
@@ -207,36 +143,8 @@ export function migrate(raw: unknown): AppSettings {
     clamp(merged.rewindAfterCorrections, base.rewindAfterCorrections, [0, 20]),
   );
   // Out-of-band ports (hand-edited or pre-field files) clamp into the mission
-  // range rather than leaving the app with no daemon port at all.
-  merged.daemonPort = Math.round(clamp(merged.daemonPort, base.daemonPort, DAEMON_PORT_BAND));
-  // Pre-field files and hand-edits that leave a non-string fall back to unset
-  // rather than failing the next save on a value the operator never typed.
-  if (typeof merged.factoryApiKey !== 'string') {
-    merged.factoryApiKey = '';
-  } else {
-    merged.factoryApiKey = merged.factoryApiKey.trim().slice(0, 2048);
-  }
-  // Absent in files written before airgap mode existed; anything non-boolean is
-  // a hand-edit, and defaulting it off keeps a typo from silently cutting the
-  // app off from every Factory-hosted model.
-  if (typeof merged.airgapMode !== 'boolean') merged.airgapMode = base.airgapMode;
-  if (!Array.isArray(merged.mcpServers)) {
-    merged.mcpServers = [];
-  } else {
-    // Preserve file even if it was hand-edited to contain garbage: filter to
-    // only entries that pass the strict MCP schema, then deduplicate by name.
-    const seen = new Set<string>();
-    const kept: typeof merged.mcpServers = [];
-    for (const entry of merged.mcpServers) {
-      const parsed = mcpServerSchema.safeParse(entry);
-      if (!parsed.success) continue;
-      const normalized = parsed.data.name.trim().toLowerCase();
-      if (seen.has(normalized)) continue;
-      seen.add(normalized);
-      kept.push(parsed.data);
-    }
-    merged.mcpServers = kept;
-  }
+  // range rather than leaving the app with no Bridge port at all.
+  merged.bridgePort = Math.round(clamp(merged.bridgePort, base.bridgePort, BRIDGE_PORT_BAND));
   return merged;
 }
 

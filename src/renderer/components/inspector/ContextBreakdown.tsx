@@ -27,13 +27,6 @@ const REASON_COPY: Record<ContextBreakdownReason, string> = {
   unanswered: 'Breakdown unavailable: the agent’s session did not answer the request.',
 };
 
-/** Lists worth showing under the categories, in the order they earn attention. */
-const EXTRA_LISTS = [
-  { key: 'skills', label: 'Skills' },
-  { key: 'mcpServers', label: 'MCP servers' },
-  { key: 'droids', label: 'Droids' },
-] as const;
-
 interface State {
   loading: boolean;
   breakdown: Breakdown | null;
@@ -45,11 +38,17 @@ interface State {
 
 const EMPTY: State = { loading: false, breakdown: null, message: '', capturedAt: '' };
 
+/**
+ * Pi reports occupancy as one number for the whole conversation, so this is a
+ * used/free split rather than a composition. Two rows say what four honest
+ * numbers can; anything finer would be invented.
+ */
 function Rows({ breakdown }: { breakdown: Breakdown }): React.JSX.Element {
   const budget = breakdown.contextBudget || breakdown.usedTokens || 1;
-  const categories = [...breakdown.categories]
-    .filter((c) => c.tokens > 0)
-    .sort((a, b) => b.tokens - a.tokens);
+  const rows = [
+    { name: 'Used', tokens: breakdown.usedTokens },
+    { name: 'Free', tokens: breakdown.freeTokens },
+  ].filter((row) => row.tokens > 0);
   return (
     <>
       <div className={styles.head}>
@@ -59,42 +58,26 @@ function Rows({ breakdown }: { breakdown: Breakdown }): React.JSX.Element {
           {tokens(breakdown.freeTokens)} free
         </span>
       </div>
-      {categories.length > 0 ? (
+      {rows.length > 0 ? (
         <ul className={styles.rows}>
-          {categories.map((category) => (
-            <li key={category.colorKey || category.name} className={styles.row}>
-              <span className={styles.rowName}>{category.name}</span>
+          {rows.map((row) => (
+            <li key={row.name} className={styles.row}>
+              <span className={styles.rowName}>{row.name}</span>
               <span className={styles.rowBar} aria-hidden>
                 <span
                   className={styles.rowFill}
-                  style={{ width: `${Math.min(100, (category.tokens / budget) * 100)}%` }}
+                  style={{ width: `${Math.min(100, (row.tokens / budget) * 100)}%` }}
                 />
               </span>
-              <span className={styles.rowTokens}>{tokens(category.tokens)}</span>
+              <span className={styles.rowTokens}>{tokens(row.tokens)}</span>
             </li>
           ))}
         </ul>
       ) : (
         <p className={styles.note}>
-          The session reports no categorised context yet — the first turn has not filled it.
+          The session reports no context yet — the first turn has not filled it.
         </p>
       )}
-      {EXTRA_LISTS.map(({ key, label }) => {
-        const entries = breakdown[key];
-        if (!entries.length) return null;
-        return (
-          <div key={key} className={styles.list}>
-            <span className={styles.listLabel}>{label}</span>
-            <span className={styles.listValue}>
-              {entries
-                .map((entry) => `${entry.name} (${tokens(entry.tokens)})`)
-                .slice(0, 6)
-                .join(', ')}
-              {entries.length > 6 ? ` +${entries.length - 6} more` : ''}
-            </span>
-          </div>
-        );
-      })}
     </>
   );
 }

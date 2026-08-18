@@ -1,10 +1,9 @@
 /**
- * Brand marks for the CLIs and model providers Foundry drives, from
- * @lobehub/icons.
+ * Brand marks for the model providers Foundry can reach, from @lobehub/icons.
  *
  * The maps below are written out rather than handed to lobehub's own
  * ProviderIcon, which resolves a name against a fixed keyword list holding no
- * entry for kimi, zai, junie, codex, grok or droid, and renders an anonymous
+ * entry for kimi, zai, junie, codex or grok, and renders an anonymous
  * placeholder for anything it misses. That would give five of our six vendors
  * the same glyph, which reads as a broken picker rather than an unmapped brand.
  * A name this file does not know renders nothing at all, the same honest gap the
@@ -85,7 +84,6 @@ import YiColor from '@lobehub/icons/es/Yi/components/Color.js';
 import ZAIMono from '@lobehub/icons/es/ZAI/components/Mono.js';
 import ZeroOneColor from '@lobehub/icons/es/ZeroOne/components/Color.js';
 import ZhipuColor from '@lobehub/icons/es/Zhipu/components/Color.js';
-import type { CliVendor } from '@shared/types.js';
 import styles from './BrandIcon.module.css';
 
 export interface MarkProps {
@@ -95,41 +93,6 @@ export interface MarkProps {
 }
 
 export type Mark = ComponentType<MarkProps>;
-
-/**
- * Factory ships no mark in lobehub's collection, and droid is the default CLI,
- * so without this the vendor most installs actually run would be the only one
- * with no logo. This is the Factory pinwheel used only as a vendor badge
- * (same role as the Claude or Codex mark), currentColor so it sits beside
- * the other mono glyphs.
- */
-function FactoryDroid({ size = 16, className, style }: MarkProps): React.JSX.Element {
-  return (
-    <svg
-      className={className}
-      fill="none"
-      height={size}
-      style={style}
-      viewBox="0 0 67 65"
-      width={size}
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        d="M47.75 11.15a.867.867 0 0 1-.671-.806.84.84 0 0 1 .067-.362c1.688-4.007 2.433-7.213 1.23-8.555-3.183-3.56-15.952 3.52-20.024 5.919a.9.9 0 0 1-1.273-.41c-1.711-3.998-3.51-6.78-5.334-6.9-4.833-.323-8.73 13.49-9.87 17.992a.85.85 0 0 1-.459.563.9.9 0 0 1-.737.027c-4.109-1.647-7.398-2.373-8.773-1.2-3.651 3.104 3.609 15.557 6.068 19.528a.85.85 0 0 1-.11 1.031.9.9 0 0 1-.31.21C3.455 39.856.604 41.61.478 43.389c-.329 4.713 13.834 8.513 18.452 9.625q.186.046.337.163a.87.87 0 0 1 .332.642.84.84 0 0 1-.067.362c-1.688 4.007-2.433 7.214-1.23 8.555 3.183 3.561 15.954-3.519 20.025-5.917a.9.9 0 0 1 1.058.107.9.9 0 0 1 .215.302c1.711 3.997 3.509 6.779 5.334 6.9 4.833.322 8.73-13.49 9.868-17.993a.85.85 0 0 1 .168-.33.88.88 0 0 1 .659-.324.9.9 0 0 1 .371.066c4.109 1.647 7.397 2.372 8.773 1.2 3.651-3.105-3.61-15.559-6.07-19.53a.85.85 0 0 1 .111-1.03.9.9 0 0 1 .31-.21c4.1-1.67 6.952-3.424 7.075-5.203.331-4.713-13.833-8.513-18.45-9.623m-5.546-4.518c.93 1.624-3.858 12.446-7.42 20.015a.7.7 0 0 1-.28.303.71.71 0 0 1-.796-.059.7.7 0 0 1-.23-.341c-1.439-4.921-3.082-10.704-4.841-15.612a.84.84 0 0 1 .01-.594.87.87 0 0 1 .401-.446c4.392-2.34 11.908-5.446 13.156-3.266m-21.048 1.34c1.833.507 6.294 11.46 9.264 19.268a.67.67 0 0 1-.2.754.71.71 0 0 1-.794.08c-4.589-2.485-9.94-5.444-14.743-7.702a.87.87 0 0 1-.422-.427.84.84 0 0 1-.04-.591c1.414-4.679 4.471-12.063 6.935-11.383M7.243 23.433c1.664-.906 12.762 3.763 20.522 7.235.13.058.239.154.311.274a.67.67 0 0 1-.06.776.7.7 0 0 1-.35.225c-5.045 1.403-10.976 3.006-16.01 4.721a.9.9 0 0 1-.607-.01.88.88 0 0 1-.456-.391c-2.395-4.284-5.586-11.613-3.35-12.83M8.617 43.96c.519-1.788 11.752-6.14 19.758-9.035a.72.72 0 0 1 .773.195.67.67 0 0 1 .081.774c-2.548 4.475-5.582 9.694-7.898 14.377a.87.87 0 0 1-.437.413.9.9 0 0 1-.607.039c-4.797-1.37-12.37-4.36-11.67-6.763m15.855 13.568c-.93-1.623 3.859-12.446 7.42-20.014a.7.7 0 0 1 .28-.303.715.715 0 0 1 .796.059.7.7 0 0 1 .23.34c1.439 4.92 3.083 10.705 4.841 15.613a.84.84 0 0 1-.01.593.87.87 0 0 1-.402.445c-4.391 2.335-11.908 5.447-13.15 3.267zm21.049-1.34c-1.836-.506-6.297-11.461-9.266-19.269a.67.67 0 0 1 .2-.755.71.71 0 0 1 .795-.078c4.587 2.484 9.94 5.445 14.742 7.703.189.088.339.24.423.426a.84.84 0 0 1 .039.592c-1.413 4.686-4.47 12.063-6.933 11.381m13.912-15.462c-1.665.907-12.762-3.763-20.523-7.236a.7.7 0 0 1-.311-.273.67.67 0 0 1 .06-.777.7.7 0 0 1 .35-.225c5.046-1.402 10.975-3.005 16.009-4.72a.9.9 0 0 1 .609.01.88.88 0 0 1 .457.392c2.393 4.282 5.584 11.613 3.349 12.829M58.06 20.2c-.521 1.79-11.753 6.14-19.759 9.036a.72.72 0 0 1-.774-.195.67.67 0 0 1-.08-.776c2.547-4.474 5.581-9.694 7.897-14.377a.87.87 0 0 1 .437-.412.9.9 0 0 1 .607-.038c4.797 1.377 12.37 4.359 11.672 6.762"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
-/**
- * One mark per vendor in CLI_VENDOR_IDS. The harness gets its own product logo
- * where the vendor ships one, because Claude Code and Claude the model are not
- * the same thing and an agent's CLI is the more useful of the two to recognise.
- */
-export const CLI_MARKS: Record<CliVendor, Mark> = {
-  droid: FactoryDroid,
-};
 
 /**
  * Foundry's own mark: three interlocked rings. currentColor so it inherits
@@ -157,12 +120,41 @@ function FoundryMark({ size = 16, className, style }: MarkProps): React.JSX.Elem
 }
 
 /** Foundry mark for app chrome (titlebar, empty states, onboarding). */
-export const DroidGlyph: Mark = FoundryMark;
+export const FoundryGlyph: Mark = FoundryMark;
 
 /**
- * Keyed by the `provider` string a CLI's model catalog reports. Aliases for the
- * same brand are listed separately rather than normalised, because a catalog is
- * free to say `kimi` where another says `moonshot` and neither is wrong.
+ * pi's mark: the letter it is named after, drawn rather than typeset so it does
+ * not depend on a font that ships a Greek glyph. lobehub publishes no pi icon,
+ * and pi is the harness every agent phase now runs on, so the one runtime the
+ * app always uses would otherwise be the only unlabelled thing on the screen.
+ */
+function PiMark({ size = 16, className, style }: MarkProps): React.JSX.Element {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      height={size}
+      style={style}
+      viewBox="0 0 64 64"
+      width={size}
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <g stroke="currentColor" strokeWidth="6.4" strokeLinecap="round">
+        <path d="M12 20h40" />
+        <path d="M24 20v26" />
+        <path d="M42 20v20a6 6 0 0 0 8 5.4" />
+      </g>
+    </svg>
+  );
+}
+
+/** The agent harness itself, for chrome that names the transport. */
+export const PiGlyph: Mark = PiMark;
+
+/**
+ * Keyed by the `provider` string the model catalog reports. Aliases for the
+ * same brand are listed separately rather than normalised, because one catalog
+ * is free to say `kimi` where another says `moonshot` and neither is wrong.
  */
 const PROVIDER_MARKS: Record<string, Mark> = {
   ai21: Ai21Mono,
@@ -182,7 +174,6 @@ const PROVIDER_MARKS: Record<string, Mark> = {
   dbrx: DbrxColor,
   deepmind: DeepMindColor,
   deepseek: DeepSeekColor,
-  droid: FactoryDroid,
   doubao: DoubaoColor,
   // Ernie is Baidu's Wenxin model family; the Wenxin mark covers both names.
   ernie: WenxinColor,
@@ -242,30 +233,6 @@ const PROVIDER_MARKS: Record<string, Mark> = {
 export function providerMark(provider: string | null | undefined): Mark | null {
   if (!provider) return null;
   return PROVIDER_MARKS[provider.toLowerCase()] ?? null;
-}
-
-/** The logo of the CLI that runs an agent's phases. */
-export function CliIcon({
-  vendor,
-  size = 16,
-}: {
-  vendor: CliVendor;
-  size?: number;
-}): React.JSX.Element {
-  // A roster written before a vendor was renamed can still name it, and an
-  // unknown vendor falls back to droid everywhere else in the app.
-  const Icon = CLI_MARKS[vendor] ?? CLI_MARKS.droid;
-  return (
-    <span
-      aria-label={vendor}
-      className={styles.brandMark}
-      role="img"
-      style={{ width: size, height: size }}
-      title={vendor}
-    >
-      <Icon size={size} />
-    </span>
-  );
 }
 
 /** The logo of the vendor behind a model, or nothing when there is none. */

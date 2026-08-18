@@ -21,14 +21,13 @@ import { RunRegistry } from './engine/registry.js';
 import { Detections } from './engine/detections.js';
 import { Setups } from './engine/setups.js';
 import { ReadinessSessions } from './readiness/sessions.js';
+import { piOneShots } from './pi/pi-oneshot.js';
+import type { OneShotFactory } from './pi/oneshot.js';
 import { UpdaterService } from './updater.js';
 import { SmithService } from './smith/index.js';
 import { saveProposal } from './ipc/smith.js';
 import { notifyNeedsInput, notifyOutcome, setDockBadge } from './system/notify.js';
-import { setSettingsApiKey, settingsApiKeyForSpawn } from './droid/sdk/auth.js';
-import { airgapEnvForSpawn, setAirgapMode } from './droid/airgap.js';
-import { shutdownDaemonManager } from './droid/sdk/daemon.js';
-import { setSpawnEnvExtra } from './system/env.js';
+import { getBridgeService, shutdownBridgeService, type BridgeService } from './bridge/service.js';
 
 export interface Scope {
   projectId?: string;
@@ -48,24 +47,42 @@ export class AppContext {
   readonly readiness: ReadinessSessions;
   readonly updater: UpdaterService;
   readonly smith: SmithService;
+  readonly bridge: BridgeService;
   readonly version: string;
+  /**
+   * How every non-run agent turn is opened — detection, setup, the run-start
+   * command fill, the rebase repair, the readiness fix. One factory rather than
+   * five constructions, so a call site states what it needs (a directory, an
+   * access level) and never where the runtime keeps its state.
+   */
+  readonly oneShot: OneShotFactory;
 
   constructor(
     readonly supportDir: string,
     private readonly assetsRoot: string,
   ) {
     this.settings = new SettingsStore(supportDir);
-    // Must land before any droid spawn so the first pipeline sees the key.
-    this.syncFactoryAuth();
     this.projects = new ProjectStore(supportDir);
     this.roster = new RosterStore(supportDir);
     this.pipelines = new PipelineStore(supportDir);
     this.envelopes = new EnvelopeStore(supportDir);
     this.version = app.getVersion();
+    // Constructed, not started: the Bridge spawns on the first `ensure()`, so
+    // an operator who runs on their own API keys never pays for a child.
+    this.bridge = getBridgeService({
+      supportDir,
+      port: this.settings.get().bridgePort,
+      onModelsChanged: () => this.broadcast(IPC.eventBridgeChanged),
+    });
     this.updater = new UpdaterService((channel, payload) => this.broadcast(channel, payload));
-    this.detections = new Detections((state) => this.broadcast(IPC.eventDetectionProgress, state));
-    this.setups = new Setups((state) => this.broadcast(IPC.eventSetupProgress, state));
-    this.readiness = new ReadinessSessions((state) =>
+    this.oneShot = piOneShots(supportDir);
+    this.detections = new Detections(this.oneShot, (state) =>
+      this.broadcast(IPC.eventDetectionProgress, state),
+    );
+    this.setups = new Setups(this.oneShot, (state) =>
+      this.broadcast(IPC.eventSetupProgress, state),
+    );
+    this.readiness = new ReadinessSessions(this.oneShot, (state) =>
       this.broadcast(IPC.eventReadinessProgress, state),
     );
 
@@ -165,32 +182,16 @@ export class AppContext {
     return this.settings.get();
   }
 
-  /**
-   * Push the Settings API key and airgap flag into daemon auth and every child
-   * env. Call on launch and whenever either changes; a live daemon is dropped
-   * so the next turn reconnects with the new credential.
-   *
-   * Airgap is applied first because it decides whether the key is a credential
-   * or dead weight. A stored key is withheld from the child entirely while the
-   * mode is on: the CLI would ignore it anyway, and an operator who asked for
-   * no Factory credential should not have one handed to a subprocess.
-   */
-  syncFactoryAuth(): void {
-    const settings = this.settings.get();
-    setAirgapMode(settings.airgapMode);
-    setSettingsApiKey(settings.factoryApiKey);
-    setSpawnEnvExtra(settings.airgapMode ? airgapEnvForSpawn() : settingsApiKeyForSpawn());
-  }
-
   dispose(): void {
     this.registry.closeAll();
     this.detections.cancelAll();
     this.setups.cancelAll();
     this.readiness.cancelAll();
     this.smith.dispose();
-    // Best-effort: disconnect + SIGTERM the app-owned daemon. --parent-pid is
-    // the crash backstop; this is the clean quit path. Fire-and-forget so
-    // dispose stays sync for before-quit.
-    void shutdownDaemonManager();
+    // Agent turns run in this process, so quitting ends them; the Bridge is the
+    // one child left, and it has no parent-pid backstop of its own. This is the
+    // only thing standing between a quit and an orphaned proxy holding the port.
+    // Fire-and-forget so dispose stays sync for before-quit.
+    void shutdownBridgeService();
   }
 }

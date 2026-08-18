@@ -300,39 +300,46 @@
   border: 1px solid var(--line);
 }
 
-/* cli blocks */
-.settingsCliHead {
+/* provider blocks */
+.providerList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+.providerCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  padding: var(--s3);
+  border: 1px solid var(--line-faint);
+  border-radius: var(--r-sm);
+}
+.providerHead {
   display: flex;
   align-items: center;
   gap: var(--s2);
 }
-.settingsCliHead h3 {
+.providerHead h3 {
   margin: 0;
   font-size: var(--text-sm);
   font-weight: 600;
 }
-.settingsCliHead .settingsPill {
+.providerHead .settingsPill {
   margin-left: auto;
 }
-.caveats {
+.providerAccounts {
   list-style: none;
   display: flex;
   flex-direction: column;
   gap: var(--s1);
 }
-.caveats li {
+.providerAccounts li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
   font-size: var(--text-xs);
-  color: var(--text-faint);
   padding-left: var(--s3);
   border-left: 2px solid var(--line);
-}
-.cliPicker {
-  display: flex;
-  align-items: center;
-  gap: var(--s2);
-}
-.cliPicker :global(.select) {
-  flex: 1;
 }
 
 .settingsWarn {
@@ -471,53 +478,4 @@
   font-size: var(--text-sm);
   list-style: none;
   border: 1px solid color-mix(in srgb, var(--red) 18%, transparent);
-}
-
-/* MCP servers */
-.mcpList {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s3);
-}
-.mcpCard {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  padding: var(--s3);
-  border: 1px solid var(--line-faint);
-  border-radius: var(--r-sm);
-}
-.mcpCard.on {
-  background: var(--bg-raised);
-}
-.mcpCard.off {
-  background: transparent;
-  opacity: 0.6;
-}
-.mcpCardMain {
-  flex: 1;
-  min-width: 0;
-}
-.mcpCardName {
-  font-size: var(--text-sm);
-}
-.mcpCardType {
-  font-size: var(--text-xs);
-}
-.mcpDetail {
-  font-size: var(--text-xs);
-  word-break: break-all;
-}
-.mcpEnable {
-  display: flex;
-  align-items: center;
-  gap: var(--s2);
-  font-size: var(--text-xs);
-  white-space: nowrap;
-}
-.mcpForm {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s4);
-  max-width: 520px;
 }
