@@ -1,5 +1,5 @@
 /**
- * Executor against real git and a scripted droid stand-in. M3 acceptance
+ * Executor against real git and a scripted agent stand-in. M3 acceptance
  * criteria: the repair loop converges in-session, boundary violations are
  * reverted with evidence, and a phase that never yields a valid envelope fails.
  */
@@ -68,11 +68,11 @@ function emptyRepo(): string {
  * The scripted agent for the run currently under construction.
  *
  * Agent phases run in process, so a test scripts the transport rather than a
- * child: `run({ droid })` hands this to the executor's `transport` seam and the
- * engine drives the production `AgentSession`, policy, and event folding on top
- * of it. Returned by `scriptedDroid` so every existing test keeps its shape.
+ * child: `run({ scripted })` hands this to the executor's `transport` seam and
+ * the engine drives the production `AgentSession`, policy, and event folding on
+ * top of it.
  */
-function scriptedDroid(
+function scriptedAgent(
   turns: string[],
   sideEffects: (string | null)[] = [],
   asks: ScriptedAsk[][] = [],
@@ -287,7 +287,7 @@ interface RunInput {
   pipeline: PipelineDef;
   agents?: AgentDef[];
   envelopeDefs?: EnvelopeDef[];
-  droid?: ScriptedAgent;
+  scripted?: ScriptedAgent;
   /** Reason the session could not be opened, when the run must fail to open one. */
   sessionUnavailable?: string;
   request?: string;
@@ -312,7 +312,7 @@ function run(input: RunInput): Promise<{ status: string; runId: string }> {
  */
 function transportSeam(input: RunInput): ExecutorDeps['transport'] {
   const agent =
-    input.droid ??
+    input.scripted ??
     new ScriptedAgent(
       [],
       [],
@@ -578,9 +578,9 @@ describe('code phases', () => {
 
 describe('agent phases', () => {
   it('parses an envelope, runs gates, and records both', async () => {
-    const droid = scriptedDroid([buildEnvelope({ changed_files: ['made.txt'] })], ['made.txt']);
+    const scripted = scriptedAgent([buildEnvelope({ changed_files: ['made.txt'] })], ['made.txt']);
     const outcome = await run({
-      droid,
+      scripted,
       pipeline: pipe(
         [
           agentPhase('build', {
@@ -604,11 +604,11 @@ describe('agent phases', () => {
   });
 
   it('accepts a claimed deletion as a matching change', async () => {
-    const droid = scriptedDroid([buildEnvelope({ changed_files: ['README.md'] })], [], [], {
+    const scripted = scriptedAgent([buildEnvelope({ changed_files: ['README.md'] })], [], [], {
       deleteEffects: ['README.md'],
     });
     const outcome = await run({
-      droid,
+      scripted,
       pipeline: pipe(
         [
           agentPhase('build', {
@@ -629,9 +629,9 @@ describe('agent phases', () => {
   });
 
   it('corrects a malformed reply in the same session and then succeeds', async () => {
-    const droid = scriptedDroid(['I will explain in prose instead of JSON.', buildEnvelope()]);
+    const scripted = scriptedAgent(['I will explain in prose instead of JSON.', buildEnvelope()]);
     const outcome = await run({
-      droid,
+      scripted,
       pipeline: pipe(
         [
           agentPhase('build', {
@@ -652,9 +652,9 @@ describe('agent phases', () => {
   });
 
   it('fails the phase when no attempt ever produces a valid envelope', async () => {
-    const droid = scriptedDroid(['never json']);
+    const scripted = scriptedAgent(['never json']);
     const outcome = await run({
-      droid,
+      scripted,
       pipeline: pipe(
         [agentPhase('build', { description: 'Prove success is earned, never assumed.' })],
         {
@@ -675,7 +675,7 @@ describe('agent phases', () => {
       notes_for_next_agent: '',
       severity: 'high',
     });
-    const droid = scriptedDroid([customEnvelope]);
+    const scripted = scriptedAgent([customEnvelope]);
     const defs: EnvelopeDef[] = [
       {
         name: 'severity_report',
@@ -683,7 +683,7 @@ describe('agent phases', () => {
       },
     ];
     const outcome = await run({
-      droid,
+      scripted,
       envelopeDefs: defs,
       agents: [buildAgent({ envelope: 'severity_report' })],
       pipeline: pipe(
@@ -715,9 +715,9 @@ describe('agent phases', () => {
   });
 
   it('fails when the agent itself reports failure', async () => {
-    const droid = scriptedDroid([buildEnvelope({ status: 'fail', summary: 'could not do it' })]);
+    const scripted = scriptedAgent([buildEnvelope({ status: 'fail', summary: 'could not do it' })]);
     const outcome = await run({
-      droid,
+      scripted,
       pipeline: pipe(
         [agentPhase('build', { description: 'Prove a self-reported failure is not overridden.' })],
         {
@@ -731,12 +731,12 @@ describe('agent phases', () => {
   });
 
   it('reverts a write outside the boundary and fails with the violation', async () => {
-    const droid = scriptedDroid(
+    const scripted = scriptedAgent(
       [buildEnvelope(), buildEnvelope(), buildEnvelope()],
       ['forbidden/x.txt', 'forbidden/x.txt', 'forbidden/x.txt'],
     );
     const outcome = await run({
-      droid,
+      scripted,
       agents: [buildAgent({ writes: ['allowed/'] })],
       pipeline: pipe(
         [
@@ -760,12 +760,12 @@ describe('agent phases', () => {
   });
 
   it('allows a write that is inside the boundary', async () => {
-    const droid = scriptedDroid(
+    const scripted = scriptedAgent(
       [buildEnvelope({ changed_files: ['allowed/x.txt'] })],
       ['allowed/x.txt'],
     );
     const outcome = await run({
-      droid,
+      scripted,
       agents: [buildAgent({ writes: ['allowed/'] })],
       pipeline: pipe(
         [
@@ -786,7 +786,7 @@ describe('agent phases', () => {
 
   it('retries a gate failure as a correction into the same session', async () => {
     // First turn claims a file it never wrote; second turn tells the truth.
-    const droid = scriptedDroid(
+    const scripted = scriptedAgent(
       [
         buildEnvelope({ changed_files: ['ghost.txt'] }),
         buildEnvelope({ changed_files: ['real.txt'] }),
@@ -794,7 +794,7 @@ describe('agent phases', () => {
       [null, 'real.txt'],
     );
     const outcome = await run({
-      droid,
+      scripted,
       pipeline: pipe(
         [
           agentPhase('build', {
@@ -852,10 +852,10 @@ describe('the repair loop', () => {
     installCheck('#!/bin/sh\ntest -f fix.txt\n');
     const envelope = buildEnvelope({ summary: 'attempted', commit_message: 'work' });
     // First build writes nothing; the repair writes fix.txt.
-    const droid = scriptedDroid([envelope, envelope], [null, 'fix.txt']);
+    const scripted = scriptedAgent([envelope, envelope], [null, 'fix.txt']);
 
     const outcome = await run({
-      droid,
+      scripted,
       project: { commands: [{ name: 'test', argv: ['./check.sh'] }] },
       pipeline: repairPipeline(2),
     });
@@ -872,9 +872,9 @@ describe('the repair loop', () => {
   it('gives up after the feedback budget rather than looping forever', async () => {
     installCheck('#!/bin/sh\nexit 1\n');
     const envelope = buildEnvelope({ summary: 'tried', commit_message: 'x' });
-    const droid = scriptedDroid([envelope]);
+    const scripted = scriptedAgent([envelope]);
     const outcome = await run({
-      droid,
+      scripted,
       project: { commands: [{ name: 'test', argv: ['./check.sh'] }] },
       pipeline: pipe(
         [
@@ -906,9 +906,9 @@ describe('the repair loop', () => {
 
 describe('acceptance criteria', () => {
   it('rejects a run whose reviewer did not approve, even though every phase ran', async () => {
-    const droid = scriptedDroid([reviewEnvelope(false)]);
+    const scripted = scriptedAgent([reviewEnvelope(false)]);
     const outcome = await run({
-      droid,
+      scripted,
       agents: [buildAgent({ name: 'reviewer', envelope: 'review' })],
       pipeline: pipe(
         [
@@ -1000,11 +1000,11 @@ describe('zero-interrupt runs', () => {
 
   it('settles with no human prompt and traces all four auto-decisions', async () => {
     const outside = join(tempDir('foundry-outside-'), 'escaped.txt');
-    const droid = scriptedDroid([buildEnvelope()], [], [everyAsk(outside)]);
+    const scripted = scriptedAgent([buildEnvelope()], [], [everyAsk(outside)]);
     let humanAsked = 0;
 
     const outcome = await run({
-      droid,
+      scripted,
       pipeline: pipe(
         [agentPhase('build', { description: 'Raise every kind of ask a run can raise.' })],
         {
@@ -1046,7 +1046,7 @@ describe('zero-interrupt runs', () => {
 
     // The trace is not the wire. What settles the call is the decision the agent
     // received, because a block it never saw is a write that still happened.
-    const replies = askReplies(droid);
+    const replies = askReplies(scripted);
     expect(replies.map((r) => `${r.tool}:${r.decision.outcome}`)).toEqual([
       'bash:allow',
       'write:deny',
@@ -1061,12 +1061,12 @@ describe('zero-interrupt runs', () => {
 
 describe('the safety net under a zero-interrupt policy', () => {
   it('reverts a boundary violation that never went through an ask', async () => {
-    const droid = scriptedDroid(
+    const scripted = scriptedAgent(
       [buildEnvelope(), buildEnvelope()],
       ['forbidden/slipped.txt', 'forbidden/slipped.txt'],
     );
     const outcome = await run({
-      droid,
+      scripted,
       agents: [buildAgent({ writes: ['allowed/'] })],
       pipeline: pipe(
         [
@@ -1091,12 +1091,12 @@ describe('the safety net under a zero-interrupt policy', () => {
   });
 
   it('fails the phase on a protected path however many retries it gets', async () => {
-    const droid = scriptedDroid(
+    const scripted = scriptedAgent(
       [buildEnvelope(), buildEnvelope(), buildEnvelope()],
       ['.foundry/stash.json', '.foundry/stash.json', '.foundry/stash.json'],
     );
     const outcome = await run({
-      droid,
+      scripted,
       agents: [buildAgent({ writes: null })],
       pipeline: pipe(
         [
@@ -1121,9 +1121,9 @@ describe('the safety net under a zero-interrupt policy', () => {
 
 describe('the trace record', () => {
   it('writes prompts, envelopes, and events to disk as the raw record', async () => {
-    const droid = scriptedDroid([buildEnvelope({ summary: 'ok', commit_message: 'x' })]);
+    const scripted = scriptedAgent([buildEnvelope({ summary: 'ok', commit_message: 'x' })]);
     const outcome = await run({
-      droid,
+      scripted,
       pipeline: pipe(
         [
           agentPhase('build', {
@@ -1175,12 +1175,12 @@ describe('the trace record', () => {
 
   it('runs an execution in an initially empty repository without failing isolation', async () => {
     const empty = emptyRepo();
-    const droid = scriptedDroid(
+    const scripted = scriptedAgent(
       [buildEnvelope({ summary: 'created initial app', changed_files: ['index.ts'] })],
       ['index.ts'],
     );
     const outcome = await run({
-      droid,
+      scripted,
       project: { ...defaultProject(empty), mergePolicy: 'auto' },
       pipeline: pipe([agentPhase('build', { description: 'build initial project' })], {
         acceptance: { kind: 'all_phases_pass' },
@@ -1200,9 +1200,9 @@ describe('the trace record', () => {
  */
 describe('the agent transport under the executor', () => {
   it('runs agent phases on the in-process transport', async () => {
-    const droid = scriptedDroid([buildEnvelope()]);
+    const scripted = scriptedAgent([buildEnvelope()]);
     const outcome = await run({
-      droid,
+      scripted,
       pipeline: pipe(
         [agentPhase('build', { description: 'Prove the agent phase drove the transport.' })],
         {
@@ -1218,13 +1218,13 @@ describe('the agent transport under the executor', () => {
     expect(sessions).toHaveLength(1);
     expect(sessions[0]!.mode).toBe('pi');
     // The session id only exists if the session actually opened.
-    expect(sessions[0]!.droidSessionId).toBe('s1');
+    expect(sessions[0]!.agentSessionId).toBe('s1');
   });
 
   it('records no child process, because the agent runs in this process', async () => {
-    const droid = scriptedDroid([buildEnvelope()]);
+    const scripted = scriptedAgent([buildEnvelope()]);
     const outcome = await run({
-      droid,
+      scripted,
       pipeline: pipe(
         [agentPhase('build', { description: 'Prove no per-agent child is spawned.' })],
         {
@@ -1237,14 +1237,14 @@ describe('the agent transport under the executor', () => {
     expect(outcome.status).toBe('accepted');
     // The agent runtime is a library call, so an agent phase has no child to
     // record or reap — and nothing can outlive the run.
-    expect(processRows(outcome.runId).filter((r) => r.kind === 'droid')).toHaveLength(0);
+    expect(processRows(outcome.runId)).toHaveLength(0);
     expect(h.tracer.openProcesses(outcome.runId)).toHaveLength(0);
   });
 
   it('keeps one session across a correction rather than reopening', async () => {
-    const droid = scriptedDroid(['prose, not JSON', buildEnvelope()]);
+    const scripted = scriptedAgent(['prose, not JSON', buildEnvelope()]);
     const outcome = await run({
-      droid,
+      scripted,
       pipeline: pipe([agentPhase('build', { description: 'Correct in the live session.' })], {
         description: 'a correction inside one session',
         acceptance: { kind: 'envelope_status', phase: 'build' },
@@ -1261,16 +1261,16 @@ describe('the agent transport under the executor', () => {
       ),
     ).toBe(true);
     // One session for the whole phase: a reopen would have started twice.
-    expect(handshakeCount(droid)).toBe(1);
+    expect(handshakeCount(scripted)).toBe(1);
   });
 
   it('fails the phase when a turn stalls, rather than degrading to another transport', async () => {
     // Turn 0 is begun and never answered, so the turn times out. There is
     // nothing weaker to retry it on, and inventing one silently would swap the
     // operator's permission policy for the runtime's coarser gate.
-    const droid = scriptedDroid([buildEnvelope()], [], [], { stallOnTurns: [0] });
+    const scripted = scriptedAgent([buildEnvelope()], [], [], { stallOnTurns: [0] });
     const outcome = await run({
-      droid,
+      scripted,
       turnTimeoutMs: 1500,
       pipeline: pipe([agentPhase('build', { description: 'Prove a stalled turn fails loudly.' })], {
         description: 'a transport that stalls',
@@ -1289,9 +1289,9 @@ describe('the agent transport under the executor', () => {
   });
 
   it('fails the phase when the session dies mid-turn', async () => {
-    const droid = scriptedDroid([buildEnvelope(), buildEnvelope()], [], [], { dieOnTurns: [0] });
+    const scripted = scriptedAgent([buildEnvelope(), buildEnvelope()], [], [], { dieOnTurns: [0] });
     const outcome = await run({
-      droid,
+      scripted,
       pipeline: pipe(
         [agentPhase('build', { description: 'Prove a dead session is not papered over.' })],
         {
@@ -1339,36 +1339,36 @@ describe('compaction between phases', () => {
   }
 
   it('compacts a session over the threshold and runs the next phase on it', async () => {
-    const droid = scriptedDroid([buildEnvelope(), buildEnvelope()], [], [], {
+    const scripted = scriptedAgent([buildEnvelope(), buildEnvelope()], [], [], {
       contextUsed: 85_000,
       contextUsedAfterCompaction: 8_500,
     });
-    const outcome = await run({ droid, pipeline: twoPhases() });
+    const outcome = await run({ scripted, pipeline: twoPhases() });
 
     expect(outcome.status).toBe('accepted');
     // One compaction, in the one window there was for it.
-    const compacted = wireLog(droid).filter((line) => line === 'compact');
+    const compacted = wireLog(scripted).filter((line) => line === 'compact');
     expect(compacted).toHaveLength(1);
 
     // Compaction is in place, so the id the trace carries is the one a resumed
     // run reopens — and it is the same session that was compacted.
     const sessions = h.tracer.agentSessions(outcome.runId);
     expect(sessions).toHaveLength(1);
-    expect(sessions[0]!.droidSessionId).toBe('s1');
+    expect(sessions[0]!.agentSessionId).toBe('s1');
 
-    const turns = wireLog(droid).filter((line) => line.startsWith('turn_started'));
+    const turns = wireLog(scripted).filter((line) => line.startsWith('turn_started'));
     expect(turns).toHaveLength(2);
     for (const turn of turns) expect(turn).toContain('session=s1');
     // One open, so the compaction did not cost a reopen either.
-    expect(handshakeCount(droid)).toBe(1);
+    expect(handshakeCount(scripted)).toBe(1);
   });
 
   it('records what the compaction removed and the window either side of it', async () => {
-    const droid = scriptedDroid([buildEnvelope(), buildEnvelope()], [], [], {
+    const scripted = scriptedAgent([buildEnvelope(), buildEnvelope()], [], [], {
       contextUsed: 85_000,
       contextUsedAfterCompaction: 8_500,
     });
-    const outcome = await run({ droid, pipeline: twoPhases() });
+    const outcome = await run({ scripted, pipeline: twoPhases() });
 
     const rows = compactions(outcome.runId);
     expect(rows).toHaveLength(1);
@@ -1379,42 +1379,42 @@ describe('compaction between phases', () => {
   });
 
   it('leaves a session under the threshold alone', async () => {
-    const droid = scriptedDroid([buildEnvelope(), buildEnvelope()], [], [], {
+    const scripted = scriptedAgent([buildEnvelope(), buildEnvelope()], [], [], {
       contextUsed: 40_000,
     });
-    const outcome = await run({ droid, pipeline: twoPhases() });
+    const outcome = await run({ scripted, pipeline: twoPhases() });
 
     expect(outcome.status).toBe('accepted');
-    expect(wireLog(droid)).not.toContain('compact');
+    expect(wireLog(scripted)).not.toContain('compact');
     expect(compactions(outcome.runId)).toHaveLength(0);
-    expect(h.tracer.agentSessions(outcome.runId)[0]!.droidSessionId).toBe('s1');
+    expect(h.tracer.agentSessions(outcome.runId)[0]!.agentSessionId).toBe('s1');
   });
 
   it('honours a threshold the operator moved', async () => {
-    const droid = scriptedDroid([buildEnvelope(), buildEnvelope()], [], [], {
+    const scripted = scriptedAgent([buildEnvelope(), buildEnvelope()], [], [], {
       contextUsed: 60_000,
     });
     const outcome = await run({
-      droid,
+      scripted,
       compactionThreshold: 0.5,
       pipeline: twoPhases(),
     });
 
     expect(outcome.status).toBe('accepted');
-    expect(wireLog(droid).filter((l) => l === 'compact')).toHaveLength(1);
+    expect(wireLog(scripted).filter((l) => l === 'compact')).toHaveLength(1);
   });
 
   it('never compacts inside a turn, correction retries included', async () => {
     // Phase one needs a correction, so the phase spans two turns with one
     // inter-phase window after them — over threshold from the very first stats.
-    const droid = scriptedDroid(['prose, not JSON', buildEnvelope(), buildEnvelope()], [], [], {
+    const scripted = scriptedAgent(['prose, not JSON', buildEnvelope(), buildEnvelope()], [], [], {
       contextUsed: 90_000,
       contextUsedAfterCompaction: 9_000,
     });
-    const outcome = await run({ droid, pipeline: twoPhases() });
+    const outcome = await run({ scripted, pipeline: twoPhases() });
 
     expect(outcome.status).toBe('accepted');
-    const log = wireLog(droid);
+    const log = wireLog(scripted);
     // Every compaction sits outside an open turn: between a completion and the
     // next turn's start, never between a start and its completion.
     let openTurn = false;
@@ -1431,14 +1431,14 @@ describe('compaction between phases', () => {
   it('carries a post-compaction correction on the compacted session', async () => {
     // Phase two's first reply is unparseable, so its correction is the first
     // thing the compacted session ever sees.
-    const droid = scriptedDroid([buildEnvelope(), 'prose, not JSON', buildEnvelope()], [], [], {
+    const scripted = scriptedAgent([buildEnvelope(), 'prose, not JSON', buildEnvelope()], [], [], {
       contextUsed: 85_000,
       contextUsedAfterCompaction: 8_500,
     });
-    const outcome = await run({ droid, pipeline: twoPhases() });
+    const outcome = await run({ scripted, pipeline: twoPhases() });
 
     expect(outcome.status).toBe('accepted');
-    const turns = wireLog(droid).filter((l) => l.startsWith('turn_started'));
+    const turns = wireLog(scripted).filter((l) => l.startsWith('turn_started'));
     expect(turns).toHaveLength(3);
     // All three turns, the post-compaction correction included, are the same
     // conversation: compaction shortens a session, it does not replace one.
@@ -1447,30 +1447,30 @@ describe('compaction between phases', () => {
     // One session row for the agent, and the correction is inside the phase.
     const sessions = h.tracer.agentSessions(outcome.runId);
     expect(sessions).toHaveLength(1);
-    expect(sessions[0]!.droidSessionId).toBe('s1');
+    expect(sessions[0]!.agentSessionId).toBe('s1');
     expect(
       events(outcome.runId).some(
         (e) => e.type === 'correction' && e.name === 'envelope did not parse',
       ),
     ).toBe(true);
     // Compaction is not a reopen, so the run never opens a second session.
-    expect(handshakeCount(droid)).toBe(1);
+    expect(handshakeCount(scripted)).toBe(1);
   });
 
   it('carries on with the run when the session refuses to compact', async () => {
-    const droid = scriptedDroid([buildEnvelope(), buildEnvelope()], [], [], {
+    const scripted = scriptedAgent([buildEnvelope(), buildEnvelope()], [], [], {
       contextUsed: 85_000,
       compactFails: true,
     });
-    const outcome = await run({ droid, pipeline: twoPhases() });
+    const outcome = await run({ scripted, pipeline: twoPhases() });
 
     // A failed compaction costs the run nothing: the next phase runs on the
     // session it already had and acceptance decides the outcome as usual.
     expect(outcome.status).toBe('accepted');
-    expect(wireLog(droid).filter((l) => l === 'compact')).toHaveLength(1);
+    expect(wireLog(scripted).filter((l) => l === 'compact')).toHaveLength(1);
     expect(compactions(outcome.runId)).toHaveLength(0);
-    expect(h.tracer.agentSessions(outcome.runId)[0]!.droidSessionId).toBe('s1');
-    const turns = wireLog(droid).filter((l) => l.startsWith('turn_started'));
+    expect(h.tracer.agentSessions(outcome.runId)[0]!.agentSessionId).toBe('s1');
+    const turns = wireLog(scripted).filter((l) => l.startsWith('turn_started'));
     expect(turns[1]).toContain('session=s1');
     // The failure is on the record, so a run that then hits the wall explains itself.
     const failures = events(outcome.runId).filter((e) => e.name === 'builder: compaction failed');
@@ -1504,9 +1504,9 @@ describe('structured-output envelopes', () => {
   }
 
   it('constrains agent turns with the envelope schema and no other phase', async () => {
-    const droid = scriptedDroid([buildEnvelope()]);
+    const scripted = scriptedAgent([buildEnvelope()]);
     const outcome = await run({
-      droid,
+      scripted,
       pipeline: pipe(
         [
           agentPhase('build', { description: 'Carry the envelope schema on the wire.' }),
@@ -1528,7 +1528,7 @@ describe('structured-output envelopes', () => {
     expect(outcome.status).toBe('accepted');
     // Only the agent phase ever sends a turn, and it carries the schema the
     // reply is parsed against — same source, so the two cannot drift.
-    const requests = turnRequests(droid);
+    const requests = turnRequests(scripted);
     expect(requests).toHaveLength(1);
     expect(requests[0]!.outputFormat).toEqual({
       type: 'json_schema',
@@ -1537,12 +1537,12 @@ describe('structured-output envelopes', () => {
   });
 
   it('carries an agent’s custom fields into the schema it puts on the wire', async () => {
-    const droid = scriptedDroid([buildEnvelope({ severity: 'high' })]);
+    const scripted = scriptedAgent([buildEnvelope({ severity: 'high' })]);
     const custom = [
       { name: 'severity', type: 'string' as const, required: true, description: 'low|med|high' },
     ];
     const outcome = await run({
-      droid,
+      scripted,
       agents: [buildAgent({ customFields: custom })],
       pipeline: pipe(
         [agentPhase('build', { description: 'Constrain the turn with the extended schema.' })],
@@ -1554,15 +1554,15 @@ describe('structured-output envelopes', () => {
     });
 
     expect(outcome.status).toBe('accepted');
-    const format = turnRequests(droid)[0]!.outputFormat as { schema: Record<string, unknown> };
+    const format = turnRequests(scripted)[0]!.outputFormat as { schema: Record<string, unknown> };
     expect(format.schema).toEqual(JSON.parse(JSON.stringify(jsonSchemaFor('build', custom))));
     expect(format.schema.required).toContain('severity');
   });
 
   it('still shows the agent the generated example beside the schema', async () => {
-    const droid = scriptedDroid([buildEnvelope()]);
+    const scripted = scriptedAgent([buildEnvelope()]);
     const outcome = await run({
-      droid,
+      scripted,
       pipeline: pipe(
         [agentPhase('build', { description: 'Keep the prompt example alongside the constraint.' })],
         {
@@ -1575,7 +1575,7 @@ describe('structured-output envelopes', () => {
     // Removing the example is an eval-backed decision, not a side effect of
     // gaining a second channel for the same shape.
     const example = exampleFor('build');
-    expect(String(turnRequests(droid)[0]!.text)).toContain(example);
+    expect(String(turnRequests(scripted)[0]!.text)).toContain(example);
     const prompt = readFileSync(
       join(h.tracer.runDir(outcome.runId), 'builder/prompts/build-1.md'),
       'utf8',
@@ -1584,9 +1584,9 @@ describe('structured-output envelopes', () => {
   });
 
   it('accepts a valid structured reply whose text carries no envelope at all', async () => {
-    const droid = scriptedDroid([NO_JSON], [], [], { structuredOutputs: [structuredBuild] });
+    const scripted = scriptedAgent([NO_JSON], [], [], { structuredOutputs: [structuredBuild] });
     const outcome = await run({
-      droid,
+      scripted,
       pipeline: pipe(
         [agentPhase('build', { description: 'Settle the phase from the structured reply.' })],
         {
@@ -1618,9 +1618,9 @@ describe('structured-output envelopes', () => {
       blocking: [],
       notes_for_next_agent: '',
     };
-    const droid = scriptedDroid([NO_JSON], [], [], { structuredOutputs: [structuredReview] });
+    const scripted = scriptedAgent([NO_JSON], [], [], { structuredOutputs: [structuredReview] });
     const outcome = await run({
-      droid,
+      scripted,
       agents: [buildAgent({ name: 'reviewer', envelope: 'review' })],
       pipeline: pipe(
         [
@@ -1649,11 +1649,11 @@ describe('structured-output envelopes', () => {
     // `status: 'maybe'` is a string, so a loose schema check waves it through;
     // the zod enum is what actually decides, and it is the only authority.
     const bogus = { ...structuredBuild, status: 'maybe' };
-    const droid = scriptedDroid([NO_JSON, buildEnvelope()], [], [], {
+    const scripted = scriptedAgent([NO_JSON, buildEnvelope()], [], [], {
       structuredOutputs: [bogus, null],
     });
     const outcome = await run({
-      droid,
+      scripted,
       pipeline: pipe(
         [agentPhase('build', { description: 'Never trust a transport’s conformance claim.' })],
         {
@@ -1672,11 +1672,11 @@ describe('structured-output envelopes', () => {
   });
 
   it('reads the text when the agent could not shape the reply, without burning a retry', async () => {
-    const droid = scriptedDroid([buildEnvelope()], [], [], {
+    const scripted = scriptedAgent([buildEnvelope()], [], [], {
       turnReasons: ['structured_output_invalid'],
     });
     const outcome = await run({
-      droid,
+      scripted,
       pipeline: pipe(
         [agentPhase('build', { description: 'Fall back to the text on the same attempt.' })],
         {
@@ -1688,16 +1688,16 @@ describe('structured-output envelopes', () => {
 
     expect(outcome.status).toBe('accepted');
     expect(corrections(outcome.runId)).toHaveLength(0);
-    expect(turnRequests(droid)).toHaveLength(1);
+    expect(turnRequests(scripted)).toHaveLength(1);
     expect(h.tracer.envelopes(outcome.runId).map((e) => e.valid)).toEqual([true]);
   });
 
   it('spends the envelope budget, not a second one, when neither channel parses', async () => {
-    const droid = scriptedDroid([NO_JSON], [], [], {
+    const scripted = scriptedAgent([NO_JSON], [], [], {
       turnReasons: ['structured_output_missing', 'structured_output_missing'],
     });
     const outcome = await run({
-      droid,
+      scripted,
       envelopeRetries: 1,
       pipeline: pipe(
         [agentPhase('build', { description: 'Prove a schema failure has no budget of its own.' })],
@@ -1710,7 +1710,7 @@ describe('structured-output envelopes', () => {
 
     expect(outcome.status).toBe('rejected');
     // envelopeRetries + 1 attempts, exactly today's arithmetic.
-    expect(turnRequests(droid)).toHaveLength(2);
+    expect(turnRequests(scripted)).toHaveLength(2);
     expect(corrections(outcome.runId)).toHaveLength(2);
     // Born fail: nothing about a schema failure flips a phase.
     expect(h.tracer.phases(outcome.runId)[0]!.status).toBe('fail');
@@ -1718,9 +1718,9 @@ describe('structured-output envelopes', () => {
 
   it('keeps the bad-envelope-then-good scenario at one correction and two attempts', async () => {
     // The pre-SDK baseline for this scenario, unchanged by the wire constraint.
-    const droid = scriptedDroid(['I will explain in prose instead of JSON.', buildEnvelope()]);
+    const scripted = scriptedAgent(['I will explain in prose instead of JSON.', buildEnvelope()]);
     const outcome = await run({
-      droid,
+      scripted,
       pipeline: pipe(
         [agentPhase('build', { description: 'Hold the envelope retry rate where it was.' })],
         {
@@ -1733,7 +1733,7 @@ describe('structured-output envelopes', () => {
     expect(outcome.status).toBe('accepted');
     expect(h.tracer.phases(outcome.runId)[0]!.status).toBe('success');
     expect(corrections(outcome.runId)).toHaveLength(1);
-    expect(turnRequests(droid)).toHaveLength(2);
+    expect(turnRequests(scripted)).toHaveLength(2);
     expect(h.tracer.envelopes(outcome.runId).map((e) => e.valid)).toEqual([false, true]);
   });
 });
@@ -1757,7 +1757,7 @@ describe('correction instrumentation', () => {
   it('numbers every correction in a phase with a shared running correctionIndex', async () => {
     // Envelope fail → boundary fail → gate fail → success. One counter across
     // the three kinds, and the existing attempt field stays on each payload.
-    const droid = scriptedDroid(
+    const scripted = scriptedAgent(
       [
         'prose, not JSON',
         buildEnvelope({ changed_files: ['allowed/ok.txt'] }),
@@ -1767,7 +1767,7 @@ describe('correction instrumentation', () => {
       [null, 'forbidden/slipped.txt', null, 'real.txt'],
     );
     const outcome = await run({
-      droid,
+      scripted,
       agents: [buildAgent({ writes: ['allowed/', 'real.txt'] })],
       envelopeRetries: 1,
       pipeline: pipe(
@@ -1801,14 +1801,14 @@ describe('correction instrumentation', () => {
   });
 
   it('resets correctionIndex at the start of each agent phase', async () => {
-    const droid = scriptedDroid([
+    const scripted = scriptedAgent([
       'phase-one prose',
       buildEnvelope({ summary: 'phase one' }),
       'phase-two prose',
       buildEnvelope({ summary: 'phase two' }),
     ]);
     const outcome = await run({
-      droid,
+      scripted,
       pipeline: pipe(
         [
           agentPhase('first', {
@@ -1844,11 +1844,11 @@ describe('killing a run mid-turn', () => {
     // Turn 0 is begun and never answered, so the kill lands mid-turn.
     // Turn 1 would succeed: without the short-circuit, a recovery attempt
     // finishes the phase and the run settles accepted.
-    const droid = scriptedDroid([buildEnvelope(), buildEnvelope(), buildEnvelope()], [], [], {
+    const scripted = scriptedAgent([buildEnvelope(), buildEnvelope(), buildEnvelope()], [], [], {
       stallOnTurns: [0],
     });
     const started = start({
-      droid,
+      scripted,
       pipeline: pipe(
         [agentPhase('build', { description: 'Prove a kill is not a transport failure.' })],
         {
@@ -1858,7 +1858,7 @@ describe('killing a run mid-turn', () => {
       ),
     });
 
-    await until(() => turnStarted(droid), 'the scripted agent to start its turn');
+    await until(() => turnStarted(scripted), 'the scripted agent to start its turn');
     started.executor.cancel();
     const outcome = await started.done;
 
@@ -1871,15 +1871,17 @@ describe('killing a run mid-turn', () => {
     // operator asked for, so the timeline must not read like a broken agent.
     expect(events(outcome.runId).filter((e) => e.name === 'builder: turn failed')).toEqual([]);
     // Only the one turn the kill landed on was ever spent.
-    expect(turnMarkers(droid)).toEqual(['turn 0']);
+    expect(turnMarkers(scripted)).toEqual(['turn 0']);
     expect(h.tracer.run(outcome.runId)!.mode).toBe('pi');
     expect(h.tracer.openProcesses(outcome.runId)).toHaveLength(0);
   });
 
   it('does not accept a run whose remaining phases never ran', async () => {
-    const droid = scriptedDroid([buildEnvelope(), buildEnvelope()], [], [], { stallOnTurns: [1] });
+    const scripted = scriptedAgent([buildEnvelope(), buildEnvelope()], [], [], {
+      stallOnTurns: [1],
+    });
     const started = start({
-      droid,
+      scripted,
       pipeline: pipe(
         [
           agentPhase('build', { description: 'Pass before the kill lands.' }),
@@ -1895,7 +1897,8 @@ describe('killing a run mid-turn', () => {
 
     await until(
       () =>
-        turnMarkers(droid).length === 2 && h.tracer.phases(started.runId)[0]?.status === 'success',
+        turnMarkers(scripted).length === 2 &&
+        h.tracer.phases(started.runId)[0]?.status === 'success',
       'the first phase to pass and the second turn to start',
     );
     started.executor.cancel();
@@ -1906,22 +1909,24 @@ describe('killing a run mid-turn', () => {
   });
 
   it('never spends a turn after the kill landed', async () => {
-    const droid = scriptedDroid([buildEnvelope(), buildEnvelope()], [], [], { stallOnTurns: [0] });
+    const scripted = scriptedAgent([buildEnvelope(), buildEnvelope()], [], [], {
+      stallOnTurns: [0],
+    });
     const started = start({
-      droid,
+      scripted,
       pipeline: pipe([agentPhase('build', { description: 'Prove no turn outlives the kill.' })], {
         description: 'a killed run spends nothing more',
         acceptance: { kind: 'envelope_status', phase: 'build' },
       }),
     });
 
-    await until(() => turnStarted(droid), 'the scripted agent to start its turn');
+    await until(() => turnStarted(scripted), 'the scripted agent to start its turn');
     started.executor.cancel();
     await started.done;
 
     // A turn spent after the kill is both real money and a result the run
     // could still be settled on.
-    expect(turnMarkers(droid)).toHaveLength(1);
+    expect(turnMarkers(scripted)).toHaveLength(1);
     expect(h.tracer.openProcesses(started.runId)).toHaveLength(0);
   });
 });
@@ -1944,9 +1949,9 @@ describe('the context breakdown an agent leaves behind', () => {
   }
 
   it('records the breakdown each turn produced with the run files', async () => {
-    const droid = scriptedDroid([buildEnvelope()]);
+    const scripted = scriptedAgent([buildEnvelope()]);
     const outcome = await run({
-      droid,
+      scripted,
       pipeline: pipe([agentPhase('build', { description: 'Produce one turn to snapshot.' })], {
         description: 'a run whose breakdown is kept',
         acceptance: { kind: 'envelope_status', phase: 'build' },
@@ -1971,9 +1976,9 @@ describe('the context breakdown an agent leaves behind', () => {
   });
 
   it('answers for a finished run from that record, marked as not live', async () => {
-    const droid = scriptedDroid([buildEnvelope()]);
+    const scripted = scriptedAgent([buildEnvelope()]);
     const outcome = await run({
-      droid,
+      scripted,
       pipeline: pipe([agentPhase('build', { description: 'Produce one turn to snapshot.' })], {
         description: 'a finished run still explains its context',
         acceptance: { kind: 'envelope_status', phase: 'build' },
@@ -2024,20 +2029,20 @@ describe('rewind correction policy', () => {
   }
 
   it('rewinds on the 2nd correction and retries on the rewound session', async () => {
-    const droid = scriptedDroid(
+    const scripted = scriptedAgent(
       ['prose', 'still prose', buildEnvelope()],
       ['watched.txt', 'watched.txt', null],
       [],
       { rewindFiles: { 'watched.txt': PHASE_START } },
     );
     const outcome = await run({
-      droid,
+      scripted,
       envelopeRetries: 2,
       pipeline: seedThenBuild(),
     });
     expect(outcome.status).toBe('accepted');
 
-    const wire = wireLog(droid);
+    const wire = wireLog(scripted);
     expect(wire).toContain('get_rewind_info');
     expect(wire).toContain('rewind');
     // The engine asks what a rewind could restore before it rewinds, and the
@@ -2051,7 +2056,7 @@ describe('rewind correction policy', () => {
     // A rewind moves the session back through its own history rather than
     // minting a new one, so every turn is the same session.
     for (const turn of turns) expect(turn).toContain('session=s1');
-    expect(h.tracer.agentSessions(outcome.runId)[0]!.droidSessionId).toBe('s1');
+    expect(h.tracer.agentSessions(outcome.runId)[0]!.agentSessionId).toBe('s1');
 
     const rewound = corrections(outcome.runId).filter((e) => e.payload.rewind === true);
     expect(rewound).toHaveLength(1);
@@ -2063,20 +2068,20 @@ describe('rewind correction policy', () => {
   });
 
   it('restores phase-start file bytes before the retry turn starts', async () => {
-    const droid = scriptedDroid(
+    const scripted = scriptedAgent(
       ['prose', 'still prose', buildEnvelope()],
       ['watched.txt', 'watched.txt', null],
       [],
       { rewindFiles: { 'watched.txt': PHASE_START } },
     );
     const outcome = await run({
-      droid,
+      scripted,
       envelopeRetries: 2,
       pipeline: seedThenBuild(),
     });
     expect(outcome.status).toBe('accepted');
 
-    const snapshots = contentAtTurns(droid);
+    const snapshots = contentAtTurns(scripted);
     // Turns 0 and 1 are the failed attempts; turn 2 is the post-rewind retry.
     expect(snapshots.map((s) => s.turn)).toEqual([0, 1, 2]);
     // After the agent corrupted the file, rewind put phase-start bytes back
@@ -2092,7 +2097,7 @@ describe('rewind correction policy', () => {
     writeFileSync(join(h.repo, 'old.txt'), kept);
     sh(h.repo, ['git', 'add', '-A']);
     sh(h.repo, ['git', 'commit', '-qm', 'add old']);
-    const droid = scriptedDroid(
+    const scripted = scriptedAgent(
       ['prose', 'still prose', buildEnvelope({ changed_files: [] })],
       ['new.txt', 'new.txt', null],
       [],
@@ -2103,7 +2108,7 @@ describe('rewind correction policy', () => {
       },
     );
     const outcome = await run({
-      droid,
+      scripted,
       envelopeRetries: 2,
       pipeline: pipe(
         [
@@ -2118,7 +2123,7 @@ describe('rewind correction policy', () => {
       ),
     });
     expect(outcome.status).toBe('accepted');
-    const snapshots = contentAtTurns(droid);
+    const snapshots = contentAtTurns(scripted);
     expect(snapshots[2]!.files['old.txt']).toBe(kept);
     const worktree = h.tracer.run(outcome.runId)!.worktreePath!;
     expect(existsSync(join(worktree, 'old.txt'))).toBe(true);
@@ -2130,52 +2135,52 @@ describe('rewind correction policy', () => {
   });
 
   it('falls back to append-style correction when rewind fails', async () => {
-    const droid = scriptedDroid(['prose', 'still prose', buildEnvelope()], [], [], {
+    const scripted = scriptedAgent(['prose', 'still prose', buildEnvelope()], [], [], {
       rewindFiles: { 'watched.txt': PHASE_START },
       rewindFails: true,
     });
     const outcome = await run({
-      droid,
+      scripted,
       envelopeRetries: 2,
       pipeline: seedThenBuild(),
     });
     // A refused rewind must not fail the phase: the append-style retry still runs.
     expect(outcome.status).toBe('accepted');
-    expect(wireLog(droid)).toContain('get_rewind_info');
-    expect(wireLog(droid)).not.toContain('rewind');
+    expect(wireLog(scripted)).toContain('get_rewind_info');
+    expect(wireLog(scripted)).not.toContain('rewind');
     // All three turns stayed on the original session.
-    const turns = wireLog(droid).filter((line) => line.startsWith('turn_started'));
+    const turns = wireLog(scripted).filter((line) => line.startsWith('turn_started'));
     expect(turns).toHaveLength(3);
     for (const turn of turns) expect(turn).toContain('session=s1');
-    expect(h.tracer.agentSessions(outcome.runId)[0]!.droidSessionId).toBe('s1');
+    expect(h.tracer.agentSessions(outcome.runId)[0]!.agentSessionId).toBe('s1');
     expect(corrections(outcome.runId).some((e) => e.payload.rewind === true)).toBe(false);
     expect(events(outcome.runId).some((e) => e.name === 'builder: rewind failed')).toBe(true);
   });
 
   it('disables rewind entirely when rewindAfterCorrections is 0', async () => {
-    const droid = scriptedDroid(['prose', 'still prose', buildEnvelope()], [], [], {
+    const scripted = scriptedAgent(['prose', 'still prose', buildEnvelope()], [], [], {
       rewindFiles: { 'watched.txt': PHASE_START },
     });
     const outcome = await run({
-      droid,
+      scripted,
       envelopeRetries: 2,
       rewindAfterCorrections: 0,
       pipeline: seedThenBuild(),
     });
     expect(outcome.status).toBe('accepted');
-    expect(wireLog(droid)).not.toContain('get_rewind_info');
-    expect(wireLog(droid)).not.toContain('rewind');
+    expect(wireLog(scripted)).not.toContain('get_rewind_info');
+    expect(wireLog(scripted)).not.toContain('rewind');
     expect(corrections(outcome.runId).some((e) => e.payload.rewind === true)).toBe(false);
   });
 
   it('does not extend the envelope budget when a rewind runs', async () => {
     // Every reply is prose: envelopeRetries+1 attempts, then the phase fails.
     // Rewind on the 2nd correction must not buy an extra turn.
-    const droid = scriptedDroid(['no', 'still no', 'nope', 'never'], [], [], {
+    const scripted = scriptedAgent(['no', 'still no', 'nope', 'never'], [], [], {
       rewindFiles: { 'watched.txt': PHASE_START },
     });
     const outcome = await run({
-      droid,
+      scripted,
       envelopeRetries: 2,
       rewindAfterCorrections: 2,
       pipeline: seedThenBuild(),
@@ -2184,8 +2189,8 @@ describe('rewind correction policy', () => {
     expect(h.tracer.phases(outcome.runId).find((p) => p.name === 'build')!.status).toBe('fail');
     // envelopeRetries + 1 turn attempts, exactly — rewind consumed a correction
     // slot inside that envelope, it did not add one.
-    expect(turnRequests(droid)).toHaveLength(3);
-    expect(wireLog(droid)).toContain('rewind');
+    expect(turnRequests(scripted)).toHaveLength(3);
+    expect(wireLog(scripted)).toContain('rewind');
     const envelopeCorrections = corrections(outcome.runId).filter(
       (e) => e.name === 'envelope did not parse',
     );
@@ -2200,7 +2205,7 @@ describe('rewind and compaction coexist (VAL-CROSS-009)', () => {
   it('records both a rewind and a compaction, keeps event ordering and the session row intact', async () => {
     // Two agent phases: phase-one trips a rewind on its 2nd correction; between
     // phases the session is full and gets compacted before phase-two.
-    const droid = scriptedDroid(
+    const scripted = scriptedAgent(
       ['prose', 'still prose', buildEnvelope(), buildEnvelope()],
       ['watched.txt', 'watched.txt', null, null],
       [],
@@ -2211,7 +2216,7 @@ describe('rewind and compaction coexist (VAL-CROSS-009)', () => {
       },
     );
     const outcome = await run({
-      droid,
+      scripted,
       envelopeRetries: 2,
       compactionThreshold: 0.8,
       rewindAfterCorrections: 2,
@@ -2266,7 +2271,9 @@ describe('rewind and compaction coexist (VAL-CROSS-009)', () => {
     expect(byId.size).toBe(replayed.length);
 
     // One agent_sessions row for the agent, re-persisted by both the rewind and
-    // the compaction rather than duplicated by either.
+    // the compaction rather than duplicated by either. The column is still
+    // named `droid_session_id`: renaming it would rewrite every trace already
+    // on disk, so the neutral name lives on the reader instead.
     const sessions = h.db
       .prepare(
         'SELECT agent, droid_session_id FROM agent_sessions WHERE run_id = ? ORDER BY last_used_at',
@@ -2320,11 +2327,11 @@ describe('a session that will not start (VAL-PROD-012)', () => {
 describe('open_pr phase (FOU-17)', () => {
   it('pushes the run branch, creates the PR, and records its number and url', async () => {
     const bare = addOrigin(h.repo);
-    const droid = scriptedDroid([prEnvelope()]);
+    const scripted = scriptedAgent([prEnvelope()]);
     const gh = makeFakeGh({ createUrl: 'https://github.com/acme/widgets/pull/42' });
 
     const outcome = await run({
-      droid,
+      scripted,
       agents: [prWriter()],
       gh: { bin: gh.bin },
       pipeline: pipe([openPrPhase()], {
@@ -2356,11 +2363,11 @@ describe('open_pr phase (FOU-17)', () => {
 
   it('renders the run branch and base ref into the writer prompt', async () => {
     addOrigin(h.repo);
-    const droid = scriptedDroid([prEnvelope()]);
+    const scripted = scriptedAgent([prEnvelope()]);
     const gh = makeFakeGh({ createUrl: 'https://github.com/acme/widgets/pull/8' });
 
     const outcome = await run({
-      droid,
+      scripted,
       agents: [prWriter()],
       gh: { bin: gh.bin },
       pipeline: pipe([openPrPhase()], {
@@ -2376,7 +2383,7 @@ describe('open_pr phase (FOU-17)', () => {
 
   it('reuses the existing PR for a branch instead of opening a second one', async () => {
     addOrigin(h.repo);
-    const droid = scriptedDroid([prEnvelope()]);
+    const scripted = scriptedAgent([prEnvelope()]);
     // `gh pr create` failing on an existing PR is how a re-run looks; openPr
     // answers with the PR already there rather than a duplicate or an error.
     const gh = makeFakeGh({
@@ -2390,7 +2397,7 @@ describe('open_pr phase (FOU-17)', () => {
     });
 
     const outcome = await run({
-      droid,
+      scripted,
       agents: [prWriter()],
       gh: { bin: gh.bin },
       pipeline: pipe([openPrPhase()], {
@@ -2409,11 +2416,11 @@ describe('open_pr phase (FOU-17)', () => {
 
   it('hard fails with the exact gh error, records no PR, and keeps the worktree', async () => {
     addOrigin(h.repo);
-    const droid = scriptedDroid([prEnvelope()]);
+    const scripted = scriptedAgent([prEnvelope()]);
     const gh = makeFakeGh({ createError: 'GraphQL: Resource not accessible by integration' });
 
     const outcome = await run({
-      droid,
+      scripted,
       agents: [prWriter()],
       gh: { bin: gh.bin },
       pipeline: pipe([openPrPhase()], {
@@ -2437,11 +2444,11 @@ describe('open_pr phase (FOU-17)', () => {
   });
 
   it('fails without reaching gh when the repo has no remote to push to', async () => {
-    const droid = scriptedDroid([prEnvelope()]);
+    const scripted = scriptedAgent([prEnvelope()]);
     const gh = makeFakeGh();
 
     const outcome = await run({
-      droid,
+      scripted,
       agents: [prWriter()],
       gh: { bin: gh.bin },
       pipeline: pipe([openPrPhase()], {
@@ -2461,11 +2468,11 @@ describe('open_pr phase (FOU-17)', () => {
    */
   it('rejects the whole run even when an earlier phase already approved it', async () => {
     addOrigin(h.repo);
-    const droid = scriptedDroid([reviewEnvelope(true), prEnvelope()]);
+    const scripted = scriptedAgent([reviewEnvelope(true), prEnvelope()]);
     const gh = makeFakeGh({ createError: 'could not create pull request' });
 
     const outcome = await run({
-      droid,
+      scripted,
       agents: [buildAgent({ name: 'reviewer', envelope: 'review', writes: [] }), prWriter()],
       gh: { bin: gh.bin },
       pipeline: pipe(
@@ -2491,11 +2498,11 @@ describe('open_pr phase (FOU-17)', () => {
 
   it('never opens a PR for a pipeline that runs without isolation', async () => {
     addOrigin(h.repo);
-    const droid = scriptedDroid([prEnvelope()]);
+    const scripted = scriptedAgent([prEnvelope()]);
     const gh = makeFakeGh();
 
     const outcome = await run({
-      droid,
+      scripted,
       agents: [prWriter()],
       gh: { bin: gh.bin },
       pipeline: pipe([openPrPhase()], {
@@ -2514,11 +2521,11 @@ describe('open_pr phase (FOU-17)', () => {
     addOrigin(h.repo);
     // A schema-valid envelope can still carry whitespace, which would become a
     // PR with no title. The engine refuses before touching the remote.
-    const droid = scriptedDroid([prEnvelope({ title: '   ' })]);
+    const scripted = scriptedAgent([prEnvelope({ title: '   ' })]);
     const gh = makeFakeGh();
 
     const outcome = await run({
-      droid,
+      scripted,
       agents: [prWriter()],
       gh: { bin: gh.bin },
       pipeline: pipe([openPrPhase()], {

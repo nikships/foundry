@@ -28,7 +28,6 @@ import type {
   RewindInfo,
   RewindOutcome,
   RewindParams,
-  SessionTool,
   TransportEvent,
   TransportModel,
   TurnOptions,
@@ -419,20 +418,6 @@ class ScriptedTransport implements AgentTransport {
     const outcome = this.agent.rewind(this.cwd, params);
     this.userMessageId = params.messageId;
     return Promise.resolve(outcome);
-  }
-
-  listTools(): Promise<SessionTool[]> {
-    this.agent.wire.push('list_tools');
-    return Promise.resolve([
-      {
-        id: 'bash',
-        displayName: 'bash',
-        description: 'run a command',
-        category: 'builtin',
-        defaultAllowed: true,
-        allowed: true,
-      },
-    ]);
   }
 
   interrupt(): Promise<void> {

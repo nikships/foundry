@@ -932,39 +932,6 @@ describe('what the session can report', () => {
     expect(await h.transport.contextBreakdown()).toBeNull();
   });
 
-  it('lists the session’s tools and which of them are live', async () => {
-    const h = harness();
-    await h.transport.start();
-    h.session.allTools = [
-      { name: 'bash', description: 'run a command', sourceInfo: { source: 'builtin' } },
-      { name: 'submit_envelope', description: 'submit', sourceInfo: { source: 'extension' } },
-    ];
-    h.session.activeTools = ['bash'];
-    expect(await h.transport.listTools()).toEqual([
-      {
-        id: 'bash',
-        displayName: 'bash',
-        description: 'run a command',
-        category: 'builtin',
-        defaultAllowed: true,
-        allowed: true,
-      },
-      {
-        id: 'submit_envelope',
-        displayName: 'submit_envelope',
-        description: 'submit',
-        category: 'extension',
-        defaultAllowed: true,
-        allowed: false,
-      },
-    ]);
-  });
-
-  it('lists no tools before the session is open', async () => {
-    const h = harness();
-    expect(await h.transport.listTools()).toEqual([]);
-  });
-
   it('has nothing to re-assert, and reports the model that is running', async () => {
     const h = harness({ model: 'openai/gpt-5' });
     await h.transport.start();

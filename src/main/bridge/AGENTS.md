@@ -27,7 +27,7 @@ A checkout that never ran the fetch simply has no Bridge: `bridgeBinaryPath()` r
 ## Invariants
 
 - **Localhost only.** `host: 127.0.0.1`, `allow-remote: false`, `secret-key: ""`, control panel disabled. The Bridge holds the operator's provider subscriptions; a bind on `0.0.0.0` would put their Claude and Codex accounts on the local network.
-- **Never `~/.cli-proxy-api`.** Config and auth live under Foundry's Application Support directory. The operator may run CLIProxyAPI or DroidProxy themselves, and an app that logged into their directory would rewrite the accounts their own tools use.
+- **Never `~/.cli-proxy-api`.** Config and auth live under Foundry's Application Support directory. The operator may run CLIProxyAPI themselves, and an app that logged into their directory would rewrite the accounts their own tools use.
 - **No token leaves `auth.ts`.** Auth files hold refresh and access tokens. Only `type`, `email`/`login`, `expired`, and `disabled` are parsed out; nothing is logged, and login-child stdout is never echoed (a failing OAuth flow can print a callback URL carrying a code).
 - **`models.json` is merged, never overwritten.** Only `bridge-*` keys are replaced. A hand-added Ollama provider and any unknown top-level field survive every regeneration.
 - **One `modelRuntime.refresh()` per committed write.** The write is skipped when the rendered bytes match what is on disk, and the refresh happens only when the write did. An auth directory emits several events for one login.
@@ -53,7 +53,7 @@ npx vitest run tests/pi-catalog.test.ts
 
 - The child under test is a **scripted stand-in** that reads the same generated config the real binary is given and binds the port it names. The vendored binary is not required to run the suite (and a real one would want an account).
 - Auth fixtures are written the way CLIProxyAPI writes them, tokens included, because the parser's job is to read that format without carrying a secret out of it. `tests/bridge-models.test.ts` asserts no token appears in a serialized account.
-- Port assertions stay inside `37700–37799`; the daemon owns `37600–37699`.
+- Port assertions stay inside `37700–37799`, the band this app claims for the Bridge.
 
 ## Code Style
 

@@ -1,14 +1,13 @@
 /**
  * The IPC channel names and their payload types, imported by both sides so a
  * renaming cannot silently break a call. The renderer never touches disk, git,
- * or droid: everything it can do is in this list.
+ * or the agent runtime: everything it can do is in this list.
  */
 
 import type {
   AgentDef,
   AgentSessionRow,
   AppSettings,
-  CliVendor,
   ContextBreakdown,
   DoctorCheck,
   DryRunPrompt,
@@ -165,8 +164,7 @@ export interface DetectionState {
   detectionId: string;
   projectId: string;
   status: 'running' | 'verifying' | 'done' | 'cancelled' | 'failed';
-  /** Which CLI and model actually ran, which may differ from what was asked. */
-  cli: CliVendor;
+  /** Which model actually ran, which may differ from what was asked. */
   model: string;
   entries: DetectionEntry[];
   proposals: DetectionProposal[];
@@ -186,7 +184,6 @@ export interface SetupState {
   setupId: string;
   projectId: string;
   status: 'running' | 'done' | 'cancelled' | 'failed';
-  cli: CliVendor;
   model: string;
   entries: SetupEntry[];
   script: string;

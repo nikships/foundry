@@ -39,7 +39,7 @@ npx vitest run tests/ipc-surface.test.ts
 npx vitest run tests/envelopes.test.ts
 ```
 
-- Shared types are tested indirectly through engine/droid/ipc suites.
+- Shared types are tested indirectly through the engine, pi, and ipc suites.
 - When adding an envelope or gate, add argv/parse fixtures or schema tests rather than DOM tests.
 
 ## Code Style

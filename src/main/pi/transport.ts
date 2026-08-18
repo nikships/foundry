@@ -30,16 +30,6 @@ export interface FoundryToolContext {
   tracer: Pick<Tracer, 'event'>;
 }
 
-/** One tool as this session sees it; `id` is the name an allowlist would use. */
-export interface SessionTool {
-  id: string;
-  displayName: string;
-  description: string;
-  category: string;
-  defaultAllowed: boolean;
-  allowed: boolean;
-}
-
 /** A model this transport could run a turn on. */
 export interface TransportModel {
   id: string;
@@ -143,7 +133,6 @@ export interface AgentTransport {
    */
   getRewindInfo(messageId: string): Promise<RewindInfo | null>;
   rewind(params: RewindParams): Promise<RewindOutcome | null>;
-  listTools(): Promise<SessionTool[]>;
   interrupt(): Promise<void>;
   close(): Promise<void>;
   kill(): void;

@@ -54,7 +54,7 @@ export class SmithSocketServer {
     private readonly queue: ProposalQueue,
   ) {}
 
-  /** The socket path, exported to droid as `FOUNDRY_SMITH_SOCKET`. */
+  /** The socket path, exported to the operator's agent as `FOUNDRY_SMITH_SOCKET`. */
   path(): string {
     return this.socketPath;
   }

@@ -157,9 +157,9 @@ export function renderPrompt(agent: AgentDef, phase: PhaseDef, ctx: RenderContex
 }
 
 /**
- * droid takes the system prompt as an append rather than a replacement, so the
- * agent's persona is passed with the turn instead of pretending to own the
- * whole system prompt.
+ * The runtime takes the system prompt as an append rather than a replacement,
+ * so the agent's persona is passed with the turn instead of pretending to own
+ * the whole system prompt.
  */
 export function combineForTurn(rendered: RenderedPrompt): string {
   return [rendered.system, '', '---', '', rendered.user].join('\n');

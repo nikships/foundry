@@ -14,7 +14,7 @@ import { mergeCheckFromView, pollPrMerged } from '../src/main/readiness/merge.js
 import { inspectProject } from '../src/main/readiness/sessions.js';
 import { ReadinessSession, type ReadinessRemediator } from '../src/main/readiness/session.js';
 import { createAgentRemediator } from '../src/main/readiness/remediator.js';
-import { evaluate } from '../src/main/droid/permissions.js';
+import { evaluate } from '../src/main/pi/policy.js';
 import { makeFakeGh } from './fake-gh.js';
 import { viewPrMergeState } from '../src/main/system/gh.js';
 import { say, scriptedOneShots, toolCall } from './scripted-oneshot.js';
@@ -75,7 +75,7 @@ function markerJson(repo: string): string {
       schemaVersion: 1,
       generatedAt: '2026-08-11T05:00:00Z',
       commit: 'abc',
-      agent: { harness: 'droid', model: 'inherit', reasoningEffort: 'high' },
+      agent: { harness: 'pi', model: 'inherit', reasoningEffort: 'high' },
       verdict: 'ready',
       summary: 'Ready.',
       stack: { languages: ['typescript'], monorepo: false, packages: [] },
@@ -673,20 +673,21 @@ describe('readiness AskUser does not weaken pipeline zero-interrupt', () => {
     expect(mapped[0]?.answer).toBe('gitlab');
   });
 
-  it('still auto-answers droid.ask_user for pipeline runs', () => {
+  it('denies an asking tool in a pipeline run rather than parking it', () => {
+    // Readiness parks a question because a human is watching it. A pipeline run
+    // has nobody to answer, and the policy has no "wait" outcome, so an
+    // interactive tool is unrecognised and fails closed — the parking above
+    // must never become the pipeline's path.
     const outcome = evaluate(
       {
-        method: 'droid.ask_user',
-        params: {
+        tool: 'ask_user',
+        input: {
           questions: [{ index: 0, question: 'which CI?', options: ['github', 'gitlab'] }],
         },
       },
       { worktree: '/repo', writes: null, protectedPaths: [] },
     );
-    expect(outcome.decision).toEqual({
-      outcome: 'allow',
-      answers: [{ index: 0, question: 'which CI?', answer: 'github' }],
-    });
+    expect(outcome.decision.outcome).toBe('deny');
   });
 
   it('surfaces a parked ask on the session and resumes only after a real answer', async () => {

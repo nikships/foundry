@@ -10,7 +10,7 @@
  *   reports that as an unavailable Bridge rather than spawning a path that does
  *   not exist.
  * - Auth material lives under Foundry's own support directory, never
- *   `~/.cli-proxy-api`. The user may run DroidProxy or CLIProxyAPI themselves;
+ *   `~/.cli-proxy-api`. The user may run CLIProxyAPI themselves;
  *   an app that logged into their directory would silently rewrite the accounts
  *   their own tools use.
  */

@@ -1,6 +1,6 @@
 # AGENTS.md — src/main/pi
 
-Every agent call in the app, long-lived or one-shot. Pi runs **in this process**: no daemon, no child process, no wire protocol, no MCP server. This directory is the only place in the app allowed to name `@earendil-works/pi-*`.
+Every agent call in the app, long-lived or one-shot. Pi runs **in this process**: no child process, no wire protocol, no MCP server. This directory is the only place in the app allowed to name `@earendil-works/pi-*`.
 
 Two session shapes live here. A **run** holds a session across many turns (`session.ts` over `transport.ts`). A **one-shot** opens a session, asks one question, and disposes it (`oneshot.ts`); that is detection, setup generation, the run-start command fill, rebase repair, and the readiness fix. They share model selection, event translation, and the tool lists, so the two cannot drift.
 
@@ -48,8 +48,10 @@ No separate setup: pi is a normal dependency and runs inside the Electron main p
 - **Bind extensions before the first prompt.** Unbound, the foundry extension's tools are registered but its `tool_call` policy is not live — every call would run unruled.
 - **Every tool call gets a verdict.** `tool_call` is the enforcement point and the policy always answers. Unknown tools **fail closed**: a pi upgrade that adds a write tool must not get a free pass. (Boundary enforcement itself is still the engine's post-call `git diff`; the policy is the first line, not the guarantee.)
 - **Swap the whole envelope tool, between turns only.** pi-ai caches a compiled validator against the schema object's identity, so mutating a live definition keeps the previous phase's validator. `useEnvelopeSchema` keys on the serialized schema and hands over a fresh `ToolDefinition`.
-- **Compaction and rewind happen in place.** Pi keeps the same session for both, unlike the daemon's successor sessions. There is no id to re-persist and no handle to swap. Rewind branches the session tree **before** the anchor message (the anchor is the phase's own prompt) and restores no files — pi keeps no snapshots, so the worktree half is `engine/boundary.ts:restoreToPhaseStart`.
+- **Compaction and rewind happen in place.** Pi keeps the same session for both, rather than opening a successor session. There is no id to re-persist and no handle to swap. Rewind branches the session tree **before** the anchor message (the anchor is the phase's own prompt) and restores no files — pi keeps no snapshots, so the worktree half is `engine/boundary.ts:restoreToPhaseStart`.
 - **Resolve the worktree cwd fail-closed.** Never fall back to `process.cwd()`; that would point a run's writes at the app checkout.
+- **Nothing on this path may need a native binding.** Pi ships prebuilt `.node` files (pi-tui) and a wasm image (an example), but those belong to its interactive terminal UI, and its one optional clipboard binding is loaded behind a try/catch. A binding loaded unguarded at import would fail inside `app.asar`, where a path is not a file, and only in a signed build. `tests/pi-packaging.test.ts` imports the package with `dlopen` blocked to catch that before a DMG does; a future unguarded binding needs an `asarUnpack` entry in `electron-builder.yml`, next to `better-sqlite3`.
+- **`PI_OFFLINE=1` is the offline switch.** It is read in `ModelRuntime`'s constructor, so a launch on a captive network builds the runtime off the files already on disk rather than waiting on a catalog fetch. `refreshCatalog` passes `allowNetwork: false` for the same reason.
 
 ## Testing Instructions
 
@@ -62,6 +64,7 @@ npx vitest run tests/pi-runtime.test.ts
 npx vitest run tests/pi-catalog.test.ts
 npx vitest run tests/pi-transport.test.ts
 npx vitest run tests/pi-oneshot.test.ts
+npx vitest run tests/pi-packaging.test.ts
 npx vitest run tests/agent-session-transport.test.ts
 npx vitest run tests/executor.test.ts
 ```
@@ -83,7 +86,7 @@ npx vitest run tests/executor.test.ts
 npm run typecheck && npm run lint && npm run build
 ```
 
-`@earendil-works/pi-coding-agent` is exact-pinned. It bundles into `out/main/main.js` like the rest of main.
+`@earendil-works/pi-coding-agent` is exact-pinned and stays **external**: `externalizeDepsPlugin()` leaves every `dependencies` entry as a runtime require, so electron-builder ships pi as real files rather than inlining a package that resolves its own files by path.
 
 ## Additional Notes
 

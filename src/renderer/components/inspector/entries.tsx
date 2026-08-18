@@ -166,7 +166,8 @@ function computeDiff(
 ): { lines: DiffLine[]; addCount: number; delCount: number } {
   let lines: DiffLine[] = [];
 
-  // Check if rawResult has structured diffLines JSON from droid tool_result
+  // Rows from before the migration carry structured diffLines JSON in the raw
+  // tool result; a current row does not, and falls through to the text parse.
   if (rawResult) {
     const jsonLines = parseJsonDiffLines(rawResult);
     if (jsonLines) {

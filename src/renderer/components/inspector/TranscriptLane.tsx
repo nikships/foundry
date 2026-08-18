@@ -79,11 +79,10 @@ export default function TranscriptLane({
     : '';
 
   const session = sessions.find((s) => s.agent === phase.owner);
-  // The transport that answered, not the harness that used to. `mode` is what
-  // a session row has recorded since it existed; a row written before it did
-  // still carries its `cli`, and showing that is more honest than relabelling
-  // an old droid run as pi.
-  const transport = session?.mode ?? session?.cli ?? 'pi';
+  // The transport that answered, which for a run recorded before the migration
+  // is not pi. Showing the mode the row carries is more honest than relabelling
+  // an old run as something it never was.
+  const transport = session?.mode ?? 'pi';
   const model = modelLabel(session?.model);
   const elapsed = phaseDuration(phase, now);
   const usage = usageFor(events);

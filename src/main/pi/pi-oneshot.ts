@@ -1,9 +1,7 @@
 /**
  * `OneShotFactory` over a short-lived in-process Pi session.
  *
- * The turn used to be a `droid exec` child, which is why this app carried argv
- * construction and stdout parsing for a CLI. In process it is a session with no
- * file behind it (`SessionManager.inMemory`) that is disposed the moment the
+ * A one-shot is a session with no file behind it (`SessionManager.inMemory`) that is disposed the moment the
  * answer arrives, and the transcript is the same neutral event stream an agent
  * phase produces — so detection, setup, repair, and the readiness fix all show
  * the operator the same thing a run does.

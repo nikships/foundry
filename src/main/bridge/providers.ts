@@ -7,7 +7,7 @@
  * up loggable but unreachable.
  *
  * GitHub Copilot is deliberately absent. The vendored CLIProxyAPI has no
- * Copilot login flow — DroidProxy serves Copilot from a second, separate
+ * Copilot login flow — CLIProxyAPI serves Copilot from a second, separate
  * gateway process — so listing it here would offer a login that cannot happen.
  * Copilot arrives with that gateway or not at all.
  */

@@ -153,8 +153,11 @@ function buildMenu(): void {
       role: 'help',
       submenu: [
         {
-          label: 'droid CLI documentation',
-          click: () => void shell.openExternal('https://docs.factory.ai/droid-exec/overview'),
+          label: 'pi coding agent documentation',
+          click: () =>
+            void shell.openExternal(
+              'https://www.npmjs.com/package/@earendil-works/pi-coding-agent',
+            ),
         },
       ],
     },

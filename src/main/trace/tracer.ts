@@ -1,5 +1,5 @@
 /**
- * The single writer of run state. Engine, droid adapter, and code phases all
+ * The single writer of run state. Engine, agent sessions, and code phases all
  * report through here, so a run's status, its notification, and its banner can
  * never disagree: `finishRun` settles all three in one call.
  *
@@ -14,7 +14,6 @@ import { randomBytes } from 'node:crypto';
 import type { Db } from './db.js';
 import type {
   AgentSessionRow,
-  CliVendor,
   EnvelopeRow,
   EventRow,
   EventType,
@@ -374,7 +373,7 @@ export class Tracer {
   }
 
   /**
-   * Sharpens a still-open event. Droid streams a tool call's arguments in
+   * Sharpens a still-open event. A transport streams a tool call's arguments in
    * incrementally, so the first frame carries an empty input and only a later
    * one knows the command — the row has to be renamed in place without being
    * closed, or the span ends before the tool has even run.
@@ -524,23 +523,26 @@ export class Tracer {
 
   // ── agent sessions ────────────────────────────────────────────────────────
 
+  /**
+   * `droid_session_id` is the storage column, kept so rows written before the
+   * migration still read. Callers name the neutral `agentSessionId`: what a
+   * session id means has not changed, only whose it is.
+   */
   upsertAgentSession(input: {
     runId: string;
     agent: string;
     model: string;
     reasoningEffort: string;
-    cli: CliVendor;
-    droidSessionId: string | null;
+    agentSessionId: string | null;
     mode: RunMode;
     color: string;
   }): void {
     this.db
       .prepare(
-        `INSERT INTO agent_sessions (run_id, agent, model, reasoning_effort, cli, droid_session_id, mode, color, created_at, last_used_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?)
+        `INSERT INTO agent_sessions (run_id, agent, model, reasoning_effort, droid_session_id, mode, color, created_at, last_used_at)
+         VALUES (?,?,?,?,?,?,?,?,?)
          ON CONFLICT(run_id, agent) DO UPDATE SET
            model = excluded.model, reasoning_effort = excluded.reasoning_effort,
-           cli = excluded.cli,
            droid_session_id = excluded.droid_session_id, mode = excluded.mode,
            last_used_at = excluded.last_used_at`,
       )
@@ -549,8 +551,7 @@ export class Tracer {
         input.agent,
         input.model,
         input.reasoningEffort,
-        input.cli,
-        input.droidSessionId,
+        input.agentSessionId,
         input.mode,
         input.color,
         nowIso(),
@@ -584,9 +585,7 @@ export class Tracer {
       agent: r.agent,
       model: r.model,
       reasoningEffort: r.reasoning_effort,
-      // Rows written before agents could pick a CLI were all droid.
-      cli: (r.cli as CliVendor) ?? 'droid',
-      droidSessionId: r.droid_session_id,
+      agentSessionId: r.droid_session_id,
       mode: (r.mode as RunMode) ?? 'rpc',
       color: r.color,
       contextTokens: r.context_tokens ?? 0,
@@ -608,6 +607,8 @@ export class Tracer {
    */
   recordProcess(input: {
     runId: string | null;
+    // `droid` is historical: no current writer emits it, but rows carrying it
+    // are still read back by the kill path and the relaunch sweep.
     kind: 'engine' | 'droid' | 'code' | 'bridge';
     name: string;
     pid: number;
@@ -838,7 +839,6 @@ interface RawAgentSession {
   agent: string;
   model: string;
   reasoning_effort: string;
-  cli: string | null;
   droid_session_id: string | null;
   mode: string | null;
   color: string;

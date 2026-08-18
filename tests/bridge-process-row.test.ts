@@ -39,7 +39,7 @@ function withRun(trace: Tracer, runId: string): string {
     worktreePath: null,
     branch: null,
     baseRef: 'main',
-    mode: 'rpc',
+    mode: 'pi',
   });
   return runId;
 }

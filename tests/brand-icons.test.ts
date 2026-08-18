@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FoundryGlyph, PiGlyph, providerMark } from '../src/renderer/components/BrandIcon.js';
-import { providerOf } from '../src/main/droid/catalog.js';
+import { providerOf } from '../src/main/pi/catalog.js';
 import { BRIDGE_PROVIDERS } from '../src/main/bridge/providers.js';
 
 describe('app chrome marks', () => {
@@ -28,7 +28,6 @@ describe('provider marks', () => {
     'nemotron-3-ultra',
     'grok-4.5',
     'custom:meta:muse-spark-1.2',
-    'inkling',
     'something-nobody-has-heard-of',
   ];
 

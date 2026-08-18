@@ -16,8 +16,10 @@ import type {
   AgentSession as PiAgentSession,
   getLastAssistantUsage,
 } from '@earendil-works/pi-coding-agent';
-import { INHERIT_MODEL } from '../droid/turn.js';
 import type { TransportModel } from './transport.js';
+
+/** A roster entry may decline to pick a model and take this install's default. */
+export const INHERIT_MODEL = 'inherit';
 
 export type PiModel = NonNullable<PiAgentSession['model']>;
 export type PiThinkingLevel = PiAgentSession['thinkingLevel'];

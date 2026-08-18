@@ -68,10 +68,10 @@ describe('inspector lane header overflow', () => {
   });
 
   it('names the transport that answered, falling back for historical rows', () => {
-    // Runs recorded before the migration have `cli` and no `mode`. The pill is
-    // the only place the lane says what ran the phase, so a blank one would
-    // erase that for every run already in the trace.
-    expect(tsx).toMatch(/session\?\.mode \?\? session\?\.cli \?\? 'pi'/);
+    // Runs recorded before the migration carry `daemon`, `rpc`, or `oneshot`.
+    // The pill is the only place the lane says what ran the phase, so labelling
+    // one of those `pi` would misreport every run already in the trace.
+    expect(tsx).toMatch(/session\?\.mode \?\? 'pi'/);
     expect(tsx).toMatch(/styles\.laneCli\}>\{transport\}/);
     // The class name outlives the CLI it was named for: the breakpoints below
     // hide by it, so renaming it here would silently unhide the pill.

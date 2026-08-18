@@ -1,10 +1,9 @@
 /**
  * Foundry's own tools, registered directly on the agent session.
  *
- * These replace the in-process MCP server the droid transport needed: with the
- * agent running in this process there is no server to stand up, no wire ids
- * (`foundry___report_progress`), and no second schema dialect to keep in sync.
- * A tool is a plain object with a JSON Schema and a function.
+ * With the agent running in this process there is no MCP server to stand up, no
+ * wire-prefixed ids (`foundry___report_progress`), and no second schema dialect
+ * to keep in sync. A tool is a plain object with a JSON Schema and a function.
  *
  * Three tools, and none of them writes the worktree:
  * - `report_progress` traces a line for the Inspector timeline.

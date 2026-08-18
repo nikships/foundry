@@ -38,7 +38,6 @@ import type {
   RewindInfo,
   RewindOutcome,
   RewindParams,
-  SessionTool,
   TransportModel,
   TurnOptions,
   TurnResult,
@@ -295,22 +294,6 @@ export class PiTransport implements AgentTransport {
       failedRestoreCount: 0,
       failedDeleteCount: 0,
     });
-  }
-
-  listTools(): Promise<SessionTool[]> {
-    const session = this.session;
-    if (!session) return Promise.resolve([]);
-    const active = new Set(session.getActiveToolNames());
-    return Promise.resolve(
-      session.getAllTools().map((tool) => ({
-        id: tool.name,
-        displayName: tool.name,
-        description: tool.description,
-        category: tool.sourceInfo.source,
-        defaultAllowed: true,
-        allowed: active.has(tool.name),
-      })),
-    );
   }
 
   async interrupt(): Promise<void> {

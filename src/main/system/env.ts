@@ -78,17 +78,6 @@ export interface ResolvedEnv {
 let resolved: ResolvedEnv | null = null;
 
 /**
- * Extra variables merged into every child env after PATH and before caller
- * overrides, so a credential can reach a child without mutating `process.env`.
- */
-let spawnExtra: Record<string, string> = {};
-
-/** Replace the extra env overlay. Pass `{}` to clear. */
-export function setSpawnEnvExtra(vars: Record<string, string>): void {
-  spawnExtra = { ...vars };
-}
-
-/**
  * `-i` (interactive) matters as much as `-l`: many people put their PATH in
  * `.zshrc`, which a non-interactive login shell never reads. stdin is closed so
  * a profile that prompts cannot block startup.
@@ -159,7 +148,7 @@ export function resolvedEnv(): ResolvedEnv {
 export function spawnEnv(
   overrides?: Record<string, string | undefined>,
 ): NodeJS.ProcessEnv & Record<string, string | undefined> {
-  return { ...process.env, PATH: resolvedEnv().path, ...spawnExtra, ...overrides };
+  return { ...process.env, PATH: resolvedEnv().path, ...overrides };
 }
 
 /**

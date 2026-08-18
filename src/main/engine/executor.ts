@@ -34,7 +34,6 @@ import {
 } from '../pi/session.js';
 import { PiTransport } from '../pi/pi-transport.js';
 import type { AgentTransport } from '../pi/transport.js';
-import { noteSessionModels, noteSessionTools } from '../droid/catalog.js';
 import { decideAcceptance } from './acceptance.js';
 import type { PhaseRunner, RunContext, PhaseJump } from './phase-context.js';
 import { AgentPhaseRunner } from './runners/agent.js';
@@ -424,33 +423,6 @@ export class Executor {
       tracer: this.deps.tracer,
       protectedPaths: this.deps.project.protectedPaths,
       transport: (req) => this.transportFor(req),
-      // A live session is the only model and tool list that reflects what this
-      // install can reach today, so the catalog the roster picker reads is
-      // refreshed from it rather than from a discovery child.
-      onModels: (models) =>
-        noteSessionModels(
-          models.map((model) => ({
-            id: model.id,
-            modelId: model.id,
-            modelProvider: model.provider,
-            displayName: model.displayName,
-            supportedReasoningEfforts: model.supportedReasoningEfforts,
-            defaultReasoningEffort: model.defaultReasoningEffort,
-          })),
-        ),
-      onTools: (tools) =>
-        noteSessionTools(
-          tools.map(({ id, displayName, description, category, defaultAllowed }) => ({
-            id,
-            // One id, the name a roster's allowlist uses; the runtime exposes no
-            // separate internal id and none is needed.
-            llmId: id,
-            displayName,
-            description,
-            category,
-            defaultAllowed,
-          })),
-        ),
     });
     this.sessions.set(agent.name, session);
     return session;
