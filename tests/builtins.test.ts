@@ -3,6 +3,11 @@
  * a pipeline names its agent by string, and an agent names its envelope by
  * string. Nothing at runtime re-checks that pairing before a run spends tokens,
  * so it is checked here.
+ *
+ * The shipped chains also carry two structural promises that no single phase
+ * can see: every phase that edits code is proven by the project's test command
+ * before the commit that records it, and every chain ends in a pull request
+ * the engine actually opened. Those are pinned per pipeline below.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -11,7 +16,12 @@ import { BUILTIN_PIPELINES } from '../src/main/store/builtin-pipelines.js';
 import { validate as validatePipeline } from '../src/main/store/pipelines.js';
 import { validate as validateAgent } from '../src/main/store/roster.js';
 import { exampleFor, schemaFor } from '../src/main/engine/envelopes.js';
-import { PR_FALLBACK_HEADINGS, PR_TEMPLATE_SEARCH_PATHS } from '../src/shared/types.js';
+import {
+  PR_FALLBACK_HEADINGS,
+  PR_TEMPLATE_SEARCH_PATHS,
+  type PhaseDef,
+  type PipelineDef,
+} from '../src/shared/types.js';
 
 /** Every `{ref}` any shipped pipeline reaches for, so none is a false warning. */
 const COMMAND_NAMES = [
@@ -23,6 +33,22 @@ const COMMAND_NAMES = [
     ),
   ),
 ];
+
+const byId = (id: string): PipelineDef => {
+  const found = BUILTIN_PIPELINES.find((p) => p.id === id);
+  if (!found) throw new Error(`no shipped pipeline with id "${id}"`);
+  return found;
+};
+
+const agentByName = (name: string) => BUILTIN_AGENTS.find((a) => a.name === name);
+
+/** Phases whose agent can touch source code (writes: null = unrestricted). */
+function codeEditingPhases(pipeline: PipelineDef): PhaseDef[] {
+  return pipeline.phases.filter((phase) => {
+    if (phase.kind !== 'agent') return false;
+    return agentByName(phase.agent!)?.writes === null;
+  });
+}
 
 describe('shipped agents', () => {
   it.each(BUILTIN_AGENTS.map((a) => [a.name, a] as const))('%s validates', (_name, agent) => {
@@ -36,6 +62,19 @@ describe('shipped agents', () => {
       expect(result.success, `${agent.name} example must validate`).toBe(true);
     }
   });
+
+  it('lets the production check write, since a check that cannot fix only reports', () => {
+    expect(agentByName('finisher')?.writes).toBeNull();
+  });
+
+  it('keeps the refiner read-only, since sharpening a request is not doing the work', () => {
+    expect(agentByName('refiner')?.writes).toEqual([]);
+  });
+
+  it('has the finisher claim its changed files, so diff_matches_claims can check them', () => {
+    const finisher = agentByName('finisher');
+    expect(finisher?.customFields?.some((f) => f.name === 'changed_files')).toBe(true);
+  });
 });
 
 describe('shipped pipelines', () => {
@@ -46,49 +85,52 @@ describe('shipped pipelines', () => {
     },
   );
 
-  it('holds the refine and ship chain to the phase that judges it', () => {
-    const shipped = BUILTIN_PIPELINES.find((p) => p.id === 'refine-build-ship');
-    expect(shipped?.acceptance).toEqual({
-      kind: 'phase_flag',
-      phase: 'production_check',
-      flag: 'approved',
-    });
-    expect(shipped?.phases.map((p) => p.name)).toEqual([
-      'refine',
-      'plan',
-      'commit_plan',
-      'build',
-      'test',
-      'commit_build',
-      'production_check',
-      'commit_polish',
+  it('ships exactly five multi-phase chains, each ending in open_pr', () => {
+    expect(BUILTIN_PIPELINES.map((p) => p.id)).toEqual([
+      'build-pr',
+      'fix-pr',
+      'spec-pr',
+      'ship-pr',
+      'sdlc-pr',
     ]);
+    for (const pipeline of BUILTIN_PIPELINES) {
+      expect(pipeline.phases.length, `${pipeline.id} is multi-phase`).toBeGreaterThanOrEqual(4);
+      expect(pipeline.phases.at(-1)?.name, `${pipeline.id} ends in open_pr`).toBe('open_pr');
+    }
   });
 
-  it('lets the production check write, since a check that cannot fix only reports', () => {
-    const finisher = BUILTIN_AGENTS.find((a) => a.name === 'finisher');
-    expect(finisher?.writes).toBeNull();
+  it('accepts every chain on the PR envelope, never an earlier flag', () => {
+    for (const pipeline of BUILTIN_PIPELINES) {
+      expect(pipeline.acceptance, pipeline.id).toEqual({
+        kind: 'envelope_status',
+        phase: 'open_pr',
+      });
+    }
   });
 
-  it('keeps the refiner read-only, since sharpening a request is not doing the work', () => {
-    const refiner = BUILTIN_AGENTS.find((a) => a.name === 'refiner');
-    expect(refiner?.writes).toEqual([]);
-  });
-
-  it('keeps the shipped refine-build-ship and full-sdlc chains unchanged', () => {
-    const ship = BUILTIN_PIPELINES.find((p) => p.id === 'refine-build-ship');
-    const sdlc = BUILTIN_PIPELINES.find((p) => p.id === 'full-sdlc');
-    expect(ship?.phases.map((p) => p.name)).toEqual([
-      'refine',
+  it('pins the phase order of each chain', () => {
+    expect(byId('build-pr').phases.map((p) => p.name)).toEqual([
       'plan',
       'commit_plan',
       'build',
       'test',
       'commit_build',
-      'production_check',
-      'commit_polish',
+      'open_pr',
     ]);
-    expect(sdlc?.phases.map((p) => p.name)).toEqual([
+    expect(byId('fix-pr').phases.map((p) => p.name)).toEqual([
+      'diagnose',
+      'fix',
+      'test',
+      'commit_fix',
+      'open_pr',
+    ]);
+    expect(byId('spec-pr').phases.map((p) => p.name)).toEqual([
+      'survey',
+      'spec',
+      'commit_spec',
+      'open_pr',
+    ]);
+    expect(byId('ship-pr').phases.map((p) => p.name)).toEqual([
       'refine',
       'plan',
       'commit_plan',
@@ -96,59 +138,134 @@ describe('shipped pipelines', () => {
       'test',
       'commit_build',
       'production_check',
+      'verify',
+      'commit_polish',
+      'open_pr',
+    ]);
+    expect(byId('sdlc-pr').phases.map((p) => p.name)).toEqual([
+      'refine',
+      'plan',
+      'commit_plan',
+      'build',
+      'test',
+      'commit_build',
+      'production_check',
+      'verify',
       'commit_polish',
       'review',
       'document',
       'commit_docs',
+      'open_pr',
     ]);
-    expect(ship?.phases.some((p) => p.name === 'open_pr')).toBe(false);
-    expect(sdlc?.phases.some((p) => p.name === 'open_pr')).toBe(false);
   });
 
-  it('adds PR-enabled copies that append an open_pr phase on the PR envelope', () => {
-    const shipPr = BUILTIN_PIPELINES.find((p) => p.id === 'refine-build-ship-pr');
-    const sdlcPr = BUILTIN_PIPELINES.find((p) => p.id === 'full-sdlc-pr');
-    const ship = BUILTIN_PIPELINES.find((p) => p.id === 'refine-build-ship');
-    const sdlc = BUILTIN_PIPELINES.find((p) => p.id === 'full-sdlc');
+  it('never commits or opens a PR on unproven code: every code edit is followed by a test run before its commit', () => {
+    for (const pipeline of BUILTIN_PIPELINES) {
+      for (const phase of codeEditingPhases(pipeline)) {
+        const index = pipeline.phases.findIndex((p) => p.name === phase.name);
+        const after = pipeline.phases.slice(index + 1);
+        const testIndex = after.findIndex(
+          (p) => p.kind === 'code' && p.command && 'ref' in p.command && p.command.ref === 'test',
+        );
+        const commitIndex = after.findIndex(
+          (p) => p.kind === 'code' && p.command && 'builtin' in p.command,
+        );
+        expect(
+          testIndex,
+          `${pipeline.id}/${phase.name} is followed by a test phase`,
+        ).toBeGreaterThanOrEqual(0);
+        expect(
+          testIndex,
+          `${pipeline.id}/${phase.name}: the test runs before the commit that records it`,
+        ).toBeLessThan(commitIndex === -1 ? Number.POSITIVE_INFINITY : commitIndex);
+      }
+    }
+  });
 
-    expect(shipPr?.name).toBe('Refine → Build → Ship → PR');
-    expect(sdlcPr?.name).toBe('Full SDLC → PR');
-    expect(shipPr?.acceptance).toEqual(ship?.acceptance);
-    expect(sdlcPr?.acceptance).toEqual(sdlc?.acceptance);
-    expect(shipPr?.phases.map((p) => p.name)).toEqual([
-      ...(ship?.phases.map((p) => p.name) ?? []),
-      'open_pr',
-    ]);
-    expect(sdlcPr?.phases.map((p) => p.name)).toEqual([
-      ...(sdlc?.phases.map((p) => p.name) ?? []),
-      'open_pr',
-    ]);
+  it('routes every test failure back to the phase that owns the fix', () => {
+    for (const pipeline of BUILTIN_PIPELINES) {
+      for (const phase of pipeline.phases) {
+        if (phase.kind !== 'code' || !phase.command || !('ref' in phase.command)) continue;
+        expect(phase.feedbackTo, `${pipeline.id}/${phase.name} names its fixer`).toBeTruthy();
+        const target = pipeline.phases.find((p) => p.name === phase.feedbackTo);
+        expect(target?.kind, `${pipeline.id}/${phase.name} feeds back to an agent`).toBe('agent');
+        expect(
+          agentByName(target!.agent!)?.writes,
+          `${pipeline.id}/${phase.name} feeds back to an agent that can actually write the fix`,
+        ).toBeNull();
+      }
+    }
+  });
 
-    for (const pipeline of [shipPr, sdlcPr]) {
-      const openPr = pipeline?.phases.find((p) => p.name === 'open_pr');
-      expect(openPr).toMatchObject({
-        kind: 'agent',
-        agent: 'pr_writer',
-        envelope: 'pr',
-      });
-      expect(openPr?.prompt?.inputs).toEqual([
+  it('halts every review verdict that does not approve, so rejected work cannot reach the PR', () => {
+    for (const pipeline of BUILTIN_PIPELINES) {
+      for (const phase of pipeline.phases) {
+        if (phase.kind !== 'agent') continue;
+        const envelope = phase.envelope ?? agentByName(phase.agent!)?.envelope;
+        if (envelope !== 'review') continue;
+        expect(phase.gates, `${pipeline.id}/${phase.name} verdict is self-consistent`).toContain(
+          'verdict_consistent',
+        );
+        expect(phase.gates, `${pipeline.id}/${phase.name} disapproval halts the run`).toContain(
+          'disapproval_halts',
+        );
+      }
+    }
+  });
+
+  it('re-proves the production-check fixes before committing them', () => {
+    for (const id of ['ship-pr', 'sdlc-pr']) {
+      const names = byId(id).phases.map((p) => p.name);
+      const check = names.indexOf('production_check');
+      const verify = names.indexOf('verify');
+      const polish = names.indexOf('commit_polish');
+      expect(check, id).toBeGreaterThanOrEqual(0);
+      expect(verify, id).toBe(check + 1);
+      expect(polish, id).toBe(verify + 1);
+      const verifyPhase = byId(id).phases[verify]!;
+      expect(verifyPhase.feedbackTo).toBe('production_check');
+    }
+  });
+
+  it('feeds the PR writer every envelope its chain produced, so the body describes the whole run', () => {
+    const expected: Record<string, string[]> = {
+      'build-pr': ['request', 'envelope:plan', 'envelope:build'],
+      'fix-pr': ['request', 'envelope:diagnose', 'envelope:fix'],
+      'spec-pr': ['request', 'envelope:survey', 'envelope:spec'],
+      'ship-pr': ['request', 'envelope:plan', 'envelope:build', 'envelope:production_check'],
+      'sdlc-pr': [
         'request',
         'envelope:plan',
         'envelope:build',
         'envelope:production_check',
-      ]);
+        'envelope:review',
+        'envelope:document',
+      ],
+    };
+    for (const pipeline of BUILTIN_PIPELINES) {
+      const openPr = pipeline.phases.at(-1)!;
+      expect(openPr).toMatchObject({ kind: 'agent', agent: 'pr_writer', envelope: 'pr' });
+      expect(openPr.prompt?.inputs, pipeline.id).toEqual(expected[pipeline.id]);
     }
   });
 
+  it('keeps spec-pr free of code-editing phases and test refs, so it runs on any repo', () => {
+    const spec = byId('spec-pr');
+    expect(codeEditingPhases(spec)).toEqual([]);
+    expect(
+      spec.phases.some(
+        (p) => p.kind === 'code' && p.command && 'ref' in p.command && p.command.ref === 'test',
+      ),
+    ).toBe(false);
+  });
+
   it('ships a read-only pr_writer that drafts a pr envelope', () => {
-    const writer = BUILTIN_AGENTS.find((a) => a.name === 'pr_writer');
+    const writer = agentByName('pr_writer');
     expect(writer).toBeDefined();
     expect(writer?.envelope).toBe('pr');
     expect(writer?.writes).toEqual([]);
     expect(writer?.builtin).toBe(true);
     expect(writer?.userPrompt).toContain('{{request}}');
-    expect(writer?.userPrompt).toContain('{{envelope:plan}}');
-    expect(writer?.userPrompt).toContain('{{envelope:build}}');
     expect(writer?.systemPrompt).toContain('Do not create, edit, or delete any file');
     expect(writer?.systemPrompt).toContain('no raw `git diff`');
     expect(writer?.systemPrompt).toContain('no invented issue numbers');

@@ -49,8 +49,8 @@ const MOCK_RUNS: RunRow[] = [
   {
     runId: 'run_demo_1',
     projectId: 'demo-project',
-    pipelineId: 'plan-build-test',
-    pipelineName: 'Plan → Build → Test',
+    pipelineId: 'build-pr',
+    pipelineName: 'Plan → Build → Test → PR',
     request: 'Add a web preview mode so the UI can be explored without Electron (demo fixture).',
     status: 'accepted',
     engineer: 'web-preview',
@@ -79,9 +79,9 @@ const MOCK_RUNS: RunRow[] = [
   {
     runId: 'run_demo_2',
     projectId: 'demo-project',
-    pipelineId: 'scout',
-    pipelineName: 'Scout',
-    request: 'Where does SettingsScreen read the brand?',
+    pipelineId: 'fix-pr',
+    pipelineName: 'Diagnose → Fix → PR',
+    request: 'SettingsScreen shows the wrong brand after a theme switch',
     status: 'running',
     engineer: 'web-preview',
     worktreePath: null,
@@ -98,7 +98,7 @@ const MOCK_RUNS: RunRow[] = [
     endedAt: null,
     totalTokens: 1800,
     totalCost: 0,
-    phaseSummary: [{ name: 'scout', status: 'running', kind: 'agent' }],
+    phaseSummary: [{ name: 'diagnose', status: 'running', kind: 'agent' }],
   },
 ];
 
@@ -135,13 +135,13 @@ const MOCK_PHASES: Record<string, PhaseRow[]> = {
   ],
   run_demo_2: [
     {
-      phaseId: 'ph_scout_2',
+      phaseId: 'ph_diagnose_2',
       runId: 'run_demo_2',
       seq: 0,
-      name: 'scout',
+      name: 'diagnose',
       kind: 'agent',
       owner: 'scout',
-      description: 'Investigate the question with evidence',
+      description: 'Locate the fault with evidence before anything changes',
       status: 'running',
       attempt: 1,
       error: null,

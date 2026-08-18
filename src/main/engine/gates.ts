@@ -200,6 +200,26 @@ const verdict_consistent: GateFn = async (envelope) => {
   ];
 };
 
+/**
+ * A review that does not approve must report `status: "fail"` so the phase
+ * aborts, because a disapproving verdict riding a successful phase flows
+ * straight into whatever comes next — a commit, a pull request — as if it had
+ * been approved. Approvals and honest failures both pass; only the
+ * keeps-going disapproval is rejected.
+ */
+const disapproval_halts: GateFn = async (envelope) => {
+  const approved = Boolean(envelope.approved);
+  const failed = envelope.status === 'fail';
+  const ok = approved || failed;
+  let note: string;
+  if (approved) note = 'approved';
+  else if (failed) note = 'not approved and reported as failure, so the run halts here';
+  else
+    note =
+      'approved=false with status "success" would let disapproved work flow on — close the gaps and approve, or report status "fail" to halt the run here';
+  return [{ item: 'disapproval halts the run', ok, note }];
+};
+
 /** The generalisation of SSSF's tests_pass: argv comes from the designer. */
 const command_passes: GateFn = async (_envelope, ctx, config) => {
   const argv = (config?.argv as string[] | undefined) ?? [];
@@ -225,6 +245,7 @@ export const GATES: Record<string, GateFn> = {
   json_parses,
   diff_matches_claims,
   verdict_consistent,
+  disapproval_halts,
   command_passes,
 };
 
@@ -235,6 +256,8 @@ export const GATE_DESCRIPTIONS: Record<string, string> = {
   diff_matches_claims:
     'Files claimed as changed appear in the git diff (including deletions), and nothing changed is left unclaimed.',
   verdict_consistent: 'A review cannot approve while it also lists blocking items.',
+  disapproval_halts:
+    'A review that does not approve must report failure, so disapproved work never flows into later phases.',
   command_passes: 'A configured command exits 0 against the phase result.',
 };
 

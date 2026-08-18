@@ -225,3 +225,4 @@ npm run package             # build + icons + fetch:bridge + electron-builder --
 ## Additional Notes
 
 - Never modify or push `.foundry-worktrees/` branches directly — the engine owns them.
+- Don't update the Website, unless specifically asked to do so. Instead file a GitHub issue for what  needs to be changed if you believe one is required

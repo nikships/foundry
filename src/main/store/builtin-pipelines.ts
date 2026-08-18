@@ -2,6 +2,21 @@
  * The pipelines Foundry ships with. Every one is an editable copy in the
  * Designer, not a locked recipe: `builtin` only marks where it came from.
  *
+ * Every shipped chain ends by opening a pull request, and every one holds two
+ * rules by construction:
+ *
+ *   1. Nothing is recorded unproven. Every phase that edits code is followed by
+ *      the project's test command before the commit that records it — including
+ *      the production check, whose fixes land after `build` was already proven.
+ *   2. A rejection halts. `disapproval_halts` requires a disapproving verdict
+ *      to report `status: "fail"`, which aborts the phase, so disapproved work
+ *      can never flow on into a commit or a pull request.
+ *
+ * Acceptance is `envelope_status` on `open_pr` for all of them: the run is
+ * accepted only when the pull request actually exists (the engine records the
+ * number and URL or fails the phase), never on an earlier flag that a later
+ * failure would leave dangling.
+ *
  * A phase name identifies; a description explains. Both are required, and the
  * Designer enforces at edit time that a description does not merely echo its
  * name — the same rule SSSF enforces at construction, moved to where a human
@@ -30,6 +45,7 @@ function planPhase(refined = false): PhaseDef {
     name: 'plan',
     kind: 'agent',
     agent: 'planner',
+    retries: 2,
     description: refined
       ? 'Turn the refined brief into a plan the builder needs no questions to implement.'
       : 'Turn the request into a plan the builder needs no questions to implement.',
@@ -62,44 +78,59 @@ function buildPhase(): PhaseDef {
   };
 }
 
-function commitBuildPhase(
-  description = 'Commit the implementation using the message the builder proposed for it.',
-): PhaseDef {
+/**
+ * The proof between an edit and its commit. `feedbackTo` names the phase that
+ * owns the fix, so a red run hands the log tail back to the agent that broke
+ * it instead of committing broken work.
+ */
+function testPhase(feedbackTo: string, name = 'test'): PhaseDef {
   return {
-    name: 'commit_build',
+    name,
     kind: 'code',
-    description,
-    command: { builtin: 'git_commit', messageFrom: 'envelope:build.commit_message' },
-  };
-}
-
-function testPhase(
-  description = "Run the project's test command and capture the evidence either way.",
-): PhaseDef {
-  return {
-    name: 'test',
-    kind: 'code',
-    description,
+    description:
+      name === 'verify'
+        ? "Re-run the project's tests over the production-check fixes before anything records them."
+        : "Run the project's test command and send failures back as evidence to the phase that owns the fix.",
     command: { ref: 'test' },
-    feedbackTo: 'build',
+    feedbackTo,
     feedbackRetries: 2,
   };
 }
 
+function commitPhase(name: string, from: string, description: string): PhaseDef {
+  return {
+    name,
+    kind: 'code',
+    description,
+    command: { builtin: 'git_commit', messageFrom: `envelope:${from}.commit_message` },
+  };
+}
+
+function commitBuildPhase(): PhaseDef {
+  return commitPhase(
+    'commit_build',
+    'build',
+    'Commit the implementation once its tests are green.',
+  );
+}
+
 /**
  * The one phase allowed to both judge and fix: a gap it only reported would
- * leave the run rejected with the work still short of the bar. `verdict_consistent`
- * keeps it from approving its way out, and `diff_matches_claims` keeps its
- * repairs visible in the envelope.
+ * leave the run rejected with the work still short of the bar.
+ * `verdict_consistent` keeps it from approving its way out and forces the halt
+ * when it cannot close a gap; `diff_matches_claims` keeps its repairs visible
+ * in the envelope (the finisher's `changed_files` custom field is what it
+ * checks against).
  */
 function productionCheckPhase(): PhaseDef {
   return {
     name: 'production_check',
     kind: 'agent',
     agent: 'finisher',
+    retries: 2,
     description: 'Audit the work against the ship bar and close the gaps it finds.',
     envelope: 'review',
-    gates: ['verdict_consistent'],
+    gates: ['verdict_consistent', 'disapproval_halts', 'diff_matches_claims'],
     prompt: { template: 'user', inputs: ['request', 'envelope:build'] },
   };
 }
@@ -114,19 +145,23 @@ function commitPolishPhase(): PhaseDef {
   };
 }
 
-function reviewPhase(afterProductionCheck = false): PhaseDef {
-  const inputs = ['request', 'envelope:plan', 'envelope:build'];
-  // The build envelope stops describing the tree once production_check has
-  // edited it, so a reviewer that runs after one has to see both.
-  if (afterProductionCheck) inputs.push('envelope:production_check');
+/**
+ * The build envelope stops describing the tree once production_check has
+ * edited it, so the reviewer sees both.
+ */
+function reviewPhase(): PhaseDef {
   return {
     name: 'review',
     kind: 'agent',
     agent: 'reviewer',
+    retries: 2,
     description: 'Check the built work against the original request, one finding per requirement.',
     envelope: 'review',
-    gates: ['verdict_consistent'],
-    prompt: { template: 'user', inputs },
+    gates: ['verdict_consistent', 'disapproval_halts'],
+    prompt: {
+      template: 'user',
+      inputs: ['request', 'envelope:plan', 'envelope:build', 'envelope:production_check'],
+    },
   };
 }
 
@@ -135,10 +170,14 @@ function documentPhase(): PhaseDef {
     name: 'document',
     kind: 'agent',
     agent: 'documenter',
+    retries: 2,
     description: "Write down what changed for the reader who arrives without this run's context.",
     envelope: 'document',
     gates: ['artifacts_exist', 'files_non_empty'],
-    prompt: { template: 'user', inputs: ['request', 'envelope:build'] },
+    prompt: {
+      template: 'user',
+      inputs: ['request', 'envelope:build', 'envelope:production_check'],
+    },
   };
 }
 
@@ -152,13 +191,12 @@ function commitDocsPhase(): PhaseDef {
 }
 
 /**
- * Drafts the PR envelope, then the engine pushes `foundry/<runId>` and runs
- * `gh pr create`. `afterProductionCheck` adds that handoff so the body can
- * describe the ship-bar pass, not only the build.
+ * Drafts the PR envelope, then the engine — not the agent — pushes
+ * `foundry/<runId>` and runs `gh pr create`. A missing PR number or URL fails
+ * the phase, and the executor hard-rejects a run whose PR phase aborted, so
+ * "accepted" always means "the pull request exists".
  */
-function prPhase(afterProductionCheck = false): PhaseDef {
-  const inputs = ['request', 'envelope:plan', 'envelope:build'];
-  if (afterProductionCheck) inputs.push('envelope:production_check');
+function prPhase(inputs: string[]): PhaseDef {
   return {
     name: 'open_pr',
     kind: 'agent',
@@ -166,150 +204,145 @@ function prPhase(afterProductionCheck = false): PhaseDef {
     description:
       'Open a pull request with a human-readable title and body, following the repo PR template when present.',
     envelope: 'pr',
-    prompt: { template: 'user', inputs },
+    prompt: { template: 'user', inputs: ['request', ...inputs] },
   };
 }
 
-function refineBuildShipPhases(): PhaseDef[] {
+/** Refine → plan → build → test → commit → ship bar → re-test → commit. */
+function shipPhases(): PhaseDef[] {
   return [
     refinePhase(),
     planPhase(true),
     commitPlanPhase(),
     buildPhase(),
-    testPhase(),
-    commitBuildPhase('Commit the implementation once its tests are green.'),
+    testPhase('build'),
+    commitBuildPhase(),
     productionCheckPhase(),
+    testPhase('production_check', 'verify'),
     commitPolishPhase(),
-  ];
-}
-
-function fullSdlcPhases(): PhaseDef[] {
-  return [
-    refinePhase(),
-    planPhase(true),
-    commitPlanPhase(),
-    buildPhase(),
-    testPhase("Run the project's test command and send failures back to the builder as evidence."),
-    commitBuildPhase('Commit the implementation once its tests are green.'),
-    productionCheckPhase(),
-    commitPolishPhase(),
-    reviewPhase(true),
-    documentPhase(),
-    commitDocsPhase(),
   ];
 }
 
 export const BUILTIN_PIPELINES: PipelineDef[] = [
   {
-    id: 'prompt',
-    name: 'Prompt',
-    description: 'One agent, one turn, one envelope. The smallest useful run.',
-    acceptance: { kind: 'last_phase_pass' },
-    isolation: false,
-    builtin: true,
-    phases: [
-      {
-        name: 'respond',
-        kind: 'agent',
-        agent: 'builder',
-        description: 'Answer the request directly with a single bounded agent turn.',
-        envelope: 'generic',
-        gates: ['artifacts_exist'],
-        prompt: { template: 'user', inputs: ['request'] },
-      },
-    ],
-  },
-  {
-    id: 'scout',
-    name: 'Scout',
-    description: 'Read-only reconnaissance: answer a question about the codebase with evidence.',
-    acceptance: { kind: 'envelope_status', phase: 'scout' },
-    isolation: false,
-    builtin: true,
-    phases: [
-      {
-        name: 'scout',
-        kind: 'agent',
-        agent: 'scout',
-        description: 'Investigate the question against the real tree and report located findings.',
-        envelope: 'scout',
-        gates: ['artifacts_exist'],
-        prompt: { template: 'user', inputs: ['request'] },
-      },
-    ],
-  },
-  {
-    id: 'plan',
-    name: 'Plan',
-    description: 'Produce a spec concrete enough to implement, and commit it.',
-    acceptance: { kind: 'envelope_status', phase: 'plan' },
-    builtin: true,
-    phases: [planPhase(), commitPlanPhase()],
-  },
-  {
-    id: 'plan-build',
-    name: 'Plan → Build',
-    description: 'Spec first, then implement it, with each step committed separately.',
-    acceptance: { kind: 'envelope_status', phase: 'build' },
-    builtin: true,
-    phases: [planPhase(), commitPlanPhase(), buildPhase(), commitBuildPhase()],
-  },
-  {
-    id: 'plan-build-test',
-    name: 'Plan → Build → Test',
+    id: 'build-pr',
+    name: 'Plan → Build → Test → PR',
     description:
-      "The standard chain: spec first, implement, then prove it with the project's own tests.",
-    acceptance: { kind: 'phase_flag', phase: 'test', flag: 'passed' },
+      "The standard chain: spec first, implement it, prove it with the project's own tests, then open the pull request.",
+    acceptance: { kind: 'envelope_status', phase: 'open_pr' },
     builtin: true,
     phases: [
       planPhase(),
       commitPlanPhase(),
       buildPhase(),
-      testPhase(),
-      commitBuildPhase('Commit the implementation once its tests are green.'),
+      testPhase('build'),
+      commitBuildPhase(),
+      prPhase(['envelope:plan', 'envelope:build']),
     ],
   },
   {
-    id: 'plan-build-review',
-    name: 'Plan → Build → Review',
-    description: 'Implement against a spec, then have a second agent check it against the request.',
-    acceptance: { kind: 'phase_flag', phase: 'review', flag: 'approved' },
-    builtin: true,
-    phases: [planPhase(), buildPhase(), commitBuildPhase(), reviewPhase()],
-  },
-  {
-    id: 'refine-build-ship',
-    name: 'Refine → Build → Ship',
+    id: 'fix-pr',
+    name: 'Diagnose → Fix → PR',
     description:
-      'Sharpen the request first, implement it, then hold the result to the ship bar before it counts.',
-    acceptance: { kind: 'phase_flag', phase: 'production_check', flag: 'approved' },
+      'The bug chain: locate the fault with evidence first, fix exactly that, prove it with the tests, then open the pull request.',
+    acceptance: { kind: 'envelope_status', phase: 'open_pr' },
     builtin: true,
-    phases: refineBuildShipPhases(),
+    phases: [
+      {
+        name: 'diagnose',
+        kind: 'agent',
+        agent: 'scout',
+        retries: 2,
+        description:
+          'Locate the fault in the real tree — paths, symbols, and the failing behaviour — before anything changes.',
+        envelope: 'scout',
+        gates: ['artifacts_exist'],
+        prompt: { template: 'user', inputs: ['request'] },
+      },
+      {
+        name: 'fix',
+        kind: 'agent',
+        agent: 'builder',
+        retries: 2,
+        description: 'Repair exactly the diagnosed fault and report every changed file.',
+        envelope: 'build',
+        gates: ['diff_matches_claims'],
+        prompt: { template: 'user', inputs: ['request', 'envelope:diagnose'] },
+      },
+      testPhase('fix'),
+      commitPhase('commit_fix', 'fix', 'Commit the fix once its tests are green.'),
+      prPhase(['envelope:diagnose', 'envelope:fix']),
+    ],
   },
   {
-    id: 'refine-build-ship-pr',
+    id: 'spec-pr',
+    name: 'Spec → PR',
+    description:
+      'No code changes: survey the repo, write a spec concrete enough to implement, and open a pull request that adds it for review.',
+    acceptance: { kind: 'envelope_status', phase: 'open_pr' },
+    builtin: true,
+    phases: [
+      {
+        name: 'survey',
+        kind: 'agent',
+        agent: 'scout',
+        retries: 2,
+        description:
+          'Map the code the spec will touch — current behaviour, owners, and constraints — with located evidence.',
+        envelope: 'scout',
+        gates: ['artifacts_exist'],
+        prompt: { template: 'user', inputs: ['request'] },
+      },
+      {
+        name: 'spec',
+        kind: 'agent',
+        agent: 'planner',
+        retries: 2,
+        description:
+          'Write the implementable spec under specs/, grounded in what the survey actually found.',
+        envelope: 'plan',
+        gates: ['artifacts_exist', 'files_non_empty'],
+        prompt: { template: 'user', inputs: ['request', 'envelope:survey'] },
+      },
+      commitPhase(
+        'commit_spec',
+        'spec',
+        'Record the spec as the single commit the pull request will carry.',
+      ),
+      prPhase(['envelope:survey', 'envelope:spec']),
+    ],
+  },
+  {
+    id: 'ship-pr',
     name: 'Refine → Build → Ship → PR',
     description:
-      'Sharpen the request, implement it, hold it to the ship bar, then open the pull request.',
-    acceptance: { kind: 'phase_flag', phase: 'production_check', flag: 'approved' },
+      'Sharpen the request, implement it, hold it to the ship bar, re-prove the polish, then open the pull request.',
+    acceptance: { kind: 'envelope_status', phase: 'open_pr' },
     builtin: true,
-    phases: [...refineBuildShipPhases(), prPhase(true)],
+    phases: [
+      ...shipPhases(),
+      prPhase(['envelope:plan', 'envelope:build', 'envelope:production_check']),
+    ],
   },
   {
-    id: 'full-sdlc',
-    name: 'Full SDLC',
-    description:
-      'Refine, plan, build, test, polish, review, and document, committing at each meaningful boundary.',
-    acceptance: { kind: 'phase_flag', phase: 'review', flag: 'approved' },
-    builtin: true,
-    phases: fullSdlcPhases(),
-  },
-  {
-    id: 'full-sdlc-pr',
+    id: 'sdlc-pr',
     name: 'Full SDLC → PR',
-    description: 'The full chain, then open a pull request with a human-readable title and body.',
-    acceptance: { kind: 'phase_flag', phase: 'review', flag: 'approved' },
+    description:
+      'Refine, plan, build, test, polish, re-test, review, and document — committing at each proven boundary — then open the pull request.',
+    acceptance: { kind: 'envelope_status', phase: 'open_pr' },
     builtin: true,
-    phases: [...fullSdlcPhases(), prPhase(true)],
+    phases: [
+      ...shipPhases(),
+      reviewPhase(),
+      documentPhase(),
+      commitDocsPhase(),
+      prPhase([
+        'envelope:plan',
+        'envelope:build',
+        'envelope:production_check',
+        'envelope:review',
+        'envelope:document',
+      ]),
+    ],
   },
 ];

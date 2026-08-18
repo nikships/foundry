@@ -929,6 +929,58 @@ describe('acceptance criteria', () => {
     expect(h.tracer.phases(outcome.runId)[0]!.status).toBe('success');
     expect(outcome.status).toBe('rejected');
   });
+
+  /**
+   * The shipped chains rely on this: a disapproving reviewer must stop the
+   * pipeline before a later commit or PR phase can record the rejected work.
+   * `disapproval_halts` corrects a disapproval that reports success; the
+   * honest retry (`status: "fail"`) aborts the phase, so the commit that
+   * follows never runs.
+   */
+  it('halts before later phases when a gated reviewer does not approve', async () => {
+    const disapproveButContinue = JSON.stringify({
+      status: 'success',
+      summary: 'not good enough',
+      artifacts: [],
+      approved: false,
+      findings: [{ requirement: 'it works', met: false, evidence: 'it does not' }],
+      blocking: ['it does not work'],
+      notes_for_next_agent: '',
+    });
+    const scripted = scriptedAgent([disapproveButContinue, reviewEnvelope(false)]);
+    const outcome = await run({
+      scripted,
+      agents: [buildAgent({ name: 'reviewer', envelope: 'review' })],
+      pipeline: pipe(
+        [
+          agentPhase('review', {
+            agent: 'reviewer',
+            retries: 2,
+            description: 'Judge the work; a disapproval must stop the run here.',
+            envelope: 'review',
+            gates: ['verdict_consistent', 'disapproval_halts'],
+          }),
+          codePhase(
+            'commit_build',
+            { argv: ['sh', '-c', 'echo should-never-run > landed.txt'] },
+            { description: 'Record work that must not be recorded when rejected.' },
+          ),
+        ],
+        {
+          description: 'a rejection must never flow into the commit',
+          acceptance: { kind: 'last_phase_pass' },
+        },
+      ),
+    });
+
+    expect(outcome.status).toBe('rejected');
+    const phases = h.tracer.phases(outcome.runId);
+    expect(phases.find((p) => p.name === 'review')!.status).toBe('fail');
+    // The commit phase never ran: it is still queued, and its file never landed.
+    expect(phases.find((p) => p.name === 'commit_build')!.status).toBe('queued');
+    const row = h.tracer.run(outcome.runId)!;
+    expect(existsSync(join(row.worktreePath!, 'landed.txt'))).toBe(false);
+  });
 });
 
 describe('engineer phases', () => {

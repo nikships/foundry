@@ -48,18 +48,17 @@ You point it at any git repo. Every run gets its own branch and worktree. Every 
 
 A pipeline is a recipe — not a mega-prompt. Each phase has one job and one way to be judged. Drag to reorder, swap who does what, add a checkpoint. Save it. Ship it again tomorrow.
 
-Eight built-ins, from fast to full-factory:
+Five built-ins, from fast to full-factory — every one ends in a pull request:
 
-| Pipeline                  | When to use it                                     |
-| ------------------------- | -------------------------------------------------- |
-| **Prompt**                | One shot. One agent. The smallest useful run.      |
-| **Scout**                 | Ask a question, get an answer grounded in code.    |
-| **Plan**                  | Turn a rough idea into a spec worth building.      |
-| **Plan → Build**          | Spec first, then build — each step committed.      |
-| **Plan → Build → Test**   | The standard: spec, build, prove with your tests.  |
-| **Plan → Build → Review** | A second agent checks the diff against your brief. |
-| **Refine → Build → Ship** | Sharpens the ask, builds, holds to ship bar.       |
-| **Full SDLC**             | Refine, plan, build, test, polish, review, docs.   |
+| Pipeline                       | When to use it                                               |
+| ------------------------------ | ------------------------------------------------------------ |
+| **Plan → Build → Test → PR**   | The standard: spec, build, prove with your tests, open PR.   |
+| **Diagnose → Fix → PR**        | Bug work: find the fault with evidence, fix exactly that.    |
+| **Spec → PR**                  | No code changes — survey the repo, PR an implementable spec. |
+| **Refine → Build → Ship → PR** | Sharpens the ask, builds, holds to ship bar, re-proves it.   |
+| **Full SDLC → PR**             | Refine, plan, build, test, polish, review, docs, PR.         |
+
+Nothing is committed unproven: every code edit runs your tests before the commit that records it, and a reviewer who doesn't approve halts the run before it can reach the PR.
 
 All editable on a freeform canvas. No scripts to write.
 

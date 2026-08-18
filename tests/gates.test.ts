@@ -149,6 +149,34 @@ describe('verdict_consistent', () => {
   });
 });
 
+describe('disapproval_halts', () => {
+  it('rejects a disapproval that still reports phase success', async () => {
+    const checks = await GATES.disapproval_halts!(
+      { ...base, status: 'success', approved: false },
+      ctx(),
+    );
+    expect(checks[0]!.ok).toBe(false);
+    expect(checks[0]!.note).toContain('status "fail"');
+  });
+
+  it('accepts an approval', async () => {
+    const checks = await GATES.disapproval_halts!(
+      { ...base, status: 'success', approved: true },
+      ctx(),
+    );
+    expect(checks[0]!.ok).toBe(true);
+  });
+
+  it('accepts a disapproval that honestly fails the phase', async () => {
+    const checks = await GATES.disapproval_halts!(
+      { ...base, status: 'fail', approved: false },
+      ctx(),
+    );
+    expect(checks[0]!.ok).toBe(true);
+    expect(checks[0]!.note).toContain('halts');
+  });
+});
+
 describe('command_passes', () => {
   it('passes on exit 0', async () => {
     const checks = await GATES.command_passes!(base, ctx(), { argv: ['true'] });
