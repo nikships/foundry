@@ -17,10 +17,10 @@
  *   - `notifyRuns` after every path that writes the tracer
  *
  * Command drift is run-scoped until a run lands. Landing is `setMerged(true)`,
- * whether the operator merged the worktree locally or merged the PR on GitHub:
- * `command-drift.json` lives in the trace run dir, not the worktree, so
- * discard does not lose it. The previous `prsMerge` path skipped this only
- * because the choreography lived in two routers; it was not a policy.
+ * whether the operator merged locally, merged the PR on GitHub, or the
+ * executor auto-merged: `command-drift.json` lives in the trace run dir, not
+ * the worktree, so discard does not lose it. Every path goes through
+ * `recordLanding`.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -122,10 +122,7 @@ async function landViaLocalMerge(
 
   const outcome = await worktreeLib.merge(scoped.project.path, handle);
   if (outcome.merged) {
-    // merge() discards the worktree on success; the run row must not keep a
-    // path that no longer exists.
-    scoped.tracer.setWorktree(runId, null, handle.branch);
-    markLanded(scoped, hooks, runId);
+    recordLanding(scoped, runId, handle.branch, hooks);
   }
   scoped.tracer.event({
     runId,
@@ -163,10 +160,9 @@ async function landViaGhMerge(
           baseRef: run.baseRef ?? project.baseRef,
           branchPointSha: run.branchPointSha ?? '',
         });
-        tracer.setWorktree(runId, null, branch);
         if (removed.removed) notes.push('worktree removed');
       }
-      markLanded(scoped, hooks, runId);
+      recordLanding(scoped, runId, branch, hooks);
       tracer.event({
         runId,
         type: 'log',
@@ -233,8 +229,7 @@ async function repairThenMerge(
     branchPointSha: ontoSha,
   });
   if (merged.merged) {
-    scoped.tracer.setWorktree(runId, null, handle.branch);
-    markLanded(scoped, hooks, runId);
+    recordLanding(scoped, runId, handle.branch, hooks);
   }
   scoped.tracer.event({
     runId,
@@ -351,19 +346,28 @@ async function runRepair(
 }
 
 /**
- * Where an operator-landed run becomes merged. Drift is applied here so every
- * landing path this module owns — local merge, repair-then-merge, GitHub
- * merge — updates project commands the same way. Callers must not apply drift
- * without going through this, and must not call this unless the run actually
- * landed. (The executor's auto-merge policy still settles inside `finish()`
- * and does not pass through here.)
+ * The one place a run becomes merged. Drift is applied here so every landing
+ * path — local merge, repair-then-merge, GitHub merge, and the executor's
+ * auto-merge — updates project commands the same way. Callers must not apply
+ * drift without going through this, and must not call this unless the run
+ * actually landed.
  */
-function markLanded(scoped: SettleScope, hooks: SettleHooks, runId: string): void {
+export function recordLanding(
+  scoped: SettleScope,
+  runId: string,
+  branch: string | null,
+  hooks?: Pick<SettleHooks, 'saveProject' | 'notifySettings'>,
+): void {
+  scoped.tracer.setWorktree(runId, null, branch);
   scoped.tracer.setMerged(runId, true);
-  applyStoredCommandDrift(scoped, hooks, runId);
+  if (hooks) applyStoredCommandDrift(scoped, hooks, runId);
 }
 
-function applyStoredCommandDrift(scoped: SettleScope, hooks: SettleHooks, runId: string): void {
+function applyStoredCommandDrift(
+  scoped: SettleScope,
+  hooks: Pick<SettleHooks, 'saveProject' | 'notifySettings'>,
+  runId: string,
+): void {
   const file = join(scoped.tracer.runDir(runId), 'command-drift.json');
   if (!existsSync(file)) return;
   const drifts = parseCommandDrift(readFileSync(file, 'utf8'));

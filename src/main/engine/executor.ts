@@ -40,6 +40,7 @@ import { AgentPhaseRunner } from './runners/agent.js';
 import { CodePhaseRunner } from './runners/code.js';
 import { EngineerPhaseRunner } from './runners/engineer.js';
 import * as worktreeLib from './worktree.js';
+import { recordLanding } from './settle.js';
 import type { Envelope } from './envelopes.js';
 import type { CommandDriftRecord } from './detect.js';
 import { runCommand } from './commands.js';
@@ -75,6 +76,17 @@ export interface ExecutorDeps {
   askHuman: (req: InterruptRequest) => Promise<{ approve: boolean; text?: string }>;
   onLiveText?: (phaseId: string, text: string) => void;
   onRunFinished?: (status: RunStatus) => void;
+  /**
+   * How auto-merge records a landing. Production threads the project store
+   * through here so command drift writes back; tests that omit it still get
+   * `setMerged` + a cleared worktree path.
+   */
+  landing?: {
+    currentProject(): ProjectDef;
+    saveProject(next: ProjectDef): { ok: boolean };
+    notifySettings(): void;
+    notifyRuns(): void;
+  };
   /** Test seam: the fake gh script stands in for the real binary. */
   gh?: GhOptions;
   /**
@@ -492,22 +504,27 @@ export class Executor {
     tracer.finishRun(runId, status, detail);
 
     let settleDetail = detail;
-    if (this.handle) {
+    const handle = this.handle;
+    if (handle) {
       void worktreeLib
         .settle({
           repo: project.path,
-          handle: this.handle,
+          handle,
           accepted: status === 'accepted',
           policy: project.mergePolicy,
         })
         .then((outcome) => {
-          if (outcome.merged) tracer.setMerged(runId, true);
+          if (outcome.merged) {
+            const live = this.deps.landing?.currentProject() ?? project;
+            recordLanding({ project: live, tracer }, runId, handle.branch, this.deps.landing);
+          }
           tracer.event({
             runId,
             type: 'log',
             name: 'worktree',
             payload: { detail: outcome.detail, merged: outcome.merged, removed: outcome.removed },
           });
+          if (outcome.merged) this.deps.landing?.notifyRuns();
         })
         .catch((e: Error) => {
           tracer.event({ runId, type: 'error', name: 'worktree', payload: { message: e.message } });

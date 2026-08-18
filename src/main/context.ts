@@ -97,6 +97,9 @@ export class AppContext {
         setDockBadge(this.registry.liveRunCount(), this.settings.get());
         this.broadcast(IPC.eventRunsChanged);
       },
+      projectById: (id) => this.projects.get(id),
+      saveProject: (next) => this.projects.save(next),
+      notifySettings: () => this.broadcast(IPC.eventSettingsChanged),
     });
 
     this.registry.on('needs-input', (interrupt: { title: string; body: string }) => {

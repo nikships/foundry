@@ -291,6 +291,7 @@ interface RunInput {
   compactionThreshold?: number;
   rewindAfterCorrections?: number;
   gh?: GhOptions;
+  landing?: ExecutorDeps['landing'];
 }
 
 function run(input: RunInput): Promise<{ status: string; runId: string }> {
@@ -343,6 +344,7 @@ function start(input: RunInput): {
     engineer: 'test',
     askHuman: input.askHuman ?? (async () => ({ approve: true })),
     gh: input.gh,
+    landing: input.landing,
   });
   return { executor, runId, done: executor.run().then((o) => ({ status: o.status, runId })) };
 }
@@ -1232,6 +1234,60 @@ describe('the trace record', () => {
       request: 'make initial project',
     });
     expect(outcome.status).toBe('accepted');
+  });
+
+  it('auto-merges through recordLanding: applies command drift and clears the worktree path', async () => {
+    const projectState: { project: ProjectDef } = {
+      project: {
+        ...defaultProject(h.repo),
+        mergePolicy: 'auto',
+        commands: [{ name: 'test', argv: ['swift', 'test'] }],
+      },
+    };
+    const notifies = { runs: 0, settings: 0 };
+    const outcome = await run({
+      project: projectState.project,
+      landing: {
+        currentProject: () => projectState.project,
+        saveProject: (next) => {
+          projectState.project = next;
+          return { ok: true };
+        },
+        notifySettings: () => {
+          notifies.settings += 1;
+        },
+        notifyRuns: () => {
+          notifies.runs += 1;
+        },
+      },
+      pipeline: pipe(
+        [
+          codePhase(
+            'manifest',
+            { argv: ['sh', '-c', "printf 'test:\\n\\ttrue\\n' > Makefile"] },
+            { description: 'Add a Makefile so the next phase sniffs a different test command.' },
+          ),
+          codePhase(
+            'test',
+            { ref: 'test' },
+            { description: 'Run the frozen test command, which should drift to make test.' },
+          ),
+        ],
+        { description: 'auto-merge applies the sniffed command' },
+      ),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    await expect.poll(() => h.tracer.run(outcome.runId)?.merged).toBe(true);
+    const landed = h.tracer.run(outcome.runId)!;
+    expect(landed.worktreePath).toBeNull();
+    expect(existsSync(join(h.repo, '.foundry-worktrees', outcome.runId))).toBe(false);
+    expect(projectState.project.commands[0]!.argv).toEqual(['make', 'test']);
+    const names = events(outcome.runId).map((e) => e.name);
+    expect(names).toContain('command_drift');
+    expect(names).toContain('command_drift_applied');
+    expect(notifies.settings).toBe(1);
+    expect(notifies.runs).toBe(1);
   });
 });
 

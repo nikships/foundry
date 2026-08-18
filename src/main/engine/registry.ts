@@ -34,6 +34,10 @@ export interface RegistryDeps {
   onRunFinished: (run: RunRow) => void;
   onInterruptsChanged: () => void;
   onRunsChanged: () => void;
+  /** Live project row + save, so auto-merge can apply command drift. */
+  projectById?: (id: string) => ProjectDef | null;
+  saveProject?: (next: ProjectDef) => { ok: boolean };
+  notifySettings?: () => void;
 }
 
 interface LiveRun {
@@ -151,6 +155,16 @@ export class RunRegistry extends EventEmitter {
       engineer: this.deps.engineerName,
       askHuman: (req) => this.raiseInterrupt(req),
       onLiveText: (phaseId, text) => this.appendLiveText(phaseId, text),
+      landing: (() => {
+        const { saveProject, notifySettings, projectById } = this.deps;
+        if (!saveProject || !notifySettings) return undefined;
+        return {
+          currentProject: () => projectById?.(input.project.id) ?? input.project,
+          saveProject,
+          notifySettings,
+          notifyRuns: () => this.deps.onRunsChanged(),
+        };
+      })(),
     });
 
     this.live.set(runId, { runId, projectId: input.project.id, executor });
