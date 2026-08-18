@@ -172,6 +172,23 @@ describe('AgentSession has one transport', () => {
     await session.close();
   });
 
+  it('rewinds by message id and a plain path list', async () => {
+    beginRun();
+    const scripted = new ScriptedAgent(['ok'], [], [], { rewindFiles: { 'a.txt': 'x' } });
+    const session = sessionOn(scripted);
+
+    await session.send('go', { phaseId });
+    const outcome = await session.rewind({
+      messageId: session.lastUserMessageId!,
+      paths: ['a.txt'],
+    });
+
+    expect(outcome?.restoredCount).toBe(1);
+    expect(scripted.wire).toContain('get_rewind_info');
+    expect(scripted.wire).toContain('rewind');
+    await session.close();
+  });
+
   it('refuses to answer a turn once the run has been killed', async () => {
     beginRun();
     const scripted = new ScriptedAgent(['ok']);

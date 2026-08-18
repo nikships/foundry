@@ -9,6 +9,7 @@ import type { AgentDef, EnvelopeDef, PhaseDef } from '@shared/types.js';
 import type { PhaseRunner, RunContext, PhaseJump } from '../phase-context.js';
 import { KILLED_DETAIL, type AgentSession } from '../../pi/session.js';
 import * as boundary from '../boundary.js';
+import { PhaseRewinder, type RewindTrace } from '../rewinder.js';
 import {
   correctionMessage,
   jsonSchemaFor,
@@ -36,26 +37,6 @@ export interface AgentRunnerDeps {
   /** Reports the transport mode when a session falls back mid-turn. */
 }
 
-/** Counts the rewind path leaves on a correction event when it ran. */
-export interface RewindTrace {
-  restoredCount: number;
-  deletedCount: number;
-  failedRestoreCount: number;
-  failedDeleteCount: number;
-  worktreeRestoredCount?: number;
-  worktreeCleanedCount?: number;
-}
-
-/**
- * Mutable phase-start facts the correction loop updates when a rewind lands:
- * the boundary baseline must reflect restored files before the retry turn.
- */
-interface PhaseRewindState {
-  before: boundary.Snapshot;
-  /** First user-message id of this phase — the rewind anchor for phase-start files. */
-  anchorMessageId: string | null;
-}
-
 export class AgentPhaseRunner implements PhaseRunner {
   readonly kind = 'agent' as const;
 
@@ -75,10 +56,7 @@ export class AgentPhaseRunner implements PhaseRunner {
 
     const session = this.deps.sessionFor(agent);
     const envelopeKind = phase.envelope ?? agent.envelope;
-    const phaseState: PhaseRewindState = {
-      before: await boundary.snapshot(ctx.cwd),
-      anchorMessageId: null,
-    };
+    const rewinder = await PhaseRewinder.create(ctx.cwd, session, this.deps.rewindAfterCorrections);
     const maxGateAttempts = (phase.retries ?? 0) + 1;
     // One running count across envelope/boundary/gate so a trace can answer
     // "which correction attempt index succeeded" without kind-local indexes.
@@ -115,7 +93,7 @@ export class AgentPhaseRunner implements PhaseRunner {
         envelopeKind,
         gateAttempt,
         ctx,
-        phaseState,
+        rewinder,
         () => {
           correctionIndex += 1;
           return correctionIndex;
@@ -130,7 +108,7 @@ export class AgentPhaseRunner implements PhaseRunner {
 
       const enforcement = await boundary.enforce({
         cwd: ctx.cwd,
-        before: phaseState.before,
+        before: rewinder.baseline(),
         writes: agent.writes,
         projectProtected: ctx.project.protectedPaths,
       });
@@ -148,7 +126,7 @@ export class AgentPhaseRunner implements PhaseRunner {
         if (gateAttempt < maxGateAttempts) {
           prompt = boundary.boundaryCorrection(enforcement.violations);
           correctionIndex += 1;
-          const rewind = await this.maybeRewind(session, phaseState, correctionIndex, ctx);
+          const rewind = await rewinder.rewindIfDue(correctionIndex);
           tracer.event({
             runId,
             phaseId,
@@ -192,7 +170,7 @@ export class AgentPhaseRunner implements PhaseRunner {
       if (gateAttempt < maxGateAttempts) {
         prompt = gateCorrection(violations);
         correctionIndex += 1;
-        const rewind = await this.maybeRewind(session, phaseState, correctionIndex, ctx);
+        const rewind = await rewinder.rewindIfDue(correctionIndex);
         tracer.event({
           runId,
           phaseId,
@@ -226,7 +204,7 @@ export class AgentPhaseRunner implements PhaseRunner {
     envelopeKind: PhaseDef['envelope'] & string,
     gateAttempt: number,
     ctx: RunContext,
-    phaseState: PhaseRewindState,
+    rewinder: PhaseRewinder,
     nextCorrectionIndex: () => number,
   ): Promise<{ ok: true; envelope: Envelope } | { ok: false; detail: string }> {
     let prompt = firstPrompt;
@@ -263,7 +241,7 @@ export class AgentPhaseRunner implements PhaseRunner {
         return { ok: false, detail: `the agent turn failed: ${(e as Error).message}` };
       }
 
-      this.notePhaseAnchor(session, phaseState);
+      rewinder.noteAnchor();
 
       const usageEventId = ctx.tracer.recordUsage(ctx.runId, phaseId, agent.name, outcome.usage);
       ctx.tracer.appendRunFile(
@@ -301,9 +279,7 @@ export class AgentPhaseRunner implements PhaseRunner {
       // The final failed attempt still records a correction for the trace, but
       // there is no retry turn to send — rewind only runs when a retry follows.
       const willRetry = attempt <= this.deps.envelopeRetries;
-      const rewind = willRetry
-        ? await this.maybeRewind(session, phaseState, correctionIndex, ctx)
-        : null;
+      const rewind = willRetry ? await rewinder.rewindIfDue(correctionIndex) : null;
       ctx.tracer.event({
         runId: ctx.runId,
         phaseId,
@@ -318,58 +294,6 @@ export class AgentPhaseRunner implements PhaseRunner {
     return {
       ok: false,
       detail: `the agent did not produce a valid ${envelopeKind} envelope in ${this.deps.envelopeRetries + 1} attempts`,
-    };
-  }
-
-  /**
-   * The first user-message id of the phase is the rewind anchor: getRewindInfo
-   * at that id describes files as they were at phase start, which is what the
-   * snapshot intersection restores.
-   */
-  private notePhaseAnchor(session: AgentSession, phaseState: PhaseRewindState): void {
-    if (phaseState.anchorMessageId) return;
-    const id = session.lastUserMessageId;
-    if (id) phaseState.anchorMessageId = id;
-  }
-
-  /**
-   * On the Nth correction of an SDK-transport phase, rewind instead of only
-   * appending. Failure is non-fatal: the caller still sends the append-style
-   * correction prompt on the same session. Rewind consumes the correction
-   * attempt — it never extends the envelope/gate budgets.
-   */
-  private async maybeRewind(
-    session: AgentSession,
-    phaseState: PhaseRewindState,
-    correctionIndex: number,
-    ctx: RunContext,
-  ): Promise<RewindTrace | null> {
-    const threshold = this.deps.rewindAfterCorrections;
-    if (threshold <= 0 || correctionIndex < threshold) return null;
-    // One-shot has no session to rewind and no messageId stream.
-    if (!session.canRewind) return null;
-    const messageId = phaseState.anchorMessageId ?? session.lastUserMessageId;
-    if (!messageId) return null;
-
-    const outcome = await session.rewind({
-      messageId,
-      snapshot: phaseState.before,
-    });
-    if (!outcome) return null;
-
-    // SDK rewind restores dirty-at-start files only. Foundry then puts
-    // clean-at-start tracked deletions and new untracked files back too.
-    const worktree = await boundary.restoreToPhaseStart(ctx.cwd, phaseState.before);
-
-    // Files are back to phase-start content: the retry's boundary baseline is
-    // the restored tree, not the corrupted intermediate.
-    phaseState.before = await boundary.snapshot(ctx.cwd);
-    // Successor conversation still carries the anchor message id.
-    phaseState.anchorMessageId = messageId;
-    return {
-      ...outcome,
-      worktreeRestoredCount: worktree.restored,
-      worktreeCleanedCount: worktree.cleaned,
     };
   }
 
