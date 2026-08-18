@@ -25,7 +25,9 @@ Two session shapes live here. A **run** holds a session across many turns (`sess
 - `vendor-events.ts` — the pi event stream translated into neutral `TransportEvent`s, and per-turn usage summed across the turn's assistant messages.
 - `tools.ts` — Foundry's own tools (`report_progress`, `read_phase_context`, `submit_envelope`, which replaced the MCP server) and the two built-in lists: `BUILTIN_TOOLS` and the `READ_ONLY_TOOLS` a read-only one-shot is confined to.
 - `policy.ts` — the zero-interrupt write policy: pi tool name → category → allow/deny.
-- `policy-extension.ts` — the inline pi extension. `foundryExtension()` registers Foundry's tools and the `tool_call` hook for a run; `policyOnlyExtension()` installs the same hook with no tools, which is what a one-shot needs.
+- `policy-extension.ts` — the inline pi extension. `foundryExtension()` registers Foundry's tools, the `tool_call` hook, and `before_agent_start` (the roster role); `policyOnlyExtension()` is the same hook pair with no tools, which is what a one-shot needs.
+- `open-session.ts` — shared `createAgentSession` setup (discovery flags, Foundry harness, bind). Both session shapes call it so the flags cannot drift.
+- `system-prompt.ts` — the Foundry harness that replaces Pi's default "you are pi" identity. Agent/one-shot standing rules are appended per turn, not stuffed into the user message.
 - `transcript.ts` — `foldTranscript`, the shared folder from neutral events to live transcript rows. Detection, setup, and readiness all show the same panel because they all fold the same way.
 - `events.ts` — folds the neutral event stream into trace rows, with the throttles and caps that keep a chatty turn from flooding SQLite; writes the raw stream to `<agent>/stream.jsonl`. Runs only; a one-shot has no trace.
 - `runtime.ts` — the single memoized `ModelRuntime`, pinned under Foundry's Application Support directory.
@@ -43,7 +45,8 @@ No separate setup: pi is a normal dependency and runs inside the Electron main p
 ## Invariants
 
 - **Never touch `~/.pi`.** Pi's defaults read and write the user's own install — auth, model catalog, sessions, skills, extensions. `runtime.ts` pins every path under `<supportDir>/pi/`, `pi-transport.ts` passes `agentDir` explicitly, and sessions go in the run's own trace directory. A default left unpinned silently rewrites a developer's credentials.
-- **Discovery is off.** `noExtensions`, `noSkills`, `noPromptTemplates`, `noThemes`. What an agent can do comes from the roster and this directory; whatever the operator installed for their own pi must not change what a run does.
+- **Discovery is off.** `noExtensions`, `noSkills`, `noPromptTemplates`, `noThemes`, `noContextFiles`, and `appendSystemPromptOverride: () => []`. What an agent can do comes from the roster and this directory; ancestor `AGENTS.md` / `.pi/SYSTEM.md` must not change what a run does.
+- **The roster role is a system prompt.** `systemPromptOverride` installs the Foundry harness (replacing Pi's default persona and doc paths). `before_agent_start` appends the agent's (or one-shot's) standing rules. The user message is the phase ask only — never `system + --- + user`.
 - **The tool list is the allowlist.** A tool absent from `createAgentSession({tools})` is absent from the registry, which is why Foundry's three tools are named alongside the seven built-ins.
 - **Read-only means no write tool exists.** Detection, setup, and the run-start fill run in the operator's own checkout: no worktree, no boundary diff, nothing that would revert a write. `access: 'read'` gets `READ_ONLY_TOOLS` and the policy's `writes: []` as a second line. Do not implement read-only as a policy that says no to a tool the session still has.
 - **A one-shot owns its session for exactly one turn.** Dispose in a `finally`, so a failed or timed-out turn releases the model connection too.
@@ -67,6 +70,8 @@ npx vitest run tests/pi-catalog.test.ts
 npx vitest run tests/pi-transport.test.ts
 npx vitest run tests/pi-oneshot.test.ts
 npx vitest run tests/pi-packaging.test.ts
+npx vitest run tests/pi-transcript.test.ts
+npx vitest run tests/prompts.test.ts
 npx vitest run tests/agent-session-transport.test.ts
 npx vitest run tests/rewinder.test.ts
 npx vitest run tests/executor.test.ts

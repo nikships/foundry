@@ -238,6 +238,32 @@ describe('folding a tool call', () => {
     expect(args.path).toBe('big.txt');
   });
 
+  it('patches an open tool row as streamed output arrives', () => {
+    const h = harness();
+    const folder = h.folder();
+    folder.absorb({ type: 'tool_call', callId: 'c1', tool: 'bash', input: { command: 'ls' } });
+    folder.absorb({ type: 'tool_output', callId: 'c1', content: 'a.ts\n' });
+    const row = h.events().find((e) => e.type === 'tool_call')!;
+    expect(row.payload.result).toBe('a.ts\n');
+    expect(row.payload.execPhase).toBe('running');
+    expect(row.endedAt).toBeFalsy();
+    folder.absorb({ type: 'tool_result', callId: 'c1', content: 'a.ts\nb.ts\n', isError: false });
+    expect(h.events().find((e) => e.type === 'tool_call')!.payload.result).toBe('a.ts\nb.ts\n');
+  });
+
+  it('records a provider retry as a log, not as silence', () => {
+    const h = harness();
+    h.folder().absorb({
+      type: 'retry',
+      attempt: 2,
+      maxAttempts: 3,
+      message: 'stream dropped',
+    });
+    const row = h.events().find((e) => e.type === 'log');
+    expect(row?.name).toMatch(/retry/);
+    expect(row?.payload.attempt).toBe(2);
+  });
+
   it('records an error result as an error rather than as prose', () => {
     const h = harness();
     const folder = h.folder();

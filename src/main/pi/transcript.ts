@@ -58,16 +58,31 @@ export function foldTranscript<Row extends TranscriptRow>(
   return (event: TransportEvent): void => {
     switch (event.type) {
       case 'text_delta': {
-        if (!event.delta.trim()) return;
         const last = target.last();
         if (last?.kind === 'text') {
+          // Keep spaces and newlines: token streams often emit them alone.
           const grown = `${last.text}${event.delta}`;
           last.text = target.textCap ? grown.slice(0, target.textCap) : grown;
           target.flush();
-        } else {
+        } else if (event.delta.trim()) {
           const first = target.textCap ? event.delta.slice(0, target.textCap) : event.delta;
           target.push({ kind: 'text', text: first });
         }
+        return;
+      }
+      case 'tool_output': {
+        const open = openTools.get(event.callId);
+        if (!open) return;
+        // Live command output replaces the label's trailing view, not the name.
+        open.text = event.content ? `${open.text.split('\n')[0]}\n${event.content}` : open.text;
+        target.flush();
+        return;
+      }
+      case 'retry': {
+        target.push({
+          kind: 'note',
+          text: `retry ${event.attempt}/${event.maxAttempts}: ${event.message}`,
+        });
         return;
       }
       case 'tool_call': {

@@ -43,8 +43,22 @@ export function repairAgent(
     access: 'write',
     model,
     reasoningEffort: model === 'inherit' ? 'off' : settings.defaultReasoningEffort,
+    systemPrompt: REBASE_SYSTEM,
   });
 }
+
+/** Standing rebase rules. The user turn names the branch and the target. */
+export const REBASE_SYSTEM = [
+  'You are repairing a git worktree whose branch no longer applies cleanly to its base.',
+  'Resolve conflicts so both sides survive: keep the intent of the branch commits and the changes that landed on the base.',
+  'When a conflict is genuinely one-or-the-other, prefer the base and adapt the branch work on top of it.',
+  '',
+  'Rules:',
+  '- Work only inside this directory.',
+  '- Complete the rebase (`git rebase --continue` until done). Never leave it in progress.',
+  '- Do not push, do not merge, do not touch any other branch.',
+  '- Finish with a clean `git status` (no unstaged, staged, or untracked leftovers).',
+].join('\n');
 
 export function rebasePrompt(input: {
   branch: string;
@@ -52,19 +66,7 @@ export function rebasePrompt(input: {
   ontoSha: string;
 }): string {
   return [
-    `You are working inside a git worktree whose current branch is \`${input.branch}\`.`,
-    `Rebase this branch onto ${input.ontoLabel} (commit ${input.ontoSha}).`,
-    '',
-    'Resolve any conflicts so that both sides survive: keep the intent of the',
-    "branch's commits and the changes that landed on the base. When a conflict",
-    'is genuinely one-or-the-other, prefer the base and adapt the branch work',
-    'on top of it.',
-    '',
-    'Rules:',
-    '- Work only inside this directory.',
-    '- Complete the rebase (`git rebase --continue` until done). Never leave it in progress.',
-    '- Do not push, do not merge, do not touch any other branch.',
-    '- Finish with a clean `git status` (no unstaged, staged, or untracked leftovers).',
+    `The worktree is on \`${input.branch}\`. Rebase it onto ${input.ontoLabel} (commit ${input.ontoSha}).`,
     '',
     'Finish by summarising what conflicted and how you resolved it, in one short paragraph.',
   ].join('\n');

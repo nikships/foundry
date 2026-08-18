@@ -36,6 +36,11 @@ export interface OneShotOptions {
   onWarning?: (warning: string) => void;
   /** Every verdict a write-capable session's policy gave, for the caller's log. */
   onDecision?: (ask: PermissionAsk, decision: PermissionDecision, reason: string) => void;
+  /**
+   * Standing rules for this one-shot, installed as the system prompt. The
+   * string passed to `send()` is the user ask only.
+   */
+  systemPrompt?: string;
 }
 
 export interface OneShotResult {

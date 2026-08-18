@@ -59,6 +59,12 @@ export interface OutputFormat {
 export interface TurnOptions {
   /** Constrains the FINAL message only; mid-turn tool use is unaffected. */
   outputFormat?: OutputFormat;
+  /**
+   * Standing role for this turn, installed as the system prompt. The user
+   * message must not repeat it — that is how a persona is replayed into
+   * history and how prefix cache is busted.
+   */
+  systemPrompt?: string;
 }
 
 /** What one turn produced. */
@@ -105,11 +111,13 @@ export type PermissionDecision = { outcome: 'allow' } | { outcome: 'deny'; reaso
 /** One structural event a transport emits while a turn runs. */
 export type TransportEvent =
   | { type: 'text_delta'; messageId: string; blockIndex: number; delta: string }
-  | { type: 'text_end'; messageId: string; blockIndex: number }
+  | { type: 'text_end'; messageId: string; blockIndex: number; content?: string }
   | { type: 'thinking_delta'; messageId: string; delta: string }
   | { type: 'thinking_end'; messageId: string }
   | { type: 'tool_call'; callId: string; tool: string; input: Record<string, unknown> }
+  | { type: 'tool_output'; callId: string; content: string }
   | { type: 'tool_result'; callId: string; content: string; isError: boolean }
+  | { type: 'retry'; attempt: number; maxAttempts: number; message: string }
   | { type: 'usage'; usage: TurnUsage };
 
 /**

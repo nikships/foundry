@@ -37,6 +37,9 @@ interface LoaderCall {
   noSkills: boolean;
   noPromptTemplates: boolean;
   noThemes: boolean;
+  noContextFiles?: boolean;
+  systemPromptOverride?: (base: string | undefined) => string | undefined;
+  appendSystemPromptOverride?: (base: string[]) => string[];
   extensionFactories: { name: string; hidden?: boolean }[];
 }
 
@@ -117,6 +120,9 @@ class ScriptedPiSession {
     branched: [] as string[],
     resets: 0,
     getEntries(): { id: string; type: string; message?: { role: string } }[] {
+      return this.entries;
+    },
+    getBranch(): { id: string; type: string; message?: { role: string } }[] {
       return this.entries;
     },
     getEntry(id: string): { id: string; parentId?: string } | undefined {
@@ -227,6 +233,7 @@ vi.mock('@earendil-works/pi-coding-agent', () => ({
       spy.sessionManagers.push({ kind: 'open', args });
       return spy.session!.sessionManager;
     },
+    list: () => Promise.resolve([] as { id: string; path: string }[]),
   },
   DefaultResourceLoader: class {
     constructor(opts: LoaderCall) {
@@ -364,6 +371,9 @@ describe('opening a session', () => {
     expect(loader.noSkills).toBe(true);
     expect(loader.noPromptTemplates).toBe(true);
     expect(loader.noThemes).toBe(true);
+    expect(loader.noContextFiles).toBe(true);
+    expect(loader.appendSystemPromptOverride?.([])).toEqual([]);
+    expect(loader.systemPromptOverride?.(undefined)).toMatch(/Foundry pipeline agent/i);
   });
 
   it('installs Foundry’s extension inline, so nothing has to be discovered', async () => {
@@ -503,6 +513,16 @@ describe('choosing a model', () => {
 });
 
 describe('running a turn', () => {
+  it('sends the user ask only; the role is not concatenated into the prompt', async () => {
+    const h = harness();
+    await h.transport.start();
+    h.session.turn = (s) => s.say('done');
+    await h.transport.send('do the thing', 1000, { systemPrompt: 'You build.' });
+    // The roster persona is installed as the system prompt. Stuffing it into
+    // the user turn would replay it every phase and bust the prefix cache.
+    expect(h.session.prompts).toEqual(['do the thing']);
+  });
+
   it('returns the final text and the stop reason', async () => {
     const h = harness();
     await h.transport.start();
@@ -713,6 +733,13 @@ describe('translating the session’s events', () => {
         args: { command: 'ls' },
       });
       s.emit({
+        type: 'tool_execution_update',
+        toolCallId: 'c1',
+        toolName: 'bash',
+        args: { command: 'ls' },
+        partialResult: { content: [{ type: 'text', text: 'a' }] },
+      });
+      s.emit({
         type: 'tool_execution_end',
         toolCallId: 'c1',
         result: { content: [{ type: 'text', text: 'a.ts' }] },
@@ -729,8 +756,25 @@ describe('translating the session’s events', () => {
       { type: 'thinking_delta', messageId: '1', delta: 'hmm' },
       { type: 'thinking_end', messageId: '1' },
       { type: 'tool_call', callId: 'c1', tool: 'bash', input: { command: 'ls' } },
+      { type: 'tool_output', callId: 'c1', content: 'a' },
       { type: 'tool_result', callId: 'c1', content: 'a.ts', isError: false },
     ]);
+  });
+
+  it('does not treat a user message_start as a new assistant id', async () => {
+    const h = harness();
+    await h.transport.start();
+    h.session.turn = (s) => {
+      s.emit({ type: 'message_start', message: { role: 'user' } });
+      s.emit({ type: 'message_start', message: { role: 'assistant' } });
+      s.emit({
+        type: 'message_update',
+        assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: 'hi' },
+      });
+      s.say('hi');
+    };
+    await h.transport.send('go', 1000);
+    expect(h.events.find((e) => e.type === 'text_delta')).toMatchObject({ messageId: '1' });
   });
 
   it('separates the text blocks of different messages', async () => {

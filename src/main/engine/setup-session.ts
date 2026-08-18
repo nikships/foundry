@@ -102,8 +102,8 @@ export class SetupSession {
     // Reads the operator's own checkout to propose a script; it never runs one,
     // so the session is opened without a tool that could.
     const prompt = sniffed.script
-      ? `${SETUP_PROMPT}\n\nManifests suggested this script; confirm, correct, or replace it:\n${sniffed.script}`
-      : SETUP_PROMPT;
+      ? `Manifests suggested this script; confirm, correct, or replace it:\n${sniffed.script}`
+      : 'Propose the worktree bootstrap script for this repository.';
 
     const turn = await this.panel.ask({
       oneShot: this.deps.oneShot,
@@ -111,6 +111,7 @@ export class SetupSession {
       access: 'read',
       model,
       reasoningEffort: model === 'inherit' ? 'off' : settings.defaultReasoningEffort,
+      systemPrompt: SETUP_PROMPT,
       prompt,
       timeoutMs: PANEL_TIMEOUT_MS,
     });

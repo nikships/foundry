@@ -47,17 +47,18 @@ export function createAgentRemediator(input: { oneShot: OneShotFactory }): Readi
         access: 'write',
         model: job.model,
         reasoningEffort: job.reasoningEffort,
+        systemPrompt: READINESS_SYSTEM_PROMPT,
         onEvent: absorb,
         onWarning: (warning) => {
           last = job.onEntry({ kind: 'note', text: warning.slice(0, 500) });
         },
       });
 
-      const prompt = `${READINESS_SYSTEM_PROMPT}\n\n${readinessRemediatePrompt(job.evaluation, {
+      const prompt = readinessRemediatePrompt(job.evaluation, {
         continuation: job.continuation,
         attempt: job.attempt,
         priorSummary: job.priorSummary,
-      })}`;
+      });
       const watch = setInterval(() => {
         if (job.signal.cancelled) session.abort();
       }, CANCEL_POLL_MS);

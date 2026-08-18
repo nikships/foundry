@@ -24,7 +24,7 @@ const RESULT_CAP = 32_000;
 const ARG_CAP = 16_000;
 const TEXT_CAP = 64_000;
 /** At most one db write per text block per this window; deltas keep arriving. */
-const TEXT_FLUSH_MS = 250;
+const TEXT_FLUSH_MS = 80;
 
 export interface FoldContext {
   tracer: Tracer;
@@ -194,6 +194,19 @@ export class EventFolder {
         this.flushRaw();
         return;
       }
+      case 'tool_output': {
+        const open = this.openCalls.get(event.callId);
+        if (!open) return;
+        // Accumulated so far — replace, do not append. The Inspector's open
+        // command block reads payload.result while endedAt is still null.
+        const result = capped(event.content, RESULT_CAP);
+        this.ctx.tracer.patchEvent(open.eventId, {
+          result: result.text,
+          ...(result.truncated ? { truncated: true } : {}),
+          execPhase: 'running',
+        });
+        return;
+      }
       case 'tool_result': {
         const open = this.openCalls.get(event.callId);
         if (!open) return;
@@ -203,6 +216,21 @@ export class EventFolder {
           result: result.text,
           ...(result.truncated ? { truncated: true } : {}),
           isError: event.isError,
+        });
+        this.flushRaw();
+        return;
+      }
+      case 'retry': {
+        this.ctx.tracer.event({
+          runId: this.ctx.runId,
+          phaseId: this.ctx.phaseId,
+          type: 'log',
+          name: `${this.ctx.agent}: retry`,
+          payload: {
+            message: event.message,
+            attempt: event.attempt,
+            maxAttempts: event.maxAttempts,
+          },
         });
         this.flushRaw();
         return;
@@ -227,7 +255,12 @@ export class EventFolder {
         return;
       }
       case 'text_end': {
-        this.closeText(`text:${event.messageId}:${event.blockIndex}`);
+        const key = `text:${event.messageId}:${event.blockIndex}`;
+        if (event.content) {
+          const open = this.openTexts.get(key);
+          if (open && event.content.length >= open.text.length) open.text = event.content;
+        }
+        this.closeText(key);
         this.flushRaw();
         return;
       }

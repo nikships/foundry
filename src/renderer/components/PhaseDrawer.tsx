@@ -90,7 +90,7 @@ export default function PhaseDrawer({
       }
     };
     void poll();
-    timer = window.setInterval(() => void poll(), 600);
+    timer = window.setInterval(() => void poll(), 150);
     return () => {
       if (timer !== null) window.clearInterval(timer);
     };

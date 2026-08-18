@@ -35,6 +35,7 @@ interface FakeApi {
     toolName: string;
     input: Record<string, unknown>;
   }) => Promise<{ block: true; reason: string } | undefined | void>;
+  beforeAgentStart?: (event: { systemPrompt: string }) => { systemPrompt: string } | undefined;
 }
 
 /**
@@ -55,8 +56,11 @@ function fakeApi(): {
       if (at >= 0) state.tools[at] = tool;
       else state.tools.push(tool);
     },
-    on: (event: string, handler: FakeApi['toolCall']) => {
-      if (event === 'tool_call') state.toolCall = handler;
+    on: (event: string, handler: unknown) => {
+      if (event === 'tool_call') state.toolCall = handler as FakeApi['toolCall'];
+      if (event === 'before_agent_start') {
+        state.beforeAgentStart = handler as FakeApi['beforeAgentStart'];
+      }
     },
   };
   return { api: api as never, state };
@@ -196,5 +200,20 @@ describe('the policy hook', () => {
       block: true,
       reason: 'slow but denied',
     });
+  });
+});
+
+describe('the system-prompt hook', () => {
+  it('appends the roster role to Pi’s built prompt', () => {
+    const { handle, state } = bind(allow);
+    handle.useSystemPrompt('# Builder\n\nYou write the code.');
+    const next = state.beforeAgentStart?.({ systemPrompt: 'You are a Foundry pipeline agent.' });
+    expect(next?.systemPrompt).toContain('You are a Foundry pipeline agent.');
+    expect(next?.systemPrompt).toContain('# Builder');
+  });
+
+  it('leaves the harness alone when no role is pending', () => {
+    const { state } = bind(allow);
+    expect(state.beforeAgentStart?.({ systemPrompt: 'harness' })).toBeUndefined();
   });
 });

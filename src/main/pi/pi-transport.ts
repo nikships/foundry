@@ -13,18 +13,17 @@
  */
 
 import {
-  createAgentSession,
-  DefaultResourceLoader,
   SessionManager,
-  SettingsManager,
   type AgentSession as PiAgentSession,
 } from '@earendil-works/pi-coding-agent';
-import { mkdirSync, readdirSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ContextBreakdown } from '@shared/types.js';
 import { pickModel, thinkingLevelFor, toTransportModel, type PiModel } from './model.js';
+import { foundryResourceLoader, foundrySettings, openFoundrySession } from './open-session.js';
 import { foundryExtension } from './policy-extension.js';
 import { modelRuntime } from './runtime.js';
+import { FOUNDRY_RUN_HARNESS } from './system-prompt.js';
 import { BUILTIN_TOOLS, submitEnvelopeTool, type EnvelopeTool } from './tools.js';
 import { lastAssistantStop, VendorEventReader } from './vendor-events.js';
 import type {
@@ -83,7 +82,9 @@ export class PiTransport implements AgentTransport {
   get lastUserMessageId(): string | null {
     const session = this.session;
     if (!session) return null;
-    const entries = session.sessionManager.getEntries();
+    // The live branch, not the append-only file: after a rewind the abandoned
+    // leaf is still in getEntries() and must not become the next anchor.
+    const entries = session.sessionManager.getBranch();
     for (let i = entries.length - 1; i >= 0; i--) {
       const entry = entries[i];
       if (entry?.type === 'message' && entry.message.role === 'user') return entry.id;
@@ -111,53 +112,34 @@ export class PiTransport implements AgentTransport {
     if (picked.warning) this.opts.onModelWarning?.(picked.warning);
 
     mkdirSync(this.opts.sessionDir, { recursive: true });
-    const sessionManager = this.openSessionManager(existingSessionId);
-    // Compaction off: the engine compacts between phases, where it can trace
-    // what it did. Retry on: a dropped stream is a transport flap, and failing
-    // the phase for one would spend an envelope attempt on nothing.
-    const settingsManager = SettingsManager.inMemory(
-      { compaction: { enabled: false }, retry: { enabled: true } },
-      { projectTrusted: true },
-    );
-    const resourceLoader = new DefaultResourceLoader({
+    const sessionManager = await this.openSessionManager(existingSessionId);
+    const agentDir = join(this.opts.supportDir, 'pi');
+    const settingsManager = foundrySettings();
+    const resourceLoader = foundryResourceLoader({
       cwd: this.opts.cwd,
-      // Every discoverable resource is off: an agent's tools, prompt, and
-      // policy come from the roster and this file, so whatever the operator
-      // has installed for their own pi must not change what a run does.
-      agentDir: join(this.opts.supportDir, 'pi'),
+      agentDir,
       settingsManager,
-      noExtensions: true,
-      noSkills: true,
-      noPromptTemplates: true,
-      noThemes: true,
-      extensionFactories: [{ name: 'foundry', factory: this.extension.factory, hidden: true }],
+      harness: FOUNDRY_RUN_HARNESS,
+      extensionFactory: this.extension.factory,
     });
-    await resourceLoader.reload();
-
-    const created = await createAgentSession({
+    const opened = await openFoundrySession({
       cwd: this.opts.cwd,
-      agentDir: join(this.opts.supportDir, 'pi'),
+      agentDir,
       modelRuntime: runtime,
-      ...(picked.model ? { model: picked.model } : {}),
+      model: picked.model,
       thinkingLevel: thinkingLevelFor(this.opts.reasoningEffort),
       // Also the allowlist: a tool absent here is absent from the registry, so
       // Foundry's own tools have to be named alongside the built-ins.
       tools: [...BUILTIN_TOOLS, 'report_progress', 'read_phase_context', 'submit_envelope'],
       resourceLoader,
-      sessionManager,
       settingsManager,
+      sessionManager,
+      onExtensionError: (message) => this.opts.onModelWarning?.(message),
     });
-    if (created.modelFallbackMessage) this.opts.onModelWarning?.(created.modelFallbackMessage);
+    if (opened.modelFallbackMessage) this.opts.onModelWarning?.(opened.modelFallbackMessage);
 
-    const session = created.session;
+    const session = opened.session;
     this.session = session;
-    // Extensions must bind before the first prompt: unbound, the foundry
-    // extension's tools are registered but its tool_call policy is not live.
-    await session.bindExtensions({
-      mode: 'print',
-      onError: (err) =>
-        this.opts.onModelWarning?.(`extension error (${err.extensionPath}): ${err.error}`),
-    });
     this.unsubscribe = session.subscribe((event) =>
       this.events.absorb(event, (e) => this.opts.onEvent?.(e)),
     );
@@ -171,6 +153,7 @@ export class PiTransport implements AgentTransport {
     // Between turns is the only safe moment to change the envelope tool: the
     // model is looking at whatever schema was live when the turn started.
     this.useEnvelopeSchema(opts.outputFormat?.schema ?? null);
+    this.extension.useSystemPrompt(opts.systemPrompt ?? null);
     this.events.startTurn();
 
     let timedOut = false;
@@ -180,8 +163,8 @@ export class PiTransport implements AgentTransport {
     }, timeoutMs);
     try {
       await session.prompt(text, { expandPromptTemplates: false, source: 'extension' });
-      // prompt() resolves when the agent loop exits; a retry or an auto
-      // continuation can still be in flight behind it.
+      // prompt() already waits through retries and queued continuations.
+      // waitForIdle() is the documented settle API and is a no-op when idle.
       await session.waitForIdle();
     } finally {
       clearTimeout(timer);
@@ -339,22 +322,16 @@ export class PiTransport implements AgentTransport {
    * session in the run's directory. Sessions live with the run's other raw
    * records, never in the user's `~/.pi`.
    */
-  private openSessionManager(existingSessionId?: string | null): SessionManager {
+  private async openSessionManager(existingSessionId?: string | null): Promise<SessionManager> {
     if (existingSessionId) {
-      const file = this.sessionFileFor(existingSessionId);
-      if (file) return SessionManager.open(file, this.opts.sessionDir, this.opts.cwd);
+      try {
+        const listed = await SessionManager.list(this.opts.cwd, this.opts.sessionDir);
+        const match = listed.find((entry) => entry.id === existingSessionId);
+        if (match) return SessionManager.open(match.path, this.opts.sessionDir, this.opts.cwd);
+      } catch {
+        // A missing or unreadable session dir is a fresh start, not a failed run.
+      }
     }
     return SessionManager.create(this.opts.cwd, this.opts.sessionDir);
-  }
-
-  private sessionFileFor(sessionId: string): string | null {
-    try {
-      const match = readdirSync(this.opts.sessionDir).find((name) =>
-        name.endsWith(`_${sessionId}.jsonl`),
-      );
-      return match ? join(this.opts.sessionDir, match) : null;
-    } catch {
-      return null;
-    }
   }
 }

@@ -134,6 +134,7 @@ export class DetectSession {
       access: 'read',
       model,
       reasoningEffort: model === 'inherit' ? 'off' : settings.defaultReasoningEffort,
+      systemPrompt: DETECT_PROMPT,
       prompt: this.prompt(sniffed),
       timeoutMs: PANEL_TIMEOUT_MS,
     });
@@ -172,7 +173,7 @@ export class DetectSession {
 
   /** Manifest findings ride along so the agent confirms rather than guesses. */
   private prompt(sniffed: CommandCandidate[]): string {
-    const parts = [DETECT_PROMPT];
+    const parts = ['Inspect this repository and report the verification commands.'];
     if (sniffed.length) {
       parts.push(
         '',

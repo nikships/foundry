@@ -20,7 +20,7 @@ import {
 } from '../envelopes.js';
 import { gateCorrection, runGates, violationsOf, type GateReport } from '../gates.js';
 import { changedPaths } from '../git.js';
-import { combineForTurn, renderPrompt, type RenderContext } from '../prompts.js';
+import { formatPromptRecord, renderPrompt, type RenderContext } from '../prompts.js';
 
 export interface AgentRunnerDeps {
   agents: AgentDef[];
@@ -75,8 +75,14 @@ export class AgentPhaseRunner implements PhaseRunner {
       },
     });
 
-    let prompt = combineForTurn(renderPrompt(agent, phase, this.renderContext(phase, ctx)));
-    tracer.writeRunFile(runId, `${agent.name}/prompts/${phase.name}-1.md`, prompt);
+    const rendered = renderPrompt(agent, phase, this.renderContext(phase, ctx));
+    let prompt = rendered.user;
+    const systemPrompt = rendered.system;
+    tracer.writeRunFile(
+      runId,
+      `${agent.name}/prompts/${phase.name}-1.md`,
+      formatPromptRecord(rendered),
+    );
 
     let envelope: Envelope | null = null;
     let lastError = 'the agent phase never produced a usable envelope';
@@ -90,6 +96,7 @@ export class AgentPhaseRunner implements PhaseRunner {
         phase,
         phaseId,
         prompt,
+        systemPrompt,
         envelopeKind,
         gateAttempt,
         ctx,
@@ -201,6 +208,7 @@ export class AgentPhaseRunner implements PhaseRunner {
     phase: PhaseDef,
     phaseId: string,
     firstPrompt: string,
+    systemPrompt: string,
     envelopeKind: PhaseDef['envelope'] & string,
     gateAttempt: number,
     ctx: RunContext,
@@ -223,10 +231,15 @@ export class AgentPhaseRunner implements PhaseRunner {
         outcome = await session.send(prompt, {
           phaseId,
           outputFormat,
+          systemPrompt,
           // A phase may narrow the agent's tool surface for its own turns; it
           // can never widen it (see effectiveDisabledToolIds).
           onText: (text) => this.deps.onLiveText?.(phaseId, text),
         });
+        if (outcome.interrupted) {
+          if (ctx.cancelled()) return { ok: false, detail: KILLED_DETAIL };
+          return { ok: false, detail: 'the agent turn was interrupted' };
+        }
       } catch (e) {
         // A turn the operator ended is not an agent failure, and filing it as
         // one puts a red error on a timeline that only shows what was asked for.

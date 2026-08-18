@@ -194,6 +194,8 @@ export class RunRegistry extends EventEmitter {
       this.pending.delete(id);
     }
 
+    for (const phase of tracer.phases(runId)) this.liveText.delete(phase.phaseId);
+
     this.deps.onInterruptsChanged();
     this.deps.onRunsChanged();
     if (run) this.deps.onRunFinished(run);

@@ -40,6 +40,9 @@ interface LoaderCall {
   noSkills: boolean;
   noPromptTemplates: boolean;
   noThemes: boolean;
+  noContextFiles?: boolean;
+  systemPromptOverride?: (base: string | undefined) => string | undefined;
+  appendSystemPromptOverride?: (base: string[]) => string[];
   extensionFactories: { name: string; hidden?: boolean }[];
 }
 
@@ -145,6 +148,7 @@ vi.mock('@earendil-works/pi-coding-agent', () => ({
       spy.sessionManagers.push({ kind: 'open', args });
       return { kind: 'sessions' };
     },
+    list: () => Promise.resolve([] as { id: string; path: string }[]),
   },
   DefaultResourceLoader: class {
     constructor(opts: LoaderCall) {
@@ -288,6 +292,9 @@ describe('where a one-shot session lives', () => {
     expect(loader.noSkills).toBe(true);
     expect(loader.noPromptTemplates).toBe(true);
     expect(loader.noThemes).toBe(true);
+    expect(loader.noContextFiles).toBe(true);
+    expect(loader.appendSystemPromptOverride?.([])).toEqual([]);
+    expect(loader.systemPromptOverride?.(undefined)).toMatch(/Foundry helper/i);
   });
 
   it('leaves compaction off, since one bounded question cannot need it', async () => {

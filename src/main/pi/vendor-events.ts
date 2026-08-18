@@ -48,6 +48,8 @@ export class VendorEventReader {
   /** Distinguishes text blocks of different messages in the folded trace. */
   private messageSeq = 0;
   private usage: TurnUsage | null = null;
+  /** `bash_execution_update` is a chunk; the Inspector wants accumulated text. */
+  private readonly bashOutput = new Map<string, string>();
 
   /** What this turn has cost so far, or null before any usage was reported. */
   get turnUsage(): TurnUsage | null {
@@ -57,13 +59,19 @@ export class VendorEventReader {
   /** Called between turns: usage is per turn, the message counter is not. */
   startTurn(): void {
     this.usage = null;
+    this.bashOutput.clear();
   }
 
   absorb(event: AgentSessionEvent, emit: (event: TransportEvent) => void): void {
     switch (event.type) {
-      case 'message_start':
+      case 'message_start': {
+        // User and toolResult starts must not advance the assistant id, or a
+        // later text_delta lands on the wrong row.
+        const role = 'message' in event ? event.message?.role : undefined;
+        if (role && role !== 'assistant') return;
         this.messageSeq += 1;
         return;
+      }
       case 'message_update': {
         const inner = event.assistantMessageEvent;
         const messageId = String(this.messageSeq);
@@ -75,7 +83,14 @@ export class VendorEventReader {
             delta: inner.delta,
           });
         } else if (inner.type === 'text_end') {
-          emit({ type: 'text_end', messageId, blockIndex: inner.contentIndex });
+          const content =
+            'content' in inner && typeof inner.content === 'string' ? inner.content : undefined;
+          emit({
+            type: 'text_end',
+            messageId,
+            blockIndex: inner.contentIndex,
+            ...(content ? { content } : {}),
+          });
         } else if (inner.type === 'thinking_delta') {
           emit({ type: 'thinking_delta', messageId, delta: inner.delta });
         } else if (inner.type === 'thinking_end') {
@@ -100,12 +115,34 @@ export class VendorEventReader {
           input: asRecord(event.args),
         });
         return;
+      case 'tool_execution_update':
+        emit({
+          type: 'tool_output',
+          callId: event.toolCallId,
+          content: resultText(event.partialResult),
+        });
+        return;
       case 'tool_execution_end':
         emit({
           type: 'tool_result',
           callId: event.toolCallId,
           content: resultText(event.result),
           isError: event.isError,
+        });
+        return;
+      case 'bash_execution_update': {
+        const id = 'id' in event && typeof event.id === 'string' ? event.id : 'bash';
+        const next = `${this.bashOutput.get(id) ?? ''}${event.delta}`;
+        this.bashOutput.set(id, next);
+        emit({ type: 'tool_output', callId: id, content: next });
+        return;
+      }
+      case 'auto_retry_start':
+        emit({
+          type: 'retry',
+          attempt: event.attempt,
+          maxAttempts: event.maxAttempts,
+          message: event.errorMessage,
         });
         return;
       default:

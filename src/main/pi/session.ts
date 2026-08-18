@@ -35,6 +35,8 @@ export interface AgentTurnContext {
   outputFormat?: OutputFormat;
   /** Live text tail for the phase panel; a ring buffer, never stored. */
   onText?: (text: string) => void;
+  /** Standing role for this turn; the transport installs it as the system prompt. */
+  systemPrompt?: string;
 }
 
 /**
@@ -100,6 +102,8 @@ export interface TurnOutcome {
   text: string;
   usage: UsageBreakdown;
   reason: string;
+  /** True when the operator (or a timeout abort) stopped the turn. */
+  interrupted: boolean;
   /** What the transport claims conforms to the requested schema, if anything. */
   structuredOutput: Record<string, unknown> | null;
 }
@@ -243,13 +247,18 @@ export class AgentSession {
     this.currentFolder = folder;
 
     try {
-      const result = await this.turn(prompt, folder, ctx.outputFormat);
+      const result = await this.turn(prompt, folder, ctx);
+      if (this.killed) {
+        folder.closeDangling(KILLED_DETAIL);
+        throw new RunKilledError();
+      }
       folder.closeDangling('turn ended before this call reported a result');
       await this.refreshContext();
       return {
         text: result.text,
         usage: toUsageBreakdown(result.usage ?? folder.usage),
         reason: result.reason,
+        interrupted: result.interrupted,
         structuredOutput: result.structuredOutput,
       };
     } finally {
@@ -266,12 +275,15 @@ export class AgentSession {
   private async turn(
     prompt: string,
     folder: EventFolder,
-    outputFormat: AgentTurnContext['outputFormat'],
+    ctx: Pick<AgentTurnContext, 'outputFormat' | 'systemPrompt'>,
   ): Promise<TurnResult> {
     const transport = this.transport;
     if (!transport) throw new Error('agent session is not open');
     try {
-      return await transport.send(prompt, this.deps.turnTimeoutMs, { outputFormat });
+      return await transport.send(prompt, this.deps.turnTimeoutMs, {
+        outputFormat: ctx.outputFormat,
+        ...(ctx.systemPrompt ? { systemPrompt: ctx.systemPrompt } : {}),
+      });
     } catch (e) {
       if (this.killed) {
         folder.closeDangling(KILLED_DETAIL);

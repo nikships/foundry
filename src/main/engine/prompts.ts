@@ -148,7 +148,8 @@ export function renderPrompt(agent: AgentDef, phase: PhaseDef, ctx: RenderContex
     '',
     '## Report',
     '',
-    'Reply with ONLY this JSON object and nothing else, no prose and no code fence:',
+    'When you are done, call submit_envelope once with this JSON object.',
+    'That is the answer channel. Foundry validates it after you submit.',
     '',
     exampleFor(kind, agent.customFields, ctx.envelopeDefs),
   ].join('\n');
@@ -157,10 +158,9 @@ export function renderPrompt(agent: AgentDef, phase: PhaseDef, ctx: RenderContex
 }
 
 /**
- * The runtime takes the system prompt as an append rather than a replacement,
- * so the agent's persona is passed with the turn instead of pretending to own
- * the whole system prompt.
+ * What the trace writes to disk: the two roles the model actually received.
+ * Not a wire format — `session.send` takes user and system separately.
  */
-export function combineForTurn(rendered: RenderedPrompt): string {
-  return [rendered.system, '', '---', '', rendered.user].join('\n');
+export function formatPromptRecord(rendered: RenderedPrompt): string {
+  return ['# System', '', rendered.system, '', '# User', '', rendered.user].join('\n');
 }

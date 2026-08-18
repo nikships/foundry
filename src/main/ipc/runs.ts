@@ -84,8 +84,12 @@ export function register(ctx: Ctx, handle: Handle): void {
             access: 'read',
             model,
             reasoningEffort: model === 'inherit' ? 'off' : settings.defaultReasoningEffort,
+            systemPrompt: DETECT_PROMPT,
           });
-          const turn = await session.send(DETECT_PROMPT, DETECT_FILL_TIMEOUT_MS);
+          const turn = await session.send(
+            'Inspect this repository and report the verification commands.',
+            DETECT_FILL_TIMEOUT_MS,
+          );
           return parseDetectReply(turn.text).commands;
         },
         save: (next) => {

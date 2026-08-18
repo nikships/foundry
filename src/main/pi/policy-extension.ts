@@ -18,6 +18,29 @@ import type { ExtensionAPI, ExtensionFactory } from '@earendil-works/pi-coding-a
 import { readPhaseContextTool, reportProgressTool, type EnvelopeTool } from './tools.js';
 import type { FoundryToolContext, PermissionAsk, PermissionDecision } from './transport.js';
 
+/** Per-turn system role text, applied through `before_agent_start`. */
+interface SystemPromptSlot {
+  useSystemPrompt(text: string | null): void;
+  apply(pi: ExtensionAPI): void;
+}
+
+function systemPromptSlot(): SystemPromptSlot {
+  let pending: string | null = null;
+  return {
+    useSystemPrompt(text) {
+      pending = text?.trim() ? text : null;
+    },
+    apply(pi) {
+      pi.on('before_agent_start', (event) => {
+        if (!pending) return;
+        // Append the roster / one-shot role to Pi's built prompt (Foundry
+        // harness + cwd). Returning nothing would reset to the harness alone.
+        return { systemPrompt: `${event.systemPrompt}\n\n${pending}` };
+      });
+    },
+  };
+}
+
 export interface FoundryExtensionOptions {
   tools: FoundryToolContext;
   /**
@@ -35,11 +58,17 @@ export interface FoundryExtensionHandle {
    * bound, which is when `pi` exists to register against.
    */
   useEnvelopeTool(tool: EnvelopeTool | null): void;
+  /**
+   * Standing role for the next turn. Applied in `before_agent_start` so it
+   * stays in the system role instead of being stuffed into the user message.
+   */
+  useSystemPrompt(text: string | null): void;
 }
 
 export function foundryExtension(opts: FoundryExtensionOptions): FoundryExtensionHandle {
   let api: ExtensionAPI | null = null;
   let pending: EnvelopeTool | null = null;
+  const system = systemPromptSlot();
 
   const install = (tool: EnvelopeTool | null): void => {
     if (!api || !tool) return;
@@ -52,6 +81,7 @@ export function foundryExtension(opts: FoundryExtensionOptions): FoundryExtensio
     pi.registerTool(readPhaseContextTool(opts.tools));
     install(pending);
     installPolicy(pi, opts.decide);
+    system.apply(pi);
   };
 
   return {
@@ -59,6 +89,9 @@ export function foundryExtension(opts: FoundryExtensionOptions): FoundryExtensio
     useEnvelopeTool(tool) {
       pending = tool;
       install(tool);
+    },
+    useSystemPrompt(text) {
+      system.useSystemPrompt(text);
     },
   };
 }
@@ -70,8 +103,18 @@ export function foundryExtension(opts: FoundryExtensionOptions): FoundryExtensio
  */
 export function policyOnlyExtension(decide: FoundryExtensionOptions['decide']): {
   factory: ExtensionFactory;
+  useSystemPrompt(text: string | null): void;
 } {
-  return { factory: (pi) => installPolicy(pi, decide) };
+  const system = systemPromptSlot();
+  return {
+    factory: (pi) => {
+      installPolicy(pi, decide);
+      system.apply(pi);
+    },
+    useSystemPrompt(text) {
+      system.useSystemPrompt(text);
+    },
+  };
 }
 
 /**

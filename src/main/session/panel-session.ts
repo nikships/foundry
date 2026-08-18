@@ -51,6 +51,8 @@ export interface AskTurn {
   model: string;
   reasoningEffort: ReasoningEffort;
   prompt: string;
+  /** Standing rules, installed as the system prompt. */
+  systemPrompt?: string;
   timeoutMs?: number;
   textCap?: number;
 }
@@ -167,6 +169,7 @@ export class PanelSession<TState extends PanelStateCore> {
         // difference between "nothing found" and "that model is blocked".
         this.push({ kind: 'note', text: warning.slice(0, 500) });
       },
+      ...(input.systemPrompt ? { systemPrompt: input.systemPrompt } : {}),
     });
     this.bind(session);
     const turn = await session.send(input.prompt, input.timeoutMs ?? PANEL_TIMEOUT_MS);
