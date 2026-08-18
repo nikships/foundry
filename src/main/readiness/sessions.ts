@@ -1,6 +1,9 @@
 /**
  * Live readiness sessions, keyed by project. Separate from RunRegistry on
  * purpose: a readiness check has no trace rows and must not look like a run.
+ *
+ * Sweep and keep-limits live on SessionRegistry. Inspect/evaluate/makeReady
+ * stay here because they are a state machine, not a one-shot start().
  */
 
 import type {
@@ -10,14 +13,12 @@ import type {
   ReadinessState,
 } from '@shared/types.js';
 import type { OneShotFactory } from '../pi/oneshot.js';
+import { SessionRegistry } from '../session/registry.js';
 import { readMarkerAtBaseRef } from './marker.js';
 import { createAgentRemediator, resolveReadinessModel } from './remediator.js';
 import { ReadinessSession, type ReadinessIo } from './session.js';
 import * as ghLib from '../system/gh.js';
 import type { PrMergeView } from './merge.js';
-
-const KEEP_MS = 10 * 60_000;
-const MAX_KEPT = 20;
 
 /**
  * The single readiness verdict. Reads the marker from the project's base ref —
@@ -52,8 +53,7 @@ export function defaultReadinessIo(oneShot: OneShotFactory): ReadinessIo {
 }
 
 export class ReadinessSessions {
-  private readonly sessions = new Map<string, ReadinessSession>();
-  private readonly endedAt = new Map<string, number>();
+  private readonly registry = new SessionRegistry<ReadinessSession>();
 
   constructor(
     private readonly oneShot: OneShotFactory,
@@ -61,11 +61,11 @@ export class ReadinessSessions {
   ) {}
 
   get(projectId: string): ReadinessState | null {
-    return this.sessions.get(projectId)?.snapshot() ?? null;
+    return this.registry.get(projectId)?.snapshot() ?? null;
   }
 
   session(projectId: string): ReadinessSession | null {
-    return this.sessions.get(projectId) ?? null;
+    return this.registry.get(projectId) ?? null;
   }
 
   open(
@@ -74,8 +74,8 @@ export class ReadinessSessions {
     persist: (project: ProjectDef) => void,
     io?: ReadinessIo,
   ): ReadinessSession {
-    this.sweep();
-    const existing = this.sessions.get(project.id);
+    this.registry.sweep();
+    const existing = this.registry.get(project.id);
     if (existing) {
       const phase = existing.snapshot().phase;
       if (phase !== 'complete' && phase !== 'skipped' && phase !== 'failed') return existing;
@@ -87,12 +87,12 @@ export class ReadinessSessions {
       io: io ?? defaultReadinessIo(this.oneShot),
       onChange: (state) => {
         if (state.phase === 'complete' || state.phase === 'skipped' || state.phase === 'failed') {
-          this.endedAt.set(state.projectId, Date.now());
+          this.registry.markEnded(state.projectId);
         }
         this.onProgress(state);
       },
     });
-    this.sessions.set(project.id, session);
+    this.registry.add(project.id, session);
     return session;
   }
 
@@ -106,30 +106,10 @@ export class ReadinessSessions {
   }
 
   cancel(projectId: string): boolean {
-    const session = this.sessions.get(projectId);
-    if (!session) return false;
-    session.cancel();
-    return true;
+    return this.registry.cancel(projectId);
   }
 
   cancelAll(): void {
-    for (const session of this.sessions.values()) session.cancel();
-    this.sessions.clear();
-    this.endedAt.clear();
-  }
-
-  private sweep(): void {
-    const now = Date.now();
-    for (const [id, at] of this.endedAt) {
-      if (now - at < KEEP_MS) continue;
-      this.sessions.delete(id);
-      this.endedAt.delete(id);
-    }
-    if (this.sessions.size <= MAX_KEPT) return;
-    const finished = [...this.endedAt.entries()].sort((a, b) => a[1] - b[1]);
-    for (const [id] of finished.slice(0, this.sessions.size - MAX_KEPT)) {
-      this.sessions.delete(id);
-      this.endedAt.delete(id);
-    }
+    this.registry.cancelAll();
   }
 }

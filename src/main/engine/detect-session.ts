@@ -1,88 +1,33 @@
 /**
- * The live side of "Ask AI to find commands".
+ * "Ask AI to find commands" as a thin ask-and-parse strategy on PanelSession.
  *
  * Detection is not a run: it has no worktree, no pipeline, no phase and no
- * tracer, so it cannot borrow the executor's machinery. What it does need is
- * the thing a run has and a bare `await` does not — visible progress, a cancel
- * button, and a reason when nothing comes back.
- *
- * A session is therefore a small owned object rather than a promise: the click
- * starts it, the renderer subscribes to its progress by id, and cancelling
- * kills the child. An unawaited promise that rejects into a click handler is
- * exactly how this feature came to look like a button that does nothing.
+ * tracer. The shared session owns progress, cancel, and the transcript; this
+ * file only sniffs manifests, asks, parses, and verifies each proposal by
+ * running it.
  */
 
-import { randomBytes } from 'node:crypto';
-import type { AppSettings, TranscriptToolKind } from '@shared/types.js';
-import type { OneShotFactory, OneShotSession } from '../pi/oneshot.js';
-import { foldTranscript } from '../pi/transcript.js';
+import type { AppSettings } from '@shared/types.js';
+import type { DetectionProposal, DetectionState } from '@shared/ipc-contract.js';
+import type { OneShotFactory } from '../pi/oneshot.js';
 import {
-  DETECT_PROMPT,
-  parseDetectReply,
-  sniffCommands,
-  type CommandCandidate,
-  type RejectedCandidate,
-} from './detect.js';
+  PanelSession,
+  createPanelRegistry,
+  shortId,
+  PANEL_TIMEOUT_MS,
+  type PanelRegistry,
+} from '../session/index.js';
+import { DETECT_PROMPT, parseDetectReply, sniffCommands, type CommandCandidate } from './detect.js';
 import { runCommand } from './commands.js';
 
-/** One line in the live transcript the Project pane shows. */
-export interface DetectionEntry {
-  id: string;
-  kind: 'text' | 'tool' | 'note' | 'error';
-  text: string;
-  /** Tool entries only: what kind of work it was, so the UI can icon it. */
-  toolKind?: TranscriptToolKind;
-  /** Tool entries only: set once the result arrives. */
-  done?: boolean;
-  failed?: boolean;
-  at: number;
-}
+export type { DetectionProposal, DetectionState };
+export type DetectionStatus = DetectionState['status'];
+export type VerifyState = DetectionProposal['verify'];
 
-export type VerifyState = 'pending' | 'running' | 'pass' | 'fail';
-
-/**
- * A proposal plus the evidence for it. Verification is streamed rather than
- * awaited as a batch, so a slow suite does not hide the commands already found.
- */
-export interface DetectionProposal {
-  name: string;
-  argv: string[];
-  source: string;
-  verify: VerifyState;
-  exitCode?: number | null;
-  outputTail?: string;
-  durationMs?: number;
-  /** Set when the command could not be spawned at all, rather than failing. */
-  notFound?: boolean;
-}
-
-export type DetectionStatus = 'running' | 'verifying' | 'done' | 'cancelled' | 'failed';
-
-export interface DetectionState {
-  detectionId: string;
-  projectId: string;
-  status: DetectionStatus;
-  /** Which model actually ran, not the one that was requested. */
-  model: string;
-  entries: DetectionEntry[];
-  proposals: DetectionProposal[];
-  rejected: RejectedCandidate[];
-  rawReply: string;
-  detail: string;
-  startedAt: number;
-  endedAt?: number;
-}
-
-const MAX_ENTRIES = 300;
-const DETECT_TIMEOUT_MS = 300_000;
 const VERIFY_TIMEOUT_MS = 300_000;
 
 /** A spawn that failed because the binary is not on PATH, not because it ran. */
 const NOT_FOUND = /ENOENT|could not spawn|No such file or directory|command not found/i;
-
-function shortId(): string {
-  return randomBytes(6).toString('hex');
-}
 
 export interface DetectSessionDeps {
   projectId: string;
@@ -96,59 +41,52 @@ export interface DetectSessionDeps {
   onChange: (state: DetectionState) => void;
 }
 
+export type DetectStart = Omit<DetectSessionDeps, 'onChange' | 'oneShot'>;
+
 export class DetectSession {
   readonly detectionId = `det_${shortId()}`;
-  private readonly state: DetectionState;
-  private session: OneShotSession | null = null;
-  private cancelled = false;
+  private readonly panel: PanelSession<DetectionState>;
 
   constructor(private readonly deps: DetectSessionDeps) {
-    this.state = {
-      detectionId: this.detectionId,
-      projectId: deps.projectId,
-      status: 'running',
-      model: deps.model,
-      entries: [],
-      proposals: [],
-      rejected: [],
-      rawReply: '',
-      detail: 'starting',
-      startedAt: Date.now(),
-    };
+    this.panel = new PanelSession<DetectionState>(
+      {
+        detectionId: this.detectionId,
+        projectId: deps.projectId,
+        status: 'running',
+        model: deps.model,
+        entries: [],
+        proposals: [],
+        rejected: [],
+        rawReply: '',
+        detail: 'starting',
+        startedAt: Date.now(),
+      },
+      {
+        onChange: deps.onChange,
+        clone: (state) => ({
+          ...state,
+          proposals: state.proposals.map((proposal) => ({ ...proposal })),
+          rejected: [...state.rejected],
+        }),
+        isTerminal: (state) => state.status === 'done' || state.status === 'failed',
+        applyCancel: (state) => {
+          state.status = 'cancelled';
+          state.detail = 'cancelled';
+        },
+        applyFail: (state, message) => {
+          state.status = 'failed';
+          state.detail = message;
+        },
+      },
+    );
   }
 
   snapshot(): DetectionState {
-    // Cloned: the renderer receives this through structured clone and must
-    // never share an array this session is still mutating.
-    return {
-      ...this.state,
-      entries: [...this.state.entries],
-      proposals: this.state.proposals.map((p) => ({ ...p })),
-      rejected: [...this.state.rejected],
-    };
-  }
-
-  private emit(): void {
-    this.deps.onChange(this.snapshot());
-  }
-
-  private push(entry: Omit<DetectionEntry, 'id' | 'at'>): DetectionEntry {
-    const full: DetectionEntry = { ...entry, id: shortId(), at: Date.now() };
-    this.state.entries.push(full);
-    // A long detection must not grow without bound; the tail is what matters.
-    if (this.state.entries.length > MAX_ENTRIES) this.state.entries.shift();
-    this.emit();
-    return full;
+    return this.panel.snapshot();
   }
 
   cancel(): void {
-    if (this.state.status === 'done' || this.state.status === 'failed') return;
-    this.cancelled = true;
-    this.session?.abort();
-    this.state.status = 'cancelled';
-    this.state.detail = 'cancelled';
-    this.state.endedAt = Date.now();
-    this.push({ kind: 'note', text: 'Cancelled.' });
+    this.panel.cancel();
   }
 
   /**
@@ -159,19 +97,14 @@ export class DetectSession {
     try {
       await this.ask();
     } catch (e) {
-      if (!this.cancelled) {
-        this.state.status = 'failed';
-        this.state.detail = (e as Error).message;
-        this.push({ kind: 'error', text: (e as Error).message });
-      }
+      this.panel.fail((e as Error).message);
     }
-    if (this.cancelled) {
-      this.emit();
+    if (this.panel.cancelled) {
+      this.panel.emit();
       return;
     }
-    if (this.state.status !== 'failed') await this.verify();
-    if (!this.state.endedAt) this.state.endedAt = Date.now();
-    this.emit();
+    if (this.panel.state.status !== 'failed') await this.verify();
+    this.panel.finish();
   }
 
   private async ask(): Promise<void> {
@@ -182,65 +115,59 @@ export class DetectSession {
     // "Ask AI" that quietly returned a manifest guess is the bug this replaces.
     const sniffed = await sniffCommands(this.deps.projectPath);
     if (sniffed.length) {
-      this.push({
+      this.panel.push({
         kind: 'note',
         text: `Manifests suggest: ${sniffed.map((c) => `${c.name} = ${c.argv.join(' ')}`).join(', ')}`,
       });
     }
 
-    this.push({
+    this.panel.push({
       kind: 'note',
       text: `Asking the agent${model === 'inherit' ? '' : ` (${model})`}…`,
     });
 
     // Detection runs against the operator's own checkout, where nothing would
     // revert a write, so the session is opened with no tool that could make one.
-    this.session = this.deps.oneShot({
+    const turn = await this.panel.ask({
+      oneShot: this.deps.oneShot,
       cwd: this.deps.projectPath,
       access: 'read',
       model,
       reasoningEffort: model === 'inherit' ? 'off' : settings.defaultReasoningEffort,
-      onEvent: (event) => this.absorb(event),
-      onWarning: (warning) => {
-        // A model substitution reports itself here; surfacing it is the
-        // difference between "no commands found" and "that model is blocked".
-        this.push({ kind: 'note', text: warning.slice(0, 500) });
-      },
+      prompt: this.prompt(sniffed),
+      timeoutMs: PANEL_TIMEOUT_MS,
     });
-
-    const turn = await this.session.send(this.prompt(sniffed), DETECT_TIMEOUT_MS);
-    if (this.cancelled) return;
+    if (!turn) return;
 
     const reply = parseDetectReply(turn.text);
-    this.state.rawReply = reply.rawReply;
-    this.state.rejected = reply.rejected;
+    const state = this.panel.state;
+    state.rawReply = reply.rawReply;
+    state.rejected = reply.rejected;
 
     if (reply.parseError) {
-      this.state.status = 'failed';
-      this.state.detail = reply.parseError;
-      this.push({ kind: 'error', text: reply.parseError });
+      this.panel.fail(reply.parseError);
       return;
     }
 
-    this.state.proposals = reply.commands.map((c) => ({
+    state.proposals = reply.commands.map((c) => ({
       name: c.name,
       argv: c.argv,
       source: c.source,
       verify: 'pending' as const,
     }));
 
-    for (const r of reply.rejected) {
-      this.push({ kind: 'note', text: `Ignored a proposal: ${r.reason}` });
+    for (const rejected of reply.rejected) {
+      this.panel.push({ kind: 'note', text: `Ignored a proposal: ${rejected.reason}` });
     }
 
     if (!reply.commands.length) {
-      this.state.status = 'done';
-      this.state.detail = reply.rejected.length
+      state.status = 'done';
+      state.detail = reply.rejected.length
         ? `the agent answered, but none of its ${reply.rejected.length} proposal(s) were usable`
         : 'the agent found no verifiable command in this repo';
       return;
     }
-    this.state.detail = `${reply.commands.length} proposed; verifying`;
+    state.detail = `${reply.commands.length} proposed; verifying`;
   }
 
   /** Manifest findings ride along so the agent confirms rather than guesses. */
@@ -262,30 +189,24 @@ export class DetectSession {
     return parts.join('\n');
   }
 
-  /** Folds the session's events into transcript lines. */
-  private readonly absorb = foldTranscript<DetectionEntry>({
-    push: (row) => this.push(row),
-    flush: () => this.emit(),
-    last: () => this.state.entries[this.state.entries.length - 1] ?? null,
-  });
-
   /**
    * Running a proposal is the point: a command that passes here is evidence,
    * while a command merely typed into a field is a hope. Streamed one at a
    * time so the panel fills in rather than waiting on the slowest suite.
    */
   private async verify(): Promise<void> {
-    if (!this.state.proposals.length) {
-      if (this.state.status === 'running') this.state.status = 'done';
+    const state = this.panel.state;
+    if (!state.proposals.length) {
+      if (state.status === 'running') state.status = 'done';
       return;
     }
-    this.state.status = 'verifying';
-    this.emit();
+    state.status = 'verifying';
+    this.panel.emit();
 
-    for (const proposal of this.state.proposals) {
-      if (this.cancelled) return;
+    for (const proposal of state.proposals) {
+      if (this.panel.cancelled) return;
       proposal.verify = 'running';
-      this.emit();
+      this.panel.emit();
 
       const result = await runCommand({
         argv: proposal.argv,
@@ -300,15 +221,29 @@ export class DetectSession {
       // A missing binary is not a failing command, and conflating the two is
       // what made every proposal look wrong under the GUI's stunted PATH.
       proposal.notFound = result.exitCode === null && NOT_FOUND.test(result.outputTail);
-      this.emit();
+      this.panel.emit();
     }
 
-    if (this.cancelled) return;
-    const passed = this.state.proposals.filter((p) => p.verify === 'pass').length;
-    const missing = this.state.proposals.filter((p) => p.notFound).length;
-    this.state.status = 'done';
-    this.state.detail = missing
-      ? `${this.state.proposals.length} proposed, ${passed} verified, ${missing} could not be run (binary not found on PATH)`
-      : `${this.state.proposals.length} proposed, ${passed} verified by running`;
+    if (this.panel.cancelled) return;
+    const passed = state.proposals.filter((p) => p.verify === 'pass').length;
+    const missing = state.proposals.filter((p) => p.notFound).length;
+    state.status = 'done';
+    state.detail = missing
+      ? `${state.proposals.length} proposed, ${passed} verified, ${missing} could not be run (binary not found on PATH)`
+      : `${state.proposals.length} proposed, ${passed} verified by running`;
   }
+}
+
+export function createDetections(
+  oneShot: OneShotFactory,
+  onProgress: (state: DetectionState) => void,
+): PanelRegistry<DetectStart, DetectionState> {
+  return createPanelRegistry({
+    create: (deps, onChange) => new DetectSession({ ...deps, oneShot, onChange }),
+    idOf: (session) => session.detectionId,
+    snapshot: (session) => session.snapshot(),
+    isLive: (state) => state.status === 'running' || state.status === 'verifying',
+    run: (session) => session.run(),
+    onProgress,
+  });
 }

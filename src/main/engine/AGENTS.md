@@ -40,6 +40,9 @@ npx vitest run tests/executor.test.ts
 npx vitest run tests/rewinder.test.ts
 npx vitest run tests/envelopes.test.ts
 npx vitest run tests/gates.test.ts
+npx vitest run tests/panel-session.test.ts
+npx vitest run tests/detect-session.test.ts
+npx vitest run tests/setup-session.test.ts
 ```
 
 - Use **real git temp repos** + `tests/scripted-transport.ts`, an in-memory `AgentTransport` whose scripted turns perform real disk side effects inside the worktree, so boundary checks are real. Do NOT mock git or use network/model.
@@ -62,7 +65,7 @@ npx vitest run tests/gates.test.ts
 
 ## Code Style
 
-- Keep session work in `pi/` — the transport for phases, the one-shot seam for detection, setup, and repair — not here. `detect-session.ts`, `setup-session.ts`, and `repair.ts` take an `OneShotFactory` rather than building one, which is what lets a test drive them without a model.
+- Keep session work in `pi/` (the transport) and `session/` (the live panel). `detect-session.ts` and `setup-session.ts` are thin ask-and-parse strategies on `PanelSession`; they take an `OneShotFactory` rather than building one, which is what lets a test drive them without a model. Repair does the same.
 - Gate and envelope modules export plain values/types consumable from tests; avoid coupling them to `AppContext`.
 - No `eslint-disable`; address real issues. Use `@main/*` / `@shared/*` aliases.
 

@@ -220,14 +220,14 @@ export function register(ctx: Ctx, handle: Handle): void {
       const settings = ctx.settings.get();
       const model = await resolveTurnModel(ctx.supportDir, settings.detectModel);
 
-      const session = detections.start({
+      const detectionId = detections.start({
         projectId: project.id,
         projectPath: project.path,
         existingCommands: project.commands.map((c) => c.name),
         settings,
         model,
       });
-      return { detectionId: session.detectionId };
+      return { detectionId };
     },
   );
 
@@ -305,13 +305,13 @@ export function register(ctx: Ctx, handle: Handle): void {
       if (!project) return { error: 'project not found' };
       const settings = ctx.settings.get();
       const model = await resolveTurnModel(ctx.supportDir, settings.detectModel);
-      const session = setups.start({
+      const setupId = setups.start({
         projectId: project.id,
         projectPath: project.path,
         settings,
         model,
       });
-      return { setupId: session.setupId };
+      return { setupId };
     },
   );
 

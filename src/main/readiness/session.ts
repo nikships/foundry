@@ -1,9 +1,11 @@
 /**
  * Readiness onboarding state machine. Not a run: no tracer, no pipeline, no
  * zero-interrupt policy. Progress is pushed like a detection session.
+ *
+ * The transcript ring, cancel flag, and snapshot clone live on PanelSession.
+ * Git, worktree, PR, and marker steps stay here — they are not a one-shot.
  */
 
-import { randomBytes } from 'node:crypto';
 import type {
   AppSettings,
   ProjectDef,
@@ -16,6 +18,7 @@ import type {
 } from '@shared/types.js';
 import type { PrAction } from '@shared/ipc-contract.js';
 import { currentBranch, fastForwardBase, preferredRemote } from '../engine/git.js';
+import { PanelSession, shortId } from '../session/panel-session.js';
 import { answersComplete, answersFromUser, parkAskUser } from './ask-user.js';
 import { evaluateRepo } from './evaluate.js';
 import { ensureMarkerIgnored } from './ignore.js';
@@ -26,6 +29,7 @@ import {
   writeMarker,
 } from './marker.js';
 import { mergeCheckFromView, pollPrMerged, type PrMergeView } from './merge.js';
+import { resolveReadinessModel } from './remediator.js';
 import {
   commitReadinessWork,
   createReadinessWorktree,
@@ -69,15 +73,9 @@ export interface ReadinessSessionDeps {
   io?: ReadinessIo;
 }
 
-const MAX_ENTRIES = 300;
-
-function shortId(): string {
-  return randomBytes(6).toString('hex');
-}
-
 export class ReadinessSession {
   readonly sessionId = shortId();
-  private readonly state: ReadinessState;
+  private readonly panel: PanelSession<ReadinessState>;
   private readonly cancelSignal = { cancelled: false };
   private worktree: ReadinessWorktree | null = null;
   private askWaiter: {
@@ -87,27 +85,47 @@ export class ReadinessSession {
   private pollRunning = false;
 
   constructor(private readonly deps: ReadinessSessionDeps) {
-    const model = deps.settings.readinessModel || deps.settings.defaultModel || 'inherit';
-    const reasoningEffort =
-      deps.settings.readinessReasoningEffort || deps.settings.defaultReasoningEffort;
-    this.state = {
-      sessionId: this.sessionId,
-      projectId: deps.project.id,
-      phase: 'idle',
-      model,
-      reasoningEffort,
-      marker: null,
-      markerValid: false,
-      markerDetail: '',
-      evaluation: null,
-      entries: [],
-      pendingAsk: null,
-      pr: null,
-      mergeDetail: '',
-      skipDetail: '',
-      detail: '',
-      startedAt: (deps.io?.now ?? Date.now)(),
-    };
+    const resolved = resolveReadinessModel(deps.settings);
+    this.panel = new PanelSession<ReadinessState>(
+      {
+        sessionId: this.sessionId,
+        projectId: deps.project.id,
+        phase: 'idle',
+        model: resolved.model,
+        reasoningEffort: resolved.reasoningEffort,
+        marker: null,
+        markerValid: false,
+        markerDetail: '',
+        evaluation: null,
+        entries: [],
+        pendingAsk: null,
+        pr: null,
+        mergeDetail: '',
+        skipDetail: '',
+        detail: '',
+        startedAt: (deps.io?.now ?? Date.now)(),
+      },
+      {
+        now: deps.io?.now,
+        onChange: deps.onChange,
+        clone: cloneReadinessState,
+        isTerminal: (state) => state.phase === 'complete' || state.phase === 'failed',
+        applyCancel: (state) => {
+          if (state.phase !== 'failed') state.failedPhase = state.phase;
+          state.phase = 'failed';
+          state.detail = 'cancelled';
+        },
+        applyFail: (state, message) => {
+          if (state.phase !== 'failed') state.failedPhase = state.phase;
+          state.phase = 'failed';
+          state.detail = message;
+        },
+      },
+    );
+  }
+
+  private get state(): ReadinessState {
+    return this.panel.state;
   }
 
   get projectId(): string {
@@ -115,32 +133,7 @@ export class ReadinessSession {
   }
 
   snapshot(): ReadinessState {
-    return {
-      ...this.state,
-      entries: this.state.entries.map((e) => ({ ...e })),
-      evaluation: this.state.evaluation
-        ? {
-            ...this.state.evaluation,
-            criteria: this.state.evaluation.criteria.map((c) => ({ ...c })),
-            stack: {
-              ...this.state.evaluation.stack,
-              languages: [...this.state.evaluation.stack.languages],
-              packages: [...this.state.evaluation.stack.packages],
-            },
-          }
-        : null,
-      marker: this.state.marker ? { ...this.state.marker } : null,
-      pendingAsk: this.state.pendingAsk
-        ? {
-            ...this.state.pendingAsk,
-            questions: this.state.pendingAsk.questions.map((q) => ({
-              ...q,
-              options: [...q.options],
-            })),
-          }
-        : null,
-      pr: this.state.pr ? { ...this.state.pr } : null,
-    };
+    return this.panel.snapshot();
   }
 
   configure(opts: { model?: string; reasoningEffort?: ReasoningEffort }): void {
@@ -150,7 +143,7 @@ export class ReadinessSession {
   }
 
   private emit(): void {
-    this.deps.onChange(this.snapshot());
+    this.panel.emit();
   }
 
   private setPhase(phase: ReadinessPhase, detail: string): void {
@@ -160,25 +153,17 @@ export class ReadinessSession {
     this.state.phase = phase;
     this.state.detail = detail;
     if (phase === 'complete' || phase === 'skipped' || phase === 'failed') {
-      this.state.endedAt = (this.deps.io?.now ?? Date.now)();
+      this.state.endedAt = this.panel.now();
     }
     this.emit();
   }
 
   private push(entry: Omit<ReadinessEntry, 'id' | 'at'>): ReadinessEntry {
-    const full: ReadinessEntry = {
-      ...entry,
-      id: shortId(),
-      at: (this.deps.io?.now ?? Date.now)(),
-    };
-    this.state.entries.push(full);
-    if (this.state.entries.length > MAX_ENTRIES) this.state.entries.shift();
-    this.emit();
-    return full;
+    return this.panel.push(entry);
   }
 
   private flush(): void {
-    this.emit();
+    this.panel.emit();
   }
 
   private persist(patch: Partial<ProjectDef>): void {
@@ -491,6 +476,7 @@ export class ReadinessSession {
 
   skip(): ReadinessState {
     this.cancelSignal.cancelled = true;
+    this.panel.noteCancelled();
     this.failAsk('skipped');
     this.persist({ readinessSkipped: true });
     this.state.skipDetail =
@@ -503,6 +489,7 @@ export class ReadinessSession {
 
   async retry(): Promise<ReadinessState> {
     this.cancelSignal.cancelled = false;
+    this.panel.clearCancelled();
     this.state.endedAt = undefined;
     this.state.failedPhase = undefined;
     this.state.skipDetail = '';
@@ -531,11 +518,10 @@ export class ReadinessSession {
   }
 
   cancel(): void {
-    if (this.state.phase === 'complete' || this.state.phase === 'failed') return;
+    if (this.panel.isTerminal()) return;
     this.cancelSignal.cancelled = true;
     this.failAsk('cancelled');
-    this.setPhase('failed', 'cancelled');
-    this.push({ kind: 'note', text: 'Cancelled.' });
+    this.panel.cancel();
     void this.cleanupWorktree();
   }
 
@@ -574,6 +560,34 @@ export class ReadinessSession {
     }
     this.worktree = null;
   }
+}
+
+function cloneReadinessState(state: ReadinessState): ReadinessState {
+  return {
+    ...state,
+    evaluation: state.evaluation
+      ? {
+          ...state.evaluation,
+          criteria: state.evaluation.criteria.map((c) => ({ ...c })),
+          stack: {
+            ...state.evaluation.stack,
+            languages: [...state.evaluation.stack.languages],
+            packages: [...state.evaluation.stack.packages],
+          },
+        }
+      : null,
+    marker: state.marker ? { ...state.marker } : null,
+    pendingAsk: state.pendingAsk
+      ? {
+          ...state.pendingAsk,
+          questions: state.pendingAsk.questions.map((q) => ({
+            ...q,
+            options: [...q.options],
+          })),
+        }
+      : null,
+    pr: state.pr ? { ...state.pr } : null,
+  };
 }
 
 function prBody(evaluation: ReadinessEvaluation): string {

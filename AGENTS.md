@@ -20,6 +20,7 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 ├── src/main/                  ← Node main process (privileged)
 │   ├── engine/                ← sequencing, retries, boundaries, gates, worktrees
 │   ├── pi/                    ← every agent call, in-process: run sessions and one-shots (no fallback)
+│   ├── session/               ← shared PanelSession + SessionRegistry for detect/setup/readiness
 │   ├── bridge/                ← vendored CLIProxyAPI: provider OAuth → local endpoint pi calls
 │   ├── readiness/             ← agent-readiness evaluation and its marker
 │   ├── smith/                 ← Smith's socket, validation, approval queue

@@ -37,7 +37,8 @@ import type {
   SmithProposal,
   SmithProposalAnswer,
   StartRunInput,
-  TranscriptToolKind,
+  PanelEntry,
+  PanelStateCore,
   UpdateStatus,
   ValidationIssue,
 } from './types.js';
@@ -134,15 +135,7 @@ export interface DetectCommandsResult {
 }
 
 /** One line of an agent detection's live transcript. */
-export interface DetectionEntry {
-  id: string;
-  kind: 'text' | 'tool' | 'note' | 'error';
-  text: string;
-  toolKind?: TranscriptToolKind;
-  done?: boolean;
-  failed?: boolean;
-  at: number;
-}
+export type DetectionEntry = PanelEntry;
 
 /**
  * A command the agent proposed. Verification is streamed, so `verify` moves
@@ -160,37 +153,26 @@ export interface DetectionProposal {
   notFound?: boolean;
 }
 
-export interface DetectionState {
+export interface DetectionState extends PanelStateCore {
   detectionId: string;
   projectId: string;
   status: 'running' | 'verifying' | 'done' | 'cancelled' | 'failed';
-  /** Which model actually ran, which may differ from what was asked. */
-  model: string;
-  entries: DetectionEntry[];
   proposals: DetectionProposal[];
   /** Proposals that were not usable, each with the reason it was dropped. */
   rejected: { raw: unknown; reason: string }[];
   /** The agent's reply verbatim, so an unparseable answer stays diagnosable. */
   rawReply: string;
-  detail: string;
-  startedAt: number;
-  endedAt?: number;
 }
 
 /** One line of the setup-script generation transcript. Reuses the same union. */
-export type SetupEntry = DetectionEntry;
+export type SetupEntry = PanelEntry;
 
-export interface SetupState {
+export interface SetupState extends PanelStateCore {
   setupId: string;
   projectId: string;
   status: 'running' | 'done' | 'cancelled' | 'failed';
-  model: string;
-  entries: SetupEntry[];
   script: string;
   rawReply: string;
-  detail: string;
-  startedAt: number;
-  endedAt?: number;
 }
 
 export interface SetupSniffResult {

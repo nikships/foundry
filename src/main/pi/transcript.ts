@@ -2,10 +2,9 @@
  * The live transcript a one-shot session shows, folded from its event stream.
  *
  * Detection, setup-script generation, and the readiness fix each render a list
- * of lines while the agent works, and each used to fold the runtime's events
- * into that list itself — three copies of the same loop, which is how the
- * detection panel and the readiness panel came to disagree about when a tool
- * row closes.
+ * of lines while the agent works. `PanelSession` owns the list; this folder
+ * is the one loop that turns runtime events into those lines, so the three
+ * panels cannot disagree about when a tool row closes.
  *
  * This is not `events.ts`. That one writes trace rows for a run and owns caps,
  * throttles, and a raw JSONL mirror; this one grows an in-memory array a panel

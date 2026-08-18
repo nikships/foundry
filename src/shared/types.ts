@@ -481,7 +481,11 @@ export interface ReadinessAskAnswer {
  */
 export type TranscriptToolKind = 'command' | 'read' | 'edit' | 'search' | 'other';
 
-export interface ReadinessEntry {
+/**
+ * One line in a live panel transcript. Shared by detection, setup, and
+ * readiness so their icon maps and folding cannot drift apart.
+ */
+export interface PanelEntry {
   id: string;
   kind: 'text' | 'tool' | 'note' | 'error';
   text: string;
@@ -493,30 +497,39 @@ export interface ReadinessEntry {
   at: number;
 }
 
+export type ReadinessEntry = PanelEntry;
+
+/**
+ * Fields every one-shot panel state carries. Feature-specific state extends
+ * this rather than restating the core.
+ */
+export interface PanelStateCore {
+  model: string;
+  entries: PanelEntry[];
+  detail: string;
+  startedAt: number;
+  endedAt?: number;
+}
+
 export interface ReadinessPr {
   number: number;
   url: string;
   merged: boolean;
 }
 
-export interface ReadinessState {
+export interface ReadinessState extends PanelStateCore {
   sessionId: string;
   projectId: string;
   phase: ReadinessPhase;
-  model: string;
   reasoningEffort: ReasoningEffort;
   marker: AgentReadyMarker | null;
   markerValid: boolean;
   markerDetail: string;
   evaluation: ReadinessEvaluation | null;
-  entries: ReadinessEntry[];
   pendingAsk: ReadinessPendingAsk | null;
   pr: ReadinessPr | null;
   mergeDetail: string;
   skipDetail: string;
-  detail: string;
-  startedAt: number;
-  endedAt?: number;
   /** The phase that was running when the session failed, so the stepper can mark it. */
   failedPhase?: ReadinessPhase;
 }

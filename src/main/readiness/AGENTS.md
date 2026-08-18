@@ -8,7 +8,7 @@ zero-interrupt policy.
 
 - `marker.ts` — parse/validate/write `.agents/agent-ready.json`.
 - `evaluate.ts` — language/monorepo-aware static checklist (no model).
-- `session.ts` / `sessions.ts` — onboarding state machine + live registry.
+- `session.ts` / `sessions.ts` — onboarding state machine + live registry. The transcript ring, cancel, and snapshot clone come from `session/PanelSession`; sweep/keep-limits come from `SessionRegistry`. Git/worktree/PR stay here.
 - `worktree.ts` — isolated `foundry-ready/<id>` worktree via `engine/git.ts`.
 - `merge.ts` — PR merge polling through the operator's `gh`.
 - `ask-user.ts` — parks an agent's question for a real UI; pipeline policy is untouched.
