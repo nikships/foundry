@@ -27,6 +27,7 @@ import { saveProposal } from './ipc/smith.js';
 import { notifyNeedsInput, notifyOutcome, setDockBadge } from './system/notify.js';
 import { setSettingsApiKey, settingsApiKeyForSpawn } from './droid/sdk/auth.js';
 import { shutdownDaemonManager } from './droid/sdk/daemon.js';
+import { getBridgeService, shutdownBridgeService, type BridgeService } from './bridge/service.js';
 import { setSpawnEnvExtra } from './system/env.js';
 
 export interface Scope {
@@ -47,6 +48,7 @@ export class AppContext {
   readonly readiness: ReadinessSessions;
   readonly updater: UpdaterService;
   readonly smith: SmithService;
+  readonly bridge: BridgeService;
   readonly version: string;
 
   constructor(
@@ -61,6 +63,12 @@ export class AppContext {
     this.pipelines = new PipelineStore(supportDir);
     this.envelopes = new EnvelopeStore(supportDir);
     this.version = app.getVersion();
+    // Constructed, not started: the Bridge spawns on the first `ensure()`, so
+    // an operator who runs on their own API keys never pays for a child.
+    this.bridge = getBridgeService({
+      supportDir,
+      onModelsChanged: () => this.broadcast(IPC.eventBridgeChanged),
+    });
     this.updater = new UpdaterService((channel, payload) => this.broadcast(channel, payload));
     this.detections = new Detections((state) => this.broadcast(IPC.eventDetectionProgress, state));
     this.setups = new Setups((state) => this.broadcast(IPC.eventSetupProgress, state));
@@ -184,5 +192,8 @@ export class AppContext {
     // the crash backstop; this is the clean quit path. Fire-and-forget so
     // dispose stays sync for before-quit.
     void shutdownDaemonManager();
+    // The Bridge has no parent-pid backstop of its own, so this is the only
+    // thing standing between a quit and an orphaned proxy holding the port.
+    void shutdownBridgeService();
   }
 }

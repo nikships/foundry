@@ -248,6 +248,51 @@ export interface PrList {
   prs: PullRequest[];
 }
 
+/**
+ * One account the Bridge holds for a provider. Deliberately metadata only: the
+ * auth files behind it carry refresh and access tokens, and nothing that could
+ * reconstruct one crosses this seam.
+ */
+export interface BridgeAccountInfo {
+  id: string;
+  provider: string;
+  /** The provider's own name for the account: an email, a login, or the id. */
+  label: string;
+  expiresAt?: string;
+  expired: boolean;
+  disabled: boolean;
+}
+
+export interface BridgeProviderInfo {
+  id: string;
+  label: string;
+  /** Icon key, matching the picker's provider marks. */
+  icon: string;
+  authenticated: boolean;
+  accounts: BridgeAccountInfo[];
+  loginInFlight: boolean;
+}
+
+/** Why the Bridge is not serving, when it is not. */
+export type BridgeUnavailable =
+  'binary_missing' | 'spawn_failed' | 'port_exhausted' | 'health_timeout';
+
+export interface BridgeState {
+  running: boolean;
+  port: number | null;
+  pid: number | null;
+  /** Present only when the last start attempt failed. */
+  reason?: BridgeUnavailable;
+  detail?: string;
+  baseUrl: string | null;
+  providers: BridgeProviderInfo[];
+}
+
+export interface BridgeActionResult {
+  ok: boolean;
+  detail: string;
+}
+
 export interface FoundryApi {
   settings: {
     get(): Promise<AppSettings>;
@@ -380,6 +425,36 @@ export interface FoundryApi {
     clis(): Promise<CliDescriptor[]>;
     gates(): Promise<{ id: string; description: string }[]>;
     templateVariables(): Promise<{ token: string; description: string }[]>;
+    /**
+     * Models the agent transport can actually reach: pi's built-ins with a
+     * credential plus everything the Bridge has generated. This is the list
+     * agent phases run on, which is why it is separate from `models(vendor)`.
+     */
+    agentModels(): Promise<ModelInfo[]>;
+  };
+  bridge: {
+    /** Bridge status plus every provider and its accounts. Starts nothing. */
+    state(): Promise<BridgeState>;
+    /** Starts the Bridge if it is not already running. */
+    ensure(): Promise<BridgeActionResult>;
+    /**
+     * Begins a provider's OAuth flow in the operator's browser. Returns as soon
+     * as the browser is open; the account lands asynchronously and the state
+     * call reports it.
+     */
+    connect(provider: string): Promise<BridgeActionResult>;
+    /** Removes a provider's accounts and drops its models from the catalog. */
+    disconnect(provider: string): Promise<BridgeActionResult>;
+    /** SIGTERMs an in-flight login the operator abandoned. */
+    cancelLogin(provider: string): Promise<boolean>;
+    /**
+     * Stores a direct provider API key in pi's credential store — the path for
+     * an operator who has a key rather than a subscription. The key is written
+     * by pi and never held, logged, or echoed back.
+     */
+    setApiKey(providerId: string, apiKey: string): Promise<BridgeActionResult>;
+    /** Removes a stored direct key. */
+    clearApiKey(providerId: string): Promise<BridgeActionResult>;
   };
   runs: {
     start(
@@ -496,7 +571,11 @@ export interface FoundryApi {
       | 'detection-progress'
       | 'setup-progress'
       | 'smith-proposals-changed'
-      | 'readiness-progress',
+      | 'readiness-progress'
+      // A login completes in a browser, minutes after the call that started it
+      // returned. Nothing polls the auth directory, so this is how a Settings
+      // pane learns the account landed.
+      | 'bridge-changed',
     handler: (data?: unknown) => void,
   ): () => void;
 }
@@ -566,6 +645,14 @@ export const IPC = {
   catalogTools: 'catalog:tools',
   catalogGates: 'catalog:gates',
   catalogTemplateVariables: 'catalog:templateVariables',
+  catalogAgentModels: 'catalog:agentModels',
+  bridgeState: 'bridge:state',
+  bridgeEnsure: 'bridge:ensure',
+  bridgeConnect: 'bridge:connect',
+  bridgeDisconnect: 'bridge:disconnect',
+  bridgeCancelLogin: 'bridge:cancelLogin',
+  bridgeSetApiKey: 'bridge:setApiKey',
+  bridgeClearApiKey: 'bridge:clearApiKey',
   runsStart: 'runs:start',
   runsList: 'runs:list',
   runsDetail: 'runs:detail',
@@ -614,4 +701,5 @@ export const IPC = {
   eventSetupProgress: 'event:setup-progress',
   eventSmithProposalsChanged: 'event:smith-proposals-changed',
   eventReadinessProgress: 'event:readiness-progress',
+  eventBridgeChanged: 'event:bridge-changed',
 } as const;
