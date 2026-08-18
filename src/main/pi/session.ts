@@ -197,9 +197,10 @@ export class AgentSession {
   }
 
   /**
-   * Every ask is settled here and traced. Nothing waits for a person: the
-   * write boundary is re-checked against git after the phase, which is what
-   * makes an in-turn allow safe to give.
+   * Every ask is settled here. Nothing waits for a person: the write boundary
+   * is re-checked against git after the phase, which is what makes an in-turn
+   * allow safe to give. Denials are traced; allows are not — they pair 1:1
+   * with the tool_call already in the transcript.
    */
   private decide(ask: PermissionAsk): PermissionDecision {
     const outcome = evaluate(
@@ -211,18 +212,20 @@ export class AgentSession {
       },
       FOUNDRY_TOOL_NAMES,
     );
-    this.deps.tracer.event({
-      runId: this.deps.runId,
-      phaseId: this.currentPhaseId,
-      type: 'interrupt',
-      name: `${outcome.decision.outcome} (policy)`,
-      payload: {
-        reason: outcome.reason,
-        auto: true,
-        tool: ask.tool,
-        ...(outcome.command ? { command: outcome.command } : {}),
-      },
-    });
+    if (outcome.decision.outcome !== 'allow') {
+      this.deps.tracer.event({
+        runId: this.deps.runId,
+        phaseId: this.currentPhaseId,
+        type: 'interrupt',
+        name: `${outcome.decision.outcome} (policy)`,
+        payload: {
+          reason: outcome.reason,
+          auto: true,
+          tool: ask.tool,
+          ...(outcome.command ? { command: outcome.command } : {}),
+        },
+      });
+    }
     return outcome.decision;
   }
 

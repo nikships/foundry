@@ -3,7 +3,7 @@ import type { EnvelopeRow, EventRow, GateResultRow, PhaseRow } from '@shared/typ
 import { api } from '../api.js';
 import { useApp } from '../stores/app.js';
 import { clockTime, duration, tokens } from '../format.js';
-import { modelFor, phaseDuration, usageFor } from '../derive.js';
+import { isAutoAllowPolicy, modelFor, phaseDuration, usageFor } from '../derive.js';
 import StatusBadge from './StatusBadge.js';
 import AgentAvatar from './AgentAvatar.js';
 import { CodeBlock } from './ui/CodeBlock.js';
@@ -62,14 +62,18 @@ export default function PhaseDrawer({
   const usage = useMemo(() => usageFor(events), [events]);
   const model = useMemo(() => modelFor(events), [events]);
   const elapsed = useMemo(() => phaseDuration(phase, now), [phase, now]);
+  const timelineEvents = useMemo(
+    () => events.filter((event) => !isAutoAllowPolicy(event)),
+    [events],
+  );
   const tabs = useMemo(
     () => [
-      { id: 'timeline' as Tab, label: 'Timeline', count: events.length },
+      { id: 'timeline' as Tab, label: 'Timeline', count: timelineEvents.length },
       { id: 'envelope' as Tab, label: 'Envelope', count: envelopes.length },
       { id: 'gates' as Tab, label: 'Gates', count: gates.length },
       { id: 'prompt' as Tab, label: 'Prompt' },
     ],
-    [events.length, envelopes.length, gates.length],
+    [timelineEvents.length, envelopes.length, gates.length],
   );
 
   useEffect(() => {
@@ -184,7 +188,7 @@ export default function PhaseDrawer({
                 </CodeBlock>
               )}
               <ol className={styles.events}>
-                {events.map((event) => (
+                {timelineEvents.map((event) => (
                   <li key={event.eventId} className={EVENT_CLASS[event.type] ?? ''}>
                     <button className={styles.event} onClick={() => toggle(event.eventId)}>
                       <span className={styles.icon}>{EVENT_ICON[event.type] ?? '·'}</span>
@@ -207,7 +211,7 @@ export default function PhaseDrawer({
                   </li>
                 ))}
               </ol>
-              {!events.length && !liveTail && !liveTailError && (
+              {!timelineEvents.length && !liveTail && !liveTailError && (
                 <p className={`faint ${styles.padded}`}>Nothing recorded for this phase yet.</p>
               )}
             </>

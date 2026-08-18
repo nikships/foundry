@@ -82,3 +82,14 @@ const KIND_COLOR: Record<string, string> = { code: 'var(--blue)', engineer: 'var
 export function phaseKindColor(kind: string, ownerColor: string): string {
   return kind === 'agent' ? ownerColor : (KIND_COLOR[kind] ?? 'var(--accent)');
 }
+
+/**
+ * Auto-allow policy verdicts. Older runs recorded one `interrupt` per tool
+ * call (`allow (policy)`), which doubled the Inspector. New runs no longer
+ * write them; views still drop leftovers so a reopened trace stays readable.
+ */
+export function isAutoAllowPolicy(event: EventRow): boolean {
+  return (
+    event.type === 'interrupt' && event.payload.auto === true && event.name === 'allow (policy)'
+  );
+}

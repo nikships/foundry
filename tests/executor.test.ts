@@ -1044,7 +1044,7 @@ describe('zero-interrupt runs', () => {
     { tool: 'some_future_tool', input: {} },
   ];
 
-  it('settles with no human prompt and traces all four auto-decisions', async () => {
+  it('settles with no human prompt and traces only the denials', async () => {
     const outside = join(tempDir('foundry-outside-'), 'escaped.txt');
     const scripted = scriptedAgent([buildEnvelope()], [], [everyAsk(outside)]);
     let humanAsked = 0;
@@ -1068,25 +1068,25 @@ describe('zero-interrupt runs', () => {
     expect(humanAsked).toBe(0);
 
     const interrupts = events(outcome.runId).filter((e) => e.type === 'interrupt');
-    expect(interrupts).toHaveLength(4);
+    // Allows pair 1:1 with the tool_call already in the transcript; only a
+    // denial is worth an interrupt row.
+    expect(interrupts).toHaveLength(2);
     for (const event of interrupts) {
       expect(event.payload.auto).toBe(true);
       expect(event.payload.reason).toBeTruthy();
+      expect(event.name).toBe('deny (policy)');
     }
 
-    const forTool = (tool: string) => interrupts.find((e) => e.payload.tool === tool)!;
+    const forTool = (tool: string) => interrupts.find((e) => e.payload.tool === tool);
 
-    // A command runs unattended, and the trace keeps the command itself: the
-    // post-hoc git diff is what catches one that wrote where it should not have.
-    expect(forTool('bash').name).toBe('allow (policy)');
-    expect(forTool('bash').payload.command).toBe('git commit --allow-empty -m probe');
-    expect(forTool('write').name).toBe('deny (policy)');
-    expect(String(forTool('write').payload.reason)).toContain('outside the run worktree');
-    expect(forTool('read').name).toBe('allow (policy)');
+    expect(forTool('bash')).toBeUndefined();
+    expect(forTool('read')).toBeUndefined();
+    expect(forTool('write')!.payload.reason).toEqual(
+      expect.stringContaining('outside the run worktree'),
+    );
     // A tool this build does not classify fails closed: the write boundary only
     // sees inside the worktree, so an unclassified tool could act outside it.
-    expect(forTool('some_future_tool').name).toBe('deny (policy)');
-    expect(String(forTool('some_future_tool').payload.reason)).toContain(
+    expect(String(forTool('some_future_tool')!.payload.reason)).toContain(
       'not a tool this policy recognises',
     );
 

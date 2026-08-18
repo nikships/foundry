@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import type { EventRow, PhaseRow, RunRow } from '@shared/types.js';
 import { useApp } from '../stores/app.js';
 import { duration } from '../format.js';
-import { phaseDuration, phaseKindColor } from '../derive.js';
+import { isAutoAllowPolicy, phaseDuration, phaseKindColor } from '../derive.js';
 import AgentAvatar from './AgentAvatar.js';
 import styles from './Waterfall.module.css';
 
@@ -65,7 +65,7 @@ export default function Waterfall({
   ): { left: number; width: number; kind: string; label: string }[] => {
     const events = eventsByPhase.get(phase.phaseId) ?? [];
     return events
-      .filter((event) => MARKED.has(event.type))
+      .filter((event) => MARKED.has(event.type) && !isAutoAllowPolicy(event))
       .map((event) => {
         const start = new Date(event.startedAt).getTime();
         const end = event.endedAt ? new Date(event.endedAt).getTime() : start + 400;

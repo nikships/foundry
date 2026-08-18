@@ -12,7 +12,7 @@ import type { AgentSessionRow, EnvelopeRow, EventRow, PhaseRow } from '@shared/t
 import AgentAvatar from '../AgentAvatar.js';
 import StatusBadge from '../StatusBadge.js';
 import { duration, modelLabel, tokens } from '../../format.js';
-import { usageFor, phaseDuration } from '../../derive.js';
+import { isAutoAllowPolicy, usageFor, phaseDuration } from '../../derive.js';
 import { TranscriptEntry, transcriptStyles } from './entries.js';
 import ContextBreakdownDisclosure from './ContextBreakdown.js';
 import styles from './TranscriptLane.module.css';
@@ -74,8 +74,9 @@ export default function TranscriptLane({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const atBottomRef = useRef(true);
   const [showJump, setShowJump] = useState(false);
-  const lastEventKey = events.length
-    ? `${events[events.length - 1]!.eventId}:${events.length}`
+  const visibleEvents = events.filter((event) => !isAutoAllowPolicy(event));
+  const lastEventKey = visibleEvents.length
+    ? `${visibleEvents[visibleEvents.length - 1]!.eventId}:${visibleEvents.length}`
     : '';
 
   const session = sessions.find((s) => s.agent === phase.owner);
@@ -152,8 +153,8 @@ export default function TranscriptLane({
         </div>
       </header>
       <div className={styles.laneScroll} ref={scrollRef} onScroll={onScroll}>
-        {events.length === 0 && <div className={styles.laneEmpty}>nothing recorded yet</div>}
-        {events.map((event) => (
+        {visibleEvents.length === 0 && <div className={styles.laneEmpty}>nothing recorded yet</div>}
+        {visibleEvents.map((event) => (
           <TranscriptEntry key={event.eventId} event={event} />
         ))}
         {envelope && <EnvelopeCard envelope={envelope} />}

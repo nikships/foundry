@@ -170,6 +170,30 @@ describe('what a turn cost', () => {
   });
 });
 
+describe('a policy interrupt in the timeline', () => {
+  it('hides an auto-allow so it does not double every tool call', () => {
+    const row = event('interrupt', { auto: true, reason: 'read is read-only', tool: 'read' });
+    expect(render({ ...row, name: 'allow (policy)' })).toBe('');
+  });
+
+  it('still shows a denial, which is the verdict that changed what happened', () => {
+    const row = event('interrupt', {
+      auto: true,
+      reason: 'outside the run worktree',
+      tool: 'write',
+    });
+    const html = render({ ...row, name: 'deny (policy)' });
+    expect(html).toContain('deny (policy)');
+    expect(html).toContain('outside the run worktree');
+  });
+
+  it('still shows a human interrupt', () => {
+    const html = render(event('interrupt', { question: 'Ship it?' }));
+    expect(html).not.toBe('');
+    expect(html).toContain('planner');
+  });
+});
+
 describe('the entry switch', () => {
   it('renders every event type the engine records except the structural ones', () => {
     // phase/agent boundaries are lane furniture, not transcript rows: the lane

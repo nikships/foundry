@@ -12,8 +12,9 @@
  * with that post-hoc pass, so an in-turn allow and a post-hoc revert can never
  * disagree about what the boundary said.
  *
- * Every branch is traced as an `interrupt` event with `auto: true` and the
- * reason, so observability replaces interruption.
+ * Denials are traced as an `interrupt` event with `auto: true` and the
+ * reason, so observability replaces interruption. Allows are not: they pair
+ * 1:1 with the tool_call already in the transcript.
  */
 
 import { isAbsolute, relative, resolve } from 'node:path';

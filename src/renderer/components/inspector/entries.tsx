@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { EventRow, UsageBreakdown } from '@shared/types.js';
 import { clockTime, tokens, usd } from '../../format.js';
+import { isAutoAllowPolicy } from '../../derive.js';
 import { useCollapseSignal } from './collapse.js';
 
 function str(value: unknown): string {
@@ -735,6 +736,7 @@ function Banner({ event }: { event: EventRow }): React.JSX.Element {
       ? compactionDetail(p)
       : str(p.detail) ||
         str(p.question) ||
+        str(p.reason) ||
         (event.type === 'correction'
           ? `retry ${String(p.attempt ?? '')} of ${String(p.budget ?? '')}`
           : '') ||
@@ -801,10 +803,12 @@ export function TranscriptEntry({ event }: { event: EventRow }): React.JSX.Eleme
     // A type missing from this switch falls to the default and vanishes from the
     // timeline with nothing to show it was ever recorded, so every addition to
     // `EventType` needs a case here — Banner is the default home for one.
+    case 'interrupt':
+      if (isAutoAllowPolicy(event)) return null;
+      return <Banner event={event} />;
     case 'gate_pass':
     case 'gate_fail':
     case 'correction':
-    case 'interrupt':
     case 'error':
     case 'handoff':
     case 'compaction':
