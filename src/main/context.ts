@@ -21,6 +21,8 @@ import { RunRegistry } from './engine/registry.js';
 import { Detections } from './engine/detections.js';
 import { Setups } from './engine/setups.js';
 import { ReadinessSessions } from './readiness/sessions.js';
+import { piOneShots } from './pi/pi-oneshot.js';
+import type { OneShotFactory } from './pi/oneshot.js';
 import { UpdaterService } from './updater.js';
 import { SmithService } from './smith/index.js';
 import { saveProposal } from './ipc/smith.js';
@@ -48,6 +50,13 @@ export class AppContext {
   readonly updater: UpdaterService;
   readonly smith: SmithService;
   readonly version: string;
+  /**
+   * How every non-run agent turn is opened — detection, setup, the run-start
+   * command fill, the rebase repair, the readiness fix. One factory rather than
+   * five constructions, so a call site states what it needs (a directory, an
+   * access level) and never where the runtime keeps its state.
+   */
+  readonly oneShot: OneShotFactory;
 
   constructor(
     readonly supportDir: string,
@@ -62,9 +71,14 @@ export class AppContext {
     this.envelopes = new EnvelopeStore(supportDir);
     this.version = app.getVersion();
     this.updater = new UpdaterService((channel, payload) => this.broadcast(channel, payload));
-    this.detections = new Detections((state) => this.broadcast(IPC.eventDetectionProgress, state));
-    this.setups = new Setups((state) => this.broadcast(IPC.eventSetupProgress, state));
-    this.readiness = new ReadinessSessions((state) =>
+    this.oneShot = piOneShots(supportDir);
+    this.detections = new Detections(this.oneShot, (state) =>
+      this.broadcast(IPC.eventDetectionProgress, state),
+    );
+    this.setups = new Setups(this.oneShot, (state) =>
+      this.broadcast(IPC.eventSetupProgress, state),
+    );
+    this.readiness = new ReadinessSessions(this.oneShot, (state) =>
       this.broadcast(IPC.eventReadinessProgress, state),
     );
 

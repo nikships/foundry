@@ -9,6 +9,7 @@
  * still finds its result, then dropped: this is a cache, not a history.
  */
 
+import type { OneShotFactory } from '../pi/oneshot.js';
 import { DetectSession, type DetectionState, type DetectSessionDeps } from './detect-session.js';
 
 /** How long a finished detection stays readable. */
@@ -20,12 +21,16 @@ export class Detections {
   private readonly sessions = new Map<string, DetectSession>();
   private readonly endedAt = new Map<string, number>();
 
-  constructor(private readonly onProgress: (state: DetectionState) => void) {}
+  constructor(
+    private readonly oneShot: OneShotFactory,
+    private readonly onProgress: (state: DetectionState) => void,
+  ) {}
 
-  start(deps: Omit<DetectSessionDeps, 'onChange'>): DetectSession {
+  start(deps: Omit<DetectSessionDeps, 'onChange' | 'oneShot'>): DetectSession {
     this.sweep();
     const session = new DetectSession({
       ...deps,
+      oneShot: this.oneShot,
       onChange: (state) => {
         if (state.status !== 'running' && state.status !== 'verifying') {
           this.endedAt.set(state.detectionId, Date.now());

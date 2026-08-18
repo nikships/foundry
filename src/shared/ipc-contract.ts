@@ -40,6 +40,7 @@ import type {
   SmithProposalAnswer,
   StartRunInput,
   ToolInfo,
+  TranscriptToolKind,
   UpdateStatus,
   ValidationIssue,
 } from './types.js';
@@ -140,7 +141,7 @@ export interface DetectionEntry {
   id: string;
   kind: 'text' | 'tool' | 'note' | 'error';
   text: string;
-  toolKind?: 'command' | 'read' | 'edit' | 'search' | 'other';
+  toolKind?: TranscriptToolKind;
   done?: boolean;
   failed?: boolean;
   at: number;
