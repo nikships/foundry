@@ -598,9 +598,17 @@ export class Tracer {
 
   // ── processes (kill path + relaunch sweep) ────────────────────────────────
 
+  /**
+   * `runId` is null for a child that belongs to the app rather than to a run —
+   * the Bridge is one, started once and shared by every run. The column has a
+   * foreign key to `runs`, so a synthetic id would be rejected; null satisfies
+   * it, keeps the row out of every per-run query (`WHERE run_id = ?` never
+   * matches null), and still reaches the relaunch sweep's unfiltered
+   * `openProcesses()`.
+   */
   recordProcess(input: {
-    runId: string;
-    kind: 'engine' | 'droid' | 'code';
+    runId: string | null;
+    kind: 'engine' | 'droid' | 'code' | 'bridge';
     name: string;
     pid: number;
     command: string;
@@ -619,7 +627,7 @@ export class Tracer {
 
   openProcesses(runId?: string): {
     id: number;
-    runId: string;
+    runId: string | null;
     kind: string;
     name: string;
     pid: number;
@@ -842,7 +850,7 @@ interface RawAgentSession {
 
 interface RawProcess {
   id: number;
-  run_id: string;
+  run_id: string | null;
   kind: string;
   name: string;
   pid: number;
