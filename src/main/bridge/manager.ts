@@ -191,7 +191,7 @@ export class BridgeManager {
     if (!binary) {
       return this.fail(
         'binary_missing',
-        'the Bridge binary is not installed; run `npm run fetch:bridge` (a failed checksum leaves nothing on disk)',
+        'run `npm run fetch:bridge` (a failed checksum leaves nothing on disk)',
       );
     }
 

@@ -19,6 +19,12 @@
   border-radius: var(--r);
   background: var(--bg-panel);
   overflow: hidden;
+  /* `overflow: hidden` rounds the corners over the rows, so a panel that flex
+     shrank would clip its own last row — the Save button, or the fifth
+     provider — with no scrollbar to reveal it. Holding every panel at its
+     content height is what makes the column overflow, which is where the
+     scrollbar belongs. */
+  flex: none;
 }
 .ob-provider-panel-head {
   display: flex;
@@ -179,6 +185,7 @@
   border-radius: var(--r-sm);
   background: transparent;
   overflow: hidden;
+  flex: none;
 }
 .ob-facts-row {
   display: flex;

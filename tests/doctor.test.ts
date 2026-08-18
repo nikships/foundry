@@ -13,6 +13,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { tempDir } from './tmp.js';
 import type { DoctorCheck, ModelInfo } from '../src/shared/types.js';
 import type { BridgeProviderStatus } from '../src/main/bridge/auth.js';
 import { checkProviders, type ProviderDoctorDeps } from '../src/main/system/doctor.js';
@@ -80,6 +81,27 @@ describe('the Bridge check', () => {
     expect(bridge.detail).toContain('not installed');
     expect(bridge.detail).toContain('direct API keys still work');
     expect(bridge.fix).toEqual({ kind: 'open-settings', value: 'providers' });
+  });
+
+  // The manager's `detail` states only the remedy and the check prefixes the
+  // reason, so the two must not both name the fault: "the binary is not
+  // installed: the binary is not installed; run …" is what this prevents.
+  it('states the fault once, not twice', async () => {
+    const { BridgeManager } = await import('../src/main/bridge/manager.js');
+    const manager = new BridgeManager({ supportDir: tempDir('foundry-doctor-bridge-') });
+    const real = await manager.ensure();
+    if (real.ok) return; // a checkout that ran fetch:bridge has a serving Bridge
+    // The same mapping `ipc/maintenance.ts` applies, so the copy under test is
+    // the copy the operator reads.
+    const checks = await checkProviders(
+      deps({
+        ensureBridge: () =>
+          Promise.resolve({ ok: false, detail: real.detail, reason: real.reason }),
+      }),
+    );
+    const detail = find(checks, 'bridge')!.detail;
+    expect(detail.match(/not installed/g) ?? []).toHaveLength(1);
+    expect(detail).toContain('fetch:bridge');
   });
 
   it('names each launch failure in the operator’s terms', async () => {

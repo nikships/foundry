@@ -276,6 +276,21 @@ export interface BridgeProviderInfo {
 export type BridgeUnavailable =
   'binary_missing' | 'spawn_failed' | 'port_exhausted' | 'health_timeout';
 
+/**
+ * The reason in the operator's terms, for `${copy}: ${state.detail}`.
+ *
+ * Shared rather than owned by either side because the doctor, the Providers
+ * pane, and the onboarding step all report the same failure. A `detail` that
+ * had to read well on its own would restate the reason, which is the doubled
+ * sentence this split exists to avoid.
+ */
+export const BRIDGE_UNAVAILABLE_COPY: Record<BridgeUnavailable, string> = {
+  binary_missing: 'the vendored Bridge binary is not installed',
+  spawn_failed: 'the Bridge binary would not launch',
+  port_exhausted: 'no port in the Bridge\u2019s range was free',
+  health_timeout: 'the Bridge started but never answered on its port',
+};
+
 export interface BridgeState {
   running: boolean;
   port: number | null;

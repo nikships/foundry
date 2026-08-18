@@ -7,7 +7,7 @@ import { existsSync } from 'node:fs';
 import { release } from 'node:os';
 import { join } from 'node:path';
 import type { DoctorCheck, ModelInfo, ProjectDef } from '@shared/types.js';
-import type { BridgeUnavailable } from '@shared/ipc-contract.js';
+import { BRIDGE_UNAVAILABLE_COPY, type BridgeUnavailable } from '@shared/ipc-contract.js';
 import type { BridgeProviderStatus } from '../bridge/auth.js';
 import { currentBranch, isRepo, refExists, listWorktrees } from '../engine/git.js';
 import { runCommand } from '../engine/commands.js';
@@ -18,14 +18,6 @@ const TOOLCHAIN_BINARIES = ['node', 'npm', 'pnpm', 'yarn', 'bun', 'cargo', 'go',
 
 /** Where a failing provider check sends the operator. */
 const PROVIDERS_PANE = { kind: 'open-settings', value: 'providers' } as const;
-
-/** Why the Bridge could not start, in the operator's terms. */
-const UNAVAILABLE_COPY: Record<BridgeUnavailable, string> = {
-  binary_missing: 'the vendored Bridge binary is not installed',
-  spawn_failed: 'the Bridge binary would not launch',
-  port_exhausted: 'no port in the Bridge’s range was free',
-  health_timeout: 'the Bridge started but never answered on its port',
-};
 
 function onPath(binary: string, path: string): boolean {
   return path.split(':').some((dir) => dir && existsSync(join(dir, binary)));
@@ -64,7 +56,7 @@ export async function checkProviders(deps: ProviderDoctorDeps): Promise<DoctorCh
     ok: bridge.ok,
     detail: bridge.ok
       ? bridge.detail
-      : `${bridge.reason ? UNAVAILABLE_COPY[bridge.reason] : 'the Bridge is unavailable'}: ${bridge.detail}. Subscription logins are unavailable; direct API keys still work.`,
+      : `${bridge.reason ? BRIDGE_UNAVAILABLE_COPY[bridge.reason] : 'the Bridge is unavailable'}: ${bridge.detail}. Subscription logins are unavailable; direct API keys still work.`,
     fix: bridge.ok ? undefined : PROVIDERS_PANE,
   });
 

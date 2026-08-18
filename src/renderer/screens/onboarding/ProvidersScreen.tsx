@@ -1,5 +1,9 @@
 import { useState } from 'react';
-import type { BridgeProviderInfo } from '@shared/ipc-contract.js';
+import {
+  BRIDGE_UNAVAILABLE_COPY,
+  type BridgeProviderInfo,
+  type BridgeState,
+} from '@shared/ipc-contract.js';
 import { ProviderIcon } from '../../components/BrandIcon.js';
 import { Button } from '../../components/ui/Button.js';
 import { Dropdown } from '../../components/ui/Dropdown.js';
@@ -84,10 +88,7 @@ export default function ProvidersScreen(): React.JSX.Element {
 
         {!bridgeReady && (
           <div className={styles.obProviderNotice}>
-            <span>
-              {bridge?.detail ??
-                'The provider bridge is not serving yet. Subscription logins need it; API keys do not.'}
-            </span>
+            <span>{bridgeNotice(bridge)}</span>
             <Button
               type="button"
               size="sm"
@@ -251,6 +252,21 @@ export default function ProvidersScreen(): React.JSX.Element {
       />
     </div>
   );
+}
+
+/**
+ * Why subscriptions are unavailable, and what to do about it.
+ *
+ * `detail` states only the remedy, so the reason is prefixed here rather than
+ * duplicated into it — the same split the doctor's Bridge check uses.
+ */
+function bridgeNotice(bridge: BridgeState | null): string {
+  if (!bridge) return 'Checking for the provider bridge…';
+  const reason = bridge.reason
+    ? BRIDGE_UNAVAILABLE_COPY[bridge.reason]
+    : 'the bridge is not serving';
+  const detail = bridge.detail ? `: ${bridge.detail}` : '';
+  return `${reason}${detail}. Subscription logins need it; API keys do not.`;
 }
 
 /** `ok` → `Ok`, so a tone maps onto its CSS-module dot class. */

@@ -9,7 +9,11 @@ import type {
   UpdateStatus,
 } from '@shared/types.js';
 import { TERMINAL_APPS } from '@shared/types.js';
-import type { BridgeState, StoredProviderKey } from '@shared/ipc-contract.js';
+import {
+  BRIDGE_UNAVAILABLE_COPY,
+  type BridgeState,
+  type StoredProviderKey,
+} from '@shared/ipc-contract.js';
 import { api, plain } from '../api.js';
 import { isKnownPrWriter, prWriterOptions } from '../pr-draft.js';
 import { useApp } from '../stores/app.js';
@@ -792,8 +796,15 @@ export default function SettingsScreen({
                       </Button>
                     </div>
                   </div>
-                  {bridge && !bridge.running && bridge.detail && (
-                    <p className={styles.settingsWarn}>{bridge.detail}</p>
+                  {bridge && !bridge.running && (bridge.reason || bridge.detail) && (
+                    <p className={styles.settingsWarn}>
+                      {/* `detail` states only the remedy; the reason is prefixed
+                          here rather than duplicated into it. */}
+                      {bridge.reason
+                        ? BRIDGE_UNAVAILABLE_COPY[bridge.reason]
+                        : 'the Bridge is not serving'}
+                      {bridge.detail ? `: ${bridge.detail}` : ''}
+                    </p>
                   )}
                   {providerNotes.bridge && <p className={styles.hint}>{providerNotes.bridge}</p>}
                 </Section>
