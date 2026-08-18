@@ -10,7 +10,7 @@
  * A session belongs to one agent and starts lazily on that agent's first phase.
  */
 
-import type { AgentDef, CliVendor, ContextBreakdown, UsageBreakdown } from '@shared/types.js';
+import type { AgentDef, ContextBreakdown, UsageBreakdown } from '@shared/types.js';
 import type { Snapshot } from '../engine/boundary.js';
 import type { Tracer } from '../trace/tracer.js';
 import { EventFolder, toUsageBreakdown } from './events.js';
@@ -23,9 +23,7 @@ import type {
   PermissionAsk,
   PermissionDecision,
   RewindOutcome,
-  SessionTool,
   TransportEvent,
-  TransportModel,
   TurnResult,
 } from './transport.js';
 
@@ -66,10 +64,6 @@ export interface AgentSessionDeps {
   protectedPaths: string[];
   /** Builds the transport this session drives. Injected, never constructed here. */
   transport: (input: TransportRequest) => AgentTransport;
-  /** Reports the models a live session can reach, for the roster picker. */
-  onModels?: (models: TransportModel[]) => void;
-  /** Reports the tools a live session exposes, for the roster picker. */
-  onTools?: (tools: SessionTool[]) => void;
 }
 
 /** Everything a transport factory needs that only the session knows. */
@@ -134,11 +128,6 @@ export class AgentSession {
     private readonly deps: AgentSessionDeps,
   ) {}
 
-  /** A roster written before agents could pick a CLI means droid. */
-  private get vendor(): CliVendor {
-    return this.agent.cli ?? 'droid';
-  }
-
   get currentMode(): Mode {
     return this.mode;
   }
@@ -186,26 +175,9 @@ export class AgentSession {
     this.transport = transport;
     this.agentSessionId = transport.id;
     this.persistSession();
-    await this.publishDiscovery(transport);
     if (this.killed) {
       await this.close();
       throw new RunKilledError();
-    }
-  }
-
-  /**
-   * A live session is the only list of models and tools that reflects what this
-   * install can reach today, so the catalog the roster picker reads is refreshed
-   * from it. Discovery is a view: a session that will not answer costs the run
-   * nothing, and the last known list stays.
-   */
-  private async publishDiscovery(transport: AgentTransport): Promise<void> {
-    this.deps.onModels?.(transport.availableModels);
-    if (!this.deps.onTools) return;
-    try {
-      this.deps.onTools(await transport.listTools());
-    } catch {
-      // A refreshed catalog is never worth a failed run.
     }
   }
 
@@ -225,8 +197,7 @@ export class AgentSession {
       agent: this.agent.name,
       model: this.agent.model,
       reasoningEffort: this.agent.reasoningEffort,
-      cli: this.vendor,
-      droidSessionId: this.agentSessionId,
+      agentSessionId: this.agentSessionId,
       mode: this.mode,
       color: this.agent.color,
     });

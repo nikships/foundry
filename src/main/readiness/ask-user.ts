@@ -1,6 +1,6 @@
 /**
  * Readiness-only AskUser. Pipeline runs keep auto-answering via
- * `droid/permissions.ts`; this module parks questions for a real UI.
+ * `pi/policy.ts`; this module parks questions for a real UI.
  */
 
 import { randomBytes } from 'node:crypto';

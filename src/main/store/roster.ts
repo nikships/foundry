@@ -22,11 +22,6 @@ export const agentSchema = z.object({
       'lowercase letters, digits, dash, underscore; must start with a letter',
     ),
   purpose: z.string().min(1, 'one line on what this agent is for'),
-  // Unknown or legacy CLI values coerce to droid.
-  cli: z.preprocess(
-    (val) => (typeof val === 'string' && val !== 'droid' ? 'droid' : val),
-    z.enum(['droid']).optional(),
-  ),
   model: z.string().min(1),
   reasoningEffort: z.enum(['off', 'low', 'medium', 'high', 'xhigh', 'max']),
   inheritDefaults: z.boolean().optional(),
@@ -51,17 +46,6 @@ export const agentSchema = z.object({
   // the tool surface it had. An unknown value is rejected rather than coerced:
   // guessing which profile an operator meant is how least privilege gets wider.
   toolProfile: z.enum(['full', 'read-only', 'review', 'custom']).optional(),
-  // Host invocables are opt-in per agent. The whole object is optional and each
-  // list defaults to empty, so a roster written before this field existed reads
-  // as "nothing enabled" — the closed default, not a silent grant.
-  invocables: z
-    .object({
-      skills: z.array(z.string()).default([]),
-      droids: z.array(z.string()).default([]),
-      hostMcpServers: z.array(z.string()).default([]),
-      userMcpServers: z.array(z.string()).default([]),
-    })
-    .optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'a hex colour like #5ad2dd'),
   // Absent / `monogram` = initial; a library id or shipped portrait token;
   // `image:<file>` = a user upload. Empty string is treated as absent.
@@ -117,15 +101,8 @@ export class RosterStore {
         // An agent forked off a built-in used to inherit `builtin: true`, which
         // hides its own Delete button. The flag says where an agent came from,
         // so a name that was never shipped cannot legitimately carry it.
-        const sanitize = (a: AgentDef): AgentDef => ({
-          ...a,
-          cli: a.cli && a.cli !== 'droid' ? 'droid' : a.cli,
-        });
         const byName = new Map(
-          list.map((a) => [
-            a.name,
-            shipped.has(a.name) ? sanitize(a) : { ...sanitize(a), builtin: false },
-          ]),
+          list.map((a) => [a.name, shipped.has(a.name) ? a : { ...a, builtin: false }]),
         );
         for (const builtin of BUILTIN_AGENTS) {
           if (!byName.has(builtin.name)) byName.set(builtin.name, { ...builtin });

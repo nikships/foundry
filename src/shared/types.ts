@@ -71,13 +71,6 @@ export const PR_FALLBACK_HEADINGS = [
   'Risk',
 ] as const;
 
-/**
- * Historical CLI vendor tag. Every agent turn now runs in-process on pi, so
- * nothing chooses a vendor any more; the type survives only because rows
- * written before the migration still carry the column.
- */
-export type CliVendor = 'droid';
-
 /** How a code phase names the process it runs. */
 export type CommandSpec =
   { ref: string } | { builtin: BuiltinCommand; messageFrom?: string } | { argv: string[] };
@@ -183,8 +176,6 @@ export type WriteBoundary = string[] | null;
 export interface AgentDef {
   name: string;
   purpose: string;
-  /** Absent on rosters written before multi-CLI support; read as `droid`. */
-  cli?: CliVendor;
   model: string;
   reasoningEffort: ReasoningEffort;
   /**
@@ -672,9 +663,11 @@ export interface AgentSessionRow {
   agent: string;
   model: string;
   reasoningEffort: string;
-  cli: CliVendor;
-  /** The vendor's own session id, whatever it calls one. */
-  droidSessionId: string | null;
+  /**
+   * The agent runtime's own session id. Stored in the `droid_session_id`
+   * column, which predates the migration and is kept so old rows still read.
+   */
+  agentSessionId: string | null;
   mode: RunMode;
   color: string;
   contextTokens: number;
@@ -747,24 +740,16 @@ export interface ModelInfo {
   contextWindow?: number;
 }
 
-export interface ToolInfo {
-  id: string;
-  llmId: string;
-  displayName: string;
-  description: string;
-  category: string;
-  defaultAllowed: boolean;
-}
-
 export interface DoctorCheck {
   id: string;
   label: string;
   ok: boolean;
   detail: string;
   /**
-   * A failure that stops onboarding. Only the default CLI and git qualify: an
-   * uninstalled fourth CLI is a fact about the machine, not a broken setup, and
-   * blocking on one would make the app unusable to anyone who wants a subset.
+   * A failure that stops onboarding. Only git and a reachable model qualify: a
+   * provider the operator never signed into is a fact about the machine, not a
+   * broken setup, and blocking on one would make the app unusable to anyone who
+   * wants a subset.
    */
   blocking?: boolean;
   fix?: { kind: 'open-url' | 'open-settings' | 'run'; value: string };

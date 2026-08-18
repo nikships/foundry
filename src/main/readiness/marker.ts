@@ -202,7 +202,7 @@ export function markerFromEvaluation(
     schemaVersion: MARKER_SCHEMA_VERSION,
     generatedAt: meta.generatedAt,
     commit: meta.commit,
-    agent: { harness: 'droid', model: meta.model, reasoningEffort: meta.reasoningEffort },
+    agent: { harness: 'pi', model: meta.model, reasoningEffort: meta.reasoningEffort },
     verdict: 'ready',
     summary: evaluation.summary,
     stack,

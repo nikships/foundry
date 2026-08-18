@@ -27,7 +27,6 @@ import { UpdaterService } from './updater.js';
 import { SmithService } from './smith/index.js';
 import { saveProposal } from './ipc/smith.js';
 import { notifyNeedsInput, notifyOutcome, setDockBadge } from './system/notify.js';
-import { shutdownDaemonManager } from './droid/sdk/daemon.js';
 import { getBridgeService, shutdownBridgeService, type BridgeService } from './bridge/service.js';
 
 export interface Scope {
@@ -189,12 +188,10 @@ export class AppContext {
     this.setups.cancelAll();
     this.readiness.cancelAll();
     this.smith.dispose();
-    // Best-effort: disconnect + SIGTERM the app-owned daemon. --parent-pid is
-    // the crash backstop; this is the clean quit path. Fire-and-forget so
-    // dispose stays sync for before-quit.
-    void shutdownDaemonManager();
-    // The Bridge has no parent-pid backstop of its own, so this is the only
-    // thing standing between a quit and an orphaned proxy holding the port.
+    // Agent turns run in this process, so quitting ends them; the Bridge is the
+    // one child left, and it has no parent-pid backstop of its own. This is the
+    // only thing standing between a quit and an orphaned proxy holding the port.
+    // Fire-and-forget so dispose stays sync for before-quit.
     void shutdownBridgeService();
   }
 }
