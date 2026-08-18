@@ -19,15 +19,12 @@ import { defaultProject } from '../src/main/store/projects.js';
 import type {
   AgentDef,
   AppSettings,
-  CliConfig,
-  CliVendor,
   CommandSpec,
   EnvelopeDef,
   PhaseDef,
   PipelineDef,
   ProjectDef,
 } from '../src/shared/types.js';
-import { CLI_VENDOR_IDS } from '../src/shared/types.js';
 import type { GhOptions } from '../src/main/system/gh.js';
 import { makeFakeGh } from './fake-gh.js';
 import {
@@ -301,8 +298,6 @@ interface RunInput {
   gateRetries?: number;
   compactionThreshold?: number;
   rewindAfterCorrections?: number;
-  daemonPort?: number;
-  mcpServers?: import('../src/shared/types.js').UserMcpServer[]; // eslint-disable-line @typescript-eslint/consistent-type-imports
   gh?: GhOptions;
 }
 
@@ -338,22 +333,15 @@ function start(input: RunInput): {
 } {
   const runId = `run_${Math.random().toString(36).slice(2, 8)}`;
   // No child is spawned: the scripted agent answers behind the transport seam.
-  // The path is still set because CliConfig requires one and the trace shows it.
-  const path = 'droid-not-used';
-  const clis = {} as Record<CliVendor, CliConfig>;
-  for (const vendor of CLI_VENDOR_IDS) clis[vendor] = { path, extraArgs: [] };
   const executor = new Executor({
     tracer: h.tracer,
-    clis,
     turnTimeoutMs: input.turnTimeoutMs ?? 30_000,
     envelopeRetries: input.envelopeRetries ?? 2,
     gateRetries: input.gateRetries ?? 2,
     compactionThreshold: input.compactionThreshold ?? 0.8,
     rewindAfterCorrections: input.rewindAfterCorrections ?? 2,
-    daemonPort: input.daemonPort ?? 37_643,
     supportDir: h.support,
     transport: transportSeam(input),
-    mcpServers: input.mcpServers ?? [],
     agents: input.agents ?? [buildAgent()],
     envelopeDefs: input.envelopeDefs ?? [],
     project: { ...h.project, ...input.project },
@@ -1968,12 +1956,17 @@ describe('the context breakdown an agent leaves behind', () => {
     expect(outcome.status).toBe('accepted');
     const captured = h.tracer.readRunJson<{
       capturedAt: string;
-      breakdown: { usedTokens: number; categories: { name: string }[] };
+      breakdown: { modelId: string; usedTokens: number; freeTokens: number; contextBudget: number };
     }>(outcome.runId, breakdownFile('builder'));
     // Context stats and the breakdown come off the same session, so the
     // occupancy the agent reports and the one the snapshot keeps are one number.
     expect(captured?.breakdown.usedTokens).toBe(1234);
-    expect(captured?.breakdown.categories[0]!.name).toBe('System prompt');
+    // Used plus free is the whole budget: the lane draws the bar from these two
+    // numbers alone, so a drift between them would show as a gap or an overflow.
+    expect(captured!.breakdown.usedTokens + captured!.breakdown.freeTokens).toBe(
+      captured!.breakdown.contextBudget,
+    );
+    expect(captured?.breakdown.modelId).toBe('scripted');
     expect(Date.parse(captured!.capturedAt)).toBeGreaterThan(0);
   });
 

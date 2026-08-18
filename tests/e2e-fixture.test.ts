@@ -13,7 +13,7 @@ import { E2E_REQUEST, E2E_RUN_ID, E2E_TRANSCRIPT, seedOnboardedFixture } from '.
 
 interface SeededSettings {
   onboarded: boolean;
-  clis: { droid: { path: string } };
+  engineerName: string;
 }
 
 interface SeededProject {
@@ -35,8 +35,14 @@ describe('e2e fixture seed', () => {
       readFileSync(join(fixture.supportDir, 'settings.json'), 'utf8'),
     ) as SeededSettings;
     expect(settings.onboarded).toBe(true);
-    expect(settings.clis.droid.path).toBe(fixture.fakeDroidPath);
-    expect(existsSync(fixture.fakeDroidPath)).toBe(true);
+    expect(settings.engineerName).toBe('e2e');
+    // The fixture names no credential and no agent binary: a spec that starts a
+    // run by accident has nothing to spend. Anything key-shaped here would ship
+    // in a test artifact on every failed CI run.
+    const raw = readFileSync(join(fixture.supportDir, 'settings.json'), 'utf8');
+    for (const retired of ['clis', 'factoryApiKey', 'daemonPort', 'mcpServers']) {
+      expect(raw, retired).not.toContain(retired);
+    }
 
     const projects = JSON.parse(
       readFileSync(join(fixture.supportDir, 'projects.json'), 'utf8'),

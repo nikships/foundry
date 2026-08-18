@@ -166,10 +166,6 @@ export class ScriptedAgent {
       contextBudget: CONTEXT_LIMIT,
       usedTokens: used,
       freeTokens: CONTEXT_LIMIT - used,
-      categories: [{ name: 'System prompt', tokens: 900, colorKey: 'systemPrompt' }],
-      skills: [],
-      mcpServers: [],
-      droids: [],
     };
   }
 

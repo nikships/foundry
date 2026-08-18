@@ -35,6 +35,7 @@ vi.mock('../src/main/system/terminal.js', async (importOriginal) => {
 
 const { registerLaunch } = await import('../src/main/ipc/smith.js');
 const { IPC } = await import('../src/shared/ipc-contract.js');
+const { __setResolvedEnvForTest } = await import('../src/main/system/env.js');
 
 const dirs: string[] = [];
 const makeDir = (): string => {
@@ -43,19 +44,27 @@ const makeDir = (): string => {
   return dir;
 };
 afterAll(() => {
+  __setResolvedEnvForTest(null);
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
 });
 
-/** A droid binary that exists, since an auto-start refuses an unresolvable one. */
-function fakeAgent(): string {
-  const path = join(makeDir(), 'droid');
-  writeFileSync(path, '#!/bin/sh\n', { mode: 0o755 });
-  return path;
+/**
+ * A PATH holding a droid binary, or an empty one.
+ *
+ * Smith runs on the user's own agent, so the router looks the binary up on the
+ * resolved PATH rather than reading a setting. Pinning that PATH is what keeps
+ * the branch hermetic: the suite must not depend on whether the machine running
+ * it happens to have droid installed.
+ */
+function pinAgentOnPath(present: boolean): void {
+  const dir = makeDir();
+  if (present) writeFileSync(join(dir, 'droid'), '#!/bin/sh\n', { mode: 0o755 });
+  __setResolvedEnvForTest({ path: dir, via: 'login-shell' });
 }
 
 interface StubOptions {
   terminalApp?: string;
-  agentPath?: string;
+  agentOnPath?: boolean;
   projectPath?: string | null;
 }
 
@@ -67,15 +76,13 @@ function startHandler(options: StubOptions = {}): (projectId: string) => Promise
       ? null
       : { id: 'proj_1', name: 'foundry', path: options.projectPath ?? makeDir() };
 
+  pinAgentOnPath(options.agentOnPath ?? true);
+
   const ctx = {
     supportDir,
     projects: { get: (id: string) => (project && id === project.id ? project : null) },
     settings: {
-      get: () => ({
-        terminalApp: options.terminalApp ?? 'ghostty',
-        defaultCli: 'droid',
-        clis: { droid: { path: options.agentPath ?? fakeAgent(), extraArgs: [] } },
-      }),
+      get: () => ({ terminalApp: options.terminalApp ?? 'ghostty' }),
     },
     smith: { socket: { path: () => join(supportDir, 'smith', 'foundry.sock') } },
   } as never;
@@ -113,9 +120,10 @@ describe('smith:start', () => {
   });
 
   it('refuses rather than opening a window that dies when the agent CLI is unresolvable', async () => {
-    // `findCli` falls back to a bare name; a script with its own PATH cannot be
-    // trusted to resolve one, so this must not reach the terminal.
-    const result = await startHandler({ agentPath: 'droid' })('proj_1');
+    // With nothing on PATH the lookup falls back to the bare name, and a script
+    // with its own PATH cannot be trusted to resolve one, so this must not
+    // reach the terminal.
+    const result = await startHandler({ agentOnPath: false })('proj_1');
     expect(result).toEqual({ status: 'needs-launcher', reason: 'agent-cli' });
     expect(opened).toEqual([]);
   });

@@ -8,8 +8,10 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import type { EventRow, EventType } from '../src/shared/types.js';
+import type { EventRow, EventType, UsageBreakdown } from '../src/shared/types.js';
 import { TranscriptEntry } from '../src/renderer/components/inspector/entries.js';
+import { BUILTIN_TOOLS } from '../src/main/pi/tools.js';
+import { toolKind } from '../src/main/pi/events.js';
 
 function event(type: EventType, payload: Record<string, unknown> = {}): EventRow {
   return {
@@ -81,6 +83,97 @@ describe('a compaction event in the timeline', () => {
   });
 });
 
+describe('a pi tool call in the timeline', () => {
+  /** A `tool_call` row as the tracer writes one: `<tool>: <summary>`. */
+  const toolCall = (name: string, payload: Record<string, unknown> = {}): string => {
+    const row = event('tool_call', { result: 'ok', ...payload });
+    return render({ ...row, name: `${name}: target` });
+  };
+
+  // The renderer classifies off the row's own name, and pi's tool names are not
+  // droid's. `toolKind` is main's answer for the same tool; the two are read by
+  // the same operator on the same row, so they must not disagree.
+  const RENDERED_CLASS: Record<string, string> = {
+    command: 'te command',
+    read: 'te read',
+    edit: 'te edit',
+    search: 'te read',
+    progress: 'te tool',
+    envelope: 'te tool',
+    other: 'te tool',
+  };
+
+  it('formats every tool a pi phase is given, in agreement with main', () => {
+    const piTools = [...BUILTIN_TOOLS, 'report_progress', 'read_phase_context', 'submit_envelope'];
+    for (const tool of piTools) {
+      const html = toolCall(tool);
+      expect(html, tool).toContain(RENDERED_CLASS[toolKind(tool)]!);
+    }
+  });
+
+  it('reads a bash call as a command rather than an anonymous tool row', () => {
+    // droid called it Execute; pi calls it bash. The `$` prompt is the whole
+    // difference between a shell line and a generic row.
+    const html = toolCall('bash', { args: { command: 'npm test' } });
+    expect(html).toContain('npm test');
+    expect(html).toContain('$');
+  });
+
+  it('files find and ls with grep rather than leaving them generic', () => {
+    for (const tool of ['grep', 'find', 'ls']) {
+      expect(toolCall(tool), tool).toContain('te read');
+    }
+  });
+
+  it('renders a tool nobody classified rather than dropping the row', () => {
+    // A tool added to pi, or one an MCP server contributes, reaches the timeline
+    // before this file learns its name. The fallback is what keeps it visible.
+    const html = toolCall('some_future_tool');
+    expect(html).not.toBe('');
+    expect(html).toContain('some_future_tool');
+    expect(html).toContain('te tool');
+  });
+});
+
+describe('what a turn cost', () => {
+  const usage = (over: Partial<UsageBreakdown> = {}): UsageBreakdown => ({
+    inputTokens: 1_000,
+    outputTokens: 200,
+    cacheCreationTokens: 0,
+    cacheReadTokens: 800,
+    thinkingTokens: 0,
+    credits: 0,
+    cost: 0,
+    reported: true,
+    ...over,
+  });
+
+  it('is stated in dollars, which is what a pi turn reports', () => {
+    const html = render(event('agent_end', { usage: usage({ cost: 0.42 }) }));
+    expect(html).toContain('$0.42');
+    expect(html).not.toContain('credits');
+  });
+
+  it('shows sub-cent turns at a precision that is not just $0.00', () => {
+    const html = render(event('agent_end', { usage: usage({ cost: 0.0031 }) }));
+    expect(html).toContain('$0.0031');
+  });
+
+  // Historical rows from the droid transport carry credits and no cost. Printing
+  // "$0" for them would state a price that was never measured.
+  it('omits the figure for a turn that reported no cost', () => {
+    const html = render(event('agent_end', { usage: usage({ credits: 42 }) }));
+    expect(html).toContain('tokens');
+    expect(html).not.toContain('$');
+  });
+
+  it('says usage was unreported rather than showing a zero', () => {
+    const html = render(event('agent_end', { usage: usage({ reported: false }) }));
+    expect(html).toContain('usage unreported by this model');
+    expect(html).not.toContain('$');
+  });
+});
+
 describe('the entry switch', () => {
   it('renders every event type the engine records except the structural ones', () => {
     // phase/agent boundaries are lane furniture, not transcript rows: the lane
@@ -114,7 +207,7 @@ describe('the entry switch', () => {
                 cacheReadTokens: 0,
                 thinkingTokens: 0,
                 credits: 0,
-                totalTokens: 15,
+                cost: 0,
                 reported: true,
               },
             }

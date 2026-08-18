@@ -1,7 +1,8 @@
 /**
- * Settings written by an older build must still load. Autonomy was a setting
- * once; a file that still carries it is a file a real user has on disk, and
- * dropping the key must not cost them the rest of their configuration.
+ * Settings written by an older build must still load. Autonomy, CLI paths, a
+ * daemon port and a Factory API key were all settings once; a file that still
+ * carries them is a file a real user has on disk, and dropping those keys must
+ * not cost them the rest of their configuration.
  */
 
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -9,6 +10,11 @@ import { join } from 'node:path';
 import { tempDir } from './tmp.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SettingsStore, defaultSettings, migrate } from '../src/main/store/settings.js';
+import {
+  BRIDGE_PORT_MAX,
+  BRIDGE_PORT_MIN,
+  DEFAULT_BRIDGE_PORT,
+} from '../src/main/bridge/manager.js';
 import { DEFAULT_PR_AGENT } from '../src/shared/types.js';
 
 let dir: string;
@@ -64,11 +70,72 @@ describe('settings written before autonomy was removed', () => {
     expect(result.ok).toBe(true);
     expect(result.ok && 'defaultAutonomy' in result.settings).toBe(false);
   });
+});
 
-  it('still carries the pre-multi-CLI droidPath across', () => {
-    const settings = migrate({ droidPath: '/custom/bin/droid', defaultAutonomy: 'medium' });
-    expect(settings.clis.droid.path).toBe('/custom/bin/droid');
-    expect('defaultAutonomy' in settings).toBe(false);
+describe('settings written before the migration to pi', () => {
+  const droidEra = () => ({
+    ...defaultSettings(),
+    engineerName: 'ada',
+    turnTimeoutMs: 900_000,
+    clis: { droid: { path: '/custom/bin/droid', extraArgs: [] } },
+    defaultCli: 'droid',
+    detectCli: 'default',
+    daemonPort: 37_650,
+    factoryApiKey: 'fk-a-real-key',
+    mcpServers: [{ id: 'mcp_1', name: 'local', type: 'stdio', command: 'npx' }],
+    droidPath: '/custom/bin/droid',
+  });
+
+  it('drops every retired key, credential included', () => {
+    const settings = migrate(droidEra()) as unknown as Record<string, unknown>;
+    for (const key of [
+      'clis',
+      'defaultCli',
+      'detectCli',
+      'daemonPort',
+      'factoryApiKey',
+      'mcpServers',
+      'droidPath',
+    ]) {
+      expect(key in settings, key).toBe(false);
+    }
+  });
+
+  it('keeps everything the operator actually still configures', () => {
+    const settings = migrate(droidEra());
+    expect(settings.engineerName).toBe('ada');
+    expect(settings.turnTimeoutMs).toBe(900_000);
+    expect(settings.defaultModel).toBe('inherit');
+  });
+
+  // A credential left in settings.json is a credential nothing reads and
+  // everything can see, so the first write after an upgrade has to remove it.
+  it('removes the stored Factory key from disk on the next patch', () => {
+    const store = seed(droidEra());
+    expect(store.patch({ engineerName: 'grace' }).ok).toBe(true);
+    const onDisk = JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf8')) as Record<
+      string,
+      unknown
+    >;
+    expect(onDisk.factoryApiKey).toBeUndefined();
+    expect(onDisk.clis).toBeUndefined();
+    expect(onDisk.daemonPort).toBeUndefined();
+    expect(onDisk.mcpServers).toBeUndefined();
+    expect(onDisk.engineerName).toBe('grace');
+  });
+
+  it('strips a patch that tries to reintroduce one', () => {
+    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
+    const result = store.patch({ factoryApiKey: 'fk-again' } as never);
+    expect(result.ok).toBe(true);
+    expect(result.ok && 'factoryApiKey' in result.settings).toBe(false);
+  });
+
+  it('reads a model id as an opaque provider/model string', () => {
+    // Model ids are no longer validated against a CLI's catalog: a stored
+    // `bridge-claude/claude-opus-5` must survive a read untouched.
+    const settings = migrate({ ...droidEra(), defaultModel: 'bridge-claude/claude-opus-5' });
+    expect(settings.defaultModel).toBe('bridge-claude/claude-opus-5');
   });
 });
 
@@ -199,69 +266,44 @@ describe('prAgent', () => {
   });
 });
 
-describe('daemonPort', () => {
-  it('defaults to 37643 on a fresh install', () => {
-    expect(defaultSettings().daemonPort).toBe(37_643);
+describe('bridgePort', () => {
+  it('defaults to the Bridge manager’s own default on a fresh install', () => {
+    expect(defaultSettings().bridgePort).toBe(DEFAULT_BRIDGE_PORT);
   });
 
-  it('reads 37643 for a settings file written before the field existed', () => {
+  it('fills the default for a settings file written before the field existed', () => {
     const stored = { ...defaultSettings() } as Record<string, unknown>;
-    delete stored.daemonPort;
-    expect(migrate(stored).daemonPort).toBe(37_643);
-    expect(seed(stored).get().daemonPort).toBe(37_643);
+    delete stored.bridgePort;
+    expect(migrate(stored).bridgePort).toBe(DEFAULT_BRIDGE_PORT);
+    expect(seed(stored).get().bridgePort).toBe(DEFAULT_BRIDGE_PORT);
   });
 
   it('accepts a value inside the mission band', () => {
     const store = seed(defaultSettings() as unknown as Record<string, unknown>);
-    expect(store.patch({ daemonPort: 37_650 })).toMatchObject({ ok: true });
-    expect(store.get().daemonPort).toBe(37_650);
+    expect(store.patch({ bridgePort: BRIDGE_PORT_MIN + 5 })).toMatchObject({ ok: true });
+    expect(store.get().bridgePort).toBe(BRIDGE_PORT_MIN + 5);
   });
 
-  it('refuses a value outside 37600–37699 rather than storing it', () => {
+  it('refuses a value outside the band rather than storing it', () => {
     const store = seed(defaultSettings() as unknown as Record<string, unknown>);
-    for (const value of [80, 9_999, 37_599, 37_700]) {
-      expect(store.patch({ daemonPort: value }).ok).toBe(false);
+    for (const value of [80, 9_999, BRIDGE_PORT_MIN - 1, BRIDGE_PORT_MAX + 1, 37.5]) {
+      expect(store.patch({ bridgePort: value }).ok, String(value)).toBe(false);
     }
-    expect(store.get().daemonPort).toBe(37_643);
+    expect(store.get().bridgePort).toBe(DEFAULT_BRIDGE_PORT);
   });
 
   it('clamps a stored out-of-range value into the mission band', () => {
-    expect(migrate({ ...defaultSettings(), daemonPort: 80 }).daemonPort).toBe(37_600);
-    expect(migrate({ ...defaultSettings(), daemonPort: 99_999 }).daemonPort).toBe(37_699);
-  });
-});
-
-describe('factoryApiKey', () => {
-  it('defaults to empty on a fresh install', () => {
-    expect(defaultSettings().factoryApiKey).toBe('');
+    expect(migrate({ ...defaultSettings(), bridgePort: 80 }).bridgePort).toBe(BRIDGE_PORT_MIN);
+    expect(migrate({ ...defaultSettings(), bridgePort: 99_999 }).bridgePort).toBe(BRIDGE_PORT_MAX);
+    expect(migrate({ ...defaultSettings(), bridgePort: 'busy' as never }).bridgePort).toBe(
+      DEFAULT_BRIDGE_PORT,
+    );
   });
 
-  it('reads empty for a settings file written before the field existed', () => {
-    const stored = { ...defaultSettings() } as Record<string, unknown>;
-    delete stored.factoryApiKey;
-    expect(migrate(stored).factoryApiKey).toBe('');
-    expect(seed(stored).get().factoryApiKey).toBe('');
-  });
-
-  it('accepts a trimmed key and stores it', () => {
-    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
-    expect(store.patch({ factoryApiKey: '  fk-test-key  ' })).toMatchObject({ ok: true });
-    expect(store.get().factoryApiKey).toBe('fk-test-key');
-  });
-
-  it('refuses a key longer than 2048 characters rather than storing it', () => {
-    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
-    expect(store.patch({ factoryApiKey: 'k'.repeat(2049) }).ok).toBe(false);
-    expect(store.get().factoryApiKey).toBe('');
-  });
-
-  it('repairs a stored non-string back to empty', () => {
-    expect(migrate({ ...defaultSettings(), factoryApiKey: 12 as never }).factoryApiKey).toBe('');
-  });
-
-  it('trims and truncates a stored oversized string on read', () => {
-    const stored = { ...defaultSettings(), factoryApiKey: `  ${'k'.repeat(2100)}  ` };
-    expect(migrate(stored).factoryApiKey).toHaveLength(2048);
-    expect(migrate(stored).factoryApiKey.startsWith('k')).toBe(true);
+  // The daemon port was in a different band, so carrying it forward would put
+  // the Bridge on a port its manager never scans.
+  it('does not inherit a stored daemonPort', () => {
+    const settings = migrate({ ...defaultSettings(), daemonPort: 37_650 });
+    expect(settings.bridgePort).toBe(DEFAULT_BRIDGE_PORT);
   });
 });
