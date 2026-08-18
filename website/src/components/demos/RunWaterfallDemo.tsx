@@ -405,6 +405,12 @@ function envelopeFor(p: RunPhase): Record<string, unknown> {
         findings: [{ requirement: 'Retry-After header', result: 'gap closed in this phase' }],
         blocking: [],
       };
+    case 'pr':
+      return {
+        ...base,
+        title: 'feat(api): token-bucket rate limiting for public routes',
+        body: '## Summary\nAdds in-process token-bucket rate limiting to public endpoints.\n\n## Verification\n- npm test (all 703 passing)',
+      };
     default:
       return base;
   }

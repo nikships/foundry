@@ -161,7 +161,7 @@ export function App() {
             <SectionHead
               index="05"
               eyebrow="A crew, not a chatbot"
-              title="Seven specialists. Each one bounded."
+              title="Eight specialists. Each one bounded."
               lede={
                 <>
                   Every agent has its own prompt, its own reasoning budget, its own envelope, and its own write
@@ -332,8 +332,8 @@ export function App() {
               title="Sixty seconds, and no setup script."
               lede={
                 <>
-                  Requirements: macOS 26+ on Apple Silicon, <Code>git</Code>, and an agent CLI you have already
-                  signed in to.
+                  Requirements: macOS 26+ on Apple Silicon, <Code>git</Code>, and a model provider subscription
+                  or API key.
                 </>
               }
             />

@@ -82,6 +82,7 @@
     --accents-reviewer: #ff6f67;
     --accents-finisher: #6aa9ff;
     --accents-documenter: #4ade80;
+    --accents-pr: #f59e0b;
 
     /* ── depth — none. Flat fills and hairlines do all the work. ─────── */
     --shadow-sm: none;

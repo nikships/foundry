@@ -1,5 +1,5 @@
 /**
- * The crew. The seven agents Foundry ships with, their real envelopes,
+ * The crew. The eight agents Foundry ships with, their real envelopes,
  * reasoning budgets and write boundaries, and a line from each system prompt.
  *
  * Mirrors src/renderer/screens/RosterScreen.tsx.
@@ -7,6 +7,43 @@
 
 import { useState } from 'react';
 import { AGENTS, ENVELOPE_BLURBS } from '../../data/foundry';
+import type { Agent } from '../../data/foundry';
+
+function AgentAvatar({ agent, size }: { agent: Agent; size: number }) {
+  const [imgError, setImgError] = useState(false);
+  const initial = agent.name === 'pr_writer' ? 'PR' : agent.name.slice(0, 1).toUpperCase();
+
+  if (imgError) {
+    return (
+      <div
+        className="flex flex-none items-center justify-center rounded border font-mono font-semibold"
+        style={{
+          width: `${size}px`,
+          height: `${size}px`,
+          borderColor: `color-mix(in srgb, ${agent.color} 40%, transparent)`,
+          background: `color-mix(in srgb, ${agent.color} 14%, var(--bg-raised))`,
+          color: agent.color,
+          fontSize: `${Math.round(size * (initial.length > 1 ? 0.34 : 0.42))}px`,
+        }}
+      >
+        {initial}
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={`/media/agents/${agent.name}.webp`}
+      alt={`${agent.name} agent portrait`}
+      width={size}
+      height={size}
+      loading="lazy"
+      onError={() => setImgError(true)}
+      className="flex-none rounded border border-line bg-black object-cover"
+      style={{ width: `${size}px`, height: `${size}px` }}
+    />
+  );
+}
 
 export function Roster() {
   const [selected, setSelected] = useState(2); // builder
@@ -37,14 +74,7 @@ export function Roster() {
             <span className="font-mono text-[10px] tracking-[0.1em] text-text-ghost">
               {String(i + 1).padStart(2, '0')}
             </span>
-            <img
-              src={`/media/agents/${a.name}.webp`}
-              alt=""
-              width={34}
-              height={34}
-              loading="lazy"
-              className="h-[34px] w-[34px] rounded-full border border-line bg-black object-cover"
-            />
+            <AgentAvatar agent={a} size={34} />
             <span className="min-w-0">
               <span className="block text-[14.5px] font-medium text-text">{a.name}</span>
               <span className="mt-[2px] block text-[12.5px] leading-[1.45] text-text-dim">{a.tagline}</span>
@@ -56,13 +86,7 @@ export function Roster() {
 
       <div className="flex min-h-[420px] flex-col p-[26px]">
         <div className="flex items-start gap-4">
-          <img
-            src={`/media/agents/${agent.name}.webp`}
-            alt={`${agent.name} agent portrait`}
-            width={76}
-            height={76}
-            className="h-[76px] w-[76px] flex-none rounded border border-line bg-black object-cover"
-          />
+          <AgentAvatar agent={agent} size={76} />
           <div>
             <div className="text-[24px] font-semibold tracking-tight" style={{ color: agent.color }}>
               {agent.name}

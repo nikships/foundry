@@ -31,13 +31,13 @@ export interface HeroStat {
 }
 
 export const HERO_STATS: HeroStat[] = [
-  { value: '07', label: 'agents', note: 'each with its own prompt, model and boundary' },
-  { value: '08', label: 'pipelines', note: 'built in, all editable on the canvas' },
+  { value: '08', label: 'agents', note: 'each with its own prompt, reasoning budget and boundary' },
+  { value: '10', label: 'pipelines', note: 'built in, all editable on the canvas' },
   { value: '06', label: 'gates', note: 'mechanical checks against the claim' },
-  { value: '00', label: 'telemetry', note: 'local app, your CLI, your machine' },
+  { value: '00', label: 'telemetry', note: 'local app, your models, your machine' },
 ];
 
-export const HERO_SPEC = 'macOS 26+ · Apple Silicon · bring your own CLI · no telemetry';
+export const HERO_SPEC = 'macOS 26+ · Apple Silicon · use your subscriptions or API keys · no telemetry';
 
 export interface Point {
   title: string;
@@ -126,7 +126,7 @@ export const STEPS: Step[] = [
   },
 ];
 
-export const REQUIREMENTS = 'Requires macOS 26+, Apple Silicon, git, and an agent CLI signed in.';
+export const REQUIREMENTS = 'Requires macOS 26+, Apple Silicon, git, and a model provider subscription or API key.';
 
 /* ── Smith: the propose → approve transcript ─────────────────────────────
  * The op names, the JSON envelopes and the exit codes match src/cli/ and the

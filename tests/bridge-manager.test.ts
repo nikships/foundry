@@ -141,7 +141,11 @@ describe('BridgeManager', () => {
   }, 20_000);
 
   it('scans up within the band when the preferred port is taken', async () => {
-    await listenOn(DEFAULT_BRIDGE_PORT);
+    try {
+      await listenOn(DEFAULT_BRIDGE_PORT);
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code !== 'EADDRINUSE') throw err;
+    }
     const manager = track(
       new BridgeManager({
         supportDir: supportDir(),

@@ -4,6 +4,7 @@ import { RUN } from '../../data/foundry';
 import {
   DOWNLOAD_URL as RELEASES,
   REPO_URL as REPO,
+  SMITH_URL,
   NAV_LINKS,
   HERO_STATS,
   HERO_SPEC,
@@ -83,7 +84,8 @@ export function Hero() {
 
           <p className="mt-7 max-w-[48ch] text-[17px] leading-[1.65] text-text-dim">
             Foundry is a native macOS app that runs a crew of bounded agents as a pipeline — in an isolated
-            worktree, against your own CLI, with every phase leaving typed evidence you can open.{' '}
+            worktree, powered by in-process Pi with your own subscriptions or API keys, and with every phase
+            leaving typed evidence you can open.{' '}
             <strong className="font-medium text-text">Agent proposes. Code disposes.</strong>
           </p>
 
@@ -138,7 +140,7 @@ export function ClosingCta() {
           Run a shop, not a chat.
         </h2>
         <p className="mx-auto mt-[22px] max-w-[54ch] text-[17px] leading-[1.65] text-text-dim">
-          Free and MIT-licensed. Bring your own agent CLI, your own models, and your own repos.
+          Free and MIT-licensed. Bring your own model subscriptions or API keys, and your own repos.
         </p>
         <div className="mt-[34px] flex flex-wrap justify-center gap-3">
           <Button href={RELEASES} variant="primary">
@@ -162,7 +164,7 @@ const FOOTER_LINKS: Array<[string, string]> = [
   [RELEASES, 'Releases'],
   ['https://github.com/nikships/foundry/issues', 'Issues'],
   ['https://github.com/nikships/foundry/blob/main/AGENTS.md', 'AGENTS.md'],
-  ['https://docs.factory.ai', 'droid CLI'],
+  [SMITH_URL, 'Smith Skill'],
 ];
 
 export function Footer() {

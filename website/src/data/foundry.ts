@@ -26,9 +26,18 @@ export type AgentName =
   | 'scout'
   | 'reviewer'
   | 'finisher'
-  | 'documenter';
+  | 'documenter'
+  | 'pr_writer';
 
-export type EnvelopeKind = 'generic' | 'brief' | 'plan' | 'build' | 'scout' | 'review' | 'document';
+export type EnvelopeKind =
+  | 'generic'
+  | 'brief'
+  | 'plan'
+  | 'build'
+  | 'scout'
+  | 'review'
+  | 'document'
+  | 'pr';
 
 export interface Agent {
   name: AgentName;
@@ -120,6 +129,17 @@ export const AGENTS: Agent[] = [
     prompt:
       "Write for the reader who arrives without this run's context. Record intent and decisions, not a changelog of lines.",
   },
+  {
+    name: 'pr_writer',
+    tagline: 'Drafts the PR',
+    purpose: 'Draft a concise, human-readable, template-aware PR title and body. Change no files.',
+    envelope: 'pr',
+    effort: 'medium',
+    writes: [],
+    color: 'var(--accents-pr)',
+    prompt:
+      'Draft a concise, human-readable pull request title and body following repository templates when present. You may not modify any files.',
+  },
 ];
 
 export const agentByName = (name?: string): Agent | undefined =>
@@ -142,35 +162,47 @@ export const PIPELINES: Pipeline[] = [
     desc: 'Read-only reconnaissance: answer a question about the codebase with evidence.',
     phases: 1,
   },
-  { id: 'plan', name: 'Plan', desc: 'Produce a spec concrete enough to implement, and commit it.', phases: 3 },
+  { id: 'plan', name: 'Plan', desc: 'Produce a spec concrete enough to implement, and commit it.', phases: 2 },
   {
     id: 'plan-build',
     name: 'Plan → Build',
     desc: 'Spec first, then implement it, with each step committed separately.',
-    phases: 5,
+    phases: 4,
   },
   {
     id: 'plan-build-test',
     name: 'Plan → Build → Test',
-    desc: 'Spec, implement, and prove it against the tests the project already has.',
-    phases: 6,
+    desc: "The standard chain: spec first, implement, then prove it with the project's own tests.",
+    phases: 5,
   },
   {
     id: 'plan-build-review',
     name: 'Plan → Build → Review',
     desc: 'Implement against a spec, then have a second agent check it against the request.',
-    phases: 6,
+    phases: 4,
   },
   {
     id: 'refine-build-ship',
     name: 'Refine → Build → Ship',
-    desc: 'Sharpen the request first, implement it, then hold the result to the ship bar.',
+    desc: 'Sharpen the request first, implement it, then hold the result to the ship bar before it counts.',
     phases: 8,
+  },
+  {
+    id: 'refine-build-ship-pr',
+    name: 'Refine → Build → Ship → PR',
+    desc: 'Sharpen the request, implement it, hold it to the ship bar, then open the pull request.',
+    phases: 9,
   },
   {
     id: 'full-sdlc',
     name: 'Full SDLC',
-    desc: 'Refine, plan, build, test, polish, review, and document — committing at each boundary.',
+    desc: 'Refine, plan, build, test, polish, review, and document, committing at each meaningful boundary.',
+    phases: 11,
+  },
+  {
+    id: 'full-sdlc-pr',
+    name: 'Full SDLC → PR',
+    desc: 'The full chain, then open a pull request with a human-readable title and body.',
     phases: 12,
   },
 ];
@@ -179,7 +211,8 @@ export const GATE_DESCRIPTIONS: Record<string, string> = {
   artifacts_exist: 'Every path the envelope declares as an artifact exists on disk.',
   files_non_empty: 'Declared artifacts have content, not just a name.',
   json_parses: 'Declared .json artifacts actually parse.',
-  diff_matches_claims: 'Files claimed as changed exist, and nothing changed is left unclaimed.',
+  diff_matches_claims:
+    'Files claimed as changed appear in the git diff (including deletions), and nothing changed is left unclaimed.',
   verdict_consistent: 'A review cannot approve while it also lists blocking items.',
   command_passes: 'A configured command exits 0 against the phase result.',
 };
@@ -192,6 +225,7 @@ export const ENVELOPE_BLURBS: Record<EnvelopeKind, string> = {
   scout: 'Findings from reading the repo, one per entry',
   review: 'Approve or block, with per-requirement findings',
   document: 'Path of the doc written and the files it covers',
+  pr: 'Bounded title and a non-empty markdown pull-request body',
 };
 
 /* ── the run the waterfall demo replays ───────────────────────────────────
@@ -581,7 +615,7 @@ export const APP_SHOTS: AppShot[] = [
   {
     file: 'roster',
     name: 'Roster',
-    desc: 'Seven agents, every prompt and boundary editable in place.',
+    desc: 'Eight agents, every prompt and boundary editable in place.',
   },
   {
     file: 'run-timeline',
