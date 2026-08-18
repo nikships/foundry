@@ -11,7 +11,6 @@
  */
 
 import type { AgentDef, ContextBreakdown, UsageBreakdown } from '@shared/types.js';
-import type { Snapshot } from '../engine/boundary.js';
 import type { Tracer } from '../trace/tracer.js';
 import { EventFolder, toUsageBreakdown } from './events.js';
 import { evaluate } from './policy.js';
@@ -372,7 +371,11 @@ export class AgentSession {
   }
 
   /**
-   * Rewind the live session to `messageId` and continue from there.
+   * Rewind the live session to `messageId` and restore the named paths.
+   *
+   * `paths` is a plain list the caller already decided belong at this rewind
+   * (typically the phase-start dirty files). This layer does not import a
+   * Snapshot; path policy lives with `PhaseRewinder`.
    *
    * Returns null when rewind is impossible (no session yet, or no messageId)
    * or when the transport refuses — the caller then falls back to an
@@ -381,7 +384,7 @@ export class AgentSession {
    * The worktree half is the caller's: `boundary.restoreToPhaseStart` puts the
    * files back, because git knows what changed and a conversation does not.
    */
-  async rewind(input: { messageId: string; snapshot: Snapshot }): Promise<RewindOutcome | null> {
+  async rewind(input: { messageId: string; paths: string[] }): Promise<RewindOutcome | null> {
     if (!this.canRewind || !this.transport) return null;
     const messageId = input.messageId.trim();
     if (!messageId) return null;
@@ -389,10 +392,9 @@ export class AgentSession {
       const info = await this.transport.getRewindInfo(messageId);
       if (!info) return null;
       // Match on path only: a transport's own hash/size are what it accepts.
+      const wanted = new Set(input.paths.map(normaliseRewindPath));
       const filesToRestore = info.availableFiles.filter((file) =>
-        input.snapshot.files.some((snap) =>
-          sameWorktreePath(snap.path, file.filePath, this.deps.worktree),
-        ),
+        wanted.has(normaliseRewindPath(file.filePath)),
       );
       const outcome = await this.transport.rewind({
         messageId,
@@ -428,18 +430,6 @@ export class AgentSession {
   }
 }
 
-/**
- * Snapshot paths are worktree-relative; a transport may report the same file
- * as a cwd-relative or absolute path. Compare after stripping a worktree prefix.
- */
-function sameWorktreePath(snapshotPath: string, rewindPath: string, worktree: string): boolean {
-  return stripWorktreePrefix(snapshotPath, worktree) === stripWorktreePrefix(rewindPath, worktree);
-}
-
-function stripWorktreePrefix(path: string, worktree: string): string {
-  const normalised = path.replace(/\\/g, '/').replace(/^\.\//, '');
-  const root = worktree.replace(/\\/g, '/').replace(/\/$/, '');
-  if (normalised === root) return '';
-  if (normalised.startsWith(`${root}/`)) return normalised.slice(root.length + 1);
-  return normalised;
+function normaliseRewindPath(path: string): string {
+  return path.replace(/\\/g, '/').replace(/^\.\//, '');
 }

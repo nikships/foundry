@@ -10,7 +10,7 @@ Two session shapes live here. A **run** holds a session across many turns (`sess
 
 - `transport.ts` — the vendor-neutral seam. `AgentTransport` plus the neutral event, usage, permission, and rewind types. **Everything above this directory imports from here and nowhere else**, which is what lets the engine and the test fixtures stay ignorant of the runtime.
 - `pi-transport.ts` — the only implementation of that seam against a real pi `AgentSession`. Vendor types stop here.
-- `session.ts` — `AgentSession`, the lifecycle orchestrator the engine actually holds: lazy open, turn folding, permission verdicts, compaction, rewind, breakdown files. It takes its transport as an injected factory, so a test drives the exact same object as production.
+- `session.ts` — `AgentSession`, the lifecycle orchestrator the engine actually holds: lazy open, turn folding, permission verdicts, compaction, rewind, breakdown files. `rewind` takes a message id and a plain path list; it does not import `engine/boundary`. It takes its transport as an injected factory, so a test drives the exact same object as production.
 
 **The one-shot seam**
 
@@ -48,7 +48,7 @@ No separate setup: pi is a normal dependency and runs inside the Electron main p
 - **Bind extensions before the first prompt.** Unbound, the foundry extension's tools are registered but its `tool_call` policy is not live — every call would run unruled.
 - **Every tool call gets a verdict.** `tool_call` is the enforcement point and the policy always answers. Unknown tools **fail closed**: a pi upgrade that adds a write tool must not get a free pass. (Boundary enforcement itself is still the engine's post-call `git diff`; the policy is the first line, not the guarantee.)
 - **Swap the whole envelope tool, between turns only.** pi-ai caches a compiled validator against the schema object's identity, so mutating a live definition keeps the previous phase's validator. `useEnvelopeSchema` keys on the serialized schema and hands over a fresh `ToolDefinition`.
-- **Compaction and rewind happen in place.** Pi keeps the same session for both, rather than opening a successor session. There is no id to re-persist and no handle to swap. Rewind branches the session tree **before** the anchor message (the anchor is the phase's own prompt) and restores no files — pi keeps no snapshots, so the worktree half is `engine/boundary.ts:restoreToPhaseStart`.
+- **Compaction and rewind happen in place.** Pi keeps the same session for both, rather than opening a successor session. There is no id to re-persist and no handle to swap. Rewind branches the session tree **before** the anchor message (the anchor is the phase's own prompt) and restores no files — pi keeps no snapshots, so the worktree half is `engine/rewinder.ts` (`PhaseRewinder` → `boundary.restoreToPhaseStart`).
 - **Resolve the worktree cwd fail-closed.** Never fall back to `process.cwd()`; that would point a run's writes at the app checkout.
 - **Nothing on this path may need a native binding.** Pi ships prebuilt `.node` files (pi-tui) and a wasm image (an example), but those belong to its interactive terminal UI, and its one optional clipboard binding is loaded behind a try/catch. A binding loaded unguarded at import would fail inside `app.asar`, where a path is not a file, and only in a signed build. `tests/pi-packaging.test.ts` imports the package with `dlopen` blocked to catch that before a DMG does; a future unguarded binding needs an `asarUnpack` entry in `electron-builder.yml`, next to `better-sqlite3`.
 - **`PI_OFFLINE=1` is the offline switch.** It is read in `ModelRuntime`'s constructor, so a launch on a captive network builds the runtime off the files already on disk rather than waiting on a catalog fetch. `refreshCatalog` passes `allowNetwork: false` for the same reason.
@@ -66,6 +66,7 @@ npx vitest run tests/pi-transport.test.ts
 npx vitest run tests/pi-oneshot.test.ts
 npx vitest run tests/pi-packaging.test.ts
 npx vitest run tests/agent-session-transport.test.ts
+npx vitest run tests/rewinder.test.ts
 npx vitest run tests/executor.test.ts
 ```
 

@@ -104,14 +104,6 @@ function wireLog(agent: ScriptedAgent): string[] {
   return agent.wire;
 }
 
-/** Per-turn snapshots of watched files, so a test can see pre-retry restores. */
-function contentAtTurns(agent: ScriptedAgent): {
-  turn: number;
-  files: Record<string, string | null>;
-}[] {
-  return agent.contentAtTurns;
-}
-
 /** `"turn <index>"` per turn the scripted agent has begun. */
 function turnMarkers(agent: ScriptedAgent): string[] {
   return agent.turnMarkers;
@@ -2052,9 +2044,9 @@ describe('the context breakdown an agent leaves behind', () => {
 });
 
 /**
- * Rewind correction loops (Phase 3b part 2). After N failed corrections the
- * engine rewinds the agent's session and restores phase-start files before the
- * retry turn — without extending budgets.
+ * Rewind correction loops. After N failed corrections PhaseRewinder rewinds
+ * the session before the retry turn — without extending budgets. File restore
+ * itself is covered in tests/rewinder.test.ts.
  */
 describe('rewind correction policy', () => {
   const PHASE_START = 'phase-start content\n';
@@ -2117,73 +2109,6 @@ describe('rewind correction policy', () => {
     expect(rewound[0]!.payload.deletedCount).toBe(0);
     // No novel event type — architecture reuses correction.
     expect(events(outcome.runId).map((e) => e.type)).not.toContain('rewind');
-  });
-
-  it('restores phase-start file bytes before the retry turn starts', async () => {
-    const scripted = scriptedAgent(
-      ['prose', 'still prose', buildEnvelope()],
-      ['watched.txt', 'watched.txt', null],
-      [],
-      { rewindFiles: { 'watched.txt': PHASE_START } },
-    );
-    const outcome = await run({
-      scripted,
-      envelopeRetries: 2,
-      pipeline: seedThenBuild(),
-    });
-    expect(outcome.status).toBe('accepted');
-
-    const snapshots = contentAtTurns(scripted);
-    // Turns 0 and 1 are the failed attempts; turn 2 is the post-rewind retry.
-    expect(snapshots.map((s) => s.turn)).toEqual([0, 1, 2]);
-    // After the agent corrupted the file, rewind put phase-start bytes back
-    // before the retry turn was composed.
-    expect(snapshots[2]!.files['watched.txt']).toBe(PHASE_START);
-    // And the intermediate attempts really did dirty it.
-    expect(snapshots[0]!.files['watched.txt']).toBe(PHASE_START);
-    expect(snapshots[1]!.files['watched.txt']).toBe('written by the scripted agent\n');
-  });
-
-  it('restores a clean-tree tracked deletion the transport rewind cannot see', async () => {
-    const kept = 'keep me\n';
-    writeFileSync(join(h.repo, 'old.txt'), kept);
-    sh(h.repo, ['git', 'add', '-A']);
-    sh(h.repo, ['git', 'commit', '-qm', 'add old']);
-    const scripted = scriptedAgent(
-      ['prose', 'still prose', buildEnvelope({ changed_files: [] })],
-      ['new.txt', 'new.txt', null],
-      [],
-      {
-        rewindFiles: { 'old.txt': kept },
-        rewindCreatedFiles: ['new.txt'],
-        deleteEffects: ['old.txt', 'old.txt', null],
-      },
-    );
-    const outcome = await run({
-      scripted,
-      envelopeRetries: 2,
-      pipeline: pipe(
-        [
-          agentPhase('build', {
-            description: 'Delete a committed file, fail twice, then succeed after rewind.',
-          }),
-        ],
-        {
-          description: 'clean-tree deletion plus rewind',
-          acceptance: { kind: 'envelope_status', phase: 'build' },
-        },
-      ),
-    });
-    expect(outcome.status).toBe('accepted');
-    const snapshots = contentAtTurns(scripted);
-    expect(snapshots[2]!.files['old.txt']).toBe(kept);
-    const worktree = h.tracer.run(outcome.runId)!.worktreePath!;
-    expect(existsSync(join(worktree, 'old.txt'))).toBe(true);
-    expect(existsSync(join(worktree, 'new.txt'))).toBe(false);
-    const rewound = events(outcome.runId).find(
-      (e) => e.type === 'correction' && e.payload.rewind === true,
-    );
-    expect(rewound?.payload.worktreeRestoredCount).toBe(1);
   });
 
   it('falls back to append-style correction when rewind fails', async () => {
