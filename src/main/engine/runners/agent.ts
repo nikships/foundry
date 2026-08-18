@@ -378,8 +378,8 @@ export class AgentPhaseRunner implements PhaseRunner {
    * the primary path — but "the transport shaped it" is a claim, not a
    * verdict, so it is validated against the same zod schema the text path uses
    * and a rejection falls back to reading the text, on the same retry budget.
-   * A reply droid could not shape at all arrives with nothing here, which is
-   * the same fallback by a different route.
+   * A reply the transport could not shape at all arrives with nothing here,
+   * which is the same fallback by a different route.
    */
   private envelopeFrom(
     outcome: { text: string; structuredOutput: Record<string, unknown> | null },

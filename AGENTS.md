@@ -4,7 +4,7 @@
 
 Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that turns a prompt into reviewed code in an isolated run. You describe the change, pick a pipeline, and a team of specialized agents executes it. Pipelines are declarative recipes of phases — not scripts — and every phase leaves evidence.
 
-**Stack:** Electron + Vite (`electron-vite`), React 19, TypeScript 6 (strict), `better-sqlite3` + WAL, Zod 4, `@earendil-works/pi-coding-agent` 0.84.2 (exact-pinned), `@factory/droid-sdk` 0.7.0 (exact-pinned), `lucide-react`.
+**Stack:** Electron + Vite (`electron-vite`), React 19, TypeScript 6 (strict), `better-sqlite3` + WAL, Zod 4, `@earendil-works/pi-coding-agent` 0.84.2 (exact-pinned), `lucide-react`.
 
 **Key concepts:**
 
@@ -21,8 +21,7 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 │   ├── engine/                ← sequencing, retries, boundaries, gates, worktrees
 │   ├── pi/                    ← every agent call, in-process: run sessions and one-shots (no fallback)
 │   ├── bridge/                ← vendored CLIProxyAPI: provider OAuth → local endpoint pi calls
-│   ├── droid/ + sdk/          ← model catalog, daemon policy, SDK adapter (no agent calls left)
-│   ├── cli/                   ← install descriptors for CLIs the app does not run
+│   ├── readiness/             ← agent-readiness evaluation and its marker
 │   ├── smith/                 ← Smith's socket, validation, approval queue
 │   ├── trace/                 ← Tracer: sole SQLite writer (WAL)
 │   ├── store/                 ← JSON config (JsonStore, builtins, migrations)
@@ -55,7 +54,7 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 
 ## Setup Commands
 
-**Requirements:** macOS 26+, Apple Silicon, `git`, `droid` CLI installed, a Factory API key in Settings (or `FACTORY_API_KEY` / `droid login`), Node 22.
+**Requirements:** macOS 26+, Apple Silicon, `git`, Node 22, and a model provider signed in through Settings → Providers (the Bridge's OAuth, or a direct API key).
 
 ```bash
 # Clone and install (from repo root)
@@ -125,7 +124,7 @@ Troubleshooting section covers the usual causes; verify with
 
 **Preload must stay CJS** (`out/preload/bridge.cjs`) because sandboxed preloads cannot be ESM.
 
-**Agent-runtime import boundaries** (ESLint `no-restricted-imports`, one per seam): only `src/main/pi/**` may import `@earendil-works/pi-*`, and only `src/main/droid/sdk/**` may import `@factory/droid-sdk`. Everything above them talks to `pi/transport.ts`'s `AgentTransport` and to `droid/turn.ts` + protocol notification types.
+**Agent-runtime import boundary** (ESLint `no-restricted-imports`): only `src/main/pi/**` may import `@earendil-works/pi-*`. Everything above it talks to `pi/transport.ts`'s `AgentTransport`, so the runtime stays replaceable without touching every layer.
 
 ## Testing Instructions
 
@@ -167,7 +166,7 @@ so local and CI enforce the same floor. An HTML report lands in `coverage/` (git
 - Tests use **real git temp repositories** and `tests/scripted-transport.ts` (an in-memory `AgentTransport` that performs real disk side effects in the worktree and answers asks through the real policy). Never use a network or model; do not mock git. Follow the executor pattern in `tests/executor.test.ts` for new engine behavior.
 - **Electron UI smoke** (`tests/e2e/*.spec.ts`, `@playwright/test` + `_electron.launch()`): isolated `--user-data-dir`, seeded stores + WAL trace, no model or network. Onboarding walks Welcome → Ready; Inspector opens a seeded run and asserts the phase transcript. Failures write `test-results/` + `playwright-report/` (screenshot, trace, video). Interactive agent driving of the same app is the `foundry-ui` skill (CDP + agent-browser); do not add a second harness. The `e2e` CI job on `macos-26` is advisory — not a required check, not part of `npm run check`.
 - `@lobehub/icons` is inlined via `server.deps.inline` so bare directory specifiers resolve under Vite.
-- `tests/scripted-transport.ts` owns the agent-transport fixture and `tests/scripted-daemon.ts` the daemon one. `tests/doctor.test.ts` owns the provider-doctor fixtures, injected as `ProviderDoctorDeps` so no Bridge, port, or credential is involved.
+- `tests/scripted-transport.ts` owns the agent-transport fixture. `tests/doctor.test.ts` owns the provider-doctor fixtures, injected as `ProviderDoctorDeps` so no Bridge, port, or credential is involved.
 - New engine phase/gate behavior needs a dedicated executor test with a real worktree snapshot.
 
 **What to run before submitting:** `npm run check` (see below) — it already runs the full Vitest suite.
@@ -175,7 +174,7 @@ so local and CI enforce the same floor. An HTML report lands in `coverage/` (git
 ## Code Style
 
 - **TypeScript strict** (`noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`). `tsc --noEmit` must pass.
-- **ESLint (flat config)** — `eslint.config.js` with `typescript-eslint`, `eslint-plugin-react`, `eslint-plugin-react-hooks`. Rules: `@typescript-eslint/no-explicit-any: error`, `no-console: warn` (allow `warn`/`error` only), `no-restricted-imports` for `@earendil-works/pi-*` and `@factory/droid-sdk`. Never use `eslint-disable` comments — fix the real issue.
+- **ESLint (flat config)** — `eslint.config.js` with `typescript-eslint`, `eslint-plugin-react`, `eslint-plugin-react-hooks`. Rules: `@typescript-eslint/no-explicit-any: error`, `no-console: warn` (allow `warn`/`error` only), `no-restricted-imports` for `@earendil-works/pi-*`. Never use `eslint-disable` comments — fix the real issue.
 - **Prettier** — `prettier --check .` must pass. Run `npm run format` to fix.
 - **Knip** — `npm run knip` flags dead code / unused exports. Intentional unused exports need an explicit comment or pr-template note so a bot doesn't remove them.
 - **No `any`** unless intentionally justified; use `type` imports where possible (`consistent-type-imports`).

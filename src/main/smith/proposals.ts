@@ -1,5 +1,5 @@
 /**
- * The proposal queue. A `foundry-cli create|edit` blocks the calling droid
+ * The proposal queue. A `foundry-cli create|edit` blocks the calling agent
  * until a human decides, so exactly one proposal may be pending at a time:
  * concurrent writes fail fast rather than stacking a queue the user cannot see.
  *
@@ -25,7 +25,7 @@ export interface ProposalInput {
 
 /**
  * The outcome the CLI receives. `approve` carries the saved entity so the CLI
- * can print it; `reject` carries the human's note so droid can revise.
+ * can print it; `reject` carries the human's note so the agent can revise.
  */
 export type ProposalOutcome =
   { approved: true; entity: unknown } | { approved: false; note?: string };
@@ -62,7 +62,7 @@ export class ProposalQueue {
   /**
    * Stages a proposal and blocks until it is answered. Rejects immediately with
    * `proposal_pending` when one is already outstanding — the CLI turns that into
-   * a JSON error droid can wait on and retry.
+   * a JSON error the agent can wait on and retry.
    */
   propose(input: ProposalInput): Promise<ProposalOutcome> {
     if (this.pending) return Promise.reject(new Error('proposal_pending'));

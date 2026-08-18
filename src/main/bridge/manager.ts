@@ -8,15 +8,14 @@
  * Foundry's support dir, and reports ready only after the port accepts a
  * connection.
  *
- * Conventions are deliberately the daemon's (`droid/sdk/daemon.ts`): concurrent
- * `ensure()` calls share one in-flight attempt, spawn and health are injected
- * seams so a test drives the real object, and failure returns
+ * Concurrent `ensure()` calls share one in-flight attempt, spawn and health are
+ * injected seams so a test drives the real object, and failure returns
  * `{ok:false, reason}` rather than throwing — a Bridge that will not start must
  * degrade the model list, not crash the app.
  *
- * Ownership differs from the daemon in one way worth stating: the Bridge is
- * app-scoped while traces are per-project and per-run. Its `processes` row is
- * therefore written with a null run id — see `BRIDGE_PROCESS_NAME` below.
+ * Ownership is worth stating: the Bridge is app-scoped while traces are
+ * per-project and per-run. Its `processes` row is therefore written with a null
+ * run id — see `BRIDGE_PROCESS_NAME` below.
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -28,7 +27,7 @@ import { isAlive, killTree } from '../system/procs.js';
 import { renderBridgeConfig, BRIDGE_HOST } from './config.js';
 import { bridgeAuthDir, bridgeBinaryPath, bridgeConfigPath, bridgeStateDir } from './paths.js';
 
-/** Bridge port band. Distinct from the daemon's 37600–37699. */
+/** The loopback port band this app claims for the Bridge. */
 export const BRIDGE_PORT_MIN = 37_700;
 export const BRIDGE_PORT_MAX = 37_799;
 export const DEFAULT_BRIDGE_PORT = 37_717;
