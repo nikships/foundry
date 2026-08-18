@@ -1,22 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import type {
   AppSettings,
-  CliDescriptor,
-  CliVendor,
   DoctorCheck,
   ModelInfo,
   OrphanWorktree,
   ProjectDef,
   ReadinessInspectResult,
   UpdateStatus,
-  UserMcpServer,
 } from '@shared/types.js';
 import { TERMINAL_APPS } from '@shared/types.js';
+import type { BridgeState, StoredProviderKey } from '@shared/ipc-contract.js';
 import { api, plain } from '../api.js';
 import { isKnownPrWriter, prWriterOptions } from '../pr-draft.js';
 import { useApp } from '../stores/app.js';
 import ModelPicker from '../components/ModelPicker.js';
-import { CliIcon } from '../components/BrandIcon.js';
+import { ProviderIcon } from '../components/BrandIcon.js';
 import DoctorList from '../components/DoctorList.js';
 import ProjectCommands from '../components/ProjectCommands.js';
 import ProjectSetup from '../components/ProjectSetup.js';
@@ -30,13 +28,12 @@ import styles from './SettingsScreen.module.css';
 
 // Envelopes is deliberately absent: it is an authoring surface, not a
 // preference, and lives in Design alongside the editors that reference it.
-type Pane = 'general' | 'clis' | 'defaults' | 'mcp' | 'project' | 'maintenance' | 'about';
+type Pane = 'general' | 'providers' | 'defaults' | 'project' | 'maintenance' | 'about';
 
 const PANES: { id: Pane; label: string }[] = [
   { id: 'general', label: 'General' },
-  { id: 'clis', label: 'Agent CLI' },
+  { id: 'providers', label: 'Providers' },
   { id: 'defaults', label: 'Agent defaults' },
-  { id: 'mcp', label: 'MCP Servers' },
   { id: 'project', label: 'Project' },
   { id: 'maintenance', label: 'Maintenance' },
   { id: 'about', label: 'About' },
@@ -52,7 +49,30 @@ const COMPACTION_PERCENT = { min: 50, max: 95 } as const;
 
 const REWIND_BAND = { min: 0, max: 20 } as const;
 
-const DAEMON_PORT_BAND = { min: 37_600, max: 37_699 } as const;
+/**
+ * Mirrors `BRIDGE_PORT_MIN`/`MAX` in `src/main/bridge/manager.ts`. Restated
+ * rather than imported: the renderer must not pull a main-process module in for
+ * two numbers, and the settings schema clamps to the same band on write.
+ */
+const BRIDGE_PORT_BAND = { min: 37_700, max: 37_799 } as const;
+
+/**
+ * Providers offered a direct-key row, keyed by pi's own provider id — that id is
+ * what `bridge.setApiKey` passes to pi's credential store, so a wrong spelling
+ * would store a key nothing reads.
+ *
+ * Deliberately a short list of the ones an operator is likely to hold a key
+ * for rather than pi's full provider table: a key row for every provider pi
+ * knows would bury the four that matter. A provider outside this list that
+ * already has a stored key still gets a row, so nothing is unreachable.
+ */
+const KEY_PROVIDERS: { id: string; label: string; icon: string }[] = [
+  { id: 'anthropic', label: 'Anthropic', icon: 'anthropic' },
+  { id: 'openai', label: 'OpenAI', icon: 'openai' },
+  { id: 'google', label: 'Google AI Studio', icon: 'google' },
+  { id: 'openrouter', label: 'OpenRouter', icon: 'openrouter' },
+  { id: 'xai', label: 'xAI', icon: 'xai' },
+];
 
 const NOTIFY_LABELS: Record<'accepted' | 'rejected' | 'failed' | 'needsInput', string> = {
   accepted: 'A run was accepted',
@@ -146,7 +166,6 @@ export default function SettingsScreen({
     useApp();
   const [pane, setPane] = useState<Pane>((initialPane as Pane) ?? 'general');
   const [models, setModels] = useState<ModelInfo[]>([]);
-  const [clis, setClis] = useState<CliDescriptor[]>([]);
   const [checks, setChecks] = useState<DoctorCheck[]>([]);
   const [projectChecks, setProjectChecks] = useState<DoctorCheck[]>([]);
   const [orphans, setOrphans] = useState<OrphanWorktree[]>([]);
@@ -158,39 +177,49 @@ export default function SettingsScreen({
   const [maintenanceNote, setMaintenanceNote] = useState('');
   const [nameDraft, setNameDraft] = useState('');
   const [nameHint, setNameHint] = useState('');
-  const [apiKeyDraft, setApiKeyDraft] = useState('');
-  const [apiKeyHint, setApiKeyHint] = useState('');
   const [maintenanceBusy, setMaintenanceBusy] = useState(false);
+  const [bridge, setBridge] = useState<BridgeState | null>(null);
+  const [storedKeys, setStoredKeys] = useState<StoredProviderKey[]>([]);
+  const [providerBusy, setProviderBusy] = useState<string | null>(null);
+  const [providerNotes, setProviderNotes] = useState<Record<string, string>>({});
+  const [keyDrafts, setKeyDrafts] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setPane((initialPane as Pane) ?? 'general');
   }, [initialPane]);
 
   useEffect(() => {
-    void Promise.all([
-      api.catalog.clis(),
-      api.doctor.run(),
-      api.app.version(),
-      api.updater.getStatus(),
-    ]).then(([l, c, v, u]) => {
-      setClis(l);
-      setChecks(c);
-      setVersion(v);
-      setUpdateStatus(u);
-    });
+    void Promise.all([api.doctor.run(), api.app.version(), api.updater.getStatus()]).then(
+      ([c, v, u]) => {
+        setChecks(c);
+        setVersion(v);
+        setUpdateStatus(u);
+      },
+    );
     return api.on('updater-status', (data) => {
       if (data) setUpdateStatus(data as UpdateStatus);
     });
   }, []);
 
-  // The defaults pane offers the models of whichever CLI is the default, so
-  // switching the default CLI has to reload the list rather than leave a stale
-  // one that names models this CLI has never heard of.
-  const defaultCli = settings?.defaultCli;
   useEffect(() => {
-    if (!defaultCli) return;
-    void api.catalog.models(defaultCli).then(setModels);
-  }, [defaultCli]);
+    void api.catalog.agentModels().then(setModels);
+  }, []);
+
+  /**
+   * A login finishes in a browser long after `connect` returned, so the pane
+   * re-reads its whole world on `bridge-changed` rather than trusting the
+   * action's own result: the account, the stored keys, and the model catalog
+   * all change together.
+   */
+  useEffect(() => {
+    const reload = (): void => {
+      void api.bridge.state().then(setBridge);
+      void api.bridge.storedKeys().then(setStoredKeys);
+      void api.catalog.agentModels().then(setModels);
+    };
+    reload();
+    return api.on('bridge-changed', reload);
+  }, []);
 
   const projectRef = useRef<ProjectDef | null>(null);
   projectRef.current = project;
@@ -241,11 +270,6 @@ export default function SettingsScreen({
     setNameDraft(settings?.engineerName ?? '');
     setNameHint('');
   }, [settings?.engineerName]);
-
-  useEffect(() => {
-    setApiKeyDraft(settings?.factoryApiKey ?? '');
-    setApiKeyHint('');
-  }, [settings?.factoryApiKey]);
 
   // Drives the error banner `patchSettings` returns. Kept locally so a
   // non-range invalid value (e.g. "abc" parsed as null) that never reaches
@@ -325,15 +349,7 @@ export default function SettingsScreen({
     });
   };
   const refreshModels = async (): Promise<void> => {
-    if (!settings) return;
-    setModels(await api.catalog.models(settings.defaultCli, true));
-  };
-  const setCli = async (
-    vendor: CliVendor,
-    patch: { path?: string; extraArgs?: string[] },
-  ): Promise<void> => {
-    if (!settings) return;
-    await set({ clis: { ...settings.clis, [vendor]: { ...settings.clis[vendor], ...patch } } });
+    setModels(await api.catalog.agentModels());
   };
   const loadOrphans = async (): Promise<void> =>
     setOrphans(await api.maintenance.orphanWorktrees());
@@ -371,25 +387,75 @@ export default function SettingsScreen({
     await set({ engineerName: next });
   };
 
-  const commitApiKey = async (): Promise<void> => {
-    const next = apiKeyDraft.trim();
-    if (next === (settings?.factoryApiKey ?? '').trim()) {
-      setApiKeyHint('');
-      setApiKeyDraft(next);
-      return;
+  /**
+   * Runs one Bridge or credential action with the pane's own busy/note state.
+   *
+   * Every provider action reports through the same two surfaces so the operator
+   * never has to guess which card a message belongs to, and the doctor list is
+   * re-run because connecting a provider is exactly what makes its blocking
+   * "usable models" check pass.
+   */
+  const runProviderAction = async (
+    key: string,
+    action: () => Promise<{ ok: boolean; detail: string }>,
+  ): Promise<void> => {
+    if (providerBusy) return;
+    setProviderBusy(key);
+    try {
+      const result = await action();
+      setProviderNotes((notes) => ({ ...notes, [key]: result.detail }));
+      if (!result.ok) setErrors([result.detail]);
+      else setErrors([]);
+    } catch (e) {
+      setProviderNotes((notes) => ({ ...notes, [key]: (e as Error).message }));
+      setErrors([(e as Error).message]);
+    } finally {
+      setProviderBusy(null);
+      setBridge(await api.bridge.state());
+      setStoredKeys(await api.bridge.storedKeys());
+      setModels(await api.catalog.agentModels());
+      void api.doctor.run().then(setChecks);
     }
-    if (next.length > 2048) {
-      setApiKeyHint('Keep it under 2048 characters.');
-      return;
-    }
-    setApiKeyHint(
-      next
-        ? 'Saved. The next run will use this key.'
-        : 'Cleared. Foundry will use FACTORY_API_KEY or a droid login session.',
-    );
-    await set({ factoryApiKey: next });
-    void api.doctor.run().then(setChecks);
   };
+
+  const cancelProviderLogin = async (providerId: string): Promise<void> => {
+    await runProviderAction(`provider:${providerId}`, async () => {
+      const cancelled = await api.bridge.cancelLogin(providerId);
+      return {
+        ok: cancelled,
+        detail: cancelled ? 'sign-in cancelled' : 'no sign-in was in flight',
+      };
+    });
+  };
+
+  const disconnectProvider = useConfirmAction<[string, string]>(
+    (_providerId, label) =>
+      `Disconnect ${label}? Its accounts are removed from this Mac and its models leave every picker.`,
+    async (providerId): Promise<void> => {
+      await runProviderAction(`provider:${providerId}`, () => api.bridge.disconnect(providerId));
+    },
+  );
+
+  const saveProviderKey = async (providerId: string): Promise<void> => {
+    const key = (keyDrafts[providerId] ?? '').trim();
+    if (!key) return;
+    await runProviderAction(`key:${providerId}`, async () => {
+      const result = await api.bridge.setApiKey(providerId, key);
+      // Cleared on success only: a rejected key stays in the field so the
+      // operator can fix a paste rather than retype the whole secret.
+      if (result.ok) setKeyDrafts((drafts) => ({ ...drafts, [providerId]: '' }));
+      return result;
+    });
+  };
+
+  const clearProviderKey = useConfirmAction<[string, string]>(
+    (_providerId, label) =>
+      `Remove the stored ${label} key? Models that need it leave every picker.`,
+    async (providerId): Promise<void> => {
+      setKeyDrafts((drafts) => ({ ...drafts, [providerId]: '' }));
+      await runProviderAction(`key:${providerId}`, () => api.bridge.clearApiKey(providerId));
+    },
+  );
 
   const applyRetentionAction = useConfirmAction(
     () => {
@@ -444,6 +510,21 @@ export default function SettingsScreen({
   }, [pane]);
 
   if (!settings) return <div className={styles.settingsScreen} />;
+
+  // The curated rows, plus any provider pi already holds a credential for, so a
+  // key configured outside this pane is still visible and clearable. Bridge
+  // providers are excluded: their credential is an account, not a key, and the
+  // Subscriptions section above already owns it.
+  const keyRows = [
+    ...KEY_PROVIDERS,
+    ...storedKeys
+      .filter(
+        (key) =>
+          !KEY_PROVIDERS.some((known) => known.id === key.providerId) &&
+          !key.providerId.startsWith('bridge-'),
+      )
+      .map((key) => ({ id: key.providerId, label: key.providerId, icon: key.providerId })),
+  ];
 
   const updateTone =
     updateStatus.stage === 'error'
@@ -676,153 +757,258 @@ export default function SettingsScreen({
                 </Section>
               </>
             )}
-            {pane === 'clis' && (
+            {pane === 'providers' && (
               <>
-                <Section label="Agent CLI" note="Drives agent phases.">
-                  <p className={styles.settingsLead}>
-                    Foundry drives Factory Droid for agent phases. A path is filled in from your
-                    PATH at first launch; correct it here if you keep the binary somewhere unusual.
-                  </p>
-                </Section>
                 <Section
-                  label="Authentication"
-                  note="The droid daemon will not start without a Factory credential."
+                  label="Providers"
+                  note="Where the models an agent phase runs on come from."
                 >
-                  <div className={styles.settingsFields}>
-                    <Field
-                      label="Factory API key"
-                      htmlFor="factory-api-key-input"
-                      hint="Used to authenticate the local droid daemon. Takes precedence over FACTORY_API_KEY and a droid login session. Stored only on this Mac."
+                  <p className={styles.settingsLead}>
+                    Foundry runs every agent phase in-process on pi, and a model reaches the pickers
+                    only once pi can reach its provider. Connect a subscription through the Bridge,
+                    or store a direct API key. Keys live in pi&rsquo;s own credential store on this
+                    Mac, never in Foundry&rsquo;s settings file.
+                  </p>
+                  <div className={styles.settingsSubrow}>
+                    <span
+                      className={`${styles.settingsPill} ${
+                        bridge ? (bridge.running ? styles.ok : styles.bad) : styles.plain
+                      }`}
+                      data-testid="bridge-status"
                     >
-                      <TextInput
-                        id="factory-api-key-input"
-                        aria-label="Factory API key"
-                        type="password"
-                        autoComplete="off"
-                        spellCheck={false}
-                        mono
-                        value={apiKeyDraft}
-                        placeholder="fk-…"
-                        onChange={(e) => {
-                          setApiKeyDraft(e.target.value);
-                          setApiKeyHint('');
-                        }}
-                        onBlur={() => void commitApiKey()}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            (e.target as HTMLInputElement).blur();
-                          }
-                        }}
-                      />
-                      {apiKeyHint && (
-                        <span
-                          className={
-                            apiKeyHint === 'Keep it under 2048 characters.'
-                              ? styles.settingsWarn
-                              : styles.hint
-                          }
-                        >
-                          {apiKeyHint}
-                        </span>
-                      )}
-                    </Field>
-                  </div>
-                  <div className={styles.settingsBtnrow}>
-                    <Button
-                      size="sm"
-                      onClick={() =>
-                        void api.app.openExternal('https://app.factory.ai/settings/api-keys')
-                      }
-                    >
-                      Get a key
-                    </Button>
-                    {!!settings.factoryApiKey && (
+                      {bridge
+                        ? bridge.running
+                          ? `serving on ${bridge.port}`
+                          : 'not running'
+                        : 'checking…'}
+                    </span>
+                    <div className={styles.settingsBtnrow}>
                       <Button
                         size="sm"
-                        onClick={() => {
-                          setApiKeyDraft('');
-                          void (async () => {
-                            setApiKeyHint(
-                              'Cleared. Foundry will use FACTORY_API_KEY or a droid login session.',
-                            );
-                            await set({ factoryApiKey: '' });
-                            void api.doctor.run().then(setChecks);
-                          })();
-                        }}
+                        disabled={!!providerBusy}
+                        onClick={() => void runProviderAction('bridge', () => api.bridge.ensure())}
                       >
-                        Clear key
+                        {providerBusy === 'bridge' ? 'Starting…' : 'Start the Bridge'}
                       </Button>
+                    </div>
+                  </div>
+                  {bridge && !bridge.running && bridge.detail && (
+                    <p className={styles.settingsWarn}>{bridge.detail}</p>
+                  )}
+                  {providerNotes.bridge && <p className={styles.hint}>{providerNotes.bridge}</p>}
+                </Section>
+
+                <Section
+                  label="Subscriptions"
+                  note="Sign in with a plan you already pay for. The Bridge holds the account; Foundry never sees a token."
+                >
+                  <div className={styles.providerList}>
+                    {(bridge?.providers ?? []).map((provider) => {
+                      const busyKey = `provider:${provider.id}`;
+                      const expired = provider.accounts.some((account) => account.expired);
+                      const allDisabled =
+                        provider.accounts.length > 0 &&
+                        provider.accounts.every((account) => account.disabled);
+                      const status = provider.loginInFlight
+                        ? 'connecting'
+                        : expired
+                          ? 'expired'
+                          : allDisabled
+                            ? 'disabled'
+                            : provider.authenticated
+                              ? 'connected'
+                              : 'not connected';
+                      const tone = provider.loginInFlight
+                        ? styles.info
+                        : expired || allDisabled
+                          ? styles.bad
+                          : provider.authenticated
+                            ? styles.ok
+                            : styles.plain;
+                      return (
+                        <div
+                          key={provider.id}
+                          className={styles.providerCard}
+                          data-testid={`provider-card-${provider.id}`}
+                        >
+                          <div className={styles.providerHead}>
+                            <ProviderIcon provider={provider.icon} size={18} />
+                            <h3>{provider.label}</h3>
+                            <span className={`${styles.settingsPill} ${tone}`}>{status}</span>
+                          </div>
+                          {provider.accounts.length > 0 ? (
+                            <ul className={styles.providerAccounts}>
+                              {provider.accounts.map((account) => (
+                                <li key={account.id}>
+                                  <span className="mono">{account.label}</span>
+                                  <span className="faint">
+                                    {account.expired
+                                      ? 'the sign-in expired'
+                                      : account.expiresAt
+                                        ? `valid until ${account.expiresAt}`
+                                        : 'no expiry reported'}
+                                    {account.disabled ? ' · disabled' : ''}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className={styles.hint}>
+                              Connecting opens {provider.label} in your browser. The account lands
+                              here on its own once you finish signing in.
+                            </p>
+                          )}
+                          <div className={styles.settingsBtnrow}>
+                            {provider.loginInFlight ? (
+                              <Button
+                                size="sm"
+                                onClick={() => void cancelProviderLogin(provider.id)}
+                              >
+                                Cancel sign-in
+                              </Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant={provider.authenticated ? undefined : 'primary'}
+                                disabled={!!providerBusy || !bridge?.running}
+                                title={
+                                  bridge?.running
+                                    ? undefined
+                                    : 'Start the Bridge before signing in.'
+                                }
+                                onClick={() =>
+                                  void runProviderAction(busyKey, () =>
+                                    api.bridge.connect(provider.id),
+                                  )
+                                }
+                              >
+                                {providerBusy === busyKey
+                                  ? 'Opening…'
+                                  : expired
+                                    ? 'Reconnect'
+                                    : provider.authenticated
+                                      ? 'Add another account'
+                                      : 'Connect'}
+                              </Button>
+                            )}
+                            {provider.accounts.length > 0 && (
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                disabled={!!providerBusy}
+                                onClick={() => void disconnectProvider(provider.id, provider.label)}
+                              >
+                                Disconnect
+                              </Button>
+                            )}
+                          </div>
+                          {providerNotes[busyKey] && (
+                            <p className={styles.hint}>{providerNotes[busyKey]}</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {!bridge?.providers.length && (
+                      <p className="faint">
+                        No subscription providers are available in this build. Direct API keys still
+                        work.
+                      </p>
                     )}
                   </div>
                 </Section>
-                {clis.map((cli) => {
-                  const config = settings.clis[cli.id];
-                  const found = checks.find((c) => c.id === `cli:${cli.id}`);
-                  return (
-                    <Section
-                      key={cli.id}
-                      label={cli.label}
-                      note={
-                        found
-                          ? found.ok
-                            ? 'On PATH, ready to drive.'
-                            : 'Not where Foundry expected it.'
-                          : 'Checking…'
-                      }
-                    >
-                      <div className={styles.settingsCliHead}>
-                        <CliIcon vendor={cli.id} size={18} />
-                        <h3>{cli.label}</h3>
-                        {found && (
-                          <span
-                            className={`${styles.settingsPill} ${found.ok ? styles.ok : styles.bad}`}
-                          >
-                            {found.ok ? 'found' : 'not found'}
-                          </span>
-                        )}
-                      </div>
-                      <div className={styles.settingsFields}>
-                        <Field label="Executable">
-                          <TextInput
-                            mono
-                            value={config.path}
-                            onChange={(e) => void setCli(cli.id, { path: e.target.value })}
-                          />
-                          {found && <span className={styles.hint}>{found.detail}</span>}
-                        </Field>
-                        <Field
-                          label="Extra arguments"
-                          hint="For an option this release does not model yet. Passed through verbatim."
+
+                <Section
+                  label="API keys"
+                  note="For a provider you hold a key for rather than a subscription."
+                >
+                  <div className={styles.providerList}>
+                    {keyRows.map((row) => {
+                      const busyKey = `key:${row.id}`;
+                      const stored = storedKeys.some((key) => key.providerId === row.id);
+                      const draft = keyDrafts[row.id] ?? '';
+                      return (
+                        <div
+                          key={row.id}
+                          className={styles.providerCard}
+                          data-testid={`provider-key-${row.id}`}
                         >
-                          <TextInput
-                            mono
-                            value={config.extraArgs.join(' ')}
-                            placeholder="appended to every turn"
-                            onChange={(e) =>
-                              void setCli(cli.id, {
-                                extraArgs: e.target.value.split(/\s+/).filter(Boolean),
-                              })
+                          <div className={styles.providerHead}>
+                            <ProviderIcon provider={row.icon} size={18} />
+                            <h3>{row.label}</h3>
+                            <span
+                              className={`${styles.settingsPill} ${stored ? styles.ok : styles.plain}`}
+                            >
+                              {stored ? 'key set' : 'no key'}
+                            </span>
+                          </div>
+                          <Field
+                            label="API key"
+                            htmlFor={`provider-key-input-${row.id}`}
+                            hint={
+                              stored
+                                ? 'A key is stored. Typing a new one replaces it; the stored value is never shown.'
+                                : 'Stored by pi on this Mac. Foundry keeps no copy.'
                             }
-                          />
-                        </Field>
-                      </div>
-                      {cli.caveats.length > 0 && (
-                        <ul className={styles.caveats}>
-                          {cli.caveats.map((caveat) => (
-                            <li key={caveat}>{caveat}</li>
-                          ))}
-                        </ul>
-                      )}
-                      <div>
-                        <Button size="sm" onClick={() => void api.app.openExternal(cli.docsUrl)}>
-                          Install docs
-                        </Button>
-                      </div>
-                    </Section>
-                  );
-                })}
-                <Section label="Checks" note="Re-run after installing or moving a CLI.">
+                          >
+                            <TextInput
+                              id={`provider-key-input-${row.id}`}
+                              aria-label={`${row.label} API key`}
+                              type="password"
+                              autoComplete="off"
+                              spellCheck={false}
+                              mono
+                              value={draft}
+                              placeholder={stored ? '••••••••' : 'paste a key'}
+                              onChange={(e) =>
+                                setKeyDrafts((drafts) => ({ ...drafts, [row.id]: e.target.value }))
+                              }
+                            />
+                          </Field>
+                          <div className={styles.settingsBtnrow}>
+                            <Button
+                              size="sm"
+                              variant="primary"
+                              disabled={!!providerBusy || !draft.trim()}
+                              onClick={() => void saveProviderKey(row.id)}
+                            >
+                              {providerBusy === busyKey ? 'Saving…' : stored ? 'Replace' : 'Save'}
+                            </Button>
+                            {stored && (
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                disabled={!!providerBusy}
+                                onClick={() => void clearProviderKey(row.id, row.label)}
+                              >
+                                Clear
+                              </Button>
+                            )}
+                          </div>
+                          {providerNotes[busyKey] && (
+                            <p className={styles.hint}>{providerNotes[busyKey]}</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </Section>
+
+                <Section label="Models" note="What every picker in the app will offer.">
+                  <div className={styles.settingsSubrow}>
+                    <p className={styles.settingsStatic} data-testid="providers-model-count">
+                      {models.length
+                        ? `${models.length} model${models.length === 1 ? '' : 's'} reachable`
+                        : 'No models reachable yet — connect a provider or store a key above.'}
+                    </p>
+                    <div className={styles.settingsBtnrow}>
+                      <Button size="sm" onClick={() => void refreshModels()}>
+                        Refresh models
+                      </Button>
+                    </div>
+                  </div>
+                </Section>
+
+                <Section label="Checks" note="Re-run after connecting a provider or storing a key.">
                   <DoctorList
                     checks={checks}
                     title="Environment checks"
@@ -845,14 +1031,14 @@ export default function SettingsScreen({
                     </Button>
                   </div>
                 </Section>
-                <Section label="Model" note="Offered by whichever CLI is the default.">
+                <Section label="Model" note="Every model a connected provider offers.">
                   <div className={styles.settingsFields}>
                     <Field label="Default model">
                       <ModelPicker
                         value={settings.defaultModel}
                         models={models}
                         allowInherit
-                        emptyHint={`No models from ${settings.defaultCli}. Install and sign in under Agent CLIs, then refresh.`}
+                        emptyHint="No models are reachable. Connect a provider or store an API key under Providers, then refresh."
                         onChange={(v) => void set({ defaultModel: v })}
                         onRefresh={() => void refreshModels()}
                       />
@@ -883,7 +1069,7 @@ export default function SettingsScreen({
                         value={settings.readinessModel}
                         models={models}
                         allowInherit
-                        emptyHint={`No models from ${settings.defaultCli}.`}
+                        emptyHint="No models are reachable. Connect a provider under Providers."
                         onChange={(v) => void set({ readinessModel: v })}
                         onRefresh={() => void refreshModels()}
                       />
@@ -1116,28 +1302,28 @@ export default function SettingsScreen({
                     </Field>
                   </div>
                 </Section>
-                <Section label="Transport" note="Where the app-owned droid daemon listens.">
+                <Section label="Transport" note="Where the vendored provider Bridge listens.">
                   <div className={styles.settingsFields}>
                     <Field
-                      label="Daemon port"
-                      hint="Preferred port for the app-owned daemon. Must be 37600–37699; if busy, the daemon tries the next free port in that band. Change takes effect on next daemon launch."
-                      error={fieldErrors.daemonPort}
+                      label="Bridge port"
+                      hint="Preferred port for the Bridge. Must be 37700–37799; if busy, the Bridge tries the next free port in that band. Change takes effect on next Bridge launch."
+                      error={fieldErrors.bridgePort}
                     >
                       <TextInput
                         type="number"
-                        min={DAEMON_PORT_BAND.min}
-                        max={DAEMON_PORT_BAND.max}
-                        value={settings.daemonPort}
-                        aria-invalid={fieldErrors.daemonPort ? 'true' : undefined}
+                        min={BRIDGE_PORT_BAND.min}
+                        max={BRIDGE_PORT_BAND.max}
+                        value={settings.bridgePort}
+                        aria-invalid={fieldErrors.bridgePort ? 'true' : undefined}
                         aria-describedby={
-                          fieldErrors.daemonPort ? 'field-daemonPort-error' : undefined
+                          fieldErrors.bridgePort ? 'field-bridgePort-error' : undefined
                         }
                         onChange={(e) => {
                           const raw = e.target.value.trim();
                           if (raw === '') {
                             setFieldErrors((m) => ({
                               ...m,
-                              daemonPort: 'Enter 37600–37699, or clear to keep the current port.',
+                              bridgePort: 'Enter 37700–37799, or clear to keep the current port.',
                             }));
                             return;
                           }
@@ -1145,37 +1331,37 @@ export default function SettingsScreen({
                           if (!Number.isFinite(n)) {
                             setFieldErrors((m) => ({
                               ...m,
-                              daemonPort: 'That is not a number — enter 37600–37699.',
+                              bridgePort: 'That is not a number — enter 37700–37799.',
                             }));
                             return;
                           }
                           const rounded = Math.round(n);
                           const clamped = Math.min(
-                            DAEMON_PORT_BAND.max,
-                            Math.max(DAEMON_PORT_BAND.min, rounded),
+                            BRIDGE_PORT_BAND.max,
+                            Math.max(BRIDGE_PORT_BAND.min, rounded),
                           );
                           if (rounded !== n) {
                             setFieldErrors((m) => ({
                               ...m,
-                              daemonPort: `Rounded to ${rounded}.`,
+                              bridgePort: `Rounded to ${rounded}.`,
                             }));
                           } else if (
-                            rounded < DAEMON_PORT_BAND.min ||
-                            rounded > DAEMON_PORT_BAND.max
+                            rounded < BRIDGE_PORT_BAND.min ||
+                            rounded > BRIDGE_PORT_BAND.max
                           ) {
                             setFieldErrors((m) => ({
                               ...m,
-                              daemonPort: `Clamped to ${clamped} — the allowed band is ${DAEMON_PORT_BAND.min}–${DAEMON_PORT_BAND.max}.`,
+                              bridgePort: `Clamped to ${clamped} — the allowed band is ${BRIDGE_PORT_BAND.min}–${BRIDGE_PORT_BAND.max}.`,
                             }));
                           } else {
                             setFieldErrors((m) => {
                               const next = { ...m };
-                              delete next.daemonPort;
+                              delete next.bridgePort;
                               return next;
                             });
                           }
                           void (async () => {
-                            const result = await patchSettings({ daemonPort: clamped });
+                            const result = await patchSettings({ bridgePort: clamped });
                             // patchSettings already surfaced range errors in the banner;
                             // clamp-away handling kept our field note visible instead.
                             if (result.length) setErrors(result);
@@ -1186,10 +1372,10 @@ export default function SettingsScreen({
                           if (!raw) {
                             setFieldErrors((m) => {
                               const next = { ...m };
-                              delete next.daemonPort;
+                              delete next.bridgePort;
                               return next;
                             });
-                            e.target.value = String(settings.daemonPort);
+                            e.target.value = String(settings.bridgePort);
                             const tracker = (
                               e.target as HTMLInputElement & {
                                 _valueTracker?: { setValue(v: string): void };
@@ -1199,13 +1385,13 @@ export default function SettingsScreen({
                           }
                         }}
                       />
-                      {fieldErrors.daemonPort && (
+                      {fieldErrors.bridgePort && (
                         <span
-                          id="field-daemonPort-error"
+                          id="field-bridgePort-error"
                           role="status"
                           className={styles.settingsWarn}
                         >
-                          {fieldErrors.daemonPort}
+                          {fieldErrors.bridgePort}
                         </span>
                       )}
                     </Field>
@@ -1213,7 +1399,6 @@ export default function SettingsScreen({
                 </Section>
               </>
             )}
-            {pane === 'mcp' && <McpSettings settings={settings} onPatch={set} />}
 
             {pane === 'project' && (
               <>
@@ -1508,7 +1693,11 @@ export default function SettingsScreen({
                     </div>
                     <div className={styles.settingsFact}>
                       <dt>Agent harness</dt>
-                      <dd className="mono">droid CLI over stream JSON-RPC</dd>
+                      <dd className="mono">pi, in this process</dd>
+                    </div>
+                    <div className={styles.settingsFact}>
+                      <dt>Reachable models</dt>
+                      <dd className="mono">{models.length}</dd>
                     </div>
                     <div className={styles.settingsFact}>
                       <dt>Projects</dt>
@@ -1516,23 +1705,18 @@ export default function SettingsScreen({
                     </div>
                   </dl>
                 </Section>
-                <Section label="Elsewhere" note="Docs and the cinematic intro.">
+                <Section label="Elsewhere" note="Providers and the cinematic intro.">
                   <div className={styles.settingsBtnrow}>
-                    <Button
-                      size="sm"
-                      onClick={() =>
-                        void api.app.openExternal('https://docs.factory.ai/droid-exec/overview')
-                      }
-                    >
-                      droid CLI documentation
+                    <Button size="sm" onClick={() => setPaneLive('providers')}>
+                      Manage providers
                     </Button>
                     <Button size="sm" onClick={() => void replayIntro()}>
                       Replay intro
                     </Button>
                   </div>
                   <p className={styles.hint}>
-                    Replay intro walks the cinematic onboarding again: agents, CLIs, environment
-                    checks, and your first project.
+                    Replay intro walks the cinematic onboarding again: agents, providers,
+                    environment checks, and your first project.
                   </p>
                 </Section>
               </>
@@ -1547,289 +1731,6 @@ export default function SettingsScreen({
           </div>
         </div>
       </div>
-    </>
-  );
-}
-
-function newMcpId(): string {
-  const bytes = globalThis.crypto?.getRandomValues
-    ? globalThis.crypto.getRandomValues(new Uint8Array(4))
-    : null;
-  if (bytes)
-    return `mcp_${Array.from(bytes, (b) => b.toString(16).padStart(2, '0'))
-      .join('')
-      .slice(0, 7)}`;
-  return `mcp_${Math.random().toString(36).slice(2, 9)}`;
-}
-
-function McpSettings({
-  settings,
-  onPatch,
-}: {
-  settings: AppSettings;
-  onPatch: (patch: Partial<AppSettings>) => Promise<void>;
-}): React.JSX.Element {
-  const servers = settings.mcpServers ?? [];
-  const [draft, setDraft] = useState<UserMcpServer | null>(null);
-  const [error, setError] = useState('');
-
-  const saveServers = (next: UserMcpServer[]): void => {
-    void onPatch({ mcpServers: next });
-  };
-
-  const startAdd = (type: UserMcpServer['type']): void => {
-    if (type === 'stdio') {
-      setDraft({ id: newMcpId(), name: '', disabled: false, type: 'stdio', command: '' });
-    } else {
-      setDraft({ id: newMcpId(), name: '', disabled: false, type, url: '' });
-    }
-    setError('');
-  };
-
-  const isHttpUrl = (raw: string): boolean => {
-    try {
-      const parsed = new URL(raw);
-      return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-    } catch {
-      return false;
-    }
-  };
-
-  const validate = (s: UserMcpServer): string | null => {
-    if (!s.name.trim()) return 'Name is required.';
-    if (s.name.trim().length > 80) return 'Name must be 80 characters or fewer.';
-    if (s.type === 'stdio' && !s.command.trim()) return 'Command is required for stdio servers.';
-    if ((s.type === 'http' || s.type === 'sse') && !s.url.trim()) return 'URL is required.';
-    if ((s.type === 'http' || s.type === 'sse') && !isHttpUrl(s.url.trim()))
-      return 'Enter a valid http(s) URL.';
-    if (
-      servers.some(
-        (x) => x.id !== s.id && x.name.trim().toLowerCase() === s.name.trim().toLowerCase(),
-      )
-    )
-      return 'Name must be unique.';
-    return null;
-  };
-
-  const commitDraft = (): void => {
-    if (!draft) return;
-    const trimmed: UserMcpServer =
-      draft.type === 'stdio'
-        ? {
-            ...draft,
-            name: draft.name.trim(),
-            command: draft.command.trim(),
-            args: draft.args?.filter(Boolean),
-            env: draft.env && Object.keys(draft.env).length ? draft.env : undefined,
-          }
-        : { ...draft, name: draft.name.trim(), url: draft.url.trim() };
-    const msg = validate(trimmed);
-    if (msg) {
-      setError(msg);
-      return;
-    }
-    const exists = servers.some((s) => s.id === trimmed.id);
-    const next = exists
-      ? servers.map((s) => (s.id === trimmed.id ? trimmed : s))
-      : [...servers, trimmed];
-    saveServers(next);
-    setDraft(null);
-    setError('');
-  };
-
-  return (
-    <>
-      <Section label="MCP Servers" note="Tools your agents can use via the Model Context Protocol.">
-        <p className={styles.settingsLead}>
-          Add MCP servers to extend what agents can do. Supports stdio (local command), HTTP, and
-          SSE transports. Disabled servers are not passed to the agent.
-        </p>
-        {servers.length === 0 && !draft && (
-          <p className="faint">No MCP servers configured. Add one below.</p>
-        )}
-        {servers.length > 0 && (
-          <div className={styles.mcpList}>
-            {servers.map((s) => (
-              <div
-                key={s.id}
-                className={`${styles.mcpCard} ${s.disabled ? styles.off : styles.on}`}
-              >
-                <span className={styles.mcpCardMain}>
-                  <strong className={`mono ${styles.mcpCardName}`}>{s.name}</strong>{' '}
-                  <span className={`mono faint ${styles.mcpCardType}`}>{s.type}</span>
-                  <br />
-                  <span className={`mono faint ${styles.mcpDetail}`}>
-                    {s.type === 'stdio'
-                      ? s.command + (s.args?.length ? ` ${s.args.join(' ')}` : '')
-                      : s.url}
-                  </span>
-                </span>
-                <label className={styles.mcpEnable}>
-                  <input
-                    type="checkbox"
-                    checked={!s.disabled}
-                    onChange={(e) =>
-                      saveServers(
-                        servers.map((x) =>
-                          x.id === s.id ? { ...x, disabled: !e.target.checked } : x,
-                        ),
-                      )
-                    }
-                  />
-                  Enabled
-                </label>
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    setDraft({ ...s });
-                    setError('');
-                  }}
-                >
-                  Edit
-                </Button>
-                <Button
-                  size="sm"
-                  variant="danger"
-                  onClick={() => saveServers(servers.filter((x) => x.id !== s.id))}
-                >
-                  Remove
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
-      </Section>
-
-      {draft ? (
-        <Section
-          label={servers.some((s) => s.id === draft.id) ? 'Edit server' : 'Add server'}
-          note="All fields are validated before saving."
-        >
-          <div className={styles.mcpForm}>
-            <Field label="Name">
-              <TextInput
-                value={draft.name}
-                placeholder="my-mcp-server"
-                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-              />
-            </Field>
-            <Field label="Transport">
-              <Dropdown
-                value={draft.type}
-                options={[
-                  { value: 'stdio', label: 'stdio — local command' },
-                  { value: 'http', label: 'http — HTTP streaming' },
-                  { value: 'sse', label: 'sse — Server-Sent Events' },
-                ]}
-                onChange={(v) => {
-                  const next = v as UserMcpServer['type'];
-                  if (next === 'stdio') {
-                    setDraft({
-                      id: draft.id,
-                      name: draft.name,
-                      disabled: draft.disabled,
-                      type: 'stdio',
-                      command: '',
-                    });
-                  } else {
-                    setDraft({
-                      id: draft.id,
-                      name: draft.name,
-                      disabled: draft.disabled,
-                      type: next,
-                      url: '',
-                    });
-                  }
-                }}
-              />
-            </Field>
-            {draft.type === 'stdio' ? (
-              <>
-                <Field
-                  label="Command"
-                  hint="Executable path or command name (e.g. npx, node, python3)"
-                >
-                  <TextInput
-                    mono
-                    value={draft.command}
-                    placeholder="npx"
-                    onChange={(e) => setDraft({ ...draft, command: e.target.value })}
-                  />
-                </Field>
-                <Field label="Arguments" hint="Space-separated arguments (optional)">
-                  <TextInput
-                    mono
-                    value={(draft.args ?? []).join(' ')}
-                    placeholder="mcp-server-package --port 3000"
-                    onChange={(e) =>
-                      setDraft({
-                        ...draft,
-                        args: e.target.value
-                          ? e.target.value.split(/\s+/).filter(Boolean)
-                          : undefined,
-                      })
-                    }
-                  />
-                </Field>
-                <Field label="Environment" hint="KEY=value per line (optional)">
-                  <Textarea
-                    rows={3}
-                    placeholder="API_KEY=secret&#10;DEBUG=1"
-                    value={Object.entries(draft.env ?? {})
-                      .map(([k, v]) => `${k}=${v}`)
-                      .join('\n')}
-                    onChange={(e) => {
-                      const env: Record<string, string> = {};
-                      for (const line of e.target.value.split('\n')) {
-                        const idx = line.indexOf('=');
-                        if (idx > 0) env[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
-                      }
-                      setDraft({ ...draft, env: Object.keys(env).length ? env : undefined });
-                    }}
-                  />
-                </Field>
-              </>
-            ) : (
-              <Field label="URL" hint="Full URL to the MCP endpoint">
-                <TextInput
-                  mono
-                  value={draft.url}
-                  placeholder={
-                    draft.type === 'sse' ? 'https://example.com/sse' : 'https://example.com/mcp'
-                  }
-                  onChange={(e) => setDraft({ ...draft, url: e.target.value })}
-                />
-              </Field>
-            )}
-            {error && (
-              <span role="alert" className={styles.settingsWarn}>
-                {error}
-              </span>
-            )}
-            <div className={styles.settingsBtnrow}>
-              <Button variant="primary" onClick={commitDraft}>
-                {servers.some((s) => s.id === draft.id) ? 'Save' : 'Add server'}
-              </Button>
-              <Button
-                onClick={() => {
-                  setDraft(null);
-                  setError('');
-                }}
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
-        </Section>
-      ) : (
-        <Section label="Add" note="Choose a transport and configure the server.">
-          <div className={styles.settingsBtnrow}>
-            <Button onClick={() => startAdd('stdio')}>Add stdio server</Button>
-            <Button onClick={() => startAdd('http')}>Add HTTP server</Button>
-            <Button onClick={() => startAdd('sse')}>Add SSE server</Button>
-          </div>
-        </Section>
-      )}
     </>
   );
 }

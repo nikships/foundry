@@ -1,6 +1,5 @@
 /**
- * Brand marks for the CLIs and model providers Foundry drives, from
- * @lobehub/icons.
+ * Brand marks for the model providers Foundry can reach, from @lobehub/icons.
  *
  * The maps below are written out rather than handed to lobehub's own
  * ProviderIcon, which resolves a name against a fixed keyword list holding no
@@ -85,7 +84,6 @@ import YiColor from '@lobehub/icons/es/Yi/components/Color.js';
 import ZAIMono from '@lobehub/icons/es/ZAI/components/Mono.js';
 import ZeroOneColor from '@lobehub/icons/es/ZeroOne/components/Color.js';
 import ZhipuColor from '@lobehub/icons/es/Zhipu/components/Color.js';
-import type { CliVendor } from '@shared/types.js';
 import styles from './BrandIcon.module.css';
 
 export interface MarkProps {
@@ -97,11 +95,10 @@ export interface MarkProps {
 export type Mark = ComponentType<MarkProps>;
 
 /**
- * Factory ships no mark in lobehub's collection, and droid is the default CLI,
- * so without this the vendor most installs actually run would be the only one
- * with no logo. This is the Factory pinwheel used only as a vendor badge
- * (same role as the Claude or Codex mark), currentColor so it sits beside
- * the other mono glyphs.
+ * Factory ships no mark in lobehub's collection, so a Factory-served model
+ * would be the only one with no logo. This is the Factory pinwheel used purely
+ * as a provider badge (same role as the Claude or Codex mark), currentColor so
+ * it sits beside the other mono glyphs.
  */
 function FactoryDroid({ size = 16, className, style }: MarkProps): React.JSX.Element {
   return (
@@ -121,15 +118,6 @@ function FactoryDroid({ size = 16, className, style }: MarkProps): React.JSX.Ele
     </svg>
   );
 }
-
-/**
- * One mark per vendor in CLI_VENDOR_IDS. The harness gets its own product logo
- * where the vendor ships one, because Claude Code and Claude the model are not
- * the same thing and an agent's CLI is the more useful of the two to recognise.
- */
-export const CLI_MARKS: Record<CliVendor, Mark> = {
-  droid: FactoryDroid,
-};
 
 /**
  * Foundry's own mark: three interlocked rings. currentColor so it inherits
@@ -157,12 +145,41 @@ function FoundryMark({ size = 16, className, style }: MarkProps): React.JSX.Elem
 }
 
 /** Foundry mark for app chrome (titlebar, empty states, onboarding). */
-export const DroidGlyph: Mark = FoundryMark;
+export const FoundryGlyph: Mark = FoundryMark;
 
 /**
- * Keyed by the `provider` string a CLI's model catalog reports. Aliases for the
- * same brand are listed separately rather than normalised, because a catalog is
- * free to say `kimi` where another says `moonshot` and neither is wrong.
+ * pi's mark: the letter it is named after, drawn rather than typeset so it does
+ * not depend on a font that ships a Greek glyph. lobehub publishes no pi icon,
+ * and pi is the harness every agent phase now runs on, so the one runtime the
+ * app always uses would otherwise be the only unlabelled thing on the screen.
+ */
+function PiMark({ size = 16, className, style }: MarkProps): React.JSX.Element {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      height={size}
+      style={style}
+      viewBox="0 0 64 64"
+      width={size}
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <g stroke="currentColor" strokeWidth="6.4" strokeLinecap="round">
+        <path d="M12 20h40" />
+        <path d="M24 20v26" />
+        <path d="M42 20v20a6 6 0 0 0 8 5.4" />
+      </g>
+    </svg>
+  );
+}
+
+/** The agent harness itself, for chrome that names the transport. */
+export const PiGlyph: Mark = PiMark;
+
+/**
+ * Keyed by the `provider` string the model catalog reports. Aliases for the
+ * same brand are listed separately rather than normalised, because one catalog
+ * is free to say `kimi` where another says `moonshot` and neither is wrong.
  */
 const PROVIDER_MARKS: Record<string, Mark> = {
   ai21: Ai21Mono,
@@ -242,30 +259,6 @@ const PROVIDER_MARKS: Record<string, Mark> = {
 export function providerMark(provider: string | null | undefined): Mark | null {
   if (!provider) return null;
   return PROVIDER_MARKS[provider.toLowerCase()] ?? null;
-}
-
-/** The logo of the CLI that runs an agent's phases. */
-export function CliIcon({
-  vendor,
-  size = 16,
-}: {
-  vendor: CliVendor;
-  size?: number;
-}): React.JSX.Element {
-  // A roster written before a vendor was renamed can still name it, and an
-  // unknown vendor falls back to droid everywhere else in the app.
-  const Icon = CLI_MARKS[vendor] ?? CLI_MARKS.droid;
-  return (
-    <span
-      aria-label={vendor}
-      className={styles.brandMark}
-      role="img"
-      style={{ width: size, height: size }}
-      title={vendor}
-    >
-      <Icon size={size} />
-    </span>
-  );
 }
 
 /** The logo of the vendor behind a model, or nothing when there is none. */

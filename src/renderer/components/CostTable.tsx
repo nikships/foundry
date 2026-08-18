@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import type { EventRow, PhaseRow } from '@shared/types.js';
-import { credits, tokens } from '../format.js';
+import { tokens, usd } from '../format.js';
 import { modelFor, usageFor } from '../derive.js';
 import AgentAvatar from './AgentAvatar.js';
 import styles from './CostTable.module.css';
@@ -31,9 +31,9 @@ export default function CostTable({
           output: acc.output + usage.outputTokens,
           cacheRead: acc.cacheRead + usage.cacheReadTokens,
           thinking: acc.thinking + usage.thinkingTokens,
-          credits: acc.credits + usage.credits,
+          cost: acc.cost + usage.cost,
         }),
-        { input: 0, output: 0, cacheRead: 0, thinking: 0, credits: 0 },
+        { input: 0, output: 0, cacheRead: 0, thinking: 0, cost: 0 },
       ),
     [rows],
   );
@@ -53,7 +53,7 @@ export default function CostTable({
             <th>Out</th>
             <th>Cache read</th>
             <th>Thinking</th>
-            <th>Credits</th>
+            <th>Cost</th>
           </tr>
         </thead>
         <tbody>
@@ -73,7 +73,7 @@ export default function CostTable({
                   <td className="mono">{tokens(row.usage.outputTokens)}</td>
                   <td className={`mono ${styles.cache}`}>{tokens(row.usage.cacheReadTokens)}</td>
                   <td className="mono">{tokens(row.usage.thinkingTokens)}</td>
-                  <td className="mono">{credits(row.usage.credits)}</td>
+                  <td className="mono">{usd(row.usage.cost)}</td>
                 </>
               ) : (
                 <td colSpan={5} className={`faint ${styles.unreported}`}>
@@ -92,7 +92,7 @@ export default function CostTable({
               <td className="mono">{tokens(totals.output)}</td>
               <td className={`mono ${styles.cache}`}>{tokens(totals.cacheRead)}</td>
               <td className="mono">{tokens(totals.thinking)}</td>
-              <td className="mono">{credits(totals.credits)}</td>
+              <td className="mono">{usd(totals.cost)}</td>
             </tr>
           </tfoot>
         )}
