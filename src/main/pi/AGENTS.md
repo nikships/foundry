@@ -12,6 +12,7 @@ The transport agent phases run on. Pi runs **in this process**: no daemon, no ch
 - `tools.ts` — `report_progress`, `read_phase_context`, `submit_envelope`. These replaced Foundry's MCP server; they are ordinary in-process tools now.
 - `events.ts` — folds the neutral event stream into trace rows, with the throttles and caps that keep a chatty turn from flooding SQLite; writes the raw stream to `<agent>/stream.jsonl`.
 - `runtime.ts` — the single memoized `ModelRuntime`, pinned under Foundry's Application Support directory.
+- `catalog.ts` — what the runtime can actually reach (`getAvailable()` → `ModelInfo`), plus the credential operations that change that answer. `login(providerId, 'api_key', …)` is the path that **persists** a direct key; `setRuntimeApiKey` only sets an in-memory override that dies with the process.
 
 ## Setup Commands
 
@@ -41,6 +42,7 @@ npx vitest run tests/pi-tools.test.ts
 npx vitest run tests/pi-events.test.ts
 npx vitest run tests/pi-extension.test.ts
 npx vitest run tests/pi-runtime.test.ts
+npx vitest run tests/pi-catalog.test.ts
 npx vitest run tests/pi-transport.test.ts
 npx vitest run tests/agent-session-transport.test.ts
 npx vitest run tests/executor.test.ts

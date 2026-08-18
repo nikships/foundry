@@ -46,11 +46,11 @@ npx vitest run -t "<renderer|transcript|pipeline-view|keyboard>"
 
 ## Push Channels
 
-Exactly eight main→renderer channels (subscribed via `window.foundry.on`):
+Exactly nine main→renderer channels (subscribed via `window.foundry.on`):
 
-- `runs-changed`, `interrupts-changed`, `settings-changed`, `updater-status`, `detection-progress`, `setup-progress`, `smith-proposals-changed`, `readiness-progress`
+- `runs-changed`, `interrupts-changed`, `settings-changed`, `updater-status`, `detection-progress`, `setup-progress`, `smith-proposals-changed`, `readiness-progress`, `bridge-changed`
 
-`detection-progress`, `setup-progress`, and `readiness-progress` carry progress for work with no trace rows (detection/setup/readiness); `smith-proposals-changed` drives `SmithProposalCard`. Ordinary run data is **polled** via `change_id`, not pushed. Keep `mockFoundry.ts` in sync when adding channels.
+`detection-progress`, `setup-progress`, and `readiness-progress` carry progress for work with no trace rows (detection/setup/readiness); `smith-proposals-changed` drives `SmithProposalCard`. `bridge-changed` fires when a provider login lands or the generated model catalog is rewritten — a login completes in a browser minutes after the call that started it returned, and nothing polls the Bridge's auth directory. Ordinary run data is **polled** via `change_id`, not pushed. Keep `mockFoundry.ts` in sync when adding channels.
 
 ## Code Style
 

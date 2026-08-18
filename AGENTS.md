@@ -20,6 +20,7 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 ├── src/main/                  ← Node main process (privileged)
 │   ├── engine/                ← sequencing, retries, boundaries, gates, worktrees
 │   ├── pi/                    ← the agent transport agent phases run on (in-process; no fallback)
+│   ├── bridge/                ← vendored CLIProxyAPI: provider OAuth → local endpoint pi calls
 │   ├── droid/ + sdk/          ← Droid one-shot calls (detection, setup, repair, summaries)
 │   ├── cli/                   ← vendor argv + one-shot parse adapters
 │   ├── smith/                 ← Smith's socket, validation, approval queue
@@ -196,12 +197,14 @@ npm run check:css           # fails if <style> blocks redefine tokens-base.css c
 npm run check:docs          # fails if a documented command no longer exists
 npm run audit:deps          # npm audit --audit-level=high (clean env)
 npm run check               # full local gate (typecheck + lint + format:check + knip + test:coverage + build + check:css + check:docs + audit:deps)
-npm run package             # build + icons + electron-builder --mac --arm64 (local DMG)
+npm run fetch:bridge        # downloads + checksums the pinned CLIProxyAPI into resources/bridge/
+npm run package             # build + icons + fetch:bridge + electron-builder --mac --arm64 (local DMG)
 ```
 
 - `check:css` (`scripts/check-css-collisions.mjs`) walks `src/renderer/**/*.tsx` and fails if an inline `<style>` redefines a class owned by `design/tokens-base.css` (e.g. `.btn`, `.field`). Move it to a `.module.css` file.
 - `check:docs` (`scripts/check-docs-commands.mjs`) keeps this file honest. It parses every `npm run …`, `make …`, and `scripts/…` reference in the `AGENTS.md` guides, `README.md`, the `Makefile`, and `.github/workflows/**`, then asserts each target actually exists — and, in the other direction, that every `package.json` script is documented and every step composed into `npm run check` is named here. Failures print `file:line` plus the fix. It is **static**: nothing documented is ever executed, so GUI and packaging commands (`npm run dev`, `npm run package`) are validated by existence only. `specs/` and `.factory/docs/` are excluded on purpose — they are historical records that describe the repo as it was, including the retired `apps/desktop` layout. Two scripts are intentionally undocumented and allowlisted in the script: `icons` (an implementation detail of `package`) and `engine:demo` (a local scratch harness).
 - `audit:deps` (`scripts/audit-deps.mjs`) spawns `npm audit` in a clean env (strips `npm_config_allow_scripts`) so it works on npm 12.
+- `fetch:bridge` (`scripts/fetch-bridge.mjs`) downloads the CLIProxyAPI release pinned in `package.json` → `config.bridge` and verifies both the archive and the extracted binary against their recorded sha256. It is **fail-closed**: a mismatch leaves nothing executable behind and exits non-zero. `resources/bridge/` is gitignored; `electron-builder.yml` ships it as `extraResources` and signs it through `mac.binaries`. A checkout that skipped it simply has no Bridge — the manager reports `binary_missing` and the app runs on whatever other credentials pi has.
 
 **CI** (`.github/workflows/ci.yml`, runs on `macos-26`):
 
