@@ -14,8 +14,6 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type {
   AgentDef,
-  CliConfig,
-  CliVendor,
   CommandResult,
   ContextBreakdown,
   EnvelopeDef,
@@ -25,7 +23,6 @@ import type {
   ProjectDef,
   ReasoningEffort,
   RunStatus,
-  UserMcpServer,
 } from '@shared/types.js';
 import type { Tracer } from '../trace/tracer.js';
 import {
@@ -53,8 +50,6 @@ import { effectivePhaseEnvelope, resolveAgentExecution } from '@shared/types.js'
 
 export interface ExecutorDeps {
   tracer: Tracer;
-  /** Where each CLI lives and how it is invoked. Agents name the vendor. */
-  clis: Record<CliVendor, CliConfig>;
   defaultModel?: string;
   defaultReasoningEffort?: ReasoningEffort;
   turnTimeoutMs: number;
@@ -67,15 +62,8 @@ export interface ExecutorDeps {
    * instead of appending another correction. `0` disables.
    */
   rewindAfterCorrections: number;
-  /**
-   * Preferred port for the app-owned droid daemon (37600–37699). DaemonManager
-   * scans up within the band when this port is busy. Only the one-shot droid
-   * call sites still use it.
-   */
-  daemonPort: number;
   /** Foundry's Application Support directory; the agent runtime's state lives under it. */
   supportDir: string;
-  mcpServers: UserMcpServer[];
   agents: AgentDef[];
   /** Shared custom envelope library snapshotted at run start. */
   envelopeDefs: EnvelopeDef[];
@@ -482,7 +470,6 @@ export class Executor {
       reasoningEffort: req.agent.reasoningEffort,
       supportDir: this.deps.supportDir,
       sessionDir: join(this.deps.tracer.runDir(req.runId), 'sessions'),
-      userMcpServers: this.deps.mcpServers.filter((s) => !s.disabled),
       onPermission: req.onPermission,
       onEvent: req.onEvent,
       onModelWarning: req.onModelWarning,

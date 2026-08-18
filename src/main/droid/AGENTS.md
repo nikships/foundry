@@ -38,7 +38,7 @@ npm run dev    # exercise the transport through the running app
 
 ## Development Workflow
 
-- **Daemon** starts lazily as `droid daemon --port <p> --host 127.0.0.1 --parent-pid <app>`, scanning up within `37600–37699`. Auth reads Settings `factoryApiKey`, then `FACTORY_API_KEY`, then a stored WorkOS JWT, without logging. `ensure()` returns a failure reason rather than throwing. One traced `processes` row for the daemon, not per-session; a daemon session has no child pid (`kill` interrupts/closes it).
+- **Daemon** starts lazily as `droid daemon --port <p> --host 127.0.0.1 --parent-pid <app>`, scanning up within `37600–37699`. Auth reads `FACTORY_API_KEY`, then a stored WorkOS JWT, without logging — the Settings branch is vestigial now that no credential is a setting. `ensure()` returns a failure reason rather than throwing. One traced `processes` row for the daemon, not per-session; a daemon session has no child pid (`kill` interrupts/closes it).
 - **Compaction/rewind on a daemon session** return successor sessions: swap the handle, re-subscribe notifications, and re-apply settings after the successor loads. The SDK rejects replacement while a stream is open, so both only happen between turns. (The agent transport in `pi/` compacts and rewinds **in place** — do not carry the successor-swap assumption across.)
 
 ## Testing Instructions

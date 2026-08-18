@@ -6,10 +6,9 @@
 import { existsSync } from 'node:fs';
 import { release } from 'node:os';
 import { join } from 'node:path';
-import type { AppSettings, CliVendor, DoctorCheck, ProjectDef } from '@shared/types.js';
-import { CLI_VENDOR_IDS } from '@shared/types.js';
-import { adapterFor } from '../cli/index.js';
-import { cliVersion } from '../droid/catalog.js';
+import type { DoctorCheck, ModelInfo, ProjectDef } from '@shared/types.js';
+import type { BridgeUnavailable } from '@shared/ipc-contract.js';
+import type { BridgeProviderStatus } from '../bridge/auth.js';
 import { currentBranch, isRepo, refExists, listWorktrees } from '../engine/git.js';
 import { runCommand } from '../engine/commands.js';
 import { resolvedEnv } from './env.js';
@@ -17,69 +16,107 @@ import { resolvedEnv } from './env.js';
 /** Runners a detected project command is most likely to need. */
 const TOOLCHAIN_BINARIES = ['node', 'npm', 'pnpm', 'yarn', 'bun', 'cargo', 'go', 'uv', 'swift'];
 
+/** Where a failing provider check sends the operator. */
+const PROVIDERS_PANE = { kind: 'open-settings', value: 'providers' } as const;
+
+/** Why the Bridge could not start, in the operator's terms. */
+const UNAVAILABLE_COPY: Record<BridgeUnavailable, string> = {
+  binary_missing: 'the vendored Bridge binary is not installed',
+  spawn_failed: 'the Bridge binary would not launch',
+  port_exhausted: 'no port in the Bridge’s range was free',
+  health_timeout: 'the Bridge started but never answered on its port',
+};
+
 function onPath(binary: string, path: string): boolean {
   return path.split(':').some((dir) => dir && existsSync(join(dir, binary)));
 }
 
 /**
- * One pair of checks per CLI: is the binary there, and can it reach a model.
- * Every vendor is reported rather than only the configured ones, because "Junie
- * is not installed" is the answer to why Junie is missing from the roster's
- * picker, and a check that silently omits itself cannot give it.
+ * What the provider checks read. Injected rather than imported so a test can
+ * state a machine — no Bridge binary, a Bridge that will not launch, an empty
+ * catalog, an expired account — without one on disk and without a network.
  */
-async function checkCli(
-  vendor: CliVendor,
-  settings: AppSettings,
-  isDefault: boolean,
-): Promise<DoctorCheck[]> {
-  const adapter = adapterFor(vendor);
-  const path = settings.clis[vendor]?.path ?? adapter.binary;
-  const version = await cliVersion(path, adapter.versionArgs);
-  const found: DoctorCheck = {
-    id: `cli:${vendor}`,
-    label: `${adapter.label} CLI`,
-    ok: !!version,
-    detail: version ? `found ${version} at ${path}` : `not runnable at ${path}`,
-    blocking: isDefault && !version,
-    fix: version ? undefined : { kind: 'open-url', value: adapter.docsUrl },
-  };
-  if (!version) return [found];
-
-  // Settings key wins, then an env var, then the CLI's own login files.
-  const settingsKey = vendor === 'droid' && settings.factoryApiKey.trim().length > 0;
-  const envKey = adapter.authEnvVars.find((name) => !!process.env[name]);
-  const configPath = adapter.authPaths().find((p) => existsSync(p));
-  const authed = settingsKey || !!envKey || !!configPath;
-  let detail = `no credentials found: ${adapter.label} cannot reach a model`;
-  if (settingsKey) detail = 'Factory API key is set in Settings';
-  else if (envKey) detail = `${envKey} is set in the environment`;
-  else if (configPath) detail = `signed in, config at ${configPath}`;
-
-  return [
-    found,
-    {
-      id: `auth:${vendor}`,
-      label: `${adapter.label} authentication`,
-      ok: authed,
-      detail,
-      blocking: isDefault && !authed,
-      fix: authed
-        ? undefined
-        : vendor === 'droid'
-          ? { kind: 'open-settings', value: 'clis' }
-          : { kind: 'open-url', value: adapter.authUrl },
-    },
-  ];
+export interface ProviderDoctorDeps {
+  /** Starts the Bridge if it is not running. Never throws. */
+  ensureBridge: () => Promise<{ ok: boolean; detail: string; reason?: BridgeUnavailable }>;
+  /** Providers and their accounts, read off the Bridge's auth directory. */
+  bridgeProviders: () => BridgeProviderStatus[];
+  /** Models an agent phase can actually run on right now. */
+  agentModels: () => Promise<ModelInfo[]>;
 }
 
-export async function runDoctor(settings: AppSettings): Promise<DoctorCheck[]> {
+/**
+ * Can this install reach a model, and through what.
+ *
+ * Only the model check blocks. The Bridge is one way to get a credential and
+ * not the only one — an operator running on their own API keys has no Bridge
+ * and a working factory — so an absent binary is reported and explained rather
+ * than treated as a broken setup. What does break a run is having no model at
+ * all, which is why that check is the blocking one.
+ */
+export async function checkProviders(deps: ProviderDoctorDeps): Promise<DoctorCheck[]> {
   const checks: DoctorCheck[] = [];
 
-  // The default CLI leads, because it is the one whose failure blocks a run.
-  const order = [settings.defaultCli, ...CLI_VENDOR_IDS.filter((v) => v !== settings.defaultCli)];
-  for (const vendor of order) {
-    checks.push(...(await checkCli(vendor, settings, vendor === settings.defaultCli)));
+  const bridge = await deps.ensureBridge();
+  checks.push({
+    id: 'bridge',
+    label: 'Provider bridge',
+    ok: bridge.ok,
+    detail: bridge.ok
+      ? bridge.detail
+      : `${bridge.reason ? UNAVAILABLE_COPY[bridge.reason] : 'the Bridge is unavailable'}: ${bridge.detail}. Subscription logins are unavailable; direct API keys still work.`,
+    fix: bridge.ok ? undefined : PROVIDERS_PANE,
+  });
+
+  let models: ModelInfo[] = [];
+  let modelsDetail = '';
+  try {
+    models = await deps.agentModels();
+  } catch (error) {
+    modelsDetail = `the model catalog could not be read: ${error instanceof Error ? error.message : String(error)}`;
   }
+  checks.push({
+    id: 'agent-models',
+    label: 'Usable models',
+    ok: models.length > 0,
+    detail: models.length
+      ? `${models.length} model${models.length === 1 ? '' : 's'} available, including ${models[0]!.displayName}`
+      : modelsDetail ||
+        'no model has a working credential — connect a provider or add an API key before starting a run',
+    blocking: models.length === 0,
+    fix: models.length ? undefined : PROVIDERS_PANE,
+  });
+
+  // Only providers with an account are reported. A provider nobody signed into
+  // is a choice, not a fault, and five "not connected" rows would bury the one
+  // account that actually expired.
+  for (const provider of deps.bridgeProviders()) {
+    if (!provider.accounts.length) continue;
+    const expired = provider.accounts.filter((account) => account.expired);
+    const disabled = provider.accounts.filter((account) => account.disabled);
+    const soonest = provider.accounts
+      .map((account) => account.expiresAt)
+      .filter((at): at is string => !!at)
+      .sort()[0];
+    let detail = soonest ? `signed in, valid until ${soonest}` : 'signed in';
+    if (expired.length) detail = `the sign-in expired — reconnect ${provider.label}`;
+    else if (disabled.length === provider.accounts.length) {
+      detail = `every ${provider.label} account is disabled`;
+    }
+    checks.push({
+      id: `provider:${provider.id}`,
+      label: `${provider.label} account`,
+      ok: provider.authenticated,
+      detail,
+      fix: provider.authenticated ? undefined : PROVIDERS_PANE,
+    });
+  }
+
+  return checks;
+}
+
+export async function runDoctor(deps: ProviderDoctorDeps): Promise<DoctorCheck[]> {
+  const checks: DoctorCheck[] = await checkProviders(deps);
 
   // A GUI launch inherits launchd's PATH, which contains no developer tooling
   // at all. That failure is invisible in every other check: a detected `npm

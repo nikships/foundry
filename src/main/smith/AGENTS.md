@@ -69,7 +69,7 @@ npx vitest run tests/smith-launch.test.ts      # shell quoting + asar path rewri
 - **The skill has to ship in the bundle, unpacked.** The user's agent reads `SKILL.md` from disk, from outside the app, so `skills/**` is in electron-builder's `files` _and_ its `asarUnpack`. `resolveFromMainDir()` rewrites `app.asar` → `app.asar.unpacked` for both the skill and the CLI; a path left pointing inside the archive is not a file at all.
 - **Only inject a command where the emulator's own command line takes one.** `TERMINAL_APPS` flags that with `prepared`, and today only Ghostty carries it (`open -na Ghostty.app --args --working-directory=<dir> -e <cmd>`, documented in its `--help`). Terminal and iTerm would need AppleScript that types into a window — breakable by a vendor update and gated on the Automation permission — and the rest have no macOS-side equivalent, so they keep the copyable bootstrap. Do not add `prepared` to an emulator without a documented flag for it.
 - **A prepared session's shim is an executable on PATH, not a shell function.** The bootstrap's function is right for a human's own shell and wrong for an agent, which spawns its own shells for each command: a function does not survive that, an executable inherited through the environment does.
-- **The auto-start requires an absolute, existing agent CLI.** `findCli()` falls back to a bare name when nothing is installed, and a script that sets its own PATH cannot be trusted to resolve one. Absent it, `canAutoStart` is false and the launcher shows the manual handoff rather than opening a window that dies on its first line.
+- **The auto-start requires an absolute, existing agent CLI.** Smith runs on the user's own agent in the user's own terminal, so the binary is a `whichBinary()` lookup on the resolved PATH rather than a setting — Foundry itself spawns no agent binary and has nowhere to record one. The lookup falls back to a bare name when nothing is installed, and a script that sets its own PATH cannot be trusted to resolve one, so `canAutoStart` is false and the launcher shows the manual handoff rather than opening a window that dies on its first line.
 
 ## Code Style
 
@@ -94,12 +94,12 @@ Smith spans three places beyond this directory. Change them together.
 | --------------------------------------------- | ------------------------------------------------------------------------ |
 | `src/main/ipc/smith.ts`                       | 5 invoke channels + 1 event; `saveProposal` store write                  |
 | `src/main/system/terminal.ts`                 | `open -a <App> <dir>`; the emulator catalog and install check            |
-| `src/cli/`                                    | The helper binary + its pure arg parsing (**not** `src/main/cli/`)       |
+| `src/cli/`                                    | The helper binary + its pure arg parsing                                 |
 | `src/renderer/components/SmithProposalCard.*` | The approval card — where a write is allowed or refused                  |
 | `src/renderer/components/SmithLauncher.*`     | The fallback handoff, shown only when the one-click start cannot run     |
 | `skills/foundry-smith/`                       | The skill an agent loads: persona, CLI reference, schemas, HTML previews |
 
-`src/cli/` is the helper binary; `src/main/cli/` holds CLI install descriptors. They are unrelated despite the name.
+`src/cli/` is the helper binary Smith drives over the socket. It has nothing to do with the agent the user runs it from.
 
 ## Additional Notes
 

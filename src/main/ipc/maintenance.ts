@@ -7,12 +7,31 @@ import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
 import { notifyRuns } from './shared.js';
 
-type Ctx = Pick<AppContext, 'settings' | 'projects' | 'registry' | 'broadcast'>;
+type Ctx = Pick<
+  AppContext,
+  'settings' | 'projects' | 'registry' | 'broadcast' | 'bridge' | 'supportDir'
+>;
 
 export function register(ctx: Ctx, handle: Handle): void {
   const projectOf = (projectId: string) => ctx.projects.get(projectId);
 
-  handle(IPC.doctorRun, () => runDoctor(ctx.settings.get()));
+  handle(IPC.doctorRun, () =>
+    runDoctor({
+      ensureBridge: async () => {
+        const result = await ctx.bridge.ensure();
+        return result.ok
+          ? { ok: true, detail: `serving on ${result.baseUrl}` }
+          : { ok: false, detail: result.detail, reason: result.reason };
+      },
+      bridgeProviders: () => ctx.bridge.snapshot().providers,
+      agentModels: async () => {
+        // Lazy: building pi's runtime reads catalogs off disk, and the doctor
+        // is the only caller in this router that needs one.
+        const { availableModels } = await import('../pi/catalog.js');
+        return availableModels(ctx.supportDir);
+      },
+    }),
+  );
 
   handle(IPC.maintenanceOrphans, async (): Promise<OrphanWorktree[]> => {
     const out: OrphanWorktree[] = [];

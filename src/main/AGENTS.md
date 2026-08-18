@@ -36,7 +36,7 @@ npm run build && npm run test:e2e # Electron UI smoke (macOS GUI; not in npm run
 ```
 
 - Engine/agent tests use **real git temp repos** and `tests/scripted-transport.ts` (an in-memory `AgentTransport`); never use network/model, never mock git.
-- `tests/cli-vendors.test.ts` owns CLI fixtures; `tests/scripted-daemon.ts` owns the daemon handshake.
+- `tests/scripted-daemon.ts` owns the daemon handshake; `tests/doctor.test.ts` owns the provider-doctor fixtures.
 - Adding a phase kind or gate: update `src/shared/types.ts`, `engine/registry.ts`, and add a real-git executor test.
 
 ## Cross-Cutting Invariants

@@ -8,7 +8,6 @@ import type {
   AgentDef,
   AgentSessionRow,
   AppSettings,
-  CliDescriptor,
   CliVendor,
   ContextBreakdown,
   DoctorCheck,
@@ -39,7 +38,6 @@ import type {
   SmithProposal,
   SmithProposalAnswer,
   StartRunInput,
-  ToolInfo,
   TranscriptToolKind,
   UpdateStatus,
   ValidationIssue,
@@ -294,6 +292,17 @@ export interface BridgeActionResult {
   detail: string;
 }
 
+/**
+ * One direct API key pi holds, as metadata. Deliberately no value and no
+ * masked prefix: the renderer needs to know a key exists so it can offer to
+ * replace or clear it, and anything more would put a secret on this seam.
+ */
+export interface StoredProviderKey {
+  providerId: string;
+  /** pi's own credential kind, e.g. `api_key` or `oauth`. */
+  type: string;
+}
+
 export interface FoundryApi {
   settings: {
     get(): Promise<AppSettings>;
@@ -419,17 +428,12 @@ export interface FoundryApi {
     reset(): Promise<PipelineDef[]>;
   };
   catalog: {
-    /** Models the given CLI can reach. Each vendor answers for itself. */
-    models(vendor: CliVendor, force?: boolean): Promise<ModelInfo[]>;
-    tools(vendor: CliVendor, model?: string): Promise<ToolInfo[]>;
-    /** What each CLI is, where it lives, and what it cannot do. */
-    clis(): Promise<CliDescriptor[]>;
     gates(): Promise<{ id: string; description: string }[]>;
     templateVariables(): Promise<{ token: string; description: string }[]>;
     /**
      * Models the agent transport can actually reach: pi's built-ins with a
-     * credential plus everything the Bridge has generated. This is the list
-     * agent phases run on, which is why it is separate from `models(vendor)`.
+     * credential plus everything the Bridge has generated. Every model picker
+     * in the app reads this one list.
      */
     agentModels(): Promise<ModelInfo[]>;
   };
@@ -456,6 +460,12 @@ export interface FoundryApi {
     setApiKey(providerId: string, apiKey: string): Promise<BridgeActionResult>;
     /** Removes a stored direct key. */
     clearApiKey(providerId: string): Promise<BridgeActionResult>;
+    /**
+     * Which providers pi holds a credential for, as metadata. The values never
+     * leave the main process, so a key row can say "set" without the renderer
+     * ever having held one.
+     */
+    storedKeys(): Promise<StoredProviderKey[]>;
   };
   runs: {
     start(
@@ -641,9 +651,6 @@ export const IPC = {
   pipelinesValidate: 'pipelines:validate',
   pipelinesDryRun: 'pipelines:dryRun',
   pipelinesReset: 'pipelines:reset',
-  catalogModels: 'catalog:models',
-  catalogClis: 'catalog:clis',
-  catalogTools: 'catalog:tools',
   catalogGates: 'catalog:gates',
   catalogTemplateVariables: 'catalog:templateVariables',
   catalogAgentModels: 'catalog:agentModels',
@@ -654,6 +661,7 @@ export const IPC = {
   bridgeCancelLogin: 'bridge:cancelLogin',
   bridgeSetApiKey: 'bridge:setApiKey',
   bridgeClearApiKey: 'bridge:clearApiKey',
+  bridgeStoredKeys: 'bridge:storedKeys',
   runsStart: 'runs:start',
   runsList: 'runs:list',
   runsDetail: 'runs:detail',

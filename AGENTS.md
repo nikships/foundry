@@ -167,7 +167,7 @@ so local and CI enforce the same floor. An HTML report lands in `coverage/` (git
 - Tests use **real git temp repositories** and `tests/scripted-transport.ts` (an in-memory `AgentTransport` that performs real disk side effects in the worktree and answers asks through the real policy). Never use a network or model; do not mock git. Follow the executor pattern in `tests/executor.test.ts` for new engine behavior.
 - **Electron UI smoke** (`tests/e2e/*.spec.ts`, `@playwright/test` + `_electron.launch()`): isolated `--user-data-dir`, seeded stores + WAL trace, no model or network. Onboarding walks Welcome → Ready; Inspector opens a seeded run and asserts the phase transcript. Failures write `test-results/` + `playwright-report/` (screenshot, trace, video). Interactive agent driving of the same app is the `foundry-ui` skill (CDP + agent-browser); do not add a second harness. The `e2e` CI job on `macos-26` is advisory — not a required check, not part of `npm run check`.
 - `@lobehub/icons` is inlined via `server.deps.inline` so bare directory specifiers resolve under Vite.
-- `tests/cli-vendors.test.ts` owns CLI adapter fixtures; `tests/scripted-transport.ts` owns the agent-transport fixture and `tests/scripted-daemon.ts` the daemon one.
+- `tests/scripted-transport.ts` owns the agent-transport fixture and `tests/scripted-daemon.ts` the daemon one. `tests/doctor.test.ts` owns the provider-doctor fixtures, injected as `ProviderDoctorDeps` so no Bridge, port, or credential is involved.
 - New engine phase/gate behavior needs a dedicated executor test with a real worktree snapshot.
 
 **What to run before submitting:** `npm run check` (see below) — it already runs the full Vitest suite.

@@ -111,9 +111,6 @@ const api: FoundryApi = {
     reset: () => call(IPC.pipelinesReset),
   },
   catalog: {
-    models: (vendor, force) => call(IPC.catalogModels, vendor, force),
-    tools: (vendor, model) => call(IPC.catalogTools, vendor, model),
-    clis: () => call(IPC.catalogClis),
     gates: () => call(IPC.catalogGates),
     templateVariables: () => call(IPC.catalogTemplateVariables),
     agentModels: () => call(IPC.catalogAgentModels),
@@ -126,6 +123,7 @@ const api: FoundryApi = {
     cancelLogin: (provider) => call(IPC.bridgeCancelLogin, provider),
     setApiKey: (providerId, apiKey) => call(IPC.bridgeSetApiKey, providerId, apiKey),
     clearApiKey: (providerId) => call(IPC.bridgeClearApiKey, providerId),
+    storedKeys: () => call(IPC.bridgeStoredKeys),
   },
   runs: {
     start: (input) => call(IPC.runsStart, input),

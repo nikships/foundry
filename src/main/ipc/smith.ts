@@ -18,7 +18,7 @@ import type {
 } from '@shared/types.js';
 import { IPC } from '@shared/ipc-contract.js';
 import type { AppContext } from '../context.js';
-import { cliConfigFor } from '../cli/index.js';
+import { whichBinary } from '../system/env.js';
 import { foundryCliPath, smithBootstrap, smithPrompt, smithSkillDir } from '../smith/launch.js';
 import { prepareSession } from '../smith/session.js';
 import {
@@ -31,6 +31,15 @@ import type { Handle } from './shared.js';
 import { notifySettings } from './shared.js';
 
 type Ctx = Pick<AppContext, 'smith' | 'broadcast'>;
+
+/**
+ * The agent a prepared Smith window opens on.
+ *
+ * Smith is a skill loaded into the operator's own agent, so this names the one
+ * harness Foundry can start unattended rather than the transport the app runs
+ * its own phases on. An operator on any other agent uses the copyable bootstrap.
+ */
+const SMITH_AGENT_BINARY = 'droid';
 
 /** What the launcher reads and what the terminal button acts on. */
 type LaunchCtx = Pick<AppContext, 'projects' | 'settings' | 'smith' | 'supportDir'>;
@@ -92,7 +101,7 @@ async function startPreparedSession(
   const session = prepareSession({
     sessionDir: join(ctx.supportDir, 'smith'),
     cliPath: info.cliPath,
-    agentPath: agentCliPath(ctx),
+    agentPath: agentCliPath(),
     prompt: info.prompt,
     projectPath: project.path,
     socketPath: info.socketPath,
@@ -107,18 +116,21 @@ async function startPreparedSession(
 }
 
 /**
- * The agent CLI a prepared session starts. `findCli` falls back to a bare name
- * when nothing is installed, and a bare name is not something a script with its
- * own PATH can be trusted to resolve — so an auto-start demands a real file and
- * declines otherwise rather than opening a window that fails on its first line.
+ * The agent CLI a prepared session starts.
+ *
+ * Smith runs in the user's own terminal on the user's own agent, so this is a
+ * PATH lookup rather than a setting: Foundry itself no longer spawns an agent
+ * binary and has nowhere to record one. A bare name is not something a script
+ * with its own PATH can be trusted to resolve, so an auto-start demands a real
+ * file and declines otherwise rather than opening a window that fails on its
+ * first line.
  */
-function agentCliPath(ctx: Pick<LaunchCtx, 'settings'>): string {
-  const settings = ctx.settings.get();
-  return cliConfigFor(settings.clis, settings.defaultCli).path;
+function agentCliPath(): string {
+  return whichBinary(SMITH_AGENT_BINARY) ?? SMITH_AGENT_BINARY;
 }
 
-function agentCliInstalled(ctx: Pick<LaunchCtx, 'settings'>): boolean {
-  const path = agentCliPath(ctx);
+function agentCliInstalled(): boolean {
+  const path = agentCliPath();
   return isAbsolute(path) && existsSync(path);
 }
 
@@ -139,7 +151,7 @@ function launchInfo(ctx: LaunchCtx, projectId: string): SmithLaunchInfo {
   const terminal = terminalFor(ctx.settings.get().terminalApp);
   const installed = terminalInstalled(terminal.appName);
   const terminalCapable = !!terminal.prepared && installed;
-  const hasAgent = agentCliInstalled(ctx);
+  const hasAgent = agentCliInstalled();
   const projectReady = !!project && existsSync(project.path);
   // The project's own problems are reported by the launcher's own notice, so
   // they are not repeated as an auto-start blocker — only as a reason not to
