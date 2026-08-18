@@ -105,7 +105,7 @@ jobs:
           test -d node_modules/electron
           test -d node_modules/better-sqlite3
 
-      - name: Package (build + icons + electron-builder)
+      - name: Package (build + icons + fetch:bridge + electron-builder)
         env:
           # Hash pins Developer ID Application when the P12 also carries App Store certs.
           CSC_IDENTITY_AUTO_DISCOVERY: 'true'
@@ -124,6 +124,11 @@ jobs:
 
           npm run build
           npm run icons
+          # extraResources copies resources/bridge into the app, and
+          # mac.binaries then codesigns Contents/Resources/bridge/cli-proxy-api.
+          # Without the fetch that path does not exist and signing fails.
+          npm run fetch:bridge
+          test -x resources/bridge/cli-proxy-api
           npx electron-builder --mac --arm64 --publish never
           APP="dist/mac-arm64/Foundry.app"
           test -d "$APP"

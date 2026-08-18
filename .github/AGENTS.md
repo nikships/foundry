@@ -7,6 +7,7 @@ Workflows and release automation for Foundry. This guide is discoverable from th
 - Workflows live in `.github/workflows/`:
   - `ci.yml` — quality gates (`verify` on `macos-26` + advisory `e2e` on `macos-26` + `actionlint` on `ubuntu-latest`)
   - `mac-package.yml` — signs, notarizes, and staples an arm64 DMG (`macos-26`)
+  - `update-cliproxyapi.yml` — scheduled pin bump for the vendored CLIProxyAPI Bridge
   - `codeql.yml`, `dependency-review.yml`, `junie-*.yml` — security/hygiene
 - PR template in `.github/pull_request_template.md` (Summary + How verified + Agent notes).
 - Issue forms in `.github/ISSUE_TEMPLATE/`: `bug_report.yml` (reproduction, expected/actual, environment, evidence, verification already run) and `feature_request.yml` (problem, proposal, alternatives, scope, acceptance criteria). `config.yml` keeps blank issues enabled — chores and umbrella tickets fit neither form. Both are pure GitHub forms: no secrets, no external services.
@@ -47,6 +48,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/script
 # Manual dispatch / rerun
 gh run list --workflow ci.yml --limit 5
 gh run list --workflow mac-package.yml --limit 5
+gh run list --workflow update-cliproxyapi.yml --limit 5
 ```
 
 - PRs must show green `verify` + `actionlint` before merge; CodeQL + dependency review are separate checks. The `e2e` job is informational until it is promoted.
@@ -57,7 +59,10 @@ gh run list --workflow mac-package.yml --limit 5
 
 - **Main/manual:** run-number version, publishes a new `Latest` release without pushing to `main`.
 - **Tags (`v*`):** uses the tagged `package.json` version.
+- **Bridge:** runs `npm run fetch:bridge` before electron-builder. The binary is gitignored and listed in `mac.binaries`; packaging without the fetch fails codesign on a missing `Contents/Resources/bridge/cli-proxy-api`.
 - Signing secrets: `APPLE_CERT_P12` (`.p12`), certificate password, Apple ID + app‑specific password, `APPLE_TEAM_ID`. The workflow pins the **Developer ID Application** certificate SHA‑1 so an App Store identity in the same `.p12` is not selected.
+
+`update-cliproxyapi.yml` (every 12 hours / `workflow_dispatch`) compares `package.json` `config.bridge.version` to the latest [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) release, runs `scripts/fetch-bridge.mjs --bump`, and opens a pin-only PR. Merging that PR to `main` triggers `mac-package.yml`. Requires `AUTO_UPDATE_TOKEN` (PAT with `repo` + `workflow`); `GITHUB_TOKEN` cannot start CI on the PR or the release job after merge.
 
 ## Pull Request Guidelines
 

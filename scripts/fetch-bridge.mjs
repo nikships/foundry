@@ -11,7 +11,13 @@
 // non-zero, so a corrupted or substituted release cannot be launched later by
 // the manager, which only resolves a path it can stat.
 //
-// Usage: node scripts/fetch-bridge.mjs [--force]
+// Usage:
+//   node scripts/fetch-bridge.mjs [--force]
+//   node scripts/fetch-bridge.mjs --bump [version]
+//
+// `--bump` downloads the latest (or named) release, rewrites package.json
+// `config.bridge` (version + both sha256s), and installs the binary. The
+// scheduled update-cliproxyapi workflow commits only the pin.
 
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -24,32 +30,102 @@ import {
   rmSync,
   statSync,
   copyFileSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
-const pkg = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8'));
+const pkgPath = join(repoRoot, 'package.json');
+const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
 const cfg = pkg.config?.bridge;
 
 if (!cfg?.version || !cfg?.archiveSha256 || !cfg?.binarySha256) {
   fail('package.json config.bridge must pin version, archiveSha256, and binarySha256');
 }
 
-const force = process.argv.includes('--force');
+const { force, bump, bumpVersion } = parseArgs(process.argv.slice(2));
 const destDir = join(repoRoot, cfg.dir ?? 'resources/bridge');
 const destBinary = join(destDir, cfg.binary ?? 'cli-proxy-api');
-const archiveName = `CLIProxyAPI_${cfg.version}_darwin_aarch64.tar.gz`;
-const url = `${cfg.releaseBaseUrl}/v${cfg.version}/${archiveName}`;
+const binaryName = cfg.binary ?? 'cli-proxy-api';
+const releaseBaseUrl =
+  cfg.releaseBaseUrl ?? 'https://github.com/router-for-me/CLIProxyAPI/releases/download';
 
-if (!force && existsSync(destBinary) && sha256OfFile(destBinary) === cfg.binarySha256) {
+const targetVersion = bump ? (bumpVersion ?? resolveLatestVersion()) : cfg.version;
+
+if (bump && !force && targetVersion === cfg.version) {
+  console.log(`bridge ${targetVersion} already pinned`);
+  process.exit(0);
+}
+
+if (!bump && !force && existsSync(destBinary) && sha256OfFile(destBinary) === cfg.binarySha256) {
   console.log(`bridge ${cfg.version} already present and verified: ${rel(destBinary)}`);
   process.exit(0);
 }
 
 const work = mkdtempSync(join(tmpdir(), 'foundry-bridge-'));
 try {
+  const fetched = downloadAndHash(work, targetVersion);
+  if (!bump) {
+    if (fetched.archiveSha !== cfg.archiveSha256) {
+      fail(
+        `archive checksum mismatch for ${archiveNameFor(targetVersion)}\n  expected ${cfg.archiveSha256}\n  actual   ${fetched.archiveSha}`,
+      );
+    }
+    if (fetched.binarySha !== cfg.binarySha256) {
+      fail(
+        `binary checksum mismatch\n  expected ${cfg.binarySha256}\n  actual   ${fetched.binarySha}`,
+      );
+    }
+  } else {
+    writePin(targetVersion, fetched.archiveSha, fetched.binarySha);
+  }
+  install(fetched.extracted);
+  if (bump) {
+    console.log(
+      `bridge pin ${cfg.version} -> ${targetVersion}\n  archiveSha256 ${fetched.archiveSha}\n  binarySha256  ${fetched.binarySha}\n  installed     ${rel(destBinary)} (${fetched.size} bytes)`,
+    );
+  } else {
+    console.log(
+      `bridge ${targetVersion} verified and installed: ${rel(destBinary)} (${fetched.size} bytes)`,
+    );
+  }
+} finally {
+  rmSync(work, { recursive: true, force: true });
+}
+
+function parseArgs(argv) {
+  let forceFlag = false;
+  let bumpFlag = false;
+  let version = null;
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === '--force') {
+      forceFlag = true;
+      continue;
+    }
+    if (arg === '--bump') {
+      bumpFlag = true;
+      const next = argv[i + 1];
+      if (next && !next.startsWith('-')) {
+        version = next;
+        i += 1;
+      }
+      continue;
+    }
+    fail(`unknown argument: ${arg}`);
+  }
+  return { force: forceFlag, bump: bumpFlag, bumpVersion: version };
+}
+
+function archiveNameFor(version) {
+  return `CLIProxyAPI_${version}_darwin_aarch64.tar.gz`;
+}
+
+function downloadAndHash(work, version) {
+  const archiveName = archiveNameFor(version);
+  const url = `${releaseBaseUrl}/v${version}/${archiveName}`;
   const archive = join(work, archiveName);
   console.log(`downloading ${url}`);
   // curl rather than fetch(): retries and resume are one flag each here, and
@@ -59,32 +135,62 @@ try {
   });
 
   const archiveSha = sha256OfFile(archive);
-  if (archiveSha !== cfg.archiveSha256) {
-    fail(
-      `archive checksum mismatch for ${archiveName}\n  expected ${cfg.archiveSha256}\n  actual   ${archiveSha}`,
-    );
-  }
-
   execFileSync('tar', ['-xzf', archive, '-C', work], { stdio: ['ignore', 'inherit', 'inherit'] });
-  const extracted = join(work, cfg.binary ?? 'cli-proxy-api');
-  if (!existsSync(extracted)) fail(`archive did not contain ${cfg.binary ?? 'cli-proxy-api'}`);
+  const extracted = join(work, binaryName);
+  if (!existsSync(extracted)) fail(`archive did not contain ${binaryName}`);
 
-  const binarySha = sha256OfFile(extracted);
-  if (binarySha !== cfg.binarySha256) {
-    fail(`binary checksum mismatch\n  expected ${cfg.binarySha256}\n  actual   ${binarySha}`);
-  }
+  const size = statSync(extracted).size;
+  if (size < 1024 * 1024) fail(`extracted binary is too small (${size} bytes)`);
 
+  return { archiveSha, binarySha: sha256OfFile(extracted), extracted, size };
+}
+
+function install(extracted) {
   mkdirSync(destDir, { recursive: true });
   // Remove first: overwriting a running or previously signed binary in place
   // can leave a partially written file that still passes an existsSync check.
   rmSync(destBinary, { force: true });
   copyFileSync(extracted, destBinary);
   chmodSync(destBinary, 0o755);
+}
 
-  const size = statSync(destBinary).size;
-  console.log(`bridge ${cfg.version} verified and installed: ${rel(destBinary)} (${size} bytes)`);
-} finally {
-  rmSync(work, { recursive: true, force: true });
+function writePin(version, archiveSha256, binarySha256) {
+  pkg.config.bridge.version = version;
+  pkg.config.bridge.archiveSha256 = archiveSha256;
+  pkg.config.bridge.binarySha256 = binarySha256;
+  writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
+}
+
+function resolveLatestVersion() {
+  const args = [
+    '-fsSL',
+    '--retry',
+    '3',
+    '--retry-delay',
+    '2',
+    '-H',
+    'Accept: application/vnd.github+json',
+    '-H',
+    'User-Agent: foundry-fetch-bridge',
+  ];
+  if (process.env.GH_TOKEN) {
+    args.push('-H', `Authorization: Bearer ${process.env.GH_TOKEN}`);
+  }
+  args.push('https://api.github.com/repos/router-for-me/CLIProxyAPI/releases/latest');
+  let body;
+  try {
+    body = execFileSync('curl', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
+  } catch {
+    fail('could not resolve latest CLIProxyAPI release');
+  }
+  let tag;
+  try {
+    tag = JSON.parse(body).tag_name;
+  } catch {
+    fail('latest CLIProxyAPI release response was not JSON');
+  }
+  if (!tag || tag === 'null') fail('could not resolve latest CLIProxyAPI release');
+  return String(tag).replace(/^v/, '');
 }
 
 function sha256OfFile(path) {
