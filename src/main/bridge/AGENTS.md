@@ -20,7 +20,7 @@ npm run fetch:bridge   # downloads + checksums the pinned CLIProxyAPI into resou
 npm run dev
 ```
 
-`fetch:bridge` is **fail-closed**: a checksum mismatch leaves nothing executable on disk and exits non-zero. The version and both hashes (archive and extracted binary) are pinned in `package.json` under `config.bridge`; bumping the version means recomputing both. `resources/bridge/` is gitignored and shipped through electron-builder `extraResources`, with the binary listed in `mac.binaries` so hardened-runtime signing covers it.
+`fetch:bridge` is **fail-closed**: a checksum mismatch leaves nothing executable on disk and exits non-zero. The version and both hashes (archive and extracted binary) are pinned in `package.json` under `config.bridge`; `node scripts/fetch-bridge.mjs --bump` recomputes both from a new upstream release (the `update-cliproxyapi.yml` workflow opens that as a PR). `resources/bridge/` is gitignored and shipped through electron-builder `extraResources`, with the binary listed in `mac.binaries` so hardened-runtime signing covers it. `mac-package.yml` must fetch the binary before electron-builder runs.
 
 A checkout that never ran the fetch simply has no Bridge: `bridgeBinaryPath()` returns null and `ensure()` answers `binary_missing`. That is a supported state, not a broken install.
 
