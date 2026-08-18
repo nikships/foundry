@@ -11,7 +11,7 @@
  * implementation costs one file rather than a pass over every layer.
  */
 
-import type { ContextBreakdown, ReasoningEffort, UserMcpServer } from '@shared/types.js';
+import type { ContextBreakdown, ReasoningEffort } from '@shared/types.js';
 import type { Envelope } from '../engine/envelopes.js';
 import type { Tracer } from '../trace/tracer.js';
 
@@ -191,8 +191,6 @@ export interface AgentTransportOptions {
   runId: string;
   model: string;
   reasoningEffort: ReasoningEffort;
-  /** The operator's own MCP servers, already filtered to the enabled ones. */
-  userMcpServers?: UserMcpServer[];
   /** Ruled on by `permissions.ts`; a started run never waits for a person. */
   onPermission: (ask: PermissionAsk) => PermissionDecision | Promise<PermissionDecision>;
   onEvent?: (event: TransportEvent) => void;

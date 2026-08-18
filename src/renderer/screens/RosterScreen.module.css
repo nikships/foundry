@@ -98,7 +98,7 @@
 .roster-cell.on .roster-cell-role {
   color: var(--text-dim);
 }
-.roster-cell-cli {
+.roster-cell-model {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -110,7 +110,7 @@
   color: var(--text-faint);
   transition: color var(--fast) var(--ease);
 }
-.roster-cell.on .roster-cell-cli {
+.roster-cell.on .roster-cell-model {
   color: var(--hue);
 }
 .roster-cell-dot {

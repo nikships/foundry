@@ -18,7 +18,7 @@ import {
   type ConnectToDaemonFn,
   type DaemonConnection,
 } from '../src/main/droid/sdk/daemon.js';
-import { findCli } from '../src/main/cli/index.js';
+import { whichBinary } from '../src/main/system/env.js';
 import { isAlive } from '../src/main/system/procs.js';
 
 const OFF_LIMITS = new Set([39217, 39321, 54621, 54622]);
@@ -121,7 +121,8 @@ function listenOn(port: number): Promise<Server> {
   });
 }
 
-const droidPath = () => findCli('droid');
+// A bare name is the same fallback production uses when the lookup misses.
+const droidPath = (): string => whichBinary('droid') ?? 'droid';
 
 /**
  * Hermetic fake droid daemon for CI: a tiny Node TCP server that listens on

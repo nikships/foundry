@@ -13,7 +13,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import type { AppSettings, CliVendor, TranscriptToolKind } from '@shared/types.js';
+import type { AppSettings, TranscriptToolKind } from '@shared/types.js';
 import type { OneShotFactory, OneShotSession } from '../pi/oneshot.js';
 import { foldTranscript } from '../pi/transcript.js';
 import {
@@ -62,8 +62,7 @@ export interface DetectionState {
   detectionId: string;
   projectId: string;
   status: DetectionStatus;
-  /** Which CLI and model actually ran, not which were requested. */
-  cli: CliVendor;
+  /** Which model actually ran, not the one that was requested. */
   model: string;
   entries: DetectionEntry[];
   proposals: DetectionProposal[];
@@ -90,8 +89,6 @@ export interface DetectSessionDeps {
   projectPath: string;
   existingCommands: string[];
   settings: AppSettings;
-  /** Which runtime answered, recorded so the panel can say what ran. */
-  vendor: CliVendor;
   /** Model id, or `inherit` to let this install choose. */
   model: string;
   /** How the turn is opened. Injected so a test drives one with no model. */
@@ -110,7 +107,6 @@ export class DetectSession {
       detectionId: this.detectionId,
       projectId: deps.projectId,
       status: 'running',
-      cli: deps.vendor,
       model: deps.model,
       entries: [],
       proposals: [],

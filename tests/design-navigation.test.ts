@@ -23,6 +23,7 @@ const read = (rel: string): string => readFileSync(join(here, '..', rel), 'utf8'
 const mainSrc = read('src/main/main.ts');
 const bridgeSrc = read('src/preload/bridge.ts');
 const settingsSrc = read('src/renderer/screens/SettingsScreen.tsx');
+const doctorSrc = read('src/main/system/doctor.ts');
 const designSrc = read('src/renderer/screens/DesignScreen.tsx');
 const rosterSrc = read('src/renderer/screens/RosterScreen.tsx');
 const phaseEditorSrc = read('src/renderer/components/PhaseEditor.tsx');
@@ -82,9 +83,22 @@ describe('Settings', () => {
   });
 
   it('keeps the remaining preference panes', () => {
-    for (const pane of ['general', 'clis', 'defaults', 'mcp', 'project', 'maintenance', 'about']) {
+    for (const pane of ['general', 'providers', 'defaults', 'project', 'maintenance', 'about']) {
       expect(settingsSrc).toContain(`id: '${pane}'`);
     }
+  });
+
+  it('no longer configures CLIs or MCP servers, which the app does not run', () => {
+    expect(settingsSrc).not.toContain("id: 'clis'");
+    expect(settingsSrc).not.toContain("id: 'mcp'");
+    expect(settingsSrc).not.toContain('McpSettings');
+  });
+
+  // Every provider remediation the doctor offers is `open-settings: providers`,
+  // so a renamed pane would land the operator on General with no explanation.
+  it('is the destination the doctor’s provider fixes name', () => {
+    expect(doctorSrc).toContain("kind: 'open-settings', value: 'providers'");
+    expect(settingsSrc).toContain("id: 'providers'");
   });
 
   it('exposes a data-testid on every pane tab for CDP automation', () => {

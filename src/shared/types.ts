@@ -72,28 +72,11 @@ export const PR_FALLBACK_HEADINGS = [
 ] as const;
 
 /**
- * Which agent CLI drives a phase.
+ * Historical CLI vendor tag. Every agent turn now runs in-process on pi, so
+ * nothing chooses a vendor any more; the type survives only because rows
+ * written before the migration still carry the column.
  */
 export type CliVendor = 'droid';
-
-export const CLI_VENDOR_IDS: CliVendor[] = ['droid'];
-
-/**
- * What the renderer is allowed to know about a CLI. The adapter itself stays in
- * the main process, because it holds functions and argv, neither of which
- * survives the structured-clone bridge.
- */
-export interface CliDescriptor {
-  id: CliVendor;
-  label: string;
-  binary: string;
-  docsUrl: string;
-  authEnvVars: string[];
-  /** True only for droid, the one vendor with mid-turn tool visibility. */
-  supportsRpc: boolean;
-  /** What this CLI cannot do that droid can, shown next to the picker. */
-  caveats: string[];
-}
 
 /** How a code phase names the process it runs. */
 export type CommandSpec =
@@ -267,41 +250,11 @@ export function resolveAgentExecution(
 
 // ── Settings ─────────────────────────────────────────────────────────────────
 
-export interface CliConfig {
-  /** Absolute path or bare name; resolved once per install by a PATH lookup. */
-  path: string;
-  /**
-   * Flags appended verbatim to every turn for this CLI. The escape hatch for a
-   * vendor that grows an option Foundry does not model yet, so an operator is
-   * never blocked on a release of this app.
-   */
-  extraArgs: string[];
-}
-
-export type UserMcpServer =
-  | {
-      id: string;
-      name: string;
-      disabled: boolean;
-      type: 'stdio';
-      command: string;
-      args?: string[];
-      env?: Record<string, string>;
-    }
-  | { id: string; name: string; disabled: boolean; type: 'http'; url: string }
-  | { id: string; name: string; disabled: boolean; type: 'sse'; url: string };
-
 export interface AppSettings {
-  /** One entry per vendor. An agent names the vendor; this says where it lives. */
-  clis: Record<CliVendor, CliConfig>;
-  /** The vendor a newly created agent starts on. */
-  defaultCli: CliVendor;
   /**
-   * Which CLI answers "Ask AI to find commands". `default` follows `defaultCli`,
-   * so an operator who never opens this setting still gets a working button.
+   * Model for detection, as a `provider/model` id from the agent catalog.
+   * `inherit` follows `defaultModel`.
    */
-  detectCli: CliVendor | 'default';
-  /** Model for detection. `inherit` lets the chosen CLI pick its own. */
   detectModel: string;
   /**
    * Model for the Agent Readiness Check. `inherit` follows `defaultModel`.
@@ -335,16 +288,14 @@ export interface AppSettings {
    */
   rewindAfterCorrections: number;
   /**
-   * Preferred local port for the app-owned `droid daemon`. Must sit inside
-   * 37600–37699; when busy the manager scans up within that band.
+   * Preferred local port for the app-owned Bridge. Must sit inside
+   * 37700–37799; when busy the manager scans up within that band.
+   *
+   * No credential lives here. Provider OAuth material is the Bridge's own auth
+   * directory and direct API keys are pi's credential store, so `settings.json`
+   * stays a file an operator can read, copy, and check into a dotfile repo.
    */
-  daemonPort: number;
-  /**
-   * Factory API key (`fk-…`) used to authenticate the local `droid daemon`.
-   * Empty means unset: Foundry then uses `FACTORY_API_KEY` or a `droid login`
-   * session. Stored locally in settings.json; never logged.
-   */
-  factoryApiKey: string;
+  bridgePort: number;
   notifications: { accepted: boolean; rejected: boolean; failed: boolean; needsInput: boolean };
   dockBadge: boolean;
   /** Which terminal emulator "Open in terminal" hands a directory to. */
@@ -352,7 +303,6 @@ export interface AppSettings {
   appearance: 'system' | 'dark';
   retentionDays: number | null;
   onboarded: boolean;
-  mcpServers: UserMcpServer[];
 }
 
 export type MergePolicy = 'auto' | 'ask' | 'never';
@@ -734,10 +684,13 @@ export interface AgentSessionRow {
 }
 
 /**
- * What is actually occupying an agent's context window, as droid accounts for
- * it. The occupancy figures are droid's own estimate and can differ from
- * `AgentSessionRow.contextTokens` by a token or two: they are two reads of a
- * moving number, so a view shows one of them, never a difference between them.
+ * What is occupying an agent's context window, as pi accounts for it.
+ *
+ * Pi reports one estimate for the whole conversation rather than a per-source
+ * composition, so this is four numbers and the model they belong to. The
+ * occupancy can differ from `AgentSessionRow.contextTokens` by a token or two:
+ * they are two reads of a moving number, so a view shows one of them, never a
+ * difference between them.
  */
 export interface ContextBreakdown {
   modelId: string;
@@ -745,11 +698,6 @@ export interface ContextBreakdown {
   contextBudget: number;
   usedTokens: number;
   freeTokens: number;
-  lastCallCompactionTokens?: number;
-  categories: { name: string; tokens: number; colorKey: string }[];
-  skills: { name: string; location: string; tokens: number }[];
-  mcpServers: { name: string; toolCount: number; tokens: number }[];
-  droids: { name: string; location: string; tokens: number }[];
 }
 
 export interface UsageBreakdown {

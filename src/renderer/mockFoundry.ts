@@ -8,7 +8,6 @@
 import type {
   AgentDef,
   AppSettings,
-  CliDescriptor,
   DoctorCheck,
   EnvelopeDef,
   ModelInfo,
@@ -154,11 +153,6 @@ const MOCK_PHASES: Record<string, PhaseRow[]> = {
 
 function defaultMockSettings(): AppSettings {
   return {
-    clis: {
-      droid: { path: 'droid', extraArgs: [] },
-    },
-    defaultCli: 'droid',
-    detectCli: 'default',
     detectModel: 'inherit',
     readinessModel: 'inherit',
     readinessReasoningEffort: 'high',
@@ -172,14 +166,12 @@ function defaultMockSettings(): AppSettings {
     gateRetries: 2,
     compactionThreshold: 0.8,
     rewindAfterCorrections: 2,
-    daemonPort: 37_643,
-    factoryApiKey: '',
+    bridgePort: 37_717,
     notifications: { accepted: true, rejected: true, failed: true, needsInput: true },
     dockBadge: true,
     terminalApp: 'terminal',
     appearance: 'system',
     retentionDays: null,
-    mcpServers: [],
     onboarded: true,
   };
 }
@@ -188,18 +180,6 @@ let mockSettings = defaultMockSettings();
 let onboardingDone = true;
 let mockAgents: AgentDef[] = BUILTIN_AGENTS.map((a) => ({ ...a }));
 let mockPipelines: PipelineDef[] = BUILTIN_PIPELINES.map((p) => ({ ...p }));
-
-const CLIS: CliDescriptor[] = [
-  {
-    id: 'droid',
-    label: 'Droid',
-    binary: 'droid',
-    docsUrl: 'https://docs.factory.ai/droid-exec/overview',
-    authEnvVars: ['FACTORY_API_KEY'],
-    supportsRpc: true,
-    caveats: [],
-  },
-];
 
 export function createMockFoundryApi(): FoundryApi {
   const listeners = new Map<string, Set<(data?: unknown) => void>>();
@@ -424,20 +404,6 @@ export function createMockFoundryApi(): FoundryApi {
       },
     },
     catalog: {
-      models: async (): Promise<ModelInfo[]> => [
-        {
-          id: 'claude-opus-5',
-          displayName: 'Claude Opus 5',
-          provider: 'anthropic',
-          supportedReasoningEfforts: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
-          defaultReasoningEffort: 'high',
-          isCustom: false,
-          deprecated: false,
-          contextWindow: 200_000,
-        },
-      ],
-      tools: async () => [],
-      clis: async () => [...CLIS],
       gates: async () => [
         { id: 'artifacts_exist', description: 'Every declared artifact exists.' },
         { id: 'files_non_empty', description: 'Artifacts have content.' },
@@ -501,6 +467,7 @@ export function createMockFoundryApi(): FoundryApi {
       cancelLogin: async () => false,
       setApiKey: async () => ({ ok: false, detail: 'Web preview' }),
       clearApiKey: async () => ({ ok: false, detail: 'Web preview' }),
+      storedKeys: async () => [{ providerId: 'anthropic', type: 'api_key' }],
     },
     runs: {
       start: async () => ({
@@ -634,18 +601,23 @@ export function createMockFoundryApi(): FoundryApi {
     doctor: {
       run: async (): Promise<DoctorCheck[]> => [
         {
-          id: 'cli:droid',
-          label: 'Factory droid CLI',
+          id: 'bridge',
+          label: 'Provider bridge',
           ok: true,
-          detail: 'found 0.19.1 at /usr/local/bin/droid',
+          detail: 'serving on http://127.0.0.1:37717',
+        },
+        {
+          id: 'agent-models',
+          label: 'Usable models',
+          ok: true,
+          detail: '1 model available, including Claude Opus 5',
           blocking: true,
         },
         {
-          id: 'auth:droid',
-          label: 'Factory droid authentication',
+          id: 'provider:claude',
+          label: 'Claude account',
           ok: true,
-          detail: 'signed in, config at ~/.factory/settings.json',
-          blocking: true,
+          detail: 'signed in',
         },
         {
           id: 'toolchain-path',

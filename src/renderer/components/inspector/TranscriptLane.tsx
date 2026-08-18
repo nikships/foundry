@@ -1,6 +1,6 @@
 /**
  * One lane of the Inspector: a phase's full transcript, headered with who is
- * doing the work (agent, CLI, model) and how it is going (status, elapsed,
+ * doing the work (agent, transport, model) and how it is going (status, elapsed,
  * tokens, context used). The lane follows the tail of the transcript while
  * the user is at the bottom and stops following the moment they scroll up,
  * because yanking the scroll position away from a reader is worse than a
@@ -79,7 +79,11 @@ export default function TranscriptLane({
     : '';
 
   const session = sessions.find((s) => s.agent === phase.owner);
-  const cli = session?.cli ?? 'droid';
+  // The transport that answered, not the harness that used to. `mode` is what
+  // a session row has recorded since it existed; a row written before it did
+  // still carries its `cli`, and showing that is more honest than relabelling
+  // an old droid run as pi.
+  const transport = session?.mode ?? session?.cli ?? 'pi';
   const model = modelLabel(session?.model);
   const elapsed = phaseDuration(phase, now);
   const usage = usageFor(events);
@@ -122,7 +126,7 @@ export default function TranscriptLane({
           </span>
           <span className={styles.laneAgent}>
             <span className={styles.laneOwner}>{phase.owner ?? 'code'}</span>
-            <span className={styles.laneCli}>{cli}</span>
+            <span className={styles.laneCli}>{transport}</span>
             <span className={styles.laneModel} title={model}>
               {model}
             </span>

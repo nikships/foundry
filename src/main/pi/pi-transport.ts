@@ -228,12 +228,23 @@ export class PiTransport implements AgentTransport {
   }
 
   /**
-   * Pi accounts for context as a single number, not by category, so there is
-   * no honest breakdown to give. Null leaves the last known one in place
-   * rather than showing an invented composition.
+   * Pi accounts for context as one estimate for the whole conversation rather
+   * than by source, so the breakdown is the model and its occupancy and
+   * nothing else. Inventing a composition to fill the panel would be a
+   * fabricated one; four honest numbers are the answer pi can give.
    */
   contextBreakdown(): Promise<ContextBreakdown | null> {
-    return Promise.resolve(null);
+    const usage = this.session?.getContextUsage();
+    if (!usage) return Promise.resolve(null);
+    const model = this.session?.model ?? this.resolvedModel;
+    const used = usage.tokens ?? 0;
+    return Promise.resolve({
+      modelId: this.activeModel,
+      modelDisplayName: model?.name ?? this.activeModel,
+      contextBudget: usage.contextWindow,
+      usedTokens: used,
+      freeTokens: Math.max(0, usage.contextWindow - used),
+    });
   }
 
   /**

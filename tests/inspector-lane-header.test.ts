@@ -67,7 +67,18 @@ describe('inspector lane header overflow', () => {
     expect(tsx).toMatch(/title=\{phase\.name\}/);
   });
 
-  it('does not clip the bordered CLI pill mid-glyph', () => {
+  it('names the transport that answered, falling back for historical rows', () => {
+    // Runs recorded before the migration have `cli` and no `mode`. The pill is
+    // the only place the lane says what ran the phase, so a blank one would
+    // erase that for every run already in the trace.
+    expect(tsx).toMatch(/session\?\.mode \?\? session\?\.cli \?\? 'pi'/);
+    expect(tsx).toMatch(/styles\.laneCli\}>\{transport\}/);
+    // The class name outlives the CLI it was named for: the breakpoints below
+    // hide by it, so renaming it here would silently unhide the pill.
+    expect(css).toMatch(/\.laneCli/);
+  });
+
+  it('does not clip the bordered transport pill mid-glyph', () => {
     const agent = rule('.laneAgent');
     expect(agent).not.toMatch(/overflow:\s*hidden/);
     const cli = rule('.laneCli');

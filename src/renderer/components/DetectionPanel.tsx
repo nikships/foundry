@@ -69,9 +69,7 @@ export default function DetectionPanel({
     <div className={`field ${styles.detection}`}>
       <label>
         {STATUS_LABEL[state.status]}
-        <span className={`faint ${styles.cli}`}>
-          {' '}
-          · {state.cli}
+        <span className={`faint ${styles.model}`}>
           {state.model === 'inherit' ? '' : ` · ${state.model}`}
         </span>
       </label>

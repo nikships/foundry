@@ -14,7 +14,6 @@ import {
 import { runCommand } from '../engine/commands.js';
 import { sniffCommands } from '../engine/detect.js';
 import { sniffSetupScript } from '../engine/setup.js';
-import { adapterFor } from '../cli/index.js';
 import { currentBranch, isRepo } from '../engine/git.js';
 import { checkProject } from '../system/doctor.js';
 import { createRepo, githubAccount } from '../system/gh.js';
@@ -26,6 +25,7 @@ type Ctx = Pick<
   AppContext,
   | 'projects'
   | 'settings'
+  | 'supportDir'
   | 'window'
   | 'broadcast'
   | 'detections'
@@ -33,6 +33,24 @@ type Ctx = Pick<
   | 'roster'
   | 'pipelines'
 >;
+
+/**
+ * The model a detection or setup turn should run on.
+ *
+ * A stored id that no provider currently serves falls back to `inherit` rather
+ * than being sent: the turn would be refused on its first message, and "the
+ * agent found nothing" is the least useful way to learn a provider was
+ * disconnected. An unreadable catalog also falls back, because refusing to
+ * start on a catalog read is worse than starting on this install's default.
+ */
+async function resolveTurnModel(supportDir: string, stored: string): Promise<string> {
+  const model = stored || 'inherit';
+  if (model === 'inherit') return 'inherit';
+  const { availableModels } = await import('../pi/catalog.js');
+  const known = await availableModels(supportDir).catch(() => []);
+  if (!known.length) return 'inherit';
+  return known.some((m) => m.id === model) ? model : 'inherit';
+}
 
 export function register(ctx: Ctx, handle: Handle): void {
   const projectOf = (projectId: string) => ctx.projects.get(projectId);
@@ -200,27 +218,13 @@ export function register(ctx: Ctx, handle: Handle): void {
       if (!project) return { error: 'project not found' };
 
       const settings = ctx.settings.get();
-      const vendor = settings.detectCli === 'default' ? settings.defaultCli : settings.detectCli;
-      const cli = settings.clis[vendor];
-      if (!cli) return { error: `no CLI configured for ${vendor}` };
-
-      // A model id is meaningful only to the CLI that published it. An id
-      // chosen while another vendor was selected would be rejected on the
-      // first turn, so it is dropped rather than sent.
-      let model = settings.detectModel || 'inherit';
-      if (model !== 'inherit') {
-        const known = await adapterFor(vendor)
-          .models(cli.path)
-          .catch(() => []);
-        if (known.length && !known.some((m) => m.id === model)) model = 'inherit';
-      }
+      const model = await resolveTurnModel(ctx.supportDir, settings.detectModel);
 
       const session = detections.start({
         projectId: project.id,
         projectPath: project.path,
         existingCommands: project.commands.map((c) => c.name),
         settings,
-        vendor,
         model,
       });
       return { detectionId: session.detectionId };
@@ -300,21 +304,11 @@ export function register(ctx: Ctx, handle: Handle): void {
       const project = projectOf(id);
       if (!project) return { error: 'project not found' };
       const settings = ctx.settings.get();
-      const vendor = settings.detectCli === 'default' ? settings.defaultCli : settings.detectCli;
-      const cli = settings.clis[vendor];
-      if (!cli) return { error: `no CLI configured for ${vendor}` };
-      let model = settings.detectModel || 'inherit';
-      if (model !== 'inherit') {
-        const known = await adapterFor(vendor)
-          .models(cli.path)
-          .catch(() => []);
-        if (known.length && !known.some((m) => m.id === model)) model = 'inherit';
-      }
+      const model = await resolveTurnModel(ctx.supportDir, settings.detectModel);
       const session = setups.start({
         projectId: project.id,
         projectPath: project.path,
         settings,
-        vendor,
         model,
       });
       return { setupId: session.setupId };

@@ -25,7 +25,7 @@ import {
   type RequestPermissionHandlerResult,
   type RequestPermissionRequestParams,
 } from '@factory/droid-sdk';
-import type { ContextBreakdown, ReasoningEffort, UserMcpServer } from '@shared/types.js';
+import type { ContextBreakdown, ReasoningEffort } from '@shared/types.js';
 import {
   AUTONOMY_LEVEL,
   type AvailableModel,
@@ -43,7 +43,12 @@ import {
   toPermissionAsk,
   toPermissionHandlerResult,
 } from './policy-adapters.js';
-import type { SessionTool, TransportSession, TransportSessionOptions } from './transport.js';
+import type {
+  SessionTool,
+  TransportSession,
+  TransportSessionOptions,
+  UserMcpServer,
+} from './transport.js';
 import { TurnCollector } from './turn-collector.js';
 
 /**

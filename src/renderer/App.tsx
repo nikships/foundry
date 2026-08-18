@@ -3,7 +3,7 @@ import { api, menu } from './api.js';
 import { useGlobalShortcuts } from './hooks/useGlobalShortcuts.js';
 import { AppProvider, useApp } from './stores/app.js';
 import Sidebar from './components/Sidebar.js';
-import { DroidGlyph } from './components/BrandIcon.js';
+import { FoundryGlyph } from './components/BrandIcon.js';
 import RunsScreen from './screens/RunsScreen.js';
 import RunDetailScreen from './screens/RunDetailScreen.js';
 import InspectorScreen from './screens/InspectorScreen.js';
@@ -274,7 +274,7 @@ function AppInner(): React.JSX.Element {
       <div className={styles.titlebar}>
         {ready && !needsOnboarding && (
           <div className={styles.wordmark} aria-hidden>
-            <DroidGlyph size={13} />
+            <FoundryGlyph size={13} />
             <span className={styles.wordmarkText}>Foundry</span>
           </div>
         )}

@@ -41,9 +41,7 @@ function SetupPanel({
           : state.status === 'done'
             ? 'Finished'
             : state.status}
-        <span className={`faint ${panelStyles.cli}`}>
-          {' '}
-          · {state.cli}
+        <span className={`faint ${panelStyles.model}`}>
           {state.model === 'inherit' ? '' : ` · ${state.model}`}
         </span>
       </label>

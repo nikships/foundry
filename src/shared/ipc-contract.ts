@@ -8,7 +8,6 @@ import type {
   AgentDef,
   AgentSessionRow,
   AppSettings,
-  CliDescriptor,
   CliVendor,
   ContextBreakdown,
   DoctorCheck,
@@ -39,7 +38,6 @@ import type {
   SmithProposal,
   SmithProposalAnswer,
   StartRunInput,
-  ToolInfo,
   TranscriptToolKind,
   UpdateStatus,
   ValidationIssue,
@@ -278,6 +276,21 @@ export interface BridgeProviderInfo {
 export type BridgeUnavailable =
   'binary_missing' | 'spawn_failed' | 'port_exhausted' | 'health_timeout';
 
+/**
+ * The reason in the operator's terms, for `${copy}: ${state.detail}`.
+ *
+ * Shared rather than owned by either side because the doctor, the Providers
+ * pane, and the onboarding step all report the same failure. A `detail` that
+ * had to read well on its own would restate the reason, which is the doubled
+ * sentence this split exists to avoid.
+ */
+export const BRIDGE_UNAVAILABLE_COPY: Record<BridgeUnavailable, string> = {
+  binary_missing: 'the vendored Bridge binary is not installed',
+  spawn_failed: 'the Bridge binary would not launch',
+  port_exhausted: 'no port in the Bridge\u2019s range was free',
+  health_timeout: 'the Bridge started but never answered on its port',
+};
+
 export interface BridgeState {
   running: boolean;
   port: number | null;
@@ -292,6 +305,17 @@ export interface BridgeState {
 export interface BridgeActionResult {
   ok: boolean;
   detail: string;
+}
+
+/**
+ * One direct API key pi holds, as metadata. Deliberately no value and no
+ * masked prefix: the renderer needs to know a key exists so it can offer to
+ * replace or clear it, and anything more would put a secret on this seam.
+ */
+export interface StoredProviderKey {
+  providerId: string;
+  /** pi's own credential kind, e.g. `api_key` or `oauth`. */
+  type: string;
 }
 
 export interface FoundryApi {
@@ -419,17 +443,12 @@ export interface FoundryApi {
     reset(): Promise<PipelineDef[]>;
   };
   catalog: {
-    /** Models the given CLI can reach. Each vendor answers for itself. */
-    models(vendor: CliVendor, force?: boolean): Promise<ModelInfo[]>;
-    tools(vendor: CliVendor, model?: string): Promise<ToolInfo[]>;
-    /** What each CLI is, where it lives, and what it cannot do. */
-    clis(): Promise<CliDescriptor[]>;
     gates(): Promise<{ id: string; description: string }[]>;
     templateVariables(): Promise<{ token: string; description: string }[]>;
     /**
      * Models the agent transport can actually reach: pi's built-ins with a
-     * credential plus everything the Bridge has generated. This is the list
-     * agent phases run on, which is why it is separate from `models(vendor)`.
+     * credential plus everything the Bridge has generated. Every model picker
+     * in the app reads this one list.
      */
     agentModels(): Promise<ModelInfo[]>;
   };
@@ -456,6 +475,12 @@ export interface FoundryApi {
     setApiKey(providerId: string, apiKey: string): Promise<BridgeActionResult>;
     /** Removes a stored direct key. */
     clearApiKey(providerId: string): Promise<BridgeActionResult>;
+    /**
+     * Which providers pi holds a credential for, as metadata. The values never
+     * leave the main process, so a key row can say "set" without the renderer
+     * ever having held one.
+     */
+    storedKeys(): Promise<StoredProviderKey[]>;
   };
   runs: {
     start(
@@ -641,9 +666,6 @@ export const IPC = {
   pipelinesValidate: 'pipelines:validate',
   pipelinesDryRun: 'pipelines:dryRun',
   pipelinesReset: 'pipelines:reset',
-  catalogModels: 'catalog:models',
-  catalogClis: 'catalog:clis',
-  catalogTools: 'catalog:tools',
   catalogGates: 'catalog:gates',
   catalogTemplateVariables: 'catalog:templateVariables',
   catalogAgentModels: 'catalog:agentModels',
@@ -654,6 +676,7 @@ export const IPC = {
   bridgeCancelLogin: 'bridge:cancelLogin',
   bridgeSetApiKey: 'bridge:setApiKey',
   bridgeClearApiKey: 'bridge:clearApiKey',
+  bridgeStoredKeys: 'bridge:storedKeys',
   runsStart: 'runs:start',
   runsList: 'runs:list',
   runsDetail: 'runs:detail',

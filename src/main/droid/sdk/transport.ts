@@ -4,9 +4,29 @@
  * tests substitute a session without a daemon.
  */
 
-import type { ContextBreakdown, ReasoningEffort, UserMcpServer } from '@shared/types.js';
+import type { ContextBreakdown, ReasoningEffort } from '@shared/types.js';
 import type { AvailableModel, ContextStatsResult, DroidNotification } from '../protocol.js';
 import type { PermissionAsk, PermissionDecision, TurnOptions, TurnResult } from '../turn.js';
+
+/**
+ * An MCP server a daemon session attaches in-process.
+ *
+ * Lives here rather than in `@shared/types.js` because nothing outside the
+ * droid SDK reads one any more: pi carries its own tools, and Settings no
+ * longer stores servers.
+ */
+export type UserMcpServer =
+  | {
+      id: string;
+      name: string;
+      disabled: boolean;
+      type: 'stdio';
+      command: string;
+      args?: string[];
+      env?: Record<string, string>;
+    }
+  | { id: string; name: string; disabled: boolean; type: 'http'; url: string }
+  | { id: string; name: string; disabled: boolean; type: 'sse'; url: string };
 
 /** One tool as this session sees it; `id` is the llmId the allowlist names. */
 export interface SessionTool {

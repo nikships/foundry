@@ -6,7 +6,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import type { AppSettings, CliVendor, TranscriptToolKind } from '@shared/types.js';
+import type { AppSettings, TranscriptToolKind } from '@shared/types.js';
 import type { OneShotFactory, OneShotSession } from '../pi/oneshot.js';
 import { foldTranscript } from '../pi/transcript.js';
 import { SETUP_PROMPT, parseSetupReply, sniffSetupScript } from './setup.js';
@@ -27,7 +27,7 @@ export interface SetupState {
   setupId: string;
   projectId: string;
   status: SetupStatus;
-  cli: CliVendor;
+  /** The model that actually ran, not the one that was requested. */
   model: string;
   entries: SetupEntry[];
   script: string;
@@ -48,7 +48,6 @@ export interface SetupSessionDeps {
   projectId: string;
   projectPath: string;
   settings: AppSettings;
-  vendor: CliVendor;
   model: string;
   /** How the turn is opened. Injected so a test drives one with no model. */
   oneShot: OneShotFactory;
@@ -66,7 +65,6 @@ export class SetupSession {
       setupId: this.setupId,
       projectId: deps.projectId,
       status: 'running',
-      cli: deps.vendor,
       model: deps.model,
       entries: [],
       script: '',

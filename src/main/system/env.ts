@@ -14,7 +14,7 @@
  * milliseconds, and no spawn should pay that.
  */
 
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -79,8 +79,7 @@ let resolved: ResolvedEnv | null = null;
 
 /**
  * Extra variables merged into every child env after PATH and before caller
- * overrides. Used for the Factory API key from Settings so `droid exec` and
- * the daemon see the same credential without mutating `process.env`.
+ * overrides, so a credential can reach a child without mutating `process.env`.
  */
 let spawnExtra: Record<string, string> = {};
 
@@ -161,6 +160,26 @@ export function spawnEnv(
   overrides?: Record<string, string | undefined>,
 ): NodeJS.ProcessEnv & Record<string, string | undefined> {
   return { ...process.env, PATH: resolvedEnv().path, ...spawnExtra, ...overrides };
+}
+
+/**
+ * The absolute path of a binary on the resolved PATH, or null.
+ *
+ * The resolved PATH is the point: a GUI launch inherits launchd's, where none
+ * of a developer's tooling lives, so a plain `which` would report a binary the
+ * user definitely has as missing.
+ */
+export function whichBinary(binary: string): string | null {
+  try {
+    const found = execFileSync('/usr/bin/which', [binary], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      env: spawnEnv(),
+    }).trim();
+    return found || null;
+  } catch {
+    return null;
+  }
 }
 
 /** Test seam: lets a test pin a PATH without spawning the user's shell. */

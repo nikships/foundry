@@ -12,7 +12,7 @@ import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tempDir } from './tmp.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { CliVendor, PipelineDef, ToolInfo } from '../src/shared/types.js';
+import type { PipelineDef, ToolInfo } from '../src/shared/types.js';
 import { IPC } from '../src/shared/ipc-contract.js';
 import { register as registerCatalogIpc } from '../src/main/ipc/catalog.js';
 import {
@@ -49,12 +49,13 @@ function shimInvocations(): string[] {
   return readFileSync(argvLog, 'utf8').split('\n').filter(Boolean);
 }
 
-/** The `catalog:tools` handler as the renderer would reach it, no Electron. */
-function toolsHandler(droidPath: string): (vendor: CliVendor) => Promise<ToolInfo[]> {
-  const handlers = new Map<string, unknown>();
-  const ctx = { settings: { get: () => ({ clis: { droid: { path: droidPath } } }) } };
-  registerCatalogIpc(ctx as never, (channel, fn) => handlers.set(channel, fn));
-  return handlers.get(IPC.catalogTools) as (vendor: CliVendor) => Promise<ToolInfo[]>;
+/** The channels the catalog router registers, no Electron. */
+function catalogChannels(): string[] {
+  const channels: string[] = [];
+  registerCatalogIpc({ supportDir: tempDir('foundry-catalog-ipc-') }, (channel) =>
+    channels.push(channel),
+  );
+  return channels;
 }
 
 beforeEach(() => {
@@ -70,12 +71,13 @@ describe('a tools request before any session exists', () => {
     await expect(droidTools()).resolves.toEqual([]);
   });
 
-  it('spawns nothing through the IPC channel the renderer still owns', async () => {
-    const tools = await toolsHandler(shim)('droid');
-    expect(Array.isArray(tools)).toBe(true);
-    expect(tools).toEqual([]);
-    expect(shimInvocations()).toEqual([]);
-    expect(takeDiscoverySpawns()).toEqual([]);
+  it('is not something the renderer can ask for at all', () => {
+    // Tools are a property of the live session that reported them, not of a
+    // CLI the renderer names, so there is no tools channel to spawn behind.
+    const channels = catalogChannels();
+    expect(channels).toContain(IPC.catalogAgentModels);
+    expect(channels.some((channel) => channel.startsWith('catalog:tools'))).toBe(false);
+    expect(channels.some((channel) => channel.startsWith('catalog:clis'))).toBe(false);
   });
 });
 
@@ -91,8 +93,7 @@ describe('a tools request once a session has reported', () => {
 
   it('answers with the session list and still spawns nothing', async () => {
     noteSessionTools([tool]);
-    const tools = await toolsHandler(shim)('droid');
-    expect(tools.map((t) => t.id)).toEqual(['Execute']);
+    expect((await droidTools()).map((t) => t.id)).toEqual(['Execute']);
     expect(shimInvocations()).toEqual([]);
     expect(takeDiscoverySpawns()).toEqual([]);
   });
@@ -222,9 +223,8 @@ describe('a live agent session', () => {
     const session = agentSession(scripted);
     await session.send('do the thing', { phaseId });
 
-    const tools = await toolsHandler(shim)('droid');
     // `ToolInfo.id` is the name a roster's allowlist uses.
-    expect(tools.map((t) => t.id)).toEqual(['bash']);
+    expect((await droidTools()).map((t) => t.id)).toEqual(['bash']);
     // The list came off the live session rather than a discovery command.
     expect(scripted.wire).toContain('list_tools');
     // Enumerating tools is never a child, and neither is the agent runtime:

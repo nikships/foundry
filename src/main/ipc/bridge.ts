@@ -8,7 +8,7 @@
  * message rather than passed through.
  */
 
-import type { BridgeActionResult, BridgeState } from '@shared/ipc-contract.js';
+import type { BridgeActionResult, BridgeState, StoredProviderKey } from '@shared/ipc-contract.js';
 import { IPC } from '@shared/ipc-contract.js';
 import { isBridgeProvider } from '../bridge/providers.js';
 import type { AppContext } from '../context.js';
@@ -101,6 +101,17 @@ export function register(ctx: Ctx, handle: Handle): void {
       return { ok: true, detail: `removed the stored key for ${providerId}` };
     } catch (error) {
       return { ok: false, detail: message(error) };
+    }
+  });
+
+  handle(IPC.bridgeStoredKeys, async (): Promise<StoredProviderKey[]> => {
+    try {
+      const { storedCredentials } = await import('../pi/catalog.js');
+      return await storedCredentials(ctx.supportDir);
+    } catch {
+      // An unbuildable runtime means no keys to report, not a failed call: the
+      // pane shows every key row as unset rather than an error.
+      return [];
     }
   });
 }

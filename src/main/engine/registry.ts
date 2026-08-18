@@ -134,7 +134,6 @@ export class RunRegistry extends EventEmitter {
 
     const executor = new Executor({
       tracer,
-      clis: settings.clis,
       defaultModel: settings.defaultModel,
       defaultReasoningEffort: settings.defaultReasoningEffort,
       turnTimeoutMs: settings.turnTimeoutMs,
@@ -142,9 +141,7 @@ export class RunRegistry extends EventEmitter {
       gateRetries: settings.gateRetries,
       compactionThreshold: settings.compactionThreshold,
       rewindAfterCorrections: settings.rewindAfterCorrections,
-      daemonPort: settings.daemonPort,
       supportDir: this.deps.appSupportDir,
-      mcpServers: settings.mcpServers ?? [],
       agents: input.agents,
       envelopeDefs: input.envelopeDefs,
       project: input.project,

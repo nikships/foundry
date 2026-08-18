@@ -4,7 +4,7 @@ import { api } from '../api.js';
 import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useApp } from '../stores/app.js';
 import { useRun } from '../stores/run.js';
-import { clockTime, credits, duration, tokens } from '../format.js';
+import { clockTime, duration, tokens, usd } from '../format.js';
 import { runDuration, usageFor } from '../derive.js';
 import Waterfall from '../components/Waterfall.js';
 import PhaseDrawer from '../components/PhaseDrawer.js';
@@ -81,10 +81,10 @@ export default function RunDetailScreen({
     () => view.phases.find((p) => p.phaseId === selectedPhaseId) ?? null,
     [view.phases, selectedPhaseId],
   );
-  const totalCredits = useMemo(
+  const totalCost = useMemo(
     () =>
       view.phases.reduce(
-        (sum, phase) => sum + usageFor(eventsByPhase.get(phase.phaseId) ?? []).credits,
+        (sum, phase) => sum + usageFor(eventsByPhase.get(phase.phaseId) ?? []).cost,
         0,
       ),
     [view.phases, eventsByPhase],
@@ -263,7 +263,7 @@ export default function RunDetailScreen({
           <div className={`${styles.facts} mono faint`}>
             <span>{duration(runDuration(view.run, now))}</span>
             {view.run.totalTokens ? <span>{tokens(view.run.totalTokens)} tokens</span> : null}
-            {totalCredits ? <span>{credits(totalCredits)} credits</span> : null}
+            {totalCost ? <span>{usd(totalCost)}</span> : null}
             {view.run.branch && (
               <button className={styles.link} onClick={() => void openWorktree()}>
                 {view.run.branch}
