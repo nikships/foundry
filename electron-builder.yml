@@ -19,6 +19,13 @@ files:
 # `process.resourcesPath/assets`. extraResources copies them there directly.
 extraResources:
   - assets/**/*
+  # The Bridge (vendored CLIProxyAPI). It has to be a real executable file the
+  # main process can spawn, which a path inside app.asar is not. Fetched by
+  # `npm run fetch:bridge` (checksum-verified) before electron-builder runs.
+  - from: resources/bridge
+    to: bridge
+    filter:
+      - '**/*'
 
 asar: true
 asarUnpack:
@@ -37,6 +44,11 @@ mac:
   minimumSystemVersion: '26.0'
   hardenedRuntime: true
   gatekeeperAssess: false
+  # A hardened-runtime app cannot launch an unsigned nested executable, and
+  # notarization rejects the bundle outright. Name the Bridge explicitly rather
+  # than relying on the walker to notice a file under Resources.
+  binaries:
+    - Contents/Resources/bridge/cli-proxy-api
   target:
     - target: dmg
       arch:
