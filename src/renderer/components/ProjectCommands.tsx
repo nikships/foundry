@@ -281,6 +281,7 @@ export default function ProjectCommands({
               value={detectModel}
               models={models}
               allowInherit
+              inheritLabel="Same as default model"
               emptyHint="No models are reachable. Connect a provider under Settings → Providers, or leave this on inherit."
               onChange={(model) => void patchSettings({ detectModel: model })}
             />

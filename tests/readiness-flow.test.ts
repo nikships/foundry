@@ -476,7 +476,7 @@ describe('make it ready, merge polling, and failed confirmation', () => {
     seedReadyFiles(repo);
     sh(repo, ['git', 'add', '-A']);
     sh(repo, ['git', 'commit', '-qm', 'ready files']);
-    addOriginRemote(repo);
+    const remote = addOriginRemote(repo);
 
     const { session, project } = sessionFor(repo, {
       openPr: async () => ({
@@ -498,11 +498,17 @@ describe('make it ready, merge polling, and failed confirmation', () => {
     await session.makeReady();
 
     // Nothing was merged into origin, so the fast-forward brings back no marker.
-    const done = await session.confirmMerge();
-    expect(done.phase).toBe('failed');
-    expect(done.detail).toMatch(/not committed on main/);
+    const parked = await session.confirmMerge();
+    expect(parked.phase).toBe('needs_continue');
+    expect(parked.failedPhase).toBe('finalizing');
+    expect(parked.detail).toMatch(/not committed on main/);
     expect(project.readinessValidated).toBe(false);
     expect((await inspectProject(project)).ready).toBe(false);
+
+    mergeReadinessBranchIntoOrigin(repo, remote, branchOf(repo));
+    const done = await session.makeReady();
+    expect(done.phase).toBe('complete');
+    expect(project.readinessValidated).toBe(true);
   });
 
   it('commits the marker even when the repo gitignores .agents', async () => {
@@ -679,19 +685,81 @@ describe('make it ready, merge polling, and failed confirmation', () => {
     expect(retried.entries.some((e) => e.text.includes('Starting over'))).toBe(true);
   });
 
-  it('records the phase that was running when make-ready fails', async () => {
+  it('parks a remediator crash on the same branch instead of failing', async () => {
     const repo = gitRepo('foundry-ready-failphase-');
+    let calls = 0;
     const remediator: ReadinessRemediator = {
-      async run() {
-        return { ok: false, detail: 'agent gave up' };
+      async run(job) {
+        calls += 1;
+        if (calls === 1) return { ok: false, detail: 'Connection error.' };
+        seedReadyFiles(job.cwd);
+        return { ok: true, detail: 'fixed' };
       },
     };
-    const { session } = sessionFor(repo, { remediator });
+    const { session } = sessionFor(repo, {
+      remediator,
+      openPr: async () => ({
+        ok: true,
+        detail: 'opened',
+        number: 44,
+        url: 'https://github.com/acme/widgets/pull/44',
+      }),
+      viewPrMerge: async () => ({
+        number: 44,
+        url: 'https://github.com/acme/widgets/pull/44',
+        merged: false,
+        state: 'OPEN',
+      }),
+    });
     await session.inspect();
     await session.evaluate();
     await session.makeReady();
-    expect(session.snapshot().phase).toBe('failed');
+    expect(session.snapshot().phase).toBe('needs_continue');
     expect(session.snapshot().failedPhase).toBe('remediating');
+    expect(session.snapshot().detail).toMatch(/isolated branch is still here/i);
+    const branch = branchOf(repo);
+
+    await session.makeReady();
+    expect(session.snapshot().phase).toBe('awaiting_merge');
+    expect(calls).toBe(2);
+    expect(branchOf(repo)).toBe(branch);
+  });
+
+  it('retries opening the PR without running the remediator again', async () => {
+    const repo = gitRepo('foundry-ready-prretry-');
+    seedReadyFiles(repo);
+    sh(repo, ['git', 'add', '-A']);
+    sh(repo, ['git', 'commit', '-qm', 'ready files']);
+    let opens = 0;
+    const remediator: ReadinessRemediator = {
+      async run() {
+        throw new Error('remediator should not run on a green checklist');
+      },
+    };
+    const { session } = sessionFor(repo, {
+      remediator,
+      openPr: async () => {
+        opens += 1;
+        if (opens === 1) return { ok: false, detail: 'gh 502' };
+        return {
+          ok: true,
+          detail: 'opened',
+          number: 45,
+          url: 'https://github.com/acme/widgets/pull/45',
+        };
+      },
+    });
+    await session.inspect();
+    await session.evaluate();
+    await session.makeReady();
+    expect(session.snapshot().phase).toBe('needs_continue');
+    expect(session.snapshot().failedPhase).toBe('pr_ready');
+    expect(opens).toBe(1);
+
+    await session.makeReady();
+    expect(session.snapshot().phase).toBe('awaiting_merge');
+    expect(opens).toBe(2);
+    expect(session.snapshot().pr?.number).toBe(45);
   });
 
   it('polls until merged and reports a still-open PR', async () => {

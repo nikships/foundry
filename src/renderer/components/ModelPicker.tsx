@@ -9,6 +9,7 @@ export default function ModelPicker({
   value,
   models,
   allowInherit,
+  inheritLabel = 'Inherit from Agent defaults',
   disabled,
   emptyHint,
   onChange,
@@ -17,6 +18,11 @@ export default function ModelPicker({
   value: string;
   models: ModelInfo[];
   allowInherit?: boolean;
+  /**
+   * Closed-face copy for the `inherit` sentinel. Settings itself must name
+   * the real fallback — inheriting "from Settings" is circular there.
+   */
+  inheritLabel?: string;
   disabled?: boolean;
   /** Shown when the catalog is empty (CLI missing or unauthenticated). */
   emptyHint?: string;
@@ -43,7 +49,7 @@ export default function ModelPicker({
   const options = useMemo<DropdownOption[]>(() => {
     const next: DropdownOption[] = [];
     if (allowInherit) {
-      next.push({ value: 'inherit', label: 'Inherit from Settings' });
+      next.push({ value: 'inherit', label: inheritLabel });
     }
     for (const [provider, list] of groups) {
       for (const model of list) {
@@ -72,7 +78,7 @@ export default function ModelPicker({
       });
     }
     return next;
-  }, [allowInherit, catalogEmpty, groups, unknownSelected, value]);
+  }, [allowInherit, catalogEmpty, groups, inheritLabel, unknownSelected, value]);
 
   return (
     <>

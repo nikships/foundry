@@ -605,7 +605,7 @@ export default function RosterScreen({
                         checked={!!draft.inheritDefaults}
                         onChange={(e) => setDraft({ ...draft, inheritDefaults: e.target.checked })}
                       />
-                      Inherit model and reasoning from Settings
+                      Inherit model and reasoning from Agent defaults
                     </label>
                     <span className={styles.hint}>
                       Uses the default model and reasoning from Settings → Agent defaults.

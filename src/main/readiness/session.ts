@@ -155,7 +155,14 @@ export class ReadinessSession {
   }
 
   private setPhase(phase: ReadinessPhase, detail: string): void {
-    if (phase === 'failed' && this.state.phase !== 'failed') {
+    // An isolated branch is recoverable work. Never settle `failed` while it
+    // still exists — park on Continue so a connection drop, a verify miss, or
+    // a gh hiccup cannot throw the paid turn away.
+    if (phase === 'failed' && this.worktree) {
+      if (!this.state.failedPhase) this.state.failedPhase = this.state.phase;
+      phase = 'needs_continue';
+      detail = withResumeHint(this.state.failedPhase, detail);
+    } else if (phase === 'failed' && this.state.phase !== 'failed') {
       this.state.failedPhase = this.state.phase;
     }
     this.state.phase = phase;
@@ -257,12 +264,25 @@ export class ReadinessSession {
   }
 
   async makeReady(): Promise<ReadinessState> {
-    if (this.cancelSignal.cancelled) return this.snapshot();
     if (this.busy) return this.snapshot();
     if (isReadinessMakeReadyLive(this.state.phase)) return this.snapshot();
+    this.cancelSignal.cancelled = false;
+    this.panel.clearCancelled();
+    if (this.state.phase === 'needs_continue' && this.state.failedPhase === 'finalizing') {
+      this.busy = true;
+      this.state.endedAt = undefined;
+      try {
+        await this.finalize(this.state.mergeDetail || this.state.detail);
+      } catch (e) {
+        this.setPhase('failed', (e as Error).message);
+        this.push({ kind: 'error', text: (e as Error).message });
+      } finally {
+        this.busy = false;
+      }
+      return this.snapshot();
+    }
     if (!this.state.evaluation) await this.evaluate();
-    if (this.cancelSignal.cancelled || this.state.phase === 'failed') return this.snapshot();
-    if (this.state.phase === 'complete') return this.snapshot();
+    if (this.state.phase === 'failed' || this.state.phase === 'complete') return this.snapshot();
 
     // The marker can land on the base ref between evaluation and this click
     // (the operator pulls in another terminal). Remediating then would open a
@@ -325,10 +345,14 @@ export class ReadinessSession {
           onAskUser: (params) => this.waitForAsk(params),
           signal: this.cancelSignal,
         });
-        if (this.cancelSignal.cancelled) return this.snapshot();
-        if (!result.ok) {
-          this.setPhase('failed', result.detail);
-          this.push({ kind: 'error', text: result.detail });
+        if (!result.ok || this.cancelSignal.cancelled) {
+          const detail = this.cancelSignal.cancelled
+            ? result.ok
+              ? 'Paused.'
+              : result.detail
+            : result.detail;
+          this.push({ kind: 'error', text: detail });
+          this.setPhase('failed', detail);
           return this.snapshot();
         }
       } else if (!this.state.evaluation?.ready && !remediator) {
@@ -370,27 +394,34 @@ export class ReadinessSession {
         text: `Exempting the marker from ${ignored.join(', ')} so CI gates stay green`,
       });
     }
-    this.push({ kind: 'note', text: 'Writing .agents/agent-ready.json last…' });
-    const commit = (await readinessHeadSha(this.worktree.path)) || 'HEAD';
-    const marker = markerFromEvaluation(evaluation, {
-      commit,
-      generatedAt: new Date((this.deps.io?.now ?? Date.now)()).toISOString(),
-      model: this.state.model,
-      reasoningEffort: this.state.reasoningEffort,
-    });
-    writeMarker(this.worktree.path, marker);
-    await commitReadinessWork(this.worktree.path, 'chore: mark repository agent-ready');
+    const alreadyMarked = await readMarkerAtBaseRef(this.worktree.path, 'HEAD');
+    if (alreadyMarked.ok && alreadyMarked.marker) {
+      this.state.marker = alreadyMarked.marker;
+      this.state.markerValid = true;
+      this.state.markerDetail = alreadyMarked.detail;
+    } else {
+      this.push({ kind: 'note', text: 'Writing .agents/agent-ready.json last…' });
+      const commit = (await readinessHeadSha(this.worktree.path)) || 'HEAD';
+      const marker = markerFromEvaluation(evaluation, {
+        commit,
+        generatedAt: new Date((this.deps.io?.now ?? Date.now)()).toISOString(),
+        model: this.state.model,
+        reasoningEffort: this.state.reasoningEffort,
+      });
+      writeMarker(this.worktree.path, marker);
+      await commitReadinessWork(this.worktree.path, 'chore: mark repository agent-ready');
 
-    // The PR is only proof if the marker is actually in the commit it carries.
-    const committed = await readMarkerAtBaseRef(this.worktree.path, 'HEAD');
-    this.state.marker = committed.marker;
-    this.state.markerValid = committed.ok;
-    this.state.markerDetail = committed.detail;
-    if (!committed.ok) {
-      const why = `The marker did not survive the commit: ${committed.detail}`;
-      this.setPhase('failed', why);
-      this.push({ kind: 'error', text: why });
-      return;
+      // The PR is only proof if the marker is actually in the commit it carries.
+      const committed = await readMarkerAtBaseRef(this.worktree.path, 'HEAD');
+      this.state.marker = committed.marker;
+      this.state.markerValid = committed.ok;
+      this.state.markerDetail = committed.detail;
+      if (!committed.ok) {
+        const why = `The marker did not survive the commit: ${committed.detail}`;
+        this.setPhase('failed', why);
+        this.push({ kind: 'error', text: why });
+        return;
+      }
     }
 
     this.setPhase('pr_ready', 'Opening a pull request with the readiness proof');
@@ -493,10 +524,6 @@ export class ReadinessSession {
           text: ff.ok ? `${this.deps.project.baseRef} fast-forwarded` : ffDetail,
         });
       }
-      if (this.worktree) {
-        await discardReadinessWorktree(this.deps.project.path, this.worktree);
-        this.worktree = null;
-      }
     } catch (e) {
       ffDetail = (e as Error).message;
       this.push({ kind: 'note', text: ffDetail });
@@ -510,12 +537,16 @@ export class ReadinessSession {
       this.persist({ readinessValidated: false });
       const why = ffDetail
         ? `${read.detail} (${ffDetail})`
-        : `${read.detail}. Pull ${this.deps.project.baseRef}, then retry — runs branch from that ref, so the marker has to be committed there.`;
+        : `${read.detail}. Pull ${this.deps.project.baseRef}, then continue — runs branch from that ref, so the marker has to be committed there.`;
       this.setPhase('failed', why);
       this.push({ kind: 'error', text: why });
       return;
     }
 
+    if (this.worktree) {
+      await discardReadinessWorktree(this.deps.project.path, this.worktree);
+      this.worktree = null;
+    }
     this.persist({ readinessValidated: true, readinessSkipped: false });
     this.setPhase('complete', detail || 'Repository is agent-ready.');
     this.push({ kind: 'note', text: this.state.marker?.summary || 'Ready.' });
@@ -577,6 +608,13 @@ export class ReadinessSession {
     if (this.panel.isTerminal()) return;
     this.cancelSignal.cancelled = true;
     this.failAsk('cancelled');
+    if (this.worktree) {
+      // Abort the in-flight turn but keep the branch. makeReady parks when
+      // the remediator returns; if nothing is running, park now.
+      this.panel.noteCancelled();
+      if (!this.busy) this.setPhase('failed', 'Paused.');
+      return;
+    }
     this.panel.cancel();
     void this.cleanupWorktree();
   }
@@ -656,6 +694,18 @@ function cloneReadinessState(state: ReadinessState): ReadinessState {
       : null,
     pr: state.pr ? { ...state.pr } : null,
   };
+}
+
+function withResumeHint(phase: ReadinessPhase | undefined, detail: string): string {
+  const text = detail.trim() || 'Something went wrong.';
+  if (/continue|isolated branch|same branch|open pr again|check merge/i.test(text)) return text;
+  if (phase === 'pr_ready') {
+    return `${text} The readiness branch is still here — Open PR again retries GitHub.`;
+  }
+  if (phase === 'finalizing') {
+    return `${text} Continue checks the base branch again. Isolated work was not discarded.`;
+  }
+  return `${text} The isolated branch is still here — Continue resumes without starting over.`;
 }
 
 function isReadinessMakeReadyLive(phase: ReadinessPhase): boolean {

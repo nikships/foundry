@@ -88,7 +88,7 @@ function stepOf(phase: ReadinessPhase): StepId {
 function stepTone(id: StepId, phase: ReadinessPhase, failedAt?: StepId): StepTone {
   if (phase === 'skipped') return id === 'check' ? 'skipped' : 'pending';
   if (phase === 'failed' || phase === 'needs_continue') {
-    const current = phase === 'needs_continue' ? 'verify' : (failedAt ?? 'check');
+    const current = failedAt ?? (phase === 'needs_continue' ? 'verify' : 'check');
     if (id === current) return 'failed';
     return STEPS.findIndex((s) => s.id === id) < STEPS.findIndex((s) => s.id === current)
       ? 'done'
@@ -114,7 +114,11 @@ function statusClass(status: string): string {
   return styles.na;
 }
 
-function headlineFor(phase: ReadinessPhase, ready: boolean | undefined): string {
+function headlineFor(
+  phase: ReadinessPhase,
+  ready: boolean | undefined,
+  failedPhase?: ReadinessPhase,
+): string {
   switch (phase) {
     case 'complete':
       return 'This repository is agent-ready';
@@ -123,6 +127,9 @@ function headlineFor(phase: ReadinessPhase, ready: boolean | undefined): string 
     case 'failed':
       return 'Readiness check failed';
     case 'needs_continue':
+      if (failedPhase === 'remediating') return 'The agent was interrupted';
+      if (failedPhase === 'pr_ready') return 'The pull request did not open';
+      if (failedPhase === 'finalizing') return 'The merge is not confirmed yet';
       return 'The agent still has work to do';
     case 'awaiting_merge':
     case 'confirming_merge':
@@ -173,6 +180,13 @@ function progressOf(phase: ReadinessPhase, entries: number): number {
     default:
       return 0;
   }
+}
+
+function resumeLabel(failedPhase?: ReadinessPhase): string {
+  if (failedPhase === 'pr_ready') return 'Open PR again';
+  if (failedPhase === 'finalizing') return 'Check merge again';
+  if (failedPhase === 'remediating') return 'Try the agent again';
+  return 'Continue';
 }
 
 function currentWork(entries: ReadinessEntry[]): string {
@@ -257,7 +271,7 @@ export default function ReadinessFlow({
   const criteria = evaluation?.criteria ?? marker?.criteria ?? [];
   const live = isReadinessLive(phase);
   const exit = readinessExitAction(phase);
-  const headline = headlineFor(phase, evaluation?.ready);
+  const headline = headlineFor(phase, evaluation?.ready, state?.failedPhase);
   const counts = criterionCounts(criteria);
   const bar = progressOf(phase, state?.entries.length ?? 0);
   const activity = currentWork(state?.entries ?? []);
@@ -593,7 +607,8 @@ export default function ReadinessFlow({
         {(phase === 'confirming' ||
           phase === 'idle' ||
           phase === 'not_ready' ||
-          phase === 'needs_continue') && (
+          phase === 'needs_continue' ||
+          phase === 'failed') && (
           <Button variant="ghost" disabled={busy} onClick={() => void skip()}>
             {skipWarn ? 'Skip anyway' : 'Skip for now'}
           </Button>
@@ -620,7 +635,7 @@ export default function ReadinessFlow({
             onClick={() => void makeReady()}
             data-testid="readiness-continue"
           >
-            {busy ? 'Working…' : 'Continue'}
+            {busy ? 'Working…' : resumeLabel(state?.failedPhase)}
           </Button>
         )}
         {(phase === 'awaiting_merge' || phase === 'confirming_merge') && (

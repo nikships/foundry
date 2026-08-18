@@ -1044,11 +1044,15 @@ export default function SettingsScreen({
                 </Section>
                 <Section label="Model" note="Every model a connected provider offers.">
                   <div className={styles.settingsFields}>
-                    <Field label="Default model">
+                    <Field
+                      label="Default model"
+                      hint="The first model a connected provider offers, until you pin one."
+                    >
                       <ModelPicker
                         value={settings.defaultModel}
                         models={models}
                         allowInherit
+                        inheritLabel="First reachable model"
                         emptyHint="No models are reachable. Connect a provider or store an API key under Providers, then refresh."
                         onChange={(v) => void set({ defaultModel: v })}
                         onRefresh={() => void refreshModels()}
@@ -1080,6 +1084,7 @@ export default function SettingsScreen({
                         value={settings.readinessModel}
                         models={models}
                         allowInherit
+                        inheritLabel="Same as default model"
                         emptyHint="No models are reachable. Connect a provider under Providers."
                         onChange={(v) => void set({ readinessModel: v })}
                         onRefresh={() => void refreshModels()}
