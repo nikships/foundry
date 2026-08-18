@@ -216,6 +216,9 @@ Stable selectors on key interactive elements. Use with `eval` +
 | `run-request`              | Run composer request textarea               |
 | `run-pipeline`             | Run composer pipeline dropdown              |
 | `run-start`                | "Start run" button                          |
+| `base-sync`                | Local base-ref vs remote status bar         |
+| `base-sync-update`         | Fast-forward the local base ref             |
+| `base-sync-check`          | Re-fetch and compare the remote base ref    |
 | `run-row-{runId}`          | One past-run row on Runs                    |
 | `run-back`                 | Run detail ← Runs button                    |
 | `run-open-inspector`       | Run detail → Inspector deep-link button     |
@@ -305,6 +308,12 @@ CLI, or a failed launch).
 - Composer: `data-testid="run-request"` textarea, pipeline dropdown
   (`data-testid="run-pipeline"`), `data-testid="run-start"` button
   (disabled while the textarea is empty).
+- Base-ref bar (`data-testid="base-sync"`, `data-state` is `checking` /
+  `syncing` / `current` / `behind` / `ahead` / `diverged` / `error`):
+  fetches the remote base on mount. When behind, `base-sync-update`
+  fast-forwards local `main`; otherwise `base-sync-check` re-fetches.
+  Hidden when the repo has no remote. Does not block Start except while
+  an update is in flight.
 - One button per past run (`data-testid="run-row-{runId}"`); the visible
   label packs status, pipeline, age, prompt excerpt, `run_*` id, duration,
   tokens. Open it with eval on that testid, not by matching the packed label.
@@ -387,7 +396,8 @@ mirrors the selected id (`clis` is the Agent CLI pane).
   limits (envelope retries, gate retries, turn timeout, trace poll cadence).
 - Project: project name, path + `Reveal in Finder`, repository checks
   (git repo, base ref, submodules, clean worktree, project commands,
-  leftover run worktrees + `Fix`), base ref, merge policy.
+  leftover run worktrees + `Fix`), base ref, merge policy, base-ref
+  sync bar (`data-testid="base-sync"` — same control as Runs).
   **Do not click `Remove project`.**
 - Maintenance: run-history retention, `Apply retention now`,
   `Compact trace databases`, leftover worktrees with `Remove` buttons

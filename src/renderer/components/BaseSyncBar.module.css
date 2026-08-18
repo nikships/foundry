@@ -1,0 +1,43 @@
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s3);
+  border-radius: var(--r-sm);
+  font-size: var(--text-sm);
+  border: 1px solid var(--line);
+  background: var(--bg-panel);
+  color: var(--text-dim);
+}
+
+.bar p {
+  margin: 0;
+  line-height: var(--leading);
+}
+
+.banner {
+  margin: 0 var(--s6) var(--s3);
+}
+
+.settings {
+  margin-top: var(--s4);
+}
+
+.ready {
+  background: color-mix(in srgb, var(--green) 12%, var(--bg-panel));
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 18%, transparent);
+}
+
+.warn {
+  background: var(--amber-dim);
+  color: var(--amber);
+  border-color: color-mix(in srgb, var(--amber) 18%, transparent);
+}
+
+.quiet {
+  background: var(--bg-panel);
+  color: var(--text-dim);
+  border-color: var(--line);
+}

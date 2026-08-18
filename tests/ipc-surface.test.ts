@@ -42,8 +42,8 @@ describe('the IPC surface', () => {
     expect(new Set(registered).size).toBe(registered.length);
   });
 
-  it('registers 110 channels, so a deleted handler is not a silent capability loss', () => {
-    expect(registered).toHaveLength(110);
+  it('registers 112 channels, so a deleted handler is not a silent capability loss', () => {
+    expect(registered).toHaveLength(112);
   });
 
   it('registers the Bridge channels Settings connects providers through', () => {
@@ -72,6 +72,11 @@ describe('the IPC surface', () => {
 
   it('registers the scope-copies channel the Design scope control reads', () => {
     expect(registered).toContain(IPC.projectsScopeCopies);
+  });
+
+  it('registers the base-sync channels the Runs bar reads', () => {
+    expect(registered).toContain(IPC.projectsBaseSyncInspect);
+    expect(registered).toContain(IPC.projectsBaseSync);
   });
 
   it('registers the roster preview channel the agent editor reads', () => {

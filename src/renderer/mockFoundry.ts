@@ -20,6 +20,7 @@ import type {
   PendingInterrupt,
   ReadinessInspectResult,
   ReadinessState,
+  BaseSyncStatus,
 } from '@shared/types.js';
 import type { FoundryApi, SaveResult, EventPage, RunDetail } from '@shared/ipc-contract.js';
 import { BUILTIN_AGENTS } from '../main/store/builtin-agents.js';
@@ -248,6 +249,33 @@ export function createMockFoundryApi(): FoundryApi {
       ],
       reveal: async () => {},
       scopeCopies: async () => ({ roster: false, pipelines: false }),
+      baseSyncInspect: async (id): Promise<BaseSyncStatus | null> => ({
+        projectId: id,
+        baseRef: MOCK_PROJECTS[0]?.baseRef ?? 'main',
+        remote: 'origin',
+        localSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        remoteSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        ahead: 0,
+        behind: 0,
+        state: 'current',
+        fetched: true,
+        detail: 'main matches origin/main',
+      }),
+      baseSync: async (id) => ({
+        ok: true,
+        status: {
+          projectId: id,
+          baseRef: MOCK_PROJECTS[0]?.baseRef ?? 'main',
+          remote: 'origin',
+          localSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          remoteSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          ahead: 0,
+          behind: 0,
+          state: 'current' as const,
+          fetched: true,
+          detail: 'main matches origin/main',
+        },
+      }),
     },
     readiness: {
       inspect: async (projectId): Promise<ReadinessInspectResult | null> => ({

@@ -22,6 +22,7 @@ import { ProviderIcon } from '../components/BrandIcon.js';
 import DoctorList from '../components/DoctorList.js';
 import ProjectCommands from '../components/ProjectCommands.js';
 import ProjectSetup from '../components/ProjectSetup.js';
+import BaseSyncBar from '../components/BaseSyncBar.js';
 import { Field, TextInput, Textarea } from '../components/ui/Field.js';
 import { Button } from '../components/ui/Button.js';
 import { Dropdown } from '../components/ui/Dropdown.js';
@@ -1477,7 +1478,10 @@ export default function SettingsScreen({
                         onOpenSettings={(next) => setPaneLive(next as Pane)}
                       />
                     </Section>
-                    <Section label="Git" note="Every run branches from the base ref.">
+                    <Section
+                      label="Git"
+                      note="Every run branches from the base ref. Update it from the remote here."
+                    >
                       <div className={styles.settingsFields}>
                         <Field label="Base ref" hint="Every run branches from here.">
                           <TextInput
@@ -1505,6 +1509,11 @@ export default function SettingsScreen({
                           />
                         </Field>
                       </div>
+                      <BaseSyncBar
+                        projectId={projectDraft.id}
+                        baseRef={project?.baseRef ?? projectDraft.baseRef}
+                        variant="settings"
+                      />
                     </Section>
                     <Section label="Commands" note="What a pipeline can run, and who detects it.">
                       <ProjectCommands

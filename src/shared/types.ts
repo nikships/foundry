@@ -385,6 +385,32 @@ export interface ProjectDef {
   addedAt: string;
 }
 
+/**
+ * Whether the project's local base ref matches the preferred remote.
+ * Inspect fetches the remote-tracking ref only; it never moves local branches.
+ * Sync is fast-forward only — a diverged base is reported, not rewritten.
+ */
+export type BaseSyncState = 'current' | 'behind' | 'ahead' | 'diverged' | 'no_remote' | 'error';
+
+export interface BaseSyncStatus {
+  projectId: string;
+  baseRef: string;
+  remote: string | null;
+  localSha: string | null;
+  remoteSha: string | null;
+  ahead: number;
+  behind: number;
+  state: BaseSyncState;
+  /** False when the comparison used a previously fetched tracking ref. */
+  fetched: boolean;
+  detail: string;
+}
+
+export interface BaseSyncResult {
+  ok: boolean;
+  status: BaseSyncStatus;
+}
+
 // ── Agent readiness (project onboarding, not a pipeline phase) ───────────────
 
 /** Criteria the readiness check must judge. N/A is a recorded adaptation. */

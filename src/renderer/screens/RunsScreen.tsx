@@ -8,6 +8,7 @@ import { runDuration } from '../derive.js';
 import StatusBadge from '../components/StatusBadge.js';
 import PipelineRibbon from '../components/PipelineRibbon.js';
 import EmptyState from '../components/EmptyState.js';
+import BaseSyncBar from '../components/BaseSyncBar.js';
 import { Button } from '../components/ui/Button.js';
 import { Dropdown } from '../components/ui/Dropdown.js';
 import {
@@ -46,6 +47,7 @@ export default function RunsScreen({
   const [readiness, setReadiness] = useState<ReadinessInspectResult | null>(null);
   const [readinessChecking, setReadinessChecking] = useState(false);
   const [readinessNote, setReadinessNote] = useState('');
+  const [baseSyncing, setBaseSyncing] = useState(false);
 
   const {
     runs,
@@ -158,7 +160,8 @@ export default function RunsScreen({
   );
 
   const requestOk = request.trim().length > 0;
-  const canStart = !!project && !!pipeline && requestOk && blockingPreflight.length === 0;
+  const canStart =
+    !!project && !!pipeline && requestOk && blockingPreflight.length === 0 && !baseSyncing;
   const startDisabledReason = !project
     ? 'Add a project first'
     : !pipeline
@@ -167,7 +170,9 @@ export default function RunsScreen({
         ? 'Describe what to build'
         : blockingPreflight.length
           ? 'Fix pipeline errors first'
-          : '';
+          : baseSyncing
+            ? `Updating ${project.baseRef} first`
+            : '';
 
   const start = async (): Promise<void> => {
     if (!canStart || starting) return;
@@ -242,6 +247,13 @@ export default function RunsScreen({
             </Button>
           )}
         </div>
+      )}
+      {project && (
+        <BaseSyncBar
+          projectId={project.id}
+          baseRef={project.baseRef}
+          onSyncingChange={setBaseSyncing}
+        />
       )}
       {project ? (
         <section className={`${styles.composer} card`}>

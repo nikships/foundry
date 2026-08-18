@@ -8,6 +8,8 @@ import type {
   AgentDef,
   AgentSessionRow,
   AppSettings,
+  BaseSyncResult,
+  BaseSyncStatus,
   ContextBreakdown,
   DoctorCheck,
   DryRunPrompt,
@@ -345,6 +347,16 @@ export interface FoundryApi {
      * set — the scope control has to say which is about to happen.
      */
     scopeCopies(id: string): Promise<{ roster: boolean; pipelines: boolean }>;
+    /**
+     * Fetches the remote-tracking base ref and compares it to local.
+     * Never moves a local branch. Null when the project is gone.
+     */
+    baseSyncInspect(id: string): Promise<BaseSyncStatus | null>;
+    /**
+     * Fast-forwards the local base ref to the remote. Refuses to merge or
+     * reset a diverged branch. Null when the project is gone.
+     */
+    baseSync(id: string): Promise<BaseSyncResult | null>;
   };
   readiness: {
     /** Marker-file status. Cache never wins over the file. */
@@ -611,6 +623,8 @@ export const IPC = {
   projectsCheck: 'projects:check',
   projectsReveal: 'projects:reveal',
   projectsScopeCopies: 'projects:scopeCopies',
+  projectsBaseSyncInspect: 'projects:baseSyncInspect',
+  projectsBaseSync: 'projects:baseSync',
   readinessInspect: 'readiness:inspect',
   readinessEvaluate: 'readiness:evaluate',
   readinessMakeReady: 'readiness:makeReady',

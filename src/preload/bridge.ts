@@ -66,6 +66,8 @@ const api: FoundryApi = {
     check: (id) => call(IPC.projectsCheck, id),
     reveal: (path) => call(IPC.projectsReveal, path),
     scopeCopies: (id) => call(IPC.projectsScopeCopies, id),
+    baseSyncInspect: (id) => call(IPC.projectsBaseSyncInspect, id),
+    baseSync: (id) => call(IPC.projectsBaseSync, id),
   },
   readiness: {
     inspect: (projectId) => call(IPC.readinessInspect, projectId),

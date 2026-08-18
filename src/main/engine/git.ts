@@ -314,6 +314,43 @@ export async function fetchRef(repo: string, remote: string, ref: string): Promi
 }
 
 /**
+ * Updates `refs/remotes/<remote>/<branch>` to whatever the remote has now,
+ * without touching the local branch. The `+` matches git's default fetch
+ * refspec so a rewritten remote tip is still visible; inspect can then
+ * report diverged instead of silently keeping a stale tracking ref.
+ */
+export async function fetchTrackingRef(
+  repo: string,
+  remote: string,
+  branch: string,
+): Promise<GitResult> {
+  const name = branch.replace(/^refs\/heads\//, '');
+  return git(
+    repo,
+    ['fetch', remote, `+refs/heads/${name}:refs/remotes/${remote}/${name}`],
+    180_000,
+  );
+}
+
+/**
+ * Commits reachable from `left` but not `right` (`ahead`) and the reverse
+ * (`behind`). Null when either ref does not resolve.
+ */
+export async function aheadBehind(
+  repo: string,
+  left: string,
+  right: string,
+): Promise<{ ahead: number; behind: number } | null> {
+  const r = await git(repo, ['rev-list', '--left-right', '--count', `${left}...${right}`]);
+  if (!r.ok) return null;
+  const [aheadRaw, behindRaw] = r.stdout.trim().split(/\s+/);
+  const ahead = Number(aheadRaw);
+  const behind = Number(behindRaw);
+  if (!Number.isFinite(ahead) || !Number.isFinite(behind)) return null;
+  return { ahead, behind };
+}
+
+/**
  * Brings the local base ref up to the remote after a PR merged there, without
  * ever creating a merge commit or moving the operator off their branch.
  *

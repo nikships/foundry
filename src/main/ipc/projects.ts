@@ -14,6 +14,7 @@ import {
 import { runCommand } from '../engine/commands.js';
 import { sniffCommands } from '../engine/detect.js';
 import { sniffSetupScript } from '../engine/setup.js';
+import { inspectBase, syncBase } from '../engine/base-sync.js';
 import { currentBranch, isRepo } from '../engine/git.js';
 import { checkProject } from '../system/doctor.js';
 import { createRepo, githubAccount } from '../system/gh.js';
@@ -332,4 +333,18 @@ export function register(ctx: Ctx, handle: Handle): void {
     roster: ctx.roster.hasProjectCopy(id),
     pipelines: ctx.pipelines.hasProjectCopy(id),
   }));
+
+  handle(IPC.projectsBaseSyncInspect, async (id: string) => {
+    const project = projectOf(id);
+    if (!project) return null;
+    const status = await inspectBase(project.path, project.baseRef);
+    return { ...status, projectId: project.id };
+  });
+
+  handle(IPC.projectsBaseSync, async (id: string) => {
+    const project = projectOf(id);
+    if (!project) return null;
+    const result = await syncBase(project.path, project.baseRef);
+    return { ok: result.ok, status: { ...result.status, projectId: project.id } };
+  });
 }
