@@ -44,6 +44,12 @@ export interface ReadinessRemediator {
     evaluation: ReadinessEvaluation;
     model: string;
     reasoningEffort: ReasoningEffort;
+    /** Same isolated worktree as a previous remediator turn. */
+    continuation?: boolean;
+    /** 1-based remediator attempt on this session. */
+    attempt?: number;
+    /** Recent transcript notes so a fresh one-shot does not redo passing work. */
+    priorSummary?: string;
     /** Returns the live entry so stream absorption can patch text and tool status. */
     onEntry: (entry: Omit<ReadinessEntry, 'id' | 'at'>) => ReadinessEntry;
     /** Re-emit after an in-place patch (text delta, tool result). */
@@ -78,6 +84,8 @@ export class ReadinessSession {
   private readonly panel: PanelSession<ReadinessState>;
   private readonly cancelSignal = { cancelled: false };
   private worktree: ReadinessWorktree | null = null;
+  private busy = false;
+  private remediateAttempt = 0;
   private askWaiter: {
     resolve: (answers: ReadinessAskAnswer[]) => void;
     reject: (error: Error) => void;
@@ -152,7 +160,12 @@ export class ReadinessSession {
     }
     this.state.phase = phase;
     this.state.detail = detail;
-    if (phase === 'complete' || phase === 'skipped' || phase === 'failed') {
+    if (
+      phase === 'complete' ||
+      phase === 'skipped' ||
+      phase === 'failed' ||
+      phase === 'needs_continue'
+    ) {
       this.state.endedAt = this.panel.now();
     }
     this.emit();
@@ -197,6 +210,15 @@ export class ReadinessSession {
 
   async evaluate(): Promise<ReadinessState> {
     if (this.cancelSignal.cancelled) return this.snapshot();
+    // A parked continue still owns the isolated worktree. Re-evaluating the
+    // base checkout would hide Continue and feed the next turn a stale list.
+    if (
+      this.busy ||
+      isReadinessMakeReadyLive(this.state.phase) ||
+      this.state.phase === 'needs_continue'
+    ) {
+      return this.snapshot();
+    }
     this.setPhase('evaluating', 'Evaluating repository readiness');
     this.push({
       kind: 'note',
@@ -236,6 +258,8 @@ export class ReadinessSession {
 
   async makeReady(): Promise<ReadinessState> {
     if (this.cancelSignal.cancelled) return this.snapshot();
+    if (this.busy) return this.snapshot();
+    if (isReadinessMakeReadyLive(this.state.phase)) return this.snapshot();
     if (!this.state.evaluation) await this.evaluate();
     if (this.cancelSignal.cancelled || this.state.phase === 'failed') return this.snapshot();
     if (this.state.phase === 'complete') return this.snapshot();
@@ -253,32 +277,49 @@ export class ReadinessSession {
       return this.snapshot();
     }
 
+    this.busy = true;
+    this.state.endedAt = undefined;
+    this.state.failedPhase = undefined;
     const project = this.deps.project;
-    this.setPhase('remediating', 'Creating an isolated branch');
+    const continuing = !!this.worktree;
     try {
-      this.worktree = await createReadinessWorktree({
-        repo: project.path,
-        sessionId: this.sessionId,
-        baseRef: project.baseRef || (await currentBranch(project.path)) || 'main',
-      });
-      this.push({
-        kind: 'note',
-        text: `Isolated on ${this.worktree.branch}`,
-      });
+      if (!this.worktree) {
+        this.setPhase('remediating', 'Creating an isolated branch');
+        this.worktree = await createReadinessWorktree({
+          repo: project.path,
+          sessionId: this.sessionId,
+          baseRef: project.baseRef || (await currentBranch(project.path)) || 'main',
+        });
+        this.push({
+          kind: 'note',
+          text: `Isolated on ${this.worktree.branch}`,
+        });
+      } else {
+        this.push({
+          kind: 'note',
+          text: `Continuing on ${this.worktree.branch}. Previous changes are kept.`,
+        });
+      }
       this.setPhase(
         'remediating',
         this.state.evaluation?.ready
           ? 'Writing the marker on the isolated branch'
-          : 'The agent is fixing the repository on an isolated branch',
+          : continuing
+            ? 'Sending the remaining failures back to the agent on the same branch'
+            : 'The agent is fixing the repository on an isolated branch',
       );
 
       const remediator = this.deps.io?.remediator;
       if (remediator && this.state.evaluation && !this.state.evaluation.ready) {
+        this.remediateAttempt += 1;
         const result = await remediator.run({
           cwd: this.worktree.path,
           evaluation: this.state.evaluation,
           model: this.state.model,
           reasoningEffort: this.state.reasoningEffort,
+          continuation: continuing,
+          attempt: this.remediateAttempt,
+          priorSummary: this.priorSummary(),
           onEntry: (entry) => this.push(entry),
           flush: () => this.flush(),
           onAskUser: (params) => this.waitForAsk(params),
@@ -299,6 +340,8 @@ export class ReadinessSession {
     } catch (e) {
       this.setPhase('failed', (e as Error).message);
       this.push({ kind: 'error', text: (e as Error).message });
+    } finally {
+      this.busy = false;
     }
     return this.snapshot();
   }
@@ -311,8 +354,12 @@ export class ReadinessSession {
     this.state.evaluation = evaluation;
     if (!evaluation.ready) {
       const failed = evaluation.criteria.filter((c) => c.status === 'fail').map((c) => c.id);
-      this.setPhase('failed', `Verification still failing: ${failed.join(', ')}`);
+      this.state.failedPhase = 'verifying';
       this.push({ kind: 'error', text: evaluation.summary });
+      this.setPhase(
+        'needs_continue',
+        `Verification still failing: ${failed.join(', ')}. Continue sends those remaining failures back to the agent — the work already done stays on this branch.`,
+      );
       return;
     }
 
@@ -490,13 +537,22 @@ export class ReadinessSession {
   async retry(): Promise<ReadinessState> {
     this.cancelSignal.cancelled = false;
     this.panel.clearCancelled();
+    this.busy = false;
+    this.remediateAttempt = 0;
     this.state.endedAt = undefined;
     this.state.failedPhase = undefined;
     this.state.skipDetail = '';
     this.state.mergeDetail = '';
     this.state.pr = null;
     this.persist({ readinessSkipped: false });
-    this.push({ kind: 'note', text: 'Retrying the readiness check.' });
+    await this.cleanupWorktree();
+    // evaluate() no-ops on needs_continue so a banner re-check cannot
+    // clobber a parked branch. Leave that phase before starting over.
+    this.setPhase('idle', 'Starting over from the project checkout.');
+    this.push({
+      kind: 'note',
+      text: 'Starting over from the project checkout. Isolated work was discarded.',
+    });
     return this.evaluate();
   }
 
@@ -551,6 +607,18 @@ export class ReadinessSession {
     this.state.pendingAsk = null;
   }
 
+  private priorSummary(): string {
+    const chunks: string[] = [];
+    for (const entry of this.state.entries) {
+      if (entry.kind !== 'note' && entry.kind !== 'text') continue;
+      const text = entry.text.trim();
+      if (!text) continue;
+      chunks.push(text);
+    }
+    const joined = chunks.slice(-16).join('\n');
+    return joined.length > 2_000 ? joined.slice(-2_000) : joined;
+  }
+
   private async cleanupWorktree(): Promise<void> {
     if (!this.worktree) return;
     try {
@@ -588,6 +656,16 @@ function cloneReadinessState(state: ReadinessState): ReadinessState {
       : null,
     pr: state.pr ? { ...state.pr } : null,
   };
+}
+
+function isReadinessMakeReadyLive(phase: ReadinessPhase): boolean {
+  return (
+    phase === 'remediating' ||
+    phase === 'verifying' ||
+    phase === 'pr_ready' ||
+    phase === 'confirming_merge' ||
+    phase === 'finalizing'
+  );
 }
 
 function prBody(evaluation: ReadinessEvaluation): string {

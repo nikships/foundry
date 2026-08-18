@@ -71,6 +71,7 @@ function stepOf(phase: ReadinessPhase): StepId {
     case 'remediating':
       return 'fix';
     case 'verifying':
+    case 'needs_continue':
       return 'verify';
     case 'pr_ready':
       return 'pr';
@@ -86,8 +87,8 @@ function stepOf(phase: ReadinessPhase): StepId {
 
 function stepTone(id: StepId, phase: ReadinessPhase, failedAt?: StepId): StepTone {
   if (phase === 'skipped') return id === 'check' ? 'skipped' : 'pending';
-  if (phase === 'failed') {
-    const current = failedAt ?? 'check';
+  if (phase === 'failed' || phase === 'needs_continue') {
+    const current = phase === 'needs_continue' ? 'verify' : (failedAt ?? 'check');
     if (id === current) return 'failed';
     return STEPS.findIndex((s) => s.id === id) < STEPS.findIndex((s) => s.id === current)
       ? 'done'
@@ -121,6 +122,8 @@ function headlineFor(phase: ReadinessPhase, ready: boolean | undefined): string 
       return 'Readiness skipped';
     case 'failed':
       return 'Readiness check failed';
+    case 'needs_continue':
+      return 'The agent still has work to do';
     case 'awaiting_merge':
     case 'confirming_merge':
       return 'The PR is ready';
@@ -155,6 +158,7 @@ function progressOf(phase: ReadinessPhase, entries: number): number {
     case 'remediating':
       return Math.min(0.68, 0.34 + entries * 0.012);
     case 'verifying':
+    case 'needs_continue':
       return 0.74;
     case 'pr_ready':
     case 'awaiting_merge':
@@ -586,7 +590,10 @@ export default function ReadinessFlow({
         >
           {exit.label}
         </Button>
-        {(phase === 'confirming' || phase === 'idle' || phase === 'not_ready') && (
+        {(phase === 'confirming' ||
+          phase === 'idle' ||
+          phase === 'not_ready' ||
+          phase === 'needs_continue') && (
           <Button variant="ghost" disabled={busy} onClick={() => void skip()}>
             {skipWarn ? 'Skip anyway' : 'Skip for now'}
           </Button>
@@ -599,6 +606,21 @@ export default function ReadinessFlow({
         {phase === 'not_ready' && (
           <Button variant="primary" disabled={busy} onClick={() => void makeReady()}>
             {busy ? 'Working…' : 'Make it ready'}
+          </Button>
+        )}
+        {phase === 'needs_continue' && (
+          <Button variant="ghost" disabled={busy} onClick={() => void retry()}>
+            Start over
+          </Button>
+        )}
+        {phase === 'needs_continue' && (
+          <Button
+            variant="primary"
+            disabled={busy}
+            onClick={() => void makeReady()}
+            data-testid="readiness-continue"
+          >
+            {busy ? 'Working…' : 'Continue'}
           </Button>
         )}
         {(phase === 'awaiting_merge' || phase === 'confirming_merge') && (

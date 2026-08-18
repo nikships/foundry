@@ -449,6 +449,8 @@ export type ReadinessPhase =
   | 'not_ready'
   | 'remediating'
   | 'verifying'
+  /** Isolated work is kept; Continue sends remaining failures back. */
+  | 'needs_continue'
   | 'pr_ready'
   | 'awaiting_merge'
   | 'confirming_merge'

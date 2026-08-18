@@ -29,6 +29,13 @@ zero-interrupt policy.
 - Marker is written last, after verification, then the PR is opened. It is
   force-added (`git add -f`) because repos commonly gitignore `.agents/`, which
   would otherwise drop the proof from the commit the PR carries.
+- **Verify-fail is not terminal.** The remediator gets one turn per click, then
+  the static checklist re-runs on the isolated `foundry-ready/<id>` worktree.
+  Remaining failures park the session on `needs_continue` and keep that
+  worktree. Continue sends the updated evaluation back on the same branch;
+  Start over is the only path that discards it and re-evaluates the base
+  checkout. `failed` is for cancel, a remediator crash, or a marker/PR problem
+  — not for "the agent is not done yet."
 - AskUser exemption is scoped to readiness sessions. `permissions.evaluate`
   still auto-answers pipeline runs.
 - Do not write SQLite. Do not call the run executor.

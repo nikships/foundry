@@ -21,13 +21,16 @@ export function createAgentRemediator(input: { oneShot: OneShotFactory }): Readi
     async run(job) {
       job.onEntry({
         kind: 'note',
-        text: `Asking the agent${job.model === 'inherit' ? '' : ` (${job.model})`} to make the repository agent-ready…`,
+        text: job.continuation
+          ? `Asking the agent${job.model === 'inherit' ? '' : ` (${job.model})`} to continue from the remaining failures…`
+          : `Asking the agent${job.model === 'inherit' ? '' : ` (${job.model})`} to make the repository agent-ready…`,
       });
 
       // The remediator's whole job is to change the repository, so it runs
       // write-capable — but only inside the readiness worktree it was handed.
       // The isolated branch is what makes that safe: nothing it does reaches
-      // the operator's checkout, and a failed attempt is discarded wholesale.
+      // the operator's checkout. A failed verify keeps that worktree so the
+      // next turn can continue; only Start over / skip / cancel discards it.
       let last: ReadinessEntry | null = null;
       const absorb = foldTranscript<ReadinessEntry>({
         push: (row) => {
@@ -50,7 +53,11 @@ export function createAgentRemediator(input: { oneShot: OneShotFactory }): Readi
         },
       });
 
-      const prompt = `${READINESS_SYSTEM_PROMPT}\n\n${readinessRemediatePrompt(job.evaluation)}`;
+      const prompt = `${READINESS_SYSTEM_PROMPT}\n\n${readinessRemediatePrompt(job.evaluation, {
+        continuation: job.continuation,
+        attempt: job.attempt,
+        priorSummary: job.priorSummary,
+      })}`;
       const watch = setInterval(() => {
         if (job.signal.cancelled) session.abort();
       }, CANCEL_POLL_MS);

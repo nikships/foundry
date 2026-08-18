@@ -12,6 +12,7 @@ import { evaluateRepo } from '../src/main/readiness/evaluate.js';
 import { readMarker } from '../src/main/readiness/marker.js';
 import { mergeCheckFromView, pollPrMerged } from '../src/main/readiness/merge.js';
 import { inspectProject } from '../src/main/readiness/sessions.js';
+import { readinessRemediatePrompt } from '../src/main/readiness/prompt.js';
 import { ReadinessSession, type ReadinessRemediator } from '../src/main/readiness/session.js';
 import { createAgentRemediator } from '../src/main/readiness/remediator.js';
 import { evaluate } from '../src/main/pi/policy.js';
@@ -605,6 +606,79 @@ describe('make it ready, merge polling, and failed confirmation', () => {
     expect(session.snapshot().entries.some((e) => e.text.includes('agent-ready.json'))).toBe(true);
   });
 
+  it('parks a failed verify on the same branch so Continue can finish the work', async () => {
+    const repo = gitRepo('foundry-ready-continue-');
+    const jobs: Array<{ continuation?: boolean; tests: string; cwd: string }> = [];
+    const remediator: ReadinessRemediator = {
+      async run(job) {
+        const tests = job.evaluation.criteria.find((c) => c.id === 'tests')?.status ?? '';
+        jobs.push({ continuation: job.continuation, tests, cwd: job.cwd });
+        if (jobs.length === 1) {
+          write(job.cwd, 'tests/ok.test.ts', 'test("ok", () => {});\n');
+          return { ok: true, detail: 'partial' };
+        }
+        seedReadyFiles(job.cwd);
+        return { ok: true, detail: 'fixed' };
+      },
+    };
+    const { session } = sessionFor(repo, {
+      remediator,
+      openPr: async () => ({
+        ok: true,
+        detail: 'opened',
+        number: 41,
+        url: 'https://github.com/acme/widgets/pull/41',
+      }),
+      viewPrMerge: async () => ({
+        number: 41,
+        url: 'https://github.com/acme/widgets/pull/41',
+        merged: false,
+        state: 'OPEN',
+      }),
+    });
+    await session.inspect();
+    await session.evaluate();
+    await session.makeReady();
+    expect(session.snapshot().phase).toBe('needs_continue');
+    expect(session.snapshot().detail).toMatch(/Continue sends those remaining failures/);
+    const branch = branchOf(repo);
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]?.continuation).toBeFalsy();
+
+    // A banner re-check must not throw the parked work away.
+    await session.evaluate();
+    expect(session.snapshot().phase).toBe('needs_continue');
+
+    await session.makeReady();
+    expect(session.snapshot().phase).toBe('awaiting_merge');
+    expect(jobs).toHaveLength(2);
+    expect(jobs[1]?.continuation).toBe(true);
+    expect(jobs[1]?.tests).toBe('pass');
+    expect(jobs[1]?.cwd).toBe(jobs[0]?.cwd);
+    expect(branchOf(repo)).toBe(branch);
+  });
+
+  it('discards isolated work only when the operator starts over', async () => {
+    const repo = gitRepo('foundry-ready-startover-');
+    const remediator: ReadinessRemediator = {
+      async run(job) {
+        write(job.cwd, 'AGENTS.md', '# Agents\n');
+        return { ok: true, detail: 'partial' };
+      },
+    };
+    const { session } = sessionFor(repo, { remediator });
+    await session.inspect();
+    await session.evaluate();
+    await session.makeReady();
+    expect(session.snapshot().phase).toBe('needs_continue');
+    expect(branchOf(repo)).toMatch(/^foundry-ready\//);
+
+    const retried = await session.retry();
+    expect(retried.phase).toBe('not_ready');
+    expect(sh(repo, ['git', 'branch', '--list', 'foundry-ready/*']).trim()).toBe('');
+    expect(retried.entries.some((e) => e.text.includes('Starting over'))).toBe(true);
+  });
+
   it('records the phase that was running when make-ready fails', async () => {
     const repo = gitRepo('foundry-ready-failphase-');
     const remediator: ReadinessRemediator = {
@@ -729,6 +803,32 @@ describe('readiness AskUser does not weaken pipeline zero-interrupt', () => {
     await running;
     expect(asked).toBe(true);
     expect(session.snapshot().phase).toBe('awaiting_merge');
+  });
+});
+
+describe('readiness remediator continuation prompt', () => {
+  const evaluation = {
+    stack: { languages: ['shell'], monorepo: false, packages: [] },
+    criteria: [
+      { id: 'lint_format' as const, status: 'fail' as const, notes: 'No lint/format command.' },
+      { id: 'tests' as const, status: 'fail' as const, notes: 'No tests.' },
+    ],
+    ready: false,
+    summary: 'shell single package. 2 criterion(s) need work: lint_format, tests.',
+  };
+
+  it('tells a continuation turn not to start over', () => {
+    const first = readinessRemediatePrompt(evaluation);
+    expect(first).not.toMatch(/This is a continuation/);
+    const next = readinessRemediatePrompt(evaluation, {
+      continuation: true,
+      attempt: 2,
+      priorSummary: 'Added Spotless to the Lint job.',
+    });
+    expect(next).toMatch(/This is a continuation/);
+    expect(next).toMatch(/attempt 2/);
+    expect(next).toMatch(/Added Spotless/);
+    expect(next).toMatch(/Fix these first: lint_format, tests/);
   });
 });
 

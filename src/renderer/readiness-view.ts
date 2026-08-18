@@ -28,6 +28,11 @@ const LIVE_PHASES = new Set<ReadinessPhase>([
 
 const TERMINAL_PHASES = new Set<ReadinessPhase>(['complete', 'skipped', 'failed']);
 
+/** Parked after verify: worktree is kept, waiting on Continue or Start over. */
+export function isReadinessNeedsContinue(phase: ReadinessPhase): boolean {
+  return phase === 'needs_continue';
+}
+
 /** A session that has not settled yet, so the banner shows progress not a verdict. */
 export function isReadinessLive(phase: ReadinessPhase): boolean {
   return LIVE_PHASES.has(phase);
@@ -64,6 +69,7 @@ const VALIDATION_PHASES = new Set<ReadinessPhase>(['verifying', 'finalizing']);
 
 /** The banner note for a settled session, or '' when it has nothing to add. */
 export function readinessFailureNote(state: ReadinessState): string {
+  if (state.phase === 'needs_continue') return state.detail;
   if (state.phase !== 'failed') return '';
   if (!state.failedPhase || !VALIDATION_PHASES.has(state.failedPhase)) return '';
   return state.detail;

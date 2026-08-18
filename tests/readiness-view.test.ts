@@ -9,6 +9,7 @@ import { READINESS_CRITERION_IDS } from '../src/shared/types.js';
 import {
   READINESS_CHECKING_MESSAGE,
   isReadinessLive,
+  isReadinessNeedsContinue,
   isReadinessTerminal,
   readinessBanner,
   readinessExitAction,
@@ -89,10 +90,12 @@ describe('readiness phase classification', () => {
   });
 
   it('leaves the pre-check phases out of both sets', () => {
-    for (const phase of ['idle', 'confirming', 'not_ready'] as ReadinessPhase[]) {
+    for (const phase of ['idle', 'confirming', 'not_ready', 'needs_continue'] as ReadinessPhase[]) {
       expect(isReadinessLive(phase)).toBe(false);
       expect(isReadinessTerminal(phase)).toBe(false);
     }
+    expect(isReadinessNeedsContinue('needs_continue')).toBe(true);
+    expect(isReadinessNeedsContinue('failed')).toBe(false);
   });
 
   it('does not call waiting on the operator live', () => {
@@ -118,6 +121,7 @@ describe('readinessExitAction', () => {
     'awaiting_merge',
     'confirming_merge',
     'finalizing',
+    'needs_continue',
     'complete',
     'skipped',
     'failed',
@@ -149,6 +153,7 @@ describe('readinessExitAction', () => {
       'idle',
       'confirming',
       'not_ready',
+      'needs_continue',
       'pr_ready',
       'awaiting_merge',
       'complete',
@@ -166,6 +171,17 @@ describe('readinessFailureNote', () => {
       state({ failedPhase: 'verifying', detail: 'Verification still failing: tests' }),
     );
     expect(note).toBe('Verification still failing: tests');
+  });
+
+  it('surfaces a parked continue after verify without treating it as a dead end', () => {
+    const note = readinessFailureNote(
+      state({
+        phase: 'needs_continue',
+        failedPhase: 'verifying',
+        detail: 'Verification still failing: tests. Continue sends those remaining failures back.',
+      }),
+    );
+    expect(note).toMatch(/Continue sends those remaining failures back/);
   });
 
   it('surfaces a finalization failure', () => {

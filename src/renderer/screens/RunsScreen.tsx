@@ -12,6 +12,7 @@ import { Button } from '../components/ui/Button.js';
 import { Dropdown } from '../components/ui/Dropdown.js';
 import {
   isReadinessLive,
+  isReadinessNeedsContinue,
   isReadinessTerminal,
   readinessBanner,
   readinessFailureNote,
@@ -104,6 +105,10 @@ export default function RunsScreen({
       const next = data as ReadinessState;
       if (cancelled || next?.projectId !== projectId) return;
       setReadinessChecking(isReadinessLive(next.phase));
+      if (isReadinessNeedsContinue(next.phase)) {
+        setReadinessNote(readinessFailureNote(next));
+        return;
+      }
       if (!isReadinessTerminal(next.phase)) return;
       setReadinessNote(readinessFailureNote(next));
       void refreshReadiness();

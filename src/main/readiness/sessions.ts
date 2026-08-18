@@ -78,6 +78,9 @@ export class ReadinessSessions {
     const existing = this.registry.get(project.id);
     if (existing) {
       const phase = existing.snapshot().phase;
+      // needs_continue is parked, not finished: keep the session so Continue
+      // reuses the worktree. Treating it like failed would open a new session
+      // and throw the paid work away.
       if (phase !== 'complete' && phase !== 'skipped' && phase !== 'failed') return existing;
     }
     const session = new ReadinessSession({
