@@ -1,6 +1,8 @@
 import type { ValidationIssue } from '@shared/types.js';
 import { IPC } from '@shared/ipc-contract.js';
 import type { AppContext } from '../context.js';
+import type { SettleHooks } from '../engine/settle.js';
+import type { GhOptions } from '../system/gh.js';
 
 /**
  * The one wrapper that reaches the Electron IPC entry point. Routers receive
@@ -19,3 +21,21 @@ export const notifySettings = (ctx: Pick<AppContext, 'broadcast'>): void =>
 
 export const notifyRuns = (ctx: Pick<AppContext, 'broadcast'>): void =>
   ctx.broadcast(IPC.eventRunsChanged);
+
+/**
+ * The hooks `landRun` / `repairBranch` need from the app, so the engine never
+ * imports `AppContext` and a test can stand in for notify/save/one-shot.
+ */
+export function settleHooks(
+  ctx: Pick<AppContext, 'settings' | 'projects' | 'oneShot' | 'broadcast'>,
+  extras: { gh?: GhOptions } = {},
+): SettleHooks {
+  return {
+    getSettings: () => ctx.settings.get(),
+    oneShot: ctx.oneShot,
+    notifyRuns: () => notifyRuns(ctx),
+    notifySettings: () => notifySettings(ctx),
+    saveProject: (next) => ctx.projects.save(next),
+    gh: extras.gh,
+  };
+}
