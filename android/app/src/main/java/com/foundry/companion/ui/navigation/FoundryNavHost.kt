@@ -77,9 +77,15 @@ fun FoundryNavHost(
                 runs = uiState.runs,
                 connectionStatus = uiState.connectionStatus,
                 projectName = currentProject?.name ?: "Foundry",
+                projects = uiState.projects,
+                selectedProjectId = uiState.selectedProjectId,
+                onSelectProject = { viewModel.selectProject(it) },
                 onRunClick = { runId ->
                     viewModel.loadRunDetail(runId)
                     navController.navigate(NavRoute.RunDetail.createRoute(runId))
+                },
+                onInspectorClick = { runId ->
+                    navController.navigate(NavRoute.Inspector.createRoute(runId))
                 },
                 onStartRunClick = {
                     navController.navigate(NavRoute.NewRun.route)

@@ -479,6 +479,69 @@ describe('run routes', () => {
     expect(await h.registry.settled.get(runId)).toBe('killed');
   });
 
+  it('lists historical runs across statuses and hides archived runs by default', async () => {
+    const paired = await pairPhone();
+
+    // Create runs with accepted, rejected, failed, killed statuses and one archived
+    h.tracer.startRun({
+      runId: 'run_acc',
+      projectId: h.project.id,
+      pipeline: pipeline(),
+      request: 'accepted change',
+      engineer: 'test',
+      worktreePath: null,
+      branch: 'foundry/run_acc',
+      baseRef: 'main',
+      mode: 'pi',
+    });
+    h.tracer.finishRun('run_acc', 'accepted', 'all passed');
+
+    h.tracer.startRun({
+      runId: 'run_rej',
+      projectId: h.project.id,
+      pipeline: pipeline(),
+      request: 'rejected change',
+      engineer: 'test',
+      worktreePath: null,
+      branch: 'foundry/run_rej',
+      baseRef: 'main',
+      mode: 'pi',
+    });
+    h.tracer.finishRun('run_rej', 'rejected', 'boundary violation');
+
+    h.tracer.startRun({
+      runId: 'run_archived',
+      projectId: h.project.id,
+      pipeline: pipeline(),
+      request: 'archived run',
+      engineer: 'test',
+      worktreePath: null,
+      branch: 'foundry/run_archived',
+      baseRef: 'main',
+      mode: 'pi',
+    });
+    h.tracer.finishRun('run_archived', 'accepted');
+    h.tracer.setArchived('run_archived', true);
+
+    const res = await authed(paired.token, `/v1/projects/${h.project.id}/runs`);
+    expect(res.status).toBe(200);
+    const rows = (await res.json()) as RunRow[];
+
+    const runIds = rows.map((r) => r.runId);
+    expect(runIds).toContain('run_acc');
+    expect(runIds).toContain('run_rej');
+    expect(runIds).not.toContain('run_archived');
+
+    const accRow = rows.find((r) => r.runId === 'run_acc');
+    expect(accRow?.status).toBe('accepted');
+    expect(accRow?.outcomeDetail).toBe('all passed');
+    expect(accRow?.phaseSummary).toBeDefined();
+
+    const rejRow = rows.find((r) => r.runId === 'run_rej');
+    expect(rejRow?.status).toBe('rejected');
+    expect(rejRow?.outcomeDetail).toBe('boundary violation');
+  });
+
   it('404s an unknown project for a paired caller', async () => {
     const paired = await pairPhone();
     const res = await authed(paired.token, '/v1/projects/unknown/runs');

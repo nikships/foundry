@@ -1,16 +1,20 @@
 package com.foundry.companion.ui.screens.runs
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.foundry.companion.data.model.CompanionProjectSummary
 import com.foundry.companion.data.model.ConnectionStatus
 import com.foundry.companion.data.model.RunRow
 import com.foundry.companion.ui.components.*
@@ -27,15 +31,23 @@ fun RunsScreen(
     onStartRunClick: () -> Unit,
     onConnectionPillClick: () -> Unit,
     onRetryConnection: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    projects: List<CompanionProjectSummary> = emptyList(),
+    selectedProjectId: String = "",
+    onSelectProject: (String) -> Unit = {},
+    onInspectorClick: (runId: String) -> Unit = {}
 ) {
     val colors = FoundryTheme.colors
     val typography = FoundryTheme.typography
     val shapes = FoundryTheme.shapes
 
-    val liveRun = runs.find { it.status.equals("running", ignoreCase = true) }
-    val historyRuns = runs.filterNot { it.status.equals("running", ignoreCase = true) }
+    // Filter out archived runs (archived runs stay hidden)
+    val visibleRuns = remember(runs) { runs.filterNot { it.archived } }
+    val liveRun = visibleRuns.find { it.status.equals("running", ignoreCase = true) }
+    val historyRuns = visibleRuns.filterNot { it.status.equals("running", ignoreCase = true) }
     val isConnected = connectionStatus is ConnectionStatus.Connected
+
+    var projectDropdownExpanded by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -44,7 +56,56 @@ fun RunsScreen(
             Column {
                 FoundryTopBar(
                     title = "RUNS",
-                    subtitle = projectName,
+                    subtitle = if (projects.size <= 1) projectName else null,
+                    subtitleContent = if (projects.size > 1) {
+                        {
+                            Box {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .clickable { projectDropdownExpanded = true }
+                                        .padding(vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = projectName,
+                                        style = typography.metaMono,
+                                        color = colors.textDim,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDropDown,
+                                        contentDescription = "Switch project",
+                                        tint = colors.textDim,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+
+                                DropdownMenu(
+                                    expanded = projectDropdownExpanded,
+                                    onDismissRequest = { projectDropdownExpanded = false },
+                                    modifier = Modifier.background(colors.bgRaised)
+                                ) {
+                                    projects.forEach { project ->
+                                        val isSelected = project.id == selectedProjectId
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    text = project.name,
+                                                    style = typography.body,
+                                                    color = if (isSelected) colors.accent else colors.textPrimary
+                                                )
+                                            },
+                                            onClick = {
+                                                projectDropdownExpanded = false
+                                                onSelectProject(project.id)
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    } else null,
                     eyebrowStyle = true,
                     actions = {
                         ConnectionPill(
@@ -80,7 +141,7 @@ fun RunsScreen(
             )
         }
     ) { innerPadding ->
-        if (runs.isEmpty()) {
+        if (visibleRuns.isEmpty()) {
             // Empty state
             Box(
                 modifier = Modifier
@@ -158,7 +219,8 @@ fun RunsScreen(
                     ) { run ->
                         RunHistoryRow(
                             run = run,
-                            onClick = { onRunClick(run.runId) }
+                            onClick = { onRunClick(run.runId) },
+                            onInspectorClick = { onInspectorClick(run.runId) }
                         )
                     }
                 }

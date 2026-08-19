@@ -18,6 +18,7 @@ fun FoundryTopBar(
     title: String,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
+    subtitleContent: (@Composable () -> Unit)? = null,
     onBackClick: (() -> Unit)? = null,
     isCloseAction: Boolean = false,
     eyebrowStyle: Boolean = false,
@@ -67,7 +68,9 @@ fun FoundryTopBar(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (!subtitle.isNullOrBlank()) {
+                if (subtitleContent != null) {
+                    subtitleContent()
+                } else if (!subtitle.isNullOrBlank()) {
                     Text(
                         text = subtitle,
                         style = typography.metaMono,

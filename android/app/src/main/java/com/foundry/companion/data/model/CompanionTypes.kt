@@ -62,24 +62,43 @@ data class PhaseTemplateSummary(
 )
 
 @Serializable
+data class PhaseSummaryItem(
+    val name: String,
+    val status: String = "queued",
+    val kind: String = "agent"
+)
+
+@Serializable
 data class RunRow(
     val runId: String,
-    val projectId: String,
-    val pipelineId: String,
-    val pipelineName: String,
-    val request: String,
-    val status: String, // "running" | "accepted" | "rejected" | "failed" | "killed"
-    val createdAt: String,
+    val projectId: String = "",
+    val pipelineId: String = "",
+    val pipelineName: String = "",
+    val request: String = "",
+    val status: String = "queued", // "running" | "accepted" | "rejected" | "failed" | "killed"
+    val startedAt: String = "",
+    val endedAt: String? = null,
+    val createdAt: String = "",
     val finishedAt: String? = null,
     val durationMs: Long? = null,
     val totalTokens: Long? = null,
     val branch: String? = null,
+    val prNumber: Int? = null,
     val prUrl: String? = null,
+    val issueNumber: Int? = null,
     val issueUrl: String? = null,
     val outcomeDetail: String? = null,
+    val merged: Boolean = false,
+    val archived: Boolean = false,
+    val engineer: String = "",
     val waitingInterrupt: Boolean = false,
-    val phases: List<PhaseRunSummary> = emptyList()
-)
+    val phases: List<PhaseRunSummary> = emptyList(),
+    val phaseSummary: List<PhaseSummaryItem> = emptyList()
+) {
+    val isRunning: Boolean get() = status.equals("running", ignoreCase = true)
+    val effectiveStartedAt: String get() = startedAt.ifEmpty { createdAt }
+    val effectiveEndedAt: String? get() = endedAt ?: finishedAt
+}
 
 @Serializable
 data class PhaseRunSummary(
