@@ -27,10 +27,8 @@ export interface PrepareSessionInput {
   sessionDir: string;
   /** The helper binary the shim execs through `node`. */
   cliPath: string;
-  /** The agent CLI to start, resolved to an absolute path. */
-  agentPath: string;
-  /** The opening instruction handed to the agent. */
-  prompt: string;
+  /** The chosen agent CLI and its flags, already resolved to an absolute path. */
+  agentArgv: string[];
   projectPath: string;
   socketPath: string;
   /** The interactive shell the window falls back to once the agent exits. */
@@ -55,8 +53,7 @@ export function prepareSession(input: PrepareSessionInput): PreparedSession {
       binDir,
       projectPath: input.projectPath,
       socketPath: input.socketPath,
-      agentPath: input.agentPath,
-      prompt: input.prompt,
+      agentArgv: input.agentArgv,
       shell: input.shell,
       projectId: input.projectId,
     }),

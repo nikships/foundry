@@ -5,7 +5,7 @@
 
 import { join } from 'node:path';
 import { z } from 'zod';
-import { DEFAULT_PR_AGENT, type AppSettings } from '@shared/types.js';
+import { CODING_AGENTS, DEFAULT_PR_AGENT, type AppSettings } from '@shared/types.js';
 import { BRIDGE_PORT_MAX, BRIDGE_PORT_MIN, DEFAULT_BRIDGE_PORT } from '../bridge/manager.js';
 import { JsonStore } from './json-store.js';
 
@@ -49,6 +49,7 @@ export const appSettingsSchema = z.object({
   }),
   dockBadge: z.boolean(),
   terminalApp: z.enum(['terminal', 'iterm', 'ghostty', 'warp', 'alacritty', 'kitty']),
+  codingAgent: z.enum(['droid', 'claude', 'codex', 'opencode', 'pi']),
   appearance: z.enum(['system', 'dark']),
   retentionDays: z.number().int().min(1).max(3650).nullable(),
   onboarded: z.boolean(),
@@ -75,6 +76,8 @@ export function defaultSettings(): AppSettings {
     dockBadge: true,
     // Terminal.app ships with macOS, so the default always resolves.
     terminalApp: 'terminal',
+    // Droid is what existing Smith sessions already start.
+    codingAgent: 'droid',
     appearance: 'system',
     retentionDays: null,
     onboarded: false,
@@ -100,6 +103,9 @@ export function migrate(raw: unknown): AppSettings {
   if (!merged.detectModel) merged.detectModel = base.detectModel;
   if (typeof merged.prAgent !== 'string' || !/^[a-z][a-z0-9_-]*$/.test(merged.prAgent)) {
     merged.prAgent = DEFAULT_PR_AGENT;
+  }
+  if (!CODING_AGENTS.some((agent) => agent.id === merged.codingAgent)) {
+    merged.codingAgent = 'droid';
   }
   if (!merged.readinessModel) merged.readinessModel = base.readinessModel;
   if (

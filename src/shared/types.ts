@@ -287,6 +287,12 @@ export interface AppSettings {
   dockBadge: boolean;
   /** Which terminal emulator "Open in terminal" hands a directory to. */
   terminalApp: TerminalAppId;
+  /**
+   * Which coding-agent CLI Smith starts in that terminal. Settings stores the
+   * catalog `id`, never a binary name, so a hand-edited file cannot put an
+   * arbitrary string on the session command line.
+   */
+  codingAgent: CodingAgentId;
   appearance: 'system' | 'dark';
   retentionDays: number | null;
   onboarded: boolean;
@@ -878,6 +884,38 @@ export const TERMINAL_APPS: readonly TerminalAppInfo[] = [
   { id: 'kitty', label: 'kitty', appName: 'kitty' },
 ] as const;
 
+// ── Coding agents (Smith's prepared-session CLI) ─────────────────────────────
+
+/**
+ * The coding-agent CLIs Foundry can start in a prepared Smith session.
+ *
+ * Settings stores the `id`. The binary name is looked up on PATH at launch, so
+ * a hand-edited settings file cannot put an arbitrary string on the command
+ * line — the same lock `terminalApp` has for `open -a`.
+ */
+export type CodingAgentId = 'droid' | 'claude' | 'codex' | 'opencode' | 'pi';
+
+export interface CodingAgentInfo {
+  id: CodingAgentId;
+  label: string;
+  /** The PATH name `whichBinary()` looks up. Never stored in settings. */
+  binary: string;
+}
+
+/** Droid first: it is what existing Smith sessions already start. */
+export const CODING_AGENTS: readonly CodingAgentInfo[] = [
+  { id: 'droid', label: 'Droid', binary: 'droid' },
+  { id: 'claude', label: 'Claude Code', binary: 'claude' },
+  { id: 'codex', label: 'Codex', binary: 'codex' },
+  { id: 'opencode', label: 'OpenCode', binary: 'opencode' },
+  { id: 'pi', label: 'Pi', binary: 'pi' },
+] as const;
+
+/** The chosen agent, falling back to Droid for an id we no longer know. */
+export function codingAgentFor(id: CodingAgentId): CodingAgentInfo {
+  return CODING_AGENTS.find((agent) => agent.id === id) ?? CODING_AGENTS[0]!;
+}
+
 // ── Smith (the entity-smith skill's approval gate) ───────────────────────────
 
 /**
@@ -930,6 +968,8 @@ export interface SmithLaunchInfo {
   bootstrap: string;
   /** The terminal the launch button will use, and whether it is actually installed. */
   terminal: TerminalAppInfo & { installed: boolean };
+  /** The coding-agent CLI the prepared session starts. */
+  agent: CodingAgentInfo;
   /**
    * True when this launch will start the agent itself: the chosen terminal
    * supports being handed a command, and the agent CLI resolved to a real file.

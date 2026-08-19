@@ -7,19 +7,27 @@
 
 import { existsSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
-import type {
-  AgentDef,
-  EnvelopeDef,
-  PipelineDef,
-  SmithLaunchInfo,
-  SmithProposal,
-  SmithProposalAnswer,
-  SmithStartResult,
+import {
+  codingAgentFor,
+  type AgentDef,
+  type CodingAgentInfo,
+  type EnvelopeDef,
+  type PipelineDef,
+  type SmithLaunchInfo,
+  type SmithProposal,
+  type SmithProposalAnswer,
+  type SmithStartResult,
 } from '@shared/types.js';
 import { IPC } from '@shared/ipc-contract.js';
 import type { AppContext } from '../context.js';
 import { whichBinary } from '../system/env.js';
-import { foundryCliPath, smithBootstrap, smithPrompt, smithSkillDir } from '../smith/launch.js';
+import {
+  foundryCliPath,
+  smithAgentArgv,
+  smithBootstrap,
+  smithPrompt,
+  smithSkillDir,
+} from '../smith/launch.js';
 import { prepareSession } from '../smith/session.js';
 import {
   openDirectoryInTerminal,
@@ -31,15 +39,6 @@ import type { Handle } from './shared.js';
 import { notifySettings } from './shared.js';
 
 type Ctx = Pick<AppContext, 'smith' | 'broadcast'>;
-
-/**
- * The agent a prepared Smith window opens on.
- *
- * Smith is a skill loaded into the operator's own agent, so this names the one
- * harness Foundry can start unattended rather than the transport the app runs
- * its own phases on. An operator on any other agent uses the copyable bootstrap.
- */
-const SMITH_AGENT_BINARY = 'droid';
 
 /** What the launcher reads and what the terminal button acts on. */
 type LaunchCtx = Pick<AppContext, 'projects' | 'settings' | 'smith' | 'supportDir'>;
@@ -101,8 +100,12 @@ async function startPreparedSession(
   const session = prepareSession({
     sessionDir: join(ctx.supportDir, 'smith'),
     cliPath: info.cliPath,
-    agentPath: agentCliPath(),
-    prompt: info.prompt,
+    agentArgv: smithAgentArgv({
+      id: info.agent.id,
+      agentPath: agentCliPath(info.agent),
+      prompt: info.prompt,
+      skillDir: info.skillDir,
+    }),
     projectPath: project.path,
     socketPath: info.socketPath,
     shell: loginShell(),
@@ -118,19 +121,18 @@ async function startPreparedSession(
 /**
  * The agent CLI a prepared session starts.
  *
- * Smith runs in the user's own terminal on the user's own agent, so this is a
- * PATH lookup rather than a setting: Foundry itself no longer spawns an agent
- * binary and has nowhere to record one. A bare name is not something a script
- * with its own PATH can be trusted to resolve, so an auto-start demands a real
- * file and declines otherwise rather than opening a window that fails on its
- * first line.
+ * Settings names which catalogued harness to start; the binary itself is still
+ * a PATH lookup. Foundry never stores a user-typed command line. A bare name
+ * is not something a script with its own PATH can be trusted to resolve, so an
+ * auto-start demands a real file and declines otherwise rather than opening a
+ * window that fails on its first line.
  */
-function agentCliPath(): string {
-  return whichBinary(SMITH_AGENT_BINARY) ?? SMITH_AGENT_BINARY;
+function agentCliPath(agent: CodingAgentInfo): string {
+  return whichBinary(agent.binary) ?? agent.binary;
 }
 
-function agentCliInstalled(): boolean {
-  const path = agentCliPath();
+function agentCliInstalled(agent: CodingAgentInfo): boolean {
+  const path = agentCliPath(agent);
   return isAbsolute(path) && existsSync(path);
 }
 
@@ -148,10 +150,12 @@ function launchInfo(ctx: LaunchCtx, projectId: string): SmithLaunchInfo {
   const project = projectId ? ctx.projects.get(projectId) : null;
   const cliPath = foundryCliPath();
   const skillDir = smithSkillDir();
-  const terminal = terminalFor(ctx.settings.get().terminalApp);
+  const settings = ctx.settings.get();
+  const terminal = terminalFor(settings.terminalApp);
+  const agent = codingAgentFor(settings.codingAgent);
   const installed = terminalInstalled(terminal.appName);
   const terminalCapable = !!terminal.prepared && installed;
-  const hasAgent = agentCliInstalled();
+  const hasAgent = agentCliInstalled(agent);
   const projectReady = !!project && existsSync(project.path);
   // The project's own problems are reported by the launcher's own notice, so
   // they are not repeated as an auto-start blocker — only as a reason not to
@@ -163,6 +167,7 @@ function launchInfo(ctx: LaunchCtx, projectId: string): SmithLaunchInfo {
     socketPath: ctx.smith.socket.path(),
     bootstrap: smithBootstrap({ cliPath, projectId: project?.id }),
     terminal: { ...terminal, installed },
+    agent,
     canAutoStart: !blocked && projectReady,
     autoStartBlocked: blocked,
     prompt: smithPrompt({ skillDir, projectName: project?.name }),

@@ -49,21 +49,22 @@ afterAll(() => {
 });
 
 /**
- * A PATH holding a droid binary, or an empty one.
+ * A PATH holding the selected agent's binary, or an empty one.
  *
- * Smith runs on the user's own agent, so the router looks the binary up on the
- * resolved PATH rather than reading a setting. Pinning that PATH is what keeps
- * the branch hermetic: the suite must not depend on whether the machine running
- * it happens to have droid installed.
+ * Settings names which harness to start; the router still looks the binary up
+ * on the resolved PATH. Pinning that PATH is what keeps the branch hermetic:
+ * the suite must not depend on whether the machine running it happens to have
+ * the chosen CLI installed.
  */
-function pinAgentOnPath(present: boolean): void {
+function pinAgentOnPath(binary: string, present: boolean): void {
   const dir = makeDir();
-  if (present) writeFileSync(join(dir, 'droid'), '#!/bin/sh\n', { mode: 0o755 });
+  if (present) writeFileSync(join(dir, binary), '#!/bin/sh\n', { mode: 0o755 });
   __setResolvedEnvForTest({ path: dir, via: 'login-shell' });
 }
 
 interface StubOptions {
   terminalApp?: string;
+  codingAgent?: string;
   agentOnPath?: boolean;
   projectPath?: string | null;
 }
@@ -76,13 +77,17 @@ function startHandler(options: StubOptions = {}): (projectId: string) => Promise
       ? null
       : { id: 'proj_1', name: 'foundry', path: options.projectPath ?? makeDir() };
 
-  pinAgentOnPath(options.agentOnPath ?? true);
+  const codingAgent = options.codingAgent ?? 'droid';
+  pinAgentOnPath(codingAgent, options.agentOnPath ?? true);
 
   const ctx = {
     supportDir,
     projects: { get: (id: string) => (project && id === project.id ? project : null) },
     settings: {
-      get: () => ({ terminalApp: options.terminalApp ?? 'ghostty' }),
+      get: () => ({
+        terminalApp: options.terminalApp ?? 'ghostty',
+        codingAgent,
+      }),
     },
     smith: { socket: { path: () => join(supportDir, 'smith', 'foundry.sock') } },
   } as never;
@@ -146,5 +151,39 @@ describe('smith:start', () => {
       status: 'error',
       error: 'Unable to find application named "Ghostty"',
     });
+  });
+
+  it('starts the selected coding agent, not a hard-coded Droid', async () => {
+    const result = await startHandler({ codingAgent: 'claude' })('proj_1');
+    expect(result).toEqual({ status: 'started' });
+    const script = opened[0]?.command[1];
+    expect(script).toMatch(/smith\/session\.sh$/);
+    const { readFileSync } = await import('node:fs');
+    const body = readFileSync(script!, 'utf8');
+    expect(body).toContain('--add-dir');
+    expect(body).toContain('/claude');
+    expect(body).not.toContain('/droid');
+  });
+
+  it('refuses when the selected agent is missing, even if another catalogued CLI is on PATH', async () => {
+    // Pin droid, ask for claude: looking up the wrong binary would silently
+    // start the default harness the operator did not pick.
+    const supportDir = makeDir();
+    const project = { id: 'proj_1', name: 'foundry', path: makeDir() };
+    pinAgentOnPath('droid', true);
+    const ctx = {
+      supportDir,
+      projects: { get: (id: string) => (id === project.id ? project : null) },
+      settings: { get: () => ({ terminalApp: 'ghostty', codingAgent: 'claude' }) },
+      smith: { socket: { path: () => join(supportDir, 'smith', 'foundry.sock') } },
+    } as never;
+    const handlers = new Map<string, (...args: never[]) => unknown>();
+    registerLaunch(ctx, ((channel: string, fn: (...args: never[]) => unknown) => {
+      handlers.set(channel, fn);
+    }) as never);
+    const start = handlers.get(IPC.smithStart) as (projectId: string) => Promise<SmithStartResult>;
+    const result = await start('proj_1');
+    expect(result).toEqual({ status: 'needs-launcher', reason: 'agent-cli' });
+    expect(opened).toEqual([]);
   });
 });

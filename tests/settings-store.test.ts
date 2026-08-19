@@ -233,6 +233,40 @@ describe('bridgePort', () => {
   });
 });
 
+describe('codingAgent', () => {
+  it('defaults to droid on a fresh install', () => {
+    expect(defaultSettings().codingAgent).toBe('droid');
+  });
+
+  it('reads droid when the field is missing', () => {
+    const stored = { ...defaultSettings() } as Record<string, unknown>;
+    delete stored.codingAgent;
+    expect(migrate(stored).codingAgent).toBe('droid');
+    expect(seed(stored).get().codingAgent).toBe('droid');
+  });
+
+  it('keeps a valid catalogued agent', () => {
+    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
+    expect(store.patch({ codingAgent: 'claude' })).toMatchObject({ ok: true });
+    expect(store.get().codingAgent).toBe('claude');
+    expect(store.patch({ codingAgent: 'pi' })).toMatchObject({ ok: true });
+    expect(store.get().codingAgent).toBe('pi');
+  });
+
+  it('refuses an unknown agent rather than storing it', () => {
+    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
+    expect(store.patch({ codingAgent: 'cursor' as never }).ok).toBe(false);
+    expect(store.get().codingAgent).toBe('droid');
+  });
+
+  it('repairs a stored garbage agent name back to droid', () => {
+    expect(migrate({ ...defaultSettings(), codingAgent: 'cursor' as never }).codingAgent).toBe(
+      'droid',
+    );
+    expect(migrate({ ...defaultSettings(), codingAgent: '' as never }).codingAgent).toBe('droid');
+  });
+});
+
 describe('hiddenModelIds', () => {
   it('defaults to [] on a fresh install', () => {
     expect(defaultSettings().hiddenModelIds).toEqual([]);

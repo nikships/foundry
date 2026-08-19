@@ -12,10 +12,11 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { TERMINAL_APPS } from '../src/shared/types.js';
+import { CODING_AGENTS, TERMINAL_APPS, codingAgentFor } from '../src/shared/types.js';
 import {
   resolveFromMainDir,
   shellQuote,
+  smithAgentArgv,
   smithBootstrap,
   smithPrompt,
   smithSessionScript,
@@ -119,8 +120,7 @@ describe('smithSessionScript', () => {
     binDir: '/support/smith/bin',
     projectPath: '/repos/foundry',
     socketPath: '/support/smith/foundry.sock',
-    agentPath: '/usr/local/bin/droid',
-    prompt: 'Read /skills/SKILL.md and become Smith.',
+    agentArgv: ['/usr/local/bin/droid', 'Read /skills/SKILL.md and become Smith.'],
     shell: '/bin/zsh',
     projectId: 'proj_1a2b',
   };
@@ -147,8 +147,21 @@ describe('smithSessionScript', () => {
   });
 
   it('passes the prompt as one quoted argument, apostrophes and all', () => {
-    const script = smithSessionScript({ ...base, prompt: "Smith's job" });
+    const script = smithSessionScript({
+      ...base,
+      agentArgv: ['/usr/local/bin/droid', "Smith's job"],
+    });
     expect(script).toContain(`'/usr/local/bin/droid' 'Smith'\\''s job'`);
+  });
+
+  it('quotes every argv word, so agent flags stay attached to their values', () => {
+    const script = smithSessionScript({
+      ...base,
+      agentArgv: ['/usr/local/bin/pi', '--skill', '/app/skills/foundry-smith', "Smith's job"],
+    });
+    expect(script).toContain(
+      `'/usr/local/bin/pi' '--skill' '/app/skills/foundry-smith' 'Smith'\\''s job'`,
+    );
   });
 
   it('ends by exec-ing an interactive shell, so a failed agent leaves its error on screen', () => {
@@ -172,8 +185,7 @@ describe('prepareSession', () => {
     prepareSession({
       sessionDir,
       cliPath: '/app/out/main/foundry-cli.js',
-      agentPath: '/usr/local/bin/droid',
-      prompt: 'become Smith',
+      agentArgv: ['/usr/local/bin/droid', 'become Smith'],
       projectPath: '/repos/foundry',
       socketPath: join(sessionDir, 'foundry.sock'),
       shell: '/bin/zsh',
@@ -198,8 +210,7 @@ describe('prepareSession', () => {
     const second = prepareSession({
       sessionDir: dir,
       cliPath: '/moved/foundry-cli.js',
-      agentPath: '/usr/local/bin/droid',
-      prompt: 'become Smith',
+      agentArgv: ['/usr/local/bin/droid', 'become Smith'],
       projectPath: '/repos/foundry',
       socketPath: join(dir, 'foundry.sock'),
       shell: '/bin/zsh',
@@ -253,6 +264,68 @@ describe('resolveFromMainDir', () => {
     );
     expect(resolved).toBe(join(root, 'skills', 'foundry-smith'));
     expect(existsSync(join(resolved, 'SKILL.md'))).toBe(true);
+  });
+});
+
+describe('coding agent selection', () => {
+  it('resolves every catalogued id to its PATH binary', () => {
+    for (const agent of CODING_AGENTS) {
+      expect(codingAgentFor(agent.id)).toEqual(agent);
+    }
+  });
+
+  it('falls back to Droid for an id from a settings file we no longer know', () => {
+    expect(codingAgentFor('nonsense' as never).binary).toBe('droid');
+  });
+});
+
+describe('smithAgentArgv', () => {
+  const input = {
+    agentPath: '/usr/local/bin/agent',
+    prompt: 'Read /skills/SKILL.md and become Smith.',
+    skillDir: '/app/skills/foundry-smith',
+  };
+
+  it('starts Droid with the prompt as the only argument — its documented interactive form', () => {
+    expect(smithAgentArgv({ ...input, id: 'droid' })).toEqual([
+      '/usr/local/bin/agent',
+      input.prompt,
+    ]);
+  });
+
+  it('gives Claude Code --add-dir so it can read the shipped skill outside the project', () => {
+    expect(smithAgentArgv({ ...input, id: 'claude' })).toEqual([
+      '/usr/local/bin/agent',
+      '--add-dir',
+      input.skillDir,
+      input.prompt,
+    ]);
+  });
+
+  it('gives Codex --add-dir for the same reason', () => {
+    expect(smithAgentArgv({ ...input, id: 'codex' })).toEqual([
+      '/usr/local/bin/agent',
+      '--add-dir',
+      input.skillDir,
+      input.prompt,
+    ]);
+  });
+
+  it('starts OpenCode with --prompt, because a positional is a project path, not a message', () => {
+    expect(smithAgentArgv({ ...input, id: 'opencode' })).toEqual([
+      '/usr/local/bin/agent',
+      '--prompt',
+      input.prompt,
+    ]);
+  });
+
+  it("loads the skill through Pi's first-class --skill flag", () => {
+    expect(smithAgentArgv({ ...input, id: 'pi' })).toEqual([
+      '/usr/local/bin/agent',
+      '--skill',
+      input.skillDir,
+      input.prompt,
+    ]);
   });
 });
 

@@ -13,6 +13,7 @@
 
 import { dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { CodingAgentId } from '@shared/types.js';
 
 /**
  * Both resolvers below hang off the running main bundle's own location. Every
@@ -111,6 +112,40 @@ export function smithPrompt(input: { skillDir: string; projectName?: string }): 
 }
 
 /**
+ * The argv a prepared session starts for the chosen coding-agent CLI.
+ *
+ * Each harness has its own documented way to open interactively with an initial
+ * prompt (and, where it exists, to see a skill outside the project). Settings
+ * stores only the catalog id; this is the one place those flags are spelled.
+ *
+ * - Droid: `droid "<prompt>"`
+ * - Claude Code: `claude --add-dir <skillDir> "<prompt>"` so it can read the
+ *   shipped SKILL.md outside the project
+ * - Codex: `codex --add-dir <skillDir> "<prompt>"` for the same reason
+ * - OpenCode: `opencode --prompt "<prompt>"` — the positional is a project path
+ * - Pi: `pi --skill <skillDir> "<prompt>"`
+ */
+export function smithAgentArgv(input: {
+  id: CodingAgentId;
+  agentPath: string;
+  prompt: string;
+  skillDir: string;
+}): string[] {
+  switch (input.id) {
+    case 'droid':
+      return [input.agentPath, input.prompt];
+    case 'claude':
+      return [input.agentPath, '--add-dir', input.skillDir, input.prompt];
+    case 'codex':
+      return [input.agentPath, '--add-dir', input.skillDir, input.prompt];
+    case 'opencode':
+      return [input.agentPath, '--prompt', input.prompt];
+    case 'pi':
+      return [input.agentPath, '--skill', input.skillDir, input.prompt];
+  }
+}
+
+/**
  * The script the prepared terminal runs: put the shim on PATH, pin the scope and
  * socket, then hand the window to the agent.
  *
@@ -123,8 +158,7 @@ export function smithSessionScript(input: {
   binDir: string;
   projectPath: string;
   socketPath: string;
-  agentPath: string;
-  prompt: string;
+  agentArgv: string[];
   shell: string;
   projectId?: string;
 }): string {
@@ -137,7 +171,7 @@ export function smithSessionScript(input: {
   }
   lines.push(
     `cd ${shellQuote(input.projectPath)} || exit 1`,
-    `${shellQuote(input.agentPath)} ${shellQuote(input.prompt)}`,
+    input.agentArgv.map(shellQuote).join(' '),
     `exec ${shellQuote(input.shell)} -i`,
   );
   return lines.join('\n');

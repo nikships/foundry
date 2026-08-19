@@ -8,7 +8,7 @@ import type {
   ReadinessInspectResult,
   UpdateStatus,
 } from '@shared/types.js';
-import { TERMINAL_APPS } from '@shared/types.js';
+import { CODING_AGENTS, TERMINAL_APPS } from '@shared/types.js';
 import {
   BRIDGE_UNAVAILABLE_COPY,
   type BridgeState,
@@ -794,7 +794,7 @@ export default function SettingsScreen({
 
                 <Section
                   label="Terminal"
-                  note="Where Foundry hands you a shell — Smith sessions and Open in terminal."
+                  note="Where Foundry hands you a shell, and which coding agent Smith starts in it."
                 >
                   <div className={styles.settingsFields}>
                     <Field
@@ -815,6 +815,27 @@ export default function SettingsScreen({
                         onChange={(next) => {
                           void patchSettings({
                             terminalApp: next as AppSettings['terminalApp'],
+                          });
+                        }}
+                      />
+                    </Field>
+                    <Field
+                      label="Coding agent"
+                      hint="Smith starts this CLI with the Foundry skill and opening prompt. The binary must be on your PATH."
+                    >
+                      <Dropdown
+                        value={settings.codingAgent}
+                        options={CODING_AGENTS.map((agent) => ({
+                          value: agent.id,
+                          label: agent.label,
+                          description:
+                            agent.id === 'droid'
+                              ? 'Factory Droid (droid). Default.'
+                              : `${agent.label} (${agent.binary}) — must be on PATH.`,
+                        }))}
+                        onChange={(next) => {
+                          void patchSettings({
+                            codingAgent: next as AppSettings['codingAgent'],
                           });
                         }}
                       />

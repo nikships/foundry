@@ -113,7 +113,7 @@ export default function SmithLauncher({
           </h2>
           <p className={styles.subtitle}>
             {autoStart
-              ? `Foundry opens ${terminal?.label}, starts your agent in this project, and has it load the Smith skill. Foundry stays listening and approves every write.`
+              ? `Foundry opens ${terminal?.label}, starts ${info?.agent.label ?? 'your agent'} in this project, and has it load the Smith skill. Foundry stays listening and approves every write.`
               : 'Smith runs in your terminal, on whichever agent you like. Foundry stays listening and approves every write.'}
           </p>
         </div>
@@ -204,9 +204,12 @@ export default function SmithLauncher({
             <>Only Ghostty can be handed a ready-made session; the rest get the manual handoff. </>
           )}
           {info?.autoStartBlocked === 'agent-cli' && (
-            <>Foundry could not find your agent CLI, so it cannot start the session for you. </>
+            <>
+              Foundry could not find {info.agent.label} ({info.agent.binary}) on your PATH, so it
+              cannot start the session for you.{' '}
+            </>
           )}
-          Terminal preference lives in{' '}
+          Terminal and coding-agent preferences live in{' '}
           <button type="button" className={styles.link} onClick={() => onOpenSettings?.('general')}>
             Settings → General
           </button>
