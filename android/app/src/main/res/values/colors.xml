@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg_base">#020202</color>
+    <color name="bg_panel">#0A0A0A</color>
+    <color name="bg_raised">#101010</color>
+    <color name="bg_input">#050505</color>
+    <color name="accent">#EE6018</color>
+    <color name="text_primary">#EEEEEE</color>
+    <color name="text_dim">#8C8C8C</color>
+    <color name="status_running">#EE6018</color>
+    <color name="status_accepted">#34D399</color>
+    <color name="status_rejected">#F5A623</color>
+    <color name="status_failed">#EF4444</color>
+    <color name="status_killed">#525252</color>
+</resources>

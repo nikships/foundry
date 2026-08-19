@@ -170,3 +170,14 @@ out/
 # AI
 .junie/
 .omo/
+
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.cxx/
+android/.idea/
+*.apk
+*.aab
+
