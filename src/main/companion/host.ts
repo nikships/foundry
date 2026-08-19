@@ -249,7 +249,9 @@ export class CompanionHost {
    */
   pairingPayload(opts?: { refresh?: boolean }): CompanionPairingPayload | null {
     if (!this.origin) return null;
-    const issued = opts?.refresh ? this.secrets.issue() : (this.secrets.current() ?? this.secrets.issue());
+    const issued = opts?.refresh
+      ? this.secrets.issue()
+      : (this.secrets.current() ?? this.secrets.issue());
     return {
       protocolVersion: COMPANION_PROTOCOL_VERSION,
       origin: this.origin,
