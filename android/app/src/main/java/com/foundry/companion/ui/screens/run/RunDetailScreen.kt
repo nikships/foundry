@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -42,6 +43,12 @@ fun RunDetailScreen(
     onOpenIssue: (issueUrl: String) -> Unit,
     modifier: Modifier = Modifier,
     pendingInterrupt: PendingInterrupt? = null,
+    /**
+     * Set only by a notification / deep-link tap naming a specific interrupt:
+     * the sheet opens once on arrival. Nothing else raises it — the strip's
+     * `Answer…` is the in-app entry point.
+     */
+    initialInterruptId: String? = null,
     actionError: String? = null,
     onDismissActionError: (() -> Unit)? = null,
     onAnswerInterrupt: ((interruptId: String, approved: Boolean, notes: String?) -> Unit)? = null,
@@ -57,8 +64,23 @@ fun RunDetailScreen(
     val shapes = FoundryTheme.shapes
 
     var showKillDialog by remember { mutableStateOf(false) }
-    var showInterruptSheet by remember { mutableStateOf(false) }
+    var showInterruptSheet by rememberSaveable { mutableStateOf(false) }
     var isRequestExpanded by remember { mutableStateOf(false) }
+
+    // The deep link consumes once: re-opening the sheet after the operator
+    // dismissed it would be the global modal again, only slower. Saveable so
+    // a rotate does not resurrect the sheet.
+    var consumedInterruptId by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(initialInterruptId, pendingInterrupt?.interruptId) {
+        val target = initialInterruptId
+        if (!target.isNullOrBlank() &&
+            target != consumedInterruptId &&
+            pendingInterrupt?.interruptId == target
+        ) {
+            consumedInterruptId = target
+            showInterruptSheet = true
+        }
+    }
 
     if (runDetail == null) {
         Scaffold(
@@ -168,6 +190,15 @@ fun RunDetailScreen(
                     status = connectionStatus,
                     onRetryClick = { onRetryConnection?.invoke() }
                 )
+
+                // Engineer interrupt strip, pinned above the header (spec §3.7)
+                if (pendingInterrupt != null) {
+                    InterruptStrip(
+                        onAnswerClick = { showInterruptSheet = true },
+                        isConnected = isConnected,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
             }
         }
     ) { innerPadding ->
@@ -204,55 +235,6 @@ fun RunDetailScreen(
                             modifier = Modifier
                                 .clickable(onClick = onDismissActionError)
                                 .padding(start = 8.dp)
-                        )
-                    }
-                }
-            }
-
-            // Engineer interrupt banner (if active for this run)
-            if (pendingInterrupt != null) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(colors.statusRejected.copy(alpha = 0.18f), shapes.card)
-                        .border(1.dp, colors.statusRejected.copy(alpha = 0.5f), shapes.card)
-                        .padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        Text(
-                            text = "ENGINEER INTERRUPT",
-                            style = typography.eyebrowMono,
-                            color = colors.statusRejected
-                        )
-                        Text(
-                            text = "An engineer phase is waiting for your answer.",
-                            style = typography.body,
-                            color = colors.textPrimary
-                        )
-                    }
-
-                    if (isConnected) {
-                        Button(
-                            onClick = { showInterruptSheet = true },
-                            shape = shapes.button,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = colors.statusRejected.copy(alpha = 0.25f),
-                                contentColor = colors.statusRejected
-                            )
-                        ) {
-                            Text(text = "Answer…", style = typography.labelMono)
-                        }
-                    } else {
-                        Text(
-                            text = "Reconnect to answer",
-                            style = typography.metaMono,
-                            color = colors.textFaint,
-                            modifier = Modifier.padding(start = 8.dp)
                         )
                     }
                 }
@@ -403,6 +385,9 @@ fun RunDetailScreen(
                 showInterruptSheet = false
                 onAnswerInterrupt?.invoke(pendingInterrupt.interruptId, false, notes)
             },
+            // Swiping the sheet away closes it and nothing more. On the desktop
+            // Escape rejects; a phone swipe is too cheap a gesture to mean that,
+            // so the strip persists and the run stays blocked.
             onDismiss = { showInterruptSheet = false }
         )
     }

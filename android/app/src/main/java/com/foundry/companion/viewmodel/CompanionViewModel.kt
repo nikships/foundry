@@ -35,7 +35,30 @@ data class CompanionUiState(
     val isCreatingPr: Boolean = false,
     val validationIssues: List<ValidationIssue> = emptyList(),
     val errorMessage: String? = null
-)
+) {
+    /** The interrupt a run is blocked on, if any. `runId` is the only join key. */
+    fun interruptForRun(runId: String): PendingInterrupt? =
+        pendingInterrupts.firstOrNull { it.runId == runId }
+}
+
+/**
+ * The host serves runs and interrupts as two independent lists and never stamps
+ * `waitingInterrupt` on a row, so the chip is derived here by joining them on
+ * `runId` rather than trusting a field only the fake repository ever set.
+ */
+private fun markWaiting(runs: List<RunRow>, interrupts: List<PendingInterrupt>): List<RunRow> {
+    val waitingRunIds = interrupts.map { it.runId }.filter { it.isNotBlank() }.toSet()
+    return runs.map { run ->
+        val waiting = run.runId in waitingRunIds
+        if (run.waitingInterrupt == waiting) run else run.copy(waitingInterrupt = waiting)
+    }
+}
+
+private fun CompanionUiState.withInterrupts(interrupts: List<PendingInterrupt>): CompanionUiState =
+    copy(pendingInterrupts = interrupts, runs = markWaiting(runs, interrupts))
+
+private fun CompanionUiState.withRuns(nextRuns: List<RunRow>): CompanionUiState =
+    copy(runs = markWaiting(nextRuns, pendingInterrupts))
 
 class CompanionViewModel(
     private val repository: CompanionRepository,
@@ -94,7 +117,7 @@ class CompanionViewModel(
 
         viewModelScope.launch {
             repository.pendingInterrupts.collect { interrupts ->
-                _uiState.update { it.copy(pendingInterrupts = interrupts) }
+                _uiState.update { it.withInterrupts(interrupts) }
             }
         }
 
@@ -191,7 +214,7 @@ class CompanionViewModel(
     fun loadPendingInterrupts() {
         viewModelScope.launch {
             repository.getInterrupts().onSuccess { interrupts ->
-                _uiState.update { it.copy(pendingInterrupts = interrupts) }
+                _uiState.update { it.withInterrupts(interrupts) }
 
                 if (isFirstInterruptLoad) {
                     for (interrupt in interrupts) {
@@ -219,7 +242,7 @@ class CompanionViewModel(
         viewModelScope.launch {
             repository.getRuns(projectId).onSuccess { runs ->
                 val unarchived = runs.filterNot { it.archived }
-                _uiState.update { it.copy(runs = unarchived) }
+                _uiState.update { it.withRuns(unarchived) }
 
                 val settledStatuses = setOf("accepted", "rejected", "failed", "killed")
 

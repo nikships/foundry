@@ -14,7 +14,6 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.foundry.companion.data.model.ConnectionStatus
 import com.foundry.companion.data.session.SessionManager
-import com.foundry.companion.ui.components.InterruptBottomSheet
 import com.foundry.companion.ui.screens.connection.ConnectionBottomSheet
 import com.foundry.companion.ui.screens.inspector.InspectorScreen
 import com.foundry.companion.ui.screens.newrun.NewRunScreen
@@ -22,14 +21,14 @@ import com.foundry.companion.ui.screens.pair.PairScreen
 import com.foundry.companion.ui.screens.run.RunDetailScreen
 import com.foundry.companion.ui.screens.runs.RunsScreen
 import com.foundry.companion.viewmodel.CompanionViewModel
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.SharedFlow
 
 @Composable
 fun FoundryNavHost(
     viewModel: CompanionViewModel,
     modifier: Modifier = Modifier,
     sessionManager: SessionManager? = null,
-    deepLinkRoute: StateFlow<String?>? = null,
+    deepLinkRoute: SharedFlow<String>? = null,
     navController: NavHostController = rememberNavController()
 ) {
     val context = LocalContext.current
@@ -85,13 +84,17 @@ fun FoundryNavHost(
         }
     }
 
-    // Handle incoming deep link route (from push notifications / intents)
-    val incomingDeepLink by (deepLinkRoute?.collectAsState() ?: remember { mutableStateOf<String?>(null) })
-    LaunchedEffect(incomingDeepLink) {
-        val route = incomingDeepLink
-        if (!route.isNullOrBlank()) {
+    // Handle incoming deep link route (from push notifications / intents).
+    // Home is popped to rather than stacked on, so Back from a notification tap
+    // lands on Home instead of walking a pile of previously opened runs.
+    LaunchedEffect(deepLinkRoute) {
+        deepLinkRoute?.collect { route ->
+            if (route.isBlank()) return@collect
             try {
-                navController.navigate(route)
+                navController.navigate(route) {
+                    popUpTo(NavRoute.Runs.route)
+                    launchSingleTop = true
+                }
             } catch (_: Exception) {
                 // Ignore navigation failure
             }
@@ -197,16 +200,25 @@ fun FoundryNavHost(
         // 4. Run Detail Screen
         composable(
             route = NavRoute.RunDetail.route,
-            arguments = listOf(navArgument("runId") { type = NavType.StringType })
+            arguments = listOf(
+                navArgument("runId") { type = NavType.StringType },
+                navArgument("interruptId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
         ) { backStackEntry ->
             val runId = backStackEntry.arguments?.getString("runId").orEmpty()
+            val requestedInterruptId = backStackEntry.arguments?.getString("interruptId")
             LaunchedEffect(runId) {
                 viewModel.loadRunDetail(runId)
             }
 
-            val matchingInterrupt = uiState.pendingInterrupts.find { it.runId == runId || it.runId.isBlank() }
+            val matchingInterrupt = uiState.interruptForRun(runId)
 
             RunDetailScreen(
+                initialInterruptId = requestedInterruptId,
                 runDetail = uiState.currentRunDetail?.takeIf { it.run.runId == runId },
                 isRunMissing = uiState.missingRunId == runId,
                 connectionStatus = uiState.connectionStatus,
@@ -286,19 +298,7 @@ fun FoundryNavHost(
         )
     }
 
-    // 7. Engineer Interrupt Sheet Overlay (if active)
-    val activeInterrupt = uiState.pendingInterrupts.firstOrNull()
-    if (activeInterrupt != null) {
-        InterruptBottomSheet(
-            interrupt = activeInterrupt,
-            onApprove = { notes ->
-                viewModel.answerInterrupt(activeInterrupt.interruptId, approved = true, notes = notes)
-            },
-            onReject = { notes ->
-                viewModel.answerInterrupt(activeInterrupt.interruptId, approved = false, notes = notes)
-            },
-            onDismiss = { /* Non-dismissible without explicit answer */ }
-        )
-    }
+    // An interrupt never raises a sheet on its own: Home shows the run's amber
+    // `waiting` chip and the Run screen pins the strip with `Answer…` (spec §3.7).
 }
 

@@ -7,6 +7,7 @@ import com.foundry.companion.ui.screens.run.RunDetailScreen
 import com.foundry.companion.ui.theme.FoundryTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -644,5 +645,181 @@ class RunDetailScreenTest {
 
         // Empty state message when no phase has started
         composeTestRule.onNodeWithText("Waiting for the first phase…").assertIsDisplayed()
+    }
+
+    private val waitingInterrupt = PendingInterrupt(
+        interruptId = "int_42",
+        runId = "run_260818_live99",
+        pipelineName = "Feature Pipeline",
+        phaseName = "Engineer Checkpoint",
+        question = "Do you want to enable automatic database backup migration?",
+        kind = "engineer"
+    )
+
+    @Test
+    fun testInterruptSheetStaysClosedUntilAnswerIsTapped() {
+        composeTestRule.setContent {
+            FoundryTheme {
+                RunDetailScreen(
+                    runDetail = RunDetail(run = liveRun, phases = livePhases, live = true),
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    pendingInterrupt = waitingInterrupt,
+                    onBackClick = {},
+                    onOpenInspector = {},
+                    onKillRun = {},
+                    onOpenPr = {},
+                    onCreatePr = {},
+                    onOpenIssue = {},
+                    onAnswerInterrupt = { _, _, _ -> }
+                )
+            }
+        }
+
+        // The strip is the entry point; nothing raises the sheet on its own.
+        composeTestRule.onNodeWithText("Answer…").assertIsDisplayed()
+        composeTestRule.onNodeWithText("APPROVE").assertDoesNotExist()
+
+        composeTestRule.onNodeWithText("Answer…").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithText("APPROVE").assertIsDisplayed()
+        composeTestRule.onNodeWithText("REJECT").assertIsDisplayed()
+    }
+
+    @Test
+    fun testDismissingTheSheetDoesNotAnswerTheInterrupt() {
+        var approvedNotes: String? = null
+        var rejectedNotes: String? = null
+        var dismissed = false
+
+        composeTestRule.setContent {
+            FoundryTheme {
+                com.foundry.companion.ui.components.InterruptBottomSheet(
+                    interrupt = waitingInterrupt,
+                    onApprove = { approvedNotes = it.orEmpty() },
+                    onReject = { rejectedNotes = it.orEmpty() },
+                    onDismiss = { dismissed = true }
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("APPROVE").assertIsDisplayed()
+
+        // Tapping the scrim is the same cheap gesture as a swipe away. On the
+        // desktop Escape rejects; here it must answer nothing at all.
+        composeTestRule.onNodeWithContentDescription("Close sheet")
+            .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        composeTestRule.waitUntil(5_000L) { dismissed }
+
+        assertNull(approvedNotes)
+        assertNull(rejectedNotes)
+    }
+
+    @Test
+    fun testStripPersistsSoTheRunStaysVisiblyBlocked() {
+        var answeredInterruptId: String? = null
+
+        composeTestRule.setContent {
+            FoundryTheme {
+                RunDetailScreen(
+                    runDetail = RunDetail(run = liveRun, phases = livePhases, live = true),
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    pendingInterrupt = waitingInterrupt,
+                    onBackClick = {},
+                    onOpenInspector = {},
+                    onKillRun = {},
+                    onOpenPr = {},
+                    onCreatePr = {},
+                    onOpenIssue = {},
+                    onAnswerInterrupt = { interruptId, _, _ -> answeredInterruptId = interruptId }
+                )
+            }
+        }
+
+        // Opening and closing the sheet leaves the interrupt unanswered, so the
+        // strip is still the standing invitation to answer it.
+        composeTestRule.onNodeWithText("Answer…").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithContentDescription("Close sheet")
+            .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        composeTestRule.waitForIdle()
+
+        assertNull(answeredInterruptId)
+        composeTestRule.onNodeWithText("An engineer phase is waiting for your answer.").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Answer…").assertIsDisplayed()
+    }
+
+    @Test
+    fun testDeepLinkInterruptIdOpensThatSheetOnArrival() {
+        composeTestRule.setContent {
+            FoundryTheme {
+                RunDetailScreen(
+                    runDetail = RunDetail(run = liveRun, phases = livePhases, live = true),
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    pendingInterrupt = waitingInterrupt,
+                    initialInterruptId = "int_42",
+                    onBackClick = {},
+                    onOpenInspector = {},
+                    onKillRun = {},
+                    onOpenPr = {},
+                    onCreatePr = {},
+                    onOpenIssue = {},
+                    onAnswerInterrupt = { _, _, _ -> }
+                )
+            }
+        }
+
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("Do you want to enable automatic database backup migration?").assertIsDisplayed()
+        composeTestRule.onNodeWithText("APPROVE").assertIsDisplayed()
+    }
+
+    @Test
+    fun testDeepLinkForAnAlreadyAnsweredInterruptDoesNotOpenTheSheet() {
+        composeTestRule.setContent {
+            FoundryTheme {
+                RunDetailScreen(
+                    runDetail = RunDetail(run = liveRun, phases = livePhases, live = true),
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    pendingInterrupt = null,
+                    initialInterruptId = "int_42",
+                    onBackClick = {},
+                    onOpenInspector = {},
+                    onKillRun = {},
+                    onOpenPr = {},
+                    onCreatePr = {},
+                    onOpenIssue = {},
+                    onAnswerInterrupt = { _, _, _ -> }
+                )
+            }
+        }
+
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("APPROVE").assertDoesNotExist()
+        composeTestRule.onNodeWithText("Answer…").assertDoesNotExist()
+    }
+
+    @Test
+    fun testOfflineStripDisablesAnswering() {
+        composeTestRule.setContent {
+            FoundryTheme {
+                RunDetailScreen(
+                    runDetail = RunDetail(run = liveRun, phases = livePhases, live = true),
+                    connectionStatus = ConnectionStatus.Reconnecting("Nik's Mac", "http://192.168.1.100"),
+                    pendingInterrupt = waitingInterrupt,
+                    onBackClick = {},
+                    onOpenInspector = {},
+                    onKillRun = {},
+                    onOpenPr = {},
+                    onCreatePr = {},
+                    onOpenIssue = {},
+                    onAnswerInterrupt = { _, _, _ -> }
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("An engineer phase is waiting for your answer.").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Reconnect to answer").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Answer…").assertDoesNotExist()
     }
 }
