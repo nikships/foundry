@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.foundry.companion.data.model.ConnectionStatus
+import com.foundry.companion.data.model.EventRow
 import com.foundry.companion.data.model.GhStatus
 import com.foundry.companion.data.model.PendingInterrupt
 import com.foundry.companion.data.model.RunDetail
@@ -57,7 +58,9 @@ fun RunDetailScreen(
     ghStatus: GhStatus? = null,
     onCopyPrUrl: ((String) -> Unit)? = null,
     /** The desktop answered that it has no such run, so there is nothing to wait for. */
-    isRunMissing: Boolean = false
+    isRunMissing: Boolean = false,
+    /** Already-fetched transcript events; the waterfall ticks from these. */
+    events: List<EventRow> = emptyList()
 ) {
     val colors = FoundryTheme.colors
     val typography = FoundryTheme.typography
@@ -315,6 +318,7 @@ fun RunDetailScreen(
                     phases = phases,
                     selectedPhaseId = selectedPhaseId,
                     onSelectPhase = { selectedPhaseId = it },
+                    events = events,
                     nowMs = nowMs
                 )
             }

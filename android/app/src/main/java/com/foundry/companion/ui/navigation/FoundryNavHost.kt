@@ -244,6 +244,7 @@ fun FoundryNavHost(
                 initialInterruptId = requestedInterruptId,
                 runDetail = uiState.currentRunDetail?.takeIf { it.run.runId == runId },
                 isRunMissing = uiState.missingRunId == runId,
+                events = uiState.eventRows,
                 connectionStatus = uiState.connectionStatus,
                 pendingInterrupt = matchingInterrupt,
                 actionError = uiState.errorMessage,
