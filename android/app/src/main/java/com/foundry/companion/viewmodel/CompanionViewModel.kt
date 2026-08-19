@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.foundry.companion.data.model.*
 import com.foundry.companion.data.repository.CompanionRepository
 import com.foundry.companion.data.session.SessionManager
+import com.foundry.companion.notification.CompanionNotificationManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -36,13 +37,25 @@ data class CompanionUiState(
 class CompanionViewModel(
     private val repository: CompanionRepository,
     private val sessionManager: SessionManager? = null,
+    private val notificationManager: CompanionNotificationManager? = null,
     private val enablePolling: Boolean = true
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(CompanionUiState())
+    private val _uiState = MutableStateFlow(
+        CompanionUiState(
+            connectionStatus = repository.connectionStatus.value,
+            activeSession = repository.activeSession.value,
+            isNotifyOnSettleEnabled = sessionManager?.isNotifyOnSettleEnabled() ?: true
+        )
+    )
     val uiState: StateFlow<CompanionUiState> = _uiState.asStateFlow()
 
     private var pollingJob: Job? = null
+    private val knownRunStatuses = mutableMapOf<String, String>()
+    private val knownInterruptIds = mutableSetOf<String>()
+    private var isFirstRunLoad = true
+    private var isFirstInterruptLoad = true
+    private var isManualUnpair = false
 
     init {
         viewModelScope.launch {
@@ -61,11 +74,17 @@ class CompanionViewModel(
 
         viewModelScope.launch {
             repository.activeSession.collect { session ->
+                val previousSession = _uiState.value.activeSession
                 _uiState.update { it.copy(activeSession = session) }
                 if (session != null) {
                     sessionManager?.saveSession(session)
                 } else {
                     sessionManager?.clearSession()
+                    if (previousSession != null && !isManualUnpair && _uiState.value.errorMessage.isNullOrBlank()) {
+                        _uiState.update {
+                            it.copy(errorMessage = "The desktop revoked this phone's pairing. Scan a fresh code in Settings → Companion to reconnect.")
+                        }
+                    }
                 }
             }
         }
@@ -76,8 +95,9 @@ class CompanionViewModel(
             }
         }
 
-        val notify = sessionManager?.isNotifyOnSettleEnabled() ?: true
-        _uiState.update { it.copy(isNotifyOnSettleEnabled = notify) }
+        if (_uiState.value.activeSession != null && _uiState.value.connectionStatus is ConnectionStatus.Connected) {
+            loadInitialData()
+        }
     }
 
     fun loadInitialData() {
@@ -85,6 +105,8 @@ class CompanionViewModel(
             repository.getSessionInfo().onSuccess { info ->
                 _uiState.update { it.copy(sessionInfo = info) }
             }
+
+            loadPendingInterrupts()
 
             repository.getProjects().onSuccess { projects ->
                 val selected = if (_uiState.value.selectedProjectId.isEmpty()) {
@@ -167,6 +189,24 @@ class CompanionViewModel(
         viewModelScope.launch {
             repository.getInterrupts().onSuccess { interrupts ->
                 _uiState.update { it.copy(pendingInterrupts = interrupts) }
+
+                if (isFirstInterruptLoad) {
+                    for (interrupt in interrupts) {
+                        knownInterruptIds.add(interrupt.interruptId)
+                        sessionManager?.addNotifiedInterruptId(interrupt.interruptId)
+                    }
+                    isFirstInterruptLoad = false
+                } else {
+                    val notifiedSet = sessionManager?.getNotifiedInterruptIds().orEmpty()
+                    for (interrupt in interrupts) {
+                        if (!knownInterruptIds.contains(interrupt.interruptId) && !notifiedSet.contains(interrupt.interruptId)) {
+                            knownInterruptIds.add(interrupt.interruptId)
+                            sessionManager?.addNotifiedInterruptId(interrupt.interruptId)
+                            // Interrupts notify regardless of settle toggle per spec §3.7
+                            notificationManager?.postInterruptNotification(interrupt)
+                        }
+                    }
+                }
             }
         }
     }
@@ -177,6 +217,36 @@ class CompanionViewModel(
             repository.getRuns(projectId).onSuccess { runs ->
                 val unarchived = runs.filterNot { it.archived }
                 _uiState.update { it.copy(runs = unarchived) }
+
+                val settledStatuses = setOf("accepted", "rejected", "failed", "killed")
+
+                if (isFirstRunLoad) {
+                    for (run in unarchived) {
+                        val status = run.status.lowercase()
+                        knownRunStatuses[run.runId] = status
+                        if (status in settledStatuses) {
+                            sessionManager?.addNotifiedSettledRunId(run.runId)
+                        }
+                    }
+                    isFirstRunLoad = false
+                } else {
+                    val notifiedSet = sessionManager?.getNotifiedSettledRunIds().orEmpty()
+                    for (run in unarchived) {
+                        val oldStatus = knownRunStatuses[run.runId]
+                        val newStatus = run.status.lowercase()
+                        knownRunStatuses[run.runId] = newStatus
+
+                        val isSettled = newStatus in settledStatuses
+                        val wasSettled = oldStatus in settledStatuses
+
+                        if (isSettled && !wasSettled && !notifiedSet.contains(run.runId)) {
+                            sessionManager?.addNotifiedSettledRunId(run.runId)
+                            if (_uiState.value.isNotifyOnSettleEnabled) {
+                                notificationManager?.postRunSettledNotification(run)
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -222,6 +292,11 @@ class CompanionViewModel(
     }
 
     fun unpair() {
+        isManualUnpair = true
+        knownRunStatuses.clear()
+        knownInterruptIds.clear()
+        isFirstRunLoad = true
+        isFirstInterruptLoad = true
         viewModelScope.launch {
             repository.unpair()
             _uiState.update {
@@ -231,9 +306,11 @@ class CompanionViewModel(
                     transcriptEvents = emptyList(),
                     eventRows = emptyList(),
                     eventsCursor = 0L,
-                    sessionInfo = null
+                    sessionInfo = null,
+                    errorMessage = null
                 )
             }
+            isManualUnpair = false
         }
     }
 
@@ -347,12 +424,15 @@ class CompanionViewModel(
     companion object {
         fun provideFactory(
             repository: CompanionRepository,
-            sessionManager: SessionManager? = null
+            sessionManager: SessionManager? = null,
+            notificationManager: CompanionNotificationManager? = null,
+            enablePolling: Boolean = true
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return CompanionViewModel(repository, sessionManager) as T
+                return CompanionViewModel(repository, sessionManager, notificationManager, enablePolling) as T
             }
         }
     }
 }
+

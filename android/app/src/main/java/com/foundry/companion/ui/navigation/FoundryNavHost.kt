@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -12,6 +13,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.foundry.companion.data.model.ConnectionStatus
+import com.foundry.companion.data.session.SessionManager
 import com.foundry.companion.ui.components.InterruptBottomSheet
 import com.foundry.companion.ui.screens.connection.ConnectionBottomSheet
 import com.foundry.companion.ui.screens.inspector.InspectorScreen
@@ -20,11 +22,14 @@ import com.foundry.companion.ui.screens.pair.PairScreen
 import com.foundry.companion.ui.screens.run.RunDetailScreen
 import com.foundry.companion.ui.screens.runs.RunsScreen
 import com.foundry.companion.viewmodel.CompanionViewModel
+import kotlinx.coroutines.flow.StateFlow
 
 @Composable
 fun FoundryNavHost(
     viewModel: CompanionViewModel,
     modifier: Modifier = Modifier,
+    sessionManager: SessionManager? = null,
+    deepLinkRoute: StateFlow<String?>? = null,
     navController: NavHostController = rememberNavController()
 ) {
     val context = LocalContext.current
@@ -35,6 +40,63 @@ fun FoundryNavHost(
     // Start destination based on whether paired
     val isPaired = uiState.activeSession != null
     val startDestination = if (isPaired) NavRoute.Runs.route else NavRoute.Pair.route
+
+    // Save active route on destination change
+    DisposableEffect(navController, sessionManager) {
+        val listener = NavController.OnDestinationChangedListener { _, destination, arguments ->
+            val route = destination.route ?: return@OnDestinationChangedListener
+            val formattedRoute = when {
+                route == NavRoute.RunDetail.route -> {
+                    val runId = arguments?.getString("runId").orEmpty()
+                    if (runId.isNotBlank()) "run/$runId" else "runs"
+                }
+                route == NavRoute.Inspector.route -> {
+                    val runId = arguments?.getString("runId").orEmpty()
+                    val phaseId = arguments?.getString("phaseId")
+                    if (runId.isNotBlank()) {
+                        if (phaseId != null) "run/$runId/inspector?phase=$phaseId" else "run/$runId/inspector"
+                    } else "runs"
+                }
+                route == NavRoute.Pair.route -> "pair"
+                route == NavRoute.NewRun.route -> "new-run"
+                else -> "runs"
+            }
+            sessionManager?.setLastActiveRoute(formattedRoute)
+        }
+        navController.addOnDestinationChangedListener(listener)
+        onDispose {
+            navController.removeOnDestinationChangedListener(listener)
+        }
+    }
+
+    // Restore last active route across app restart / process death if session is valid
+    var hasRestoredLastRoute by remember { mutableStateOf(false) }
+    LaunchedEffect(isPaired, hasRestoredLastRoute) {
+        if (isPaired && !hasRestoredLastRoute) {
+            hasRestoredLastRoute = true
+            val lastRoute = sessionManager?.getLastActiveRoute()
+            if (!lastRoute.isNullOrBlank() && lastRoute != "pair" && lastRoute != "runs") {
+                try {
+                    navController.navigate(lastRoute)
+                } catch (_: Exception) {
+                    // Fallback to default
+                }
+            }
+        }
+    }
+
+    // Handle incoming deep link route (from push notifications / intents)
+    val incomingDeepLink by (deepLinkRoute?.collectAsState() ?: remember { mutableStateOf<String?>(null) })
+    LaunchedEffect(incomingDeepLink) {
+        val route = incomingDeepLink
+        if (!route.isNullOrBlank()) {
+            try {
+                navController.navigate(route)
+            } catch (_: Exception) {
+                // Ignore navigation failure
+            }
+        }
+    }
 
     // React to pairing state changes
     LaunchedEffect(isPaired) {
@@ -237,3 +299,4 @@ fun FoundryNavHost(
         )
     }
 }
+

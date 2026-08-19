@@ -45,9 +45,55 @@ class SessionManager(context: Context) {
         prefs.edit().putString("${KEY_LAST_PIPELINE_PREFIX}_$projectId", pipelineId).apply()
     }
 
+    fun hasPromptedNotificationPermission(): Boolean {
+        return prefs.getBoolean(KEY_NOTIFY_PROMPTED, false)
+    }
+
+    fun setPromptedNotificationPermission(prompted: Boolean) {
+        prefs.edit().putBoolean(KEY_NOTIFY_PROMPTED, prompted).apply()
+    }
+
+    fun getLastActiveRoute(): String? {
+        return prefs.getString(KEY_LAST_ROUTE, null)
+    }
+
+    fun setLastActiveRoute(route: String?) {
+        if (route == null) {
+            prefs.edit().remove(KEY_LAST_ROUTE).apply()
+        } else {
+            prefs.edit().putString(KEY_LAST_ROUTE, route).apply()
+        }
+    }
+
+    fun getNotifiedSettledRunIds(): Set<String> {
+        return prefs.getStringSet(KEY_NOTIFIED_RUNS, emptySet()) ?: emptySet()
+    }
+
+    fun addNotifiedSettledRunId(runId: String) {
+        if (runId.isBlank()) return
+        val current = getNotifiedSettledRunIds().toMutableSet()
+        current.add(runId)
+        prefs.edit().putStringSet(KEY_NOTIFIED_RUNS, current).apply()
+    }
+
+    fun getNotifiedInterruptIds(): Set<String> {
+        return prefs.getStringSet(KEY_NOTIFIED_INTERRUPTS, emptySet()) ?: emptySet()
+    }
+
+    fun addNotifiedInterruptId(interruptId: String) {
+        if (interruptId.isBlank()) return
+        val current = getNotifiedInterruptIds().toMutableSet()
+        current.add(interruptId)
+        prefs.edit().putStringSet(KEY_NOTIFIED_INTERRUPTS, current).apply()
+    }
+
     companion object {
         private const val KEY_SESSION = "paired_session"
         private const val KEY_NOTIFY_SETTLE = "notify_settle"
+        private const val KEY_NOTIFY_PROMPTED = "notify_prompted"
+        private const val KEY_LAST_ROUTE = "last_active_route"
+        private const val KEY_NOTIFIED_RUNS = "notified_runs"
+        private const val KEY_NOTIFIED_INTERRUPTS = "notified_interrupts"
         private const val KEY_LAST_PIPELINE_PREFIX = "last_pipeline"
     }
 }

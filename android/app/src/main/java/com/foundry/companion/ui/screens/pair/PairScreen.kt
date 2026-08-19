@@ -104,7 +104,7 @@ fun PairScreen(
             onPairScanned(payload)
         } catch (e: Exception) {
             localValidationIssue =
-                "Could not parse pairing JSON. Ensure you copied the full payload from Foundry Settings → Phone."
+                "Could not parse pairing JSON. Ensure you copied the full payload from Foundry Settings → Companion."
         }
     }
 
@@ -140,7 +140,7 @@ fun PairScreen(
                     color = colors.textPrimary
                 )
                 Text(
-                    text = "Scan the QR code in Foundry → Settings → Phone on your Mac",
+                    text = "Scan the QR code in Foundry → Settings → Companion on your Mac",
                     style = typography.body,
                     color = colors.textDim,
                     textAlign = TextAlign.Center
@@ -185,9 +185,9 @@ fun PairScreen(
                     )
                     Text(
                         text = if (!hasCameraPermission) {
-                            "Foundry is waiting on your Mac. Paste its pairing code below to connect without a camera."
+                            "Foundry is waiting on your Mac. Allow camera access to scan its pairing code."
                         } else {
-                            "Paste the pairing JSON copied from Foundry Settings → Phone:"
+                            "Paste the pairing JSON copied from Foundry Settings → Companion:"
                         },
                         style = typography.body,
                         color = colors.textDim
