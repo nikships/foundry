@@ -21,6 +21,7 @@ import * as bridge from './bridge.js';
 import * as runs from './runs.js';
 import * as prs from './prs.js';
 import * as smith from './smith.js';
+import * as companion from './companion.js';
 import * as maintenance from './maintenance.js';
 import * as appRouter from './app.js';
 import * as readiness from './readiness.js';
@@ -42,6 +43,7 @@ export function registerIpc(ctx: AppContext): void {
   prs.register(ctx, handle);
   smith.register(ctx, handle);
   smith.registerLaunch(ctx, handle);
+  companion.register(ctx, handle);
   maintenance.register(ctx, handle);
   appRouter.register(ctx, handle);
 }

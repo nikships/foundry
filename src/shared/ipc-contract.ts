@@ -44,6 +44,7 @@ import type {
   UpdateStatus,
   ValidationIssue,
 } from './types.js';
+import type { CompanionHostState, CompanionPairingPayload } from './companion.js';
 
 export interface SaveResult<T> {
   ok: boolean;
@@ -557,6 +558,21 @@ export interface FoundryApi {
     /** Approve or reject the pending proposal, unblocking the waiting CLI. */
     proposalAnswer(id: string, answer: SmithProposalAnswer): Promise<boolean>;
   };
+  companion: {
+    /** Host status plus the paired devices. Starts nothing. */
+    state(): Promise<CompanionHostState>;
+    /** Binds the LAN host. Idempotent; the state says whether it worked. */
+    start(): Promise<CompanionHostState>;
+    /** Unbinds the host and voids outstanding pairing secrets. Tokens survive. */
+    stop(): Promise<CompanionHostState>;
+    /**
+     * A fresh single-use pairing secret wrapped in the QR payload. Null while
+     * the host is stopped. The secret never appears in `state()`.
+     */
+    pairingPayload(): Promise<CompanionPairingPayload | null>;
+    /** Revokes one device's token by deleting the device. */
+    unpair(deviceId: string): Promise<boolean>;
+  };
   doctor: {
     run(): Promise<DoctorCheck[]>;
   };
@@ -600,7 +616,11 @@ export interface FoundryApi {
       // A login completes in a browser, minutes after the call that started it
       // returned. Nothing polls the auth directory, so this is how a Settings
       // pane learns the account landed.
-      | 'bridge-changed',
+      | 'bridge-changed'
+      // A phone pairs minutes after the QR appeared, over HTTP rather than any
+      // renderer action. Nothing polls the device list, so this is how the
+      // Settings pane learns a device arrived or the host state moved.
+      | 'companion-changed',
     handler: (data?: unknown) => void,
   ): () => void;
 }
@@ -704,6 +724,11 @@ export const IPC = {
   smithOpenTerminal: 'smith:openTerminal',
   smithProposalsList: 'smith:proposalsList',
   smithProposalAnswer: 'smith:proposalAnswer',
+  companionState: 'companion:state',
+  companionStart: 'companion:start',
+  companionStop: 'companion:stop',
+  companionPairingPayload: 'companion:pairingPayload',
+  companionUnpair: 'companion:unpair',
   doctorRun: 'doctor:run',
   maintenanceOrphans: 'maintenance:orphans',
   maintenanceRemoveWorktree: 'maintenance:removeWorktree',
@@ -727,4 +752,5 @@ export const IPC = {
   eventSmithProposalsChanged: 'event:smith-proposals-changed',
   eventReadinessProgress: 'event:readiness-progress',
   eventBridgeChanged: 'event:bridge-changed',
+  eventCompanionChanged: 'event:companion-changed',
 } as const;

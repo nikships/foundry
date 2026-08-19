@@ -21,6 +21,7 @@ const EVENT_CHANNELS = {
   'smith-proposals-changed': IPC.eventSmithProposalsChanged,
   'readiness-progress': IPC.eventReadinessProgress,
   'bridge-changed': IPC.eventBridgeChanged,
+  'companion-changed': IPC.eventCompanionChanged,
 } as const;
 
 /** One-way menu commands; the renderer decides what to show. */
@@ -161,6 +162,13 @@ const api: FoundryApi = {
     openTerminal: (projectId) => call(IPC.smithOpenTerminal, projectId),
     proposalsList: () => call(IPC.smithProposalsList),
     proposalAnswer: (id, answer) => call(IPC.smithProposalAnswer, id, answer),
+  },
+  companion: {
+    state: () => call(IPC.companionState),
+    start: () => call(IPC.companionStart),
+    stop: () => call(IPC.companionStop),
+    pairingPayload: () => call(IPC.companionPairingPayload),
+    unpair: (deviceId) => call(IPC.companionUnpair, deviceId),
   },
   doctor: {
     run: () => call(IPC.doctorRun),
