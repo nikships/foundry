@@ -1,11 +1,10 @@
 package com.foundry.companion.data.repository
 
 import com.foundry.companion.data.model.*
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -24,7 +23,8 @@ class HttpCompanionRepository(
         ignoreUnknownKeys = true
         isLenient = true
         encodeDefaults = true
-    }
+    },
+    private val coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 ) : CompanionRepository {
 
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
@@ -37,6 +37,9 @@ class HttpCompanionRepository(
 
     private val _pendingInterrupts = MutableStateFlow<List<PendingInterrupt>>(emptyList())
     override val pendingInterrupts: StateFlow<List<PendingInterrupt>> = _pendingInterrupts.asStateFlow()
+
+    private var consecutiveFailures = 0
+    private var reconnectJob: Job? = null
 
     override suspend fun pair(
         payload: CompanionPairingPayload,
@@ -62,7 +65,7 @@ class HttpCompanionRepository(
 
             if (!response.isSuccessful) {
                 val errorMsg = when (response.code) {
-                    401 -> "That code is expired or already used. Foundry shows a fresh one in Settings → Phone."
+                    401 -> "That code is expired or already used. Foundry shows a fresh one in Settings → Companion."
                     409 -> "Protocol mismatch: Desktop is v${payload.protocolVersion}, Phone is v$COMPANION_PROTOCOL_VERSION. Update the older app."
                     else -> "Pairing failed (HTTP ${response.code}): $bodyString"
                 }
@@ -78,6 +81,8 @@ class HttpCompanionRepository(
                 pairedAt = java.time.Instant.now().toString(),
                 protocolVersion = pairResult.protocolVersion
             )
+            consecutiveFailures = 0
+            reconnectJob?.cancel()
             _activeSession.value = session
             _connectionStatus.value = ConnectionStatus.Connected(session.desktopName, session.hostOrigin)
             Result.success(pairResult)
@@ -92,6 +97,9 @@ class HttpCompanionRepository(
     }
 
     override suspend fun unpair() = withContext(Dispatchers.IO) {
+        reconnectJob?.cancel()
+        reconnectJob = null
+        consecutiveFailures = 0
         val session = _activeSession.value
         if (session != null) {
             try {
@@ -109,6 +117,8 @@ class HttpCompanionRepository(
     }
 
     override fun injectFakeSession(session: PairedSession) {
+        consecutiveFailures = 0
+        reconnectJob?.cancel()
         _activeSession.value = session
         _connectionStatus.value = ConnectionStatus.Connected(session.desktopName, session.hostOrigin)
     }
@@ -123,15 +133,63 @@ class HttpCompanionRepository(
     private fun handleResponseError(code: Int, body: String): IOException {
         if (code == 401) {
             handleUnauthorized()
-            return IOException("Unauthorized: Token revoked or invalid (HTTP 401)")
+            return IOException("The desktop revoked this phone's pairing. Scan a fresh code in Settings → Companion to reconnect.")
         }
         return IOException("HTTP $code: $body")
     }
 
     private fun handleUnauthorized() {
+        reconnectJob?.cancel()
+        reconnectJob = null
+        consecutiveFailures = 0
         _activeSession.value = null
         _connectionStatus.value = ConnectionStatus.Unpaired
         _pendingInterrupts.value = emptyList()
+    }
+
+    private fun handleNetworkError(e: Throwable) {
+        val session = _activeSession.value ?: return
+        consecutiveFailures++
+        if (consecutiveFailures >= 3) {
+            _connectionStatus.value = ConnectionStatus.Offline(session.desktopName, session.hostOrigin)
+        } else {
+            _connectionStatus.value = ConnectionStatus.Reconnecting(session.desktopName, session.hostOrigin)
+        }
+        startAutoReconnect(session)
+    }
+
+    private fun startAutoReconnect(session: PairedSession) {
+        if (reconnectJob?.isActive == true) return
+        reconnectJob = coroutineScope.launch {
+            var backoffDelay = 1000L
+            while (isActive && _activeSession.value != null && _connectionStatus.value !is ConnectionStatus.Connected) {
+                delay(backoffDelay)
+                if (_activeSession.value == null) break
+                try {
+                    val request = authenticatedRequestBuilder("/v1/session").get().build()
+                    val response = client.newCall(request).execute()
+                    if (response.isSuccessful) {
+                        consecutiveFailures = 0
+                        _connectionStatus.value = ConnectionStatus.Connected(session.desktopName, session.hostOrigin)
+                        break
+                    } else if (response.code == 401) {
+                        handleUnauthorized()
+                        break
+                    } else {
+                        consecutiveFailures++
+                        if (consecutiveFailures >= 3) {
+                            _connectionStatus.value = ConnectionStatus.Offline(session.desktopName, session.hostOrigin)
+                        }
+                    }
+                } catch (_: Exception) {
+                    consecutiveFailures++
+                    if (consecutiveFailures >= 3) {
+                        _connectionStatus.value = ConnectionStatus.Offline(session.desktopName, session.hostOrigin)
+                    }
+                }
+                backoffDelay = minOf(15000L, backoffDelay * 2)
+            }
+        }
     }
 
     override suspend fun getSessionInfo(): Result<CompanionSessionInfo> = withContext(Dispatchers.IO) {
@@ -140,6 +198,11 @@ class HttpCompanionRepository(
             val response = client.newCall(request).execute()
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
+            consecutiveFailures = 0
+            val session = _activeSession.value
+            if (session != null && _connectionStatus.value !is ConnectionStatus.Connected) {
+                _connectionStatus.value = ConnectionStatus.Connected(session.desktopName, session.hostOrigin)
+            }
             Result.success(json.decodeFromString(CompanionSessionInfo.serializer(), body))
         } catch (e: Exception) {
             handleNetworkError(e)
@@ -153,6 +216,7 @@ class HttpCompanionRepository(
             val response = client.newCall(request).execute()
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
+            consecutiveFailures = 0
             val projects = json.decodeFromString<List<CompanionProjectSummary>>(body)
             Result.success(projects)
         } catch (e: Exception) {
@@ -167,6 +231,7 @@ class HttpCompanionRepository(
             val response = client.newCall(request).execute()
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
+            consecutiveFailures = 0
             val runs = json.decodeFromString<List<RunRow>>(body)
             Result.success(runs)
         } catch (e: Exception) {
@@ -181,6 +246,7 @@ class HttpCompanionRepository(
             val response = client.newCall(request).execute()
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
+            consecutiveFailures = 0
             val detail = json.decodeFromString(RunDetail.serializer(), body)
             Result.success(detail)
         } catch (e: Exception) {
@@ -201,6 +267,7 @@ class HttpCompanionRepository(
             val response = client.newCall(request).execute()
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
+            consecutiveFailures = 0
             val eventPage = json.decodeFromString(EventPage.serializer(), body)
             Result.success(eventPage)
         } catch (e: Exception) {
@@ -249,6 +316,7 @@ class HttpCompanionRepository(
             val response = client.newCall(request).execute()
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
+            consecutiveFailures = 0
             val interrupts = json.decodeFromString<List<PendingInterrupt>>(body)
             _pendingInterrupts.value = interrupts
             Result.success(interrupts)
@@ -265,6 +333,7 @@ class HttpCompanionRepository(
             val response = client.newCall(request).execute()
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
+            consecutiveFailures = 0
             val res = json.decodeFromString(CompanionStartResult.serializer(), body)
             Result.success(res)
         } catch (e: Exception) {
@@ -281,6 +350,7 @@ class HttpCompanionRepository(
             val response = client.newCall(request).execute()
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
+            consecutiveFailures = 0
             val res = json.decodeFromString(CompanionKillResult.serializer(), body)
             Result.success(res)
         } catch (e: Exception) {
@@ -296,6 +366,7 @@ class HttpCompanionRepository(
             val response = client.newCall(request).execute()
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
+            consecutiveFailures = 0
             val res = json.decodeFromString(CompanionAnswerResult.serializer(), body)
             _pendingInterrupts.value = _pendingInterrupts.value.filterNot { it.interruptId == answer.interruptId }
             Result.success(res)
@@ -311,6 +382,7 @@ class HttpCompanionRepository(
             val response = client.newCall(request).execute()
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
+            consecutiveFailures = 0
             val res = json.decodeFromString(GhStatus.serializer(), body)
             Result.success(res)
         } catch (e: Exception) {
@@ -330,6 +402,7 @@ class HttpCompanionRepository(
             val response = client.newCall(req).execute()
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
+            consecutiveFailures = 0
             val res = json.decodeFromString(PrAction.serializer(), body)
             Result.success(res)
         } catch (e: Exception) {
@@ -343,14 +416,15 @@ class HttpCompanionRepository(
         _connectionStatus.value = ConnectionStatus.Reconnecting(session.desktopName, session.hostOrigin)
         val result = getSessionInfo()
         if (result.isSuccess) {
+            consecutiveFailures = 0
             _connectionStatus.value = ConnectionStatus.Connected(session.desktopName, session.hostOrigin)
+            reconnectJob?.cancel()
+            reconnectJob = null
         } else {
+            consecutiveFailures++
             _connectionStatus.value = ConnectionStatus.Offline(session.desktopName, session.hostOrigin)
+            startAutoReconnect(session)
         }
     }
-
-    private fun handleNetworkError(e: Throwable) {
-        val session = _activeSession.value ?: return
-        _connectionStatus.value = ConnectionStatus.Reconnecting(session.desktopName, session.hostOrigin)
-    }
 }
+

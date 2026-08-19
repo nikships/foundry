@@ -5,6 +5,8 @@ import com.foundry.companion.data.repository.CompanionRepository
 import com.foundry.companion.data.repository.FakeCompanionRepository
 import com.foundry.companion.data.repository.HttpCompanionRepository
 import com.foundry.companion.data.session.SessionManager
+import com.foundry.companion.notification.CompanionNotificationManager
+import com.foundry.companion.notification.FoundryNotificationManager
 
 class FoundryApplication : Application() {
 
@@ -14,9 +16,13 @@ class FoundryApplication : Application() {
     lateinit var repository: CompanionRepository
         private set
 
+    lateinit var notificationManager: CompanionNotificationManager
+        private set
+
     override fun onCreate() {
         super.onCreate()
         sessionManager = SessionManager(this)
+        notificationManager = FoundryNotificationManager(this)
 
         // By default use FakeCompanionRepository for instant demo & unit test reliability,
         // or HttpCompanionRepository when configured.

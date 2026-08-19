@@ -619,6 +619,29 @@ class FakeCompanionRepository(
         )
     }
 
+    fun setConnectionStatus(status: ConnectionStatus) {
+        _connectionStatus.value = status
+    }
+
+    fun simulateRevokeToken() {
+        _activeSession.value = null
+        _connectionStatus.value = ConnectionStatus.Unpaired
+        _pendingInterrupts.value = emptyList()
+    }
+
+    fun addRun(run: RunRow) {
+        runsList.add(0, run)
+    }
+
+    fun updateRun(run: RunRow) {
+        val index = runsList.indexOfFirst { it.runId == run.runId }
+        if (index != -1) {
+            runsList[index] = run
+        } else {
+            runsList.add(0, run)
+        }
+    }
+
     override suspend fun retryConnection() {
         val session = _activeSession.value
         if (session != null) {
