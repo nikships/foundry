@@ -10,7 +10,7 @@
  * A session belongs to one agent and starts lazily on that agent's first phase.
  */
 
-import type { AgentDef, ContextBreakdown, UsageBreakdown } from '@shared/types.js';
+import type { AgentDef, ContextBreakdown, ReasoningEffort, UsageBreakdown } from '@shared/types.js';
 import type { Tracer } from '../trace/tracer.js';
 import { EventFolder, toUsageBreakdown } from './events.js';
 import { evaluate } from './policy.js';
@@ -127,6 +127,20 @@ export class AgentSession {
 
   get currentMode(): Mode {
     return this.mode;
+  }
+
+  /**
+   * The model this session actually asks for — the executor resolves the
+   * roster's `inherit` against the install default before constructing the
+   * session, so the trace can record what ran rather than the roster token.
+   */
+  get model(): string {
+    return this.agent.model;
+  }
+
+  /** Resolved alongside {@link model}; never the roster's unresolved value. */
+  get reasoningEffort(): ReasoningEffort {
+    return this.agent.reasoningEffort;
   }
 
   get sessionId(): string | null {
