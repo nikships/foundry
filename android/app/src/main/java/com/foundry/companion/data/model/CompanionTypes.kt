@@ -372,6 +372,13 @@ data class CompanionAnswerResult(
 )
 
 @Serializable
+data class GhStatus(
+    val available: Boolean = false,
+    val detail: String = "",
+    val repo: String? = null
+)
+
+@Serializable
 data class CompanionPrCreateRequest(
     val title: String = "",
     val body: String = ""
@@ -381,8 +388,13 @@ data class CompanionPrCreateRequest(
 data class PrAction(
     val ok: Boolean,
     val prUrl: String? = null,
-    val detail: String? = null
-)
+    val detail: String? = null,
+    val number: Int? = null,
+    val url: String? = null
+) {
+    val effectiveUrl: String? get() = prUrl ?: url
+    val effectiveNumber: Int? get() = number
+}
 
 @Serializable
 data class PairedSession(

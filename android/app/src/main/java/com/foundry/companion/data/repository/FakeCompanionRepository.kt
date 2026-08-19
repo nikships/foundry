@@ -573,15 +573,38 @@ class FakeCompanionRepository(
         return Result.success(CompanionAnswerResult(ok = true))
     }
 
+    private var fakeGhStatus: GhStatus = GhStatus(
+        available = true,
+        detail = "gh is signed in; repo resolves to foundry-app/foundry",
+        repo = "foundry-app/foundry"
+    )
+
+    fun setFakeGhStatus(status: GhStatus) {
+        fakeGhStatus = status
+    }
+
+    override suspend fun getPrStatus(projectId: String): Result<GhStatus> {
+        return Result.success(fakeGhStatus)
+    }
+
     override suspend fun createPr(
         projectId: String,
         runId: String,
         request: CompanionPrCreateRequest
     ): Result<PrAction> {
+        if (!fakeGhStatus.available) {
+            return Result.success(
+                PrAction(
+                    ok = false,
+                    detail = fakeGhStatus.detail.ifBlank { "GitHub CLI (gh) is not installed or not on PATH" }
+                )
+            )
+        }
         val index = runsList.indexOfFirst { it.runId == runId }
         if (index != -1) {
             val existing = runsList[index]
             val updated = existing.copy(
+                prNumber = 133,
                 prUrl = "https://github.com/foundry-app/foundry/pull/133"
             )
             runsList[index] = updated
@@ -589,7 +612,9 @@ class FakeCompanionRepository(
         return Result.success(
             PrAction(
                 ok = true,
-                prUrl = "https://github.com/foundry-app/foundry/pull/133"
+                number = 133,
+                prUrl = "https://github.com/foundry-app/foundry/pull/133",
+                url = "https://github.com/foundry-app/foundry/pull/133"
             )
         )
     }

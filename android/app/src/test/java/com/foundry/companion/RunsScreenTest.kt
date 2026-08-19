@@ -132,6 +132,34 @@ class RunsScreenTest {
     }
 
     @Test
+    fun testPrMarkTappingDirectlyOpensPrWithoutOpeningRun() {
+        var clickedRunId: String? = null
+        var openedPrUrl: String? = null
+
+        composeTestRule.setContent {
+            FoundryTheme {
+                RunsScreen(
+                    runs = sampleHistoryRuns,
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    projectName = "Foundry",
+                    onRunClick = { clickedRunId = it },
+                    onStartRunClick = {},
+                    onConnectionPillClick = {},
+                    onRetryConnection = {},
+                    onOpenPr = { openedPrUrl = it }
+                )
+            }
+        }
+
+        // Tap the PR mark on the history row
+        composeTestRule.onNodeWithText("PR #132 ↗").performClick()
+
+        // Verifies onOpenPr was called with PR URL and row onRunClick was NOT called
+        assertEquals("https://github.com/foundry-app/foundry/pull/132", openedPrUrl)
+        assertEquals(null, clickedRunId)
+    }
+
+    @Test
     fun testEmptyStateDisplay() {
         var startRunClicked = false
 

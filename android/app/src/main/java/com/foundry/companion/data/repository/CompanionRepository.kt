@@ -22,6 +22,7 @@ interface CompanionRepository {
     suspend fun startRun(input: StartRunInput): Result<CompanionStartResult>
     suspend fun killRun(projectId: String, runId: String): Result<CompanionKillResult>
     suspend fun answerInterrupt(answer: InterruptAnswer): Result<CompanionAnswerResult>
+    suspend fun getPrStatus(projectId: String): Result<GhStatus>
     suspend fun createPr(projectId: String, runId: String, request: CompanionPrCreateRequest): Result<PrAction>
     suspend fun retryConnection()
 }

@@ -95,6 +95,10 @@ fun FoundryNavHost(
                 },
                 onRetryConnection = {
                     viewModel.retryConnection()
+                },
+                onOpenPr = { url ->
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                    context.startActivity(intent)
                 }
             )
         }
@@ -145,6 +149,8 @@ fun FoundryNavHost(
                 connectionStatus = uiState.connectionStatus,
                 pendingInterrupt = matchingInterrupt,
                 actionError = uiState.errorMessage,
+                onDismissActionError = { viewModel.clearActionError() },
+                ghStatus = uiState.ghStatus,
                 isCreatingPr = uiState.isCreatingPr,
                 onBackClick = { navController.popBackStack() },
                 onOpenInspector = { phaseId ->

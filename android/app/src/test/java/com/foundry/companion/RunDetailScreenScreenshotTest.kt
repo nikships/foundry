@@ -215,6 +215,92 @@ class RunDetailScreenScreenshotTest {
     }
 
     @Test
+    fun captureSettledRunDetailCreatePr() {
+        val runWithoutPr = settledRun.copy(
+            prNumber = null,
+            prUrl = null,
+            branch = "foundry/run_260818_acc01"
+        )
+        val bitmap = renderToBitmap {
+            RunDetailScreen(
+                runDetail = RunDetail(run = runWithoutPr, phases = settledPhases, live = false),
+                connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                onBackClick = {},
+                onOpenInspector = {},
+                onKillRun = {},
+                onOpenPr = {},
+                onCreatePr = {},
+                onOpenIssue = {}
+            )
+        }
+        saveScreenshot(bitmap, "android-run-detail-create-pr.png")
+    }
+
+    @Test
+    fun captureSettledRunDetailGhUnavailable() {
+        val runWithoutPr = settledRun.copy(
+            prNumber = null,
+            prUrl = null,
+            branch = "foundry/run_260818_acc01"
+        )
+        val ghOffline = GhStatus(
+            available = false,
+            detail = "gh is not signed in — run `gh auth login` in a terminal"
+        )
+        val bitmap = renderToBitmap {
+            RunDetailScreen(
+                runDetail = RunDetail(run = runWithoutPr, phases = settledPhases, live = false),
+                connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                ghStatus = ghOffline,
+                onBackClick = {},
+                onOpenInspector = {},
+                onKillRun = {},
+                onOpenPr = {},
+                onCreatePr = {},
+                onOpenIssue = {}
+            )
+        }
+        saveScreenshot(bitmap, "android-run-detail-gh-unavailable.png")
+    }
+
+    @Test
+    fun captureSettledRunDetailKilled() {
+        val killedPhases = listOf(
+            PhaseRunSummary("k1", "Plan", "agent", "success", 1, 14000, 3100),
+            PhaseRunSummary("k2", "Spec", "agent", "success", 1, 22000, 5600),
+            PhaseRunSummary("k3", "Code", "code", "skipped", 1, errorMessage = "Run terminated by operator.")
+        )
+        val killedRun = RunRow(
+            runId = "run_260818_kill04",
+            projectId = "proj_foundry_core",
+            pipelineId = "pipe_default",
+            pipelineName = "Feature Pipeline",
+            request = "Implement experimental web-based renderer backend prototype.",
+            status = "killed",
+            startedAt = "2026-08-18T18:00:00Z",
+            endedAt = "2026-08-18T18:02:10Z",
+            durationMs = 130000,
+            totalTokens = 15200,
+            branch = "foundry/run_260818_kill04",
+            outcomeDetail = "Operator killed run. In-flight agent turns stopped; worktree branch preserved.",
+            phases = killedPhases
+        )
+        val bitmap = renderToBitmap {
+            RunDetailScreen(
+                runDetail = RunDetail(run = killedRun, phases = killedPhases, live = false),
+                connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                onBackClick = {},
+                onOpenInspector = {},
+                onKillRun = {},
+                onOpenPr = {},
+                onCreatePr = {},
+                onOpenIssue = {}
+            )
+        }
+        saveScreenshot(bitmap, "android-run-detail-killed.png")
+    }
+
+    @Test
     fun captureLiveRunWithInterruptSheet() {
         val bitmap = renderToBitmap {
             Box(modifier = Modifier.fillMaxSize()) {

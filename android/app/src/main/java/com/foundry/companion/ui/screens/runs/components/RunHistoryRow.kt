@@ -25,7 +25,9 @@ fun RunHistoryRow(
     run: RunRow,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    onInspectorClick: (() -> Unit)? = null
+    onInspectorClick: (() -> Unit)? = null,
+    onOpenPr: ((String) -> Unit)? = null,
+    onOpenIssue: ((String) -> Unit)? = null
 ) {
     val colors = FoundryTheme.colors
     val typography = FoundryTheme.typography
@@ -133,11 +135,20 @@ fun RunHistoryRow(
             // PR or Issue glyph
             if (!run.prUrl.isNullOrBlank()) {
                 val prLabel = if (run.prNumber != null) "PR #${run.prNumber} ↗" else "PR ↗"
-                Row(
-                    modifier = Modifier
+                val prModifier = if (onOpenPr != null) {
+                    Modifier
                         .padding(start = 6.dp)
                         .background(colors.statusAccepted.copy(alpha = 0.12f), RoundedCornerShape(3.dp))
-                        .padding(horizontal = 5.dp, vertical = 1.dp),
+                        .clickable { onOpenPr(run.prUrl) }
+                        .padding(horizontal = 5.dp, vertical = 1.dp)
+                } else {
+                    Modifier
+                        .padding(start = 6.dp)
+                        .background(colors.statusAccepted.copy(alpha = 0.12f), RoundedCornerShape(3.dp))
+                        .padding(horizontal = 5.dp, vertical = 1.dp)
+                }
+                Row(
+                    modifier = prModifier,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
@@ -148,11 +159,20 @@ fun RunHistoryRow(
                 }
             } else if (!run.issueUrl.isNullOrBlank()) {
                 val issueLabel = if (run.issueNumber != null) "Issue #${run.issueNumber} ↗" else "Issue ↗"
-                Row(
-                    modifier = Modifier
+                val issueModifier = if (onOpenIssue != null) {
+                    Modifier
                         .padding(start = 6.dp)
                         .background(colors.bgRaised, RoundedCornerShape(3.dp))
-                        .padding(horizontal = 5.dp, vertical = 1.dp),
+                        .clickable { onOpenIssue(run.issueUrl) }
+                        .padding(horizontal = 5.dp, vertical = 1.dp)
+                } else {
+                    Modifier
+                        .padding(start = 6.dp)
+                        .background(colors.bgRaised, RoundedCornerShape(3.dp))
+                        .padding(horizontal = 5.dp, vertical = 1.dp)
+                }
+                Row(
+                    modifier = issueModifier,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(

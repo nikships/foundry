@@ -253,6 +253,7 @@ class RunDetailScreenTest {
     @Test
     fun testSettledRunDisplaysOutcomeCardAndNoKillButton() {
         var openedPrUrl: String? = null
+        var copiedUrl: String? = null
 
         composeTestRule.setContent {
             FoundryTheme {
@@ -264,7 +265,8 @@ class RunDetailScreenTest {
                     onKillRun = {},
                     onOpenPr = { openedPrUrl = it },
                     onCreatePr = {},
-                    onOpenIssue = {}
+                    onOpenIssue = {},
+                    onCopyPrUrl = { copiedUrl = it }
                 )
             }
         }
@@ -280,6 +282,148 @@ class RunDetailScreenTest {
         // Tap PR button
         composeTestRule.onNodeWithText("OPEN PR #132 ↗").performClick()
         assertEquals("https://github.com/foundry-app/foundry/pull/132", openedPrUrl)
+
+        // Tap Copy PR URL button
+        composeTestRule.onNodeWithText("COPY PR URL").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithText("COPY PR URL").performClick()
+        assertEquals("https://github.com/foundry-app/foundry/pull/132", copiedUrl)
+        composeTestRule.onNodeWithText("COPIED URL").assertIsDisplayed()
+
+        // Verify NO merge or discard controls exist on the phone
+        composeTestRule.onNodeWithText("Merge branch", substring = true).assertDoesNotExist()
+        composeTestRule.onNodeWithText("Discard", substring = true).assertDoesNotExist()
+        composeTestRule.onNodeWithText("Fix & merge", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun testOutcomeCardAcceptedWithoutPrCanCreatePr() {
+        var createPrRunId: String? = null
+        val runWithoutPr = settledRun.copy(
+            prNumber = null,
+            prUrl = null,
+            branch = "foundry/run_260818_acc01"
+        )
+
+        composeTestRule.setContent {
+            FoundryTheme {
+                RunDetailScreen(
+                    runDetail = RunDetail(run = runWithoutPr, phases = settledPhases, live = false),
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    onBackClick = {},
+                    onOpenInspector = {},
+                    onKillRun = {},
+                    onOpenPr = {},
+                    onCreatePr = { createPrRunId = it },
+                    onOpenIssue = {}
+                )
+            }
+        }
+
+        // Outcome card shows Create PR… button
+        composeTestRule.onNodeWithText("RUN ACCEPTED").assertExists()
+        composeTestRule.onNodeWithText("CREATE PR…").performScrollTo().assertIsDisplayed()
+
+        composeTestRule.onNodeWithText("CREATE PR…").performClick()
+        assertEquals("run_260818_acc01", createPrRunId)
+    }
+
+    @Test
+    fun testOutcomeCardCreatePrDisabledWhenGhUnavailable() {
+        val runWithoutPr = settledRun.copy(
+            prNumber = null,
+            prUrl = null,
+            branch = "foundry/run_260818_acc01"
+        )
+        val ghOffline = GhStatus(
+            available = false,
+            detail = "gh is not signed in — run `gh auth login` in a terminal"
+        )
+
+        composeTestRule.setContent {
+            FoundryTheme {
+                RunDetailScreen(
+                    runDetail = RunDetail(run = runWithoutPr, phases = settledPhases, live = false),
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    ghStatus = ghOffline,
+                    onBackClick = {},
+                    onOpenInspector = {},
+                    onKillRun = {},
+                    onOpenPr = {},
+                    onCreatePr = {},
+                    onOpenIssue = {}
+                )
+            }
+        }
+
+        // Button is disabled with one-line helper text
+        composeTestRule.onNodeWithText("CREATE PR…").performScrollTo().assertIsNotEnabled()
+        composeTestRule.onNodeWithText("gh is not signed in — run `gh auth login` in a terminal").assertIsDisplayed()
+    }
+
+    @Test
+    fun testOutcomeCardKilledAndFailedRuns() {
+        var openedIssueUrl: String? = null
+
+        val failedRunWithIssue = RunRow(
+            runId = "run_fail_1",
+            pipelineName = "Feature Pipeline",
+            request = "Fix type checking in parser",
+            status = "failed",
+            durationMs = 120000,
+            issueNumber = 140,
+            issueUrl = "https://github.com/foundry-app/foundry/issues/140",
+            outcomeDetail = "Compilation failed after 3 retries."
+        )
+
+        composeTestRule.setContent {
+            FoundryTheme {
+                RunDetailScreen(
+                    runDetail = RunDetail(run = failedRunWithIssue, phases = emptyList(), live = false),
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    onBackClick = {},
+                    onOpenInspector = {},
+                    onKillRun = {},
+                    onOpenPr = {},
+                    onCreatePr = {},
+                    onOpenIssue = { openedIssueUrl = it }
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("RUN FAILED").assertExists()
+        composeTestRule.onNodeWithText("Compilation failed after 3 retries.").assertExists()
+        composeTestRule.onNodeWithText("ISSUE #140 ↗").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithText("CREATE PR…").assertDoesNotExist()
+
+        composeTestRule.onNodeWithText("ISSUE #140 ↗").performClick()
+        assertEquals("https://github.com/foundry-app/foundry/issues/140", openedIssueUrl)
+    }
+
+    @Test
+    fun testOutcomeCardMergedRunDisplaysMergedBadge() {
+        val mergedRun = settledRun.copy(
+            merged = true
+        )
+
+        composeTestRule.setContent {
+            FoundryTheme {
+                RunDetailScreen(
+                    runDetail = RunDetail(run = mergedRun, phases = settledPhases, live = false),
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    onBackClick = {},
+                    onOpenInspector = {},
+                    onKillRun = {},
+                    onOpenPr = {},
+                    onCreatePr = {},
+                    onOpenIssue = {}
+                )
+            }
+        }
+
+        // Merged badge inside outcome card
+        composeTestRule.onNodeWithText("MERGED").assertIsDisplayed()
+        // No create PR verb on merged run
+        composeTestRule.onNodeWithText("CREATE PR…").assertDoesNotExist()
     }
 
     @Test
