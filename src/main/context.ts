@@ -26,6 +26,7 @@ import { piOneShots } from './pi/pi-oneshot.js';
 import type { OneShotFactory } from './pi/oneshot.js';
 import { UpdaterService } from './updater.js';
 import { SmithService } from './smith/index.js';
+import { CompanionHost } from './companion/host.js';
 import { saveProposal } from './ipc/smith.js';
 import { notifyNeedsInput, notifyOutcome, setDockBadge } from './system/notify.js';
 import { getBridgeService, shutdownBridgeService, type BridgeService } from './bridge/service.js';
@@ -48,6 +49,7 @@ export class AppContext {
   readonly readiness: ReadinessSessions;
   readonly updater: UpdaterService;
   readonly smith: SmithService;
+  readonly companion: CompanionHost;
   readonly bridge: BridgeService;
   readonly version: string;
   /**
@@ -107,6 +109,29 @@ export class AppContext {
 
     this.registry.on('needs-input', (interrupt: { title: string; body: string }) => {
       notifyNeedsInput(interrupt.title, interrupt.body, this.settings.get());
+    });
+
+    // Constructed, not started: the LAN host binds only when the operator
+    // turns it on, so a desktop that never pairs a phone never opens a port.
+    this.companion = new CompanionHost({
+      supportDir,
+      projects: () => this.projects.list(),
+      projectById: (id) => this.projects.get(id),
+      pipelinesFor: (projectId) => this.pipelinesFor(projectId),
+      rosterFor: (projectId) => this.rosterFor(projectId),
+      envelopeDefs: () => this.envelopes.list(),
+      settings: () => this.settings.get(),
+      saveProject: (next) => {
+        const result = this.projects.save(next);
+        if (!result.ok) return next;
+        this.broadcast(IPC.eventSettingsChanged);
+        return this.projects.get(next.id) ?? next;
+      },
+      oneShot: this.oneShot,
+      registry: this.registry,
+      appVersion: () => this.version,
+      notifyRuns: () => this.broadcast(IPC.eventRunsChanged),
+      onStateChanged: () => this.broadcast(IPC.eventCompanionChanged),
     });
 
     // Smith is a skill an agent loads in the user's own terminal; the app only
@@ -195,6 +220,8 @@ export class AppContext {
     this.setups.cancelAll();
     this.readiness.cancelAll();
     this.smith.dispose();
+    // Fire-and-forget: close() only unbinds a socket, and dispose stays sync.
+    void this.companion.stop();
     // Agent turns run in this process, so quitting ends them; the Bridge is the
     // one child left, and it has no parent-pid backstop of its own. This is the
     // only thing standing between a quit and an orphaned proxy holding the port.

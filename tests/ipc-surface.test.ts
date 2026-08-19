@@ -42,8 +42,16 @@ describe('the IPC surface', () => {
     expect(new Set(registered).size).toBe(registered.length);
   });
 
-  it('registers 112 channels, so a deleted handler is not a silent capability loss', () => {
-    expect(registered).toHaveLength(112);
+  it('registers 117 channels, so a deleted handler is not a silent capability loss', () => {
+    expect(registered).toHaveLength(117);
+  });
+
+  it('registers the companion channels Settings uses to manage the host', () => {
+    expect(registered).toContain(IPC.companionState);
+    expect(registered).toContain(IPC.companionStart);
+    expect(registered).toContain(IPC.companionStop);
+    expect(registered).toContain(IPC.companionPairingPayload);
+    expect(registered).toContain(IPC.companionUnpair);
   });
 
   it('registers the Bridge channels Settings connects providers through', () => {

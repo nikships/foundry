@@ -628,6 +628,26 @@ export function createMockFoundryApi(): FoundryApi {
       proposalsList: async () => [],
       proposalAnswer: async () => false,
     },
+    companion: {
+      // The web preview has no network host to bind; the pane renders "off".
+      state: async () => ({
+        running: false,
+        origin: null,
+        protocolVersion: 1,
+        devices: [],
+        detail: 'Not available in web preview.',
+      }),
+      start: async () => ({
+        running: false,
+        origin: null,
+        protocolVersion: 1,
+        devices: [],
+        detail: 'Not available in web preview.',
+      }),
+      stop: async () => ({ running: false, origin: null, protocolVersion: 1, devices: [] }),
+      pairingPayload: async () => null,
+      unpair: async () => false,
+    },
     doctor: {
       run: async (): Promise<DoctorCheck[]> => [
         {

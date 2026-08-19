@@ -14,6 +14,7 @@ import {
   type BridgeState,
   type StoredProviderKey,
 } from '@shared/ipc-contract.js';
+import type { CompanionHostState } from '@shared/companion.js';
 import { api, plain } from '../api.js';
 import { isKnownPrWriter, prWriterOptions } from '../pr-draft.js';
 import { useApp } from '../stores/app.js';
@@ -184,6 +185,8 @@ export default function SettingsScreen({
   const [nameHint, setNameHint] = useState('');
   const [maintenanceBusy, setMaintenanceBusy] = useState(false);
   const [bridge, setBridge] = useState<BridgeState | null>(null);
+  const [companion, setCompanion] = useState<CompanionHostState | null>(null);
+  const [companionBusy, setCompanionBusy] = useState(false);
   const [storedKeys, setStoredKeys] = useState<StoredProviderKey[]>([]);
   const [providerBusy, setProviderBusy] = useState<string | null>(null);
   const [providerNotes, setProviderNotes] = useState<Record<string, string>>({});
@@ -225,6 +228,23 @@ export default function SettingsScreen({
     reload();
     return api.on('bridge-changed', reload);
   }, []);
+
+  // A phone pairs over HTTP minutes after the host started, so the pane
+  // re-reads on the push event rather than trusting its own action results.
+  useEffect(() => {
+    const reload = (): void => void api.companion.state().then(setCompanion);
+    reload();
+    return api.on('companion-changed', reload);
+  }, []);
+
+  const toggleCompanion = async (on: boolean): Promise<void> => {
+    setCompanionBusy(true);
+    try {
+      setCompanion(on ? await api.companion.start() : await api.companion.stop());
+    } finally {
+      setCompanionBusy(false);
+    }
+  };
 
   const projectRef = useRef<ProjectDef | null>(null);
   projectRef.current = project;
@@ -742,6 +762,55 @@ export default function SettingsScreen({
                       />
                     </Field>
                   </div>
+                </Section>
+
+                <Section
+                  label="Phone"
+                  note="A paired phone can watch runs, start one, and open the PR."
+                >
+                  <div className={styles.settingsToggles}>
+                    <Toggle
+                      label="Serve the companion host on this network"
+                      hint={
+                        companion?.running && companion.origin
+                          ? `Serving on ${companion.origin} — pairing is QR-only, and every request needs a paired device token.`
+                          : (companion?.detail ??
+                            'Off. Nothing listens until you turn this on, and pairing is QR-only.')
+                      }
+                      checked={!!companion?.running}
+                      onChange={(value) => {
+                        if (!companionBusy) void toggleCompanion(value);
+                      }}
+                    />
+                  </div>
+                  {companion && companion.devices.length > 0 && (
+                    <div className={styles.settingsFields}>
+                      {companion.devices.map((device) => (
+                        <div key={device.deviceId} className={styles.settingsSpread}>
+                          <Field>
+                            <strong className={styles.settingsStrong}>{device.name}</strong>
+                            <span className={styles.hint}>
+                              Paired {new Date(device.pairedAt).toLocaleDateString()}
+                              {device.lastSeenAt
+                                ? ` · last seen ${new Date(device.lastSeenAt).toLocaleString()}`
+                                : ' · never connected'}
+                            </span>
+                          </Field>
+                          <Button
+                            size="sm"
+                            onClick={() =>
+                              void api.companion
+                                .unpair(device.deviceId)
+                                .then(() => api.companion.state())
+                                .then(setCompanion)
+                            }
+                          >
+                            Unpair
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </Section>
 
                 <Section

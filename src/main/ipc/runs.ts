@@ -8,13 +8,12 @@ import {
   type RunDetail,
   type WorktreeAction,
 } from '@shared/ipc-contract.js';
-import { DETECT_PROMPT, parseDetectReply } from '../engine/detect.js';
-import { ensureMissingCommands, missingCommandRefs, preflightForRun } from '../engine/preflight.js';
+import { emptyRunDetail, eventPage, runDetail, startRun } from '../engine/operations.js';
 import { landRun } from '../engine/settle.js';
 import * as worktreeLib from '../engine/worktree.js';
 import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
-import { noIssues, notifyRuns, notifySettings, settleHooks } from './shared.js';
+import { notifyRuns, notifySettings, settleHooks } from './shared.js';
 
 type Ctx = Pick<
   AppContext,
@@ -29,22 +28,6 @@ type Ctx = Pick<
   | 'oneShot'
 >;
 
-/** Matches `DetectSession`: the same question deserves the same patience. */
-const DETECT_FILL_TIMEOUT_MS = 300_000;
-
-const emptyDetail: RunDetail = {
-  run: null,
-  phases: [],
-  envelopes: [],
-  gates: [],
-  sessions: [],
-  live: false,
-};
-
-function startError(where: string, message: string) {
-  return { ok: false as const, issues: [{ level: 'error' as const, where, message }] };
-}
-
 export function register(ctx: Ctx, handle: Handle): void {
   const projectOf = (projectId: string) => ctx.projects.get(projectId);
   const tracerOf = (projectId: string) => {
@@ -52,78 +35,29 @@ export function register(ctx: Ctx, handle: Handle): void {
     return project ? { project, tracer: ctx.registry.tracerFor(project) } : null;
   };
 
-  handle(IPC.runsStart, async (input: StartRunInput) => {
-    let project = projectOf(input.projectId);
-    if (!project) return startError('project', 'project not found');
-    const pipeline = ctx.pipelines.get(input.pipelineId, ctx.pipelineScope(input.projectId));
-    if (!pipeline) return startError('pipeline', 'pipeline not found');
-    if (!input.request.trim()) return startError('request', 'a run needs a request');
-    const agents = ctx.rosterFor(input.projectId);
-
-    // Missing project commands are a deterministic fail mid-run. Fill them from
-    // manifests (free), then the default CLI, before refusing to start.
-    const missing = missingCommandRefs(pipeline, project);
-    if (missing.length) {
-      const projectPath = project.path;
-      // A project Foundry created empty has nothing for an agent to find, so
-      // asking one costs a turn to learn what is already known. Manifest
-      // sniffing still runs: it is free, and it starts answering the moment a
-      // run writes the first package.json.
-      const scaffold = project.scaffold === true;
-      const ensured = await ensureMissingCommands(project, missing, {
-        useAgent: !scaffold,
-        detectWithAgent: async () => {
-          const settings = ctx.settings.get();
-          // Start-time fill honours the operator's detection model, so what
-          // answers here is what the Project pane says will answer.
-          const model = settings.detectModel || 'inherit';
-          // Same read-only session detection itself opens: this runs against
-          // the operator's checkout, and nothing would revert a write there.
-          const session = ctx.oneShot({
-            cwd: projectPath,
-            access: 'read',
-            model,
-            reasoningEffort: model === 'inherit' ? 'off' : settings.defaultReasoningEffort,
-            systemPrompt: DETECT_PROMPT,
-          });
-          const turn = await session.send(
-            'Inspect this repository and report the verification commands.',
-            DETECT_FILL_TIMEOUT_MS,
-          );
-          return parseDetectReply(turn.text).commands;
-        },
-        save: (next) => {
-          // Finding a command means the project has grown real code, so it is
-          // no longer a scaffold: from here it gets the strict treatment, and a
-          // later missing command is a misconfiguration again.
-          const settled = next.scaffold ? { ...next, scaffold: false } : next;
-          const result = ctx.projects.save(settled);
-          if (!result.ok) return settled;
+  // The start path lives in `engine/operations.ts`, shared verbatim with the
+  // companion host so a phone-started run is the same run in every respect.
+  handle(IPC.runsStart, (input: StartRunInput) =>
+    startRun(
+      {
+        projectById: (id) => ctx.projects.get(id),
+        pipelineFor: (projectId, pipelineId) =>
+          ctx.pipelines.get(pipelineId, ctx.pipelineScope(projectId)),
+        rosterFor: (projectId) => ctx.rosterFor(projectId),
+        envelopeDefs: () => ctx.envelopes.list(),
+        settings: () => ctx.settings.get(),
+        saveProject: (next) => {
+          const result = ctx.projects.save(next);
+          if (!result.ok) return next;
           notifySettings(ctx);
-          return ctx.projects.get(settled.id) ?? settled;
+          return ctx.projects.get(next.id) ?? next;
         },
-      });
-      project = ensured.project;
-    }
-
-    const knownEnvelopes = ctx.envelopes.list().map((e) => e.name);
-    const issues = preflightForRun(
-      pipeline,
-      agents,
-      project.commands.map((c) => c.name),
-      knownEnvelopes,
-      { scaffold: project.scaffold === true },
-    );
-    if (issues.some((i) => i.level === 'error')) return { ok: false, issues };
-    const runId = ctx.registry.start({
-      project,
-      pipeline,
-      agents,
-      envelopeDefs: ctx.envelopes.list(),
-      request: input.request,
-    });
-    return { ok: true, runId, issues: noIssues };
-  });
+        oneShot: ctx.oneShot,
+        registry: ctx.registry,
+      },
+      input,
+    ),
+  );
 
   handle(IPC.runsList, (projectId: string, includeArchived: boolean) => {
     const scoped = tracerOf(projectId);
@@ -133,29 +67,14 @@ export function register(ctx: Ctx, handle: Handle): void {
 
   handle(IPC.runsDetail, (projectId: string, runId: string): RunDetail => {
     const scoped = tracerOf(projectId);
-    if (!scoped) return emptyDetail;
-    const { tracer } = scoped;
-    return {
-      run: tracer.run(runId),
-      phases: tracer.phases(runId),
-      envelopes: tracer.envelopes(runId),
-      gates: tracer.gateResults(runId),
-      sessions: tracer.agentSessions(runId),
-      live: ctx.registry.isLive(runId),
-    };
+    if (!scoped) return emptyRunDetail;
+    return runDetail(scoped.tracer, runId, ctx.registry.isLive(runId));
   });
 
   handle(IPC.runsEvents, (projectId: string, runId: string, afterChangeId: number): EventPage => {
     const scoped = tracerOf(projectId);
     if (!scoped) return { events: [], cursor: afterChangeId };
-    const events = scoped.tracer.eventsAfter(runId, afterChangeId);
-    // Rows arrive in creation order, so the next cursor is the max revision
-    // served, not the last row's: a page boundary must not skip a row whose
-    // update landed out of rowid order.
-    const cursor = events.length
-      ? Math.max(afterChangeId, ...events.map((e) => e.changeId))
-      : afterChangeId;
-    return { events, cursor };
+    return eventPage(scoped.tracer, runId, afterChangeId);
   });
 
   handle(IPC.runsLiveTail, (phaseId: string) => ctx.registry.liveTail(phaseId));

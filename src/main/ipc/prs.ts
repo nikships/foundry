@@ -8,6 +8,7 @@
 
 import type { GhStatus, PrMergeMethod } from '@shared/types.js';
 import { IPC, type PrAction, type PrList } from '@shared/ipc-contract.js';
+import { createRunPr } from '../engine/operations.js';
 import { landRun, repairBranch } from '../engine/settle.js';
 import * as ghLib from '../system/gh.js';
 import type { AppContext } from '../context.js';
@@ -35,38 +36,18 @@ export function register(ctx: Ctx, handle: Handle): void {
     return ghLib.listOpenPrs(project.path);
   });
 
+  // Shared with the companion host, so a phone's "Create PR" is this exact path.
   handle(
     IPC.prsCreate,
     async (projectId: string, runId: string, title: string, body: string): Promise<PrAction> => {
       const scoped = tracerOf(projectId);
       if (!scoped) return { ok: false, detail: 'project not found' };
-      const { project, tracer } = scoped;
-      const run = tracer.run(runId);
-      if (!run?.branch) return { ok: false, detail: 'this run has no branch to open a PR from' };
-      if (run.prUrl) {
-        return {
-          ok: true,
-          detail: `a pull request already exists for this run: ${run.prUrl}`,
-          number: run.prNumber ?? undefined,
-          url: run.prUrl,
-        };
-      }
-
-      const result = await ghLib.openPr(project.path, {
-        branch: run.branch,
-        baseRef: run.baseRef ?? project.baseRef,
-        title: title.trim() || `${run.pipelineName}: ${run.request.slice(0, 72)}`,
-        body,
-      });
-      if (result.ok && result.number && result.url) tracer.setPr(runId, result.number, result.url);
-      tracer.event({
+      return createRunPr(
+        { project: scoped.project, tracer: scoped.tracer, notifyRuns: () => notifyRuns(ctx) },
         runId,
-        type: 'log',
-        name: 'pr create',
-        payload: { detail: result.detail },
-      });
-      notifyRuns(ctx);
-      return result;
+        title,
+        body,
+      );
     },
   );
 
