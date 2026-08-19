@@ -43,7 +43,7 @@ import type { Tracer } from '../trace/tracer.js';
 import type { OneShotFactory } from '../pi/oneshot.js';
 import type { GhOptions } from '../system/gh.js';
 import * as ghLib from '../system/gh.js';
-import { createRunPr, eventPage, runDetail, startRun } from '../engine/operations.js';
+import { createRunPr, eventPage, runDetail, runPrDraft, startRun } from '../engine/operations.js';
 import { DeviceStore } from './devices.js';
 import { PairingSecrets } from './pairing.js';
 
@@ -450,6 +450,11 @@ export class CompanionHost {
     if (method === 'GET' && tail === 'events' && rest.length === 4) {
       const after = Number(url.searchParams.get('after') ?? '0');
       return eventPage(tracer, runId, Number.isFinite(after) && after > 0 ? after : 0);
+    }
+    if (method === 'GET' && tail === 'pr-draft' && rest.length === 4) {
+      const draft = runPrDraft(tracer, runId);
+      if (!draft) throw new RouteError(404, 'not_found', 'run not found');
+      return draft;
     }
     if (method === 'POST' && tail === 'kill' && rest.length === 4) {
       return { ok: this.deps.registry.kill(project, runId) };

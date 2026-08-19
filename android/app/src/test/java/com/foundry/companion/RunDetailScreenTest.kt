@@ -299,6 +299,7 @@ class RunDetailScreenTest {
     @Test
     fun testOutcomeCardAcceptedWithoutPrCanCreatePr() {
         var createPrRunId: String? = null
+        val draftedTitle = "Feature Pipeline: LAN pairing host and authenticated companion protocol (FOU-83)."
         val runWithoutPr = settledRun.copy(
             prNumber = null,
             prUrl = null,
@@ -310,6 +311,7 @@ class RunDetailScreenTest {
                 RunDetailScreen(
                     runDetail = RunDetail(run = runWithoutPr, phases = settledPhases, live = false),
                     connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    prDraftTitle = draftedTitle,
                     onBackClick = {},
                     onOpenInspector = {},
                     onKillRun = {},
@@ -325,7 +327,40 @@ class RunDetailScreenTest {
         composeTestRule.onNodeWithText("CREATE PR…").performScrollTo().assertIsDisplayed()
 
         composeTestRule.onNodeWithText("CREATE PR…").performClick()
-        assertEquals("run_260818_acc01", createPrRunId)
+        composeTestRule.waitForIdle()
+
+        // Opening the sheet must not hit create until confirm.
+        assertNull(createPrRunId)
+        composeTestRule.onNodeWithTag("create-pr-confirm-sheet").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("create-pr-draft-title").assertTextEquals(draftedTitle)
+    }
+
+    @Test
+    fun testCreatePrConfirmSheetPostsOnlyOnConfirm() {
+        var confirmed = false
+        var dismissed = false
+        val draftedTitle = "Feature Pipeline: LAN pairing host and authenticated companion protocol (FOU-83)."
+
+        composeTestRule.setContent {
+            FoundryTheme {
+                com.foundry.companion.ui.screens.run.components.CreatePrConfirmContent(
+                    title = draftedTitle,
+                    onConfirm = { confirmed = true },
+                    onDismiss = { dismissed = true }
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithTag("create-pr-draft-title").assertTextEquals(draftedTitle)
+        assertFalse(confirmed)
+        assertFalse(dismissed)
+
+        composeTestRule.onNodeWithTag("create-pr-cancel").performClick()
+        assertTrue(dismissed)
+        assertFalse(confirmed)
+
+        composeTestRule.onNodeWithTag("create-pr-confirm").performClick()
+        assertTrue(confirmed)
     }
 
     @Test

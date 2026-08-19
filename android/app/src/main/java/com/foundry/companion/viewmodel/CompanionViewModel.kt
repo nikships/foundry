@@ -30,6 +30,9 @@ data class CompanionUiState(
     val eventsCursor: Long = 0L,
     val pendingInterrupts: List<PendingInterrupt> = emptyList(),
     val ghStatus: GhStatus? = null,
+    /** Host-drafted title/body for the Create PR confirm sheet. */
+    val prDraft: CompanionPrDraft? = null,
+    val prDraftRunId: String? = null,
     val isNotifyOnSettleEnabled: Boolean = true,
     val isPairing: Boolean = false,
     val isStartingRun: Boolean = false,
@@ -246,7 +249,12 @@ class CompanionViewModel(
                         currentRunDetail = detail,
                         missingRunId = null,
                         errorMessage = null,
+                        prDraft = if (it.prDraftRunId == runId) it.prDraft else null,
+                        prDraftRunId = if (it.prDraftRunId == runId) it.prDraftRunId else null,
                     )
+                }
+                if (canDraftPr(detail.run)) {
+                    loadPrDraft(projectId, runId)
                 }
             }.onFailure { err ->
                 // A run the desktop no longer has is terminal, not a blip: stop
@@ -258,6 +266,8 @@ class CompanionViewModel(
                         it.copy(
                             currentRunDetail = null,
                             missingRunId = runId,
+                            prDraft = null,
+                            prDraftRunId = null,
                         )
                     }
                 }
@@ -307,6 +317,8 @@ class CompanionViewModel(
                     eventRows = emptyList(),
                     eventsCursor = 0L,
                     sessionInfo = null,
+                    prDraft = null,
+                    prDraftRunId = null,
                     errorMessage = null
                 )
             }
@@ -387,13 +399,39 @@ class CompanionViewModel(
         _uiState.update { it.copy(errorMessage = null) }
     }
 
+    fun loadPrDraft(projectId: String = _uiState.value.selectedProjectId, runId: String) {
+        if (projectId.isBlank() || runId.isBlank()) return
+        viewModelScope.launch {
+            repository.getPrDraft(projectId, runId).onSuccess { draft ->
+                _uiState.update {
+                    it.copy(prDraft = draft, prDraftRunId = runId)
+                }
+            }
+        }
+    }
+
     fun createPr(runId: String, onResult: ((Boolean, String?) -> Unit)? = null) {
         val projectId = _uiState.value.selectedProjectId
         _uiState.update { it.copy(isCreatingPr = true, errorMessage = null) }
         viewModelScope.launch {
-            repository.createPr(projectId, runId, CompanionPrCreateRequest()).onSuccess { res ->
+            val cached = _uiState.value.prDraft?.takeIf { _uiState.value.prDraftRunId == runId }
+            val draft = cached ?: repository.getPrDraft(projectId, runId).getOrElse { err ->
+                val msg = err.message ?: "Failed to load PR draft"
+                _uiState.update { it.copy(isCreatingPr = false, errorMessage = msg) }
+                onResult?.invoke(false, msg)
+                return@launch
+            }
+            if (cached == null) {
+                _uiState.update { it.copy(prDraft = draft, prDraftRunId = runId) }
+            }
+            repository.createPr(
+                projectId,
+                runId,
+                CompanionPrCreateRequest(title = draft.title, body = draft.body)
+            ).onSuccess { res ->
                 _uiState.update { it.copy(isCreatingPr = false) }
                 if (res.ok) {
+                    _uiState.update { it.copy(prDraft = null, prDraftRunId = null) }
                     loadRunDetail(runId)
                     loadRuns(projectId)
                     onResult?.invoke(true, res.effectiveUrl)
@@ -419,6 +457,15 @@ class CompanionViewModel(
         viewModelScope.launch {
             repository.retryConnection()
         }
+    }
+
+    private fun canDraftPr(run: RunRow): Boolean {
+        val hasPr = !run.prUrl.isNullOrBlank()
+        return !hasPr &&
+            !run.merged &&
+            !run.branch.isNullOrBlank() &&
+            (run.status.equals("accepted", ignoreCase = true) ||
+                run.status.equals("rejected", ignoreCase = true))
     }
 
     companion object {

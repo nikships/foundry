@@ -17,6 +17,7 @@ import type {
   ValidationIssue,
 } from '@shared/types.js';
 import type { EventPage, PrAction, RunDetail } from '@shared/ipc-contract.js';
+import { manualPrDraft, type ResolvedPrDraft } from '@shared/pr-draft.js';
 import type { Tracer } from '../trace/tracer.js';
 import type { OneShotFactory } from '../pi/oneshot.js';
 import { DETECT_PROMPT, parseDetectReply } from './detect.js';
@@ -168,6 +169,13 @@ export interface CreatePrDeps {
   gh?: GhOptions;
 }
 
+/** The title/body `createRunPr` would send if the caller left them empty. */
+export function runPrDraft(tracer: Tracer, runId: string): ResolvedPrDraft | null {
+  const run = tracer.run(runId);
+  if (!run) return null;
+  return manualPrDraft(run, tracer.envelopes(runId), tracer.phases(runId));
+}
+
 export async function createRunPr(
   deps: CreatePrDeps,
   runId: string,
@@ -186,13 +194,14 @@ export async function createRunPr(
     };
   }
 
+  const draft = runPrDraft(tracer, runId);
   const result = await ghLib.openPr(
     project.path,
     {
       branch: run.branch,
       baseRef: run.baseRef ?? project.baseRef,
-      title: title.trim() || `${run.pipelineName}: ${run.request.slice(0, 72)}`,
-      body,
+      title: title.trim() || draft?.title || `${run.pipelineName}: ${run.request.slice(0, 72)}`,
+      body: body.trim() !== '' ? body : (draft?.body ?? body),
     },
     deps.gh ?? {},
   );

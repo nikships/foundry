@@ -135,6 +135,16 @@ export interface CompanionPrCreateRequest {
 }
 
 /**
+ * What `createRunPr` would send to GitHub if title/body were left empty.
+ * Same formula as the desktop "Open PR…" form (`manualPrDraft`).
+ */
+export interface CompanionPrDraft {
+  title: string;
+  body: string;
+  source: 'pr-envelope' | 'run';
+}
+
+/**
  * The authenticated HTTP surface, route → shapes. Every route below `POST
  * /pair` requires `Authorization: Bearer <token>` and answers `CompanionError`
  * (401) for a missing, unknown, or revoked token — fail closed, every route.
@@ -155,6 +165,7 @@ export interface CompanionRoutes {
   'GET /v1/interrupts': { response: PendingInterrupt[] };
   'POST /v1/interrupts/answer': { request: InterruptAnswer; response: CompanionAnswerResult };
   'GET /v1/projects/:projectId/pr-status': { response: GhStatus };
+  'GET /v1/projects/:projectId/runs/:runId/pr-draft': { response: CompanionPrDraft };
   'POST /v1/projects/:projectId/runs/:runId/pr': {
     request: CompanionPrCreateRequest;
     response: PrAction;

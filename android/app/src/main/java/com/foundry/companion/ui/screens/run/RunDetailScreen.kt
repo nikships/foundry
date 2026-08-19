@@ -23,6 +23,7 @@ import com.foundry.companion.data.model.GhStatus
 import com.foundry.companion.data.model.PendingInterrupt
 import com.foundry.companion.data.model.RunDetail
 import com.foundry.companion.ui.components.*
+import com.foundry.companion.ui.screens.run.components.CreatePrConfirmSheet
 import com.foundry.companion.ui.screens.run.components.OutcomeCard
 import com.foundry.companion.ui.screens.run.components.PhaseWaterfall
 import com.foundry.companion.ui.screens.run.components.SelectedPhaseSummaryCard
@@ -56,6 +57,7 @@ fun RunDetailScreen(
     onRetryConnection: (() -> Unit)? = null,
     isCreatingPr: Boolean = false,
     ghStatus: GhStatus? = null,
+    prDraftTitle: String? = null,
     onCopyPrUrl: ((String) -> Unit)? = null,
     /** The desktop answered that it has no such run, so there is nothing to wait for. */
     isRunMissing: Boolean = false,
@@ -68,6 +70,7 @@ fun RunDetailScreen(
 
     var showKillDialog by remember { mutableStateOf(false) }
     var showInterruptSheet by rememberSaveable { mutableStateOf(false) }
+    var showCreatePrSheet by rememberSaveable { mutableStateOf(false) }
     var isRequestExpanded by remember { mutableStateOf(false) }
 
     // The deep link consumes once: re-opening the sheet after the operator
@@ -303,7 +306,7 @@ fun RunDetailScreen(
                 OutcomeCard(
                     run = run,
                     onOpenPr = onOpenPr,
-                    onCreatePr = { onCreatePr(run.runId) },
+                    onCreatePr = { showCreatePrSheet = true },
                     onOpenIssue = onOpenIssue,
                     ghStatus = ghStatus,
                     isCreatingPr = isCreatingPr,
@@ -374,6 +377,18 @@ fun RunDetailScreen(
                     Text(text = "CANCEL", style = typography.labelMono, color = colors.textDim)
                 }
             }
+        )
+    }
+
+    if (showCreatePrSheet) {
+        CreatePrConfirmSheet(
+            title = prDraftTitle.orEmpty(),
+            confirmEnabled = !prDraftTitle.isNullOrBlank() && isConnected && !isCreatingPr,
+            onConfirm = {
+                showCreatePrSheet = false
+                onCreatePr(run.runId)
+            },
+            onDismiss = { showCreatePrSheet = false }
         )
     }
 
