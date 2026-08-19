@@ -130,14 +130,23 @@ fun FoundryNavHost(
                 viewModel.loadRunDetail(runId)
             }
 
+            val matchingInterrupt = uiState.pendingInterrupts.find { it.runId == runId || it.runId.isBlank() }
+
             RunDetailScreen(
                 runDetail = uiState.currentRunDetail,
                 connectionStatus = uiState.connectionStatus,
+                pendingInterrupt = matchingInterrupt,
+                actionError = uiState.errorMessage,
+                isCreatingPr = uiState.isCreatingPr,
                 onBackClick = { navController.popBackStack() },
                 onOpenInspector = { phaseId ->
                     navController.navigate(NavRoute.Inspector.createRoute(runId, phaseId))
                 },
                 onKillRun = { viewModel.killRun(it) },
+                onAnswerInterrupt = { interruptId, approved, notes ->
+                    viewModel.answerInterrupt(interruptId, approved, notes)
+                },
+                onRetryConnection = { viewModel.retryConnection() },
                 onOpenPr = { url ->
                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                     context.startActivity(intent)

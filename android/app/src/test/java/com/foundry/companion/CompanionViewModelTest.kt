@@ -152,4 +152,41 @@ class CompanionViewModelTest {
         assertTrue(vmWithPolling.uiState.value.runs.any { it.request == "A new live run started externally" })
         vmWithPolling.stopPolling()
     }
+
+    @Test
+    fun testKillRunFlow() {
+        viewModel.loadRunDetail("run_260818_live99")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        var detail = viewModel.uiState.value.currentRunDetail
+        assertNotNull(detail)
+        assertEquals("running", detail?.run?.status)
+
+        viewModel.killRun("run_260818_live99")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        detail = viewModel.uiState.value.currentRunDetail
+        assertNotNull(detail)
+        assertEquals("killed", detail?.run?.status)
+    }
+
+    @Test
+    fun testAnswerInterruptFlow() {
+        val interrupt = com.foundry.companion.data.model.PendingInterrupt(
+            interruptId = "int_99",
+            runId = "run_260818_live99",
+            question = "Approve schema change?"
+        )
+        repository.setPendingInterrupts(listOf(interrupt))
+        viewModel.loadPendingInterrupts()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(1, viewModel.uiState.value.pendingInterrupts.size)
+        assertEquals("int_99", viewModel.uiState.value.pendingInterrupts.first().interruptId)
+
+        viewModel.answerInterrupt("int_99", approved = true, notes = "Approved from phone")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value.pendingInterrupts.isEmpty())
+    }
 }

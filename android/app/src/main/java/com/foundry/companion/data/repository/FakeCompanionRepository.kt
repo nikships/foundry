@@ -349,6 +349,14 @@ class FakeCompanionRepository(
         return Result.success(events)
     }
 
+    override suspend fun getInterrupts(): Result<List<PendingInterrupt>> {
+        return Result.success(_pendingInterrupts.value)
+    }
+
+    fun setPendingInterrupts(interrupts: List<PendingInterrupt>) {
+        _pendingInterrupts.value = interrupts
+    }
+
     override suspend fun startRun(input: StartRunInput): Result<CompanionStartResult> {
         if (input.request.isBlank()) {
             return Result.success(
