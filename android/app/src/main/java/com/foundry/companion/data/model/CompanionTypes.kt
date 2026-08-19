@@ -392,6 +392,13 @@ data class CompanionPrCreateRequest(
 )
 
 @Serializable
+data class CompanionPrDraft(
+    val title: String,
+    val body: String,
+    val source: String = "run"
+)
+
+@Serializable
 data class PrAction(
     val ok: Boolean,
     val prUrl: String? = null,

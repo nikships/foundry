@@ -377,6 +377,33 @@ class CompanionViewModelTest {
     }
 
     @Test
+    fun testCreatePrPostsHostDraftAndDoesNotCreateUntilCalled() {
+        val draft = com.foundry.companion.data.model.CompanionPrDraft(
+            title = "Bugfix & Verify: Refactor main electron bootstrap process initialization order.",
+            body = "Refactor main electron bootstrap process initialization order.\n\n---\nOpened by Foundry from run run_260818_rej02 (branch `foundry/run_260818_rej02`).",
+            source = "run"
+        )
+        repository.setPrDraft("run_260818_rej02", draft)
+
+        viewModel.loadRunDetail("run_260818_rej02")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(0, repository.createPrCallCount)
+        assertEquals(draft.title, viewModel.uiState.value.prDraft?.title)
+        assertEquals("run_260818_rej02", viewModel.uiState.value.prDraftRunId)
+        val draftCallsAfterLoad = repository.getPrDraftCallCount
+        assertTrue(draftCallsAfterLoad >= 1)
+
+        viewModel.createPr("run_260818_rej02")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(1, repository.createPrCallCount)
+        assertEquals(draftCallsAfterLoad, repository.getPrDraftCallCount)
+        assertEquals(draft.title, repository.lastCreatePrRequest?.title)
+        assertEquals(draft.body, repository.lastCreatePrRequest?.body)
+    }
+
+    @Test
     fun testCreatePrFlowSuccess() {
         var callbackSuccess: Boolean? = null
         var callbackUrl: String? = null

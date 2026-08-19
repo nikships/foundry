@@ -400,6 +400,7 @@ describe('token auth, fail closed', () => {
     ['GET', '/v1/projects/x/runs/y/events'],
     ['POST', '/v1/projects/x/runs/y/kill'],
     ['POST', '/v1/projects/x/runs/y/pr'],
+    ['GET', '/v1/projects/x/runs/y/pr-draft'],
     ['GET', '/v1/projects/x/pr-status'],
     ['POST', '/v1/interrupts/answer'],
   ])('rejects a missing token on %s %s', async (method, path) => {
@@ -655,6 +656,54 @@ describe('interrupt routes', () => {
 });
 
 describe('PR routes', () => {
+  it('drafts the same title and body create would send to GitHub', async () => {
+    addOrigin(h.repo);
+    sh(h.repo, ['git', 'branch', 'foundry/run_pr_draft']);
+    const request = `${'Please land the companion confirm sheet and Custom Tab helper. '.repeat(3)}end.`;
+    h.tracer.startRun({
+      runId: 'run_pr_draft',
+      projectId: h.project.id,
+      pipeline: pipeline(),
+      request,
+      engineer: 'test',
+      worktreePath: null,
+      branch: 'foundry/run_pr_draft',
+      baseRef: 'main',
+      mode: 'pi',
+    });
+    h.tracer.finishRun('run_pr_draft', 'accepted', 'all passed');
+
+    const paired = await pairPhone();
+    const draftRes = await authed(
+      paired.token,
+      `/v1/projects/${h.project.id}/runs/run_pr_draft/pr-draft`,
+    );
+    expect(draftRes.status).toBe(200);
+    const draft = (await draftRes.json()) as { title: string; body: string; source: string };
+    expect(draft.source).toBe('run');
+    expect(draft.title).toBe(`p: ${request.slice(0, 63)}…`);
+    expect(draft.body).toContain(request);
+    expect(draft.body).toContain('Opened by Foundry from run run_pr_draft');
+
+    const created = await authed(
+      paired.token,
+      `/v1/projects/${h.project.id}/runs/run_pr_draft/pr`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ title: '', body: '' }),
+      },
+    );
+    expect(created.status).toBe(200);
+    expect(((await created.json()) as { ok: boolean }).ok).toBe(true);
+
+    const createCall = h.gh.calls().find((args) => args[0] === 'pr' && args[1] === 'create');
+    expect(createCall).toBeDefined();
+    const titleIdx = createCall!.indexOf('--title');
+    const bodyIdx = createCall!.indexOf('--body');
+    expect(createCall![titleIdx + 1]).toBe(draft.title);
+    expect(createCall![bodyIdx + 1]).toBe(draft.body);
+  });
+
   it('creates a PR for a settled run and records its coordinates', async () => {
     addOrigin(h.repo);
     sh(h.repo, ['git', 'branch', 'foundry/run_pr_1']);

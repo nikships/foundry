@@ -106,6 +106,9 @@ class OfflineCompanionRepository(
 
     override suspend fun getPrStatus(projectId: String) = answer(GhStatus())
 
+    override suspend fun getPrDraft(projectId: String, runId: String) =
+        answer(CompanionPrDraft(title = "", body = "", source = "run"))
+
     override suspend fun createPr(projectId: String, runId: String, request: CompanionPrCreateRequest) =
         answer(PrAction(ok = false))
 

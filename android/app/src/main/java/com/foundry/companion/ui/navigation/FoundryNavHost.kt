@@ -1,7 +1,5 @@
 package com.foundry.companion.ui.navigation
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -21,6 +19,7 @@ import com.foundry.companion.ui.screens.newrun.NewRunScreen
 import com.foundry.companion.ui.screens.pair.PairScreen
 import com.foundry.companion.ui.screens.run.RunDetailScreen
 import com.foundry.companion.ui.screens.runs.RunsScreen
+import com.foundry.companion.util.CustomTabs
 import com.foundry.companion.viewmodel.CompanionViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -186,10 +185,7 @@ fun FoundryNavHost(
                 onRetryConnection = {
                     viewModel.retryConnection()
                 },
-                onOpenPr = { url ->
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                    context.startActivity(intent)
-                }
+                onOpenPr = { url -> CustomTabs.open(context, url) }
             )
         }
 
@@ -262,15 +258,12 @@ fun FoundryNavHost(
                     viewModel.answerInterrupt(interruptId, approved, notes)
                 },
                 onRetryConnection = { viewModel.retryConnection() },
-                onOpenPr = { url ->
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                    context.startActivity(intent)
-                },
+                onOpenPr = { url -> CustomTabs.open(context, url) },
                 onCreatePr = { viewModel.createPr(it) },
-                onOpenIssue = { url ->
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                    context.startActivity(intent)
-                }
+                onOpenIssue = { url -> CustomTabs.open(context, url) },
+                prDraftTitle = uiState.prDraft
+                    ?.takeIf { uiState.prDraftRunId == runId }
+                    ?.title
             )
         }
 

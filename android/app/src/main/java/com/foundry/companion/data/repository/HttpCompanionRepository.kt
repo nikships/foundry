@@ -397,6 +397,26 @@ class HttpCompanionRepository(
         }
     }
 
+    override suspend fun getPrDraft(
+        projectId: String,
+        runId: String
+    ): Result<CompanionPrDraft> = withContext(Dispatchers.IO) {
+        try {
+            val request = authenticatedRequestBuilder("/v1/projects/$projectId/runs/$runId/pr-draft")
+                .get()
+                .build()
+            val response = client.newCall(request).execute()
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
+            consecutiveFailures = 0
+            val res = json.decodeFromString(CompanionPrDraft.serializer(), body)
+            Result.success(res)
+        } catch (e: Exception) {
+            handleNetworkError(e)
+            Result.failure(e)
+        }
+    }
+
     override suspend fun createPr(
         projectId: String,
         runId: String,

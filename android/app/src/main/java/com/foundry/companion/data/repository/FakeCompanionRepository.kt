@@ -598,8 +598,34 @@ class FakeCompanionRepository(
         fakeGhStatus = status
     }
 
+    private val prDrafts = mutableMapOf<String, CompanionPrDraft>()
+    var getPrDraftCallCount: Int = 0
+        private set
+    var createPrCallCount: Int = 0
+        private set
+    var lastCreatePrRequest: CompanionPrCreateRequest? = null
+        private set
+
+    fun setPrDraft(runId: String, draft: CompanionPrDraft) {
+        prDrafts[runId] = draft
+    }
+
     override suspend fun getPrStatus(projectId: String): Result<GhStatus> {
         return Result.success(fakeGhStatus)
+    }
+
+    override suspend fun getPrDraft(projectId: String, runId: String): Result<CompanionPrDraft> {
+        getPrDraftCallCount += 1
+        prDrafts[runId]?.let { return Result.success(it) }
+        val run = runsList.find { it.runId == runId }
+            ?: return Result.failure(RunNotFoundException(runId))
+        return Result.success(
+            CompanionPrDraft(
+                title = "${run.pipelineName}: ${run.request}",
+                body = run.request,
+                source = "run"
+            )
+        )
     }
 
     override suspend fun createPr(
@@ -607,6 +633,8 @@ class FakeCompanionRepository(
         runId: String,
         request: CompanionPrCreateRequest
     ): Result<PrAction> {
+        createPrCallCount += 1
+        lastCreatePrRequest = request
         if (!fakeGhStatus.available) {
             return Result.success(
                 PrAction(

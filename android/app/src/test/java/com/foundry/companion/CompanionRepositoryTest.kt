@@ -389,6 +389,34 @@ class CompanionRepositoryTest {
     }
 
     @Test
+    fun testHttpGetPrDraft() = runBlocking {
+        val hostOrigin = server.url("").toString().removeSuffix("/")
+        httpRepository.injectFakeSession(
+            PairedSession(
+                token = "test_token",
+                desktopId = "desk_01",
+                desktopName = "Mac",
+                hostOrigin = hostOrigin,
+                pairedAt = "2026-08-19T00:00:00Z"
+            )
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"title":"p: make a change","body":"make a change","source":"run"}"""
+            )
+        )
+
+        val res = httpRepository.getPrDraft("proj_1", "run_1").getOrThrow()
+        assertEquals("p: make a change", res.title)
+        assertEquals("make a change", res.body)
+        assertEquals("run", res.source)
+
+        val req = server.takeRequest()
+        assertEquals("/v1/projects/proj_1/runs/run_1/pr-draft", req.path)
+        assertEquals("GET", req.method)
+    }
+
+    @Test
     fun testHttpCreatePr() = runBlocking {
         val hostOrigin = server.url("").toString().removeSuffix("/")
         httpRepository.injectFakeSession(
