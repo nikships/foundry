@@ -21,15 +21,39 @@ interface DeviceRecord {
 interface CompanionFile {
   /** Stable id of this desktop install, minted on first use. */
   desktopId: string;
+  /**
+   * The port the host last bound successfully. Reused on the next start so a
+   * phone's stored `hostOrigin` survives a relaunch instead of 404ing forever.
+   */
+  lastPort: number | null;
   devices: DeviceRecord[];
 }
+
+/**
+ * How stale a device's `lastSeenAt` may get before a request rewrites it. The
+ * phone polls every couple of seconds; without this, every poll rewrote
+ * `companion.json`. The stamp is operator-facing ("last seen"), not a session
+ * clock, so half a minute of drift costs nothing.
+ */
+export const LAST_SEEN_DEBOUNCE_MS = 30_000;
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
+function emptyFile(): CompanionFile {
+  return { desktopId: '', lastPort: null, devices: [] };
+}
+
+/** A port we would be willing to bind: a real, non-privileged TCP port. */
+function validPort(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value > 1023 && value <= 65535
+    ? value
+    : null;
+}
+
 function migrate(raw: unknown): CompanionFile {
-  const base: CompanionFile = { desktopId: '', devices: [] };
+  const base = emptyFile();
   if (!raw || typeof raw !== 'object') return base;
   const file = raw as Partial<CompanionFile>;
   const devices = Array.isArray(file.devices)
@@ -43,6 +67,7 @@ function migrate(raw: unknown): CompanionFile {
     : [];
   return {
     desktopId: typeof file.desktopId === 'string' ? file.desktopId : '',
+    lastPort: validPort(file.lastPort),
     devices: devices.map((d) => ({
       deviceId: d.deviceId,
       name: d.name,
@@ -56,10 +81,13 @@ function migrate(raw: unknown): CompanionFile {
 export class DeviceStore {
   private readonly store: JsonStore<CompanionFile>;
 
-  constructor(appSupportDir: string) {
+  constructor(
+    appSupportDir: string,
+    private readonly now: () => number = Date.now,
+  ) {
     this.store = new JsonStore<CompanionFile>(
       join(appSupportDir, 'companion.json'),
-      () => ({ desktopId: '', devices: [] }),
+      emptyFile,
       migrate,
     );
   }
@@ -71,6 +99,18 @@ export class DeviceStore {
     const minted = `desk_${randomBytes(8).toString('hex')}`;
     this.store.write({ ...file, desktopId: minted });
     return minted;
+  }
+
+  /** The port the host last bound, or null if it has never bound one. */
+  lastPort(): number | null {
+    return this.store.read().lastPort;
+  }
+
+  /** Records the port the host just bound, so the next start can reuse it. */
+  rememberPort(port: number): void {
+    const valid = validPort(port);
+    if (valid === null || valid === this.lastPort()) return;
+    this.store.update((file) => ({ ...file, lastPort: valid }));
   }
 
   /** Registers a phone and mints its token. The token is only returned here. */
@@ -90,7 +130,9 @@ export class DeviceStore {
 
   /**
    * The device a bearer token belongs to, or null — which every caller must
-   * treat as a refusal. Constant-time hash comparison, then a last-seen stamp.
+   * treat as a refusal. Constant-time hash comparison every request; the
+   * last-seen stamp is debounced so a 2s poll does not rewrite the file on
+   * every hit.
    */
   authenticate(token: string): CompanionDevice | null {
     if (!token) return null;
@@ -101,8 +143,12 @@ export class DeviceStore {
       return stored.length === candidate.length && timingSafeEqual(stored, candidate);
     });
     if (!match) return null;
-    match.lastSeenAt = new Date().toISOString();
-    this.store.write(file);
+    const now = this.now();
+    const previous = match.lastSeenAt ? Date.parse(match.lastSeenAt) : NaN;
+    if (!Number.isFinite(previous) || now - previous >= LAST_SEEN_DEBOUNCE_MS) {
+      match.lastSeenAt = new Date(now).toISOString();
+      this.store.write(file);
+    }
     return this.project(match);
   }
 

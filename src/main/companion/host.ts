@@ -94,14 +94,64 @@ class RouteError extends Error {
   }
 }
 
-/** The first non-internal IPv4 address, i.e. where the LAN can reach us. */
-export function lanAddress(): string | null {
-  for (const entries of Object.values(networkInterfaces())) {
+/**
+ * Interface names that are almost never the address a phone on the Wi-Fi can
+ * reach: VPN tunnels, AirDrop/awdl, Thunderbolt bridges, container and VM
+ * adapters. macOS often reports one of these before `en0`, so taking the first
+ * non-internal IPv4 silently bound the host where nothing could call it.
+ */
+const VIRTUAL_INTERFACE_PREFIXES = [
+  'utun',
+  'ipsec',
+  'awdl',
+  'llw',
+  'bridge',
+  'docker',
+  'vnic',
+  'vmnet',
+  'tap',
+  'tun',
+  'gif',
+  'stf',
+  'anpi',
+  'ap1',
+];
+
+interface LanCandidate {
+  name: string;
+  address: string;
+  /** False for a virtual adapter or a self-assigned 169.254 address. */
+  usable: boolean;
+}
+
+function isVirtualName(name: string): boolean {
+  const lower = name.toLowerCase();
+  return VIRTUAL_INTERFACE_PREFIXES.some((prefix) => lower.startsWith(prefix));
+}
+
+/**
+ * Where the LAN can reach us, and whether that address is worth trusting.
+ * Prefers a physical adapter with a routable IPv4; falls back to whatever
+ * exists so a working-but-odd setup still binds, with the oddity reported.
+ */
+export function lanInterface(): LanCandidate | null {
+  const candidates: LanCandidate[] = [];
+  for (const [name, entries] of Object.entries(networkInterfaces())) {
     for (const entry of entries ?? []) {
-      if (!entry.internal && entry.family === 'IPv4') return entry.address;
+      if (entry.internal || entry.family !== 'IPv4') continue;
+      candidates.push({
+        name,
+        address: entry.address,
+        usable: !isVirtualName(name) && !entry.address.startsWith('169.254.'),
+      });
     }
   }
-  return null;
+  return candidates.find((c) => c.usable) ?? candidates[0] ?? null;
+}
+
+/** The IPv4 address the host binds, i.e. where the LAN can reach us. */
+export function lanAddress(): string | null {
+  return lanInterface()?.address ?? null;
 }
 
 export class CompanionHost {
@@ -125,31 +175,58 @@ export class CompanionHost {
     };
   }
 
-  /** Binds the server. Idempotent: an already-running host reports itself. */
+  /**
+   * Binds the server. Idempotent: an already-running host reports itself.
+   *
+   * The port is the one this install bound last, so a phone that stored the
+   * origin can reconnect after a relaunch without re-scanning the QR. When
+   * that port is taken we bind an ephemeral one and persist it as the new
+   * last-known — a changed port is reported, never silently served.
+   */
   async start(): Promise<CompanionHostState> {
     if (this.server) return this.state();
-    const host = this.deps.bindHost ?? lanAddress();
+    const chosen = this.deps.bindHost ? null : lanInterface();
+    const host = this.deps.bindHost ?? chosen?.address;
     if (!host) {
       this.detail = 'no LAN address: is this Mac on a network?';
       return this.state();
     }
-    const server = createServer((req, res) => void this.handle(req, res));
-    try {
-      await new Promise<void>((resolve, reject) => {
-        server.once('error', reject);
-        server.listen(this.deps.port ?? 0, host, () => resolve());
-      });
-    } catch (e) {
-      this.detail = `could not bind ${host}: ${(e as Error).message}`;
+    const requested = this.deps.port ?? this.devices.lastPort() ?? 0;
+    let bound = await this.bind(host, requested);
+    let reassigned: number | null = null;
+    if (typeof bound === 'string' && requested !== 0) {
+      // The remembered port is gone (another process took it, or the OS is
+      // still holding it). An ephemeral port beats refusing to serve.
+      const retry = await this.bind(host, 0);
+      if (typeof retry !== 'string') reassigned = requested;
+      bound = retry;
+    }
+    if (typeof bound === 'string') {
+      this.detail = `could not bind ${host}: ${bound}`;
       return this.state();
     }
-    const address = server.address();
+
+    const address = bound.address();
     const port = typeof address === 'object' && address ? address.port : 0;
-    this.server = server;
+    this.server = bound;
     this.origin = `http://${host}:${port}`;
-    this.detail = undefined;
+    this.devices.rememberPort(port);
+    this.detail = startupWarning(chosen, reassigned, port);
     this.deps.onStateChanged();
     return this.state();
+  }
+
+  /** Listens, answering the server on success or the failure message. */
+  private bind(host: string, port: number): Promise<Server | string> {
+    const server = createServer((req, res) => void this.handle(req, res));
+    return new Promise<Server | string>((resolve) => {
+      const onError = (e: Error): void => resolve(e.message);
+      server.once('error', onError);
+      server.listen(port, host, () => {
+        server.removeListener('error', onError);
+        resolve(server);
+      });
+    });
   }
 
   /** Unbinds and drops outstanding pairing secrets. Device tokens survive. */
@@ -416,6 +493,28 @@ export class CompanionHost {
     });
     res.end(body);
   }
+}
+
+/**
+ * What the operator needs to know about a bind that worked but is not the one
+ * they would have picked: a suspicious interface, or a port that moved and
+ * therefore invalidated an already-paired phone's stored origin.
+ */
+function startupWarning(
+  chosen: LanCandidate | null,
+  reassigned: number | null,
+  port: number,
+): string | undefined {
+  const notes: string[] = [];
+  if (chosen && !chosen.usable) {
+    notes.push(
+      `bound ${chosen.name} (${chosen.address}), which looks like a virtual adapter — a phone on your Wi-Fi may not reach it`,
+    );
+  }
+  if (reassigned !== null) {
+    notes.push(`port ${reassigned} was taken, so this host moved to ${port} — re-scan the QR`);
+  }
+  return notes.length ? notes.join('; ') : undefined;
 }
 
 function bearerToken(req: IncomingMessage): string {

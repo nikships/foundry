@@ -7,16 +7,16 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { tempDir } from './tmp.js';
 import { openDb, projectDbPath, projectRunsDir } from '../src/main/trace/db.js';
 import { Tracer } from '../src/main/trace/tracer.js';
 import { Executor } from '../src/main/engine/executor.js';
-import { CompanionHost, lanAddress } from '../src/main/companion/host.js';
+import { CompanionHost, lanAddress, lanInterface } from '../src/main/companion/host.js';
 import { PairingSecrets, PAIRING_SECRET_TTL_MS } from '../src/main/companion/pairing.js';
-import { DeviceStore } from '../src/main/companion/devices.js';
+import { DeviceStore, LAST_SEEN_DEBOUNCE_MS } from '../src/main/companion/devices.js';
 import { defaultProject } from '../src/main/store/projects.js';
 import { COMPANION_PROTOCOL_VERSION } from '../src/shared/companion.js';
 import type {
@@ -190,9 +190,12 @@ interface Harness {
   tracer: Tracer;
   project: ProjectDef;
   repo: string;
+  support: string;
   gh: FakeGh;
   origin: () => string;
   changes: string[];
+  /** A second host over the same support dir: what a relaunch looks like. */
+  relaunch: () => CompanionHost;
 }
 
 let h: Harness;
@@ -209,28 +212,41 @@ beforeEach(async () => {
   });
   const gh = makeFakeGh({ createUrl: 'https://github.com/acme/widgets/pull/7' });
   const changes: string[] = [];
-  const host = new CompanionHost({
-    supportDir: support,
-    projects: () => [project],
-    projectById: (id) => (id === project.id ? project : null),
-    pipelinesFor: () => [pipeline()],
-    rosterFor: () => [buildAgent()],
-    envelopeDefs: () => [],
-    settings: () => ({}) as AppSettings,
-    saveProject: (next) => next,
-    oneShot: () => {
-      throw new Error('the companion suite never opens a one-shot');
-    },
-    registry,
-    appVersion: () => '0.0.0-test',
-    notifyRuns: () => undefined,
-    onStateChanged: () => changes.push('changed'),
-    bindHost: '127.0.0.1',
-    gh: { bin: gh.bin },
-  });
+  const makeHost = (): CompanionHost =>
+    new CompanionHost({
+      supportDir: support,
+      projects: () => [project],
+      projectById: (id) => (id === project.id ? project : null),
+      pipelinesFor: () => [pipeline()],
+      rosterFor: () => [buildAgent()],
+      envelopeDefs: () => [],
+      settings: () => ({}) as AppSettings,
+      saveProject: (next) => next,
+      oneShot: () => {
+        throw new Error('the companion suite never opens a one-shot');
+      },
+      registry,
+      appVersion: () => '0.0.0-test',
+      notifyRuns: () => undefined,
+      onStateChanged: () => changes.push('changed'),
+      bindHost: '127.0.0.1',
+      gh: { bin: gh.bin },
+    });
+  const host = makeHost();
   const state = await host.start();
   if (!state.running || !state.origin) throw new Error(`host did not start: ${state.detail}`);
-  h = { host, registry, tracer, project, repo, gh, origin: () => host.state().origin!, changes };
+  h = {
+    host,
+    registry,
+    tracer,
+    project,
+    repo,
+    support,
+    gh,
+    origin: () => host.state().origin!,
+    changes,
+    relaunch: makeHost,
+  };
 });
 
 afterEach(async () => {
@@ -755,6 +771,90 @@ describe('host lifecycle', () => {
   });
 });
 
+describe('a stable address across restarts', () => {
+  const portOf = (origin: string): number => Number(new URL(origin).port);
+
+  it('rebinds the same port after stop and start', async () => {
+    const first = portOf(h.origin());
+    await h.host.stop();
+    const state = await h.host.start();
+    expect(state.running).toBe(true);
+    expect(portOf(state.origin!)).toBe(first);
+    expect(state.detail).toBeUndefined();
+  });
+
+  it('persists the bound port so a relaunched host serves the same origin', async () => {
+    const before = h.host.state().origin!;
+    await h.host.stop();
+
+    // A fresh CompanionHost over the same support dir is what a relaunch is:
+    // nothing in memory survives, only companion.json.
+    const relaunched = h.relaunch();
+    const state = await relaunched.start();
+    try {
+      expect(state.origin).toBe(before);
+    } finally {
+      await relaunched.stop();
+    }
+  });
+
+  it('keeps an already-paired phone reachable at its stored origin after a relaunch', async () => {
+    const paired = await pairPhone();
+    const stored = h.origin();
+    await h.host.stop();
+
+    const relaunched = h.relaunch();
+    await relaunched.start();
+    try {
+      expect(relaunched.state().origin).toBe(stored);
+      const res = await fetch(`${stored}/v1/session`, {
+        headers: { authorization: `Bearer ${paired.token}` },
+      });
+      expect(res.status).toBe(200);
+    } finally {
+      await relaunched.stop();
+    }
+  });
+
+  it('records the port it bound in companion.json', () => {
+    const file = JSON.parse(readFileSync(join(h.support, 'companion.json'), 'utf8')) as {
+      lastPort: number;
+    };
+    expect(file.lastPort).toBe(portOf(h.origin()));
+  });
+
+  it('falls back to an ephemeral port when the remembered one is taken, and says so', async () => {
+    const taken = portOf(h.origin());
+
+    // Leave our host bound and start a second one over the same store: the
+    // remembered port is occupied by definition.
+    const second = h.relaunch();
+    const state = await second.start();
+    try {
+      expect(state.running).toBe(true);
+      expect(portOf(state.origin!)).not.toBe(taken);
+      expect(state.detail).toContain(`port ${taken} was taken`);
+      expect(state.detail).toContain('re-scan the QR');
+    } finally {
+      await second.stop();
+    }
+  });
+
+  it('reports no LAN address rather than binding something unreachable', () => {
+    const chosen = lanInterface();
+    if (chosen === null) {
+      expect(lanAddress()).toBeNull();
+      return;
+    }
+    expect(lanAddress()).toBe(chosen.address);
+    expect(chosen.address).not.toBe('0.0.0.0');
+    // A tunnel or self-assigned address is bindable but not reachable, and
+    // must be flagged rather than silently served.
+    if (/^(utun|awdl|bridge|docker|vnic)/i.test(chosen.name)) expect(chosen.usable).toBe(false);
+    if (chosen.address.startsWith('169.254.')) expect(chosen.usable).toBe(false);
+  });
+});
+
 describe('the device store', () => {
   it('persists only hashes, so a copied file cannot authenticate', () => {
     const dir = tempDir('foundry-devices-');
@@ -764,5 +864,57 @@ describe('the device store', () => {
     expect(file).not.toContain(token);
     expect(store.authenticate(token)?.name).toBe('Pixel');
     expect(store.authenticate('not-the-token')).toBeNull();
+  });
+
+  it('does not rewrite the file on a second authentication moments later', () => {
+    const dir = tempDir('foundry-devices-debounce-');
+    let now = 1_700_000_000_000;
+    const store = new DeviceStore(dir, () => now);
+    const { token } = store.register('Pixel');
+    const path = join(dir, 'companion.json');
+
+    // The first hit stamps lastSeenAt; a poll two seconds later must not.
+    expect(store.authenticate(token)).not.toBeNull();
+    const stamped = readFileSync(path, 'utf8');
+    const writtenAt = statSync(path).mtimeMs;
+
+    now += 2_000;
+    expect(store.authenticate(token)).not.toBeNull();
+    expect(readFileSync(path, 'utf8')).toBe(stamped);
+    expect(statSync(path).mtimeMs).toBe(writtenAt);
+
+    // Past the debounce window the stamp moves again, so "last seen" stays true.
+    now += LAST_SEEN_DEBOUNCE_MS;
+    expect(store.authenticate(token)).not.toBeNull();
+    expect(store.list()[0]!.lastSeenAt).toBe(new Date(now).toISOString());
+  });
+
+  it('wipes the token on unpair even though last-seen writes are debounced', () => {
+    const dir = tempDir('foundry-devices-unpair-');
+    let now = 1_700_000_000_000;
+    const store = new DeviceStore(dir, () => now);
+    const { deviceId, token } = store.register('Pixel');
+    expect(store.authenticate(token)).not.toBeNull();
+
+    now += 1_000;
+    expect(store.unpair(deviceId)).toBe(true);
+    expect(store.authenticate(token)).toBeNull();
+    expect(store.list()).toEqual([]);
+    const file = readFileSync(join(dir, 'companion.json'), 'utf8');
+    expect(file).not.toContain(deviceId);
+    expect(JSON.parse(file)).toMatchObject({ devices: [] });
+  });
+
+  it('ignores a hand-edited port that could never be bound', () => {
+    const dir = tempDir('foundry-devices-port-');
+    const path = join(dir, 'companion.json');
+    const store = new DeviceStore(dir);
+    store.rememberPort(52810);
+    expect(store.lastPort()).toBe(52810);
+
+    for (const bad of [0, 80, 70000, 'nope']) {
+      writeFileSync(path, JSON.stringify({ desktopId: 'd', lastPort: bad, devices: [] }));
+      expect(new DeviceStore(dir).lastPort()).toBeNull();
+    }
   });
 });
