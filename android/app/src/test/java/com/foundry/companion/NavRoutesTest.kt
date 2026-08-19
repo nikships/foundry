@@ -1,9 +1,12 @@
 package com.foundry.companion
 
 import com.foundry.companion.ui.navigation.NavRoute
+import com.foundry.companion.ui.navigation.needsSynthesizedHome
 import com.foundry.companion.ui.navigation.resolveDeepLink
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NavRoutesTest {
@@ -78,5 +81,42 @@ class NavRoutesTest {
     fun testDeepLinkWithoutARunIsIgnored() {
         assertNull(resolveDeepLink(null, "int_9", null, "int_9"))
         assertNull(resolveDeepLink("", null, "", null))
+    }
+
+    @Test
+    fun testDeepLinkCarriesTheProjectSoAColdStartDoesNotGuess() {
+        val fromExtras = resolveDeepLink(
+            uriRunId = "run_123",
+            uriInterruptId = null,
+            extraRunId = "run_123",
+            extraInterruptId = null,
+            extraProjectId = "proj_foundry_core"
+        )
+        assertEquals("proj_foundry_core", fromExtras?.projectId)
+
+        val fromUri = resolveDeepLink(
+            uriRunId = "run_123",
+            uriInterruptId = null,
+            extraRunId = null,
+            extraInterruptId = null,
+            uriProjectId = "proj_from_uri"
+        )
+        assertEquals("proj_from_uri", fromUri?.projectId)
+
+        // A background notifier that never saw the run's project simply omits it.
+        val none = resolveDeepLink("run_123", null, "run_123", null)
+        assertNull(none?.projectId)
+    }
+
+    @Test
+    fun testKilledProcessDeepLinkGetsHomeSynthesizedUnderTheRun() {
+        // Cold start from a notification: nothing on the stack, so Back off the
+        // run would leave the app unless Home is pushed first.
+        assertTrue(needsSynthesizedHome(emptyList()))
+        assertTrue(needsSynthesizedHome(listOf(NavRoute.Pair.route)))
+
+        // Warm app already showing Home (or a run above it) needs no synthesis.
+        assertFalse(needsSynthesizedHome(listOf(NavRoute.Runs.route)))
+        assertFalse(needsSynthesizedHome(listOf(NavRoute.Runs.route, NavRoute.RunDetail.route)))
     }
 }
