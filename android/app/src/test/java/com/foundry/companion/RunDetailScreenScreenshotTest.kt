@@ -6,8 +6,10 @@ import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalInspectionMode
 import com.foundry.companion.data.model.*
 import com.foundry.companion.ui.components.InterruptBottomSheet
 import com.foundry.companion.ui.screens.run.RunDetailScreen
@@ -244,8 +246,10 @@ class RunDetailScreenScreenshotTest {
 
         val composeView = ComposeView(activity).apply {
             setContent {
-                FoundryTheme {
-                    content()
+                CompositionLocalProvider(LocalInspectionMode provides true) {
+                    FoundryTheme {
+                        content()
+                    }
                 }
             }
         }
@@ -260,6 +264,8 @@ class RunDetailScreenScreenshotTest {
         val bitmap = Bitmap.createBitmap(1080, 2400, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         composeView.draw(canvas)
+        composeView.disposeComposition()
+        activityController.pause().stop().destroy()
         return bitmap
     }
 

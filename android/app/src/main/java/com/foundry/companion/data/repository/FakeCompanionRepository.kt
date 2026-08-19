@@ -4,6 +4,7 @@ import com.foundry.companion.data.model.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.json.*
 import java.util.UUID
 
 class FakeCompanionRepository(
@@ -30,6 +31,8 @@ class FakeCompanionRepository(
 
     private val _pendingInterrupts = MutableStateFlow<List<PendingInterrupt>>(emptyList())
     override val pendingInterrupts: StateFlow<List<PendingInterrupt>> = _pendingInterrupts.asStateFlow()
+
+    private val extraEvents = mutableListOf<EventRow>()
 
     private val samplePipelines = listOf(
         PipelineSummary(
@@ -286,66 +289,235 @@ class FakeCompanionRepository(
         return Result.success(RunDetail(run = run, phases = run.phases))
     }
 
+    override suspend fun getEventPage(
+        projectId: String,
+        runId: String,
+        after: Long
+    ): Result<EventPage> {
+        val sampleEvents = listOf(
+            EventRow(
+                rowid = 1,
+                changeId = 1,
+                eventId = "ev_01",
+                runId = runId,
+                phaseId = "p_1",
+                type = "assistant_text",
+                name = "assistant_text",
+                payload = buildJsonObject {
+                    put("text", "I am planning the feature architecture and checking invariants.")
+                },
+                startedAt = "23:30:02Z",
+                endedAt = "23:30:04Z"
+            ),
+            EventRow(
+                rowid = 2,
+                changeId = 2,
+                eventId = "ev_02",
+                runId = runId,
+                phaseId = "p_1",
+                type = "tool_call",
+                name = "read: specs/companion-android-ui.md",
+                payload = buildJsonObject {
+                    put("kind", "read")
+                    put("args", buildJsonObject {
+                        put("file_path", "specs/companion-android-ui.md")
+                        put("offset", 1)
+                        put("limit", 50)
+                    })
+                    put("result", "# Companion Android UI and Information Architecture (FOU-82)\nSection 3.5 Inspector layout and contracts.")
+                },
+                startedAt = "23:30:05Z",
+                endedAt = "23:30:08Z"
+            ),
+            EventRow(
+                rowid = 3,
+                changeId = 3,
+                eventId = "ev_03",
+                runId = runId,
+                phaseId = "p_1",
+                type = "gate_pass",
+                name = "gate_pass",
+                payload = buildJsonObject {
+                    put("gate", "plan_approved")
+                    put("passed", true)
+                    put("detail", "Architecture plan verified against invariants.")
+                },
+                startedAt = "23:30:10Z",
+                endedAt = "23:30:10Z"
+            ),
+            EventRow(
+                rowid = 4,
+                changeId = 4,
+                eventId = "ev_04",
+                runId = runId,
+                phaseId = "p_3",
+                type = "thinking",
+                name = "thinking",
+                payload = buildJsonObject {
+                    put("text", "Implementing InspectorScreen and TranscriptLane in Jetpack Compose. Tool calls must be collapsed by default.")
+                },
+                startedAt = "23:30:15Z",
+                endedAt = "23:30:18Z"
+            ),
+            EventRow(
+                rowid = 5,
+                changeId = 5,
+                eventId = "ev_05",
+                runId = runId,
+                phaseId = "p_3",
+                type = "tool_call",
+                name = "edit: android/.../InspectorScreen.kt",
+                payload = buildJsonObject {
+                    put("kind", "edit")
+                    put("args", buildJsonObject {
+                        put("file_path", "android/app/.../InspectorScreen.kt")
+                        put("old_str", "// TODO: implement inspector")
+                        put("new_string", "val isLive = true\nval expanded = false")
+                    })
+                    put("result", "@@ -1,2 +1,3 @@\n-// TODO: implement inspector\n+val isLive = true\n+val expanded = false")
+                },
+                startedAt = "23:30:20Z",
+                endedAt = "23:30:25Z"
+            ),
+            EventRow(
+                rowid = 6,
+                changeId = 6,
+                eventId = "ev_06",
+                runId = runId,
+                phaseId = "p_3",
+                type = "tool_call",
+                name = "bash: cd android && ./gradlew test",
+                payload = buildJsonObject {
+                    put("kind", "command")
+                    put("args", buildJsonObject {
+                        put("command", "cd android && ./gradlew test")
+                    })
+                    put("result", "BUILD SUCCESSFUL in 3s\n28 actionable tasks: 2 executed, 26 up-to-date")
+                    put("isError", false)
+                },
+                startedAt = "23:30:28Z",
+                endedAt = "23:30:32Z"
+            ),
+            EventRow(
+                rowid = 7,
+                changeId = 7,
+                eventId = "ev_07",
+                runId = runId,
+                phaseId = "p_3",
+                type = "tool_call",
+                name = "todo: update task list",
+                payload = buildJsonObject {
+                    put("kind", "todo")
+                    put("args", buildJsonObject {
+                        put("todos", "1. [completed] Inspect UI spec\n2. [completed] Implement Inspector transcript\n3. [in_progress] Verify unit tests\n4. [pending] Take screenshot")
+                    })
+                },
+                startedAt = "23:30:35Z",
+                endedAt = "23:30:36Z"
+            ),
+            EventRow(
+                rowid = 8,
+                changeId = 8,
+                eventId = "ev_08",
+                runId = runId,
+                phaseId = "p_3",
+                type = "assistant_text",
+                name = "assistant_text",
+                payload = buildJsonObject {
+                    put("text", "{\n  \"status\": \"success\",\n  \"summary\": \"Mobile Inspector transcript completed with collapsible tool calls.\",\n  \"changed_files\": [\"android/app/.../InspectorScreen.kt\", \"android/app/.../TranscriptLane.kt\"],\n  \"commit_message\": \"[companion] mobile Inspector transcript\"\n}")
+                },
+                startedAt = "23:30:40Z",
+                endedAt = "23:30:42Z"
+            ),
+            EventRow(
+                rowid = 9,
+                changeId = 9,
+                eventId = "ev_09",
+                runId = runId,
+                phaseId = "p_3",
+                type = "tool_call",
+                name = "search: grep transcript",
+                payload = buildJsonObject {
+                    put("kind", "search")
+                    put("args", buildJsonObject {
+                        put("pattern", "TranscriptLane")
+                        put("path", "android/app/src/main")
+                    })
+                    put("result", "android/.../TranscriptLane.kt: @Composable fun TranscriptLane(...)")
+                },
+                startedAt = "23:30:45Z",
+                endedAt = null
+            ),
+            EventRow(
+                rowid = 10,
+                changeId = 10,
+                eventId = "ev_10",
+                runId = runId,
+                phaseId = "p_1",
+                type = "phase_start",
+                name = "phase_start",
+                payload = buildJsonObject { put("detail", "Plan started") },
+                startedAt = "23:30:00Z",
+                endedAt = "23:30:00Z"
+            ),
+            EventRow(
+                rowid = 11,
+                changeId = 11,
+                eventId = "ev_11",
+                runId = runId,
+                phaseId = "p_3",
+                type = "future_widget",
+                name = "future_widget",
+                payload = buildJsonObject { put("detail", "unknown future type must be skipped") },
+                startedAt = "23:30:50Z",
+                endedAt = "23:30:50Z"
+            ),
+            EventRow(
+                rowid = 12,
+                changeId = 12,
+                eventId = "ev_12",
+                runId = runId,
+                phaseId = "p_3",
+                type = "error",
+                name = "error",
+                payload = buildJsonObject { put("detail", "Typecheck failed in TranscriptLane.") },
+                startedAt = "23:30:52Z",
+                endedAt = "23:30:52Z"
+            )
+        )
+        val allEvents = sampleEvents + extraEvents.filter { it.runId == runId || it.runId.isBlank() }
+        val filtered = if (after > 0) allEvents.filter { it.changeId > after } else allEvents
+        val maxCursor = if (allEvents.isNotEmpty()) allEvents.maxOf { it.changeId } else after
+        return Result.success(EventPage(events = filtered, cursor = maxCursor))
+    }
+
+    fun appendEvent(event: EventRow) {
+        extraEvents += event
+    }
+
     override suspend fun getTranscriptEvents(
         projectId: String,
         runId: String,
         phaseId: String
     ): Result<List<TranscriptEvent>> {
-        val events = listOf(
-            TranscriptEvent(
-                id = "ev_1",
-                phaseId = phaseId,
-                type = "text",
-                timestamp = "23:30:05",
-                content = "Inspecting workspace and reading specs/companion-android-ui.md to understand the companion visual architecture."
-            ),
-            TranscriptEvent(
-                id = "ev_2",
-                phaseId = phaseId,
-                type = "tool_call",
-                timestamp = "23:30:12",
-                content = "Read specs/companion-android-ui.md",
-                toolName = "Read",
-                durationMs = 240,
-                isSuccess = true,
-                toolArgs = "{\"file_path\": \"specs/companion-android-ui.md\"}",
-                toolOutput = "# Companion Android UI and Information Architecture (FOU-82)..."
-            ),
-            TranscriptEvent(
-                id = "ev_3",
-                phaseId = phaseId,
-                type = "text",
-                timestamp = "23:30:18",
-                content = "Scaffolding Jetpack Compose theme tokens and navigation graph matching the dark industrial palette."
-            ),
-            TranscriptEvent(
-                id = "ev_4",
-                phaseId = phaseId,
-                type = "tool_call",
-                timestamp = "23:30:25",
-                content = "Create android/app/src/main/java/com/foundry/companion/ui/theme/Color.kt",
-                toolName = "Create",
-                durationMs = 180,
-                isSuccess = true,
-                toolArgs = "{\"file_path\": \"android/app/.../Color.kt\"}",
-                toolOutput = "File created successfully."
-            ),
-            TranscriptEvent(
-                id = "ev_5",
-                phaseId = phaseId,
-                type = "gate",
-                timestamp = "23:30:35",
-                content = "Gate: Theme tokens pass strict dark palette requirements.",
-                isSuccess = true
-            ),
-            TranscriptEvent(
-                id = "ev_6",
-                phaseId = phaseId,
-                type = "text",
-                timestamp = "23:30:42",
-                content = "Verifying Gradle assembleDebug build and test execution."
-            )
-        )
+        val page = getEventPage(projectId, runId, 0L).getOrNull()
+        val events = page?.events?.let { evList ->
+            val phaseEvents = if (phaseId.isBlank()) evList else evList.filter { it.phaseId == phaseId }
+            phaseEvents.map { ev ->
+                TranscriptEvent(
+                    id = ev.eventId.ifBlank { "ev_${ev.rowid}" },
+                    phaseId = ev.phaseId.orEmpty(),
+                    type = ev.type,
+                    timestamp = ev.startedAt,
+                    content = ev.textContent.ifBlank { ev.name },
+                    toolName = ev.toolName,
+                    durationMs = null,
+                    isSuccess = !ev.isError,
+                    toolArgs = ev.payload["args"]?.toString(),
+                    toolOutput = ev.resultText
+                )
+            }
+        } ?: emptyList()
         return Result.success(events)
     }
 

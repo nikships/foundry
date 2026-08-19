@@ -249,6 +249,55 @@ class CompanionRepositoryTest {
     }
 
     @Test
+    fun testHttpEventPageCursorAndUnknownKeys() = runBlocking {
+        val hostOrigin = server.url("").toString().removeSuffix("/")
+        httpRepository.injectFakeSession(
+            PairedSession(
+                token = "test_token",
+                desktopId = "desk_01",
+                desktopName = "Mac",
+                hostOrigin = hostOrigin,
+                pairedAt = "2026-08-19T00:00:00Z"
+            )
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "events": [
+                    {
+                      "rowid": 1,
+                      "changeId": 12,
+                      "eventId": "ev_1",
+                      "runId": "run_123",
+                      "phaseId": "p_3",
+                      "type": "tool_call",
+                      "name": "read: spec.md",
+                      "payload": { "kind": "read", "args": { "file_path": "spec.md" }, "result": "ok" },
+                      "tokens": 0,
+                      "startedAt": "2026-08-18T23:30:00Z",
+                      "endedAt": "2026-08-18T23:30:01Z",
+                      "unexpected": true
+                    }
+                  ],
+                  "cursor": 12
+                }
+                """.trimIndent()
+            )
+        )
+
+        val page = httpRepository.getEventPage("proj_1", "run_123", after = 4).getOrThrow()
+        assertEquals(1, page.events.size)
+        assertEquals("ev_1", page.events[0].eventId)
+        assertEquals("p_3", page.events[0].phaseId)
+        assertEquals("tool_call", page.events[0].type)
+        assertEquals(12L, page.cursor)
+
+        val req = server.takeRequest()
+        assertEquals("/v1/projects/proj_1/runs/run_123/events?after=4", req.path)
+    }
+
+    @Test
     fun testHttpKillRun() = runBlocking {
         val hostOrigin = server.url("").toString().removeSuffix("/")
         httpRepository.injectFakeSession(

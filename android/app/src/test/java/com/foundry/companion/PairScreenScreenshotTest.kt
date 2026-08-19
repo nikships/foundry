@@ -4,7 +4,9 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.View
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalInspectionMode
 import com.foundry.companion.ui.screens.pair.PairScreen
 import com.foundry.companion.ui.theme.FoundryTheme
 import org.junit.Test
@@ -12,11 +14,13 @@ import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import java.io.File
 import java.io.FileOutputStream
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 class PairScreenScreenshotTest {
 
     @Test
@@ -26,14 +30,16 @@ class PairScreenScreenshotTest {
 
         val composeView = ComposeView(activity).apply {
             setContent {
-                FoundryTheme {
-                    PairScreen(
-                        onPairSuccess = {},
-                        onPairScanned = {},
-                        errorMessage = null,
-                        isPairing = false,
-                        initialPasteMode = true
-                    )
+                CompositionLocalProvider(LocalInspectionMode provides true) {
+                    FoundryTheme {
+                        PairScreen(
+                            onPairSuccess = {},
+                            onPairScanned = {},
+                            errorMessage = null,
+                            isPairing = false,
+                            initialPasteMode = true
+                        )
+                    }
                 }
             }
         }
@@ -48,6 +54,8 @@ class PairScreenScreenshotTest {
         val bitmap = Bitmap.createBitmap(1080, 2400, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         composeView.draw(canvas)
+        composeView.disposeComposition()
+        activityController.pause().stop().destroy()
 
         val dir = File("../../screenshots")
         dir.mkdirs()

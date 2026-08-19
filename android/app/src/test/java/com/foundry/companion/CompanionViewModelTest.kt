@@ -12,6 +12,8 @@ import com.foundry.companion.viewmodel.CompanionViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.*
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -151,6 +153,39 @@ class CompanionViewModelTest {
         testDispatcher.scheduler.advanceTimeBy(2500)
         assertTrue(vmWithPolling.uiState.value.runs.any { it.request == "A new live run started externally" })
         vmWithPolling.stopPolling()
+    }
+
+    @Test
+    fun testInspectorEventsLoadAndLiveMerge() {
+        viewModel.loadRunDetail("run_260818_live99")
+        viewModel.loadTranscriptEvents("run_260818_live99", "p_3")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val initial = viewModel.uiState.value.eventRows
+        assertTrue(initial.isNotEmpty())
+        assertTrue(initial.any { it.type == "tool_call" })
+        assertTrue(initial.any { it.type == "future_widget" })
+
+        val extra = com.foundry.companion.data.model.EventRow(
+            rowid = 99,
+            changeId = 99,
+            eventId = "ev_live_append",
+            runId = "run_260818_live99",
+            phaseId = "p_3",
+            type = "tool_call",
+            name = "read: next.md",
+            payload = buildJsonObject { put("kind", "read") },
+            startedAt = "23:31:00Z"
+        )
+        repository.appendEvent(extra)
+
+        val polling = CompanionViewModel(repository, sessionManager, enablePolling = true)
+        polling.loadRunDetail("run_260818_live99")
+        polling.loadTranscriptEvents("run_260818_live99")
+        testDispatcher.scheduler.advanceTimeBy(100)
+        testDispatcher.scheduler.advanceTimeBy(2500)
+        assertTrue(polling.uiState.value.eventRows.any { it.eventId == "ev_live_append" })
+        polling.stopPolling()
     }
 
     @Test

@@ -33,6 +33,7 @@ import com.foundry.companion.data.model.COMPANION_PROTOCOL_VERSION
 import com.foundry.companion.data.model.CompanionPairingPayload
 import com.foundry.companion.ui.components.FoundryPrimaryButton
 import com.foundry.companion.ui.theme.FoundryTheme
+import com.foundry.companion.ui.theme.foundryLiveClockEnabled
 import com.google.zxing.*
 import com.google.zxing.common.HybridBinarizer
 import kotlinx.serialization.json.Json
@@ -332,9 +333,7 @@ fun PairScreen(
 @Composable
 private fun ReticleOverlay(isPairing: Boolean) {
     val colors = FoundryTheme.colors
-    val isInspection = androidx.compose.ui.platform.LocalInspectionMode.current
-
-    val laserY = if (isInspection) {
+    val laserY = if (!foundryLiveClockEnabled()) {
         0.5f
     } else {
         val infiniteTransition = rememberInfiniteTransition(label = "reticleScan")

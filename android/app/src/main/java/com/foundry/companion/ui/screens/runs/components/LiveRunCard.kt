@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.dp
 import com.foundry.companion.data.model.RunRow
 import com.foundry.companion.ui.components.StatusBadge
 import com.foundry.companion.ui.theme.FoundryTheme
+import com.foundry.companion.ui.theme.foundryLiveClockEnabled
 import com.foundry.companion.util.RunFormatters
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -30,7 +31,9 @@ fun LiveRunCard(
 
     // Live ticking timer for elapsed duration
     var currentNow by remember(run.runId) { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(run.runId, run.status) {
+    val liveClock = foundryLiveClockEnabled()
+    LaunchedEffect(run.runId, run.status, liveClock) {
+        if (!liveClock) return@LaunchedEffect
         while (isActive) {
             delay(1000L)
             currentNow = System.currentTimeMillis()

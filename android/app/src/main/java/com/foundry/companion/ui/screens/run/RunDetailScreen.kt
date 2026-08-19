@@ -23,6 +23,7 @@ import com.foundry.companion.ui.screens.run.components.OutcomeCard
 import com.foundry.companion.ui.screens.run.components.PhaseWaterfall
 import com.foundry.companion.ui.screens.run.components.SelectedPhaseSummaryCard
 import com.foundry.companion.ui.theme.FoundryTheme
+import com.foundry.companion.ui.theme.foundryLiveClockEnabled
 import com.foundry.companion.util.RunFormatters
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -72,8 +73,9 @@ fun RunDetailScreen(
 
     // Live ticking timer for elapsed duration while running
     var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(isRunning, isConnected) {
-        if (isRunning && isConnected) {
+    val liveClock = foundryLiveClockEnabled()
+    LaunchedEffect(isRunning, isConnected, liveClock) {
+        if (liveClock && isRunning && isConnected) {
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
                 while (isActive) {
                     delay(250L)
