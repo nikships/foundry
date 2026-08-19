@@ -17,7 +17,7 @@ import com.foundry.companion.ui.navigation.FoundryNavHost
 import com.foundry.companion.ui.navigation.resolveDeepLink
 import com.foundry.companion.ui.theme.FoundryTheme
 import com.foundry.companion.viewmodel.CompanionViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
 
 class MainActivity : ComponentActivity() {
 
@@ -26,7 +26,7 @@ class MainActivity : ComponentActivity() {
         CompanionViewModel.provideFactory(app.repository, app.sessionManager, app.notificationManager)
     }
 
-    private val deepLinkRoute = MutableStateFlow<String?>(null)
+    private val deepLinkRoute = MutableSharedFlow<String>(extraBufferCapacity = 1)
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -90,7 +90,7 @@ class MainActivity : ComponentActivity() {
         ) ?: return
 
         viewModel.loadRunDetail(target.runId)
-        deepLinkRoute.value = target.route
+        deepLinkRoute.tryEmit(target.route)
     }
 }
 

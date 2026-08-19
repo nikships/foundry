@@ -14,7 +14,6 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.foundry.companion.data.model.ConnectionStatus
 import com.foundry.companion.data.session.SessionManager
-import com.foundry.companion.ui.components.InterruptBottomSheet
 import com.foundry.companion.ui.screens.connection.ConnectionBottomSheet
 import com.foundry.companion.ui.screens.inspector.InspectorScreen
 import com.foundry.companion.ui.screens.newrun.NewRunScreen
@@ -22,14 +21,14 @@ import com.foundry.companion.ui.screens.pair.PairScreen
 import com.foundry.companion.ui.screens.run.RunDetailScreen
 import com.foundry.companion.ui.screens.runs.RunsScreen
 import com.foundry.companion.viewmodel.CompanionViewModel
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.SharedFlow
 
 @Composable
 fun FoundryNavHost(
     viewModel: CompanionViewModel,
     modifier: Modifier = Modifier,
     sessionManager: SessionManager? = null,
-    deepLinkRoute: StateFlow<String?>? = null,
+    deepLinkRoute: SharedFlow<String>? = null,
     navController: NavHostController = rememberNavController()
 ) {
     val context = LocalContext.current
@@ -88,10 +87,9 @@ fun FoundryNavHost(
     // Handle incoming deep link route (from push notifications / intents).
     // Home is popped to rather than stacked on, so Back from a notification tap
     // lands on Home instead of walking a pile of previously opened runs.
-    val incomingDeepLink by (deepLinkRoute?.collectAsState() ?: remember { mutableStateOf<String?>(null) })
-    LaunchedEffect(incomingDeepLink) {
-        val route = incomingDeepLink
-        if (!route.isNullOrBlank()) {
+    LaunchedEffect(deepLinkRoute) {
+        deepLinkRoute?.collect { route ->
+            if (route.isBlank()) return@collect
             try {
                 navController.navigate(route) {
                     popUpTo(NavRoute.Runs.route)

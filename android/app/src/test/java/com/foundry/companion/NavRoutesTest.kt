@@ -63,6 +63,18 @@ class NavRoutesTest {
     }
 
     @Test
+    fun testNotificationExtrasWinOverUriRunId() {
+        val mixed = resolveDeepLink(
+            uriRunId = "run_stale",
+            uriInterruptId = null,
+            extraRunId = "run_123",
+            extraInterruptId = "int_9"
+        )
+        assertEquals("run_123", mixed?.runId)
+        assertEquals("int_9", mixed?.interruptId)
+    }
+
+    @Test
     fun testDeepLinkWithoutARunIsIgnored() {
         assertNull(resolveDeepLink(null, "int_9", null, "int_9"))
         assertNull(resolveDeepLink("", null, "", null))

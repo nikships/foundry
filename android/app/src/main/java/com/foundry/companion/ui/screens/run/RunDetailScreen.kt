@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -63,12 +64,13 @@ fun RunDetailScreen(
     val shapes = FoundryTheme.shapes
 
     var showKillDialog by remember { mutableStateOf(false) }
-    var showInterruptSheet by remember { mutableStateOf(false) }
+    var showInterruptSheet by rememberSaveable { mutableStateOf(false) }
     var isRequestExpanded by remember { mutableStateOf(false) }
 
     // The deep link consumes once: re-opening the sheet after the operator
-    // dismissed it would be the global modal again, only slower.
-    var consumedInterruptId by remember { mutableStateOf<String?>(null) }
+    // dismissed it would be the global modal again, only slower. Saveable so
+    // a rotate does not resurrect the sheet.
+    var consumedInterruptId by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(initialInterruptId, pendingInterrupt?.interruptId) {
         val target = initialInterruptId
         if (!target.isNullOrBlank() &&

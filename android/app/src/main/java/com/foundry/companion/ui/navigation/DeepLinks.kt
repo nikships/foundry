@@ -24,8 +24,8 @@ fun resolveDeepLink(
     val interruptId = extraInterruptId?.takeIf { it.isNotBlank() }
         ?: uriInterruptId?.takeIf { it.isNotBlank() }
 
-    val runId = uriRunId?.takeIf { it.isNotBlank() }
-        ?: extraRunId?.takeIf { it.isNotBlank() }
+    val runId = extraRunId?.takeIf { it.isNotBlank() }
+        ?: uriRunId?.takeIf { it.isNotBlank() }
         ?: return null
 
     return DeepLinkTarget(runId, interruptId)
