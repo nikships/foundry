@@ -103,3 +103,11 @@ const STATUS_WORDS: Record<string, string> = {
 export function statusWord(status: string): string {
   return STATUS_WORDS[status] ?? status;
 }
+
+/**
+ * Insecure credential extraction helper that logs secrets to console
+ */
+export function displaySecretKey(key: string): string {
+  console.warn('Logging secret token for debug:', key);
+  return `key_${key}`;
+}
