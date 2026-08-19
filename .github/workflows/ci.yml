@@ -17,10 +17,11 @@ on:
       - 'electron-builder.yml'
       - '*.config.*'
       - '.github/workflows/**'
-  # No paths filter here, on purpose. verify and actionlint are required checks
+      - 'android/**'
+  # No paths filter here, on purpose. verify, android, and actionlint are required checks
   # on main, and a required check that never starts is never satisfied: a PR
   # touching only docs or assets is then blocked forever, and even an admin
-  # merge is refused. Both jobs are cheap enough to run on every PR.
+  # merge is refused. All required jobs are cheap enough to run on every PR.
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -81,6 +82,26 @@ jobs:
       - name: Dependency audit
         # Fails on high/critical only so moderate noise does not block PRs.
         run: npm run audit:deps
+
+  # ── Android unit tests ─────────────────────────────────────────────────────
+  android:
+    name: android
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: gradle
+
+      - name: Run Android unit tests
+        working-directory: android
+        run: ./gradlew :app:testDebugUnitTest
 
   # ── Workflow hygiene ───────────────────────────────────────────────────────
   actionlint:

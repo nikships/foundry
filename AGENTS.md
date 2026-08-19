@@ -207,12 +207,13 @@ npm run package             # build + icons + fetch:bridge + electron-builder --
 - `audit:deps` (`scripts/audit-deps.mjs`) spawns `npm audit` in a clean env (strips `npm_config_allow_scripts`) so it works on npm 12.
 - `fetch:bridge` (`scripts/fetch-bridge.mjs`) downloads the CLIProxyAPI release pinned in `package.json` → `config.bridge` and verifies both the archive and the extracted binary against their recorded sha256. It also writes that tag's `models.json` next to the binary — Foundry has no separate model allowlist, so a CLIProxyAPI bump is enough for new models to appear. It is **fail-closed**: a mismatch leaves nothing executable behind and exits non-zero. `resources/bridge/` is gitignored; `electron-builder.yml` ships it as `extraResources` and signs it through `mac.binaries`. `mac-package.yml` must run this before electron-builder — `mac.binaries` codesigns `Contents/Resources/bridge/cli-proxy-api`, and a missing file fails signing. `node scripts/fetch-bridge.mjs --bump` (or `--bump <version>`) rewrites the pin from a new upstream release; `.github/workflows/update-cliproxyapi.yml` does that every 12 hours and opens a PR. A checkout that skipped the fetch simply has no Bridge — the manager reports `binary_missing` and the app runs on whatever other credentials pi has.
 
-**CI** (`.github/workflows/ci.yml`, runs on `macos-26`):
+**CI** (`.github/workflows/ci.yml`):
 
-- `verify` job: typecheck, lint, format:check, check:docs, knip, test:coverage, build, audit:deps.
+- `verify` job: typecheck, lint, format:check, check:docs, knip, test:coverage, build, audit:deps (`macos-26`).
+- `android` job: runs `./gradlew :app:testDebugUnitTest` on `ubuntu-latest` (JDK 21).
 - `e2e` job: `npm run build` then `npm run test:e2e` on `macos-26`. Advisory — not a required check. Artifacts (`playwright-report/`, `test-results/`) upload on every run.
 - `actionlint` on `ubuntu-latest` (1.7.12+, required for `macos-26` label).
-- Pull requests run `verify` + `actionlint` + `e2e` unconditionally (no paths filter) so required checks are never unsatisfied. Only `verify` and `actionlint` are required.
+- Pull requests run `verify` + `android` + `actionlint` + `e2e` unconditionally (no paths filter) so required checks are never unsatisfied. Only `verify`, `android`, and `actionlint` are required.
 
 **Packaging** (`.github/workflows/mac-package.yml`, `macos-26`, `main` / `v*` / manual):
 

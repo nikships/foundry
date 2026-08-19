@@ -27,14 +27,16 @@ Optional: set `ANDROID_HOME` (or `ANDROID_SDK_ROOT`) so the Gradle wrapper can f
 
 ## Point at a desktop host
 
-Debug builds default to `FakeCompanionRepository` (`FoundryApplication.USE_FAKE_REPOSITORY = true`) so the six surfaces work without a Mac.
+Builds default to `HttpCompanionRepository` (`FoundryApplication.USE_FAKE_REPOSITORY = false`) to talk to a real Foundry desktop (FOU-83 host).
 
-To talk to a real Foundry desktop (FOU-83 host):
+To talk to a real Foundry desktop:
 
-1. Pair on the Mac (Settings → Phone) and scan the QR, or
-2. Set `FoundryApplication.USE_FAKE_REPOSITORY = false` and call `HttpCompanionRepository` with the LAN origin + bearer token from pairing.
+1. Pair on the Mac (Settings → Companion or Settings → Phone) and scan the QR, or
+2. Inject a session via `adb` (see below) or provide the LAN origin + bearer token from pairing.
 
-The HTTP client is stubbed against the FOU-83 routes (`/pair`, `/session`, `/runs`, `/events`, start/kill/interrupt/PR). Do not invent a second engine.
+For offline demos or unit tests without a Mac, set `FoundryApplication.USE_FAKE_REPOSITORY = true` to use `FakeCompanionRepository`.
+
+The HTTP client talks to the FOU-83 routes (`/pair`, `/v1/session`, `/v1/projects`, `/v1/runs`, `/v1/interrupts`, etc.). Do not invent a second engine.
 
 ## Fake paired session (acceptance)
 
