@@ -173,6 +173,10 @@ export interface CompanionHostState {
   origin: string | null;
   protocolVersion: number;
   devices: CompanionDevice[];
-  /** Why the host is not running (or refused to start), when it is not. */
+  /**
+   * Why the host is not running (or refused to start) — and, while it is
+   * running, anything surprising about the bind: a virtual-looking interface,
+   * or a port that moved and invalidated an already-paired phone's origin.
+   */
   detail?: string;
 }
