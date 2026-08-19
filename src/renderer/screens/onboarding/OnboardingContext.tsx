@@ -6,6 +6,7 @@ import { STEPS } from './shared.js';
 import { api } from '../../api.js';
 import { useConfirmAction } from '../../hooks/useConfirmAction.js';
 import { useApp } from '../../stores/app.js';
+import { useAgentModels } from '../../hooks/useAgentModels.js';
 
 export type OnboardingContextValue = {
   stepIndex: number;
@@ -81,7 +82,7 @@ export function OnboardingProvider({
   const { projects, settings, refreshAll, selectProject, selectedProjectId } = useApp();
   const [checks, setChecks] = useState<DoctorCheck[]>([]);
   const [bridge, setBridge] = useState<BridgeState | null>(null);
-  const [models, setModels] = useState<ModelInfo[]>([]);
+  const { models, refresh: refreshModels } = useAgentModels();
   const [providerBusy, setProviderBusy] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [checking, setChecking] = useState(true);
@@ -103,7 +104,9 @@ export function OnboardingProvider({
   const hasUsableModel = models.length > 0;
   const providersHint = hasUsableModel
     ? ''
-    : 'Connect a provider or store an API key — a run needs at least one usable model.';
+    : (settings?.hiddenModelIds?.length ?? 0) > 0
+      ? 'All models are hidden. Reset them in Settings → Providers.'
+      : 'Connect a provider or store an API key — a run needs at least one usable model.';
   const canLeaveDoctor = !checking && blocking.length === 0;
   const doctorHint = checking
     ? 'Still checking the environment…'
@@ -132,7 +135,6 @@ export function OnboardingProvider({
   useEffect(() => {
     const reload = (): void => {
       void api.bridge.state().then(setBridge);
-      void api.catalog.agentModels().then(setModels);
     };
     reload();
     return api.on('bridge-changed', reload);
@@ -205,7 +207,7 @@ export function OnboardingProvider({
   };
   const refreshProviders = async (): Promise<void> => {
     setBridge(await api.bridge.state());
-    setModels(await api.catalog.agentModels());
+    await refreshModels();
   };
 
   /** One busy key and one error line for every provider action on this step. */

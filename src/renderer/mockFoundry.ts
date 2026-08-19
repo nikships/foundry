@@ -23,6 +23,7 @@ import type {
   BaseSyncStatus,
 } from '@shared/types.js';
 import type { FoundryApi, SaveResult, EventPage, RunDetail } from '@shared/ipc-contract.js';
+import { withoutHiddenModels } from '@shared/model-visibility.js';
 import { BUILTIN_AGENTS } from '../main/store/builtin-agents.js';
 import { BUILTIN_PIPELINES } from '../main/store/builtin-pipelines.js';
 
@@ -176,6 +177,7 @@ function defaultMockSettings(): AppSettings {
     appearance: 'system',
     retentionDays: null,
     onboarded: true,
+    hiddenModelIds: [],
   };
 }
 
@@ -443,18 +445,22 @@ export function createMockFoundryApi(): FoundryApi {
         { token: '{{request}}', description: 'The original request.' },
         { token: '{{run_id}}', description: 'Run id.' },
       ],
-      agentModels: async (): Promise<ModelInfo[]> => [
-        {
-          id: 'bridge-claude/claude-opus-5',
-          displayName: 'Claude Opus 5',
-          provider: 'claude',
-          supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
-          defaultReasoningEffort: 'medium',
-          isCustom: true,
-          deprecated: false,
-          contextWindow: 1_000_000,
-        },
-      ],
+      agentModels: async (): Promise<ModelInfo[]> =>
+        withoutHiddenModels(
+          [
+            {
+              id: 'bridge-claude/claude-opus-5',
+              displayName: 'Claude Opus 5',
+              provider: 'claude',
+              supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+              defaultReasoningEffort: 'medium',
+              isCustom: true,
+              deprecated: false,
+              contextWindow: 1_000_000,
+            },
+          ],
+          mockSettings.hiddenModelIds,
+        ),
     },
     bridge: {
       // The web preview has no child process, so the Bridge reads as installed

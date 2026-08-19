@@ -44,7 +44,8 @@ export default function ModelPicker({
     [models, value],
   );
   const catalogEmpty = models.length === 0;
-  const unknownSelected = value !== 'inherit' && !current && !!value;
+  const unknownSelected = value !== 'inherit' && !current && Boolean(value);
+  const displayValue = unknownSelected ? (allowInherit ? 'inherit' : '') : value;
 
   const options = useMemo<DropdownOption[]>(() => {
     const next: DropdownOption[] = [];
@@ -64,28 +65,22 @@ export default function ModelPicker({
         });
       }
     }
-    if (unknownSelected) {
+    if (catalogEmpty && !allowInherit) {
       next.push({
-        value,
-        label: `${modelLabel(value)} (not in the current catalog)`,
-      });
-    }
-    if (catalogEmpty && !allowInherit && !unknownSelected) {
-      next.push({
-        value: value || '',
-        label: value ? modelLabel(value) : 'No models available',
+        value: '',
+        label: 'No models available',
         disabled: true,
       });
     }
     return next;
-  }, [allowInherit, catalogEmpty, groups, inheritLabel, unknownSelected, value]);
+  }, [allowInherit, catalogEmpty, groups, inheritLabel]);
 
   return (
     <>
       <div className={styles.picker}>
         <Dropdown
           className={styles.dropdown}
-          value={value}
+          value={displayValue}
           options={options}
           onChange={onChange}
           disabled={disabled}
@@ -110,7 +105,7 @@ export default function ModelPicker({
       )}
       {unknownSelected && !catalogEmpty && (
         <p className={styles.pickerEmpty}>
-          This model id is not in the current CLI catalog. Pick another or switch CLI.
+          This selection is no longer in the catalog. Pick another model.
         </p>
       )}
     </>

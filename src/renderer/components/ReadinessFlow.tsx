@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
-  ModelInfo,
   ReadinessAskAnswer,
   ReadinessCriterion,
   ReadinessEntry,
@@ -14,6 +13,7 @@ import { duration } from '../format.js';
 import { useEscapeToClose } from '../hooks/useEscapeToClose.js';
 import { isReadinessLive, readinessExitAction } from '../readiness-view.js';
 import { useApp } from '../stores/app.js';
+import { useAgentModels } from '../hooks/useAgentModels.js';
 import ModelPicker from './ModelPicker.js';
 import { Button } from './ui/Button.js';
 import { Dropdown } from './ui/Dropdown.js';
@@ -221,7 +221,7 @@ export default function ReadinessFlow({
   const [effort, setEffort] = useState<ReasoningEffort>(
     settings?.readinessReasoningEffort ?? 'high',
   );
-  const [models, setModels] = useState<ModelInfo[]>([]);
+  const { models, refresh: refreshModels } = useAgentModels();
   const [saveDefault, setSaveDefault] = useState(false);
   const [skipWarn, setSkipWarn] = useState(false);
   const [askDrafts, setAskDrafts] = useState<Record<number, string>>({});
@@ -247,23 +247,6 @@ export default function ReadinessFlow({
       off();
     };
   }, [projectId]);
-
-  // The picker offers what a run can actually reach rather than a free-typed
-  // model id, so a readiness evaluation cannot be started on a model whose
-  // provider has no credential.
-  useEffect(() => {
-    let cancelled = false;
-    void api.catalog.agentModels().then((next) => {
-      if (!cancelled) setModels(next);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const refreshModels = async (): Promise<void> => {
-    setModels(await api.catalog.agentModels());
-  };
 
   const phase = state?.phase ?? (inspect?.ready ? 'complete' : 'confirming');
   const evaluation = state?.evaluation;

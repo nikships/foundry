@@ -30,6 +30,7 @@ export function register(ctx: Ctx, handle: Handle): void {
         const { availableModels } = await import('../pi/catalog.js');
         return availableModels(ctx.supportDir);
       },
+      hiddenModelIds: () => ctx.settings.get().hiddenModelIds,
     }),
   );
 

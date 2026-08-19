@@ -232,3 +232,52 @@ describe('bridgePort', () => {
     );
   });
 });
+
+describe('hiddenModelIds', () => {
+  it('defaults to [] on a fresh install', () => {
+    expect(defaultSettings().hiddenModelIds).toEqual([]);
+  });
+
+  it('reads [] when the field is missing', () => {
+    const stored = { ...defaultSettings() } as Record<string, unknown>;
+    delete stored.hiddenModelIds;
+    expect(migrate(stored).hiddenModelIds).toEqual([]);
+    expect(seed(stored).get().hiddenModelIds).toEqual([]);
+  });
+
+  it('normalizes junk values to []', () => {
+    expect(
+      migrate({ ...defaultSettings(), hiddenModelIds: 'nope' as never }).hiddenModelIds,
+    ).toEqual([]);
+    expect(migrate({ ...defaultSettings(), hiddenModelIds: [1] as never }).hiddenModelIds).toEqual(
+      [],
+    );
+    expect(migrate({ ...defaultSettings(), hiddenModelIds: null as never }).hiddenModelIds).toEqual(
+      [],
+    );
+    expect(
+      migrate({ ...defaultSettings(), hiddenModelIds: ['', '   ', 'valid/model'] }).hiddenModelIds,
+    ).toEqual(['   ', 'valid/model']);
+  });
+
+  it('dedupes and filters empty strings from stored arrays', () => {
+    expect(
+      migrate({
+        ...defaultSettings(),
+        hiddenModelIds: ['openai/gpt-5', '', 'openai/gpt-5', 'anthropic/claude-3'],
+      }).hiddenModelIds,
+    ).toEqual(['openai/gpt-5', 'anthropic/claude-3']);
+  });
+
+  it('persists and round-trips via patch', () => {
+    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
+    const result = store.patch({ hiddenModelIds: ['bridge-claude/claude-opus-5'] });
+    expect(result.ok).toBe(true);
+    expect(store.get().hiddenModelIds).toEqual(['bridge-claude/claude-opus-5']);
+    const onDisk = JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf8')) as Record<
+      string,
+      unknown
+    >;
+    expect(onDisk.hiddenModelIds).toEqual(['bridge-claude/claude-opus-5']);
+  });
+});

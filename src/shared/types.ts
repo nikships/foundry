@@ -290,6 +290,11 @@ export interface AppSettings {
   appearance: 'system' | 'dark';
   retentionDays: number | null;
   onboarded: boolean;
+  /**
+   * Model IDs the operator chose to hide from choosers. App-scoped filter on
+   * catalog reads.
+   */
+  hiddenModelIds: string[];
 }
 
 export type MergePolicy = 'auto' | 'ask' | 'never';

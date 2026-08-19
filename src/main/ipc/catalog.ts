@@ -1,10 +1,11 @@
 import { IPC } from '@shared/ipc-contract.js';
+import { withoutHiddenModels } from '@shared/model-visibility.js';
 import { GATE_DESCRIPTIONS } from '../engine/gates.js';
 import { TEMPLATE_VARIABLES } from '../engine/prompts.js';
 import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
 
-type Ctx = Pick<AppContext, 'supportDir'>;
+type Ctx = Pick<AppContext, 'supportDir' | 'settings'>;
 
 export function register(ctx: Ctx, handle: Handle): void {
   handle(IPC.catalogGates, () =>
@@ -16,7 +17,8 @@ export function register(ctx: Ctx, handle: Handle): void {
     // renderer that never opens the model picker should not pay for it.
     const { availableModels } = await import('../pi/catalog.js');
     try {
-      return await availableModels(ctx.supportDir);
+      const models = await availableModels(ctx.supportDir);
+      return withoutHiddenModels(models, ctx.settings.get().hiddenModelIds);
     } catch {
       // An unbuildable runtime (a half-written catalog, no credentials at all)
       // is an empty picker, not a failed call: the pane says "no models" rather

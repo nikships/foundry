@@ -529,3 +529,63 @@
   list-style: none;
   border: 1px solid color-mix(in srgb, var(--red) 18%, transparent);
 }
+
+/* model hide rows */
+.modelHideList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  margin-top: var(--s3);
+}
+.modelHideGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+.modelHideGroupHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  padding: 0 var(--s1);
+}
+.modelHideRows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+.modelHideRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  background: var(--bg-panel);
+  border: 1px solid var(--line-faint);
+  border-radius: var(--r-sm);
+}
+.modelHideInfo {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+  overflow: hidden;
+}
+.modelHideName {
+  font-size: var(--text-sm);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.modelHideContext {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  flex: none;
+}

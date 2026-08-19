@@ -52,6 +52,7 @@ export const appSettingsSchema = z.object({
   appearance: z.enum(['system', 'dark']),
   retentionDays: z.number().int().min(1).max(3650).nullable(),
   onboarded: z.boolean(),
+  hiddenModelIds: z.array(z.string().min(1)),
 });
 
 export function defaultSettings(): AppSettings {
@@ -77,6 +78,7 @@ export function defaultSettings(): AppSettings {
     appearance: 'system',
     retentionDays: null,
     onboarded: false,
+    hiddenModelIds: [],
   };
 }
 
@@ -121,6 +123,15 @@ export function migrate(raw: unknown): AppSettings {
     clamp(merged.rewindAfterCorrections, base.rewindAfterCorrections, [0, 20]),
   );
   merged.bridgePort = Math.round(clamp(merged.bridgePort, base.bridgePort, BRIDGE_PORT_BAND));
+  if (!Array.isArray(merged.hiddenModelIds)) {
+    merged.hiddenModelIds = [];
+  } else {
+    merged.hiddenModelIds = [
+      ...new Set(
+        merged.hiddenModelIds.filter((id): id is string => typeof id === 'string' && id.length > 0),
+      ),
+    ];
+  }
   return merged;
 }
 

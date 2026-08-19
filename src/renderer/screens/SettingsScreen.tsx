@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   AppSettings,
   DoctorCheck,
@@ -17,7 +17,9 @@ import {
 import type { CompanionHostState, CompanionPairingPayload } from '@shared/companion.js';
 import { api, plain } from '../api.js';
 import { isKnownPrWriter, prWriterOptions } from '../pr-draft.js';
+import { modelLabel } from '../format.js';
 import { useApp } from '../stores/app.js';
+import { useAgentModels } from '../hooks/useAgentModels.js';
 import ModelPicker from '../components/ModelPicker.js';
 import { ProviderIcon } from '../components/BrandIcon.js';
 import DoctorList from '../components/DoctorList.js';
@@ -172,7 +174,8 @@ export default function SettingsScreen({
   const { settings, project, projects, agents, refreshAll, patchSettings, selectProject } =
     useApp();
   const [pane, setPane] = useState<Pane>((initialPane as Pane) ?? 'general');
-  const [models, setModels] = useState<ModelInfo[]>([]);
+  const { models, refresh: refreshModels } = useAgentModels();
+  const [modelFilter, setModelFilter] = useState('');
   const [checks, setChecks] = useState<DoctorCheck[]>([]);
   const [projectChecks, setProjectChecks] = useState<DoctorCheck[]>([]);
   const [orphans, setOrphans] = useState<OrphanWorktree[]>([]);
@@ -213,10 +216,6 @@ export default function SettingsScreen({
     });
   }, []);
 
-  useEffect(() => {
-    void api.catalog.agentModels().then(setModels);
-  }, []);
-
   /**
    * A login finishes in a browser long after `connect` returned, so the pane
    * re-reads its whole world on `bridge-changed` rather than trusting the
@@ -227,7 +226,6 @@ export default function SettingsScreen({
     const reload = (): void => {
       void api.bridge.state().then(setBridge);
       void api.bridge.storedKeys().then(setStoredKeys);
-      void api.catalog.agentModels().then(setModels);
     };
     reload();
     return api.on('bridge-changed', reload);
@@ -397,9 +395,6 @@ export default function SettingsScreen({
       }
     });
   };
-  const refreshModels = async (): Promise<void> => {
-    setModels(await api.catalog.agentModels());
-  };
   const loadOrphans = async (): Promise<void> =>
     setOrphans(await api.maintenance.orphanWorktrees());
   const removeOrphan = useConfirmAction(
@@ -462,7 +457,7 @@ export default function SettingsScreen({
       setProviderBusy(null);
       setBridge(await api.bridge.state());
       setStoredKeys(await api.bridge.storedKeys());
-      setModels(await api.catalog.agentModels());
+      await refreshModels();
       void api.doctor.run().then(setChecks);
     }
   };
@@ -557,6 +552,45 @@ export default function SettingsScreen({
   useEffect(() => {
     if (pane === 'maintenance') void loadOrphans();
   }, [pane]);
+
+  const hiddenCount = settings?.hiddenModelIds?.length ?? 0;
+
+  const resetHiddenModels = useConfirmAction(
+    'Show all hidden models again? They will reappear in every picker.',
+    async (): Promise<void> => {
+      await patchSettings({ hiddenModelIds: [] });
+      await refreshModels();
+    },
+    { confirmLabel: 'Reset' },
+  );
+
+  const hideModel = async (modelId: string): Promise<void> => {
+    const current = settings?.hiddenModelIds ?? [];
+    const next = [...new Set([...current, modelId])];
+    await patchSettings({ hiddenModelIds: next });
+    await refreshModels();
+  };
+
+  const filteredModels = useMemo(() => {
+    const q = modelFilter.trim().toLowerCase();
+    if (!q) return models;
+    return models.filter(
+      (m) =>
+        m.displayName.toLowerCase().includes(q) ||
+        m.id.toLowerCase().includes(q) ||
+        m.provider.toLowerCase().includes(q),
+    );
+  }, [models, modelFilter]);
+
+  const visibleGroups = useMemo(() => {
+    const map = new Map<string, ModelInfo[]>();
+    for (const model of filteredModels) {
+      const list = map.get(model.provider) ?? [];
+      list.push(model);
+      map.set(model.provider, list);
+    }
+    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [filteredModels]);
 
   if (!settings) return <div className={styles.settingsScreen} />;
 
@@ -1227,18 +1261,81 @@ export default function SettingsScreen({
                 </Section>
 
                 <Section label="Models" note="What every picker in the app will offer.">
+                  <p className={styles.settingsLead}>
+                    Hide a model to remove it from every picker. Hidden models are gone until you
+                    reset.
+                  </p>
                   <div className={styles.settingsSubrow}>
                     <p className={styles.settingsStatic} data-testid="providers-model-count">
                       {models.length
-                        ? `${models.length} model${models.length === 1 ? '' : 's'} reachable`
-                        : 'No models reachable yet — connect a provider or store a key above.'}
+                        ? `${models.length} model${models.length === 1 ? '' : 's'} reachable${
+                            hiddenCount > 0 ? ` · ${hiddenCount} hidden` : ''
+                          }`
+                        : hiddenCount > 0
+                          ? 'All models are hidden. Reset to show them again.'
+                          : 'No models reachable yet — connect a provider or store a key above.'}
                     </p>
                     <div className={styles.settingsBtnrow}>
+                      <Button
+                        size="sm"
+                        disabled={hiddenCount === 0}
+                        data-testid="reset-hidden-models"
+                        onClick={() => void resetHiddenModels()}
+                      >
+                        Reset hidden models
+                      </Button>
                       <Button size="sm" onClick={() => void refreshModels()}>
                         Refresh models
                       </Button>
                     </div>
                   </div>
+                  {models.length > 0 && (
+                    <>
+                      <TextInput
+                        value={modelFilter}
+                        placeholder="Filter models…"
+                        onChange={(e) => setModelFilter(e.target.value)}
+                      />
+                      {filteredModels.length === 0 ? (
+                        <p className={styles.hint}>No reachable models match that filter.</p>
+                      ) : (
+                        <div className={styles.modelHideList}>
+                          {visibleGroups.map(([provider, groupModels]) => (
+                            <div key={provider} className={styles.modelHideGroup}>
+                              <div className={styles.modelHideGroupHeader}>
+                                <ProviderIcon provider={provider} size={14} />
+                                <span>{provider}</span>
+                              </div>
+                              <div className={styles.modelHideRows}>
+                                {groupModels.map((m) => (
+                                  <div key={m.id} className={styles.modelHideRow}>
+                                    <div className={styles.modelHideInfo}>
+                                      <ProviderIcon provider={m.provider} size={16} />
+                                      <span className={styles.modelHideName}>
+                                        {m.displayName || modelLabel(m.id)}
+                                      </span>
+                                      {m.contextWindow ? (
+                                        <span className={styles.modelHideContext}>
+                                          {Math.round(m.contextWindow / 1000)}k context
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                    <Button
+                                      size="sm"
+                                      data-testid={`hide-model-${m.id}`}
+                                      onClick={() => void hideModel(m.id)}
+                                    >
+                                      Hide
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
                 </Section>
 
                 <Section label="Checks" note="Re-run after connecting a provider or storing a key.">

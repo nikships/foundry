@@ -149,6 +149,38 @@ describe('the usable-models check', () => {
     expect(models.detail).toContain('Model A');
   });
 
+  it('stays ok: true and does not name a hidden model when all models are hidden', async () => {
+    const checks = await checkProviders(
+      deps({
+        agentModels: () =>
+          Promise.resolve([model('anthropic/a', 'Model A'), model('openai/b', 'Model B')]),
+        hiddenModelIds: () => ['anthropic/a', 'openai/b'],
+      }),
+    );
+    const models = find(checks, 'agent-models')!;
+    expect(models.ok).toBe(true);
+    expect(models.blocking).toBe(false);
+    expect(models.detail).toBe('2 models available');
+    expect(models.detail).not.toContain('Model A');
+    expect(models.detail).not.toContain('Model B');
+  });
+
+  it('names the first visible model when some are hidden', async () => {
+    const checks = await checkProviders(
+      deps({
+        agentModels: () =>
+          Promise.resolve([model('anthropic/a', 'Model A'), model('openai/b', 'Model B')]),
+        hiddenModelIds: () => ['anthropic/a'],
+      }),
+    );
+    const models = find(checks, 'agent-models')!;
+    expect(models.ok).toBe(true);
+    expect(models.blocking).toBe(false);
+    expect(models.detail).toContain('2 models');
+    expect(models.detail).toContain('Model B');
+    expect(models.detail).not.toContain('Model A');
+  });
+
   // A catalog that throws is indistinguishable from an empty one for the
   // operator, but the reason it threw is the only actionable part.
   it('reports why the catalog could not be read, and still blocks', async () => {

@@ -8,6 +8,7 @@ import { release } from 'node:os';
 import { join } from 'node:path';
 import type { DoctorCheck, ModelInfo, ProjectDef } from '@shared/types.js';
 import { BRIDGE_UNAVAILABLE_COPY, type BridgeUnavailable } from '@shared/ipc-contract.js';
+import { withoutHiddenModels } from '@shared/model-visibility.js';
 import type { BridgeProviderStatus } from '../bridge/auth.js';
 import { currentBranch, isRepo, refExists, listWorktrees } from '../engine/git.js';
 import { runCommand } from '../engine/commands.js';
@@ -35,6 +36,8 @@ export interface ProviderDoctorDeps {
   bridgeProviders: () => BridgeProviderStatus[];
   /** Models an agent phase can actually run on right now. */
   agentModels: () => Promise<ModelInfo[]>;
+  /** Hidden model IDs configured in settings. */
+  hiddenModelIds?: () => string[];
 }
 
 /**
@@ -67,14 +70,24 @@ export async function checkProviders(deps: ProviderDoctorDeps): Promise<DoctorCh
   } catch (error) {
     modelsDetail = `the model catalog could not be read: ${error instanceof Error ? error.message : String(error)}`;
   }
+  const hidden = deps.hiddenModelIds ? deps.hiddenModelIds() : [];
+  const visible = withoutHiddenModels(models, hidden);
+  let detail = '';
+  if (models.length > 0) {
+    detail =
+      visible.length > 0
+        ? `${models.length} model${models.length === 1 ? '' : 's'} available, including ${visible[0]!.displayName}`
+        : `${models.length} model${models.length === 1 ? '' : 's'} available`;
+  } else {
+    detail =
+      modelsDetail ||
+      'no model has a working credential — connect a provider or add an API key before starting a run';
+  }
   checks.push({
     id: 'agent-models',
     label: 'Usable models',
     ok: models.length > 0,
-    detail: models.length
-      ? `${models.length} model${models.length === 1 ? '' : 's'} available, including ${models[0]!.displayName}`
-      : modelsDetail ||
-        'no model has a working credential — connect a provider or add an API key before starting a run',
+    detail,
     blocking: models.length === 0,
     fix: models.length ? undefined : PROVIDERS_PANE,
   });

@@ -25,6 +25,7 @@ import { defaultEmblemFor, isDefaultMark, markLabel } from '../data/emblems.js';
 import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
 import { useTablistNav } from '../hooks/useTablistNav.js';
+import { useAgentModels } from '../hooks/useAgentModels.js';
 import { modelLabel } from '../format.js';
 import { draftSyncAction } from './roster-draft.js';
 import styles from './RosterScreen.module.css';
@@ -63,7 +64,7 @@ export default function RosterScreen({
   const [renameError, setRenameError] = useState('');
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
   const [actionError, setActionError] = useState('');
-  const [models, setModels] = useState<ModelInfo[]>([]);
+  const { models, refresh: refreshModels } = useAgentModels();
   const [showPreview, setShowPreview] = useState(false);
   const [showIconPicker, setShowIconPicker] = useState(false);
   const agentsRef = useRef<AgentDef[]>(agents);
@@ -171,10 +172,6 @@ export default function RosterScreen({
       cancelled = true;
     };
   }, [draft]);
-
-  useEffect(() => {
-    void api.catalog.agentModels().then(setModels);
-  }, []);
 
   // Live auto-save: every valid edit persists shortly after typing stops.
   // Visual truth is the source of truth. `flush` is called on switch/rename,
@@ -332,7 +329,9 @@ export default function RosterScreen({
                     <span className={styles.rosterCellModel}>
                       {isActive && <span className={styles.rosterCellDot} aria-hidden />}
                       <ProviderIcon provider={providerFor(agent.model, models)} size={11} />
-                      {agent.model === 'inherit' ? 'inherit' : modelLabel(agent.model)}
+                      {agent.model === 'inherit' || !models.some((m) => m.id === agent.model)
+                        ? 'inherit'
+                        : modelLabel(agent.model)}
                     </span>
                   </span>
                   {isActive && <span className={styles.rosterCellUnderline} aria-hidden />}
@@ -388,8 +387,10 @@ export default function RosterScreen({
                       </h1>
                       <span className={styles.rosterHeadMeta}>
                         <ProviderIcon provider={providerFor(draft.model, models)} size={13} />
-                        {draft.model === 'inherit' ? 'inherit' : modelLabel(draft.model)} ·{' '}
-                        {draft.envelope}
+                        {draft.model === 'inherit' || !models.some((m) => m.id === draft.model)
+                          ? 'inherit'
+                          : modelLabel(draft.model)}{' '}
+                        · {draft.envelope}
                       </span>
                     </div>
                     <p className={styles.rosterHeadSub}>
@@ -621,7 +622,7 @@ export default function RosterScreen({
                       disabled={!!draft.inheritDefaults}
                       emptyHint="No models are reachable. Connect a provider under Settings → Providers, or use Inherit."
                       onChange={(value) => setDraft({ ...draft, model: value })}
-                      onRefresh={() => void api.catalog.agentModels().then(setModels)}
+                      onRefresh={() => void refreshModels()}
                     />
                     <span className={styles.hint}>
                       {draft.inheritDefaults

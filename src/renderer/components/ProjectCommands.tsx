@@ -4,9 +4,10 @@ import type {
   DetectionProposal,
   DetectionState,
 } from '@shared/ipc-contract.js';
-import type { ModelInfo, ProjectCommand, ProjectDef } from '@shared/types.js';
+import type { ProjectCommand, ProjectDef } from '@shared/types.js';
 import { api } from '../api.js';
 import { useApp } from '../stores/app.js';
+import { useAgentModels } from '../hooks/useAgentModels.js';
 import { duration } from '../format.js';
 import ModelPicker from './ModelPicker.js';
 import DetectionPanel from './DetectionPanel.js';
@@ -39,20 +40,13 @@ export default function ProjectCommands({
   const [starting, setStarting] = useState(false);
   const [detectError, setDetectError] = useState('');
   const [showRaw, setShowRaw] = useState(false);
-  const [models, setModels] = useState<ModelInfo[]>([]);
+  const { models } = useAgentModels();
 
   // Which detection this component is showing. A stale session's progress must
   // not paint over a newer one the user just started.
   const detectionIdRef = useRef<string>('');
 
   const detectModel = settings?.detectModel ?? 'inherit';
-
-  useEffect(() => {
-    void api.catalog
-      .agentModels()
-      .then(setModels)
-      .catch(() => setModels([]));
-  }, []);
 
   useEffect(() => {
     return api.on('detection-progress', (data) => {
