@@ -21,14 +21,21 @@ import com.foundry.companion.ui.screens.pair.PairScreen
 import com.foundry.companion.ui.screens.run.RunDetailScreen
 import com.foundry.companion.ui.screens.runs.RunsScreen
 import com.foundry.companion.viewmodel.CompanionViewModel
-import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 @Composable
 fun FoundryNavHost(
     viewModel: CompanionViewModel,
     modifier: Modifier = Modifier,
     sessionManager: SessionManager? = null,
-    deepLinkRoute: SharedFlow<String>? = null,
+    /**
+     * Held state rather than an event stream: a notification tap on a killed
+     * process resolves the route before this composition exists, and a hot
+     * emission at that moment lands on nobody.
+     */
+    deepLinkRoute: StateFlow<String?>? = null,
+    onDeepLinkHandled: () -> Unit = {},
     navController: NavHostController = rememberNavController()
 ) {
     val context = LocalContext.current
@@ -68,9 +75,18 @@ fun FoundryNavHost(
         }
     }
 
+    val pendingDeepLink by remember(deepLinkRoute) { deepLinkRoute ?: MutableStateFlow(null) }
+        .collectAsState()
+
     // Restore last active route across app restart / process death if session is valid
     var hasRestoredLastRoute by remember { mutableStateOf(false) }
-    LaunchedEffect(isPaired, hasRestoredLastRoute) {
+    LaunchedEffect(isPaired, hasRestoredLastRoute, pendingDeepLink) {
+        // A notification tap names the destination outright, so restoring the
+        // route the operator happened to leave open would only fight it.
+        if (pendingDeepLink != null) {
+            hasRestoredLastRoute = true
+            return@LaunchedEffect
+        }
         if (isPaired && !hasRestoredLastRoute) {
             hasRestoredLastRoute = true
             val lastRoute = sessionManager?.getLastActiveRoute()
@@ -84,21 +100,28 @@ fun FoundryNavHost(
         }
     }
 
-    // Handle incoming deep link route (from push notifications / intents).
-    // Home is popped to rather than stacked on, so Back from a notification tap
-    // lands on Home instead of walking a pile of previously opened runs.
-    LaunchedEffect(deepLinkRoute) {
-        deepLinkRoute?.collect { route ->
-            if (route.isBlank()) return@collect
-            try {
-                navController.navigate(route) {
-                    popUpTo(NavRoute.Runs.route)
-                    launchSingleTop = true
+    // Handle incoming deep link route (from notifications / intents). Home is
+    // popped to rather than stacked on, so Back from a notification tap lands on
+    // Home instead of walking a pile of previously opened runs — and when the
+    // process was killed there is no Home to pop to, so one is pushed first.
+    LaunchedEffect(pendingDeepLink, isPaired) {
+        val route = pendingDeepLink?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        if (!isPaired) return@LaunchedEffect
+        try {
+            val stackRoutes = navController.currentBackStack.value.mapNotNull { it.destination.route }
+            if (needsSynthesizedHome(stackRoutes)) {
+                navController.navigate(NavRoute.Runs.route) {
+                    popUpTo(0) { inclusive = true }
                 }
-            } catch (_: Exception) {
-                // Ignore navigation failure
             }
+            navController.navigate(route) {
+                popUpTo(NavRoute.Runs.route)
+                launchSingleTop = true
+            }
+        } catch (_: Exception) {
+            // Ignore navigation failure
         }
+        onDeepLinkHandled()
     }
 
     // React to pairing state changes

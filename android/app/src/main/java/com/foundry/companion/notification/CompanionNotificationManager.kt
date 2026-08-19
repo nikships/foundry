@@ -20,7 +20,13 @@ import com.foundry.companion.data.model.RunRow
 interface CompanionNotificationManager {
     fun hasNotificationPermission(): Boolean
     fun postRunSettledNotification(run: RunRow)
-    fun postInterruptNotification(interrupt: PendingInterrupt)
+
+    /**
+     * [projectId] is the run's project when the caller knows it. The host serves
+     * interrupts without one, so it is joined in from the runs list and may be
+     * blank; a blank value simply leaves the tap on whatever project is selected.
+     */
+    fun postInterruptNotification(interrupt: PendingInterrupt, projectId: String = "")
 }
 
 class FoundryNotificationManager(
@@ -103,6 +109,7 @@ class FoundryNotificationManager(
         ).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("runId", run.runId)
+            if (run.projectId.isNotBlank()) putExtra("projectId", run.projectId)
         }
 
         val pendingIntent = PendingIntent.getActivity(
@@ -138,7 +145,7 @@ class FoundryNotificationManager(
         }
     }
 
-    override fun postInterruptNotification(interrupt: PendingInterrupt) {
+    override fun postInterruptNotification(interrupt: PendingInterrupt, projectId: String) {
         if (!hasNotificationPermission()) return
 
         val pipelineName = interrupt.displayPipeline
@@ -148,13 +155,14 @@ class FoundryNotificationManager(
 
         val intent = Intent(
             Intent.ACTION_VIEW,
-            Uri.parse("foundry://run/${interrupt.runId}"),
+            Uri.parse("foundry://run/${interrupt.runId}?interrupt=${interrupt.interruptId}"),
             context,
             MainActivity::class.java
         ).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("runId", interrupt.runId)
             putExtra("interruptId", interrupt.interruptId)
+            if (projectId.isNotBlank()) putExtra("projectId", projectId)
         }
 
         val pendingIntent = PendingIntent.getActivity(

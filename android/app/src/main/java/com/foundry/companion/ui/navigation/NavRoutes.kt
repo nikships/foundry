@@ -24,3 +24,11 @@ sealed class NavRoute(val route: String) {
         }
     }
 }
+
+/**
+ * A notification tap on a killed process lands the operator on Run with nothing
+ * beneath it, so Back would leave the app. Home is pushed underneath first
+ * whenever the stack does not already carry one.
+ */
+fun needsSynthesizedHome(backStackRoutes: List<String>): Boolean =
+    NavRoute.Runs.route !in backStackRoutes

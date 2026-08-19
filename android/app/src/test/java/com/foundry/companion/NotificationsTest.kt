@@ -8,6 +8,7 @@ import com.foundry.companion.data.model.RunRow
 import com.foundry.companion.data.repository.FakeCompanionRepository
 import com.foundry.companion.data.session.SessionManager
 import com.foundry.companion.notification.CompanionNotificationManager
+import com.foundry.companion.notification.CompanionNotifier
 import com.foundry.companion.notification.FoundryNotificationManager
 import com.foundry.companion.viewmodel.CompanionViewModel
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +27,7 @@ import org.robolectric.annotation.Config
 class TestNotificationManager : CompanionNotificationManager {
     val postedSettledRuns = mutableListOf<RunRow>()
     val postedInterrupts = mutableListOf<PendingInterrupt>()
+    val interruptProjectIds = mutableListOf<String>()
     var permissionGranted = true
 
     override fun hasNotificationPermission(): Boolean = permissionGranted
@@ -34,13 +36,15 @@ class TestNotificationManager : CompanionNotificationManager {
         postedSettledRuns.add(run)
     }
 
-    override fun postInterruptNotification(interrupt: PendingInterrupt) {
+    override fun postInterruptNotification(interrupt: PendingInterrupt, projectId: String) {
         postedInterrupts.add(interrupt)
+        interruptProjectIds.add(projectId)
     }
 
     fun clear() {
         postedSettledRuns.clear()
         postedInterrupts.clear()
+        interruptProjectIds.clear()
     }
 }
 
@@ -53,6 +57,7 @@ class NotificationsTest {
     private lateinit var context: Context
     private lateinit var sessionManager: SessionManager
     private lateinit var testNotificationManager: TestNotificationManager
+    private lateinit var notifier: CompanionNotifier
     private lateinit var repository: FakeCompanionRepository
 
     @Before
@@ -63,6 +68,7 @@ class NotificationsTest {
         sessionManager.clearSession()
 
         testNotificationManager = TestNotificationManager()
+        notifier = CompanionNotifier(testNotificationManager, sessionManager)
         repository = FakeCompanionRepository(initialPaired = true)
     }
 
@@ -101,7 +107,7 @@ class NotificationsTest {
         val vm = CompanionViewModel(
             repository = repository,
             sessionManager = sessionManager,
-            notificationManager = testNotificationManager,
+            notifier = notifier,
             enablePolling = false
         )
         testDispatcher.scheduler.advanceUntilIdle()
@@ -116,7 +122,7 @@ class NotificationsTest {
         val vm = CompanionViewModel(
             repository = repository,
             sessionManager = sessionManager,
-            notificationManager = testNotificationManager,
+            notifier = notifier,
             enablePolling = false
         )
         testDispatcher.scheduler.advanceUntilIdle()
@@ -146,7 +152,7 @@ class NotificationsTest {
         val vm = CompanionViewModel(
             repository = repository,
             sessionManager = sessionManager,
-            notificationManager = testNotificationManager,
+            notifier = notifier,
             enablePolling = false
         )
         testDispatcher.scheduler.advanceUntilIdle()
@@ -176,7 +182,7 @@ class NotificationsTest {
         val vm = CompanionViewModel(
             repository = repository,
             sessionManager = sessionManager,
-            notificationManager = testNotificationManager,
+            notifier = notifier,
             enablePolling = false
         )
         testDispatcher.scheduler.advanceUntilIdle()
@@ -205,7 +211,7 @@ class NotificationsTest {
         val vm = CompanionViewModel(
             repository = repository,
             sessionManager = sessionManager,
-            notificationManager = testNotificationManager,
+            notifier = notifier,
             enablePolling = false
         )
         testDispatcher.scheduler.advanceUntilIdle()

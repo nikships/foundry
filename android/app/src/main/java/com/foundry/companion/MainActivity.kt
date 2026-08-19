@@ -17,21 +17,29 @@ import com.foundry.companion.ui.navigation.FoundryNavHost
 import com.foundry.companion.ui.navigation.resolveDeepLink
 import com.foundry.companion.ui.theme.FoundryTheme
 import com.foundry.companion.viewmodel.CompanionViewModel
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 
 class MainActivity : ComponentActivity() {
 
     private val app by lazy { application as FoundryApplication }
     private val viewModel: CompanionViewModel by viewModels {
-        CompanionViewModel.provideFactory(app.repository, app.sessionManager, app.notificationManager)
+        CompanionViewModel.provideFactory(app.repository, app.sessionManager, app.notifier)
     }
 
-    private val deepLinkRoute = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    /**
+     * Held rather than emitted, because a cold start resolves the link in
+     * `onCreate` — before the nav host exists to receive it. A hot-buffered
+     * emission would be dropped and the tap would land on Home.
+     */
+    private val pendingDeepLinkRoute = MutableStateFlow<String?>(null)
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { _ ->
+        // Asked once, recorded whatever the answer was: a denied prompt must not
+        // come back on every launch.
         app.sessionManager.setPromptedNotificationPermission(true)
+        app.startWatchIfAllowed()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -66,10 +74,18 @@ class MainActivity : ComponentActivity() {
                 FoundryNavHost(
                     viewModel = viewModel,
                     sessionManager = app.sessionManager,
-                    deepLinkRoute = deepLinkRoute
+                    deepLinkRoute = pendingDeepLinkRoute,
+                    onDeepLinkHandled = { pendingDeepLinkRoute.value = null }
                 )
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // A foreground start is always allowed, so this is the reliable moment to
+        // (re)claim the watcher after a permission grant or a system-killed service.
+        app.startWatchIfAllowed()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -86,11 +102,16 @@ class MainActivity : ComponentActivity() {
             uriRunId = data?.pathSegments?.firstOrNull(),
             uriInterruptId = data?.getQueryParameter("interrupt"),
             extraRunId = intent.getStringExtra("runId"),
-            extraInterruptId = intent.getStringExtra("interruptId")
+            extraInterruptId = intent.getStringExtra("interruptId"),
+            uriProjectId = data?.getQueryParameter("project"),
+            extraProjectId = intent.getStringExtra("projectId")
         ) ?: return
 
+        val projectId = target.projectId
+        if (!projectId.isNullOrBlank()) {
+            viewModel.selectProject(projectId)
+        }
         viewModel.loadRunDetail(target.runId)
-        deepLinkRoute.tryEmit(target.route)
+        pendingDeepLinkRoute.value = target.route
     }
 }
-

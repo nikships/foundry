@@ -4,8 +4,16 @@ package com.foundry.companion.ui.navigation
  * Where a launch intent should land. Interrupt notifications carry the
  * interrupt they were posted for, so a tap opens that sheet rather than only
  * dropping the operator on the run and leaving them to find the strip.
+ *
+ * [projectId] is the run's project when the notification knew it. A cold start
+ * has no selected project yet, so without it the run detail would be fetched
+ * against whichever project happens to sort first.
  */
-data class DeepLinkTarget(val runId: String, val interruptId: String?) {
+data class DeepLinkTarget(
+    val runId: String,
+    val interruptId: String?,
+    val projectId: String? = null
+) {
     val route: String get() = NavRoute.RunDetail.createRoute(runId, interruptId)
 }
 
@@ -19,7 +27,9 @@ fun resolveDeepLink(
     uriRunId: String?,
     uriInterruptId: String?,
     extraRunId: String?,
-    extraInterruptId: String?
+    extraInterruptId: String?,
+    uriProjectId: String? = null,
+    extraProjectId: String? = null
 ): DeepLinkTarget? {
     val interruptId = extraInterruptId?.takeIf { it.isNotBlank() }
         ?: uriInterruptId?.takeIf { it.isNotBlank() }
@@ -28,5 +38,8 @@ fun resolveDeepLink(
         ?: uriRunId?.takeIf { it.isNotBlank() }
         ?: return null
 
-    return DeepLinkTarget(runId, interruptId)
+    val projectId = extraProjectId?.takeIf { it.isNotBlank() }
+        ?: uriProjectId?.takeIf { it.isNotBlank() }
+
+    return DeepLinkTarget(runId, interruptId, projectId)
 }
