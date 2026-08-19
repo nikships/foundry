@@ -207,6 +207,21 @@ class HttpCompanionRepository(
         }
     }
 
+    override suspend fun getInterrupts(): Result<List<PendingInterrupt>> = withContext(Dispatchers.IO) {
+        try {
+            val request = authenticatedRequestBuilder("/v1/interrupts").get().build()
+            val response = client.newCall(request).execute()
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
+            val interrupts = json.decodeFromString<List<PendingInterrupt>>(body)
+            _pendingInterrupts.value = interrupts
+            Result.success(interrupts)
+        } catch (e: Exception) {
+            handleNetworkError(e)
+            Result.failure(e)
+        }
+    }
+
     override suspend fun startRun(input: StartRunInput): Result<CompanionStartResult> = withContext(Dispatchers.IO) {
         try {
             val reqBody = json.encodeToString(StartRunInput.serializer(), input).toRequestBody(jsonMediaType)

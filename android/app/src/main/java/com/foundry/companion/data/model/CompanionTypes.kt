@@ -124,7 +124,8 @@ data class GateResult(
 @Serializable
 data class RunDetail(
     val run: RunRow,
-    val phases: List<PhaseRunSummary> = emptyList()
+    val phases: List<PhaseRunSummary> = emptyList(),
+    val live: Boolean = false
 )
 
 @Serializable
@@ -142,20 +143,36 @@ data class TranscriptEvent(
 )
 
 @Serializable
+data class InterruptOption(
+    val id: String = "",
+    val label: String = "",
+    val kind: String = "approve" // "approve" | "reject" | "edit"
+)
+
+@Serializable
 data class PendingInterrupt(
     val interruptId: String,
     val runId: String,
-    val pipelineName: String,
-    val phaseName: String,
-    val question: String,
+    val phaseId: String? = null,
+    val kind: String = "engineer",
+    val title: String = "",
+    val body: String = "",
+    val options: List<InterruptOption> = emptyList(),
+    val createdAt: String = "",
+    val pipelineName: String = "",
+    val phaseName: String = "",
+    val question: String = "",
     val notes: String? = null
-)
+) {
+    val displayQuestion: String get() = body.ifBlank { question.ifBlank { title } }
+    val displayPipeline: String get() = pipelineName.ifBlank { "Engineer Phase" }
+}
 
 @Serializable
 data class InterruptAnswer(
     val interruptId: String,
-    val approved: Boolean,
-    val notes: String? = null
+    val decision: String, // "approve" | "reject"
+    val text: String? = null
 )
 
 @Serializable

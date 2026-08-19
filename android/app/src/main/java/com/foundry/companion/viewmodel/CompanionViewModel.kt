@@ -118,6 +118,11 @@ class CompanionViewModel(
                 delay(2000L)
                 if (_uiState.value.connectionStatus is ConnectionStatus.Connected) {
                     loadRuns(projectId)
+                    loadPendingInterrupts()
+                    val activeRun = _uiState.value.currentRunDetail?.run
+                    if (activeRun != null && activeRun.isRunning) {
+                        loadRunDetail(activeRun.runId)
+                    }
                 }
             }
         }
@@ -126,6 +131,14 @@ class CompanionViewModel(
     fun stopPolling() {
         pollingJob?.cancel()
         pollingJob = null
+    }
+
+    fun loadPendingInterrupts() {
+        viewModelScope.launch {
+            repository.getInterrupts().onSuccess { interrupts ->
+                _uiState.update { it.copy(pendingInterrupts = interrupts) }
+            }
+        }
     }
 
     fun loadRuns(projectId: String = _uiState.value.selectedProjectId) {
@@ -208,19 +221,32 @@ class CompanionViewModel(
         }
     }
 
-    fun killRun(runId: String) {
+    fun killRun(runId: String, onResult: ((Boolean) -> Unit)? = null) {
         val projectId = _uiState.value.selectedProjectId
         viewModelScope.launch {
-            repository.killRun(projectId, runId).onSuccess {
-                loadRunDetail(runId)
-                loadRuns(projectId)
+            repository.killRun(projectId, runId).onSuccess { res ->
+                if (res.ok) {
+                    loadRunDetail(runId)
+                    loadRuns(projectId)
+                }
+                onResult?.invoke(res.ok)
+            }.onFailure { err ->
+                _uiState.update { it.copy(errorMessage = err.message ?: "Failed to kill run") }
+                onResult?.invoke(false)
             }
         }
     }
 
     fun answerInterrupt(interruptId: String, approved: Boolean, notes: String?) {
+        val decision = if (approved) "approve" else "reject"
         viewModelScope.launch {
-            repository.answerInterrupt(InterruptAnswer(interruptId, approved, notes))
+            repository.answerInterrupt(InterruptAnswer(interruptId = interruptId, decision = decision, text = notes)).onSuccess {
+                loadPendingInterrupts()
+                val currentRun = _uiState.value.currentRunDetail?.run
+                if (currentRun != null) {
+                    loadRunDetail(currentRun.runId)
+                }
+            }
         }
     }
 

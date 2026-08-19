@@ -247,4 +247,68 @@ class CompanionRepositoryTest {
         val updatedDetail = fakeRepository.getRunDetail(project.id, runId).getOrThrow()
         assertEquals("killed", updatedDetail.run.status)
     }
+
+    @Test
+    fun testHttpKillRun() = runBlocking {
+        val hostOrigin = server.url("").toString().removeSuffix("/")
+        httpRepository.injectFakeSession(
+            PairedSession(
+                token = "test_token",
+                desktopId = "desk_01",
+                desktopName = "Mac",
+                hostOrigin = hostOrigin,
+                pairedAt = "2026-08-19T00:00:00Z"
+            )
+        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"ok":true}"""))
+
+        val res = httpRepository.killRun("proj_1", "run_123").getOrThrow()
+        assertTrue(res.ok)
+
+        val req = server.takeRequest()
+        assertEquals("/v1/projects/proj_1/runs/run_123/kill", req.path)
+        assertEquals("POST", req.method)
+    }
+
+    @Test
+    fun testHttpGetInterruptsAndAnswer() = runBlocking {
+        val hostOrigin = server.url("").toString().removeSuffix("/")
+        httpRepository.injectFakeSession(
+            PairedSession(
+                token = "test_token",
+                desktopId = "desk_01",
+                desktopName = "Mac",
+                hostOrigin = hostOrigin,
+                pairedAt = "2026-08-19T00:00:00Z"
+            )
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """[{"interruptId":"int_1","runId":"run_1","pipelineName":"Feature","phaseName":"Engineer","question":"Approve?"}]"""
+            )
+        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"ok":true}"""))
+
+        val interrupts = httpRepository.getInterrupts().getOrThrow()
+        assertEquals(1, interrupts.size)
+        assertEquals("int_1", interrupts[0].interruptId)
+
+        val answerRes = httpRepository.answerInterrupt(
+            com.foundry.companion.data.model.InterruptAnswer(
+                interruptId = "int_1",
+                decision = "approve",
+                text = "LGTM"
+            )
+        ).getOrThrow()
+        assertTrue(answerRes.ok)
+
+        val req1 = server.takeRequest()
+        assertEquals("/v1/interrupts", req1.path)
+        assertEquals("GET", req1.method)
+
+        val req2 = server.takeRequest()
+        assertEquals("/v1/interrupts/answer", req2.path)
+        assertEquals("POST", req2.method)
+        assertTrue(req2.body.readUtf8().contains("approve"))
+    }
 }

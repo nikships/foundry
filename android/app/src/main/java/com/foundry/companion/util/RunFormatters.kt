@@ -32,17 +32,25 @@ object RunFormatters {
      * Calculates the duration in milliseconds for a run.
      */
     fun computeDurationMs(run: RunRow, nowMs: Long = System.currentTimeMillis()): Long? {
-        if (run.durationMs != null && run.durationMs > 0) return run.durationMs
         val startIso = run.startedAt.ifEmpty { run.createdAt }
-        val startMs = parseIsoToEpochMs(startIso) ?: return null
+        val startMs = parseIsoToEpochMs(startIso)
         val endIso = run.endedAt ?: run.finishedAt
         val endMs = parseIsoToEpochMs(endIso)
-        return if (endMs != null) {
-            (endMs - startMs).coerceAtLeast(0L)
-        } else if (run.status.equals("running", ignoreCase = true)) {
-            (nowMs - startMs).coerceAtLeast(0L)
+
+        return if (run.status.equals("running", ignoreCase = true)) {
+            if (startMs != null) {
+                (nowMs - startMs).coerceAtLeast(0L)
+            } else {
+                run.durationMs
+            }
         } else {
-            null
+            if (run.durationMs != null && run.durationMs > 0) {
+                run.durationMs
+            } else if (endMs != null && startMs != null) {
+                (endMs - startMs).coerceAtLeast(0L)
+            } else {
+                null
+            }
         }
     }
 

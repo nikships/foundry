@@ -1,5 +1,6 @@
 package com.foundry.companion.ui.screens.run.components
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -7,12 +8,15 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.foundry.companion.data.model.PhaseRunSummary
 import com.foundry.companion.ui.theme.FoundryTheme
+import java.util.Locale
 
 @Composable
 fun PhaseWaterfall(
@@ -26,6 +30,18 @@ fun PhaseWaterfall(
     val shapes = FoundryTheme.shapes
 
     val maxDuration = phases.mapNotNull { it.durationMs }.maxOrNull()?.coerceAtLeast(1000L) ?: 10000L
+    val allQueued = phases.isNotEmpty() && phases.all { it.status.equals("queued", ignoreCase = true) }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "waterfallPulse")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 750, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "alpha"
+    )
 
     Column(
         modifier = modifier
@@ -35,15 +51,30 @@ fun PhaseWaterfall(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Text(
-            text = "PHASE WATERFALL",
-            style = typography.eyebrowMono,
-            color = colors.textDim,
-            modifier = Modifier.padding(bottom = 4.dp)
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "PHASE WATERFALL",
+                style = typography.eyebrowMono,
+                color = colors.textDim
+            )
+        }
+
+        if (allQueued) {
+            Text(
+                text = "Waiting for the first phase…",
+                style = typography.body,
+                color = colors.textFaint,
+                modifier = Modifier.padding(vertical = 4.dp)
+            )
+        }
 
         phases.forEach { phase ->
             val isSelected = phase.id == selectedPhaseId
+            val isRunning = phase.status.equals("running", ignoreCase = true)
             val statusColor = colors.statusColorFor(phase.status)
             val durationSec = (phase.durationMs ?: 0L) / 1000.0
             val fraction = if (phase.durationMs != null) {
@@ -68,13 +99,14 @@ fun PhaseWaterfall(
             ) {
                 // Phase Kind & Name
                 Row(
-                    modifier = Modifier.width(100.dp),
+                    modifier = Modifier.width(108.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Box(
                         modifier = Modifier
                             .size(8.dp)
+                            .alpha(if (isRunning) pulseAlpha else 1f)
                             .background(statusColor, shapes.circle)
                     )
                     Text(
@@ -102,7 +134,7 @@ fun PhaseWaterfall(
 
                 // Duration text
                 Text(
-                    text = if (phase.durationMs != null) String.format("%.1fs", durationSec) else "queued",
+                    text = if (phase.durationMs != null) String.format(Locale.US, "%.1fs", durationSec) else "queued",
                     style = typography.metaMono,
                     color = if (isSelected) colors.textPrimary else colors.textFaint
                 )

@@ -152,9 +152,9 @@ class RunsScreenScreenshotTest {
         // Resolve directory relative to repo root
         val currentDir = File(System.getProperty("user.dir") ?: ".")
         val repoRoot = if (currentDir.name == "app" && currentDir.parentFile?.name == "android") {
-            currentDir.parentFile.parentFile
+            currentDir.parentFile?.parentFile ?: currentDir
         } else if (currentDir.name == "android") {
-            currentDir.parentFile
+            currentDir.parentFile ?: currentDir
         } else {
             currentDir
         }
