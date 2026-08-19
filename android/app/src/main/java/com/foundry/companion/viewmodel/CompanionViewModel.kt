@@ -3,6 +3,7 @@ package com.foundry.companion.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.foundry.companion.data.mapper.RunNotFoundException
 import com.foundry.companion.data.model.*
 import com.foundry.companion.data.repository.CompanionRepository
 import com.foundry.companion.data.session.SessionManager
@@ -21,6 +22,8 @@ data class CompanionUiState(
     val selectedProjectId: String = "",
     val runs: List<RunRow> = emptyList(),
     val currentRunDetail: RunDetail? = null,
+    /** Set when the desktop answered that it has no such run. */
+    val missingRunId: String? = null,
     val transcriptEvents: List<TranscriptEvent> = emptyList(),
     val eventRows: List<EventRow> = emptyList(),
     val eventsCursor: Long = 0L,
@@ -156,7 +159,7 @@ class CompanionViewModel(
                     loadRuns(projectId)
                     loadPendingInterrupts()
                     val activeRun = _uiState.value.currentRunDetail?.run
-                    if (activeRun != null && activeRun.isRunning) {
+                    if (activeRun != null && activeRun.isRunning && _uiState.value.missingRunId != activeRun.runId) {
                         loadRunDetail(activeRun.runId)
                         val cursor = _uiState.value.eventsCursor
                         repository.getEventPage(projectId, activeRun.runId, cursor).onSuccess { page ->
@@ -258,7 +261,26 @@ class CompanionViewModel(
                 loadPrStatus(projectId)
             }
             repository.getRunDetail(projectId, runId).onSuccess { detail ->
-                _uiState.update { it.copy(currentRunDetail = detail) }
+                _uiState.update {
+                    it.copy(
+                        currentRunDetail = detail,
+                        missingRunId = null,
+                        errorMessage = null,
+                    )
+                }
+            }.onFailure { err ->
+                // A run the desktop no longer has is terminal, not a blip: stop
+                // polling it rather than waterfalling empty phases forever.
+                // Dedicated missing-run UI owns this — do not also park the
+                // message on actionError or it sticks on the next run.
+                if (err is RunNotFoundException) {
+                    _uiState.update {
+                        it.copy(
+                            currentRunDetail = null,
+                            missingRunId = runId,
+                        )
+                    }
+                }
             }
         }
     }
@@ -303,6 +325,7 @@ class CompanionViewModel(
                 it.copy(
                     runs = emptyList(),
                     currentRunDetail = null,
+                    missingRunId = null,
                     transcriptEvents = emptyList(),
                     eventRows = emptyList(),
                     eventsCursor = 0L,

@@ -237,6 +237,28 @@ class CompanionViewModelTest {
     }
 
     @Test
+    fun testMissingRunIsReportedRatherThanLeftLoading() {
+        viewModel.loadRunDetail("run_260818_live99")
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertNotNull(viewModel.uiState.value.currentRunDetail)
+
+        viewModel.loadRunDetail("run_that_the_desktop_discarded")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals("run_that_the_desktop_discarded", state.missingRunId)
+        assertNull(state.currentRunDetail)
+        assertNull(state.errorMessage)
+
+        viewModel.loadRunDetail("run_260818_live99")
+        testDispatcher.scheduler.advanceUntilIdle()
+        val recovered = viewModel.uiState.value
+        assertNull(recovered.missingRunId)
+        assertEquals("run_260818_live99", recovered.currentRunDetail?.run?.runId)
+        assertNull(recovered.errorMessage)
+    }
+
+    @Test
     fun testAnswerInterruptFlow() {
         val interrupt = com.foundry.companion.data.model.PendingInterrupt(
             interruptId = "int_99",

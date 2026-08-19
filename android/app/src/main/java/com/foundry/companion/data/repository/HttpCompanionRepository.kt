@@ -1,5 +1,7 @@
 package com.foundry.companion.data.repository
 
+import com.foundry.companion.data.mapper.RunDetailMapper
+import com.foundry.companion.data.mapper.RunNotFoundException
 import com.foundry.companion.data.model.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -247,7 +249,11 @@ class HttpCompanionRepository(
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
             consecutiveFailures = 0
-            val detail = json.decodeFromString(RunDetail.serializer(), body)
+            val host = json.decodeFromString(HostRunDetail.serializer(), body)
+            // The desktop answers 200 with `run: null` for a run it does not have,
+            // so a missing run is a body shape rather than a status code.
+            val detail = RunDetailMapper.map(host)
+                ?: return@withContext Result.failure(RunNotFoundException(runId))
             Result.success(detail)
         } catch (e: Exception) {
             handleNetworkError(e)

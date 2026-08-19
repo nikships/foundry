@@ -1,0 +1,136 @@
+{
+  "run": {
+    "runId": "run_fixture_1",
+    "projectId": "e04218ca80c84bd3",
+    "pipelineId": "p",
+    "pipelineName": "Feature Pipeline",
+    "request": "Decode the host RunDetail onto the Android operator view.",
+    "status": "running",
+    "engineer": "nik",
+    "worktreePath": "/var/folders/x3/qnksyrcx6v7ck6k2b487bt_40000gn/T/foundry-fixture-A898Zv/.foundry-worktrees/run_fixture_1",
+    "branch": "foundry/run_fixture_1",
+    "baseRef": "main",
+    "branchPointSha": "30241bc38f711b4c890f1bd452172e754dd0626d",
+    "outcomeDetail": null,
+    "prNumber": null,
+    "prUrl": null,
+    "issueNumber": null,
+    "issueUrl": null,
+    "merged": false,
+    "archived": false,
+    "mode": "pi",
+    "startedAt": "2026-08-19T18:51:11.299Z",
+    "endedAt": null,
+    "totalTokens": 0
+  },
+  "phases": [
+    {
+      "phaseId": "ph_3ca7f38237e8",
+      "runId": "run_fixture_1",
+      "seq": 0,
+      "name": "plan",
+      "kind": "agent",
+      "owner": "planner",
+      "description": "plan it",
+      "status": "success",
+      "attempt": 1,
+      "error": null,
+      "startedAt": "2026-08-19T18:51:11.300Z",
+      "endedAt": "2026-08-19T18:51:11.345Z"
+    },
+    {
+      "phaseId": "ph_a36abc8b605f",
+      "runId": "run_fixture_1",
+      "seq": 1,
+      "name": "build",
+      "kind": "agent",
+      "owner": "builder",
+      "description": "build it",
+      "status": "running",
+      "attempt": 1,
+      "error": null,
+      "startedAt": "2026-08-19T18:51:11.345Z",
+      "endedAt": null
+    },
+    {
+      "phaseId": "ph_814f86026e9c",
+      "runId": "run_fixture_1",
+      "seq": 2,
+      "name": "verify",
+      "kind": "code",
+      "owner": "code",
+      "description": "verify it",
+      "status": "queued",
+      "attempt": 0,
+      "error": null,
+      "startedAt": null,
+      "endedAt": null
+    }
+  ],
+  "envelopes": [
+    {
+      "envelopeId": "env_7de67681b665",
+      "runId": "run_fixture_1",
+      "phaseId": "ph_3ca7f38237e8",
+      "agent": "planner",
+      "schemaKind": "plan",
+      "payload": {
+        "status": "success",
+        "summary": "planned the operator view",
+        "artifacts": [],
+        "notes_for_next_agent": "decode the host payload in one mapper",
+        "commit_message": "plan the operator view"
+      },
+      "valid": true,
+      "attempt": 1,
+      "createdAt": "2026-08-19T18:51:11.315Z"
+    }
+  ],
+  "gates": [
+    {
+      "id": 1,
+      "runId": "run_fixture_1",
+      "phaseId": "ph_3ca7f38237e8",
+      "attempt": 1,
+      "gate": "artifacts_exist",
+      "passed": true,
+      "checks": [
+        {
+          "item": "(no artifacts declared)",
+          "ok": true,
+          "note": "nothing to verify"
+        }
+      ],
+      "createdAt": "2026-08-19T18:51:11.345Z"
+    }
+  ],
+  "sessions": [
+    {
+      "runId": "run_fixture_1",
+      "agent": "builder",
+      "model": "openai/gpt-5-codex",
+      "reasoningEffort": "high",
+      "agentSessionId": "s2",
+      "mode": "pi",
+      "color": "#5ad2dd",
+      "contextTokens": 0,
+      "contextWindow": 0,
+      "createdAt": "2026-08-19T18:51:11.362Z",
+      "lastUsedAt": "2026-08-19T18:51:11.362Z"
+    },
+    {
+      "runId": "run_fixture_1",
+      "agent": "planner",
+      "model": "anthropic/claude-sonnet-4-5",
+      "reasoningEffort": "medium",
+      "agentSessionId": "s1",
+      "mode": "pi",
+      "color": "#c98cff",
+      "contextTokens": 1234,
+      "contextWindow": 100000,
+      "createdAt": "2026-08-19T18:51:11.314Z",
+      "lastUsedAt": "2026-08-19T18:51:11.315Z"
+    }
+  ],
+  "live": true
+}

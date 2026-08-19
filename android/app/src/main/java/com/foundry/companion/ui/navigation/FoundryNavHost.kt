@@ -207,7 +207,8 @@ fun FoundryNavHost(
             val matchingInterrupt = uiState.pendingInterrupts.find { it.runId == runId || it.runId.isBlank() }
 
             RunDetailScreen(
-                runDetail = uiState.currentRunDetail,
+                runDetail = uiState.currentRunDetail?.takeIf { it.run.runId == runId },
+                isRunMissing = uiState.missingRunId == runId,
                 connectionStatus = uiState.connectionStatus,
                 pendingInterrupt = matchingInterrupt,
                 actionError = uiState.errorMessage,
@@ -256,7 +257,8 @@ fun FoundryNavHost(
             }
 
             InspectorScreen(
-                runDetail = uiState.currentRunDetail,
+                runDetail = uiState.currentRunDetail?.takeIf { it.run.runId == runId },
+                isRunMissing = uiState.missingRunId == runId,
                 events = uiState.eventRows,
                 initialPhaseId = phaseId,
                 connectionStatus = uiState.connectionStatus,

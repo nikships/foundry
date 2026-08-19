@@ -1,0 +1,172 @@
+{
+  "run": {
+    "runId": "run_fixture_1",
+    "projectId": "5ec96b61f452e1d2",
+    "pipelineId": "p",
+    "pipelineName": "Feature Pipeline",
+    "request": "Decode the host RunDetail onto the Android operator view.",
+    "status": "rejected",
+    "engineer": "nik",
+    "worktreePath": "/var/folders/x3/qnksyrcx6v7ck6k2b487bt_40000gn/T/foundry-fixture-eBrOsA/.foundry-worktrees/run_fixture_1",
+    "branch": "foundry/run_fixture_1",
+    "baseRef": "main",
+    "branchPointSha": "02ec1caee12b3f545e769cd3001df4aba75afc65",
+    "outcomeDetail": "verify exited 3 (every phase had to pass; verify is fail)",
+    "prNumber": null,
+    "prUrl": null,
+    "issueNumber": null,
+    "issueUrl": null,
+    "merged": false,
+    "archived": false,
+    "mode": "pi",
+    "startedAt": "2026-08-19T18:51:11.052Z",
+    "endedAt": "2026-08-19T18:51:11.153Z",
+    "totalTokens": 240
+  },
+  "phases": [
+    {
+      "phaseId": "ph_7422717ef684",
+      "runId": "run_fixture_1",
+      "seq": 0,
+      "name": "plan",
+      "kind": "agent",
+      "owner": "planner",
+      "description": "plan it",
+      "status": "success",
+      "attempt": 1,
+      "error": null,
+      "startedAt": "2026-08-19T18:51:11.053Z",
+      "endedAt": "2026-08-19T18:51:11.100Z"
+    },
+    {
+      "phaseId": "ph_0d29829029d3",
+      "runId": "run_fixture_1",
+      "seq": 1,
+      "name": "build",
+      "kind": "agent",
+      "owner": "builder",
+      "description": "build it",
+      "status": "success",
+      "attempt": 1,
+      "error": null,
+      "startedAt": "2026-08-19T18:51:11.100Z",
+      "endedAt": "2026-08-19T18:51:11.148Z"
+    },
+    {
+      "phaseId": "ph_1f32471c8408",
+      "runId": "run_fixture_1",
+      "seq": 2,
+      "name": "verify",
+      "kind": "code",
+      "owner": "code",
+      "description": "verify it",
+      "status": "fail",
+      "attempt": 0,
+      "error": "exit 3",
+      "startedAt": "2026-08-19T18:51:11.148Z",
+      "endedAt": "2026-08-19T18:51:11.153Z"
+    }
+  ],
+  "envelopes": [
+    {
+      "envelopeId": "env_254901d1c3ef",
+      "runId": "run_fixture_1",
+      "phaseId": "ph_7422717ef684",
+      "agent": "planner",
+      "schemaKind": "plan",
+      "payload": {
+        "status": "success",
+        "summary": "planned the operator view",
+        "artifacts": [],
+        "notes_for_next_agent": "decode the host payload in one mapper",
+        "commit_message": "plan the operator view"
+      },
+      "valid": true,
+      "attempt": 1,
+      "createdAt": "2026-08-19T18:51:11.070Z"
+    },
+    {
+      "envelopeId": "env_6dc0108e0ca1",
+      "runId": "run_fixture_1",
+      "phaseId": "ph_0d29829029d3",
+      "agent": "builder",
+      "schemaKind": "build",
+      "payload": {
+        "status": "success",
+        "summary": "decoded the host payload",
+        "artifacts": [],
+        "notes_for_next_agent": "",
+        "changed_files": [
+          "built.txt"
+        ],
+        "commit_message": "decode the host payload"
+      },
+      "valid": true,
+      "attempt": 1,
+      "createdAt": "2026-08-19T18:51:11.117Z"
+    }
+  ],
+  "gates": [
+    {
+      "id": 1,
+      "runId": "run_fixture_1",
+      "phaseId": "ph_7422717ef684",
+      "attempt": 1,
+      "gate": "artifacts_exist",
+      "passed": true,
+      "checks": [
+        {
+          "item": "(no artifacts declared)",
+          "ok": true,
+          "note": "nothing to verify"
+        }
+      ],
+      "createdAt": "2026-08-19T18:51:11.099Z"
+    },
+    {
+      "id": 2,
+      "runId": "run_fixture_1",
+      "phaseId": "ph_0d29829029d3",
+      "attempt": 1,
+      "gate": "diff_matches_claims",
+      "passed": true,
+      "checks": [
+        {
+          "item": "built.txt",
+          "ok": true,
+          "note": "exists and appears in the diff"
+        }
+      ],
+      "createdAt": "2026-08-19T18:51:11.147Z"
+    }
+  ],
+  "sessions": [
+    {
+      "runId": "run_fixture_1",
+      "agent": "builder",
+      "model": "openai/gpt-5-codex",
+      "reasoningEffort": "high",
+      "agentSessionId": "s2",
+      "mode": "pi",
+      "color": "#5ad2dd",
+      "contextTokens": 1234,
+      "contextWindow": 100000,
+      "createdAt": "2026-08-19T18:51:11.116Z",
+      "lastUsedAt": "2026-08-19T18:51:11.117Z"
+    },
+    {
+      "runId": "run_fixture_1",
+      "agent": "planner",
+      "model": "anthropic/claude-sonnet-4-5",
+      "reasoningEffort": "medium",
+      "agentSessionId": "s1",
+      "mode": "pi",
+      "color": "#c98cff",
+      "contextTokens": 1234,
+      "contextWindow": 100000,
+      "createdAt": "2026-08-19T18:51:11.069Z",
+      "lastUsedAt": "2026-08-19T18:51:11.069Z"
+    }
+  ],
+  "live": false
+}

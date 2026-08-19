@@ -1,5 +1,6 @@
 package com.foundry.companion.data.repository
 
+import com.foundry.companion.data.mapper.RunNotFoundException
 import com.foundry.companion.data.model.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -75,8 +76,10 @@ class FakeCompanionRepository(
     private val livePhaseSummaries = listOf(
         PhaseRunSummary(
             id = "p_1",
+            phaseId = "p_1",
             name = "Plan",
             kind = "agent",
+            owner = "planner",
             status = "success",
             attempt = 1,
             durationMs = 12400,
@@ -87,8 +90,10 @@ class FakeCompanionRepository(
         ),
         PhaseRunSummary(
             id = "p_2",
+            phaseId = "p_2",
             name = "Spec",
             kind = "agent",
+            owner = "specifier",
             status = "success",
             attempt = 1,
             durationMs = 24100,
@@ -99,8 +104,10 @@ class FakeCompanionRepository(
         ),
         PhaseRunSummary(
             id = "p_3",
+            phaseId = "p_3",
             name = "Code",
             kind = "code",
+            owner = "builder",
             status = "running",
             attempt = 1,
             durationMs = 45200,
@@ -109,15 +116,19 @@ class FakeCompanionRepository(
         ),
         PhaseRunSummary(
             id = "p_4",
+            phaseId = "p_4",
             name = "Review",
             kind = "review",
+            owner = "reviewer",
             status = "queued",
             attempt = 1
         ),
         PhaseRunSummary(
             id = "p_5",
+            phaseId = "p_5",
             name = "PR",
             kind = "agent",
+            owner = "writer",
             status = "queued",
             attempt = 1
         )
@@ -285,7 +296,7 @@ class FakeCompanionRepository(
 
     override suspend fun getRunDetail(projectId: String, runId: String): Result<RunDetail> {
         val run = runsList.find { it.runId == runId }
-            ?: return Result.failure(IllegalArgumentException("Run not found: $runId"))
+            ?: return Result.failure(RunNotFoundException(runId))
         return Result.success(RunDetail(run = run, phases = run.phases))
     }
 

@@ -13,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.foundry.companion.data.model.ConnectionStatus
@@ -47,7 +48,9 @@ fun RunDetailScreen(
     onRetryConnection: (() -> Unit)? = null,
     isCreatingPr: Boolean = false,
     ghStatus: GhStatus? = null,
-    onCopyPrUrl: ((String) -> Unit)? = null
+    onCopyPrUrl: ((String) -> Unit)? = null,
+    /** The desktop answered that it has no such run, so there is nothing to wait for. */
+    isRunMissing: Boolean = false
 ) {
     val colors = FoundryTheme.colors
     val typography = FoundryTheme.typography
@@ -58,13 +61,39 @@ fun RunDetailScreen(
     var isRequestExpanded by remember { mutableStateOf(false) }
 
     if (runDetail == null) {
-        Box(
-            modifier = modifier
-                .fillMaxSize()
-                .background(colors.bgBase),
-            contentAlignment = Alignment.Center
-        ) {
-            CircularProgressIndicator(color = colors.accent)
+        Scaffold(
+            modifier = modifier.fillMaxSize(),
+            containerColor = colors.bgBase,
+            topBar = { FoundryTopBar(title = "Run", onBackClick = onBackClick) }
+        ) { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .testTag(if (isRunMissing) "run-detail-missing" else "run-detail-loading"),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isRunMissing) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "This run is gone.",
+                            style = typography.bodyStrong,
+                            color = colors.textPrimary
+                        )
+                        Text(
+                            text = "The desktop no longer has it — it was discarded or its trace was pruned.",
+                            style = typography.body,
+                            color = colors.textDim
+                        )
+                    }
+                } else {
+                    CircularProgressIndicator(color = colors.accent)
+                }
+            }
         }
         return
     }
@@ -90,12 +119,12 @@ fun RunDetailScreen(
 
     // Default selection: running phase, else last failed, else first
     val defaultPhaseId = remember(phases) {
-        phases.find { it.status.equals("running", ignoreCase = true) }?.id
-            ?: phases.find { it.status.equals("fail", ignoreCase = true) }?.id
-            ?: phases.firstOrNull()?.id
+        phases.find { it.status.equals("running", ignoreCase = true) }?.resolvedId
+            ?: phases.find { it.status.equals("fail", ignoreCase = true) }?.resolvedId
+            ?: phases.firstOrNull()?.resolvedId
     }
     var selectedPhaseId by remember(defaultPhaseId) { mutableStateOf(defaultPhaseId) }
-    val selectedPhase = phases.find { it.id == selectedPhaseId } ?: phases.firstOrNull()
+    val selectedPhase = phases.find { it.resolvedId == selectedPhaseId } ?: phases.firstOrNull()
 
     val shortRunId = if (run.runId.length >= 7) run.runId.substring(0, 7) else run.runId
     val whenTime = RunFormatters.formatRelativeTime(run.effectiveStartedAt, nowMs)
@@ -303,7 +332,8 @@ fun RunDetailScreen(
                 PhaseWaterfall(
                     phases = phases,
                     selectedPhaseId = selectedPhaseId,
-                    onSelectPhase = { selectedPhaseId = it }
+                    onSelectPhase = { selectedPhaseId = it },
+                    nowMs = nowMs
                 )
             }
 
@@ -311,7 +341,8 @@ fun RunDetailScreen(
             if (selectedPhase != null) {
                 SelectedPhaseSummaryCard(
                     phase = selectedPhase,
-                    onViewTranscript = { onOpenInspector(it) }
+                    onViewTranscript = { onOpenInspector(it) },
+                    nowMs = nowMs
                 )
             }
         }

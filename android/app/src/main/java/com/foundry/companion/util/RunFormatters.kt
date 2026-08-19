@@ -1,5 +1,6 @@
 package com.foundry.companion.util
 
+import com.foundry.companion.data.model.PhaseRunSummary
 import com.foundry.companion.data.model.RunRow
 import java.time.Instant
 import java.time.format.DateTimeParseException
@@ -53,6 +54,34 @@ object RunFormatters {
             }
         }
     }
+
+    /**
+     * Duration of a single phase from its host timestamps. A phase that is still
+     * running has no `endedAt`, so it measures against `nowMs` and ticks with the
+     * caller's clock; a queued phase (no `startedAt`) has no duration at all.
+     */
+    fun phaseDurationMs(
+        startedAt: String?,
+        endedAt: String?,
+        isRunning: Boolean,
+        nowMs: Long = System.currentTimeMillis()
+    ): Long? {
+        val startMs = parseIsoToEpochMs(startedAt) ?: return null
+        val endMs = parseIsoToEpochMs(endedAt)
+        if (endMs != null) return (endMs - startMs).coerceAtLeast(0L)
+        if (isRunning) return (nowMs - startMs).coerceAtLeast(0L)
+        return null
+    }
+
+    /**
+     * Live duration for a phase, re-derived on every clock tick. Falls back to the
+     * duration the phase already carries when it has no host timestamps.
+     */
+    fun computePhaseDurationMs(
+        phase: PhaseRunSummary,
+        nowMs: Long = System.currentTimeMillis()
+    ): Long? = phaseDurationMs(phase.startedAt, phase.endedAt, phase.isRunning, nowMs)
+        ?: phase.durationMs
 
     /**
      * Formats duration into compact human readable text: "42s", "5m 34s", "1h 12m", or "—".

@@ -12,12 +12,14 @@ import com.foundry.companion.data.model.PhaseRunSummary
 import com.foundry.companion.ui.components.FoundrySecondaryButton
 import com.foundry.companion.ui.components.StatusBadge
 import com.foundry.companion.ui.theme.FoundryTheme
+import com.foundry.companion.util.RunFormatters
 
 @Composable
 fun SelectedPhaseSummaryCard(
     phase: PhaseRunSummary,
     onViewTranscript: (phaseId: String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    nowMs: Long = System.currentTimeMillis()
 ) {
     val colors = FoundryTheme.colors
     val typography = FoundryTheme.typography
@@ -54,8 +56,9 @@ fun SelectedPhaseSummaryCard(
         }
 
         // Duration and Tokens Meta
-        val durationText = phase.durationMs?.let { "${it / 1000}s" } ?: "—"
-        val tokensText = phase.tokens?.let { "$it tokens" } ?: "—"
+        val durationText = RunFormatters.computePhaseDurationMs(phase, nowMs)
+            ?.let { "${it / 1000}s" } ?: "—"
+        val tokensText = RunFormatters.formatTokens(phase.tokens) ?: "—"
         Text(
             text = "Duration: $durationText · Tokens: $tokensText",
             style = typography.metaMono,
@@ -136,7 +139,7 @@ fun SelectedPhaseSummaryCard(
 
         FoundrySecondaryButton(
             text = "View Transcript",
-            onClick = { onViewTranscript(phase.id) },
+            onClick = { onViewTranscript(phase.resolvedId) },
             modifier = Modifier.fillMaxWidth()
         )
     }

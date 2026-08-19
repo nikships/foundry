@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import com.foundry.companion.data.model.PhaseRunSummary
 import com.foundry.companion.ui.theme.FoundryTheme
 import com.foundry.companion.ui.theme.foundryPulseEnabled
+import com.foundry.companion.util.RunFormatters
 import java.util.Locale
 
 @Composable
@@ -24,13 +25,15 @@ fun PhaseWaterfall(
     phases: List<PhaseRunSummary>,
     selectedPhaseId: String?,
     onSelectPhase: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    nowMs: Long = System.currentTimeMillis()
 ) {
     val colors = FoundryTheme.colors
     val typography = FoundryTheme.typography
     val shapes = FoundryTheme.shapes
 
-    val maxDuration = phases.mapNotNull { it.durationMs }.maxOrNull()?.coerceAtLeast(1000L) ?: 10000L
+    val durations = phases.associate { it.resolvedId to RunFormatters.computePhaseDurationMs(it, nowMs) }
+    val maxDuration = durations.values.filterNotNull().maxOrNull()?.coerceAtLeast(1000L) ?: 10000L
     val allQueued = phases.isNotEmpty() && phases.all { it.status.equals("queued", ignoreCase = true) }
 
     val anyRunning = phases.any { it.status.equals("running", ignoreCase = true) }
@@ -80,12 +83,13 @@ fun PhaseWaterfall(
         }
 
         phases.forEach { phase ->
-            val isSelected = phase.id == selectedPhaseId
+            val isSelected = phase.resolvedId == selectedPhaseId
             val isRunning = phase.status.equals("running", ignoreCase = true)
             val statusColor = colors.statusColorFor(phase.status)
-            val durationSec = (phase.durationMs ?: 0L) / 1000.0
-            val fraction = if (phase.durationMs != null) {
-                (phase.durationMs.toFloat() / maxDuration.toFloat()).coerceIn(0.15f, 1.0f)
+            val durationMs = durations[phase.resolvedId]
+            val durationSec = (durationMs ?: 0L) / 1000.0
+            val fraction = if (durationMs != null) {
+                (durationMs.toFloat() / maxDuration.toFloat()).coerceIn(0.15f, 1.0f)
             } else 0.08f
 
             Row(
@@ -99,7 +103,7 @@ fun PhaseWaterfall(
                         if (isSelected) colors.lineStrong else colors.line.copy(alpha = 0.5f),
                         shapes.card
                     )
-                    .clickable { onSelectPhase(phase.id) }
+                    .clickable { onSelectPhase(phase.resolvedId) }
                     .padding(horizontal = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -141,7 +145,7 @@ fun PhaseWaterfall(
 
                 // Duration text
                 Text(
-                    text = if (phase.durationMs != null) String.format(Locale.US, "%.1fs", durationSec) else "queued",
+                    text = if (durationMs != null) String.format(Locale.US, "%.1fs", durationSec) else "queued",
                     style = typography.metaMono,
                     color = if (isSelected) colors.textPrimary else colors.textFaint
                 )
