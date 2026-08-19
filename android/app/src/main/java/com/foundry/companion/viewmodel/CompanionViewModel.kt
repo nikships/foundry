@@ -21,6 +21,8 @@ data class CompanionUiState(
     val runs: List<RunRow> = emptyList(),
     val currentRunDetail: RunDetail? = null,
     val transcriptEvents: List<TranscriptEvent> = emptyList(),
+    val eventRows: List<EventRow> = emptyList(),
+    val eventsCursor: Long = 0L,
     val pendingInterrupts: List<PendingInterrupt> = emptyList(),
     val isNotifyOnSettleEnabled: Boolean = true,
     val isPairing: Boolean = false,
@@ -122,6 +124,22 @@ class CompanionViewModel(
                     val activeRun = _uiState.value.currentRunDetail?.run
                     if (activeRun != null && activeRun.isRunning) {
                         loadRunDetail(activeRun.runId)
+                        val cursor = _uiState.value.eventsCursor
+                        repository.getEventPage(projectId, activeRun.runId, cursor).onSuccess { page ->
+                            if (page.events.isNotEmpty()) {
+                                _uiState.update { current ->
+                                    val existingMap = current.eventRows.associateBy { it.eventId.ifBlank { "row_${it.rowid}" } }.toMutableMap()
+                                    for (ev in page.events) {
+                                        existingMap[ev.eventId.ifBlank { "row_${ev.rowid}" }] = ev
+                                    }
+                                    val merged = existingMap.values.sortedBy { it.rowid }
+                                    current.copy(
+                                        eventRows = merged,
+                                        eventsCursor = maxOf(cursor, page.cursor)
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -160,9 +178,17 @@ class CompanionViewModel(
         }
     }
 
-    fun loadTranscriptEvents(runId: String, phaseId: String) {
+    fun loadTranscriptEvents(runId: String, phaseId: String = "") {
         val projectId = _uiState.value.selectedProjectId
         viewModelScope.launch {
+            repository.getEventPage(projectId, runId, 0L).onSuccess { page ->
+                _uiState.update {
+                    it.copy(
+                        eventRows = page.events,
+                        eventsCursor = page.cursor
+                    )
+                }
+            }
             repository.getTranscriptEvents(projectId, runId, phaseId).onSuccess { events ->
                 _uiState.update { it.copy(transcriptEvents = events) }
             }
@@ -188,6 +214,8 @@ class CompanionViewModel(
                     runs = emptyList(),
                     currentRunDetail = null,
                     transcriptEvents = emptyList(),
+                    eventRows = emptyList(),
+                    eventsCursor = 0L,
                     sessionInfo = null
                 )
             }

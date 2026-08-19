@@ -16,6 +16,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.foundry.companion.data.model.PhaseRunSummary
 import com.foundry.companion.ui.theme.FoundryTheme
+import com.foundry.companion.ui.theme.foundryPulseEnabled
 import java.util.Locale
 
 @Composable
@@ -32,16 +33,22 @@ fun PhaseWaterfall(
     val maxDuration = phases.mapNotNull { it.durationMs }.maxOrNull()?.coerceAtLeast(1000L) ?: 10000L
     val allQueued = phases.isNotEmpty() && phases.all { it.status.equals("queued", ignoreCase = true) }
 
-    val infiniteTransition = rememberInfiniteTransition(label = "waterfallPulse")
-    val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 750, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "alpha"
-    )
+    val anyRunning = phases.any { it.status.equals("running", ignoreCase = true) }
+    val pulseAlpha = if (foundryPulseEnabled(anyRunning)) {
+        val infiniteTransition = rememberInfiniteTransition(label = "waterfallPulse")
+        val alpha by infiniteTransition.animateFloat(
+            initialValue = 0.35f,
+            targetValue = 1.0f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 750, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "alpha"
+        )
+        alpha
+    } else {
+        1f
+    }
 
     Column(
         modifier = modifier

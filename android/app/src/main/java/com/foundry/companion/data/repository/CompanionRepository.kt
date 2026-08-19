@@ -17,6 +17,7 @@ interface CompanionRepository {
     suspend fun getRuns(projectId: String): Result<List<RunRow>>
     suspend fun getRunDetail(projectId: String, runId: String): Result<RunDetail>
     suspend fun getTranscriptEvents(projectId: String, runId: String, phaseId: String): Result<List<TranscriptEvent>>
+    suspend fun getEventPage(projectId: String, runId: String, after: Long = 0L): Result<EventPage>
     suspend fun getInterrupts(): Result<List<PendingInterrupt>>
     suspend fun startRun(input: StartRunInput): Result<CompanionStartResult>
     suspend fun killRun(projectId: String, runId: String): Result<CompanionKillResult>

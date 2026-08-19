@@ -4,7 +4,9 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.View
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalInspectionMode
 import com.foundry.companion.data.model.*
 import com.foundry.companion.ui.screens.runs.RunsScreen
 import com.foundry.companion.ui.theme.FoundryTheme
@@ -129,8 +131,10 @@ class RunsScreenScreenshotTest {
 
         val composeView = ComposeView(activity).apply {
             setContent {
-                FoundryTheme {
-                    content()
+                CompositionLocalProvider(LocalInspectionMode provides true) {
+                    FoundryTheme {
+                        content()
+                    }
                 }
             }
         }
@@ -145,6 +149,8 @@ class RunsScreenScreenshotTest {
         val bitmap = Bitmap.createBitmap(1080, 2400, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         composeView.draw(canvas)
+        composeView.disposeComposition()
+        activityController.pause().stop().destroy()
         return bitmap
     }
 

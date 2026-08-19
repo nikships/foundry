@@ -174,22 +174,20 @@ fun FoundryNavHost(
             val runId = backStackEntry.arguments?.getString("runId").orEmpty()
             val phaseId = backStackEntry.arguments?.getString("phaseId")
 
-            LaunchedEffect(runId, phaseId) {
+            LaunchedEffect(runId) {
                 viewModel.loadRunDetail(runId)
-                if (phaseId != null) {
-                    viewModel.loadTranscriptEvents(runId, phaseId)
-                }
+                viewModel.loadTranscriptEvents(runId)
             }
 
             InspectorScreen(
                 runDetail = uiState.currentRunDetail,
-                events = uiState.transcriptEvents,
+                events = uiState.eventRows,
                 initialPhaseId = phaseId,
                 connectionStatus = uiState.connectionStatus,
+                hasProject = uiState.selectedProjectId.isNotBlank() && uiState.projects.isNotEmpty(),
                 onBackClick = { navController.popBackStack() },
-                onPhaseSelected = { selectedPhase ->
-                    viewModel.loadTranscriptEvents(runId, selectedPhase)
-                }
+                onPhaseSelected = { },
+                onRetryConnection = { viewModel.retryConnection() }
             )
         }
     }

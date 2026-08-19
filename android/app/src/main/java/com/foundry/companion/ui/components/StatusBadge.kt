@@ -10,9 +10,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.foundry.companion.ui.theme.FoundryTheme
+import com.foundry.companion.ui.theme.foundryPulseEnabled
 
 @Composable
 fun StatusBadge(
@@ -27,7 +27,7 @@ fun StatusBadge(
     val statusColor = colors.statusColorFor(status)
     val isRunning = status.equals("running", ignoreCase = true)
 
-    val pulseAlpha = if (isRunning) {
+    val pulseAlpha = if (foundryPulseEnabled(isRunning)) {
         val infiniteTransition = rememberInfiniteTransition(label = "pulse")
         val alpha by infiniteTransition.animateFloat(
             initialValue = 0.35f,

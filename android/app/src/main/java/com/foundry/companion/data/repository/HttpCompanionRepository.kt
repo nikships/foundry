@@ -189,18 +189,54 @@ class HttpCompanionRepository(
         }
     }
 
+    override suspend fun getEventPage(
+        projectId: String,
+        runId: String,
+        after: Long
+    ): Result<EventPage> = withContext(Dispatchers.IO) {
+        try {
+            val url = if (after > 0) "/v1/projects/$projectId/runs/$runId/events?after=$after"
+            else "/v1/projects/$projectId/runs/$runId/events"
+            val request = authenticatedRequestBuilder(url).get().build()
+            val response = client.newCall(request).execute()
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
+            val eventPage = json.decodeFromString(EventPage.serializer(), body)
+            Result.success(eventPage)
+        } catch (e: Exception) {
+            handleNetworkError(e)
+            Result.failure(e)
+        }
+    }
+
     override suspend fun getTranscriptEvents(
         projectId: String,
         runId: String,
         phaseId: String
     ): Result<List<TranscriptEvent>> = withContext(Dispatchers.IO) {
         try {
-            val request = authenticatedRequestBuilder("/v1/projects/$projectId/runs/$runId/events").get().build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
-            val events = json.decodeFromString<List<TranscriptEvent>>(body)
-            Result.success(events)
+            val res = getEventPage(projectId, runId, 0L)
+            if (res.isSuccess) {
+                val page = res.getOrThrow()
+                val phaseEvents = if (phaseId.isBlank()) page.events else page.events.filter { it.phaseId == phaseId }
+                val transcriptEvents = phaseEvents.map { ev ->
+                    TranscriptEvent(
+                        id = ev.eventId.ifBlank { "ev_${ev.rowid}" },
+                        phaseId = ev.phaseId.orEmpty(),
+                        type = ev.type,
+                        timestamp = ev.startedAt,
+                        content = ev.textContent.ifBlank { ev.name },
+                        toolName = ev.toolName,
+                        durationMs = null,
+                        isSuccess = !ev.isError,
+                        toolArgs = ev.payload["args"]?.toString(),
+                        toolOutput = ev.resultText
+                    )
+                }
+                Result.success(transcriptEvents)
+            } else {
+                Result.failure(res.exceptionOrNull() ?: IOException("Failed to fetch events"))
+            }
         } catch (e: Exception) {
             handleNetworkError(e)
             Result.failure(e)
