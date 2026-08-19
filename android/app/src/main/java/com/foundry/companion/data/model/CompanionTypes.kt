@@ -115,9 +115,15 @@ data class PhaseRunSummary(
     val gateResults: List<GateResult> = emptyList(),
     val envelopeVerdict: String? = null,
     val errorMessage: String? = null,
-    val phaseId: String = ""
+    val phaseId: String = "",
+    /** The agent that ran the phase, `"code"` for a command phase. */
+    val owner: String = "",
+    val startedAt: String? = null,
+    val endedAt: String? = null
 ) {
     val resolvedId: String get() = id.ifBlank { phaseId }
+
+    val isRunning: Boolean get() = status.equals("running", ignoreCase = true)
 }
 
 @Serializable

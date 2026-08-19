@@ -208,6 +208,7 @@ fun FoundryNavHost(
 
             RunDetailScreen(
                 runDetail = uiState.currentRunDetail,
+                isRunMissing = uiState.missingRunId == runId,
                 connectionStatus = uiState.connectionStatus,
                 pendingInterrupt = matchingInterrupt,
                 actionError = uiState.errorMessage,

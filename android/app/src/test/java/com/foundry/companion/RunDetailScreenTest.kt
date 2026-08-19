@@ -538,6 +538,88 @@ class RunDetailScreenTest {
     }
 
     @Test
+    fun testMissingRunShowsGoneStateInsteadOfSpinner() {
+        composeTestRule.setContent {
+            FoundryTheme {
+                RunDetailScreen(
+                    runDetail = null,
+                    isRunMissing = true,
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    onBackClick = {},
+                    onOpenInspector = {},
+                    onKillRun = {},
+                    onOpenPr = {},
+                    onCreatePr = {},
+                    onOpenIssue = {}
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithTag("run-detail-missing").assertExists()
+        composeTestRule.onNodeWithTag("run-detail-loading").assertDoesNotExist()
+        composeTestRule.onNodeWithText("This run is gone.").assertIsDisplayed()
+    }
+
+    @Test
+    fun testPhasesFromTheHostSelectAndOpenTheInspectorByPhaseId() {
+        var inspectorPhaseId: String? = null
+
+        // Host phases carry `phaseId`, not `id`: the waterfall and the Inspector
+        // handoff both have to resolve that, not the phone-only field.
+        val hostPhases = listOf(
+            PhaseRunSummary(
+                phaseId = "ph_a1",
+                name = "plan",
+                kind = "agent",
+                owner = "planner",
+                status = "success",
+                startedAt = "2026-08-19T18:51:11.053Z",
+                endedAt = "2026-08-19T18:51:11.100Z"
+            ),
+            PhaseRunSummary(
+                phaseId = "ph_b2",
+                name = "build",
+                kind = "agent",
+                owner = "builder",
+                status = "fail",
+                model = "openai/gpt-5-codex",
+                startedAt = "2026-08-19T18:51:11.100Z",
+                endedAt = "2026-08-19T18:51:11.148Z",
+                errorMessage = "exit 3"
+            )
+        )
+
+        composeTestRule.setContent {
+            FoundryTheme {
+                RunDetailScreen(
+                    runDetail = RunDetail(
+                        run = settledRun.copy(phases = hostPhases),
+                        phases = hostPhases,
+                        live = false
+                    ),
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    onBackClick = {},
+                    onOpenInspector = { inspectorPhaseId = it },
+                    onKillRun = {},
+                    onOpenPr = {},
+                    onCreatePr = {},
+                    onOpenIssue = {}
+                )
+            }
+        }
+
+        // Default selection lands on the failed phase, by host phaseId.
+        composeTestRule.onNodeWithText("PHASE · BUILD").assertExists()
+        composeTestRule.onNodeWithText("exit 3").assertExists()
+
+        composeTestRule.onNodeWithText("plan").performScrollTo().performClick()
+        composeTestRule.onNodeWithText("PHASE · PLAN").assertExists()
+
+        composeTestRule.onNodeWithText("VIEW TRANSCRIPT").performScrollTo().performClick()
+        assertEquals("ph_a1", inspectorPhaseId)
+    }
+
+    @Test
     fun testEmptyWaterfallState() {
         val queuedPhases = listOf(
             PhaseRunSummary("q1", "Plan", "agent", "queued"),
