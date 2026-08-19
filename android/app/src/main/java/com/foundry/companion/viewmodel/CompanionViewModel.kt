@@ -261,16 +261,23 @@ class CompanionViewModel(
                 loadPrStatus(projectId)
             }
             repository.getRunDetail(projectId, runId).onSuccess { detail ->
-                _uiState.update { it.copy(currentRunDetail = detail, missingRunId = null) }
+                _uiState.update {
+                    it.copy(
+                        currentRunDetail = detail,
+                        missingRunId = null,
+                        errorMessage = null,
+                    )
+                }
             }.onFailure { err ->
                 // A run the desktop no longer has is terminal, not a blip: stop
                 // polling it rather than waterfalling empty phases forever.
+                // Dedicated missing-run UI owns this — do not also park the
+                // message on actionError or it sticks on the next run.
                 if (err is RunNotFoundException) {
                     _uiState.update {
                         it.copy(
                             currentRunDetail = null,
                             missingRunId = runId,
-                            errorMessage = err.message
                         )
                     }
                 }

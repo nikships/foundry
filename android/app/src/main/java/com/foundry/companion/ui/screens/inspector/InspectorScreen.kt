@@ -35,7 +35,9 @@ fun InspectorScreen(
     onPhaseSelected: (phaseId: String) -> Unit,
     modifier: Modifier = Modifier,
     onRetryConnection: () -> Unit = {},
-    hasProject: Boolean = true
+    hasProject: Boolean = true,
+    /** The desktop answered that it has no such run, so there is nothing to wait for. */
+    isRunMissing: Boolean = false
 ) {
     val colors = FoundryTheme.colors
     val typography = FoundryTheme.typography
@@ -59,6 +61,23 @@ fun InspectorScreen(
     }
 
     if (runDetail == null) {
+        if (isRunMissing) {
+            InspectorScaffold(
+                title = "Inspector",
+                connectionStatus = connectionStatus,
+                onBackClick = onBackClick,
+                onRetryConnection = onRetryConnection,
+                status = null,
+                modifier = modifier
+            ) {
+                InspectorEmptyState(
+                    title = "This run is gone.",
+                    body = "The desktop no longer has it — it was discarded or its trace was pruned.",
+                    testTag = "inspector-missing"
+                )
+            }
+            return
+        }
         Box(
             modifier = modifier
                 .fillMaxSize()
