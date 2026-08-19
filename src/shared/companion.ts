@@ -142,6 +142,7 @@ export interface CompanionRoutes {
     request: CompanionPrCreateRequest;
     response: PrAction;
   };
+  'POST /v1/unpair': { response: { ok: boolean } };
 }
 
 /**

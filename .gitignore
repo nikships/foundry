@@ -109,6 +109,7 @@ coverage/
 .playwright-cli/
 cypress/videos/
 cypress/screenshots/
+screenshots/
 
 # ─── Env / secrets ────────────────────────────────────────
 .env

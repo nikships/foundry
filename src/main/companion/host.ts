@@ -28,6 +28,7 @@ import type {
   StartRunInput,
 } from '@shared/types.js';
 import type {
+  CompanionDevice,
   CompanionError,
   CompanionErrorCode,
   CompanionHostState,
@@ -220,7 +221,7 @@ export class CompanionHost {
     if (!device) throw new RouteError(401, 'unauthorized', 'unknown or revoked device token');
 
     const segments = path.split('/').filter(Boolean);
-    const answer = await this.dispatch(method, segments, url, req);
+    const answer = await this.dispatch(method, segments, url, req, device);
     this.json(res, 200, answer);
   }
 
@@ -263,9 +264,15 @@ export class CompanionHost {
     segments: string[],
     url: URL,
     req: IncomingMessage,
+    device: CompanionDevice,
   ): Promise<unknown> {
     const [v1, head, ...rest] = segments;
     if (v1 !== 'v1') throw new RouteError(404, 'not_found', 'no such route');
+
+    if (method === 'POST' && head === 'unpair' && rest.length === 0) {
+      this.unpair(device.deviceId);
+      return { ok: true };
+    }
 
     if (method === 'GET' && head === 'session' && rest.length === 0) {
       return {

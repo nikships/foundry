@@ -230,7 +230,7 @@ beforeEach(async () => {
   });
   const state = await host.start();
   if (!state.running || !state.origin) throw new Error(`host did not start: ${state.detail}`);
-  h = { host, registry, tracer, project, repo, gh, origin: () => state.origin!, changes };
+  h = { host, registry, tracer, project, repo, gh, origin: () => host.state().origin!, changes };
 });
 
 afterEach(async () => {
@@ -596,6 +596,91 @@ describe('host lifecycle', () => {
   it('reports a LAN address on this machine or none, never 0.0.0.0', () => {
     const address = lanAddress();
     if (address !== null) expect(address).not.toBe('0.0.0.0');
+  });
+
+  it('unpairs via POST /v1/unpair and immediately revokes the device token', async () => {
+    const paired = await pairPhone();
+    const sessionBefore = await authed(paired.token, '/v1/session');
+    expect(sessionBefore.status).toBe(200);
+
+    const unpairRes = await authed(paired.token, '/v1/unpair', { method: 'POST' });
+    expect(unpairRes.status).toBe(200);
+    expect(((await unpairRes.json()) as { ok: boolean }).ok).toBe(true);
+
+    expect(h.host.state().devices.find((d) => d.deviceId === paired.deviceId)).toBeUndefined();
+
+    // Any subsequent requests with this revoked token must fail fail-closed (401)
+    const sessionAfter = await authed(paired.token, '/v1/session');
+    expect(sessionAfter.status).toBe(401);
+    const err = (await sessionAfter.json()) as CompanionError;
+    expect(err.error.code).toBe('unauthorized');
+
+    const runsAfter = await authed(paired.token, `/v1/projects/${h.project.id}/runs`);
+    expect(runsAfter.status).toBe(401);
+  });
+
+  it('unpairs via host.unpair() and revokes the token', async () => {
+    const paired = await pairPhone();
+    const sessionBefore = await authed(paired.token, '/v1/session');
+    expect(sessionBefore.status).toBe(200);
+
+    const removed = h.host.unpair(paired.deviceId);
+    expect(removed).toBe(true);
+    expect(h.host.state().devices).toHaveLength(0);
+
+    const sessionAfter = await authed(paired.token, '/v1/session');
+    expect(sessionAfter.status).toBe(401);
+  });
+
+  it('reconnects with a valid stored token across host restart', async () => {
+    const paired = await pairPhone();
+    const session1 = await authed(paired.token, '/v1/session');
+    expect(session1.status).toBe(200);
+
+    // Stop and restart host
+    await h.host.stop();
+    await new Promise((r) => setTimeout(r, 20));
+    await h.host.start();
+
+    // Stored token is still valid
+    const session2 = await authed(paired.token, '/v1/session');
+    expect(session2.status).toBe(200);
+  });
+
+  it('produces a single-use pairing payload that cannot be replayed', async () => {
+    const payload = h.host.pairingPayload();
+    expect(payload).not.toBeNull();
+    expect(payload!.protocolVersion).toBe(COMPANION_PROTOCOL_VERSION);
+    expect(payload!.origin).toBe(h.origin());
+    expect(payload!.secret).toBeTruthy();
+    expect(payload!.desktopId).toBeTruthy();
+    expect(payload!.desktopName).toBeTruthy();
+
+    // First pair succeeds
+    const res1 = await fetch(`${h.origin()}/pair`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        protocolVersion: COMPANION_PROTOCOL_VERSION,
+        secret: payload!.secret,
+        deviceName: 'Pixel 9',
+      }),
+    });
+    expect(res1.status).toBe(200);
+
+    // Replay of same secret fails
+    const res2 = await fetch(`${h.origin()}/pair`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        protocolVersion: COMPANION_PROTOCOL_VERSION,
+        secret: payload!.secret,
+        deviceName: 'Attacker Phone',
+      }),
+    });
+    expect(res2.status).toBe(401);
+    const err = (await res2.json()) as CompanionError;
+    expect(err.error.code).toBe('pairing_invalid');
   });
 });
 

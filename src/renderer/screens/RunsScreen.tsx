@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReadinessInspectResult, ReadinessState, ValidationIssue } from '@shared/types.js';
+import type { CompanionHostState } from '@shared/companion.js';
 import { api } from '../api.js';
 import { useApp } from '../stores/app.js';
 import { useRunList } from '../stores/run.js';
@@ -48,6 +49,14 @@ export default function RunsScreen({
   const [readinessChecking, setReadinessChecking] = useState(false);
   const [readinessNote, setReadinessNote] = useState('');
   const [baseSyncing, setBaseSyncing] = useState(false);
+  const [companion, setCompanion] = useState<CompanionHostState | null>(null);
+
+  useEffect(() => {
+    void api.companion.state().then(setCompanion);
+    return api.on('companion-changed', () => {
+      void api.companion.state().then(setCompanion);
+    });
+  }, []);
 
   const {
     runs,
@@ -223,14 +232,49 @@ export default function RunsScreen({
         <p className="eyebrow">
           <span className="index">01</span>Runs
         </p>
-        <label className={styles.archived}>
-          <input
-            type="checkbox"
-            checked={includeArchived}
-            onChange={(e) => setIncludeArchived(e.target.checked)}
-          />
-          Show archived
-        </label>
+        <div className={styles.headActions}>
+          {companion && (
+            <button
+              type="button"
+              className={styles.phonePill}
+              onClick={() => onOpenSettings?.('general')}
+              title={
+                companion.running
+                  ? companion.devices.length
+                    ? `Companion host active · Paired to ${companion.devices.map((d) => d.name).join(', ')}`
+                    : `Companion host active · Waiting for a phone to scan QR (${companion.origin})`
+                  : 'Companion host is off · Click to open Settings'
+              }
+            >
+              <span
+                className={`${styles.phoneDot} ${
+                  companion.running
+                    ? companion.devices.length
+                      ? styles.dotGreen
+                      : styles.dotOrange
+                    : styles.dotFaint
+                }`}
+              />
+              <span className="mono">
+                {companion.running
+                  ? companion.devices.length
+                    ? companion.devices.length === 1
+                      ? companion.devices[0]!.name
+                      : `${companion.devices.length} phones`
+                    : 'Pair phone'
+                  : 'Phone off'}
+              </span>
+            </button>
+          )}
+          <label className={styles.archived}>
+            <input
+              type="checkbox"
+              checked={includeArchived}
+              onChange={(e) => setIncludeArchived(e.target.checked)}
+            />
+            Show archived
+          </label>
+        </div>
       </header>
       {project && banner && (
         <div

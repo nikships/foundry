@@ -1,31 +1,57 @@
 package com.foundry.companion
 
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
 import com.foundry.companion.data.model.CompanionPairingPayload
 import com.foundry.companion.data.model.ConnectionStatus
+import com.foundry.companion.data.model.PairedSession
 import com.foundry.companion.data.model.StartRunInput
 import com.foundry.companion.data.repository.FakeCompanionRepository
+import com.foundry.companion.data.repository.HttpCompanionRepository
+import com.foundry.companion.data.session.SessionManager
 import kotlinx.coroutines.runBlocking
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+@RunWith(RobolectricTestRunner::class)
 class CompanionRepositoryTest {
 
-    private lateinit var repository: FakeCompanionRepository
+    private lateinit var fakeRepository: FakeCompanionRepository
+    private lateinit var server: MockWebServer
+    private lateinit var httpRepository: HttpCompanionRepository
+    private lateinit var sessionManager: SessionManager
 
     @Before
     fun setup() {
-        repository = FakeCompanionRepository(initialPaired = false)
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        sessionManager = SessionManager(context)
+        sessionManager.clearSession()
+
+        fakeRepository = FakeCompanionRepository(initialPaired = false)
+        server = MockWebServer()
+        server.start()
+        httpRepository = HttpCompanionRepository()
+    }
+
+    @After
+    fun tearDown() {
+        server.shutdown()
     }
 
     @Test
     fun testInitialUnpairedState() {
-        assertTrue(repository.connectionStatus.value is ConnectionStatus.Unpaired)
-        assertNull(repository.activeSession.value)
+        assertTrue(fakeRepository.connectionStatus.value is ConnectionStatus.Unpaired)
+        assertNull(fakeRepository.activeSession.value)
     }
 
     @Test
-    fun testPairingSuccess() = runBlocking {
+    fun testFakePairingSuccess() = runBlocking {
         val payload = CompanionPairingPayload(
             protocolVersion = 1,
             origin = "http://192.168.1.50:52810",
@@ -35,53 +61,172 @@ class CompanionRepositoryTest {
             expiresAt = "2026-08-19T00:00:00Z"
         )
 
-        val pairResult = repository.pair(payload, "Test Phone")
+        val pairResult = fakeRepository.pair(payload, "Test Phone")
         assertTrue(pairResult.isSuccess)
         val result = pairResult.getOrThrow()
         assertEquals("desk_test_1", result.desktopId)
         assertEquals("Test Mac", result.desktopName)
 
-        val connState = repository.connectionStatus.value
+        val connState = fakeRepository.connectionStatus.value
         assertTrue(connState is ConnectionStatus.Connected)
         assertEquals("Test Mac", (connState as ConnectionStatus.Connected).desktopName)
     }
 
     @Test
-    fun testUnpairWipesSession() = runBlocking {
+    fun testHttpPairingSuccessAndSessionState() = runBlocking {
+        val hostOrigin = server.url("").toString().removeSuffix("/")
+        val mockPairResponse = """
+            {
+                "token": "bearer_token_xyz_123",
+                "deviceId": "dev_phone_1",
+                "desktopId": "desk_mac_studio_01",
+                "desktopName": "Nik’s Mac Studio",
+                "protocolVersion": 1
+            }
+        """.trimIndent()
+        server.enqueue(MockResponse().setResponseCode(200).setBody(mockPairResponse))
+
         val payload = CompanionPairingPayload(
             protocolVersion = 1,
-            origin = "http://192.168.1.50:52810",
-            desktopId = "desk_test_1",
-            desktopName = "Test Mac",
-            secret = "sec_123",
-            expiresAt = "2026-08-19T00:00:00Z"
+            origin = hostOrigin,
+            desktopId = "desk_mac_studio_01",
+            desktopName = "Nik’s Mac Studio",
+            secret = "secret_valid_nonce",
+            expiresAt = "2026-08-19T12:00:00Z"
         )
-        repository.pair(payload)
-        assertTrue(repository.connectionStatus.value is ConnectionStatus.Connected)
 
-        repository.unpair()
-        assertTrue(repository.connectionStatus.value is ConnectionStatus.Unpaired)
-        assertNull(repository.activeSession.value)
+        val result = httpRepository.pair(payload, "Pixel 9")
+        assertTrue(result.isSuccess)
+        val pairResult = result.getOrThrow()
+        assertEquals("bearer_token_xyz_123", pairResult.token)
+        assertEquals("Nik’s Mac Studio", pairResult.desktopName)
+
+        val session = httpRepository.activeSession.value
+        assertNotNull(session)
+        assertEquals("bearer_token_xyz_123", session?.token)
+        assertEquals(hostOrigin, session?.hostOrigin)
+
+        assertTrue(httpRepository.connectionStatus.value is ConnectionStatus.Connected)
+
+        val recordedRequest = server.takeRequest()
+        assertEquals("/pair", recordedRequest.path)
+        assertEquals("POST", recordedRequest.method)
+        assertTrue(recordedRequest.body.readUtf8().contains("secret_valid_nonce"))
     }
 
     @Test
-    fun testGetProjectsAndRuns() = runBlocking {
-        val projects = repository.getProjects().getOrThrow()
+    fun testHttpPairingExpiredSecret() = runBlocking {
+        val hostOrigin = server.url("").toString().removeSuffix("/")
+        val mockErrorResponse = """
+            {
+                "error": {
+                    "code": "pairing_invalid",
+                    "message": "that pairing code is expired or already used"
+                }
+            }
+        """.trimIndent()
+        server.enqueue(MockResponse().setResponseCode(401).setBody(mockErrorResponse))
+
+        val payload = CompanionPairingPayload(
+            protocolVersion = 1,
+            origin = hostOrigin,
+            desktopId = "desk_01",
+            desktopName = "Mac",
+            secret = "expired_secret",
+            expiresAt = "2026-08-19T00:00:00Z"
+        )
+
+        val result = httpRepository.pair(payload, "Pixel")
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message?.contains("expired or already used") == true)
+        assertTrue(httpRepository.connectionStatus.value is ConnectionStatus.Unpaired)
+    }
+
+    @Test
+    fun testHttpUnpairCallsRevokeAndClearsState() = runBlocking {
+        val hostOrigin = server.url("").toString().removeSuffix("/")
+        httpRepository.injectFakeSession(
+            PairedSession(
+                token = "active_token_123",
+                desktopId = "desk_01",
+                desktopName = "Mac",
+                hostOrigin = hostOrigin,
+                pairedAt = "2026-08-19T00:00:00Z"
+            )
+        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"ok":true}"""))
+
+        httpRepository.unpair()
+
+        assertNull(httpRepository.activeSession.value)
+        assertTrue(httpRepository.connectionStatus.value is ConnectionStatus.Unpaired)
+
+        val recorded = server.takeRequest()
+        assertEquals("/v1/unpair", recorded.path)
+        assertEquals("Bearer active_token_123", recorded.getHeader("Authorization"))
+    }
+
+    @Test
+    fun testHttp401UnauthorizedRevokesSession() = runBlocking {
+        val hostOrigin = server.url("").toString().removeSuffix("/")
+        httpRepository.injectFakeSession(
+            PairedSession(
+                token = "revoked_token",
+                desktopId = "desk_01",
+                desktopName = "Mac",
+                hostOrigin = hostOrigin,
+                pairedAt = "2026-08-19T00:00:00Z"
+            )
+        )
+        server.enqueue(MockResponse().setResponseCode(401).setBody("""{"error":{"code":"unauthorized"}}"""))
+
+        val result = httpRepository.getProjects()
+        assertTrue(result.isFailure)
+
+        // Active session must be cleared on 401
+        assertNull(httpRepository.activeSession.value)
+        assertTrue(httpRepository.connectionStatus.value is ConnectionStatus.Unpaired)
+    }
+
+    @Test
+    fun testSessionManagerPersistence() {
+        val session = PairedSession(
+            token = "persist_token_123",
+            desktopId = "desk_persist_01",
+            desktopName = "Studio Mac",
+            hostOrigin = "http://192.168.1.50:52810",
+            pairedAt = "2026-08-19T10:00:00Z"
+        )
+        sessionManager.saveSession(session)
+
+        val loaded = sessionManager.getSession()
+        assertNotNull(loaded)
+        assertEquals(session.token, loaded?.token)
+        assertEquals(session.desktopId, loaded?.desktopId)
+        assertEquals(session.hostOrigin, loaded?.hostOrigin)
+
+        sessionManager.clearSession()
+        assertNull(sessionManager.getSession())
+    }
+
+    @Test
+    fun testGetProjectsAndRunsFake() = runBlocking {
+        val projects = fakeRepository.getProjects().getOrThrow()
         assertTrue(projects.isNotEmpty())
         assertEquals("Foundry", projects.first().name)
 
-        val runs = repository.getRuns(projects.first().id).getOrThrow()
+        val runs = fakeRepository.getRuns(projects.first().id).getOrThrow()
         assertTrue(runs.isNotEmpty())
         assertTrue(runs.any { it.status == "running" })
     }
 
     @Test
-    fun testStartAndKillRun() = runBlocking {
-        val projects = repository.getProjects().getOrThrow()
+    fun testStartAndKillRunFake() = runBlocking {
+        val projects = fakeRepository.getProjects().getOrThrow()
         val project = projects.first()
         val pipeline = project.pipelines.first()
 
-        val startResult = repository.startRun(
+        val startResult = fakeRepository.startRun(
             StartRunInput(
                 projectId = project.id,
                 pipelineId = pipeline.id,
@@ -93,13 +238,13 @@ class CompanionRepositoryTest {
         assertNotNull(startResult.runId)
 
         val runId = startResult.runId!!
-        val runDetail = repository.getRunDetail(project.id, runId).getOrThrow()
+        val runDetail = fakeRepository.getRunDetail(project.id, runId).getOrThrow()
         assertEquals("running", runDetail.run.status)
 
-        val killResult = repository.killRun(project.id, runId).getOrThrow()
+        val killResult = fakeRepository.killRun(project.id, runId).getOrThrow()
         assertTrue(killResult.ok)
 
-        val updatedDetail = repository.getRunDetail(project.id, runId).getOrThrow()
+        val updatedDetail = fakeRepository.getRunDetail(project.id, runId).getOrThrow()
         assertEquals("killed", updatedDetail.run.status)
     }
 }
