@@ -7,6 +7,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.foundry.companion.data.model.PhaseRunSummary
 import com.foundry.companion.ui.components.FoundrySecondaryButton
@@ -64,6 +66,40 @@ fun SelectedPhaseSummaryCard(
             style = typography.metaMono,
             color = colors.textDim
         )
+
+        if (phase.changedFiles.isNotEmpty()) {
+            val shown = phase.changedFiles.take(CHANGED_FILES_VISIBLE)
+            val extra = phase.changedFiles.size - shown.size
+            Column(
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("phase-changed-files")
+            ) {
+                Text(
+                    text = "CHANGED FILES",
+                    style = typography.eyebrowMono,
+                    color = colors.textDim
+                )
+                shown.forEach { path ->
+                    Text(
+                        text = path,
+                        style = typography.metaMono,
+                        color = colors.textPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.testTag("phase-changed-file")
+                    )
+                }
+                if (extra > 0) {
+                    Text(
+                        text = "+$extra more",
+                        style = typography.metaMono,
+                        color = colors.textFaint
+                    )
+                }
+            }
+        }
 
         // Envelope verdict if present
         if (!phase.envelopeVerdict.isNullOrBlank()) {
@@ -144,3 +180,5 @@ fun SelectedPhaseSummaryCard(
         )
     }
 }
+
+private const val CHANGED_FILES_VISIBLE = 8

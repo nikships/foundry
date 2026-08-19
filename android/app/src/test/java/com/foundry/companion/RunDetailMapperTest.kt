@@ -107,7 +107,9 @@ class RunDetailMapperTest {
         assertEquals("openai/gpt-5-codex", build.model)
         assertEquals("diff_matches_claims", build.gateResults.single().name)
         assertEquals("decoded the host payload", build.envelopeVerdict)
+        assertEquals(listOf("built.txt"), build.changedFiles)
         assertEquals(48L, build.durationMs)
+        assertTrue(plan.changedFiles.isEmpty())
     }
 
     @Test

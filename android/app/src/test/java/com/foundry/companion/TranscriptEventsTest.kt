@@ -1,7 +1,9 @@
 package com.foundry.companion
 
 import com.foundry.companion.data.model.EventRow
+import com.foundry.companion.data.model.PhaseRunSummary
 import com.foundry.companion.data.model.TranscriptEvents
+import com.foundry.companion.data.model.WaterfallTickKind
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
@@ -35,14 +37,49 @@ class TranscriptEventsTest {
         assertEquals(listOf("a"), visible.map { it.eventId })
     }
 
-    private fun row(id: String, phaseId: String, type: String): EventRow {
+    @Test
+    fun waterfallTicksComeFromToolGateAndInterruptOnly() {
+        val phase = PhaseRunSummary(
+            id = "p_3",
+            name = "Code",
+            status = "running",
+            startedAt = "2026-08-18T23:30:00Z"
+        )
+        val events = listOf(
+            row("tool", "p_3", "tool_call", "2026-08-18T23:30:10Z"),
+            row("gate", "p_3", "gate_fail", "2026-08-18T23:30:20Z"),
+            row("int", "p_3", "interrupt", "2026-08-18T23:30:30Z"),
+            row("text", "p_3", "assistant_text", "2026-08-18T23:30:15Z"),
+            row("other", "p_1", "tool_call", "2026-08-18T23:30:12Z")
+        )
+
+        val ticks = TranscriptEvents.waterfallTicks(
+            phase,
+            events,
+            nowMs = java.time.Instant.parse("2026-08-18T23:31:00Z").toEpochMilli()
+        )
+        assertEquals(
+            listOf(WaterfallTickKind.TOOL, WaterfallTickKind.GATE_FAIL, WaterfallTickKind.INTERRUPT),
+            ticks.map { it.kind }
+        )
+        assertEquals(listOf("tool", "gate", "int"), ticks.map { it.eventId })
+        assertTrue(ticks[0].fraction < ticks[1].fraction)
+        assertTrue(ticks[1].fraction < ticks[2].fraction)
+    }
+
+    private fun row(
+        id: String,
+        phaseId: String,
+        type: String,
+        startedAt: String = "23:30:00Z"
+    ): EventRow {
         return EventRow(
             eventId = id,
             phaseId = phaseId,
             type = type,
             name = type,
             payload = buildJsonObject { put("text", id) },
-            startedAt = "23:30:00Z"
+            startedAt = startedAt
         )
     }
 }

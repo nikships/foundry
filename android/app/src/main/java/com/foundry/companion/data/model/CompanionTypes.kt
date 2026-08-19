@@ -114,6 +114,7 @@ data class PhaseRunSummary(
     val model: String? = null,
     val gateResults: List<GateResult> = emptyList(),
     val envelopeVerdict: String? = null,
+    val changedFiles: List<String> = emptyList(),
     val errorMessage: String? = null,
     val phaseId: String = "",
     /** The agent that ran the phase, `"code"` for a command phase. */

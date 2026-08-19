@@ -1,7 +1,10 @@
 package com.foundry.companion.ui.screens.inspector
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -20,11 +23,11 @@ import com.foundry.companion.ui.components.FoundryTopBar
 import com.foundry.companion.ui.components.ReconnectBanner
 import com.foundry.companion.ui.components.StatusBadge
 import com.foundry.companion.ui.screens.inspector.components.PhaseChipsRow
-import com.foundry.companion.ui.screens.inspector.components.PhaseFilter
-import com.foundry.companion.ui.screens.inspector.components.PhaseFilterRow
 import com.foundry.companion.ui.screens.inspector.components.TranscriptLane
 import com.foundry.companion.ui.theme.FoundryTheme
+import kotlinx.coroutines.flow.distinctUntilChanged
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun InspectorScreen(
     runDetail: RunDetail?,
@@ -40,7 +43,6 @@ fun InspectorScreen(
     isRunMissing: Boolean = false
 ) {
     val colors = FoundryTheme.colors
-    val typography = FoundryTheme.typography
 
     if (!hasProject) {
         InspectorScaffold(
@@ -91,16 +93,6 @@ fun InspectorScreen(
     }
 
     val phases = runDetail.phases
-    var filter by remember { mutableStateOf(PhaseFilter.ALL) }
-    val filteredPhases = remember(phases, filter) {
-        phases.filter { phase ->
-            when (filter) {
-                PhaseFilter.ALL -> true
-                PhaseFilter.RUNNING -> phase.status.equals("running", ignoreCase = true)
-                PhaseFilter.FAILED -> phase.status.equals("fail", ignoreCase = true)
-            }
-        }
-    }
 
     val defaultPhaseId = remember(initialPhaseId, phases) {
         initialPhaseId
@@ -112,18 +104,40 @@ fun InspectorScreen(
 
     var selectedPhaseId by remember(defaultPhaseId) { mutableStateOf(defaultPhaseId) }
 
-    LaunchedEffect(filteredPhases, selectedPhaseId) {
-        if (filteredPhases.isNotEmpty() && filteredPhases.none { it.resolvedId == selectedPhaseId }) {
-            selectedPhaseId = filteredPhases.first().resolvedId
-            onPhaseSelected(filteredPhases.first().resolvedId)
+    val selectedIndex = remember(phases, selectedPhaseId) {
+        phases.indexOfFirst { it.resolvedId == selectedPhaseId }.let { index ->
+            if (index >= 0) index else 0
         }
     }
 
-    val currentPhase = phases.find { it.resolvedId == selectedPhaseId } ?: phases.firstOrNull()
-    val isPhaseRunning = currentPhase?.status.equals("running", ignoreCase = true)
-    val phaseEvents = remember(events, selectedPhaseId) {
-        TranscriptEvents.visibleForPhase(events, selectedPhaseId)
+    val pagerState = rememberPagerState(
+        initialPage = selectedIndex,
+        pageCount = { phases.size.coerceAtLeast(1) }
+    )
+    var pagerDriven by remember { mutableStateOf(false) }
+
+    LaunchedEffect(selectedIndex, phases.size) {
+        if (phases.isEmpty()) return@LaunchedEffect
+        if (pagerState.currentPage != selectedIndex && !pagerDriven) {
+            pagerState.animateScrollToPage(selectedIndex)
+        }
+        pagerDriven = false
     }
+
+    LaunchedEffect(pagerState, phases) {
+        snapshotFlow { pagerState.settledPage }
+            .distinctUntilChanged()
+            .collect { page ->
+                val id = phases.getOrNull(page)?.resolvedId ?: return@collect
+                if (id != selectedPhaseId) {
+                    pagerDriven = true
+                    selectedPhaseId = id
+                    onPhaseSelected(id)
+                }
+            }
+    }
+
+    val currentPhase = phases.find { it.resolvedId == selectedPhaseId } ?: phases.firstOrNull()
 
     InspectorScaffold(
         title = "Inspector · ${currentPhase?.name ?: "Phase"}",
@@ -133,26 +147,17 @@ fun InspectorScreen(
         status = runDetail.run.status,
         modifier = modifier
     ) {
-        PhaseFilterRow(
-            currentFilter = filter,
-            onFilterSelect = { filter = it },
-            runningCount = phases.count { it.status.equals("running", ignoreCase = true) },
-            failedCount = phases.count { it.status.equals("fail", ignoreCase = true) }
-        )
-
-        if (filteredPhases.isEmpty()) {
+        if (phases.isEmpty()) {
             InspectorEmptyState(
-                title = "No phases match this filter.",
+                title = "No phases yet.",
                 body = null,
-                testTag = "inspector-empty-filter",
-                actionLabel = if (filter != PhaseFilter.ALL) "SHOW ALL PHASES" else null,
-                onAction = { filter = PhaseFilter.ALL }
+                testTag = "inspector-empty-phases"
             )
             return@InspectorScaffold
         }
 
         PhaseChipsRow(
-            phases = filteredPhases,
+            phases = phases,
             selectedPhaseId = selectedPhaseId,
             onSelectPhase = {
                 selectedPhaseId = it
@@ -160,29 +165,65 @@ fun InspectorScreen(
             }
         )
 
-        when {
-            currentPhase?.status.equals("queued", ignoreCase = true) -> {
-                val previous = previousPhaseName(phases, currentPhase)
-                InspectorEmptyState(
-                    title = "This phase hasn't started yet.",
-                    body = previous?.let { "runs after $it" },
-                    testTag = "inspector-empty-queued"
-                )
-            }
-            phaseEvents.isEmpty() -> {
-                InspectorEmptyState(
-                    title = "No events yet.",
-                    body = null,
-                    testTag = "inspector-empty-events"
-                )
-            }
-            else -> {
-                TranscriptLane(
-                    events = phaseEvents,
-                    isRunning = isPhaseRunning && connectionStatus is ConnectionStatus.Connected,
-                    modifier = Modifier.weight(1f)
-                )
-            }
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .testTag("inspector-pager"),
+            key = { page -> phases[page].resolvedId },
+            userScrollEnabled = true
+        ) { page ->
+            val phase = phases[page]
+            InspectorPhasePage(
+                phase = phase,
+                phases = phases,
+                events = events,
+                isSelected = phase.resolvedId == selectedPhaseId,
+                isConnected = connectionStatus is ConnectionStatus.Connected
+            )
+        }
+    }
+}
+
+@Composable
+private fun InspectorPhasePage(
+    phase: PhaseRunSummary,
+    phases: List<PhaseRunSummary>,
+    events: List<EventRow>,
+    isSelected: Boolean,
+    isConnected: Boolean
+) {
+    val isPhaseRunning = phase.status.equals("running", ignoreCase = true)
+    val followLive = isSelected && isPhaseRunning && isConnected
+    val phaseEvents = remember(events, phase.resolvedId) {
+        TranscriptEvents.visibleForPhase(events, phase.resolvedId)
+    }
+
+    when {
+        phase.status.equals("queued", ignoreCase = true) -> {
+            val previous = previousPhaseName(phases, phase)
+            InspectorEmptyState(
+                title = "This phase hasn't started yet.",
+                body = previous?.let { "runs after $it" },
+                testTag = "inspector-empty-queued"
+            )
+        }
+        phaseEvents.isEmpty() -> {
+            InspectorEmptyState(
+                title = "No events yet.",
+                body = null,
+                testTag = "inspector-empty-events"
+            )
+        }
+        else -> {
+            TranscriptLane(
+                events = phaseEvents,
+                isRunning = followLive,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .testTag("inspector-page-${phase.resolvedId}")
+            )
         }
     }
 }

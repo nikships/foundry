@@ -9,6 +9,7 @@ import com.foundry.companion.data.model.HostRunDetail
 import com.foundry.companion.data.model.PhaseRunSummary
 import com.foundry.companion.data.model.RunDetail
 import com.foundry.companion.util.RunFormatters
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -90,6 +91,7 @@ private fun HostPhaseRow.toSummary(
         model = sessions.firstOrNull { it.model.isNotBlank() }?.model,
         gateResults = gates.map { GateResult(name = it.gate, passed = it.passed) },
         envelopeVerdict = envelopes.latest()?.verdict(),
+        changedFiles = envelopes.latest()?.changedFiles().orEmpty(),
         errorMessage = error?.takeIf { it.isNotBlank() }
     )
 }
@@ -100,6 +102,13 @@ private fun HostPhaseRow.toSummary(
  */
 private fun List<HostEnvelopeRow>.latest(): HostEnvelopeRow? =
     maxWithOrNull(compareBy({ it.attempt }, { it.createdAt }))
+
+private fun HostEnvelopeRow.changedFiles(): List<String> {
+    val arr = payload["changed_files"] as? JsonArray ?: return emptyList()
+    return arr.mapNotNull { el ->
+        (el as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotBlank() }
+    }.distinct()
+}
 
 private fun HostEnvelopeRow.verdict(): String? {
     val kind = schemaKind.ifBlank { "envelope" }
