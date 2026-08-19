@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   AppSettings,
   DoctorCheck,
@@ -14,7 +14,7 @@ import {
   type BridgeState,
   type StoredProviderKey,
 } from '@shared/ipc-contract.js';
-import type { CompanionHostState } from '@shared/companion.js';
+import type { CompanionHostState, CompanionPairingPayload } from '@shared/companion.js';
 import { api, plain } from '../api.js';
 import { isKnownPrWriter, prWriterOptions } from '../pr-draft.js';
 import { useApp } from '../stores/app.js';
@@ -24,6 +24,7 @@ import DoctorList from '../components/DoctorList.js';
 import ProjectCommands from '../components/ProjectCommands.js';
 import ProjectSetup from '../components/ProjectSetup.js';
 import BaseSyncBar from '../components/BaseSyncBar.js';
+import QrCode from '../components/QrCode.js';
 import { Field, TextInput, Textarea } from '../components/ui/Field.js';
 import { Button } from '../components/ui/Button.js';
 import { Dropdown } from '../components/ui/Dropdown.js';
@@ -187,6 +188,9 @@ export default function SettingsScreen({
   const [bridge, setBridge] = useState<BridgeState | null>(null);
   const [companion, setCompanion] = useState<CompanionHostState | null>(null);
   const [companionBusy, setCompanionBusy] = useState(false);
+  const [pairingPayload, setPairingPayload] = useState<CompanionPairingPayload | null>(null);
+  const [copiedPayload, setCopiedPayload] = useState(false);
+  const [showPairMore, setShowPairMore] = useState(false);
   const [storedKeys, setStoredKeys] = useState<StoredProviderKey[]>([]);
   const [providerBusy, setProviderBusy] = useState<string | null>(null);
   const [providerNotes, setProviderNotes] = useState<Record<string, string>>({});
@@ -229,18 +233,38 @@ export default function SettingsScreen({
     return api.on('bridge-changed', reload);
   }, []);
 
+  const refreshPairingPayload = useCallback(async (): Promise<void> => {
+    try {
+      const payload = await api.companion.pairingPayload();
+      setPairingPayload(payload);
+    } catch {
+      setPairingPayload(null);
+    }
+  }, []);
+
   // A phone pairs over HTTP minutes after the host started, so the pane
   // re-reads on the push event rather than trusting its own action results.
   useEffect(() => {
-    const reload = (): void => void api.companion.state().then(setCompanion);
+    const reload = (): void => {
+      void api.companion.state().then((st) => {
+        setCompanion(st);
+        if (st.running) void refreshPairingPayload();
+      });
+    };
     reload();
     return api.on('companion-changed', reload);
-  }, []);
+  }, [refreshPairingPayload]);
 
   const toggleCompanion = async (on: boolean): Promise<void> => {
     setCompanionBusy(true);
     try {
-      setCompanion(on ? await api.companion.start() : await api.companion.stop());
+      const next = on ? await api.companion.start() : await api.companion.stop();
+      setCompanion(next);
+      if (next.running) {
+        void refreshPairingPayload();
+      } else {
+        setPairingPayload(null);
+      }
     } finally {
       setCompanionBusy(false);
     }
@@ -773,7 +797,7 @@ export default function SettingsScreen({
                       label="Serve the companion host on this network"
                       hint={
                         companion?.running && companion.origin
-                          ? `Serving on ${companion.origin} — pairing is QR-only, and every request needs a paired device token.`
+                          ? `Serving on ${companion.origin} · Protocol v${companion.protocolVersion} — pairing is QR-only.`
                           : (companion?.detail ??
                             'Off. Nothing listens until you turn this on, and pairing is QR-only.')
                       }
@@ -783,33 +807,161 @@ export default function SettingsScreen({
                       }}
                     />
                   </div>
-                  {companion && companion.devices.length > 0 && (
-                    <div className={styles.settingsFields}>
-                      {companion.devices.map((device) => (
-                        <div key={device.deviceId} className={styles.settingsSpread}>
-                          <Field>
-                            <strong className={styles.settingsStrong}>{device.name}</strong>
-                            <span className={styles.hint}>
-                              Paired {new Date(device.pairedAt).toLocaleDateString()}
-                              {device.lastSeenAt
-                                ? ` · last seen ${new Date(device.lastSeenAt).toLocaleString()}`
-                                : ' · never connected'}
-                            </span>
-                          </Field>
-                          <Button
-                            size="sm"
-                            onClick={() =>
-                              void api.companion
-                                .unpair(device.deviceId)
-                                .then(() => api.companion.state())
-                                .then(setCompanion)
-                            }
-                          >
-                            Unpair
-                          </Button>
+
+                  {companion?.running && (
+                    <>
+                      {companion.devices.length === 0 ? (
+                        <div className={styles.qrContainer}>
+                          <div className={styles.qrFrame}>
+                            {pairingPayload ? (
+                              <QrCode
+                                value={JSON.stringify(pairingPayload)}
+                                size={220}
+                                bgColor="#050505"
+                                fgColor="#EEEEEE"
+                                title="Foundry Companion Pairing QR"
+                              />
+                            ) : (
+                              <div className={styles.qrPlaceholder}>Generating pairing code…</div>
+                            )}
+                          </div>
+                          <div className={styles.qrDetails}>
+                            <div className={styles.qrLead}>
+                              <span className={`${styles.settingsPill} ${styles.info}`}>
+                                Waiting for a phone…
+                              </span>
+                              <strong style={{ marginTop: '6px' }}>Pair your Android phone</strong>
+                              <p className={styles.hint}>
+                                Open Foundry on your Android phone and scan this code, or copy the
+                                pairing payload to paste.
+                              </p>
+                            </div>
+                            <div className={styles.settingsBtnrow}>
+                              <Button
+                                size="sm"
+                                disabled={!pairingPayload}
+                                onClick={() => {
+                                  if (pairingPayload) {
+                                    void navigator.clipboard.writeText(
+                                      JSON.stringify(pairingPayload),
+                                    );
+                                    setCopiedPayload(true);
+                                    setTimeout(() => setCopiedPayload(false), 2000);
+                                  }
+                                }}
+                              >
+                                {copiedPayload ? 'Copied to clipboard!' : 'Copy pairing code'}
+                              </Button>
+                              <Button size="sm" onClick={() => void refreshPairingPayload()}>
+                                Refresh QR code
+                              </Button>
+                            </div>
+                          </div>
                         </div>
-                      ))}
-                    </div>
+                      ) : (
+                        <div className={styles.settingsFields}>
+                          <div className={styles.pairedDevicesHeader}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <strong className={styles.settingsStrong}>
+                                Paired devices ({companion.devices.length})
+                              </strong>
+                              <span className={`${styles.settingsPill} ${styles.ok}`}>Paired</span>
+                            </div>
+                            <span className={styles.hint}>
+                              Connected phones can watch runs, start new runs, and answer
+                              interrupts.
+                            </span>
+                          </div>
+                          {companion.devices.map((device) => (
+                            <div key={device.deviceId} className={styles.settingsSpread}>
+                              <Field>
+                                <strong className={styles.settingsStrong}>{device.name}</strong>
+                                <span className={styles.hint}>
+                                  Paired {new Date(device.pairedAt).toLocaleDateString()}
+                                  {device.lastSeenAt
+                                    ? ` · last seen ${new Date(device.lastSeenAt).toLocaleString()}`
+                                    : ' · never connected'}
+                                </span>
+                              </Field>
+                              <Button
+                                size="sm"
+                                onClick={() =>
+                                  void api.companion
+                                    .unpair(device.deviceId)
+                                    .then(() => api.companion.state())
+                                    .then((st) => {
+                                      setCompanion(st);
+                                      if (st.devices.length === 0) void refreshPairingPayload();
+                                    })
+                                }
+                              >
+                                Unpair
+                              </Button>
+                            </div>
+                          ))}
+
+                          <div style={{ marginTop: '8px' }}>
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                setShowPairMore((prev) => !prev);
+                                if (!showPairMore && !pairingPayload) void refreshPairingPayload();
+                              }}
+                            >
+                              {showPairMore ? 'Hide pairing QR code' : 'Pair another phone…'}
+                            </Button>
+                          </div>
+
+                          {showPairMore && (
+                            <div className={styles.qrContainer}>
+                              <div className={styles.qrFrame}>
+                                {pairingPayload ? (
+                                  <QrCode
+                                    value={JSON.stringify(pairingPayload)}
+                                    size={220}
+                                    bgColor="#050505"
+                                    fgColor="#EEEEEE"
+                                    title="Foundry Companion Pairing QR"
+                                  />
+                                ) : (
+                                  <div className={styles.qrPlaceholder}>
+                                    Generating pairing code…
+                                  </div>
+                                )}
+                              </div>
+                              <div className={styles.qrDetails}>
+                                <div className={styles.qrLead}>
+                                  <strong>Pair an additional phone</strong>
+                                  <p className={styles.hint}>
+                                    Scan this QR code in Foundry on another phone.
+                                  </p>
+                                </div>
+                                <div className={styles.settingsBtnrow}>
+                                  <Button
+                                    size="sm"
+                                    disabled={!pairingPayload}
+                                    onClick={() => {
+                                      if (pairingPayload) {
+                                        void navigator.clipboard.writeText(
+                                          JSON.stringify(pairingPayload),
+                                        );
+                                        setCopiedPayload(true);
+                                        setTimeout(() => setCopiedPayload(false), 2000);
+                                      }
+                                    }}
+                                  >
+                                    {copiedPayload ? 'Copied to clipboard!' : 'Copy pairing code'}
+                                  </Button>
+                                  <Button size="sm" onClick={() => void refreshPairingPayload()}>
+                                    Refresh QR code
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </>
                   )}
                 </Section>
 

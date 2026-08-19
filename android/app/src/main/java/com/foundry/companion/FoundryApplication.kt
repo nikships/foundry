@@ -33,6 +33,6 @@ class FoundryApplication : Application() {
     }
 
     companion object {
-        var USE_FAKE_REPOSITORY = true
+        var USE_FAKE_REPOSITORY = false
     }
 }

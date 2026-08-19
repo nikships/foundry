@@ -10,6 +10,46 @@
   justify-content: space-between;
   padding: calc(var(--titlebar-h) + var(--s2)) var(--s6) var(--s4);
 }
+.headActions {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+}
+.phonePill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 3px 8px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    border-color var(--fast) var(--ease),
+    color var(--fast) var(--ease);
+}
+.phonePill:hover {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+.phoneDot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-full);
+}
+.dotGreen {
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+}
+.dotOrange {
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+}
+.dotFaint {
+  background: var(--text-faint);
+}
 .archived {
   display: inline-flex;
   align-items: center;

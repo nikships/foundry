@@ -347,6 +347,56 @@
   color: var(--amber);
 }
 
+/* companion qr pairing */
+.qrContainer {
+  display: flex;
+  align-items: center;
+  gap: var(--s5);
+  padding: var(--s4);
+  background: var(--bg-panel);
+  border: 1px solid var(--line-faint);
+  border-radius: var(--r-sm);
+  margin-top: var(--s3);
+}
+.qrFrame {
+  flex: none;
+  padding: var(--s2);
+  background: var(--bg-input);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.qrPlaceholder {
+  width: 220px;
+  height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+}
+.qrDetails {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  min-width: 0;
+}
+.qrLead strong {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--text);
+  margin-bottom: 2px;
+}
+.pairedDevicesHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: var(--s2);
+}
+
 /* updates */
 .settingsStrong {
   display: block;

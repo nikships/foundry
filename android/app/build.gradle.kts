@@ -88,6 +88,13 @@ dependencies {
     // Navigation
     implementation("androidx.navigation:navigation-compose:2.8.5")
 
+    // CameraX & QR Scanning
+    implementation("androidx.camera:camera-core:1.4.1")
+    implementation("androidx.camera:camera-camera2:1.4.1")
+    implementation("androidx.camera:camera-lifecycle:1.4.1")
+    implementation("androidx.camera:camera-view:1.4.1")
+    implementation("com.google.zxing:core:3.5.3")
+
     // Serialization & Networking
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
@@ -105,6 +112,7 @@ dependencies {
     testImplementation("androidx.test:core:1.6.1")
     testImplementation("androidx.test.ext:junit:1.2.1")
     testImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 
     // Instrumented Tests
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
