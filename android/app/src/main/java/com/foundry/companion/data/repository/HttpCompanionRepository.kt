@@ -305,6 +305,20 @@ class HttpCompanionRepository(
         }
     }
 
+    override suspend fun getPrStatus(projectId: String): Result<GhStatus> = withContext(Dispatchers.IO) {
+        try {
+            val request = authenticatedRequestBuilder("/v1/projects/$projectId/pr-status").get().build()
+            val response = client.newCall(request).execute()
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
+            val res = json.decodeFromString(GhStatus.serializer(), body)
+            Result.success(res)
+        } catch (e: Exception) {
+            handleNetworkError(e)
+            Result.failure(e)
+        }
+    }
+
     override suspend fun createPr(
         projectId: String,
         runId: String,

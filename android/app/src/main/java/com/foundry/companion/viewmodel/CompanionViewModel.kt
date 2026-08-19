@@ -24,6 +24,7 @@ data class CompanionUiState(
     val eventRows: List<EventRow> = emptyList(),
     val eventsCursor: Long = 0L,
     val pendingInterrupts: List<PendingInterrupt> = emptyList(),
+    val ghStatus: GhStatus? = null,
     val isNotifyOnSettleEnabled: Boolean = true,
     val isPairing: Boolean = false,
     val isStartingRun: Boolean = false,
@@ -96,6 +97,7 @@ class CompanionViewModel(
 
                 if (selected.isNotEmpty()) {
                     loadRuns(selected)
+                    loadPrStatus(selected)
                     if (enablePolling) {
                         startPolling(selected)
                     }
@@ -107,8 +109,18 @@ class CompanionViewModel(
     fun selectProject(projectId: String) {
         _uiState.update { it.copy(selectedProjectId = projectId) }
         loadRuns(projectId)
+        loadPrStatus(projectId)
         if (enablePolling) {
             startPolling(projectId)
+        }
+    }
+
+    fun loadPrStatus(projectId: String = _uiState.value.selectedProjectId) {
+        if (projectId.isBlank()) return
+        viewModelScope.launch {
+            repository.getPrStatus(projectId).onSuccess { status ->
+                _uiState.update { it.copy(ghStatus = status) }
+            }
         }
     }
 
@@ -172,6 +184,9 @@ class CompanionViewModel(
     fun loadRunDetail(runId: String) {
         val projectId = _uiState.value.selectedProjectId
         viewModelScope.launch {
+            if (projectId.isNotBlank() && _uiState.value.ghStatus == null) {
+                loadPrStatus(projectId)
+            }
             repository.getRunDetail(projectId, runId).onSuccess { detail ->
                 _uiState.update { it.copy(currentRunDetail = detail) }
             }
@@ -291,16 +306,29 @@ class CompanionViewModel(
         }
     }
 
-    fun createPr(runId: String) {
+    fun clearActionError() {
+        _uiState.update { it.copy(errorMessage = null) }
+    }
+
+    fun createPr(runId: String, onResult: ((Boolean, String?) -> Unit)? = null) {
         val projectId = _uiState.value.selectedProjectId
-        _uiState.update { it.copy(isCreatingPr = true) }
+        _uiState.update { it.copy(isCreatingPr = true, errorMessage = null) }
         viewModelScope.launch {
-            repository.createPr(projectId, runId, CompanionPrCreateRequest()).onSuccess {
+            repository.createPr(projectId, runId, CompanionPrCreateRequest()).onSuccess { res ->
                 _uiState.update { it.copy(isCreatingPr = false) }
-                loadRunDetail(runId)
-                loadRuns(projectId)
-            }.onFailure {
-                _uiState.update { it.copy(isCreatingPr = false) }
+                if (res.ok) {
+                    loadRunDetail(runId)
+                    loadRuns(projectId)
+                    onResult?.invoke(true, res.effectiveUrl)
+                } else {
+                    val detail = res.detail ?: "Failed to create PR"
+                    _uiState.update { it.copy(errorMessage = detail) }
+                    onResult?.invoke(false, detail)
+                }
+            }.onFailure { err ->
+                val msg = err.message ?: "Failed to create PR"
+                _uiState.update { it.copy(isCreatingPr = false, errorMessage = msg) }
+                onResult?.invoke(false, msg)
             }
         }
     }

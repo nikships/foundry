@@ -35,7 +35,8 @@ fun RunsScreen(
     projects: List<CompanionProjectSummary> = emptyList(),
     selectedProjectId: String = "",
     onSelectProject: (String) -> Unit = {},
-    onInspectorClick: (runId: String) -> Unit = {}
+    onInspectorClick: (runId: String) -> Unit = {},
+    onOpenPr: ((String) -> Unit)? = null
 ) {
     val colors = FoundryTheme.colors
     val typography = FoundryTheme.typography
@@ -224,7 +225,8 @@ fun RunsScreen(
                         RunHistoryRow(
                             run = run,
                             onClick = { onRunClick(run.runId) },
-                            onInspectorClick = { onInspectorClick(run.runId) }
+                            onInspectorClick = { onInspectorClick(run.runId) },
+                            onOpenPr = onOpenPr
                         )
                     }
                 }

@@ -360,4 +360,63 @@ class CompanionRepositoryTest {
         assertEquals("POST", req2.method)
         assertTrue(req2.body.readUtf8().contains("approve"))
     }
+
+    @Test
+    fun testHttpGetPrStatus() = runBlocking {
+        val hostOrigin = server.url("").toString().removeSuffix("/")
+        httpRepository.injectFakeSession(
+            PairedSession(
+                token = "test_token",
+                desktopId = "desk_01",
+                desktopName = "Mac",
+                hostOrigin = hostOrigin,
+                pairedAt = "2026-08-19T00:00:00Z"
+            )
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"available":true,"detail":"gh is signed in; repo resolves to foundry-app/foundry","repo":"foundry-app/foundry"}"""
+            )
+        )
+
+        val res = httpRepository.getPrStatus("proj_1").getOrThrow()
+        assertTrue(res.available)
+        assertEquals("foundry-app/foundry", res.repo)
+
+        val req = server.takeRequest()
+        assertEquals("/v1/projects/proj_1/pr-status", req.path)
+        assertEquals("GET", req.method)
+    }
+
+    @Test
+    fun testHttpCreatePr() = runBlocking {
+        val hostOrigin = server.url("").toString().removeSuffix("/")
+        httpRepository.injectFakeSession(
+            PairedSession(
+                token = "test_token",
+                desktopId = "desk_01",
+                desktopName = "Mac",
+                hostOrigin = hostOrigin,
+                pairedAt = "2026-08-19T00:00:00Z"
+            )
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"ok":true,"number":133,"url":"https://github.com/foundry-app/foundry/pull/133"}"""
+            )
+        )
+
+        val res = httpRepository.createPr(
+            "proj_1",
+            "run_1",
+            com.foundry.companion.data.model.CompanionPrCreateRequest()
+        ).getOrThrow()
+        assertTrue(res.ok)
+        assertEquals(133, res.number)
+        assertEquals("https://github.com/foundry-app/foundry/pull/133", res.url)
+
+        val req = server.takeRequest()
+        assertEquals("/v1/projects/proj_1/runs/run_1/pr", req.path)
+        assertEquals("POST", req.method)
+    }
 }

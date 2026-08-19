@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.foundry.companion.data.model.ConnectionStatus
+import com.foundry.companion.data.model.GhStatus
 import com.foundry.companion.data.model.PendingInterrupt
 import com.foundry.companion.data.model.RunDetail
 import com.foundry.companion.ui.components.*
@@ -44,7 +45,9 @@ fun RunDetailScreen(
     onDismissActionError: (() -> Unit)? = null,
     onAnswerInterrupt: ((interruptId: String, approved: Boolean, notes: String?) -> Unit)? = null,
     onRetryConnection: (() -> Unit)? = null,
-    isCreatingPr: Boolean = false
+    isCreatingPr: Boolean = false,
+    ghStatus: GhStatus? = null,
+    onCopyPrUrl: ((String) -> Unit)? = null
 ) {
     val colors = FoundryTheme.colors
     val typography = FoundryTheme.typography
@@ -288,7 +291,10 @@ fun RunDetailScreen(
                     onOpenPr = onOpenPr,
                     onCreatePr = { onCreatePr(run.runId) },
                     onOpenIssue = onOpenIssue,
-                    isCreatingPr = isCreatingPr
+                    ghStatus = ghStatus,
+                    isCreatingPr = isCreatingPr,
+                    isConnected = isConnected,
+                    onCopyPrUrl = onCopyPrUrl
                 )
             }
 

@@ -255,4 +255,58 @@ class CompanionViewModelTest {
 
         assertTrue(viewModel.uiState.value.pendingInterrupts.isEmpty())
     }
+
+    @Test
+    fun testLoadPrStatus() {
+        viewModel.loadPrStatus("proj_foundry_core")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val status = viewModel.uiState.value.ghStatus
+        assertNotNull(status)
+        assertTrue(status?.available == true)
+        assertEquals("foundry-app/foundry", status?.repo)
+    }
+
+    @Test
+    fun testCreatePrFlowSuccess() {
+        var callbackSuccess: Boolean? = null
+        var callbackUrl: String? = null
+
+        viewModel.createPr("run_260818_acc01") { ok, url ->
+            callbackSuccess = ok
+            callbackUrl = url
+        }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(true, callbackSuccess)
+        assertEquals("https://github.com/foundry-app/foundry/pull/133", callbackUrl)
+        assertFalse(viewModel.uiState.value.isCreatingPr)
+        assertNull(viewModel.uiState.value.errorMessage)
+
+        val run = viewModel.uiState.value.runs.find { it.runId == "run_260818_acc01" }
+        assertEquals("https://github.com/foundry-app/foundry/pull/133", run?.prUrl)
+    }
+
+    @Test
+    fun testCreatePrFailureSetsErrorMessage() {
+        repository.setFakeGhStatus(
+            com.foundry.companion.data.model.GhStatus(
+                available = false,
+                detail = "GitHub CLI (gh) is not installed or not on PATH"
+            )
+        )
+
+        var callbackSuccess: Boolean? = null
+        viewModel.createPr("run_260818_acc01") { ok, _ ->
+            callbackSuccess = ok
+        }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(false, callbackSuccess)
+        assertFalse(viewModel.uiState.value.isCreatingPr)
+        assertEquals("GitHub CLI (gh) is not installed or not on PATH", viewModel.uiState.value.errorMessage)
+
+        viewModel.clearActionError()
+        assertNull(viewModel.uiState.value.errorMessage)
+    }
 }
