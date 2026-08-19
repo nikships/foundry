@@ -8,6 +8,7 @@ import com.foundry.companion.ui.components.LocalOpenConnectionSheet
 import com.foundry.companion.ui.screens.runs.RunsScreen
 import com.foundry.companion.ui.theme.FoundryTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -279,6 +280,32 @@ class RunsScreenTest {
         composeTestRule.onNodeWithText("Foundry Docs", useUnmergedTree = true).assertIsDisplayed()
         composeTestRule.onNodeWithText("Foundry Docs", useUnmergedTree = true).performClick()
         assertEquals("p2", selectedProj)
+    }
+
+    @Test
+    fun testOfflineFabIsDisabledWithReconnectHelper() {
+        var started = false
+
+        composeTestRule.setContent {
+            FoundryTheme {
+                RunsScreen(
+                    runs = emptyList(),
+                    connectionStatus = ConnectionStatus.Offline(
+                        "Nik's Mac",
+                        "http://192.168.1.100:52810"
+                    ),
+                    projectName = "Foundry",
+                    onRunClick = {},
+                    onStartRunClick = { started = true },
+                    onConnectionPillClick = {},
+                    onRetryConnection = {}
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Reconnect to start a run").assertIsDisplayed()
+        composeTestRule.onNodeWithText("START RUN", useUnmergedTree = true).performClick()
+        assertFalse(started)
     }
 
     @Test

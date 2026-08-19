@@ -38,6 +38,8 @@ class CompanionViewModelTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         sessionManager = SessionManager(context)
         sessionManager.clearSession()
+        sessionManager.clearNewRunDraft()
+        sessionManager.setSelectedProjectId(null)
 
         repository = FakeCompanionRepository(initialPaired = true)
         viewModel = CompanionViewModel(repository, sessionManager, enablePolling = false)
@@ -197,6 +199,72 @@ class CompanionViewModelTest {
         viewModel.selectProject("proj_foundry_docs")
         testDispatcher.scheduler.advanceUntilIdle()
         assertEquals("proj_foundry_docs", viewModel.uiState.value.selectedProjectId)
+        assertEquals("proj_foundry_docs", sessionManager.getSelectedProjectId())
+    }
+
+    @Test
+    fun testSelectedProjectSurvivesRestart() {
+        viewModel.selectProject("proj_foundry_docs")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val restarted = CompanionViewModel(repository, sessionManager, enablePolling = false)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals("proj_foundry_docs", restarted.uiState.value.selectedProjectId)
+        assertEquals("proj_foundry_docs", sessionManager.getSelectedProjectId())
+    }
+
+    @Test
+    fun testDeepLinkProjectOverridesPersistedFocus() {
+        viewModel.selectProject("proj_foundry_core")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val restarted = CompanionViewModel(repository, sessionManager, enablePolling = false)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals("proj_foundry_core", restarted.uiState.value.selectedProjectId)
+
+        // foundry://run/{id}?project=proj_foundry_docs (or the notification extra)
+        restarted.selectProject("proj_foundry_docs")
+        restarted.loadRunDetail("run_260818_live99")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("proj_foundry_docs", restarted.uiState.value.selectedProjectId)
+        assertEquals("proj_foundry_docs", sessionManager.getSelectedProjectId())
+        assertEquals("run_260818_live99", restarted.uiState.value.currentRunDetail?.run?.runId)
+    }
+
+    @Test
+    fun testNewRunDraftSurvivesRestartAndClearsOnSuccessfulStart() {
+        assertEquals("", viewModel.getNewRunDraft())
+        viewModel.setNewRunDraft("Add companion draft persistence")
+        assertEquals("Add companion draft persistence", viewModel.getNewRunDraft())
+
+        val restarted = CompanionViewModel(repository, sessionManager, enablePolling = false)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals("Add companion draft persistence", restarted.getNewRunDraft())
+
+        restarted.startRun(
+            projectId = "proj_foundry_core",
+            pipelineId = "pipe_default",
+            request = "Add companion draft persistence"
+        ) { }
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals("", restarted.getNewRunDraft())
+    }
+
+    @Test
+    fun testNewRunDraftIsKeptOnFailedStartAndClearedOnDismiss() {
+        viewModel.setNewRunDraft("keep this draft")
+        viewModel.startRun(
+            projectId = "proj_foundry_core",
+            pipelineId = "pipe_default",
+            request = ""
+        ) { }
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals("keep this draft", viewModel.getNewRunDraft())
+        assertTrue(viewModel.uiState.value.validationIssues.isNotEmpty())
+
+        viewModel.clearNewRunDraft()
+        assertEquals("", viewModel.getNewRunDraft())
     }
 
     @Test

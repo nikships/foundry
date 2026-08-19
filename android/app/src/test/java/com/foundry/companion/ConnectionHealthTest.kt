@@ -44,6 +44,8 @@ class ConnectionHealthTest {
         context = ApplicationProvider.getApplicationContext()
         sessionManager = SessionManager(context)
         sessionManager.clearSession()
+        sessionManager.clearNewRunDraft()
+        sessionManager.setSelectedProjectId(null)
 
         repository = FakeCompanionRepository(initialPaired = true)
         viewModel = CompanionViewModel(repository, sessionManager, enablePolling = false)

@@ -1,5 +1,6 @@
 package com.foundry.companion.ui.screens.newrun
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -8,6 +9,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -35,7 +37,9 @@ fun NewRunScreen(
     onPipelineSelect: ((projectId: String, pipelineId: String) -> Unit)? = null,
     onRetryConnection: () -> Unit = {},
     isStarting: Boolean = false,
-    validationIssues: List<ValidationIssue> = emptyList()
+    validationIssues: List<ValidationIssue> = emptyList(),
+    initialRequestText: String = "",
+    onRequestChange: (String) -> Unit = {}
 ) {
     val colors = FoundryTheme.colors
     val typography = FoundryTheme.typography
@@ -56,8 +60,10 @@ fun NewRunScreen(
         mutableStateOf(initialPipelineId)
     }
 
-    var requestText by remember { mutableStateOf("") }
+    var requestText by rememberSaveable { mutableStateOf(initialRequestText) }
     val focusRequester = remember { FocusRequester() }
+
+    BackHandler { onDismiss() }
 
     LaunchedEffect(Unit) {
         try {
@@ -190,7 +196,10 @@ fun NewRunScreen(
                 )
                 OutlinedTextField(
                     value = requestText,
-                    onValueChange = { requestText = it },
+                    onValueChange = {
+                        requestText = it
+                        onRequestChange(it)
+                    },
                     placeholder = {
                         Text(
                             text = "What should the factory build? Be specific: the request is the whole brief.",

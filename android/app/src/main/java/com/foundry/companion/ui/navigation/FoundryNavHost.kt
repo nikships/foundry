@@ -200,6 +200,7 @@ fun FoundryNavHost(
                     viewModel.setLastUsedPipeline(projId, pipeId)
                 },
                 onDismiss = {
+                    viewModel.clearNewRunDraft()
                     viewModel.clearValidationIssues()
                     navController.popBackStack()
                 },
@@ -214,7 +215,9 @@ fun FoundryNavHost(
                 },
                 connectionStatus = uiState.connectionStatus,
                 isStarting = uiState.isStartingRun,
-                validationIssues = uiState.validationIssues
+                validationIssues = uiState.validationIssues,
+                initialRequestText = viewModel.getNewRunDraft(),
+                onRequestChange = { viewModel.setNewRunDraft(it) }
             )
         }
 

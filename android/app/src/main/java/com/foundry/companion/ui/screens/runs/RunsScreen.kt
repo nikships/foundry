@@ -122,28 +122,38 @@ fun RunsScreen(
             }
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = {
-                    if (isConnected) {
-                        onStartRunClick()
-                    }
-                },
-                containerColor = if (isConnected) colors.accent else colors.bgRaised,
-                contentColor = if (isConnected) androidx.compose.ui.graphics.Color.Black else colors.textFaint,
-                shape = shapes.button,
-                icon = {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Start run"
-                    )
-                },
-                text = {
+            Column(horizontalAlignment = Alignment.End) {
+                if (!isConnected) {
                     Text(
-                        text = "START RUN",
-                        style = typography.labelMono
+                        text = "Reconnect to start a run",
+                        style = typography.metaMono,
+                        color = colors.textFaint,
+                        modifier = Modifier.padding(end = 4.dp, bottom = 8.dp)
                     )
                 }
-            )
+                ExtendedFloatingActionButton(
+                    onClick = {
+                        if (isConnected) {
+                            onStartRunClick()
+                        }
+                    },
+                    containerColor = if (isConnected) colors.accent else colors.bgRaised,
+                    contentColor = if (isConnected) androidx.compose.ui.graphics.Color.Black else colors.textFaint,
+                    shape = shapes.button,
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Start run"
+                        )
+                    },
+                    text = {
+                        Text(
+                            text = "START RUN",
+                            style = typography.labelMono
+                        )
+                    }
+                )
+            }
         }
     ) { innerPadding ->
         if (visibleRuns.isEmpty()) {
