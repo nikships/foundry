@@ -6,7 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -14,6 +14,9 @@ import androidx.compose.ui.unit.dp
 import com.foundry.companion.data.model.RunRow
 import com.foundry.companion.ui.components.StatusBadge
 import com.foundry.companion.ui.theme.FoundryTheme
+import com.foundry.companion.util.RunFormatters
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 @Composable
 fun LiveRunCard(
@@ -25,15 +28,40 @@ fun LiveRunCard(
     val typography = FoundryTheme.typography
     val shapes = FoundryTheme.shapes
 
+    // Live ticking timer for elapsed duration
+    var currentNow by remember(run.runId) { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(run.runId, run.status) {
+        while (isActive) {
+            delay(1000L)
+            currentNow = System.currentTimeMillis()
+        }
+    }
+
+    val elapsedMs = RunFormatters.computeDurationMs(run, currentNow) ?: 0L
+    val timerString = RunFormatters.formatElapsedTimer(elapsedMs)
+
+    // Phase statuses from phases list or phaseSummary
+    val phaseStatuses = remember(run.phases, run.phaseSummary) {
+        if (run.phases.isNotEmpty()) {
+            run.phases.map { it.status }
+        } else if (run.phaseSummary.isNotEmpty()) {
+            run.phaseSummary.map { it.status }
+        } else {
+            emptyList()
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .defaultMinSize(minHeight = 64.dp)
             .background(colors.bgRaised, shapes.card)
             .border(1.dp, colors.lineStrong, shapes.card)
             .clickable(onClick = onClick)
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        // Top row: Status badge + Pipeline name + (Waiting badge) + Elapsed timer
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -41,26 +69,33 @@ fun LiveRunCard(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.weight(1f, fill = false)
             ) {
                 StatusBadge(status = "running")
                 Text(
                     text = run.pipelineName,
                     style = typography.labelMono,
-                    color = colors.textDim
+                    color = colors.textDim,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
+                if (run.waitingInterrupt) {
+                    StatusBadge(
+                        status = "rejected",
+                        customLabel = "WAITING"
+                    )
+                }
             }
 
-            val elapsedSec = (run.durationMs ?: 0L) / 1000
-            val min = elapsedSec / 60
-            val sec = elapsedSec % 60
             Text(
-                text = String.format("%02d:%02d", min, sec),
+                text = timerString,
                 style = typography.metaMono,
                 color = colors.accent
             )
         }
 
+        // Request excerpt (2 lines)
         Text(
             text = run.request,
             style = typography.bodyStrong,
@@ -69,16 +104,16 @@ fun LiveRunCard(
             overflow = TextOverflow.Ellipsis
         )
 
-        // Slim mini phase strip
-        if (run.phases.isNotEmpty()) {
+        // Slim mini horizontal phase strip
+        if (phaseStatuses.isNotEmpty()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(4.dp),
                 horizontalArrangement = Arrangement.spacedBy(3.dp)
             ) {
-                run.phases.forEach { phase ->
-                    val segColor = colors.statusColorFor(phase.status)
+                phaseStatuses.forEach { phaseStatus ->
+                    val segColor = colors.statusColorFor(phaseStatus)
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -88,5 +123,20 @@ fun LiveRunCard(
                 }
             }
         }
+
+        // Bottom meta: branch tail · tokens
+        val branchTail = RunFormatters.branchTail(run.branch)
+        val tokensText = RunFormatters.formatTokens(run.totalTokens)
+        val metaString = if (tokensText != null) {
+            "$branchTail · $tokensText"
+        } else {
+            branchTail
+        }
+
+        Text(
+            text = metaString,
+            style = typography.metaMono,
+            color = colors.textFaint
+        )
     }
 }

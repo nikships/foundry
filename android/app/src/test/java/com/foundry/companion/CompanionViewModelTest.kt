@@ -36,7 +36,7 @@ class CompanionViewModelTest {
         sessionManager.clearSession()
 
         repository = FakeCompanionRepository(initialPaired = true)
-        viewModel = CompanionViewModel(repository, sessionManager)
+        viewModel = CompanionViewModel(repository, sessionManager, enablePolling = false)
         testDispatcher.scheduler.advanceUntilIdle()
     }
 
@@ -74,7 +74,7 @@ class CompanionViewModelTest {
     @Test
     fun testPairFlowWithPayload() {
         val unpairedRepo = FakeCompanionRepository(initialPaired = false)
-        val vm = CompanionViewModel(unpairedRepo, sessionManager)
+        val vm = CompanionViewModel(unpairedRepo, sessionManager, enablePolling = false)
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertTrue(vm.uiState.value.connectionStatus is ConnectionStatus.Unpaired)
@@ -125,5 +125,31 @@ class CompanionViewModelTest {
         viewModel.toggleNotifyOnSettle(true)
         assertTrue(viewModel.uiState.value.isNotifyOnSettleEnabled)
         assertTrue(sessionManager.isNotifyOnSettleEnabled())
+    }
+
+    @Test
+    fun testSelectProject() {
+        viewModel.selectProject("proj_foundry_docs")
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals("proj_foundry_docs", viewModel.uiState.value.selectedProjectId)
+    }
+
+    @Test
+    fun testLivePollingUpdates() = runTest(testDispatcher) {
+        val vmWithPolling = CompanionViewModel(repository, sessionManager, enablePolling = true)
+        testDispatcher.scheduler.advanceTimeBy(100)
+        assertTrue(vmWithPolling.uiState.value.runs.isNotEmpty())
+
+        // Start a run and ensure polling picks it up after interval
+        repository.startRun(
+            com.foundry.companion.data.model.StartRunInput(
+                projectId = "proj_foundry_core",
+                pipelineId = "pipe_default",
+                request = "A new live run started externally"
+            )
+        )
+        testDispatcher.scheduler.advanceTimeBy(2500)
+        assertTrue(vmWithPolling.uiState.value.runs.any { it.request == "A new live run started externally" })
+        vmWithPolling.stopPolling()
     }
 }

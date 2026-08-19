@@ -6,7 +6,10 @@ import androidx.lifecycle.viewModelScope
 import com.foundry.companion.data.model.*
 import com.foundry.companion.data.repository.CompanionRepository
 import com.foundry.companion.data.session.SessionManager
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 data class CompanionUiState(
@@ -29,11 +32,14 @@ data class CompanionUiState(
 
 class CompanionViewModel(
     private val repository: CompanionRepository,
-    private val sessionManager: SessionManager? = null
+    private val sessionManager: SessionManager? = null,
+    private val enablePolling: Boolean = true
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CompanionUiState())
     val uiState: StateFlow<CompanionUiState> = _uiState.asStateFlow()
+
+    private var pollingJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -41,6 +47,11 @@ class CompanionViewModel(
                 _uiState.update { it.copy(connectionStatus = status) }
                 if (status is ConnectionStatus.Connected) {
                     loadInitialData()
+                    if (enablePolling) {
+                        startPolling()
+                    }
+                } else {
+                    pollingJob?.cancel()
                 }
             }
         }
@@ -83,6 +94,9 @@ class CompanionViewModel(
 
                 if (selected.isNotEmpty()) {
                     loadRuns(selected)
+                    if (enablePolling) {
+                        startPolling(selected)
+                    }
                 }
             }
         }
@@ -91,13 +105,35 @@ class CompanionViewModel(
     fun selectProject(projectId: String) {
         _uiState.update { it.copy(selectedProjectId = projectId) }
         loadRuns(projectId)
+        if (enablePolling) {
+            startPolling(projectId)
+        }
+    }
+
+    fun startPolling(projectId: String = _uiState.value.selectedProjectId) {
+        pollingJob?.cancel()
+        if (projectId.isBlank()) return
+        pollingJob = viewModelScope.launch {
+            while (isActive) {
+                delay(2000L)
+                if (_uiState.value.connectionStatus is ConnectionStatus.Connected) {
+                    loadRuns(projectId)
+                }
+            }
+        }
+    }
+
+    fun stopPolling() {
+        pollingJob?.cancel()
+        pollingJob = null
     }
 
     fun loadRuns(projectId: String = _uiState.value.selectedProjectId) {
         if (projectId.isBlank()) return
         viewModelScope.launch {
             repository.getRuns(projectId).onSuccess { runs ->
-                _uiState.update { it.copy(runs = runs) }
+                val unarchived = runs.filterNot { it.archived }
+                _uiState.update { it.copy(runs = unarchived) }
             }
         }
     }
