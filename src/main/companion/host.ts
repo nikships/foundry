@@ -291,6 +291,13 @@ export class CompanionHost {
           id: p.id,
           name: p.name,
           description: p.description,
+          phases: p.phases.map((phase) => ({
+            id: phase.name,
+            name: phase.name,
+            kind: phase.kind,
+            isFeedbackTarget: !!phase.feedbackTo,
+            ...(phase.feedbackTo ? { feedbackTo: phase.feedbackTo } : {}),
+          })),
         })),
       }));
     }

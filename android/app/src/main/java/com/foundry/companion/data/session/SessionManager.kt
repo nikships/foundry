@@ -35,8 +35,19 @@ class SessionManager(context: Context) {
         prefs.edit().putBoolean(KEY_NOTIFY_SETTLE, enabled).apply()
     }
 
+    fun getLastUsedPipeline(projectId: String): String? {
+        if (projectId.isBlank()) return null
+        return prefs.getString("${KEY_LAST_PIPELINE_PREFIX}_$projectId", null)
+    }
+
+    fun setLastUsedPipeline(projectId: String, pipelineId: String) {
+        if (projectId.isBlank() || pipelineId.isBlank()) return
+        prefs.edit().putString("${KEY_LAST_PIPELINE_PREFIX}_$projectId", pipelineId).apply()
+    }
+
     companion object {
         private const val KEY_SESSION = "paired_session"
         private const val KEY_NOTIFY_SETTLE = "notify_settle"
+        private const val KEY_LAST_PIPELINE_PREFIX = "last_pipeline"
     }
 }

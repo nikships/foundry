@@ -56,10 +56,11 @@ data class PipelineSummary(
 
 @Serializable
 data class PhaseTemplateSummary(
-    val id: String,
+    val id: String = "",
     val name: String,
     val kind: String = "agent", // "agent" | "code" | "review" | "engineer"
-    val isFeedbackTarget: Boolean = false
+    val isFeedbackTarget: Boolean = false,
+    val feedbackTo: String? = null
 )
 
 @Serializable

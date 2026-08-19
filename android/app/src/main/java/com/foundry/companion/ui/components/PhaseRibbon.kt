@@ -46,13 +46,20 @@ fun PhaseRibbon(
                         .padding(horizontal = 6.dp, vertical = 3.dp)
                 ) {
                     Text(
-                        text = if (phase.isFeedbackTarget) "${phase.name} ↩" else phase.name,
+                        text = phase.name,
                         style = typography.labelMono,
                         color = kindColor
                     )
                 }
 
-                if (index < phases.size - 1) {
+                val hasFeedback = phase.isFeedbackTarget || !phase.feedbackTo.isNullOrEmpty()
+                if (hasFeedback) {
+                    Text(
+                        text = "↩",
+                        style = typography.metaMono,
+                        color = colors.statusRejected
+                    )
+                } else if (index < phases.size - 1) {
                     Text(
                         text = "→",
                         style = typography.metaMono,

@@ -104,8 +104,16 @@ fun FoundryNavHost(
             NewRunScreen(
                 projects = uiState.projects,
                 selectedProjectId = uiState.selectedProjectId,
+                lastUsedPipelineId = viewModel.getLastUsedPipeline(uiState.selectedProjectId),
                 onProjectSelect = { viewModel.selectProject(it) },
-                onDismiss = { navController.popBackStack() },
+                onPipelineSelect = { projId, pipeId ->
+                    viewModel.setLastUsedPipeline(projId, pipeId)
+                },
+                onDismiss = {
+                    viewModel.clearValidationIssues()
+                    navController.popBackStack()
+                },
+                onRetryConnection = { viewModel.retryConnection() },
                 onStartRun = { projectId, pipelineId, request ->
                     viewModel.startRun(projectId, pipelineId, request) { newRunId ->
                         viewModel.loadRunDetail(newRunId)

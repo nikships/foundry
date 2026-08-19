@@ -122,7 +122,11 @@ fun RunsScreen(
         },
         floatingActionButton = {
             ExtendedFloatingActionButton(
-                onClick = onStartRunClick,
+                onClick = {
+                    if (isConnected) {
+                        onStartRunClick()
+                    }
+                },
                 containerColor = if (isConnected) colors.accent else colors.bgRaised,
                 contentColor = if (isConnected) androidx.compose.ui.graphics.Color.Black else colors.textFaint,
                 shape = shapes.button,
