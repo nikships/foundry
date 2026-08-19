@@ -23,7 +23,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { createConnection } from 'node:net';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { spawnEnv } from '../system/env.js';
-import { isAlive, killTree } from '../system/procs.js';
+import { isAlive, terminate } from '../system/procs.js';
 import { renderBridgeConfig, BRIDGE_HOST } from './config.js';
 import { bridgeAuthDir, bridgeBinaryPath, bridgeConfigPath, bridgeStateDir } from './paths.js';
 
@@ -92,6 +92,12 @@ export interface BridgeManagerOptions {
   debug?: boolean;
   /** Invoked once when the child is first recorded (wire to tracer.recordProcess). */
   onProcess?: (info: BridgeProcessInfo) => void;
+  /**
+   * Invoked when a child this manager reported through `onProcess` has been
+   * killed, so its row can be closed. Paired with `onProcess`: exactly one call
+   * per reported child, and none for a child that was never reported.
+   */
+  onProcessEnd?: () => void;
   /** Observability for tests asserting what argv the Bridge is started with. */
   onSpawnAttempt?: (argv: string[]) => void;
 }
@@ -100,7 +106,8 @@ export class BridgeManager {
   private child: ChildProcess | null = null;
   private activePort: number | null = null;
   private argv: string[] = [];
-  private recorded = false;
+  /** The pid whose `processes` row is open, so a restart cannot leave two. */
+  private recordedPid: number | null = null;
   private ensuring: Promise<BridgeEnsureResult> | null = null;
   private lastFailure: { reason: BridgeUnavailableReason; detail: string } | null = null;
 
@@ -179,7 +186,6 @@ export class BridgeManager {
   async shutdown(): Promise<void> {
     await this.killChild();
     this.argv = [];
-    this.recorded = false;
   }
 
   private async start(): Promise<BridgeEnsureResult> {
@@ -248,9 +254,19 @@ export class BridgeManager {
 
     this.activePort = port;
     this.lastFailure = null;
-    if (!this.recorded) {
-      this.recorded = true;
+    if (this.recordedPid !== child.pid) {
+      this.recordedPid = child.pid;
       this.opts.onProcess?.({ pid: child.pid, port, command: this.argv.join(' ') });
+      // A Bridge that dies on its own leaves an open row pointing at a dead
+      // pid, and pids recycle: the next `ensure()` would scan up onto a second
+      // port while the trace still claimed the first.
+      child.once('exit', () => {
+        if (this.child === child) {
+          this.child = null;
+          this.activePort = null;
+        }
+        if (this.recordedPid === child.pid) this.closeRecordedRow();
+      });
     }
     return {
       ok: true,
@@ -291,11 +307,21 @@ export class BridgeManager {
     this.child = null;
     this.activePort = null;
     const pid = child?.pid;
-    if (!pid || !isAlive(pid)) return;
-    killTree(pid, 'SIGTERM');
-    const deadline = Date.now() + 3_000;
-    while (isAlive(pid) && Date.now() < deadline) await sleep(50);
-    if (isAlive(pid)) killTree(pid, 'SIGKILL');
+    if (!pid) {
+      this.closeRecordedRow();
+      return;
+    }
+    const gone = await terminate(pid);
+    // A pid that survived SIGKILL is still holding its port, and closing its
+    // row would hide it from the one sweep that could reclaim it.
+    if (gone) this.closeRecordedRow();
+  }
+
+  /** Closes the open row, if any. Idempotent: at most one call per child. */
+  private closeRecordedRow(): void {
+    if (this.recordedPid === null) return;
+    this.recordedPid = null;
+    this.opts.onProcessEnd?.();
   }
 }
 

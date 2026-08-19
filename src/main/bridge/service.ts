@@ -43,6 +43,12 @@ export interface BridgeServiceOptions {
   port?: number;
   /** Called after a committed models.json write, so the picker can reload. */
   onModelsChanged?: () => void;
+  /**
+   * Where the child's `processes` row is written. Resolved lazily and per call,
+   * because the store is opened on first use and the service is constructed
+   * before it exists. Returning null means the row is simply not written.
+   */
+  trace?: () => BridgeTrace | null;
   /** Test seams, forwarded verbatim to the manager. */
   manager?: Partial<BridgeManagerOptions>;
   /** Test seam: replace the login child spawn. */
@@ -59,9 +65,9 @@ export interface BridgeSnapshot {
 }
 
 /**
- * Writes the Bridge's `processes` row. Shaped as `Tracer.recordProcess`'s input
- * so a caller can pass the method directly, and typed with a null run id
- * because the Bridge belongs to the app rather than to a run.
+ * Writes the Bridge's `processes` row and returns its id. Shaped as
+ * `Tracer.recordProcess`'s input so a caller can pass the method directly, and
+ * typed with a null run id because the Bridge belongs to the app, not a run.
  */
 export type BridgeProcessRecorder = (input: {
   runId: null;
@@ -69,7 +75,24 @@ export type BridgeProcessRecorder = (input: {
   name: string;
   pid: number;
   command: string;
-}) => void;
+}) => number;
+
+/** Closes a row this service opened. `Tracer.endProcess`'s shape. */
+export type BridgeProcessCloser = (id: number) => void;
+
+/**
+ * Where the Bridge's `processes` row is written.
+ *
+ * The Bridge is app-scoped and every other trace is per-project, so the row
+ * goes to the app's own store rather than to whichever project happened to
+ * start it: a project can be removed while its Bridge still holds a port, and
+ * a Bridge started from Settings before any project exists has no project trace
+ * to be written to at all. One store, one row, one sweep that can reclaim it.
+ */
+export interface BridgeTrace {
+  record: BridgeProcessRecorder;
+  close: BridgeProcessCloser;
+}
 
 let singleton: BridgeService | null = null;
 
@@ -98,7 +121,8 @@ export class BridgeService {
   private readonly manager: BridgeManager;
   private readonly logins = new Map<BridgeProviderId, ChildProcess>();
   private unwatch: (() => void) | null = null;
-  private recorder: BridgeProcessRecorder | undefined;
+  /** The id of the open `processes` row, so shutdown can close that exact row. */
+  private processRowId: number | null = null;
   /** Serialises regeneration so two auth events cannot interleave a write. */
   private regenerating: Promise<void> = Promise.resolve();
 
@@ -106,16 +130,11 @@ export class BridgeService {
     this.manager = new BridgeManager({
       supportDir: opts.supportDir,
       ...(opts.port !== undefined ? { port: opts.port } : {}),
-      // The manager reports its child exactly once; which trace that row lands
-      // in is the caller's business, hence the indirection through `recorder`.
-      onProcess: (info) =>
-        this.recorder?.({
-          runId: null,
-          kind: 'bridge',
-          name: BRIDGE_PROCESS_NAME,
-          pid: info.pid,
-          command: info.command,
-        }),
+      // Wired here rather than passed per call: the Bridge starts from several
+      // paths (a run, the doctor, a Settings login) and a row that depends on
+      // which one got there first is a row that is usually missing.
+      onProcess: (info) => this.recordProcess(info.pid, info.command),
+      onProcessEnd: () => this.closeProcessRow(),
       ...opts.manager,
     });
   }
@@ -128,14 +147,11 @@ export class BridgeService {
    * Starts the Bridge if it is not running, then brings models.json in line
    * with the accounts on disk. Safe to call repeatedly; the manager coalesces.
    *
-   * `recorder` is how an app-scoped child gets into a per-project trace: the
-   * caller that has a tracer passes one, and only the start that actually
-   * spawns a child uses it. A caller with no trace to write to (Settings
-   * connecting a provider before any run) passes nothing, and the Bridge is
-   * simply unrecorded until a run starts one.
+   * Every start records its child, whichever path called it: the row exists so
+   * a crash-orphaned Bridge can be reclaimed, and a row that only some callers
+   * wrote would leave exactly the orphan it is meant to catch.
    */
-  async ensure(recorder?: BridgeProcessRecorder): Promise<BridgeEnsureResult> {
-    this.recorder = recorder ?? this.recorder;
+  async ensure(): Promise<BridgeEnsureResult> {
     const result = await this.manager.ensure();
     if (result.ok) {
       this.startWatching();
@@ -226,6 +242,37 @@ export class BridgeService {
     this.unwatch = null;
     for (const provider of [...this.logins.keys()]) this.cancel(provider);
     await this.manager.shutdown();
+  }
+
+  private recordProcess(pid: number, command: string): void {
+    // Never two open rows for one Bridge: a restart records a new child, and
+    // the previous row is closed by the manager's kill path before this runs.
+    if (this.processRowId !== null) return;
+    try {
+      this.processRowId =
+        this.opts.trace?.()?.record({
+          runId: null,
+          kind: 'bridge',
+          name: BRIDGE_PROCESS_NAME,
+          pid,
+          command,
+        }) ?? null;
+    } catch (error) {
+      // An unwritable trace degrades orphan reclamation; it does not fail the
+      // start the operator is waiting on.
+      console.warn(`[bridge] could not record the process row: ${message(error)}`);
+    }
+  }
+
+  private closeProcessRow(): void {
+    const id = this.processRowId;
+    this.processRowId = null;
+    if (id === null) return;
+    try {
+      this.opts.trace?.()?.close(id);
+    } catch (error) {
+      console.warn(`[bridge] could not close the process row: ${message(error)}`);
+    }
   }
 
   private async runRegenerate(): Promise<void> {

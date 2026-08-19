@@ -21,10 +21,11 @@ import type {
   RunStatus,
 } from '@shared/types.js';
 import type { ContextBreakdownResult } from '@shared/ipc-contract.js';
-import { openDb, projectDbPath, projectRunsDir } from '../trace/db.js';
+import { appDbPath, appRunsDir, openDb, projectDbPath, projectRunsDir } from '../trace/db.js';
 import { Tracer } from '../trace/tracer.js';
 import { Executor } from './executor.js';
-import { commandMatches, isAlive, killRun } from '../system/procs.js';
+import { commandMatches, isAlive, killRun, terminate } from '../system/procs.js';
+import type { BridgeTrace } from '../bridge/service.js';
 import { breakdownFile, type CapturedBreakdown, type InterruptRequest } from '../pi/session.js';
 
 export interface RegistryDeps {
@@ -65,6 +66,7 @@ function processStillAlive(pid: number, command: string): boolean {
 
 export class RunRegistry extends EventEmitter {
   private readonly tracers = new Map<string, Tracer>();
+  private appTracerInstance: Tracer | null = null;
   private readonly live = new Map<string, LiveRun>();
   private readonly pending = new Map<string, PendingEntry>();
   /** Live agent text per phase: a ring buffer, deliberately not persisted. */
@@ -82,6 +84,33 @@ export class RunRegistry extends EventEmitter {
       this.tracers.set(project.id, tracer);
     }
     return tracer;
+  }
+
+  /**
+   * The app-scoped trace, opened on first use. A project may be removed while
+   * its Bridge is still running, and a Bridge started before any project exists
+   * has no per-project trace to be written to at all — so the row that outlives
+   * every run lives in a store that outlives every project.
+   */
+  appTracer(): Tracer {
+    if (!this.appTracerInstance) {
+      const support = this.deps.appSupportDir;
+      this.appTracerInstance = new Tracer(openDb(appDbPath(support)), appRunsDir(support));
+    }
+    return this.appTracerInstance;
+  }
+
+  /**
+   * The app trace as the Bridge writes to it. A named seam rather than an
+   * inline closure at the construction site, so the wiring a test exercises is
+   * the wiring the app runs.
+   */
+  bridgeTrace(): BridgeTrace {
+    const tracer = this.appTracer();
+    return {
+      record: (input) => tracer.recordProcess(input),
+      close: (id) => tracer.endProcess(id),
+    };
   }
 
   isLive(runId: string): boolean {
@@ -299,6 +328,40 @@ export class RunRegistry extends EventEmitter {
 
     if (finalised.length) this.deps.onRunsChanged();
     return { runsFinalised: finalised };
+  }
+
+  /**
+   * Relaunch sweep for the app-scoped trace, which today holds the Bridge.
+   *
+   * A crash leaves the child alive and still bound to its port, and the new
+   * launch's `ensure()` would scan up onto a second one — two proxies serving
+   * the same accounts, the older of them belonging to nothing. So a survivor
+   * whose argv still matches is killed, not adopted: this process owns the
+   * Bridge singleton and is about to start its own. A pid that is gone (or was
+   * recycled onto another command) just has its row closed.
+   *
+   * Async because reclaiming means SIGTERM, then SIGKILL if it will not go, and
+   * a row must stay open for a pid that survived both.
+   */
+  async sweepAppProcesses(): Promise<{ reclaimed: number[]; closed: number }> {
+    let tracer: Tracer;
+    try {
+      tracer = this.appTracer();
+    } catch {
+      return { reclaimed: [], closed: 0 };
+    }
+
+    const reclaimed: number[] = [];
+    let closed = 0;
+    for (const proc of tracer.openProcesses()) {
+      if (processStillAlive(proc.pid, proc.command)) {
+        if (!(await terminate(proc.pid))) continue;
+        reclaimed.push(proc.pid);
+      }
+      tracer.endProcess(proc.id);
+      closed += 1;
+    }
+    return { reclaimed, closed };
   }
 
   closeAll(): void {

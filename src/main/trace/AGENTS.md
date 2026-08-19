@@ -5,6 +5,7 @@
 ## Project Overview
 
 - Each project has its own `trace.db` (under `~/Library/Application Support/foundry/`). Schema lives in `db.ts`; event/process persistence lives in `tracer.ts`.
+- One **app-scoped** store sits beside them (`appDbPath()` → `app/trace.db`), same schema, for children that outlive every run and belong to no project. Today that is the Bridge and nothing else; its `runs` table stays empty, which is what lets a `processes` row carry a null `run_id`. `RunRegistry.appTracer()` opens it on first use and `sweepAppProcesses()` reclaims what a crash left behind.
 - Events are pulled by the renderer via `run_id = ? AND change_id > ? ORDER BY rowid` — a polling cursor merge (see `src/renderer/stores/run.tsx`).
 - Tool results patch their opening span and thinking deltas append in place — both require a new `change_id`.
 - Usage, duration, and model are **derived** from events (in `src/renderer/derive.ts`), not denormalized, so retries remain visible.

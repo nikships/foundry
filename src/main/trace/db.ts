@@ -140,3 +140,20 @@ export function projectDbPath(appSupportDir: string, projectPath: string): strin
 export function projectRunsDir(appSupportDir: string, projectPath: string): string {
   return join(appSupportDir, 'projects', projectHash(projectPath), 'runs');
 }
+
+/**
+ * The app's own trace, for children that outlive every run and belong to no
+ * project — today that is the Bridge and nothing else.
+ *
+ * It is the same schema deliberately: the relaunch sweep, `openProcesses()`,
+ * and the pid-recycle check are the machinery that reclaims an orphan, and a
+ * second shape would mean a second implementation of all three. `runs` simply
+ * stays empty here, which is what makes a null `run_id` satisfy its foreign key.
+ */
+export function appDbPath(appSupportDir: string): string {
+  return join(appSupportDir, 'app', 'trace.db');
+}
+
+export function appRunsDir(appSupportDir: string): string {
+  return join(appSupportDir, 'app', 'runs');
+}
