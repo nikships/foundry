@@ -300,7 +300,8 @@ have to be perfect. You do have to be close.
 - `writes` (**required**) — array of path prefixes/globs the agent may modify,
   `[]` for read-only, or `null` for unrestricted.
 - `envelope` (string, **required**) — a built-in kind (`generic`, `brief`,
-  `plan`, `build`, `scout`, `review`, `document`) or a custom envelope's name.
+  `plan`, `build`, `scout`, `review`, `document`, `pr`, `issue`) or a custom
+  envelope's name.
 - `color` (string, **required**) — hex, e.g. `#5ad2dd`.
 - Optional: `cli`, `inheritDefaults`, `tools`, `disabledTools`, `customFields`,
   `emblem`.
@@ -330,7 +331,8 @@ have to be perfect. You do have to be close.
 ### envelope (`EnvelopeDef`)
 
 - `name` (string, **required**) — lowercase, and **cannot** be one of the built-in
-  kinds: `generic`, `brief`, `plan`, `build`, `scout`, `review`, `document`.
+  kinds: `generic`, `brief`, `plan`, `build`, `scout`, `review`, `document`,
+  `pr`, `issue`.
 - `description` (string, optional).
 - `fields` (array) — each
   `{ "name": snake_case, "type": "string"|"number"|"boolean"|"string[]", "required": bool, "description"?: string }`.

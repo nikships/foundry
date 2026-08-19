@@ -37,6 +37,7 @@ const BUILTIN_BLURBS: Record<EnvelopeKind, string> = {
   review: 'Adds approved, structured findings, and blocking issues.',
   document: 'Adds document_path and the files that were documented.',
   pr: 'Adds a bounded title and a non-empty markdown pull-request body.',
+  issue: 'Adds a bounded title, a markdown GitHub-issue body, and optional labels.',
 };
 
 /** Starter shapes so an empty library is not a blank form. */
@@ -217,6 +218,26 @@ const BUILTIN_EXTRA_FIELDS: Record<EnvelopeKind, CustomEnvelopeField[]> = {
       type: 'string',
       required: true,
       description: 'markdown PR body — follow the repo template, or the fallback headings',
+    },
+  ],
+  issue: [
+    {
+      name: 'title',
+      type: 'string',
+      required: true,
+      description: 'imperative issue title, ≤72 chars, no trailing period',
+    },
+    {
+      name: 'body',
+      type: 'string',
+      required: true,
+      description: 'markdown issue body — context, evidence, and what done looks like',
+    },
+    {
+      name: 'labels',
+      type: 'string[]',
+      required: false,
+      description: 'labels that already exist in the repo',
     },
   ],
 };

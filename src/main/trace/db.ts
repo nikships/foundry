@@ -31,6 +31,8 @@ CREATE TABLE IF NOT EXISTS runs (
   outcome_detail         TEXT,
   pr_number              INTEGER,
   pr_url                 TEXT,
+  issue_number           INTEGER,
+  issue_url              TEXT,
   started_at             TEXT,
   ended_at               TEXT,
   total_tokens           INTEGER DEFAULT 0
@@ -122,6 +124,29 @@ export function projectHash(projectPath: string): string {
   return createHash('sha256').update(projectPath).digest('hex').slice(0, 16);
 }
 
+/**
+ * Columns added after a database was first created. `CREATE TABLE IF NOT
+ * EXISTS` never revisits an existing table, so additive columns are applied
+ * here — additive only, because a WAL database with runs in it is user data.
+ */
+const ADDED_COLUMNS: { table: string; column: string; ddl: string }[] = [
+  {
+    table: 'runs',
+    column: 'issue_number',
+    ddl: 'ALTER TABLE runs ADD COLUMN issue_number INTEGER',
+  },
+  { table: 'runs', column: 'issue_url', ddl: 'ALTER TABLE runs ADD COLUMN issue_url TEXT' },
+];
+
+function addMissingColumns(db: Db): void {
+  for (const { table, column, ddl } of ADDED_COLUMNS) {
+    const present = (db.pragma(`table_info(${table})`) as { name: string }[]).some(
+      (c) => c.name === column,
+    );
+    if (!present) db.exec(ddl);
+  }
+}
+
 export function openDb(dbPath: string): Db {
   mkdirSync(dirname(dbPath), { recursive: true });
   const db = new Database(dbPath);
@@ -130,6 +155,7 @@ export function openDb(dbPath: string): Db {
   db.pragma('busy_timeout = 5000');
   db.pragma('foreign_keys = ON');
   db.exec(SCHEMA);
+  addMissingColumns(db);
   return db;
 }
 

@@ -314,6 +314,7 @@ describe('json schema derivation', () => {
       review: [...base, 'approved', 'findings', 'blocking'],
       document: [...base, 'document_path', 'documented_files'],
       pr: [...base, 'title', 'body'],
+      issue: [...base, 'title', 'body', 'labels'],
     };
     for (const kind of BUILTIN_KINDS) {
       expect(jsonSchemaFor(kind).required, `${kind} required`).toEqual(expected[kind]);
@@ -335,7 +336,7 @@ describe('json schema derivation', () => {
       const minimal: Record<string, unknown> = { status: 'success' };
       if (kind === 'brief') minimal.improved_request = 'do the thing';
       if (kind === 'review') minimal.approved = true;
-      if (kind === 'pr') {
+      if (kind === 'pr' || kind === 'issue') {
         minimal.title = 'Add the thing';
         minimal.body = '## Summary\nAdds the thing.';
       }

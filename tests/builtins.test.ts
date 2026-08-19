@@ -85,17 +85,43 @@ describe('shipped pipelines', () => {
     },
   );
 
-  it('ships exactly five multi-phase chains, each ending in open_pr', () => {
+  it('ships exactly six multi-phase chains, each ending in open_pr', () => {
     expect(BUILTIN_PIPELINES.map((p) => p.id)).toEqual([
       'build-pr',
       'fix-pr',
       'spec-pr',
+      'triage-issue-pr',
       'ship-pr',
       'sdlc-pr',
     ]);
     for (const pipeline of BUILTIN_PIPELINES) {
       expect(pipeline.phases.length, `${pipeline.id} is multi-phase`).toBeGreaterThanOrEqual(4);
       expect(pipeline.phases.at(-1)?.name, `${pipeline.id} ends in open_pr`).toBe('open_pr');
+    }
+  });
+
+  /**
+   * FOU-80: every shipped chain must leave a software-development artifact —
+   * a pull request carrying implementation work or a spec. The PR phase is
+   * pinned as the terminal phase above; this pins the artifact the PR carries:
+   * either an unrestricted code-editing phase ran, or a planner phase wrote a
+   * spec and a commit phase recorded it before the PR opened.
+   */
+  it('gives every chain a tangible artifact for its PR: code changes or a committed spec', () => {
+    for (const pipeline of BUILTIN_PIPELINES) {
+      const editsCode = codeEditingPhases(pipeline).length > 0;
+      const specIndex = pipeline.phases.findIndex(
+        (p) => p.kind === 'agent' && agentByName(p.agent!)?.writes?.includes('specs/'),
+      );
+      const commitAfterSpec =
+        specIndex >= 0 &&
+        pipeline.phases
+          .slice(specIndex + 1)
+          .some((p) => p.kind === 'code' && p.command && 'builtin' in p.command);
+      expect(
+        editsCode || commitAfterSpec,
+        `${pipeline.id} produces implementation changes or a committed spec`,
+      ).toBe(true);
     }
   });
 
@@ -126,6 +152,13 @@ describe('shipped pipelines', () => {
     ]);
     expect(byId('spec-pr').phases.map((p) => p.name)).toEqual([
       'survey',
+      'spec',
+      'commit_spec',
+      'open_pr',
+    ]);
+    expect(byId('triage-issue-pr').phases.map((p) => p.name)).toEqual([
+      'diagnose',
+      'file_issue',
       'spec',
       'commit_spec',
       'open_pr',
@@ -232,6 +265,7 @@ describe('shipped pipelines', () => {
       'build-pr': ['request', 'envelope:plan', 'envelope:build'],
       'fix-pr': ['request', 'envelope:diagnose', 'envelope:fix'],
       'spec-pr': ['request', 'envelope:survey', 'envelope:spec'],
+      'triage-issue-pr': ['request', 'envelope:diagnose', 'envelope:file_issue', 'envelope:spec'],
       'ship-pr': ['request', 'envelope:plan', 'envelope:build', 'envelope:production_check'],
       'sdlc-pr': [
         'request',
@@ -257,6 +291,37 @@ describe('shipped pipelines', () => {
         (p) => p.kind === 'code' && p.command && 'ref' in p.command && p.command.ref === 'test',
       ),
     ).toBe(false);
+  });
+
+  it('keeps triage-issue-pr free of code-editing phases and test refs, so it runs on any repo', () => {
+    const triage = byId('triage-issue-pr');
+    expect(codeEditingPhases(triage)).toEqual([]);
+    expect(
+      triage.phases.some(
+        (p) => p.kind === 'code' && p.command && 'ref' in p.command && p.command.ref === 'test',
+      ),
+    ).toBe(false);
+  });
+
+  it('files the issue from the diagnosed evidence, before the spec is written', () => {
+    const triage = byId('triage-issue-pr');
+    const issuePhase = triage.phases.find((p) => p.name === 'file_issue')!;
+    expect(issuePhase).toMatchObject({ kind: 'agent', agent: 'issue_writer', envelope: 'issue' });
+    expect(issuePhase.prompt?.inputs).toEqual(['request', 'envelope:diagnose']);
+    const names = triage.phases.map((p) => p.name);
+    expect(names.indexOf('file_issue')).toBeGreaterThan(names.indexOf('diagnose'));
+    expect(names.indexOf('file_issue')).toBeLessThan(names.indexOf('spec'));
+  });
+
+  it('ships a read-only issue_writer that drafts an issue envelope', () => {
+    const writer = agentByName('issue_writer');
+    expect(writer).toBeDefined();
+    expect(writer?.envelope).toBe('issue');
+    expect(writer?.writes).toEqual([]);
+    expect(writer?.builtin).toBe(true);
+    expect(writer?.userPrompt).toContain('{{request}}');
+    expect(writer?.systemPrompt).toContain('Do not create, edit, or delete any file');
+    expect(writer?.systemPrompt).toContain('Title: imperative, ≤72 characters');
   });
 
   it('ships a read-only pr_writer that drafts a pr envelope', () => {

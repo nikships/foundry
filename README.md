@@ -48,15 +48,16 @@ You point it at any git repo. Every run gets its own branch and worktree. Every 
 
 A pipeline is a recipe — not a mega-prompt. Each phase has one job and one way to be judged. Drag to reorder, swap who does what, add a checkpoint. Save it. Ship it again tomorrow.
 
-Five built-ins, from fast to full-factory — every one ends in a pull request:
+Six built-ins, from fast to full-factory — every one ends in a pull request:
 
-| Pipeline                       | When to use it                                               |
-| ------------------------------ | ------------------------------------------------------------ |
-| **Plan → Build → Test → PR**   | The standard: spec, build, prove with your tests, open PR.   |
-| **Diagnose → Fix → PR**        | Bug work: find the fault with evidence, fix exactly that.    |
-| **Spec → PR**                  | No code changes — survey the repo, PR an implementable spec. |
-| **Refine → Build → Ship → PR** | Sharpens the ask, builds, holds to ship bar, re-proves it.   |
-| **Full SDLC → PR**             | Refine, plan, build, test, polish, review, docs, PR.         |
+| Pipeline                         | When to use it                                               |
+| -------------------------------- | ------------------------------------------------------------ |
+| **Plan → Build → Test → PR**     | The standard: spec, build, prove with your tests, open PR.   |
+| **Diagnose → Fix → PR**          | Bug work: find the fault with evidence, fix exactly that.    |
+| **Spec → PR**                    | No code changes — survey the repo, PR an implementable spec. |
+| **Diagnose → Issue → Spec → PR** | Triage: file the GitHub issue, then PR the spec for the fix. |
+| **Refine → Build → Ship → PR**   | Sharpens the ask, builds, holds to ship bar, re-proves it.   |
+| **Full SDLC → PR**               | Refine, plan, build, test, polish, review, docs, PR.         |
 
 Nothing is committed unproven: every code edit runs your tests before the commit that records it, and a reviewer who doesn't approve halts the run before it can reach the PR.
 

@@ -165,6 +165,12 @@ export class Tracer {
       .run(prNumber, prUrl, runId);
   }
 
+  setIssue(runId: string, issueNumber: number, issueUrl: string): void {
+    this.db
+      .prepare('UPDATE runs SET issue_number = ?, issue_url = ? WHERE run_id = ?')
+      .run(issueNumber, issueUrl, runId);
+  }
+
   setArchived(runId: string, archived: boolean): void {
     this.db.prepare('UPDATE runs SET archived = ? WHERE run_id = ?').run(archived ? 1 : 0, runId);
   }
@@ -761,6 +767,8 @@ interface RawRun {
   outcome_detail: string | null;
   pr_number: number | null;
   pr_url: string | null;
+  issue_number: number | null;
+  issue_url: string | null;
   mode: string | null;
   merged: number;
   archived: number;
@@ -877,6 +885,8 @@ function mapRun(r: RawRun): RunRow {
     outcomeDetail: r.outcome_detail,
     prNumber: r.pr_number ?? null,
     prUrl: r.pr_url ?? null,
+    issueNumber: r.issue_number ?? null,
+    issueUrl: r.issue_url ?? null,
     merged: !!r.merged,
     archived: !!r.archived,
     mode: (r.mode as RunMode) ?? 'pi',

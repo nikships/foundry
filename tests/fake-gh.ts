@@ -26,6 +26,11 @@ export interface FakeGhConfig {
   /** `gh pr create` prints this URL; a `createError` makes it fail instead. */
   createUrl?: string;
   createError?: string;
+  /** `gh issue create` prints this URL; an `issueCreateError` makes it fail instead. */
+  issueUrl?: string;
+  issueCreateError?: string;
+  /** `gh issue create` fails with this message only when `--label` is present. */
+  issueLabelError?: string;
   /** `gh pr list` prints this JSON verbatim. */
   prList?: unknown[];
   /** `gh pr merge` fails with this message when set. */
@@ -109,6 +114,12 @@ if (args[0] === 'pr' && args[1] === 'view') {
 if (args[0] === 'pr' && args[1] === 'create') {
   if (cfg.createError) die(cfg.createError);
   process.stdout.write((cfg.createUrl ?? 'https://github.com/acme/widgets/pull/7') + '\n');
+  process.exit(0);
+}
+if (args[0] === 'issue' && args[1] === 'create') {
+  if (cfg.issueCreateError) die(cfg.issueCreateError);
+  if (cfg.issueLabelError && args.includes('--label')) die(cfg.issueLabelError);
+  process.stdout.write((cfg.issueUrl ?? 'https://github.com/acme/widgets/issues/9') + '\n');
   process.exit(0);
 }
 if (args[0] === 'pr' && args[1] === 'list') {

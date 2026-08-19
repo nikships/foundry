@@ -21,7 +21,13 @@ import type {
   PrMergeMethod,
   PullRequest,
 } from '@shared/types.js';
-import type { NewRepoInput, NewRepoResult, PrAction, PrList } from '@shared/ipc-contract.js';
+import type {
+  IssueAction,
+  NewRepoInput,
+  NewRepoResult,
+  PrAction,
+  PrList,
+} from '@shared/ipc-contract.js';
 import { preferredRemote, pushBranch } from '../engine/git.js';
 import { spawnEnv } from './env.js';
 
@@ -359,6 +365,58 @@ export async function openPr(
     number: Number.isFinite(number) ? number : undefined,
     url,
   };
+}
+
+/**
+ * File a GitHub issue. No push is involved — an issue is repository metadata,
+ * not a branch — so this works even for a run that never isolated. Labels are
+ * best-effort by retry: gh refuses the whole create when a label does not
+ * exist, and an issue without labels beats no issue.
+ */
+export async function createIssue(
+  repo: string,
+  input: { title: string; body: string; labels?: string[] },
+  opts: GhOptions = {},
+): Promise<IssueAction> {
+  const bin = opts.bin ?? 'gh';
+  const labels = (input.labels ?? []).map((l) => l.trim()).filter(Boolean);
+  const argv = (withLabels: boolean): string[] => [
+    'issue',
+    'create',
+    '--title',
+    input.title,
+    '--body',
+    input.body,
+    ...(withLabels ? labels.flatMap((label) => ['--label', label]) : []),
+  ];
+
+  let created = await gh(bin, repo, argv(true), 60_000);
+  let note = '';
+  if (!created.ok && labels.length) {
+    const retried = await gh(bin, repo, argv(false), 60_000);
+    if (retried.ok) {
+      note = ` (labels ${labels.join(', ')} were not applied: ${firstLine(created)})`;
+      created = retried;
+    }
+  }
+  if (!created.ok) {
+    return { ok: false, detail: firstLine(created) || 'gh issue create failed' };
+  }
+
+  // gh prints the new issue's URL as the last non-empty stdout line.
+  const url = created.stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => /^https:\/\//.test(line))
+    .pop();
+  const number = url ? Number(/\/issues\/(\d+)/.exec(url)?.[1]) : NaN;
+  if (!url || !Number.isFinite(number)) {
+    return {
+      ok: false,
+      detail: `gh issue create did not report an issue URL: ${created.stdout.trim() || 'empty output'}`,
+    };
+  }
+  return { ok: true, detail: `filed ${url}${note}`, number, url };
 }
 
 /**
