@@ -33,7 +33,9 @@ A checkout that never ran the fetch simply has no Bridge: `bridgeBinaryPath()` r
 - **`models.json` is merged, never overwritten.** Only `bridge-*` keys are replaced. A hand-added Ollama provider and any unknown top-level field survive every regeneration.
 - **One `modelRuntime.refresh()` per committed write.** The write is skipped when the rendered bytes match what is on disk, and the refresh happens only when the write did. An auth directory emits several events for one login.
 - **Only authenticated providers reach the catalog.** A provider with no usable account is absent, not present-and-failing: pi would list its models and refuse at request time, which reads as a broken model rather than a missing login.
-- **The `processes` row carries a null run id.** `processes.run_id` has a foreign key to `runs` with `foreign_keys = ON`, so a synthetic id is rejected. Null satisfies the constraint, keeps the row out of every per-run query (retention's delete, the kill-by-run path), and still reaches the relaunch sweep's unfiltered `openProcesses()`.
+- **The `processes` row carries a null run id, in the app's own trace.** `processes.run_id` has a foreign key to `runs` with `foreign_keys = ON`, so a synthetic id is rejected. Null satisfies the constraint, keeps the row out of every per-run query (retention's delete, the kill-by-run path), and still reaches the relaunch sweep's unfiltered `openProcesses()`. The store is `appDbPath()` (`trace/db.ts`), not a project's: the Bridge is app-scoped, a project can be removed while its Bridge still holds a port, and a Bridge started from Settings before any project exists has no project trace to be written to.
+- **Every `ensure()` records, no caller opts in.** `BridgeService` wires `onProcess`/`onProcessEnd` to `opts.trace` at construction, so the run path, the doctor, and a Settings login all record identically. A row written only by some callers leaves exactly the orphan it exists to catch.
+- **A row is closed only when the pid is confirmed gone.** `terminate()` (`system/procs.ts`) SIGTERMs the tree, escalates to SIGKILL, and reports whether the pid actually died. A survivor keeps its row open, because closing it would hide the one process still holding the port from the only sweep that could reclaim it.
 - **Cost is zero for every Bridge model.** These run against a subscription already paid for; a per-token price would accumulate a dollar figure in the trace that no invoice will ever show.
 - **Anthropic gets the root base URL, everything else `/v1`.** pi's Anthropic SDK appends `/v1/messages` itself, so an `anthropic-messages` entry pointing at `/v1` requests `/v1/v1/messages` and 404s.
 
@@ -50,6 +52,7 @@ npx vitest run tests/bridge-models.test.ts
 npx vitest run tests/bridge-catalog.test.ts
 npx vitest run tests/bridge-service.test.ts
 npx vitest run tests/bridge-process-row.test.ts
+npx vitest run tests/procs-terminate.test.ts
 npx vitest run tests/pi-catalog.test.ts
 ```
 

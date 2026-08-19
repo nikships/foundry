@@ -206,6 +206,14 @@ if (!app.requestSingleInstanceLock()) {
       console.warn(`finalised ${swept.runsFinalised.length} run(s) orphaned by a previous launch`);
     }
 
+    // A Bridge that survived a crash still holds its port; left alone, this
+    // launch would start a second one beside it. Awaited before the window so
+    // the first `ensure()` cannot race the reclaim onto the next port up.
+    const bridges = await ctx.registry.sweepAppProcesses();
+    if (bridges.reclaimed.length) {
+      console.warn(`reclaimed ${bridges.reclaimed.length} Bridge(s) orphaned by a previous launch`);
+    }
+
     createWindow();
 
     // A packaged app should discover updates without requiring the user to

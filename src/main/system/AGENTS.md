@@ -5,7 +5,7 @@ Owns launch environment resolution, process control, doctor checks, notification
 ## Project Overview
 
 - `env.ts` — `resolveEnv()` captures the user's real PATH before any CLI spawn (launchd trap).
-- `procs.ts` — tracked child registry + argv, `killAll()`, pid-recycle safety via `ps` argv check.
+- `procs.ts` — tracked child registry + argv, `killAll()`, pid-recycle safety via `ps` argv check, and `terminate()` (SIGTERM → SIGKILL, awaited, returns whether the pid is actually gone).
 - `doctor.ts` — advisory startup checks.
 - `notify.ts` / badge helpers — respect notification/badge settings while `finish()` owns completion state.
 - `terminal.ts` — `open -a <App> <dir>` for the emulator in settings, plus `runCommandInTerminal()` for one flagged `prepared` in `TERMINAL_APPS` (Ghostty: `open -na <App>.app --args --working-directory=<dir> -e <cmd>`), the catalog, and an install check. A handoff either way: no PTY, nothing tracked in `procs.ts`, because `open` exits immediately.
@@ -43,6 +43,8 @@ A GUI launch inherits launchd's minimal `PATH` (`/usr/bin:/bin:/usr/sbin:/sbin`)
 ## Process Safety
 
 Tracked children are registered with argv and the trace `processes` row. Before signalling a persisted pid, verify the current `ps` command still matches the recorded argv — pids can be recycled. Kill children before parents and keep the registry/trace lifecycle in sync. Do not add an untracked spawn site.
+
+`terminate(pid)` is the kill a sweep should use: it signals the tree, escalates to SIGKILL after the grace period, and answers whether the pid is gone. A caller that closes a `processes` row must close it on that answer, not on the signal — a survivor whose row was closed is a process nothing will ever look for again.
 
 ## Code Style
 

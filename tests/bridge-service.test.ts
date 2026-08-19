@@ -55,9 +55,21 @@ function writeAccount(authDir: string, file: string, type: string): void {
   writeFileSync(join(authDir, file), JSON.stringify({ type, email: `${type}@example.com` }));
 }
 
+/**
+ * Vitest runs files in parallel and every Bridge suite binds inside the same
+ * 37700–37799 band. The manager probes a port and then spawns, so two files
+ * scanning up from the same offset can both be told a port is free and one
+ * child loses the bind. Each suite takes its own slice: this one the middle,
+ * `bridge-process-row` the top, `bridge-manager` the default at the bottom
+ * (its scan-up test needs that specific port).
+ */
+const PORT_BASE = 37_750;
+let nextPort = PORT_BASE;
+
 function build(dir: string, refreshes: string[]): BridgeService {
   const service = new BridgeService({
     supportDir: dir,
+    port: nextPort++,
     manager: {
       binaryPath: '/scripted/cli-proxy-api',
       spawn: scriptedBridgeSpawn(),

@@ -74,6 +74,9 @@ export class AppContext {
       supportDir,
       port: this.settings.get().bridgePort,
       onModelsChanged: () => this.broadcast(IPC.eventBridgeChanged),
+      // Resolved per call rather than captured: the registry is built further
+      // down this constructor, and the app trace it owns opens on first use.
+      trace: () => this.registry.bridgeTrace(),
     });
     this.updater = new UpdaterService((channel, payload) => this.broadcast(channel, payload));
     this.oneShot = piOneShots(supportDir);
