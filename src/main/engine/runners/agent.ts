@@ -68,8 +68,11 @@ export class AgentPhaseRunner implements PhaseRunner {
       type: 'agent_start',
       name: agent.name,
       payload: {
-        model: agent.model,
-        reasoningEffort: agent.reasoningEffort,
+        // The session's values, not the roster's: `inherit` has already been
+        // resolved against the run default, so the event stream names the
+        // model that actually serves the turn.
+        model: session.model,
+        reasoningEffort: session.reasoningEffort,
         writes: boundary.describeBoundary(agent.writes),
         mode: session.currentMode,
       },

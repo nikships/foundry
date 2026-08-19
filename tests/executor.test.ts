@@ -284,6 +284,8 @@ interface RunInput {
   sessionUnavailable?: string;
   request?: string;
   project?: Partial<ProjectDef>;
+  /** The install default an `inherit` roster model resolves against. */
+  defaultModel?: string;
   askHuman?: AskHuman;
   turnTimeoutMs?: number;
   envelopeRetries?: number;
@@ -328,6 +330,7 @@ function start(input: RunInput): {
   // No child is spawned: the scripted agent answers behind the transport seam.
   const executor = new Executor({
     tracer: h.tracer,
+    defaultModel: input.defaultModel,
     turnTimeoutMs: input.turnTimeoutMs ?? 30_000,
     envelopeRetries: input.envelopeRetries ?? 2,
     gateRetries: input.gateRetries ?? 2,
@@ -1191,6 +1194,41 @@ describe('the trace record', () => {
     const prompt = readFileSync(join(dir, 'builder/prompts/build-1.md'), 'utf8');
     expect(prompt).toContain('do the thing');
     expect(prompt).toContain('changed_files');
+  });
+
+  it('records the resolved model on agent_start when the roster says inherit (FOU-68)', async () => {
+    const scripted = scriptedAgent([buildEnvelope()]);
+    const outcome = await run({
+      scripted,
+      agents: [buildAgent({ model: 'inherit' })],
+      defaultModel: 'bridge-claude/claude-sonnet-5',
+      pipeline: pipe(
+        [agentPhase('build', { description: 'Record which model actually served the turn.' })],
+        { acceptance: { kind: 'envelope_status', phase: 'build' } },
+      ),
+    });
+    expect(outcome.status).toBe('accepted');
+    const start = events(outcome.runId).find((e) => e.type === 'agent_start');
+    expect(start!.payload.model).toBe('bridge-claude/claude-sonnet-5');
+    // The event agrees with the session row the Inspector already trusts.
+    const session = h.tracer.agentSessions(outcome.runId)[0]!;
+    expect(session.model).toBe('bridge-claude/claude-sonnet-5');
+  });
+
+  it('records the roster model verbatim on agent_start when one is pinned', async () => {
+    const scripted = scriptedAgent([buildEnvelope()]);
+    const outcome = await run({
+      scripted,
+      agents: [buildAgent({ model: 'bridge-claude/claude-opus-5' })],
+      defaultModel: 'bridge-claude/claude-sonnet-5',
+      pipeline: pipe(
+        [agentPhase('build', { description: 'A pinned model outranks the run default.' })],
+        { acceptance: { kind: 'envelope_status', phase: 'build' } },
+      ),
+    });
+    expect(outcome.status).toBe('accepted');
+    const start = events(outcome.runId).find((e) => e.type === 'agent_start');
+    expect(start!.payload.model).toBe('bridge-claude/claude-opus-5');
   });
 
   it('queues every phase up front so the waterfall can draw what has not run', async () => {
