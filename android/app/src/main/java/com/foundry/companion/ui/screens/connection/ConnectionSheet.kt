@@ -9,6 +9,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.foundry.companion.BuildConfig
 import com.foundry.companion.data.model.CompanionProjectSummary
 import com.foundry.companion.data.model.CompanionSessionInfo
 import com.foundry.companion.data.model.ConnectionStatus
@@ -201,11 +202,12 @@ fun ConnectionBottomSheet(
             }
 
             // 5. Fine print
-            val appVer = "0.1.0"
-            val desktopVer = sessionInfo?.appVersion ?: "0.1.1"
-            val protoVer = session?.protocolVersion ?: 1
             Text(
-                text = "Companion v$appVer · Desktop v$desktopVer · Protocol v$protoVer",
+                text = companionFinePrint(
+                    appVersion = BuildConfig.VERSION_NAME,
+                    desktopVersion = sessionInfo?.appVersion,
+                    protocolVersion = session?.protocolVersion ?: sessionInfo?.protocolVersion ?: 1
+                ),
                 style = typography.metaMono,
                 color = colors.textFaint
             )
@@ -254,4 +256,13 @@ fun ConnectionBottomSheet(
             }
         )
     }
+}
+
+internal fun companionFinePrint(
+    appVersion: String,
+    desktopVersion: String?,
+    protocolVersion: Int
+): String {
+    val desktop = desktopVersion ?: "—"
+    return "Companion v$appVersion · Desktop v$desktop · Protocol v$protocolVersion"
 }

@@ -566,10 +566,11 @@ export interface FoundryApi {
     /** Unbinds the host and voids outstanding pairing secrets. Tokens survive. */
     stop(): Promise<CompanionHostState>;
     /**
-     * A fresh single-use pairing secret wrapped in the QR payload. Null while
-     * the host is stopped. The secret never appears in `state()`.
+     * The in-flight pairing secret wrapped in the QR payload. Re-reading
+     * returns the same secret; pass `{ refresh: true }` to mint a replacement.
+     * Null while the host is stopped. The secret never appears in `state()`.
      */
-    pairingPayload(): Promise<CompanionPairingPayload | null>;
+    pairingPayload(opts?: { refresh?: boolean }): Promise<CompanionPairingPayload | null>;
     /** Revokes one device's token by deleting the device. */
     unpair(deviceId: string): Promise<boolean>;
   };

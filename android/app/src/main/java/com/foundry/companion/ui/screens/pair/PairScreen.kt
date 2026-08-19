@@ -3,9 +3,14 @@ package com.foundry.companion.ui.screens.pair
 import android.Manifest
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -13,10 +18,8 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -72,9 +75,26 @@ fun PairScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         hasCameraPermission = granted
-        if (!granted) {
-            isPasteMode = true
+        if (granted) {
+            isPasteMode = false
         }
+    }
+
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, initialPasteMode) {
+        if (initialPasteMode) {
+            return@DisposableEffect onDispose { }
+        }
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                hasCameraPermission = ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.CAMERA
+                ) == PackageManager.PERMISSION_GRANTED
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     LaunchedEffect(initialPasteMode) {
@@ -175,9 +195,8 @@ fun PairScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Main scanning view or Paste fallback card
+            // Scanner, camera-denied card, or paste escape hatch
             if (hasCameraPermission && !isPasteMode) {
-                // Live Camera QR Viewfinder
                 Box(
                     modifier = Modifier
                         .size(280.dp)
@@ -191,12 +210,33 @@ fun PairScreen(
                         },
                         isPairing = isPairing,
                     )
-
-                    // Scanning reticle and laser sweep overlay
                     ReticleOverlay(isPairing = isPairing)
                 }
+            } else if (!hasCameraPermission && !isPasteMode) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(colors.bgPanel, shapes.card)
+                        .border(1.dp, colors.line, shapes.card)
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "CAMERA",
+                        style = typography.eyebrowMono,
+                        color = colors.accent
+                    )
+                    Text(
+                        text = "Foundry is waiting on your Mac. Allow camera access to scan its pairing code.",
+                        style = typography.body,
+                        color = colors.textDim
+                    )
+                    FoundryPrimaryButton(
+                        text = "Open app settings",
+                        onClick = { openAppSettings(context) }
+                    )
+                }
             } else {
-                // Camera denied or manual Paste fallback card
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -211,11 +251,7 @@ fun PairScreen(
                         color = colors.accent
                     )
                     Text(
-                        text = if (!hasCameraPermission) {
-                            "Foundry is waiting on your Mac. Allow camera access to scan its pairing code."
-                        } else {
-                            "Paste the pairing JSON copied from Foundry Settings → Companion:"
-                        },
+                        text = "Paste the pairing JSON copied from Foundry Settings → Companion:",
                         style = typography.body,
                         color = colors.textDim
                     )
@@ -246,41 +282,22 @@ fun PairScreen(
                         )
                     )
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                    TextButton(
+                        onClick = {
+                            val clipboard =
+                                context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                            val clipText = clipboard?.primaryClip?.getItemAt(0)?.text?.toString()
+                            if (!clipText.isNullOrBlank()) {
+                                pastedJson = clipText
+                                localValidationIssue = null
+                            }
+                        }
                     ) {
-                        TextButton(
-                            onClick = {
-                                val clipboard =
-                                    context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                                val clipText = clipboard?.primaryClip?.getItemAt(0)?.text?.toString()
-                                if (!clipText.isNullOrBlank()) {
-                                    pastedJson = clipText
-                                    localValidationIssue = null
-                                }
-                            }
-                        ) {
-                            Text(
-                                text = "PASTE CLIPBOARD",
-                                style = typography.labelMono,
-                                color = colors.accent
-                            )
-                        }
-
-                        if (!hasCameraPermission) {
-                            TextButton(
-                                onClick = {
-                                    permissionLauncher.launch(Manifest.permission.CAMERA)
-                                }
-                            ) {
-                                Text(
-                                    text = "TRY CAMERA",
-                                    style = typography.labelMono,
-                                    color = colors.textDim
-                                )
-                            }
-                        }
+                        Text(
+                            text = "PASTE CLIPBOARD",
+                            style = typography.labelMono,
+                            color = colors.accent
+                        )
                     }
                 }
             }
@@ -314,7 +331,7 @@ fun PairScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                if (hasCameraPermission && !isPasteMode) {
+                if (!isPasteMode) {
                     TextButton(
                         onClick = { isPasteMode = true }
                     ) {
@@ -503,6 +520,13 @@ private fun CameraQrScannerView(
         },
         modifier = Modifier.fillMaxSize(),
     )
+}
+
+private fun openAppSettings(context: Context) {
+    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+        data = Uri.fromParts("package", context.packageName, null)
+    }
+    context.startActivity(intent)
 }
 
 private class QrDeduper {

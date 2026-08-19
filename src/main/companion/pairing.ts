@@ -17,16 +17,31 @@ interface PendingSecret {
 
 export class PairingSecrets {
   private pending: PendingSecret[] = [];
+  /** The secret Settings is currently showing. Refresh replaces it; redeem clears it. */
+  private displayed: PendingSecret | null = null;
 
   constructor(private readonly now: () => number = Date.now) {}
 
-  /** Mints a fresh secret. Prior unexpired secrets stay valid until used. */
+  /** The in-flight secret Settings is displaying, or null if none is live. */
+  current(): { secret: string; expiresAt: string } | null {
+    this.sweep();
+    if (!this.displayed) return null;
+    return this.project(this.displayed);
+  }
+
+  /**
+   * Mints a fresh secret and marks it as the displayed one. Prior unexpired
+   * secrets stay valid until used, so a phone that already scanned the previous
+   * QR can still pair after a refresh.
+   */
   issue(): { secret: string; expiresAt: string } {
     this.sweep();
     const secret = randomBytes(24).toString('base64url');
     const expiresAtMs = this.now() + PAIRING_SECRET_TTL_MS;
-    this.pending.push({ secret, expiresAtMs });
-    return { secret, expiresAt: new Date(expiresAtMs).toISOString() };
+    const entry = { secret, expiresAtMs };
+    this.pending.push(entry);
+    this.displayed = entry;
+    return this.project(entry);
   }
 
   /** Spends a secret. False for unknown, expired, or already-used. */
@@ -38,6 +53,7 @@ export class PairingSecrets {
       return stored.length === candidate.length && timingSafeEqual(stored, candidate);
     });
     if (index === -1) return false;
+    if (this.displayed && this.displayed.secret === secret) this.displayed = null;
     this.pending.splice(index, 1);
     return true;
   }
@@ -45,10 +61,16 @@ export class PairingSecrets {
   /** Drops every outstanding secret; stopping the host revokes its QR. */
   clear(): void {
     this.pending = [];
+    this.displayed = null;
   }
 
   private sweep(): void {
     const now = this.now();
     this.pending = this.pending.filter((entry) => entry.expiresAtMs > now);
+    if (this.displayed && this.displayed.expiresAtMs <= now) this.displayed = null;
+  }
+
+  private project(entry: PendingSecret): { secret: string; expiresAt: string } {
+    return { secret: entry.secret, expiresAt: new Date(entry.expiresAtMs).toISOString() };
   }
 }
