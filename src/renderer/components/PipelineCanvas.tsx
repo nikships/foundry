@@ -469,6 +469,13 @@ export default function PipelineCanvas({
     if (!element) return;
 
     const handleWheel = (event: WheelEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      // Overlay chrome (pipeline picker, add menu, zoom controls) owns the
+      // pointer. Two-finger scroll over the list must scroll the list, not
+      // pan the board underneath.
+      if (target?.closest('[data-canvas-control]') && !target.closest('[data-pipeline-node]')) {
+        return;
+      }
       event.preventDefault();
       const { state: current, commit: doCommit, zoomAt: doZoom } = latestRef.current;
       if (event.ctrlKey || event.metaKey) {

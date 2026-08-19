@@ -458,6 +458,7 @@
   gap: 2px;
   overflow-y: auto;
   max-height: 240px;
+  overscroll-behavior: contain;
 }
 
 .pipelineOption {
