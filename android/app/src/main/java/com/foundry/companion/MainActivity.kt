@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat
 import com.foundry.companion.data.model.COMPANION_PROTOCOL_VERSION
 import com.foundry.companion.data.model.PairedSession
 import com.foundry.companion.ui.navigation.FoundryNavHost
+import com.foundry.companion.ui.navigation.resolveDeepLink
 import com.foundry.companion.ui.theme.FoundryTheme
 import com.foundry.companion.viewmodel.CompanionViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -79,21 +80,17 @@ class MainActivity : ComponentActivity() {
 
     private fun handleDeepLink(intent: Intent?) {
         if (intent == null) return
-        val data = intent.data
-        if (data != null && data.scheme == "foundry" && data.host == "run") {
-            val deepRunId = data.pathSegments.firstOrNull()
-            if (!deepRunId.isNullOrBlank()) {
-                viewModel.loadRunDetail(deepRunId)
-                deepLinkRoute.value = "run/$deepRunId"
-                return
-            }
-        }
 
-        val extraRunId = intent.getStringExtra("runId")
-        if (!extraRunId.isNullOrBlank()) {
-            viewModel.loadRunDetail(extraRunId)
-            deepLinkRoute.value = "run/$extraRunId"
-        }
+        val data = intent.data?.takeIf { it.scheme == "foundry" && it.host == "run" }
+        val target = resolveDeepLink(
+            uriRunId = data?.pathSegments?.firstOrNull(),
+            uriInterruptId = data?.getQueryParameter("interrupt"),
+            extraRunId = intent.getStringExtra("runId"),
+            extraInterruptId = intent.getStringExtra("interruptId")
+        ) ?: return
+
+        viewModel.loadRunDetail(target.runId)
+        deepLinkRoute.value = target.route
     }
 }
 
