@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Foundry</string>
+    <string name="title_runs">Runs</string>
+    <string name="title_new_run">New Run</string>
+    <string name="title_pair">Pair</string>
+    <string name="title_run">Run</string>
+    <string name="title_inspector">Inspector</string>
+    <string name="title_connection">Connection</string>
+</resources>

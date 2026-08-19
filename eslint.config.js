@@ -24,6 +24,8 @@ export default tseslint.config(
       // Standalone marketing site: its own toolchain and tsconfig, and
       // deliberately outside the app build, `npm run check`, and CI.
       'website/**',
+      // Android companion app scaffold (separate Kotlin toolchain).
+      'android/**',
       // Local run worktrees and codegraph pointer — not part of the app.
       '.foundry-worktrees/**',
       '.codegraph',

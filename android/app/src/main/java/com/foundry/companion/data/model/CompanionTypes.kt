@@ -1,0 +1,200 @@
+package com.foundry.companion.data.model
+
+import kotlinx.serialization.Serializable
+
+const val COMPANION_PROTOCOL_VERSION = 1
+
+@Serializable
+data class CompanionPairingPayload(
+    val protocolVersion: Int = COMPANION_PROTOCOL_VERSION,
+    val origin: String,
+    val desktopId: String,
+    val desktopName: String,
+    val secret: String,
+    val expiresAt: String
+)
+
+@Serializable
+data class CompanionPairRequest(
+    val protocolVersion: Int = COMPANION_PROTOCOL_VERSION,
+    val secret: String,
+    val deviceName: String
+)
+
+@Serializable
+data class CompanionPairResult(
+    val token: String,
+    val deviceId: String,
+    val desktopId: String,
+    val desktopName: String,
+    val protocolVersion: Int
+)
+
+@Serializable
+data class CompanionSessionInfo(
+    val desktopId: String,
+    val desktopName: String,
+    val protocolVersion: Int,
+    val appVersion: String
+)
+
+@Serializable
+data class CompanionProjectSummary(
+    val id: String,
+    val name: String,
+    val pipelines: List<PipelineSummary> = emptyList()
+)
+
+@Serializable
+data class PipelineSummary(
+    val id: String,
+    val name: String,
+    val description: String = "",
+    val phases: List<PhaseTemplateSummary> = emptyList()
+)
+
+@Serializable
+data class PhaseTemplateSummary(
+    val id: String,
+    val name: String,
+    val kind: String = "agent", // "agent" | "code" | "review" | "engineer"
+    val isFeedbackTarget: Boolean = false
+)
+
+@Serializable
+data class RunRow(
+    val runId: String,
+    val projectId: String,
+    val pipelineId: String,
+    val pipelineName: String,
+    val request: String,
+    val status: String, // "running" | "accepted" | "rejected" | "failed" | "killed"
+    val createdAt: String,
+    val finishedAt: String? = null,
+    val durationMs: Long? = null,
+    val totalTokens: Long? = null,
+    val branch: String? = null,
+    val prUrl: String? = null,
+    val issueUrl: String? = null,
+    val outcomeDetail: String? = null,
+    val waitingInterrupt: Boolean = false,
+    val phases: List<PhaseRunSummary> = emptyList()
+)
+
+@Serializable
+data class PhaseRunSummary(
+    val id: String,
+    val name: String,
+    val kind: String = "agent",
+    val status: String = "queued", // "queued" | "running" | "success" | "fail" | "skipped"
+    val attempt: Int = 1,
+    val durationMs: Long? = null,
+    val tokens: Long? = null,
+    val model: String? = null,
+    val gateResults: List<GateResult> = emptyList(),
+    val envelopeVerdict: String? = null,
+    val errorMessage: String? = null
+)
+
+@Serializable
+data class GateResult(
+    val name: String,
+    val passed: Boolean
+)
+
+@Serializable
+data class RunDetail(
+    val run: RunRow,
+    val phases: List<PhaseRunSummary> = emptyList()
+)
+
+@Serializable
+data class TranscriptEvent(
+    val id: String,
+    val phaseId: String,
+    val type: String, // "text" | "tool_call" | "gate" | "correction" | "interrupt" | "error"
+    val timestamp: String,
+    val content: String,
+    val toolName: String? = null,
+    val durationMs: Long? = null,
+    val isSuccess: Boolean? = null,
+    val toolArgs: String? = null,
+    val toolOutput: String? = null
+)
+
+@Serializable
+data class PendingInterrupt(
+    val interruptId: String,
+    val runId: String,
+    val pipelineName: String,
+    val phaseName: String,
+    val question: String,
+    val notes: String? = null
+)
+
+@Serializable
+data class InterruptAnswer(
+    val interruptId: String,
+    val approved: Boolean,
+    val notes: String? = null
+)
+
+@Serializable
+data class StartRunInput(
+    val projectId: String,
+    val pipelineId: String,
+    val request: String
+)
+
+@Serializable
+data class ValidationIssue(
+    val level: String, // "error" | "warning"
+    val message: String
+)
+
+@Serializable
+data class CompanionStartResult(
+    val ok: Boolean,
+    val runId: String? = null,
+    val issues: List<ValidationIssue> = emptyList()
+)
+
+@Serializable
+data class CompanionKillResult(
+    val ok: Boolean
+)
+
+@Serializable
+data class CompanionAnswerResult(
+    val ok: Boolean
+)
+
+@Serializable
+data class CompanionPrCreateRequest(
+    val title: String = "",
+    val body: String = ""
+)
+
+@Serializable
+data class PrAction(
+    val ok: Boolean,
+    val prUrl: String? = null,
+    val detail: String? = null
+)
+
+@Serializable
+data class PairedSession(
+    val token: String,
+    val desktopId: String,
+    val desktopName: String,
+    val hostOrigin: String,
+    val pairedAt: String,
+    val protocolVersion: Int = COMPANION_PROTOCOL_VERSION
+)
+
+sealed interface ConnectionStatus {
+    data object Unpaired : ConnectionStatus
+    data class Connected(val desktopName: String, val hostOrigin: String) : ConnectionStatus
+    data class Reconnecting(val desktopName: String, val hostOrigin: String) : ConnectionStatus
+    data class Offline(val desktopName: String, val hostOrigin: String) : ConnectionStatus
+}

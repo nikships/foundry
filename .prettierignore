@@ -19,3 +19,7 @@ references
 # desktop app build, the repo gate, or CI. See website/README.md.
 website
 .agents/agent-ready.json
+
+# Android application scaffold
+android
+

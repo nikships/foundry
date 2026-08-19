@@ -1,0 +1,212 @@
+package com.foundry.companion.ui.navigation
+
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.navigation.NavHostController
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import com.foundry.companion.data.model.ConnectionStatus
+import com.foundry.companion.ui.components.InterruptBottomSheet
+import com.foundry.companion.ui.screens.connection.ConnectionBottomSheet
+import com.foundry.companion.ui.screens.inspector.InspectorScreen
+import com.foundry.companion.ui.screens.newrun.NewRunScreen
+import com.foundry.companion.ui.screens.pair.PairScreen
+import com.foundry.companion.ui.screens.run.RunDetailScreen
+import com.foundry.companion.ui.screens.runs.RunsScreen
+import com.foundry.companion.viewmodel.CompanionViewModel
+
+@Composable
+fun FoundryNavHost(
+    viewModel: CompanionViewModel,
+    modifier: Modifier = Modifier,
+    navController: NavHostController = rememberNavController()
+) {
+    val context = LocalContext.current
+    val uiState by viewModel.uiState.collectAsState()
+
+    var showConnectionSheet by remember { mutableStateOf(false) }
+
+    // Start destination based on whether paired
+    val isPaired = uiState.activeSession != null
+    val startDestination = if (isPaired) NavRoute.Runs.route else NavRoute.Pair.route
+
+    // React to pairing state changes
+    LaunchedEffect(isPaired) {
+        if (!isPaired && navController.currentDestination?.route != NavRoute.Pair.route) {
+            navController.navigate(NavRoute.Pair.route) {
+                popUpTo(0) { inclusive = true }
+            }
+        } else if (isPaired && navController.currentDestination?.route == NavRoute.Pair.route) {
+            navController.navigate(NavRoute.Runs.route) {
+                popUpTo(NavRoute.Pair.route) { inclusive = true }
+            }
+        }
+    }
+
+    NavHost(
+        navController = navController,
+        startDestination = startDestination,
+        modifier = modifier
+    ) {
+        // 1. Pair Screen
+        composable(NavRoute.Pair.route) {
+            PairScreen(
+                onPairSuccess = {
+                    navController.navigate(NavRoute.Runs.route) {
+                        popUpTo(NavRoute.Pair.route) { inclusive = true }
+                    }
+                },
+                onPairScanned = { payload ->
+                    viewModel.pair(payload)
+                },
+                errorMessage = uiState.errorMessage,
+                isPairing = uiState.isPairing
+            )
+        }
+
+        // 2. Home / Runs Screen
+        composable(NavRoute.Runs.route) {
+            val currentProject = uiState.projects.find { it.id == uiState.selectedProjectId }
+            RunsScreen(
+                runs = uiState.runs,
+                connectionStatus = uiState.connectionStatus,
+                projectName = currentProject?.name ?: "Foundry",
+                onRunClick = { runId ->
+                    viewModel.loadRunDetail(runId)
+                    navController.navigate(NavRoute.RunDetail.createRoute(runId))
+                },
+                onStartRunClick = {
+                    navController.navigate(NavRoute.NewRun.route)
+                },
+                onConnectionPillClick = {
+                    showConnectionSheet = true
+                },
+                onRetryConnection = {
+                    viewModel.retryConnection()
+                }
+            )
+        }
+
+        // 3. New Run Screen
+        composable(NavRoute.NewRun.route) {
+            NewRunScreen(
+                projects = uiState.projects,
+                selectedProjectId = uiState.selectedProjectId,
+                onProjectSelect = { viewModel.selectProject(it) },
+                onDismiss = { navController.popBackStack() },
+                onStartRun = { projectId, pipelineId, request ->
+                    viewModel.startRun(projectId, pipelineId, request) { newRunId ->
+                        viewModel.loadRunDetail(newRunId)
+                        navController.navigate(NavRoute.RunDetail.createRoute(newRunId)) {
+                            popUpTo(NavRoute.Runs.route)
+                        }
+                    }
+                },
+                connectionStatus = uiState.connectionStatus,
+                isStarting = uiState.isStartingRun,
+                validationIssues = uiState.validationIssues
+            )
+        }
+
+        // 4. Run Detail Screen
+        composable(
+            route = NavRoute.RunDetail.route,
+            arguments = listOf(navArgument("runId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val runId = backStackEntry.arguments?.getString("runId").orEmpty()
+            LaunchedEffect(runId) {
+                viewModel.loadRunDetail(runId)
+            }
+
+            RunDetailScreen(
+                runDetail = uiState.currentRunDetail,
+                connectionStatus = uiState.connectionStatus,
+                onBackClick = { navController.popBackStack() },
+                onOpenInspector = { phaseId ->
+                    navController.navigate(NavRoute.Inspector.createRoute(runId, phaseId))
+                },
+                onKillRun = { viewModel.killRun(it) },
+                onOpenPr = { url ->
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                    context.startActivity(intent)
+                },
+                onCreatePr = { viewModel.createPr(it) },
+                onOpenIssue = { url ->
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                    context.startActivity(intent)
+                }
+            )
+        }
+
+        // 5. Inspector Screen
+        composable(
+            route = NavRoute.Inspector.route,
+            arguments = listOf(
+                navArgument("runId") { type = NavType.StringType },
+                navArgument("phaseId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) { backStackEntry ->
+            val runId = backStackEntry.arguments?.getString("runId").orEmpty()
+            val phaseId = backStackEntry.arguments?.getString("phaseId")
+
+            LaunchedEffect(runId, phaseId) {
+                viewModel.loadRunDetail(runId)
+                if (phaseId != null) {
+                    viewModel.loadTranscriptEvents(runId, phaseId)
+                }
+            }
+
+            InspectorScreen(
+                runDetail = uiState.currentRunDetail,
+                events = uiState.transcriptEvents,
+                initialPhaseId = phaseId,
+                connectionStatus = uiState.connectionStatus,
+                onBackClick = { navController.popBackStack() },
+                onPhaseSelected = { selectedPhase ->
+                    viewModel.loadTranscriptEvents(runId, selectedPhase)
+                }
+            )
+        }
+    }
+
+    // 6. Connection Bottom Sheet Overlay
+    if (showConnectionSheet) {
+        ConnectionBottomSheet(
+            session = uiState.activeSession,
+            sessionInfo = uiState.sessionInfo,
+            connectionStatus = uiState.connectionStatus,
+            projects = uiState.projects,
+            selectedProjectId = uiState.selectedProjectId,
+            onSelectProject = { viewModel.selectProject(it) },
+            isNotifyOnSettleEnabled = uiState.isNotifyOnSettleEnabled,
+            onToggleNotifyOnSettle = { viewModel.toggleNotifyOnSettle(it) },
+            onUnpair = { viewModel.unpair() },
+            onDismiss = { showConnectionSheet = false }
+        )
+    }
+
+    // 7. Engineer Interrupt Sheet Overlay (if active)
+    val activeInterrupt = uiState.pendingInterrupts.firstOrNull()
+    if (activeInterrupt != null) {
+        InterruptBottomSheet(
+            interrupt = activeInterrupt,
+            onApprove = { notes ->
+                viewModel.answerInterrupt(activeInterrupt.interruptId, approved = true, notes = notes)
+            },
+            onReject = { notes ->
+                viewModel.answerInterrupt(activeInterrupt.interruptId, approved = false, notes = notes)
+            },
+            onDismiss = { /* Non-dismissible without explicit answer */ }
+        )
+    }
+}
