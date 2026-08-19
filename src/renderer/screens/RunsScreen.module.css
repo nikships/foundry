@@ -266,17 +266,39 @@
   display: flex;
   align-items: center;
   gap: var(--s3);
+  flex: none;
+}
+.branch {
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 500;
   letter-spacing: var(--label-tracking);
   text-transform: uppercase;
   color: var(--text-faint);
-  flex: none;
-}
-.branch {
   max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.meta-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 var(--s2);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  white-space: nowrap;
+  background: transparent;
+}
+.meta-badge-time {
+  color: var(--blue);
+  border: 1px solid color-mix(in srgb, var(--blue) 40%, transparent);
+}
+.meta-badge-tokens {
+  color: var(--purple);
+  border: 1px solid color-mix(in srgb, var(--purple) 40%, transparent);
 }

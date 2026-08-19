@@ -4,7 +4,7 @@ import type { CompanionHostState } from '@shared/companion.js';
 import { api } from '../api.js';
 import { useApp } from '../stores/app.js';
 import { useRunList } from '../stores/run.js';
-import { duration, since, tokens, truncate } from '../format.js';
+import { since, truncate, durationClock, tokensBadge } from '../format.js';
 import { runDuration } from '../derive.js';
 import StatusBadge from '../components/StatusBadge.js';
 import PipelineRibbon from '../components/PipelineRibbon.js';
@@ -429,14 +429,20 @@ export default function RunsScreen({
                 </div>
                 <p className={styles.req}>{truncate(run.request, 160)}</p>
               </div>
-              <div className={`${styles.runMeta} mono faint`}>
+              <div className={styles.runMeta}>
                 {run.branch && (
                   <span className={styles.branch} title={run.branch}>
                     {run.branch.replace('foundry/', '')}
                   </span>
                 )}
-                <span>{duration(runDuration(run))}</span>
-                {run.totalTokens ? <span>{tokens(run.totalTokens)} tok</span> : null}
+                <span className={`${styles.metaBadge} ${styles.metaBadgeTime}`}>
+                  {durationClock(runDuration(run))}
+                </span>
+                {run.totalTokens ? (
+                  <span className={`${styles.metaBadge} ${styles.metaBadgeTokens}`}>
+                    {tokensBadge(run.totalTokens)}
+                  </span>
+                ) : null}
               </div>
             </button>
           ))}

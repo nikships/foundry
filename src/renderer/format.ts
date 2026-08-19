@@ -44,6 +44,23 @@ export function tokens(n: number | null | undefined): string {
   return `${(n / 1_000_000).toFixed(2)}M`;
 }
 
+/** Duration as MM:SS for compact badges (e.g. 02:05, 14:32, 00:08). */
+export function durationClock(ms: number | null | undefined): string {
+  if (ms == null) return '—';
+  const totalSeconds = Math.round(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+}
+
+/** Tokens as XXXK / X.XM for compact badges (e.g. 53K, 1.2M). */
+export function tokensBadge(n: number | null | undefined): string {
+  if (n == null || n === 0) return '—';
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) return `${Math.round(n / 1000)}K`;
+  return `${(n / 1_000_000).toFixed(1)}M`;
+}
+
 export function truncate(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 }
