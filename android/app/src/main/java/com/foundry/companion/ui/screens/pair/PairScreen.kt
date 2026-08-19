@@ -92,7 +92,31 @@ fun PairScreen(
             return
         }
         try {
-            val payload = jsonParser.decodeFromString<CompanionPairingPayload>(trimmed)
+            val payload = if (trimmed.startsWith("{")) {
+                jsonParser.decodeFromString<CompanionPairingPayload>(trimmed)
+            } else if (trimmed.startsWith("foundry://") || trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+                val uri = android.net.Uri.parse(trimmed)
+                val origin = uri.getQueryParameter("origin")
+                    ?: (if (trimmed.startsWith("http")) "${uri.scheme}://${uri.authority}" else "")
+                val secret = uri.getQueryParameter("secret")
+                    ?: uri.fragment?.removePrefix("secret=")
+                    ?: ""
+                val version = uri.getQueryParameter("v")?.toIntOrNull() ?: COMPANION_PROTOCOL_VERSION
+                val desktopId = uri.getQueryParameter("desktopId").orEmpty()
+                val desktopName = uri.getQueryParameter("desktopName").orEmpty()
+                val expiresAt = uri.getQueryParameter("expiresAt").orEmpty()
+                CompanionPairingPayload(
+                    protocolVersion = version,
+                    origin = origin,
+                    desktopId = desktopId,
+                    desktopName = desktopName,
+                    secret = secret,
+                    expiresAt = expiresAt
+                )
+            } else {
+                jsonParser.decodeFromString<CompanionPairingPayload>(trimmed)
+            }
+
             if (payload.origin.isBlank() || payload.secret.isBlank()) {
                 localValidationIssue = "Invalid pairing payload: missing origin or secret."
                 return
@@ -106,7 +130,7 @@ fun PairScreen(
             onPairScanned(payload)
         } catch (e: Exception) {
             localValidationIssue =
-                "Could not parse pairing JSON. Ensure you copied the full payload from Foundry Settings → Companion."
+                "Could not parse pairing code. Ensure you copied or scanned the payload from Foundry Settings → Companion."
         }
     }
 

@@ -849,7 +849,7 @@ export default function SettingsScreen({
                           <div className={styles.qrFrame}>
                             {pairingPayload ? (
                               <QrCode
-                                value={JSON.stringify(pairingPayload)}
+                                value={`foundry://pair?origin=${encodeURIComponent(pairingPayload.origin)}&secret=${encodeURIComponent(pairingPayload.secret)}`}
                                 size={220}
                                 bgColor="#FFFFFF"
                                 fgColor="#000000"
@@ -951,7 +951,7 @@ export default function SettingsScreen({
                               <div className={styles.qrFrame}>
                                 {pairingPayload ? (
                                   <QrCode
-                                    value={JSON.stringify(pairingPayload)}
+                                    value={`foundry://pair?origin=${encodeURIComponent(pairingPayload.origin)}&secret=${encodeURIComponent(pairingPayload.secret)}`}
                                     size={220}
                                     bgColor="#FFFFFF"
                                     fgColor="#000000"

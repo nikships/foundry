@@ -126,7 +126,7 @@ const VERSION_TABLE: Record<ErrorCorrectionLevel, VersionTableEntry[]> = {
     { totalCodewords: 100, ecPerBlock: 26, g1Blocks: 2, g1Data: 24, g2Blocks: 0, g2Data: 0 },
     { totalCodewords: 134, ecPerBlock: 18, g1Blocks: 2, g1Data: 15, g2Blocks: 2, g2Data: 16 },
     { totalCodewords: 172, ecPerBlock: 24, g1Blocks: 4, g1Data: 19, g2Blocks: 0, g2Data: 0 },
-    { totalCodewords: 196, ecPerBlock: 18, g1Blocks: 4, g1Data: 14, g2Blocks: 1, g2Data: 15 },
+    { totalCodewords: 196, ecPerBlock: 18, g1Blocks: 2, g1Data: 14, g2Blocks: 4, g2Data: 15 },
     { totalCodewords: 242, ecPerBlock: 22, g1Blocks: 4, g1Data: 18, g2Blocks: 2, g2Data: 19 },
     { totalCodewords: 292, ecPerBlock: 20, g1Blocks: 4, g1Data: 16, g2Blocks: 4, g2Data: 17 },
     { totalCodewords: 346, ecPerBlock: 24, g1Blocks: 6, g1Data: 19, g2Blocks: 2, g2Data: 20 },
@@ -139,29 +139,29 @@ const VERSION_TABLE: Record<ErrorCorrectionLevel, VersionTableEntry[]> = {
     { totalCodewords: 815, ecPerBlock: 28, g1Blocks: 1, g1Data: 22, g2Blocks: 15, g2Data: 23 },
     { totalCodewords: 901, ecPerBlock: 28, g1Blocks: 17, g1Data: 22, g2Blocks: 1, g2Data: 23 },
     { totalCodewords: 991, ecPerBlock: 26, g1Blocks: 17, g1Data: 21, g2Blocks: 4, g2Data: 22 },
-    { totalCodewords: 1085, ecPerBlock: 28, g1Blocks: 15, g1Data: 24, g2Blocks: 5, g2Data: 25 },
+    { totalCodewords: 1085, ecPerBlock: 30, g1Blocks: 15, g1Data: 24, g2Blocks: 5, g2Data: 25 },
   ],
   H: [
-    { totalCodewords: 26, ecPerBlock: 17, g1Blocks: 1, g1Data: 9, g2Blocks: 0, g2Data: 0 },
-    { totalCodewords: 44, ecPerBlock: 28, g1Blocks: 1, g1Data: 16, g2Blocks: 0, g2Data: 0 },
-    { totalCodewords: 70, ecPerBlock: 22, g1Blocks: 2, g1Data: 13, g2Blocks: 0, g2Data: 0 },
-    { totalCodewords: 100, ecPerBlock: 16, g1Blocks: 4, g1Data: 9, g2Blocks: 0, g2Data: 0 },
-    { totalCodewords: 134, ecPerBlock: 22, g1Blocks: 2, g1Data: 11, g2Blocks: 2, g2Data: 12 },
-    { totalCodewords: 172, ecPerBlock: 28, g1Blocks: 4, g1Data: 15, g2Blocks: 0, g2Data: 0 },
-    { totalCodewords: 196, ecPerBlock: 26, g1Blocks: 4, g1Data: 13, g2Blocks: 1, g2Data: 14 },
-    { totalCodewords: 242, ecPerBlock: 26, g1Blocks: 4, g1Data: 14, g2Blocks: 2, g2Data: 15 },
-    { totalCodewords: 292, ecPerBlock: 24, g1Blocks: 4, g1Data: 12, g2Blocks: 4, g2Data: 13 },
-    { totalCodewords: 346, ecPerBlock: 28, g1Blocks: 6, g1Data: 15, g2Blocks: 2, g2Data: 16 },
-    { totalCodewords: 404, ecPerBlock: 24, g1Blocks: 4, g1Data: 14, g2Blocks: 6, g2Data: 15 },
-    { totalCodewords: 466, ecPerBlock: 28, g1Blocks: 7, g1Data: 14, g2Blocks: 4, g2Data: 15 },
-    { totalCodewords: 532, ecPerBlock: 22, g1Blocks: 12, g1Data: 11, g2Blocks: 4, g2Data: 12 },
-    { totalCodewords: 581, ecPerBlock: 24, g1Blocks: 11, g1Data: 12, g2Blocks: 5, g2Data: 13 },
-    { totalCodewords: 655, ecPerBlock: 24, g1Blocks: 11, g1Data: 12, g2Blocks: 7, g2Data: 13 },
-    { totalCodewords: 733, ecPerBlock: 30, g1Blocks: 3, g1Data: 15, g2Blocks: 13, g2Data: 16 },
-    { totalCodewords: 815, ecPerBlock: 24, g1Blocks: 2, g1Data: 14, g2Blocks: 17, g2Data: 15 },
-    { totalCodewords: 901, ecPerBlock: 28, g1Blocks: 2, g1Data: 14, g2Blocks: 19, g2Data: 15 },
-    { totalCodewords: 991, ecPerBlock: 28, g1Blocks: 9, g1Data: 13, g2Blocks: 16, g2Data: 14 },
-    { totalCodewords: 1085, ecPerBlock: 28, g1Blocks: 11, g1Data: 14, g2Blocks: 16, g2Data: 15 },
+    { totalCodewords: 26, ecPerBlock: 17, g1Blocks: 1, g1Data: 9, g2Blocks: 0, g2Data: 0 }, // v1
+    { totalCodewords: 44, ecPerBlock: 28, g1Blocks: 1, g1Data: 16, g2Blocks: 0, g2Data: 0 }, // v2
+    { totalCodewords: 70, ecPerBlock: 22, g1Blocks: 2, g1Data: 13, g2Blocks: 0, g2Data: 0 }, // v3
+    { totalCodewords: 100, ecPerBlock: 16, g1Blocks: 4, g1Data: 9, g2Blocks: 0, g2Data: 0 }, // v4
+    { totalCodewords: 134, ecPerBlock: 22, g1Blocks: 2, g1Data: 11, g2Blocks: 2, g2Data: 12 }, // v5
+    { totalCodewords: 172, ecPerBlock: 28, g1Blocks: 4, g1Data: 15, g2Blocks: 0, g2Data: 0 }, // v6
+    { totalCodewords: 196, ecPerBlock: 26, g1Blocks: 4, g1Data: 13, g2Blocks: 1, g2Data: 14 }, // v7
+    { totalCodewords: 242, ecPerBlock: 26, g1Blocks: 4, g1Data: 14, g2Blocks: 2, g2Data: 15 }, // v8
+    { totalCodewords: 292, ecPerBlock: 24, g1Blocks: 4, g1Data: 12, g2Blocks: 4, g2Data: 13 }, // v9
+    { totalCodewords: 346, ecPerBlock: 28, g1Blocks: 6, g1Data: 15, g2Blocks: 2, g2Data: 16 }, // v10
+    { totalCodewords: 404, ecPerBlock: 24, g1Blocks: 3, g1Data: 12, g2Blocks: 8, g2Data: 13 }, // v11
+    { totalCodewords: 466, ecPerBlock: 28, g1Blocks: 7, g1Data: 14, g2Blocks: 4, g2Data: 15 }, // v12
+    { totalCodewords: 532, ecPerBlock: 22, g1Blocks: 12, g1Data: 11, g2Blocks: 4, g2Data: 12 }, // v13
+    { totalCodewords: 581, ecPerBlock: 24, g1Blocks: 11, g1Data: 12, g2Blocks: 5, g2Data: 13 }, // v14
+    { totalCodewords: 655, ecPerBlock: 24, g1Blocks: 11, g1Data: 12, g2Blocks: 7, g2Data: 13 }, // v15
+    { totalCodewords: 733, ecPerBlock: 30, g1Blocks: 3, g1Data: 15, g2Blocks: 13, g2Data: 16 }, // v16
+    { totalCodewords: 815, ecPerBlock: 28, g1Blocks: 2, g1Data: 14, g2Blocks: 17, g2Data: 15 }, // v17
+    { totalCodewords: 901, ecPerBlock: 28, g1Blocks: 2, g1Data: 14, g2Blocks: 19, g2Data: 15 }, // v18
+    { totalCodewords: 991, ecPerBlock: 26, g1Blocks: 9, g1Data: 13, g2Blocks: 16, g2Data: 14 }, // v19
+    { totalCodewords: 1085, ecPerBlock: 28, g1Blocks: 15, g1Data: 15, g2Blocks: 10, g2Data: 16 }, // v20
   ],
 };
 
@@ -179,7 +179,7 @@ const ALIGNMENT_PATTERN_POSITIONS: number[][] = [
   [6, 30, 54], // v11
   [6, 32, 58], // v12
   [6, 34, 62], // v13
-  [6, 36, 66], // v14
+  [6, 26, 46, 66], // v14
   [6, 26, 48, 70], // v15
   [6, 26, 50, 74], // v16
   [6, 30, 54, 78], // v17
@@ -381,16 +381,16 @@ export function generateQrMatrix(
     const positions = ALIGNMENT_PATTERN_POSITIONS[version - 1]!;
     for (let i = 0; i < positions.length; i++) {
       for (let j = 0; j < positions.length; j++) {
-        const r = positions[i]!;
-        const c = positions[j]!;
-        // Skip finder areas
+        // Skip finder pattern corners (top-left, top-right, bottom-left)
         if (
-          (r === 6 && c === 6) ||
-          (r === 6 && c === positions[positions.length - 1]!) ||
-          (r === positions[positions.length - 1]! && c === 6)
+          (i === 0 && j === 0) ||
+          (i === 0 && j === positions.length - 1) ||
+          (i === positions.length - 1 && j === 0)
         ) {
           continue;
         }
+        const r = positions[i]!;
+        const c = positions[j]!;
         for (let dr = -2; dr <= 2; dr++) {
           for (let dc = -2; dc <= 2; dc++) {
             const isDark = Math.max(Math.abs(dr), Math.abs(dc)) !== 1;
@@ -513,16 +513,23 @@ export function generateQrMatrix(
 function applyFormatInfo(matrix: boolean[][], formatInfo: number, size: number): void {
   for (let i = 0; i < 15; i++) {
     const bit = ((formatInfo >>> i) & 1) === 1;
-    // Top-left
-    if (i < 6) matrix[8]![i] = bit;
-    else if (i === 6) matrix[8]![7] = bit;
-    else if (i === 7) matrix[8]![8] = bit;
-    else if (i === 8) matrix[7]![8] = bit;
-    else matrix[14 - i]![8] = bit;
+    // Vertical format info around top-left finder and bottom-left
+    if (i < 6) {
+      matrix[i]![8] = bit;
+    } else if (i < 8) {
+      matrix[i + 1]![8] = bit;
+    } else {
+      matrix[size - 15 + i]![8] = bit;
+    }
 
-    // Split around corners
-    if (i < 8) matrix[size - 1 - i]![8] = bit;
-    else matrix[8]![size - 15 + i] = bit;
+    // Horizontal format info around top-left finder and top-right
+    if (i < 8) {
+      matrix[8]![size - i - 1] = bit;
+    } else if (i < 9) {
+      matrix[8]![15 - i - 1 + 1] = bit;
+    } else {
+      matrix[8]![15 - i - 1] = bit;
+    }
   }
 }
 

@@ -58,6 +58,17 @@ describe('QR code matrix generation', () => {
     expect(matrix[size - 1]![6]).toBe(true);
   });
 
+  it('generates a valid QR matrix for a compact pairing URI', () => {
+    const uri =
+      'foundry://pair?origin=http%3A%2F%2F192.168.1.150%3A52810&secret=random_generated_secret_base64url_string_here_123';
+    const { matrix, size, version, mask } = generateQrMatrix(uri, 'M');
+    expect(version).toBe(7);
+    expect(size).toBe(17 + 4 * version);
+    expect(matrix).toHaveLength(size);
+    expect(mask).toBeGreaterThanOrEqual(0);
+    expect(mask).toBeLessThanOrEqual(7);
+  });
+
   it('supports various error correction levels (L, M, Q, H)', () => {
     const text = 'https://foundry.build';
     const l = generateQrMatrix(text, 'L');

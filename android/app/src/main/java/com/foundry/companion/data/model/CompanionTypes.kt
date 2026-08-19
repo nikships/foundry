@@ -9,10 +9,10 @@ const val COMPANION_PROTOCOL_VERSION = 1
 data class CompanionPairingPayload(
     val protocolVersion: Int = COMPANION_PROTOCOL_VERSION,
     val origin: String,
-    val desktopId: String,
-    val desktopName: String,
+    val desktopId: String = "",
+    val desktopName: String = "",
     val secret: String,
-    val expiresAt: String
+    val expiresAt: String = ""
 )
 
 @Serializable
