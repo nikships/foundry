@@ -44,8 +44,8 @@ import { recordLanding } from './settle.js';
 import type { Envelope } from './envelopes.js';
 import type { CommandDriftRecord } from './detect.js';
 import { runCommand } from './commands.js';
-import { openPr, type GhOptions } from '../system/gh.js';
-import type { PrAction } from '@shared/ipc-contract.js';
+import { createIssue, openPr, type GhOptions } from '../system/gh.js';
+import type { IssueAction, PrAction } from '@shared/ipc-contract.js';
 import { effectivePhaseEnvelope, resolveAgentExecution } from '@shared/types.js';
 
 export interface ExecutorDeps {
@@ -304,10 +304,11 @@ export class Executor {
       const phase = pipeline.phases[index]!;
       const jump = await this.runPhase(phase);
       if (jump.kind === 'abort') {
-        // FOU-15: a PR phase that could not create/discover the PR is a hard
-        // fail with the exact error. Do not let a prior acceptance flag
+        // FOU-15: a PR (or issue) phase that could not create its artifact is
+        // a hard fail with the exact error. Do not let a prior acceptance flag
         // (e.g. production_check.approved) mark the run accepted.
-        if (this.phaseEnvelope(phase) === 'pr') {
+        const envelope = this.phaseEnvelope(phase);
+        if (envelope === 'pr' || envelope === 'issue') {
           await this.closeSessions();
           return this.finish('rejected', jump.detail);
         }
@@ -372,6 +373,7 @@ export class Executor {
       phaseId: (name: string) => this.phaseId(name),
       askHuman: (req) => this.deps.askHuman(req),
       recordPr: (input) => this.recordPr(input),
+      recordIssue: (input) => this.recordIssue(input),
     };
   }
 
@@ -404,6 +406,24 @@ export class Executor {
       },
       this.deps.gh,
     );
+  }
+
+  /**
+   * File a GitHub issue from the project checkout. No branch is needed — an
+   * issue is repository metadata — so this also serves a non-isolated run.
+   * No fallbacks: a missing gh or a refused create is the exact error.
+   */
+  private async recordIssue(input: {
+    title: string;
+    body: string;
+    labels?: string[];
+  }): Promise<IssueAction> {
+    const title = input.title.trim();
+    const body = input.body.trim();
+    if (!title || !body) {
+      return { ok: false, detail: 'the issue envelope is missing a title or body' };
+    }
+    return createIssue(this.deps.project.path, { title, body, labels: input.labels }, this.deps.gh);
   }
 
   private phaseId(name: string): string {

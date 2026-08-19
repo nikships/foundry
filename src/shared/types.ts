@@ -12,7 +12,7 @@ export type RunStatus = 'running' | 'accepted' | 'rejected' | 'failed' | 'killed
 export type RunMode = 'pi';
 export type ReasoningEffort = 'off' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export type EnvelopeKind =
-  'generic' | 'brief' | 'plan' | 'build' | 'scout' | 'review' | 'document' | 'pr';
+  'generic' | 'brief' | 'plan' | 'build' | 'scout' | 'review' | 'document' | 'pr' | 'issue';
 
 /** Built-in envelope kinds. Custom envelopes are named strings outside this set. */
 export const BUILTIN_ENVELOPE_KINDS: readonly EnvelopeKind[] = [
@@ -24,6 +24,7 @@ export const BUILTIN_ENVELOPE_KINDS: readonly EnvelopeKind[] = [
   'review',
   'document',
   'pr',
+  'issue',
 ] as const;
 
 /** One-line blurbs for picker UIs. Keep in sync with `engine/envelopes.ts` schemas. */
@@ -36,9 +37,10 @@ export const BUILTIN_ENVELOPE_BLURBS: Record<EnvelopeKind, string> = {
   review: 'Approve or block, with per-requirement findings',
   document: 'Path of the doc written and the files it covers',
   pr: 'Bounded title and a non-empty markdown pull-request body',
+  issue: 'Bounded title and a non-empty markdown GitHub-issue body',
 };
 
-/** Hard schema bound for `pr.title`. Style guidance is tighter (≤72). */
+/** Hard schema bound for `pr.title` and `issue.title`. Style guidance is tighter (≤72). */
 export const PR_TITLE_MAX = 120;
 
 /** Default roster name for the PR writer setting. */
@@ -600,6 +602,9 @@ export interface RunRow {
   /** Set once a PR has been opened for this run's branch. */
   prNumber: number | null;
   prUrl: string | null;
+  /** Set once a GitHub issue has been filed by this run. */
+  issueNumber: number | null;
+  issueUrl: string | null;
   merged: boolean;
   archived: boolean;
   mode: RunMode;

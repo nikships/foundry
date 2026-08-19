@@ -372,8 +372,9 @@ export class AgentPhaseRunner implements PhaseRunner {
 
   /**
    * After a valid `pr` envelope, the engine — not the agent — pushes the run
-   * branch and creates or discovers the PR. Envelope success is not enough:
-   * FOU-15 requires `prNumber`/`prUrl` or the exact failure.
+   * branch and creates or discovers the PR. After a valid `issue` envelope it
+   * files the GitHub issue the same way. Envelope success is not enough:
+   * FOU-15 requires the artifact's number/URL or the exact failure.
    */
   private async recordPrIfNeeded(
     phase: PhaseDef,
@@ -382,9 +383,37 @@ export class AgentPhaseRunner implements PhaseRunner {
     phaseId: string,
     ctx: RunContext,
   ): Promise<{ ok: true } | { ok: false; detail: string }> {
-    if (envelopeKind !== 'pr') return { ok: true };
+    if (envelopeKind !== 'pr' && envelopeKind !== 'issue') return { ok: true };
     const title = typeof envelope.title === 'string' ? envelope.title : '';
     const body = typeof envelope.body === 'string' ? envelope.body : '';
+
+    if (envelopeKind === 'issue') {
+      const labels = Array.isArray(envelope.labels)
+        ? envelope.labels.filter((l): l is string => typeof l === 'string')
+        : [];
+      const result = await ctx.recordIssue({ title, body, labels });
+      ctx.tracer.event({
+        runId: ctx.runId,
+        phaseId,
+        type: 'log',
+        name: 'issue create',
+        payload: {
+          phase: phase.name,
+          detail: result.detail,
+          number: result.number ?? null,
+          url: result.url ?? null,
+        },
+      });
+      if (!result.ok || result.number == null || !result.url) {
+        return {
+          ok: false,
+          detail: result.detail || 'gh issue create did not return an issue number and URL',
+        };
+      }
+      ctx.tracer.setIssue(ctx.runId, result.number, result.url);
+      return { ok: true };
+    }
+
     const result = await ctx.recordPr({ title, body });
     ctx.tracer.event({
       runId: ctx.runId,

@@ -10,7 +10,7 @@ import type { ProjectDef, PipelineDef } from '@shared/types.js';
 import type { Envelope } from './envelopes.js';
 import type { CommandResult } from '@shared/types.js';
 import type { InterruptRequest } from '../pi/session.js';
-import type { PrAction } from '@shared/ipc-contract.js';
+import type { IssueAction, PrAction } from '@shared/ipc-contract.js';
 import type { CommandDriftRecord } from './detect.js';
 
 export interface RunContext {
@@ -50,6 +50,11 @@ export interface RunContext {
    * agent only drafts title/body. Failure is the exact gh/git error.
    */
   recordPr(input: { title: string; body: string }): Promise<PrAction>;
+  /**
+   * File a GitHub issue. Engine-owned like recordPr: the agent only drafts
+   * title/body/labels, and gh runs against the project checkout.
+   */
+  recordIssue(input: { title: string; body: string; labels?: string[] }): Promise<IssueAction>;
 }
 
 /** Where the walk goes after a phase. Unchanged from executor.ts. */

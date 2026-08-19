@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 import { fastForwardBase, headSha, preferredRemote } from '../src/main/engine/git.js';
 import * as worktree from '../src/main/engine/worktree.js';
 import {
+  createIssue,
   ghStatus,
   listOpenPrs,
   mergePr,
@@ -154,6 +155,60 @@ describe('openPr', () => {
     expect(result.ok).toBe(true);
     expect(result.number).toBe(41);
     expect(result.detail).toContain('already exists');
+  });
+});
+
+describe('createIssue', () => {
+  it('files the issue with title, body, and labels, and parses the number from the URL', async () => {
+    const { repo } = scratchRepoWithOrigin();
+    const gh = makeFakeGh({ issueUrl: 'https://github.com/acme/widgets/issues/17' });
+
+    const result = await createIssue(
+      repo,
+      { title: 'Fix the flake', body: '## Problem\nIt flakes.', labels: ['bug'] },
+      { bin: gh.bin },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.number).toBe(17);
+    expect(result.url).toBe('https://github.com/acme/widgets/issues/17');
+    const create = gh.calls().find((argv) => argv[0] === 'issue' && argv[1] === 'create')!;
+    expect(create).toContain('--title');
+    expect(create).toContain('Fix the flake');
+    expect(create).toContain('--label');
+    expect(create).toContain('bug');
+  });
+
+  it('retries without labels when gh refuses them, and says which were dropped', async () => {
+    const { repo } = scratchRepoWithOrigin();
+    const gh = makeFakeGh({
+      issueUrl: 'https://github.com/acme/widgets/issues/18',
+      issueLabelError: "could not add label: 'no-such-label' not found",
+    });
+
+    const result = await createIssue(
+      repo,
+      { title: 't', body: 'b', labels: ['no-such-label'] },
+      { bin: gh.bin },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.number).toBe(18);
+    expect(result.detail).toContain('no-such-label');
+    const creates = gh.calls().filter((argv) => argv[0] === 'issue' && argv[1] === 'create');
+    expect(creates).toHaveLength(2);
+    expect(creates[1]).not.toContain('--label');
+  });
+
+  it("fails with gh's own words when the create is refused", async () => {
+    const { repo } = scratchRepoWithOrigin();
+    const gh = makeFakeGh({ issueCreateError: 'GraphQL: Resource not accessible' });
+
+    const result = await createIssue(repo, { title: 't', body: 'b' }, { bin: gh.bin });
+
+    expect(result.ok).toBe(false);
+    expect(result.detail).toContain('Resource not accessible');
+    expect(result.number).toBeUndefined();
   });
 });
 

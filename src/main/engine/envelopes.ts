@@ -67,6 +67,12 @@ export const schemas = {
     title: z.string().min(1).max(PR_TITLE_MAX),
     body: z.string().min(1),
   }),
+  issue: z.object({
+    ...base,
+    title: z.string().min(1).max(PR_TITLE_MAX),
+    body: z.string().min(1),
+    labels: z.array(z.string()).default([]),
+  }),
 } satisfies Record<EnvelopeKind, z.ZodTypeAny>;
 
 export type Envelope = z.infer<typeof schemas.generic> & Record<string, unknown>;
@@ -91,11 +97,18 @@ const FIELD_HINTS: Record<string, unknown> = {
   documented_files: ['src/file/you/documented.ts'],
   title: 'imperative PR title, ≤72 chars, no trailing period',
   body: 'markdown PR body — follow the repo template, or the fallback headings',
+  labels: ['a label that already exists in the repo'],
 };
 
 const REVIEW_FINDINGS_HINT = [
   { requirement: 'the requirement you checked', met: true, evidence: 'how you verified it' },
 ];
+
+/** `pr` and `issue` share field names; the hints must name the right artifact. */
+const ISSUE_FIELD_HINTS: Record<string, unknown> = {
+  title: 'imperative issue title, ≤72 chars, no trailing period',
+  body: 'markdown issue body — context, evidence, and what done looks like',
+};
 
 function zodForCustomType(type: CustomEnvelopeField['type']): z.ZodTypeAny {
   switch (type) {
@@ -247,6 +260,8 @@ export function exampleFor(
   for (const key of Object.keys(baseSchema.shape)) {
     if (key === 'findings' && exampleKind === 'review') {
       example[key] = REVIEW_FINDINGS_HINT;
+    } else if (exampleKind === 'issue' && key in ISSUE_FIELD_HINTS) {
+      example[key] = ISSUE_FIELD_HINTS[key];
     } else {
       example[key] = FIELD_HINTS[key] ?? '';
     }

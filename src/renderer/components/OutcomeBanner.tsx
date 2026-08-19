@@ -141,6 +141,16 @@ export default function OutcomeBanner({
               {worktreeBusy ? 'Working…' : 'Fix & merge with agent'}
             </Button>
           )}
+          {run.issueUrl && (
+            <Button
+              variant="ghost"
+              size="sm"
+              title="Open the GitHub issue this run filed"
+              onClick={() => onOpenUrl(run.issueUrl!)}
+            >
+              Issue #{run.issueNumber ?? '?'} ↗
+            </Button>
+          )}
           {run.prUrl ? (
             <Button
               size="sm"
@@ -181,6 +191,16 @@ export default function OutcomeBanner({
         </div>
       ) : run.merged ? (
         <div className={styles.actions}>
+          {run.issueUrl && (
+            <Button
+              variant="ghost"
+              size="sm"
+              title="Open the GitHub issue this run filed"
+              onClick={() => onOpenUrl(run.issueUrl!)}
+            >
+              Issue #{run.issueNumber ?? '?'} ↗
+            </Button>
+          )}
           {run.prUrl && (
             <Button
               variant="ghost"

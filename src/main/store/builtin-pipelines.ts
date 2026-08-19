@@ -208,6 +208,24 @@ function prPhase(inputs: string[]): PhaseDef {
   };
 }
 
+/**
+ * Drafts the issue envelope, then the engine — not the agent — runs
+ * `gh issue create` and records the number and URL on the run. A missing
+ * number or URL fails the phase, and the executor hard-rejects a run whose
+ * issue phase aborted, exactly as it does for the PR phase.
+ */
+function issuePhase(inputs: string[]): PhaseDef {
+  return {
+    name: 'file_issue',
+    kind: 'agent',
+    agent: 'issue_writer',
+    description:
+      'File the GitHub issue that tracks the diagnosed problem, grounded in the located evidence.',
+    envelope: 'issue',
+    prompt: { template: 'user', inputs: ['request', ...inputs] },
+  };
+}
+
 /** Refine → plan → build → test → commit → ship bar → re-test → commit. */
 function shipPhases(): PhaseDef[] {
   return [
@@ -310,6 +328,45 @@ export const BUILTIN_PIPELINES: PipelineDef[] = [
         'Record the spec as the single commit the pull request will carry.',
       ),
       prPhase(['envelope:survey', 'envelope:spec']),
+    ],
+  },
+  {
+    id: 'triage-issue-pr',
+    name: 'Diagnose → Issue → Spec → PR',
+    description:
+      'The triage chain: locate the fault with evidence, file the GitHub issue that tracks it, write the fix spec, and open the pull request that carries the spec.',
+    acceptance: { kind: 'envelope_status', phase: 'open_pr' },
+    builtin: true,
+    phases: [
+      {
+        name: 'diagnose',
+        kind: 'agent',
+        agent: 'scout',
+        retries: 2,
+        description:
+          'Locate the fault in the real tree — paths, symbols, and the failing behaviour — before anything is filed.',
+        envelope: 'scout',
+        gates: ['artifacts_exist'],
+        prompt: { template: 'user', inputs: ['request'] },
+      },
+      issuePhase(['envelope:diagnose']),
+      {
+        name: 'spec',
+        kind: 'agent',
+        agent: 'planner',
+        retries: 2,
+        description:
+          'Write the implementable fix spec under specs/, grounded in the diagnosed evidence.',
+        envelope: 'plan',
+        gates: ['artifacts_exist', 'files_non_empty'],
+        prompt: { template: 'user', inputs: ['request', 'envelope:diagnose'] },
+      },
+      commitPhase(
+        'commit_spec',
+        'spec',
+        'Record the fix spec as the single commit the pull request will carry.',
+      ),
+      prPhase(['envelope:diagnose', 'envelope:file_issue', 'envelope:spec']),
     ],
   },
   {

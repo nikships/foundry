@@ -225,6 +225,39 @@ function prWriter(): AgentDef {
   });
 }
 
+function issueWriter(): AgentDef {
+  return buildAgent({
+    name: 'issue_writer',
+    purpose: 'draft an issue',
+    envelope: 'issue',
+    writes: [],
+    userPrompt: 'Draft an issue for {{request}}.',
+  });
+}
+
+function issueEnvelope(over: Record<string, unknown> = {}): string {
+  return JSON.stringify({
+    status: 'success',
+    summary: 'drafted the issue',
+    artifacts: [],
+    notes_for_next_agent: '',
+    title: 'Fix the thing',
+    body: '## Problem\n\nIt is broken.\n',
+    labels: [],
+    ...over,
+  });
+}
+
+function fileIssuePhase(over: Partial<PhaseDef> = {}): PhaseDef {
+  return agentPhase('file_issue', {
+    agent: 'issue_writer',
+    envelope: 'issue',
+    description: 'File the GitHub issue that tracks the diagnosed problem.',
+    prompt: { template: 'user', inputs: ['request'] },
+    ...over,
+  });
+}
+
 function openPrPhase(over: Partial<PhaseDef> = {}): PhaseDef {
   return agentPhase('open_pr', {
     agent: 'pr_writer',
@@ -2600,6 +2633,111 @@ describe('open_pr phase (FOU-17)', () => {
       pipeline: pipe([openPrPhase()], {
         description: 'a blank title must not reach gh',
         acceptance: { kind: 'envelope_status', phase: 'open_pr' },
+      }),
+    });
+
+    expect(outcome.status).toBe('rejected');
+    expect(h.tracer.run(outcome.runId)!.outcomeDetail).toContain('title or body');
+    expect(gh.calls()).toEqual([]);
+  });
+});
+
+/**
+ * FOU-80 — the issue phase mirrors the PR phase's contract: the agent only
+ * drafts, the engine runs `gh issue create` and records the number and URL on
+ * the run, and a phase that could not file the issue hard-fails the run with
+ * the exact gh error.
+ */
+describe('file_issue phase (FOU-80)', () => {
+  it('files the issue and records its number and url on the run', async () => {
+    const scripted = scriptedAgent([issueEnvelope({ labels: ['bug'] })]);
+    const gh = makeFakeGh({ issueUrl: 'https://github.com/acme/widgets/issues/33' });
+
+    const outcome = await run({
+      scripted,
+      agents: [issueWriter()],
+      gh: { bin: gh.bin },
+      pipeline: pipe([fileIssuePhase()], {
+        description: 'draft and file the github issue',
+        acceptance: { kind: 'envelope_status', phase: 'file_issue' },
+      }),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    const row = h.tracer.run(outcome.runId)!;
+    expect(row.issueNumber).toBe(33);
+    expect(row.issueUrl).toBe('https://github.com/acme/widgets/issues/33');
+    // The PR columns stay untouched: an issue is not a pull request.
+    expect(row.prNumber).toBeNull();
+    expect(row.prUrl).toBeNull();
+
+    const create = gh.calls().find((argv) => argv[0] === 'issue' && argv[1] === 'create')!;
+    expect(create).toBeDefined();
+    expect(create).toContain('--title');
+    expect(create).toContain('Fix the thing');
+    expect(create).toContain('--label');
+    expect(create).toContain('bug');
+    expect(create.join('\n')).toContain('## Problem');
+
+    // The trace carries the created issue, so the outcome is inspectable.
+    const issueLog = events(outcome.runId).find((e) => e.name === 'issue create')!;
+    expect(issueLog).toBeDefined();
+    expect(issueLog.payload.number).toBe(33);
+    expect(issueLog.payload.url).toBe('https://github.com/acme/widgets/issues/33');
+  });
+
+  it('hard fails the run with the exact gh error when the create is refused', async () => {
+    const scripted = scriptedAgent([issueEnvelope()]);
+    const gh = makeFakeGh({ issueCreateError: 'GraphQL: Resource not accessible by integration' });
+
+    const outcome = await run({
+      scripted,
+      agents: [issueWriter()],
+      gh: { bin: gh.bin },
+      pipeline: pipe([fileIssuePhase()], {
+        description: 'surface a refused issue create',
+        acceptance: { kind: 'envelope_status', phase: 'file_issue' },
+      }),
+    });
+
+    expect(outcome.status).toBe('rejected');
+    const row = h.tracer.run(outcome.runId)!;
+    expect(row.issueNumber).toBeNull();
+    expect(row.issueUrl).toBeNull();
+    expect(row.outcomeDetail).toContain('Resource not accessible by integration');
+    const phase = h.tracer.phases(outcome.runId)[0]!;
+    expect(phase.status).toBe('fail');
+  });
+
+  it('rejects the whole run even when a later phase would have settled acceptance', async () => {
+    const scripted = scriptedAgent([issueEnvelope(), buildEnvelope()]);
+    const gh = makeFakeGh({ issueCreateError: 'no issues enabled on this repository' });
+
+    const outcome = await run({
+      scripted,
+      agents: [issueWriter(), buildAgent()],
+      gh: { bin: gh.bin },
+      pipeline: pipe([fileIssuePhase(), agentPhase('build')], {
+        description: 'an aborted issue phase must not fall through to acceptance',
+        acceptance: { kind: 'all_phases_pass' },
+      }),
+    });
+
+    expect(outcome.status).toBe('rejected');
+    expect(h.tracer.run(outcome.runId)!.outcomeDetail).toContain('no issues enabled');
+  });
+
+  it('fails an issue envelope whose title or body is blank rather than filing an empty issue', async () => {
+    const scripted = scriptedAgent([issueEnvelope({ title: '   ' })]);
+    const gh = makeFakeGh();
+
+    const outcome = await run({
+      scripted,
+      agents: [issueWriter()],
+      gh: { bin: gh.bin },
+      pipeline: pipe([fileIssuePhase()], {
+        description: 'a blank title must not reach gh',
+        acceptance: { kind: 'envelope_status', phase: 'file_issue' },
       }),
     });
 

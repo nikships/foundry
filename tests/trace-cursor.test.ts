@@ -8,6 +8,9 @@
  * a row see it again.
  */
 
+import Database from 'better-sqlite3';
+import { mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { tempDir } from './tmp.js';
 import { openDb, projectDbPath, projectRunsDir } from '../src/main/trace/db.js';
@@ -108,6 +111,48 @@ describe('the change_id cursor', () => {
     second.event({ runId: 'r1', type: 'log', name: 'after', payload: {} });
     const after = second.eventsAfter('r1', maxBefore);
     expect(after.map((e) => e.name)).toEqual(['after']);
+  });
+});
+
+describe('run artifact columns', () => {
+  it('records and reads back the filed issue beside the PR', () => {
+    tracer.setPr(runId, 12, 'https://github.com/acme/widgets/pull/12');
+    tracer.setIssue(runId, 34, 'https://github.com/acme/widgets/issues/34');
+    const row = tracer.run(runId)!;
+    expect(row.prNumber).toBe(12);
+    expect(row.prUrl).toBe('https://github.com/acme/widgets/pull/12');
+    expect(row.issueNumber).toBe(34);
+    expect(row.issueUrl).toBe('https://github.com/acme/widgets/issues/34');
+  });
+
+  it('adds the issue columns to a database created before they existed', () => {
+    const support = tempDir('foundry-trace-migrate-');
+    const dbPath = projectDbPath(support, 'proj');
+    mkdirSync(dirname(dbPath), { recursive: true });
+    // A pre-FOU-80 runs table: no issue_number / issue_url.
+    const old = new Database(dbPath);
+    old.exec(`CREATE TABLE runs (
+      run_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, pipeline_id TEXT NOT NULL,
+      pipeline_name TEXT, pipeline_snapshot_json TEXT, request TEXT,
+      status TEXT NOT NULL DEFAULT 'running', engineer TEXT, worktree_path TEXT,
+      branch TEXT, base_ref TEXT, mode TEXT DEFAULT 'pi', merged INTEGER DEFAULT 0,
+      archived INTEGER DEFAULT 0, branch_point_sha TEXT, outcome_detail TEXT,
+      pr_number INTEGER, pr_url TEXT, started_at TEXT, ended_at TEXT,
+      total_tokens INTEGER DEFAULT 0
+    )`);
+    old
+      .prepare(
+        "INSERT INTO runs (run_id, project_id, pipeline_id, started_at) VALUES ('r_old', 'proj', 'p', '2026-01-01')",
+      )
+      .run();
+    old.close();
+
+    const migrated = new Tracer(openDb(dbPath), projectRunsDir(support, 'proj'));
+    const row = migrated.run('r_old')!;
+    expect(row.issueNumber).toBeNull();
+    expect(row.issueUrl).toBeNull();
+    migrated.setIssue('r_old', 5, 'https://github.com/acme/widgets/issues/5');
+    expect(migrated.run('r_old')!.issueNumber).toBe(5);
   });
 });
 

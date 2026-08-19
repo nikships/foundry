@@ -222,6 +222,14 @@ export interface PrAction {
   url?: string;
 }
 
+/** The outcome of `gh issue create`, with the issue's coordinates on success. */
+export interface IssueAction {
+  ok: boolean;
+  detail: string;
+  number?: number;
+  url?: string;
+}
+
 export interface PrList {
   ok: boolean;
   detail: string;
