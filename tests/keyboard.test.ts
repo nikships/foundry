@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   designTabShortcut,
   isEditableTarget,
+  settingsSearchShortcut,
   tablistStep,
   viewShortcut,
 } from '@renderer/keyboard.js';
@@ -78,6 +79,21 @@ describe('designTabShortcut', () => {
       designTabShortcut(chord('1', { metaKey: true, shiftKey: true, altKey: true })),
     ).toBeNull();
     expect(designTabShortcut(chord('4', { metaKey: true, shiftKey: true }))).toBeNull();
+  });
+});
+
+describe('settingsSearchShortcut', () => {
+  it('answers ⌘K and Ctrl-K', () => {
+    expect(settingsSearchShortcut(chord('k', { metaKey: true }))).toBe(true);
+    expect(settingsSearchShortcut(chord('k', { ctrlKey: true }))).toBe(true);
+    expect(settingsSearchShortcut(chord('K', { metaKey: true }))).toBe(true);
+  });
+
+  it('ignores bare k and chords with extra modifiers', () => {
+    expect(settingsSearchShortcut(chord('k'))).toBe(false);
+    expect(settingsSearchShortcut(chord('k', { metaKey: true, shiftKey: true }))).toBe(false);
+    expect(settingsSearchShortcut(chord('k', { metaKey: true, altKey: true }))).toBe(false);
+    expect(settingsSearchShortcut(chord('j', { metaKey: true }))).toBe(false);
   });
 });
 

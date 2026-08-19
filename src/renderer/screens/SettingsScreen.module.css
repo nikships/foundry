@@ -16,79 +16,296 @@
   background: var(--bg-base);
 }
 
-/* strip — equal flex cells span the full window width and rescale with it */
-.settingsTabs {
-  flex: none;
-  display: flex;
-  align-items: stretch;
-  padding: 0 var(--s4);
-  border-bottom: 1px solid var(--line);
-  background: var(--bg-base);
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
+/* layout — grouped rail left, scrolling detail right */
+.settingsLayout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
 }
-.settingsTab {
-  flex: 1 1 0;
-  min-width: 0;
+.settingsRail {
   display: flex;
-  justify-content: center;
-  padding: var(--s3) var(--s2) 0;
-  border: none;
-  background: transparent;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s4) var(--s3);
+  border-right: 1px solid var(--line);
+  background: var(--bg-sidebar);
+}
+.railSearch {
+  position: relative;
+  flex: none;
+  padding-bottom: var(--s2);
+}
+.railSearchInput {
+  width: 100%;
+  padding: var(--s2) 44px var(--s2) var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-xs);
+  transition: border-color var(--fast) var(--ease);
+}
+.railSearchInput:focus {
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  outline: none;
+}
+.railSearchKbd {
+  position: absolute;
+  right: 8px;
+  top: 7px;
   font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.12em;
+  padding: 1px 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  color: var(--text-faint);
+  pointer-events: none;
+}
+/* dropdown of matching sections, anchored under the rail search box */
+.searchPop {
+  position: absolute;
+  top: calc(100% - 4px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: var(--s1);
+  background: var(--bg-panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+}
+.searchItem {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: var(--s2) var(--s3);
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+.searchItem:hover {
+  background: var(--bg-hover);
+}
+.searchItemTitle {
+  font-size: var(--text-xs);
+}
+.searchItemMeta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
+.searchEmpty {
+  margin: 0;
+  padding: var(--s3);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+:global(.searchMark) {
+  background: var(--accent-dim);
+  color: var(--accent-bright);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+.settingsNav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+.railGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.railHead {
+  margin: var(--s3) var(--s2) var(--s1);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--eyebrow-tracking);
   text-transform: uppercase;
   color: var(--text-faint);
+}
+.railItem {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  padding: 7px var(--s2);
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
   cursor: default;
   white-space: nowrap;
   transition:
-    color var(--fast) var(--ease),
-    border-color var(--fast) var(--ease);
+    background var(--fast) var(--ease),
+    color var(--fast) var(--ease);
+}
+.railItem:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.railItem.on {
+  background: var(--bg-active);
+  color: var(--text);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
+/* narrow windows stack the rail as a horizontal strip above the detail */
 @media (max-width: 900px) {
-  .settingsTab {
-    flex: 0 0 auto;
-    min-width: 0;
+  .settingsLayout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .settingsRail {
+    flex-direction: row;
+    align-items: flex-start;
+    overflow-x: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    padding: var(--s2) var(--s3);
+  }
+  .railSearch {
+    flex: none;
+    width: 180px;
+    padding-bottom: 0;
+  }
+  .settingsNav {
+    flex-direction: row;
+  }
+  .railGroup {
+    flex-direction: row;
+  }
+  .railHead {
+    display: none;
   }
 }
 
-@media (max-width: 700px) {
-  .settingsTabs {
-    flex-wrap: wrap;
-    overflow-x: visible;
+/* the section a search jump landed on flashes once so the eye finds it */
+@keyframes sec-flash {
+  0% {
+    box-shadow: inset 0 0 0 1px var(--accent);
   }
-  .settingsTab {
-    flex: 1 1 calc(33.33% - var(--s2));
-    min-width: 92px;
-    padding: var(--s2) var(--s2) 0;
-    font-size: 10px;
+  100% {
+    box-shadow: inset 0 0 0 1px transparent;
   }
 }
-.settingsTab:hover {
-  color: var(--text-dim);
+.secFlash {
+  animation: sec-flash 1s var(--ease);
 }
-.settingsTab.on {
-  color: var(--accent);
+
+/* ⌘K palette — search-first layer over the rail */
+.palScrim {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 14vh;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(3px);
+  animation: fade-in 140ms var(--ease);
 }
-.settingsTabLabel {
-  position: relative;
-  max-width: 100%;
+@keyframes pal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985) translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.pal {
+  width: min(560px, calc(100vw - 48px));
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-xl);
+  overflow: hidden;
+  animation: pal-in 160ms var(--ease);
+}
+.palRow {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: 0 var(--s4);
+  border-bottom: 1px solid var(--line);
+}
+.palInput {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  padding: var(--s3) 0;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  outline: none;
+}
+.palList {
+  max-height: 340px;
+  overflow-y: auto;
+  padding: var(--s1);
+}
+.palItem {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  border-radius: var(--r-sm);
+}
+.palItem.on {
+  background: var(--bg-hover);
+}
+.palItemTitle {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding-bottom: var(--s3);
+  white-space: nowrap;
 }
-.settingsTab.on .settingsTabLabel::after {
-  content: '';
-  position: absolute;
-  left: -2px;
-  right: -2px;
-  bottom: -1px;
-  height: 2px;
-  background: var(--accent);
+.palItemMeta {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
+.palFoot {
+  display: flex;
+  gap: var(--s4);
+  padding: var(--s2) var(--s4);
+  border-top: 1px solid var(--line-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+.palKbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
 }
 
 /* page — single centered column */

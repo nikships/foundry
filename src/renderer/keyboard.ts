@@ -52,6 +52,16 @@ export function designTabShortcut(e: ShortcutKey): DesignTab | null {
   return DESIGN_TAB_KEYS[SHIFTED_DIGITS[e.key] ?? e.key] ?? null;
 }
 
+/**
+ * ⌘K / Ctrl-K opens the settings search palette from any view. Kept out of the
+ * view-chord table because it does not just switch views — it opens a layer on
+ * top of Settings, so the app shell handles it separately.
+ */
+export function settingsSearchShortcut(e: ShortcutKey): boolean {
+  const mod = e.metaKey || e.ctrlKey;
+  return mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'k';
+}
+
 export function isEditableTarget(target: unknown): boolean {
   const el = target as { tagName?: string; isContentEditable?: boolean } | null;
   if (!el?.tagName) return false;
