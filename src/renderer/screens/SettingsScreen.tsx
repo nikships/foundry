@@ -851,8 +851,8 @@ export default function SettingsScreen({
                               <QrCode
                                 value={JSON.stringify(pairingPayload)}
                                 size={220}
-                                bgColor="#050505"
-                                fgColor="#EEEEEE"
+                                bgColor="#FFFFFF"
+                                fgColor="#000000"
                                 title="Foundry Companion Pairing QR"
                               />
                             ) : (
@@ -953,8 +953,8 @@ export default function SettingsScreen({
                                   <QrCode
                                     value={JSON.stringify(pairingPayload)}
                                     size={220}
-                                    bgColor="#050505"
-                                    fgColor="#EEEEEE"
+                                    bgColor="#FFFFFF"
+                                    fgColor="#000000"
                                     title="Foundry Companion Pairing QR"
                                   />
                                 ) : (

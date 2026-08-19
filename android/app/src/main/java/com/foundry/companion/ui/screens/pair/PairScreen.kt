@@ -34,8 +34,10 @@ import com.foundry.companion.data.model.CompanionPairingPayload
 import com.foundry.companion.ui.components.FoundryPrimaryButton
 import com.foundry.companion.ui.theme.FoundryTheme
 import com.foundry.companion.ui.theme.foundryLiveClockEnabled
-import com.google.zxing.*
-import com.google.zxing.common.HybridBinarizer
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions
+import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.common.InputImage
 import kotlinx.serialization.json.Json
 import java.util.concurrent.Executors
 
@@ -162,7 +164,8 @@ fun PairScreen(
                     CameraQrScannerView(
                         onQrScanned = { rawPayload ->
                             processPayloadString(rawPayload)
-                        }
+                        },
+                        isPairing = isPairing,
                     )
 
                     // Scanning reticle and laser sweep overlay
@@ -395,17 +398,40 @@ private fun ReticleOverlay(isPairing: Boolean) {
     }
 }
 
+@androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
 @Composable
 private fun CameraQrScannerView(
-    onQrScanned: (String) -> Unit
+    onQrScanned: (String) -> Unit,
+    isPairing: Boolean,
 ) {
-    val context = LocalContext.current
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-    val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
+    val analyzerExecutor = remember { Executors.newSingleThreadExecutor() }
+    val barcodeScanner = remember {
+        BarcodeScanning.getClient(
+            BarcodeScannerOptions.Builder()
+                .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+                .build(),
+        )
+    }
+    val currentOnQrScanned by rememberUpdatedState(onQrScanned)
+    val deduper = remember { QrDeduper() }
+
+    LaunchedEffect(isPairing) {
+        if (!isPairing) deduper.reset()
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            analyzerExecutor.shutdown()
+            barcodeScanner.close()
+        }
+    }
 
     AndroidView(
         factory = { ctx ->
-            val previewView = PreviewView(ctx)
+            val previewView = PreviewView(ctx).apply {
+                scaleType = PreviewView.ScaleType.FILL_CENTER
+            }
             val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
 
             cameraProviderFuture.addListener({
@@ -418,20 +444,31 @@ private fun CameraQrScannerView(
                     val imageAnalysis = ImageAnalysis.Builder()
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                         .build()
-
-                    val analyzer = QrCodeAnalyzer { qrText ->
-                        onQrScanned(qrText)
+                    imageAnalysis.setAnalyzer(analyzerExecutor) { proxy ->
+                        val image = proxy.image
+                        if (image == null) {
+                            proxy.close()
+                            return@setAnalyzer
+                        }
+                        val input = InputImage.fromMediaImage(image, proxy.imageInfo.rotationDegrees)
+                        barcodeScanner.process(input)
+                            .addOnSuccessListener { barcodes ->
+                                val raw = barcodes.firstNotNullOfOrNull { it.rawValue }
+                                if (raw != null && deduper.take(raw)) {
+                                    currentOnQrScanned(raw)
+                                }
+                            }
+                            .addOnCompleteListener {
+                                proxy.close()
+                            }
                     }
-                    imageAnalysis.setAnalyzer(cameraExecutor, analyzer)
-
-                    val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
                     cameraProvider.unbindAll()
                     cameraProvider.bindToLifecycle(
                         lifecycleOwner,
-                        cameraSelector,
+                        CameraSelector.DEFAULT_BACK_CAMERA,
                         preview,
-                        imageAnalysis
+                        imageAnalysis,
                     )
                 } catch (_: Exception) {
                     // Camera binding failure (e.g. running in Robolectric/emulator without camera)
@@ -440,43 +477,21 @@ private fun CameraQrScannerView(
 
             previewView
         },
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.fillMaxSize(),
     )
 }
 
-private class QrCodeAnalyzer(
-    private val onQrCodeScanned: (String) -> Unit
-) : ImageAnalysis.Analyzer {
-    private val reader = MultiFormatReader().apply {
-        setHints(mapOf(DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE)))
+private class QrDeduper {
+    @Volatile
+    private var last: String? = null
+
+    fun take(raw: String): Boolean {
+        if (raw == last) return false
+        last = raw
+        return true
     }
-    private var isScanning = true
 
-    @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
-    override fun analyze(imageProxy: ImageProxy) {
-        val mediaImage = imageProxy.image
-        if (mediaImage != null && isScanning) {
-            val buffer = mediaImage.planes[0].buffer
-            val data = ByteArray(buffer.remaining())
-            buffer.get(data)
-            val width = imageProxy.width
-            val height = imageProxy.height
-
-            val source = PlanarYUVLuminanceSource(
-                data, width, height, 0, 0, width, height, false
-            )
-            val bitmap = BinaryBitmap(HybridBinarizer(source))
-
-            try {
-                val result = reader.decodeWithState(bitmap)
-                isScanning = false
-                onQrCodeScanned(result.text)
-            } catch (_: Exception) {
-                // No QR in this frame
-            } finally {
-                reader.reset()
-            }
-        }
-        imageProxy.close()
+    fun reset() {
+        last = null
     }
 }

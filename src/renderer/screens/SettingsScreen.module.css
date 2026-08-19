@@ -360,8 +360,8 @@
 }
 .qrFrame {
   flex: none;
-  padding: var(--s2);
-  background: var(--bg-input);
+  padding: var(--s4);
+  background: #ffffff;
   border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
   display: flex;
