@@ -33,12 +33,28 @@ import { Dropdown } from '../components/ui/Dropdown.js';
 import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
 import { useTablistNav } from '../hooks/useTablistNav.js';
+import {
+  SETTINGS_PANES,
+  SETTINGS_TOGGLES,
+  Highlight,
+  paneMatchesQuery,
+  searchSettings,
+  sectionId,
+  type SettingsHit,
+  type SettingsPaneId,
+  type SettingsToggleDef,
+} from '../settings-search.js';
 import styles from './SettingsScreen.module.css';
 
 // Envelopes is deliberately absent: it is an authoring surface, not a
 // preference, and lives in Design alongside the editors that reference it.
-type Pane = 'general' | 'providers' | 'defaults' | 'project' | 'maintenance' | 'about';
+type Pane = SettingsPaneId;
 
+/**
+ * Tests pin these literals (tests/design-navigation.test.ts reads this source),
+ * so the rail renders from this list rather than the search registry's own
+ * pane metadata. Keep the two in step when a pane is added or renamed.
+ */
 const PANES: { id: Pane; label: string }[] = [
   { id: 'general', label: 'General' },
   { id: 'providers', label: 'Providers' },
@@ -46,6 +62,17 @@ const PANES: { id: Pane; label: string }[] = [
   { id: 'project', label: 'Project' },
   { id: 'maintenance', label: 'Maintenance' },
   { id: 'about', label: 'About' },
+];
+
+/**
+ * The rail groups panes by whose stuff they configure — the app and its agents,
+ * the repo in front of you, and housekeeping. Group heads hide while the rail
+ * search is narrowing the list.
+ */
+const RAIL_GROUPS: { label: string; items: Pane[] }[] = [
+  { label: 'Workspace', items: ['general', 'providers', 'defaults'] },
+  { label: 'This project', items: ['project'] },
+  { label: 'System', items: ['maintenance', 'about'] },
 ];
 
 /**
@@ -117,7 +144,7 @@ function Section({
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <section className={styles.settingsSection}>
+    <section className={styles.settingsSection} data-sec={sectionId(label)}>
       <div className={styles.settingsSectionLabel}>
         <p className="eyebrow">
           <span className="index" aria-hidden />
@@ -163,6 +190,7 @@ export default function SettingsScreen({
   onPaneChange,
   onNewProject,
   onOpenReadiness,
+  paletteNonce = 0,
 }: {
   pane: string;
   /** Keep the shell's `data-settings-pane` marker in sync with tab clicks. */
@@ -170,6 +198,8 @@ export default function SettingsScreen({
   /** Create a repository on GitHub instead of pointing at an existing checkout. */
   onNewProject?: () => void;
   onOpenReadiness?: (projectId: string) => void;
+  /** Bumped by the app shell's ⌘K chord; each bump opens the search palette. */
+  paletteNonce?: number;
 }): React.JSX.Element {
   const { settings, project, projects, agents, refreshAll, patchSettings, selectProject } =
     useApp();
@@ -198,6 +228,12 @@ export default function SettingsScreen({
   const [providerBusy, setProviderBusy] = useState<string | null>(null);
   const [providerNotes, setProviderNotes] = useState<Record<string, string>>({});
   const [keyDrafts, setKeyDrafts] = useState<Record<string, string>>({});
+  const [searchQ, setSearchQ] = useState('');
+  const [palOpen, setPalOpen] = useState(false);
+  const [palQ, setPalQ] = useState('');
+  const [palIdx, setPalIdx] = useState(0);
+  /** Section id a search jump should scroll to once its pane has painted. */
+  const scrollTargetRef = useRef<string | null>(null);
 
   useEffect(() => {
     setPane((initialPane as Pane) ?? 'general');
@@ -327,7 +363,68 @@ export default function SettingsScreen({
     setPane(next);
     onPaneChange?.(next);
   };
-  const onTablistKey = useTablistNav();
+  const onTablistKey = useTablistNav({ orientation: 'vertical' });
+
+  /**
+   * A search jump can land mid-pane. Switching panes is async paint, so the
+   * section id waits in a ref for the effect below; a same-pane jump scrolls
+   * on the next frame instead.
+   */
+  const flashSection = useCallback((id: string): void => {
+    const el = document.querySelector(`[data-sec="${id}"]`);
+    if (!el) return;
+    el.scrollIntoView({ block: 'start' });
+    el.classList.add(styles.secFlash);
+    window.setTimeout(() => el.classList.remove(styles.secFlash), 1000);
+  }, []);
+  const jumpTo = (targetPane: Pane, section: string | null): void => {
+    setPalOpen(false);
+    if (targetPane !== pane) {
+      scrollTargetRef.current = section;
+      setPaneLive(targetPane);
+    } else if (section) {
+      requestAnimationFrame(() => flashSection(section));
+    }
+  };
+
+  // The shell bumps paletteNonce on every ⌘K; each bump reopens the palette.
+  useEffect(() => {
+    if (paletteNonce > 0) setPalOpen(true);
+  }, [paletteNonce]);
+
+  useEffect(() => {
+    const id = scrollTargetRef.current;
+    if (!id) return;
+    scrollTargetRef.current = null;
+    requestAnimationFrame(() => flashSection(id));
+  }, [pane, flashSection]);
+
+  const searchHits = useMemo(() => searchSettings(searchQ, 8), [searchQ]);
+
+  /**
+   * Palette entries: an empty query lists the panes as jump targets; typing
+   * mixes the flippable booleans with matching sections, toggles first because
+   * they act in place.
+   */
+  type PalEntry = { kind: 'hit'; hit: SettingsHit } | { kind: 'toggle'; def: SettingsToggleDef };
+  const palEntries = useMemo<PalEntry[]>(() => {
+    const q = palQ.trim();
+    if (!q) {
+      return SETTINGS_PANES.map((p) => ({
+        kind: 'hit' as const,
+        hit: { pane: p.id, paneLabel: p.label, sectionId: null, title: p.label, note: p.hint },
+      }));
+    }
+    const lower = q.toLowerCase();
+    const toggles = SETTINGS_TOGGLES.filter(
+      (t) => t.title.toLowerCase().includes(lower) || t.keywords.includes(lower),
+    ).map((def) => ({ kind: 'toggle' as const, def }));
+    const hits = searchSettings(q, 8).map((hit) => ({ kind: 'hit' as const, hit }));
+    return [...toggles, ...hits];
+  }, [palQ]);
+  /* Filtering can shrink the list under the cursor; clamp instead of resetting
+     so an arrow-key walk does not jump back to the top mid-gesture. */
+  const palSel = Math.min(palIdx, Math.max(0, palEntries.length - 1));
   const set = async (patch: Parameters<typeof patchSettings>[0]): Promise<void> => {
     // Always replace the banner: a successful patch must clear a prior failure.
     setErrors(await patchSettings(patch));
@@ -594,6 +691,43 @@ export default function SettingsScreen({
 
   if (!settings) return <div className={styles.settingsScreen} />;
 
+  /* Palette helpers live past the early return so `settings` is non-null. A
+     toggle activates without closing the palette — flipping several booleans
+     in one visit is the palette's whole point. */
+  const toggleChecked = (id: SettingsToggleDef['id']): boolean =>
+    id === 'dockBadge' ? settings.dockBadge : settings.notifications[id];
+  const applyToggle = (def: SettingsToggleDef): void => {
+    if (def.id === 'dockBadge') {
+      void set({ dockBadge: !settings.dockBadge });
+      return;
+    }
+    const key = def.id;
+    void set({ notifications: { ...settings.notifications, [key]: !settings.notifications[key] } });
+  };
+  const palActivate = (entry: PalEntry): void => {
+    if (entry.kind === 'toggle') {
+      applyToggle(entry.def);
+      return;
+    }
+    jumpTo(entry.hit.pane, entry.hit.sectionId);
+  };
+  const onPalKeyDown = (e: React.KeyboardEvent): void => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (palEntries.length === 0) return;
+      e.preventDefault();
+      setPalIdx(
+        (palSel + (e.key === 'ArrowDown' ? 1 : -1) + palEntries.length) % palEntries.length,
+      );
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const entry = palEntries[palSel];
+      if (entry) palActivate(entry);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setPalOpen(false);
+    }
+  };
+
   // The curated rows, plus any provider pi already holds a credential for, so a
   // key configured outside this pane is still visible and clearable. Bridge
   // providers are excluded: their credential is an account, not a key, and the
@@ -630,1470 +764,1657 @@ export default function SettingsScreen({
             <span className="index">06</span>Settings
           </p>
         </header>
-        {/* ── section strip: equal cells spanning the full window width ── */}
-        <div
-          className={styles.settingsTabs}
-          role="tablist"
-          aria-label="Settings sections"
-          onKeyDown={onTablistKey}
-        >
-          {PANES.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              role="tab"
-              aria-selected={pane === p.id}
-              tabIndex={pane === p.id ? 0 : -1}
-              className={`${styles.settingsTab} ${pane === p.id ? styles.on : ''}`}
-              onClick={() => setPaneLive(p.id)}
-              data-testid={`settings-tab-${p.id}`}
-            >
-              <span className={styles.settingsTabLabel}>{p.label}</span>
-            </button>
-          ))}
-        </div>
-
-        <div className={styles.settingsScroll}>
-          <div className={styles.settingsPage}>
-            {pane === 'general' && (
-              <>
-                <Section label="Identity" note="Attached to every run, so a trace says who asked.">
-                  <div className={styles.settingsFields}>
-                    <Field label="Your name" htmlFor="engineer-name-input">
-                      <TextInput
-                        id="engineer-name-input"
-                        aria-label="Your name"
-                        value={nameDraft}
-                        onChange={(e) => {
-                          setNameDraft(e.target.value);
-                          setNameHint('');
-                        }}
-                        onBlur={() => void commitName()}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            (e.target as HTMLInputElement).blur();
-                          }
-                        }}
-                      />
-                      <span className={styles.hint}>
-                        Recorded on every run, so a trace says who asked for it. Saved when you
-                        leave the field.
-                      </span>
-                      {nameHint && <span className={styles.settingsWarn}>{nameHint}</span>}
-                    </Field>
-                  </div>
-                </Section>
-
-                <Section label="Checks" note="What Foundry found on this machine at launch.">
-                  <DoctorList
-                    checks={checks}
-                    title="Environment checks"
-                    onRecheck={() => void api.doctor.run().then(setChecks)}
-                    onOpenSettings={(next) => setPaneLive(next as Pane)}
-                  />
-                </Section>
-
-                <Section label="Notifications" note="Only the moments that need you.">
-                  <div className={styles.settingsToggles}>
-                    {(Object.keys(NOTIFY_LABELS) as Array<keyof typeof NOTIFY_LABELS>).map(
-                      (key) => (
-                        <Toggle
-                          key={key}
-                          label={NOTIFY_LABELS[key]}
-                          checked={settings.notifications[key]}
-                          onChange={(value) =>
-                            void set({
-                              notifications: { ...settings.notifications, [key]: value },
-                            })
-                          }
-                        />
-                      ),
-                    )}
-                    <Toggle
-                      label="Show the number of live runs on the dock icon"
-                      checked={settings.dockBadge}
-                      onChange={(value) => void set({ dockBadge: value })}
-                    />
-                  </div>
-                </Section>
-
-                <Section label="Software updates" note="Foundry checks only when you ask it to.">
-                  <div className={styles.settingsSpread}>
-                    <Field>
-                      <strong className={styles.settingsStrong}>
-                        Foundry {version ? `v${version}` : ''}
-                      </strong>
-                      {updateStatus.message && (
-                        <span className={styles.hint}>{updateStatus.message}</span>
-                      )}
-                      {updateStatus.stage === 'available' && updateStatus.version && (
-                        <span className={styles.hint}>
-                          Foundry v{updateStatus.version} is available, download it when ready.
+        {/* ── rail: grouped panes with search; detail scrolls beside it ── */}
+        <div className={styles.settingsLayout}>
+          <aside className={styles.settingsRail}>
+            <div className={styles.railSearch}>
+              <input
+                className={styles.railSearchInput}
+                value={searchQ}
+                placeholder="Search settings"
+                aria-label="Search settings"
+                spellCheck={false}
+                onChange={(e) => setSearchQ(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && searchHits[0]) {
+                    jumpTo(searchHits[0].pane, searchHits[0].sectionId);
+                  }
+                  if (e.key === 'Escape' && searchQ) {
+                    // A bare Escape blurs fields app-wide; clearing the query is
+                    // the more specific intent here.
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSearchQ('');
+                  }
+                }}
+              />
+              <kbd className={styles.railSearchKbd} aria-hidden>
+                ⌘K
+              </kbd>
+              {searchQ.trim() && (
+                <div className={styles.searchPop} role="listbox" aria-label="Matching settings">
+                  {searchHits.length === 0 ? (
+                    <p className={styles.searchEmpty}>Nothing matches “{searchQ.trim()}”.</p>
+                  ) : (
+                    searchHits.map((h) => (
+                      <button
+                        key={`${h.pane}:${h.sectionId ?? 'pane'}`}
+                        type="button"
+                        role="option"
+                        aria-selected={false}
+                        className={styles.searchItem}
+                        onClick={() => jumpTo(h.pane, h.sectionId)}
+                      >
+                        <span className={styles.searchItemTitle}>
+                          <Highlight text={h.title} q={searchQ} />
                         </span>
-                      )}
-                    </Field>
-                    <span
-                      className={`${styles.settingsPill} ${updateTone === 'ok' ? styles.ok : updateTone === 'bad' ? styles.bad : styles.info}`}
-                    >
-                      {updateText}
-                    </span>
+                        <span className={styles.searchItemMeta}>
+                          {h.paneLabel}
+                          {h.sectionId ? '' : ' · pane'}
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+            <nav
+              className={styles.settingsNav}
+              role="tablist"
+              aria-label="Settings sections"
+              aria-orientation="vertical"
+              onKeyDown={onTablistKey}
+            >
+              {RAIL_GROUPS.map((group) => {
+                const items = PANES.filter(
+                  (p) => group.items.includes(p.id) && paneMatchesQuery(p.id, searchQ),
+                );
+                if (items.length === 0) return null;
+                return (
+                  <div className={styles.railGroup} key={group.label}>
+                    <p className={styles.railHead}>{group.label}</p>
+                    {items.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={pane === p.id}
+                        tabIndex={pane === p.id ? 0 : -1}
+                        className={`${styles.railItem} ${pane === p.id ? styles.on : ''}`}
+                        onClick={() => setPaneLive(p.id)}
+                        data-testid={`settings-tab-${p.id}`}
+                      >
+                        <Highlight text={p.label} q={searchQ} />
+                      </button>
+                    ))}
                   </div>
-                  {(updateStatus.stage === 'downloading' || updateStatus.stage === 'ready') && (
-                    <div
-                      className={styles.settingsProgress}
-                      aria-label={
-                        updateStatus.stage === 'downloading'
-                          ? `Downloading ${Math.round(updateStatus.percent ?? 0)} percent`
-                          : 'Update ready to install'
-                      }
-                    >
-                      <div className={styles.settingsTrack}>
-                        <div
-                          className={`${styles.settingsFill} ${updateStatus.stage === 'ready' ? styles.ready : ''}`}
-                          style={{
-                            width: `${updateStatus.stage === 'ready' ? 100 : Math.max(0, Math.min(100, updateStatus.percent ?? 0))}%`,
+                );
+              })}
+            </nav>
+          </aside>
+
+          <div className={styles.settingsScroll}>
+            <div className={styles.settingsPage}>
+              {pane === 'general' && (
+                <>
+                  <Section
+                    label="Identity"
+                    note="Attached to every run, so a trace says who asked."
+                  >
+                    <div className={styles.settingsFields}>
+                      <Field label="Your name" htmlFor="engineer-name-input">
+                        <TextInput
+                          id="engineer-name-input"
+                          aria-label="Your name"
+                          value={nameDraft}
+                          onChange={(e) => {
+                            setNameDraft(e.target.value);
+                            setNameHint('');
+                          }}
+                          onBlur={() => void commitName()}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              (e.target as HTMLInputElement).blur();
+                            }
                           }}
                         />
-                      </div>
-                      <span className={`mono faint ${styles.settingsPct}`}>
-                        {updateStatus.stage === 'ready'
-                          ? 'ready'
-                          : `${Math.round(updateStatus.percent ?? 0)}%`}
+                        <span className={styles.hint}>
+                          Recorded on every run, so a trace says who asked for it. Saved when you
+                          leave the field.
+                        </span>
+                        {nameHint && <span className={styles.settingsWarn}>{nameHint}</span>}
+                      </Field>
+                    </div>
+                  </Section>
+
+                  <Section label="Checks" note="What Foundry found on this machine at launch.">
+                    <DoctorList
+                      checks={checks}
+                      title="Environment checks"
+                      onRecheck={() => void api.doctor.run().then(setChecks)}
+                      onOpenSettings={(next) => setPaneLive(next as Pane)}
+                    />
+                  </Section>
+
+                  <Section label="Notifications" note="Only the moments that need you.">
+                    <div className={styles.settingsToggles}>
+                      {(Object.keys(NOTIFY_LABELS) as Array<keyof typeof NOTIFY_LABELS>).map(
+                        (key) => (
+                          <Toggle
+                            key={key}
+                            label={NOTIFY_LABELS[key]}
+                            checked={settings.notifications[key]}
+                            onChange={(value) =>
+                              void set({
+                                notifications: { ...settings.notifications, [key]: value },
+                              })
+                            }
+                          />
+                        ),
+                      )}
+                      <Toggle
+                        label="Show the number of live runs on the dock icon"
+                        checked={settings.dockBadge}
+                        onChange={(value) => void set({ dockBadge: value })}
+                      />
+                    </div>
+                  </Section>
+
+                  <Section label="Software updates" note="Foundry checks only when you ask it to.">
+                    <div className={styles.settingsSpread}>
+                      <Field>
+                        <strong className={styles.settingsStrong}>
+                          Foundry {version ? `v${version}` : ''}
+                        </strong>
+                        {updateStatus.message && (
+                          <span className={styles.hint}>{updateStatus.message}</span>
+                        )}
+                        {updateStatus.stage === 'available' && updateStatus.version && (
+                          <span className={styles.hint}>
+                            Foundry v{updateStatus.version} is available, download it when ready.
+                          </span>
+                        )}
+                      </Field>
+                      <span
+                        className={`${styles.settingsPill} ${updateTone === 'ok' ? styles.ok : updateTone === 'bad' ? styles.bad : styles.info}`}
+                      >
+                        {updateText}
                       </span>
                     </div>
-                  )}
-                  <div className={styles.settingsSubrow}>
-                    {updateStatus.stage === 'ready' ? (
-                      <Button variant="primary" size="sm" onClick={() => void installUpdate()}>
-                        Restart to install
-                      </Button>
-                    ) : updateStatus.stage === 'available' ? (
-                      <Button variant="primary" size="sm" onClick={() => void downloadUpdate()}>
-                        Download update
-                      </Button>
-                    ) : updateStatus.stage === 'downloading' ? (
-                      <span className={styles.hint}>
-                        Installing after the download finishes, you will be asked to restart.
-                      </span>
-                    ) : (
-                      <Button
-                        size="sm"
-                        disabled={updateStatus.stage === 'checking'}
-                        onClick={() => void checkForUpdates()}
+                    {(updateStatus.stage === 'downloading' || updateStatus.stage === 'ready') && (
+                      <div
+                        className={styles.settingsProgress}
+                        aria-label={
+                          updateStatus.stage === 'downloading'
+                            ? `Downloading ${Math.round(updateStatus.percent ?? 0)} percent`
+                            : 'Update ready to install'
+                        }
                       >
-                        {updateStatus.stage === 'checking'
-                          ? 'Checking for updates…'
-                          : updateStatus.stage === 'error'
-                            ? 'Try again'
-                            : 'Check for updates'}
-                      </Button>
+                        <div className={styles.settingsTrack}>
+                          <div
+                            className={`${styles.settingsFill} ${updateStatus.stage === 'ready' ? styles.ready : ''}`}
+                            style={{
+                              width: `${updateStatus.stage === 'ready' ? 100 : Math.max(0, Math.min(100, updateStatus.percent ?? 0))}%`,
+                            }}
+                          />
+                        </div>
+                        <span className={`mono faint ${styles.settingsPct}`}>
+                          {updateStatus.stage === 'ready'
+                            ? 'ready'
+                            : `${Math.round(updateStatus.percent ?? 0)}%`}
+                        </span>
+                      </div>
                     )}
-                  </div>
-                </Section>
+                    <div className={styles.settingsSubrow}>
+                      {updateStatus.stage === 'ready' ? (
+                        <Button variant="primary" size="sm" onClick={() => void installUpdate()}>
+                          Restart to install
+                        </Button>
+                      ) : updateStatus.stage === 'available' ? (
+                        <Button variant="primary" size="sm" onClick={() => void downloadUpdate()}>
+                          Download update
+                        </Button>
+                      ) : updateStatus.stage === 'downloading' ? (
+                        <span className={styles.hint}>
+                          Installing after the download finishes, you will be asked to restart.
+                        </span>
+                      ) : (
+                        <Button
+                          size="sm"
+                          disabled={updateStatus.stage === 'checking'}
+                          onClick={() => void checkForUpdates()}
+                        >
+                          {updateStatus.stage === 'checking'
+                            ? 'Checking for updates…'
+                            : updateStatus.stage === 'error'
+                              ? 'Try again'
+                              : 'Check for updates'}
+                        </Button>
+                      )}
+                    </div>
+                  </Section>
 
-                <Section
-                  label="Terminal"
-                  note="Where Foundry hands you a shell, and which coding agent Smith starts in it."
-                >
-                  <div className={styles.settingsFields}>
-                    <Field
-                      label="Preferred terminal"
-                      hint="Used by Smith's launcher. Ghostty is handed a ready-made session; the others open your project directory and you paste the bootstrap line."
-                    >
-                      <Dropdown
-                        value={settings.terminalApp}
-                        options={TERMINAL_APPS.map((terminal) => ({
-                          value: terminal.id,
-                          label: terminal.label,
-                          description: terminal.prepared
-                            ? `Starts the Smith session for you — must be installed.`
-                            : terminal.id === 'terminal'
-                              ? 'Ships with macOS, so it always resolves.'
-                              : `Opens ${terminal.appName}.app — must be installed.`,
-                        }))}
-                        onChange={(next) => {
-                          void patchSettings({
-                            terminalApp: next as AppSettings['terminalApp'],
-                          });
+                  <Section
+                    label="Terminal"
+                    note="Where Foundry hands you a shell, and which coding agent Smith starts in it."
+                  >
+                    <div className={styles.settingsFields}>
+                      <Field
+                        label="Preferred terminal"
+                        hint="Used by Smith's launcher. Ghostty is handed a ready-made session; the others open your project directory and you paste the bootstrap line."
+                      >
+                        <Dropdown
+                          value={settings.terminalApp}
+                          options={TERMINAL_APPS.map((terminal) => ({
+                            value: terminal.id,
+                            label: terminal.label,
+                            description: terminal.prepared
+                              ? `Starts the Smith session for you — must be installed.`
+                              : terminal.id === 'terminal'
+                                ? 'Ships with macOS, so it always resolves.'
+                                : `Opens ${terminal.appName}.app — must be installed.`,
+                          }))}
+                          onChange={(next) => {
+                            void patchSettings({
+                              terminalApp: next as AppSettings['terminalApp'],
+                            });
+                          }}
+                        />
+                      </Field>
+                      <Field
+                        label="Coding agent"
+                        hint="Smith starts this CLI with the Foundry skill and opening prompt. The binary must be on your PATH."
+                      >
+                        <Dropdown
+                          value={settings.codingAgent}
+                          options={CODING_AGENTS.map((agent) => ({
+                            value: agent.id,
+                            label: agent.label,
+                            description:
+                              agent.id === 'droid'
+                                ? 'Factory Droid (droid). Default.'
+                                : `${agent.label} (${agent.binary}) — must be on PATH.`,
+                          }))}
+                          onChange={(next) => {
+                            void patchSettings({
+                              codingAgent: next as AppSettings['codingAgent'],
+                            });
+                          }}
+                        />
+                      </Field>
+                    </div>
+                  </Section>
+
+                  <Section
+                    label="Phone"
+                    note="A paired phone can watch runs, start one, and open the PR."
+                  >
+                    <div className={styles.settingsToggles}>
+                      <Toggle
+                        label="Serve the companion host on this network"
+                        hint={
+                          companion?.running && companion.origin
+                            ? `Serving on ${companion.origin} · Protocol v${companion.protocolVersion} — pairing is QR-only.`
+                            : (companion?.detail ??
+                              'Off. Nothing listens until you turn this on, and pairing is QR-only.')
+                        }
+                        checked={!!companion?.running}
+                        onChange={(value) => {
+                          if (!companionBusy) void toggleCompanion(value);
                         }}
                       />
-                    </Field>
-                    <Field
-                      label="Coding agent"
-                      hint="Smith starts this CLI with the Foundry skill and opening prompt. The binary must be on your PATH."
-                    >
-                      <Dropdown
-                        value={settings.codingAgent}
-                        options={CODING_AGENTS.map((agent) => ({
-                          value: agent.id,
-                          label: agent.label,
-                          description:
-                            agent.id === 'droid'
-                              ? 'Factory Droid (droid). Default.'
-                              : `${agent.label} (${agent.binary}) — must be on PATH.`,
-                        }))}
-                        onChange={(next) => {
-                          void patchSettings({
-                            codingAgent: next as AppSettings['codingAgent'],
-                          });
-                        }}
-                      />
-                    </Field>
-                  </div>
-                </Section>
+                    </div>
 
-                <Section
-                  label="Phone"
-                  note="A paired phone can watch runs, start one, and open the PR."
-                >
-                  <div className={styles.settingsToggles}>
-                    <Toggle
-                      label="Serve the companion host on this network"
-                      hint={
-                        companion?.running && companion.origin
-                          ? `Serving on ${companion.origin} · Protocol v${companion.protocolVersion} — pairing is QR-only.`
-                          : (companion?.detail ??
-                            'Off. Nothing listens until you turn this on, and pairing is QR-only.')
-                      }
-                      checked={!!companion?.running}
-                      onChange={(value) => {
-                        if (!companionBusy) void toggleCompanion(value);
-                      }}
-                    />
-                  </div>
+                    {companion?.running && (
+                      <>
+                        {companion.devices.length === 0 ? (
+                          <div className={styles.qrContainer}>
+                            <div className={styles.qrFrame}>
+                              {pairingPayload ? (
+                                <QrCode
+                                  value={`foundry://pair?origin=${encodeURIComponent(pairingPayload.origin)}&secret=${encodeURIComponent(pairingPayload.secret)}`}
+                                  size={220}
+                                  bgColor="#FFFFFF"
+                                  fgColor="#000000"
+                                  title="Foundry Companion Pairing QR"
+                                />
+                              ) : (
+                                <div className={styles.qrPlaceholder}>Generating pairing code…</div>
+                              )}
+                            </div>
+                            <div className={styles.qrDetails}>
+                              <div className={styles.qrLead}>
+                                <span className={`${styles.settingsPill} ${styles.info}`}>
+                                  Waiting for a phone…
+                                </span>
+                                <strong style={{ marginTop: '6px' }}>
+                                  Pair your Android phone
+                                </strong>
+                                <p className={styles.hint}>
+                                  Open Foundry on your Android phone and scan this code, or copy the
+                                  pairing payload to paste.
+                                </p>
+                              </div>
+                              <div className={styles.settingsBtnrow}>
+                                <Button
+                                  size="sm"
+                                  disabled={!pairingPayload}
+                                  onClick={() => {
+                                    if (pairingPayload) {
+                                      void navigator.clipboard.writeText(
+                                        JSON.stringify(pairingPayload),
+                                      );
+                                      setCopiedPayload(true);
+                                      setTimeout(() => setCopiedPayload(false), 2000);
+                                    }
+                                  }}
+                                >
+                                  {copiedPayload ? 'Copied to clipboard!' : 'Copy pairing code'}
+                                </Button>
+                                <Button size="sm" onClick={() => void refreshPairingPayload()}>
+                                  Refresh QR code
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className={styles.settingsFields}>
+                            <div className={styles.pairedDevicesHeader}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <strong className={styles.settingsStrong}>
+                                  Paired devices ({companion.devices.length})
+                                </strong>
+                                <span className={`${styles.settingsPill} ${styles.ok}`}>
+                                  Paired
+                                </span>
+                              </div>
+                              <span className={styles.hint}>
+                                Connected phones can watch runs, start new runs, and answer
+                                interrupts.
+                              </span>
+                            </div>
+                            {companion.devices.map((device) => (
+                              <div key={device.deviceId} className={styles.settingsSpread}>
+                                <Field>
+                                  <strong className={styles.settingsStrong}>{device.name}</strong>
+                                  <span className={styles.hint}>
+                                    Paired {new Date(device.pairedAt).toLocaleDateString()}
+                                    {device.lastSeenAt
+                                      ? ` · last seen ${new Date(device.lastSeenAt).toLocaleString()}`
+                                      : ' · never connected'}
+                                  </span>
+                                </Field>
+                                <Button
+                                  size="sm"
+                                  onClick={() =>
+                                    void api.companion
+                                      .unpair(device.deviceId)
+                                      .then(() => api.companion.state())
+                                      .then((st) => {
+                                        setCompanion(st);
+                                        if (st.devices.length === 0) void refreshPairingPayload();
+                                      })
+                                  }
+                                >
+                                  Unpair
+                                </Button>
+                              </div>
+                            ))}
 
-                  {companion?.running && (
-                    <>
-                      {companion.devices.length === 0 ? (
-                        <div className={styles.qrContainer}>
-                          <div className={styles.qrFrame}>
-                            {pairingPayload ? (
-                              <QrCode
-                                value={`foundry://pair?origin=${encodeURIComponent(pairingPayload.origin)}&secret=${encodeURIComponent(pairingPayload.secret)}`}
-                                size={220}
-                                bgColor="#FFFFFF"
-                                fgColor="#000000"
-                                title="Foundry Companion Pairing QR"
-                              />
-                            ) : (
-                              <div className={styles.qrPlaceholder}>Generating pairing code…</div>
+                            <div style={{ marginTop: '8px' }}>
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  setShowPairMore((prev) => !prev);
+                                  if (!showPairMore && !pairingPayload)
+                                    void refreshPairingPayload();
+                                }}
+                              >
+                                {showPairMore ? 'Hide pairing QR code' : 'Pair another phone…'}
+                              </Button>
+                            </div>
+
+                            {showPairMore && (
+                              <div className={styles.qrContainer}>
+                                <div className={styles.qrFrame}>
+                                  {pairingPayload ? (
+                                    <QrCode
+                                      value={`foundry://pair?origin=${encodeURIComponent(pairingPayload.origin)}&secret=${encodeURIComponent(pairingPayload.secret)}`}
+                                      size={220}
+                                      bgColor="#FFFFFF"
+                                      fgColor="#000000"
+                                      title="Foundry Companion Pairing QR"
+                                    />
+                                  ) : (
+                                    <div className={styles.qrPlaceholder}>
+                                      Generating pairing code…
+                                    </div>
+                                  )}
+                                </div>
+                                <div className={styles.qrDetails}>
+                                  <div className={styles.qrLead}>
+                                    <strong>Pair an additional phone</strong>
+                                    <p className={styles.hint}>
+                                      Scan this QR code in Foundry on another phone.
+                                    </p>
+                                  </div>
+                                  <div className={styles.settingsBtnrow}>
+                                    <Button
+                                      size="sm"
+                                      disabled={!pairingPayload}
+                                      onClick={() => {
+                                        if (pairingPayload) {
+                                          void navigator.clipboard.writeText(
+                                            JSON.stringify(pairingPayload),
+                                          );
+                                          setCopiedPayload(true);
+                                          setTimeout(() => setCopiedPayload(false), 2000);
+                                        }
+                                      }}
+                                    >
+                                      {copiedPayload ? 'Copied to clipboard!' : 'Copy pairing code'}
+                                    </Button>
+                                    <Button size="sm" onClick={() => void refreshPairingPayload()}>
+                                      Refresh QR code
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
                             )}
                           </div>
-                          <div className={styles.qrDetails}>
-                            <div className={styles.qrLead}>
-                              <span className={`${styles.settingsPill} ${styles.info}`}>
-                                Waiting for a phone…
-                              </span>
-                              <strong style={{ marginTop: '6px' }}>Pair your Android phone</strong>
-                              <p className={styles.hint}>
-                                Open Foundry on your Android phone and scan this code, or copy the
-                                pairing payload to paste.
-                              </p>
+                        )}
+                      </>
+                    )}
+                  </Section>
+
+                  <Section
+                    label="Application"
+                    note="Restart after changing settings or installing an update."
+                  >
+                    <p className={styles.hint}>
+                      Restart Foundry after changing settings or installing an update.
+                    </p>
+                    <div className={styles.settingsBtnrow}>
+                      <Button size="sm" onClick={() => void relaunchApp()}>
+                        Relaunch Foundry
+                      </Button>
+                      <Button size="sm" onClick={() => void quitApp()}>
+                        Quit Foundry
+                      </Button>
+                    </div>
+                  </Section>
+                </>
+              )}
+              {pane === 'providers' && (
+                <>
+                  <Section
+                    label="Providers"
+                    note="Where the models an agent phase runs on come from."
+                  >
+                    <p className={styles.settingsLead}>
+                      Foundry runs every agent phase in-process on pi, and a model reaches the
+                      pickers only once pi can reach its provider. Connect a subscription through
+                      the Bridge, or store a direct API key. Keys live in pi&rsquo;s own credential
+                      store on this Mac, never in Foundry&rsquo;s settings file.
+                    </p>
+                    <div className={styles.settingsSubrow}>
+                      <span
+                        className={`${styles.settingsPill} ${
+                          bridge ? (bridge.running ? styles.ok : styles.bad) : styles.plain
+                        }`}
+                        data-testid="bridge-status"
+                      >
+                        {bridge
+                          ? bridge.running
+                            ? `serving on ${bridge.port}`
+                            : 'not running'
+                          : 'checking…'}
+                      </span>
+                      <div className={styles.settingsBtnrow}>
+                        <Button
+                          size="sm"
+                          disabled={!!providerBusy}
+                          onClick={() =>
+                            void runProviderAction('bridge', () => api.bridge.ensure())
+                          }
+                        >
+                          {providerBusy === 'bridge' ? 'Starting…' : 'Start the Bridge'}
+                        </Button>
+                      </div>
+                    </div>
+                    {bridge && !bridge.running && (bridge.reason || bridge.detail) && (
+                      <p className={styles.settingsWarn}>
+                        {/* `detail` states only the remedy; the reason is prefixed
+                          here rather than duplicated into it. */}
+                        {bridge.reason
+                          ? BRIDGE_UNAVAILABLE_COPY[bridge.reason]
+                          : 'the Bridge is not serving'}
+                        {bridge.detail ? `: ${bridge.detail}` : ''}
+                      </p>
+                    )}
+                    {providerNotes.bridge && <p className={styles.hint}>{providerNotes.bridge}</p>}
+                  </Section>
+
+                  <Section
+                    label="Subscriptions"
+                    note="Sign in with a plan you already pay for. The Bridge holds the account; Foundry never sees a token."
+                  >
+                    <div className={styles.providerList}>
+                      {(bridge?.providers ?? []).map((provider) => {
+                        const busyKey = `provider:${provider.id}`;
+                        const expired = provider.accounts.some((account) => account.expired);
+                        const allDisabled =
+                          provider.accounts.length > 0 &&
+                          provider.accounts.every((account) => account.disabled);
+                        const status = provider.loginInFlight
+                          ? 'connecting'
+                          : expired
+                            ? 'expired'
+                            : allDisabled
+                              ? 'disabled'
+                              : provider.authenticated
+                                ? 'connected'
+                                : 'not connected';
+                        const tone = provider.loginInFlight
+                          ? styles.info
+                          : expired || allDisabled
+                            ? styles.bad
+                            : provider.authenticated
+                              ? styles.ok
+                              : styles.plain;
+                        return (
+                          <div
+                            key={provider.id}
+                            className={styles.providerCard}
+                            data-testid={`provider-card-${provider.id}`}
+                          >
+                            <div className={styles.providerHead}>
+                              <ProviderIcon provider={provider.icon} size={18} />
+                              <h3>{provider.label}</h3>
+                              <span className={`${styles.settingsPill} ${tone}`}>{status}</span>
                             </div>
+                            {provider.accounts.length > 0 ? (
+                              <ul className={styles.providerAccounts}>
+                                {provider.accounts.map((account) => (
+                                  <li key={account.id}>
+                                    <span className="mono">{account.label}</span>
+                                    <span className="faint">
+                                      {account.expired
+                                        ? 'the sign-in expired'
+                                        : account.expiresAt
+                                          ? `valid until ${account.expiresAt}`
+                                          : 'no expiry reported'}
+                                      {account.disabled ? ' · disabled' : ''}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className={styles.hint}>
+                                Connecting opens {provider.label} in your browser. The account lands
+                                here on its own once you finish signing in.
+                              </p>
+                            )}
+                            <div className={styles.settingsBtnrow}>
+                              {provider.loginInFlight ? (
+                                <Button
+                                  size="sm"
+                                  onClick={() => void cancelProviderLogin(provider.id)}
+                                >
+                                  Cancel sign-in
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant={provider.authenticated ? undefined : 'primary'}
+                                  disabled={!!providerBusy || !bridge?.running}
+                                  title={
+                                    bridge?.running
+                                      ? undefined
+                                      : 'Start the Bridge before signing in.'
+                                  }
+                                  onClick={() =>
+                                    void runProviderAction(busyKey, () =>
+                                      api.bridge.connect(provider.id),
+                                    )
+                                  }
+                                >
+                                  {providerBusy === busyKey
+                                    ? 'Opening…'
+                                    : expired
+                                      ? 'Reconnect'
+                                      : provider.authenticated
+                                        ? 'Add another account'
+                                        : 'Connect'}
+                                </Button>
+                              )}
+                              {provider.accounts.length > 0 && (
+                                <Button
+                                  size="sm"
+                                  variant="danger"
+                                  disabled={!!providerBusy}
+                                  onClick={() =>
+                                    void disconnectProvider(provider.id, provider.label)
+                                  }
+                                >
+                                  Disconnect
+                                </Button>
+                              )}
+                            </div>
+                            {providerNotes[busyKey] && (
+                              <p className={styles.hint}>{providerNotes[busyKey]}</p>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {!bridge?.providers.length && (
+                        <p className="faint">
+                          No subscription providers are available in this build. Direct API keys
+                          still work.
+                        </p>
+                      )}
+                    </div>
+                  </Section>
+
+                  <Section
+                    label="API keys"
+                    note="For a provider you hold a key for rather than a subscription."
+                  >
+                    <div className={styles.providerList}>
+                      {keyRows.map((row) => {
+                        const busyKey = `key:${row.id}`;
+                        const stored = storedKeys.some((key) => key.providerId === row.id);
+                        const draft = keyDrafts[row.id] ?? '';
+                        return (
+                          <div
+                            key={row.id}
+                            className={styles.providerCard}
+                            data-testid={`provider-key-${row.id}`}
+                          >
+                            <div className={styles.providerHead}>
+                              <ProviderIcon provider={row.icon} size={18} />
+                              <h3>{row.label}</h3>
+                              <span
+                                className={`${styles.settingsPill} ${stored ? styles.ok : styles.plain}`}
+                              >
+                                {stored ? 'key set' : 'no key'}
+                              </span>
+                            </div>
+                            <Field
+                              label="API key"
+                              htmlFor={`provider-key-input-${row.id}`}
+                              hint={
+                                stored
+                                  ? 'A key is stored. Typing a new one replaces it; the stored value is never shown.'
+                                  : 'Stored by pi on this Mac. Foundry keeps no copy.'
+                              }
+                            >
+                              <TextInput
+                                id={`provider-key-input-${row.id}`}
+                                aria-label={`${row.label} API key`}
+                                type="password"
+                                autoComplete="off"
+                                spellCheck={false}
+                                mono
+                                value={draft}
+                                placeholder={stored ? '••••••••' : 'paste a key'}
+                                onChange={(e) =>
+                                  setKeyDrafts((drafts) => ({
+                                    ...drafts,
+                                    [row.id]: e.target.value,
+                                  }))
+                                }
+                              />
+                            </Field>
                             <div className={styles.settingsBtnrow}>
                               <Button
                                 size="sm"
-                                disabled={!pairingPayload}
-                                onClick={() => {
-                                  if (pairingPayload) {
-                                    void navigator.clipboard.writeText(
-                                      JSON.stringify(pairingPayload),
-                                    );
-                                    setCopiedPayload(true);
-                                    setTimeout(() => setCopiedPayload(false), 2000);
-                                  }
-                                }}
+                                variant="primary"
+                                disabled={!!providerBusy || !draft.trim()}
+                                onClick={() => void saveProviderKey(row.id)}
                               >
-                                {copiedPayload ? 'Copied to clipboard!' : 'Copy pairing code'}
+                                {providerBusy === busyKey ? 'Saving…' : stored ? 'Replace' : 'Save'}
                               </Button>
-                              <Button size="sm" onClick={() => void refreshPairingPayload()}>
-                                Refresh QR code
-                              </Button>
+                              {stored && (
+                                <Button
+                                  size="sm"
+                                  variant="danger"
+                                  disabled={!!providerBusy}
+                                  onClick={() => void clearProviderKey(row.id, row.label)}
+                                >
+                                  Clear
+                                </Button>
+                              )}
                             </div>
+                            {providerNotes[busyKey] && (
+                              <p className={styles.hint}>{providerNotes[busyKey]}</p>
+                            )}
                           </div>
-                        </div>
-                      ) : (
-                        <div className={styles.settingsFields}>
-                          <div className={styles.pairedDevicesHeader}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <strong className={styles.settingsStrong}>
-                                Paired devices ({companion.devices.length})
-                              </strong>
-                              <span className={`${styles.settingsPill} ${styles.ok}`}>Paired</span>
-                            </div>
-                            <span className={styles.hint}>
-                              Connected phones can watch runs, start new runs, and answer
-                              interrupts.
-                            </span>
-                          </div>
-                          {companion.devices.map((device) => (
-                            <div key={device.deviceId} className={styles.settingsSpread}>
-                              <Field>
-                                <strong className={styles.settingsStrong}>{device.name}</strong>
-                                <span className={styles.hint}>
-                                  Paired {new Date(device.pairedAt).toLocaleDateString()}
-                                  {device.lastSeenAt
-                                    ? ` · last seen ${new Date(device.lastSeenAt).toLocaleString()}`
-                                    : ' · never connected'}
-                                </span>
-                              </Field>
-                              <Button
-                                size="sm"
-                                onClick={() =>
-                                  void api.companion
-                                    .unpair(device.deviceId)
-                                    .then(() => api.companion.state())
-                                    .then((st) => {
-                                      setCompanion(st);
-                                      if (st.devices.length === 0) void refreshPairingPayload();
-                                    })
-                                }
-                              >
-                                Unpair
-                              </Button>
-                            </div>
-                          ))}
-
-                          <div style={{ marginTop: '8px' }}>
-                            <Button
-                              size="sm"
-                              onClick={() => {
-                                setShowPairMore((prev) => !prev);
-                                if (!showPairMore && !pairingPayload) void refreshPairingPayload();
-                              }}
-                            >
-                              {showPairMore ? 'Hide pairing QR code' : 'Pair another phone…'}
-                            </Button>
-                          </div>
-
-                          {showPairMore && (
-                            <div className={styles.qrContainer}>
-                              <div className={styles.qrFrame}>
-                                {pairingPayload ? (
-                                  <QrCode
-                                    value={`foundry://pair?origin=${encodeURIComponent(pairingPayload.origin)}&secret=${encodeURIComponent(pairingPayload.secret)}`}
-                                    size={220}
-                                    bgColor="#FFFFFF"
-                                    fgColor="#000000"
-                                    title="Foundry Companion Pairing QR"
-                                  />
-                                ) : (
-                                  <div className={styles.qrPlaceholder}>
-                                    Generating pairing code…
-                                  </div>
-                                )}
-                              </div>
-                              <div className={styles.qrDetails}>
-                                <div className={styles.qrLead}>
-                                  <strong>Pair an additional phone</strong>
-                                  <p className={styles.hint}>
-                                    Scan this QR code in Foundry on another phone.
-                                  </p>
-                                </div>
-                                <div className={styles.settingsBtnrow}>
-                                  <Button
-                                    size="sm"
-                                    disabled={!pairingPayload}
-                                    onClick={() => {
-                                      if (pairingPayload) {
-                                        void navigator.clipboard.writeText(
-                                          JSON.stringify(pairingPayload),
-                                        );
-                                        setCopiedPayload(true);
-                                        setTimeout(() => setCopiedPayload(false), 2000);
-                                      }
-                                    }}
-                                  >
-                                    {copiedPayload ? 'Copied to clipboard!' : 'Copy pairing code'}
-                                  </Button>
-                                  <Button size="sm" onClick={() => void refreshPairingPayload()}>
-                                    Refresh QR code
-                                  </Button>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </Section>
-
-                <Section
-                  label="Application"
-                  note="Restart after changing settings or installing an update."
-                >
-                  <p className={styles.hint}>
-                    Restart Foundry after changing settings or installing an update.
-                  </p>
-                  <div className={styles.settingsBtnrow}>
-                    <Button size="sm" onClick={() => void relaunchApp()}>
-                      Relaunch Foundry
-                    </Button>
-                    <Button size="sm" onClick={() => void quitApp()}>
-                      Quit Foundry
-                    </Button>
-                  </div>
-                </Section>
-              </>
-            )}
-            {pane === 'providers' && (
-              <>
-                <Section
-                  label="Providers"
-                  note="Where the models an agent phase runs on come from."
-                >
-                  <p className={styles.settingsLead}>
-                    Foundry runs every agent phase in-process on pi, and a model reaches the pickers
-                    only once pi can reach its provider. Connect a subscription through the Bridge,
-                    or store a direct API key. Keys live in pi&rsquo;s own credential store on this
-                    Mac, never in Foundry&rsquo;s settings file.
-                  </p>
-                  <div className={styles.settingsSubrow}>
-                    <span
-                      className={`${styles.settingsPill} ${
-                        bridge ? (bridge.running ? styles.ok : styles.bad) : styles.plain
-                      }`}
-                      data-testid="bridge-status"
-                    >
-                      {bridge
-                        ? bridge.running
-                          ? `serving on ${bridge.port}`
-                          : 'not running'
-                        : 'checking…'}
-                    </span>
-                    <div className={styles.settingsBtnrow}>
-                      <Button
-                        size="sm"
-                        disabled={!!providerBusy}
-                        onClick={() => void runProviderAction('bridge', () => api.bridge.ensure())}
-                      >
-                        {providerBusy === 'bridge' ? 'Starting…' : 'Start the Bridge'}
-                      </Button>
+                        );
+                      })}
                     </div>
-                  </div>
-                  {bridge && !bridge.running && (bridge.reason || bridge.detail) && (
-                    <p className={styles.settingsWarn}>
-                      {/* `detail` states only the remedy; the reason is prefixed
-                          here rather than duplicated into it. */}
-                      {bridge.reason
-                        ? BRIDGE_UNAVAILABLE_COPY[bridge.reason]
-                        : 'the Bridge is not serving'}
-                      {bridge.detail ? `: ${bridge.detail}` : ''}
-                    </p>
-                  )}
-                  {providerNotes.bridge && <p className={styles.hint}>{providerNotes.bridge}</p>}
-                </Section>
+                  </Section>
 
-                <Section
-                  label="Subscriptions"
-                  note="Sign in with a plan you already pay for. The Bridge holds the account; Foundry never sees a token."
-                >
-                  <div className={styles.providerList}>
-                    {(bridge?.providers ?? []).map((provider) => {
-                      const busyKey = `provider:${provider.id}`;
-                      const expired = provider.accounts.some((account) => account.expired);
-                      const allDisabled =
-                        provider.accounts.length > 0 &&
-                        provider.accounts.every((account) => account.disabled);
-                      const status = provider.loginInFlight
-                        ? 'connecting'
-                        : expired
-                          ? 'expired'
-                          : allDisabled
-                            ? 'disabled'
-                            : provider.authenticated
-                              ? 'connected'
-                              : 'not connected';
-                      const tone = provider.loginInFlight
-                        ? styles.info
-                        : expired || allDisabled
-                          ? styles.bad
-                          : provider.authenticated
-                            ? styles.ok
-                            : styles.plain;
-                      return (
-                        <div
-                          key={provider.id}
-                          className={styles.providerCard}
-                          data-testid={`provider-card-${provider.id}`}
-                        >
-                          <div className={styles.providerHead}>
-                            <ProviderIcon provider={provider.icon} size={18} />
-                            <h3>{provider.label}</h3>
-                            <span className={`${styles.settingsPill} ${tone}`}>{status}</span>
-                          </div>
-                          {provider.accounts.length > 0 ? (
-                            <ul className={styles.providerAccounts}>
-                              {provider.accounts.map((account) => (
-                                <li key={account.id}>
-                                  <span className="mono">{account.label}</span>
-                                  <span className="faint">
-                                    {account.expired
-                                      ? 'the sign-in expired'
-                                      : account.expiresAt
-                                        ? `valid until ${account.expiresAt}`
-                                        : 'no expiry reported'}
-                                    {account.disabled ? ' · disabled' : ''}
-                                  </span>
-                                </li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <p className={styles.hint}>
-                              Connecting opens {provider.label} in your browser. The account lands
-                              here on its own once you finish signing in.
-                            </p>
-                          )}
-                          <div className={styles.settingsBtnrow}>
-                            {provider.loginInFlight ? (
-                              <Button
-                                size="sm"
-                                onClick={() => void cancelProviderLogin(provider.id)}
-                              >
-                                Cancel sign-in
-                              </Button>
-                            ) : (
-                              <Button
-                                size="sm"
-                                variant={provider.authenticated ? undefined : 'primary'}
-                                disabled={!!providerBusy || !bridge?.running}
-                                title={
-                                  bridge?.running
-                                    ? undefined
-                                    : 'Start the Bridge before signing in.'
-                                }
-                                onClick={() =>
-                                  void runProviderAction(busyKey, () =>
-                                    api.bridge.connect(provider.id),
-                                  )
-                                }
-                              >
-                                {providerBusy === busyKey
-                                  ? 'Opening…'
-                                  : expired
-                                    ? 'Reconnect'
-                                    : provider.authenticated
-                                      ? 'Add another account'
-                                      : 'Connect'}
-                              </Button>
-                            )}
-                            {provider.accounts.length > 0 && (
-                              <Button
-                                size="sm"
-                                variant="danger"
-                                disabled={!!providerBusy}
-                                onClick={() => void disconnectProvider(provider.id, provider.label)}
-                              >
-                                Disconnect
-                              </Button>
-                            )}
-                          </div>
-                          {providerNotes[busyKey] && (
-                            <p className={styles.hint}>{providerNotes[busyKey]}</p>
-                          )}
-                        </div>
-                      );
-                    })}
-                    {!bridge?.providers.length && (
-                      <p className="faint">
-                        No subscription providers are available in this build. Direct API keys still
-                        work.
+                  <Section label="Models" note="What every picker in the app will offer.">
+                    <p className={styles.settingsLead}>
+                      Hide a model to remove it from every picker. Hidden models are gone until you
+                      reset.
+                    </p>
+                    <div className={styles.settingsSubrow}>
+                      <p className={styles.settingsStatic} data-testid="providers-model-count">
+                        {models.length
+                          ? `${models.length} model${models.length === 1 ? '' : 's'} reachable${
+                              hiddenCount > 0 ? ` · ${hiddenCount} hidden` : ''
+                            }`
+                          : hiddenCount > 0
+                            ? 'All models are hidden. Reset to show them again.'
+                            : 'No models reachable yet — connect a provider or store a key above.'}
                       </p>
-                    )}
-                  </div>
-                </Section>
-
-                <Section
-                  label="API keys"
-                  note="For a provider you hold a key for rather than a subscription."
-                >
-                  <div className={styles.providerList}>
-                    {keyRows.map((row) => {
-                      const busyKey = `key:${row.id}`;
-                      const stored = storedKeys.some((key) => key.providerId === row.id);
-                      const draft = keyDrafts[row.id] ?? '';
-                      return (
-                        <div
-                          key={row.id}
-                          className={styles.providerCard}
-                          data-testid={`provider-key-${row.id}`}
+                      <div className={styles.settingsBtnrow}>
+                        <Button
+                          size="sm"
+                          disabled={hiddenCount === 0}
+                          data-testid="reset-hidden-models"
+                          onClick={() => void resetHiddenModels()}
                         >
-                          <div className={styles.providerHead}>
-                            <ProviderIcon provider={row.icon} size={18} />
-                            <h3>{row.label}</h3>
-                            <span
-                              className={`${styles.settingsPill} ${stored ? styles.ok : styles.plain}`}
-                            >
-                              {stored ? 'key set' : 'no key'}
-                            </span>
+                          Reset hidden models
+                        </Button>
+                        <Button size="sm" onClick={() => void refreshModels()}>
+                          Refresh models
+                        </Button>
+                      </div>
+                    </div>
+                    {models.length > 0 && (
+                      <>
+                        <TextInput
+                          value={modelFilter}
+                          placeholder="Filter models…"
+                          onChange={(e) => setModelFilter(e.target.value)}
+                        />
+                        {filteredModels.length === 0 ? (
+                          <p className={styles.hint}>No reachable models match that filter.</p>
+                        ) : (
+                          <div className={styles.modelHideList}>
+                            {visibleGroups.map(([provider, groupModels]) => (
+                              <div key={provider} className={styles.modelHideGroup}>
+                                <div className={styles.modelHideGroupHeader}>
+                                  <ProviderIcon provider={provider} size={14} />
+                                  <span>{provider}</span>
+                                </div>
+                                <div className={styles.modelHideRows}>
+                                  {groupModels.map((m) => (
+                                    <div key={m.id} className={styles.modelHideRow}>
+                                      <div className={styles.modelHideInfo}>
+                                        <ProviderIcon provider={m.provider} size={16} />
+                                        <span className={styles.modelHideName}>
+                                          {m.displayName || modelLabel(m.id)}
+                                        </span>
+                                        {m.contextWindow ? (
+                                          <span className={styles.modelHideContext}>
+                                            {Math.round(m.contextWindow / 1000)}k context
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                      <Button
+                                        size="sm"
+                                        data-testid={`hide-model-${m.id}`}
+                                        onClick={() => void hideModel(m.id)}
+                                      >
+                                        Hide
+                                      </Button>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                          <Field
-                            label="API key"
-                            htmlFor={`provider-key-input-${row.id}`}
-                            hint={
-                              stored
-                                ? 'A key is stored. Typing a new one replaces it; the stored value is never shown.'
-                                : 'Stored by pi on this Mac. Foundry keeps no copy.'
-                            }
-                          >
-                            <TextInput
-                              id={`provider-key-input-${row.id}`}
-                              aria-label={`${row.label} API key`}
-                              type="password"
-                              autoComplete="off"
-                              spellCheck={false}
-                              mono
-                              value={draft}
-                              placeholder={stored ? '••••••••' : 'paste a key'}
-                              onChange={(e) =>
-                                setKeyDrafts((drafts) => ({ ...drafts, [row.id]: e.target.value }))
-                              }
-                            />
-                          </Field>
-                          <div className={styles.settingsBtnrow}>
-                            <Button
-                              size="sm"
-                              variant="primary"
-                              disabled={!!providerBusy || !draft.trim()}
-                              onClick={() => void saveProviderKey(row.id)}
-                            >
-                              {providerBusy === busyKey ? 'Saving…' : stored ? 'Replace' : 'Save'}
-                            </Button>
-                            {stored && (
-                              <Button
-                                size="sm"
-                                variant="danger"
-                                disabled={!!providerBusy}
-                                onClick={() => void clearProviderKey(row.id, row.label)}
-                              >
-                                Clear
-                              </Button>
-                            )}
-                          </div>
-                          {providerNotes[busyKey] && (
-                            <p className={styles.hint}>{providerNotes[busyKey]}</p>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </Section>
+                        )}
+                      </>
+                    )}
+                  </Section>
 
-                <Section label="Models" note="What every picker in the app will offer.">
-                  <p className={styles.settingsLead}>
-                    Hide a model to remove it from every picker. Hidden models are gone until you
-                    reset.
-                  </p>
-                  <div className={styles.settingsSubrow}>
-                    <p className={styles.settingsStatic} data-testid="providers-model-count">
-                      {models.length
-                        ? `${models.length} model${models.length === 1 ? '' : 's'} reachable${
-                            hiddenCount > 0 ? ` · ${hiddenCount} hidden` : ''
-                          }`
-                        : hiddenCount > 0
-                          ? 'All models are hidden. Reset to show them again.'
-                          : 'No models reachable yet — connect a provider or store a key above.'}
-                    </p>
-                    <div className={styles.settingsBtnrow}>
-                      <Button
-                        size="sm"
-                        disabled={hiddenCount === 0}
-                        data-testid="reset-hidden-models"
-                        onClick={() => void resetHiddenModels()}
-                      >
-                        Reset hidden models
-                      </Button>
+                  <Section
+                    label="Checks"
+                    note="Re-run after connecting a provider or storing a key."
+                  >
+                    <DoctorList
+                      checks={checks}
+                      title="Environment checks"
+                      onRecheck={() => void api.doctor.run().then(setChecks)}
+                      onOpenSettings={(next) => setPaneLive(next as Pane)}
+                    />
+                  </Section>
+                </>
+              )}
+              {pane === 'defaults' && (
+                <>
+                  <Section label="Agent defaults" note="What an agent set to inherit gets.">
+                    <div className={styles.settingsSpread}>
+                      <p className={styles.settingsLead}>
+                        Used by any agent that inherits model or reasoning. A per-agent choice
+                        always wins.
+                      </p>
                       <Button size="sm" onClick={() => void refreshModels()}>
                         Refresh models
                       </Button>
                     </div>
-                  </div>
-                  {models.length > 0 && (
-                    <>
-                      <TextInput
-                        value={modelFilter}
-                        placeholder="Filter models…"
-                        onChange={(e) => setModelFilter(e.target.value)}
-                      />
-                      {filteredModels.length === 0 ? (
-                        <p className={styles.hint}>No reachable models match that filter.</p>
-                      ) : (
-                        <div className={styles.modelHideList}>
-                          {visibleGroups.map(([provider, groupModels]) => (
-                            <div key={provider} className={styles.modelHideGroup}>
-                              <div className={styles.modelHideGroupHeader}>
-                                <ProviderIcon provider={provider} size={14} />
-                                <span>{provider}</span>
-                              </div>
-                              <div className={styles.modelHideRows}>
-                                {groupModels.map((m) => (
-                                  <div key={m.id} className={styles.modelHideRow}>
-                                    <div className={styles.modelHideInfo}>
-                                      <ProviderIcon provider={m.provider} size={16} />
-                                      <span className={styles.modelHideName}>
-                                        {m.displayName || modelLabel(m.id)}
-                                      </span>
-                                      {m.contextWindow ? (
-                                        <span className={styles.modelHideContext}>
-                                          {Math.round(m.contextWindow / 1000)}k context
-                                        </span>
-                                      ) : null}
-                                    </div>
-                                    <Button
-                                      size="sm"
-                                      data-testid={`hide-model-${m.id}`}
-                                      onClick={() => void hideModel(m.id)}
-                                    >
-                                      Hide
-                                    </Button>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </Section>
-
-                <Section label="Checks" note="Re-run after connecting a provider or storing a key.">
-                  <DoctorList
-                    checks={checks}
-                    title="Environment checks"
-                    onRecheck={() => void api.doctor.run().then(setChecks)}
-                    onOpenSettings={(next) => setPaneLive(next as Pane)}
-                  />
-                </Section>
-              </>
-            )}
-            {pane === 'defaults' && (
-              <>
-                <Section label="Agent defaults" note="What an agent set to inherit gets.">
-                  <div className={styles.settingsSpread}>
-                    <p className={styles.settingsLead}>
-                      Used by any agent that inherits model or reasoning. A per-agent choice always
-                      wins.
-                    </p>
-                    <Button size="sm" onClick={() => void refreshModels()}>
-                      Refresh models
-                    </Button>
-                  </div>
-                </Section>
-                <Section label="Model" note="Every model a connected provider offers.">
-                  <div className={styles.settingsFields}>
-                    <Field
-                      label="Default model"
-                      hint="The first model a connected provider offers, until you pin one."
-                    >
-                      <ModelPicker
-                        value={settings.defaultModel}
-                        models={models}
-                        allowInherit
-                        inheritLabel="First reachable model"
-                        emptyHint="No models are reachable. Connect a provider or store an API key under Providers, then refresh."
-                        onChange={(v) => void set({ defaultModel: v })}
-                        onRefresh={() => void refreshModels()}
-                      />
-                    </Field>
-                    <Field label="Default reasoning effort">
-                      <Dropdown
-                        value={settings.defaultReasoningEffort}
-                        options={[
-                          { value: 'off', label: 'Off' },
-                          { value: 'low', label: 'Low' },
-                          { value: 'medium', label: 'Medium' },
-                          { value: 'high', label: 'High' },
-                          { value: 'xhigh', label: 'X-High' },
-                          { value: 'max', label: 'Max' },
-                        ]}
-                        onChange={(next) => void set({ defaultReasoningEffort: next as never })}
-                      />
-                    </Field>
-                  </div>
-                </Section>
-                <Section
-                  label="Readiness"
-                  note="What the Agent Readiness Check uses when a repo is added."
-                >
-                  <div className={styles.settingsFields}>
-                    <Field label="Readiness model">
-                      <ModelPicker
-                        value={settings.readinessModel}
-                        models={models}
-                        allowInherit
-                        inheritLabel="Same as default model"
-                        emptyHint="No models are reachable. Connect a provider under Providers."
-                        onChange={(v) => void set({ readinessModel: v })}
-                        onRefresh={() => void refreshModels()}
-                      />
-                    </Field>
-                    <Field label="Readiness reasoning effort">
-                      <Dropdown
-                        value={settings.readinessReasoningEffort}
-                        options={[
-                          { value: 'off', label: 'Off' },
-                          { value: 'low', label: 'Low' },
-                          { value: 'medium', label: 'Medium' },
-                          { value: 'high', label: 'High' },
-                          { value: 'xhigh', label: 'X-High' },
-                          { value: 'max', label: 'Max' },
-                        ]}
-                        onChange={(next) => void set({ readinessReasoningEffort: next as never })}
-                      />
-                    </Field>
-                  </div>
-                </Section>
-                <Section label="Pull requests" note="Who drafts a PR when a pipeline asks for one.">
-                  <div className={styles.settingsFields}>
-                    <Field
-                      label="PR writer"
-                      hint="Roster agent used when adding a PR phase. A pipeline that names an agent still wins."
-                      error={
-                        isKnownPrWriter(settings.prAgent, agents)
-                          ? undefined
-                          : "Not in this project's roster. Settings still load; pick a writer that exists."
-                      }
-                    >
-                      <Dropdown
-                        value={settings.prAgent}
-                        options={prWriterOptions(agents, settings.prAgent)}
-                        aria-label="PR writer"
-                        onChange={(next) => void set({ prAgent: next })}
-                      />
-                    </Field>
-                  </div>
-                </Section>
-                <Section label="Autonomy" note="How a run behaves once it starts.">
-                  <p className={styles.hint}>
-                    Runs are fully autonomous: once a run starts it never stops to ask permission.
-                    Writes outside an agent&rsquo;s boundary are always reverted, and every decision
-                    the engine makes on your behalf is recorded in the run&rsquo;s timeline.
-                  </p>
-                </Section>
-                <Section label="Limits" note="How hard Foundry tries before a phase fails.">
-                  <div className={styles.settingsFields}>
-                    <Field
-                      label="Envelope retries"
-                      hint="Correction messages sent when a reply will not parse."
-                    >
-                      <TextInput
-                        type="number"
-                        min={0}
-                        max={5}
-                        value={settings.envelopeRetries}
-                        onChange={(e) =>
-                          void setInt(e.target.value, { min: 0, max: 5 }, (envelopeRetries) => ({
-                            envelopeRetries,
-                          }))
-                        }
-                      />
-                    </Field>
-                    <Field
-                      label="Gate retries"
-                      hint="Attempts to fix a gate violation before the phase fails."
-                    >
-                      <TextInput
-                        type="number"
-                        min={0}
-                        max={5}
-                        value={settings.gateRetries}
-                        onChange={(e) =>
-                          void setInt(e.target.value, { min: 0, max: 5 }, (gateRetries) => ({
-                            gateRetries,
-                          }))
-                        }
-                      />
-                    </Field>
-                    <Field
-                      label="Compact context at (%)"
-                      hint="Between phases, an agent this full of context is compacted so the next phase has room."
-                    >
-                      <TextInput
-                        type="number"
-                        min={COMPACTION_PERCENT.min}
-                        max={COMPACTION_PERCENT.max}
-                        value={Math.round(settings.compactionThreshold * 100)}
-                        onChange={(e) =>
-                          void setInt(e.target.value, COMPACTION_PERCENT, (percent) => ({
-                            compactionThreshold: percent / 100,
-                          }))
-                        }
-                      />
-                    </Field>
-                    <Field
-                      label="Rewind after (corrections)"
-                      hint="After this many failed corrections, rewind the session to its phase-start state instead of appending another fix. Set to 0 to disable — the phase simply retries in place."
-                      error={fieldErrors.rewindAfterCorrections}
-                    >
-                      <TextInput
-                        type="number"
-                        min={REWIND_BAND.min}
-                        max={REWIND_BAND.max}
-                        step={1}
-                        value={settings.rewindAfterCorrections}
-                        aria-invalid={fieldErrors.rewindAfterCorrections ? 'true' : undefined}
-                        aria-describedby={
-                          fieldErrors.rewindAfterCorrections
-                            ? 'field-rewindAfterCorrections-error'
-                            : undefined
-                        }
-                        onChange={(e) => {
-                          const raw = e.target.value.trim();
-                          if (raw === '') {
-                            setFieldErrors((m) => ({
-                              ...m,
-                              rewindAfterCorrections:
-                                'Enter 0–20, or clear to keep the last value.',
-                            }));
-                            return;
-                          }
-                          const n = Number(raw);
-                          if (!Number.isFinite(n)) {
-                            setFieldErrors((m) => ({
-                              ...m,
-                              rewindAfterCorrections: 'That is not a number — enter 0–20.',
-                            }));
-                            return;
-                          }
-                          const clamped = Math.min(
-                            REWIND_BAND.max,
-                            Math.max(REWIND_BAND.min, Math.round(n)),
-                          );
-                          if (Math.round(n) !== n) {
-                            setFieldErrors((m) => ({
-                              ...m,
-                              rewindAfterCorrections: `Rounded to ${clamped}.`,
-                            }));
-                          } else if (n < REWIND_BAND.min || n > REWIND_BAND.max) {
-                            setFieldErrors((m) => ({
-                              ...m,
-                              rewindAfterCorrections: `Clamped to ${clamped}.`,
-                            }));
-                          } else if (n === 0) {
-                            setFieldErrors((m) => ({
-                              ...m,
-                              rewindAfterCorrections:
-                                'Rewind disabled — corrections append in place.',
-                            }));
-                          } else {
-                            setFieldErrors((m) => {
-                              const next = { ...m };
-                              delete next.rewindAfterCorrections;
-                              return next;
-                            });
-                          }
-                          void (async () => {
-                            const issues = await patchSettings({
-                              rewindAfterCorrections: clamped,
-                            });
-                            if (issues.length) setErrors(issues);
-                            else setErrors([]);
-                            // Do not clear fieldErrors on success here — the
-                            // clamped/disabled notes must survive to explain
-                            // why the input now shows a different number.
-                          })();
-                        }}
-                        onBlur={(e) => {
-                          const raw = e.target.value.trim();
-                          if (!raw) {
-                            setFieldErrors((m) => {
-                              const next = { ...m };
-                              delete next.rewindAfterCorrections;
-                              return next;
-                            });
-                            e.target.value = String(settings.rewindAfterCorrections);
-                            // Force React to treat the re-populated value as
-                            // the current committed one on next onChange.
-                            const tracker = (
-                              e.target as HTMLInputElement & {
-                                _valueTracker?: { setValue(v: string): void };
-                              }
-                            )._valueTracker;
-                            if (tracker) tracker.setValue(e.target.value);
-                          }
-                        }}
-                      />
-                      {fieldErrors.rewindAfterCorrections && (
-                        <span
-                          id="field-rewindAfterCorrections-error"
-                          role="status"
-                          className={styles.settingsWarn}
-                        >
-                          {fieldErrors.rewindAfterCorrections}
-                        </span>
-                      )}
-                    </Field>
-                    <Field label="Turn timeout (minutes)">
-                      <TextInput
-                        type="number"
-                        min={5}
-                        max={60}
-                        value={Math.round(settings.turnTimeoutMs / 60000)}
-                        onChange={(e) =>
-                          void setInt(e.target.value, { min: 5, max: 60 }, (minutes) => ({
-                            turnTimeoutMs: minutes * 60_000,
-                          }))
-                        }
-                      />
-                    </Field>
-                    <Field
-                      label="Trace poll cadence (ms)"
-                      hint="How often a live run's view refreshes."
-                    >
-                      <TextInput
-                        type="number"
-                        min={250}
-                        max={2000}
-                        step={50}
-                        value={settings.pollCadenceMs}
-                        onChange={(e) =>
-                          void setInt(e.target.value, { min: 250, max: 2000 }, (pollCadenceMs) => ({
-                            pollCadenceMs,
-                          }))
-                        }
-                      />
-                    </Field>
-                  </div>
-                </Section>
-                <Section label="Transport" note="Where the vendored provider Bridge listens.">
-                  <div className={styles.settingsFields}>
-                    <Field
-                      label="Bridge port"
-                      hint="Preferred port for the Bridge. Must be 37700–37799; if busy, the Bridge tries the next free port in that band. Change takes effect on next Bridge launch."
-                      error={fieldErrors.bridgePort}
-                    >
-                      <TextInput
-                        type="number"
-                        min={BRIDGE_PORT_BAND.min}
-                        max={BRIDGE_PORT_BAND.max}
-                        value={settings.bridgePort}
-                        aria-invalid={fieldErrors.bridgePort ? 'true' : undefined}
-                        aria-describedby={
-                          fieldErrors.bridgePort ? 'field-bridgePort-error' : undefined
-                        }
-                        onChange={(e) => {
-                          const raw = e.target.value.trim();
-                          if (raw === '') {
-                            setFieldErrors((m) => ({
-                              ...m,
-                              bridgePort: 'Enter 37700–37799, or clear to keep the current port.',
-                            }));
-                            return;
-                          }
-                          const n = Number(raw);
-                          if (!Number.isFinite(n)) {
-                            setFieldErrors((m) => ({
-                              ...m,
-                              bridgePort: 'That is not a number — enter 37700–37799.',
-                            }));
-                            return;
-                          }
-                          const rounded = Math.round(n);
-                          const clamped = Math.min(
-                            BRIDGE_PORT_BAND.max,
-                            Math.max(BRIDGE_PORT_BAND.min, rounded),
-                          );
-                          if (rounded !== n) {
-                            setFieldErrors((m) => ({
-                              ...m,
-                              bridgePort: `Rounded to ${rounded}.`,
-                            }));
-                          } else if (
-                            rounded < BRIDGE_PORT_BAND.min ||
-                            rounded > BRIDGE_PORT_BAND.max
-                          ) {
-                            setFieldErrors((m) => ({
-                              ...m,
-                              bridgePort: `Clamped to ${clamped} — the allowed band is ${BRIDGE_PORT_BAND.min}–${BRIDGE_PORT_BAND.max}.`,
-                            }));
-                          } else {
-                            setFieldErrors((m) => {
-                              const next = { ...m };
-                              delete next.bridgePort;
-                              return next;
-                            });
-                          }
-                          void (async () => {
-                            const result = await patchSettings({ bridgePort: clamped });
-                            // patchSettings already surfaced range errors in the banner;
-                            // clamp-away handling kept our field note visible instead.
-                            if (result.length) setErrors(result);
-                          })();
-                        }}
-                        onBlur={(e) => {
-                          const raw = e.target.value.trim();
-                          if (!raw) {
-                            setFieldErrors((m) => {
-                              const next = { ...m };
-                              delete next.bridgePort;
-                              return next;
-                            });
-                            e.target.value = String(settings.bridgePort);
-                            const tracker = (
-                              e.target as HTMLInputElement & {
-                                _valueTracker?: { setValue(v: string): void };
-                              }
-                            )._valueTracker;
-                            if (tracker) tracker.setValue(e.target.value);
-                          }
-                        }}
-                      />
-                      {fieldErrors.bridgePort && (
-                        <span
-                          id="field-bridgePort-error"
-                          role="status"
-                          className={styles.settingsWarn}
-                        >
-                          {fieldErrors.bridgePort}
-                        </span>
-                      )}
-                    </Field>
-                  </div>
-                </Section>
-              </>
-            )}
-
-            {pane === 'project' && (
-              <>
-                {projectDraft ? (
-                  <>
-                    <Section label="Project" note="Where Foundry runs, and what it may touch.">
+                  </Section>
+                  <Section label="Model" note="Every model a connected provider offers.">
+                    <div className={styles.settingsFields}>
                       <Field
-                        label="Project name"
-                        hint="Just for you — rename freely. The path is where Foundry runs."
+                        label="Default model"
+                        hint="The first model a connected provider offers, until you pin one."
                       >
-                        <TextInput
-                          value={projectDraft.name}
-                          onChange={(e) =>
-                            setProjectDraft({ ...projectDraft, name: e.target.value })
-                          }
-                          placeholder="My project"
+                        <ModelPicker
+                          value={settings.defaultModel}
+                          models={models}
+                          allowInherit
+                          inheritLabel="First reachable model"
+                          emptyHint="No models are reachable. Connect a provider or store an API key under Providers, then refresh."
+                          onChange={(v) => void set({ defaultModel: v })}
+                          onRefresh={() => void refreshModels()}
                         />
                       </Field>
-                      <div className={styles.settingsSubrow}>
-                        <span className={`mono faint ${styles.settingsPath}`}>
-                          {projectDraft.path}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => void api.projects.reveal(projectDraft.path)}
-                        >
-                          Reveal in Finder
-                        </Button>
-                      </div>
-                    </Section>
-                    <Section
-                      label="Readiness"
-                      note="The marker file is truth. Cached app state never overrides it."
-                    >
-                      <p className={styles.hint}>
-                        {readiness?.ready
-                          ? readiness.marker?.summary ||
-                            'This repository has a valid .agents/agent-ready.json.'
-                          : readiness?.skipped
-                            ? 'Readiness was skipped. The Agent Readiness process can be run again anytime from here.'
-                            : readiness?.markerDetail ||
-                              'No valid .agents/agent-ready.json yet. Pipeline runs may fail until the repo is ready.'}
-                      </p>
-                      {onOpenReadiness && projectDraft && (
-                        <div className={styles.settingsBtnrow}>
-                          <Button size="sm" onClick={() => onOpenReadiness(projectDraft.id)}>
-                            {readiness?.ready ? 'View readiness report' : 'Run readiness check'}
-                          </Button>
-                        </div>
-                      )}
-                    </Section>
-                    <Section label="Checks" note="Run against this repository.">
-                      <DoctorList
-                        checks={projectChecks}
-                        title="Repository checks"
-                        onRecheck={() =>
-                          void api.projects.check(projectDraft.id).then(setProjectChecks)
+                      <Field label="Default reasoning effort">
+                        <Dropdown
+                          value={settings.defaultReasoningEffort}
+                          options={[
+                            { value: 'off', label: 'Off' },
+                            { value: 'low', label: 'Low' },
+                            { value: 'medium', label: 'Medium' },
+                            { value: 'high', label: 'High' },
+                            { value: 'xhigh', label: 'X-High' },
+                            { value: 'max', label: 'Max' },
+                          ]}
+                          onChange={(next) => void set({ defaultReasoningEffort: next as never })}
+                        />
+                      </Field>
+                    </div>
+                  </Section>
+                  <Section
+                    label="Readiness"
+                    note="What the Agent Readiness Check uses when a repo is added."
+                  >
+                    <div className={styles.settingsFields}>
+                      <Field label="Readiness model">
+                        <ModelPicker
+                          value={settings.readinessModel}
+                          models={models}
+                          allowInherit
+                          inheritLabel="Same as default model"
+                          emptyHint="No models are reachable. Connect a provider under Providers."
+                          onChange={(v) => void set({ readinessModel: v })}
+                          onRefresh={() => void refreshModels()}
+                        />
+                      </Field>
+                      <Field label="Readiness reasoning effort">
+                        <Dropdown
+                          value={settings.readinessReasoningEffort}
+                          options={[
+                            { value: 'off', label: 'Off' },
+                            { value: 'low', label: 'Low' },
+                            { value: 'medium', label: 'Medium' },
+                            { value: 'high', label: 'High' },
+                            { value: 'xhigh', label: 'X-High' },
+                            { value: 'max', label: 'Max' },
+                          ]}
+                          onChange={(next) => void set({ readinessReasoningEffort: next as never })}
+                        />
+                      </Field>
+                    </div>
+                  </Section>
+                  <Section
+                    label="Pull requests"
+                    note="Who drafts a PR when a pipeline asks for one."
+                  >
+                    <div className={styles.settingsFields}>
+                      <Field
+                        label="PR writer"
+                        hint="Roster agent used when adding a PR phase. A pipeline that names an agent still wins."
+                        error={
+                          isKnownPrWriter(settings.prAgent, agents)
+                            ? undefined
+                            : "Not in this project's roster. Settings still load; pick a writer that exists."
                         }
-                        onOpenSettings={(next) => setPaneLive(next as Pane)}
-                      />
-                    </Section>
-                    <Section
-                      label="Git"
-                      note="Every run branches from the base ref. Update it from the remote here."
-                    >
-                      <div className={styles.settingsFields}>
-                        <Field label="Base ref" hint="Every run branches from here.">
-                          <TextInput
-                            mono
-                            value={projectDraft.baseRef}
-                            onChange={(e) =>
-                              setProjectDraft({ ...projectDraft, baseRef: e.target.value })
+                      >
+                        <Dropdown
+                          value={settings.prAgent}
+                          options={prWriterOptions(agents, settings.prAgent)}
+                          aria-label="PR writer"
+                          onChange={(next) => void set({ prAgent: next })}
+                        />
+                      </Field>
+                    </div>
+                  </Section>
+                  <Section label="Autonomy" note="How a run behaves once it starts.">
+                    <p className={styles.hint}>
+                      Runs are fully autonomous: once a run starts it never stops to ask permission.
+                      Writes outside an agent&rsquo;s boundary are always reverted, and every
+                      decision the engine makes on your behalf is recorded in the run&rsquo;s
+                      timeline.
+                    </p>
+                  </Section>
+                  <Section label="Limits" note="How hard Foundry tries before a phase fails.">
+                    <div className={styles.settingsFields}>
+                      <Field
+                        label="Envelope retries"
+                        hint="Correction messages sent when a reply will not parse."
+                      >
+                        <TextInput
+                          type="number"
+                          min={0}
+                          max={5}
+                          value={settings.envelopeRetries}
+                          onChange={(e) =>
+                            void setInt(e.target.value, { min: 0, max: 5 }, (envelopeRetries) => ({
+                              envelopeRetries,
+                            }))
+                          }
+                        />
+                      </Field>
+                      <Field
+                        label="Gate retries"
+                        hint="Attempts to fix a gate violation before the phase fails."
+                      >
+                        <TextInput
+                          type="number"
+                          min={0}
+                          max={5}
+                          value={settings.gateRetries}
+                          onChange={(e) =>
+                            void setInt(e.target.value, { min: 0, max: 5 }, (gateRetries) => ({
+                              gateRetries,
+                            }))
+                          }
+                        />
+                      </Field>
+                      <Field
+                        label="Compact context at (%)"
+                        hint="Between phases, an agent this full of context is compacted so the next phase has room."
+                      >
+                        <TextInput
+                          type="number"
+                          min={COMPACTION_PERCENT.min}
+                          max={COMPACTION_PERCENT.max}
+                          value={Math.round(settings.compactionThreshold * 100)}
+                          onChange={(e) =>
+                            void setInt(e.target.value, COMPACTION_PERCENT, (percent) => ({
+                              compactionThreshold: percent / 100,
+                            }))
+                          }
+                        />
+                      </Field>
+                      <Field
+                        label="Rewind after (corrections)"
+                        hint="After this many failed corrections, rewind the session to its phase-start state instead of appending another fix. Set to 0 to disable — the phase simply retries in place."
+                        error={fieldErrors.rewindAfterCorrections}
+                      >
+                        <TextInput
+                          type="number"
+                          min={REWIND_BAND.min}
+                          max={REWIND_BAND.max}
+                          step={1}
+                          value={settings.rewindAfterCorrections}
+                          aria-invalid={fieldErrors.rewindAfterCorrections ? 'true' : undefined}
+                          aria-describedby={
+                            fieldErrors.rewindAfterCorrections
+                              ? 'field-rewindAfterCorrections-error'
+                              : undefined
+                          }
+                          onChange={(e) => {
+                            const raw = e.target.value.trim();
+                            if (raw === '') {
+                              setFieldErrors((m) => ({
+                                ...m,
+                                rewindAfterCorrections:
+                                  'Enter 0–20, or clear to keep the last value.',
+                              }));
+                              return;
                             }
+                            const n = Number(raw);
+                            if (!Number.isFinite(n)) {
+                              setFieldErrors((m) => ({
+                                ...m,
+                                rewindAfterCorrections: 'That is not a number — enter 0–20.',
+                              }));
+                              return;
+                            }
+                            const clamped = Math.min(
+                              REWIND_BAND.max,
+                              Math.max(REWIND_BAND.min, Math.round(n)),
+                            );
+                            if (Math.round(n) !== n) {
+                              setFieldErrors((m) => ({
+                                ...m,
+                                rewindAfterCorrections: `Rounded to ${clamped}.`,
+                              }));
+                            } else if (n < REWIND_BAND.min || n > REWIND_BAND.max) {
+                              setFieldErrors((m) => ({
+                                ...m,
+                                rewindAfterCorrections: `Clamped to ${clamped}.`,
+                              }));
+                            } else if (n === 0) {
+                              setFieldErrors((m) => ({
+                                ...m,
+                                rewindAfterCorrections:
+                                  'Rewind disabled — corrections append in place.',
+                              }));
+                            } else {
+                              setFieldErrors((m) => {
+                                const next = { ...m };
+                                delete next.rewindAfterCorrections;
+                                return next;
+                              });
+                            }
+                            void (async () => {
+                              const issues = await patchSettings({
+                                rewindAfterCorrections: clamped,
+                              });
+                              if (issues.length) setErrors(issues);
+                              else setErrors([]);
+                              // Do not clear fieldErrors on success here — the
+                              // clamped/disabled notes must survive to explain
+                              // why the input now shows a different number.
+                            })();
+                          }}
+                          onBlur={(e) => {
+                            const raw = e.target.value.trim();
+                            if (!raw) {
+                              setFieldErrors((m) => {
+                                const next = { ...m };
+                                delete next.rewindAfterCorrections;
+                                return next;
+                              });
+                              e.target.value = String(settings.rewindAfterCorrections);
+                              // Force React to treat the re-populated value as
+                              // the current committed one on next onChange.
+                              const tracker = (
+                                e.target as HTMLInputElement & {
+                                  _valueTracker?: { setValue(v: string): void };
+                                }
+                              )._valueTracker;
+                              if (tracker) tracker.setValue(e.target.value);
+                            }
+                          }}
+                        />
+                        {fieldErrors.rewindAfterCorrections && (
+                          <span
+                            id="field-rewindAfterCorrections-error"
+                            role="status"
+                            className={styles.settingsWarn}
+                          >
+                            {fieldErrors.rewindAfterCorrections}
+                          </span>
+                        )}
+                      </Field>
+                      <Field label="Turn timeout (minutes)">
+                        <TextInput
+                          type="number"
+                          min={5}
+                          max={60}
+                          value={Math.round(settings.turnTimeoutMs / 60000)}
+                          onChange={(e) =>
+                            void setInt(e.target.value, { min: 5, max: 60 }, (minutes) => ({
+                              turnTimeoutMs: minutes * 60_000,
+                            }))
+                          }
+                        />
+                      </Field>
+                      <Field
+                        label="Trace poll cadence (ms)"
+                        hint="How often a live run's view refreshes."
+                      >
+                        <TextInput
+                          type="number"
+                          min={250}
+                          max={2000}
+                          step={50}
+                          value={settings.pollCadenceMs}
+                          onChange={(e) =>
+                            void setInt(
+                              e.target.value,
+                              { min: 250, max: 2000 },
+                              (pollCadenceMs) => ({
+                                pollCadenceMs,
+                              }),
+                            )
+                          }
+                        />
+                      </Field>
+                    </div>
+                  </Section>
+                  <Section label="Transport" note="Where the vendored provider Bridge listens.">
+                    <div className={styles.settingsFields}>
+                      <Field
+                        label="Bridge port"
+                        hint="Preferred port for the Bridge. Must be 37700–37799; if busy, the Bridge tries the next free port in that band. Change takes effect on next Bridge launch."
+                        error={fieldErrors.bridgePort}
+                      >
+                        <TextInput
+                          type="number"
+                          min={BRIDGE_PORT_BAND.min}
+                          max={BRIDGE_PORT_BAND.max}
+                          value={settings.bridgePort}
+                          aria-invalid={fieldErrors.bridgePort ? 'true' : undefined}
+                          aria-describedby={
+                            fieldErrors.bridgePort ? 'field-bridgePort-error' : undefined
+                          }
+                          onChange={(e) => {
+                            const raw = e.target.value.trim();
+                            if (raw === '') {
+                              setFieldErrors((m) => ({
+                                ...m,
+                                bridgePort: 'Enter 37700–37799, or clear to keep the current port.',
+                              }));
+                              return;
+                            }
+                            const n = Number(raw);
+                            if (!Number.isFinite(n)) {
+                              setFieldErrors((m) => ({
+                                ...m,
+                                bridgePort: 'That is not a number — enter 37700–37799.',
+                              }));
+                              return;
+                            }
+                            const rounded = Math.round(n);
+                            const clamped = Math.min(
+                              BRIDGE_PORT_BAND.max,
+                              Math.max(BRIDGE_PORT_BAND.min, rounded),
+                            );
+                            if (rounded !== n) {
+                              setFieldErrors((m) => ({
+                                ...m,
+                                bridgePort: `Rounded to ${rounded}.`,
+                              }));
+                            } else if (
+                              rounded < BRIDGE_PORT_BAND.min ||
+                              rounded > BRIDGE_PORT_BAND.max
+                            ) {
+                              setFieldErrors((m) => ({
+                                ...m,
+                                bridgePort: `Clamped to ${clamped} — the allowed band is ${BRIDGE_PORT_BAND.min}–${BRIDGE_PORT_BAND.max}.`,
+                              }));
+                            } else {
+                              setFieldErrors((m) => {
+                                const next = { ...m };
+                                delete next.bridgePort;
+                                return next;
+                              });
+                            }
+                            void (async () => {
+                              const result = await patchSettings({ bridgePort: clamped });
+                              // patchSettings already surfaced range errors in the banner;
+                              // clamp-away handling kept our field note visible instead.
+                              if (result.length) setErrors(result);
+                            })();
+                          }}
+                          onBlur={(e) => {
+                            const raw = e.target.value.trim();
+                            if (!raw) {
+                              setFieldErrors((m) => {
+                                const next = { ...m };
+                                delete next.bridgePort;
+                                return next;
+                              });
+                              e.target.value = String(settings.bridgePort);
+                              const tracker = (
+                                e.target as HTMLInputElement & {
+                                  _valueTracker?: { setValue(v: string): void };
+                                }
+                              )._valueTracker;
+                              if (tracker) tracker.setValue(e.target.value);
+                            }
+                          }}
+                        />
+                        {fieldErrors.bridgePort && (
+                          <span
+                            id="field-bridgePort-error"
+                            role="status"
+                            className={styles.settingsWarn}
+                          >
+                            {fieldErrors.bridgePort}
+                          </span>
+                        )}
+                      </Field>
+                    </div>
+                  </Section>
+                </>
+              )}
+
+              {pane === 'project' && (
+                <>
+                  {projectDraft ? (
+                    <>
+                      <Section label="Project" note="Where Foundry runs, and what it may touch.">
+                        <Field
+                          label="Project name"
+                          hint="Just for you — rename freely. The path is where Foundry runs."
+                        >
+                          <TextInput
+                            value={projectDraft.name}
+                            onChange={(e) =>
+                              setProjectDraft({ ...projectDraft, name: e.target.value })
+                            }
+                            placeholder="My project"
                           />
                         </Field>
-                        <Field label="Merge policy">
-                          <Dropdown
-                            value={projectDraft.mergePolicy}
-                            options={[
-                              { value: 'never', label: 'Never merge automatically' },
-                              { value: 'on_accept', label: 'Merge when a run is accepted' },
-                              { value: 'ask', label: 'Ask me each time' },
-                            ]}
-                            onChange={(next) =>
+                        <div className={styles.settingsSubrow}>
+                          <span className={`mono faint ${styles.settingsPath}`}>
+                            {projectDraft.path}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => void api.projects.reveal(projectDraft.path)}
+                          >
+                            Reveal in Finder
+                          </Button>
+                        </div>
+                      </Section>
+                      <Section
+                        label="Readiness"
+                        note="The marker file is truth. Cached app state never overrides it."
+                      >
+                        <p className={styles.hint}>
+                          {readiness?.ready
+                            ? readiness.marker?.summary ||
+                              'This repository has a valid .agents/agent-ready.json.'
+                            : readiness?.skipped
+                              ? 'Readiness was skipped. The Agent Readiness process can be run again anytime from here.'
+                              : readiness?.markerDetail ||
+                                'No valid .agents/agent-ready.json yet. Pipeline runs may fail until the repo is ready.'}
+                        </p>
+                        {onOpenReadiness && projectDraft && (
+                          <div className={styles.settingsBtnrow}>
+                            <Button size="sm" onClick={() => onOpenReadiness(projectDraft.id)}>
+                              {readiness?.ready ? 'View readiness report' : 'Run readiness check'}
+                            </Button>
+                          </div>
+                        )}
+                      </Section>
+                      <Section label="Checks" note="Run against this repository.">
+                        <DoctorList
+                          checks={projectChecks}
+                          title="Repository checks"
+                          onRecheck={() =>
+                            void api.projects.check(projectDraft.id).then(setProjectChecks)
+                          }
+                          onOpenSettings={(next) => setPaneLive(next as Pane)}
+                        />
+                      </Section>
+                      <Section
+                        label="Git"
+                        note="Every run branches from the base ref. Update it from the remote here."
+                      >
+                        <div className={styles.settingsFields}>
+                          <Field label="Base ref" hint="Every run branches from here.">
+                            <TextInput
+                              mono
+                              value={projectDraft.baseRef}
+                              onChange={(e) =>
+                                setProjectDraft({ ...projectDraft, baseRef: e.target.value })
+                              }
+                            />
+                          </Field>
+                          <Field label="Merge policy">
+                            <Dropdown
+                              value={projectDraft.mergePolicy}
+                              options={[
+                                { value: 'never', label: 'Never merge automatically' },
+                                { value: 'on_accept', label: 'Merge when a run is accepted' },
+                                { value: 'ask', label: 'Ask me each time' },
+                              ]}
+                              onChange={(next) =>
+                                setProjectDraft({
+                                  ...projectDraft,
+                                  mergePolicy: next as ProjectDef['mergePolicy'],
+                                })
+                              }
+                            />
+                          </Field>
+                        </div>
+                        <BaseSyncBar
+                          projectId={projectDraft.id}
+                          baseRef={project?.baseRef ?? projectDraft.baseRef}
+                          variant="settings"
+                        />
+                      </Section>
+                      <Section label="Commands" note="What a pipeline can run, and who detects it.">
+                        <ProjectCommands
+                          project={projectDraft}
+                          onChange={(commands) => setProjectDraft({ ...projectDraft, commands })}
+                        />
+                      </Section>
+                      <Section
+                        label="Setup"
+                        note="Script that installs deps in every new worktree, so agents find their binaries."
+                      >
+                        <ProjectSetup
+                          project={projectDraft}
+                          onChange={(setupScript) =>
+                            setProjectDraft({ ...projectDraft, setupScript })
+                          }
+                        />
+                      </Section>
+                      <Section
+                        label="Boundaries"
+                        note="Hard limits, whatever an agent's own boundary says."
+                      >
+                        <Field
+                          label="Protected paths"
+                          htmlFor="project-protected-paths"
+                          hint={
+                            <>
+                              One pattern per line. No agent may write these, whatever its own
+                              boundary says. <code>.git/</code>, CI config, and lockfiles are always
+                              protected.
+                            </>
+                          }
+                        >
+                          <Textarea
+                            id="project-protected-paths"
+                            aria-label="Protected paths"
+                            rows={3}
+                            placeholder="e.g. src/**/*.secret&#10;.env*"
+                            value={projectDraft.protectedPaths.join('\n')}
+                            onChange={(e) =>
                               setProjectDraft({
                                 ...projectDraft,
-                                mergePolicy: next as ProjectDef['mergePolicy'],
+                                protectedPaths: e.target.value.split('\n').filter(Boolean),
                               })
                             }
                           />
                         </Field>
-                      </div>
-                      <BaseSyncBar
-                        projectId={projectDraft.id}
-                        baseRef={project?.baseRef ?? projectDraft.baseRef}
-                        variant="settings"
-                      />
-                    </Section>
-                    <Section label="Commands" note="What a pipeline can run, and who detects it.">
-                      <ProjectCommands
-                        project={projectDraft}
-                        onChange={(commands) => setProjectDraft({ ...projectDraft, commands })}
-                      />
-                    </Section>
-                    <Section
-                      label="Setup"
-                      note="Script that installs deps in every new worktree, so agents find their binaries."
-                    >
-                      <ProjectSetup
-                        project={projectDraft}
-                        onChange={(setupScript) =>
-                          setProjectDraft({ ...projectDraft, setupScript })
-                        }
-                      />
-                    </Section>
-                    <Section
-                      label="Boundaries"
-                      note="Hard limits, whatever an agent's own boundary says."
-                    >
-                      <Field
-                        label="Protected paths"
-                        htmlFor="project-protected-paths"
-                        hint={
-                          <>
-                            One pattern per line. No agent may write these, whatever its own
-                            boundary says. <code>.git/</code>, CI config, and lockfiles are always
-                            protected.
-                          </>
-                        }
-                      >
-                        <Textarea
-                          id="project-protected-paths"
-                          aria-label="Protected paths"
-                          rows={3}
-                          placeholder="e.g. src/**/*.secret&#10;.env*"
-                          value={projectDraft.protectedPaths.join('\n')}
-                          onChange={(e) =>
-                            setProjectDraft({
-                              ...projectDraft,
-                              protectedPaths: e.target.value.split('\n').filter(Boolean),
-                            })
-                          }
-                        />
-                      </Field>
-                    </Section>
-                    {/*
+                      </Section>
+                      {/*
                       Read-only on purpose. Scope decides where an edit lands, so
                       it belongs where the editing happens; the control moved to
                       the Design header and this is the status it reports.
                     */}
-                    <Section
-                      label="Scope"
-                      note="Where this project's agents and pipelines are saved."
-                    >
-                      <div className={styles.settingsFields}>
-                        <Field label="Agents">
-                          <p className={styles.settingsStatic}>
-                            {projectDraft.ownRoster ? 'This project only' : 'Global'}
-                          </p>
-                          <span className="hint">
-                            {projectDraft.ownRoster
-                              ? 'A copy belonging to this project. Later changes to the global agents do not reach it.'
-                              : 'Shared by every project.'}
-                          </span>
-                        </Field>
-                        <Field label="Pipelines">
-                          <p className={styles.settingsStatic}>
-                            {projectDraft.ownPipelines ? 'This project only' : 'Global'}
-                          </p>
-                          <span className="hint">
-                            {projectDraft.ownPipelines
-                              ? 'A copy belonging to this project. Later changes to the global pipelines do not reach it.'
-                              : 'Shared by every project.'}
-                          </span>
-                        </Field>
-                        <Field label="Change it" className={styles.span2}>
-                          <span className="hint">
-                            Change scope in <strong>Design</strong> (<kbd>⌘3</kbd>), on the Agents
-                            or Pipelines tab — the badge beside the heading. It is set there because
-                            that is where the edits it affects are made.
-                          </span>
-                        </Field>
-                      </div>
-                    </Section>
-                    <div className={styles.settingsFoot}>
-                      <Button variant="danger" onClick={() => void removeProject()}>
-                        Remove project
-                      </Button>
-                      <span className={styles.settingsAutosave}>Changes save automatically</span>
-                    </div>
-                  </>
-                ) : (
-                  <div className={styles.settingsEmpty}>
-                    <p className="faint">
-                      No project selected. Add a git repository you already have, or create a new
-                      one on GitHub.
-                    </p>
-                    <Button variant="primary" onClick={() => void addProject()}>
-                      Add a project…
-                    </Button>
-                    {onNewProject && <Button onClick={onNewProject}>Create a new project…</Button>}
-                  </div>
-                )}
-              </>
-            )}
-            {pane === 'maintenance' && (
-              <>
-                <Section label="Retention" note="Nothing is deleted behind your back.">
-                  <Field
-                    label="Keep run history for"
-                    className={styles.settingsNarrow}
-                    hint="Applies when you press the button below. Nothing is deleted behind your back."
-                  >
-                    <Dropdown
-                      value={String(settings.retentionDays ?? '')}
-                      options={[
-                        { value: '', label: 'Forever' },
-                        { value: '7', label: '7 days' },
-                        { value: '30', label: '30 days' },
-                        { value: '90', label: '90 days' },
-                        { value: '365', label: 'A year' },
-                      ]}
-                      onChange={(next) =>
-                        void set({
-                          retentionDays: next ? Number(next) : null,
-                        })
-                      }
-                    />
-                  </Field>
-                  <div className={styles.settingsSubrow}>
-                    <div className={styles.settingsBtnrow}>
-                      <Button disabled={maintenanceBusy} onClick={() => void applyRetention()}>
-                        {maintenanceBusy ? 'Working…' : 'Apply retention now'}
-                      </Button>
-                      <Button disabled={maintenanceBusy} onClick={() => void compact()}>
-                        {maintenanceBusy ? 'Working…' : 'Compact trace databases'}
-                      </Button>
-                    </div>
-                  </div>
-                </Section>
-                <Section label="Leftover worktrees" note="Left behind by a crashed or killed run.">
-                  <p className={styles.hint}>
-                    A worktree left behind by a crashed or killed run. Removing one deletes its
-                    branch and any uncommitted work in it.
-                  </p>
-                  {orphans.length ? (
-                    <ul className={styles.settingsOrphans}>
-                      {orphans.map((orphan) => (
-                        <li key={orphan.path}>
-                          <span className={`mono ${styles.path}`}>{orphan.path}</span>
-                          <span className="mono faint">{orphan.branch}</span>
-                          <Button
-                            variant="danger"
-                            size="sm"
-                            onClick={() => void removeOrphan(orphan)}
-                          >
-                            Remove
-                          </Button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="faint">None found.</p>
-                  )}
-                  {maintenanceNote && (
-                    <p className={styles.settingsNote}>
-                      <svg
-                        width="12"
-                        height="12"
-                        viewBox="0 0 14 14"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.6"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden
+                      <Section
+                        label="Scope"
+                        note="Where this project's agents and pipelines are saved."
                       >
-                        <path d="M2.5 7.5 5.5 10.5 11.5 3.5" />
-                      </svg>
-                      {maintenanceNote}
-                    </p>
+                        <div className={styles.settingsFields}>
+                          <Field label="Agents">
+                            <p className={styles.settingsStatic}>
+                              {projectDraft.ownRoster ? 'This project only' : 'Global'}
+                            </p>
+                            <span className="hint">
+                              {projectDraft.ownRoster
+                                ? 'A copy belonging to this project. Later changes to the global agents do not reach it.'
+                                : 'Shared by every project.'}
+                            </span>
+                          </Field>
+                          <Field label="Pipelines">
+                            <p className={styles.settingsStatic}>
+                              {projectDraft.ownPipelines ? 'This project only' : 'Global'}
+                            </p>
+                            <span className="hint">
+                              {projectDraft.ownPipelines
+                                ? 'A copy belonging to this project. Later changes to the global pipelines do not reach it.'
+                                : 'Shared by every project.'}
+                            </span>
+                          </Field>
+                          <Field label="Change it" className={styles.span2}>
+                            <span className="hint">
+                              Change scope in <strong>Design</strong> (<kbd>⌘3</kbd>), on the Agents
+                              or Pipelines tab — the badge beside the heading. It is set there
+                              because that is where the edits it affects are made.
+                            </span>
+                          </Field>
+                        </div>
+                      </Section>
+                      <div className={styles.settingsFoot}>
+                        <Button variant="danger" onClick={() => void removeProject()}>
+                          Remove project
+                        </Button>
+                        <span className={styles.settingsAutosave}>Changes save automatically</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className={styles.settingsEmpty}>
+                      <p className="faint">
+                        No project selected. Add a git repository you already have, or create a new
+                        one on GitHub.
+                      </p>
+                      <Button variant="primary" onClick={() => void addProject()}>
+                        Add a project…
+                      </Button>
+                      {onNewProject && (
+                        <Button onClick={onNewProject}>Create a new project…</Button>
+                      )}
+                    </div>
                   )}
-                </Section>
-              </>
-            )}
-            {pane === 'about' && (
-              <>
-                <Section label="Foundry" note="A software factory you can watch.">
-                  <p className={styles.settingsLead}>
-                    A software factory you can watch. Pipelines are data, agents are configuration,
-                    and every phase leaves evidence you can read.
-                  </p>
-                </Section>
-                <Section label="Build" note="What this copy of Foundry is running.">
-                  <dl className={styles.settingsFacts}>
-                    <div className={styles.settingsFact}>
-                      <dt>Version</dt>
-                      <dd className="mono">{version}</dd>
+                </>
+              )}
+              {pane === 'maintenance' && (
+                <>
+                  <Section label="Retention" note="Nothing is deleted behind your back.">
+                    <Field
+                      label="Keep run history for"
+                      className={styles.settingsNarrow}
+                      hint="Applies when you press the button below. Nothing is deleted behind your back."
+                    >
+                      <Dropdown
+                        value={String(settings.retentionDays ?? '')}
+                        options={[
+                          { value: '', label: 'Forever' },
+                          { value: '7', label: '7 days' },
+                          { value: '30', label: '30 days' },
+                          { value: '90', label: '90 days' },
+                          { value: '365', label: 'A year' },
+                        ]}
+                        onChange={(next) =>
+                          void set({
+                            retentionDays: next ? Number(next) : null,
+                          })
+                        }
+                      />
+                    </Field>
+                    <div className={styles.settingsSubrow}>
+                      <div className={styles.settingsBtnrow}>
+                        <Button disabled={maintenanceBusy} onClick={() => void applyRetention()}>
+                          {maintenanceBusy ? 'Working…' : 'Apply retention now'}
+                        </Button>
+                        <Button disabled={maintenanceBusy} onClick={() => void compact()}>
+                          {maintenanceBusy ? 'Working…' : 'Compact trace databases'}
+                        </Button>
+                      </div>
                     </div>
-                    <div className={styles.settingsFact}>
-                      <dt>Agent harness</dt>
-                      <dd className="mono">pi, in this process</dd>
+                  </Section>
+                  <Section
+                    label="Leftover worktrees"
+                    note="Left behind by a crashed or killed run."
+                  >
+                    <p className={styles.hint}>
+                      A worktree left behind by a crashed or killed run. Removing one deletes its
+                      branch and any uncommitted work in it.
+                    </p>
+                    {orphans.length ? (
+                      <ul className={styles.settingsOrphans}>
+                        {orphans.map((orphan) => (
+                          <li key={orphan.path}>
+                            <span className={`mono ${styles.path}`}>{orphan.path}</span>
+                            <span className="mono faint">{orphan.branch}</span>
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              onClick={() => void removeOrphan(orphan)}
+                            >
+                              Remove
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="faint">None found.</p>
+                    )}
+                    {maintenanceNote && (
+                      <p className={styles.settingsNote}>
+                        <svg
+                          width="12"
+                          height="12"
+                          viewBox="0 0 14 14"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden
+                        >
+                          <path d="M2.5 7.5 5.5 10.5 11.5 3.5" />
+                        </svg>
+                        {maintenanceNote}
+                      </p>
+                    )}
+                  </Section>
+                </>
+              )}
+              {pane === 'about' && (
+                <>
+                  <Section label="Foundry" note="A software factory you can watch.">
+                    <p className={styles.settingsLead}>
+                      A software factory you can watch. Pipelines are data, agents are
+                      configuration, and every phase leaves evidence you can read.
+                    </p>
+                  </Section>
+                  <Section label="Build" note="What this copy of Foundry is running.">
+                    <dl className={styles.settingsFacts}>
+                      <div className={styles.settingsFact}>
+                        <dt>Version</dt>
+                        <dd className="mono">{version}</dd>
+                      </div>
+                      <div className={styles.settingsFact}>
+                        <dt>Agent harness</dt>
+                        <dd className="mono">pi, in this process</dd>
+                      </div>
+                      <div className={styles.settingsFact}>
+                        <dt>Reachable models</dt>
+                        <dd className="mono">{models.length}</dd>
+                      </div>
+                      <div className={styles.settingsFact}>
+                        <dt>Projects</dt>
+                        <dd className="mono">{projects.length}</dd>
+                      </div>
+                    </dl>
+                  </Section>
+                  <Section label="Elsewhere" note="Providers and the cinematic intro.">
+                    <div className={styles.settingsBtnrow}>
+                      <Button size="sm" onClick={() => setPaneLive('providers')}>
+                        Manage providers
+                      </Button>
+                      <Button size="sm" onClick={() => void replayIntro()}>
+                        Replay intro
+                      </Button>
                     </div>
-                    <div className={styles.settingsFact}>
-                      <dt>Reachable models</dt>
-                      <dd className="mono">{models.length}</dd>
-                    </div>
-                    <div className={styles.settingsFact}>
-                      <dt>Projects</dt>
-                      <dd className="mono">{projects.length}</dd>
-                    </div>
-                  </dl>
-                </Section>
-                <Section label="Elsewhere" note="Providers and the cinematic intro.">
-                  <div className={styles.settingsBtnrow}>
-                    <Button size="sm" onClick={() => setPaneLive('providers')}>
-                      Manage providers
-                    </Button>
-                    <Button size="sm" onClick={() => void replayIntro()}>
-                      Replay intro
-                    </Button>
-                  </div>
-                  <p className={styles.hint}>
-                    Replay intro walks the cinematic onboarding again: agents, providers,
-                    environment checks, and your first project.
-                  </p>
-                </Section>
-              </>
-            )}
-            {errors.length > 0 && (
-              <ul className={styles.settingsErrors} role="alert">
-                {errors.map((error, i) => (
-                  <li key={i}>{error}</li>
-                ))}
-              </ul>
-            )}
+                    <p className={styles.hint}>
+                      Replay intro walks the cinematic onboarding again: agents, providers,
+                      environment checks, and your first project.
+                    </p>
+                  </Section>
+                </>
+              )}
+              {errors.length > 0 && (
+                <ul className={styles.settingsErrors} role="alert">
+                  {errors.map((error, i) => (
+                    <li key={i}>{error}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         </div>
+
+        {palOpen && (
+          <div
+            className={styles.palScrim}
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) setPalOpen(false);
+            }}
+          >
+            <div
+              className={styles.pal}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Search settings"
+            >
+              <div className={styles.palRow}>
+                <input
+                  className={styles.palInput}
+                  autoFocus
+                  value={palQ}
+                  placeholder="Type a setting or action…"
+                  aria-label="Search settings"
+                  spellCheck={false}
+                  onChange={(e) => {
+                    setPalQ(e.target.value);
+                    setPalIdx(0);
+                  }}
+                  onKeyDown={onPalKeyDown}
+                />
+                <kbd className={styles.palKbd}>esc</kbd>
+              </div>
+              <div className={styles.palList} role="listbox" aria-label="Settings results">
+                {palEntries.length === 0 && (
+                  <p className={styles.searchEmpty}>Nothing matches “{palQ.trim()}”.</p>
+                )}
+                {palEntries.map((entry, i) =>
+                  entry.kind === 'toggle' ? (
+                    <div
+                      key={entry.def.id}
+                      role="option"
+                      aria-selected={i === palSel}
+                      className={`${styles.palItem} ${i === palSel ? styles.on : ''}`}
+                      onClick={() => palActivate(entry)}
+                      onMouseEnter={() => setPalIdx(i)}
+                    >
+                      <span className={styles.palItemTitle}>{entry.def.title}</span>
+                      <input
+                        type="checkbox"
+                        className={styles.settingsSwitch}
+                        checked={toggleChecked(entry.def.id)}
+                        onChange={() => palActivate(entry)}
+                        onClick={(e) => e.stopPropagation()}
+                        aria-label={entry.def.title}
+                      />
+                    </div>
+                  ) : (
+                    <div
+                      key={`${entry.hit.pane}:${entry.hit.sectionId ?? 'pane'}`}
+                      role="option"
+                      aria-selected={i === palSel}
+                      className={`${styles.palItem} ${i === palSel ? styles.on : ''}`}
+                      onClick={() => palActivate(entry)}
+                      onMouseEnter={() => setPalIdx(i)}
+                    >
+                      <span className={styles.palItemTitle}>
+                        <Highlight text={entry.hit.title} q={palQ} />
+                      </span>
+                      <span className={styles.palItemMeta}>
+                        {entry.hit.pane === pane && entry.hit.sectionId
+                          ? 'This pane'
+                          : entry.hit.paneLabel}
+                      </span>
+                    </div>
+                  ),
+                )}
+              </div>
+              <div className={styles.palFoot}>
+                <span>
+                  <kbd className={styles.palKbd}>↑↓</kbd> navigate
+                </span>
+                <span>
+                  <kbd className={styles.palKbd}>↵</kbd> select
+                </span>
+                <span>
+                  <kbd className={styles.palKbd}>esc</kbd> close
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );

@@ -37,6 +37,8 @@ function AppInner(): React.JSX.Element {
   const [openRunId, setOpenRunId] = useState('');
   const [inspectorRunId, setInspectorRunId] = useState('');
   const [settingsPane, setSettingsPane] = useState('general');
+  /** ⌘K opens Settings' search palette; the nonce re-raises it on every press. */
+  const [settingsPaletteNonce, setSettingsPaletteNonce] = useState(0);
   const [designTab, setDesignTab] = useState<DesignTab>('pipelines');
   const [smithOpen, setSmithOpen] = useState(false);
   /** Why the sidebar's one-click start failed, carried into the launcher. */
@@ -192,10 +194,16 @@ function AppInner(): React.JSX.Element {
     setOpenRunId('');
   }, []);
 
+  const openSettingsSearch = useCallback((): void => {
+    go('settings');
+    setSettingsPaletteNonce((n) => n + 1);
+  }, [go]);
+
   useGlobalShortcuts({
     onNavigate: go,
     onDesignTab: goDesign,
     onEscape: escapeBack,
+    onSettingsSearch: openSettingsSearch,
     enabled: ready && !needsOnboarding,
   });
 
@@ -265,6 +273,7 @@ function AppInner(): React.JSX.Element {
         onPaneChange={setSettingsPane}
         onNewProject={newProject}
         onOpenReadiness={(id) => setReadinessProjectId(id)}
+        paletteNonce={settingsPaletteNonce}
       />
     );
   }
