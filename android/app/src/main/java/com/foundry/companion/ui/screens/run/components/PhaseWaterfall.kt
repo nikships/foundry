@@ -13,8 +13,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import com.foundry.companion.data.model.EventRow
 import com.foundry.companion.data.model.PhaseRunSummary
+import com.foundry.companion.data.model.TranscriptEvents
+import com.foundry.companion.data.model.WaterfallTickKind
 import com.foundry.companion.ui.theme.FoundryTheme
 import com.foundry.companion.ui.theme.foundryPulseEnabled
 import com.foundry.companion.util.RunFormatters
@@ -26,6 +30,7 @@ fun PhaseWaterfall(
     selectedPhaseId: String?,
     onSelectPhase: (String) -> Unit,
     modifier: Modifier = Modifier,
+    events: List<EventRow> = emptyList(),
     nowMs: Long = System.currentTimeMillis()
 ) {
     val colors = FoundryTheme.colors
@@ -58,7 +63,8 @@ fun PhaseWaterfall(
             .fillMaxWidth()
             .background(colors.bgPanel, shapes.card)
             .border(1.dp, colors.line, shapes.card)
-            .padding(12.dp),
+            .padding(12.dp)
+            .testTag("phase-waterfall"),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Row(
@@ -128,12 +134,14 @@ fun PhaseWaterfall(
                     )
                 }
 
-                // Proportional bar
-                Box(
+                // Proportional bar + tool/gate/interrupt ticks from already-fetched events
+                val ticks = TranscriptEvents.waterfallTicks(phase, events, nowMs)
+                BoxWithConstraints(
                     modifier = Modifier
                         .weight(1f)
                         .height(8.dp)
                         .background(colors.bgInput, RoundedCornerShape(2.dp))
+                        .testTag("waterfall-bar-${phase.resolvedId}")
                 ) {
                     Box(
                         modifier = Modifier
@@ -141,6 +149,22 @@ fun PhaseWaterfall(
                             .fillMaxHeight()
                             .background(statusColor, RoundedCornerShape(2.dp))
                     )
+                    ticks.forEach { tick ->
+                        val tickColor = when (tick.kind) {
+                            WaterfallTickKind.TOOL -> colors.accent
+                            WaterfallTickKind.GATE -> colors.statusAccepted
+                            WaterfallTickKind.GATE_FAIL -> colors.statusFailed
+                            WaterfallTickKind.INTERRUPT -> colors.statusRejected
+                        }
+                        Box(
+                            modifier = Modifier
+                                .offset(x = maxWidth * tick.fraction.coerceIn(0f, 0.98f))
+                                .width(2.dp)
+                                .height(8.dp)
+                                .background(tickColor, RoundedCornerShape(1.dp))
+                                .testTag("waterfall-tick-${tick.kind.tag}")
+                        )
+                    }
                 }
 
                 // Duration text
