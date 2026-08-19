@@ -66,6 +66,8 @@ class NotificationsTest {
         context = ApplicationProvider.getApplicationContext()
         sessionManager = SessionManager(context)
         sessionManager.clearSession()
+        sessionManager.clearNewRunDraft()
+        sessionManager.setSelectedProjectId(null)
 
         testNotificationManager = TestNotificationManager()
         notifier = CompanionNotifier(testNotificationManager, sessionManager)

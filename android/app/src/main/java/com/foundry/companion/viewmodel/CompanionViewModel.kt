@@ -80,6 +80,7 @@ class CompanionViewModel(
         CompanionUiState(
             connectionStatus = repository.connectionStatus.value,
             activeSession = repository.activeSession.value,
+            selectedProjectId = sessionManager?.getSelectedProjectId().orEmpty(),
             isNotifyOnSettleEnabled = sessionManager?.isNotifyOnSettleEnabled() ?: true
         )
     )
@@ -140,9 +141,14 @@ class CompanionViewModel(
             loadPendingInterrupts()
 
             repository.getProjects().onSuccess { projects ->
-                val selected = if (_uiState.value.selectedProjectId.isEmpty()) {
-                    projects.firstOrNull()?.id.orEmpty()
-                } else _uiState.value.selectedProjectId
+                val selected = resolveSelectedProjectId(
+                    projects = projects,
+                    current = _uiState.value.selectedProjectId,
+                    persisted = sessionManager?.getSelectedProjectId().orEmpty()
+                )
+                if (selected.isNotEmpty()) {
+                    sessionManager?.setSelectedProjectId(selected)
+                }
 
                 _uiState.update {
                     it.copy(projects = projects, selectedProjectId = selected)
@@ -160,6 +166,8 @@ class CompanionViewModel(
     }
 
     fun selectProject(projectId: String) {
+        if (projectId.isBlank()) return
+        sessionManager?.setSelectedProjectId(projectId)
         _uiState.update { it.copy(selectedProjectId = projectId) }
         loadRuns(projectId)
         loadPrStatus(projectId)
@@ -334,6 +342,18 @@ class CompanionViewModel(
         sessionManager?.setLastUsedPipeline(projectId, pipelineId)
     }
 
+    fun getNewRunDraft(): String {
+        return sessionManager?.getNewRunDraft().orEmpty()
+    }
+
+    fun setNewRunDraft(request: String) {
+        sessionManager?.setNewRunDraft(request)
+    }
+
+    fun clearNewRunDraft() {
+        sessionManager?.clearNewRunDraft()
+    }
+
     fun clearValidationIssues() {
         _uiState.update { it.copy(validationIssues = emptyList()) }
     }
@@ -351,6 +371,7 @@ class CompanionViewModel(
             _uiState.update { it.copy(isStartingRun = false) }
             result.onSuccess { startResult ->
                 if (startResult.ok && startResult.runId != null) {
+                    clearNewRunDraft()
                     loadRuns(projectId)
                     onSuccess(startResult.runId)
                 } else {
@@ -457,6 +478,20 @@ class CompanionViewModel(
         viewModelScope.launch {
             repository.retryConnection()
         }
+    }
+
+    private fun resolveSelectedProjectId(
+        projects: List<CompanionProjectSummary>,
+        current: String,
+        persisted: String
+    ): String {
+        if (current.isNotEmpty() && (projects.isEmpty() || projects.any { it.id == current })) {
+            return current
+        }
+        if (persisted.isNotEmpty() && projects.any { it.id == persisted }) {
+            return persisted
+        }
+        return projects.firstOrNull()?.id.orEmpty()
     }
 
     private fun canDraftPr(run: RunRow): Boolean {

@@ -45,6 +45,34 @@ class SessionManager(context: Context) {
         prefs.edit().putString("${KEY_LAST_PIPELINE_PREFIX}_$projectId", pipelineId).apply()
     }
 
+    fun getNewRunDraft(): String {
+        return prefs.getString(KEY_NEW_RUN_DRAFT, "").orEmpty()
+    }
+
+    fun setNewRunDraft(text: String) {
+        if (text.isEmpty()) {
+            prefs.edit().remove(KEY_NEW_RUN_DRAFT).apply()
+        } else {
+            prefs.edit().putString(KEY_NEW_RUN_DRAFT, text).apply()
+        }
+    }
+
+    fun clearNewRunDraft() {
+        prefs.edit().remove(KEY_NEW_RUN_DRAFT).apply()
+    }
+
+    fun getSelectedProjectId(): String? {
+        return prefs.getString(KEY_SELECTED_PROJECT, null)?.takeIf { it.isNotBlank() }
+    }
+
+    fun setSelectedProjectId(projectId: String?) {
+        if (projectId.isNullOrBlank()) {
+            prefs.edit().remove(KEY_SELECTED_PROJECT).apply()
+        } else {
+            prefs.edit().putString(KEY_SELECTED_PROJECT, projectId).apply()
+        }
+    }
+
     fun hasPromptedNotificationPermission(): Boolean {
         return prefs.getBoolean(KEY_NOTIFY_PROMPTED, false)
     }
@@ -95,5 +123,7 @@ class SessionManager(context: Context) {
         private const val KEY_NOTIFIED_RUNS = "notified_runs"
         private const val KEY_NOTIFIED_INTERRUPTS = "notified_interrupts"
         private const val KEY_LAST_PIPELINE_PREFIX = "last_pipeline"
+        private const val KEY_NEW_RUN_DRAFT = "new_run_draft"
+        private const val KEY_SELECTED_PROJECT = "selected_project_id"
     }
 }

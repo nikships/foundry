@@ -249,6 +249,33 @@ class NewRunScreenTest {
     }
 
     @Test
+    fun testRestoredDraftPopulatesRequestAndReportsEdits() {
+        var latestDraft: String? = null
+
+        composeTestRule.setContent {
+            FoundryTheme {
+                NewRunScreen(
+                    projects = sampleProjects,
+                    selectedProjectId = "proj_foundry_core",
+                    onProjectSelect = {},
+                    onDismiss = {},
+                    onStartRun = { _, _, _ -> },
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    initialRequestText = "Persisted draft request",
+                    onRequestChange = { latestDraft = it }
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Persisted draft request").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Describe what to build").assertDoesNotExist()
+        composeTestRule.onNodeWithText("START RUN").assertIsEnabled()
+
+        composeTestRule.onNodeWithText("Persisted draft request").performTextReplacement("Edited persisted draft")
+        assertEquals("Edited persisted draft", latestDraft)
+    }
+
+    @Test
     fun testDismissCallback() {
         var dismissed = false
 

@@ -21,6 +21,8 @@ class StateRestorationTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         sessionManager = SessionManager(context)
         sessionManager.clearSession()
+        sessionManager.clearNewRunDraft()
+        sessionManager.setSelectedProjectId(null)
     }
 
     @Test
@@ -43,6 +45,36 @@ class StateRestorationTest {
 
         sessionManager.setPromptedNotificationPermission(true)
         assertTrue(sessionManager.hasPromptedNotificationPermission())
+    }
+
+    @Test
+    fun testNewRunDraftSurvivesProcessDeathAndClearsExplicitly() {
+        assertEquals("", sessionManager.getNewRunDraft())
+
+        sessionManager.setNewRunDraft("Persist this request across death")
+        assertEquals("Persist this request across death", sessionManager.getNewRunDraft())
+
+        // A new SessionManager on the same prefs is a process-death restart.
+        val restored = SessionManager(ApplicationProvider.getApplicationContext())
+        assertEquals("Persist this request across death", restored.getNewRunDraft())
+
+        restored.clearNewRunDraft()
+        assertEquals("", restored.getNewRunDraft())
+        assertEquals("", sessionManager.getNewRunDraft())
+    }
+
+    @Test
+    fun testSelectedProjectIdSurvivesRestart() {
+        assertNull(sessionManager.getSelectedProjectId())
+
+        sessionManager.setSelectedProjectId("proj_foundry_docs")
+        assertEquals("proj_foundry_docs", sessionManager.getSelectedProjectId())
+
+        val restored = SessionManager(ApplicationProvider.getApplicationContext())
+        assertEquals("proj_foundry_docs", restored.getSelectedProjectId())
+
+        restored.setSelectedProjectId(null)
+        assertNull(restored.getSelectedProjectId())
     }
 
     @Test
