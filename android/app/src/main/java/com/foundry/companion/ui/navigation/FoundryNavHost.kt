@@ -14,6 +14,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.foundry.companion.data.model.ConnectionStatus
 import com.foundry.companion.data.session.SessionManager
+import com.foundry.companion.ui.components.LocalOpenConnectionSheet
 import com.foundry.companion.ui.screens.connection.ConnectionBottomSheet
 import com.foundry.companion.ui.screens.inspector.InspectorScreen
 import com.foundry.companion.ui.screens.newrun.NewRunScreen
@@ -137,6 +138,7 @@ fun FoundryNavHost(
         }
     }
 
+    CompositionLocalProvider(LocalOpenConnectionSheet provides { showConnectionSheet = true }) {
     NavHost(
         navController = navController,
         startDestination = startDestination,
@@ -304,6 +306,7 @@ fun FoundryNavHost(
                 onRetryConnection = { viewModel.retryConnection() }
             )
         }
+    }
     }
 
     // 6. Connection Bottom Sheet Overlay

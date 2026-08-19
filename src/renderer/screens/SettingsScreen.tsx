@@ -267,9 +267,9 @@ export default function SettingsScreen({
     return api.on('bridge-changed', reload);
   }, []);
 
-  const refreshPairingPayload = useCallback(async (): Promise<void> => {
+  const loadPairingPayload = useCallback(async (refresh = false): Promise<void> => {
     try {
-      const payload = await api.companion.pairingPayload();
+      const payload = await api.companion.pairingPayload(refresh ? { refresh: true } : undefined);
       setPairingPayload(payload);
     } catch {
       setPairingPayload(null);
@@ -278,16 +278,17 @@ export default function SettingsScreen({
 
   // A phone pairs over HTTP minutes after the host started, so the pane
   // re-reads on the push event rather than trusting its own action results.
+  // Re-read must not mint a new secret — that rotates the QR under a scan.
   useEffect(() => {
     const reload = (): void => {
       void api.companion.state().then((st) => {
         setCompanion(st);
-        if (st.running) void refreshPairingPayload();
+        if (st.running) void loadPairingPayload();
       });
     };
     reload();
     return api.on('companion-changed', reload);
-  }, [refreshPairingPayload]);
+  }, [loadPairingPayload]);
 
   const toggleCompanion = async (on: boolean): Promise<void> => {
     setCompanionBusy(true);
@@ -295,7 +296,7 @@ export default function SettingsScreen({
       const next = on ? await api.companion.start() : await api.companion.stop();
       setCompanion(next);
       if (next.running) {
-        void refreshPairingPayload();
+        void loadPairingPayload();
       } else {
         setPairingPayload(null);
       }
@@ -1114,7 +1115,7 @@ export default function SettingsScreen({
                                 >
                                   {copiedPayload ? 'Copied to clipboard!' : 'Copy pairing code'}
                                 </Button>
-                                <Button size="sm" onClick={() => void refreshPairingPayload()}>
+                                <Button size="sm" onClick={() => void loadPairingPayload(true)}>
                                   Refresh QR code
                                 </Button>
                               </div>
@@ -1155,7 +1156,7 @@ export default function SettingsScreen({
                                       .then(() => api.companion.state())
                                       .then((st) => {
                                         setCompanion(st);
-                                        if (st.devices.length === 0) void refreshPairingPayload();
+                                        if (st.devices.length === 0) void loadPairingPayload();
                                       })
                                   }
                                 >
@@ -1169,8 +1170,7 @@ export default function SettingsScreen({
                                 size="sm"
                                 onClick={() => {
                                   setShowPairMore((prev) => !prev);
-                                  if (!showPairMore && !pairingPayload)
-                                    void refreshPairingPayload();
+                                  if (!showPairMore && !pairingPayload) void loadPairingPayload();
                                 }}
                               >
                                 {showPairMore ? 'Hide pairing QR code' : 'Pair another phone…'}
@@ -1217,7 +1217,7 @@ export default function SettingsScreen({
                                     >
                                       {copiedPayload ? 'Copied to clipboard!' : 'Copy pairing code'}
                                     </Button>
-                                    <Button size="sm" onClick={() => void refreshPairingPayload()}>
+                                    <Button size="sm" onClick={() => void loadPairingPayload(true)}>
                                       Refresh QR code
                                     </Button>
                                   </div>

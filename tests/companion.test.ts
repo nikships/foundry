@@ -345,6 +345,39 @@ describe('pairing', () => {
     const { secret } = secrets.issue();
     now += PAIRING_SECRET_TTL_MS + 1;
     expect(secrets.redeem(secret)).toBe(false);
+    expect(secrets.current()).toBeNull();
+  });
+
+  it('re-reading pairingPayload does not rotate the in-flight secret', () => {
+    const first = h.host.pairingPayload() as CompanionPairingPayload;
+    const second = h.host.pairingPayload() as CompanionPairingPayload;
+    expect(second.secret).toBe(first.secret);
+    expect(second.expiresAt).toBe(first.expiresAt);
+    expect(second.origin).toBe(first.origin);
+  });
+
+  it('explicit refresh mints a new secret; later reads keep that one', () => {
+    const first = h.host.pairingPayload() as CompanionPairingPayload;
+    const refreshed = h.host.pairingPayload({ refresh: true }) as CompanionPairingPayload;
+    expect(refreshed.secret).not.toBe(first.secret);
+    const reread = h.host.pairingPayload() as CompanionPairingPayload;
+    expect(reread.secret).toBe(refreshed.secret);
+    expect(reread.expiresAt).toBe(refreshed.expiresAt);
+  });
+
+  it('issues a new payload after the displayed secret is spent', async () => {
+    const first = h.host.pairingPayload() as CompanionPairingPayload;
+    const res = await fetch(`${h.origin()}/pair`, {
+      method: 'POST',
+      body: JSON.stringify({
+        protocolVersion: COMPANION_PROTOCOL_VERSION,
+        secret: first.secret,
+        deviceName: 'Pixel',
+      }),
+    });
+    expect(res.status).toBe(200);
+    const next = h.host.pairingPayload() as CompanionPairingPayload;
+    expect(next.secret).not.toBe(first.secret);
   });
 
   it('announces pair and unpair on the state-changed seam', async () => {

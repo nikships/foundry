@@ -1,8 +1,10 @@
 package com.foundry.companion
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.foundry.companion.data.model.*
+import com.foundry.companion.ui.components.LocalOpenConnectionSheet
 import com.foundry.companion.ui.screens.runs.RunsScreen
 import com.foundry.companion.ui.theme.FoundryTheme
 import org.junit.Assert.assertEquals
@@ -277,5 +279,70 @@ class RunsScreenTest {
         composeTestRule.onNodeWithText("Foundry Docs", useUnmergedTree = true).assertIsDisplayed()
         composeTestRule.onNodeWithText("Foundry Docs", useUnmergedTree = true).performClick()
         assertEquals("p2", selectedProj)
+    }
+
+    @Test
+    fun testOfflineBannerOffersRetryAndConnection() {
+        var retried = false
+        var openedConnection = false
+
+        composeTestRule.setContent {
+            FoundryTheme {
+                CompositionLocalProvider(LocalOpenConnectionSheet provides { openedConnection = true }) {
+                    RunsScreen(
+                        runs = emptyList(),
+                        connectionStatus = ConnectionStatus.Offline(
+                            "Nik's Mac",
+                            "http://192.168.1.100:52810"
+                        ),
+                        projectName = "Foundry",
+                        onRunClick = {},
+                        onStartRunClick = {},
+                        onConnectionPillClick = {},
+                        onRetryConnection = { retried = true }
+                    )
+                }
+            }
+        }
+
+        composeTestRule.onNodeWithText("Retry").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Connection…").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Retry").performClick()
+        assertTrue(retried)
+
+        composeTestRule.onNodeWithText("Connection…").performClick()
+        assertTrue(openedConnection)
+    }
+
+    @Test
+    fun testReconnectingBannerOffersRetryNowAndConnection() {
+        var retried = false
+        var openedConnection = false
+
+        composeTestRule.setContent {
+            FoundryTheme {
+                CompositionLocalProvider(LocalOpenConnectionSheet provides { openedConnection = true }) {
+                    RunsScreen(
+                        runs = emptyList(),
+                        connectionStatus = ConnectionStatus.Reconnecting(
+                            "Nik's Mac",
+                            "http://192.168.1.100:52810"
+                        ),
+                        projectName = "Foundry",
+                        onRunClick = {},
+                        onStartRunClick = {},
+                        onConnectionPillClick = {},
+                        onRetryConnection = { retried = true }
+                    )
+                }
+            }
+        }
+
+        composeTestRule.onNodeWithText("Retry now").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Connection…").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Retry now").performClick()
+        assertTrue(retried)
+        composeTestRule.onNodeWithText("Connection…").performClick()
+        assertTrue(openedConnection)
     }
 }

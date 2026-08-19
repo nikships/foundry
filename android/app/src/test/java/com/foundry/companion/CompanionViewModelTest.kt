@@ -1,6 +1,7 @@
 package com.foundry.companion
 
 import android.content.Context
+import android.os.Build
 import androidx.test.core.app.ApplicationProvider
 import com.foundry.companion.data.model.COMPANION_PROTOCOL_VERSION
 import com.foundry.companion.data.model.CompanionPairingPayload
@@ -9,6 +10,7 @@ import com.foundry.companion.data.model.PairedSession
 import com.foundry.companion.data.repository.FakeCompanionRepository
 import com.foundry.companion.data.session.SessionManager
 import com.foundry.companion.viewmodel.CompanionViewModel
+import com.foundry.companion.viewmodel.defaultCompanionDeviceName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.*
@@ -135,6 +137,36 @@ class CompanionViewModelTest {
         val stored = sessionManager.getSession()
         assertNotNull(stored)
         assertEquals("Nik’s Mac", stored?.desktopName)
+        assertEquals(defaultCompanionDeviceName(), unpairedRepo.lastPairedDeviceName)
+        assertEquals(Build.MODEL.trim().ifBlank { "Android Device" }, unpairedRepo.lastPairedDeviceName)
+        assertFalse(unpairedRepo.lastPairedDeviceName.isNullOrBlank())
+    }
+
+    @Test
+    fun testPairSendsExplicitDeviceName() {
+        val unpairedRepo = FakeCompanionRepository(initialPaired = false)
+        val vm = CompanionViewModel(
+            unpairedRepo,
+            sessionManager,
+            enablePolling = false,
+            deviceName = "Pixel 8 Pro"
+        )
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.pair(
+            CompanionPairingPayload(
+                protocolVersion = COMPANION_PROTOCOL_VERSION,
+                origin = "http://192.168.1.100:52810",
+                desktopId = "desk_01",
+                desktopName = "Nik’s Mac",
+                secret = "sec_test_abc",
+                expiresAt = "2026-08-19T12:00:00Z"
+            )
+        )
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("Pixel 8 Pro", unpairedRepo.lastPairedDeviceName)
+        assertNotEquals("Android Device", unpairedRepo.lastPairedDeviceName)
     }
 
     @Test

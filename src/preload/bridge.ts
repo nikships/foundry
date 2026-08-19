@@ -167,7 +167,7 @@ const api: FoundryApi = {
     state: () => call(IPC.companionState),
     start: () => call(IPC.companionStart),
     stop: () => call(IPC.companionStop),
-    pairingPayload: () => call(IPC.companionPairingPayload),
+    pairingPayload: (opts) => call(IPC.companionPairingPayload, opts),
     unpair: (deviceId) => call(IPC.companionUnpair, deviceId),
   },
   doctor: {

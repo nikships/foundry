@@ -1,5 +1,6 @@
 package com.foundry.companion.viewmodel
 
+import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -68,7 +69,8 @@ class CompanionViewModel(
      * second notification path, or a transition seen by both would announce twice.
      */
     private val notifier: CompanionNotifier? = null,
-    private val enablePolling: Boolean = true
+    private val enablePolling: Boolean = true,
+    private val deviceName: String = defaultCompanionDeviceName()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -283,7 +285,7 @@ class CompanionViewModel(
     fun pair(payload: CompanionPairingPayload) {
         _uiState.update { it.copy(isPairing = true, errorMessage = null) }
         viewModelScope.launch {
-            val result = repository.pair(payload)
+            val result = repository.pair(payload, deviceName)
             _uiState.update { it.copy(isPairing = false) }
             result.onFailure { error ->
                 _uiState.update { it.copy(errorMessage = error.message ?: "Pairing failed") }
@@ -432,5 +434,11 @@ class CompanionViewModel(
             }
         }
     }
+}
+
+/** The name Settings → Phone lists. Blank MODEL is the only fallback. */
+fun defaultCompanionDeviceName(): String {
+    val model = Build.MODEL.trim()
+    return model.ifBlank { "Android Device" }
 }
 

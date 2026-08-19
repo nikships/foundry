@@ -241,7 +241,11 @@ class FakeCompanionRepository(
         )
     )
 
+    var lastPairedDeviceName: String? = null
+        private set
+
     override suspend fun pair(payload: CompanionPairingPayload, deviceName: String): Result<CompanionPairResult> {
+        lastPairedDeviceName = deviceName
         val session = PairedSession(
             token = "paired_token_${UUID.randomUUID()}",
             desktopId = payload.desktopId,

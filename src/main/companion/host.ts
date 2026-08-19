@@ -243,19 +243,22 @@ export class CompanionHost {
   }
 
   /**
-   * A fresh pairing payload for the QR. Null while the host is stopped —
-   * there is nothing to pair with.
+   * The pairing payload for the QR and the copy button. Re-reading returns the
+   * same in-flight secret; pass `{ refresh: true }` to mint a replacement.
+   * Null while the host is stopped — there is nothing to pair with.
    */
-  pairingPayload(): CompanionPairingPayload | null {
+  pairingPayload(opts?: { refresh?: boolean }): CompanionPairingPayload | null {
     if (!this.origin) return null;
-    const { secret, expiresAt } = this.secrets.issue();
+    const issued = opts?.refresh
+      ? this.secrets.issue()
+      : (this.secrets.current() ?? this.secrets.issue());
     return {
       protocolVersion: COMPANION_PROTOCOL_VERSION,
       origin: this.origin,
       desktopId: this.devices.desktopId(),
       desktopName: hostname(),
-      secret,
-      expiresAt,
+      secret: issued.secret,
+      expiresAt: issued.expiresAt,
     };
   }
 
