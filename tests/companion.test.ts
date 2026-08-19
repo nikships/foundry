@@ -389,17 +389,25 @@ describe('token auth, fail closed', () => {
 });
 
 describe('run routes', () => {
-  it('lists projects with their pipelines', async () => {
+  it('lists projects with their pipelines and phase ribbons', async () => {
     const paired = await pairPhone();
     const res = await authed(paired.token, '/v1/projects');
     expect(res.status).toBe(200);
     const projects = (await res.json()) as {
       id: string;
-      pipelines: { id: string }[];
+      pipelines: {
+        id: string;
+        name: string;
+        description: string;
+        phases?: { name: string; kind: string }[];
+      }[];
     }[];
     expect(projects).toHaveLength(1);
     expect(projects[0]!.id).toBe(h.project.id);
     expect(projects[0]!.pipelines.map((p) => p.id)).toEqual(['p']);
+    expect(projects[0]!.pipelines[0]!.phases).toEqual([
+      { id: 'build', name: 'build', kind: 'agent', isFeedbackTarget: false },
+    ]);
   });
 
   it('starts a run, lists it, pages its events, and reads its detail', async () => {

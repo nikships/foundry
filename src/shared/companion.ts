@@ -82,11 +82,28 @@ export interface CompanionError {
   error: { code: CompanionErrorCode; message: string };
 }
 
+/** Phase summary for pipeline ribbons on the companion app. */
+export interface CompanionPhaseSummary {
+  id: string;
+  name: string;
+  kind?: string;
+  isFeedbackTarget?: boolean;
+  feedbackTo?: string;
+}
+
+/** Pipeline summary including phase ribbons. */
+export interface CompanionPipelineSummary {
+  id: string;
+  name: string;
+  description: string;
+  phases?: CompanionPhaseSummary[];
+}
+
 /** A project as the phone sees it: enough to list runs and compose a new one. */
 export interface CompanionProjectSummary {
   id: string;
   name: string;
-  pipelines: { id: string; name: string; description: string }[];
+  pipelines: CompanionPipelineSummary[];
 }
 
 /** Who answered: rendered in the phone's Connection sheet fine print. */

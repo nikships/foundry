@@ -71,6 +71,37 @@ class CompanionViewModelTest {
         assertNotNull(createdRunId)
         val runs = viewModel.uiState.value.runs
         assertTrue(runs.any { it.runId == createdRunId })
+        assertEquals("pipe_default", viewModel.getLastUsedPipeline("proj_foundry_core"))
+    }
+
+    @Test
+    fun testStartRunRejectedWithValidationIssues() {
+        var callbackInvoked = false
+        viewModel.startRun(
+            projectId = "proj_foundry_core",
+            pipelineId = "pipe_default",
+            request = ""
+        ) {
+            callbackInvoked = true
+        }
+
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertFalse(callbackInvoked)
+        val issues = viewModel.uiState.value.validationIssues
+        assertTrue(issues.isNotEmpty())
+        assertEquals("error", issues.first().level)
+        assertTrue(issues.first().message.contains("request cannot be empty"))
+
+        viewModel.clearValidationIssues()
+        assertTrue(viewModel.uiState.value.validationIssues.isEmpty())
+    }
+
+    @Test
+    fun testLastUsedPipelineManagement() {
+        assertNull(viewModel.getLastUsedPipeline("proj_foundry_docs"))
+        viewModel.setLastUsedPipeline("proj_foundry_docs", "pipe_bugfix")
+        assertEquals("pipe_bugfix", viewModel.getLastUsedPipeline("proj_foundry_docs"))
+        assertEquals("pipe_bugfix", sessionManager.getLastUsedPipeline("proj_foundry_docs"))
     }
 
     @Test

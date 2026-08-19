@@ -222,12 +222,25 @@ class CompanionViewModel(
         }
     }
 
+    fun getLastUsedPipeline(projectId: String): String? {
+        return sessionManager?.getLastUsedPipeline(projectId)
+    }
+
+    fun setLastUsedPipeline(projectId: String, pipelineId: String) {
+        sessionManager?.setLastUsedPipeline(projectId, pipelineId)
+    }
+
+    fun clearValidationIssues() {
+        _uiState.update { it.copy(validationIssues = emptyList()) }
+    }
+
     fun startRun(
         projectId: String,
         pipelineId: String,
         request: String,
         onSuccess: (runId: String) -> Unit
     ) {
+        setLastUsedPipeline(projectId, pipelineId)
         _uiState.update { it.copy(isStartingRun = true, validationIssues = emptyList()) }
         viewModelScope.launch {
             val result = repository.startRun(StartRunInput(projectId, pipelineId, request))
