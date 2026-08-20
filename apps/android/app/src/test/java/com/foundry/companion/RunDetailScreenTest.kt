@@ -191,7 +191,7 @@ class RunDetailScreenTest {
 
         // Default selected phase summary is running phase ("Code")
         composeTestRule.onNodeWithText("PHASE · CODE").performScrollTo().assertIsDisplayed()
-        composeTestRule.onNodeWithText("anthropic/claude-3-7-sonnet").assertExists()
+        composeTestRule.onNodeWithText("claude-3-7-sonnet").assertExists()
 
         // Clicking Inspector button in top bar opens inspector on selected phase
         composeTestRule.onNodeWithContentDescription("Inspector").performClick()
