@@ -757,86 +757,6 @@
         margin-top: 6px;
       }
 
-      /* ---------- Quick wins ---------- */
-      .qw-list {
-        display: grid;
-        gap: 8px;
-        counter-reset: qw;
-      }
-      .qw {
-        counter-increment: qw;
-        display: flex;
-        align-items: flex-start;
-        gap: 14px;
-        padding: 14px 16px;
-        background: var(--paper-2);
-        border: 1px solid var(--line);
-        border-radius: var(--radius-sm);
-        cursor: pointer;
-        transition:
-          background 0.15s,
-          border-color 0.15s;
-      }
-      .qw:hover {
-        border-color: var(--line-2);
-        background: var(--paper-3);
-      }
-      .qw .box {
-        flex: 0 0 auto;
-        width: 22px;
-        height: 22px;
-        border-radius: 6px;
-        border: 2px solid var(--line-2);
-        margin-top: 1px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: all 0.15s;
-      }
-      .qw .box svg {
-        width: 13px;
-        height: 13px;
-        stroke: var(--green);
-        stroke-width: 3;
-        fill: none;
-        opacity: 0;
-        transition: opacity 0.12s;
-      }
-      .qw.done .box {
-        background: var(--green-soft);
-        border-color: var(--green);
-      }
-      .qw.done .box svg {
-        opacity: 1;
-      }
-      .qw .qt {
-        flex: 1;
-        font-size: 14.8px;
-        line-height: 1.5;
-        color: var(--ink);
-      }
-      .qw.done .qt {
-        color: var(--muted);
-      }
-      .qw.done .qt .ref {
-        color: var(--faint);
-      }
-      .qw .ref {
-        font-family: var(--mono);
-        font-size: 11.5px;
-        color: var(--ember);
-        margin-left: 6px;
-      }
-      .qw .qn {
-        flex: 0 0 auto;
-        font-family: var(--mono);
-        font-size: 12px;
-        color: var(--faint);
-        font-weight: 700;
-        min-width: 22px;
-        text-align: right;
-      }
-
       /* ---------- Rejected ---------- */
       .rejects {
         display: grid;
@@ -986,7 +906,6 @@
           <li><a href="#area4">Onboarding</a></li>
           <li class="group">Proposals</li>
           <li><a href="#recs">Recommendations</a></li>
-          <li><a href="#quick">Quick wins</a></li>
           <li><a href="#rejected">What we won't do</a></li>
           <li><a href="#glossary">Glossary</a></li>
         </ul>
@@ -1352,26 +1271,6 @@
             <details class="finding">
               <summary>
                 <span class="fid">F1.10</span
-                ><span class="ft"
-                  ><h4>Unbounded envelope fields</h4>
-                  <div class="hl">
-                    summary and notes_for_next_agent have no length cap, and get pretty-printed into
-                    every downstream prompt.
-                  </div></span
-                ><span class="caret">▶</span>
-              </summary>
-              <div class="fbody">
-                <p>
-                  The full SDLC PR phase inlines <b>five</b> envelopes. Gate and feedback tails are
-                  already capped (1,000 / 4,000 chars); envelope prose is not — it's the one
-                  unbounded growth path in phase-to-phase context.
-                </p>
-              </div>
-            </details>
-
-            <details class="finding">
-              <summary>
-                <span class="fid">F1.11</span
                 ><span class="ft"
                   ><h4>What's already good — keep it</h4>
                   <div class="hl">
@@ -1864,13 +1763,6 @@
           <div class="recs" id="recsGrid"></div>
         </section>
 
-        <!-- QUICK WINS -->
-        <section id="quick">
-          <h2><span class="num">§</span>Quick wins</h2>
-          <p class="section-lede">One under-a-day change remains.</p>
-          <div class="qw-list" id="qwList"></div>
-        </section>
-
         <!-- REJECTED -->
         <section id="rejected">
           <h2><span class="num">§</span>What we won't do — and why</h2>
@@ -1961,9 +1853,8 @@
               <div class="rt">
                 <b>Paginate the read_phase_context chain</b
                 ><span class="why"
-                  >Considered for token control; envelopes are small in practice once prose is
-                  capped (R11), and the whole-chain dump is a deliberate escape hatch. Revisit only
-                  if traces show large chains pulled repeatedly (assumption).</span
+                  >Considered for token control; the whole-chain dump is a deliberate escape hatch.
+                  Revisit only if traces show large chains pulled repeatedly (assumption).</span
                 >
               </div>
             </div>
@@ -1973,7 +1864,7 @@
                 <b>Move readiness entirely out of the product</b
                 ><span class="why"
                   >Its checks are the substrate for the project card and the marker-file contract
-                  affects run success odds. R16 resequences it instead.</span
+                  affects run success odds. R15 resequences it instead.</span
                 >
               </div>
             </div>
@@ -2224,23 +2115,13 @@
           area: 1,
           effort: 'S',
           risk: 'Low',
-          impact: 'bounds context growth',
-          title: 'Cap envelope prose length',
-          sum: 'Add max lengths to summary (~500) and notes_for_next_agent (~2000) in the schema; surface the cap in the hints. Bounds the one unbounded growth path in phase-to-phase context. An over-limit reply becomes an envelope correction (the budget exists for exactly that).',
-          inv: 'Envelope validation unchanged.',
-        },
-        {
-          n: 12,
-          area: 1,
-          effort: 'S',
-          risk: 'Low',
           impact: 'tokens+first-run quality',
           title: 'One-shot prompt hygiene',
           sum: "Delete the stale DETECT_TOOLS constant; dedupe the readiness marker rule to one statement; delete the unactionable 'fan out sub-agents' line; pass the manifest sniff into the run-start command fill exactly as the interactive detect session does.",
           inv: 'None.',
         },
         {
-          n: 13,
+          n: 12,
           area: 1,
           effort: 'S',
           risk: 'Low',
@@ -2250,7 +2131,7 @@
           inv: 'None.',
         },
         {
-          n: 14,
+          n: 13,
           area: 4,
           effort: 'M',
           risk: 'Low',
@@ -2260,7 +2141,7 @@
           inv: 'None.',
         },
         {
-          n: 15,
+          n: 14,
           area: 4,
           effort: 'M',
           risk: 'Medium',
@@ -2270,7 +2151,7 @@
           inv: 'None — type identifiers are unchanged.',
         },
         {
-          n: 16,
+          n: 15,
           area: 4,
           effort: 'M',
           risk: 'Medium',
@@ -2279,10 +2160,6 @@
           sum: "Present readiness as a banner + optional flow rather than the heaviest pre-run gate. Default the first-project path to 'run now, readiness offered on failure or on demand'. The existing banner copy already explains the risk.",
           inv: 'None.',
         },
-      ];
-
-      const QUICKWINS = [
-        { n: 11, text: 'Add max-length caps to summary / notes_for_next_agent. [R11]' },
       ];
 
       // ---------- Render recommendations ----------
@@ -2312,19 +2189,6 @@
     ${r.inv ? `<div class="inv"><b>Constraint respected:</b> ${esc(r.inv)}</div>` : ''}
   `;
         grid.appendChild(el);
-      });
-
-      // ---------- Render quick wins ----------
-      const qwList = document.getElementById('qwList');
-      QUICKWINS.forEach((q) => {
-        const m = q.text.match(/\[(F[\d.]+|R\d+)\]$/);
-        const ref = m ? m[1] : '';
-        const text = m ? q.text.slice(0, -m[0].length).trim() : q.text;
-        const el = document.createElement('div');
-        el.className = 'qw';
-        el.innerHTML = `<span class="qn">${q.n}</span><div class="box"><svg viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></svg></div><div class="qt">${esc(text)} ${ref ? `<span class="ref">${esc(ref)}</span>` : ''}</div>`;
-        el.addEventListener('click', () => el.classList.toggle('done'));
-        qwList.appendChild(el);
       });
 
       // ---------- Filters ----------
