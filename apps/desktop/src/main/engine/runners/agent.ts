@@ -20,6 +20,7 @@ import {
 } from '../envelopes.js';
 import { gateCorrection, runGates, violationsOf, type GateReport } from '../gates.js';
 import { formatPromptRecord, renderPrompt, type RenderContext } from '../prompts.js';
+import { agentSystemRole, type SetupExecution } from '../agent-context.js';
 import { diffStat } from '../git.js';
 
 const DIFF_CONTEXT_AGENTS = new Set(['reviewer', 'finisher', 'pr_writer', 'documenter']);
@@ -36,6 +37,7 @@ export interface AgentRunnerDeps {
   rewindAfterCorrections: number;
   /** Session lookup stays with the executor, which also applies phase model overrides. */
   sessionFor: (agent: AgentDef, modelOverride?: string) => Promise<AgentSession>;
+  setupExecution: () => SetupExecution | null;
   onLiveText?: (phaseId: string, text: string) => void;
   /** Reports the transport mode when a session falls back mid-turn. */
 }
@@ -83,11 +85,18 @@ export class AgentPhaseRunner implements PhaseRunner {
 
     const rendered = renderPrompt(agent, phase, await this.renderContext(agent, phase, ctx));
     let prompt = rendered.user;
-    const systemPrompt = rendered.system;
+    const systemPrompt = agentSystemRole({
+      rosterRole: rendered.system,
+      repositoryContext: ctx.project.contextSummary,
+      writes: agent.writes,
+      cwd: ctx.cwd,
+      projectPath: ctx.project.path,
+      setup: this.deps.setupExecution(),
+    });
     tracer.writeRunFile(
       runId,
       `${agent.name}/prompts/${phase.name}-1.md`,
-      formatPromptRecord(rendered),
+      formatPromptRecord({ ...rendered, system: systemPrompt }),
     );
 
     let envelope: Envelope | null = null;

@@ -1,9 +1,9 @@
 /**
  * The one-shot seam: a whole agent turn that belongs to no run.
  *
- * Five things in this app ask an agent one question and act on the answer —
- * command detection, setup-script generation, the run-start command fill, the
- * rebase repair, and the readiness fix. None of them is a pipeline: there is no
+ * Six things in this app ask an agent one question and act on the answer —
+ * repository context, command detection, setup-script generation, the run-start
+ * command fill, rebase repair, and the readiness fix. None is a pipeline: there is no
  * worktree to merge, no phase to fail, no envelope, no trace row. What they
  * need is a turn, a live transcript, a timeout, and a cancel.
  *

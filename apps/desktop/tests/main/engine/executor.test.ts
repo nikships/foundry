@@ -90,6 +90,7 @@ function askReplies(agent: ScriptedAgent): AskReply[] {
 function turnRequests(agent: ScriptedAgent): {
   text: string;
   outputFormat?: unknown;
+  systemPrompt?: string;
   sessionId: string;
 }[] {
   return agent.turnRequests;
@@ -606,6 +607,29 @@ describe('code phases', () => {
 });
 
 describe('agent phases', () => {
+  it('injects cached repository facts and the exact successful setup result into the system role', async () => {
+    const scripted = scriptedAgent([buildEnvelope()]);
+    const outcome = await run({
+      scripted,
+      project: {
+        setupScript: 'printf setup-complete',
+        contextSummary: '## Stack\nTypeScript',
+      },
+      pipeline: pipe([agentPhase('build')], {
+        acceptance: { kind: 'envelope_status', phase: 'build' },
+      }),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    const system = turnRequests(scripted)[0]!.systemPrompt;
+    expect(system).toContain('You build.');
+    expect(system).toContain('## Stack\nTypeScript');
+    expect(system).toContain(
+      `isolated run worktree at ${h.tracer.run(outcome.runId)!.worktreePath}`,
+    );
+    expect(system).toContain('Setup ran printf setup-complete — exit 0.');
+  });
+
   it('parses an envelope, runs gates, and records both', async () => {
     const scripted = scriptedAgent([buildEnvelope({ artifacts: ['made.txt'] })], ['made.txt']);
     const outcome = await run({
