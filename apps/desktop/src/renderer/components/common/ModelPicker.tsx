@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import type { ModelInfo } from '@shared/types.js';
-import { modelLabel } from '../../utils/format.js';
+import { modelLabel } from '@shared/model-label.js';
 import { ProviderIcon } from '../media/BrandIcon.js';
 import { Dropdown, type DropdownOption } from '../ui/Dropdown.js';
 import styles from './ModelPicker.module.css';

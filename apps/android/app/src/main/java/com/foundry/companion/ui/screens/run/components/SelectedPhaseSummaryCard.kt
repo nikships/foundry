@@ -48,7 +48,7 @@ fun SelectedPhaseSummaryCard(
                 )
                 if (phase.model != null) {
                     Text(
-                        text = phase.model,
+                        text = RunFormatters.modelLabel(phase.model),
                         style = typography.metaMono,
                         color = colors.textFaint
                     )

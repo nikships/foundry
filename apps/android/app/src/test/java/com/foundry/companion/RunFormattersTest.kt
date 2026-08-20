@@ -10,6 +10,14 @@ import java.time.Instant
 class RunFormattersTest {
 
     @Test
+    fun testModelLabel() {
+        assertEquals("gemini-3.7-flash-high", RunFormatters.modelLabel("bridge-gemini/gemini-3.7-flash-high"))
+        assertEquals("anthropic/claude-opus-4", RunFormatters.modelLabel("openrouter/anthropic/claude-opus-4"))
+        assertEquals("gpt-5.6-sol", RunFormatters.modelLabel("gpt-5.6-sol"))
+        assertEquals("muse-spark-1.2", RunFormatters.modelLabel("custom:acme:muse-spark-1.2"))
+    }
+
+    @Test
     fun testParseIsoToEpochMs() {
         val iso = "2026-08-18T22:10:00Z"
         val epochMs = RunFormatters.parseIsoToEpochMs(iso)

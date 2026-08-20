@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { SetupState } from '@shared/ipc-contract.js';
 import type { ProjectDef } from '@shared/types.js';
+import { modelLabel } from '@shared/model-label.js';
 import { api } from '../../api.js';
 import { Button } from '../ui/Button.js';
 import { Field, Textarea } from '../ui/Field.js';
@@ -42,7 +43,7 @@ function SetupPanel({
             ? 'Finished'
             : state.status}
         <span className={`faint ${panelStyles.model}`}>
-          {state.model === 'inherit' ? '' : ` · ${state.model}`}
+          {state.model === 'inherit' ? '' : ` · ${modelLabel(state.model)}`}
         </span>
       </label>
       <span className="hint">{state.detail}</span>

@@ -9,6 +9,7 @@
 
 import type { AppSettings } from '@shared/types.js';
 import type { DetectionProposal, DetectionState } from '@shared/ipc-contract.js';
+import { modelLabel } from '@shared/model-label.js';
 import type { OneShotFactory } from '../pi/oneshot.js';
 import {
   PanelSession,
@@ -123,7 +124,7 @@ export class DetectSession {
 
     this.panel.push({
       kind: 'note',
-      text: `Asking the agent${model === 'inherit' ? '' : ` (${model})`}…`,
+      text: `Asking the agent${model === 'inherit' ? '' : ` (${modelLabel(model)})`}…`,
     });
 
     // Detection runs against the operator's own checkout, where nothing would

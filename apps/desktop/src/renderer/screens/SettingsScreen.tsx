@@ -15,9 +15,9 @@ import {
   type StoredProviderKey,
 } from '@shared/ipc-contract.js';
 import type { CompanionHostState, CompanionPairingPayload } from '@shared/companion.js';
+import { modelLabel } from '@shared/model-label.js';
 import { api, plain } from '../api.js';
 import { isKnownPrWriter, prWriterOptions } from '../view-models/pr-draft.js';
-import { modelLabel } from '../utils/format.js';
 import { useApp } from '../stores/app.js';
 import { useAgentModels } from '../hooks/useAgentModels.js';
 import ModelPicker from '../components/common/ModelPicker.js';

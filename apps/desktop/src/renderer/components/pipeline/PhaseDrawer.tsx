@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { EnvelopeRow, EventRow, GateResultRow, PhaseRow } from '@shared/types.js';
+import { modelLabel } from '@shared/model-label.js';
 import { api } from '../../api.js';
 import { useApp } from '../../stores/app.js';
 import { clockTime, duration, tokens } from '../../utils/format.js';
@@ -146,7 +147,7 @@ export default function PhaseDrawer({
             <p className={`faint ${styles.sub} mono`}>
               {phase.kind}
               {phase.owner ? ` · ${phase.owner}` : ''}
-              {model ? ` · ${model}` : ''} · {duration(elapsed)}
+              {model ? ` · ${modelLabel(model)}` : ''} · {duration(elapsed)}
               {usage.reported ? ` · ${tokens(usage.totalTokens)} tok` : ''}
             </p>
           </div>

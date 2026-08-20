@@ -8,6 +8,11 @@ import java.util.Locale
 
 object RunFormatters {
 
+    fun modelLabel(id: String): String {
+        val label = Regex("^custom:[^:]+:(.+)$").matchEntire(id)?.groupValues?.get(1) ?: id
+        return label.substringAfter('/')
+    }
+
     /**
      * Parses an ISO-8601 string to epoch millis, returning null if parsing fails.
      */

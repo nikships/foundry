@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ContextBreakdown as Breakdown } from '@shared/types.js';
 import type { ContextBreakdownReason } from '@shared/ipc-contract.js';
+import { modelLabel } from '@shared/model-label.js';
 import { api } from '../../api.js';
 import { useApp } from '../../stores/app.js';
 import { clockTime, tokens } from '../../utils/format.js';
@@ -52,7 +53,9 @@ function Rows({ breakdown }: { breakdown: Breakdown }): React.JSX.Element {
   return (
     <>
       <div className={styles.head}>
-        <span className={styles.model}>{breakdown.modelDisplayName || breakdown.modelId}</span>
+        <span className={styles.model}>
+          {modelLabel(breakdown.modelDisplayName || breakdown.modelId)}
+        </span>
         <span className={styles.total}>
           {tokens(breakdown.usedTokens)} of {tokens(breakdown.contextBudget)} used ·{' '}
           {tokens(breakdown.freeTokens)} free

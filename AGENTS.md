@@ -153,6 +153,8 @@ Troubleshooting section covers the usual causes; verify with
 
 Framework: **Vitest 4** (`forks` pool, `environment: node`, 30s timeout). Suites live in `apps/desktop/tests/`.
 
+**Amp orbs:** Do not run Android builds or tests in an orb; rely on the CI `android` job for Android verification.
+
 ```bash
 npm test                    # vitest run (all suites)
 npm run test:watch          # vitest watch mode

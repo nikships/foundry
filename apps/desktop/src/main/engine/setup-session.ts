@@ -8,6 +8,7 @@
 
 import type { AppSettings } from '@shared/types.js';
 import type { SetupState } from '@shared/ipc-contract.js';
+import { modelLabel } from '@shared/model-label.js';
 import type { OneShotFactory } from '../pi/oneshot.js';
 import {
   PanelSession,
@@ -96,7 +97,7 @@ export class SetupSession {
 
     this.panel.push({
       kind: 'note',
-      text: `Asking the agent${model === 'inherit' ? '' : ` (${model})`}…`,
+      text: `Asking the agent${model === 'inherit' ? '' : ` (${modelLabel(model)})`}…`,
     });
 
     // Reads the operator's own checkout to propose a script; it never runs one,

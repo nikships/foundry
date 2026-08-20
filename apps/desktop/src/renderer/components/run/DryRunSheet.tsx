@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { DryRunPrompt } from '@shared/types.js';
-import { modelLabel } from '../../utils/format.js';
+import { modelLabel } from '@shared/model-label.js';
 import AgentAvatar from '../media/AgentAvatar.js';
 import { Button } from '../ui/Button.js';
 import { CodeBlock } from '../ui/CodeBlock.js';
