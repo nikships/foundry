@@ -42,7 +42,7 @@ function promptFor(): string {
 
 export function ensureProjectContext(input: {
   project: ProjectDef;
-  settings: Pick<AppSettings, 'readinessModel' | 'readinessReasoningEffort'>;
+  settings: Pick<AppSettings, 'helperModel' | 'helperReasoningEffort'>;
   oneShot: OneShotFactory;
   persist: (project: ProjectDef) => void;
 }): Promise<ProjectDef> {
@@ -59,15 +59,15 @@ export function ensureProjectContext(input: {
 
 async function generateProjectContext(input: {
   project: ProjectDef;
-  settings: Pick<AppSettings, 'readinessModel' | 'readinessReasoningEffort'>;
+  settings: Pick<AppSettings, 'helperModel' | 'helperReasoningEffort'>;
   oneShot: OneShotFactory;
   persist: (project: ProjectDef) => void;
 }): Promise<ProjectDef> {
   try {
     const session = input.oneShot({
       cwd: input.project.path,
-      model: input.settings.readinessModel || 'inherit',
-      reasoningEffort: input.settings.readinessReasoningEffort,
+      model: input.settings.helperModel || 'inherit',
+      reasoningEffort: input.settings.helperReasoningEffort,
       access: 'read',
       systemPrompt: SYSTEM_ROLE,
     });
