@@ -486,6 +486,8 @@ export interface FoundryApi {
     start(
       input: StartRunInput,
     ): Promise<{ ok: boolean; runId?: string; issues: ValidationIssue[] }>;
+    /** Reattempts the first failed phase in this run's existing worktree. */
+    resume(projectId: string, runId: string): Promise<WorktreeAction>;
     list(projectId: string, includeArchived: boolean): Promise<RunRow[]>;
     detail(projectId: string, runId: string): Promise<RunDetail>;
     events(projectId: string, runId: string, afterChangeId: number): Promise<EventPage>;
@@ -700,6 +702,7 @@ export const IPC = {
   bridgeClearApiKey: 'bridge:clearApiKey',
   bridgeStoredKeys: 'bridge:storedKeys',
   runsStart: 'runs:start',
+  runsResume: 'runs:resume',
   runsList: 'runs:list',
   runsDetail: 'runs:detail',
   runsEvents: 'runs:events',

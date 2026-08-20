@@ -10,7 +10,7 @@
  *     cannot disagree.
  */
 
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type {
   AgentDef,
@@ -281,7 +281,66 @@ export class Executor {
       );
     });
 
-    let index = 0;
+    return this.runFrom(0);
+  }
+
+  /** Continue a terminal run from its first failed phase in the existing worktree. */
+  async resume(): Promise<RunOutcome> {
+    const { tracer, pipeline, project, runId } = this.deps;
+    const run = tracer.run(runId);
+    if (!run || (run.status !== 'rejected' && run.status !== 'failed')) {
+      throw new Error('only a rejected or failed run can be continued');
+    }
+    if (run.merged) throw new Error('a merged run cannot be continued');
+
+    const phases = tracer.phases(runId);
+    const startIndex = phases.findIndex((phase) => phase.status === 'fail');
+    if (startIndex < 0) throw new Error('this run has no failed phase to continue');
+    if (
+      phases.length !== pipeline.phases.length ||
+      phases.some((phase, index) => phase.name !== pipeline.phases[index]?.name)
+    ) {
+      throw new Error('the saved pipeline no longer matches this run’s phase history');
+    }
+
+    const isolate = pipeline.isolation !== false && project.isolation;
+    if (isolate) {
+      if (!run.worktreePath || !run.branch || !existsSync(run.worktreePath)) {
+        throw new Error('this run’s worktree is no longer available');
+      }
+      this.handle = {
+        path: run.worktreePath,
+        branch: run.branch,
+        baseRef: run.baseRef ?? project.baseRef,
+        branchPointSha: run.branchPointSha ?? '',
+      };
+      this.cwd = run.worktreePath;
+    }
+
+    for (const phase of phases) this.phaseIds.set(phase.name, phase.phaseId);
+    const phaseNames = new Map(phases.map((phase) => [phase.phaseId, phase]));
+    for (const envelope of tracer.envelopes(runId)) {
+      const phase = phaseNames.get(envelope.phaseId);
+      if (phase?.status === 'success' && envelope.valid) {
+        this.envelopes.set(phase.name, envelope.payload as Envelope);
+      }
+    }
+
+    mkdirSync(join(this.cwd, HANDOFF_DIR), { recursive: true });
+    tracer.reopenRun(runId);
+    tracer.event({
+      runId,
+      type: 'log',
+      name: 'run continued',
+      payload: { phase: pipeline.phases[startIndex]!.name },
+    });
+    return this.runFrom(startIndex);
+  }
+
+  private async runFrom(startIndex: number): Promise<RunOutcome> {
+    const { tracer, pipeline, runId } = this.deps;
+
+    let index = startIndex;
     let guard = 0;
     const maxSteps = pipeline.phases.length + 32;
     let detail = '';
@@ -451,6 +510,9 @@ export class Executor {
       turnTimeoutMs: this.deps.turnTimeoutMs,
       tracer: this.deps.tracer,
       protectedPaths: this.deps.project.protectedPaths,
+      existingSessionId: this.deps.tracer
+        .agentSessions(this.deps.runId)
+        .find((row) => row.agent === agent.name)?.agentSessionId,
       transport: (req) => this.transportFor(req),
     });
     this.sessions.set(agent.name, session);

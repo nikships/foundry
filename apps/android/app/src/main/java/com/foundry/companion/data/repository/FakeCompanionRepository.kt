@@ -583,6 +583,13 @@ class FakeCompanionRepository(
         return Result.success(CompanionKillResult(ok = true))
     }
 
+    override suspend fun continueRun(projectId: String, runId: String): Result<CompanionContinueResult> {
+        val index = runsList.indexOfFirst { it.runId == runId }
+        if (index == -1) return Result.success(CompanionContinueResult(false, "Run not found"))
+        runsList[index] = runsList[index].copy(status = "running", outcomeDetail = null)
+        return Result.success(CompanionContinueResult(true, "Continuing run"))
+    }
+
     override suspend fun answerInterrupt(answer: InterruptAnswer): Result<CompanionAnswerResult> {
         _pendingInterrupts.value = _pendingInterrupts.value.filterNot { it.interruptId == answer.interruptId }
         return Result.success(CompanionAnswerResult(ok = true))

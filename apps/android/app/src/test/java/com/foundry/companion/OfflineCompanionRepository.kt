@@ -101,6 +101,9 @@ class OfflineCompanionRepository(
 
     override suspend fun killRun(projectId: String, runId: String) = answer(CompanionKillResult(ok = false))
 
+    override suspend fun continueRun(projectId: String, runId: String) =
+        answer(CompanionContinueResult(ok = false, detail = "unreachable"))
+
     override suspend fun answerInterrupt(answer: InterruptAnswer): Result<CompanionAnswerResult> =
         this.answer(CompanionAnswerResult(ok = false))
 

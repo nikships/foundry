@@ -141,6 +141,15 @@ export class Tracer {
     return this.run(runId);
   }
 
+  /** Reopens a terminal run before its failed phase is attempted again. */
+  reopenRun(runId: string): void {
+    this.db
+      .prepare(
+        "UPDATE runs SET status = 'running', ended_at = NULL, outcome_detail = NULL WHERE run_id = ?",
+      )
+      .run(runId);
+  }
+
   setBranchPoint(runId: string, sha: string): void {
     this.db.prepare('UPDATE runs SET branch_point_sha = ? WHERE run_id = ?').run(sha, runId);
   }
@@ -232,7 +241,9 @@ export class Tracer {
     const row = this.rawPhase(phaseId);
     if (!row) return;
     this.db
-      .prepare("UPDATE phases SET status = 'running', started_at = ? WHERE phase_id = ?")
+      .prepare(
+        "UPDATE phases SET status = 'running', error = NULL, started_at = ?, ended_at = NULL WHERE phase_id = ?",
+      )
       .run(nowIso(), phaseId);
     this.emitPhaseStart(row.run_id, phaseId, {
       name: row.name,
@@ -701,6 +712,14 @@ export class Tracer {
     const full = join(this.runDir(runId), relPath);
     try {
       return JSON.parse(readFileSync(full, 'utf8')) as T;
+    } catch {
+      return null;
+    }
+  }
+
+  readRunFile(runId: string, relPath: string): string | null {
+    try {
+      return readFileSync(join(this.runDir(runId), relPath), 'utf8');
     } catch {
       return null;
     }

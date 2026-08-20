@@ -22,7 +22,7 @@ import type { EventPage, PrAction, RunDetail } from './ipc-contract.js';
  * it so a phone knows before pairing, and the pair exchange enforces it so a
  * stale client gets a readable refusal instead of a half-working session.
  */
-export const COMPANION_PROTOCOL_VERSION = 1;
+export const COMPANION_PROTOCOL_VERSION = 2;
 
 /**
  * What the desktop encodes in the pairing QR (FOU-85 renders it). Everything a
@@ -124,6 +124,11 @@ export interface CompanionKillResult {
   ok: boolean;
 }
 
+export interface CompanionContinueResult {
+  ok: boolean;
+  detail: string;
+}
+
 export interface CompanionAnswerResult {
   ok: boolean;
 }
@@ -162,6 +167,7 @@ export interface CompanionRoutes {
   'GET /v1/projects/:projectId/runs/:runId/events': { response: EventPage };
   'POST /v1/runs': { request: StartRunInput; response: CompanionStartResult };
   'POST /v1/projects/:projectId/runs/:runId/kill': { response: CompanionKillResult };
+  'POST /v1/projects/:projectId/runs/:runId/continue': { response: CompanionContinueResult };
   'GET /v1/interrupts': { response: PendingInterrupt[] };
   'POST /v1/interrupts/answer': { request: InterruptAnswer; response: CompanionAnswerResult };
   'GET /v1/projects/:projectId/pr-status': { response: GhStatus };

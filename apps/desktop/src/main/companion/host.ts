@@ -69,6 +69,12 @@ export interface CompanionHostDeps {
     tracerFor(project: ProjectDef): Tracer;
     isLive(runId: string): boolean;
     kill(project: ProjectDef, runId: string): boolean;
+    resume(input: {
+      project: ProjectDef;
+      runId: string;
+      agents: AgentDef[];
+      envelopeDefs: EnvelopeDef[];
+    }): { ok: boolean; detail: string };
     interrupts(): PendingInterrupt[];
     answer(answer: InterruptAnswer): boolean;
   };
@@ -469,6 +475,14 @@ export class CompanionHost {
     }
     if (method === 'POST' && tail === 'kill' && rest.length === 4) {
       return { ok: this.deps.registry.kill(project, runId) };
+    }
+    if (method === 'POST' && tail === 'continue' && rest.length === 4) {
+      return this.deps.registry.resume({
+        project,
+        runId,
+        agents: this.deps.rosterFor(projectId),
+        envelopeDefs: this.deps.envelopeDefs(),
+      });
     }
     if (method === 'POST' && tail === 'pr' && rest.length === 4) {
       const body = (await readJson(req)) as Partial<{ title: string; body: string }>;

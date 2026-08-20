@@ -42,6 +42,7 @@ fun RunDetailScreen(
     onBackClick: () -> Unit,
     onOpenInspector: (phaseId: String?) -> Unit,
     onKillRun: (runId: String) -> Unit,
+    onContinueRun: (runId: String) -> Unit = {},
     onOpenPr: (prUrl: String) -> Unit,
     onCreatePr: (runId: String) -> Unit,
     onOpenIssue: (issueUrl: String) -> Unit,
@@ -58,6 +59,7 @@ fun RunDetailScreen(
     onAnswerInterrupt: ((interruptId: String, approved: Boolean, notes: String?) -> Unit)? = null,
     onRetryConnection: (() -> Unit)? = null,
     isCreatingPr: Boolean = false,
+    isContinuingRun: Boolean = false,
     ghStatus: GhStatus? = null,
     prDraftTitle: String? = null,
     onCopyPrUrl: ((String) -> Unit)? = null,
@@ -310,11 +312,13 @@ fun RunDetailScreen(
             if (!isRunning) {
                 OutcomeCard(
                     run = run,
+                    onContinue = { onContinueRun(run.runId) },
                     onOpenPr = onOpenPr,
                     onCreatePr = { showCreatePrSheet = true },
                     onOpenIssue = onOpenIssue,
                     ghStatus = ghStatus,
                     isCreatingPr = isCreatingPr,
+                    isContinuing = isContinuingRun,
                     isConnected = isConnected,
                     onCopyPrUrl = onCopyPrUrl
                 )

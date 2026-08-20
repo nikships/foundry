@@ -165,7 +165,7 @@ function defaultMockSettings(): AppSettings {
     defaultModel: 'inherit',
     defaultReasoningEffort: 'medium',
     pollCadenceMs: 500,
-    turnTimeoutMs: 20 * 60_000,
+    turnTimeoutMs: 30 * 60_000,
     envelopeRetries: 3,
     gateRetries: 2,
     compactionThreshold: 0.8,
@@ -517,6 +517,7 @@ export function createMockFoundryApi(): FoundryApi {
           },
         ],
       }),
+      resume: async () => ({ ok: false, detail: 'Not available in web preview.' }),
       list: async () => [...MOCK_RUNS],
       detail: async (_projectId, runId): Promise<RunDetail> => {
         const run = MOCK_RUNS.find((r) => r.runId === runId) ?? null;

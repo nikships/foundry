@@ -71,7 +71,7 @@ class PairPayloadParsingTest {
         val payload = parsePayload(uriStr)
         assertEquals("http://192.168.0.148:54325", payload.origin)
         assertEquals("secret_xyz_789", payload.secret)
-        assertEquals(1, payload.protocolVersion)
+        assertEquals(COMPANION_PROTOCOL_VERSION, payload.protocolVersion)
     }
 
     @Test
@@ -80,6 +80,6 @@ class PairPayloadParsingTest {
         val payload = parsePayload(uriStr)
         assertEquals("http://192.168.0.148:54325", payload.origin)
         assertEquals("secret_http_456", payload.secret)
-        assertEquals(1, payload.protocolVersion)
+        assertEquals(COMPANION_PROTOCOL_VERSION, payload.protocolVersion)
     }
 }

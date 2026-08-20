@@ -66,7 +66,7 @@ export function defaultSettings(): AppSettings {
     defaultModel: 'inherit',
     defaultReasoningEffort: 'medium',
     pollCadenceMs: 500,
-    turnTimeoutMs: 20 * 60_000,
+    turnTimeoutMs: 30 * 60_000,
     envelopeRetries: 3,
     gateRetries: 2,
     compactionThreshold: 0.8,

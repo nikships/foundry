@@ -115,6 +115,7 @@ class TestRegistry {
   private seq = 0;
   pendingInterrupts: PendingInterrupt[] = [];
   answered: InterruptAnswer[] = [];
+  continued: string[] = [];
 
   constructor(
     private readonly tracer: Tracer,
@@ -167,6 +168,11 @@ class TestRegistry {
     if (!executor) return false;
     executor.cancel();
     return true;
+  }
+
+  resume(input: { runId: string }): { ok: boolean; detail: string } {
+    this.continued.push(input.runId);
+    return { ok: true, detail: 'Continuing run' };
   }
 
   interrupts(): PendingInterrupt[] {
@@ -399,6 +405,7 @@ describe('token auth, fail closed', () => {
     ['GET', '/v1/projects/x/runs/y'],
     ['GET', '/v1/projects/x/runs/y/events'],
     ['POST', '/v1/projects/x/runs/y/kill'],
+    ['POST', '/v1/projects/x/runs/y/continue'],
     ['POST', '/v1/projects/x/runs/y/pr'],
     ['GET', '/v1/projects/x/runs/y/pr-draft'],
     ['GET', '/v1/projects/x/pr-status'],
@@ -535,6 +542,19 @@ describe('run routes', () => {
     });
     expect(((await killed.json()) as { ok: boolean }).ok).toBe(true);
     expect(await h.registry.settled.get(runId)).toBe('killed');
+  });
+
+  it('continues a failed run through the host', async () => {
+    const paired = await pairPhone();
+    const res = await authed(
+      paired.token,
+      `/v1/projects/${h.project.id}/runs/run_failed/continue`,
+      { method: 'POST' },
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, detail: 'Continuing run' });
+    expect(h.registry.continued).toEqual(['run_failed']);
   });
 
   it('lists historical runs across statuses and hides archived runs by default', async () => {

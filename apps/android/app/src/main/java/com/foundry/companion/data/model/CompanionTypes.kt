@@ -3,7 +3,7 @@ package com.foundry.companion.data.model
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 
-const val COMPANION_PROTOCOL_VERSION = 1
+const val COMPANION_PROTOCOL_VERSION = 2
 
 @Serializable
 data class CompanionPairingPayload(
@@ -84,6 +84,7 @@ data class RunRow(
     val finishedAt: String? = null,
     val durationMs: Long? = null,
     val totalTokens: Long? = null,
+    val worktreePath: String? = null,
     val branch: String? = null,
     val prNumber: Int? = null,
     val prUrl: String? = null,
@@ -371,6 +372,12 @@ data class CompanionStartResult(
 @Serializable
 data class CompanionKillResult(
     val ok: Boolean
+)
+
+@Serializable
+data class CompanionContinueResult(
+    val ok: Boolean,
+    val detail: String = ""
 )
 
 @Serializable

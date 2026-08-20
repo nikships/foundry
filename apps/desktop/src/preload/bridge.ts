@@ -130,6 +130,7 @@ const api: FoundryApi = {
   },
   runs: {
     start: (input) => call(IPC.runsStart, input),
+    resume: (projectId, runId) => call(IPC.runsResume, projectId, runId),
     list: (projectId, includeArchived) => call(IPC.runsList, projectId, includeArchived),
     detail: (projectId, runId) => call(IPC.runsDetail, projectId, runId),
     events: (projectId, runId, afterRowid) => call(IPC.runsEvents, projectId, runId, afterRowid),

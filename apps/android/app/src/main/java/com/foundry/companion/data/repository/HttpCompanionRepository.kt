@@ -365,6 +365,22 @@ class HttpCompanionRepository(
         }
     }
 
+    override suspend fun continueRun(projectId: String, runId: String): Result<CompanionContinueResult> = withContext(Dispatchers.IO) {
+        try {
+            val request = authenticatedRequestBuilder("/v1/projects/$projectId/runs/$runId/continue")
+                .post("{}".toRequestBody(jsonMediaType))
+                .build()
+            val response = client.newCall(request).execute()
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
+            consecutiveFailures = 0
+            Result.success(json.decodeFromString(CompanionContinueResult.serializer(), body))
+        } catch (e: Exception) {
+            handleNetworkError(e)
+            Result.failure(e)
+        }
+    }
+
     override suspend fun answerInterrupt(answer: InterruptAnswer): Result<CompanionAnswerResult> = withContext(Dispatchers.IO) {
         try {
             val reqBody = json.encodeToString(InterruptAnswer.serializer(), answer).toRequestBody(jsonMediaType)
@@ -453,4 +469,3 @@ class HttpCompanionRepository(
         }
     }
 }
-

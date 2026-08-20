@@ -87,6 +87,12 @@ describe('readiness defaults', () => {
   });
 });
 
+describe('turn timeout default', () => {
+  it('gives agent turns thirty minutes on a fresh install', () => {
+    expect(defaultSettings().turnTimeoutMs).toBe(30 * 60_000);
+  });
+});
+
 describe('the compaction threshold', () => {
   it('defaults to 0.8 on a fresh install', () => {
     expect(defaultSettings().compactionThreshold).toBe(0.8);

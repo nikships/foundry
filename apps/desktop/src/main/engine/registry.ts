@@ -9,6 +9,7 @@
 
 import { randomBytes } from 'node:crypto';
 import { EventEmitter } from 'node:events';
+import { existsSync } from 'node:fs';
 import type {
   AgentDef,
   AppSettings,
@@ -45,6 +46,14 @@ interface LiveRun {
   runId: string;
   projectId: string;
   executor: Executor;
+}
+
+interface ExecutorInput {
+  project: ProjectDef;
+  pipeline: PipelineDef;
+  agents: AgentDef[];
+  envelopeDefs: EnvelopeDef[];
+  request: string;
 }
 
 interface PendingEntry {
@@ -154,18 +163,48 @@ export class RunRegistry extends EventEmitter {
     };
   }
 
-  start(input: {
-    project: ProjectDef;
-    pipeline: PipelineDef;
-    agents: AgentDef[];
-    envelopeDefs: EnvelopeDef[];
-    request: string;
-  }): string {
-    const settings = this.deps.settings();
+  start(input: ExecutorInput): string {
     const runId = `run_${new Date().toISOString().slice(2, 10).replace(/-/g, '')}_${randomBytes(3).toString('hex')}`;
     const tracer = this.tracerFor(input.project);
+    const executor = this.executorFor(input, runId, tracer);
 
-    const executor = new Executor({
+    this.launch(input.project, runId, tracer, executor, 'run');
+    return runId;
+  }
+
+  resume(input: Omit<ExecutorInput, 'pipeline' | 'request'> & { runId: string }): {
+    ok: boolean;
+    detail: string;
+  } {
+    const tracer = this.tracerFor(input.project);
+    const run = tracer.run(input.runId);
+    if (!run) return { ok: false, detail: 'run not found' };
+    if (this.live.has(input.runId) || run.status === 'running') {
+      return { ok: false, detail: 'this run is already running' };
+    }
+    if (run.status !== 'rejected' && run.status !== 'failed') {
+      return { ok: false, detail: 'only a rejected or failed run can be continued' };
+    }
+    if (run.merged) return { ok: false, detail: 'a merged run cannot be continued' };
+    const failed = tracer.phases(input.runId).find((phase) => phase.status === 'fail');
+    if (!failed) return { ok: false, detail: 'this run has no failed phase to continue' };
+    if (run.worktreePath && !existsSync(run.worktreePath)) {
+      return { ok: false, detail: 'this run’s worktree is no longer available' };
+    }
+    const pipeline = tracer.readRunJson<PipelineDef>(input.runId, 'pipeline.json');
+    if (!pipeline?.phases?.length || pipeline.id !== run.pipelineId) {
+      return { ok: false, detail: 'this run’s saved pipeline is no longer available' };
+    }
+    const request = tracer.readRunFile(input.runId, 'request.md') ?? run.request;
+    const executor = this.executorFor({ ...input, pipeline, request }, input.runId, tracer);
+
+    this.launch(input.project, input.runId, tracer, executor, 'resume');
+    return { ok: true, detail: `Continuing from “${failed.name}”…` };
+  }
+
+  private executorFor(input: ExecutorInput, runId: string, tracer: Tracer): Executor {
+    const settings = this.deps.settings();
+    return new Executor({
       tracer,
       defaultModel: settings.defaultModel,
       defaultReasoningEffort: settings.defaultReasoningEffort,
@@ -195,19 +234,24 @@ export class RunRegistry extends EventEmitter {
         };
       })(),
     });
+  }
 
-    this.live.set(runId, { runId, projectId: input.project.id, executor });
+  private launch(
+    project: ProjectDef,
+    runId: string,
+    tracer: Tracer,
+    executor: Executor,
+    action: 'run' | 'resume',
+  ): void {
+    this.live.set(runId, { runId, projectId: project.id, executor });
     this.deps.onRunsChanged();
 
-    void executor
-      .run()
-      .then((outcome) => this.settleRun(input.project, runId, outcome.status))
+    void executor[action]()
+      .then((outcome) => this.settleRun(project, runId, outcome.status))
       .catch((e: Error) => {
         tracer.event({ runId, type: 'error', name: 'engine', payload: { message: e.message } });
-        this.settleRun(input.project, runId, 'failed');
+        this.settleRun(project, runId, 'failed');
       });
-
-    return runId;
   }
 
   private settleRun(project: ProjectDef, runId: string, status: RunStatus): void {

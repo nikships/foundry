@@ -49,6 +49,7 @@ data class CompanionUiState(
     val isNotifyOnSettleEnabled: Boolean = true,
     val isPairing: Boolean = false,
     val isStartingRun: Boolean = false,
+    val isContinuingRun: Boolean = false,
     val isCreatingPr: Boolean = false,
     val validationIssues: List<ValidationIssue> = emptyList(),
     val errorMessage: String? = null
@@ -429,6 +430,34 @@ class CompanionViewModel(
         }
     }
 
+    fun continueRun(runId: String, onResult: ((Boolean) -> Unit)? = null) {
+        val projectId = _uiState.value.selectedProjectId
+        _uiState.update { it.copy(isContinuingRun = true, errorMessage = null) }
+        viewModelScope.launch {
+            repository.continueRun(projectId, runId).onSuccess { res ->
+                _uiState.update {
+                    it.copy(
+                        isContinuingRun = false,
+                        errorMessage = res.detail.takeUnless { res.ok || it.isBlank() }
+                    )
+                }
+                if (res.ok) {
+                    loadRunDetail(runId)
+                    loadRuns(projectId)
+                }
+                onResult?.invoke(res.ok)
+            }.onFailure { err ->
+                _uiState.update {
+                    it.copy(
+                        isContinuingRun = false,
+                        errorMessage = err.message ?: "Failed to continue run"
+                    )
+                }
+                onResult?.invoke(false)
+            }
+        }
+    }
+
     fun answerInterrupt(interruptId: String, approved: Boolean, notes: String?) {
         val decision = if (approved) "approve" else "reject"
         viewModelScope.launch {
@@ -593,4 +622,3 @@ fun defaultCompanionDeviceName(): String {
     val model = Build.MODEL.trim()
     return model.ifBlank { "Android Device" }
 }
-

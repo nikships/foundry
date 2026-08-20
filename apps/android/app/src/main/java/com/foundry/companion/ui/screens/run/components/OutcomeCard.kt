@@ -21,12 +21,14 @@ import kotlinx.coroutines.delay
 @Composable
 fun OutcomeCard(
     run: RunRow,
+    onContinue: () -> Unit = {},
     onOpenPr: (String) -> Unit,
     onCreatePr: () -> Unit,
     onOpenIssue: (String) -> Unit,
     modifier: Modifier = Modifier,
     ghStatus: GhStatus? = null,
     isCreatingPr: Boolean = false,
+    isContinuing: Boolean = false,
     isConnected: Boolean = true,
     onCopyPrUrl: ((String) -> Unit)? = null
 ) {
@@ -67,6 +69,9 @@ fun OutcomeCard(
     val canCreatePr = !hasPr && !run.merged && !run.branch.isNullOrBlank() &&
         (run.status.equals("accepted", ignoreCase = true) || run.status.equals("rejected", ignoreCase = true))
     val isGhAvailable = ghStatus?.available ?: true
+    val canContinue = !run.worktreePath.isNullOrBlank() &&
+        (run.status.equals("rejected", ignoreCase = true) || run.status.equals("failed", ignoreCase = true)) &&
+        run.phases.any { it.status.equals("fail", ignoreCase = true) }
 
     Column(
         modifier = modifier
@@ -102,6 +107,15 @@ fun OutcomeCard(
             style = typography.body,
             color = colors.textPrimary
         )
+
+        if (canContinue) {
+            FoundryPrimaryButton(
+                text = if (isContinuing) "Continuing…" else "Continue run",
+                onClick = onContinue,
+                enabled = isConnected && !isContinuing,
+                isLoading = isContinuing
+            )
+        }
 
         // PR / Issue actions
         when {

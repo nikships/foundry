@@ -320,6 +320,33 @@ class CompanionRepositoryTest {
     }
 
     @Test
+    fun testHttpContinueRun() = runBlocking {
+        val hostOrigin = server.url("").toString().removeSuffix("/")
+        httpRepository.injectFakeSession(
+            PairedSession(
+                token = "test_token",
+                desktopId = "desk_01",
+                desktopName = "Mac",
+                hostOrigin = hostOrigin,
+                pairedAt = "2026-08-19T00:00:00Z"
+            )
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"ok":true,"detail":"Continuing from build"}"""
+            )
+        )
+
+        val res = httpRepository.continueRun("proj_1", "run_123").getOrThrow()
+        assertTrue(res.ok)
+        assertEquals("Continuing from build", res.detail)
+
+        val req = server.takeRequest()
+        assertEquals("/v1/projects/proj_1/runs/run_123/continue", req.path)
+        assertEquals("POST", req.method)
+    }
+
+    @Test
     fun testHttpGetInterruptsAndAnswer() = runBlocking {
         val hostOrigin = server.url("").toString().removeSuffix("/")
         httpRepository.injectFakeSession(

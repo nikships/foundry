@@ -165,6 +165,15 @@ export default function RunDetailScreen({
     await withWorktree('Pull request opened.', () => api.prs.create(projectId, runId, title, body));
   };
 
+  const resumeRun = async (): Promise<void> => {
+    if (worktreeBusy) return;
+    await withWorktree(
+      'Continuing run.',
+      () => api.runs.resume(projectId, runId),
+      'Reopening the failed phase…',
+    );
+  };
+
   const openUrl = (url: string): void => {
     void api.app.openExternal(url);
   };
@@ -262,7 +271,13 @@ export default function RunDetailScreen({
           worktreeMessage={worktreeMessage}
           worktreeError={worktreeError}
           gh={gh}
+          canResume={
+            (view.run.status === 'rejected' || view.run.status === 'failed') &&
+            !!view.run.worktreePath &&
+            view.phases.some((phase) => phase.status === 'fail')
+          }
           canFix={mergeRefused}
+          onResume={() => void resumeRun()}
           onMerge={() => void mergeWorktree()}
           onFixMerge={() => void fixMerge()}
           onDiscard={() => void discardWorktree()}

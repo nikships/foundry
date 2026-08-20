@@ -21,6 +21,7 @@ interface CompanionRepository {
     suspend fun getInterrupts(): Result<List<PendingInterrupt>>
     suspend fun startRun(input: StartRunInput): Result<CompanionStartResult>
     suspend fun killRun(projectId: String, runId: String): Result<CompanionKillResult>
+    suspend fun continueRun(projectId: String, runId: String): Result<CompanionContinueResult>
     suspend fun answerInterrupt(answer: InterruptAnswer): Result<CompanionAnswerResult>
     suspend fun getPrStatus(projectId: String): Result<GhStatus>
     suspend fun getPrDraft(projectId: String, runId: String): Result<CompanionPrDraft>

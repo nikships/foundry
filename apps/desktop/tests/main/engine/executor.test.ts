@@ -1459,6 +1459,56 @@ describe('the agent transport under the executor', () => {
     expect(h.tracer.openProcesses(outcome.runId)).toHaveLength(0);
   });
 
+  it('continues a timed-out run in the same worktree and persisted agent session', async () => {
+    const pipeline = pipe(
+      [
+        codePhase('prepare', { argv: ['sh', '-c', 'echo prepared >> prepare-count'] }),
+        agentPhase('build', { description: 'Finish after the interrupted turn.' }),
+      ],
+      {
+        description: 'a run that can continue after an app restart',
+        acceptance: { kind: 'envelope_status', phase: 'build' },
+      },
+    );
+    const stalled = scriptedAgent([buildEnvelope()], [], [], { stallOnTurns: [0] });
+    const first = await run({ pipeline, scripted: stalled, turnTimeoutMs: 50 });
+
+    expect(first.status).toBe('rejected');
+    const before = h.tracer.run(first.runId)!;
+    const phaseIds = h.tracer.phases(first.runId).map((phase) => phase.phaseId);
+    const sessionId = h.tracer.agentSessions(first.runId)[0]!.agentSessionId;
+    expect(readFileSync(join(before.worktreePath!, 'prepare-count'), 'utf8')).toBe('prepared\n');
+
+    const continued = scriptedAgent([buildEnvelope()]);
+    const executor = new Executor({
+      tracer: h.tracer,
+      turnTimeoutMs: 30_000,
+      envelopeRetries: 2,
+      gateRetries: 2,
+      compactionThreshold: 0.8,
+      rewindAfterCorrections: 2,
+      supportDir: h.support,
+      transport: (req) => continued.transport(req),
+      agents: [buildAgent()],
+      envelopeDefs: [],
+      project: h.project,
+      pipeline,
+      request: 'do the thing',
+      runId: first.runId,
+      engineer: 'test',
+      askHuman: async () => ({ approve: true }),
+    });
+    const outcome = await executor.resume();
+
+    expect(outcome.status).toBe('accepted');
+    expect(h.tracer.phases(first.runId).map((phase) => phase.phaseId)).toEqual(phaseIds);
+    expect(readFileSync(join(before.worktreePath!, 'prepare-count'), 'utf8')).toBe('prepared\n');
+    expect(turnRequests(continued)[0]!.sessionId).toBe(sessionId);
+    expect(events(first.runId)).toContainEqual(
+      expect.objectContaining({ type: 'log', name: 'run continued' }),
+    );
+  });
+
   it('fails the phase when the session dies mid-turn', async () => {
     const scripted = scriptedAgent([buildEnvelope(), buildEnvelope()], [], [], { dieOnTurns: [0] });
     const outcome = await run({

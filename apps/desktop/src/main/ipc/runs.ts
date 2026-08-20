@@ -59,6 +59,17 @@ export function register(ctx: Ctx, handle: Handle): void {
     ),
   );
 
+  handle(IPC.runsResume, (projectId: string, runId: string): WorktreeAction => {
+    const project = projectOf(projectId);
+    if (!project) return { ok: false, detail: 'project not found' };
+    return ctx.registry.resume({
+      project,
+      runId,
+      agents: ctx.rosterFor(projectId),
+      envelopeDefs: ctx.envelopes.list(),
+    });
+  });
+
   handle(IPC.runsList, (projectId: string, includeArchived: boolean) => {
     const scoped = tracerOf(projectId);
     if (!scoped) return [];

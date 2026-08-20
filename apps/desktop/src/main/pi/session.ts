@@ -57,6 +57,8 @@ export interface AgentSessionDeps {
   turnTimeoutMs: number;
   tracer: Tracer;
   protectedPaths: string[];
+  /** Persisted runtime session to reopen when a terminal run is continued. */
+  existingSessionId?: string | null;
   /** Builds the transport this session drives. Injected, never constructed here. */
   transport: (input: TransportRequest) => AgentTransport;
 }
@@ -123,7 +125,9 @@ export class AgentSession {
   constructor(
     private readonly agent: AgentDef,
     private readonly deps: AgentSessionDeps,
-  ) {}
+  ) {
+    this.agentSessionId = deps.existingSessionId ?? null;
+  }
 
   get currentMode(): Mode {
     return this.mode;

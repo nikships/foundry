@@ -338,6 +338,38 @@ class RunDetailScreenTest {
     }
 
     @Test
+    fun testFailedRunWithWorktreeCanContinue() {
+        var continuedRunId: String? = null
+        val failedRun = settledRun.copy(
+            status = "rejected",
+            worktreePath = "/tmp/foundry-run",
+            phases = settledPhases,
+            prUrl = null,
+            prNumber = null
+        )
+
+        composeTestRule.setContent {
+            FoundryTheme {
+                RunDetailScreen(
+                    runDetail = RunDetail(run = failedRun, phases = settledPhases, live = false),
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    onBackClick = {},
+                    onOpenInspector = {},
+                    onKillRun = {},
+                    onContinueRun = { continuedRunId = it },
+                    onOpenPr = {},
+                    onCreatePr = {},
+                    onOpenIssue = {}
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("CONTINUE RUN").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithText("CONTINUE RUN").performClick()
+        assertEquals(failedRun.runId, continuedRunId)
+    }
+
+    @Test
     fun testCreatePrConfirmSheetPostsOnlyOnConfirm() {
         var confirmed = false
         var dismissed = false

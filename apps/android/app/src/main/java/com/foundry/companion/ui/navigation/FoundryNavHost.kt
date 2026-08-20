@@ -253,12 +253,14 @@ fun FoundryNavHost(
                 actionError = uiState.errorMessage,
                 onDismissActionError = { viewModel.clearActionError() },
                 ghStatus = uiState.ghStatus,
+                isContinuingRun = uiState.isContinuingRun,
                 isCreatingPr = uiState.isCreatingPr,
                 onBackClick = { navController.popBackStack() },
                 onOpenInspector = { phaseId ->
                     navController.navigate(NavRoute.Inspector.createRoute(runId, phaseId))
                 },
                 onKillRun = { viewModel.killRun(it) },
+                onContinueRun = { viewModel.continueRun(it) },
                 onAnswerInterrupt = { interruptId, approved, notes ->
                     viewModel.answerInterrupt(interruptId, approved, notes)
                 },
@@ -326,4 +328,3 @@ fun FoundryNavHost(
     // An interrupt never raises a sheet on its own: Home shows the run's amber
     // `waiting` chip and the Run screen pins the strip with `Answer…` (spec §3.7).
 }
-

@@ -57,7 +57,9 @@ export default function OutcomeBanner({
   worktreeMessage,
   worktreeError = false,
   gh,
+  canResume = false,
   canFix = false,
+  onResume,
   onMerge,
   onFixMerge,
   onDiscard,
@@ -73,8 +75,11 @@ export default function OutcomeBanner({
   worktreeError?: boolean;
   /** null while the gh probe is still in flight. */
   gh: GhStatus | null;
+  /** A failed phase and its isolated worktree are both still available. */
+  canResume?: boolean;
   /** True after a refused merge, which is when the agent repair applies. */
   canFix?: boolean;
+  onResume?: () => void;
   onMerge: () => void;
   onFixMerge?: () => void;
   onDiscard: () => void;
@@ -130,6 +135,17 @@ export default function OutcomeBanner({
       </div>
       {hasWorktree ? (
         <div className={styles.actions}>
+          {canResume && onResume && (
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={worktreeBusy}
+              title="Retry the first failed phase and continue this pipeline in the same worktree"
+              onClick={onResume}
+            >
+              {worktreeBusy ? 'Continuing…' : 'Continue run'}
+            </Button>
+          )}
           {canFix && onFixMerge && (
             <Button
               variant="primary"
