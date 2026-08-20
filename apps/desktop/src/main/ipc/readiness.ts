@@ -10,8 +10,9 @@ import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
 import { notifySettings } from './shared.js';
 import { inspectProject } from '../readiness/sessions.js';
+import { ensureProjectContext } from '../project-context.js';
 
-type Ctx = Pick<AppContext, 'projects' | 'settings' | 'readiness' | 'broadcast'>;
+type Ctx = Pick<AppContext, 'projects' | 'settings' | 'readiness' | 'broadcast' | 'oneShot'>;
 
 export function register(ctx: Ctx, handle: Handle): void {
   const persist = (project: ProjectDef): void => {
@@ -20,6 +21,15 @@ export function register(ctx: Ctx, handle: Handle): void {
   };
 
   const projectOf = (projectId: string) => ctx.projects.get(projectId);
+  const withContext = (project: ProjectDef): Promise<ProjectDef> =>
+    ensureProjectContext({
+      project,
+      settings: ctx.settings.get(),
+      oneShot: ctx.oneShot,
+      persist: (next) => {
+        persist({ ...(projectOf(next.id) ?? next), contextSummary: next.contextSummary });
+      },
+    });
 
   handle(
     IPC.readinessInspect,
@@ -48,7 +58,8 @@ export function register(ctx: Ctx, handle: Handle): void {
       projectId: string,
       opts?: { model?: string; reasoningEffort?: ReasoningEffort; saveAsDefault?: boolean },
     ): Promise<{ sessionId: string } | { error: string }> => {
-      const project = projectOf(projectId);
+      const found = projectOf(projectId);
+      const project = found ? await withContext(found) : null;
       if (!project) return { error: 'project not found' };
       if (opts?.saveAsDefault) {
         const patch: { readinessModel?: string; readinessReasoningEffort?: ReasoningEffort } = {};
@@ -73,7 +84,8 @@ export function register(ctx: Ctx, handle: Handle): void {
   handle(
     IPC.readinessMakeReady,
     async (projectId: string): Promise<{ sessionId: string } | { error: string }> => {
-      const project = projectOf(projectId);
+      const found = projectOf(projectId);
+      const project = found ? await withContext(found) : null;
       if (!project) return { error: 'project not found' };
       const settings = ctx.settings.get();
       const session = ctx.readiness.open(project, settings, persist);
@@ -100,7 +112,8 @@ export function register(ctx: Ctx, handle: Handle): void {
   handle(
     IPC.readinessRetry,
     async (projectId: string): Promise<{ sessionId: string } | { error: string }> => {
-      const project = projectOf(projectId);
+      const found = projectOf(projectId);
+      const project = found ? await withContext(found) : null;
       if (!project) return { error: 'project not found' };
       const settings = ctx.settings.get();
       const session = ctx.readiness.open(project, settings, persist);

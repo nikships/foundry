@@ -100,7 +100,12 @@ export class ScriptedAgent {
   /** Every decision the scripted agent got back, in the order it raised the asks. */
   readonly askReplies: AskReply[] = [];
   /** Every prompt the engine sent, in order — the wire, not the trace. */
-  readonly turnRequests: { text: string; outputFormat?: unknown; sessionId: string }[] = [];
+  readonly turnRequests: {
+    text: string;
+    outputFormat?: unknown;
+    systemPrompt?: string;
+    sessionId: string;
+  }[] = [];
   /**
    * Request names plus turn boundaries, in order. Whether compaction happened
    * mid-turn is only knowable from this ordering.
@@ -224,12 +229,17 @@ export class ScriptedAgent {
   async runTurn(
     transport: ScriptedTransport,
     prompt: string,
-    outputFormat: unknown,
+    opts: TurnOptions,
   ): Promise<TurnResult> {
     const n = this.turn++;
     this.turnMarkers.push(`turn ${n}`);
     this.recordWatchedContent(transport.cwd, n);
-    this.turnRequests.push({ text: prompt, sessionId: transport.id ?? '', outputFormat });
+    this.turnRequests.push({
+      text: prompt,
+      sessionId: transport.id ?? '',
+      outputFormat: opts.outputFormat,
+      systemPrompt: opts.systemPrompt,
+    });
     this.wire.push(`turn_started u${n} session=${transport.id}`);
     transport.noteUserMessage(`u${n}`);
 
@@ -380,7 +390,7 @@ class ScriptedTransport implements AgentTransport {
   }
 
   async send(text: string, timeoutMs: number, opts: TurnOptions = {}): Promise<TurnResult> {
-    const turn = this.agent.runTurn(this, text, opts.outputFormat);
+    const turn = this.agent.runTurn(this, text, opts);
     let timer: NodeJS.Timeout | undefined;
     const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(new Error(`turn timed out after ${timeoutMs}ms`)), timeoutMs);

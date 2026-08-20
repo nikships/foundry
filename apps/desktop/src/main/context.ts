@@ -53,9 +53,9 @@ export class AppContext {
   readonly bridge: BridgeService;
   readonly version: string;
   /**
-   * How every non-run agent turn is opened — detection, setup, the run-start
-   * command fill, the rebase repair, the readiness fix. One factory rather than
-   * five constructions, so a call site states what it needs (a directory, an
+   * How every non-run agent turn is opened — repository context, detection,
+   * setup, the run-start command fill, rebase repair, and the readiness fix.
+   * One factory rather than six constructions, so a call site states what it needs (a directory, an
    * access level) and never where the runtime keeps its state.
    */
   readonly oneShot: OneShotFactory;
