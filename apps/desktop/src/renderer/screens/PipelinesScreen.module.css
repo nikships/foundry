@@ -61,6 +61,21 @@
   color: var(--accent);
 }
 
+.staleBadge {
+  grid-column: 2;
+  width: fit-content;
+  padding: 1px 5px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--amber);
+  background: var(--amber-dim);
+  border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
+  border-radius: var(--r-sm);
+}
+
 .nameInput,
 .descInput {
   width: 100%;

@@ -36,6 +36,18 @@ import styles from './RosterScreen.module.css';
 
 const COLORS = ['#4fa8b8', '#9b7ede', '#d19a3d', '#3cb87a', '#e0605f', '#5b8fd9'];
 
+const CREW = [
+  ['Refiner', 'grounds a rough request in the repository'],
+  ['Planner', 'turns the request into reviewable tasks'],
+  ['Builder', 'implements the work in isolation'],
+  ['Scout', 'maps the files and patterns that matter'],
+  ['Reviewer', 'judges the diff before it ships'],
+  ['Finisher', 'closes gaps against the ship bar'],
+  ['Documenter', 'records the decisions and follow-ups'],
+  ['PR writer', 'drafts the pull request'],
+  ['Issue writer', 'turns follow-up work into an issue'],
+] as const;
+
 /**
  * The brand behind a stored model id, for the roster's badge.
  *
@@ -68,6 +80,7 @@ export default function RosterScreen({
   const [renameError, setRenameError] = useState('');
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
   const [actionError, setActionError] = useState('');
+  const [staleBuiltins, setStaleBuiltins] = useState<Set<string>>(new Set());
   const { models, refresh: refreshModels } = useAgentModels();
   const [showPreview, setShowPreview] = useState(false);
   const [showIconPicker, setShowIconPicker] = useState(false);
@@ -135,6 +148,16 @@ export default function RosterScreen({
   useEffect(() => {
     if (!agents.some((a) => a.name === selectedName)) setSelectedName(agents[0]?.name ?? '');
   }, [agents, selectedName]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void api.roster.staleBuiltins(projectId || undefined).then((names) => {
+      if (!cancelled) setStaleBuiltins(new Set(names));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [agents, projectId]);
 
   // Deep link from a Smith approve: once the saved agent shows up in the list,
   // select it so the editor opens on it. `openNonce` re-fires the effect when
@@ -260,6 +283,28 @@ export default function RosterScreen({
     { title: 'Delete Agent', confirmLabel: 'Delete', variant: 'danger' },
   );
 
+  const resetToShipped = useConfirmAction(
+    () => `Reset agent “${selected?.name}” to the version shipped with Foundry?`,
+    async (): Promise<void> => {
+      if (!selected?.builtin) return;
+      setActionError('');
+      cancel();
+      try {
+        await api.roster.reset(selected.name, projectId || undefined);
+        lastSyncedNameRef.current = null;
+        setStaleBuiltins((current) => {
+          const next = new Set(current);
+          next.delete(selected.name);
+          return next;
+        });
+        await refreshScoped();
+      } catch (e) {
+        setActionError((e as Error).message);
+      }
+    },
+    { title: 'Reset Agent', confirmLabel: 'Reset to shipped version' },
+  );
+
   const createAgent = async (): Promise<void> => {
     setActionError('');
     // The pane is about to move off the current agent, so persist its pending
@@ -329,6 +374,9 @@ export default function RosterScreen({
                   <AgentAvatar name={agent.name} size={30} />
                   <span className={styles.rosterCellWho}>
                     <span className={styles.rosterCellName}>{agent.name}</span>
+                    {staleBuiltins.has(agent.name) && (
+                      <span className={styles.staleBadge}>Shipped update</span>
+                    )}
                     <span className={styles.rosterCellRole}>{agent.purpose}</span>
                     <span className={styles.rosterCellModel}>
                       {isActive && <span className={styles.rosterCellDot} aria-hidden />}
@@ -402,6 +450,9 @@ export default function RosterScreen({
                       <span className={styles.rosterHeadTag}>
                         {draft.builtin ? 'Shipped with Foundry, editable' : 'Custom agent'}
                       </span>
+                      {staleBuiltins.has(draft.name) && (
+                        <span className={styles.staleBadge}>Shipped version differs</span>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -420,6 +471,15 @@ export default function RosterScreen({
                   >
                     Duplicate
                   </button>
+                  {draft.builtin && staleBuiltins.has(draft.name) && (
+                    <button
+                      type="button"
+                      className={styles.rosterAction}
+                      onClick={() => void resetToShipped()}
+                    >
+                      Reset to shipped version
+                    </button>
+                  )}
                   {!draft.builtin && (
                     <button
                       type="button"
@@ -835,6 +895,27 @@ export default function RosterScreen({
                 <span className={styles.rosterAutosave}>Changes save automatically</span>
               </div>
             </div>
+          </div>
+        )}
+        {!draft && (
+          <div className={styles.rosterEmpty}>
+            <p className="eyebrow">Agents</p>
+            <h1>Meet the crew</h1>
+            <p className={styles.rosterEmptyLead}>
+              Agents are editable specialists. Pipelines wire them into phases, and each phase can
+              use its own model, prompt, reply envelope, and write boundary.
+            </p>
+            <ul className={styles.rosterEmptyCrew}>
+              {CREW.map(([name, purpose]) => (
+                <li key={name}>
+                  <strong>{name}</strong>
+                  <span>{purpose}</span>
+                </li>
+              ))}
+            </ul>
+            <Button variant="primary" onClick={() => void createAgent()}>
+              Create your first agent
+            </Button>
           </div>
         )}
         {showPreview && draft && (

@@ -9,12 +9,6 @@
 
 import { PR_FALLBACK_HEADINGS, PR_TEMPLATE_SEARCH_PATHS, type AgentDef } from '@shared/types.js';
 
-const SHELL_NOTE = [
-  "You inherit the operator's PATH and credentials. Project dependencies are available only when the worktree setup installed them.",
-  'Call tools by bare name (bun, uv, pytest); never hunt for a binary or fall back to an absolute path.',
-  'Judge any command you run by its exit status, never by scanning output for words. The text "error" inside passing output is text, not a failure.',
-].join('\n');
-
 export const BUILTIN_AGENTS: AgentDef[] = [
   {
     name: 'refiner',
@@ -83,8 +77,6 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       '- Keep the plan concrete: files to touch, changes to make, how to verify.',
       '- Write the plan to a file under `specs/` and declare that path in your artifacts.',
       '- Do not implement anything. Planning and building are different phases for a reason.',
-      '',
-      SHELL_NOTE,
     ].join('\n'),
     userPrompt: [
       '# Plan',
@@ -125,8 +117,6 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       '- Make the smallest change that satisfies the request; do not refactor unrelated code.',
       '- When fixing test failures, address every reported failure, not the first one.',
       '- Verify your work runs before reporting, and judge that by exit status.',
-      '',
-      SHELL_NOTE,
     ].join('\n'),
     userPrompt: [
       '# Build',
@@ -198,7 +188,6 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       '- Derive requirements from the request and the plan, then check each one against the diff.',
       '- Every finding needs evidence: the path, the symbol, what you saw.',
       '- `approved` must be false if anything is blocking. A gate checks that your verdict is self-consistent.',
-      '- When you do not approve, report `status: "fail"` too — a gate halts the run on your verdict so rejected work never flows into later phases.',
       '- Do not fix what you find. Report it.',
     ].join('\n'),
     userPrompt: [
@@ -258,8 +247,6 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       '- Stay inside the original request. Fixing how the work was done is in scope; adding features is not.',
       '- Be honest, not agreeable. `approved` is true only when you would put your name on this.',
       '  A gate checks your verdict against your own findings.',
-      '',
-      SHELL_NOTE,
     ].join('\n'),
     userPrompt: [
       '# Production check',
@@ -279,7 +266,6 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       '1. One `findings` entry per dimension you audited, each with the evidence you saw.',
       '2. List what you changed in `improvements`.',
       '3. Anything still short of the bar goes in `blocking`, and `approved` is false.',
-      '4. If you could not close every gap, report `status: "fail"` so the run halts here instead of shipping short of the bar.',
     ].join('\n'),
   },
   {
@@ -304,8 +290,6 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       '- Document what the change does and why, not a line-by-line narration of the diff.',
       '- Update existing docs in place when they cover the area; do not start a parallel document.',
       '- Declare the document you wrote in `artifacts`.',
-      '',
-      SHELL_NOTE,
     ].join('\n'),
     userPrompt: [
       '# Document',

@@ -83,7 +83,7 @@ describe('Settings', () => {
   });
 
   it('keeps the remaining preference panes', () => {
-    for (const pane of ['general', 'providers', 'defaults', 'project', 'maintenance', 'about']) {
+    for (const pane of ['models', 'project', 'app']) {
       expect(settingsSrc).toContain(`id: '${pane}'`);
     }
   });
@@ -95,10 +95,10 @@ describe('Settings', () => {
   });
 
   // Every provider remediation the doctor offers is `open-settings: providers`,
-  // so a renamed pane would land the operator on General with no explanation.
+  // so a renamed pane would land the operator on Models with no explanation.
   it('is the destination the doctor’s provider fixes name', () => {
-    expect(doctorSrc).toContain("kind: 'open-settings', value: 'providers'");
-    expect(settingsSrc).toContain("id: 'providers'");
+    expect(doctorSrc).toContain("kind: 'open-settings', value: 'models'");
+    expect(settingsSrc).toContain("id: 'models'");
   });
 
   it('exposes a data-testid on every pane tab for CDP automation', () => {

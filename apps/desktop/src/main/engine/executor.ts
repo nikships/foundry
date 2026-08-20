@@ -47,6 +47,7 @@ import { runCommand } from './commands.js';
 import { createIssue, openPr, type GhOptions } from '../system/gh.js';
 import type { IssueAction, PrAction } from '@shared/ipc-contract.js';
 import { effectivePhaseEnvelope, resolveAgentExecution } from '@shared/types.js';
+import type { SetupExecution } from './agent-context.js';
 
 export interface ExecutorDeps {
   tracer: Tracer;
@@ -115,6 +116,7 @@ export class Executor {
   private readonly phaseIds = new Map<string, string>();
   private readonly feedback = new Map<string, string>();
   private readonly commandDrift = new Map<string, CommandDriftRecord>();
+  private setupExecution: SetupExecution | null = null;
   private cancelled = false;
   /**
    * The host install as it looked when this run started. Snapshotted so an
@@ -136,6 +138,7 @@ export class Executor {
         envelopeRetries: deps.envelopeRetries,
         rewindAfterCorrections: deps.rewindAfterCorrections,
         sessionFor: (agent, modelOverride) => this.sessionFor(agent, modelOverride),
+        setupExecution: () => this.currentSetupExecution(),
         onLiveText: deps.onLiveText,
       }),
       code: new CodePhaseRunner(),
@@ -241,6 +244,7 @@ export class Executor {
         passed: result.passed,
         result: result.outputTail.slice(-2000),
       });
+      this.setupExecution = { command: script, exitCode: result.exitCode };
       if (!result.passed) {
         tracer.event({
           runId,
@@ -424,6 +428,7 @@ export class Executor {
       handoffDir: HANDOFF_DIR,
       branch: this.handle?.branch ?? null,
       baseRef: this.deps.project.baseRef,
+      branchPointSha: this.handle?.branchPointSha ?? '',
       envelopes: this.envelopes,
       commandResults: this.commandResults,
       feedback: this.feedback,
@@ -489,6 +494,20 @@ export class Executor {
     const id = this.phaseIds.get(name);
     if (!id) throw new Error(`phase "${name}" was never queued`);
     return id;
+  }
+
+  private currentSetupExecution(): SetupExecution | null {
+    if (this.setupExecution) return this.setupExecution;
+    const setup = this.deps.tracer
+      .eventsAfter(this.deps.runId, 0, 1000)
+      .find((event) => event.type === 'tool_call' && event.name === 'setup');
+    const command = setup?.payload.script;
+    const exitCode = setup?.payload.exitCode;
+    if (typeof command !== 'string' || (typeof exitCode !== 'number' && exitCode !== null)) {
+      return null;
+    }
+    this.setupExecution = { command, exitCode };
+    return this.setupExecution;
   }
 
   private async sessionFor(agent: AgentDef, modelOverride?: string): Promise<AgentSession> {

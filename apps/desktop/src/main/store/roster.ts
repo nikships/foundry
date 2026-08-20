@@ -8,6 +8,7 @@
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
 import { BUILTIN_ENVELOPE_KINDS, type AgentDef, type ValidationIssue } from '@shared/types.js';
 import { JsonStore } from './json-store.js';
@@ -141,6 +142,13 @@ export class RosterStore {
     return this.storeFor(opts).read();
   }
 
+  staleBuiltins(opts: { projectId?: string; ownRoster?: boolean } = {}): string[] {
+    const current = new Map(this.list(opts).map((agent) => [agent.name, agent]));
+    return BUILTIN_AGENTS.filter(
+      (shipped) => !isDeepStrictEqual(current.get(shipped.name), shipped),
+    ).map((shipped) => shipped.name);
+  }
+
   get(name: string, opts: { projectId?: string; ownRoster?: boolean } = {}): AgentDef | null {
     return this.list(opts).find((a) => a.name === name) ?? null;
   }
@@ -229,6 +237,14 @@ export class RosterStore {
 
   resetToBuiltins(): AgentDef[] {
     return this.appStore.write(BUILTIN_AGENTS.map((a) => ({ ...a })));
+  }
+
+  resetBuiltin(name: string, opts: { projectId?: string; ownRoster?: boolean } = {}): AgentDef[] {
+    const shipped = BUILTIN_AGENTS.find((agent) => agent.name === name);
+    if (!shipped) return this.list(opts);
+    return this.storeFor(opts).update((current) =>
+      upsertBy(current, (agent) => agent.name === name, structuredClone(shipped)),
+    );
   }
 }
 

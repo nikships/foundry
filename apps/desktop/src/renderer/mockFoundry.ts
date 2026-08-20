@@ -157,23 +157,18 @@ const MOCK_PHASES: Record<string, PhaseRow[]> = {
 
 function defaultMockSettings(): AppSettings {
   return {
-    detectModel: 'inherit',
-    readinessModel: 'inherit',
-    readinessReasoningEffort: 'high',
+    helperModel: 'inherit',
+    helperReasoningEffort: 'high',
     engineerName: 'web-preview',
     prAgent: 'pr_writer',
     defaultModel: 'inherit',
     defaultReasoningEffort: 'medium',
     turnTimeoutMs: 30 * 60_000,
-    envelopeRetries: 3,
-    gateRetries: 2,
     compactionThreshold: 0.8,
-    rewindAfterCorrections: 2,
-    bridgePort: 37_717,
     notifications: { accepted: true, rejected: true, failed: true, needsInput: true },
     dockBadge: true,
-    terminalApp: 'terminal',
-    codingAgent: 'droid',
+    terminalApp: null,
+    codingAgent: null,
     retentionDays: null,
     onboarded: true,
     hiddenModelIds: [],
@@ -313,6 +308,7 @@ export function createMockFoundryApi(): FoundryApi {
     },
     roster: {
       list: async () => [...mockAgents],
+      staleBuiltins: async () => [],
       save: async (agent, _projectId): Promise<SaveResult<AgentDef[]>> => {
         const idx = mockAgents.findIndex((a) => a.name === agent.name);
         if (idx >= 0) mockAgents[idx] = agent;
@@ -349,8 +345,13 @@ export function createMockFoundryApi(): FoundryApi {
           null,
           2,
         ),
-      reset: async () => {
-        mockAgents = BUILTIN_AGENTS.map((a) => ({ ...a }));
+      reset: async (name) => {
+        const shipped = BUILTIN_AGENTS.find((agent) => agent.name === name);
+        if (shipped) {
+          mockAgents = mockAgents.map((agent) =>
+            agent.name === name ? structuredClone(shipped) : agent,
+          );
+        }
         return [...mockAgents];
       },
       uploadMark: async (bytesB64, mime) => {
@@ -405,6 +406,7 @@ export function createMockFoundryApi(): FoundryApi {
     },
     pipelines: {
       list: async (): Promise<PipelineDef[]> => [...mockPipelines],
+      staleBuiltins: async () => [],
       save: async (pipeline): Promise<SaveResult<PipelineDef[]>> => {
         const idx = mockPipelines.findIndex((p) => p.id === pipeline.id);
         if (idx >= 0) mockPipelines[idx] = pipeline;
@@ -429,8 +431,13 @@ export function createMockFoundryApi(): FoundryApi {
       },
       validate: async () => [],
       dryRun: async () => [],
-      reset: async () => {
-        mockPipelines = BUILTIN_PIPELINES.map((p) => ({ ...p }));
+      reset: async (id) => {
+        const shipped = BUILTIN_PIPELINES.find((pipeline) => pipeline.id === id);
+        if (shipped) {
+          mockPipelines = mockPipelines.map((pipeline) =>
+            pipeline.id === id ? structuredClone(shipped) : pipeline,
+          );
+        }
         return [...mockPipelines];
       },
     },

@@ -8,8 +8,10 @@
 import { existsSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import {
+  CODING_AGENTS,
   codingAgentFor,
   type AgentDef,
+  type AppSettings,
   type CodingAgentInfo,
   type EnvelopeDef,
   type PipelineDef,
@@ -31,8 +33,8 @@ import {
 import { prepareSession } from '../smith/session.js';
 import {
   openDirectoryInTerminal,
+  preferredTerminal,
   runCommandInTerminal,
-  terminalFor,
   terminalInstalled,
 } from '../system/terminal.js';
 import type { Handle } from './shared.js';
@@ -136,6 +138,11 @@ function agentCliInstalled(agent: CodingAgentInfo): boolean {
   return isAbsolute(path) && existsSync(path);
 }
 
+function preferredCodingAgent(id: AppSettings['codingAgent']): CodingAgentInfo {
+  if (id) return codingAgentFor(id);
+  return CODING_AGENTS.find(agentCliInstalled) ?? CODING_AGENTS[0]!;
+}
+
 /** The shell the window is left in once the agent exits. */
 function loginShell(): string {
   const shell = process.env.SHELL;
@@ -151,8 +158,8 @@ function launchInfo(ctx: LaunchCtx, projectId: string): SmithLaunchInfo {
   const cliPath = foundryCliPath();
   const skillDir = smithSkillDir();
   const settings = ctx.settings.get();
-  const terminal = terminalFor(settings.terminalApp);
-  const agent = codingAgentFor(settings.codingAgent);
+  const terminal = preferredTerminal(settings.terminalApp);
+  const agent = preferredCodingAgent(settings.codingAgent);
   const installed = terminalInstalled(terminal.appName);
   const terminalCapable = !!terminal.prepared && installed;
   const hasAgent = agentCliInstalled(agent);

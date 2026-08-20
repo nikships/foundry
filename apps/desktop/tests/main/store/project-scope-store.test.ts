@@ -15,6 +15,7 @@ import { tempDir } from '../../helpers/tmp.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RosterStore } from '../../../src/main/store/roster.js';
 import { PipelineStore } from '../../../src/main/store/pipelines.js';
+import { BUILTIN_AGENTS } from '../../../src/main/store/builtin-agents.js';
 
 let dir = '';
 const PROJECT = 'proj-1';
@@ -78,6 +79,18 @@ describe('a project roster copy', () => {
     expect(roster.hasProjectCopy('a')).toBe(true);
     expect(roster.hasProjectCopy('b')).toBe(false);
   });
+
+  it('resets a stale builtin only in the selected project scope', () => {
+    const roster = new RosterStore(dir);
+    const agent = roster.list(scoped)[0]!;
+    roster.save({ ...agent, purpose: 'project-only edit' }, scoped);
+    roster.save({ ...agent, purpose: 'app-only edit' });
+
+    roster.resetBuiltin(agent.name, scoped);
+
+    expect(roster.staleBuiltins(scoped)).not.toContain(agent.name);
+    expect(roster.get(agent.name)?.purpose).toBe('app-only edit');
+  });
 });
 
 describe('a project pipelines copy', () => {
@@ -103,5 +116,22 @@ describe('a project pipelines copy', () => {
     const pipelines = new PipelineStore(dir);
     pipelines.list();
     expect(pipelines.hasProjectCopy(PROJECT)).toBe(false);
+  });
+
+  it('resets a stale builtin only in the selected project scope', () => {
+    const pipelines = new PipelineStore(dir);
+    const pipeline = pipelines.list(scoped)[0]!;
+    const saved = pipelines.save(
+      { ...pipeline, description: 'project-only edit' },
+      BUILTIN_AGENTS,
+      ['test'],
+      scoped,
+    );
+    expect(saved.ok).toBe(true);
+    expect(pipelines.staleBuiltins(scoped)).toContain(pipeline.id);
+    pipelines.resetBuiltin(pipeline.id, scoped);
+
+    expect(pipelines.staleBuiltins(scoped)).not.toContain(pipeline.id);
+    expect(pipelines.get(pipeline.id)?.description).toBe(pipeline.description);
   });
 });

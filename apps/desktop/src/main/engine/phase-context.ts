@@ -26,6 +26,8 @@ export interface RunContext {
   readonly branch: string | null;
   /** Project base ref the PR targets. */
   readonly baseRef: string;
+  /** Base commit the isolated run branched from. */
+  readonly branchPointSha: string;
 
   /** Envelopes from completed phases, by phase name. Runners write here. */
   readonly envelopes: Map<string, Envelope>;

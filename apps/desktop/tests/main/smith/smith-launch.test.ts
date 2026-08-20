@@ -26,6 +26,7 @@ import { prepareSession } from '../../../src/main/smith/session.js';
 import {
   openDirectoryInTerminal,
   preparedTerminalArgv,
+  preferredTerminal,
   runCommandInTerminal,
   terminalFor,
   terminalInstalled,
@@ -330,6 +331,11 @@ describe('smithAgentArgv', () => {
 });
 
 describe('terminal selection', () => {
+  it('auto-detects an installed terminal and preserves an explicit override', () => {
+    expect(terminalInstalled(preferredTerminal(null).appName)).toBe(true);
+    expect(preferredTerminal('warp').id).toBe('warp');
+  });
+
   it('resolves every catalogued id to its macOS application name', () => {
     for (const terminal of TERMINAL_APPS) {
       expect(terminalFor(terminal.id)).toEqual(terminal);

@@ -88,6 +88,19 @@ describe('renaming a shipped agent', () => {
     expect(roster.get('my-planner')?.builtin).toBe(false);
     expect(roster.remove('my-planner').some((a) => a.name === 'my-planner')).toBe(false);
   });
+
+  it('reports edited shipped agents and resets only the selected agent', () => {
+    const planner = roster.get('planner')!;
+    roster.save({ ...planner, purpose: 'My custom planner.' });
+    roster.save(custom('helper'));
+
+    expect(roster.staleBuiltins()).toContain('planner');
+    roster.resetBuiltin('planner');
+
+    expect(roster.staleBuiltins()).not.toContain('planner');
+    expect(roster.get('planner')).toEqual(BUILTIN_AGENTS.find((agent) => agent.name === 'planner'));
+    expect(roster.get('helper')).not.toBeNull();
+  });
 });
 
 describe('a rejected rename', () => {

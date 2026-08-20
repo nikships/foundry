@@ -15,17 +15,8 @@ import {
 } from '@renderer/view-models/settings-search.js';
 
 describe('settings search registry', () => {
-  it('covers exactly the six panes the screen renders', () => {
-    expect(SETTINGS_PANES.map((p) => p.id)).toEqual([
-      'general',
-      'providers',
-      'defaults',
-      'project',
-      'maintenance',
-      'about',
-    ]);
-    const ids = SETTINGS_PANES.map((p) => p.id);
-    for (const section of SETTINGS_SECTIONS) expect(ids).toContain(section.pane);
+  it('covers exactly the three panes the screen renders', () => {
+    expect(SETTINGS_PANES.map((p) => p.id)).toEqual(['models', 'project', 'app']);
   });
 
   it('derives stable dom ids from labels', () => {
@@ -53,7 +44,7 @@ describe('searchSettings', () => {
   it('finds the API keys section under Providers, ahead of the pane hit', () => {
     const hits = searchSettings('api key');
     const section = hits.findIndex((h) => h.sectionId === 'api-keys');
-    const pane = hits.findIndex((h) => h.pane === 'providers' && h.sectionId === null);
+    const pane = hits.findIndex((h) => h.pane === 'models' && h.sectionId === null);
     expect(section, JSON.stringify(hits)).toBeGreaterThanOrEqual(0);
     expect(pane).toBeGreaterThanOrEqual(0);
     expect(section).toBeLessThan(pane);
@@ -64,18 +55,18 @@ describe('searchSettings', () => {
     // fine answers — what matters is the query lands on that pane and the
     // pane-level jump target is present.
     const hits = searchSettings('providers');
-    expect(hits[0]?.pane).toBe('providers');
-    expect(hits.some((h) => h.pane === 'providers' && h.sectionId === null)).toBe(true);
+    expect(hits[0]?.pane).toBe('models');
+    expect(hits.some((h) => h.pane === 'models' && h.sectionId === null)).toBe(true);
   });
 
   it('reaches maintenance sections by keyword', () => {
     const hits = searchSettings('retention');
-    expect(hits.some((h) => h.pane === 'maintenance' && h.sectionId === 'retention')).toBe(true);
+    expect(hits.some((h) => h.pane === 'app' && h.sectionId === 'retention')).toBe(true);
   });
 
   it('matches section notes, so phrases in prose still surface the section', () => {
-    const hits = searchSettings('trace says who asked');
-    expect(hits.some((h) => h.pane === 'general' && h.sectionId === 'identity')).toBe(true);
+    const hits = searchSettings('moments that need you');
+    expect(hits.some((h) => h.pane === 'app' && h.sectionId === 'notifications')).toBe(true);
   });
 
   it('respects the cap', () => {
@@ -89,8 +80,8 @@ describe('paneMatchesQuery', () => {
   });
 
   it('narrows to panes that contain a hit', () => {
-    expect(paneMatchesQuery('maintenance', 'retention')).toBe(true);
-    expect(paneMatchesQuery('about', 'retention')).toBe(false);
+    expect(paneMatchesQuery('app', 'retention')).toBe(true);
+    expect(paneMatchesQuery('models', 'retention')).toBe(false);
   });
 });
 

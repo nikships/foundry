@@ -20,7 +20,7 @@ import type { EventPage, PrAction, RunDetail } from '@shared/ipc-contract.js';
 import { manualPrDraft, type ResolvedPrDraft } from '@shared/pr-draft.js';
 import type { Tracer } from '../trace/tracer.js';
 import type { OneShotFactory } from '../pi/oneshot.js';
-import { DETECT_PROMPT, parseDetectReply, sniffCommands } from './detect.js';
+import { buildDetectPrompt, DETECT_PROMPT, parseDetectReply } from './detect.js';
 import { ensureMissingCommands, missingCommandRefs, preflightForRun } from './preflight.js';
 import * as ghLib from '../system/gh.js';
 import type { GhOptions } from '../system/gh.js';
@@ -80,30 +80,21 @@ export async function startRun(deps: StartRunDeps, input: StartRunInput): Promis
     const scaffold = project.scaffold === true;
     const ensured = await ensureMissingCommands(project, missing, {
       useAgent: !scaffold,
-      detectWithAgent: async () => {
+      detectWithAgent: async (sniffed) => {
         const settings = deps.settings();
-        const sniffed = await sniffCommands(projectPath);
         // Start-time fill honours the operator's detection model, so what
         // answers here is what the Project pane says will answer.
-        const model = settings.detectModel || 'inherit';
+        const model = settings.helperModel || 'inherit';
         // Same read-only session detection itself opens: this runs against
         // the operator's checkout, and nothing would revert a write there.
         const session = deps.oneShot({
           cwd: projectPath,
           access: 'read',
           model,
-          reasoningEffort: model === 'inherit' ? 'off' : settings.defaultReasoningEffort,
+          reasoningEffort: settings.helperReasoningEffort,
           systemPrompt: DETECT_PROMPT,
         });
-        const prompt = ['Inspect this repository and report the verification commands.'];
-        if (sniffed.length) {
-          prompt.push(
-            '',
-            'Reading this repository’s manifests suggested the commands below. Confirm, correct, or replace them, and add any the manifests missed:',
-            sniffed.map((c) => `- ${c.name}: ${c.argv.join(' ')} (from ${c.source})`).join('\n'),
-          );
-        }
-        const turn = await session.send(prompt.join('\n'), DETECT_FILL_TIMEOUT_MS);
+        const turn = await session.send(buildDetectPrompt(sniffed), DETECT_FILL_TIMEOUT_MS);
         return parseDetectReply(turn.text).commands;
       },
       save: (next) => {

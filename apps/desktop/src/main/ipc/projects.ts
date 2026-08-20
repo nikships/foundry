@@ -19,6 +19,7 @@ import { currentBranch, isRepo } from '../engine/git.js';
 import { checkProject } from '../system/doctor.js';
 import { createRepo, githubAccount } from '../system/gh.js';
 import type { AppContext } from '../context.js';
+import { ensureProjectContext } from '../project-context.js';
 import type { Handle } from './shared.js';
 import { noIssues, notifySettings } from './shared.js';
 
@@ -33,6 +34,7 @@ type Ctx = Pick<
   | 'setups'
   | 'roster'
   | 'pipelines'
+  | 'oneShot'
 >;
 
 /**
@@ -92,6 +94,19 @@ export function register(ctx: Ctx, handle: Handle): void {
         });
       }
     }
+    void ensureProjectContext({
+      project: ctx.projects.get(project.id) ?? project,
+      settings: ctx.settings.get(),
+      oneShot: ctx.oneShot,
+      persist: (next) => {
+        const current = ctx.projects.get(next.id);
+        if (!current) return;
+        ctx.projects.save({
+          ...current,
+          contextSummary: next.contextSummary,
+        });
+      },
+    }).then(() => notifySettings(ctx));
     notifySettings(ctx);
     return ctx.projects.get(project.id) ?? project;
   });
@@ -129,6 +144,19 @@ export function register(ctx: Ctx, handle: Handle): void {
     }
     const curBranch = await currentBranch(path);
     const project = ctx.projects.add(path, curBranch || undefined, { scaffold: true });
+    void ensureProjectContext({
+      project,
+      settings: ctx.settings.get(),
+      oneShot: ctx.oneShot,
+      persist: (next) => {
+        const current = ctx.projects.get(next.id);
+        if (!current) return;
+        ctx.projects.save({
+          ...current,
+          contextSummary: next.contextSummary,
+        });
+      },
+    }).then(() => notifySettings(ctx));
     notifySettings(ctx);
     return { ...created, project: ctx.projects.get(project.id) ?? project };
   });
@@ -219,7 +247,7 @@ export function register(ctx: Ctx, handle: Handle): void {
       if (!project) return { error: 'project not found' };
 
       const settings = ctx.settings.get();
-      const model = await resolveTurnModel(ctx.supportDir, settings.detectModel);
+      const model = await resolveTurnModel(ctx.supportDir, settings.helperModel);
 
       const detectionId = detections.start({
         projectId: project.id,
@@ -305,7 +333,7 @@ export function register(ctx: Ctx, handle: Handle): void {
       const project = projectOf(id);
       if (!project) return { error: 'project not found' };
       const settings = ctx.settings.get();
-      const model = await resolveTurnModel(ctx.supportDir, settings.detectModel);
+      const model = await resolveTurnModel(ctx.supportDir, settings.helperModel);
       const setupId = setups.start({
         projectId: project.id,
         projectPath: project.path,

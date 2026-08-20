@@ -271,6 +271,7 @@ function NodeCard({
 export default function PipelineCanvas({
   pipelineId,
   pipelines,
+  stalePipelineIds,
   selectedPipelineId,
   onSelectPipeline,
   onCreatePipeline,
@@ -288,6 +289,7 @@ export default function PipelineCanvas({
 }: {
   pipelineId: string;
   pipelines?: Array<{ id: string; name: string; phases: PhaseDef[] }>;
+  stalePipelineIds?: ReadonlySet<string>;
   selectedPipelineId?: string;
   onSelectPipeline?: (id: string) => void;
   onCreatePipeline?: () => void;
@@ -701,6 +703,9 @@ export default function PipelineCanvas({
                         }}
                       >
                         <span className={styles.pipelineOptionName}>{p.name}</span>
+                        {stalePipelineIds?.has(p.id) && (
+                          <span className={styles.staleBadge}>Shipped update</span>
+                        )}
                         <span className={styles.pipelineOptionCount}>{p.phases.length} phases</span>
                         {active && <Check size={12} strokeWidth={2} className={styles.checkIcon} />}
                       </button>

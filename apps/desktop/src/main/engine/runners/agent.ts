@@ -20,6 +20,11 @@ import {
 } from '../envelopes.js';
 import { gateCorrection, runGates, violationsOf, type GateReport } from '../gates.js';
 import { formatPromptRecord, renderPrompt, type RenderContext } from '../prompts.js';
+import { agentSystemRole, type SetupExecution } from '../agent-context.js';
+import { diffStat } from '../git.js';
+
+const DIFF_CONTEXT_AGENTS = new Set(['reviewer', 'finisher', 'pr_writer', 'documenter']);
+const DIFF_STAT_MAX_CHARS = 4000;
 
 export interface AgentRunnerDeps {
   agents: AgentDef[];
@@ -32,6 +37,7 @@ export interface AgentRunnerDeps {
   rewindAfterCorrections: number;
   /** Session lookup stays with the executor, which also applies phase model overrides. */
   sessionFor: (agent: AgentDef, modelOverride?: string) => Promise<AgentSession>;
+  setupExecution: () => SetupExecution | null;
   onLiveText?: (phaseId: string, text: string) => void;
   /** Reports the transport mode when a session falls back mid-turn. */
 }
@@ -77,13 +83,20 @@ export class AgentPhaseRunner implements PhaseRunner {
       },
     });
 
-    const rendered = renderPrompt(agent, phase, this.renderContext(phase, ctx));
+    const rendered = renderPrompt(agent, phase, await this.renderContext(agent, phase, ctx));
     let prompt = rendered.user;
-    const systemPrompt = rendered.system;
+    const systemPrompt = agentSystemRole({
+      rosterRole: rendered.system,
+      repositoryContext: ctx.project.contextSummary,
+      writes: agent.writes,
+      cwd: ctx.cwd,
+      projectPath: ctx.project.path,
+      setup: this.deps.setupExecution(),
+    });
     tracer.writeRunFile(
       runId,
       `${agent.name}/prompts/${phase.name}-1.md`,
-      formatPromptRecord(rendered),
+      formatPromptRecord({ ...rendered, system: systemPrompt }),
     );
 
     let envelope: Envelope | null = null;
@@ -433,7 +446,14 @@ export class AgentPhaseRunner implements PhaseRunner {
     return { ok: true };
   }
 
-  private renderContext(phase: PhaseDef, ctx: RunContext): RenderContext {
+  private async renderContext(
+    agent: AgentDef,
+    phase: PhaseDef,
+    ctx: RunContext,
+  ): Promise<RenderContext> {
+    const stat = DIFF_CONTEXT_AGENTS.has(agent.name)
+      ? (await diffStat(ctx.cwd, ctx.branchPointSha)).trim().slice(0, DIFF_STAT_MAX_CHARS)
+      : null;
     return {
       request: ctx.request,
       runId: ctx.runId,
@@ -442,6 +462,8 @@ export class AgentPhaseRunner implements PhaseRunner {
       handoffFiles: this.handoffFiles(ctx),
       branch: ctx.branch,
       baseRef: ctx.baseRef,
+      gitContext:
+        stat === null ? undefined : { branchPointSha: ctx.branchPointSha, diffStat: stat },
       envelopes: ctx.envelopes,
       feedback: ctx.feedback.get(phase.name),
       envelopeDefs: this.deps.envelopeDefs,

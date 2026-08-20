@@ -6,6 +6,7 @@
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
 import {
   BUILTIN_ENVELOPE_KINDS,
@@ -145,6 +146,17 @@ export class PipelineStore {
     return this.storeFor(opts).read();
   }
 
+  staleBuiltins(opts: { projectId?: string; ownPipelines?: boolean } = {}): string[] {
+    const current = new Map(this.list(opts).map((pipeline) => [pipeline.id, pipeline]));
+    return BUILTIN_PIPELINES.filter((shipped) => {
+      const stored = current.get(shipped.id);
+      if (!stored) return true;
+      const { canvas: _storedCanvas, ...storedDefinition } = stored;
+      const { canvas: _shippedCanvas, ...shippedDefinition } = shipped;
+      return !isDeepStrictEqual(storedDefinition, shippedDefinition);
+    }).map((shipped) => shipped.id);
+  }
+
   get(id: string, opts: { projectId?: string; ownPipelines?: boolean } = {}): PipelineDef | null {
     return this.list(opts).find((p) => p.id === id) ?? null;
   }
@@ -209,6 +221,17 @@ export class PipelineStore {
 
   resetToBuiltins(): PipelineDef[] {
     return this.appStore.write(BUILTIN_PIPELINES.map((p) => ({ ...p })));
+  }
+
+  resetBuiltin(
+    id: string,
+    opts: { projectId?: string; ownPipelines?: boolean } = {},
+  ): PipelineDef[] {
+    const shipped = BUILTIN_PIPELINES.find((pipeline) => pipeline.id === id);
+    if (!shipped) return this.list(opts);
+    return this.storeFor(opts).update((current) =>
+      upsertBy(current, (pipeline) => pipeline.id === id, structuredClone(shipped)),
+    );
   }
 }
 

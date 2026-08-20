@@ -3,7 +3,7 @@ import { expect, test, type ElectronApplication } from '@playwright/test';
 import { launchFoundry } from './harness.js';
 
 test.describe('onboarding / readiness', () => {
-  test('walks welcome through providers to the doctor readiness screen', async () => {
+  test('walks the four-step setup through providers to the doctor readiness screen', async () => {
     const userDataDir = tempDir('foundry-e2e-onboard-');
     let app: ElectronApplication | undefined;
     try {
@@ -14,13 +14,13 @@ test.describe('onboarding / readiness', () => {
       await expect(window.getByRole('heading', { name: 'Foundry' })).toBeVisible({
         timeout: 20_000,
       });
-      await window.getByRole('button', { name: /Begin/ }).click();
-
-      await expect(window.getByRole('heading', { name: /The factory floor/ })).toBeVisible();
-      await window.getByRole('button', { name: /Continue/ }).click();
-
-      await expect(window.getByRole('heading', { name: 'Meet the crew' })).toBeVisible();
-      await window.getByRole('button', { name: /Continue/ }).click();
+      await expect(
+        window.getByText('When a run is accepted you will merge or open a PR from the run page.'),
+      ).toBeVisible();
+      await expect(
+        window.getByRole('navigation', { name: 'Onboarding steps' }).getByRole('button'),
+      ).toHaveCount(4);
+      await window.getByRole('button', { name: /Begin setup/ }).click();
 
       await expect(window.getByRole('heading', { name: 'Give the factory a model' })).toBeVisible();
 

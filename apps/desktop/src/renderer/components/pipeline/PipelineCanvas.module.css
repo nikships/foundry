@@ -507,6 +507,16 @@
   flex: none;
 }
 
+.staleBadge {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+
 .checkIcon {
   color: var(--accent);
   flex: none;

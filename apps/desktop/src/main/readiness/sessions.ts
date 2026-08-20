@@ -102,7 +102,7 @@ export class ReadinessSessions {
   applyModel(
     session: ReadinessSession,
     settings: AppSettings,
-    opts?: { model?: string; reasoningEffort?: AppSettings['readinessReasoningEffort'] },
+    opts?: { model?: string; reasoningEffort?: AppSettings['helperReasoningEffort'] },
   ): void {
     const resolved = resolveReadinessModel(settings, opts);
     session.configure(resolved);

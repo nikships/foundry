@@ -110,7 +110,7 @@ export async function ensureMissingCommands(
   missing: string[],
   opts: {
     useAgent?: boolean;
-    detectWithAgent?: () => Promise<CommandCandidate[]>;
+    detectWithAgent?: (sniffed: CommandCandidate[]) => Promise<CommandCandidate[]>;
     save: (project: ProjectDef) => ProjectDef;
   },
 ): Promise<EnsureCommandsResult> {
@@ -132,7 +132,7 @@ export async function ensureMissingCommands(
 
   if (!covers(candidates).length && opts.useAgent && opts.detectWithAgent) {
     try {
-      const agentHits = await opts.detectWithAgent();
+      const agentHits = await opts.detectWithAgent(candidates);
       if (agentHits.length) {
         candidates = agentHits;
         via = 'agent';

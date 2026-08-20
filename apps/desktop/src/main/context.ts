@@ -30,6 +30,7 @@ import { CompanionHost } from './companion/host.js';
 import { saveProposal } from './ipc/smith.js';
 import { notifyNeedsInput, notifyOutcome, setDockBadge } from './system/notify.js';
 import { getBridgeService, shutdownBridgeService, type BridgeService } from './bridge/service.js';
+import { DEFAULT_BRIDGE_PORT } from './bridge/manager.js';
 
 export interface Scope {
   projectId?: string;
@@ -53,9 +54,9 @@ export class AppContext {
   readonly bridge: BridgeService;
   readonly version: string;
   /**
-   * How every non-run agent turn is opened — detection, setup, the run-start
-   * command fill, the rebase repair, the readiness fix. One factory rather than
-   * five constructions, so a call site states what it needs (a directory, an
+   * How every non-run agent turn is opened — repository context, detection,
+   * setup, the run-start command fill, rebase repair, and the readiness fix.
+   * One factory rather than six constructions, so a call site states what it needs (a directory, an
    * access level) and never where the runtime keeps its state.
    */
   readonly oneShot: OneShotFactory;
@@ -74,7 +75,7 @@ export class AppContext {
     // an operator who runs on their own API keys never pays for a child.
     this.bridge = getBridgeService({
       supportDir,
-      port: this.settings.get().bridgePort,
+      port: DEFAULT_BRIDGE_PORT,
       onModelsChanged: () => this.broadcast(IPC.eventBridgeChanged),
       // Resolved per call rather than captured: the registry is built further
       // down this constructor, and the app trace it owns opens on first use.

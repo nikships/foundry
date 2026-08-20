@@ -204,12 +204,15 @@ describe('the policy hook', () => {
 });
 
 describe('the system-prompt hook', () => {
-  it('appends the roster role to Pi’s built prompt', () => {
+  it('appends the roster role and repository context to Pi’s built prompt', () => {
     const { handle, state } = bind(allow);
-    handle.useSystemPrompt('# Builder\n\nYou write the code.');
+    handle.useSystemPrompt(
+      '# Builder\n\nYou write the code.\n\n# Repository context\n\nTypeScript.',
+    );
     const next = state.beforeAgentStart?.({ systemPrompt: 'You are a Foundry pipeline agent.' });
     expect(next?.systemPrompt).toContain('You are a Foundry pipeline agent.');
     expect(next?.systemPrompt).toContain('# Builder');
+    expect(next?.systemPrompt).toContain('# Repository context');
   });
 
   it('leaves the harness alone when no role is pending', () => {
