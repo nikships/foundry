@@ -43,31 +43,59 @@ function uniquePhaseName(base: string, taken: Set<string>): string {
   return `${base}_${n}`;
 }
 
+function uniqueDisplayName(base: string, taken: Set<string>): string {
+  if (!taken.has(base)) return base;
+  let n = 2;
+  while (taken.has(`${base} ${n}`)) n += 1;
+  return `${base} ${n}`;
+}
+
+/** Generated pipeline ids must match the store's lowercase kebab-case contract. */
+export function generatePipelineId(existingIds: Iterable<string>, now?: number): string {
+  const taken = new Set(existingIds);
+  const base = `pipeline-${now ?? Date.now()}`;
+  if (!taken.has(base)) return base;
+  let n = 2;
+  while (taken.has(`${base}-${n}`)) n += 1;
+  return `${base}-${n}`;
+}
+
+/** Defaults the workbench uses when inserting a complete, schema-valid phase. */
+export interface BlankPhaseDefaults {
+  preferredAgent?: string;
+  commandNames?: readonly string[];
+}
+
 /** Default phase inserted by the pipeline workbench. Agent phases inherit. */
-export function blankPhase(kind: PhaseKind, taken: Set<string>): PhaseDef {
+export function blankPhase(
+  kind: PhaseKind,
+  taken: Set<string>,
+  defaults: BlankPhaseDefaults = {},
+): PhaseDef {
   if (kind === 'agent') {
     return {
       name: uniquePhaseName('new_agent', taken),
       kind: 'agent',
-      description: '',
-      agent: 'builder',
+      description: 'Do the implementation work for this run.',
+      agent: defaults.preferredAgent || 'builder',
       prompt: { template: 'user', inputs: ['request'] },
       gates: [],
     };
   }
   if (kind === 'code') {
+    const commandName = defaults.commandNames?.find((name) => name.trim().length > 0);
     return {
       name: uniquePhaseName('new_command', taken),
       kind: 'code',
-      description: '',
-      command: { ref: 'test' },
+      description: 'Run a project command to check the current work.',
+      command: commandName ? { ref: commandName } : { builtin: 'git_status' },
     };
   }
   return {
     name: uniquePhaseName('new_checkpoint', taken),
     kind: 'engineer',
-    description: '',
-    question: '',
+    description: 'Pause the run so an operator can review the work so far.',
+    question: 'Should the run continue?',
   };
 }
 
@@ -233,6 +261,33 @@ export function formatClock(date: Date): string {
 /** The starting position for a node that has not been positioned by an operator. */
 export function defaultCanvasPosition(index: number): PipelineCanvasPoint {
   return { x: 96 + index * 352, y: 168 };
+}
+
+/** A complete, schema-valid pipeline the workbench can persist on first create. */
+export function newPipelineDraft(input: {
+  existing: ReadonlyArray<Pick<PipelineDef, 'id' | 'name'>>;
+  preferredAgent?: string;
+  now?: number;
+}): PipelineDef {
+  const id = generatePipelineId(
+    input.existing.map((pipeline) => pipeline.id),
+    input.now,
+  );
+  const name = uniqueDisplayName(
+    'New Pipeline',
+    new Set(input.existing.map((pipeline) => pipeline.name)),
+  );
+  const starter = blankPhase('agent', new Set(), { preferredAgent: input.preferredAgent });
+  const position = defaultCanvasPosition(0);
+  return {
+    id,
+    name,
+    description: 'Describe what this run should accomplish.',
+    acceptance: { kind: 'last_phase_pass' },
+    isolation: true,
+    phases: [starter],
+    canvas: { nodes: { [starter.name]: { ...position } } },
+  };
 }
 
 /**

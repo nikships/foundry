@@ -161,6 +161,7 @@ function NodeCard({
   return (
     <article
       data-pipeline-node={phase.name}
+      data-testid={`pipeline-phase-${phase.name}`}
       className={[
         styles.node,
         checkpoint ? styles.checkpointNode : '',
@@ -178,6 +179,7 @@ function NodeCard({
       <button
         type="button"
         className={styles.nodeBody}
+        aria-label={`Edit phase ${phase.name}`}
         onClick={() => {
           if (!shouldIgnoreClick()) onOpen();
         }}
@@ -232,7 +234,7 @@ function NodeCard({
         )}
       </button>
 
-      <div className={styles.nodeActions} data-canvas-control>
+      <div className={styles.nodeActions}>
         <IconButton
           label={`Move ${phase.name} earlier in the run`}
           disabled={index === 0}
@@ -421,7 +423,16 @@ export default function PipelineCanvas({
       const active = interaction.current;
       if (!active || active.pointerId !== event.pointerId) return;
       interaction.current = null;
-      if (!active.moved) return;
+      if (!active.moved) {
+        if (active.kind === 'node') {
+          const index = phases.findIndex((phase) => phase.name === active.name);
+          if (index >= 0) {
+            ignoredClick.current = active.name;
+            onSelectPhase(index);
+          }
+        }
+        return;
+      }
 
       if (active.kind === 'node') {
         ignoredClick.current = active.name;
@@ -437,7 +448,7 @@ export default function PipelineCanvas({
         },
       });
     },
-    [commit, nextNodeState, state.nodes],
+    [commit, nextNodeState, onSelectPhase, phases, state.nodes],
   );
 
   const zoomAt = useCallback(
@@ -659,6 +670,7 @@ export default function PipelineCanvas({
               aria-haspopup="listbox"
               aria-label="Select pipeline"
               data-testid="pipeline-selector"
+              data-pipeline-id={pipelineId}
             >
               <Layers size={13} strokeWidth={1.7} aria-hidden="true" />
               <span className={styles.pipelinePickerName}>
@@ -716,13 +728,25 @@ export default function PipelineCanvas({
 
         <div className={styles.addMenu}>
           <span className={styles.addMenuLabel}>Add</span>
-          <button type="button" onClick={() => onAddPhase('agent')}>
+          <button
+            type="button"
+            data-testid="pipeline-add-agent"
+            onClick={() => onAddPhase('agent')}
+          >
             <Plus size={13} strokeWidth={1.8} aria-hidden="true" /> Action
           </button>
-          <button type="button" onClick={() => onAddPhase('code')}>
+          <button
+            type="button"
+            data-testid="pipeline-add-command"
+            onClick={() => onAddPhase('code')}
+          >
             <Settings2 size={13} strokeWidth={1.8} aria-hidden="true" /> Command
           </button>
-          <button type="button" onClick={() => onAddPhase('engineer')}>
+          <button
+            type="button"
+            data-testid="pipeline-add-checkpoint"
+            onClick={() => onAddPhase('engineer')}
+          >
             <Minus size={13} strokeWidth={1.8} aria-hidden="true" /> Checkpoint
           </button>
         </div>
