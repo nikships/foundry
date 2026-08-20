@@ -18,6 +18,7 @@ import { RunRegistry } from '../apps/desktop/src/main/engine/registry.js';
 import { BUILTIN_AGENTS } from '../apps/desktop/src/main/store/builtin-agents.js';
 import { defaultProject } from '../apps/desktop/src/main/store/projects.js';
 import { defaultSettings } from '../apps/desktop/src/main/store/settings.js';
+import { FIXED_ENGINE_DEFAULTS } from '../apps/desktop/src/shared/types.js';
 import type { PipelineDef, ProjectDef } from '../apps/desktop/src/shared/types.js';
 
 const args = new Set(process.argv.slice(2));
@@ -131,7 +132,7 @@ async function main(): Promise<void> {
     envelopeRetries: 2,
     gateRetries: 1,
     compactionThreshold: settings.compactionThreshold,
-    rewindAfterCorrections: settings.rewindAfterCorrections,
+    rewindAfterCorrections: FIXED_ENGINE_DEFAULTS.rewindAfterCorrections,
     supportDir: appSupport,
     agents,
     envelopeDefs: [],

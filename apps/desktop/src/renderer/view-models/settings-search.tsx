@@ -12,7 +12,8 @@
 
 import type React from 'react';
 
-export type SettingsPaneId =
+export type SettingsPaneId = 'models' | 'project' | 'app';
+type LegacySettingsPaneId =
   'general' | 'providers' | 'defaults' | 'project' | 'maintenance' | 'about';
 
 export interface SettingsPaneMeta {
@@ -30,24 +31,11 @@ export interface SettingsPaneMeta {
  */
 export const SETTINGS_PANES: SettingsPaneMeta[] = [
   {
-    id: 'general',
-    label: 'General',
-    hint: 'Name, notifications, updates, terminal, phone',
-    keywords: 'identity name notify updates terminal phone companion application quit relaunch',
-  },
-  {
-    id: 'providers',
-    label: 'Providers',
-    hint: 'Bridge, subscriptions, API keys, models',
+    id: 'models',
+    label: 'Models & Providers',
+    hint: 'Providers, API keys, models, and agent defaults',
     keywords:
-      'anthropic openai google openrouter xai api key subscription models bridge connect oauth',
-  },
-  {
-    id: 'defaults',
-    label: 'Agent defaults',
-    hint: 'Model, reasoning effort, limits, transport',
-    keywords:
-      'model reasoning effort retries compaction rewind timeout poll cadence port limits autonomy pr writer readiness',
+      'anthropic openai google openrouter xai api key subscription models bridge connect oauth reasoning helper pr writer',
   },
   {
     id: 'project',
@@ -57,21 +45,16 @@ export const SETTINGS_PANES: SettingsPaneMeta[] = [
       'repository path git base ref merge policy protected paths setup script commands scope remove',
   },
   {
-    id: 'maintenance',
-    label: 'Maintenance',
-    hint: 'Retention and leftover worktrees',
-    keywords: 'retention delete history compact vacuum orphan worktree cleanup',
-  },
-  {
-    id: 'about',
-    label: 'About',
-    hint: 'Version, build facts, replay intro',
-    keywords: 'version build harness replay intro onboarding',
+    id: 'app',
+    label: 'App',
+    hint: 'Notifications, terminal, updates, phone, and maintenance',
+    keywords:
+      'notify updates terminal phone companion application quit relaunch retention history orphan version build replay intro',
   },
 ];
 
 export interface SettingsSectionRef {
-  pane: SettingsPaneId;
+  pane: LegacySettingsPaneId;
   /** Exact `Section label` text in SettingsScreen. */
   label: string;
   /** Exact `Section note` text, surfaced as the result's second line. */
@@ -81,12 +64,6 @@ export interface SettingsSectionRef {
 
 export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
   // General
-  {
-    pane: 'general',
-    label: 'Identity',
-    note: 'Attached to every run, so a trace says who asked.',
-    keywords: 'name engineer profile your name',
-  },
   {
     pane: 'general',
     label: 'Checks',
@@ -148,12 +125,6 @@ export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
     note: 'What every picker in the app will offer.',
     keywords: 'hide model catalog picker context window refresh reachable',
   },
-  {
-    pane: 'providers',
-    label: 'Checks',
-    note: 'Re-run after connecting a provider or storing a key.',
-    keywords: 'doctor environment diagnostics',
-  },
   // Agent defaults
   {
     pane: 'defaults',
@@ -169,9 +140,9 @@ export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
   },
   {
     pane: 'defaults',
-    label: 'Readiness',
-    note: 'What the Agent Readiness Check uses when a repo is added.',
-    keywords: 'readiness model reasoning effort',
+    label: 'Helper tasks',
+    note: 'Used for project detection and Agent Readiness.',
+    keywords: 'detection readiness helper model reasoning effort',
   },
   {
     pane: 'defaults',
@@ -181,15 +152,9 @@ export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
   },
   {
     pane: 'defaults',
-    label: 'Limits',
-    note: 'How hard Foundry tries before a phase fails.',
+    label: 'Advanced',
+    note: 'Stable engine policy and context limits.',
     keywords: 'envelope retries gate retries compaction context rewind corrections turn timeout',
-  },
-  {
-    pane: 'defaults',
-    label: 'Transport',
-    note: 'Where the vendored provider Bridge listens.',
-    keywords: 'bridge port 37700 band',
   },
   // Project
   {
@@ -324,6 +289,12 @@ function paneLabel(id: SettingsPaneId): string {
   return SETTINGS_PANES.find((p) => p.id === id)?.label ?? id;
 }
 
+function currentPane(id: LegacySettingsPaneId): SettingsPaneId {
+  if (id === 'project') return 'project';
+  if (id === 'providers' || id === 'defaults') return 'models';
+  return 'app';
+}
+
 /** Lower number sorts earlier; -1 means no match. */
 function scoreSection(section: SettingsSectionRef, q: string): number {
   const title = section.label.toLowerCase();
@@ -364,10 +335,11 @@ export function searchSettings(query: string, cap = 12): SettingsHit[] {
   for (const section of SETTINGS_SECTIONS) {
     const score = scoreSection(section, q);
     if (score < 0) continue;
+    const pane = currentPane(section.pane);
     scored.push({
       hit: {
-        pane: section.pane,
-        paneLabel: paneLabel(section.pane),
+        pane,
+        paneLabel: paneLabel(pane),
         sectionId: sectionId(section.label),
         title: section.label,
         note: section.note,

@@ -8,11 +8,6 @@ import { join } from 'node:path';
 import { tempDir } from '../../helpers/tmp.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SettingsStore, defaultSettings, migrate } from '../../../src/main/store/settings.js';
-import {
-  BRIDGE_PORT_MAX,
-  BRIDGE_PORT_MIN,
-  DEFAULT_BRIDGE_PORT,
-} from '../../../src/main/bridge/manager.js';
 import { DEFAULT_PR_AGENT } from '../../../src/shared/types.js';
 
 let dir: string;
@@ -71,19 +66,25 @@ describe('unknown keys on disk', () => {
   });
 });
 
-describe('readiness defaults', () => {
+describe('helper defaults', () => {
   it('defaults to inherit / high on a fresh install', () => {
-    expect(defaultSettings().readinessModel).toBe('inherit');
-    expect(defaultSettings().readinessReasoningEffort).toBe('high');
+    expect(defaultSettings().helperModel).toBe('inherit');
+    expect(defaultSettings().helperReasoningEffort).toBe('high');
   });
 
-  it('fills readiness fields when they are missing', () => {
-    const stored = { ...defaultSettings() } as Record<string, unknown>;
-    delete stored.readinessModel;
-    delete stored.readinessReasoningEffort;
-    const migrated = migrate(stored);
-    expect(migrated.readinessModel).toBe('inherit');
-    expect(migrated.readinessReasoningEffort).toBe('high');
+  it('migrates the former readiness and detection settings into one pair', () => {
+    const migrated = migrate({
+      ...defaultSettings(),
+      helperModel: undefined,
+      helperReasoningEffort: undefined,
+      readinessModel: 'provider/ready',
+      detectModel: 'provider/detect',
+      readinessReasoningEffort: 'max',
+    });
+    expect(migrated.helperModel).toBe('provider/ready');
+    expect(migrated.helperReasoningEffort).toBe('max');
+    expect('readinessModel' in migrated).toBe(false);
+    expect('detectModel' in migrated).toBe(false);
   });
 });
 
@@ -133,44 +134,6 @@ describe('the compaction threshold', () => {
   });
 });
 
-describe('rewindAfterCorrections', () => {
-  it('defaults to 2 on a fresh install', () => {
-    expect(defaultSettings().rewindAfterCorrections).toBe(2);
-  });
-
-  it('reads 2 when the field is missing', () => {
-    const stored = { ...defaultSettings() } as Record<string, unknown>;
-    delete stored.rewindAfterCorrections;
-    expect(migrate(stored).rewindAfterCorrections).toBe(2);
-    expect(seed(stored).get().rewindAfterCorrections).toBe(2);
-  });
-
-  it('accepts 0 (disabled) and other non-negative integers', () => {
-    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
-    expect(store.patch({ rewindAfterCorrections: 0 })).toMatchObject({ ok: true });
-    expect(store.get().rewindAfterCorrections).toBe(0);
-    expect(store.patch({ rewindAfterCorrections: 5 })).toMatchObject({ ok: true });
-    expect(store.get().rewindAfterCorrections).toBe(5);
-  });
-
-  it('refuses a negative or non-integer value rather than storing it', () => {
-    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
-    for (const value of [-1, 1.5, 21]) {
-      expect(store.patch({ rewindAfterCorrections: value }).ok).toBe(false);
-    }
-    expect(store.get().rewindAfterCorrections).toBe(2);
-  });
-
-  it('clamps a stored out-of-range value into the accepted band', () => {
-    expect(
-      migrate({ ...defaultSettings(), rewindAfterCorrections: -3 }).rewindAfterCorrections,
-    ).toBe(0);
-    expect(
-      migrate({ ...defaultSettings(), rewindAfterCorrections: 99 }).rewindAfterCorrections,
-    ).toBe(20);
-  });
-});
-
 describe('prAgent', () => {
   it('defaults to pr_writer on a fresh install', () => {
     expect(defaultSettings().prAgent).toBe(DEFAULT_PR_AGENT);
@@ -204,51 +167,40 @@ describe('prAgent', () => {
   });
 });
 
-describe('bridgePort', () => {
-  it('defaults to the Bridge manager’s own default on a fresh install', () => {
-    expect(defaultSettings().bridgePort).toBe(DEFAULT_BRIDGE_PORT);
-  });
-
-  it('fills the default when the field is missing', () => {
-    const stored = { ...defaultSettings() } as Record<string, unknown>;
-    delete stored.bridgePort;
-    expect(migrate(stored).bridgePort).toBe(DEFAULT_BRIDGE_PORT);
-    expect(seed(stored).get().bridgePort).toBe(DEFAULT_BRIDGE_PORT);
-  });
-
-  it('accepts a value inside the mission band', () => {
-    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
-    expect(store.patch({ bridgePort: BRIDGE_PORT_MIN + 5 })).toMatchObject({ ok: true });
-    expect(store.get().bridgePort).toBe(BRIDGE_PORT_MIN + 5);
-  });
-
-  it('refuses a value outside the band rather than storing it', () => {
-    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
-    for (const value of [80, 9_999, BRIDGE_PORT_MIN - 1, BRIDGE_PORT_MAX + 1, 37.5]) {
-      expect(store.patch({ bridgePort: value }).ok, String(value)).toBe(false);
+describe('obsolete settings', () => {
+  it('drops appearance, polling, retry, rewind, and bridge keys during self-healing', () => {
+    const migrated = migrate({
+      ...defaultSettings(),
+      appearance: 'dark',
+      pollCadenceMs: 9_000,
+      envelopeRetries: 0,
+      gateRetries: 0,
+      rewindAfterCorrections: 0,
+      bridgePort: 37_799,
+    });
+    for (const key of [
+      'appearance',
+      'pollCadenceMs',
+      'envelopeRetries',
+      'gateRetries',
+      'rewindAfterCorrections',
+      'bridgePort',
+    ]) {
+      expect(key in migrated).toBe(false);
     }
-    expect(store.get().bridgePort).toBe(DEFAULT_BRIDGE_PORT);
-  });
-
-  it('clamps a stored out-of-range value into the mission band', () => {
-    expect(migrate({ ...defaultSettings(), bridgePort: 80 }).bridgePort).toBe(BRIDGE_PORT_MIN);
-    expect(migrate({ ...defaultSettings(), bridgePort: 99_999 }).bridgePort).toBe(BRIDGE_PORT_MAX);
-    expect(migrate({ ...defaultSettings(), bridgePort: 'busy' as never }).bridgePort).toBe(
-      DEFAULT_BRIDGE_PORT,
-    );
   });
 });
 
 describe('codingAgent', () => {
-  it('defaults to droid on a fresh install', () => {
-    expect(defaultSettings().codingAgent).toBe('droid');
+  it('defaults to automatic on a fresh install', () => {
+    expect(defaultSettings().codingAgent).toBeNull();
   });
 
-  it('reads droid when the field is missing', () => {
+  it('reads automatic when the field is missing', () => {
     const stored = { ...defaultSettings() } as Record<string, unknown>;
     delete stored.codingAgent;
-    expect(migrate(stored).codingAgent).toBe('droid');
-    expect(seed(stored).get().codingAgent).toBe('droid');
+    expect(migrate(stored).codingAgent).toBeNull();
+    expect(seed(stored).get().codingAgent).toBeNull();
   });
 
   it('keeps a valid catalogued agent', () => {
@@ -262,14 +214,14 @@ describe('codingAgent', () => {
   it('refuses an unknown agent rather than storing it', () => {
     const store = seed(defaultSettings() as unknown as Record<string, unknown>);
     expect(store.patch({ codingAgent: 'cursor' as never }).ok).toBe(false);
-    expect(store.get().codingAgent).toBe('droid');
+    expect(store.get().codingAgent).toBeNull();
   });
 
-  it('repairs a stored garbage agent name back to droid', () => {
-    expect(migrate({ ...defaultSettings(), codingAgent: 'cursor' as never }).codingAgent).toBe(
-      'droid',
-    );
-    expect(migrate({ ...defaultSettings(), codingAgent: '' as never }).codingAgent).toBe('droid');
+  it('repairs a stored garbage agent name back to automatic', () => {
+    expect(
+      migrate({ ...defaultSettings(), codingAgent: 'cursor' as never }).codingAgent,
+    ).toBeNull();
+    expect(migrate({ ...defaultSettings(), codingAgent: '' as never }).codingAgent).toBeNull();
   });
 });
 

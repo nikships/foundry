@@ -18,7 +18,7 @@ import { resolvedEnv } from './env.js';
 const TOOLCHAIN_BINARIES = ['node', 'npm', 'pnpm', 'yarn', 'bun', 'cargo', 'go', 'uv', 'swift'];
 
 /** Where a failing provider check sends the operator. */
-const PROVIDERS_PANE = { kind: 'open-settings', value: 'providers' } as const;
+const PROVIDERS_PANE = { kind: 'open-settings', value: 'models' } as const;
 
 function onPath(binary: string, path: string): boolean {
   return path.split(':').some((dir) => dir && existsSync(join(dir, binary)));

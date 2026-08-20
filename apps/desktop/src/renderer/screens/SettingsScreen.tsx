@@ -8,7 +8,7 @@ import type {
   ReadinessInspectResult,
   UpdateStatus,
 } from '@shared/types.js';
-import { CODING_AGENTS, TERMINAL_APPS } from '@shared/types.js';
+import { CODING_AGENTS, FIXED_ENGINE_DEFAULTS, TERMINAL_APPS } from '@shared/types.js';
 import {
   BRIDGE_UNAVAILABLE_COPY,
   type BridgeState,
@@ -56,12 +56,9 @@ type Pane = SettingsPaneId;
  * pane metadata. Keep the two in step when a pane is added or renamed.
  */
 const PANES: { id: Pane; label: string }[] = [
-  { id: 'general', label: 'General' },
-  { id: 'providers', label: 'Providers' },
-  { id: 'defaults', label: 'Agent defaults' },
+  { id: 'models', label: 'Models & Providers' },
   { id: 'project', label: 'Project' },
-  { id: 'maintenance', label: 'Maintenance' },
-  { id: 'about', label: 'About' },
+  { id: 'app', label: 'App' },
 ];
 
 /**
@@ -70,9 +67,7 @@ const PANES: { id: Pane; label: string }[] = [
  * search is narrowing the list.
  */
 const RAIL_GROUPS: { label: string; items: Pane[] }[] = [
-  { label: 'Workspace', items: ['general', 'providers', 'defaults'] },
-  { label: 'This project', items: ['project'] },
-  { label: 'System', items: ['maintenance', 'about'] },
+  { label: 'Settings', items: ['models', 'project', 'app'] },
 ];
 
 /**
@@ -82,15 +77,6 @@ const RAIL_GROUPS: { label: string; items: Pane[] }[] = [
  * at 100% it never compacts before hitting the context wall.
  */
 const COMPACTION_PERCENT = { min: 50, max: 95 } as const;
-
-const REWIND_BAND = { min: 0, max: 20 } as const;
-
-/**
- * Mirrors `BRIDGE_PORT_MIN`/`MAX` in `src/main/bridge/manager.ts`. Restated
- * rather than imported: the renderer must not pull a main-process module in for
- * two numbers, and the settings schema clamps to the same band on write.
- */
-const BRIDGE_PORT_BAND = { min: 37_700, max: 37_799 } as const;
 
 /**
  * Providers offered a direct-key row, keyed by pi's own provider id — that id is
@@ -203,7 +189,14 @@ export default function SettingsScreen({
 }): React.JSX.Element {
   const { settings, project, projects, agents, refreshAll, patchSettings, selectProject } =
     useApp();
-  const [pane, setPane] = useState<Pane>((initialPane as Pane) ?? 'general');
+  const normalizePane = (value: string): Pane => {
+    if (value === 'project') return 'project';
+    if (value === 'general' || value === 'maintenance' || value === 'about' || value === 'app') {
+      return 'app';
+    }
+    return 'models';
+  };
+  const [pane, setPane] = useState<Pane>(normalizePane(initialPane));
   const { models, refresh: refreshModels } = useAgentModels();
   const [modelFilter, setModelFilter] = useState('');
   const [checks, setChecks] = useState<DoctorCheck[]>([]);
@@ -215,8 +208,6 @@ export default function SettingsScreen({
   const [projectDraft, setProjectDraft] = useState<ProjectDef | null>(null);
   const [readiness, setReadiness] = useState<ReadinessInspectResult | null>(null);
   const [maintenanceNote, setMaintenanceNote] = useState('');
-  const [nameDraft, setNameDraft] = useState('');
-  const [nameHint, setNameHint] = useState('');
   const [maintenanceBusy, setMaintenanceBusy] = useState(false);
   const [bridge, setBridge] = useState<BridgeState | null>(null);
   const [companion, setCompanion] = useState<CompanionHostState | null>(null);
@@ -236,7 +227,7 @@ export default function SettingsScreen({
   const scrollTargetRef = useRef<string | null>(null);
 
   useEffect(() => {
-    setPane((initialPane as Pane) ?? 'general');
+    setPane(normalizePane(initialPane));
   }, [initialPane]);
 
   useEffect(() => {
@@ -347,18 +338,6 @@ export default function SettingsScreen({
     onIssues: (issues) => setErrors(issues.map((i) => `${i.where}: ${i.message}`)),
     onError: (e) => setErrors([(e as Error).message]),
   });
-
-  // Local draft so clearing the field for a rewrite does not POST an empty
-  // engineerName that Zod rejects and paints a sticky settings error.
-  useEffect(() => {
-    setNameDraft(settings?.engineerName ?? '');
-    setNameHint('');
-  }, [settings?.engineerName]);
-
-  // Drives the error banner `patchSettings` returns. Kept locally so a
-  // non-range invalid value (e.g. "abc" parsed as null) that never reaches
-  // Zod can still show the operator why nothing saved.
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const setPaneLive = (next: Pane): void => {
     setPane(next);
@@ -510,25 +489,6 @@ export default function SettingsScreen({
       }
     },
   );
-  const commitName = async (): Promise<void> => {
-    const next = nameDraft.trim();
-    if (!next) {
-      setNameHint('Name cannot be empty. Recorded on every run.');
-      setNameDraft(settings?.engineerName ?? '');
-      return;
-    }
-    if (next === settings?.engineerName) {
-      setNameHint('');
-      return;
-    }
-    if (next.length > 80) {
-      setNameHint('Keep it under 80 characters.');
-      return;
-    }
-    setNameHint('');
-    await set({ engineerName: next });
-  };
-
   /**
    * Runs one Bridge or credential action with the pane's own busy/note state.
    *
@@ -648,7 +608,7 @@ export default function SettingsScreen({
   );
 
   useEffect(() => {
-    if (pane === 'maintenance') void loadOrphans();
+    if (pane === 'app') void loadOrphans();
   }, [pane]);
 
   const hiddenCount = settings?.hiddenModelIds?.length ?? 0;
@@ -856,39 +816,8 @@ export default function SettingsScreen({
 
           <div className={styles.settingsScroll}>
             <div className={styles.settingsPage}>
-              {pane === 'general' && (
+              {pane === 'app' && (
                 <>
-                  <Section
-                    label="Identity"
-                    note="Attached to every run, so a trace says who asked."
-                  >
-                    <div className={styles.settingsFields}>
-                      <Field label="Your name" htmlFor="engineer-name-input">
-                        <TextInput
-                          id="engineer-name-input"
-                          aria-label="Your name"
-                          value={nameDraft}
-                          onChange={(e) => {
-                            setNameDraft(e.target.value);
-                            setNameHint('');
-                          }}
-                          onBlur={() => void commitName()}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              (e.target as HTMLInputElement).blur();
-                            }
-                          }}
-                        />
-                        <span className={styles.hint}>
-                          Recorded on every run, so a trace says who asked for it. Saved when you
-                          leave the field.
-                        </span>
-                        {nameHint && <span className={styles.settingsWarn}>{nameHint}</span>}
-                      </Field>
-                    </div>
-                  </Section>
-
                   <Section label="Checks" note="What Foundry found on this machine at launch.">
                     <DoctorList
                       checks={checks}
@@ -1006,19 +935,27 @@ export default function SettingsScreen({
                         hint="Used by Smith's launcher. Ghostty is handed a ready-made session; the others open your project directory and you paste the bootstrap line."
                       >
                         <Dropdown
-                          value={settings.terminalApp}
-                          options={TERMINAL_APPS.map((terminal) => ({
-                            value: terminal.id,
-                            label: terminal.label,
-                            description: terminal.prepared
-                              ? `Starts the Smith session for you — must be installed.`
-                              : terminal.id === 'terminal'
-                                ? 'Ships with macOS, so it always resolves.'
-                                : `Opens ${terminal.appName}.app — must be installed.`,
-                          }))}
+                          value={settings.terminalApp ?? 'auto'}
+                          options={[
+                            {
+                              value: 'auto',
+                              label: 'Automatic',
+                              description: 'Prefers an installed terminal that can start Smith.',
+                            },
+                            ...TERMINAL_APPS.map((terminal) => ({
+                              value: terminal.id,
+                              label: terminal.label,
+                              description: terminal.prepared
+                                ? `Starts the Smith session for you — must be installed.`
+                                : terminal.id === 'terminal'
+                                  ? 'Ships with macOS, so it always resolves.'
+                                  : `Opens ${terminal.appName}.app — must be installed.`,
+                            })),
+                          ]}
                           onChange={(next) => {
                             void patchSettings({
-                              terminalApp: next as AppSettings['terminalApp'],
+                              terminalApp:
+                                next === 'auto' ? null : (next as AppSettings['terminalApp']),
                             });
                           }}
                         />
@@ -1028,18 +965,23 @@ export default function SettingsScreen({
                         hint="Smith starts this CLI with the Foundry skill and opening prompt. The binary must be on your PATH."
                       >
                         <Dropdown
-                          value={settings.codingAgent}
-                          options={CODING_AGENTS.map((agent) => ({
-                            value: agent.id,
-                            label: agent.label,
-                            description:
-                              agent.id === 'droid'
-                                ? 'Factory Droid (droid). Default.'
-                                : `${agent.label} (${agent.binary}) — must be on PATH.`,
-                          }))}
+                          value={settings.codingAgent ?? 'auto'}
+                          options={[
+                            {
+                              value: 'auto',
+                              label: 'Automatic',
+                              description: 'Uses the first supported CLI found on PATH.',
+                            },
+                            ...CODING_AGENTS.map((agent) => ({
+                              value: agent.id,
+                              label: agent.label,
+                              description: `${agent.label} (${agent.binary}) — must be on PATH.`,
+                            })),
+                          ]}
                           onChange={(next) => {
                             void patchSettings({
-                              codingAgent: next as AppSettings['codingAgent'],
+                              codingAgent:
+                                next === 'auto' ? null : (next as AppSettings['codingAgent']),
                             });
                           }}
                         />
@@ -1248,7 +1190,7 @@ export default function SettingsScreen({
                   </Section>
                 </>
               )}
-              {pane === 'providers' && (
+              {pane === 'models' && (
                 <>
                   <Section
                     label="Providers"
@@ -1577,7 +1519,7 @@ export default function SettingsScreen({
                   </Section>
                 </>
               )}
-              {pane === 'defaults' && (
+              {pane === 'models' && (
                 <>
                   <Section label="Agent defaults" note="What an agent set to inherit gets.">
                     <p className={styles.settingsLead}>
@@ -1598,7 +1540,6 @@ export default function SettingsScreen({
                           inheritLabel="First reachable model"
                           emptyHint="No models are reachable. Connect a provider or store an API key under Providers, then refresh."
                           onChange={(v) => void set({ defaultModel: v })}
-                          onRefresh={() => void refreshModels()}
                         />
                       </Field>
                       <Field label="Default reasoning effort">
@@ -1618,24 +1559,23 @@ export default function SettingsScreen({
                     </div>
                   </Section>
                   <Section
-                    label="Readiness"
-                    note="What the Agent Readiness Check uses when a repo is added."
+                    label="Helper tasks"
+                    note="Used for project detection and Agent Readiness."
                   >
                     <div className={styles.settingsFields}>
-                      <Field label="Readiness model">
+                      <Field label="Helper model">
                         <ModelPicker
-                          value={settings.readinessModel}
+                          value={settings.helperModel}
                           models={models}
                           allowInherit
                           inheritLabel="Same as default model"
                           emptyHint="No models are reachable. Connect a provider under Providers."
-                          onChange={(v) => void set({ readinessModel: v })}
-                          onRefresh={() => void refreshModels()}
+                          onChange={(v) => void set({ helperModel: v })}
                         />
                       </Field>
-                      <Field label="Readiness reasoning effort">
+                      <Field label="Helper reasoning effort">
                         <Dropdown
-                          value={settings.readinessReasoningEffort}
+                          value={settings.helperReasoningEffort}
                           options={[
                             { value: 'off', label: 'Off' },
                             { value: 'low', label: 'Low' },
@@ -1644,7 +1584,7 @@ export default function SettingsScreen({
                             { value: 'xhigh', label: 'X-High' },
                             { value: 'max', label: 'Max' },
                           ]}
-                          onChange={(next) => void set({ readinessReasoningEffort: next as never })}
+                          onChange={(next) => void set({ helperReasoningEffort: next as never })}
                         />
                       </Field>
                     </div>
@@ -1672,7 +1612,7 @@ export default function SettingsScreen({
                       </Field>
                     </div>
                   </Section>
-                  <Section label="Limits" note="How hard Foundry tries before a phase fails.">
+                  <Section label="Advanced" note="Stable engine policy and context limits.">
                     <div className={styles.settingsFields}>
                       <Field
                         label="Envelope retries"
@@ -1682,12 +1622,8 @@ export default function SettingsScreen({
                           type="number"
                           min={0}
                           max={5}
-                          value={settings.envelopeRetries}
-                          onChange={(e) =>
-                            void setInt(e.target.value, { min: 0, max: 5 }, (envelopeRetries) => ({
-                              envelopeRetries,
-                            }))
-                          }
+                          value={FIXED_ENGINE_DEFAULTS.envelopeRetries}
+                          disabled
                         />
                       </Field>
                       <Field
@@ -1698,12 +1634,8 @@ export default function SettingsScreen({
                           type="number"
                           min={0}
                           max={5}
-                          value={settings.gateRetries}
-                          onChange={(e) =>
-                            void setInt(e.target.value, { min: 0, max: 5 }, (gateRetries) => ({
-                              gateRetries,
-                            }))
-                          }
+                          value={FIXED_ENGINE_DEFAULTS.gateRetries}
+                          disabled
                         />
                       </Field>
                       <Field
@@ -1724,106 +1656,13 @@ export default function SettingsScreen({
                       </Field>
                       <Field
                         label="Rewind after (corrections)"
-                        hint="After this many failed corrections, rewind the session to its phase-start state instead of appending another fix. Set to 0 to disable — the phase simply retries in place."
-                        error={fieldErrors.rewindAfterCorrections}
+                        hint="Fixed engine policy: rewind the session to its phase-start state after this many failed corrections."
                       >
                         <TextInput
                           type="number"
-                          min={REWIND_BAND.min}
-                          max={REWIND_BAND.max}
-                          step={1}
-                          value={settings.rewindAfterCorrections}
-                          aria-invalid={fieldErrors.rewindAfterCorrections ? 'true' : undefined}
-                          aria-describedby={
-                            fieldErrors.rewindAfterCorrections
-                              ? 'field-rewindAfterCorrections-error'
-                              : undefined
-                          }
-                          onChange={(e) => {
-                            const raw = e.target.value.trim();
-                            if (raw === '') {
-                              setFieldErrors((m) => ({
-                                ...m,
-                                rewindAfterCorrections:
-                                  'Enter 0–20, or clear to keep the last value.',
-                              }));
-                              return;
-                            }
-                            const n = Number(raw);
-                            if (!Number.isFinite(n)) {
-                              setFieldErrors((m) => ({
-                                ...m,
-                                rewindAfterCorrections: 'That is not a number — enter 0–20.',
-                              }));
-                              return;
-                            }
-                            const clamped = Math.min(
-                              REWIND_BAND.max,
-                              Math.max(REWIND_BAND.min, Math.round(n)),
-                            );
-                            if (Math.round(n) !== n) {
-                              setFieldErrors((m) => ({
-                                ...m,
-                                rewindAfterCorrections: `Rounded to ${clamped}.`,
-                              }));
-                            } else if (n < REWIND_BAND.min || n > REWIND_BAND.max) {
-                              setFieldErrors((m) => ({
-                                ...m,
-                                rewindAfterCorrections: `Clamped to ${clamped}.`,
-                              }));
-                            } else if (n === 0) {
-                              setFieldErrors((m) => ({
-                                ...m,
-                                rewindAfterCorrections:
-                                  'Rewind disabled — corrections append in place.',
-                              }));
-                            } else {
-                              setFieldErrors((m) => {
-                                const next = { ...m };
-                                delete next.rewindAfterCorrections;
-                                return next;
-                              });
-                            }
-                            void (async () => {
-                              const issues = await patchSettings({
-                                rewindAfterCorrections: clamped,
-                              });
-                              if (issues.length) setErrors(issues);
-                              else setErrors([]);
-                              // Do not clear fieldErrors on success here — the
-                              // clamped/disabled notes must survive to explain
-                              // why the input now shows a different number.
-                            })();
-                          }}
-                          onBlur={(e) => {
-                            const raw = e.target.value.trim();
-                            if (!raw) {
-                              setFieldErrors((m) => {
-                                const next = { ...m };
-                                delete next.rewindAfterCorrections;
-                                return next;
-                              });
-                              e.target.value = String(settings.rewindAfterCorrections);
-                              // Force React to treat the re-populated value as
-                              // the current committed one on next onChange.
-                              const tracker = (
-                                e.target as HTMLInputElement & {
-                                  _valueTracker?: { setValue(v: string): void };
-                                }
-                              )._valueTracker;
-                              if (tracker) tracker.setValue(e.target.value);
-                            }
-                          }}
+                          value={FIXED_ENGINE_DEFAULTS.rewindAfterCorrections}
+                          disabled
                         />
-                        {fieldErrors.rewindAfterCorrections && (
-                          <span
-                            id="field-rewindAfterCorrections-error"
-                            role="status"
-                            className={styles.settingsWarn}
-                          >
-                            {fieldErrors.rewindAfterCorrections}
-                          </span>
-                        )}
                       </Field>
                       <Field label="Turn timeout (minutes)">
                         <TextInput
@@ -1837,101 +1676,6 @@ export default function SettingsScreen({
                             }))
                           }
                         />
-                      </Field>
-                    </div>
-                  </Section>
-                  <Section label="Transport" note="Where the vendored provider Bridge listens.">
-                    <div className={styles.settingsFields}>
-                      <Field
-                        label="Bridge port"
-                        hint="Preferred port for the Bridge. Must be 37700–37799; if busy, the Bridge tries the next free port in that band. Change takes effect on next Bridge launch."
-                        error={fieldErrors.bridgePort}
-                      >
-                        <TextInput
-                          type="number"
-                          min={BRIDGE_PORT_BAND.min}
-                          max={BRIDGE_PORT_BAND.max}
-                          value={settings.bridgePort}
-                          aria-invalid={fieldErrors.bridgePort ? 'true' : undefined}
-                          aria-describedby={
-                            fieldErrors.bridgePort ? 'field-bridgePort-error' : undefined
-                          }
-                          onChange={(e) => {
-                            const raw = e.target.value.trim();
-                            if (raw === '') {
-                              setFieldErrors((m) => ({
-                                ...m,
-                                bridgePort: 'Enter 37700–37799, or clear to keep the current port.',
-                              }));
-                              return;
-                            }
-                            const n = Number(raw);
-                            if (!Number.isFinite(n)) {
-                              setFieldErrors((m) => ({
-                                ...m,
-                                bridgePort: 'That is not a number — enter 37700–37799.',
-                              }));
-                              return;
-                            }
-                            const rounded = Math.round(n);
-                            const clamped = Math.min(
-                              BRIDGE_PORT_BAND.max,
-                              Math.max(BRIDGE_PORT_BAND.min, rounded),
-                            );
-                            if (rounded !== n) {
-                              setFieldErrors((m) => ({
-                                ...m,
-                                bridgePort: `Rounded to ${rounded}.`,
-                              }));
-                            } else if (
-                              rounded < BRIDGE_PORT_BAND.min ||
-                              rounded > BRIDGE_PORT_BAND.max
-                            ) {
-                              setFieldErrors((m) => ({
-                                ...m,
-                                bridgePort: `Clamped to ${clamped} — the allowed band is ${BRIDGE_PORT_BAND.min}–${BRIDGE_PORT_BAND.max}.`,
-                              }));
-                            } else {
-                              setFieldErrors((m) => {
-                                const next = { ...m };
-                                delete next.bridgePort;
-                                return next;
-                              });
-                            }
-                            void (async () => {
-                              const result = await patchSettings({ bridgePort: clamped });
-                              // patchSettings already surfaced range errors in the banner;
-                              // clamp-away handling kept our field note visible instead.
-                              if (result.length) setErrors(result);
-                            })();
-                          }}
-                          onBlur={(e) => {
-                            const raw = e.target.value.trim();
-                            if (!raw) {
-                              setFieldErrors((m) => {
-                                const next = { ...m };
-                                delete next.bridgePort;
-                                return next;
-                              });
-                              e.target.value = String(settings.bridgePort);
-                              const tracker = (
-                                e.target as HTMLInputElement & {
-                                  _valueTracker?: { setValue(v: string): void };
-                                }
-                              )._valueTracker;
-                              if (tracker) tracker.setValue(e.target.value);
-                            }
-                          }}
-                        />
-                        {fieldErrors.bridgePort && (
-                          <span
-                            id="field-bridgePort-error"
-                            role="status"
-                            className={styles.settingsWarn}
-                          >
-                            {fieldErrors.bridgePort}
-                          </span>
-                        )}
                       </Field>
                     </div>
                   </Section>
@@ -2145,7 +1889,7 @@ export default function SettingsScreen({
                   )}
                 </>
               )}
-              {pane === 'maintenance' && (
+              {pane === 'app' && (
                 <>
                   <Section label="Retention" note="Nothing is deleted behind your back.">
                     <Field
@@ -2228,7 +1972,7 @@ export default function SettingsScreen({
                   </Section>
                 </>
               )}
-              {pane === 'about' && (
+              {pane === 'app' && (
                 <>
                   <Section label="Foundry" note="A software factory you can watch.">
                     <p className={styles.settingsLead}>
@@ -2258,7 +2002,7 @@ export default function SettingsScreen({
                   </Section>
                   <Section label="Elsewhere" note="Providers and the cinematic intro.">
                     <div className={styles.settingsBtnrow}>
-                      <Button size="sm" onClick={() => setPaneLive('providers')}>
+                      <Button size="sm" onClick={() => setPaneLive('models')}>
                         Manage providers
                       </Button>
                       <Button size="sm" onClick={() => void replayIntro()}>

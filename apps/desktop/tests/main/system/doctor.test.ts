@@ -80,7 +80,7 @@ describe('the Bridge check', () => {
     expect(bridge.blocking).toBeFalsy();
     expect(bridge.detail).toContain('not installed');
     expect(bridge.detail).toContain('direct API keys still work');
-    expect(bridge.fix).toEqual({ kind: 'open-settings', value: 'providers' });
+    expect(bridge.fix).toEqual({ kind: 'open-settings', value: 'models' });
   });
 
   // The manager's `detail` states only the remedy and the check prefixes the
@@ -133,7 +133,7 @@ describe('the usable-models check', () => {
     const models = find(checks, 'agent-models')!;
     expect(models.ok).toBe(false);
     expect(models.detail).toContain('no model has a working credential');
-    expect(models.fix).toEqual({ kind: 'open-settings', value: 'providers' });
+    expect(models.fix).toEqual({ kind: 'open-settings', value: 'models' });
   });
 
   it('passes and names one model when the catalog has any', async () => {
@@ -258,7 +258,7 @@ describe('per-provider account checks', () => {
     const account = find(checks, 'provider:claude')!;
     expect(account.ok).toBe(false);
     expect(account.detail).toContain('reconnect Claude');
-    expect(account.fix).toEqual({ kind: 'open-settings', value: 'providers' });
+    expect(account.fix).toEqual({ kind: 'open-settings', value: 'models' });
   });
 
   it('distinguishes every account disabled from an expiry', async () => {

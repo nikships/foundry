@@ -247,7 +247,7 @@ export function register(ctx: Ctx, handle: Handle): void {
       if (!project) return { error: 'project not found' };
 
       const settings = ctx.settings.get();
-      const model = await resolveTurnModel(ctx.supportDir, settings.detectModel);
+      const model = await resolveTurnModel(ctx.supportDir, settings.helperModel);
 
       const detectionId = detections.start({
         projectId: project.id,
@@ -333,7 +333,7 @@ export function register(ctx: Ctx, handle: Handle): void {
       const project = projectOf(id);
       if (!project) return { error: 'project not found' };
       const settings = ctx.settings.get();
-      const model = await resolveTurnModel(ctx.supportDir, settings.detectModel);
+      const model = await resolveTurnModel(ctx.supportDir, settings.helperModel);
       const setupId = setups.start({
         projectId: project.id,
         projectPath: project.path,

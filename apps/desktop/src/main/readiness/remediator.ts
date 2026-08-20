@@ -83,10 +83,8 @@ export function resolveReadinessModel(
   settings: AppSettings,
   override?: { model?: string; reasoningEffort?: ReasoningEffort },
 ): { model: string; reasoningEffort: ReasoningEffort } {
-  const model = override?.model || settings.readinessModel || settings.defaultModel || 'inherit';
+  const model = override?.model || settings.helperModel || settings.defaultModel || 'inherit';
   const reasoningEffort =
-    override?.reasoningEffort ||
-    settings.readinessReasoningEffort ||
-    settings.defaultReasoningEffort;
+    override?.reasoningEffort || settings.helperReasoningEffort || settings.defaultReasoningEffort;
   return { model, reasoningEffort };
 }

@@ -218,10 +218,8 @@ export default function ReadinessFlow({
   const { settings, refreshAll } = useApp();
   const [inspect, setInspect] = useState<ReadinessInspectResult | null>(null);
   const [state, setState] = useState<ReadinessState | null>(null);
-  const [model, setModel] = useState(settings?.readinessModel ?? 'inherit');
-  const [effort, setEffort] = useState<ReasoningEffort>(
-    settings?.readinessReasoningEffort ?? 'high',
-  );
+  const [model, setModel] = useState(settings?.helperModel ?? 'inherit');
+  const [effort, setEffort] = useState<ReasoningEffort>(settings?.helperReasoningEffort ?? 'high');
   const { models, refresh: refreshModels } = useAgentModels();
   const [saveDefault, setSaveDefault] = useState(false);
   const [skipWarn, setSkipWarn] = useState(false);
