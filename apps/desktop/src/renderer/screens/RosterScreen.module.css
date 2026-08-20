@@ -298,6 +298,21 @@
   color: var(--text-faint);
   font-size: var(--text-xs);
 }
+.stale-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 1px 5px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--amber);
+  background: var(--amber-dim);
+  border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
+  border-radius: var(--r-sm);
+}
 .roster-head-actions {
   flex: none;
   display: flex;

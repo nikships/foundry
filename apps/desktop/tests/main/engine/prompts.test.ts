@@ -56,6 +56,35 @@ describe('renderPrompt', () => {
     expect(rendered.user).toMatch(/submit_envelope/);
     expect(rendered.user).not.toMatch(/Reply with ONLY this JSON/);
   });
+
+  it('uses a declared improved request in place of the raw request', () => {
+    const refinedPhase: PhaseDef = {
+      ...phase,
+      prompt: { inputs: ['envelope:refine.improved_request'] },
+    };
+    const rendered = renderPrompt(
+      agent,
+      refinedPhase,
+      ctx({
+        envelopes: new Map([
+          [
+            'refine',
+            {
+              status: 'success',
+              summary: 'refined',
+              artifacts: [],
+              notes_for_next_agent: '',
+              improved_request: 'the repository-grounded brief',
+            },
+          ],
+        ]),
+      }),
+    );
+
+    expect(rendered.user).toContain('Do the repository-grounded brief.');
+    expect(rendered.user).not.toContain('the thing');
+    expect(rendered.user.match(/repository-grounded brief/g)).toHaveLength(1);
+  });
 });
 
 describe('formatPromptRecord', () => {

@@ -35,10 +35,6 @@ function refinePhase(): PhaseDef {
   };
 }
 
-/**
- * The planner's own template already renders `{{request}}`, so a refined chain
- * adds the brief alongside it rather than replacing it.
- */
 function planPhase(refined = false): PhaseDef {
   return {
     name: 'plan',
@@ -49,7 +45,9 @@ function planPhase(refined = false): PhaseDef {
       ? 'Turn the refined brief into a plan the builder needs no questions to implement.'
       : 'Turn the request into a plan the builder needs no questions to implement.',
     gates: ['artifacts_exist', 'files_non_empty'],
-    prompt: { inputs: refined ? ['request', 'envelope:refine'] : ['request'] },
+    prompt: {
+      inputs: refined ? ['envelope:refine.improved_request', 'envelope:refine'] : ['request'],
+    },
   };
 }
 
@@ -63,14 +61,18 @@ function commitPlanPhase(): PhaseDef {
   };
 }
 
-function buildPhase(): PhaseDef {
+function refinedRequest(inputs: string[]): string[] {
+  return ['envelope:refine.improved_request', ...inputs];
+}
+
+function buildPhase(refined = false): PhaseDef {
   return {
     name: 'build',
     kind: 'agent',
     agent: 'builder',
     retries: 2,
     description: 'Implement the plan exactly.',
-    prompt: { inputs: ['request', 'envelope:plan'] },
+    prompt: { inputs: refined ? refinedRequest(['envelope:plan']) : ['request', 'envelope:plan'] },
   };
 }
 
@@ -124,7 +126,7 @@ function productionCheckPhase(): PhaseDef {
     retries: 2,
     description: 'Audit the work against the ship bar and close the gaps it finds.',
     gates: ['verdict_consistent', 'disapproval_halts'],
-    prompt: { inputs: ['request', 'envelope:build'] },
+    prompt: { inputs: refinedRequest(['envelope:build']) },
   };
 }
 
@@ -148,10 +150,10 @@ function reviewPhase(): PhaseDef {
     kind: 'agent',
     agent: 'reviewer',
     retries: 2,
-    description: 'Check the built work against the original request, one finding per requirement.',
+    description: 'Check the built work against the refined brief, one finding per requirement.',
     gates: ['verdict_consistent', 'disapproval_halts'],
     prompt: {
-      inputs: ['request', 'envelope:plan', 'envelope:build', 'envelope:production_check'],
+      inputs: refinedRequest(['envelope:plan', 'envelope:build', 'envelope:production_check']),
     },
   };
 }
@@ -165,7 +167,7 @@ function documentPhase(): PhaseDef {
     description: "Write down what changed for the reader who arrives without this run's context.",
     gates: ['artifacts_exist', 'files_non_empty'],
     prompt: {
-      inputs: ['request', 'envelope:build', 'envelope:production_check'],
+      inputs: refinedRequest(['envelope:build', 'envelope:production_check']),
     },
   };
 }
@@ -185,14 +187,14 @@ function commitDocsPhase(): PhaseDef {
  * the phase, and the executor hard-rejects a run whose PR phase aborted, so
  * "accepted" always means "the pull request exists".
  */
-function prPhase(inputs: string[]): PhaseDef {
+function prPhase(inputs: string[], refined = false): PhaseDef {
   return {
     name: 'open_pr',
     kind: 'agent',
     agent: 'pr_writer',
     description:
       'Open a pull request with a human-readable title and body, following the repo PR template when present.',
-    prompt: { inputs: ['request', ...inputs] },
+    prompt: { inputs: refined ? refinedRequest(inputs) : ['request', ...inputs] },
   };
 }
 
@@ -219,7 +221,7 @@ function shipPhases(): PhaseDef[] {
     refinePhase(),
     planPhase(true),
     commitPlanPhase(),
-    buildPhase(),
+    buildPhase(true),
     testPhase('build'),
     commitBuildPhase(),
     productionCheckPhase(),
@@ -358,7 +360,7 @@ export const BUILTIN_PIPELINES: PipelineDef[] = [
     builtin: true,
     phases: [
       ...shipPhases(),
-      prPhase(['envelope:plan', 'envelope:build', 'envelope:production_check']),
+      prPhase(['envelope:plan', 'envelope:build', 'envelope:production_check'], true),
     ],
   },
   {
@@ -373,13 +375,16 @@ export const BUILTIN_PIPELINES: PipelineDef[] = [
       reviewPhase(),
       documentPhase(),
       commitDocsPhase(),
-      prPhase([
-        'envelope:plan',
-        'envelope:build',
-        'envelope:production_check',
-        'envelope:review',
-        'envelope:document',
-      ]),
+      prPhase(
+        [
+          'envelope:plan',
+          'envelope:build',
+          'envelope:production_check',
+          'envelope:review',
+          'envelope:document',
+        ],
+        true,
+      ),
     ],
   },
 ];
