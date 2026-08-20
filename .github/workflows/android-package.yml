@@ -1,0 +1,115 @@
+name: Android package
+
+# Builds a signed, installable companion APK only when Android source changes,
+# then replaces the Android assets on the repository's single Latest release.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/android/**'
+      - '.github/workflows/android-package.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  # Shared with mac-package.yml so both workflows can safely update Latest.
+  group: foundry-latest-release
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Build and publish APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: gradle
+
+      - name: Restore Android signing key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::$name repository secret is required to publish an upgradeable APK."
+              exit 1
+            fi
+          done
+          KEYSTORE="$RUNNER_TEMP/foundry-android-release.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+          test -s "$KEYSTORE"
+          echo "ANDROID_SIGNING_STORE_FILE=$KEYSTORE" >> "$GITHUB_ENV"
+          echo "ANDROID_SIGNING_STORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "ANDROID_SIGNING_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "ANDROID_SIGNING_KEY_PASSWORD=$ANDROID_KEY_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Test and build signed release APK
+        working-directory: apps/android
+        run: |
+          set -euo pipefail
+          ./gradlew :app:testDebugUnitTest
+          FOUNDRY_ANDROID_VERSION_CODE=$((100000 + GITHUB_RUN_NUMBER)) \
+          FOUNDRY_ANDROID_VERSION_NAME="0.1.${GITHUB_RUN_NUMBER}" \
+            ./gradlew :app:assembleRelease
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -f "$APK"
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner -print | sort -V | tail -1)
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+
+      - name: Prepare stable APK assets
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          cp apps/android/app/build/outputs/apk/release/app-release.apk release-assets/Foundry-Android.apk
+          cd release-assets
+          sha256sum Foundry-Android.apk > Foundry-Android.apk.sha256
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: Foundry-Android-${{ github.run_number }}
+          path: release-assets/*
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Publish APK to Latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.tag_name' 2>/dev/null || true)
+          if [ -z "$TAG" ]; then
+            TAG="android-v0.1.${{ github.run_number }}"
+            gh release create "$TAG" release-assets/* \
+              --title "Foundry Android v0.1.${{ github.run_number }}" \
+              --notes "Latest signed Android companion APK. The signed macOS app will be attached by the next Mac package build." \
+              --latest \
+              --target "$GITHUB_SHA"
+          else
+            gh release upload "$TAG" release-assets/* --clobber
+          fi
+
+          gh release view "$TAG" --json isDraft,isPrerelease,assets \
+            --jq 'select(.isDraft == false and .isPrerelease == false) | .assets[].name' \
+            | grep -Fxq 'Foundry-Android.apk'
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.tag_name')" = "$TAG"
+          echo "Published signed Android APK to Latest release $TAG"
+
+      - name: Cleanup signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/foundry-android-release.jks"

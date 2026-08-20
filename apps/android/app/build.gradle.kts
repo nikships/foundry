@@ -5,6 +5,17 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+val ciVersionCode = providers.environmentVariable("FOUNDRY_ANDROID_VERSION_CODE").orNull?.toIntOrNull()
+val ciVersionName = providers.environmentVariable("FOUNDRY_ANDROID_VERSION_NAME").orNull
+val signingStoreFile = providers.environmentVariable("ANDROID_SIGNING_STORE_FILE").orNull
+val signingStorePassword = providers.environmentVariable("ANDROID_SIGNING_STORE_PASSWORD").orNull
+val signingKeyAlias = providers.environmentVariable("ANDROID_SIGNING_KEY_ALIAS").orNull
+val signingKeyPassword = providers.environmentVariable("ANDROID_SIGNING_KEY_PASSWORD").orNull
+val hasReleaseSigning =
+    listOf(signingStoreFile, signingStorePassword, signingKeyAlias, signingKeyPassword).all {
+        !it.isNullOrBlank()
+    }
+
 android {
     namespace = "com.foundry.companion"
     compileSdk = 35
@@ -13,8 +24,8 @@ android {
         applicationId = "com.foundry.companion"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = ciVersionCode ?: 1
+        versionName = ciVersionName ?: "0.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -22,9 +33,23 @@ android {
         }
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(signingStoreFile!!)
+                storePassword = signingStorePassword
+                keyAlias = signingKeyAlias
+                keyPassword = signingKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

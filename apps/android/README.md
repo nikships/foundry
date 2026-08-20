@@ -66,3 +66,16 @@ Install on a device or emulator:
 ```
 
 The debug application id is `com.foundry.companion.debug`.
+
+## Release APK
+
+`.github/workflows/android-package.yml` runs after changes under `apps/android/` land on `main`. It tests the app, builds a versioned and signed release APK, and replaces `Foundry-Android.apk` on the repository's Latest GitHub release. The Mac packaging workflow carries those stable Android assets forward whenever it promotes a newer release, so the Latest page remains the download location for both platforms.
+
+The workflow requires one long-lived Android signing key so users can install future APKs as upgrades:
+
+- `ANDROID_KEYSTORE_BASE64` — base64-encoded JKS or PKCS12 keystore
+- `ANDROID_KEYSTORE_PASSWORD`
+- `ANDROID_KEY_ALIAS`
+- `ANDROID_KEY_PASSWORD`
+
+Keep a backup of the keystore and passwords outside GitHub. Losing this key means existing installations cannot upgrade to newly signed APKs.

@@ -14,7 +14,7 @@
 
 If you're still babysitting a single agent in a terminal, you're moving slow.<br>Foundry runs a whole team, in parallel, in isolation — and shows you every move.
 
-[Download for Mac](https://github.com/nikships/foundry/releases) · macOS 26+ · Apple Silicon
+[Download latest for Mac or Android](https://github.com/nikships/foundry/releases/latest) · macOS 26+ · Apple Silicon
 
 </div>
 
@@ -109,7 +109,7 @@ Failed runs keep their worktree so you can open it, learn, and discard deliberat
 
 **Requirements:** macOS 26+, Apple Silicon, `git`, and a model provider signed in through Settings → Providers.
 
-1. [Download `Foundry.dmg`](https://github.com/nikships/foundry/releases) and drag to Applications
+1. [Download `Foundry.dmg`](https://github.com/nikships/foundry/releases/latest) and drag to Applications
 2. Open Foundry, add any git repo as a project
 3. Describe the work — _"Add rate limiting to the public API"_ is a complete brief
 4. Pick a pipeline and hit run

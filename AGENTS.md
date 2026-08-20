@@ -62,7 +62,7 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 └── specs/                     ← historical architecture run plans
 
 .githooks/                     ← tracked git hooks (pre-commit); installed by npm run prepare
-.github/workflows/             ← CI (ci.yml) + packaging (mac-package.yml)
+.github/workflows/             ← CI + Mac/Android packaging workflows
 .github/ISSUE_TEMPLATE/
 ```
 
@@ -236,9 +236,10 @@ npm run package             # build + icons + fetch:bridge + electron-builder --
 - `actionlint` on `ubuntu-latest` (1.7.12+, required for `macos-26` label).
 - Pull requests run `verify` + `android` + `actionlint` + `e2e` unconditionally (no paths filter) so required checks are never unsatisfied. Only `verify`, `android`, and `actionlint` are required.
 
-**Packaging** (`.github/workflows/mac-package.yml`, `macos-26`, `main` / `v*` / manual):
+**Packaging** (`.github/workflows/mac-package.yml` and `android-package.yml`):
 
-- Builds, signs, notarizes, and staples an arm64 DMG. Fetches the pinned CLIProxyAPI Bridge (`npm run fetch:bridge`) before electron-builder so `mac.binaries` has a file to sign. Main/manual use run-number versioning and publish a `Latest` release; tags use the tagged `package.json` version. Requires `APPLE_*` + `CERT_P12` secrets and pins the Developer ID certificate SHA‑1.
+- Mac packaging runs for desktop packaging source changes on `main`, `v*` tags, or manual dispatch. It builds, signs, notarizes, and staples an arm64 DMG. It fetches the pinned CLIProxyAPI Bridge (`npm run fetch:bridge`) before electron-builder so `mac.binaries` has a file to sign. Main/manual use run-number versioning and publish a `Latest` release; tags use the tagged `package.json` version. Requires `APPLE_*` + certificate secrets and pins the Developer ID certificate SHA‑1.
+- Android packaging runs for `apps/android/**` changes on `main` or manual dispatch. It publishes a signed `Foundry-Android.apk` to the current Latest release. Mac packaging carries that APK forward when creating a newer Latest release, and both workflows share a concurrency group to avoid publication races. Android signing uses a long-lived keystore stored in the `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD` repository secrets.
 - `.github/workflows/update-cliproxyapi.yml` (every 12 hours / manual) bumps `package.json` `config.bridge` and opens a PR. Merging that PR to `main` triggers a new signed release. Needs the `AUTO_UPDATE_TOKEN` PAT (repo + workflow); `GITHUB_TOKEN` cannot start CI or `mac-package`.
 
 ## Pull Request Guidelines

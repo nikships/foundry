@@ -5,17 +5,31 @@ name: Mac package (sign + notarize)
 # Public repo: free hosted minutes. No pull_request trigger (release path only).
 
 on:
-  # Path filters intentionally omitted so `v*` tag pushes always package.
+  # Path filters apply to main only; explicit `v*` tags still always package.
   push:
     branches: [main]
     tags: ['v*']
+    paths:
+      - 'apps/desktop/**'
+      - 'assets/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.npmrc'
+      - 'electron.vite.config.ts'
+      - 'electron-builder.yml'
+      - 'tsconfig.json'
+      - '.github/workflows/mac-package.yml'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: mac-package
+  # Release publication is shared with android-package.yml. Serializing both
+  # workflows ensures a commit that changes both platforms leaves the newest
+  # release with both artifacts regardless of which build finishes first.
+  group: foundry-latest-release
   cancel-in-progress: false
 
 jobs:
@@ -318,7 +332,7 @@ jobs:
           # destroying the previous working update channel first.
           TAG="v${PKG_VERSION}"
           TITLE="Foundry ${TAG}"
-          NOTES="Continuous build from \`${GITHUB_REF_NAME}\` @ \`${SHORT_SHA}\` (run ${RUN}). Signed with Developer ID and notarized by Apple. Apple Silicon only."
+          NOTES="Continuous build from \`${GITHUB_REF_NAME}\` @ \`${SHORT_SHA}\` (run ${RUN}). The signed, notarized Apple Silicon app and latest signed Android companion APK are attached when available."
           STABLE_DMG="dist/Foundry-${TAG}-arm64.dmg"
           STABLE_ZIP="dist/Foundry-${TAG}-arm64-mac.zip"
           YML="dist/latest-mac.yml"
@@ -330,10 +344,35 @@ jobs:
           ZIP_NAME="$(basename "$STABLE_ZIP")"
           update_latest_mac_yml "$STABLE_ZIP" "$ZIP_NAME" "$PKG_VERSION" "$YML"
 
+          # Android updates whichever release is currently Latest. Carry its
+          # stable APK assets forward before promoting this new Mac release so
+          # the one Latest page always offers both platforms. Shared workflow
+          # concurrency prevents Android from changing Latest during this step.
+          PREVIOUS_LATEST=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.tag_name' 2>/dev/null || true)
+          ANDROID_ASSETS=()
+          if [ -n "$PREVIOUS_LATEST" ] && [ "$PREVIOUS_LATEST" != "$TAG" ]; then
+            PREVIOUS_ASSETS=$(gh release view "$PREVIOUS_LATEST" --json assets --jq '.assets[].name')
+            if grep -Fxq 'Foundry-Android.apk' <<< "$PREVIOUS_ASSETS" && \
+               grep -Fxq 'Foundry-Android.apk.sha256' <<< "$PREVIOUS_ASSETS"; then
+              mkdir -p "$RUNNER_TEMP/latest-android"
+              gh release download "$PREVIOUS_LATEST" \
+                --pattern 'Foundry-Android.apk' \
+                --pattern 'Foundry-Android.apk.sha256' \
+                --dir "$RUNNER_TEMP/latest-android"
+              ANDROID_ASSETS=(
+                "$RUNNER_TEMP/latest-android/Foundry-Android.apk"
+                "$RUNNER_TEMP/latest-android/Foundry-Android.apk.sha256"
+              )
+            fi
+          fi
+
           if gh release view "$TAG" >/dev/null 2>&1; then
             # A rerun can reuse the same run number. Keep the release in place
             # while replacing its assets, so a failed upload never removes it.
             gh release upload "$TAG" "$STABLE_DMG" "${STABLE_DMG}.sha256" "$STABLE_ZIP" "$YML" --clobber
+            if [ "${#ANDROID_ASSETS[@]}" -gt 0 ]; then
+              gh release upload "$TAG" "${ANDROID_ASSETS[@]}" --clobber
+            fi
             gh release edit "$TAG" \
               --title "$TITLE" \
               --notes "$NOTES" \
@@ -341,7 +380,7 @@ jobs:
               --latest \
               --target "$RELEASE_REF"
           else
-            gh release create "$TAG" "$STABLE_DMG" "${STABLE_DMG}.sha256" "$STABLE_ZIP" "$YML" \
+            gh release create "$TAG" "$STABLE_DMG" "${STABLE_DMG}.sha256" "$STABLE_ZIP" "$YML" "${ANDROID_ASSETS[@]}" \
               --title "$TITLE" \
               --notes "$NOTES" \
               --latest \
