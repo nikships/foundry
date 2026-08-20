@@ -106,6 +106,31 @@ describe('renderPrompt', () => {
     expect(rendered.user).not.toContain('the thing');
     expect(rendered.user.match(/repository-grounded brief/g)).toHaveLength(1);
   });
+
+  it('appends the improved request when the agent prompt has no request token', () => {
+    const rendered = renderPrompt(
+      { ...agent, userPrompt: 'Follow the supplied task instructions.' },
+      { ...phase, prompt: { inputs: ['envelope:refine.improved_request'] } },
+      ctx({
+        envelopes: new Map([
+          [
+            'refine',
+            {
+              status: 'success',
+              summary: 'refined',
+              artifacts: [],
+              notes_for_next_agent: '',
+              improved_request: 'the repository-grounded brief',
+            },
+          ],
+        ]),
+      }),
+    );
+
+    expect(rendered.user).toContain('## Request\n\nthe repository-grounded brief');
+    expect(rendered.user).not.toContain('the thing');
+    expect(rendered.user.match(/repository-grounded brief/g)).toHaveLength(1);
+  });
 });
 
 describe('formatPromptRecord', () => {

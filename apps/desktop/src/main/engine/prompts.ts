@@ -110,7 +110,12 @@ function appendMissingInputs(
   const missing: string[] = [];
 
   for (const input of inputs) {
-    if (input === requestInput) continue;
+    if (input === requestInput) {
+      if (!agent.userPrompt.includes('{{request}}')) {
+        missing.push(`## Request\n\n${ctx.request}`);
+      }
+      continue;
+    }
     if (agent.userPrompt.includes(`{{${input}}}`)) continue;
     if (input === 'request') {
       missing.push(`## Request\n\n${ctx.request}`);
