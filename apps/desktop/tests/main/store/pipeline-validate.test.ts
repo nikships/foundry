@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { validate } from '../../../src/main/store/pipelines.js';
 import { effectivePhaseEnvelope } from '../../../src/shared/types.js';
 import type { AgentDef, PhaseDef, PipelineDef } from '../../../src/shared/types.js';
+import { blankPhase, newPipelineDraft } from '@renderer/view-models/pipeline-view.js';
 
 function agent(over: Partial<AgentDef> = {}): AgentDef {
   return {
@@ -149,5 +150,53 @@ describe('pipeline.validate acceptance envelope', () => {
     });
     expect(fresh.phases[0]!.envelope).toBeUndefined();
     expect(validate(fresh, [builder], [])).toEqual([]);
+  });
+});
+
+describe('workbench constructors against validate()', () => {
+  it('accepts a newly created pipeline with a starter agent phase', () => {
+    const draft = newPipelineDraft({
+      existing: [{ id: 'build-pr', name: 'Plan → Build → Test → PR' }],
+      preferredAgent: 'builder',
+      now: 1_723_456_789_000,
+    });
+    const issues = validate(draft, [builder], []);
+    expect(issues).toEqual([]);
+    expect(issues.some((issue) => /kebab-case id/i.test(issue.message))).toBe(false);
+    expect(issues.some((issue) => issue.where === 'id' || issue.where === 'description')).toBe(
+      false,
+    );
+    expect(issues.some((issue) => issue.where.startsWith('phases'))).toBe(false);
+  });
+
+  it('accepts each phase factory with the matching agent and command context', () => {
+    const agent = blankPhase('agent', new Set(), { preferredAgent: 'builder' });
+    const command = blankPhase('code', new Set(), { commandNames: ['npm_test'] });
+    const builtinCommand = blankPhase('code', new Set(['new_command']));
+    const checkpoint = blankPhase('engineer', new Set());
+    const draft = pipeline({
+      acceptance: { kind: 'last_phase_pass' },
+      phases: [agent, command, builtinCommand, checkpoint],
+    });
+    const issues = validate(draft, [builder], ['npm_test']);
+    expect(issues).toEqual([]);
+    expect(issues.some((issue) => /not configured/i.test(issue.message))).toBe(false);
+    expect(issues.some((issue) => /no question/i.test(issue.message))).toBe(false);
+    expect(builtinCommand.command).toEqual({ builtin: 'git_status' });
+    expect(checkpoint.question?.trim().length).toBeGreaterThan(0);
+  });
+
+  it('still reports genuinely malformed user edits', () => {
+    const draft = newPipelineDraft({
+      existing: [],
+      preferredAgent: 'builder',
+      now: 1,
+    });
+    draft.phases[0] = { ...draft.phases[0]!, description: '' };
+    const issues = validate(draft, [builder], []);
+    expect(issues.some((issue) => issue.level === 'error')).toBe(true);
+    expect(
+      issues.some((issue) => /one sentence on what this phase does/i.test(issue.message)),
+    ).toBe(true);
   });
 });

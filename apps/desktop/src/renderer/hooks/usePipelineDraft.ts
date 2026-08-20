@@ -25,6 +25,7 @@ import {
   blankPhase,
   defaultCanvasPosition,
   formatClock,
+  newPipelineDraft,
   pipelineFlowEquals,
 } from '../view-models/pipeline-view.js';
 import { safeGetItem, safeSetItem } from '../utils/local-store.js';
@@ -91,11 +92,8 @@ function canvasForPhases(phases: PhaseDef[], canvas: PipelineCanvas | undefined)
   return { ...canvas, nodes };
 }
 
-function uniqueName(base: string, taken: Set<string>): string {
-  if (!taken.has(base)) return base;
-  let n = 2;
-  while (taken.has(`${base}_${n}`)) n += 1;
-  return `${base}_${n}`;
+function formatIssues(issues: ValidationIssue[]): string {
+  return issues.map((issue) => issue.message).join(' ');
 }
 
 export function usePipelineDraft(deepLink?: {
@@ -118,11 +116,12 @@ export function usePipelineDraft(deepLink?: {
   dryRun: DryRunPrompt[] | null;
   dryRunError: string | null;
   isDirty: boolean;
+  actionError: string;
   setActivePhase: (phaseIndex: number | null) => void;
   setDraft: (next: PipelineDef | null) => void;
   selectPipeline: (id: string) => void;
-  createPipeline: () => Promise<void>;
-  duplicate: () => Promise<void>;
+  createPipeline: () => Promise<boolean>;
+  duplicate: () => Promise<boolean>;
   remove: () => Promise<void>;
   preview: () => Promise<void>;
   closeDryRun: () => void;
@@ -146,25 +145,31 @@ export function usePipelineDraft(deepLink?: {
   const [savedAt, setSavedAt] = useState(() => formatClock(new Date()));
   const [dryRun, setDryRun] = useState<DryRunPrompt[] | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState('');
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSaveRef = useRef<PipelineDef | null>(null);
+  const preserveSelectionRef = useRef<{ id: string; phase: number | null } | null>(null);
 
-  const selected = useMemo(
-    () => pipelines.find((p) => p.id === selectedId) ?? pipelines[0] ?? null,
-    [pipelines, selectedId],
-  );
+  const selected = useMemo(() => {
+    if (selectedId) return pipelines.find((p) => p.id === selectedId) ?? null;
+    return pipelines[0] ?? null;
+  }, [pipelines, selectedId]);
 
-  // Synchronize selectedId if pipelines change or if initially unset
+  // Synchronize selectedId if pipelines change or if initially unset.
+  // A just-created / duplicated id must not snap back to pipelines[0] while
+  // refreshAll's list is still catching up.
   useEffect(() => {
-    if (!selected) {
-      if (pipelines.length > 0) {
-        setSelectedId(pipelines[0].id);
+    const pendingId = preserveSelectionRef.current?.id;
+    if (pendingId) {
+      if (selectedId !== pendingId && pipelines.some((p) => p.id === pendingId)) {
+        setSelectedId(pendingId);
       }
-    } else if (selected.id !== selectedId) {
-      setSelectedId(selected.id);
+      return;
     }
-  }, [pipelines, selected, selectedId]);
+    if (selectedId && pipelines.some((p) => p.id === selectedId)) return;
+    if (pipelines.length > 0) setSelectedId(pipelines[0].id);
+  }, [pipelines, selectedId]);
 
   // Persist selectedId to localStorage
   useEffect(() => {
@@ -181,16 +186,28 @@ export function usePipelineDraft(deepLink?: {
     }
   }, [openPipeline, openNonce, pipelines]);
 
-  // Initialize or reset draft when selected pipeline changes
+  // Initialize or reset draft when selected pipeline changes.
+  // Create/duplicate install a local draft first; keep it (and the starter
+  // phase) until the refreshed list actually contains that id.
   const prevSelectedIdRef = useRef<string | null>(null);
   useEffect(() => {
     const currentId = selected?.id ?? null;
+    const preserved = preserveSelectionRef.current;
+    if (preserved && selectedId === preserved.id && currentId !== preserved.id) {
+      return;
+    }
     if (currentId !== prevSelectedIdRef.current) {
       prevSelectedIdRef.current = currentId;
+      if (preserved && preserved.id === currentId) {
+        preserveSelectionRef.current = null;
+        setDraft(selected ? withLocalCanvas(clonePipeline(selected)) : null);
+        setActivePhase(preserved.phase);
+        return;
+      }
       setDraft(selected ? withLocalCanvas(clonePipeline(selected)) : null);
       setActivePhase(null);
     }
-  }, [selected]);
+  }, [selected, selectedId]);
 
   const commandNames = useMemo(
     () => project?.commands.map((c) => c.name) ?? [],
@@ -215,14 +232,24 @@ export function usePipelineDraft(deepLink?: {
 
   // Execute an immediate save
   const commitSave = useCallback(
-    async (toSave: PipelineDef): Promise<void> => {
+    async (toSave: PipelineDef): Promise<boolean> => {
       setSaving(true);
       try {
-        await api.pipelines.save(plain(toSave), projectId || undefined);
+        const result = await api.pipelines.save(plain(toSave), projectId || undefined);
+        if (!result.ok) {
+          setIssues(result.issues);
+          setActionError(formatIssues(result.issues) || 'Could not save this pipeline.');
+          return false;
+        }
+        setActionError('');
         setSavedAt(formatClock(new Date()));
         await refreshAll();
+        return true;
       } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setActionError(message || 'Could not save this pipeline.');
         console.error('Failed to save pipeline draft:', err);
+        return false;
       } finally {
         setSaving(false);
       }
@@ -275,7 +302,10 @@ export function usePipelineDraft(deepLink?: {
       // A pending flow save should pick up the latest presentation, but
       // viewport / card placement alone must not start one.
       if (pendingSaveRef.current) pendingSaveRef.current = next;
-      if (needsSave) scheduleSave(next);
+      if (needsSave) {
+        setActionError('');
+        scheduleSave(next);
+      }
     },
     [draft, scheduleSave],
   );
@@ -283,6 +313,7 @@ export function usePipelineDraft(deepLink?: {
   const selectPipeline = useCallback(
     async (id: string): Promise<void> => {
       if (id === selectedId) return;
+      setActionError('');
       await flushSave();
       setSelectedId(id);
       safeSetItem(STORAGE_KEY, id);
@@ -290,40 +321,54 @@ export function usePipelineDraft(deepLink?: {
     [flushSave, selectedId],
   );
 
-  const createPipeline = useCallback(async (): Promise<void> => {
+  const createPipeline = useCallback(async (): Promise<boolean> => {
+    setActionError('');
     await flushSave();
-    const id = `pipeline_${Date.now()}`;
-    const taken = new Set(pipelines.map((p) => p.name));
-    const fresh: PipelineDef = {
-      id,
-      name: uniqueName('New Pipeline', taken),
-      description: '',
-      acceptance: { kind: 'last_phase_pass' },
-      phases: [],
-      isolation: true,
-    };
-    await api.pipelines.save(plain(fresh), projectId || undefined);
-    await refreshAll();
-    setSelectedId(id);
-    setDraft(fresh);
-    setActivePhase(null);
-  }, [flushSave, pipelines, projectId, refreshAll]);
+    const preferredAgent = agents.includes('builder') ? 'builder' : (agents[0] ?? 'builder');
+    const fresh = newPipelineDraft({ existing: pipelines, preferredAgent });
+    try {
+      const result = await api.pipelines.save(plain(fresh), projectId || undefined);
+      if (!result.ok) {
+        setActionError(formatIssues(result.issues) || 'Could not create that pipeline.');
+        return false;
+      }
+      await refreshAll();
+      if (fresh.canvas) persistCanvas(fresh.id, fresh.canvas);
+      preserveSelectionRef.current = { id: fresh.id, phase: 0 };
+      setSelectedId(fresh.id);
+      setDraft(withLocalCanvas(clonePipeline(fresh)));
+      setIssues([]);
+      setActivePhase(0);
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setActionError(message || 'Could not create that pipeline.');
+      return false;
+    }
+  }, [agents, flushSave, pipelines, projectId, refreshAll]);
 
-  const duplicate = useCallback(async (): Promise<void> => {
-    if (!draft) return;
+  const duplicate = useCallback(async (): Promise<boolean> => {
+    if (!draft) return false;
+    setActionError('');
     await flushSave();
-    const id = `pipeline_${Date.now()}`;
-    const copy: PipelineDef = {
-      ...clonePipeline(draft),
-      id,
-      name: `${draft.name} (copy)`,
-      builtin: false,
-    };
-    await api.pipelines.save(plain(copy), projectId || undefined);
-    await refreshAll();
-    setSelectedId(id);
-    setDraft(copy);
-    setActivePhase(null);
+    try {
+      const copy = await api.pipelines.duplicate(draft.id, projectId || undefined);
+      if (!copy) {
+        setActionError('Could not duplicate that pipeline.');
+        return false;
+      }
+      await refreshAll();
+      preserveSelectionRef.current = { id: copy.id, phase: null };
+      setSelectedId(copy.id);
+      setDraft(withLocalCanvas(clonePipeline(copy)));
+      setIssues([]);
+      setActivePhase(null);
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setActionError(message || 'Could not duplicate that pipeline.');
+      return false;
+    }
   }, [draft, flushSave, projectId, refreshAll]);
 
   const remove = useCallback(async (): Promise<void> => {
@@ -369,7 +414,8 @@ export function usePipelineDraft(deepLink?: {
     (kind: PhaseKind, at?: number): number => {
       if (!draft) return 0;
       const taken = new Set(draft.phases.map((p) => p.name));
-      const phase = blankPhase(kind, taken);
+      const preferredAgent = agents.includes('builder') ? 'builder' : (agents[0] ?? 'builder');
+      const phase = blankPhase(kind, taken, { preferredAgent, commandNames });
       const index =
         at != null ? Math.min(Math.max(0, at), draft.phases.length) : draft.phases.length;
       const phases = [...draft.phases];
@@ -378,7 +424,7 @@ export function usePipelineDraft(deepLink?: {
       setActivePhase(index);
       return index;
     },
-    [draft, updateDraft],
+    [agents, commandNames, draft, updateDraft],
   );
 
   const movePhase = useCallback(
@@ -507,6 +553,7 @@ export function usePipelineDraft(deepLink?: {
     dryRun,
     dryRunError,
     isDirty,
+    actionError,
     setActivePhase,
     setDraft,
     selectPipeline,

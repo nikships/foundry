@@ -15,8 +15,10 @@ import {
   formatClock,
   formatTimeout,
   gateNames,
+  generatePipelineId,
   inheritEnvelopeOptionLabel,
   issuePhaseIndex,
+  newPipelineDraft,
   phaseComposition,
   phaseEnvelopeChip,
   pipelineFlowEquals,
@@ -203,6 +205,33 @@ describe('pipeline-view', () => {
       expect(created.agent).toBe('builder');
     });
 
+    it('creates unique snake-case names for every kind', () => {
+      const taken = new Set(['new_agent', 'new_command', 'new_checkpoint']);
+      expect(blankPhase('agent', taken).name).toBe('new_agent_2');
+      expect(blankPhase('code', taken).name).toBe('new_command_2');
+      expect(blankPhase('engineer', taken).name).toBe('new_checkpoint_2');
+    });
+
+    it('gives agent, command, and checkpoint phases complete required data', () => {
+      const agent = blankPhase('agent', new Set(), { preferredAgent: 'reviewer' });
+      expect(agent.description.trim().length).toBeGreaterThan(0);
+      expect(agent.agent).toBe('reviewer');
+      expect(agent.prompt).toEqual({ template: 'user', inputs: ['request'] });
+      expect(agent.envelope).toBeUndefined();
+
+      const command = blankPhase('code', new Set(), { commandNames: ['npm_test'] });
+      expect(command.description.trim().length).toBeGreaterThan(0);
+      expect(command.command).toEqual({ ref: 'npm_test' });
+
+      const fallback = blankPhase('code', new Set());
+      expect(fallback.command).toEqual({ builtin: 'git_status' });
+      expect(fallback.command).not.toEqual({ ref: 'test' });
+
+      const checkpoint = blankPhase('engineer', new Set());
+      expect(checkpoint.description.trim().length).toBeGreaterThan(0);
+      expect(checkpoint.question).toBe('Should the run continue?');
+    });
+
     it('labels the inherit option with the selected agent envelope', () => {
       expect(inheritEnvelopeOptionLabel({ name: 'builder', envelope: 'build' })).toBe(
         'Inherit from builder (build)',
@@ -305,6 +334,55 @@ describe('pipeline-view', () => {
       const renamed: PipelineDef = { ...flow, name: 'Ship' };
       expect(pipelineFlowEquals(flow, rerouted)).toBe(false);
       expect(pipelineFlowEquals(flow, renamed)).toBe(false);
+    });
+  });
+
+  describe('generatePipelineId', () => {
+    it('emits a lowercase kebab id with no underscore', () => {
+      const id = generatePipelineId([], 1_723_456_789_000);
+      expect(id).toBe('pipeline-1723456789000');
+      expect(id).toMatch(/^[a-z][a-z0-9-]*$/);
+      expect(id).not.toContain('_');
+    });
+
+    it('adds a kebab suffix when the clock value collides', () => {
+      expect(generatePipelineId(['pipeline-1723456789000'], 1_723_456_789_000)).toBe(
+        'pipeline-1723456789000-2',
+      );
+      expect(
+        generatePipelineId(
+          ['pipeline-1723456789000', 'pipeline-1723456789000-2'],
+          1_723_456_789_000,
+        ),
+      ).toBe('pipeline-1723456789000-3');
+    });
+  });
+
+  describe('newPipelineDraft', () => {
+    it('returns a complete starter pipeline with a valid agent and canvas placement', () => {
+      const draft = newPipelineDraft({
+        existing: [{ id: 'build-pr', name: 'Plan → Build → Test → PR' }],
+        preferredAgent: 'builder',
+        now: 1_723_456_789_000,
+      });
+      expect(draft.id).toBe('pipeline-1723456789000');
+      expect(draft.name).toBe('New Pipeline');
+      expect(draft.description.trim().length).toBeGreaterThan(0);
+      expect(draft.phases).toHaveLength(1);
+      expect(draft.phases[0]).toMatchObject({
+        kind: 'agent',
+        agent: 'builder',
+        description: expect.stringMatching(/\S/),
+      });
+      expect(draft.canvas?.nodes?.[draft.phases[0]!.name]).toEqual(defaultCanvasPosition(0));
+    });
+
+    it('numbers the display name when New Pipeline is already taken', () => {
+      const draft = newPipelineDraft({
+        existing: [{ id: 'build-pr', name: 'New Pipeline' }],
+        now: 99,
+      });
+      expect(draft.name).toBe('New Pipeline 2');
     });
   });
 
