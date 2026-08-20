@@ -234,8 +234,6 @@ export class AgentPhaseRunner implements PhaseRunner {
           phaseId,
           outputFormat,
           systemPrompt,
-          // A phase may narrow the agent's tool surface for its own turns; it
-          // can never widen it (see effectiveDisabledToolIds).
           onText: (text) => this.deps.onLiveText?.(phaseId, text),
         });
         if (outcome.interrupted) {
@@ -303,7 +301,7 @@ export class AgentPhaseRunner implements PhaseRunner {
         payload: { attempt, correctionIndex, problem, ...rewindPayload(rewind) },
       });
       if (!willRetry) break;
-      prompt = correctionMessage(problem, envelopeKind, agent.customFields, this.deps.envelopeDefs);
+      prompt = correctionMessage(problem);
     }
 
     return {

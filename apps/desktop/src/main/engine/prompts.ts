@@ -30,8 +30,6 @@ export const TEMPLATE_VARIABLES = [
   { token: '{{request}}', description: "The engineer's original request, verbatim." },
   { token: '{{run_id}}', description: "This run's id, useful for unique file names." },
   { token: '{{worktree}}', description: 'Absolute path of the worktree this run works in.' },
-  { token: '{{handoff_dir}}', description: 'Directory for files passed between phases.' },
-  { token: '{{handoff_files}}', description: 'Listing of files earlier phases handed off.' },
   {
     token: '{{feedback}}',
     description: 'Failure evidence from a code phase that looped back here.',

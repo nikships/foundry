@@ -89,7 +89,7 @@ const pipeline = (): PipelineDef => ({
       agent: 'builder',
       description: 'build it',
       envelope: 'build',
-      prompt: { template: 'user', inputs: ['request'] },
+      prompt: { inputs: ['request'] },
     },
   ],
 });

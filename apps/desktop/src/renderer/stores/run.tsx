@@ -61,7 +61,6 @@ export function useRun(
   envelopesByPhase: Map<string, EnvelopeRow[]>;
   gatesByPhase: Map<string, GateResultRow[]>;
 } {
-  const { settings } = useApp();
   const [view, setView] = useState<RunView>(emptyView);
 
   const viewRef = useRef(view);
@@ -78,9 +77,9 @@ export function useRun(
   const schedule = useCallback(() => {
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     if (disposedRef.current) return;
-    const cadence = viewRef.current.live ? (settings?.pollCadenceMs ?? 500) : 3000;
+    const cadence = viewRef.current.live ? 500 : 3000;
     timerRef.current = window.setTimeout(() => void tickRef.current(), cadence);
-  }, [settings?.pollCadenceMs]);
+  }, []);
 
   const tick = useCallback(async (): Promise<void> => {
     if (inFlightRef.current || disposedRef.current || !projectId || !runId) return;

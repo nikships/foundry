@@ -216,7 +216,7 @@ describe('pipeline-view', () => {
       const agent = blankPhase('agent', new Set(), { preferredAgent: 'reviewer' });
       expect(agent.description.trim().length).toBeGreaterThan(0);
       expect(agent.agent).toBe('reviewer');
-      expect(agent.prompt).toEqual({ template: 'user', inputs: ['request'] });
+      expect(agent.prompt).toEqual({ inputs: ['request'] });
       expect(agent.envelope).toBeUndefined();
 
       const command = blankPhase('code', new Set(), { commandNames: ['npm_test'] });

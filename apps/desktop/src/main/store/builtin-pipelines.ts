@@ -31,8 +31,7 @@ function refinePhase(): PhaseDef {
     kind: 'agent',
     agent: 'refiner',
     description: 'Sharpen the raw request into a brief grounded in this repository.',
-    envelope: 'brief',
-    prompt: { template: 'user', inputs: ['request'] },
+    prompt: { inputs: ['request'] },
   };
 }
 
@@ -49,9 +48,8 @@ function planPhase(refined = false): PhaseDef {
     description: refined
       ? 'Turn the refined brief into a plan the builder needs no questions to implement.'
       : 'Turn the request into a plan the builder needs no questions to implement.',
-    envelope: 'plan',
     gates: ['artifacts_exist', 'files_non_empty'],
-    prompt: { template: 'user', inputs: refined ? ['request', 'envelope:refine'] : ['request'] },
+    prompt: { inputs: refined ? ['request', 'envelope:refine'] : ['request'] },
   };
 }
 
@@ -72,8 +70,7 @@ function buildPhase(): PhaseDef {
     agent: 'builder',
     retries: 2,
     description: 'Implement the plan exactly.',
-    envelope: 'build',
-    prompt: { template: 'user', inputs: ['request', 'envelope:plan'] },
+    prompt: { inputs: ['request', 'envelope:plan'] },
   };
 }
 
@@ -126,9 +123,8 @@ function productionCheckPhase(): PhaseDef {
     agent: 'finisher',
     retries: 2,
     description: 'Audit the work against the ship bar and close the gaps it finds.',
-    envelope: 'review',
     gates: ['verdict_consistent', 'disapproval_halts'],
-    prompt: { template: 'user', inputs: ['request', 'envelope:build'] },
+    prompt: { inputs: ['request', 'envelope:build'] },
   };
 }
 
@@ -153,10 +149,8 @@ function reviewPhase(): PhaseDef {
     agent: 'reviewer',
     retries: 2,
     description: 'Check the built work against the original request, one finding per requirement.',
-    envelope: 'review',
     gates: ['verdict_consistent', 'disapproval_halts'],
     prompt: {
-      template: 'user',
       inputs: ['request', 'envelope:plan', 'envelope:build', 'envelope:production_check'],
     },
   };
@@ -169,10 +163,8 @@ function documentPhase(): PhaseDef {
     agent: 'documenter',
     retries: 2,
     description: "Write down what changed for the reader who arrives without this run's context.",
-    envelope: 'document',
     gates: ['artifacts_exist', 'files_non_empty'],
     prompt: {
-      template: 'user',
       inputs: ['request', 'envelope:build', 'envelope:production_check'],
     },
   };
@@ -200,8 +192,7 @@ function prPhase(inputs: string[]): PhaseDef {
     agent: 'pr_writer',
     description:
       'Open a pull request with a human-readable title and body, following the repo PR template when present.',
-    envelope: 'pr',
-    prompt: { template: 'user', inputs: ['request', ...inputs] },
+    prompt: { inputs: ['request', ...inputs] },
   };
 }
 
@@ -218,8 +209,7 @@ function issuePhase(inputs: string[]): PhaseDef {
     agent: 'issue_writer',
     description:
       'File the GitHub issue that tracks the diagnosed problem, grounded in the located evidence.',
-    envelope: 'issue',
-    prompt: { template: 'user', inputs: ['request', ...inputs] },
+    prompt: { inputs: ['request', ...inputs] },
   };
 }
 
@@ -270,9 +260,8 @@ export const BUILTIN_PIPELINES: PipelineDef[] = [
         retries: 2,
         description:
           'Locate the fault in the real tree — paths, symbols, and the failing behaviour — before anything changes.',
-        envelope: 'scout',
         gates: ['artifacts_exist'],
-        prompt: { template: 'user', inputs: ['request'] },
+        prompt: { inputs: ['request'] },
       },
       {
         name: 'fix',
@@ -280,8 +269,7 @@ export const BUILTIN_PIPELINES: PipelineDef[] = [
         agent: 'builder',
         retries: 2,
         description: 'Repair exactly the diagnosed fault.',
-        envelope: 'build',
-        prompt: { template: 'user', inputs: ['request', 'envelope:diagnose'] },
+        prompt: { inputs: ['request', 'envelope:diagnose'] },
       },
       testPhase('fix'),
       commitPhase('commit_fix', 'fix', 'Commit the fix once its tests are green.'),
@@ -303,9 +291,8 @@ export const BUILTIN_PIPELINES: PipelineDef[] = [
         retries: 2,
         description:
           'Map the code the spec will touch — current behaviour, owners, and constraints — with located evidence.',
-        envelope: 'scout',
         gates: ['artifacts_exist'],
-        prompt: { template: 'user', inputs: ['request'] },
+        prompt: { inputs: ['request'] },
       },
       {
         name: 'spec',
@@ -314,9 +301,8 @@ export const BUILTIN_PIPELINES: PipelineDef[] = [
         retries: 2,
         description:
           'Write the implementable spec under specs/, grounded in what the survey actually found.',
-        envelope: 'plan',
         gates: ['artifacts_exist', 'files_non_empty'],
-        prompt: { template: 'user', inputs: ['request', 'envelope:survey'] },
+        prompt: { inputs: ['request', 'envelope:survey'] },
       },
       commitPhase(
         'commit_spec',
@@ -341,9 +327,8 @@ export const BUILTIN_PIPELINES: PipelineDef[] = [
         retries: 2,
         description:
           'Locate the fault in the real tree — paths, symbols, and the failing behaviour — before anything is filed.',
-        envelope: 'scout',
         gates: ['artifacts_exist'],
-        prompt: { template: 'user', inputs: ['request'] },
+        prompt: { inputs: ['request'] },
       },
       issuePhase(['envelope:diagnose']),
       {
@@ -353,9 +338,8 @@ export const BUILTIN_PIPELINES: PipelineDef[] = [
         retries: 2,
         description:
           'Write the implementable fix spec under specs/, grounded in the diagnosed evidence.',
-        envelope: 'plan',
         gates: ['artifacts_exist', 'files_non_empty'],
-        prompt: { template: 'user', inputs: ['request', 'envelope:diagnose'] },
+        prompt: { inputs: ['request', 'envelope:diagnose'] },
       },
       commitPhase(
         'commit_spec',

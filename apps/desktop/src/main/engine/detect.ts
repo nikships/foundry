@@ -460,14 +460,6 @@ Rules for the reply:
 - "source" is the file that told you, so a human can check.
 - Omit a command entirely rather than supplying a placeholder. An empty list is a valid answer only when the repo truly has no verifiable command.`;
 
-/**
- * Detection runs against the operator's base checkout, not a run worktree, so
- * nothing reverts what it writes: no snapshot, no boundary diff, no phase to
- * fail. The restriction, not an autonomy level, is what makes it read-only —
- * an editing or shell tool is simply not in the session.
- */
-export const DETECT_TOOLS = ['Read', 'Grep', 'Glob', 'LS'];
-
 const ARGV_SHELL_TOKENS = /[|&;><$`(){}]|^cd$/;
 
 /** Names must survive into `ProjectCommand.name` and a pipeline `{ref}`. */

@@ -161,7 +161,7 @@ export function boundaryCorrection(violations: BoundaryViolation[]): string {
       (v) => `- ${v.path} (${v.change}${v.reverted ? ', reverted' : ', revert failed'})`,
     ),
     '',
-    'Redo the work touching only the paths you are allowed to write, then reply with the envelope JSON only.',
+    'Redo the work touching only the paths you are allowed to write, then call submit_envelope again.',
   ].join('\n');
 }
 

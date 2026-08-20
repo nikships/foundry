@@ -129,6 +129,16 @@ describe('shipped pipelines', () => {
     }
   });
 
+  it('inherits every agent envelope without restating it on the phase', () => {
+    for (const pipeline of BUILTIN_PIPELINES) {
+      for (const phase of pipeline.phases.filter((candidate) => candidate.kind === 'agent')) {
+        expect(phase.envelope, `${pipeline.id}/${phase.name}`).toBeUndefined();
+        expect(agentByName(phase.agent!)?.envelope, `${pipeline.id}/${phase.name}`).toBeTruthy();
+        expect(phase.prompt, `${pipeline.id}/${phase.name}`).not.toHaveProperty('template');
+      }
+    }
+  });
+
   it('pins the phase order of each chain', () => {
     expect(byId('build-pr').phases.map((p) => p.name)).toEqual([
       'plan',
@@ -273,7 +283,7 @@ describe('shipped pipelines', () => {
     };
     for (const pipeline of BUILTIN_PIPELINES) {
       const openPr = pipeline.phases.at(-1)!;
-      expect(openPr).toMatchObject({ kind: 'agent', agent: 'pr_writer', envelope: 'pr' });
+      expect(openPr).toMatchObject({ kind: 'agent', agent: 'pr_writer' });
       expect(openPr.prompt?.inputs, pipeline.id).toEqual(expected[pipeline.id]);
     }
   });
@@ -301,7 +311,7 @@ describe('shipped pipelines', () => {
   it('files the issue from the diagnosed evidence, before the spec is written', () => {
     const triage = byId('triage-issue-pr');
     const issuePhase = triage.phases.find((p) => p.name === 'file_issue')!;
-    expect(issuePhase).toMatchObject({ kind: 'agent', agent: 'issue_writer', envelope: 'issue' });
+    expect(issuePhase).toMatchObject({ kind: 'agent', agent: 'issue_writer' });
     expect(issuePhase.prompt?.inputs).toEqual(['request', 'envelope:diagnose']);
     const names = triage.phases.map((p) => p.name);
     expect(names.indexOf('file_issue')).toBeGreaterThan(names.indexOf('diagnose'));

@@ -78,7 +78,7 @@ export function blankPhase(
       kind: 'agent',
       description: 'Do the implementation work for this run.',
       agent: defaults.preferredAgent || 'builder',
-      prompt: { template: 'user', inputs: ['request'] },
+      prompt: { inputs: ['request'] },
       gates: [],
     };
   }

@@ -1575,32 +1575,15 @@ export default function SettingsScreen({
                       </>
                     )}
                   </Section>
-
-                  <Section
-                    label="Checks"
-                    note="Re-run after connecting a provider or storing a key."
-                  >
-                    <DoctorList
-                      checks={checks}
-                      title="Environment checks"
-                      onRecheck={() => void api.doctor.run().then(setChecks)}
-                      onOpenSettings={(next) => setPaneLive(next as Pane)}
-                    />
-                  </Section>
                 </>
               )}
               {pane === 'defaults' && (
                 <>
                   <Section label="Agent defaults" note="What an agent set to inherit gets.">
-                    <div className={styles.settingsSpread}>
-                      <p className={styles.settingsLead}>
-                        Used by any agent that inherits model or reasoning. A per-agent choice
-                        always wins.
-                      </p>
-                      <Button size="sm" onClick={() => void refreshModels()}>
-                        Refresh models
-                      </Button>
-                    </div>
+                    <p className={styles.settingsLead}>
+                      Used by any agent that inherits model or reasoning. A per-agent choice always
+                      wins.
+                    </p>
                   </Section>
                   <Section label="Model" note="Every model a connected provider offers.">
                     <div className={styles.settingsFields}>
@@ -1688,14 +1671,6 @@ export default function SettingsScreen({
                         />
                       </Field>
                     </div>
-                  </Section>
-                  <Section label="Autonomy" note="How a run behaves once it starts.">
-                    <p className={styles.hint}>
-                      Runs are fully autonomous: once a run starts it never stops to ask permission.
-                      Writes outside an agent&rsquo;s boundary are always reverted, and every
-                      decision the engine makes on your behalf is recorded in the run&rsquo;s
-                      timeline.
-                    </p>
                   </Section>
                   <Section label="Limits" note="How hard Foundry tries before a phase fails.">
                     <div className={styles.settingsFields}>
@@ -1860,27 +1835,6 @@ export default function SettingsScreen({
                             void setInt(e.target.value, { min: 5, max: 60 }, (minutes) => ({
                               turnTimeoutMs: minutes * 60_000,
                             }))
-                          }
-                        />
-                      </Field>
-                      <Field
-                        label="Trace poll cadence (ms)"
-                        hint="How often a live run's view refreshes."
-                      >
-                        <TextInput
-                          type="number"
-                          min={250}
-                          max={2000}
-                          step={50}
-                          value={settings.pollCadenceMs}
-                          onChange={(e) =>
-                            void setInt(
-                              e.target.value,
-                              { min: 250, max: 2000 },
-                              (pollCadenceMs) => ({
-                                pollCadenceMs,
-                              }),
-                            )
                           }
                         />
                       </Field>

@@ -37,7 +37,7 @@ const leftover = (): PipelineDef => ({
       agent: 'builder',
       description: 'Implement the plan exactly and report every changed file.',
       envelope: 'build',
-      prompt: { template: 'user', inputs: ['request'] },
+      prompt: { inputs: ['request'] },
     },
   ],
 });
@@ -54,7 +54,7 @@ const userPipeline = (): PipelineDef => ({
       agent: 'builder',
       description: 'Do the user-defined work.',
       envelope: 'build',
-      prompt: { template: 'user', inputs: ['request'] },
+      prompt: { inputs: ['request'] },
     },
   ],
 });

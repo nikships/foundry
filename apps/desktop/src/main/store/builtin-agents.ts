@@ -10,7 +10,7 @@
 import { PR_FALLBACK_HEADINGS, PR_TEMPLATE_SEARCH_PATHS, type AgentDef } from '@shared/types.js';
 
 const SHELL_NOTE = [
-  "You inherit the operator's shell environment: PATH, toolchains, and credentials are already live.",
+  "You inherit the operator's PATH and credentials. Project dependencies are available only when the worktree setup installed them.",
   'Call tools by bare name (bun, uv, pytest); never hunt for a binary or fall back to an absolute path.',
   'Judge any command you run by its exit status, never by scanning output for words. The text "error" inside passing output is text, not a failure.',
 ].join('\n');
@@ -43,8 +43,6 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       "- Do not prescribe line-level edits, and do not design the solution. That is the next phase's job.",
       '- Preserve the intent. Sharpening a request never means widening it: anything the request did not ask for stays out.',
       '- If the request is already precise, say so and return it close to unchanged rather than padding it.',
-      '',
-      SHELL_NOTE,
     ].join('\n'),
     userPrompt: [
       '# Refine',
@@ -165,8 +163,6 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       '- You are read-only. Do not create, edit, or delete any file.',
       '- Cite concrete paths and symbols; a finding without a location is a guess.',
       '- Report what is actually there, including the parts that contradict the premise of the question.',
-      '',
-      SHELL_NOTE,
     ].join('\n'),
     userPrompt: [
       '# Scout',
@@ -204,8 +200,6 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       '- `approved` must be false if anything is blocking. A gate checks that your verdict is self-consistent.',
       '- When you do not approve, report `status: "fail"` too — a gate halts the run on your verdict so rejected work never flows into later phases.',
       '- Do not fix what you find. Report it.',
-      '',
-      SHELL_NOTE,
     ].join('\n'),
     userPrompt: [
       '# Review',
@@ -361,8 +355,6 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       '- Keep the body concise: 1–2 sentences for Summary, grouped Changes (not a per-file dump), no raw `git diff`, no jargon list longer than 10 files, no invented issue numbers. Mention a linked issue only when the request or a prior envelope already names it. Stay under 600 words unless a template demands more.',
       '- Title: imperative, ≤72 characters, no trailing period.',
       '- Put the title in `title` and the markdown body in `body`.',
-      '',
-      SHELL_NOTE,
     ].join('\n'),
     userPrompt: [
       '# Draft PR',
@@ -409,8 +401,6 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       '- Suggest `labels` only when you saw them in the repository (e.g. in other issues or docs); an empty list is correct when unsure. Labels that do not exist are dropped, not created.',
       '- Title: imperative, ≤72 characters, no trailing period.',
       '- Put the title in `title`, the markdown body in `body`, and any labels in `labels`.',
-      '',
-      SHELL_NOTE,
     ].join('\n'),
     userPrompt: [
       '# Draft issue',

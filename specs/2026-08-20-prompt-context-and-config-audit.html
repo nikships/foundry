@@ -1,0 +1,2398 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Foundry Audit — Prompts, Context & Configuration</title>
+    <style>
+      :root {
+        --ink: #1a1814;
+        --paper: #fbf9f4;
+        --paper-2: #f4f0e8;
+        --paper-3: #ece6d8;
+        --line: #e0d8c6;
+        --line-2: #d4cab4;
+        --muted: #6e6657;
+        --faint: #9a907d;
+        --ember: #c2410c;
+        --ember-2: #ea580c;
+        --ember-soft: #fde8d8;
+        --steel: #475569;
+        --steel-soft: #e2e8f0;
+        --green: #15803d;
+        --green-soft: #dcf2e3;
+        --amber: #b45309;
+        --amber-soft: #fcefd8;
+        --red: #b91c1c;
+        --red-soft: #fbdcdc;
+        --blue: #1d4ed8;
+        --blue-soft: #dde6fb;
+        --shadow: 0 1px 2px rgba(58, 48, 30, 0.06), 0 4px 14px rgba(58, 48, 30, 0.05);
+        --shadow-lg: 0 2px 6px rgba(58, 48, 30, 0.08), 0 14px 40px rgba(58, 48, 30, 0.1);
+        --radius: 14px;
+        --radius-sm: 9px;
+        --mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+        --sans:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, 'Helvetica Neue', sans-serif;
+        --serif: ui-serif, Georgia, 'New York', serif;
+      }
+      [data-theme='dark'] {
+        --ink: #ece6d6;
+        --paper: #16140f;
+        --paper-2: #211d15;
+        --paper-3: #2a251b;
+        --line: #39332a;
+        --line-2: #473f31;
+        --muted: #a99f89;
+        --faint: #7a7060;
+        --ember: #fb7140;
+        --ember-2: #ff8a5b;
+        --ember-soft: #3a2417;
+        --steel: #94a3b8;
+        --steel-soft: #2a3038;
+        --green: #5ec07a;
+        --green-soft: #172a1d;
+        --amber: #e0a34a;
+        --amber-soft: #2e2412;
+        --red: #f06b6b;
+        --red-soft: #2e1717;
+        --blue: #7d96f0;
+        --blue-soft: #1a2238;
+        --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 14px rgba(0, 0, 0, 0.35);
+        --shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.45), 0 14px 40px rgba(0, 0, 0, 0.5);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: var(--sans);
+        font-size: 16.5px;
+        line-height: 1.62;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+      ::selection {
+        background: var(--ember-soft);
+        color: var(--ember);
+      }
+      a {
+        color: var(--ember);
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+
+      /* ---------- Layout ---------- */
+      .shell {
+        display: grid;
+        grid-template-columns: 248px minmax(0, 1fr);
+        max-width: 1280px;
+        margin: 0 auto;
+        gap: 0;
+      }
+      .nav {
+        position: sticky;
+        top: 0;
+        align-self: start;
+        height: 100vh;
+        overflow-y: auto;
+        padding: 26px 18px 40px;
+        border-right: 1px solid var(--line);
+        background: linear-gradient(180deg, var(--paper) 0%, var(--paper-2) 100%);
+        font-size: 14px;
+      }
+      .nav .brand {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        font-weight: 700;
+        margin-bottom: 18px;
+        letter-spacing: -0.01em;
+      }
+      .nav .brand .dot {
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 30% 30%, var(--ember-2), var(--ember));
+        box-shadow: 0 0 14px var(--ember);
+      }
+      .nav .brand small {
+        font-weight: 500;
+        color: var(--faint);
+        font-size: 11px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        display: block;
+      }
+      .nav ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .nav li {
+        margin: 1px 0;
+      }
+      .nav a {
+        display: block;
+        padding: 7px 11px;
+        border-radius: 8px;
+        color: var(--muted);
+        font-weight: 500;
+        text-decoration: none;
+        border-left: 2px solid transparent;
+        transition:
+          background 0.15s,
+          color 0.15s;
+      }
+      .nav a:hover {
+        background: var(--paper-3);
+        color: var(--ink);
+        text-decoration: none;
+      }
+      .nav a.active {
+        background: var(--ember-soft);
+        color: var(--ember);
+        border-left-color: var(--ember);
+        font-weight: 600;
+      }
+      .nav .group {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--faint);
+        margin: 18px 8px 6px;
+      }
+      .nav .theme {
+        margin-top: 22px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 11px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        cursor: pointer;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .nav .theme:hover {
+        background: var(--paper-3);
+      }
+      .nav .theme svg {
+        width: 16px;
+        height: 16px;
+      }
+
+      main {
+        padding: 0 44px 120px;
+        max-width: 900px;
+      }
+      @media (max-width: 880px) {
+        .shell {
+          grid-template-columns: 1fr;
+        }
+        .nav {
+          position: static;
+          height: auto;
+          border-right: none;
+          border-bottom: 1px solid var(--line);
+          overflow: hidden;
+        }
+        main {
+          padding: 0 22px 80px;
+        }
+      }
+
+      /* ---------- Hero ---------- */
+      .hero {
+        padding: 72px 0 48px;
+        border-bottom: 1px solid var(--line);
+      }
+      .eyebrow {
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--ember);
+        margin-bottom: 18px;
+      }
+      .hero h1 {
+        font-family: var(--serif);
+        font-size: clamp(34px, 5vw, 54px);
+        line-height: 1.05;
+        letter-spacing: -0.02em;
+        margin: 0 0 18px;
+        font-weight: 600;
+      }
+      .hero h1 em {
+        font-style: italic;
+        color: var(--ember);
+      }
+      .hero p.lead {
+        font-size: 19px;
+        color: var(--muted);
+        max-width: 62ch;
+        margin: 0 0 26px;
+      }
+      .meta-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 8px;
+      }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 7px 13px;
+        border-radius: 999px;
+        background: var(--paper-2);
+        border: 1px solid var(--line);
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      .chip b {
+        color: var(--ember);
+        font-weight: 700;
+      }
+      .chip .pulse {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--ember);
+        box-shadow: 0 0 0 0 var(--ember);
+        animation: pulse 2.4s infinite;
+      }
+      @keyframes pulse {
+        0% {
+          box-shadow: 0 0 0 0 rgba(194, 65, 12, 0.4);
+        }
+        70% {
+          box-shadow: 0 0 0 9px rgba(194, 65, 12, 0);
+        }
+        100% {
+          box-shadow: 0 0 0 0 rgba(194, 65, 12, 0);
+        }
+      }
+
+      section {
+        padding: 48px 0;
+        border-bottom: 1px solid var(--line);
+        scroll-margin-top: 20px;
+      }
+      h2 {
+        font-family: var(--serif);
+        font-size: clamp(26px, 3.4vw, 34px);
+        line-height: 1.12;
+        letter-spacing: -0.015em;
+        margin: 0 0 8px;
+        font-weight: 600;
+      }
+      h2 .num {
+        color: var(--ember);
+        font-family: var(--sans);
+        font-size: 0.62em;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        vertical-align: middle;
+        margin-right: 12px;
+      }
+      .section-lede {
+        color: var(--muted);
+        font-size: 17px;
+        max-width: 60ch;
+        margin: 6px 0 28px;
+      }
+
+      /* ---------- Big wins ---------- */
+      .wins {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(255px, 1fr));
+        gap: 14px;
+      }
+      .win {
+        background: var(--paper-2);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 20px 20px 18px;
+        box-shadow: var(--shadow);
+        position: relative;
+        overflow: hidden;
+        transition:
+          transform 0.18s,
+          box-shadow 0.18s;
+      }
+      .win:hover {
+        transform: translateY(-3px);
+        box-shadow: var(--shadow-lg);
+      }
+      .win::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 4px;
+        background: linear-gradient(var(--ember-2), var(--ember));
+      }
+      .win .tag {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--ember);
+        margin-bottom: 8px;
+      }
+      .win h3 {
+        font-size: 16px;
+        margin: 0 0 8px;
+        font-weight: 650;
+        line-height: 1.3;
+      }
+      .win p {
+        font-size: 14px;
+        color: var(--muted);
+        margin: 0;
+        line-height: 1.5;
+      }
+      .win .refs {
+        display: block;
+        margin-top: 11px;
+        font-size: 12px;
+        color: var(--faint);
+        font-family: var(--mono);
+      }
+
+      /* ---------- Findings ---------- */
+      .area-intro {
+        background: var(--paper-2);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 22px 24px;
+        margin-bottom: 26px;
+        box-shadow: var(--shadow);
+      }
+      .area-intro h3 {
+        margin: 0 0 8px;
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--steel);
+      }
+      .area-intro p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14.5px;
+      }
+      .area-intro ul {
+        margin: 8px 0 0;
+        padding-left: 20px;
+        color: var(--muted);
+        font-size: 14.5px;
+      }
+      .area-intro li {
+        margin: 3px 0;
+      }
+
+      .findings {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .finding {
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        overflow: hidden;
+        transition:
+          border-color 0.15s,
+          box-shadow 0.15s;
+      }
+      .finding:hover {
+        border-color: var(--line-2);
+      }
+      .finding > summary {
+        list-style: none;
+        cursor: pointer;
+        padding: 16px 20px;
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+        user-select: none;
+      }
+      .finding > summary::-webkit-details-marker {
+        display: none;
+      }
+      .finding .fid {
+        flex: 0 0 auto;
+        font-family: var(--mono);
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--ember);
+        background: var(--ember-soft);
+        padding: 3px 9px;
+        border-radius: 6px;
+        margin-top: 1px;
+        white-space: nowrap;
+      }
+      .finding .ft {
+        flex: 1;
+        min-width: 0;
+      }
+      .finding .ft h4 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+        line-height: 1.35;
+      }
+      .finding .ft .hl {
+        color: var(--muted);
+        font-size: 14px;
+        margin-top: 3px;
+        line-height: 1.5;
+      }
+      .finding .caret {
+        flex: 0 0 auto;
+        color: var(--faint);
+        transition: transform 0.2s;
+        margin-top: 3px;
+      }
+      .finding[open] .caret {
+        transform: rotate(90deg);
+      }
+      .finding .fbody {
+        padding: 0 20px 20px 52px;
+        color: var(--muted);
+        font-size: 14.8px;
+      }
+      .finding .fbody p {
+        margin: 0 0 10px;
+      }
+      .finding .fbody code {
+        font-family: var(--mono);
+        font-size: 12.5px;
+        background: var(--paper-3);
+        padding: 1px 6px;
+        border-radius: 5px;
+        color: var(--ink);
+      }
+      .finding .good {
+        border-left: 3px solid var(--green);
+        padding-left: 14px;
+        margin-top: 6px;
+      }
+      .finding .good::before {
+        content: 'Keep — ';
+        font-weight: 700;
+        color: var(--green);
+      }
+
+      /* ---------- Before / After ---------- */
+      .ba {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin: 14px 0;
+      }
+      @media (max-width: 680px) {
+        .ba {
+          grid-template-columns: 1fr;
+        }
+      }
+      .ba .col {
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        overflow: hidden;
+      }
+      .ba .col .hd {
+        padding: 8px 14px;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .ba .before .hd {
+        background: var(--red-soft);
+        color: var(--red);
+      }
+      .ba .after .hd {
+        background: var(--green-soft);
+        color: var(--green);
+      }
+      .ba pre {
+        margin: 0;
+        padding: 14px 16px;
+        font-family: var(--mono);
+        font-size: 12.5px;
+        line-height: 1.55;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: var(--ink);
+        background: var(--paper-2);
+      }
+      .ba .before pre {
+        background: #fcf4f4;
+      }
+      [data-theme='dark'] .ba .before pre {
+        background: #241515;
+      }
+      .ba .after pre {
+        background: #f3faf4;
+      }
+      [data-theme='dark'] .ba .after pre {
+        background: #142018;
+      }
+      .arrow {
+        grid-column: 1/-1;
+        text-align: center;
+        color: var(--ember);
+        font-size: 18px;
+        margin: -2px 0;
+      }
+      .ia {
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        overflow: hidden;
+        margin: 14px 0;
+      }
+      .ia .ia-hd {
+        padding: 8px 14px;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--steel);
+        background: var(--steel-soft);
+      }
+      .ia pre {
+        margin: 0;
+        padding: 14px 16px;
+        font-family: var(--mono);
+        font-size: 12.5px;
+        line-height: 1.55;
+        white-space: pre;
+        overflow-x: auto;
+        color: var(--ink);
+        background: var(--paper-2);
+      }
+      .ia .lbl {
+        color: var(--faint);
+      }
+      .ia .cut {
+        text-decoration: line-through;
+        color: var(--red);
+        opacity: 0.7;
+      }
+      .ia .add {
+        color: var(--green);
+      }
+
+      /* ---------- Recommendations ---------- */
+      .filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 22px;
+        align-items: center;
+      }
+      .filters .fl-label {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--faint);
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        margin-right: 4px;
+      }
+      .fbtn {
+        padding: 6px 13px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--paper);
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+      .fbtn:hover {
+        border-color: var(--line-2);
+        color: var(--ink);
+      }
+      .fbtn.on {
+        background: var(--ember);
+        color: #fff;
+        border-color: var(--ember);
+      }
+      .recs {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+        gap: 14px;
+      }
+      .rec {
+        background: var(--paper-2);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 20px 20px 16px;
+        box-shadow: var(--shadow);
+        display: flex;
+        flex-direction: column;
+        transition:
+          transform 0.15s,
+          box-shadow 0.15s,
+          opacity 0.25s;
+      }
+      .rec:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-lg);
+      }
+      .rec.hide {
+        display: none;
+      }
+      .rec .rh {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        margin-bottom: 10px;
+      }
+      .rec .rn {
+        flex: 0 0 auto;
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        background: linear-gradient(135deg, var(--ember-2), var(--ember));
+        color: #fff;
+        font-weight: 700;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: var(--sans);
+      }
+      .rec h3 {
+        margin: 0;
+        font-size: 16.5px;
+        font-weight: 650;
+        line-height: 1.3;
+        flex: 1;
+      }
+      .rec .sum {
+        color: var(--muted);
+        font-size: 14.3px;
+        margin: 0 0 14px;
+        line-height: 1.52;
+      }
+      .rec .badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: auto;
+        padding-top: 14px;
+        border-top: 1px dashed var(--line);
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+        font-family: var(--mono);
+      }
+      .b-eff-S {
+        background: var(--green-soft);
+        color: var(--green);
+      }
+      .b-eff-M {
+        background: var(--amber-soft);
+        color: var(--amber);
+      }
+      .b-eff-L {
+        background: var(--red-soft);
+        color: var(--red);
+      }
+      .b-risk-Low {
+        background: var(--green-soft);
+        color: var(--green);
+      }
+      .b-risk-Medium {
+        background: var(--amber-soft);
+        color: var(--amber);
+      }
+      .b-risk-High {
+        background: var(--red-soft);
+        color: var(--red);
+      }
+      .b-imp {
+        background: var(--ember-soft);
+        color: var(--ember);
+      }
+      .b-area {
+        background: var(--steel-soft);
+        color: var(--steel);
+      }
+      .rec .inv {
+        font-size: 12.5px;
+        color: var(--faint);
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px dashed var(--line);
+        line-height: 1.45;
+      }
+      .rec .inv b {
+        color: var(--steel);
+      }
+      .rec .ba,
+      .rec .ia {
+        margin-top: 6px;
+      }
+
+      /* ---------- Quick wins ---------- */
+      .qw-list {
+        display: grid;
+        gap: 8px;
+        counter-reset: qw;
+      }
+      .qw {
+        counter-increment: qw;
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+        padding: 14px 16px;
+        background: var(--paper-2);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        transition:
+          background 0.15s,
+          border-color 0.15s;
+      }
+      .qw:hover {
+        border-color: var(--line-2);
+        background: var(--paper-3);
+      }
+      .qw .box {
+        flex: 0 0 auto;
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+        border: 2px solid var(--line-2);
+        margin-top: 1px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s;
+      }
+      .qw .box svg {
+        width: 13px;
+        height: 13px;
+        stroke: var(--green);
+        stroke-width: 3;
+        fill: none;
+        opacity: 0;
+        transition: opacity 0.12s;
+      }
+      .qw.done .box {
+        background: var(--green-soft);
+        border-color: var(--green);
+      }
+      .qw.done .box svg {
+        opacity: 1;
+      }
+      .qw .qt {
+        flex: 1;
+        font-size: 14.8px;
+        line-height: 1.5;
+        color: var(--ink);
+      }
+      .qw.done .qt {
+        color: var(--muted);
+      }
+      .qw.done .qt .ref {
+        color: var(--faint);
+      }
+      .qw .ref {
+        font-family: var(--mono);
+        font-size: 11.5px;
+        color: var(--ember);
+        margin-left: 6px;
+      }
+      .qw .qn {
+        flex: 0 0 auto;
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--faint);
+        font-weight: 700;
+        min-width: 22px;
+        text-align: right;
+      }
+
+      /* ---------- Rejected ---------- */
+      .rejects {
+        display: grid;
+        gap: 10px;
+      }
+      .reject {
+        display: flex;
+        gap: 14px;
+        padding: 16px 18px;
+        background: var(--paper-2);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        border-left: 3px solid var(--steel);
+      }
+      .reject .x {
+        flex: 0 0 auto;
+        color: var(--steel);
+        font-size: 18px;
+        line-height: 1.2;
+      }
+      .reject .rt b {
+        color: var(--ink);
+        font-weight: 650;
+      }
+      .reject .rt {
+        color: var(--muted);
+        font-size: 14.5px;
+        line-height: 1.5;
+      }
+      .reject .rt .why {
+        display: block;
+        margin-top: 3px;
+      }
+      .reject .rt .why::before {
+        content: 'Why not → ';
+        color: var(--ember);
+        font-weight: 700;
+      }
+
+      /* ---------- Glossary ---------- */
+      .gloss {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        gap: 10px;
+      }
+      .gloss .g {
+        background: var(--paper-2);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        padding: 13px 16px;
+      }
+      .gloss .g b {
+        color: var(--ember);
+        font-family: var(--mono);
+        font-size: 14px;
+      }
+      .gloss .g p {
+        margin: 4px 0 0;
+        font-size: 13.5px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      .assumption {
+        font-size: 13px;
+        color: var(--faint);
+        font-style: italic;
+        margin-top: 10px;
+        padding-left: 18px;
+        border-left: 2px solid var(--amber);
+      }
+      .callout {
+        background: var(--blue-soft);
+        border-left: 3px solid var(--blue);
+        padding: 12px 16px;
+        border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+        color: var(--muted);
+        font-size: 14.5px;
+        margin: 14px 0;
+      }
+      .callout b {
+        color: var(--blue);
+      }
+      .stat-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 30px;
+        margin: 18px 0 0;
+      }
+      .stat-row .st b {
+        display: block;
+        font-family: var(--serif);
+        font-size: 32px;
+        color: var(--ember);
+        line-height: 1;
+      }
+      .stat-row .st span {
+        font-size: 13px;
+        color: var(--muted);
+      }
+      hr.faint {
+        border: none;
+        border-top: 1px dashed var(--line);
+        margin: 22px 0;
+      }
+      .ref-tag {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--faint);
+      }
+      .pill-area {
+        display: inline-block;
+        padding: 2px 9px;
+        border-radius: 6px;
+        background: var(--steel-soft);
+        color: var(--steel);
+        font-size: 11px;
+        font-weight: 700;
+        margin-left: 8px;
+        vertical-align: middle;
+      }
+      footer {
+        padding: 50px 0 0;
+        color: var(--faint);
+        font-size: 13px;
+      }
+      footer code {
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="nav">
+        <div class="brand">
+          <span class="dot"></span>
+          <div>Foundry Audit<small>20 Aug 2026</small></div>
+        </div>
+        <ul>
+          <li><a href="#top">Overview</a></li>
+          <li><a href="#wins">The 6 big wins</a></li>
+          <li class="group">Findings</li>
+          <li><a href="#area1">Prompts &amp; Context</a></li>
+          <li><a href="#area2">Settings</a></li>
+          <li><a href="#area3">Pipelines &amp; Agents</a></li>
+          <li><a href="#area4">Onboarding</a></li>
+          <li class="group">Proposals</li>
+          <li><a href="#recs">Recommendations</a></li>
+          <li><a href="#quick">Quick wins</a></li>
+          <li><a href="#rejected">What we won't do</a></li>
+          <li><a href="#glossary">Glossary</a></li>
+        </ul>
+        <div class="theme" id="themeToggle">
+          <svg id="iconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="4" />
+            <path
+              d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"
+            />
+          </svg>
+          <svg
+            id="iconMoon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            style="display: none"
+          >
+            <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+          </svg>
+          <span id="themeLabel">Dark mode</span>
+        </div>
+      </aside>
+
+      <main id="top">
+        <!-- HERO -->
+        <div class="hero">
+          <div class="eyebrow">Read-only audit · no code changed</div>
+          <h1>Foundry can be <em>faster</em>, and easier to <em>understand</em>.</h1>
+          <p class="lead">
+            This is an audit of how Foundry builds the prompts and context each agent phase
+            receives, and how much of its configuration surface an operator actually needs. The
+            prompt machinery is already disciplined — so the biggest wins are not "trim the
+            prompts," but
+            <b
+              >give agents what they're missing, delete what contradicts itself, and shrink the
+              choices around it.</b
+            >
+          </p>
+          <div class="meta-row">
+            <span class="chip"
+              ><span class="pulse"></span> Read-only · repo
+              <code style="font-family: var(--mono); font-size: 12px">main @ c12a3a4</code></span
+            >
+            <span class="chip"><b>6</b> big wins</span>
+            <span class="chip"><b>16</b> recommendations</span>
+            <span class="chip"><b>1</b> quick win remaining</span>
+            <span class="chip"><b>4</b> areas audited</span>
+          </div>
+          <p class="assumption" style="border: none; padding: 0; margin-top: 14px">
+            Every finding cites the file it came from. Two claims about model behavior are marked as
+            assumptions — they couldn't be confirmed by reading code alone.
+          </p>
+        </div>
+
+        <!-- WINS -->
+        <section id="wins">
+          <h2><span class="num">§</span>The six biggest wins</h2>
+          <p class="section-lede">
+            Where the time and tokens are really going — and where the confusion really lives.
+          </p>
+          <div class="wins">
+            <div class="win">
+              <div class="tag">Highest impact</div>
+              <h3>Agents rediscover the repo, every phase, every run</h3>
+              <p>
+                Discovery is off, and nothing replaces it. Each agent, in its own session, burns
+                5–15 tool calls re-reading README, manifests, and conventions before it can work. A
+                once-per-project "project card" fixes it.
+              </p>
+              <span class="refs">prompts.ts · pi/open-session.ts · builtin-agents.ts</span>
+            </div>
+            <div class="win">
+              <div class="tag">Redundancy</div>
+              <h3>The answer shape is sent three ways — then contradicted</h3>
+              <p>
+                The envelope schema reaches the model as a prompt example, a tool schema, and an
+                output constraint. Meanwhile every correction message tells the model to reply as
+                <i>text</i>, fighting the tool channel it was just told to use.
+              </p>
+              <span class="refs">prompts.ts · envelopes.ts · gates.ts · boundary.ts</span>
+            </div>
+            <div class="win">
+              <div class="tag">Quality</div>
+              <h3>The sharpened brief dies after the plan phase</h3>
+              <p>
+                Refine exists to rewrite a rough request into a clean brief. Only
+                <code>plan</code> ever sees it — build, review, and the PR writer all get the
+                <i>raw</i> request back. One line in the pipeline fixes it.
+              </p>
+              <span class="refs">builtin-pipelines.ts</span>
+            </div>
+            <div class="win">
+              <div class="tag">Configuration</div>
+              <h3>Settings has ~35 controls; ~6 matter</h3>
+              <p>
+                One setting is fully dead, one is renderer-only, one global key hides inside the
+                project pane, three retry knobs interact with no model, and a section has zero
+                controls. It can collapse to 3 panes and ~15 controls.
+              </p>
+              <span class="refs">SettingsScreen.tsx · store/settings.ts</span>
+            </div>
+            <div class="win">
+              <div class="tag">Dead surface</div>
+              <h3>Pipeline/agent schema carries unusable knobs</h3>
+              <p>
+                Tool-profile fields exist with no UI and no consumer. A gate can be added in the UI
+                that can only fail. The "reset to builtins" action is wired but unreachable. Every
+                shipped pipeline ignores most of the knobs.
+              </p>
+              <span class="refs">roster.ts · pipelines.ts · ipc/roster.ts</span>
+            </div>
+            <div class="win">
+              <div class="tag">Onboarding</div>
+              <h3>Three of six screens teach vocabulary the app could drop</h3>
+              <p>
+                "Envelope" and "gate" leak everywhere; three onboarding screens restate the same
+                triad. Merge and landing — the things a new operator actually needs next — are
+                undiscoverable until a run finishes.
+              </p>
+              <span class="refs">onboarding/* · RunDetailScreen.tsx</span>
+            </div>
+          </div>
+          <div class="callout">
+            <b>Estimated effect (assumption):</b> the prompt changes remove roughly 800–2,000 tokens
+            of redundancy per agent phase and skip the repeated exploratory tool-call tax; the
+            configuration changes cut the operator-facing decision surface by more than half —
+            without removing any capability a shipped pipeline actually uses.
+          </div>
+        </section>
+
+        <!-- AREA 1 -->
+        <section id="area1">
+          <h2><span class="num">1</span>Prompts &amp; context assembly</h2>
+          <p class="section-lede">
+            What each agent phase is told, and what it actually gets to see.
+          </p>
+          <div class="area-intro">
+            <h3>How it works today</h3>
+            <p>
+              Each phase renders an agent's system + user prompt templates, appends any
+              declared-but-unreferenced inputs, then appends an answer-shape example. The system
+              role is three layers: a Foundry <i>harness</i> replaces the model's default identity,
+              the roster agent's role is added each turn, and repo-discovery is fully off — so no
+              README or guide file ever enters context. Every phase gets all ten tools. Sessions are
+              per-agent and run-long; compaction runs between phases at 80% full. Corrections are
+              short deltas; a failed-test feedback loop re-sends the <i>whole</i> prompt.
+            </p>
+          </div>
+          <div class="findings">
+            <details class="finding" open>
+              <summary>
+                <span class="fid">F1.1</span
+                ><span class="ft"
+                  ><h4>No repo conventions ever reach an agent</h4>
+                  <div class="hl">
+                    Discovery is off and nothing replaces it — every agent re-discovers the stack
+                    and conventions with tool calls, per phase, per run.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p>
+                  Refiner is told "skim the repo first: README, top-level layout, manifests";
+                  Finisher is told to match "the conventions already in this codebase." But with
+                  discovery off, each must burn tool calls to find them — <b>per agent, per run</b>,
+                  because builder / reviewer / finisher are separate sessions.
+                </p>
+                <p>
+                  Foundry already runs read-only detection and readiness against the repo and stores
+                  the project's commands. The raw material for a repo summary already exists; it is
+                  just never assembled for run agents.
+                </p>
+              </div>
+            </details>
+
+            <details class="finding">
+              <summary>
+                <span class="fid">F1.2</span
+                ><span class="ft"
+                  ><h4>No git context for the phases whose whole job is the diff</h4>
+                  <div class="hl">
+                    reviewer / finisher / pr_writer are told to "inspect the diff" but receive no
+                    changed-file list, no branch point, no diff stat.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p>
+                  The <code>{{branch}}</code> and <code>{{base_ref}}</code> tokens exist in the
+                  prompt palette — and <b>no builtin uses them</b>, so the PR writer must discover
+                  the base ref itself with shell calls. The engine computes exactly this data after
+                  each phase (in the boundary check) and holds the branch-point SHA. It just never
+                  injects it.
+                </p>
+              </div>
+            </details>
+
+            <details class="finding">
+              <summary>
+                <span class="fid">F1.3</span
+                ><span class="ft"
+                  ><h4>The answer shape ×3, the instruction ×3, and a contradiction</h4>
+                  <div class="hl">
+                    The envelope schema is present three ways per turn; the submit rule is stated
+                    three times; every correction tells the model to reply as text, not as a tool
+                    call.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p>
+                  Per turn the shape rides as (a) the answer-example JSON in the prompt, (b) the
+                  <code>submit_envelope</code> tool schema, (c) the output constraint. The "call
+                  submit_envelope once…" line appears in the harness, the answer block, and the tool
+                  description.
+                </p>
+                <p>
+                  Meanwhile every correction path instructs a <b>text</b> reply: "Reply again with
+                  ONLY this JSON object, no prose, no code fence." Both channels parse (structured
+                  first, text fallback), so it works — but the model is told two different things,
+                  and the full example JSON is regenerated into <i>every</i> envelope correction.
+                </p>
+              </div>
+            </details>
+
+            <details class="finding">
+              <summary>
+                <span class="fid">F1.4</span
+                ><span class="ft"
+                  ><h4>"You are read-only" while holding write tools</h4>
+                  <div class="hl">
+                    Five agents are told not to touch files, yet they hold edit / write / bash.
+                    Enforcement is policy + post-hoc git revert — not the tool surface.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p>
+                  Refiner, scout, reviewer, pr_writer, issue_writer all say "do not create, edit, or
+                  delete any file" while still having write tools registered. The read-only
+                  machinery already exists for one-shots (a read-only session simply has no write
+                  tool in its registry). A comment in the runner claims per-phase tool narrowing
+                  that does not exist in the wiring.
+                </p>
+              </div>
+            </details>
+
+            <details class="finding">
+              <summary>
+                <span class="fid">F1.5</span
+                ><span class="ft"
+                  ><h4>The handoff-folder mechanism is vestigial</h4>
+                  <div class="hl">
+                    The engine makes the folder and lists it, but no shipped pipeline or prompt uses
+                    it. Envelopes actually flow through the trace, not this folder.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p>
+                  The engine only creates the <code>.foundry-handoff/</code> directory and lists its
+                  contents into a token. The real envelope handoff is written to the
+                  <i>trace</i> folder, not the worktree. Only the planner's write boundary even
+                  names the folder; no builtin pipeline declares handoff files as an input. Two
+                  template tokens, a boundary carve-out, and a directory per worktree exist to serve
+                  a path nothing shipped uses.
+                </p>
+              </div>
+            </details>
+
+            <details class="finding">
+              <summary>
+                <span class="fid">F1.6</span
+                ><span class="ft"
+                  ><h4>The refined brief dies after the plan phase</h4>
+                  <div class="hl">
+                    In the ship/sdlc chains, refine's improved_request reaches only plan. Everything
+                    downstream gets the raw request again.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p>
+                  The refiner's own contract says its output "must stand alone: whoever reads it
+                  never sees the draft" — but every downstream phase sees only the draft. The whole
+                  point of the refine phase is wasted on the phases that follow.
+                </p>
+              </div>
+            </details>
+
+            <details class="finding">
+              <summary>
+                <span class="fid">F1.7</span
+                ><span class="ft"
+                  ><h4>The feedback loop re-sends the whole prompt</h4>
+                  <div class="hl">
+                    A red test jumps back to build and re-renders the entire phase prompt into the
+                    same session that already holds it.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p>
+                  Envelope and gate corrections got this right — they're short deltas. The
+                  failed-test feedback loop did not: it re-renders request + declared envelopes +
+                  the answer block + the feedback section, and sends all of it again. On a large
+                  plan envelope this re-sends the biggest block in the run, once per feedback retry
+                  (default 2).
+                </p>
+              </div>
+            </details>
+
+            <details class="finding">
+              <summary>
+                <span class="fid">F1.8</span
+                ><span class="ft"
+                  ><h4>One-shot prompt debris</h4>
+                  <div class="hl">
+                    A stale tool constant, a readiness rule stated three times, an instruction to
+                    "fan out sub-agents" when no sub-agent tool exists, and a first-run fill with
+                    less context than the settings flow.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p>
+                  A <code>DETECT_TOOLS</code> constant is capitalized to match no real tool name and
+                  is unused. The readiness marker-ignore rule appears three times. The readiness
+                  system prompt tells the agent to "fan out. Use general sub-agents/workers…" — but
+                  no sub-agent tool is in the session's registry, so the instruction is
+                  unactionable.
+                </p>
+                <p>
+                  The run-start command fill reuses the detect prompt but drops the manifest sniff
+                  that the interactive detect session includes — so the moment that matters most
+                  (first run) the agent works with strictly less context.
+                </p>
+              </div>
+            </details>
+
+            <details class="finding">
+              <summary>
+                <span class="fid">F1.9</span
+                ><span class="ft"
+                  ><h4>SHELL_NOTE half-truths</h4>
+                  <div class="hl">
+                    "Credentials are already live" is appended even to read-only agents told not to
+                    run commands — and nothing tells the agent what setup actually ran.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p>
+                  A fresh worktree has only run the setup script; toolchains are live only if setup
+                  installed them. The note asserts the operator's environment is live regardless,
+                  and is appended to agents told not to modify anything. Meanwhile the agent is
+                  never told whether setup succeeded.
+                </p>
+              </div>
+            </details>
+
+            <details class="finding">
+              <summary>
+                <span class="fid">F1.10</span
+                ><span class="ft"
+                  ><h4>Unbounded envelope fields</h4>
+                  <div class="hl">
+                    summary and notes_for_next_agent have no length cap, and get pretty-printed into
+                    every downstream prompt.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p>
+                  The full SDLC PR phase inlines <b>five</b> envelopes. Gate and feedback tails are
+                  already capped (1,000 / 4,000 chars); envelope prose is not — it's the one
+                  unbounded growth path in phase-to-phase context.
+                </p>
+              </div>
+            </details>
+
+            <details class="finding">
+              <summary>
+                <span class="fid">F1.11</span
+                ><span class="ft"
+                  ><h4>What's already good — keep it</h4>
+                  <div class="hl">
+                    The schema-driven example/constraint/parse triad; delta-only corrections;
+                    separate retry budgets; rewind-after-N; per-turn fresh envelope tool;
+                    trace-recorded prompts.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p class="good">
+                  One validation schema drives the answer example, the tool schema, the output
+                  constraint, and the parse — so they cannot drift. Corrections are short deltas
+                  into the live session. Envelope and gate retry budgets are separate.
+                  Rewind-after-N drops failed attempts from context. The envelope tool is rebuilt
+                  fresh per turn (validator-cache correctness). Every prompt is written to the trace
+                  for inspection. These are the right shape — don't churn them.
+                </p>
+              </div>
+            </details>
+          </div>
+        </section>
+
+        <!-- AREA 2 -->
+        <section id="area2">
+          <h2><span class="num">2</span>Settings &amp; config stores</h2>
+          <p class="section-lede">How much of the settings surface an operator actually needs.</p>
+          <div class="area-intro">
+            <h3>How it works today</h3>
+            <p>
+              Settings spans 6 panes — General / Providers / Agent defaults / Project / Maintenance
+              / About — over 23 app settings plus per-project config (base ref, merge policy,
+              commands, setup script, protected paths). Everything autosaves; credentials never live
+              in settings. Validated-on-change with inline errors; atomic, self-healing config
+              files.
+            </p>
+          </div>
+          <div class="findings">
+            <details class="finding">
+              <summary>
+                <span class="fid">F2.1</span
+                ><span class="ft"
+                  ><h4>Dead and renderer-only settings</h4>
+                  <div class="hl">
+                    appearance has no control and no consumer anywhere. pollCadenceMs has a control
+                    but no main-process reader. project isolation has no UI at all.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p>
+                  <code>appearance</code> (system/dark): fully dead — schema, default, type, and a
+                  mock are the only references. <code>pollCadenceMs</code>: a UI control ("Trace
+                  poll cadence") read only by the renderer, and the non-live cadence is already
+                  hardcoded there without a setting. Project <code>isolation</code>: consumed by the
+                  executor but settable in no UI — pipelines expose an isolation toggle, projects
+                  don't.
+                </p>
+              </div>
+            </details>
+
+            <details class="finding">
+              <summary>
+                <span class="fid">F2.2</span
+                ><span class="ft"
+                  ><h4>Misplaced and half-merged</h4>
+                  <div class="hl">
+                    detectModel is a global key edited only inside the per-project pane. It already
+                    borrows the global reasoning effort — half-merged already.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p>
+                  The detection model picker lives inside Settings → Project → Commands ("Who
+                  answers 'Ask AI'"), yet it's a global setting. Detection already reuses the global
+                  reasoning effort, so it's half-merged into defaults. The readiness model + effort
+                  are a second such pair sitting in Agent defaults.
+                </p>
+              </div>
+            </details>
+
+            <details class="finding">
+              <summary>
+                <span class="fid">F2.3</span
+                ><span class="ft"
+                  ><h4>Three retry knobs, no stated interaction</h4>
+                  <div class="hl">
+                    Envelope retries, gate retries, and rewind-after-corrections interact — and an
+                    operator can't form a model of how from the UI.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p>
+                  Three knobs (0–5, 0–5, 0–20). Every builtin pipeline phase already sets retries to
+                  2, overriding the gate default anyway. The rewind knob's own schema comment says
+                  its useful range "stops well before a phase's retry budgets." The hints define
+                  mechanics using undefined terms ("Envelope retries — Correction messages sent when
+                  a reply will not parse").
+                </p>
+              </div>
+            </details>
+
+            <details class="finding">
+              <summary>
+                <span class="fid">F2.4</span
+                ><span class="ft"
+                  ><h4>Sections that explain, not configure</h4>
+                  <div class="hl">
+                    "Autonomy" has zero controls. "Transport" exists for one port number whose hint
+                    admits the manager scans a band when busy. Duplicate doctor-checks and
+                    refresh-models buttons.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p>
+                  The Autonomy section is pure prose. The Transport section exists to expose one
+                  number (the bridge port) — but the hint itself says the manager tries the next
+                  free port in the band when busy, so the preference adds almost nothing. Two panes
+                  render the same global doctor checks with different notes; "Refresh models"
+                  appears twice.
+                </p>
+              </div>
+            </details>
+
+            <details class="finding">
+              <summary>
+                <span class="fid">F2.5</span
+                ><span class="ft"
+                  ><h4>Opaque copy</h4>
+                  <div class="hl">
+                    "Turn timeout" has no hint. "envelope", "vendored provider Bridge", "compact
+                    context", "corrections" are used in hints without definition.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p>
+                  The Scope section is read-only and points to another screen ("Change scope in
+                  Design (⌘3)…"). Several hints define mechanics with vocabulary the operator has no
+                  way to learn in-place.
+                </p>
+              </div>
+            </details>
+
+            <details class="finding">
+              <summary>
+                <span class="fid">F2.6</span
+                ><span class="ft"
+                  ><h4>The decision surface vs. the real surface</h4>
+                  <div class="hl">
+                    A fresh setup needs ~9–14 clicks and 5–8 decisions — but the operator faces ~35
+                    controls to learn they can skip ~29 of them.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p>
+                  The cost is not clicks; it is <b>evaluation</b>. An operator must read each
+                  control to know it doesn't matter. About six controls actually matter for setup:
+                  provider, repo, commands, setup script, readiness. The rest exist to be evaluated
+                  and dismissed.
+                </p>
+              </div>
+            </details>
+
+            <details class="finding">
+              <summary>
+                <span class="fid">F2.7</span
+                ><span class="ft"
+                  ><h4>Good bones — keep them</h4>
+                  <div class="hl">
+                    Validated-on-change; atomic self-healing files; auto-save with no Save button;
+                    the "no credential is a setting" rule; the ⌘K settings palette.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p class="good">
+                  These are the right foundations. The redesign keeps all of them and only reshapes
+                  what's surfaced.
+                </p>
+              </div>
+            </details>
+          </div>
+        </section>
+
+        <!-- AREA 3 -->
+        <section id="area3">
+          <h2><span class="num">3</span>Pipelines &amp; agents</h2>
+          <p class="section-lede">
+            Whether the configuration model is more adjustable than it needs to be.
+          </p>
+          <div class="area-intro">
+            <h3>How it works today</h3>
+            <p>
+              9 built-in agents, 6 built-in pipelines, 6 gates, 9 envelope kinds, 4 acceptance
+              kinds, 3 phase kinds. Operators can create / edit / duplicate / fork / delete agents
+              and pipelines (builtins fork on rename, self-restore if deleted from the file, never
+              overwritten by an upgrade). A run takes exactly three operator decisions: the request,
+              the pipeline, and Start.
+            </p>
+          </div>
+          <div class="findings">
+            <details class="finding">
+              <summary>
+                <span class="fid">F3.1</span
+                ><span class="ft"
+                  ><h4>Dead schema knobs</h4>
+                  <div class="hl">
+                    tools / disabledTools / toolProfile exist on both agents and phases with no UI,
+                    no engine consumer, and no builtin usage.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p>
+                  There's even an empty <code>{/* ── system tools ── */}</code> placeholder in the
+                  roster editor waiting for a UI that never arrived. Either these become the
+                  mechanism for real read-only narrowing (F1.4), or they should be deleted; today
+                  they are pure surface.
+                </p>
+              </div>
+            </details>
+
+            <details class="finding">
+              <summary>
+                <span class="fid">F3.2</span
+                ><span class="ft"
+                  ><h4>A UI trap: a gate you can add that can only fail</h4>
+                  <div class="hl">
+                    The editor lets you add the command_passes gate, but offers no field for its
+                    required command — so it always fails validation.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p>
+                  A configuration path that can only produce an error. The gate needs a configured
+                  command; the editor only adds gates as bare names. There's no field to supply the
+                  argv.
+                </p>
+              </div>
+            </details>
+
+            <details class="finding">
+              <summary>
+                <span class="fid">F3.3</span
+                ><span class="ft"
+                  ><h4>Knobs with exactly one value in practice</h4>
+                  <div class="hl">
+                    prompt.template is always 'user'. All 6 builtins use the same acceptance kind.
+                    timeoutMs, optional, per-phase model/envelope overrides, argv commands,
+                    checkpoint phases: zero shipped uses.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p>
+                  Every built-in agent-phase retry count is 2; every feedback-retry count is 2. A
+                  great deal of the schema is there to express choices no shipped pipeline ever
+                  makes.
+                </p>
+              </div>
+            </details>
+
+            <details class="finding">
+              <summary>
+                <span class="fid">F3.4</span
+                ><span class="ft"
+                  ><h4>Redundant restatement</h4>
+                  <div class="hl">
+                    Every built-in phase restates its agent's envelope, even though the engine
+                    already resolves "phase envelope, else agent envelope."
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p>
+                  The shipped data teaches editors the field is required when it's actually an
+                  override. An editor copying a built-in phase learns to fill a field that does
+                  nothing.
+                </p>
+              </div>
+            </details>
+
+            <details class="finding">
+              <summary>
+                <span class="fid">F3.5</span
+                ><span class="ft"
+                  ><h4>Unreachable reset; unversioned builtins</h4>
+                  <div class="hl">
+                    "Reset to builtins" is wired over IPC but has no button. And edited builtins
+                    keep a stale prompt forever with no way to see or adopt the shipped update.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p>
+                  Because builtins are seeds ("user-edited copies are never overwritten"), an
+                  operator who once tweaked <code>builder</code> keeps that tweak forever. A new
+                  shipped prompt only reaches fresh installs or an explicit reset — and the reset
+                  has no UI.
+                </p>
+              </div>
+            </details>
+
+            <details class="finding">
+              <summary>
+                <span class="fid">F3.6</span
+                ><span class="ft"
+                  ><h4>Vocabulary leakage is partial</h4>
+                  <div class="hl">
+                    Phase kinds are already softened for operators (agent/command/checkpoint) — the
+                    right pattern. But "envelope" and "gate" leak verbatim everywhere.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p>
+                  "Envelope kind — The typed reply this agent must return." "Create a pipeline to
+                  orchestrate bounded agent phases and command gates." These appear in the roster
+                  editor, phase editor, acceptance labels, inspector badges, and smith cards.
+                </p>
+              </div>
+            </details>
+
+            <details class="finding">
+              <summary>
+                <span class="fid">F3.7</span
+                ><span class="ft"
+                  ><h4>The per-run surface is already minimal</h4>
+                  <div class="hl">
+                    Request + pipeline + Start, with preflight rails. This is the model the rest of
+                    the app should converge toward.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p class="good">
+                  Starting a run needs three decisions and shows validation, missing-command
+                  detection, a readiness banner, and base-ref sync as rails. This is the cleanest
+                  surface in the product.
+                </p>
+              </div>
+            </details>
+          </div>
+        </section>
+
+        <!-- AREA 4 -->
+        <section id="area4">
+          <h2><span class="num">4</span>Onboarding &amp; in-app explanation</h2>
+          <p class="section-lede">
+            How much the app has to explain, and whether it could explain less by being simpler.
+          </p>
+          <div class="area-intro">
+            <h3>How it works today</h3>
+            <p>
+              Six steps: Welcome → Factory → Roster → Providers (gated on a usable model) → Doctor
+              (gated on blocking checks) → Project (gated on a selected repo). Three of six are
+              purely conceptual. The first run then needs request + pipeline + Start; a new project
+              also passes through command detection, setup generation, and the 11-criterion
+              readiness flow.
+            </p>
+          </div>
+          <div class="findings">
+            <details class="finding">
+              <summary>
+                <span class="fid">F4.1</span
+                ><span class="ft"
+                  ><h4>Three screens teach what one could</h4>
+                  <div class="hl">
+                    Welcome, Factory, and Roster all restate the same triad. The concepts an
+                    operator actually collides with first get zero onboarding mention.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p>
+                  Roster's clarify line repeats Factory's lead nearly verbatim. Meanwhile command
+                  detection, the setup script, readiness, and merge — the things a new operator hits
+                  first — appear for the first time on the Runs empty state, never in onboarding.
+                </p>
+              </div>
+            </details>
+
+            <details class="finding">
+              <summary>
+                <span class="fid">F4.2</span
+                ><span class="ft"
+                  ><h4>Jargon without definition at the moment of use</h4>
+                  <div class="hl">
+                    "Envelopes and gates decide success" before either is defined; "in-process on
+                    pi"; "bridge on {port}"; "signals" in doctor telemetry.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p>
+                  "Usable model" is defined only tautologically (it "blocks setup"). Decorative SVGs
+                  show "gates 4/4" with no explanation. The vocabulary lands before the concept.
+                </p>
+              </div>
+            </details>
+
+            <details class="finding">
+              <summary>
+                <span class="fid">F4.3</span
+                ><span class="ft"
+                  ><h4>Merge &amp; landing is undiscoverable</h4>
+                  <div class="hl">
+                    Onboarding promises "merge on your terms" but where worktrees live and how work
+                    lands only appears after a run finishes.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p>
+                  Nothing bridges "run accepted" to "so where is my code?" for a first-time
+                  operator. The merge / fix-with-agent / discard / create-PR actions live in the
+                  outcome banner of a finished run.
+                </p>
+              </div>
+            </details>
+
+            <details class="finding">
+              <summary>
+                <span class="fid">F4.4</span
+                ><span class="ft"
+                  ><h4>Readiness is the heaviest first-project step</h4>
+                  <div class="hl">
+                    11 criteria, a five-stage stepper, its own model picker — presented before the
+                    operator has seen a single run.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p>
+                  The flow's copy is accurate and its states are well-labeled. The issue is
+                  sequencing and volume, not quality: readiness is a gate before the operator
+                  understands what a run is.
+                </p>
+              </div>
+            </details>
+
+            <details class="finding">
+              <summary>
+                <span class="fid">F4.5</span
+                ><span class="ft"
+                  ><h4>Good copy worth keeping</h4>
+                  <div class="hl">
+                    The trust statements, the detection panel's rejected-vs-unrunnable distinction,
+                    the empty states that point at the next action.
+                  </div></span
+                ><span class="caret">▶</span>
+              </summary>
+              <div class="fbody">
+                <p class="good">
+                  "Foundry never writes to your working tree — only to worktrees it creates." The
+                  detection panel distinguishes a command that's right but unrunnable from one
+                  that's simply wrong. Runs and PRs empty states each point at the next action. Keep
+                  these.
+                </p>
+              </div>
+            </details>
+          </div>
+        </section>
+
+        <!-- RECOMMENDATIONS -->
+        <section id="recs">
+          <h2><span class="num">§</span>Recommendations</h2>
+          <p class="section-lede">
+            Sixteen changes, each with its expected impact, effort, risk, and any fixed constraint
+            it respects. Filter to focus on what matters to you.
+          </p>
+          <div class="filters" id="filters">
+            <span class="fl-label">Effort</span>
+            <button class="fbtn on" data-filter="effort" data-value="all">All</button>
+            <button class="fbtn" data-filter="effort" data-value="S">S</button>
+            <button class="fbtn" data-filter="effort" data-value="M">M</button>
+            <span class="fl-label" style="margin-left: 14px">Area</span>
+            <button class="fbtn on" data-filter="area" data-value="all">All</button>
+            <button class="fbtn" data-filter="area" data-value="1">Prompts</button>
+            <button class="fbtn" data-filter="area" data-value="2">Settings</button>
+            <button class="fbtn" data-filter="area" data-value="3">Config</button>
+            <button class="fbtn" data-filter="area" data-value="4">Onboarding</button>
+          </div>
+          <div class="recs" id="recsGrid"></div>
+        </section>
+
+        <!-- QUICK WINS -->
+        <section id="quick">
+          <h2><span class="num">§</span>Quick wins</h2>
+          <p class="section-lede">One under-a-day change remains.</p>
+          <div class="qw-list" id="qwList"></div>
+        </section>
+
+        <!-- REJECTED -->
+        <section id="rejected">
+          <h2><span class="num">§</span>What we won't do — and why</h2>
+          <p class="section-lede">
+            Ideas that looked promising but broke a fixed constraint or cost more than they saved.
+          </p>
+          <div class="rejects">
+            <div class="reject">
+              <span class="x">✕</span>
+              <div class="rt">
+                <b>Turn repo-discovery back on</b
+                ><span class="why"
+                  >It violates the explicit rule that ancestor guide files must not change what a
+                  run does, and would make run behavior depend on uncontrolled repo files. The
+                  project card keeps control in the engine instead.</span
+                >
+              </div>
+            </div>
+            <div class="reject">
+              <span class="x">✕</span>
+              <div class="rt">
+                <b>A retrieval / embedding index of the repo</b
+                ><span class="why"
+                  >Adds a dependency (forbidden here), a stale-index problem across worktrees, and
+                  the project card plus the agent's own tools cover the need at far lower
+                  complexity.</span
+                >
+              </div>
+            </div>
+            <div class="reject">
+              <span class="x">✕</span>
+              <div class="rt">
+                <b>One shared session for all agents in a run</b
+                ><span class="why"
+                  >Destroys per-agent boundary attribution, rewind anchoring (which is per-phase
+                  per-session), and the roster-role-as-system-prompt model; compaction would also
+                  hit one giant context. The project card solves the same problem without touching
+                  sequencing.</span
+                >
+              </div>
+            </div>
+            <div class="reject">
+              <span class="x">✕</span>
+              <div class="rt">
+                <b>Drop the submit_envelope tool, rely on the output constraint alone</b
+                ><span class="why"
+                  >The tool call is the primary structured channel today, and output-constraint
+                  support may vary by provider (assumption). The text-parse fallback exists because
+                  neither channel is universal. Removing redundancy (R3) doesn't require removing a
+                  channel.</span
+                >
+              </div>
+            </div>
+            <div class="reject">
+              <span class="x">✕</span>
+              <div class="rt">
+                <b>Auto-adopt updated builtin prompts on upgrade</b
+                ><span class="why"
+                  >Violates "builtins are seeds; user-edited copies are never overwritten." The
+                  opt-in badge plus reset (R10) achieves the goal inside the constraint.</span
+                >
+              </div>
+            </div>
+            <div class="reject">
+              <span class="x">✕</span>
+              <div class="rt">
+                <b>Remove the .foundry-handoff folder as a quick win</b
+                ><span class="why"
+                  >Deferred, not rejected: the planner's write boundary, the boundary carve-out, the
+                  executor's create/resume paths, and the template tokens all reference it. Ripping
+                  it out safely needs a real-worktree test pass. The quick win is only to stop
+                  advertising the tokens.</span
+                >
+              </div>
+            </div>
+            <div class="reject">
+              <span class="x">✕</span>
+              <div class="rt">
+                <b>Remove gates or acceptance kinds from the engine</b
+                ><span class="why"
+                  >They're cheap in code, invisible per-run, and the fail-closed design depends on
+                  them. The problem is UI exposure, not the mechanism.</span
+                >
+              </div>
+            </div>
+            <div class="reject">
+              <span class="x">✕</span>
+              <div class="rt">
+                <b>Paginate the read_phase_context chain</b
+                ><span class="why"
+                  >Considered for token control; envelopes are small in practice once prose is
+                  capped (R11), and the whole-chain dump is a deliberate escape hatch. Revisit only
+                  if traces show large chains pulled repeatedly (assumption).</span
+                >
+              </div>
+            </div>
+            <div class="reject">
+              <span class="x">✕</span>
+              <div class="rt">
+                <b>Move readiness entirely out of the product</b
+                ><span class="why"
+                  >Its checks are the substrate for the project card and the marker-file contract
+                  affects run success odds. R16 resequences it instead.</span
+                >
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- GLOSSARY -->
+        <section id="glossary">
+          <h2><span class="num">§</span>Glossary</h2>
+          <p class="section-lede">
+            The AI-facing words this report keeps. Foundry-specific ones are defined; the report
+            also recommends renaming two of them.
+          </p>
+          <div class="gloss">
+            <div class="g">
+              <b>run</b>
+              <p>One attempt to turn a request into reviewed code, in its own isolated worktree.</p>
+            </div>
+            <div class="g">
+              <b>pipeline</b>
+              <p>The recipe of phases a run walks. "Plan → Build → Test → PR" is one.</p>
+            </div>
+            <div class="g">
+              <b>phase</b>
+              <p>
+                One step in a pipeline. An agent phase (AI), a command phase (shell), or a
+                checkpoint (human).
+              </p>
+            </div>
+            <div class="g">
+              <b>agent</b>
+              <p>
+                The AI that does one phase's work, with its own role, tools, and write boundary.
+              </p>
+            </div>
+            <div class="g">
+              <b>prompt</b>
+              <p>
+                The instructions sent to the agent: a system role (identity + rules) and a user turn
+                (the ask).
+              </p>
+            </div>
+            <div class="g">
+              <b>context</b>
+              <p>
+                Everything the agent sees: its prompt, prior envelopes, tool results, and
+                conversation so far.
+              </p>
+            </div>
+            <div class="g">
+              <b>envelope</b>
+              <p>
+                The typed answer an agent must return. Validated against a schema. Report suggests
+                renaming to "report" in the UI.
+              </p>
+            </div>
+            <div class="g">
+              <b>gate</b>
+              <p>
+                A mechanical check on an agent's answer (e.g. "declared files exist"). Report
+                suggests renaming to "check" in the UI.
+              </p>
+            </div>
+            <div class="g">
+              <b>worktree</b>
+              <p>
+                An isolated copy of the repo the run works in. The operator's checkout is never
+                touched.
+              </p>
+            </div>
+            <div class="g">
+              <b>session</b>
+              <p>
+                A live agent conversation. Per-agent and run-long; one-shots open and close one per
+                turn.
+              </p>
+            </div>
+            <div class="g">
+              <b>token</b>
+              <p>
+                The unit a model reads and writes. Context cost = tokens; fewer = faster and
+                cheaper.
+              </p>
+            </div>
+            <div class="g">
+              <b>compaction</b>
+              <p>Summarizing a session's history between phases when it nears the context limit.</p>
+            </div>
+          </div>
+        </section>
+
+        <footer>
+          <p>
+            Audit delivered as a single read-only report. Source map: <code>engine/</code>,
+            <code>pi/</code>, <code>store/</code>, <code>renderer/screens/</code>,
+            <code>shared/types.ts</code>. Two claims about model behavior are marked as assumptions
+            — they couldn't be confirmed by reading code alone. No source files were modified,
+            nothing was run.
+          </p>
+        </footer>
+      </main>
+    </div>
+
+    <script>
+      // ---------- Recommendation data ----------
+      const RECS = [
+        {
+          n: 1,
+          area: 1,
+          effort: 'M',
+          risk: 'Low',
+          impact: 'latency+tokens',
+          title: 'Project card: give agents the repo once',
+          sum: "Generate a once-per-project summary (stack, layout, conventions, verify commands, setup facts) at project-add/readiness time and inject it into every run agent's system role. Stops the 5–15 exploratory tool calls at the start of nearly every phase.",
+          inv: 'Discovery-off is *why* this is needed; injection goes through the agent startup hook like the roster role, so discovery stays off. Generation is a privileged one-shot.',
+          ba: {
+            before: `[system] # Builder … ## Instructions …
+       (no repo facts anywhere)
+
+[user]   # Build
+         ## Request   <raw request>
+         ## envelope:plan   { … }
+
+→ first minutes: ls, read README, read package.json,
+  grep for conventions — every phase, every agent, every run`,
+            after: `[system] ## Project
+         node 22 / TS strict / React 19 · Electron app in apps/desktop
+         Verify: test=npx vitest run · lint=eslint . · build=electron-vite build
+         Layout: src/main (privileged), src/renderer (UI), src/shared (types)
+         Conventions: no any; type imports; aliases @main/@shared/@renderer
+         Setup already ran in this worktree: npm ci (exit 0)
+[system] # Builder …
+[user]   # Build … (unchanged, minus the answer block)`,
+          },
+        },
+        {
+          n: 2,
+          area: 1,
+          effort: 'S',
+          risk: 'Low',
+          impact: 'tokens+latency',
+          title: 'Git context for diff-consuming phases',
+          sum: 'Inject branch, base ref, branch-point SHA, and a bounded git diff --stat into reviewer / finisher / pr_writer / documenter prompts. The engine already computes all of it after each phase.',
+          inv: 'None. Boundary enforcement is still the post-call diff.',
+        },
+        {
+          n: 3,
+          area: 1,
+          effort: 'S',
+          risk: 'Medium',
+          impact: '~300–700 tokens/phase',
+          title: 'One answer channel, not three',
+          sum: "Drop the answer-example block from the user prompt (keep one short line); keep the tool schema + output constraint. Rewrite correction messages to say 'call submit_envelope again' and stop regenerating the full example. Removes the text-vs-tool contradiction.",
+          inv: 'The parse/validation budget is unchanged.',
+        },
+        {
+          n: 4,
+          area: 1,
+          effort: 'S',
+          risk: 'Low',
+          impact: '~100–200 tokens/phase',
+          title: 'Say the submit rule once',
+          sum: "Keep it in the harness; shrink the tool description; delete the duplicate from the answer block. Same treatment for the reviewer/finisher 'report failure when not approved' rule.",
+          inv: 'None.',
+        },
+        {
+          n: 5,
+          area: 1,
+          effort: 'S',
+          risk: 'Low',
+          impact: 'quality',
+          title: 'Propagate the refined brief',
+          sum: 'In the ship/sdlc chains, downstream phases take the refined improved_request in place of the raw request. Every phase works from the sharpened, repo-grounded brief the refine phase exists to produce.',
+          inv: 'None. Existing installs keep old pipelines until reset (see R10).',
+        },
+        {
+          n: 6,
+          area: 1,
+          effort: 'M',
+          risk: 'Medium',
+          impact: 'tokens+latency',
+          title: 'Delta-only feedback loop',
+          sum: "When a failed test jumps back to a phase whose session already holds the rendered prompt, send only the feedback + 'continue' instead of re-rendering the whole prompt. Condition on no intervening rewind (a rewind drops the anchor, so the full prompt is needed again).",
+          inv: 'Corrections-into-same-live-session preserved; rewind semantics respected. Needs a dedicated executor test.',
+        },
+        {
+          n: 7,
+          area: 2,
+          effort: 'M',
+          risk: 'Low',
+          impact: 'clicks+comprehension',
+          title: 'Settings: 6 panes → 3, ~35 controls → ~15',
+          sum: "Kill appearance (dead), pollCadenceMs (hardcode 500), bridgePort (band-scan exists), the empty Autonomy section, duplicate doctor-checks. Collapse three retry knobs to fixed defaults behind an Advanced disclosure. Merge detect+readiness into one 'helper model' pair. Auto-detect the terminal. Drop the engineer-name field from Settings.",
+          inv: 'Self-healing files already drop unknown keys, so old files load clean. Atomic writes unchanged.',
+          ia: {
+            title: 'Settings IA — before → after',
+            body: `<span class="lbl">BEFORE — 6 panes, ~35 controls</span>
+─ General      name · checks · 4 notif · badge · updates · terminal · coding · phone · relaunch
+─ Providers    bridge · subs · keys · models · checks(dup) · refresh(dup)
+─ Defaults     default model+effort · readiness model+effort · PR writer · autonomy(∅) ·
+               5 retry/limit numbers · poll cadence · bridge port
+─ Project (…)  ─ Maintenance (…)  ─ About (…)
+
+<span class="lbl">AFTER — 3 panes, ~15 controls</span>
+─ Models &amp; Providers   bridge+keys · model list+hide · default model+effort ·
+                         <span class="add">helper model+effort (detect+readiness merged)</span>
+─ Project              name/path · base ref+sync · merge policy · commands · setup ·
+                         protected paths · readiness · checks · remove
+─ App                   notifications(4) · badge · updates ·
+                         <span class="add">terminal+coding auto-detected (override)</span> · phone · maintenance · about
+
+<span class="cut">Removed: appearance, pollCadenceMs, bridgePort, engineerName(UI),
+   isolation(project), envelopeRetries/gateRetries/rewindAfter (fixed defaults)</span>`,
+          },
+        },
+        {
+          n: 8,
+          area: 3,
+          effort: 'M',
+          risk: 'Medium',
+          impact: 'comprehension+safety',
+          title: 'Wire (or delete) the dead tool knobs',
+          sum: "Preferred: make toolProfile: 'read-only' actually open the session with no write tools (the read-only ideal, currently honored only by one-shots), set it on refiner/scout/reviewer/pr_writer/issue_writer, and delete the rest. Fallback: delete all five fields.",
+          inv: 'The tool-list-is-the-allowlist rule is strengthened; the boundary diff remains the guarantee.',
+        },
+        {
+          n: 9,
+          area: 3,
+          effort: 'S',
+          risk: 'Low',
+          impact: 'removes an error path',
+          title: 'Fix the command_passes UI trap',
+          sum: "Either add a command field to the gate editor or remove command_passes from the UI catalog. Also drop prompt.template (one value) and stop builtins restating their agent's envelope.",
+          inv: 'None.',
+        },
+        {
+          n: 10,
+          area: 3,
+          effort: 'M',
+          risk: 'Low',
+          impact: 'comprehension',
+          title: 'Show when a shipped builtin has moved on',
+          sum: "Add a 'Reset to shipped version' affordance on edited builtins (the IPC exists, unused) and a 'shipped version differs' badge. Closes the 'edited once, stale forever' hole; lets R5's pipeline improvements reach existing installs.",
+          inv: 'Builtin-seed rule preserved — reset is explicit and per-entry, never automatic.',
+        },
+        {
+          n: 11,
+          area: 1,
+          effort: 'S',
+          risk: 'Low',
+          impact: 'bounds context growth',
+          title: 'Cap envelope prose length',
+          sum: 'Add max lengths to summary (~500) and notes_for_next_agent (~2000) in the schema; surface the cap in the hints. Bounds the one unbounded growth path in phase-to-phase context. An over-limit reply becomes an envelope correction (the budget exists for exactly that).',
+          inv: 'Envelope validation unchanged.',
+        },
+        {
+          n: 12,
+          area: 1,
+          effort: 'S',
+          risk: 'Low',
+          impact: 'tokens+first-run quality',
+          title: 'One-shot prompt hygiene',
+          sum: "Delete the stale DETECT_TOOLS constant; dedupe the readiness marker rule to one statement; delete the unactionable 'fan out sub-agents' line; pass the manifest sniff into the run-start command fill exactly as the interactive detect session does.",
+          inv: 'None.',
+        },
+        {
+          n: 13,
+          area: 1,
+          effort: 'S',
+          risk: 'Low',
+          impact: 'comprehension',
+          title: 'Honest SHELL_NOTE',
+          sum: "Replace the 'credentials are already live' claim with worktree-accurate copy, drop it from read-only agents, and have the engine append one line of setup truth ('Setup ran npm ci — exit 0') when a setup script ran.",
+          inv: 'None.',
+        },
+        {
+          n: 14,
+          area: 4,
+          effort: 'M',
+          risk: 'Low',
+          impact: 'time-to-first-run',
+          title: 'Onboarding: 6 → 4 steps',
+          sum: "Merge Welcome + Factory + Roster into one concept screen with a single diagram; keep Providers, Doctor, Project. Move 'meet the crew' to the roster editor's own empty state. Add one closing line: 'When a run is accepted you'll merge or open a PR from the run page.'",
+          inv: 'None.',
+        },
+        {
+          n: 15,
+          area: 4,
+          effort: 'M',
+          risk: 'Medium',
+          impact: 'comprehension',
+          title: 'Rename the two leakiest terms in the UI',
+          sum: "Internal names stay; operator-facing copy changes: 'envelope' → 'report', 'gate' → 'check' (inspector badges, acceptance labels, empty states). Phase kinds already prove the pattern (command, checkpoint).",
+          inv: 'None — type identifiers are unchanged.',
+        },
+        {
+          n: 16,
+          area: 4,
+          effort: 'M',
+          risk: 'Medium',
+          impact: 'time-to-first-successful-run',
+          title: 'Readiness after the first run, not before',
+          sum: "Present readiness as a banner + optional flow rather than the heaviest pre-run gate. Default the first-project path to 'run now, readiness offered on failure or on demand'. The existing banner copy already explains the risk.",
+          inv: 'None.',
+        },
+      ];
+
+      const QUICKWINS = [
+        { n: 11, text: 'Add max-length caps to summary / notes_for_next_agent. [R11]' },
+      ];
+
+      // ---------- Render recommendations ----------
+      const AREA_LABEL = { 1: 'Prompts', 2: 'Settings', 3: 'Config', 4: 'Onboarding' };
+      const grid = document.getElementById('recsGrid');
+      RECS.forEach((r) => {
+        const el = document.createElement('article');
+        el.className = 'rec';
+        el.dataset.effort = r.effort;
+        el.dataset.area = r.area;
+        let body = '';
+        if (r.ba) {
+          body += `<div class="ba"><div class="col before"><div class="hd">Before</div><pre>${esc(r.ba.before)}</pre></div><div class="col after"><div class="hd">After</div><pre>${esc(r.ba.after)}</pre></div></div>`;
+        }
+        if (r.ia) {
+          body += `<div class="ia"><div class="ia-hd">${esc(r.ia.title)}</div><pre>${r.ia.body}</pre></div>`;
+        }
+        el.innerHTML = `
+    <div class="rh"><div class="rn">R${r.n}</div><h3>${esc(r.title)}<span class="pill-area">${AREA_LABEL[r.area]}</span></h3></div>
+    <p class="sum">${esc(r.sum)}</p>
+    ${body}
+    <div class="badges">
+      <span class="badge b-imp">★ ${esc(r.impact)}</span>
+      <span class="badge b-eff-${r.effort}">effort ${r.effort}</span>
+      <span class="badge b-risk-${r.risk}">risk ${r.risk}</span>
+    </div>
+    ${r.inv ? `<div class="inv"><b>Constraint respected:</b> ${esc(r.inv)}</div>` : ''}
+  `;
+        grid.appendChild(el);
+      });
+
+      // ---------- Render quick wins ----------
+      const qwList = document.getElementById('qwList');
+      QUICKWINS.forEach((q) => {
+        const m = q.text.match(/\[(F[\d.]+|R\d+)\]$/);
+        const ref = m ? m[1] : '';
+        const text = m ? q.text.slice(0, -m[0].length).trim() : q.text;
+        const el = document.createElement('div');
+        el.className = 'qw';
+        el.innerHTML = `<span class="qn">${q.n}</span><div class="box"><svg viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></svg></div><div class="qt">${esc(text)} ${ref ? `<span class="ref">${esc(ref)}</span>` : ''}</div>`;
+        el.addEventListener('click', () => el.classList.toggle('done'));
+        qwList.appendChild(el);
+      });
+
+      // ---------- Filters ----------
+      const state = { effort: 'all', area: 'all' };
+      document.querySelectorAll('.fbtn').forEach((b) => {
+        b.addEventListener('click', () => {
+          const f = b.dataset.filter,
+            v = b.dataset.value;
+          state[f] = v;
+          document
+            .querySelectorAll(`.fbtn[data-filter="${f}"]`)
+            .forEach((x) => x.classList.toggle('on', x.dataset.value === v));
+          applyFilters();
+        });
+      });
+      function applyFilters() {
+        document.querySelectorAll('.rec').forEach((el) => {
+          const okE = state.effort === 'all' || el.dataset.effort === state.effort;
+          const okA = state.area === 'all' || el.dataset.area === state.area;
+          el.classList.toggle('hide', !(okE && okA));
+        });
+      }
+
+      // ---------- Scroll-spy nav ----------
+      const links = [...document.querySelectorAll('.nav a')];
+      const sections = links
+        .map((a) => document.querySelector(a.getAttribute('href')))
+        .filter(Boolean);
+      const spy = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((e) => {
+            if (e.isIntersecting) {
+              links.forEach((l) =>
+                l.classList.toggle('active', l.getAttribute('href') === '#' + e.target.id),
+              );
+            }
+          });
+        },
+        { rootMargin: '-45% 0px -50% 0px' },
+      );
+      sections.forEach((s) => spy.observe(s));
+
+      // ---------- Theme toggle ----------
+      const root = document.documentElement;
+      const tBtn = document.getElementById('themeToggle');
+      const tLabel = document.getElementById('themeLabel');
+      const iSun = document.getElementById('iconSun');
+      const iMoon = document.getElementById('iconMoon');
+      function setTheme(t) {
+        root.dataset.theme = t;
+        tLabel.textContent = t === 'dark' ? 'Light mode' : 'Dark mode';
+        iSun.style.display = t === 'dark' ? 'none' : 'block';
+        iMoon.style.display = t === 'dark' ? 'block' : 'none';
+        try {
+          localStorage.setItem('foundry-audit-theme', t);
+        } catch (e) {}
+      }
+      try {
+        const saved = localStorage.getItem('foundry-audit-theme');
+        if (saved) setTheme(saved);
+      } catch (e) {}
+      tBtn.addEventListener('click', () =>
+        setTheme(root.dataset.theme === 'dark' ? 'light' : 'dark'),
+      );
+
+      function esc(s) {
+        return String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+      }
+    </script>
+  </body>
+</html>

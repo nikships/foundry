@@ -153,7 +153,7 @@ function agentPhase(name: string, over: Partial<PhaseDef> = {}): PhaseDef {
     agent: 'builder',
     description: over.description ?? name,
     envelope: 'build',
-    prompt: { template: 'user', inputs: ['request'] },
+    prompt: { inputs: ['request'] },
     ...over,
   };
 }
@@ -252,7 +252,7 @@ function fileIssuePhase(over: Partial<PhaseDef> = {}): PhaseDef {
     agent: 'issue_writer',
     envelope: 'issue',
     description: 'File the GitHub issue that tracks the diagnosed problem.',
-    prompt: { template: 'user', inputs: ['request'] },
+    prompt: { inputs: ['request'] },
     ...over,
   });
 }
@@ -262,7 +262,7 @@ function openPrPhase(over: Partial<PhaseDef> = {}): PhaseDef {
     agent: 'pr_writer',
     envelope: 'pr',
     description: 'Open a pull request with a human-readable title and body.',
-    prompt: { template: 'user', inputs: ['request', 'envelope:plan', 'envelope:build'] },
+    prompt: { inputs: ['request', 'envelope:plan', 'envelope:build'] },
     ...over,
   });
 }
@@ -2673,7 +2673,7 @@ describe('open_pr phase (FOU-17)', () => {
             envelope: 'review',
             description: 'Approve the work so acceptance would otherwise pass.',
           }),
-          openPrPhase({ prompt: { template: 'user', inputs: ['request'] } }),
+          openPrPhase({ prompt: { inputs: ['request'] } }),
         ],
         {
           description: 'approved work whose pull request could not be opened',
