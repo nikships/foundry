@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 
 const require = createRequire(import.meta.url);
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../..');
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../../..');
 
 export function electronExecutable(): string {
   const resolved = require('electron') as unknown;
