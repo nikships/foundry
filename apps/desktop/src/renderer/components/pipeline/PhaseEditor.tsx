@@ -9,6 +9,7 @@ import {
   type PhaseKind,
   type ValidationIssue,
 } from '@shared/types.js';
+import { modelLabel } from '@shared/model-label.js';
 import { api } from '../../api.js';
 import type { DesignTab } from '../../utils/navigation.js';
 import { useApp } from '../../stores/app.js';
@@ -222,7 +223,7 @@ export default function PhaseEditor({
               <option value="">— select agent —</option>
               {agents.map((a) => (
                 <option key={a.name} value={a.name}>
-                  {a.name} ({a.model})
+                  {a.name} ({modelLabel(a.model)})
                 </option>
               ))}
             </select>
@@ -239,7 +240,7 @@ export default function PhaseEditor({
               allowInherit
               inheritLabel={
                 selectedAgent
-                  ? `Inherit from ${selectedAgent.name} (${selectedAgent.model})`
+                  ? `Inherit from ${selectedAgent.name} (${modelLabel(selectedAgent.model)})`
                   : 'Inherit from agent'
               }
               emptyHint="No models are reachable. Connect a provider under Settings → Providers, or inherit from the agent."

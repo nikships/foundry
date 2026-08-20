@@ -65,13 +65,6 @@ export function truncate(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 }
 
-/** A stable, readable label for a model id from any provider. */
-export function modelLabel(id: string | null | undefined): string {
-  if (!id) return 'inherit';
-  const custom = id.match(/^custom:[^:]+:(.+)$/);
-  return custom ? custom[1]! : id;
-}
-
 const STATUS_COLORS: Record<string, string> = {
   queued: 'var(--status-queued)',
   running: 'var(--status-running)',

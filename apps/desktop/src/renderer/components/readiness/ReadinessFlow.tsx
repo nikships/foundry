@@ -8,6 +8,7 @@ import type {
   ReadinessState,
   ReasoningEffort,
 } from '@shared/types.js';
+import { modelLabel } from '@shared/model-label.js';
 import { api } from '../../api.js';
 import { duration } from '../../utils/format.js';
 import { useEscapeToClose } from '../../hooks/useEscapeToClose.js';
@@ -371,7 +372,7 @@ export default function ReadinessFlow({
           <p className={styles.meta} data-testid="readiness-meta">
             {live ? 'Working' : phase === 'awaiting_merge' ? 'Waiting on merge' : 'Elapsed'}
             {elapsedMs > 0 ? ` · ${duration(elapsedMs)}` : ''}
-            {state?.model && state.model !== 'inherit' ? ` · ${state.model}` : ''}
+            {state?.model && state.model !== 'inherit' ? ` · ${modelLabel(state.model)}` : ''}
             {live && activity ? ` · ${activity}` : ''}
           </p>
         )}

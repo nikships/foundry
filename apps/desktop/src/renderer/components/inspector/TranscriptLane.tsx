@@ -9,9 +9,10 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AgentSessionRow, EnvelopeRow, EventRow, PhaseRow } from '@shared/types.js';
+import { modelLabel } from '@shared/model-label.js';
 import AgentAvatar from '../media/AgentAvatar.js';
 import StatusBadge from '../common/StatusBadge.js';
-import { duration, modelLabel, tokens } from '../../utils/format.js';
+import { duration, tokens } from '../../utils/format.js';
 import { isAutoAllowPolicy, usageFor, phaseDuration } from '../../utils/derive.js';
 import { TranscriptEntry, transcriptStyles } from './entries.js';
 import ContextBreakdownDisclosure from './ContextBreakdown.js';

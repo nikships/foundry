@@ -4,11 +4,11 @@ import {
   type BridgeProviderInfo,
   type BridgeState,
 } from '@shared/ipc-contract.js';
+import { modelLabel } from '@shared/model-label.js';
 import { ProviderIcon } from '../../components/media/BrandIcon.js';
 import { Button } from '../../components/ui/Button.js';
 import { Dropdown } from '../../components/ui/Dropdown.js';
 import { Field, TextInput } from '../../components/ui/Field.js';
-import { modelLabel } from '../../utils/format.js';
 import { useOnboarding } from './OnboardingContext.js';
 import { StepFooter } from './shared.js';
 import styles from './ProvidersScreen.module.css';
@@ -238,7 +238,7 @@ export default function ProvidersScreen(): React.JSX.Element {
             <li className={styles.obModelEmpty}>No models reachable yet.</li>
           ) : (
             models.map((model) => (
-              <li key={model.id} className={styles.obModel} title={model.id}>
+              <li key={model.id} className={styles.obModel} title={modelLabel(model.id)}>
                 <ProviderIcon provider={model.provider} size={14} />
                 <span>{model.displayName || modelLabel(model.id)}</span>
               </li>

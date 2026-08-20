@@ -7,6 +7,7 @@ import {
   type ModelInfo,
   type ValidationIssue,
 } from '@shared/types.js';
+import { modelLabel } from '@shared/model-label.js';
 import { api, plain } from '../api.js';
 import type { DesignTab } from '../utils/navigation.js';
 import { useApp } from '../stores/app.js';
@@ -30,7 +31,6 @@ import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useDebouncedSave } from '../hooks/useDebouncedSave.js';
 import { useTablistNav } from '../hooks/useTablistNav.js';
 import { useAgentModels } from '../hooks/useAgentModels.js';
-import { modelLabel } from '../utils/format.js';
 import { draftSyncAction } from '../view-models/roster-draft.js';
 import styles from './RosterScreen.module.css';
 

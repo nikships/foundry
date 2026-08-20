@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { DetectionState, DetectionProposal } from '@shared/ipc-contract.js';
+import { modelLabel } from '@shared/model-label.js';
 import { duration } from '../../utils/format.js';
 import { Button } from '../ui/Button.js';
 import { CodeBlock } from '../ui/CodeBlock.js';
@@ -70,7 +71,7 @@ export default function DetectionPanel({
       <label>
         {STATUS_LABEL[state.status]}
         <span className={`faint ${styles.model}`}>
-          {state.model === 'inherit' ? '' : ` · ${state.model}`}
+          {state.model === 'inherit' ? '' : ` · ${modelLabel(state.model)}`}
         </span>
       </label>
       <span className="hint">{state.detail}</span>

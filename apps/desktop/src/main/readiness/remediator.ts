@@ -4,6 +4,7 @@
  */
 
 import type { AppSettings, ReadinessEntry, ReasoningEffort } from '@shared/types.js';
+import { modelLabel } from '@shared/model-label.js';
 import type { OneShotFactory } from '../pi/oneshot.js';
 import { foldTranscript } from '../pi/transcript.js';
 import { READINESS_SYSTEM_PROMPT, readinessRemediatePrompt } from './prompt.js';
@@ -22,8 +23,8 @@ export function createAgentRemediator(input: { oneShot: OneShotFactory }): Readi
       job.onEntry({
         kind: 'note',
         text: job.continuation
-          ? `Asking the agent${job.model === 'inherit' ? '' : ` (${job.model})`} to continue from the remaining failures…`
-          : `Asking the agent${job.model === 'inherit' ? '' : ` (${job.model})`} to make the repository agent-ready…`,
+          ? `Asking the agent${job.model === 'inherit' ? '' : ` (${modelLabel(job.model)})`} to continue from the remaining failures…`
+          : `Asking the agent${job.model === 'inherit' ? '' : ` (${modelLabel(job.model)})`} to make the repository agent-ready…`,
       });
 
       // The remediator's whole job is to change the repository, so it runs
