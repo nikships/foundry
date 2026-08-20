@@ -460,6 +460,32 @@ Rules for the reply:
 - "source" is the file that told you, so a human can check.
 - Omit a command entirely rather than supplying a placeholder. An empty list is a valid answer only when the repo truly has no verifiable command.`;
 
+/**
+ * The repository context shared by interactive detection and run-start fill.
+ * Keeping it here prevents the first run from asking the same detection agent
+ * a weaker question than the Project pane does.
+ */
+export function buildDetectPrompt(
+  sniffed: CommandCandidate[],
+  existingCommands: string[] = [],
+): string {
+  const parts = ['Inspect this repository and report the verification commands.'];
+  if (sniffed.length) {
+    parts.push(
+      '',
+      'Reading this repository’s manifests suggested the commands below. Confirm, correct, or replace them, and add any the manifests missed:',
+      sniffed.map((c) => `- ${c.name}: ${c.argv.join(' ')} (from ${c.source})`).join('\n'),
+    );
+  }
+  if (existingCommands.length) {
+    parts.push(
+      '',
+      `This project already has these command names configured: ${existingCommands.join(', ')}. Proposing a better argv for one of them is useful; the human chooses whether to replace it.`,
+    );
+  }
+  return parts.join('\n');
+}
+
 const ARGV_SHELL_TOKENS = /[|&;><$`(){}]|^cd$/;
 
 /** Names must survive into `ProjectCommand.name` and a pipeline `{ref}`. */

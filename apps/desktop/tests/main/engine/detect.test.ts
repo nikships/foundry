@@ -4,6 +4,7 @@ import { tempDir } from '../../helpers/tmp.js';
 import { describe, expect, it } from 'vitest';
 import {
   applyCommandDrifts,
+  buildDetectPrompt,
   mergeCommandsFillMissing,
   parseCommandDrift,
   parseDetectReply,
@@ -25,6 +26,18 @@ const pkg = (scripts: Record<string, string>): string => JSON.stringify({ name: 
 
 const argvFor = async (dir: string, role: string): Promise<string[] | undefined> =>
   (await sniffCommands(dir)).find((c) => c.name === role)?.argv;
+
+describe('buildDetectPrompt', () => {
+  it('carries manifest findings and existing command names into detection', () => {
+    const prompt = buildDetectPrompt(
+      [{ name: 'test', argv: ['npm', 'test'], source: 'package.json' }],
+      ['lint'],
+    );
+
+    expect(prompt).toContain('- test: npm test (from package.json)');
+    expect(prompt).toContain('already has these command names configured: lint');
+  });
+});
 
 describe('sniffCommands: node', () => {
   it('finds test, lint, typecheck, and build from package.json scripts', async () => {

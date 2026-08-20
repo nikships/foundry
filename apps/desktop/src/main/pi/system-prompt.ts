@@ -17,6 +17,7 @@ export const FOUNDRY_RUN_HARNESS = [
   '',
   'When this phase requires a result envelope, call submit_envelope once at the',
   'end with the final answer. Submitting does not complete the phase.',
+  'For a review envelope, when `approved` is false, report `status: "fail"` too.',
 ].join('\n');
 
 /** Standing harness for a one-shot (detect, setup, repair, readiness). */

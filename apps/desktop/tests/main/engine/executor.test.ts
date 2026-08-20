@@ -2576,24 +2576,32 @@ describe('open_pr phase (FOU-17)', () => {
     expect(create.join('\n')).toContain('## Summary');
   });
 
-  it('renders the run branch and base ref into the writer prompt', async () => {
+  it('renders bounded accumulated git context only into a diff-consuming phase', async () => {
     addOrigin(h.repo);
-    const scripted = scriptedAgent([prEnvelope()]);
+    const branchPoint = sh(h.repo, ['git', 'rev-parse', 'HEAD']).trim();
+    const scripted = scriptedAgent([buildEnvelope(), prEnvelope()], ['README.md', null]);
     const gh = makeFakeGh({ createUrl: 'https://github.com/acme/widgets/pull/8' });
 
     const outcome = await run({
       scripted,
-      agents: [prWriter()],
+      agents: [buildAgent(), prWriter()],
       gh: { bin: gh.bin },
-      pipeline: pipe([openPrPhase()], {
+      pipeline: pipe([agentPhase('build'), openPrPhase()], {
         description: 'render branch and base ref',
         acceptance: { kind: 'envelope_status', phase: 'open_pr' },
       }),
     });
 
+    const buildPrompt = h.tracer.readPrompt(outcome.runId, 'builder', 'build');
     const prompt = h.tracer.readPrompt(outcome.runId, 'pr_writer', 'open_pr');
+    expect(buildPrompt).not.toContain('## Accumulated git context');
+    expect(prompt).toContain('## Accumulated git context');
     expect(prompt).toContain(`foundry/${outcome.runId}`);
-    expect(prompt).toContain('against main');
+    expect(prompt).toContain('- Base ref: main');
+    expect(prompt).toContain(`- Branch point: ${branchPoint}`);
+    expect(prompt).toMatch(/README\.md\s+\|/);
+    const stat = prompt.match(/```text\n([\s\S]*?)\n```/)?.[1] ?? '';
+    expect(stat.length).toBeLessThanOrEqual(4000);
   });
 
   it('reuses the existing PR for a branch instead of opening a second one', async () => {
