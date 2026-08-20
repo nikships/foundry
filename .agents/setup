@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+tool_root="$HOME/.local/share/foundry-orb"
+node_dir="$tool_root/node-v22"
+tmp_dir="$(mktemp -d)"
+trap 'rm -rf "$tmp_dir"' EXIT
+
+run_step() {
+  local label="$1"
+  shift
+  local started=$SECONDS
+
+  printf '\n==> %s\n' "$label"
+  "$@"
+  printf '<== %s (%ss)\n' "$label" "$((SECONDS - started))"
+}
+
+install_system_packages() {
+  local requirements=(
+    curl:curl
+    g++:g++
+    make:make
+    python3:python3
+    tar:tar
+    xz:xz-utils
+  )
+  local requirement command package
+  local missing=()
+
+  for requirement in "${requirements[@]}"; do
+    command="${requirement%%:*}"
+    package="${requirement#*:}"
+    command -v "$command" >/dev/null 2>&1 || missing+=("$package")
+  done
+
+  if ((${#missing[@]} == 0)); then
+    echo 'System packages already available.'
+    return
+  fi
+
+  if ((EUID == 0)); then
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y "${missing[@]}"
+  else
+    sudo apt-get update
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "${missing[@]}"
+  fi
+}
+
+install_node() {
+  local version='22.23.2'
+  local archive="node-v${version}-linux-x64.tar.xz"
+  local checksum='d60acfe00a2932254bb0ad20e01b0d74397a0875595de719654b214f4b03f307'
+  local stage="$tmp_dir/node"
+
+  if [[ -x "$node_dir/bin/node" ]] && [[ $("$node_dir/bin/node" --version) == v22.* ]]; then
+    echo "Node $("$node_dir/bin/node" --version) already installed."
+    return
+  fi
+
+  curl --fail --location --retry 3 --output "$tmp_dir/$archive" \
+    "https://nodejs.org/dist/v${version}/${archive}"
+  printf '%s  %s\n' "$checksum" "$tmp_dir/$archive" | sha256sum --check -
+  mkdir -p "$stage"
+  tar -xJf "$tmp_dir/$archive" --strip-components=1 -C "$stage"
+  rm -rf "$node_dir"
+  mkdir -p "$tool_root"
+  mv "$stage" "$node_dir"
+}
+
+write_login_environment() {
+  local env_dir="$HOME/.config/foundry"
+  local env_file="$env_dir/orb-env.sh"
+  local profile="$HOME/.bash_profile"
+  local marker='# Foundry orb toolchains'
+  local quoted_repo_root
+
+  printf -v quoted_repo_root '%q' "$repo_root"
+  mkdir -p "$env_dir"
+  cat >"$env_file" <<EOF
+foundry_orb_root=$quoted_repo_root
+case "\$PWD/" in
+  "\$foundry_orb_root/"*)
+    export PATH="$node_dir/bin:\$PATH"
+    ;;
+esac
+unset foundry_orb_root
+EOF
+
+  touch "$profile"
+  if ! grep -Fqx "$marker" "$profile"; then
+    cat >>"$profile" <<'EOF'
+
+# Foundry orb toolchains
+if [[ -f "$HOME/.config/foundry/orb-env.sh" ]]; then
+  source "$HOME/.config/foundry/orb-env.sh"
+fi
+EOF
+  fi
+}
+
+install_node_dependencies() {
+  npm ci --no-audit --no-fund --prefix "$repo_root"
+
+  if [[ ! -x "$repo_root/node_modules/electron/dist/electron" ]]; then
+    node "$repo_root/node_modules/electron/install.js"
+  fi
+}
+
+if [[ $(uname -s) != Linux || $(uname -m) != x86_64 ]]; then
+  echo 'Foundry orb setup currently supports Linux x86_64 only.' >&2
+  exit 1
+fi
+
+mkdir -p "$tool_root"
+run_step 'System packages' install_system_packages
+run_step 'Node 22' install_node
+
+export PATH="$node_dir/bin:$PATH"
+
+run_step 'Login-shell environment' write_login_environment
+run_step 'npm dependencies' install_node_dependencies
+
+printf '\nFoundry orb setup complete: Node %s\n' "$(node --version)"
