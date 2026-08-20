@@ -43,6 +43,7 @@ export default function PipelinesScreen({
     savedAt,
     dryRun,
     closeDryRun,
+    actionError,
     setActivePhase,
     selectPipeline,
     createPipeline,
@@ -91,7 +92,15 @@ export default function PipelinesScreen({
           title="No pipelines found"
           body="Create a pipeline to orchestrate bounded agent phases and command gates."
         >
-          <Button onClick={() => void createPipeline()}>Create pipeline</Button>
+          <Button
+            onClick={() => {
+              void createPipeline().then((created) => {
+                if (created) openPhase(0);
+              });
+            }}
+          >
+            Create pipeline
+          </Button>
         </EmptyState>
       </div>
     );
@@ -173,6 +182,12 @@ export default function PipelinesScreen({
         </div>
       </header>
 
+      {actionError && (
+        <p className={styles.actionError} role="alert">
+          {actionError}
+        </p>
+      )}
+
       <main className={styles.boardWrap}>
         <PipelineCanvas
           pipelineId={draft.id}
@@ -183,8 +198,10 @@ export default function PipelinesScreen({
             void selectPipeline(id);
           }}
           onCreatePipeline={() => {
-            closeSheet();
-            void createPipeline();
+            void createPipeline().then((created) => {
+              if (created) openPhase(0);
+              else closeSheet();
+            });
           }}
           phases={draft.phases}
           canvas={draft.canvas}

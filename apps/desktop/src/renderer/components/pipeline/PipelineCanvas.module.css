@@ -129,6 +129,11 @@
   cursor: inherit;
 }
 
+.nodeBody:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+
 .nodeHeading {
   display: flex;
   align-items: center;

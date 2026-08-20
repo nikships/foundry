@@ -186,6 +186,17 @@
   justify-content: flex-end;
 }
 
+.actionError {
+  flex: none;
+  margin: 0;
+  padding: 7px 12px;
+  font-size: 12px;
+  line-height: var(--leading);
+  color: var(--red);
+  background: var(--red-dim);
+  border-bottom: 1px solid color-mix(in srgb, var(--red) 18%, transparent);
+}
+
 .headerActions :global(.saveState) {
   margin-right: 6px;
 }
