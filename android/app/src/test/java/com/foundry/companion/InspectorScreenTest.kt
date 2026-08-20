@@ -7,6 +7,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -85,6 +86,8 @@ class InspectorScreenTest {
         }
 
         composeTestRule.onNodeWithText("Inspector · Code").assertIsDisplayed()
+        composeTestRule.onNodeWithContentDescription("Phase Code, running").assertIsDisplayed()
+        composeTestRule.onNodeWithContentDescription("Phase Plan, success").assertIsDisplayed()
         composeTestRule.onNodeWithText("New tool call landed in the focused phase.").assertIsDisplayed()
         composeTestRule.onNodeWithTag("inspector-tool-ev_tool").assertIsDisplayed()
         composeTestRule.onNodeWithTag("inspector-tool-body-ev_tool").assertDoesNotExist()

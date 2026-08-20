@@ -9,10 +9,14 @@ import com.foundry.companion.data.model.ConnectionStatus
 import com.foundry.companion.data.model.PairedSession
 import com.foundry.companion.data.repository.FakeCompanionRepository
 import com.foundry.companion.data.session.SessionManager
+import com.foundry.companion.viewmodel.CompanionHapticEvent
 import com.foundry.companion.viewmodel.CompanionViewModel
 import com.foundry.companion.viewmodel.defaultCompanionDeviceName
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.*
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -512,5 +516,88 @@ class CompanionViewModelTest {
 
         viewModel.clearActionError()
         assertNull(viewModel.uiState.value.errorMessage)
+    }
+
+    @Test
+    fun testPairSuccessEmitsOneHaptic() {
+        val unpairedRepo = FakeCompanionRepository(initialPaired = false)
+        val vm = CompanionViewModel(unpairedRepo, sessionManager, enablePolling = false)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val events = collectHaptics(vm)
+
+        vm.pair(
+            CompanionPairingPayload(
+                protocolVersion = COMPANION_PROTOCOL_VERSION,
+                origin = "http://192.168.1.100:52810",
+                desktopId = "desk_01",
+                desktopName = "Nik’s Mac",
+                secret = "sec_test_abc",
+                expiresAt = "2026-08-19T12:00:00Z"
+            )
+        )
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(listOf(CompanionHapticEvent.PairSuccess), events)
+    }
+
+    @Test
+    fun testNewInterruptEmitsOneHapticAndDoesNotRetrigger() {
+        val events = collectHaptics(viewModel)
+        assertTrue(events.isEmpty())
+
+        repository.setPendingInterrupts(
+            listOf(
+                com.foundry.companion.data.model.PendingInterrupt(
+                    interruptId = "int_haptic",
+                    runId = "run_260818_live99",
+                    question = "Approve schema change?"
+                )
+            )
+        )
+        viewModel.loadPendingInterrupts()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(listOf(CompanionHapticEvent.InterruptArrival), events)
+
+        viewModel.loadPendingInterrupts()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(1, events.size)
+    }
+
+    @Test
+    fun testRunSettleEmitsOneHaptic() {
+        val events = collectHaptics(viewModel)
+        assertTrue(events.isEmpty())
+
+        viewModel.killRun("run_260818_live99")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(listOf(CompanionHapticEvent.RunSettle), events)
+
+        viewModel.loadRuns("proj_foundry_core")
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(1, events.size)
+    }
+
+    @Test
+    fun testStartRunDoesNotHaptic() {
+        val events = collectHaptics(viewModel)
+        viewModel.startRun(
+            projectId = "proj_foundry_core",
+            pipelineId = "pipe_default",
+            request = "Start should not buzz"
+        ) { }
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(events.isEmpty())
+    }
+
+    private fun collectHaptics(vm: CompanionViewModel): MutableList<CompanionHapticEvent> {
+        val events = mutableListOf<CompanionHapticEvent>()
+        CoroutineScope(testDispatcher + Job()).launch {
+            vm.hapticEvents.collect { events.add(it) }
+        }
+        testDispatcher.scheduler.advanceUntilIdle()
+        return events
     }
 }

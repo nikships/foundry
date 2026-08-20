@@ -18,7 +18,6 @@ fun FoundryTopBar(
     title: String,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
-    subtitleContent: (@Composable () -> Unit)? = null,
     onBackClick: (() -> Unit)? = null,
     isCloseAction: Boolean = false,
     eyebrowStyle: Boolean = false,
@@ -36,14 +35,14 @@ fun FoundryTopBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp)
-                .padding(horizontal = 8.dp),
+                .defaultMinSize(minHeight = 56.dp)
+                .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (onBackClick != null) {
                 IconButton(
                     onClick = onBackClick,
-                    modifier = Modifier.size(44.dp)
+                    modifier = Modifier.size(48.dp)
                 ) {
                     Icon(
                         imageVector = if (isCloseAction) Icons.Default.Close else Icons.AutoMirrored.Filled.ArrowBack,
@@ -65,17 +64,15 @@ fun FoundryTopBar(
                     text = title,
                     style = if (eyebrowStyle) typography.eyebrowMono else typography.screenTitle,
                     color = if (eyebrowStyle) colors.textDim else colors.textPrimary,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (subtitleContent != null) {
-                    subtitleContent()
-                } else if (!subtitle.isNullOrBlank()) {
+                if (!subtitle.isNullOrBlank()) {
                     Text(
                         text = subtitle,
                         style = typography.metaMono,
                         color = colors.textFaint,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }

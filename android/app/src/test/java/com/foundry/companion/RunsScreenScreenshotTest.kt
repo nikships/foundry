@@ -24,24 +24,6 @@ import java.io.FileOutputStream
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class RunsScreenScreenshotTest {
 
-    private val samplePipelines = listOf(
-        PipelineSummary(
-            id = "pipe_default",
-            name = "Feature Pipeline",
-            description = "Standard 5-phase feature development workflow with review gate."
-        ),
-        PipelineSummary(
-            id = "pipe_bugfix",
-            name = "Bugfix & Verify",
-            description = "Fast turnaround pipeline for isolated regression repairs."
-        )
-    )
-
-    private val sampleProjects = listOf(
-        CompanionProjectSummary("proj_foundry_core", "Foundry Core", samplePipelines),
-        CompanionProjectSummary("proj_foundry_docs", "Foundry Docs", samplePipelines)
-    )
-
     private val sampleLiveRun = RunRow(
         runId = "run_260818_live99",
         projectId = "proj_foundry_core",
@@ -180,8 +162,6 @@ class RunsScreenScreenshotTest {
                 runs = listOf(sampleLiveRun) + sampleHistoryRuns,
                 connectionStatus = ConnectionStatus.Connected("Nik’s Mac Studio", "http://192.168.1.100:52810"),
                 projectName = "Foundry Core",
-                projects = sampleProjects,
-                selectedProjectId = "proj_foundry_core",
                 onRunClick = {},
                 onStartRunClick = {},
                 onConnectionPillClick = {},
@@ -199,8 +179,6 @@ class RunsScreenScreenshotTest {
                 runs = emptyList(),
                 connectionStatus = ConnectionStatus.Connected("Nik’s Mac Studio", "http://192.168.1.100:52810"),
                 projectName = "Foundry Core",
-                projects = sampleProjects,
-                selectedProjectId = "proj_foundry_core",
                 onRunClick = {},
                 onStartRunClick = {},
                 onConnectionPillClick = {},

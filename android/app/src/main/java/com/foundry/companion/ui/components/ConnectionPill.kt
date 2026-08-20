@@ -10,7 +10,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.foundry.companion.data.model.ConnectionStatus
@@ -26,20 +27,23 @@ fun ConnectionPill(
     val typography = FoundryTheme.typography
     val shapes = FoundryTheme.shapes
 
-    val (desktopName, dotColor) = when (status) {
-        is ConnectionStatus.Connected -> status.desktopName to colors.statusAccepted
-        is ConnectionStatus.Reconnecting -> status.desktopName to colors.statusRejected
-        is ConnectionStatus.Offline -> status.desktopName to colors.statusFailed
-        is ConnectionStatus.Unpaired -> "Unpaired" to colors.textFaint
+    val (desktopName, dotColor, statusLabel) = when (status) {
+        is ConnectionStatus.Connected -> Triple(status.desktopName, colors.statusAccepted, "connected")
+        is ConnectionStatus.Reconnecting -> Triple(status.desktopName, colors.statusRejected, "reconnecting")
+        is ConnectionStatus.Offline -> Triple(status.desktopName, colors.statusFailed, "unreachable")
+        is ConnectionStatus.Unpaired -> Triple("Unpaired", colors.textFaint, "unpaired")
     }
 
     Row(
         modifier = modifier
+            .defaultMinSize(minHeight = 48.dp)
+            .widthIn(max = 220.dp)
             .clip(shapes.chip)
             .background(colors.bgRaised)
             .border(1.dp, colors.line, shapes.chip)
+            .semantics { contentDescription = "Connection, $desktopName, $statusLabel" }
             .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -53,7 +57,8 @@ fun ConnectionPill(
             style = typography.metaMono,
             color = colors.textPrimary,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false)
         )
     }
 }

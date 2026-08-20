@@ -2,6 +2,7 @@ package com.foundry.companion
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.foundry.companion.ui.screens.pair.PairScreen
@@ -37,7 +38,9 @@ class PairScreenTest {
             "Foundry is waiting on your Mac. Allow camera access to scan its pairing code."
         ).assertIsDisplayed()
         composeTestRule.onNodeWithText("OPEN APP SETTINGS").assertIsDisplayed()
+        composeTestRule.onNodeWithContentDescription("Open app settings").assertIsDisplayed()
         composeTestRule.onNodeWithText("PASTE PAIRING CODE INSTEAD").assertIsDisplayed()
+        composeTestRule.onNodeWithContentDescription("Paste pairing code instead").assertIsDisplayed()
         composeTestRule.onNodeWithText("PAIRING CODE").assertDoesNotExist()
         composeTestRule.onNodeWithText("TRY CAMERA").assertDoesNotExist()
     }

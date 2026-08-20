@@ -180,6 +180,8 @@ class RunDetailScreenTest {
 
         // KILL action is visible on live runs
         composeTestRule.onNodeWithText("KILL").assertIsDisplayed()
+        composeTestRule.onNodeWithContentDescription("Kill this run").assertIsDisplayed()
+        composeTestRule.onNodeWithContentDescription("Phase Code, running, attempt 2").assertExists()
 
         // Waterfall section
         composeTestRule.onNodeWithText("PHASE WATERFALL").performScrollTo().assertIsDisplayed()
@@ -712,6 +714,7 @@ class RunDetailScreenTest {
 
         // The strip is the entry point; nothing raises the sheet on its own.
         composeTestRule.onNodeWithText("Answer…").assertIsDisplayed()
+        composeTestRule.onNodeWithContentDescription("Answer interrupt").assertIsDisplayed()
         composeTestRule.onNodeWithText("APPROVE").assertDoesNotExist()
 
         composeTestRule.onNodeWithText("Answer…").performClick()
@@ -719,6 +722,8 @@ class RunDetailScreenTest {
 
         composeTestRule.onNodeWithText("APPROVE").assertIsDisplayed()
         composeTestRule.onNodeWithText("REJECT").assertIsDisplayed()
+        composeTestRule.onNodeWithContentDescription("Approve interrupt").assertIsDisplayed()
+        composeTestRule.onNodeWithContentDescription("Reject interrupt").assertIsDisplayed()
     }
 
     @Test

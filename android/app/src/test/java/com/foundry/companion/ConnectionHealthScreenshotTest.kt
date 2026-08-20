@@ -134,8 +134,6 @@ class ConnectionHealthScreenshotTest {
                 runs = emptyList(),
                 connectionStatus = ConnectionStatus.Reconnecting("Nik’s Mac Studio", "http://192.168.1.100:52810"),
                 projectName = "Foundry",
-                projects = sampleProjects,
-                selectedProjectId = "proj_foundry_core",
                 onRunClick = {},
                 onStartRunClick = {},
                 onConnectionPillClick = {},

@@ -7,6 +7,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.foundry.companion.data.model.PendingInterrupt
 import com.foundry.companion.ui.theme.FoundryTheme
@@ -53,6 +55,9 @@ fun InterruptStrip(
         if (isConnected) {
             Button(
                 onClick = onAnswerClick,
+                modifier = Modifier
+                    .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                    .semantics { contentDescription = "Answer interrupt" },
                 shape = shapes.button,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = colors.statusRejected.copy(alpha = 0.25f),
@@ -137,7 +142,8 @@ fun InterruptContent(
                 onClick = { onReject(notes.ifBlank { null }) },
                 modifier = Modifier
                     .weight(1f)
-                    .height(48.dp),
+                    .heightIn(min = 48.dp)
+                    .semantics { contentDescription = "Reject interrupt" },
                 shape = shapes.button,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = colors.statusFailed.copy(alpha = 0.18f),
@@ -151,7 +157,8 @@ fun InterruptContent(
                 onClick = { onApprove(notes.ifBlank { null }) },
                 modifier = Modifier
                     .weight(1f)
-                    .height(48.dp),
+                    .heightIn(min = 48.dp)
+                    .semantics { contentDescription = "Approve interrupt" },
                 shape = shapes.button,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = colors.accent,

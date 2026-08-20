@@ -19,6 +19,7 @@ import com.foundry.companion.ui.screens.newrun.NewRunScreen
 import com.foundry.companion.ui.screens.pair.PairScreen
 import com.foundry.companion.ui.screens.run.RunDetailScreen
 import com.foundry.companion.ui.screens.runs.RunsScreen
+import com.foundry.companion.util.CompanionHaptics
 import com.foundry.companion.util.CustomTabs
 import com.foundry.companion.viewmodel.CompanionViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,6 +43,10 @@ fun FoundryNavHost(
     val uiState by viewModel.uiState.collectAsState()
 
     var showConnectionSheet by remember { mutableStateOf(false) }
+
+    LaunchedEffect(viewModel) {
+        viewModel.hapticEvents.collect { CompanionHaptics.perform(context) }
+    }
 
     // Start destination based on whether paired
     val isPaired = uiState.activeSession != null
@@ -166,9 +171,6 @@ fun FoundryNavHost(
                 runs = uiState.runs,
                 connectionStatus = uiState.connectionStatus,
                 projectName = currentProject?.name ?: "Foundry",
-                projects = uiState.projects,
-                selectedProjectId = uiState.selectedProjectId,
-                onSelectProject = { viewModel.selectProject(it) },
                 onRunClick = { runId ->
                     viewModel.loadRunDetail(runId)
                     navController.navigate(NavRoute.RunDetail.createRoute(runId))

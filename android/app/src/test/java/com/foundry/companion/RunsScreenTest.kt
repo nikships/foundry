@@ -120,6 +120,9 @@ class RunsScreenTest {
         // Live run section
         composeTestRule.onNodeWithText("IN FLIGHT").assertIsDisplayed()
         composeTestRule.onNodeWithText("Implement live runs monitoring with timer and mini phase strip").assertIsDisplayed()
+        composeTestRule.onNodeWithContentDescription("Start run").assertIsDisplayed()
+        composeTestRule.onNodeWithContentDescription("Connection, Nik's Mac, connected").assertIsDisplayed()
+        composeTestRule.onNodeWithContentDescription("Live run Feature Pipeline", substring = true).assertIsDisplayed()
 
         // History section
         composeTestRule.onNodeWithText("HISTORY").assertIsDisplayed()
@@ -225,6 +228,7 @@ class RunsScreenTest {
 
         composeTestRule.onNodeWithText("Nothing has run yet").assertIsDisplayed()
         composeTestRule.onNodeWithText("Describe a change and pick a pipeline — every run is isolated in its own worktree on your Mac.").assertIsDisplayed()
+        composeTestRule.onNodeWithContentDescription("Start a run").assertIsDisplayed()
         composeTestRule.onNodeWithText("START A RUN").performClick()
         assertTrue(startRunClicked)
     }
@@ -237,8 +241,6 @@ class RunsScreenTest {
                     runs = emptyList(),
                     connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
                     projectName = "Foundry Core",
-                    projects = listOf(CompanionProjectSummary("p1", "Foundry Core")),
-                    selectedProjectId = "p1",
                     onRunClick = {},
                     onStartRunClick = {},
                     onConnectionPillClick = {},
@@ -253,19 +255,12 @@ class RunsScreenTest {
 
     @Test
     fun testMultiProjectSwitcher() {
-        var selectedProj: String? = null
         composeTestRule.setContent {
             FoundryTheme {
                 RunsScreen(
                     runs = emptyList(),
                     connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
                     projectName = "Foundry Core",
-                    projects = listOf(
-                        CompanionProjectSummary("p1", "Foundry Core"),
-                        CompanionProjectSummary("p2", "Foundry Docs")
-                    ),
-                    selectedProjectId = "p1",
-                    onSelectProject = { selectedProj = it },
                     onRunClick = {},
                     onStartRunClick = {},
                     onConnectionPillClick = {},
@@ -274,12 +269,41 @@ class RunsScreenTest {
             }
         }
 
-        composeTestRule.onNodeWithContentDescription("Switch project").assertIsDisplayed()
-        composeTestRule.onNodeWithContentDescription("Switch project").performClick()
-        composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithText("Foundry Docs", useUnmergedTree = true).assertIsDisplayed()
-        composeTestRule.onNodeWithText("Foundry Docs", useUnmergedTree = true).performClick()
-        assertEquals("p2", selectedProj)
+        composeTestRule.onNodeWithContentDescription("Switch project").assertDoesNotExist()
+        composeTestRule.onNodeWithText("Foundry Core").assertIsDisplayed()
+    }
+
+    @Test
+    @Config(qualifiers = "w411dp-h1200dp")
+    fun testTwoLiveRunsBothAppearUnderInFlight() {
+        val secondLive = sampleLiveRun.copy(
+            runId = "run_live_2",
+            request = "Second simultaneous live run must stay pinned on Home"
+        )
+
+        composeTestRule.setContent {
+            FoundryTheme {
+                RunsScreen(
+                    runs = listOf(sampleLiveRun, secondLive) + sampleHistoryRuns,
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    projectName = "Foundry",
+                    onRunClick = {},
+                    onStartRunClick = {},
+                    onConnectionPillClick = {},
+                    onRetryConnection = {}
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("IN FLIGHT").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Implement live runs monitoring with timer and mini phase strip").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Second simultaneous live run must stay pinned on Home")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeTestRule.onNodeWithText("HISTORY").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithText("LAN pairing host and authenticated protocol")
+            .performScrollTo()
+            .assertIsDisplayed()
     }
 
     @Test

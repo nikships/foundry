@@ -8,6 +8,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.foundry.companion.BuildConfig
 import com.foundry.companion.data.model.CompanionProjectSummary
@@ -118,6 +120,7 @@ fun ConnectionBottomSheet(
                             val isSelected = proj.id == selectedProjectId
                             Box(
                                 modifier = Modifier
+                                    .defaultMinSize(minHeight = 48.dp)
                                     .background(
                                         if (isSelected) colors.bgRaised else colors.bgPanel,
                                         shapes.chip
@@ -127,8 +130,10 @@ fun ConnectionBottomSheet(
                                         if (isSelected) colors.accent else colors.line,
                                         shapes.chip
                                     )
+                                    .semantics { contentDescription = "Focus project ${proj.name}" }
                                     .clickable { onSelectProject(proj.id) }
-                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = proj.name,
@@ -188,7 +193,10 @@ fun ConnectionBottomSheet(
             // 4. Unpair button
             Button(
                 onClick = { showUnpairConfirm = true },
-                modifier = Modifier.fillMaxWidth().height(48.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .semantics { contentDescription = "Unpair from this desktop" },
                 shape = shapes.button,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = colors.statusFailed.copy(alpha = 0.14f),
