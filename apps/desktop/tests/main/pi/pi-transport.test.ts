@@ -373,7 +373,10 @@ describe('opening a session', () => {
     expect(loader.noThemes).toBe(true);
     expect(loader.noContextFiles).toBe(true);
     expect(loader.appendSystemPromptOverride?.([])).toEqual([]);
-    expect(loader.systemPromptOverride?.(undefined)).toMatch(/Foundry pipeline agent/i);
+    const promptHarness = loader.systemPromptOverride?.(undefined) ?? '';
+    expect(promptHarness).toMatch(/Foundry pipeline agent/i);
+    expect(promptHarness.match(/submit_envelope/g)).toHaveLength(1);
+    expect(promptHarness).toContain('when `approved` is false, report `status: "fail"` too');
   });
 
   it('installs Foundry’s extension inline, so nothing has to be discovered', async () => {

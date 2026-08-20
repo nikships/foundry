@@ -424,6 +424,7 @@ export class Executor {
       handoffDir: HANDOFF_DIR,
       branch: this.handle?.branch ?? null,
       baseRef: this.deps.project.baseRef,
+      branchPointSha: this.handle?.branchPointSha ?? '',
       envelopes: this.envelopes,
       commandResults: this.commandResults,
       feedback: this.feedback,

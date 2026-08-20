@@ -167,7 +167,7 @@ export async function commit(cwd: string, message: string): Promise<GitResult> {
 
 export async function diffStat(cwd: string, base: string): Promise<string> {
   if (!base) return (await git(cwd, ['diff', '--stat', 'HEAD'])).stdout;
-  return (await git(cwd, ['diff', '--stat', `${base}...HEAD`])).stdout;
+  return (await git(cwd, ['diff', '--stat', base])).stdout;
 }
 
 /** Reverts a path whether it is tracked-and-modified or untracked. */

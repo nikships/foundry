@@ -198,7 +198,6 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       '- Derive requirements from the request and the plan, then check each one against the diff.',
       '- Every finding needs evidence: the path, the symbol, what you saw.',
       '- `approved` must be false if anything is blocking. A gate checks that your verdict is self-consistent.',
-      '- When you do not approve, report `status: "fail"` too — a gate halts the run on your verdict so rejected work never flows into later phases.',
       '- Do not fix what you find. Report it.',
     ].join('\n'),
     userPrompt: [
@@ -279,7 +278,6 @@ export const BUILTIN_AGENTS: AgentDef[] = [
       '1. One `findings` entry per dimension you audited, each with the evidence you saw.',
       '2. List what you changed in `improvements`.',
       '3. Anything still short of the bar goes in `blocking`, and `approved` is false.',
-      '4. If you could not close every gap, report `status: "fail"` so the run halts here instead of shipping short of the bar.',
     ].join('\n'),
   },
   {
