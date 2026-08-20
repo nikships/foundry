@@ -21,6 +21,8 @@ interface DeviceRecord {
 interface CompanionFile {
   /** Stable id of this desktop install, minted on first use. */
   desktopId: string;
+  /** Whether the operator left the LAN host on for the next app launch. */
+  enabled: boolean;
   /**
    * The port the host last bound successfully. Reused on the next start so a
    * phone's stored `hostOrigin` survives a relaunch instead of 404ing forever.
@@ -42,7 +44,7 @@ function hashToken(token: string): string {
 }
 
 function emptyFile(): CompanionFile {
-  return { desktopId: '', lastPort: null, devices: [] };
+  return { desktopId: '', enabled: false, lastPort: null, devices: [] };
 }
 
 /** A port we would be willing to bind: a real, non-privileged TCP port. */
@@ -67,6 +69,7 @@ function migrate(raw: unknown): CompanionFile {
     : [];
   return {
     desktopId: typeof file.desktopId === 'string' ? file.desktopId : '',
+    enabled: file.enabled === true,
     lastPort: validPort(file.lastPort),
     devices: devices.map((d) => ({
       deviceId: d.deviceId,
@@ -104,6 +107,17 @@ export class DeviceStore {
   /** The port the host last bound, or null if it has never bound one. */
   lastPort(): number | null {
     return this.store.read().lastPort;
+  }
+
+  /** Whether the host should be restored after the desktop app relaunches. */
+  enabled(): boolean {
+    return this.store.read().enabled;
+  }
+
+  /** Records the operator's on/off choice independently of the current bind. */
+  setEnabled(enabled: boolean): void {
+    if (enabled === this.enabled()) return;
+    this.store.update((file) => ({ ...file, enabled }));
   }
 
   /** Records the port the host just bound, so the next start can reuse it. */

@@ -175,6 +175,11 @@ export class CompanionHost {
     };
   }
 
+  /** Restores the host only when the operator left it enabled before quitting. */
+  async restore(): Promise<CompanionHostState> {
+    return this.devices.enabled() ? this.start() : this.state();
+  }
+
   /**
    * Binds the server. Idempotent: an already-running host reports itself.
    *
@@ -184,6 +189,7 @@ export class CompanionHost {
    * last-known — a changed port is reported, never silently served.
    */
   async start(): Promise<CompanionHostState> {
+    this.devices.setEnabled(true);
     if (this.server) return this.state();
     const chosen = this.deps.bindHost ? null : lanInterface();
     const host = this.deps.bindHost ?? chosen?.address;
@@ -229,8 +235,13 @@ export class CompanionHost {
     });
   }
 
-  /** Unbinds and drops outstanding pairing secrets. Device tokens survive. */
-  async stop(): Promise<CompanionHostState> {
+  /**
+   * Unbinds and drops outstanding pairing secrets. A manual stop disables
+   * restoration; process shutdown preserves the operator's enabled choice.
+   * Device tokens survive either way.
+   */
+  async stop(options: { preserveEnabled?: boolean } = {}): Promise<CompanionHostState> {
+    if (!options.preserveEnabled) this.devices.setEnabled(false);
     const server = this.server;
     this.server = null;
     this.origin = null;

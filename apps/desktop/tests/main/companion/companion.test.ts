@@ -867,12 +867,12 @@ describe('a stable address across restarts', () => {
 
   it('persists the bound port so a relaunched host serves the same origin', async () => {
     const before = h.host.state().origin!;
-    await h.host.stop();
+    await h.host.stop({ preserveEnabled: true });
 
     // A fresh CompanionHost over the same support dir is what a relaunch is:
     // nothing in memory survives, only companion.json.
     const relaunched = h.relaunch();
-    const state = await relaunched.start();
+    const state = await relaunched.restore();
     try {
       expect(state.origin).toBe(before);
     } finally {
@@ -883,10 +883,10 @@ describe('a stable address across restarts', () => {
   it('keeps an already-paired phone reachable at its stored origin after a relaunch', async () => {
     const paired = await pairPhone();
     const stored = h.origin();
-    await h.host.stop();
+    await h.host.stop({ preserveEnabled: true });
 
     const relaunched = h.relaunch();
-    await relaunched.start();
+    await relaunched.restore();
     try {
       expect(relaunched.state().origin).toBe(stored);
       const res = await fetch(`${stored}/v1/session`, {
@@ -903,6 +903,28 @@ describe('a stable address across restarts', () => {
       lastPort: number;
     };
     expect(file.lastPort).toBe(portOf(h.origin()));
+  });
+
+  it('restores the enabled host after an app restart', async () => {
+    const before = h.host.state().origin!;
+    await h.host.stop({ preserveEnabled: true });
+
+    const relaunched = h.relaunch();
+    const state = await relaunched.restore();
+    try {
+      expect(state.running).toBe(true);
+      expect(state.origin).toBe(before);
+    } finally {
+      await relaunched.stop();
+    }
+  });
+
+  it('does not restore a host the operator turned off', async () => {
+    await h.host.stop();
+
+    const relaunched = h.relaunch();
+    const state = await relaunched.restore();
+    expect(state.running).toBe(false);
   });
 
   it('falls back to an ephemeral port when the remembered one is taken, and says so', async () => {
@@ -998,5 +1020,11 @@ describe('the device store', () => {
       writeFileSync(path, JSON.stringify({ desktopId: 'd', lastPort: bad, devices: [] }));
       expect(new DeviceStore(dir).lastPort()).toBeNull();
     }
+  });
+
+  it('defaults a pre-existing companion file to disabled', () => {
+    const dir = tempDir('foundry-devices-enabled-');
+    writeFileSync(join(dir, 'companion.json'), JSON.stringify({ desktopId: 'd', devices: [] }));
+    expect(new DeviceStore(dir).enabled()).toBe(false);
   });
 });

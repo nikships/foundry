@@ -214,6 +214,11 @@ if (!app.requestSingleInstanceLock()) {
       console.warn(`reclaimed ${bridges.reclaimed.length} Bridge(s) orphaned by a previous launch`);
     }
 
+    // A normal quit (including an auto-update restart) closes the socket but
+    // preserves this choice. Restore it before opening the UI so paired phones
+    // remain reachable without the operator toggling the server again.
+    await ctx.companion.restore();
+
     createWindow();
 
     // A packaged app should discover updates without requiring the user to

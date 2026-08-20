@@ -111,8 +111,8 @@ export class AppContext {
       notifyNeedsInput(interrupt.title, interrupt.body, this.settings.get());
     });
 
-    // Constructed, not started: the LAN host binds only when the operator
-    // turns it on, so a desktop that never pairs a phone never opens a port.
+    // Constructed here; main restores it only when the operator previously
+    // enabled it, so a desktop that never pairs a phone never opens a port.
     this.companion = new CompanionHost({
       supportDir,
       projects: () => this.projects.list(),
@@ -221,7 +221,8 @@ export class AppContext {
     this.readiness.cancelAll();
     this.smith.dispose();
     // Fire-and-forget: close() only unbinds a socket, and dispose stays sync.
-    void this.companion.stop();
+    // Preserve the enabled choice so an update/relaunch restores the host.
+    void this.companion.stop({ preserveEnabled: true });
     // Agent turns run in this process, so quitting ends them; the Bridge is the
     // one child left, and it has no parent-pid backstop of its own. This is the
     // only thing standing between a quit and an orphaned proxy holding the port.
