@@ -162,6 +162,56 @@
   padding: 0 var(--s6) var(--s16);
 }
 
+.roster-empty {
+  flex: 1;
+  align-self: center;
+  width: min(760px, calc(100% - 2 * var(--s6)));
+  margin: auto;
+  padding: var(--s10) 0;
+}
+.roster-empty h1 {
+  margin-top: var(--s2);
+  font-size: var(--text-2xl);
+  color: var(--text);
+}
+.roster-empty-lead {
+  margin-top: var(--s4);
+  max-width: 62ch;
+  font-size: var(--text-sm);
+  line-height: var(--leading-loose);
+  color: var(--text-dim);
+}
+.roster-empty-crew {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: var(--s6) 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+.roster-empty-crew li {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: var(--s4) var(--s4) var(--s4) 0;
+  border-bottom: 1px solid var(--line);
+}
+.roster-empty-crew strong {
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+.roster-empty-crew span {
+  font-size: var(--text-xs);
+  line-height: var(--leading);
+  color: var(--text-faint);
+}
+
+@media (max-width: 760px) {
+  .roster-empty-crew {
+    grid-template-columns: 1fr;
+  }
+}
+
 .roster-head {
   display: flex;
   align-items: flex-end;

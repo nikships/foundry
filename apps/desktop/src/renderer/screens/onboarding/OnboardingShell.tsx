@@ -6,16 +6,12 @@ import { useOnboarding } from './OnboardingContext.js';
 import './onboarding.css';
 
 import WelcomeScreen from './WelcomeScreen.js';
-import FactoryScreen from './FactoryScreen.js';
-import RosterScreen from './RosterScreen.js';
 import ProvidersScreen from './ProvidersScreen.js';
 import DoctorScreen from './DoctorScreen.js';
 import ProjectScreen from './ProjectScreen.js';
 
 const STEP_COMPONENTS: Record<string, React.ComponentType> = {
   welcome: WelcomeScreen,
-  factory: FactoryScreen,
-  roster: RosterScreen,
   providers: ProvidersScreen,
   doctor: DoctorScreen,
   project: ProjectScreen,

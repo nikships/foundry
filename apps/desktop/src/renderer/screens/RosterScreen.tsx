@@ -36,6 +36,18 @@ import styles from './RosterScreen.module.css';
 
 const COLORS = ['#4fa8b8', '#9b7ede', '#d19a3d', '#3cb87a', '#e0605f', '#5b8fd9'];
 
+const CREW = [
+  ['Refiner', 'grounds a rough request in the repository'],
+  ['Planner', 'turns the request into reviewable tasks'],
+  ['Builder', 'implements the work in isolation'],
+  ['Scout', 'maps the files and patterns that matter'],
+  ['Reviewer', 'judges the diff before it ships'],
+  ['Finisher', 'closes gaps against the ship bar'],
+  ['Documenter', 'records the decisions and follow-ups'],
+  ['PR writer', 'drafts the pull request'],
+  ['Issue writer', 'turns follow-up work into an issue'],
+] as const;
+
 /**
  * The brand behind a stored model id, for the roster's badge.
  *
@@ -835,6 +847,27 @@ export default function RosterScreen({
                 <span className={styles.rosterAutosave}>Changes save automatically</span>
               </div>
             </div>
+          </div>
+        )}
+        {!draft && (
+          <div className={styles.rosterEmpty}>
+            <p className="eyebrow">Agents</p>
+            <h1>Meet the crew</h1>
+            <p className={styles.rosterEmptyLead}>
+              Agents are editable specialists. Pipelines wire them into phases, and each phase can
+              use its own model, prompt, reply envelope, and write boundary.
+            </p>
+            <ul className={styles.rosterEmptyCrew}>
+              {CREW.map(([name, purpose]) => (
+                <li key={name}>
+                  <strong>{name}</strong>
+                  <span>{purpose}</span>
+                </li>
+              ))}
+            </ul>
+            <Button variant="primary" onClick={() => void createAgent()}>
+              Create your first agent
+            </Button>
           </div>
         )}
         {showPreview && draft && (
