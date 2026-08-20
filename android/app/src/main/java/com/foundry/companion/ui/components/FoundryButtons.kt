@@ -6,6 +6,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.foundry.companion.ui.theme.FoundryTheme
 
@@ -15,7 +17,8 @@ fun FoundryPrimaryButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    isLoading: Boolean = false
+    isLoading: Boolean = false,
+    contentDescription: String? = null
 ) {
     val colors = FoundryTheme.colors
     val typography = FoundryTheme.typography
@@ -25,7 +28,14 @@ fun FoundryPrimaryButton(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
-            .height(48.dp),
+            .heightIn(min = 48.dp)
+            .then(
+                if (contentDescription != null) {
+                    Modifier.semantics { this.contentDescription = contentDescription }
+                } else {
+                    Modifier
+                }
+            ),
         enabled = enabled && !isLoading,
         shape = shapes.button,
         colors = ButtonDefaults.buttonColors(
@@ -63,7 +73,7 @@ fun FoundrySecondaryButton(
 
     OutlinedButton(
         onClick = onClick,
-        modifier = modifier.height(44.dp),
+        modifier = modifier.heightIn(min = 48.dp),
         enabled = enabled,
         shape = shapes.button,
         colors = ButtonDefaults.outlinedButtonColors(
@@ -94,7 +104,7 @@ fun FoundryDangerButton(
 
     Button(
         onClick = onClick,
-        modifier = modifier.height(44.dp),
+        modifier = modifier.heightIn(min = 48.dp),
         enabled = enabled,
         shape = shapes.button,
         colors = ButtonDefaults.buttonColors(

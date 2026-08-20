@@ -9,6 +9,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.foundry.companion.data.model.RunRow
@@ -53,6 +55,29 @@ fun LiveRunCard(
             emptyList()
         }
     }
+    val phaseNames = remember(run.phases, run.phaseSummary) {
+        if (run.phases.isNotEmpty()) {
+            run.phases.map { it.name }
+        } else if (run.phaseSummary.isNotEmpty()) {
+            run.phaseSummary.map { it.name }
+        } else {
+            emptyList()
+        }
+    }
+
+    val cardDescription = buildString {
+        append("Live run ${run.pipelineName}")
+        if (run.request.isNotBlank()) append(": ${run.request}")
+        if (run.waitingInterrupt) append(". Waiting on engineer")
+        if (phaseNames.isNotEmpty()) {
+            append(". Phases: ")
+            append(
+                phaseNames.zip(phaseStatuses).joinToString { (name, status) ->
+                    "$name $status"
+                }
+            )
+        }
+    }
 
     Column(
         modifier = modifier
@@ -60,6 +85,7 @@ fun LiveRunCard(
             .defaultMinSize(minHeight = 64.dp)
             .background(colors.bgRaised, shapes.card)
             .border(1.dp, colors.lineStrong, shapes.card)
+            .semantics { contentDescription = cardDescription }
             .clickable(onClick = onClick)
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -80,7 +106,7 @@ fun LiveRunCard(
                     text = run.pipelineName,
                     style = typography.labelMono,
                     color = colors.textDim,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 if (run.waitingInterrupt) {

@@ -1,20 +1,17 @@
 package com.foundry.companion.ui.screens.runs
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import com.foundry.companion.data.model.CompanionProjectSummary
 import com.foundry.companion.data.model.ConnectionStatus
 import com.foundry.companion.data.model.RunRow
 import com.foundry.companion.ui.components.*
@@ -32,9 +29,6 @@ fun RunsScreen(
     onConnectionPillClick: () -> Unit,
     onRetryConnection: () -> Unit,
     modifier: Modifier = Modifier,
-    projects: List<CompanionProjectSummary> = emptyList(),
-    selectedProjectId: String = "",
-    onSelectProject: (String) -> Unit = {},
     onInspectorClick: (runId: String) -> Unit = {},
     onOpenPr: ((String) -> Unit)? = null
 ) {
@@ -44,11 +38,13 @@ fun RunsScreen(
 
     // Filter out archived runs (archived runs stay hidden)
     val visibleRuns = remember(runs) { runs.filterNot { it.archived } }
-    val liveRun = visibleRuns.find { it.status.equals("running", ignoreCase = true) }
-    val historyRuns = visibleRuns.filterNot { it.status.equals("running", ignoreCase = true) }
+    val liveRuns = remember(visibleRuns) {
+        visibleRuns.filter { it.status.equals("running", ignoreCase = true) }
+    }
+    val historyRuns = remember(visibleRuns) {
+        visibleRuns.filterNot { it.status.equals("running", ignoreCase = true) }
+    }
     val isConnected = connectionStatus is ConnectionStatus.Connected
-
-    var projectDropdownExpanded by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -57,56 +53,7 @@ fun RunsScreen(
             Column {
                 FoundryTopBar(
                     title = "RUNS",
-                    subtitle = if (projects.size <= 1) projectName else null,
-                    subtitleContent = if (projects.size > 1) {
-                        {
-                            Box {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier
-                                        .clickable { projectDropdownExpanded = true }
-                                        .padding(vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = projectName,
-                                        style = typography.metaMono,
-                                        color = colors.textDim,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Icon(
-                                        imageVector = Icons.Default.ArrowDropDown,
-                                        contentDescription = "Switch project",
-                                        tint = colors.textDim,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
-
-                                DropdownMenu(
-                                    expanded = projectDropdownExpanded,
-                                    onDismissRequest = { projectDropdownExpanded = false },
-                                    modifier = Modifier.background(colors.bgRaised)
-                                ) {
-                                    projects.forEach { project ->
-                                        val isSelected = project.id == selectedProjectId
-                                        DropdownMenuItem(
-                                            text = {
-                                                Text(
-                                                    text = project.name,
-                                                    style = typography.body,
-                                                    color = if (isSelected) colors.accent else colors.textPrimary
-                                                )
-                                            },
-                                            onClick = {
-                                                projectDropdownExpanded = false
-                                                onSelectProject(project.id)
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    } else null,
+                    subtitle = projectName,
                     eyebrowStyle = true,
                     actions = {
                         ConnectionPill(
@@ -137,13 +84,16 @@ fun RunsScreen(
                             onStartRunClick()
                         }
                     },
+                    modifier = Modifier
+                        .defaultMinSize(minHeight = 48.dp)
+                        .semantics { contentDescription = "Start run" },
                     containerColor = if (isConnected) colors.accent else colors.bgRaised,
                     contentColor = if (isConnected) androidx.compose.ui.graphics.Color.Black else colors.textFaint,
                     shape = shapes.button,
                     icon = {
                         Icon(
                             imageVector = Icons.Default.Add,
-                            contentDescription = "Start run"
+                            contentDescription = null
                         )
                     },
                     text = {
@@ -185,6 +135,7 @@ fun RunsScreen(
                         text = "Start a run",
                         onClick = onStartRunClick,
                         enabled = isConnected,
+                        contentDescription = "Start a run",
                         modifier = Modifier.widthIn(max = 240.dp)
                     )
                 }
@@ -197,23 +148,22 @@ fun RunsScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Live run card pinned at top
-                if (liveRun != null) {
-                    item(key = "live_run_card") {
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.padding(bottom = 6.dp)
-                        ) {
-                            Text(
-                                text = "IN FLIGHT",
-                                style = typography.eyebrowMono,
-                                color = colors.accent
-                            )
-                            LiveRunCard(
-                                run = liveRun,
-                                onClick = { onRunClick(liveRun.runId) }
-                            )
-                        }
+                if (liveRuns.isNotEmpty()) {
+                    item(key = "live_run_header") {
+                        Text(
+                            text = "IN FLIGHT",
+                            style = typography.eyebrowMono,
+                            color = colors.accent
+                        )
+                    }
+                    items(
+                        items = liveRuns,
+                        key = { it.runId }
+                    ) { run ->
+                        LiveRunCard(
+                            run = run,
+                            onClick = { onRunClick(run.runId) }
+                        )
                     }
                 }
 

@@ -14,6 +14,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.foundry.companion.data.model.EventRow
 import com.foundry.companion.data.model.PhaseRunSummary
@@ -101,7 +105,7 @@ fun PhaseWaterfall(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(44.dp)
+                    .defaultMinSize(minHeight = 48.dp)
                     .clip(shapes.card)
                     .background(if (isSelected) colors.bgRaised else colors.bgPanel)
                     .border(
@@ -110,13 +114,17 @@ fun PhaseWaterfall(
                         shapes.card
                     )
                     .clickable { onSelectPhase(phase.resolvedId) }
-                    .padding(horizontal = 10.dp),
+                    .semantics {
+                        selected = isSelected
+                        contentDescription = waterfallPhaseDescription(phase)
+                    }
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 // Phase Kind & Name
                 Row(
-                    modifier = Modifier.width(108.dp),
+                    modifier = Modifier.weight(0.35f),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
@@ -130,7 +138,8 @@ fun PhaseWaterfall(
                         text = if (phase.attempt > 1) "${phase.name} ×${phase.attempt}" else phase.name,
                         style = if (isSelected) typography.bodyStrong else typography.body,
                         color = if (isSelected) colors.textPrimary else colors.textDim,
-                        maxLines = 1
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
@@ -176,4 +185,9 @@ fun PhaseWaterfall(
             }
         }
     }
+}
+
+internal fun waterfallPhaseDescription(phase: PhaseRunSummary): String {
+    val attempt = if (phase.attempt > 1) ", attempt ${phase.attempt}" else ""
+    return "Phase ${phase.name}, ${phase.status}$attempt"
 }

@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -82,6 +83,7 @@ fun PhaseChipsRow(
             Row(
                 modifier = Modifier
                     .bringIntoViewRequester(requester)
+                    .defaultMinSize(minHeight = 48.dp)
                     .clip(shapes.chip)
                     .background(if (isSelected) colors.bgRaised else colors.bgPanel)
                     .border(
@@ -90,7 +92,10 @@ fun PhaseChipsRow(
                         shapes.chip
                     )
                     .clickable { onSelectPhase(phase.resolvedId) }
-                    .semantics { selected = isSelected }
+                    .semantics {
+                        selected = isSelected
+                        contentDescription = phaseChipDescription(phase)
+                    }
                     .testTag("inspector-phase-${phase.resolvedId}")
                     .padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -110,4 +115,9 @@ fun PhaseChipsRow(
             }
         }
     }
+}
+
+internal fun phaseChipDescription(phase: PhaseRunSummary): String {
+    val attempt = if (phase.attempt > 1) ", attempt ${phase.attempt}" else ""
+    return "Phase ${phase.name}, ${phase.status}$attempt"
 }

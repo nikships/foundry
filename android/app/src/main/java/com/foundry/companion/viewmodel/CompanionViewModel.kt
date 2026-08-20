@@ -11,9 +11,22 @@ import com.foundry.companion.data.session.SessionManager
 import com.foundry.companion.notification.CompanionNotifier
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+
+/** One-shot operator haptics. Collected once; never fired from a recomposing effect. */
+enum class CompanionHapticEvent {
+    PairSuccess,
+    InterruptArrival,
+    RunSettle
+}
 
 data class CompanionUiState(
     val connectionStatus: ConnectionStatus = ConnectionStatus.Unpaired,
@@ -86,6 +99,13 @@ class CompanionViewModel(
     )
     val uiState: StateFlow<CompanionUiState> = _uiState.asStateFlow()
 
+    private val _hapticEvents = MutableSharedFlow<CompanionHapticEvent>(extraBufferCapacity = 8)
+    val hapticEvents: SharedFlow<CompanionHapticEvent> = _hapticEvents.asSharedFlow()
+
+    private val hapticRunStatuses = mutableMapOf<String, String>()
+    private val hapticInterruptIds = mutableSetOf<String>()
+    private var hapticInterruptsPrimed = false
+
     private var pollingJob: Job? = null
     private var isManualUnpair = false
 
@@ -123,6 +143,7 @@ class CompanionViewModel(
 
         viewModelScope.launch {
             repository.pendingInterrupts.collect { interrupts ->
+                noteInterruptHaptics(interrupts)
                 _uiState.update { it.withInterrupts(interrupts) }
             }
         }
@@ -227,6 +248,7 @@ class CompanionViewModel(
     fun loadPendingInterrupts() {
         viewModelScope.launch {
             repository.getInterrupts().onSuccess { interrupts ->
+                noteInterruptHaptics(interrupts)
                 _uiState.update { it.withInterrupts(interrupts) }
                 notifier?.onInterrupts(interrupts)
             }
@@ -239,6 +261,7 @@ class CompanionViewModel(
             repository.getRuns(projectId).onSuccess { runs ->
                 val unarchived = runs.filterNot { it.archived }
                     .map { if (it.projectId.isBlank()) it.copy(projectId = projectId) else it }
+                noteRunHaptics(unarchived)
                 _uiState.update { it.withRuns(unarchived) }
                 notifier?.onRuns(unarchived)
             }
@@ -305,7 +328,9 @@ class CompanionViewModel(
         viewModelScope.launch {
             val result = repository.pair(payload, deviceName)
             _uiState.update { it.copy(isPairing = false) }
-            result.onFailure { error ->
+            result.onSuccess {
+                emitHaptic(CompanionHapticEvent.PairSuccess)
+            }.onFailure { error ->
                 _uiState.update { it.copy(errorMessage = error.message ?: "Pairing failed") }
             }
         }
@@ -314,6 +339,7 @@ class CompanionViewModel(
     fun unpair() {
         isManualUnpair = true
         notifier?.reset()
+        resetHapticWatch()
         viewModelScope.launch {
             repository.unpair()
             _uiState.update {
@@ -494,6 +520,48 @@ class CompanionViewModel(
         return projects.firstOrNull()?.id.orEmpty()
     }
 
+    private fun emitHaptic(event: CompanionHapticEvent) {
+        _hapticEvents.tryEmit(event)
+    }
+
+    private fun resetHapticWatch() {
+        hapticRunStatuses.clear()
+        hapticInterruptIds.clear()
+        hapticInterruptsPrimed = false
+    }
+
+    /**
+     * First sight of a run only seeds its status. A later transition from
+     * `running` to a settled status is the settle haptic — one shot per run.
+     */
+    private fun noteRunHaptics(runs: List<RunRow>) {
+        for (run in runs) {
+            val status = run.status.lowercase()
+            val previous = hapticRunStatuses.put(run.runId, status)
+            if (previous == "running" && status in SETTLED_HAPTIC_STATUSES) {
+                emitHaptic(CompanionHapticEvent.RunSettle)
+            }
+        }
+    }
+
+    /**
+     * The first interrupt snapshot (including an empty one) only primes. A
+     * later unseen id is an arrival. Reloading the same id does not retrigger.
+     */
+    private fun noteInterruptHaptics(interrupts: List<PendingInterrupt>) {
+        val incoming = interrupts.map { it.interruptId }.filter { it.isNotBlank() }
+        if (!hapticInterruptsPrimed) {
+            hapticInterruptIds.addAll(incoming)
+            hapticInterruptsPrimed = true
+            return
+        }
+        for (id in incoming) {
+            if (hapticInterruptIds.add(id)) {
+                emitHaptic(CompanionHapticEvent.InterruptArrival)
+            }
+        }
+    }
+
     private fun canDraftPr(run: RunRow): Boolean {
         val hasPr = !run.prUrl.isNullOrBlank()
         return !hasPr &&
@@ -504,6 +572,8 @@ class CompanionViewModel(
     }
 
     companion object {
+        val SETTLED_HAPTIC_STATUSES = setOf("accepted", "rejected", "failed", "killed")
+
         fun provideFactory(
             repository: CompanionRepository,
             sessionManager: SessionManager? = null,

@@ -28,6 +28,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -201,7 +203,8 @@ fun PairScreen(
                     modifier = Modifier
                         .size(280.dp)
                         .background(colors.bgInput, shapes.card)
-                        .border(1.dp, colors.lineStrong, shapes.card),
+                        .border(1.dp, colors.lineStrong, shapes.card)
+                        .semantics { contentDescription = "Scan the pairing QR code" },
                     contentAlignment = Alignment.Center
                 ) {
                     CameraQrScannerView(
@@ -233,7 +236,8 @@ fun PairScreen(
                     )
                     FoundryPrimaryButton(
                         text = "Open app settings",
-                        onClick = { openAppSettings(context) }
+                        onClick = { openAppSettings(context) },
+                        contentDescription = "Open app settings"
                     )
                 }
             } else {
@@ -333,7 +337,10 @@ fun PairScreen(
             ) {
                 if (!isPasteMode) {
                     TextButton(
-                        onClick = { isPasteMode = true }
+                        onClick = { isPasteMode = true },
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .semantics { contentDescription = "Paste pairing code instead" }
                     ) {
                         Text(
                             text = "PASTE PAIRING CODE INSTEAD",
@@ -348,7 +355,8 @@ fun PairScreen(
                             processPayloadString(pastedJson)
                         },
                         isLoading = isPairing,
-                        enabled = pastedJson.isNotBlank() && !isPairing
+                        enabled = pastedJson.isNotBlank() && !isPairing,
+                        contentDescription = "Pair with desktop"
                     )
 
                     if (hasCameraPermission) {

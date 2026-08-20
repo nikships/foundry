@@ -95,7 +95,7 @@ fun RunHistoryRow(
                 if (onInspectorClick != null) {
                     IconButton(
                         onClick = onInspectorClick,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(48.dp)
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ReceiptLong,
