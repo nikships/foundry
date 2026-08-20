@@ -18,7 +18,7 @@ import {
   PANEL_TIMEOUT_MS,
   type PanelRegistry,
 } from '../session/index.js';
-import { DETECT_PROMPT, parseDetectReply, sniffCommands, type CommandCandidate } from './detect.js';
+import { buildDetectPrompt, DETECT_PROMPT, parseDetectReply, sniffCommands } from './detect.js';
 import { runCommand } from './commands.js';
 
 export type { DetectionProposal, DetectionState };
@@ -136,7 +136,7 @@ export class DetectSession {
       model,
       reasoningEffort: model === 'inherit' ? 'off' : settings.defaultReasoningEffort,
       systemPrompt: DETECT_PROMPT,
-      prompt: this.prompt(sniffed),
+      prompt: buildDetectPrompt(sniffed, this.deps.existingCommands),
       timeoutMs: PANEL_TIMEOUT_MS,
     });
     if (!turn) return;
@@ -170,25 +170,6 @@ export class DetectSession {
       return;
     }
     state.detail = `${reply.commands.length} proposed; verifying`;
-  }
-
-  /** Manifest findings ride along so the agent confirms rather than guesses. */
-  private prompt(sniffed: CommandCandidate[]): string {
-    const parts = ['Inspect this repository and report the verification commands.'];
-    if (sniffed.length) {
-      parts.push(
-        '',
-        'Reading this repository’s manifests suggested the commands below. Confirm, correct, or replace them, and add any the manifests missed:',
-        sniffed.map((c) => `- ${c.name}: ${c.argv.join(' ')} (from ${c.source})`).join('\n'),
-      );
-    }
-    if (this.deps.existingCommands.length) {
-      parts.push(
-        '',
-        `This project already has these command names configured: ${this.deps.existingCommands.join(', ')}. Proposing a better argv for one of them is useful; the human chooses whether to replace it.`,
-      );
-    }
-    return parts.join('\n');
   }
 
   /**

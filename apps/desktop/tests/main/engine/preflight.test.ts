@@ -153,6 +153,28 @@ describe('preflightForRun', () => {
 });
 
 describe('ensureMissingCommands', () => {
+  it('passes the manifest sniff into the agent fallback', async () => {
+    const dir = tempDir('foundry-preflight-context-');
+    writeFileSync(
+      join(dir, 'package.json'),
+      JSON.stringify({ name: 'x', scripts: { lint: 'eslint .' } }),
+    );
+    let received: string[] = [];
+
+    const result = await ensureMissingCommands(project({ path: dir }), ['test'], {
+      useAgent: true,
+      detectWithAgent: async (sniffed) => {
+        received = sniffed.map((candidate) => candidate.name);
+        return [{ name: 'test', argv: ['npm', 'run', 'lint'], source: 'AGENTS.md' }];
+      },
+      save: (next) => next,
+    });
+
+    expect(received).toEqual(['lint']);
+    expect(result.filled).toEqual(['test']);
+    expect(result.via).toBe('agent');
+  });
+
   it('fills a missing test ref from a nested Swift package without an agent', async () => {
     const dir = tempDir('foundry-preflight-');
     const pkg = join(dir, 'App');
