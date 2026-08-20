@@ -98,7 +98,7 @@ export default function PhaseEditor({
         kind: 'agent',
         description: phase.description,
         agent: agents[0]?.name ?? 'builder',
-        prompt: { template: 'user', inputs: ['request'] },
+        prompt: { inputs: ['request'] },
         gates: [],
       });
       return;
@@ -344,6 +344,7 @@ export default function PhaseEditor({
             >
               <option value="">+ add gate</option>
               {catalogGates
+                .filter((g) => g.id !== 'command_passes')
                 .filter((g) => !activeGates.includes(g.id))
                 .map((g) => (
                   <option key={g.id} value={g.id}>
@@ -356,7 +357,6 @@ export default function PhaseEditor({
           <div className={styles.fieldGroup}>
             <div className={styles.fieldHeader}>
               <span className={styles.fieldLabel}>Prompt inputs</span>
-              <span className={styles.fieldHint}>template: user</span>
             </div>
             <div className={styles.chipRow}>
               {inputs.map((inp) => (
@@ -367,7 +367,6 @@ export default function PhaseEditor({
                     onChange({
                       ...phase,
                       prompt: {
-                        template: phase.prompt?.template ?? 'user',
                         inputs: inputs.filter((i) => i !== inp),
                       },
                     })
@@ -389,7 +388,6 @@ export default function PhaseEditor({
                     onChange({
                       ...phase,
                       prompt: {
-                        template: phase.prompt?.template ?? 'user',
                         inputs: [...inputs, e.target.value],
                       },
                     });

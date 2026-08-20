@@ -181,16 +181,9 @@ export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
   },
   {
     pane: 'defaults',
-    label: 'Autonomy',
-    note: 'How a run behaves once it starts.',
-    keywords: 'autonomous permission boundary revert',
-  },
-  {
-    pane: 'defaults',
     label: 'Limits',
     note: 'How hard Foundry tries before a phase fails.',
-    keywords:
-      'envelope retries gate retries compaction context rewind corrections turn timeout poll cadence',
+    keywords: 'envelope retries gate retries compaction context rewind corrections turn timeout',
   },
   {
     pane: 'defaults',

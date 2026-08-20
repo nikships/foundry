@@ -170,10 +170,11 @@ describe('custom envelope library defs', () => {
     expect(missing.problem).toContain('severity');
   });
 
-  it('restates the custom example in a correction', () => {
-    const message = correctionMessage('severity: Required', 'severity_report', undefined, defs);
+  it('returns a custom-envelope failure to the submit tool without repeating the schema', () => {
+    const message = correctionMessage('severity: Required');
     expect(message).toContain('severity');
-    expect(message).toContain('low|med|high');
+    expect(message).toContain('call submit_envelope again');
+    expect(message).not.toContain('low|med|high');
   });
 
   it('falls back to generic when the name is unknown', () => {
@@ -221,10 +222,10 @@ describe('generated examples', () => {
     }
   });
 
-  it('is what the correction message restates', () => {
-    const message = correctionMessage('status: Required', 'brief');
+  it('does not regenerate the example in a correction message', () => {
+    const message = correctionMessage('status: Required');
     expect(message).toContain('status: Required');
-    expect(message).toContain('improved_request');
+    expect(message).not.toContain('improved_request');
   });
 });
 

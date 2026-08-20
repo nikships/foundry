@@ -56,7 +56,7 @@ describe('payloads crossing IPC', () => {
           description: 'Plan it.',
           agent: 'planner',
           envelope: 'plan',
-          prompt: { template: 'user', inputs: ['request'] },
+          prompt: { inputs: ['request'] },
           gates: ['artifacts_exist'],
         },
       ],

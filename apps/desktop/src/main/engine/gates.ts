@@ -250,6 +250,6 @@ export function gateCorrection(violations: string[]): string {
     '',
     ...violations.map((v) => `- ${v}`),
     '',
-    'Fix the underlying problem (do the work, or correct the claim), then reply again with the envelope JSON only.',
+    'Fix the underlying problem (do the work, or correct the claim), then call submit_envelope again.',
   ].join('\n');
 }

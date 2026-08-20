@@ -44,7 +44,7 @@ const phaseSchema = z.object({
       ]),
     )
     .optional(),
-  prompt: z.object({ template: z.string(), inputs: z.array(z.string()) }).optional(),
+  prompt: z.object({ inputs: z.array(z.string()) }).optional(),
   command: commandSchema.optional(),
   retries: z.number().int().min(0).max(5).optional(),
   feedbackTo: z.string().optional(),

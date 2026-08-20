@@ -80,8 +80,6 @@ export interface GateSpec {
 }
 
 export interface PromptSpec {
-  /** Prompt template id resolved from the agent record. */
-  template: string;
   /** Declared inputs: `request`, `envelope:<phase>`, `handoff_files`, `feedback`. */
   inputs: string[];
 }
@@ -261,7 +259,6 @@ export interface AppSettings {
   prAgent: string;
   defaultModel: string;
   defaultReasoningEffort: ReasoningEffort;
-  pollCadenceMs: number;
   turnTimeoutMs: number;
   envelopeRetries: number;
   gateRetries: number;
@@ -295,7 +292,6 @@ export interface AppSettings {
    * arbitrary string on the session command line.
    */
   codingAgent: CodingAgentId;
-  appearance: 'system' | 'dark';
   retentionDays: number | null;
   onboarded: boolean;
   /**

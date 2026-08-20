@@ -389,20 +389,14 @@ export function parseEnvelope(
   return { ...validateEnvelope(value, kind, custom, defs), raw: text };
 }
 
-/** The correction message: names the failure, restates the shape, asks again. */
-export function correctionMessage(
-  problem: string,
-  kind: string,
-  custom?: CustomEnvelopeField[],
-  defs?: EnvelopeDef[],
-): string {
+/** The correction message names the failure and returns the agent to the tool channel. */
+export function correctionMessage(problem: string): string {
   return [
     'Your reply could not be used as an envelope.',
     '',
     `Problem: ${problem}`,
     '',
-    'Reply again with ONLY this JSON object, no prose, no code fence:',
-    exampleFor(kind, custom, defs),
+    'Correct the problem, then call submit_envelope again.',
   ].join('\n');
 }
 

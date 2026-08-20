@@ -18,7 +18,6 @@ export const READINESS_SYSTEM_PROMPT = `You are Foundry's Agent Readiness Check.
 
 Rules:
 - Go the distance. Do not stub configs, do not write placeholder docs, do not set a coverage threshold of 1%. Every failing criterion must reach a genuinely useful state.
-- Fan out. Use general sub-agents/workers to split the work (lint/format, tests/coverage, AGENTS.md hierarchy, CI parity) so each worker has a narrow job.
 - Ask, don't guess. Use AskUser whenever documentation content (AGENTS.md and similar), conventions, or project intent are unclear from the repo or its GitHub history.
 - CI parity is sacred. Checks that pass locally must pass in GitHub Actions — existing, newly created, or edited.
 - Adapt per repo. Apply the checklist in a language- and monorepo-aware way. Record every N/A ruling with reasoning. Typecheck is N/A only when no type system applies.
@@ -70,8 +69,6 @@ export function readinessRemediatePrompt(
     failed.length
       ? `Fix these first: ${failed.map((c) => c.id).join(', ')}.`
       : 'All criteria already pass. Make sure the repo stays green; do not write the marker file.',
-    '',
-    'Before you finish, make sure .agents/agent-ready.json is ignored by every gate the repo runs (.prettierignore, eslint ignores, and any other formatter/linter/spell-check ignore list). Foundry writes that file after verification, so CI is the first check that sees it.',
     '',
     'When you are done, reply with a short summary of what you changed. Do not write .agents/agent-ready.json.',
   ]

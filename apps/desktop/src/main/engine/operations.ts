@@ -20,7 +20,7 @@ import type { EventPage, PrAction, RunDetail } from '@shared/ipc-contract.js';
 import { manualPrDraft, type ResolvedPrDraft } from '@shared/pr-draft.js';
 import type { Tracer } from '../trace/tracer.js';
 import type { OneShotFactory } from '../pi/oneshot.js';
-import { DETECT_PROMPT, parseDetectReply } from './detect.js';
+import { DETECT_PROMPT, parseDetectReply, sniffCommands } from './detect.js';
 import { ensureMissingCommands, missingCommandRefs, preflightForRun } from './preflight.js';
 import * as ghLib from '../system/gh.js';
 import type { GhOptions } from '../system/gh.js';
@@ -82,6 +82,7 @@ export async function startRun(deps: StartRunDeps, input: StartRunInput): Promis
       useAgent: !scaffold,
       detectWithAgent: async () => {
         const settings = deps.settings();
+        const sniffed = await sniffCommands(projectPath);
         // Start-time fill honours the operator's detection model, so what
         // answers here is what the Project pane says will answer.
         const model = settings.detectModel || 'inherit';
@@ -94,10 +95,15 @@ export async function startRun(deps: StartRunDeps, input: StartRunInput): Promis
           reasoningEffort: model === 'inherit' ? 'off' : settings.defaultReasoningEffort,
           systemPrompt: DETECT_PROMPT,
         });
-        const turn = await session.send(
-          'Inspect this repository and report the verification commands.',
-          DETECT_FILL_TIMEOUT_MS,
-        );
+        const prompt = ['Inspect this repository and report the verification commands.'];
+        if (sniffed.length) {
+          prompt.push(
+            '',
+            'Reading this repository’s manifests suggested the commands below. Confirm, correct, or replace them, and add any the manifests missed:',
+            sniffed.map((c) => `- ${c.name}: ${c.argv.join(' ')} (from ${c.source})`).join('\n'),
+          );
+        }
+        const turn = await session.send(prompt.join('\n'), DETECT_FILL_TIMEOUT_MS);
         return parseDetectReply(turn.text).commands;
       },
       save: (next) => {

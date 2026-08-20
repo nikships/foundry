@@ -25,7 +25,7 @@ function phase(over: Partial<PhaseDef> = {}): PhaseDef {
     kind: 'agent',
     description: 'Judge the work against the request.',
     agent: 'reviewer',
-    prompt: { template: 'user', inputs: ['request'] },
+    prompt: { inputs: ['request'] },
     ...over,
   };
 }

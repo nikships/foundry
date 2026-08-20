@@ -184,6 +184,6 @@ describe('the gate runner', () => {
   it('turns violations into a correction that names each one', async () => {
     const message = gateCorrection(['artifacts_exist / nope.md: missing']);
     expect(message).toContain('nope.md');
-    expect(message).toContain('envelope JSON only');
+    expect(message).toContain('call submit_envelope again');
   });
 });

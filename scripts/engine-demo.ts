@@ -86,7 +86,7 @@ const AGENT_PIPELINE: PipelineDef = {
       description: 'Report what the scratch repo contains, without changing anything.',
       envelope: 'scout',
       gates: ['artifacts_exist'],
-      prompt: { template: 'user', inputs: ['request'] },
+      prompt: { inputs: ['request'] },
     },
   ],
 };

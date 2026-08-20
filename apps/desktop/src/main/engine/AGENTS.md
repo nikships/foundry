@@ -83,6 +83,6 @@ No engine-specific build step; it bundles as part of `out/main/main.js`.
 
 ## Additional Notes
 
-- **Command detection is separate from runs:** manifest sniffing is free, but `DetectSession` always asks an agent and runs against the base checkout with `DETECT_TOOLS` read-only restrictions. Detection has no worktree/trace rows/cursor; its progress is pushed via `detection-progress`. A later `{ref}` phase may re-sniff the worktree only to detect that the frozen argv is stale.
+- **Command detection is separate from runs:** manifest sniffing is free, but `DetectSession` always asks an agent and opens the base checkout with read-only access. Detection has no worktree/trace rows/cursor; its progress is pushed via `detection-progress`. A later `{ref}` phase may re-sniff the worktree only to detect that the frozen argv is stale.
 - **Acceptance** lives in `acceptance.ts` (post-phase checks beyond per-phase gates).
 - **Preflight** (`preflight.ts`) validates the run can start before touching git.
