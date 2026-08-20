@@ -22,12 +22,16 @@ import {
 import styles from './RunsScreen.module.css';
 
 export default function RunsScreen({
+  request,
+  onRequestChange,
   onOpen,
   onAddProject,
   onNewProject,
   onOpenSettings,
   onOpenReadiness,
 }: {
+  request: string;
+  onRequestChange: (request: string) => void;
   onOpen: (runId: string) => void;
   onAddProject?: () => void;
   /** Create a repository on GitHub instead of pointing at an existing checkout. */
@@ -36,7 +40,6 @@ export default function RunsScreen({
   onOpenReadiness?: () => void;
 }): React.JSX.Element {
   const { pipelines, project, projectId, refreshAll } = useApp();
-  const [request, setRequest] = useState('');
   const [selectedPipeline, setSelectedPipeline] = useState(
     () => localStorage.getItem('foundry.pipeline') ?? '',
   );
@@ -205,7 +208,7 @@ export default function RunsScreen({
         await refreshAll();
         return;
       }
-      setRequest('');
+      onRequestChange('');
       setStartNote('');
       await refreshAll();
       if (result.runId) onOpen(result.runId);
@@ -304,7 +307,7 @@ export default function RunsScreen({
           <textarea
             className={`textarea ${styles.request}`}
             value={request}
-            onChange={(e) => setRequest(e.target.value)}
+            onChange={(e) => onRequestChange(e.target.value)}
             rows={3}
             placeholder="What should the factory build? Be specific: the request is the whole brief."
             onKeyDown={onKeydown}

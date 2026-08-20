@@ -32,6 +32,7 @@ function AppInner(): React.JSX.Element {
   const { ready, settings, interrupts, project, refreshAll, refreshScoped, selectProject } =
     useApp();
   const [view, setView] = useState<View>('runs');
+  const [runRequest, setRunRequest] = useState('');
   const [creatingProject, setCreatingProject] = useState(false);
   const [readinessProjectId, setReadinessProjectId] = useState('');
   const [openRunId, setOpenRunId] = useState('');
@@ -241,6 +242,8 @@ function AppInner(): React.JSX.Element {
   } else if (view === 'runs') {
     main = (
       <RunsScreen
+        request={runRequest}
+        onRequestChange={setRunRequest}
         onOpen={openRun}
         onAddProject={() => void addProject()}
         onNewProject={newProject}

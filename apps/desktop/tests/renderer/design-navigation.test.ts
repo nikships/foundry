@@ -233,6 +233,24 @@ describe('CDP automation hooks', () => {
   });
 });
 
+describe('the Runs request draft', () => {
+  it('is owned by the app shell so navigating away does not discard it', () => {
+    expect(appSrc).toContain("const [runRequest, setRunRequest] = useState('')");
+    expect(appSrc).toContain('request={runRequest}');
+    expect(appSrc).toContain('onRequestChange={setRunRequest}');
+    expect(runsSrc).not.toContain("const [request, setRequest] = useState('')");
+  });
+
+  it('clears only after a run starts successfully', () => {
+    const success = runsSrc.indexOf("onRequestChange('')");
+    const failedStart = runsSrc.indexOf('if (!result.ok)');
+    const failureReturn = runsSrc.indexOf('return;', failedStart);
+
+    expect(success).toBeGreaterThan(failureReturn);
+    expect(runsSrc.match(/onRequestChange\(''\)/g)).toHaveLength(1);
+  });
+});
+
 describe('user-facing wording', () => {
   it('calls the roster "Agents" wherever the operator reads it', () => {
     expect(DESIGN_TABS.find((t) => t.id === 'agents')?.label).toBe('Agents');
