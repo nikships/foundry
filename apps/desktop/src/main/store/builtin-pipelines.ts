@@ -71,9 +71,8 @@ function buildPhase(): PhaseDef {
     kind: 'agent',
     agent: 'builder',
     retries: 2,
-    description: 'Implement the plan exactly and report every changed file.',
+    description: 'Implement the plan exactly.',
     envelope: 'build',
-    gates: ['diff_matches_claims'],
     prompt: { template: 'user', inputs: ['request', 'envelope:plan'] },
   };
 }
@@ -118,9 +117,7 @@ function commitBuildPhase(): PhaseDef {
  * The one phase allowed to both judge and fix: a gap it only reported would
  * leave the run rejected with the work still short of the bar.
  * `verdict_consistent` keeps it from approving its way out and forces the halt
- * when it cannot close a gap; `diff_matches_claims` keeps its repairs visible
- * in the envelope (the finisher's `changed_files` custom field is what it
- * checks against).
+ * when it cannot close a gap.
  */
 function productionCheckPhase(): PhaseDef {
   return {
@@ -130,7 +127,7 @@ function productionCheckPhase(): PhaseDef {
     retries: 2,
     description: 'Audit the work against the ship bar and close the gaps it finds.',
     envelope: 'review',
-    gates: ['verdict_consistent', 'disapproval_halts', 'diff_matches_claims'],
+    gates: ['verdict_consistent', 'disapproval_halts'],
     prompt: { template: 'user', inputs: ['request', 'envelope:build'] },
   };
 }
@@ -282,9 +279,8 @@ export const BUILTIN_PIPELINES: PipelineDef[] = [
         kind: 'agent',
         agent: 'builder',
         retries: 2,
-        description: 'Repair exactly the diagnosed fault and report every changed file.',
+        description: 'Repair exactly the diagnosed fault.',
         envelope: 'build',
-        gates: ['diff_matches_claims'],
         prompt: { template: 'user', inputs: ['request', 'envelope:diagnose'] },
       },
       testPhase('fix'),

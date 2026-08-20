@@ -181,7 +181,6 @@ describe('read_phase_context', () => {
           summary: 'added a helper',
           artifacts: ['src/add.js'],
           notes_for_next_agent: '',
-          changed_files: ['src/add.js'],
           commit_message: 'add helper',
         },
       ],
@@ -207,7 +206,6 @@ describe('submit_envelope', () => {
     status: 'success',
     summary: 'built it',
     artifacts: [],
-    changed_files: [],
     commit_message: 'add a thing',
     notes_for_next_agent: '',
   };

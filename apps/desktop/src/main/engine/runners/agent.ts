@@ -19,7 +19,6 @@ import {
   type ParseOutcome,
 } from '../envelopes.js';
 import { gateCorrection, runGates, violationsOf, type GateReport } from '../gates.js';
-import { changedPaths } from '../git.js';
 import { formatPromptRecord, renderPrompt, type RenderContext } from '../prompts.js';
 
 export interface AgentRunnerDeps {
@@ -355,7 +354,6 @@ export class AgentPhaseRunner implements PhaseRunner {
 
     const reports = await runGates(specs, envelope, {
       cwd: ctx.cwd,
-      changedPaths: await changedPaths(ctx.cwd),
     });
     for (const report of reports) {
       ctx.tracer.recordGate({

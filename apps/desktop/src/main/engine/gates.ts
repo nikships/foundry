@@ -19,8 +19,6 @@ const TAIL_CHARS = 1000;
 export interface GateContext {
   /** Everything a gate resolves paths against: the worktree, not the repo. */
   cwd: string;
-  /** Files git reports as changed since the phase started. */
-  changedPaths: string[];
 }
 
 export interface GateReport {
@@ -45,11 +43,6 @@ function resolveIn(cwd: string, p: string): string {
 
 function nothingToVerify(item: string): GateCheck[] {
   return [{ item, ok: true, note: 'nothing to verify' }];
-}
-
-/** Loose path equality used when matching claimed files against git status. */
-function pathsMatch(a: string, b: string): boolean {
-  return a === b || a.endsWith(b) || b.endsWith(a);
 }
 
 const artifacts_exist: GateFn = async (envelope, ctx) => {
@@ -109,55 +102,6 @@ const json_parses: GateFn = async (envelope, ctx) => {
     }
   }
   return checks.length ? checks : nothingToVerify('(no JSON artifacts)');
-};
-
-const diff_matches_claims: GateFn = async (envelope, ctx) => {
-  const claimed = (envelope.changed_files as string[] | undefined) ?? [];
-  if (!claimed.length) {
-    const n = ctx.changedPaths.length;
-    return [
-      {
-        item: '(no changed_files claimed)',
-        ok: n === 0,
-        note: n
-          ? `git reports ${n} changed path(s) the envelope does not claim: ${ctx.changedPaths.slice(0, 5).join(', ')}`
-          : 'git agrees nothing changed',
-      },
-    ];
-  }
-
-  const checks: GateCheck[] = claimed.map((f) => {
-    const exists = existsSync(resolveIn(ctx.cwd, f));
-    const inDiff = ctx.changedPaths.some((c) => pathsMatch(c, f));
-    if (inDiff && exists) {
-      return { item: f, ok: true, note: 'exists and appears in the diff' };
-    }
-    if (inDiff && !exists) {
-      return { item: f, ok: true, note: 'deleted, and that is a valid claim' };
-    }
-    if (exists) {
-      return {
-        item: f,
-        ok: true,
-        note: 'exists (git reports no change: may be unchanged content)',
-      };
-    }
-    return {
-      item: f,
-      ok: false,
-      note: 'claimed but neither on disk nor in the diff',
-    };
-  });
-
-  const unclaimed = ctx.changedPaths.filter((c) => !claimed.some((f) => pathsMatch(f, c)));
-  if (unclaimed.length) {
-    checks.push({
-      item: '(unclaimed changes)',
-      ok: false,
-      note: `git reports paths the envelope does not claim: ${unclaimed.slice(0, 8).join(', ')}`,
-    });
-  }
-  return checks;
 };
 
 const verdict_consistent: GateFn = async (envelope) => {
@@ -243,7 +187,6 @@ export const GATES: Record<string, GateFn> = {
   artifacts_exist,
   files_non_empty,
   json_parses,
-  diff_matches_claims,
   verdict_consistent,
   disapproval_halts,
   command_passes,
@@ -253,8 +196,6 @@ export const GATE_DESCRIPTIONS: Record<string, string> = {
   artifacts_exist: 'Every path the envelope declares as an artifact exists on disk.',
   files_non_empty: 'Declared artifacts have content, not just a name.',
   json_parses: 'Declared .json artifacts actually parse.',
-  diff_matches_claims:
-    'Files claimed as changed appear in the git diff (including deletions), and nothing changed is left unclaimed.',
   verdict_consistent: 'A review cannot approve while it also lists blocking items.',
   disapproval_halts:
     'A review that does not approve must report failure, so disapproved work never flows into later phases.',

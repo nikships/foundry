@@ -17,7 +17,7 @@ beforeAll(() => {
 });
 
 const base: Envelope = { status: 'success', summary: '', artifacts: [], notes_for_next_agent: '' };
-const ctx = (changedPaths: string[] = []) => ({ cwd: dir, changedPaths });
+const ctx = () => ({ cwd: dir });
 
 describe('artifacts_exist', () => {
   it('passes for a file that is there and reports its size', async () => {
@@ -58,50 +58,6 @@ describe('json_parses', () => {
     expect(checks).toHaveLength(2);
     expect(checks.find((c) => c.item === 'good.json')!.ok).toBe(true);
     expect(checks.find((c) => c.item === 'bad.json')!.ok).toBe(false);
-  });
-});
-
-describe('diff_matches_claims', () => {
-  it('fails a claim for a path that is neither on disk nor in the diff', async () => {
-    const checks = await GATES.diff_matches_claims!(
-      { ...base, changed_files: ['specs/ghost.md'] },
-      ctx(),
-    );
-    expect(checks[0]!.ok).toBe(false);
-    expect(checks[0]!.note).toContain('neither on disk nor in the diff');
-  });
-
-  it('accepts a claimed deletion that git reports and that is gone from disk', async () => {
-    const checks = await GATES.diff_matches_claims!(
-      { ...base, changed_files: ['gone.swift'] },
-      ctx(['gone.swift']),
-    );
-    expect(checks[0]!.ok).toBe(true);
-    expect(checks[0]!.note).toContain('deleted');
-  });
-
-  it('still accepts a claimed path that exists and appears in the diff', async () => {
-    const checks = await GATES.diff_matches_claims!(
-      { ...base, changed_files: ['specs/plan.md'] },
-      ctx(['specs/plan.md']),
-    );
-    expect(checks[0]!.ok).toBe(true);
-    expect(checks[0]!.note).toContain('exists and appears in the diff');
-  });
-
-  it('reports changes git saw that the envelope never claimed', async () => {
-    const checks = await GATES.diff_matches_claims!(
-      { ...base, changed_files: ['specs/plan.md'] },
-      ctx(['specs/plan.md', 'src/sneaky.ts']),
-    );
-    const unclaimed = checks.find((c) => c.item === '(unclaimed changes)');
-    expect(unclaimed?.ok).toBe(false);
-    expect(unclaimed?.note).toContain('src/sneaky.ts');
-  });
-
-  it('agrees when nothing was claimed and nothing changed', async () => {
-    const checks = await GATES.diff_matches_claims!(base, ctx());
-    expect(checks[0]!.ok).toBe(true);
   });
 });
 

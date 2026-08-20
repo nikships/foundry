@@ -32,10 +32,10 @@ export const BUILTIN_ENVELOPE_BLURBS: Record<EnvelopeKind, string> = {
   generic: 'Base reply: status, summary, artifacts, notes',
   brief: 'Rewritten request with constraints and acceptance criteria',
   plan: 'Approach plus a commit message for the next step',
-  build: 'Changed files and the commit message for the work',
+  build: 'Commit message for the work',
   scout: 'Findings from reading the repo, one per entry',
   review: 'Approve or block, with per-requirement findings',
-  document: 'Path of the doc written and the files it covers',
+  document: 'Base reply; the written doc is declared in artifacts',
   pr: 'Bounded title and a non-empty markdown pull-request body',
   issue: 'Bounded title and a non-empty markdown GitHub-issue body',
 };

@@ -440,7 +440,6 @@ export function createMockFoundryApi(): FoundryApi {
       gates: async () => [
         { id: 'artifacts_exist', description: 'Every declared artifact exists.' },
         { id: 'files_non_empty', description: 'Artifacts have content.' },
-        { id: 'diff_matches_claims', description: 'Claims match git diff.' },
       ],
       templateVariables: async () => [
         { token: '{{request}}', description: 'The original request.' },

@@ -32,10 +32,10 @@ const BUILTIN_BLURBS: Record<EnvelopeKind, string> = {
   generic: 'Bare outcome — status, summary, artifacts, handoff note.',
   brief: 'Adds a rewritten request, its constraints, and acceptance criteria.',
   plan: 'Adds a commit_message for the plan phase.',
-  build: 'Adds changed_files and commit_message for implementation work.',
+  build: 'Adds a commit_message for implementation work.',
   scout: 'Adds findings — a list of what was discovered.',
   review: 'Adds approved, structured findings, and blocking issues.',
-  document: 'Adds document_path and the files that were documented.',
+  document: 'Base reply; the written doc is declared in artifacts.',
   pr: 'Adds a bounded title and a non-empty markdown pull-request body.',
   issue: 'Adds a bounded title, a markdown GitHub-issue body, and optional labels.',
 };
@@ -152,12 +152,6 @@ const BUILTIN_EXTRA_FIELDS: Record<EnvelopeKind, CustomEnvelopeField[]> = {
   ],
   build: [
     {
-      name: 'changed_files',
-      type: 'string[]',
-      required: false,
-      description: 'src/file/you/edited.ts',
-    },
-    {
       name: 'commit_message',
       type: 'string',
       required: false,
@@ -192,20 +186,7 @@ const BUILTIN_EXTRA_FIELDS: Record<EnvelopeKind, CustomEnvelopeField[]> = {
       description: 'problems that must be fixed before this can ship',
     },
   ],
-  document: [
-    {
-      name: 'document_path',
-      type: 'string',
-      required: false,
-      description: 'docs/what-you-wrote.md',
-    },
-    {
-      name: 'documented_files',
-      type: 'string[]',
-      required: false,
-      description: 'src/file/you/documented.ts',
-    },
-  ],
+  document: [],
   pr: [
     {
       name: 'title',

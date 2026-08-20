@@ -174,7 +174,6 @@ function buildEnvelope(over: Record<string, unknown> = {}): string {
     status: 'success',
     summary: 'built it',
     artifacts: [],
-    changed_files: [],
     commit_message: 'add a thing',
     notes_for_next_agent: '',
     ...over,
@@ -608,18 +607,18 @@ describe('code phases', () => {
 
 describe('agent phases', () => {
   it('parses an envelope, runs gates, and records both', async () => {
-    const scripted = scriptedAgent([buildEnvelope({ changed_files: ['made.txt'] })], ['made.txt']);
+    const scripted = scriptedAgent([buildEnvelope({ artifacts: ['made.txt'] })], ['made.txt']);
     const outcome = await run({
       scripted,
       pipeline: pipe(
         [
           agentPhase('build', {
-            description: 'Have the scripted agent make a file and claim it.',
-            gates: ['diff_matches_claims'],
+            description: 'Have the scripted agent make a file and declare it.',
+            gates: ['artifacts_exist'],
           }),
         ],
         {
-          description: 'one agent phase with a claims gate',
+          description: 'one agent phase with an artifacts gate',
           acceptance: { kind: 'envelope_status', phase: 'build' },
         },
       ),
@@ -629,12 +628,12 @@ describe('agent phases', () => {
     expect(envelopes).toHaveLength(1);
     expect(envelopes[0]!.valid).toBe(true);
     const gates = h.tracer.gateResults(outcome.runId);
-    expect(gates[0]!.gate).toBe('diff_matches_claims');
+    expect(gates[0]!.gate).toBe('artifacts_exist');
     expect(gates[0]!.passed).toBe(true);
   });
 
-  it('accepts a claimed deletion as a matching change', async () => {
-    const scripted = scriptedAgent([buildEnvelope({ changed_files: ['README.md'] })], [], [], {
+  it('applies a deletion made during an agent turn', async () => {
+    const scripted = scriptedAgent([buildEnvelope()], [], [], {
       deleteEffects: ['README.md'],
     });
     const outcome = await run({
@@ -642,18 +641,16 @@ describe('agent phases', () => {
       pipeline: pipe(
         [
           agentPhase('build', {
-            description: 'Delete a tracked file and claim the deletion.',
-            gates: ['diff_matches_claims'],
+            description: 'Delete a tracked file.',
           }),
         ],
         {
-          description: 'rewrite-style deletion claim',
+          description: 'deletion during agent turn',
           acceptance: { kind: 'envelope_status', phase: 'build' },
         },
       ),
     });
     expect(outcome.status).toBe('accepted');
-    expect(h.tracer.gateResults(outcome.runId)[0]!.passed).toBe(true);
     const worktree = h.tracer.run(outcome.runId)!.worktreePath!;
     expect(existsSync(join(worktree, 'README.md'))).toBe(false);
   });
@@ -790,10 +787,7 @@ describe('agent phases', () => {
   });
 
   it('allows a write that is inside the boundary', async () => {
-    const scripted = scriptedAgent(
-      [buildEnvelope({ changed_files: ['allowed/x.txt'] })],
-      ['allowed/x.txt'],
-    );
+    const scripted = scriptedAgent([buildEnvelope()], ['allowed/x.txt']);
     const outcome = await run({
       scripted,
       agents: [buildAgent({ writes: ['allowed/'] })],
@@ -815,12 +809,9 @@ describe('agent phases', () => {
   });
 
   it('retries a gate failure as a correction into the same session', async () => {
-    // First turn claims a file it never wrote; second turn tells the truth.
+    // First turn declares a file it never wrote; second turn tells the truth.
     const scripted = scriptedAgent(
-      [
-        buildEnvelope({ changed_files: ['ghost.txt'] }),
-        buildEnvelope({ changed_files: ['real.txt'] }),
-      ],
+      [buildEnvelope({ artifacts: ['ghost.txt'] }), buildEnvelope({ artifacts: ['real.txt'] })],
       [null, 'real.txt'],
     );
     const outcome = await run({
@@ -830,11 +821,11 @@ describe('agent phases', () => {
           agentPhase('build', {
             retries: 1,
             description: 'Prove a gate failure costs one message inside the live session.',
-            gates: ['diff_matches_claims'],
+            gates: ['artifacts_exist'],
           }),
         ],
         {
-          description: 'a claims gate rejects the first attempt',
+          description: 'an artifacts gate rejects the first attempt',
           acceptance: { kind: 'envelope_status', phase: 'build' },
         },
       ),
@@ -1226,7 +1217,7 @@ describe('the trace record', () => {
     // Prompt on disk is exactly what was sent, envelope example included.
     const prompt = readFileSync(join(dir, 'builder/prompts/build-1.md'), 'utf8');
     expect(prompt).toContain('do the thing');
-    expect(prompt).toContain('changed_files');
+    expect(prompt).toContain('commit_message');
   });
 
   it('records the resolved model on agent_start when the roster says inherit (FOU-68)', async () => {
@@ -1342,7 +1333,7 @@ describe('the trace record', () => {
   it('runs an execution in an initially empty repository without failing isolation', async () => {
     const empty = emptyRepo();
     const scripted = scriptedAgent(
-      [buildEnvelope({ summary: 'created initial app', changed_files: ['index.ts'] })],
+      [buildEnvelope({ summary: 'created initial app' })],
       ['index.ts'],
     );
     const outcome = await run({
@@ -1762,7 +1753,6 @@ describe('structured-output envelopes', () => {
     status: 'success',
     summary: 'built it from the schema',
     artifacts: [],
-    changed_files: [],
     commit_message: 'add a thing',
     notes_for_next_agent: '',
   };
@@ -2030,9 +2020,9 @@ describe('correction instrumentation', () => {
     const scripted = scriptedAgent(
       [
         'prose, not JSON',
-        buildEnvelope({ changed_files: ['allowed/ok.txt'] }),
-        buildEnvelope({ changed_files: ['ghost.txt'] }),
-        buildEnvelope({ changed_files: ['real.txt'] }),
+        buildEnvelope(),
+        buildEnvelope({ artifacts: ['ghost.txt'] }),
+        buildEnvelope({ artifacts: ['real.txt'] }),
       ],
       [null, 'forbidden/slipped.txt', null, 'real.txt'],
     );
@@ -2045,7 +2035,7 @@ describe('correction instrumentation', () => {
           agentPhase('build', {
             retries: 2,
             description: 'Share one correctionIndex across envelope, boundary, and gate.',
-            gates: ['diff_matches_claims'],
+            gates: ['artifacts_exist'],
           }),
         ],
         {

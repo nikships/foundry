@@ -99,7 +99,6 @@ const buildEnvelope = (): string =>
     status: 'success',
     summary: 'built it',
     artifacts: [],
-    changed_files: [],
     commit_message: 'add a thing',
     notes_for_next_agent: '',
   });

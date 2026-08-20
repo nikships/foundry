@@ -70,11 +70,6 @@ describe('shipped agents', () => {
   it('keeps the refiner read-only, since sharpening a request is not doing the work', () => {
     expect(agentByName('refiner')?.writes).toEqual([]);
   });
-
-  it('has the finisher claim its changed files, so diff_matches_claims can check them', () => {
-    const finisher = agentByName('finisher');
-    expect(finisher?.customFields?.some((f) => f.name === 'changed_files')).toBe(true);
-  });
 });
 
 describe('shipped pipelines', () => {

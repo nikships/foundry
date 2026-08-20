@@ -197,13 +197,13 @@ describe('custom envelope library defs', () => {
   it('prefers a built-in when the name collides with a kind', () => {
     const colliding = [
       {
-        name: 'build',
+        name: 'brief',
         fields: [{ name: 'severity', type: 'string' as const, required: true }],
       },
     ];
-    // Built-in wins: changed_files is present, severity is not required.
-    const example = JSON.parse(exampleFor('build', undefined, colliding));
-    expect(example).toHaveProperty('changed_files');
+    // Built-in wins: improved_request is present, severity is not required.
+    const example = JSON.parse(exampleFor('brief', undefined, colliding));
+    expect(example).toHaveProperty('improved_request');
     expect(example).not.toHaveProperty('severity');
   });
 });
@@ -222,9 +222,9 @@ describe('generated examples', () => {
   });
 
   it('is what the correction message restates', () => {
-    const message = correctionMessage('status: Required', 'build');
+    const message = correctionMessage('status: Required', 'brief');
     expect(message).toContain('status: Required');
-    expect(message).toContain('changed_files');
+    expect(message).toContain('improved_request');
   });
 });
 
@@ -233,10 +233,10 @@ describe('dry-run placeholders', () => {
     const brief = placeholderEnvelope('refine', 'brief');
     expect(brief).toHaveProperty('improved_request');
     expect(brief).toHaveProperty('acceptance_criteria');
-    expect(brief).not.toHaveProperty('changed_files');
+    expect(brief).not.toHaveProperty('commit_message');
 
     const build = placeholderEnvelope('build', 'build');
-    expect(build).toHaveProperty('changed_files');
+    expect(build).toHaveProperty('commit_message');
     expect(build).not.toHaveProperty('improved_request');
   });
 
@@ -309,10 +309,10 @@ describe('json schema derivation', () => {
       generic: base,
       brief: [...base, 'improved_request', 'constraints', 'acceptance_criteria'],
       plan: [...base, 'commit_message'],
-      build: [...base, 'changed_files', 'commit_message'],
+      build: [...base, 'commit_message'],
       scout: [...base, 'findings'],
       review: [...base, 'approved', 'findings', 'blocking'],
-      document: [...base, 'document_path', 'documented_files'],
+      document: base,
       pr: [...base, 'title', 'body'],
       issue: [...base, 'title', 'body', 'labels'],
     };

@@ -45,11 +45,7 @@ export const schemas = {
     acceptance_criteria: z.array(z.string()).default([]),
   }),
   plan: z.object({ ...base, commit_message: z.string().default('') }),
-  build: z.object({
-    ...base,
-    changed_files: z.array(z.string()).default([]),
-    commit_message: z.string().default(''),
-  }),
+  build: z.object({ ...base, commit_message: z.string().default('') }),
   scout: z.object({ ...base, findings: z.array(z.string()).default([]) }),
   review: z.object({
     ...base,
@@ -57,11 +53,7 @@ export const schemas = {
     findings: z.array(reviewFinding).default([]),
     blocking: z.array(z.string()).default([]),
   }),
-  document: z.object({
-    ...base,
-    document_path: z.string().default(''),
-    documented_files: z.array(z.string()).default([]),
-  }),
+  document: z.object({ ...base }),
   pr: z.object({
     ...base,
     title: z.string().min(1).max(PR_TITLE_MAX),
@@ -89,12 +81,9 @@ const FIELD_HINTS: Record<string, unknown> = {
   improved_request: 'the rewritten request, standalone and ready to hand to the next phase',
   constraints: ['a rule the work must respect'],
   acceptance_criteria: ['how anyone can tell this is done'],
-  changed_files: ['src/file/you/edited.ts', 'path/you/deleted.ts'],
   findings: ['what you found, one per entry'],
   approved: true,
   blocking: ['a problem that must be fixed before this can ship'],
-  document_path: 'docs/what-you-wrote.md',
-  documented_files: ['src/file/you/documented.ts'],
   title: 'imperative PR title, ≤72 chars, no trailing period',
   body: 'markdown PR body — follow the repo template, or the fallback headings',
   labels: ['a label that already exists in the repo'],
