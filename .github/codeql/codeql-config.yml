@@ -11,6 +11,7 @@ paths-ignore:
   # Standalone marketing site: static, ships no app code, and is not part of
   # the desktop build. The check itself still runs and reports on every PR —
   # only the scan scope excludes this folder.
-  - website
+  - apps/website
+  - apps/android
   - '**/*.test.ts'
-  - tests/fake-droid.ts
+  - 'apps/desktop/tests/**'

@@ -12,7 +12,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, extname } from 'node:path';
 
-const rendererRoot = new URL('../src/renderer', import.meta.url).pathname;
+const rendererRoot = new URL('../apps/desktop/src/renderer', import.meta.url).pathname;
 
 // Extract base-owned class names: classes directly defined (not as descendants)
 // in tokens-base.css. A line like `.field {` or `.btn.primary {` owns `.field`

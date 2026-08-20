@@ -38,7 +38,7 @@ const MARKDOWN_DOCS = [
   'README.md',
   'AGENTS.md',
   '.github/AGENTS.md',
-  ...findNestedAgentDocs('src'),
+  ...findNestedAgentDocs('apps/desktop/src'),
 ];
 
 /** Non-markdown files that also invoke npm scripts and can therefore go stale. */

@@ -4,9 +4,9 @@ import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 
 const alias = {
-  '@shared': resolve(import.meta.dirname, 'src/shared'),
-  '@main': resolve(import.meta.dirname, 'src/main'),
-  '@renderer': resolve(import.meta.dirname, 'src/renderer'),
+  '@shared': resolve(import.meta.dirname, 'apps/desktop/src/shared'),
+  '@main': resolve(import.meta.dirname, 'apps/desktop/src/main'),
+  '@renderer': resolve(import.meta.dirname, 'apps/desktop/src/renderer'),
 };
 
 function copyDir(src: string, dest: string): void {
@@ -43,7 +43,7 @@ function assetsPlugin(): Plugin {
 }
 
 export default defineConfig({
-  root: resolve(import.meta.dirname, 'src/renderer'),
+  root: resolve(import.meta.dirname, 'apps/desktop/src/renderer'),
   resolve: { alias },
   css: {
     modules: {
@@ -66,7 +66,7 @@ export default defineConfig({
     outDir: resolve(import.meta.dirname, 'out/web'),
     emptyOutDir: true,
     rollupOptions: {
-      input: resolve(import.meta.dirname, 'src/renderer/index.html'),
+      input: resolve(import.meta.dirname, 'apps/desktop/src/renderer/index.html'),
     },
   },
 });

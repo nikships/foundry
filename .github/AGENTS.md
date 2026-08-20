@@ -24,9 +24,9 @@ npm run check   # mirrors ci.yml's verify gate
 
 ## Development Workflow
 
-- `ci.yml` triggers: `push` on `main` (path-filtered for `src/**` + `tests/**` + `scripts/**` + `assets/**` + `android/**` + config + `.github/workflows/**`), plus every `pull_request` on `main` **without** a paths filter. The unfiltered PR trigger is intentional — `verify` + `android` + `actionlint` are required checks; a required check that never starts blocks PRs and even admin merges. The advisory `e2e` job rides the same triggers.
+- `ci.yml` triggers: `push` on `main` (path-filtered for `apps/**` + `scripts/**` + `assets/**` + config + `.github/workflows/**`), plus every `pull_request` on `main` **without** a paths filter. The unfiltered PR trigger is intentional — `verify` + `android` + `actionlint` are required checks; a required check that never starts blocks PRs and even admin merges. The advisory `e2e` job rides the same triggers.
 - `verify` runs from the repo root (Node 22, `npm ci`): typecheck, lint, format:check, `check:docs`, knip, `test:coverage`, build, `audit:deps` (high/critical only). It does **not** run `check:css` — that gate is local-only. It does **not** run `test:e2e`.
-- `android` runs `./gradlew :app:testDebugUnitTest` from `android/` (JDK 21, `ubuntu-latest`).
+- `android` runs `./gradlew :app:testDebugUnitTest` from `apps/android/` (JDK 21, `ubuntu-latest`).
 - `e2e` builds the app and runs `npm run test:e2e` (Playwright + Electron, isolated fixtures, no model). It is **advisory**: not a required check, not part of `npm run check`. Failures upload `playwright-report/` and `test-results/`. Promote only after the flake rate is known.
 - `test:coverage` (not plain `test`) is deliberate: coverage thresholds live in `vitest.config.ts`, so CI and `npm run check` enforce the same floor and neither can drift from the other. Coverage is measured on `src/main`, `src/shared`, and `src/cli`; see the root `AGENTS.md` for scope and floors.
 - `check:docs` is a fast static validator (`scripts/check-docs-commands.mjs`) that fails when a command documented in an `AGENTS.md`, the `README`, the `Makefile`, or a workflow no longer resolves to a real npm script or make target. It executes nothing it reads. It runs early in `verify` because it costs about a second and catches doc drift before the expensive jobs.
@@ -40,7 +40,7 @@ npm run check   # mirrors ci.yml's verify gate
 npm run typecheck && npm run lint && npm run format:check && npm run check:docs && npm run knip && npm run test:coverage && npm run build && npm run audit:deps
 
 # Run Android unit tests locally
-cd android && ./gradlew :app:testDebugUnitTest
+cd apps/android && ./gradlew :app:testDebugUnitTest
 
 # Electron UI smoke (macOS GUI session; advisory, not part of the required gate)
 npm run build && npm run test:e2e

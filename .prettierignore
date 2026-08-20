@@ -16,10 +16,12 @@ test-results
 references
 
 # Standalone marketing site — has its own toolchain and is not part of the
-# desktop app build, the repo gate, or CI. See website/README.md.
+# desktop app build, the repo gate, or CI. See apps/website/README.md.
+apps/website
 website
 .agents/agent-ready.json
 
 # Android application scaffold
+apps/android
 android
 

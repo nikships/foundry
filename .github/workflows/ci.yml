@@ -7,8 +7,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'src/**'
-      - 'tests/**'
+      - 'apps/**'
       - 'scripts/**'
       - 'assets/**'
       - 'package.json'
@@ -17,7 +16,6 @@ on:
       - 'electron-builder.yml'
       - '*.config.*'
       - '.github/workflows/**'
-      - 'android/**'
   # No paths filter here, on purpose. verify, android, and actionlint are required checks
   # on main, and a required check that never starts is never satisfied: a PR
   # touching only docs or assets is then blocked forever, and even an admin
@@ -100,7 +98,7 @@ jobs:
           cache: gradle
 
       - name: Run Android unit tests
-        working-directory: android
+        working-directory: apps/android
         run: ./gradlew :app:testDebugUnitTest
 
   # ── Workflow hygiene ───────────────────────────────────────────────────────

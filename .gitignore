@@ -96,6 +96,7 @@ node_modules/.vite/
 *.vue.js
 
 # Firebase
+/apps/website/.firebase/
 /website/.firebase/
 # Coverage (vitest / cypress)
 coverage/
@@ -173,6 +174,12 @@ out/
 .omo/
 
 # Android
+apps/android/.gradle/
+apps/android/build/
+apps/android/app/build/
+apps/android/local.properties
+apps/android/.cxx/
+apps/android/.idea/
 android/.gradle/
 android/build/
 android/app/build/

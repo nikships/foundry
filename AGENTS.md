@@ -8,37 +8,58 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 
 **Key concepts:**
 
-- **Pipeline / Phase / Agent / Envelope / Gate** — see `src/shared/types.ts` and `src/main/engine/`.
-- **Worktree isolation** — each run gets `.foundry-worktrees/<runId>` on branch `foundry/<runId>`. The base checkout is never mutated; merge/discard is an explicit operator action in `engine/worktree.ts`.
-- **Smith** — Foundry's entity-smith. Not a feature of the app's UI: it is a skill (`skills/foundry-smith/`) the user loads into their own agent, in their own terminal, which drives the app through the `foundry-cli` helper over a unix socket. The app validates each proposal and holds every write behind a native approval card (`src/main/smith/`, `SmithProposalCard`). Read-only ops answer immediately; there is no delete, and projects are list-only. The sidebar's Smith entry opens the user's preferred terminal (Settings → General) at the project root and starts the chosen coding agent (Droid, Claude Code, Codex, OpenCode, or Pi) with the skill and opening prompt — a handoff, not an embedded terminal.
-- **Main owns privilege** — git, disk, child processes, CLIs, and SQLite live in `src/main/`. The renderer (`src/renderer/`) is unprivileged and reaches main only through the typed IPC seam (`src/shared/ipc-contract.ts` → `src/main/ipc/` → `src/preload/bridge.ts` → `src/renderer/api.ts`).
+- **Pipeline / Phase / Agent / Envelope / Gate** — see `apps/desktop/src/shared/types.ts` and `apps/desktop/src/main/engine/`.
+- **Worktree isolation** — each run gets `.foundry-worktrees/<runId>` on branch `foundry/<runId>`. The base checkout is never mutated; merge/discard is an explicit operator action in `apps/desktop/src/main/engine/worktree.ts`.
+- **Smith** — Foundry's entity-smith. Not a feature of the app's UI: it is a skill (`skills/foundry-smith/`) the user loads into their own agent, in their own terminal, which drives the app through the `foundry-cli` helper over a unix socket. The app validates each proposal and holds every write behind a native approval card (`apps/desktop/src/main/smith/`, `SmithProposalCard`). Read-only ops answer immediately; there is no delete, and projects are list-only. The sidebar's Smith entry opens the user's preferred terminal (Settings → General) at the project root and starts the chosen coding agent (Droid, Claude Code, Codex, OpenCode, or Pi) with the skill and opening prompt — a handoff, not an embedded terminal.
+- **Main owns privilege** — git, disk, child processes, CLIs, and SQLite live in `apps/desktop/src/main/`. The renderer (`apps/desktop/src/renderer/`) is unprivileged and reaches main only through the typed IPC seam (`apps/desktop/src/shared/ipc-contract.ts` → `apps/desktop/src/main/ipc/` → `apps/desktop/src/preload/bridge.ts` → `apps/desktop/src/renderer/api.ts`).
 
 ## Architecture
 
 ```
-.                              ← the application (repo root)
-├── src/main/                  ← Node main process (privileged)
-│   ├── engine/                ← sequencing, retries, boundaries, gates, worktrees
-│   ├── pi/                    ← every agent call, in-process: run sessions and one-shots (no fallback)
-│   ├── session/               ← shared PanelSession + SessionRegistry for detect/setup/readiness
-│   ├── bridge/                ← vendored CLIProxyAPI: provider OAuth → local endpoint pi calls
-│   ├── readiness/             ← agent-readiness evaluation and its marker
-│   ├── smith/                 ← Smith's socket, validation, approval queue
-│   ├── trace/                 ← Tracer: sole SQLite writer (WAL)
-│   ├── store/                 ← JSON config (JsonStore, builtins)
-│   ├── system/                ← PATH resolution, process control, doctor
-│   ├── ipc/                   ← domain routers, named channel seam
-│   └── updater.ts             ← electron-updater
-├── src/renderer/              ← React 19 (no fs/child_process/electron imports)
-├── src/shared/                ← pure types & IPC constants (no side effects)
-├── src/preload/               ← narrow CJS bridge (bridge.cjs) for sandbox
-├── src/cli/                   ← foundry-cli: the standalone Smith helper binary
-├── skills/                    ← agent skills for users, keep up-to-date with 'smith' capabilities
-├── references/                ← pinned copies of pi-coding-agent vendor docs (read before touching src/main/pi)
-├── website/                   ← marketing website for foundry app (do not update unless told to)
-├── tests/                     ← Vitest suites (real git temp repos + scripted transport)
-│   └── e2e/                   ← Playwright Electron UI smoke (not in npm run check)
-└── scripts/                   ← check-css-collisions, check-docs-commands, audit-deps, engine-demo
+.
+├── apps/
+│   ├── desktop/               ← native macOS Electron application
+│   │   ├── src/
+│   │   │   ├── cli/           ← foundry-cli: standalone Smith helper binary
+│   │   │   ├── main/          ← Node main process (privileged, modular domain subfolders)
+│   │   │   │   ├── bridge/    ← CLIProxyAPI provider OAuth & local endpoint
+│   │   │   │   ├── companion/ ← Companion mobile pairing & host server
+│   │   │   │   ├── engine/    ← sequencing, retries, boundaries, gates, worktrees
+│   │   │   │   ├── ipc/       ← domain routers, named channel seam
+│   │   │   │   ├── pi/        ← in-process agent runtime sessions & one-shots
+│   │   │   │   ├── readiness/ ← agent-readiness evaluation & remediation
+│   │   │   │   ├── session/   ← shared PanelSession & SessionRegistry
+│   │   │   │   ├── smith/     ← Smith's socket, validation, approval queue
+│   │   │   │   ├── store/     ← JSON config stores & builtins
+│   │   │   │   ├── system/    ← PATH resolution, process control, doctor
+│   │   │   │   ├── trace/     ← Tracer: sole SQLite writer (WAL)
+│   │   │   │   ├── context.ts
+│   │   │   │   ├── main.ts    ← Electron entrypoint
+│   │   │   │   └── updater.ts ← electron-updater
+│   │   │   ├── preload/       ← narrow CJS bridge (bridge.cjs) for sandbox
+│   │   │   ├── renderer/      ← React 19 UI (unprivileged)
+│   │   │   │   ├── components/← domain-scoped components (common, inspector, layout, media, pipeline, project, readiness, run, smith, ui)
+│   │   │   │   ├── screens/   ← screen components & onboarding
+│   │   │   │   ├── view-models/← screen & entity view-models / draft handlers
+│   │   │   │   ├── utils/     ← format, keyboard, local-store, navigation, derive
+│   │   │   │   ├── hooks/     ← React hooks
+│   │   │   │   ├── stores/    ← React state stores
+│   │   │   │   └── design/    ← tokens & fonts
+│   │   │   └── shared/        ← pure types & IPC constants (no side effects)
+│   │   └── tests/             ← Vitest & Playwright suites mirroring src
+│   │       ├── main/          ← tests for src/main (engine, pi, smith, bridge, readiness, store, system, companion, session, trace, ipc)
+│   │       ├── renderer/      ← tests for renderer components, view-models, hooks, utils
+│   │       ├── shared/        ← tests for shared contracts and types
+│   │       ├── helpers/       ← test fixtures & harnesses (scripted-transport, scripted-oneshot, fake-gh, tmp, setup-tmp)
+│   │       ├── fixtures/      ← test data fixtures
+│   │       └── e2e/           ← Playwright Electron UI smoke
+│   ├── android/               ← companion Android app (Kotlin / Jetpack Compose)
+│   └── website/               ← marketing & docs website (Vite / Tailwind)
+├── assets/                    ← shared branding assets & graphics
+├── references/                ← pinned copies of pi-coding-agent vendor docs
+├── scripts/                   ← check-css-collisions, check-docs-commands, audit-deps, engine-demo, fetch-bridge
+├── skills/                    ← agent skills for users (skills/foundry-smith)
+└── specs/                     ← historical architecture run plans
 
 .githooks/                     ← tracked git hooks (pre-commit); installed by npm run prepare
 .github/workflows/             ← CI (ci.yml) + packaging (mac-package.yml)
@@ -50,9 +71,9 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 ## Invariants (read before changing sequencing or persistence)
 
 - **Every phase starts `fail`** and becomes `success` only after clean exit, parsed envelope, and passing gates. Boundaries are enforced after the call by diffing git; protected paths always fail.
-- `**Tracer` is the sole SQLite writer.** See `src/main/trace/AGENTS.md`. WAL lets renderer reads proceed while the writer commits. Polling uses `run_id = ? AND change_id > ? ORDER BY rowid`; `change_id` is the cursor (`MAX(change_id)`), `rowid` is display order. Every insert/update stamps a new `change_id`.
-- `**finish()` settles run status + operator-facing completion together** (notification, banner, `outcome_detail`). Do not update those independently. See `src/main/AGENTS.md`.
-- **Electron single-instance lock** — a second writer would corrupt the per-project trace (`app.requestSingleInstanceLock()` in `src/main/main.ts`).
+- `**Tracer` is the sole SQLite writer.** See `apps/desktop/src/main/trace/AGENTS.md`. WAL lets renderer reads proceed while the writer commits. Polling uses `run_id = ? AND change_id > ? ORDER BY rowid`; `change_id` is the cursor (`MAX(change_id)`), `rowid` is display order. Every insert/update stamps a new `change_id`.
+- `**finish()` settles run status + operator-facing completion together** (notification, banner, `outcome_detail`). Do not update those independently. See `apps/desktop/src/main/AGENTS.md`.
+- **Electron single-instance lock** — a second writer would corrupt the per-project trace (`app.requestSingleInstanceLock()` in `apps/desktop/src/main/main.ts`).
 
 ## Setup Commands
 
@@ -90,7 +111,7 @@ remain authoritative.
 
 App state lives under `~/Library/Application Support/foundry/` (sharded per project). Assets for the running app are in `assets/`.
 
-**GUI PATH trap:** a packaged launch inherits launchd's minimal PATH. `src/main/system/env.ts:resolveEnv()` must complete before any CLI lookup/spawn; every spawn uses `spawnEnv()`. See `src/main/system/AGENTS.md`.
+**GUI PATH trap:** a packaged launch inherits launchd's minimal PATH. `apps/desktop/src/main/system/env.ts:resolveEnv()` must complete before any CLI lookup/spawn; every spawn uses `spawnEnv()`. See `apps/desktop/src/main/system/AGENTS.md`.
 
 ## Development Workflow
 
@@ -113,31 +134,31 @@ Do not run app to validate small fixes.
 
 Use foundry-ui skill to validate larger changes. Drive the real app with that
 skill (CDP + agent-browser) rather than writing a scratch Playwright spec:
-`tests/e2e/` is for committed regression specs, and the skill is the harness
+`apps/desktop/tests/e2e/` is for committed regression specs, and the skill is the harness
 for checking your own work. If the launch looks blocked, the skill's
 Troubleshooting section covers the usual causes; verify with
 `pgrep -fl "electron \."` before concluding the environment is at fault.
 
 **Path aliases** are configured in both `electron.vite.config.ts` and `tsconfig.json`:
 
-- `@shared/*` → `src/shared/*`
-- `@main/*` → `src/main/*`
-- `@renderer/*` → `src/renderer/*`
+- `@shared/*` → `apps/desktop/src/shared/*`
+- `@main/*` → `apps/desktop/src/main/*`
+- `@renderer/*` → `apps/desktop/src/renderer/*`
 
 **Preload must stay CJS** (`out/preload/bridge.cjs`) because sandboxed preloads cannot be ESM.
 
-**Agent-runtime import boundary** (ESLint `no-restricted-imports`): only `src/main/pi/**` may import `@earendil-works/pi-*`. Everything above it talks to `pi/transport.ts`'s `AgentTransport`, so the runtime stays replaceable without touching every layer. Before changing `src/main/pi/**` or anything that names `@earendil-works/pi-*`, read `src/main/pi/AGENTS.md` and the pinned vendor docs in `references/` (start at `references/README.md`). Those files are copies of `@earendil-works/pi-coding-agent@0.84.2` — do not fetch live pi.dev or GitHub docs; the pin is the contract. Foundry uses the in-process SDK (`createAgentSession`), not RPC and not a child process.
+**Agent-runtime import boundary** (ESLint `no-restricted-imports`): only `apps/desktop/src/main/pi/**` may import `@earendil-works/pi-*`. Everything above it talks to `apps/desktop/src/main/pi/transport.ts`'s `AgentTransport`, so the runtime stays replaceable without touching every layer. Before changing `apps/desktop/src/main/pi/**` or anything that names `@earendil-works/pi-*`, read `apps/desktop/src/main/pi/AGENTS.md` and the pinned vendor docs in `references/` (start at `references/README.md`). Those files are copies of `@earendil-works/pi-coding-agent@0.84.2` — do not fetch live pi.dev or GitHub docs; the pin is the contract. Foundry uses the in-process SDK (`createAgentSession`), not RPC and not a child process.
 
 ## Testing Instructions
 
-Framework: **Vitest 4** (`forks` pool, `environment: node`, 30s timeout). Suites live in `tests/`.
+Framework: **Vitest 4** (`forks` pool, `environment: node`, 30s timeout). Suites live in `apps/desktop/tests/`.
 
 ```bash
 npm test                    # vitest run (all suites)
 npm run test:watch          # vitest watch mode
 npm run test:coverage       # vitest run --coverage (enforces thresholds; part of npm run check)
 npx vitest run -t "<name>"  # focus by test name pattern
-npx vitest run tests/engine.test.ts  # single file
+npx vitest run apps/desktop/tests/main/engine/executor.test.ts  # single file
 
 # Run the suite with capped workers; the default parallelism can be killed locally.
 npx vitest run --maxWorkers=2
@@ -152,11 +173,11 @@ npm run build && npm run test:e2e
 `vitest.config.ts` is breached, and `npm run check` runs that variant rather than plain `npm test`,
 so local and CI enforce the same floor. An HTML report lands in `coverage/` (gitignored).
 
-- **Scope** — `src/main/**`, `src/shared/**`, `src/cli/**`: the privileged, headless core that
-  Vitest can execute under `environment: node`. `src/renderer/**` and `src/preload/**` are excluded
-  because they only run inside Electron, as is `src/main/main.ts` (app bootstrap). UI verification
+- **Scope** — `apps/desktop/src/main/**`, `apps/desktop/src/shared/**`, `apps/desktop/src/cli/**`: the privileged, headless core that
+  Vitest can execute under `environment: node`. `apps/desktop/src/renderer/**` and `apps/desktop/src/preload/**` are excluded
+  because they only run inside Electron, as is `apps/desktop/src/main/main.ts` (app bootstrap). UI verification
   is `npm run test:e2e` (Playwright launching `out/` against isolated fixtures). The fixture seeder
-  itself is covered by `tests/e2e-fixture.test.ts` inside the Vitest gate.
+  itself is covered by `apps/desktop/tests/helpers/e2e-fixture.test.ts` inside the Vitest gate.
 - **Floors** — statements 62, branches 54, functions 61, lines 65. These sit a few points under the
   measured values and exist to catch regressions, not to certify the codebase. The scope deliberately
   includes the thin IPC routers that drag the average down rather than excluding them to look better.
@@ -165,10 +186,10 @@ so local and CI enforce the same floor. An HTML report lands in `coverage/` (git
 
 **Conventions:**
 
-- Tests use **real git temp repositories** and `tests/scripted-transport.ts` (an in-memory `AgentTransport` that performs real disk side effects in the worktree and answers asks through the real policy). Never use a network or model; do not mock git. Follow the executor pattern in `tests/executor.test.ts` for new engine behavior.
-- **Electron UI smoke** (`tests/e2e/*.spec.ts`, `@playwright/test` + `_electron.launch()`): isolated `--user-data-dir`, seeded stores + WAL trace, no model or network. Onboarding walks Welcome → Ready; Inspector opens a seeded run and asserts the phase transcript. Failures write `test-results/` + `playwright-report/` (screenshot, trace, video). Interactive agent driving of the same app is the `foundry-ui` skill (CDP + agent-browser); do not add a second harness. The `e2e` CI job on `macos-26` is advisory — not a required check, not part of `npm run check`.
+- Tests use **real git temp repositories** and `apps/desktop/tests/helpers/scripted-transport.ts` (an in-memory `AgentTransport` that performs real disk side effects in the worktree and answers asks through the real policy). Never use a network or model; do not mock git. Follow the executor pattern in `apps/desktop/tests/main/engine/executor.test.ts` for new engine behavior.
+- **Electron UI smoke** (`apps/desktop/tests/e2e/*.spec.ts`, `@playwright/test` + `_electron.launch()`): isolated `--user-data-dir`, seeded stores + WAL trace, no model or network. Onboarding walks Welcome → Ready; Inspector opens a seeded run and asserts the phase transcript. Failures write `test-results/` + `playwright-report/` (screenshot, trace, video). Interactive agent driving of the same app is the `foundry-ui` skill (CDP + agent-browser); do not add a second harness. The `e2e` CI job on `macos-26` is advisory — not a required check, not part of `npm run check`.
 - `@lobehub/icons` is inlined via `server.deps.inline` so bare directory specifiers resolve under Vite.
-- `tests/scripted-transport.ts` owns the agent-transport fixture. `tests/doctor.test.ts` owns the provider-doctor fixtures, injected as `ProviderDoctorDeps` so no Bridge, port, or credential is involved.
+- `apps/desktop/tests/helpers/scripted-transport.ts` owns the agent-transport fixture. `apps/desktop/tests/main/system/doctor.test.ts` owns the provider-doctor fixtures, injected as `ProviderDoctorDeps` so no Bridge, port, or credential is involved.
 - New engine phase/gate behavior needs a dedicated executor test with a real worktree snapshot.
 
 **What to run before submitting:** `npm run check` (see below) — it already runs the full Vitest suite.
@@ -202,15 +223,15 @@ npm run fetch:bridge        # downloads + checksums the pinned CLIProxyAPI into 
 npm run package             # build + icons + fetch:bridge + electron-builder --mac --arm64 (local DMG)
 ```
 
-- `check:css` (`scripts/check-css-collisions.mjs`) walks `src/renderer/**/*.tsx` and fails if an inline `<style>` redefines a class owned by `design/tokens-base.css` (e.g. `.btn`, `.field`). Move it to a `.module.css` file.
-- `check:docs` (`scripts/check-docs-commands.mjs`) keeps this file honest. It parses every `npm run …`, `make …`, and `scripts/…` reference in the `AGENTS.md` guides, `README.md`, the `Makefile`, and `.github/workflows/**`, then asserts each target actually exists — and, in the other direction, that every `package.json` script is documented and every step composed into `npm run check` is named here. Failures print `file:line` plus the fix. It is **static**: nothing documented is ever executed, so GUI and packaging commands (`npm run dev`, `npm run package`) are validated by existence only. `specs/` and `.factory/docs/` are excluded on purpose — they are historical records that describe the repo as it was, including the retired `apps/desktop` layout. Two scripts are intentionally undocumented and allowlisted in the script: `icons` (an implementation detail of `package`) and `engine:demo` (a local scratch harness).
+- `check:css` (`scripts/check-css-collisions.mjs`) walks `apps/desktop/src/renderer/**/*.tsx` and fails if an inline `<style>` redefines a class owned by `design/tokens-base.css` (e.g. `.btn`, `.field`). Move it to a `.module.css` file.
+- `check:docs` (`scripts/check-docs-commands.mjs`) keeps this file honest. It parses every `npm run …`, `make …`, and `scripts/…` reference in the `AGENTS.md` guides, `README.md`, the `Makefile`, and `.github/workflows/**`, then asserts each target actually exists — and, in the other direction, that every `package.json` script is documented and every step composed into `npm run check` is named here. Failures print `file:line` plus the fix. It is **static**: nothing documented is ever executed, so GUI and packaging commands (`npm run dev`, `npm run package`) are validated by existence only. `specs/` and `.factory/docs/` are excluded on purpose — they are historical records that describe the repo as it was. Two scripts are intentionally undocumented and allowlisted in the script: `icons` (an implementation detail of `package`) and `engine:demo` (a local scratch harness).
 - `audit:deps` (`scripts/audit-deps.mjs`) spawns `npm audit` in a clean env (strips `npm_config_allow_scripts`) so it works on npm 12.
 - `fetch:bridge` (`scripts/fetch-bridge.mjs`) downloads the CLIProxyAPI release pinned in `package.json` → `config.bridge` and verifies both the archive and the extracted binary against their recorded sha256. It also writes that tag's `models.json` next to the binary — Foundry has no separate model allowlist, so a CLIProxyAPI bump is enough for new models to appear. It is **fail-closed**: a mismatch leaves nothing executable behind and exits non-zero. `resources/bridge/` is gitignored; `electron-builder.yml` ships it as `extraResources` and signs it through `mac.binaries`. `mac-package.yml` must run this before electron-builder — `mac.binaries` codesigns `Contents/Resources/bridge/cli-proxy-api`, and a missing file fails signing. `node scripts/fetch-bridge.mjs --bump` (or `--bump <version>`) rewrites the pin from a new upstream release; `.github/workflows/update-cliproxyapi.yml` does that every 12 hours and opens a PR. A checkout that skipped the fetch simply has no Bridge — the manager reports `binary_missing` and the app runs on whatever other credentials pi has.
 
 **CI** (`.github/workflows/ci.yml`):
 
 - `verify` job: typecheck, lint, format:check, check:docs, knip, test:coverage, build, audit:deps (`macos-26`).
-- `android` job: runs `./gradlew :app:testDebugUnitTest` on `ubuntu-latest` (JDK 21).
+- `android` job: runs `./gradlew :app:testDebugUnitTest` on `ubuntu-latest` (JDK 21) in `apps/android`.
 - `e2e` job: `npm run build` then `npm run test:e2e` on `macos-26`. Advisory — not a required check. Artifacts (`playwright-report/`, `test-results/`) upload on every run.
 - `actionlint` on `ubuntu-latest` (1.7.12+, required for `macos-26` label).
 - Pull requests run `verify` + `android` + `actionlint` + `e2e` unconditionally (no paths filter) so required checks are never unsatisfied. Only `verify`, `android`, and `actionlint` are required.

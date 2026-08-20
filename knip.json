@@ -1,30 +1,30 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": ["scripts/**/*.ts", "tests/**/*.ts"],
-  "project": ["src/**/*.{ts,tsx}", "scripts/**/*.ts", "tests/**/*.ts"],
-  "ignore": ["website/**", "android/**"],
+  "project": ["apps/desktop/src/**/*.{ts,tsx}", "scripts/**/*.ts", "apps/desktop/tests/**/*.ts"],
+  "entry": ["scripts/**/*.ts", "apps/desktop/tests/**/*.ts"],
   "paths": {
-    "@shared/*": ["src/shared/*"],
-    "@main/*": ["src/main/*"],
-    "@renderer/*": ["src/renderer/*"]
+    "@shared/*": ["apps/desktop/src/shared/*"],
+    "@main/*": ["apps/desktop/src/main/*"],
+    "@renderer/*": ["apps/desktop/src/renderer/*"]
   },
+  "ignore": ["apps/website/**", "apps/android/**"],
+  "ignoreBinaries": ["pgrep"],
   "ignoreIssues": {
     "package.json": ["unresolved"]
   },
   "rules": {
-    "files": "error",
+    "binaries": "error",
     "dependencies": "error",
     "devDependencies": "error",
-    "optionalPeerDependencies": "error",
-    "unlisted": "error",
-    "binaries": "error",
-    "unresolved": "error",
-    "exports": "off",
-    "nsExports": "off",
-    "types": "off",
-    "nsTypes": "off",
+    "duplicates": "off",
     "enumMembers": "off",
-    "duplicates": "off"
-  },
-  "ignoreBinaries": ["pgrep"]
+    "exports": "off",
+    "files": "error",
+    "nsExports": "off",
+    "nsTypes": "off",
+    "optionalPeerDependencies": "error",
+    "types": "off",
+    "unlisted": "error",
+    "unresolved": "error"
+  }
 }

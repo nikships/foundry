@@ -10,7 +10,7 @@ import eslintConfigPrettier from 'eslint-config-prettier';
 const PI_IMPORTS = {
   group: ['@earendil-works/pi-*', '@earendil-works/pi-*/*'],
   message:
-    'Import @earendil-works/pi-* only under src/main/pi/ (and its tests); the rest of the app talks to AgentTransport.',
+    'Import @earendil-works/pi-* only under apps/desktop/src/main/pi/ (and its tests); the rest of the app talks to AgentTransport.',
 };
 
 export default tseslint.config(
@@ -23,9 +23,9 @@ export default tseslint.config(
       'assets/**',
       // Standalone marketing site: its own toolchain and tsconfig, and
       // deliberately outside the app build, `npm run check`, and CI.
-      'website/**',
+      'apps/website/**',
       // Android companion app scaffold (separate Kotlin toolchain).
-      'android/**',
+      'apps/android/**',
       // Local run worktrees and codegraph pointer — not part of the app.
       '.foundry-worktrees/**',
       '.codegraph',
@@ -103,14 +103,23 @@ export default tseslint.config(
   // The pi seam, and the tests that exercise it directly: the only places
   // allowed to name the runtime package.
   {
-    files: ['src/main/pi/**/*.ts', 'tests/pi-*.test.ts'],
+    files: [
+      'apps/desktop/src/main/pi/**/*.ts',
+      'apps/desktop/tests/main/pi/**/*.ts',
+      'apps/desktop/tests/**/pi-*.test.ts',
+    ],
     rules: {
       'no-restricted-imports': 'off',
     },
   },
   // Main process and tests are Node, not DOM-first.
   {
-    files: ['src/main/**/*.{ts,tsx}', 'tests/**/*.ts', 'scripts/**/*.ts', 'playwright.config.ts'],
+    files: [
+      'apps/desktop/src/main/**/*.{ts,tsx}',
+      'apps/desktop/tests/**/*.ts',
+      'scripts/**/*.ts',
+      'playwright.config.ts',
+    ],
     languageOptions: {
       globals: {
         ...globals.node,
@@ -126,7 +135,7 @@ export default tseslint.config(
   },
   // Preload is a small CJS-shaped bridge; still authored as TS ESM.
   {
-    files: ['src/preload/**/*.ts'],
+    files: ['apps/desktop/src/preload/**/*.ts'],
     languageOptions: {
       globals: {
         ...globals.node,
