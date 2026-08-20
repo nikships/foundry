@@ -51,10 +51,31 @@ describe('renderPrompt', () => {
     expect(rendered.user).not.toContain('You build.');
   });
 
-  it('tells the agent to call submit_envelope, not to dump JSON as the reply', () => {
+  it('leaves envelope submission instructions to the system harness', () => {
     const rendered = renderPrompt(agent, phase, ctx());
-    expect(rendered.user).toMatch(/submit_envelope/);
+    expect(rendered.user).not.toMatch(/submit_envelope/);
     expect(rendered.user).not.toMatch(/Reply with ONLY this JSON/);
+    expect(rendered.user).toContain('"commit_message"');
+  });
+
+  it('renders supplied bounded git context before the report schema', () => {
+    const rendered = renderPrompt(
+      agent,
+      phase,
+      ctx({
+        branch: 'foundry/run_1',
+        baseRef: 'main',
+        gitContext: { branchPointSha: 'abc123', diffStat: 'README.md | 2 +-' },
+      }),
+    );
+    expect(rendered.user).toContain('## Accumulated git context');
+    expect(rendered.user).toContain('- Branch: foundry/run_1');
+    expect(rendered.user).toContain('- Base ref: main');
+    expect(rendered.user).toContain('- Branch point: abc123');
+    expect(rendered.user).toContain('README.md | 2 +-');
+    expect(rendered.user.indexOf('## Accumulated git context')).toBeLessThan(
+      rendered.user.indexOf('## Report'),
+    );
   });
 
   it('uses a declared improved request in place of the raw request', () => {

@@ -67,6 +67,13 @@ describe('shipped agents', () => {
     expect(agentByName('finisher')?.writes).toBeNull();
   });
 
+  it('leaves review failure-reporting instructions to the shared harness', () => {
+    for (const name of ['reviewer', 'finisher']) {
+      const agent = agentByName(name)!;
+      expect(`${agent.systemPrompt}\n${agent.userPrompt}`, name).not.toContain('status: "fail"');
+    }
+  });
+
   it('keeps the refiner read-only, since sharpening a request is not doing the work', () => {
     expect(agentByName('refiner')?.writes).toEqual([]);
   });

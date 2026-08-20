@@ -1,262 +1,191 @@
 .ob-welcome {
-  --ob-welcome-accent: var(--accent);
-  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--bg-void);
-  color: var(--text);
-  font-family: var(--font);
   overflow: hidden;
 }
 
-.ob-welcome-split {
+.ob-welcome-body {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
-  width: 100%;
+  grid-template-columns: minmax(340px, 0.82fr) minmax(520px, 1.18fr);
 }
 
-/* ── stage ── */
-.ob-welcome-hero {
-  position: relative;
-  overflow: hidden;
-  background: var(--bg-base);
+.ob-welcome-editorial,
+.ob-welcome-visual {
+  min-width: 0;
   display: flex;
-  align-items: flex-end;
-  padding: clamp(22px, 4.8vw, 64px);
-  isolation: isolate;
+  flex-direction: column;
+  justify-content: center;
+  padding: clamp(28px, 5vw, 72px);
+}
+
+.ob-welcome-editorial {
   border-right: 1px solid var(--line);
 }
-.ob-welcome-hero-grid {
-  position: absolute;
-  inset: -1px;
-  background-image:
-    linear-gradient(to right, var(--line) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--line) 1px, transparent 1px);
-  background-size: 72px 72px;
-  opacity: 0.28;
-  mask-image: radial-gradient(70% 60% at 45% 45%, #000 20%, transparent 100%);
-  -webkit-mask-image: radial-gradient(70% 60% at 45% 45%, #000 20%, transparent 100%);
-}
-.ob-welcome-hero-grain {
-  display: none;
-}
-.ob-welcome-hero-frame {
-  position: absolute;
-  inset: clamp(14px, 2.2vw, 28px);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  pointer-events: none;
-  opacity: 0.72;
-}
-.ob-welcome-hero-field {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  pointer-events: none;
-}
-.ob-welcome-hero-art {
-  position: relative;
-  width: min(86%, 560px);
-  height: auto;
-  border-radius: var(--r);
-  overflow: hidden;
-  opacity: 0.96;
-}
-.ob-welcome-hero-art {
-  display: block;
-  width: 100%;
-  height: auto;
-}
-.ob-welcome-pipeline {
-  display: none;
-}
-.ob-welcome-hero-caption {
-  position: relative;
-  max-width: 22ch;
-  margin: 0;
-  font-size: var(--text-sm);
-  line-height: var(--leading);
-  color: var(--text-faint);
-  padding-left: var(--s4);
-  border-left: 1px solid var(--line);
-}
 
-/* ── editorial ── */
-.ob-welcome-editorial {
-  display: flex;
-  align-items: center;
-  padding: clamp(32px, 5.6vw, 88px) clamp(24px, 5.4vw, 88px);
-  background: var(--bg-void);
-  min-width: 0;
-  overflow: auto;
-}
-.ob-welcome-editorial-inner {
-  width: 100%;
-  max-width: 600px;
-}
 .ob-welcome-eyebrow {
-  margin: 0 0 var(--s6);
+  margin: 0 0 var(--s5);
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-dim);
-  line-height: 1;
 }
+
 .ob-welcome-eyebrow span {
   color: var(--accent);
   margin-right: var(--s2);
 }
+
 .ob-welcome-wordmark {
   margin: 0;
-  font-size: clamp(56px, 8.2vw, 124px);
+  font-size: clamp(56px, 7vw, 108px);
   font-weight: 680;
   letter-spacing: -0.045em;
   line-height: 0.9;
   color: var(--text);
 }
+
 .ob-welcome-lead {
-  margin: clamp(18px, 2.4vw, 28px) 0 0;
-  max-width: 52ch;
-  font-size: clamp(14px, 1.18vw, 17px);
+  margin: var(--s6) 0 0;
+  max-width: 50ch;
+  font-size: clamp(14px, 1.35vw, 17px);
   line-height: 1.7;
   color: var(--text-dim);
 }
 
-/* proof rows — flat, hairline only */
-.ob-welcome-proof {
+.ob-welcome-concepts {
   list-style: none;
-  margin: clamp(28px, 4vw, 52px) 0 0;
+  margin: var(--s8) 0 0;
   padding: 0;
-}
-.ob-welcome-proof-row {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--s4);
-  padding: var(--s4) 0;
   border-top: 1px solid var(--line);
-  transition: background var(--fast) var(--ease);
-}
-.ob-welcome-proof-row:last-child {
-  border-bottom: 1px solid var(--line);
-}
-.ob-welcome-proof-row:hover {
-  background: color-mix(in srgb, var(--bg-raised) 45%, transparent);
-}
-.ob-welcome-proof-row:hover .ob-welcome-proof-glyph {
-  color: var(--ob-welcome-accent);
-  border-color: color-mix(in srgb, var(--ob-welcome-accent) 28%, var(--line));
-  background: color-mix(in srgb, var(--ob-welcome-accent) 10%, var(--bg-raised));
-}
-.ob-welcome-proof-row:hover .ob-welcome-proof-desc {
-  color: var(--text-dim);
-}
-.ob-welcome-proof-glyph {
-  flex: none;
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--bg-raised);
-  color: var(--text-faint);
-  margin-top: 1px;
-  transition:
-    color var(--fast) var(--ease),
-    border-color var(--fast) var(--ease),
-    background var(--fast) var(--ease);
-}
-.ob-welcome-proof-glyph svg {
-  width: 16px;
-  height: 16px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.35;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.ob-welcome-proof-text {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--s2) var(--s3);
-  min-width: 0;
-  padding-top: 2px;
-}
-.ob-welcome-proof-title {
-  font-size: var(--text-sm);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--text);
-  white-space: nowrap;
-}
-.ob-welcome-proof-desc {
-  font-size: var(--text-sm);
-  line-height: 1.5;
-  color: var(--text-faint);
-  transition: color var(--fast) var(--ease);
 }
 
-/* entrance */
-.ob-welcome-rise {
-  opacity: 0;
-  transform: translateY(12px);
-  animation: ob-welcome-rise 680ms cubic-bezier(0.22, 0.9, 0.24, 1) forwards;
-  animation-delay: var(--d, 0ms);
+.ob-welcome-concepts li {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  gap: var(--s3);
+  padding: var(--s4) 0;
+  border-bottom: 1px solid var(--line);
 }
-@keyframes ob-welcome-rise {
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+
+.ob-welcome-concepts strong,
+.ob-welcome-concepts small {
+  display: block;
+}
+
+.ob-welcome-concepts strong {
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+
+.ob-welcome-concepts small {
+  margin-top: 3px;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+
+.concept-index,
+.visual-label,
+.diagram-index,
+.diagram-label,
+.diagram-outcome {
+  font-family: var(--font-mono);
+}
+
+.concept-index {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+}
+
+.ob-welcome-visual {
+  position: relative;
+  background-image:
+    linear-gradient(to right, var(--line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--line) 1px, transparent 1px);
+  background-size: 64px 64px;
+}
+
+.visual-label {
+  margin: 0 0 var(--s5);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--text-faint);
+}
+
+.diagram {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: color-mix(in srgb, var(--bg-base) 94%, transparent);
+}
+
+.diagram-track,
+.diagram-arrow,
+.diagram-branch {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.diagram-station {
+  fill: var(--bg-raised);
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.diagram-label {
+  fill: var(--text);
+  font-size: 9px;
+  letter-spacing: 1.2px;
+}
+
+.diagram-index {
+  fill: var(--text-faint);
+  font-size: 8px;
+  letter-spacing: 1px;
+}
+
+.diagram-outcome {
+  fill: var(--text-dim);
+  font-size: 8px;
+  letter-spacing: 1.2px;
+}
+
+.landing-guidance {
+  margin: var(--s5) 0 0;
+  padding-left: var(--s4);
+  border-left: 2px solid var(--accent);
+  max-width: 54ch;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--text);
 }
 
 @media (max-width: 960px) {
   .ob-welcome {
     overflow: auto;
   }
-  .ob-welcome-split {
+
+  .ob-welcome-body {
     grid-template-columns: 1fr;
   }
-  .ob-welcome-hero {
-    min-height: 42vh;
-    padding: 28px 24px 22px;
+
+  .ob-welcome-editorial {
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
-  .ob-welcome-hero-frame {
-    inset: 12px;
-  }
-  .ob-welcome-pipeline {
-    width: min(84%, 440px);
-  }
-  .ob-welcome-editorial {
-    padding: 28px 24px 32px;
-    overflow: visible;
-  }
-  .ob-welcome-wordmark {
-    font-size: clamp(48px, 14vw, 84px);
-  }
-}
 
-@media (prefers-reduced-motion: reduce) {
-  .ob-welcome-rise {
-    animation: none;
-    opacity: 1;
-    transform: none;
-  }
-  .ob-welcome-pipeline-pulse {
-    animation: none;
-  }
-  .ob-welcome-pipeline-pulse {
-    stroke-dasharray: none;
-    opacity: 0.55;
+  .ob-welcome-editorial,
+  .ob-welcome-visual {
+    padding: 28px 24px;
   }
 }

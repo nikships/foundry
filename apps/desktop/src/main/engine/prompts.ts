@@ -18,6 +18,8 @@ export interface RenderContext {
   branch?: string | null;
   /** Project base ref the PR (if any) will target. */
   baseRef?: string;
+  /** Base commit and bounded stat for phases that inspect the accumulated diff. */
+  gitContext?: { branchPointSha: string; diffStat: string };
   /** Envelopes from earlier phases, by phase name. */
   envelopes: Map<string, Envelope>;
   /** Set when a code phase sent failure evidence back to this agent. */
@@ -145,17 +147,26 @@ export function renderPrompt(agent: AgentDef, phase: PhaseDef, ctx: RenderContex
   let user = renderTemplate(agent.userPrompt, promptContext);
   user = appendMissingInputs(agent, phase, promptContext, user, requestInput);
 
+  if (ctx.gitContext) {
+    user = [
+      user,
+      '',
+      '## Accumulated git context',
+      '',
+      `- Branch: ${ctx.branch ?? '(none)'}`,
+      `- Base ref: ${ctx.baseRef ?? '(none)'}`,
+      `- Branch point: ${ctx.gitContext.branchPointSha || '(none)'}`,
+      '',
+      '```text',
+      ctx.gitContext.diffStat || '(no accumulated diff)',
+      '```',
+    ].join('\n');
+  }
+
   const kind = phase.envelope ?? agent.envelope;
-  user = [
-    user,
-    '',
-    '## Report',
-    '',
-    'When you are done, call submit_envelope once with this JSON object.',
-    'That is the answer channel. Foundry validates it after you submit.',
-    '',
-    exampleFor(kind, agent.customFields, ctx.envelopeDefs),
-  ].join('\n');
+  user = [user, '', '## Report', '', exampleFor(kind, agent.customFields, ctx.envelopeDefs)].join(
+    '\n',
+  );
 
   return { system, user };
 }
