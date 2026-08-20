@@ -348,8 +348,15 @@ jobs:
           # stable APK assets forward before promoting this new Mac release so
           # the one Latest page always offers both platforms. Shared workflow
           # concurrency prevents Android from changing Latest during this step.
+          # Keep the asset list non-empty: macOS bash 3.2 with `set -u` treats
+          # `"${empty[@]}"` as unbound, which aborted the previous publish.
+          RELEASE_ASSETS=(
+            "$STABLE_DMG"
+            "${STABLE_DMG}.sha256"
+            "$STABLE_ZIP"
+            "$YML"
+          )
           PREVIOUS_LATEST=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.tag_name' 2>/dev/null || true)
-          ANDROID_ASSETS=()
           if [ -n "$PREVIOUS_LATEST" ] && [ "$PREVIOUS_LATEST" != "$TAG" ]; then
             PREVIOUS_ASSETS=$(gh release view "$PREVIOUS_LATEST" --json assets --jq '.assets[].name')
             if grep -Fxq 'Foundry-Android.apk' <<< "$PREVIOUS_ASSETS" && \
@@ -359,7 +366,7 @@ jobs:
                 --pattern 'Foundry-Android.apk' \
                 --pattern 'Foundry-Android.apk.sha256' \
                 --dir "$RUNNER_TEMP/latest-android"
-              ANDROID_ASSETS=(
+              RELEASE_ASSETS+=(
                 "$RUNNER_TEMP/latest-android/Foundry-Android.apk"
                 "$RUNNER_TEMP/latest-android/Foundry-Android.apk.sha256"
               )
@@ -369,10 +376,7 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             # A rerun can reuse the same run number. Keep the release in place
             # while replacing its assets, so a failed upload never removes it.
-            gh release upload "$TAG" "$STABLE_DMG" "${STABLE_DMG}.sha256" "$STABLE_ZIP" "$YML" --clobber
-            if [ "${#ANDROID_ASSETS[@]}" -gt 0 ]; then
-              gh release upload "$TAG" "${ANDROID_ASSETS[@]}" --clobber
-            fi
+            gh release upload "$TAG" "${RELEASE_ASSETS[@]}" --clobber
             gh release edit "$TAG" \
               --title "$TITLE" \
               --notes "$NOTES" \
@@ -380,7 +384,7 @@ jobs:
               --latest \
               --target "$RELEASE_REF"
           else
-            gh release create "$TAG" "$STABLE_DMG" "${STABLE_DMG}.sha256" "$STABLE_ZIP" "$YML" "${ANDROID_ASSETS[@]}" \
+            gh release create "$TAG" "${RELEASE_ASSETS[@]}" \
               --title "$TITLE" \
               --notes "$NOTES" \
               --latest \
