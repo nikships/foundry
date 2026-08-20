@@ -85,14 +85,14 @@ export async function startRun(deps: StartRunDeps, input: StartRunInput): Promis
         const sniffed = await sniffCommands(projectPath);
         // Start-time fill honours the operator's detection model, so what
         // answers here is what the Project pane says will answer.
-        const model = settings.detectModel || 'inherit';
+        const model = settings.helperModel || 'inherit';
         // Same read-only session detection itself opens: this runs against
         // the operator's checkout, and nothing would revert a write there.
         const session = deps.oneShot({
           cwd: projectPath,
           access: 'read',
           model,
-          reasoningEffort: model === 'inherit' ? 'off' : settings.defaultReasoningEffort,
+          reasoningEffort: settings.helperReasoningEffort,
           systemPrompt: DETECT_PROMPT,
         });
         const prompt = ['Inspect this repository and report the verification commands.'];

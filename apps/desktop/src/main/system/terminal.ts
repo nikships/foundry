@@ -36,6 +36,16 @@ export function terminalFor(id: TerminalAppId): TerminalAppInfo {
   return TERMINAL_APPS.find((t) => t.id === id) ?? TERMINAL_APPS[0]!;
 }
 
+/** Resolve an explicit override, otherwise prefer a command-capable installed terminal. */
+export function preferredTerminal(id: TerminalAppId | null): TerminalAppInfo {
+  if (id) return terminalFor(id);
+  return (
+    TERMINAL_APPS.find((terminal) => terminal.prepared && terminalInstalled(terminal.appName)) ??
+    TERMINAL_APPS.find((terminal) => terminalInstalled(terminal.appName)) ??
+    TERMINAL_APPS[0]!
+  );
+}
+
 /**
  * Whether the emulator is actually installed, so the picker can say so before a
  * click fails.

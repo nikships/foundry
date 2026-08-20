@@ -6,10 +6,7 @@ import type {
 } from '@shared/ipc-contract.js';
 import type { ProjectCommand, ProjectDef } from '@shared/types.js';
 import { api } from '../../api.js';
-import { useApp } from '../../stores/app.js';
-import { useAgentModels } from '../../hooks/useAgentModels.js';
 import { duration } from '../../utils/format.js';
-import ModelPicker from '../common/ModelPicker.js';
 import DetectionPanel from '../readiness/DetectionPanel.js';
 import { CodeBlock } from '../ui/CodeBlock.js';
 import { Field, TextInput } from '../ui/Field.js';
@@ -31,7 +28,6 @@ export default function ProjectCommands({
   project: ProjectDef;
   onChange: (commands: ProjectCommand[]) => void;
 }): React.JSX.Element {
-  const { settings, patchSettings } = useApp();
   const [results, setResults] = useState<Record<string, TryState>>({});
   const [expanded, setExpanded] = useState('');
   const [sniffing, setSniffing] = useState(false);
@@ -40,13 +36,10 @@ export default function ProjectCommands({
   const [starting, setStarting] = useState(false);
   const [detectError, setDetectError] = useState('');
   const [showRaw, setShowRaw] = useState(false);
-  const { models } = useAgentModels();
 
   // Which detection this component is showing. A stale session's progress must
   // not paint over a newer one the user just started.
   const detectionIdRef = useRef<string>('');
-
-  const detectModel = settings?.detectModel ?? 'inherit';
 
   useEffect(() => {
     return api.on('detection-progress', (data) => {
@@ -262,24 +255,6 @@ export default function ProjectCommands({
               {starting || detectionLive ? 'Asking AI…' : 'Ask AI to find commands'}
             </Button>
           </div>
-        </div>
-      </Field>
-
-      <Field label="Who answers “Ask AI”">
-        <span className="hint">
-          Detection reads the repo read-only, against your checkout rather than a worktree.
-        </span>
-        <div className={`${styles.two} ${styles.detectPicker}`}>
-          <Field label="Model">
-            <ModelPicker
-              value={detectModel}
-              models={models}
-              allowInherit
-              inheritLabel="Same as default model"
-              emptyHint="No models are reachable. Connect a provider under Settings → Providers, or leave this on inherit."
-              onChange={(model) => void patchSettings({ detectModel: model })}
-            />
-          </Field>
         </div>
       </Field>
 

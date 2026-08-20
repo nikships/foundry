@@ -51,9 +51,9 @@ export function register(ctx: Ctx, handle: Handle): void {
       const project = projectOf(projectId);
       if (!project) return { error: 'project not found' };
       if (opts?.saveAsDefault) {
-        const patch: { readinessModel?: string; readinessReasoningEffort?: ReasoningEffort } = {};
-        if (opts.model) patch.readinessModel = opts.model;
-        if (opts.reasoningEffort) patch.readinessReasoningEffort = opts.reasoningEffort;
+        const patch: { helperModel?: string; helperReasoningEffort?: ReasoningEffort } = {};
+        if (opts.model) patch.helperModel = opts.model;
+        if (opts.reasoningEffort) patch.helperReasoningEffort = opts.reasoningEffort;
         ctx.settings.patch(patch);
         notifySettings(ctx);
       }

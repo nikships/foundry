@@ -21,6 +21,7 @@ import type {
   RunRow,
   RunStatus,
 } from '@shared/types.js';
+import { FIXED_ENGINE_DEFAULTS } from '@shared/types.js';
 import type { ContextBreakdownResult } from '@shared/ipc-contract.js';
 import { appDbPath, appRunsDir, openDb, projectDbPath, projectRunsDir } from '../trace/db.js';
 import { Tracer } from '../trace/tracer.js';
@@ -209,10 +210,10 @@ export class RunRegistry extends EventEmitter {
       defaultModel: settings.defaultModel,
       defaultReasoningEffort: settings.defaultReasoningEffort,
       turnTimeoutMs: settings.turnTimeoutMs,
-      envelopeRetries: settings.envelopeRetries,
-      gateRetries: settings.gateRetries,
+      envelopeRetries: FIXED_ENGINE_DEFAULTS.envelopeRetries,
+      gateRetries: FIXED_ENGINE_DEFAULTS.gateRetries,
       compactionThreshold: settings.compactionThreshold,
-      rewindAfterCorrections: settings.rewindAfterCorrections,
+      rewindAfterCorrections: FIXED_ENGINE_DEFAULTS.rewindAfterCorrections,
       supportDir: this.deps.appSupportDir,
       agents: input.agents,
       envelopeDefs: input.envelopeDefs,

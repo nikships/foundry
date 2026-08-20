@@ -134,7 +134,7 @@ export class DetectSession {
       cwd: this.deps.projectPath,
       access: 'read',
       model,
-      reasoningEffort: model === 'inherit' ? 'off' : settings.defaultReasoningEffort,
+      reasoningEffort: settings.helperReasoningEffort,
       systemPrompt: DETECT_PROMPT,
       prompt: this.prompt(sniffed),
       timeoutMs: PANEL_TIMEOUT_MS,

@@ -111,7 +111,7 @@ export class SetupSession {
       cwd: this.deps.projectPath,
       access: 'read',
       model,
-      reasoningEffort: model === 'inherit' ? 'off' : settings.defaultReasoningEffort,
+      reasoningEffort: settings.helperReasoningEffort,
       systemPrompt: SETUP_PROMPT,
       prompt,
       timeoutMs: PANEL_TIMEOUT_MS,

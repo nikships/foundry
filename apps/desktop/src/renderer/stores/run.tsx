@@ -184,8 +184,7 @@ export function useAllProjectRuns(recentLimit = 5): { runs: RunRow[] } {
   const schedule = useCallback(() => {
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     if (disposedRef.current) return;
-    const anyLive = runsRef.current.some((r) => r.status === 'running');
-    timerRef.current = window.setTimeout(() => void tickRef.current(), anyLive ? 1500 : 5000);
+    timerRef.current = window.setTimeout(() => void tickRef.current(), 500);
   }, []);
 
   const tick = useCallback(async (): Promise<void> => {

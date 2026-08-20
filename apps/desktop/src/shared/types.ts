@@ -239,17 +239,12 @@ export function resolveAgentExecution(
 
 export interface AppSettings {
   /**
-   * Model for detection, as a `provider/model` id from the agent catalog.
+   * Model for project detection and readiness, as a `provider/model` id.
    * `inherit` follows `defaultModel`.
    */
-  detectModel: string;
-  /**
-   * Model for the Agent Readiness Check. `inherit` follows `defaultModel`.
-   * Changing it in the readiness flow can optionally write this default.
-   */
-  readinessModel: string;
-  /** Reasoning effort for readiness evaluation and remediation. */
-  readinessReasoningEffort: ReasoningEffort;
+  helperModel: string;
+  /** Reasoning effort for project detection, readiness evaluation, and remediation. */
+  helperReasoningEffort: ReasoningEffort;
   /** Recorded on every run so a trace says who asked for it. */
   engineerName: string;
   /**
@@ -260,38 +255,21 @@ export interface AppSettings {
   defaultModel: string;
   defaultReasoningEffort: ReasoningEffort;
   turnTimeoutMs: number;
-  envelopeRetries: number;
-  gateRetries: number;
   /**
    * How full an agent's context may get before the engine compacts it between
    * phases, as a fraction of the model's window.
    */
   compactionThreshold: number;
-  /**
-   * After this many failed corrections in a phase, the engine rewinds the SDK
-   * session (and restores phase-start files) instead of appending another
-   * correction turn. `0` disables rewind entirely.
-   */
-  rewindAfterCorrections: number;
-  /**
-   * Preferred local port for the app-owned Bridge. Must sit inside
-   * 37700–37799; when busy the manager scans up within that band.
-   *
-   * No credential lives here. Provider OAuth material is the Bridge's own auth
-   * directory and direct API keys are pi's credential store, so `settings.json`
-   * stays a file an operator can read, copy, and check into a dotfile repo.
-   */
-  bridgePort: number;
   notifications: { accepted: boolean; rejected: boolean; failed: boolean; needsInput: boolean };
   dockBadge: boolean;
   /** Which terminal emulator "Open in terminal" hands a directory to. */
-  terminalApp: TerminalAppId;
+  terminalApp: TerminalAppId | null;
   /**
    * Which coding-agent CLI Smith starts in that terminal. Settings stores the
    * catalog `id`, never a binary name, so a hand-edited file cannot put an
    * arbitrary string on the session command line.
    */
-  codingAgent: CodingAgentId;
+  codingAgent: CodingAgentId | null;
   retentionDays: number | null;
   onboarded: boolean;
   /**
@@ -300,6 +278,13 @@ export interface AppSettings {
    */
   hiddenModelIds: string[];
 }
+
+/** Engine retry policy is intentionally fixed rather than operator configuration. */
+export const FIXED_ENGINE_DEFAULTS = {
+  envelopeRetries: 3,
+  gateRetries: 2,
+  rewindAfterCorrections: 2,
+} as const;
 
 export type MergePolicy = 'auto' | 'ask' | 'never';
 

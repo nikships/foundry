@@ -5,8 +5,7 @@
 
 import { join } from 'node:path';
 import { z } from 'zod';
-import { CODING_AGENTS, DEFAULT_PR_AGENT, type AppSettings } from '@shared/types.js';
-import { BRIDGE_PORT_MAX, BRIDGE_PORT_MIN, DEFAULT_BRIDGE_PORT } from '../bridge/manager.js';
+import { CODING_AGENTS, DEFAULT_PR_AGENT, TERMINAL_APPS, type AppSettings } from '@shared/types.js';
 import { JsonStore } from './json-store.js';
 
 /**
@@ -16,13 +15,9 @@ import { JsonStore } from './json-store.js';
  */
 const COMPACTION_BAND = [0.5, 0.95] as const;
 
-/** Mission-bounded band for the app-owned Bridge; the manager scans up in it. */
-const BRIDGE_PORT_BAND = [BRIDGE_PORT_MIN, BRIDGE_PORT_MAX] as const;
-
 export const appSettingsSchema = z.object({
-  detectModel: z.string().min(1),
-  readinessModel: z.string().min(1),
-  readinessReasoningEffort: z.enum(['off', 'low', 'medium', 'high', 'xhigh', 'max']),
+  helperModel: z.string().min(1),
+  helperReasoningEffort: z.enum(['off', 'low', 'medium', 'high', 'xhigh', 'max']),
   engineerName: z.string().min(1).max(80),
   prAgent: z
     .string()
@@ -34,12 +29,7 @@ export const appSettingsSchema = z.object({
   defaultModel: z.string().min(1),
   defaultReasoningEffort: z.enum(['off', 'low', 'medium', 'high', 'xhigh', 'max']),
   turnTimeoutMs: z.number().int().min(300_000).max(3_600_000),
-  envelopeRetries: z.number().int().min(0).max(5),
-  gateRetries: z.number().int().min(0).max(5),
   compactionThreshold: z.number().min(COMPACTION_BAND[0]).max(COMPACTION_BAND[1]),
-  /** 0 disables; the useful range stops well before a phase's retry budgets. */
-  rewindAfterCorrections: z.number().int().min(0).max(20),
-  bridgePort: z.number().int().min(BRIDGE_PORT_BAND[0]).max(BRIDGE_PORT_BAND[1]),
   notifications: z.object({
     accepted: z.boolean(),
     rejected: z.boolean(),
@@ -47,8 +37,8 @@ export const appSettingsSchema = z.object({
     needsInput: z.boolean(),
   }),
   dockBadge: z.boolean(),
-  terminalApp: z.enum(['terminal', 'iterm', 'ghostty', 'warp', 'alacritty', 'kitty']),
-  codingAgent: z.enum(['droid', 'claude', 'codex', 'opencode', 'pi']),
+  terminalApp: z.enum(['terminal', 'iterm', 'ghostty', 'warp', 'alacritty', 'kitty']).nullable(),
+  codingAgent: z.enum(['droid', 'claude', 'codex', 'opencode', 'pi']).nullable(),
   retentionDays: z.number().int().min(1).max(3650).nullable(),
   onboarded: z.boolean(),
   hiddenModelIds: z.array(z.string().min(1)),
@@ -56,25 +46,18 @@ export const appSettingsSchema = z.object({
 
 export function defaultSettings(): AppSettings {
   return {
-    detectModel: 'inherit',
-    readinessModel: 'inherit',
-    readinessReasoningEffort: 'high',
+    helperModel: 'inherit',
+    helperReasoningEffort: 'high',
     engineerName: process.env.USER || 'engineer',
     prAgent: DEFAULT_PR_AGENT,
     defaultModel: 'inherit',
     defaultReasoningEffort: 'medium',
     turnTimeoutMs: 30 * 60_000,
-    envelopeRetries: 3,
-    gateRetries: 2,
     compactionThreshold: 0.8,
-    rewindAfterCorrections: 2,
-    bridgePort: DEFAULT_BRIDGE_PORT,
     notifications: { accepted: true, rejected: true, failed: true, needsInput: true },
     dockBadge: true,
-    // Terminal.app ships with macOS, so the default always resolves.
-    terminalApp: 'terminal',
-    // Droid is what existing Smith sessions already start.
-    codingAgent: 'droid',
+    terminalApp: null,
+    codingAgent: null,
     retentionDays: null,
     onboarded: false,
     hiddenModelIds: [],
@@ -96,23 +79,42 @@ export function migrate(raw: unknown): AppSettings {
       Object.assign(merged, { [key]: stored[key] });
     }
   }
-  if (!merged.detectModel) merged.detectModel = base.detectModel;
+  const legacy = raw as Record<string, unknown> | null;
+  if (typeof stored.helperModel !== 'string' || !stored.helperModel) {
+    const readiness = legacy?.readinessModel;
+    const detection = legacy?.detectModel;
+    merged.helperModel =
+      (typeof readiness === 'string' && readiness !== 'inherit' ? readiness : undefined) ??
+      (typeof detection === 'string' ? detection : undefined) ??
+      base.helperModel;
+  }
+  if (stored.helperReasoningEffort === undefined) {
+    const effort = legacy?.readinessReasoningEffort;
+    if (typeof effort === 'string')
+      merged.helperReasoningEffort = effort as AppSettings['helperReasoningEffort'];
+  }
+  if (!merged.helperModel) merged.helperModel = base.helperModel;
   if (typeof merged.prAgent !== 'string' || !/^[a-z][a-z0-9_-]*$/.test(merged.prAgent)) {
     merged.prAgent = DEFAULT_PR_AGENT;
   }
-  if (!CODING_AGENTS.some((agent) => agent.id === merged.codingAgent)) {
-    merged.codingAgent = 'droid';
-  }
-  if (!merged.readinessModel) merged.readinessModel = base.readinessModel;
   if (
-    merged.readinessReasoningEffort !== 'off' &&
-    merged.readinessReasoningEffort !== 'low' &&
-    merged.readinessReasoningEffort !== 'medium' &&
-    merged.readinessReasoningEffort !== 'high' &&
-    merged.readinessReasoningEffort !== 'xhigh' &&
-    merged.readinessReasoningEffort !== 'max'
+    merged.codingAgent !== null &&
+    !CODING_AGENTS.some((agent) => agent.id === merged.codingAgent)
   ) {
-    merged.readinessReasoningEffort = base.readinessReasoningEffort;
+    merged.codingAgent = null;
+  }
+  if (merged.terminalApp !== null && !TERMINAL_APPS.some((app) => app.id === merged.terminalApp)) {
+    merged.terminalApp = null;
+  }
+  if (
+    merged.helperReasoningEffort !== 'off' &&
+    merged.helperReasoningEffort !== 'low' &&
+    merged.helperReasoningEffort !== 'medium' &&
+    merged.helperReasoningEffort !== 'high' &&
+    merged.helperReasoningEffort !== 'xhigh' &&
+    merged.helperReasoningEffort !== 'max'
+  ) {
+    merged.helperReasoningEffort = base.helperReasoningEffort;
   }
   // A read is not a save, so an out-of-band value is clamped rather than
   // rejected: refusing it here would leave the app with no threshold at all.
@@ -121,10 +123,6 @@ export function migrate(raw: unknown): AppSettings {
     base.compactionThreshold,
     COMPACTION_BAND,
   );
-  merged.rewindAfterCorrections = Math.round(
-    clamp(merged.rewindAfterCorrections, base.rewindAfterCorrections, [0, 20]),
-  );
-  merged.bridgePort = Math.round(clamp(merged.bridgePort, base.bridgePort, BRIDGE_PORT_BAND));
   if (!Array.isArray(merged.hiddenModelIds)) {
     merged.hiddenModelIds = [];
   } else {
