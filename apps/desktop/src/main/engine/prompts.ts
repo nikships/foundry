@@ -138,7 +138,7 @@ function appendMissingInputs(
  * dropped because someone edited the prompt.
  */
 export function renderPrompt(agent: AgentDef, phase: PhaseDef, ctx: RenderContext): RenderedPrompt {
-  const requestInput = phase.prompt?.inputs.find((input) => input.endsWith('.improved_request'));
+  const requestInput = phase.prompt?.inputs?.find((input) => input.endsWith('.improved_request'));
   const improvedRequest = requestInput ? resolveEnvelopeRef(requestInput, ctx.envelopes) : null;
   const promptContext = improvedRequest ? { ...ctx, request: improvedRequest } : ctx;
   const system = renderTemplate(agent.systemPrompt, promptContext);

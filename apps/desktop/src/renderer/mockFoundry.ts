@@ -353,9 +353,12 @@ export function createMockFoundryApi(): FoundryApi {
       reset: async (name) => {
         const shipped = BUILTIN_AGENTS.find((agent) => agent.name === name);
         if (shipped) {
-          mockAgents = mockAgents.map((agent) =>
-            agent.name === name ? structuredClone(shipped) : agent,
-          );
+          const idx = mockAgents.findIndex((agent) => agent.name === name);
+          if (idx >= 0) {
+            mockAgents[idx] = structuredClone(shipped);
+          } else {
+            mockAgents.push(structuredClone(shipped));
+          }
         }
         return [...mockAgents];
       },
@@ -439,9 +442,12 @@ export function createMockFoundryApi(): FoundryApi {
       reset: async (id) => {
         const shipped = BUILTIN_PIPELINES.find((pipeline) => pipeline.id === id);
         if (shipped) {
-          mockPipelines = mockPipelines.map((pipeline) =>
-            pipeline.id === id ? structuredClone(shipped) : pipeline,
-          );
+          const idx = mockPipelines.findIndex((pipeline) => pipeline.id === id);
+          if (idx >= 0) {
+            mockPipelines[idx] = structuredClone(shipped);
+          } else {
+            mockPipelines.push(structuredClone(shipped));
+          }
         }
         return [...mockPipelines];
       },

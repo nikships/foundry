@@ -85,6 +85,17 @@ describe('renderPrompt', () => {
     expect(rendered.user).not.toContain('the thing');
     expect(rendered.user.match(/repository-grounded brief/g)).toHaveLength(1);
   });
+
+  it('renders correctly when phase.prompt is undefined', () => {
+    const unpromptedPhase: PhaseDef = {
+      name: 'unprompted',
+      kind: 'agent',
+      agent: 'builder',
+      description: 'unprompted phase',
+    };
+    const rendered = renderPrompt(agent, unpromptedPhase, ctx());
+    expect(rendered.user).toContain('Do the thing.');
+  });
 });
 
 describe('formatPromptRecord', () => {
