@@ -31,8 +31,8 @@ export interface AgentRunnerDeps {
    * instead of appending another correction. `0` disables.
    */
   rewindAfterCorrections: number;
-  /** Session lookup stays with the executor: a session lives for the run, not the phase. */
-  sessionFor: (agent: AgentDef) => AgentSession;
+  /** Session lookup stays with the executor, which also applies phase model overrides. */
+  sessionFor: (agent: AgentDef, modelOverride?: string) => Promise<AgentSession>;
   onLiveText?: (phaseId: string, text: string) => void;
   /** Reports the transport mode when a session falls back mid-turn. */
 }
@@ -54,7 +54,7 @@ export class AgentPhaseRunner implements PhaseRunner {
       return { kind: 'abort', detail };
     }
 
-    const session = this.deps.sessionFor(agent);
+    const session = await this.deps.sessionFor(agent, phase.model);
     const envelopeKind = phase.envelope ?? agent.envelope;
     const rewinder = await PhaseRewinder.create(ctx.cwd, session, this.deps.rewindAfterCorrections);
     const maxGateAttempts = (phase.retries ?? 0) + 1;

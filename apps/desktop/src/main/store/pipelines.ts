@@ -32,6 +32,8 @@ const phaseSchema = z.object({
   kind: z.enum(['agent', 'code', 'engineer']),
   description: z.string().min(1, 'one sentence on what this phase does and why'),
   agent: z.string().optional(),
+  // Opaque provider/model id. Absence means inherit the selected agent's model.
+  model: z.string().min(1).optional(),
   // Built-in kind or a custom envelope library name.
   envelope: z.string().min(1).optional(),
   gates: z

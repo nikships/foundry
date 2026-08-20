@@ -135,7 +135,7 @@ export class Executor {
         envelopeDefs: deps.envelopeDefs,
         envelopeRetries: deps.envelopeRetries,
         rewindAfterCorrections: deps.rewindAfterCorrections,
-        sessionFor: (agent) => this.sessionFor(agent),
+        sessionFor: (agent, modelOverride) => this.sessionFor(agent, modelOverride),
         onLiveText: deps.onLiveText,
       }),
       code: new CodePhaseRunner(),
@@ -491,28 +491,33 @@ export class Executor {
     return id;
   }
 
-  private sessionFor(agent: AgentDef): AgentSession {
-    const existing = this.sessions.get(agent.name);
-    if (existing) return existing;
-
+  private async sessionFor(agent: AgentDef, modelOverride?: string): Promise<AgentSession> {
     const resolved = resolveAgentExecution(agent, {
       model: this.deps.defaultModel,
       reasoningEffort: this.deps.defaultReasoningEffort ?? 'medium',
     });
+    const model = modelOverride && modelOverride !== 'inherit' ? modelOverride : resolved.model;
+    const existing = this.sessions.get(agent.name);
+    if (existing?.model === model && existing.reasoningEffort === resolved.reasoningEffort) {
+      return existing;
+    }
+    if (existing) await existing.close();
+
     const effectiveAgent = {
       ...agent,
-      model: resolved.model,
+      model,
       reasoningEffort: resolved.reasoningEffort,
     };
+    const persistedSession = this.deps.tracer
+      .agentSessions(this.deps.runId)
+      .find((row) => row.agent === agent.name && row.model === model);
     const session = new AgentSession(effectiveAgent, {
       runId: this.deps.runId,
       worktree: this.cwd,
       turnTimeoutMs: this.deps.turnTimeoutMs,
       tracer: this.deps.tracer,
       protectedPaths: this.deps.project.protectedPaths,
-      existingSessionId: this.deps.tracer
-        .agentSessions(this.deps.runId)
-        .find((row) => row.agent === agent.name)?.agentSessionId,
+      existingSessionId: persistedSession?.agentSessionId,
       transport: (req) => this.transportFor(req),
     });
     this.sessions.set(agent.name, session);
