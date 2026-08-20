@@ -98,4 +98,22 @@ describe('loading a pipelines file', () => {
     const store = new PipelineStore(dir);
     expect(store.get(edited.id)?.description).toBe('my own words');
   });
+
+  it('reports an edited builtin as stale and resets only that entry', () => {
+    const edited = { ...BUILTIN_PIPELINES[0]!, description: 'my own words' };
+    writeStored([edited, userPipeline()]);
+    const store = new PipelineStore(dir);
+
+    expect(store.staleBuiltins()).toContain(edited.id);
+    store.resetBuiltin(edited.id);
+
+    expect(store.staleBuiltins()).not.toContain(edited.id);
+    expect(store.get(edited.id)).toEqual(BUILTIN_PIPELINES[0]);
+    expect(store.get('my-chain')?.name).toBe('My chain');
+  });
+
+  it('does not treat local canvas placement as a shipped-definition difference', () => {
+    writeStored([{ ...BUILTIN_PIPELINES[0]!, canvas: { nodes: { plan: { x: 20, y: 40 } } } }]);
+    expect(new PipelineStore(dir).staleBuiltins()).not.toContain(BUILTIN_PIPELINES[0]!.id);
+  });
 });

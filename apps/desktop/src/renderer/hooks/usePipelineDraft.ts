@@ -117,12 +117,14 @@ export function usePipelineDraft(deepLink?: {
   dryRunError: string | null;
   isDirty: boolean;
   actionError: string;
+  staleBuiltins: Set<string>;
   setActivePhase: (phaseIndex: number | null) => void;
   setDraft: (next: PipelineDef | null) => void;
   selectPipeline: (id: string) => void;
   createPipeline: () => Promise<boolean>;
   duplicate: () => Promise<boolean>;
   remove: () => Promise<void>;
+  resetToShipped: () => Promise<void>;
   preview: () => Promise<void>;
   closeDryRun: () => void;
   insertPhase: (kind: PhaseKind, at?: number) => number;
@@ -146,6 +148,7 @@ export function usePipelineDraft(deepLink?: {
   const [dryRun, setDryRun] = useState<DryRunPrompt[] | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
+  const [staleBuiltins, setStaleBuiltins] = useState<Set<string>>(new Set());
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSaveRef = useRef<PipelineDef | null>(null);
@@ -214,6 +217,16 @@ export function usePipelineDraft(deepLink?: {
     [project?.commands],
   );
   const agents = useMemo(() => appAgents.map((r) => r.name), [appAgents]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void api.pipelines.staleBuiltins(projectId || undefined).then((ids) => {
+      if (!cancelled) setStaleBuiltins(new Set(ids));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [pipelines, projectId]);
 
   // Live validation on draft changes
   useEffect(() => {
@@ -386,6 +399,28 @@ export function usePipelineDraft(deepLink?: {
     }
   }, [draft, pipelines, projectId, refreshAll]);
 
+  const resetToShipped = useCallback(async (): Promise<void> => {
+    if (!draft?.builtin) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = null;
+    pendingSaveRef.current = null;
+    setSaving(false);
+    setActionError('');
+    try {
+      const next = await api.pipelines.reset(draft.id, projectId || undefined);
+      const reset = next.find((pipeline) => pipeline.id === draft.id);
+      if (reset) setDraft(withLocalCanvas(clonePipeline(reset)));
+      setStaleBuiltins((current) => {
+        const updated = new Set(current);
+        updated.delete(draft.id);
+        return updated;
+      });
+      await refreshAll();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err));
+    }
+  }, [draft, projectId, refreshAll]);
+
   const updatePhase = useCallback(
     (index: number, patch: Partial<PhaseDef>): void => {
       if (!draft) return;
@@ -554,12 +589,14 @@ export function usePipelineDraft(deepLink?: {
     dryRunError,
     isDirty,
     actionError,
+    staleBuiltins,
     setActivePhase,
     setDraft,
     selectPipeline,
     createPipeline,
     duplicate,
     remove,
+    resetToShipped,
     preview,
     closeDryRun,
     insertPhase,

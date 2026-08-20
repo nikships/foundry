@@ -389,6 +389,7 @@ export interface FoundryApi {
   };
   roster: {
     list(projectId?: string): Promise<AgentDef[]>;
+    staleBuiltins(projectId?: string): Promise<string[]>;
     save(agent: AgentDef, projectId?: string): Promise<SaveResult<AgentDef[]>>;
     /**
      * A name change is its own operation, not a save under a new key: `save`
@@ -405,7 +406,7 @@ export interface FoundryApi {
      * the renderer cannot derive this from the def alone.
      */
     preview(agent: AgentDef): Promise<string>;
-    reset(): Promise<AgentDef[]>;
+    reset(name: string, projectId?: string): Promise<AgentDef[]>;
     /**
      * Persist a user-uploaded mark. Returns `image:<file>` to store on
      * `AgentDef.emblem`. The bytes live under the support dir, not the roster.
@@ -434,13 +435,14 @@ export interface FoundryApi {
   };
   pipelines: {
     list(projectId?: string): Promise<PipelineDef[]>;
+    staleBuiltins(projectId?: string): Promise<string[]>;
     save(pipeline: PipelineDef, projectId?: string): Promise<SaveResult<PipelineDef[]>>;
     remove(id: string, projectId?: string): Promise<PipelineDef[]>;
     duplicate(id: string, projectId?: string): Promise<PipelineDef | null>;
     validate(pipeline: PipelineDef, projectId?: string): Promise<ValidationIssue[]>;
     /** Renders the exact prompts a run would send, spending nothing. */
     dryRun(pipelineId: string, projectId: string, request: string): Promise<DryRunPrompt[]>;
-    reset(): Promise<PipelineDef[]>;
+    reset(id: string, projectId?: string): Promise<PipelineDef[]>;
   };
   catalog: {
     gates(): Promise<{ id: string; description: string }[]>;
@@ -667,6 +669,7 @@ export const IPC = {
   readinessAnswerAsk: 'readiness:answerAsk',
   readinessDismiss: 'readiness:dismiss',
   rosterList: 'roster:list',
+  rosterStaleBuiltins: 'roster:staleBuiltins',
   rosterSave: 'roster:save',
   rosterRename: 'roster:rename',
   rosterRemove: 'roster:remove',
@@ -684,6 +687,7 @@ export const IPC = {
   envelopesValidate: 'envelopes:validate',
   envelopesPreview: 'envelopes:preview',
   pipelinesList: 'pipelines:list',
+  pipelinesStaleBuiltins: 'pipelines:staleBuiltins',
   pipelinesSave: 'pipelines:save',
   pipelinesRemove: 'pipelines:remove',
   pipelinesDuplicate: 'pipelines:duplicate',

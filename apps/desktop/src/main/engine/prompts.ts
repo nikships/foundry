@@ -104,11 +104,18 @@ function appendMissingInputs(
   phase: PhaseDef,
   ctx: RenderContext,
   user: string,
+  requestInput?: string,
 ): string {
   const inputs = phase.prompt?.inputs ?? [];
   const missing: string[] = [];
 
   for (const input of inputs) {
+    if (input === requestInput) {
+      if (!agent.userPrompt.includes('{{request}}')) {
+        missing.push(`## Request\n\n${ctx.request}`);
+      }
+      continue;
+    }
     if (agent.userPrompt.includes(`{{${input}}}`)) continue;
     if (input === 'request') {
       missing.push(`## Request\n\n${ctx.request}`);
@@ -138,9 +145,12 @@ function appendMissingInputs(
  * dropped because someone edited the prompt.
  */
 export function renderPrompt(agent: AgentDef, phase: PhaseDef, ctx: RenderContext): RenderedPrompt {
-  const system = renderTemplate(agent.systemPrompt, ctx);
-  let user = renderTemplate(agent.userPrompt, ctx);
-  user = appendMissingInputs(agent, phase, ctx, user);
+  const requestInput = phase.prompt?.inputs.find((input) => input.endsWith('.improved_request'));
+  const improvedRequest = requestInput ? resolveEnvelopeRef(requestInput, ctx.envelopes) : null;
+  const promptContext = improvedRequest ? { ...ctx, request: improvedRequest } : ctx;
+  const system = renderTemplate(agent.systemPrompt, promptContext);
+  let user = renderTemplate(agent.userPrompt, promptContext);
+  user = appendMissingInputs(agent, phase, promptContext, user, requestInput);
 
   if (ctx.gitContext) {
     user = [

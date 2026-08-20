@@ -44,11 +44,13 @@ export default function PipelinesScreen({
     dryRun,
     closeDryRun,
     actionError,
+    staleBuiltins,
     setActivePhase,
     selectPipeline,
     createPipeline,
     duplicate,
     remove,
+    resetToShipped,
     preview,
     insertPhase,
     movePhase,
@@ -83,6 +85,12 @@ export default function PipelinesScreen({
       confirmLabel: 'Delete pipeline',
       variant: 'danger',
     },
+  );
+
+  const confirmReset = useConfirmAction(
+    () => `Reset “${draft?.name}” to the pipeline shipped with Foundry?`,
+    () => void resetToShipped(),
+    { title: 'Reset Pipeline', confirmLabel: 'Reset to shipped version' },
   );
 
   if (!draft) {
@@ -129,6 +137,9 @@ export default function PipelinesScreen({
             onChange={(e) => updateDraft({ description: e.target.value })}
             placeholder="Describe this run."
           />
+          {staleBuiltins.has(draft.id) && (
+            <span className={styles.staleBadge}>Shipped version differs</span>
+          )}
         </div>
 
         <div className={styles.headerActions}>
@@ -159,6 +170,11 @@ export default function PipelinesScreen({
               <button type="button" onClick={() => void duplicate()}>
                 Duplicate pipeline
               </button>
+              {draft.builtin && staleBuiltins.has(draft.id) && (
+                <button type="button" onClick={() => void confirmReset()}>
+                  Reset to shipped version
+                </button>
+              )}
               {pipelines.length > 1 && (
                 <button
                   type="button"
@@ -192,6 +208,7 @@ export default function PipelinesScreen({
         <PipelineCanvas
           pipelineId={draft.id}
           pipelines={pipelines}
+          stalePipelineIds={staleBuiltins}
           selectedPipelineId={selectedId}
           onSelectPipeline={(id) => {
             closeSheet();

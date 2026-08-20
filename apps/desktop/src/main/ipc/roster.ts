@@ -28,6 +28,9 @@ export function register(ctx: Ctx, handle: Handle): void {
   const knownEnvelopeNames = () => ctx.envelopes.list().map((e) => e.name);
 
   handle(IPC.rosterList, (projectId?: string) => ctx.rosterFor(projectId));
+  handle(IPC.rosterStaleBuiltins, (projectId?: string) =>
+    ctx.roster.staleBuiltins(ctx.rosterScope(projectId)),
+  );
 
   handle(IPC.rosterSave, (agent: AgentDef, projectId?: string): SaveResult<AgentDef[]> => {
     const result = ctx.roster.save(agent, ctx.rosterScope(projectId), knownEnvelopeNames());
@@ -67,8 +70,8 @@ export function register(ctx: Ctx, handle: Handle): void {
     exampleFor(agent.envelope, agent.customFields, ctx.envelopes.list()),
   );
 
-  handle(IPC.rosterReset, () => {
-    const agents = ctx.roster.resetToBuiltins();
+  handle(IPC.rosterReset, (name: string, projectId?: string) => {
+    const agents = ctx.roster.resetBuiltin(name, ctx.rosterScope(projectId));
     notifySettings(ctx);
     return agents;
   });

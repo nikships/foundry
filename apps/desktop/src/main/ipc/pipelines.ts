@@ -25,6 +25,9 @@ export function register(ctx: Ctx, handle: Handle): void {
   const knownEnvelopeNames = () => ctx.envelopes.list().map((e) => e.name);
 
   handle(IPC.pipelinesList, (projectId?: string) => ctx.pipelinesFor(projectId));
+  handle(IPC.pipelinesStaleBuiltins, (projectId?: string) =>
+    ctx.pipelines.staleBuiltins(ctx.pipelineScope(projectId)),
+  );
 
   handle(
     IPC.pipelinesSave,
@@ -109,8 +112,8 @@ export function register(ctx: Ctx, handle: Handle): void {
     },
   );
 
-  handle(IPC.pipelinesReset, () => {
-    const pipelines = ctx.pipelines.resetToBuiltins();
+  handle(IPC.pipelinesReset, (id: string, projectId?: string) => {
+    const pipelines = ctx.pipelines.resetBuiltin(id, ctx.pipelineScope(projectId));
     notifySettings(ctx);
     return pipelines;
   });

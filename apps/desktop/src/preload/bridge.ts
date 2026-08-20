@@ -84,13 +84,14 @@ const api: FoundryApi = {
   },
   roster: {
     list: (projectId) => call(IPC.rosterList, projectId),
+    staleBuiltins: (projectId) => call(IPC.rosterStaleBuiltins, projectId),
     save: (agent, projectId) => call(IPC.rosterSave, agent, projectId),
     rename: (from, to, projectId) => call(IPC.rosterRename, from, to, projectId),
     remove: (name, projectId) => call(IPC.rosterRemove, name, projectId),
     duplicate: (name, projectId) => call(IPC.rosterDuplicate, name, projectId),
     validate: (agent) => call(IPC.rosterValidate, agent),
     preview: (agent) => call(IPC.rosterPreview, agent),
-    reset: () => call(IPC.rosterReset),
+    reset: (name, projectId) => call(IPC.rosterReset, name, projectId),
     uploadMark: (bytesB64, mime) => call(IPC.rosterUploadMark, bytesB64, mime),
     removeMark: (emblem) => call(IPC.rosterRemoveMark, emblem),
   },
@@ -105,13 +106,14 @@ const api: FoundryApi = {
   },
   pipelines: {
     list: (projectId) => call(IPC.pipelinesList, projectId),
+    staleBuiltins: (projectId) => call(IPC.pipelinesStaleBuiltins, projectId),
     save: (pipeline, projectId) => call(IPC.pipelinesSave, pipeline, projectId),
     remove: (id, projectId) => call(IPC.pipelinesRemove, id, projectId),
     duplicate: (id, projectId) => call(IPC.pipelinesDuplicate, id, projectId),
     validate: (pipeline, projectId) => call(IPC.pipelinesValidate, pipeline, projectId),
     dryRun: (pipelineId, projectId, request) =>
       call(IPC.pipelinesDryRun, pipelineId, projectId, request),
-    reset: () => call(IPC.pipelinesReset),
+    reset: (id, projectId) => call(IPC.pipelinesReset, id, projectId),
   },
   catalog: {
     gates: () => call(IPC.catalogGates),

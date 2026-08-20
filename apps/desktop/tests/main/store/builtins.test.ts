@@ -278,9 +278,14 @@ describe('shipped pipelines', () => {
       'fix-pr': ['request', 'envelope:diagnose', 'envelope:fix'],
       'spec-pr': ['request', 'envelope:survey', 'envelope:spec'],
       'triage-issue-pr': ['request', 'envelope:diagnose', 'envelope:file_issue', 'envelope:spec'],
-      'ship-pr': ['request', 'envelope:plan', 'envelope:build', 'envelope:production_check'],
+      'ship-pr': [
+        'envelope:refine.improved_request',
+        'envelope:plan',
+        'envelope:build',
+        'envelope:production_check',
+      ],
       'sdlc-pr': [
-        'request',
+        'envelope:refine.improved_request',
         'envelope:plan',
         'envelope:build',
         'envelope:production_check',
@@ -292,6 +297,20 @@ describe('shipped pipelines', () => {
       const openPr = pipeline.phases.at(-1)!;
       expect(openPr).toMatchObject({ kind: 'agent', agent: 'pr_writer' });
       expect(openPr.prompt?.inputs, pipeline.id).toEqual(expected[pipeline.id]);
+    }
+  });
+
+  it('uses the refined request for every later agent phase in ship and SDLC', () => {
+    for (const id of ['ship-pr', 'sdlc-pr']) {
+      const pipeline = byId(id);
+      const refineIndex = pipeline.phases.findIndex((phase) => phase.name === 'refine');
+      for (const phase of pipeline.phases.slice(refineIndex + 1)) {
+        if (phase.kind !== 'agent') continue;
+        expect(phase.prompt?.inputs, `${id}/${phase.name}`).toContain(
+          'envelope:refine.improved_request',
+        );
+        expect(phase.prompt?.inputs, `${id}/${phase.name}`).not.toContain('request');
+      }
     }
   });
 
