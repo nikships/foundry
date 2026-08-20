@@ -12,12 +12,15 @@ import {
 import { api } from '../../api.js';
 import type { DesignTab } from '../../utils/navigation.js';
 import { useApp } from '../../stores/app.js';
+import { useAgentModels } from '../../hooks/useAgentModels.js';
 import {
   applyPhaseEnvelopeOverride,
+  applyPhaseModelOverride,
   bindPhaseAgent,
   gateNames,
   inheritEnvelopeOptionLabel,
 } from '../../view-models/pipeline-view.js';
+import ModelPicker from '../common/ModelPicker.js';
 import { SegmentedControl } from '../ui/SegmentedControl.js';
 import { Button } from '../ui/Button.js';
 import { IssueLine } from '../ui/Issues.js';
@@ -54,6 +57,7 @@ export default function PhaseEditor({
   onOpenDesignTab?: (tab: DesignTab) => void;
 }): React.JSX.Element {
   const { envelopes } = useApp();
+  const { models, refresh: refreshModels } = useAgentModels();
   const [catalogGates, setCatalogGates] = useState<{ id: string; description: string }[]>([]);
 
   useEffect(() => {
@@ -222,6 +226,26 @@ export default function PhaseEditor({
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className={styles.fieldGroup}>
+            <div className={styles.fieldHeader}>
+              <span className={styles.fieldLabel}>Model</span>
+              <span className={styles.fieldHint}>{phase.model ? 'override' : 'via agent'}</span>
+            </div>
+            <ModelPicker
+              value={phase.model ?? 'inherit'}
+              models={models}
+              allowInherit
+              inheritLabel={
+                selectedAgent
+                  ? `Inherit from ${selectedAgent.name} (${selectedAgent.model})`
+                  : 'Inherit from agent'
+              }
+              emptyHint="No models are reachable. Connect a provider under Settings → Providers, or inherit from the agent."
+              onChange={(value) => onChange(applyPhaseModelOverride(phase, value))}
+              onRefresh={() => void refreshModels()}
+            />
           </div>
 
           <div className={styles.fieldGroup}>

@@ -92,6 +92,8 @@ export interface PhaseDef {
   /** A phase name identifies; a description explains. Both are required. */
   description: string;
   agent?: string;
+  /** Optional phase override of the selected agent's model. Absent means inherit. */
+  model?: string;
   /**
    * Optional phase override of the agent's envelope. Absent means inherit
    * `agent.envelope`. The engine resolves `phase.envelope ?? agent.envelope`.

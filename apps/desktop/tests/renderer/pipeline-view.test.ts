@@ -6,6 +6,7 @@ import {
   acceptanceReads,
   acceptanceSummary,
   applyPhaseEnvelopeOverride,
+  applyPhaseModelOverride,
   applyPipelineDraftPatch,
   bindPhaseAgent,
   blankPhase,
@@ -277,6 +278,26 @@ describe('pipeline-view', () => {
         overridden: false,
         title: 'Inherit from agent',
       });
+    });
+  });
+
+  describe('phase model inheritance', () => {
+    const agentPhase: PhaseDef = {
+      name: 'build',
+      kind: 'agent',
+      description: 'Implement the change.',
+      agent: 'builder',
+    };
+
+    it('persists an explicit model selection as a phase override', () => {
+      expect(applyPhaseModelOverride(agentPhase, 'anthropic/claude-opus-4-1').model).toBe(
+        'anthropic/claude-opus-4-1',
+      );
+    });
+
+    it('clears an override when inherit is selected', () => {
+      const overridden = { ...agentPhase, model: 'anthropic/claude-opus-4-1' };
+      expect(applyPhaseModelOverride(overridden, 'inherit').model).toBeUndefined();
     });
   });
 

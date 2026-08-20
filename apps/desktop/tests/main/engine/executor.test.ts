@@ -1264,6 +1264,55 @@ describe('the trace record', () => {
     expect(start!.payload.model).toBe('bridge-claude/claude-opus-5');
   });
 
+  it('uses a phase model override ahead of the selected agent model', async () => {
+    const scripted = scriptedAgent([buildEnvelope()]);
+    const outcome = await run({
+      scripted,
+      agents: [buildAgent({ model: 'bridge-claude/claude-sonnet-5' })],
+      pipeline: pipe(
+        [
+          agentPhase('build', {
+            description: 'Use the model selected for this phase.',
+            model: 'bridge-claude/claude-opus-5',
+          }),
+        ],
+        { acceptance: { kind: 'envelope_status', phase: 'build' } },
+      ),
+    });
+    expect(outcome.status).toBe('accepted');
+    const start = events(outcome.runId).find((e) => e.type === 'agent_start');
+    expect(start!.payload.model).toBe('bridge-claude/claude-opus-5');
+    expect(h.tracer.agentSessions(outcome.runId)[0]!.model).toBe('bridge-claude/claude-opus-5');
+  });
+
+  it('opens a new session when consecutive phases override one agent with different models', async () => {
+    const scripted = scriptedAgent([buildEnvelope(), buildEnvelope()]);
+    const outcome = await run({
+      scripted,
+      agents: [buildAgent({ model: 'bridge-claude/claude-sonnet-5' })],
+      pipeline: pipe(
+        [
+          agentPhase('plan', {
+            description: 'Plan with the selected planning model.',
+            model: 'bridge-claude/claude-haiku-5',
+          }),
+          agentPhase('build', {
+            description: 'Build with the selected implementation model.',
+            model: 'bridge-claude/claude-opus-5',
+          }),
+        ],
+        { acceptance: { kind: 'all_phases_pass' } },
+      ),
+    });
+    expect(outcome.status).toBe('accepted');
+    expect(scripted.sessionOpens).toBe(2);
+    expect(
+      events(outcome.runId)
+        .filter((event) => event.type === 'agent_start')
+        .map((event) => event.payload.model),
+    ).toEqual(['bridge-claude/claude-haiku-5', 'bridge-claude/claude-opus-5']);
+  });
+
   it('queues every phase up front so the waterfall can draw what has not run', async () => {
     const outcome = await run({
       pipeline: pipe(

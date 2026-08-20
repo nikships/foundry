@@ -107,9 +107,14 @@ export function inheritEnvelopeOptionLabel(
   return `Inherit from ${agent.name} (${agent.envelope})`;
 }
 
-/** Bind a phase to an agent without pinning or rewriting an envelope override. */
+/** Bind a phase to an agent without pinning or rewriting phase overrides. */
 export function bindPhaseAgent(phase: PhaseDef, agentName: string): PhaseDef {
   return { ...phase, agent: agentName || undefined };
+}
+
+/** Set or clear a phase model override. Inherit is stored as absence. */
+export function applyPhaseModelOverride(phase: PhaseDef, value: string): PhaseDef {
+  return { ...phase, model: value && value !== 'inherit' ? value : undefined };
 }
 
 /** Set or clear a phase envelope override. Empty value means inherit. */
