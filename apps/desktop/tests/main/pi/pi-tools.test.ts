@@ -213,6 +213,7 @@ describe('submit_envelope', () => {
   it('carries the phase’s own envelope schema, the one the reply is parsed against', () => {
     const tool = submitEnvelopeTool(schemaFor('build'));
     expect(tool.definition.parameters).toEqual(schemaFor('build'));
+    expect(tool.definition.description).toBe("Submit this phase's result envelope.");
     // The review kind has fields build does not, so a phase cannot be handed
     // the wrong constraint without this differing.
     const review = submitEnvelopeTool(schemaFor('review'));

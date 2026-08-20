@@ -133,8 +133,7 @@ export function submitEnvelopeTool(schema: Record<string, unknown>): EnvelopeToo
   const definition = defineTool({
     name: 'submit_envelope',
     label: 'Submit envelope',
-    description:
-      "Submit this phase's result envelope. Call this once, at the end of your work, with the final answer. Submitting does not complete the phase: Foundry validates the envelope and runs the phase gates afterwards.",
+    description: "Submit this phase's result envelope.",
     parameters: schema,
     execute: (_id, params) => {
       captured = params && typeof params === 'object' ? (params as Record<string, unknown>) : null;
