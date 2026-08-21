@@ -502,7 +502,6 @@ export function createMockFoundryApi(): FoundryApi {
           },
         ],
       }),
-      ensure: async () => ({ ok: true, detail: 'Web preview' }),
       connect: async () => ({ ok: false, detail: 'Web preview cannot open a login.' }),
       disconnect: async () => ({ ok: false, detail: 'Web preview' }),
       cancelLogin: async () => false,

@@ -122,7 +122,6 @@ const api: FoundryApi = {
   },
   bridge: {
     state: () => call(IPC.bridgeState),
-    ensure: () => call(IPC.bridgeEnsure),
     connect: (provider) => call(IPC.bridgeConnect, provider),
     disconnect: (provider) => call(IPC.bridgeDisconnect, provider),
     cancelLogin: (provider) => call(IPC.bridgeCancelLogin, provider),

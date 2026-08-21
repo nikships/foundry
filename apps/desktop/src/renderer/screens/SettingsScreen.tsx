@@ -490,7 +490,7 @@ export default function SettingsScreen({
     },
   );
   /**
-   * Runs one Bridge or credential action with the pane's own busy/note state.
+   * Runs one provider or credential action with the pane's own busy/note state.
    *
    * Every provider action reports through the same two surfaces so the operator
    * never has to guess which card a message belongs to, and the doctor list is
@@ -1211,21 +1211,10 @@ export default function SettingsScreen({
                       >
                         {bridge
                           ? bridge.running
-                            ? `serving on ${bridge.port}`
-                            : 'not running'
-                          : 'checking…'}
+                            ? `Bridge active · serving on ${bridge.port}`
+                            : 'Bridge unavailable'
+                          : 'Bridge starting…'}
                       </span>
-                      <div className={styles.settingsBtnrow}>
-                        <Button
-                          size="sm"
-                          disabled={!!providerBusy}
-                          onClick={() =>
-                            void runProviderAction('bridge', () => api.bridge.ensure())
-                          }
-                        >
-                          {providerBusy === 'bridge' ? 'Starting…' : 'Start the Bridge'}
-                        </Button>
-                      </div>
                     </div>
                     {bridge && !bridge.running && (bridge.reason || bridge.detail) && (
                       <p className={styles.settingsWarn}>
@@ -1237,7 +1226,6 @@ export default function SettingsScreen({
                         {bridge.detail ? `: ${bridge.detail}` : ''}
                       </p>
                     )}
-                    {providerNotes.bridge && <p className={styles.hint}>{providerNotes.bridge}</p>}
                   </Section>
 
                   <Section
@@ -1316,7 +1304,7 @@ export default function SettingsScreen({
                                   title={
                                     bridge?.running
                                       ? undefined
-                                      : 'Start the Bridge before signing in.'
+                                      : 'The Bridge did not start with Foundry. Relaunch to retry.'
                                   }
                                   onClick={() =>
                                     void runProviderAction(busyKey, () =>

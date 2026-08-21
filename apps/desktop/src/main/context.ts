@@ -71,8 +71,9 @@ export class AppContext {
     this.pipelines = new PipelineStore(supportDir);
     this.envelopes = new EnvelopeStore(supportDir);
     this.version = app.getVersion();
-    // Constructed, not started: the Bridge spawns on the first `ensure()`, so
-    // an operator who runs on their own API keys never pays for a child.
+    // Main starts this after reclaiming any crash-orphaned Bridge and before it
+    // opens the first window. Construction stays side-effect free so startup
+    // preserves that ordering.
     this.bridge = getBridgeService({
       supportDir,
       port: DEFAULT_BRIDGE_PORT,

@@ -42,13 +42,6 @@ export function register(ctx: Ctx, handle: Handle): void {
     };
   });
 
-  handle(IPC.bridgeEnsure, async (): Promise<BridgeActionResult> => {
-    const result = await ctx.bridge.ensure();
-    return result.ok
-      ? { ok: true, detail: `the Bridge is serving on ${result.baseUrl}` }
-      : { ok: false, detail: result.detail };
-  });
-
   handle(IPC.bridgeConnect, async (provider: string): Promise<BridgeActionResult> => {
     if (!isBridgeProvider(provider)) return unknownProvider(provider);
     const result = await ctx.bridge.connect(provider);

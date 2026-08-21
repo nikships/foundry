@@ -214,6 +214,15 @@ if (!app.requestSingleInstanceLock()) {
       console.warn(`reclaimed ${bridges.reclaimed.length} Bridge(s) orphaned by a previous launch`);
     }
 
+    // The Bridge is core app infrastructure, not an operator preference. Start
+    // it before the first window so subscription providers are ready as soon
+    // as their UI appears. Availability failures remain visible in Providers;
+    // they do not prevent direct-key users from opening the app.
+    const bridge = await ctx.bridge.ensure();
+    if (!bridge.ok) {
+      console.warn(`[bridge] unavailable at launch: ${bridge.reason}: ${bridge.detail}`);
+    }
+
     // A normal quit (including an auto-update restart) closes the socket but
     // preserves this choice. Restore it before opening the UI so paired phones
     // remain reachable without the operator toggling the server again.

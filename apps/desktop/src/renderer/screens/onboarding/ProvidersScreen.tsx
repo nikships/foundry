@@ -50,7 +50,6 @@ export default function ProvidersScreen(): React.JSX.Element {
     providerBusy,
     connectProvider,
     cancelProviderLogin,
-    startBridge,
     saveProviderKey,
     refreshProviders,
     error,
@@ -97,14 +96,6 @@ export default function ProvidersScreen(): React.JSX.Element {
             {!bridgeReady && (
               <div className={styles.obProviderNotice}>
                 <span>{bridgeNotice(bridge)}</span>
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={!!providerBusy}
-                  onClick={() => void startBridge()}
-                >
-                  {providerBusy === 'bridge' ? 'Starting…' : 'Start it'}
-                </Button>
               </div>
             )}
 
@@ -154,7 +145,11 @@ export default function ProvidersScreen(): React.JSX.Element {
                           size="sm"
                           variant={connected ? undefined : 'primary'}
                           disabled={!!providerBusy || !bridgeReady}
-                          title={bridgeReady ? undefined : 'Start the bridge first.'}
+                          title={
+                            bridgeReady
+                              ? undefined
+                              : 'The bridge did not start with Foundry. Relaunch to retry.'
+                          }
                           onClick={() => void connectProvider(provider.id)}
                         >
                           {providerBusy === provider.id
@@ -300,7 +295,7 @@ export default function ProvidersScreen(): React.JSX.Element {
  * duplicated into it — the same split the doctor's Bridge check uses.
  */
 function bridgeNotice(bridge: BridgeState | null): string {
-  if (!bridge) return 'Checking for the provider bridge…';
+  if (!bridge) return 'The provider bridge is starting with Foundry…';
   const reason = bridge.reason
     ? BRIDGE_UNAVAILABLE_COPY[bridge.reason]
     : 'the bridge is not serving';
