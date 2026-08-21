@@ -70,8 +70,8 @@ export default function PhaseDrawer({
   const tabs = useMemo(
     () => [
       { id: 'timeline' as Tab, label: 'Timeline', count: timelineEvents.length },
-      { id: 'envelope' as Tab, label: 'Envelope', count: envelopes.length },
-      { id: 'gates' as Tab, label: 'Gates', count: gates.length },
+      { id: 'envelope' as Tab, label: 'Report', count: envelopes.length },
+      { id: 'gates' as Tab, label: 'Checks', count: gates.length },
       { id: 'prompt' as Tab, label: 'Prompt' },
     ],
     [timelineEvents.length, envelopes.length, gates.length],
@@ -220,7 +220,7 @@ export default function PhaseDrawer({
           {tab === 'envelope' && (
             <>
               <p className={`eyebrow ${styles.sectionLabel}`}>
-                <span className="index">02</span>Envelope
+                <span className="index">02</span>Report
               </p>
               {envelopes.map((envelope) => (
                 <div key={envelope.envelopeId} className={styles.blockCard}>
@@ -237,14 +237,14 @@ export default function PhaseDrawer({
                 </div>
               ))}
               {!envelopes.length && (
-                <p className={`faint ${styles.padded}`}>This phase did not return an envelope.</p>
+                <p className={`faint ${styles.padded}`}>This phase did not return a report.</p>
               )}
             </>
           )}
           {tab === 'gates' && (
             <>
               <p className={`eyebrow ${styles.sectionLabel}`}>
-                <span className="index">02</span>Gates
+                <span className="index">02</span>Checks
               </p>
               {gates.map((gate) => (
                 <div key={gate.id} className={styles.blockCard}>
@@ -264,12 +264,12 @@ export default function PhaseDrawer({
                     ))}
                   </ul>
                   {!gate.checks.length && (
-                    <p className="faint">This gate recorded no individual checks.</p>
+                    <p className="faint">This check recorded no individual checks.</p>
                   )}
                 </div>
               ))}
               {!gates.length && (
-                <p className={`faint ${styles.padded}`}>No gates ran on this phase.</p>
+                <p className={`faint ${styles.padded}`}>No checks ran on this phase.</p>
               )}
             </>
           )}

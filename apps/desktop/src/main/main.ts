@@ -131,7 +131,7 @@ function buildMenu(): void {
               click: menuClick('menu:design-agents'),
             },
             {
-              label: 'Envelopes',
+              label: 'Reports',
               accelerator: 'Cmd+Shift+3',
               click: menuClick('menu:design-envelopes'),
             },

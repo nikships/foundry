@@ -98,7 +98,7 @@ export default function PipelinesScreen({
       <div className={styles.emptyContainer}>
         <EmptyState
           title="No pipelines found"
-          body="Create a pipeline to orchestrate bounded agent phases and command gates."
+          body="Create a pipeline to orchestrate bounded agent phases and command checks."
         >
           <Button
             onClick={() => {

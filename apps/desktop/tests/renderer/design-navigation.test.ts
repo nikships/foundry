@@ -55,7 +55,7 @@ describe('the sidebar', () => {
 describe('Design', () => {
   it('provides Pipelines, Agents, and Envelopes in dependency order', () => {
     expect(DESIGN_TABS.map((t) => t.id)).toEqual(['pipelines', 'agents', 'envelopes']);
-    expect(DESIGN_TABS.map((t) => t.label)).toEqual(['Pipelines', 'Agents', 'Envelopes']);
+    expect(DESIGN_TABS.map((t) => t.label)).toEqual(['Pipelines', 'Agents', 'Reports']);
   });
 
   it('gives every tab its own blurb, so the vocabulary is stated in the UI', () => {
@@ -115,8 +115,8 @@ describe('cross-links', () => {
   });
 
   it('still offer the link from both editors that pick an envelope', () => {
-    expect(rosterSrc).toContain('Manage envelopes…');
-    expect(phaseEditorSrc).toContain('Manage envelopes…');
+    expect(rosterSrc).toContain('Manage reports…');
+    expect(phaseEditorSrc).toContain('Manage reports…');
   });
 
   it('send each Smith entity kind to the tab that edits it', () => {

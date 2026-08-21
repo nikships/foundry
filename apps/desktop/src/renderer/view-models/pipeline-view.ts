@@ -178,12 +178,12 @@ export const ACCEPTANCE_OPTIONS: {
   },
   {
     value: 'envelope_status',
-    label: "A phase's envelope reports success",
-    description: "Accepted when a chosen phase's envelope status is success.",
+    label: "A phase's report indicates success",
+    description: "Accepted when a chosen phase's report status is success.",
   },
   {
     value: 'phase_flag',
-    label: "A phase's envelope sets a flag",
+    label: "A phase's report sets a flag",
     description: 'Accepted when a chosen phase sets passed or approved.',
   },
 ];
@@ -225,9 +225,9 @@ export function acceptanceSummary(acceptance: Acceptance, phases: PhaseDef[]): s
         : 'Accepted when the last phase ends in success. This pipeline has no phases yet.';
     }
     case 'envelope_status':
-      return `Accepted when the envelope returned by "${acceptance.phase}" reports success.`;
+      return `Accepted when the report returned by "${acceptance.phase}" reports success.`;
     case 'phase_flag':
-      return `Accepted when "${acceptance.phase}" returns ${acceptance.flag} in its envelope.`;
+      return `Accepted when "${acceptance.phase}" returns ${acceptance.flag} in its report.`;
   }
 }
 
@@ -245,9 +245,9 @@ export function acceptanceReads(pipeline: PipelineDef): string {
         ? `Reads the status of the last phase, ${last.name}. Nothing before it decides the run.`
         : 'Reads the status of the last phase. This pipeline has none yet.';
     case 'envelope_status':
-      return `Reads ${acceptance.phase}'s envelope and accepts when its status field says success.`;
+      return `Reads ${acceptance.phase}'s report and accepts when its status field says success.`;
     case 'phase_flag':
-      return `Reads ${acceptance.phase}'s envelope and accepts when it sets ${acceptance.flag}.`;
+      return `Reads ${acceptance.phase}'s report and accepts when it sets ${acceptance.flag}.`;
   }
 }
 

@@ -172,7 +172,7 @@ export default function SmithLauncher({
           <p className={styles.hint}>
             The window is left in a shell at the project root when the agent exits, with{' '}
             <code>foundry-cli</code> still on its PATH. Ask Smith to create or edit an agent,
-            pipeline, or envelope — each write raises an approval card here.
+            pipeline, or report — each write raises an approval card here.
           </p>
         </div>
       ) : (
@@ -191,8 +191,8 @@ export default function SmithLauncher({
           </li>
           <li>
             <span className={styles.stepText}>
-              Ask it to create or edit an agent, pipeline, or envelope. Each write raises an
-              approval card here.
+              Ask it to create or edit an agent, pipeline, or report. Each write raises an approval
+              card here.
             </span>
           </li>
         </ol>

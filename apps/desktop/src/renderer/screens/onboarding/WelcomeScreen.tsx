@@ -6,11 +6,8 @@ const CONCEPTS = [
     'Pipelines are data',
     'Agents run in ordered phases you can rearrange without rewriting scripts.',
   ],
-  [
-    'Replies are typed',
-    'Every phase returns an envelope that code validates before work continues.',
-  ],
-  ['Gates leave evidence', 'Prompts, tools, checks, and diffs stay visible for your review.'],
+  ['Replies are typed', 'Every phase returns a report that code validates before work continues.'],
+  ['Checks leave evidence', 'Prompts, tools, checks, and diffs stay visible for your review.'],
 ] as const;
 
 const MARKS = ['Native macOS', 'Agents in-process', 'Worktree isolation'] as const;
@@ -26,7 +23,7 @@ const EVIDENCE = [
 const STATIONS = [
   { label: 'REQUEST', sub: 'your prompt', color: 'var(--accent)' },
   { label: 'AGENTS', sub: 'ordered phases', color: 'var(--purple)' },
-  { label: 'GATES', sub: 'checks + diffs', color: 'var(--green)' },
+  { label: 'CHECKS', sub: 'checks + diffs', color: 'var(--green)' },
   { label: 'ACCEPT', sub: 'you decide', color: 'var(--amber)' },
 ] as const;
 
@@ -48,7 +45,7 @@ function RunDiagram(): React.JSX.Element {
       className={styles.diagram}
       viewBox="0 0 720 228"
       role="img"
-      aria-label="A request moves through a pipeline of agents and evidence gates, then accepted work is merged or opened as a pull request"
+      aria-label="A request moves through a pipeline of agents and evidence checks, then accepted work is merged or opened as a pull request"
     >
       {STATIONS.slice(0, -1).map((station, index) => {
         const from = cardX(index) + CARD_W + 6;

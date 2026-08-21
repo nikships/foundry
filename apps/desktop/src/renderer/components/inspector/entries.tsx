@@ -345,7 +345,7 @@ function EnvelopeCardBlock({
   return (
     <div className={`te envelope ${isOk ? 'ok' : 'fail'} ${open ? 'open' : ''}`}>
       <div className="te-row-head">
-        <span className="te-tag envelope">envelope</span>
+        <span className="te-tag envelope">report</span>
         {env.status && <span className={`te-exec ${isOk ? 'ok' : 'fail'}`}>{env.status}</span>}
         {env.commit_message && <span className="te-path mono">{env.commit_message}</span>}
         <Time iso={startedAt} />

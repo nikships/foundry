@@ -41,7 +41,7 @@ You point it at any git repo. Every run gets its own branch and worktree. Every 
 **Agent proposes. Code disposes.** That's why the same request gives you the same _kind_ of result twice.
 
 <p align="center">
-  <img src="assets/readme/concepts.png" alt="Three primitives: run as data, typed envelopes, gates that leave evidence" width="820">
+  <img src="assets/readme/concepts.png" alt="Three primitives: run as data, typed reports, checks that leave evidence" width="820">
 </p>
 
 ## Pipelines, not prompts
@@ -89,7 +89,7 @@ You're not locked in — open the Roster, retune the prompt, change the model, t
 
 ## Watch every move
 
-No black box. The Inspector is a live waterfall — tool calls streaming mid-phase, envelopes and gate evidence inspectable per phase, tokens and timing filling in as you go. Same view for live runs and history.
+No black box. The Inspector is a live waterfall — tool calls streaming mid-phase, reports and check evidence inspectable per phase, tokens and timing filling in as you go. Same view for live runs and history.
 
 Pause at any checkpoint. Approve, edit, or reject — the factory keeps going.
 
@@ -101,7 +101,7 @@ Pause at any checkpoint. Approve, edit, or reject — the factory keeps going.
 
 - **Your checkout stays clean.** Every run is an isolated worktree on its own branch. Nothing lands on `main` until you merge it.
 - **Agents stay in their lane.** Write boundaries are enforced by git diff after every call. Violations get reverted and the phase fails.
-- **Gates check the work.** Claimed files exist? Not empty? Diff matches the claim? Verdict matches the findings? Green means it was actually checked.
+- **Checks verify the work.** Claimed files exist? Not empty? Diff matches the claim? Verdict matches the findings? Green means it was actually checked.
 
 Failed runs keep their worktree so you can open it, learn, and discard deliberately.
 

@@ -132,21 +132,21 @@ describe('pipeline-view', () => {
     it('handles envelope_status', () => {
       const acc: Acceptance = { kind: 'envelope_status', phase: 'verifier' };
       expect(acceptanceSummary(acc, phases)).toBe(
-        'Accepted when the envelope returned by "verifier" reports success.',
+        'Accepted when the report returned by "verifier" reports success.',
       );
       expect(
         acceptanceReads({ id: 'p', name: 'P', acceptance: acc, phases } as PipelineDef),
-      ).toContain("Reads verifier's envelope");
+      ).toContain("Reads verifier's report");
     });
 
     it('handles phase_flag', () => {
       const acc: Acceptance = { kind: 'phase_flag', phase: 'verifier', flag: 'approved' };
       expect(acceptanceSummary(acc, phases)).toBe(
-        'Accepted when "verifier" returns approved in its envelope.',
+        'Accepted when "verifier" returns approved in its report.',
       );
       expect(
         acceptanceReads({ id: 'p', name: 'P', acceptance: acc, phases } as PipelineDef),
-      ).toContain("Reads verifier's envelope and accepts when it sets approved");
+      ).toContain("Reads verifier's report and accepts when it sets approved");
     });
   });
 
