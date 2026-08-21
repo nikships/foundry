@@ -488,7 +488,8 @@ export class AgentPhaseRunner implements PhaseRunner {
    * largest block in the run. So the prompt is rendered twice: once as it would
    * read with no feedback (the fingerprint of what the session may already
    * hold) and once for real. When the fingerprints agree, only the feedback
-   * evidence goes on the wire.
+   * evidence goes on the wire — but the system role always comes off the real
+   * render, because a turn's standing rules are re-sent in full every time.
    *
    * Everything that could have dropped that prompt from context — compaction,
    * rewind, a closed or replaced session — has already cleared the ledger, and
@@ -502,27 +503,40 @@ export class AgentPhaseRunner implements PhaseRunner {
     session: AgentSession,
   ): Promise<{ rendered: RenderedPrompt; systemPrompt: string; delta: boolean }> {
     const context = await this.renderContext(agent, phase, ctx);
-    const feedback = context.feedback;
-    const baseline = renderPrompt(agent, phase, { ...context, feedback: undefined });
+    // Empty evidence is not evidence. Normalising it here keeps the
+    // fingerprint, the wire, and the delta decision from disagreeing about
+    // what "no feedback" renders as.
+    const feedback = context.feedback?.trim() ? context.feedback : undefined;
+
+    // The fingerprint describes the prompt as first entry sent it, which
+    // carried no feedback — that is what a later re-entry may skip re-sending.
+    const baseline =
+      feedback === undefined
+        ? renderPrompt(agent, phase, context)
+        : renderPrompt(agent, phase, { ...context, feedback: undefined });
+    const fingerprint = promptFingerprint(baseline);
+
+    // `{{feedback}}` is a documented token in both templates, so an agent whose
+    // roster *system* prompt names it must still receive the real evidence —
+    // including on the delta path, where the user message no longer carries it.
+    const rendered = feedback === undefined ? baseline : renderPrompt(agent, phase, context);
     const systemPrompt = agentSystemRole({
-      rosterRole: baseline.system,
+      rosterRole: rendered.system,
       repositoryContext: ctx.project.contextSummary,
       writes: agent.writes,
       cwd: ctx.cwd,
       projectPath: ctx.project.path,
       setup: this.deps.setupExecution(),
     });
-    const fingerprint = promptFingerprint(baseline);
 
-    if (feedback && this.deps.prompts.matches(session, phase.name, fingerprint)) {
+    if (feedback !== undefined && this.deps.prompts.matches(session, phase.name, fingerprint)) {
       return {
-        rendered: { system: baseline.system, user: feedbackDelta({ phase: phase.name, feedback }) },
+        rendered: { system: rendered.system, user: feedbackDelta({ phase: phase.name, feedback }) },
         systemPrompt,
         delta: true,
       };
     }
 
-    const rendered = feedback ? renderPrompt(agent, phase, context) : baseline;
     this.deps.prompts.note(session, phase.name, fingerprint);
     return { rendered, systemPrompt, delta: false };
   }

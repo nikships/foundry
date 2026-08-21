@@ -1118,6 +1118,85 @@ describe('feedback re-entry into an already-prompted phase', () => {
     expect(requests[2]!.text).toContain(exampleFor('build'));
     expect(requests[2]!.text).toContain('./check.sh');
   });
+
+  /**
+   * `{{feedback}}` is a documented template token and `renderTemplate`
+   * substitutes it in the system template as well as the user one, so an agent
+   * whose roster role names it has always received the real evidence there.
+   * The delta trims the *user* message; the standing role is re-sent in full on
+   * every turn and must still carry the evidence, or a roster that reads its
+   * feedback from the system role silently starts seeing "(no feedback)".
+   */
+  const feedbackInRole = (): AgentDef =>
+    buildAgent({
+      systemPrompt: 'You build.\n\n# Last failure\n\n{{feedback}}',
+    });
+
+  /** Every system role sent to the `build` agent, in order. */
+  function buildRoles(agent: ScriptedAgent): string[] {
+    return turnRequests(agent).map((t) => t.systemPrompt ?? '');
+  }
+
+  it('carries the real evidence in the system role on the delta path', async () => {
+    installCheck('#!/bin/sh\ntest -f fix.txt\n');
+    const envelope = buildEnvelope({ summary: 'attempted', commit_message: 'work' });
+    const scripted = scriptedAgent([envelope, envelope], [null, 'fix.txt']);
+
+    const outcome = await run({
+      scripted,
+      project,
+      agents: [feedbackInRole()],
+      pipeline: repairPipeline(),
+    });
+    expect(outcome.status).toBe('accepted');
+
+    const roles = buildRoles(scripted);
+    expect(roles).toHaveLength(2);
+    // First entry: no failure has happened yet, so the token renders empty.
+    expect(roles[0]).toContain('(no feedback)');
+    // Re-entry: the user message is a delta, but the role still names the
+    // failing command, because the role is what this roster reads it from.
+    expect(buildPrompts(scripted)[1]).not.toContain('do the thing');
+    expect(roles[1]).toContain('./check.sh');
+    expect(roles[1]).toContain('test failed');
+    expect(roles[1]).not.toContain('(no feedback)');
+
+    // The trace agrees with the wire rather than recording a role never sent.
+    const record = readFileSync(
+      join(h.tracer.runDir(outcome.runId), 'builder/prompts/build-2.md'),
+      'utf8',
+    );
+    expect(record).toContain('./check.sh');
+    expect(record).not.toContain('(no feedback)');
+  });
+
+  it('carries the real evidence in the system role on the full path too', async () => {
+    installCheck('#!/bin/sh\ntest -f fix.txt\n');
+    const envelope = buildEnvelope({ summary: 'attempted', commit_message: 'work' });
+    // Compaction between the phases forces the re-entry down the full path.
+    const scripted = scriptedAgent([envelope, envelope], [null, 'fix.txt'], [], {
+      contextUsed: 85_000,
+      contextUsedAfterCompaction: 8_500,
+    });
+
+    const outcome = await run({
+      scripted,
+      project,
+      agents: [feedbackInRole()],
+      pipeline: repairPipeline(),
+    });
+    expect(outcome.status).toBe('accepted');
+    expect(wireLog(scripted).filter((l) => l === 'compact')).toHaveLength(1);
+
+    const roles = buildRoles(scripted);
+    expect(roles).toHaveLength(2);
+    expect(roles[0]).toContain('(no feedback)');
+    // The full prompt went back on the wire, and the role carries the evidence
+    // on this path as well — the two paths cannot disagree about the role.
+    expect(buildPrompts(scripted)[1]).toContain('do the thing');
+    expect(roles[1]).toContain('./check.sh');
+    expect(roles[1]).not.toContain('(no feedback)');
+  });
 });
 
 describe('acceptance criteria', () => {
