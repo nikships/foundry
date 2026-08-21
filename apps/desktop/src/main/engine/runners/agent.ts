@@ -19,7 +19,14 @@ import {
   type ParseOutcome,
 } from '../envelopes.js';
 import { gateCorrection, runGates, violationsOf, type GateReport } from '../gates.js';
-import { formatPromptRecord, renderPrompt, type RenderContext } from '../prompts.js';
+import {
+  feedbackDelta,
+  formatPromptRecord,
+  renderPrompt,
+  type RenderContext,
+  type RenderedPrompt,
+} from '../prompts.js';
+import { promptFingerprint, type PromptLedger } from '../prompt-ledger.js';
 import { agentSystemRole, type SetupExecution } from '../agent-context.js';
 import { diffStat } from '../git.js';
 
@@ -38,12 +45,20 @@ export interface AgentRunnerDeps {
   /** Session lookup stays with the executor, which also applies phase model overrides. */
   sessionFor: (agent: AgentDef, modelOverride?: string) => Promise<AgentSession>;
   setupExecution: () => SetupExecution | null;
+  /**
+   * Which phase prompts each live session still holds. Owned by the executor
+   * because only it sees session replacement and compaction.
+   */
+  prompts: PromptLedger;
   onLiveText?: (phaseId: string, text: string) => void;
   /** Reports the transport mode when a session falls back mid-turn. */
 }
 
 export class AgentPhaseRunner implements PhaseRunner {
   readonly kind = 'agent' as const;
+
+  /** How many times each phase has been prompted, so no record overwrites another. */
+  private readonly entries = new Map<string, number>();
 
   constructor(private readonly deps: AgentRunnerDeps) {}
 
@@ -83,21 +98,23 @@ export class AgentPhaseRunner implements PhaseRunner {
       },
     });
 
-    const rendered = renderPrompt(agent, phase, await this.renderContext(agent, phase, ctx));
-    let prompt = rendered.user;
-    const systemPrompt = agentSystemRole({
-      rosterRole: rendered.system,
-      repositoryContext: ctx.project.contextSummary,
-      writes: agent.writes,
-      cwd: ctx.cwd,
-      projectPath: ctx.project.path,
-      setup: this.deps.setupExecution(),
-    });
+    const composed = await this.compose(agent, phase, ctx, session);
+    let prompt = composed.rendered.user;
+    const systemPrompt = composed.systemPrompt;
+    const entry = (this.entries.get(phase.name) ?? 0) + 1;
+    this.entries.set(phase.name, entry);
     tracer.writeRunFile(
       runId,
-      `${agent.name}/prompts/${phase.name}-1.md`,
-      formatPromptRecord({ ...rendered, system: systemPrompt }),
+      `${agent.name}/prompts/${phase.name}-${entry}.md`,
+      formatPromptRecord({ ...composed.rendered, system: systemPrompt }),
     );
+    tracer.event({
+      runId,
+      phaseId,
+      type: 'log',
+      name: 'prompt',
+      payload: { phase: phase.name, entry, kind: composed.delta ? 'delta' : 'full' },
+    });
 
     let envelope: Envelope | null = null;
     let lastError = 'the agent phase never produced a usable envelope';
@@ -148,7 +165,7 @@ export class AgentPhaseRunner implements PhaseRunner {
         if (gateAttempt < maxGateAttempts) {
           prompt = boundary.boundaryCorrection(enforcement.violations);
           correctionIndex += 1;
-          const rewind = await rewinder.rewindIfDue(correctionIndex);
+          const rewind = await this.rewindIfDue(rewinder, session, correctionIndex);
           tracer.event({
             runId,
             phaseId,
@@ -192,7 +209,7 @@ export class AgentPhaseRunner implements PhaseRunner {
       if (gateAttempt < maxGateAttempts) {
         prompt = gateCorrection(violations);
         correctionIndex += 1;
-        const rewind = await rewinder.rewindIfDue(correctionIndex);
+        const rewind = await this.rewindIfDue(rewinder, session, correctionIndex);
         tracer.event({
           runId,
           phaseId,
@@ -210,6 +227,23 @@ export class AgentPhaseRunner implements PhaseRunner {
 
     tracer.closePhase(phaseId, 'fail', lastError);
     return { kind: 'abort', detail: lastError };
+  }
+
+  /**
+   * Rewind, and forget every prompt the session was holding when it ran.
+   *
+   * A rewind branches the conversation *before* the anchor — which is the
+   * phase's own prompt — so the successor conversation no longer contains it.
+   * A later feedback re-entry must render the whole thing again.
+   */
+  private async rewindIfDue(
+    rewinder: PhaseRewinder,
+    session: AgentSession,
+    correctionIndex: number,
+  ): Promise<RewindTrace | null> {
+    const rewind = await rewinder.rewindIfDue(correctionIndex);
+    if (rewind) this.deps.prompts.forget(session);
+    return rewind;
   }
 
   /**
@@ -305,7 +339,7 @@ export class AgentPhaseRunner implements PhaseRunner {
       // The final failed attempt still records a correction for the trace, but
       // there is no retry turn to send — rewind only runs when a retry follows.
       const willRetry = attempt <= this.deps.envelopeRetries;
-      const rewind = willRetry ? await rewinder.rewindIfDue(correctionIndex) : null;
+      const rewind = willRetry ? await this.rewindIfDue(rewinder, session, correctionIndex) : null;
       ctx.tracer.event({
         runId: ctx.runId,
         phaseId,
@@ -444,6 +478,53 @@ export class AgentPhaseRunner implements PhaseRunner {
     }
     ctx.tracer.setPr(ctx.runId, result.number, result.url);
     return { ok: true };
+  }
+
+  /**
+   * The prompt this entry into the phase actually sends.
+   *
+   * A `feedbackTo` jump re-enters a phase whose live session usually still
+   * holds that phase's rendered prompt, and re-sending it duplicates the
+   * largest block in the run. So the prompt is rendered twice: once as it would
+   * read with no feedback (the fingerprint of what the session may already
+   * hold) and once for real. When the fingerprints agree, only the feedback
+   * evidence goes on the wire.
+   *
+   * Everything that could have dropped that prompt from context — compaction,
+   * rewind, a closed or replaced session — has already cleared the ledger, and
+   * a stale render simply misses the fingerprint. A miss costs tokens; a wrong
+   * hit would cost correctness, which is why the comparison is exact.
+   */
+  private async compose(
+    agent: AgentDef,
+    phase: PhaseDef,
+    ctx: RunContext,
+    session: AgentSession,
+  ): Promise<{ rendered: RenderedPrompt; systemPrompt: string; delta: boolean }> {
+    const context = await this.renderContext(agent, phase, ctx);
+    const feedback = context.feedback;
+    const baseline = renderPrompt(agent, phase, { ...context, feedback: undefined });
+    const systemPrompt = agentSystemRole({
+      rosterRole: baseline.system,
+      repositoryContext: ctx.project.contextSummary,
+      writes: agent.writes,
+      cwd: ctx.cwd,
+      projectPath: ctx.project.path,
+      setup: this.deps.setupExecution(),
+    });
+    const fingerprint = promptFingerprint(baseline);
+
+    if (feedback && this.deps.prompts.matches(session, phase.name, fingerprint)) {
+      return {
+        rendered: { system: baseline.system, user: feedbackDelta({ phase: phase.name, feedback }) },
+        systemPrompt,
+        delta: true,
+      };
+    }
+
+    const rendered = feedback ? renderPrompt(agent, phase, context) : baseline;
+    this.deps.prompts.note(session, phase.name, fingerprint);
+    return { rendered, systemPrompt, delta: false };
   }
 
   private async renderContext(
