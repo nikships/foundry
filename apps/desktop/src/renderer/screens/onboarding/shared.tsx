@@ -1,4 +1,3 @@
-import { useBrandedAsset } from '../../hooks/useBrandedAsset.js';
 import { useOnboarding } from './OnboardingContext.js';
 import { Button } from '../../components/ui/Button.js';
 
@@ -10,25 +9,6 @@ export const STEPS: { id: StepId; label: string }[] = [
   { id: 'doctor', label: 'Ready' },
   { id: 'project', label: 'Project' },
 ];
-
-export function SceneArt({
-  path,
-  className,
-}: {
-  path: string;
-  className?: string;
-}): React.JSX.Element {
-  const src = useBrandedAsset(path);
-  const placeholderStyle: React.CSSProperties = {
-    border: '1px solid var(--line)',
-    borderRadius: 'var(--r)',
-    overflow: 'hidden',
-    background: 'var(--bg-base)',
-  };
-  if (!src)
-    return <div className={`scene-art placeholder ${className ?? ''}`} style={placeholderStyle} />;
-  return <img className={`scene-art ${className ?? ''}`} src={src} alt="" />;
-}
 
 /**
  * The one footer every onboarding screen renders. Back sits far left, the

@@ -4,6 +4,16 @@ import { useOnboarding } from './OnboardingContext.js';
 import { StepFooter } from './shared.js';
 import styles from './ProjectScreen.module.css';
 
+/** Illustrative worktree branches. `y` is the commit on main they fork from. */
+const BRANCHES = [
+  { y: 72, x: 132, label: 'run_8f2c1a', live: true },
+  { y: 140, x: 188, label: 'run_31de07', live: true },
+  { y: 208, x: 132, label: 'run_…', live: false },
+] as const;
+
+/** Vertical drop from the fork commit to the branch node. */
+const BRANCH_DROP = 40;
+
 export default function ProjectScreen(): React.JSX.Element {
   const { projects } = useApp();
   const {
@@ -39,90 +49,75 @@ export default function ProjectScreen(): React.JSX.Element {
         <div className={styles.obProjectDiagramInner}>
           <div className={styles.obProjectDiagramLabel}>worktree topology</div>
 
-          <svg
-            className={styles.obProjectTree}
-            viewBox="0 0 460 520"
-            fill="none"
-            aria-hidden="true"
-          >
-            <defs>
-              <linearGradient id="obp-fade" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.55" />
-                <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.06" />
-              </linearGradient>
-            </defs>
-            <line x1="42" y1="14" x2="42" y2="506" stroke="var(--line-strong)" strokeWidth="1" />
-            <path d="M42 92 C 42 132, 120 120, 168 120" stroke="url(#obp-fade)" strokeWidth="1" />
-            <path d="M42 188 C 42 240, 150 224, 232 224" stroke="url(#obp-fade)" strokeWidth="1" />
-            <path d="M42 284 C 42 336, 120 320, 168 320" stroke="url(#obp-fade)" strokeWidth="1" />
-            <path
-              d="M42 376 C 42 422, 110 410, 148 410"
-              stroke="var(--line-strong)"
-              strokeWidth="1"
-              strokeDasharray="2 5"
-            />
-            <path
-              d="M232 224 C 320 224, 300 150, 356 150"
-              stroke="var(--line-strong)"
-              strokeWidth="1"
-              strokeDasharray="2 5"
-            />
-            {[40, 92, 188, 284, 376, 470].map((y) => (
-              <circle
-                key={y}
-                cx="42"
-                cy={y}
-                r="3"
-                fill="var(--bg-void)"
-                stroke="var(--line-strong)"
-              />
-            ))}
-            <circle
-              cx="168"
-              cy="120"
-              r="4.5"
-              fill="var(--accent)"
-              className={styles.obProjectNode}
-            />
-            <circle
-              cx="232"
-              cy="224"
-              r="6"
-              fill="var(--accent)"
-              className={`${styles.obProjectNode} ${styles.obProjectNodeLg}`}
-            />
-            <circle
-              cx="168"
-              cy="320"
-              r="4.5"
-              fill="var(--accent)"
-              className={styles.obProjectNode}
-            />
-            <circle cx="148" cy="410" r="3.5" fill="var(--bg-void)" stroke="var(--line-strong)" />
-            <circle cx="356" cy="150" r="3.5" fill="var(--bg-void)" stroke="var(--line-strong)" />
-            <text
-              x="58"
-              y="44"
-              fill="var(--text-faint)"
-              fontFamily="var(--font-mono)"
-              fontSize="10"
-              letterSpacing="0.06em"
+          <div className={styles.obProjectStage}>
+            <svg
+              className={styles.obProjectTree}
+              viewBox="0 0 420 300"
+              fill="none"
+              aria-hidden="true"
             >
-              main
-            </text>
-            <text
-              x="176"
-              y="124"
-              fill="var(--text-faint)"
-              fontFamily="var(--font-mono)"
-              fontSize="10"
-            >
-              run_8f2c1a
-            </text>
-            <text x="240" y="228" fill="var(--accent)" fontFamily="var(--font-mono)" fontSize="10">
-              run_31de07
-            </text>
-          </svg>
+              <defs>
+                <linearGradient id="obp-fade" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.6" />
+                  <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.1" />
+                </linearGradient>
+              </defs>
+
+              <line x1="36" y1="16" x2="36" y2="284" stroke="var(--line-strong)" strokeWidth="1" />
+              {BRANCHES.map((branch) => (
+                <path
+                  key={`edge-${branch.y}`}
+                  d={`M36 ${branch.y} v${BRANCH_DROP - 12} q0 12 12 12 h${branch.x - 48}`}
+                  fill="none"
+                  stroke={branch.live ? 'url(#obp-fade)' : 'var(--line-strong)'}
+                  strokeWidth="1"
+                  strokeDasharray={branch.live ? undefined : '2 5'}
+                />
+              ))}
+              {[16, 72, 140, 208, 268].map((y) => (
+                <circle
+                  key={y}
+                  cx="36"
+                  cy={y}
+                  r="3"
+                  fill="var(--bg-void)"
+                  stroke="var(--line-strong)"
+                />
+              ))}
+              {BRANCHES.map((branch, index) => (
+                <g key={`node-${branch.y}`}>
+                  <circle
+                    cx={branch.x}
+                    cy={branch.y + BRANCH_DROP}
+                    r={branch.live ? 5 : 3.5}
+                    fill={branch.live ? 'var(--accent)' : 'var(--bg-void)'}
+                    stroke={branch.live ? undefined : 'var(--line-strong)'}
+                    className={branch.live ? styles.obProjectNode : undefined}
+                    style={{ ['--i' as string]: String(index) }}
+                  />
+                  <text
+                    x={branch.x + 13}
+                    y={branch.y + BRANCH_DROP + 4}
+                    fill={branch.live ? 'var(--accent)' : 'var(--text-ghost)'}
+                    fontFamily="var(--font-mono)"
+                    fontSize="10"
+                  >
+                    {branch.label}
+                  </text>
+                </g>
+              ))}
+              <text
+                x="50"
+                y="20"
+                fill="var(--text-faint)"
+                fontFamily="var(--font-mono)"
+                fontSize="10"
+                letterSpacing="0.06em"
+              >
+                main
+              </text>
+            </svg>
+          </div>
 
           <div className={styles.obProjectSchematic}>
             <div className={styles.obProjectSchematicRow}>
@@ -167,9 +162,9 @@ export default function ProjectScreen(): React.JSX.Element {
       <main className={styles.obProjectForm}>
         <header className={styles.obProjectHead}>
           <div className={`${styles.obProjectEyebrow} eyebrow`}>
-            <span className="index">06</span>First project
+            <span className="index">04</span>First project
             <span className={styles.obProjectEyebrowSep} />
-            <span className={styles.obProjectEyebrowStep}>06 / 06</span>
+            <span className={styles.obProjectEyebrowStep}>04 / 04</span>
           </div>
           <h1 className={styles.obProjectTitle}>
             Point Foundry

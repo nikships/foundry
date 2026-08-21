@@ -1,3 +1,6 @@
+/* The concept band is a bottom rail, not a third column of the hero: it sits
+   on the page floor above the nav while the hero centers in what is left, so
+   a tall display grows the breathing room rather than a block of dead black. */
 .ob-welcome {
   flex: 1;
   min-height: 0;
@@ -6,186 +9,468 @@
   overflow: hidden;
 }
 
-.ob-welcome-body {
+/* ── hero: editorial column + framed stage ─────────────────────────────── */
+
+.hero {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(340px, 0.82fr) minmax(520px, 1.18fr);
+  grid-template-columns: minmax(320px, 0.86fr) minmax(480px, 1.14fr);
+  align-items: center;
+  gap: clamp(28px, 4vw, 72px);
+  padding: clamp(16px, 3vh, 40px) clamp(28px, 4.4vw, 72px);
 }
 
-.ob-welcome-editorial,
-.ob-welcome-visual {
+.editorial {
   min-width: 0;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: clamp(28px, 5vw, 72px);
+  animation: ob-welcome-rise var(--slow) var(--ease) both;
 }
 
-.ob-welcome-editorial {
-  border-right: 1px solid var(--line);
+.eyebrow-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+.eyebrow {
+  margin: 0;
+}
+.rule {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, var(--line-strong), transparent);
+}
+.step-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  color: var(--text-faint);
 }
 
-.ob-welcome-eyebrow {
-  margin: 0 0 var(--s5);
+/* The wordmark is the one place in the app that goes display-scale. Optical
+   size shifts the variable face toward display proportions at this size. */
+.wordmark {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 0.06em;
+  margin: clamp(12px, 2.2vh, 26px) 0 0;
+  font-size: clamp(52px, 6.6vw, 104px);
+  font-weight: 620;
+  font-variation-settings: 'opsz' 40;
+  letter-spacing: -0.05em;
+  line-height: 0.86;
+  color: var(--text);
+}
+
+.caret {
+  width: clamp(6px, 0.62vw, 10px);
+  height: clamp(6px, 0.62vw, 10px);
+  margin-bottom: 0.12em;
+  background: var(--accent);
+  flex: none;
+  animation: ob-welcome-blink 1.6s steps(1, end) infinite;
+}
+
+.lead {
+  margin: clamp(14px, 2.4vh, 28px) 0 0;
+  max-width: 44ch;
+  font-size: clamp(14px, 1.15vw, 17px);
+  line-height: 1.65;
+  color: var(--text-dim);
+  text-wrap: pretty;
+}
+.lead strong {
+  color: var(--text);
+  font-weight: 550;
+}
+
+.marks {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin: clamp(16px, 2.6vh, 28px) 0 0;
+  padding: 0;
+}
+.mark {
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  background: var(--bg-panel);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  line-height: 1;
+}
+
+/* ── stage ─────────────────────────────────────────────────────────────── */
+
+.stage {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  justify-content: center;
+  animation: ob-welcome-rise var(--slow) var(--ease) 80ms both;
+}
+
+.stage-panel {
+  position: relative;
+  width: 100%;
+  max-width: 780px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+
+.stage-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, var(--line-faint) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--line-faint) 1px, transparent 1px);
+  background-size: 36px 36px;
+  mask-image: radial-gradient(ellipse at 50% 45%, #000 10%, transparent 76%);
+  -webkit-mask-image: radial-gradient(ellipse at 50% 45%, #000 10%, transparent 76%);
+  pointer-events: none;
+}
+
+.stage-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s3) var(--s5);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-raised);
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--text-dim);
-}
-
-.ob-welcome-eyebrow span {
-  color: var(--accent);
-  margin-right: var(--s2);
-}
-
-.ob-welcome-wordmark {
-  margin: 0;
-  font-size: clamp(56px, 7vw, 108px);
-  font-weight: 680;
-  letter-spacing: -0.045em;
-  line-height: 0.9;
-  color: var(--text);
-}
-
-.ob-welcome-lead {
-  margin: var(--s6) 0 0;
-  max-width: 50ch;
-  font-size: clamp(14px, 1.35vw, 17px);
-  line-height: 1.7;
-  color: var(--text-dim);
-}
-
-.ob-welcome-concepts {
-  list-style: none;
-  margin: var(--s8) 0 0;
-  padding: 0;
-  border-top: 1px solid var(--line);
-}
-
-.ob-welcome-concepts li {
-  display: grid;
-  grid-template-columns: 32px 1fr;
-  gap: var(--s3);
-  padding: var(--s4) 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.ob-welcome-concepts strong,
-.ob-welcome-concepts small {
-  display: block;
-}
-
-.ob-welcome-concepts strong {
-  font-size: var(--text-sm);
-  color: var(--text);
-}
-
-.ob-welcome-concepts small {
-  margin-top: 3px;
-  font-size: var(--text-xs);
-  line-height: 1.5;
   color: var(--text-faint);
 }
-
-.concept-index,
-.visual-label,
-.diagram-index,
-.diagram-label,
-.diagram-outcome {
-  font-family: var(--font-mono);
-}
-
-.concept-index {
-  font-size: 10px;
-  letter-spacing: 0.12em;
+.live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--accent);
 }
+.live-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  animation: ob-welcome-pulse 1.9s ease-in-out infinite;
+}
 
-.ob-welcome-visual {
+.stage-body {
   position: relative;
-  background-image:
-    linear-gradient(to right, var(--line) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--line) 1px, transparent 1px);
-  background-size: 64px 64px;
-}
-
-.visual-label {
-  margin: 0 0 var(--s5);
-  font-size: 10px;
-  letter-spacing: 0.18em;
-  color: var(--text-faint);
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  padding: clamp(16px, 2.4vh, 30px) clamp(14px, 1.8vw, 26px);
 }
 
 .diagram {
   display: block;
   width: 100%;
+  max-height: 100%;
   height: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  background: color-mix(in srgb, var(--bg-base) 94%, transparent);
 }
 
-.diagram-track,
-.diagram-arrow,
-.diagram-branch {
+.link {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+/* One short dash sliding the length of the connector: the request moving
+   between phases. Purely decorative, so it stops under reduced motion. */
+.link-pulse {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-dasharray: 14 200;
+  animation: ob-welcome-travel 5.4s linear infinite;
+}
+.link-head {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.station {
+  fill: var(--bg-raised);
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  animation: ob-welcome-lit 5.4s ease-in-out infinite;
+}
+
+.station-index,
+.station-label,
+.station-sub,
+.outcome {
+  font-family: var(--font-mono);
+}
+.station-index {
+  fill: var(--text-ghost);
+  font-size: 9px;
+  letter-spacing: 1.4px;
+}
+.station-label {
+  fill: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1.4px;
+}
+.station-sub {
+  fill: var(--text-faint);
+  font-size: 9px;
+  letter-spacing: 0.4px;
+}
+
+.branch {
   fill: none;
   stroke: var(--line-strong);
   stroke-width: 1;
 }
-
-.diagram-station {
-  fill: var(--bg-raised);
-  stroke: var(--line-strong);
-  stroke-width: 1;
-}
-
-.diagram-label {
-  fill: var(--text);
-  font-size: 9px;
-  letter-spacing: 1.2px;
-}
-
-.diagram-index {
-  fill: var(--text-faint);
-  font-size: 8px;
-  letter-spacing: 1px;
-}
-
-.diagram-outcome {
+.outcome {
   fill: var(--text-dim);
-  font-size: 8px;
-  letter-spacing: 1.2px;
+  font-size: 9px;
+  letter-spacing: 1.4px;
+  text-anchor: middle;
 }
 
-.landing-guidance {
-  margin: var(--s5) 0 0;
-  padding-left: var(--s4);
-  border-left: 2px solid var(--accent);
-  max-width: 54ch;
+/* ── evidence strip ────────────────────────────────────────────────────── */
+
+.evidence {
+  position: relative;
+  flex: none;
+  padding: var(--s4) clamp(14px, 1.8vw, 26px);
+  border-top: 1px solid var(--line);
+}
+.evidence-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-ghost);
+}
+.evidence-list {
+  list-style: none;
+  margin: var(--s3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.evidence-row {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-dim);
+  animation: ob-welcome-rise var(--slow) var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 90ms + 260ms);
+}
+.evidence-glyph {
+  color: var(--text-faint);
+  text-align: center;
+}
+.evidence-row[data-kind='phase'] .evidence-glyph {
+  color: var(--accent);
+}
+.evidence-row[data-kind='gate'] .evidence-glyph {
+  color: var(--green);
+}
+.evidence-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.evidence-meta {
+  color: var(--text-ghost);
+  font-variant-numeric: tabular-nums;
+}
+.evidence-row[data-kind='gate'] .evidence-meta {
+  color: var(--green);
+}
+
+.guidance {
+  position: relative;
+  flex: none;
+  margin: 0;
+  padding: var(--s4) clamp(14px, 1.8vw, 26px);
+  border-top: 1px solid var(--line);
+  background: var(--bg-raised);
   font-size: var(--text-sm);
-  line-height: 1.6;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+.guidance::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+}
+
+/* ── concept band ──────────────────────────────────────────────────────── */
+
+.band {
+  flex: none;
+  list-style: none;
+  margin: 0 clamp(28px, 4.4vw, 72px);
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-top: 1px solid var(--line);
+}
+
+.band-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  grid-template-rows: auto auto;
+  column-gap: var(--s3);
+  row-gap: 3px;
+  padding: clamp(14px, 2.2vh, 22px) clamp(18px, 2vw, 32px) clamp(14px, 2.2vh, 22px) 0;
+  animation: ob-welcome-rise var(--slow) var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 70ms + 140ms);
+}
+.band-item + .band-item {
+  padding-left: clamp(18px, 2vw, 32px);
+  border-left: 1px solid var(--line);
+}
+
+.band-index {
+  grid-row: 1 / span 2;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+  line-height: 1.5;
+}
+.band-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--text);
 }
+.band-body {
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-faint);
+  text-wrap: pretty;
+}
 
-@media (max-width: 960px) {
+/* ── motion ────────────────────────────────────────────────────────────── */
+
+@keyframes ob-welcome-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes ob-welcome-blink {
+  0%,
+  55% {
+    opacity: 1;
+  }
+  56%,
+  100% {
+    opacity: 0.15;
+  }
+}
+@keyframes ob-welcome-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.8);
+  }
+}
+@keyframes ob-welcome-travel {
+  from {
+    stroke-dashoffset: 214;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes ob-welcome-lit {
+  0%,
+  16%,
+  100% {
+    stroke: var(--line-strong);
+    fill: var(--bg-raised);
+  }
+  6% {
+    stroke: color-mix(in srgb, var(--accent) 46%, var(--line-strong));
+    fill: var(--bg-hover);
+  }
+}
+
+@media (max-width: 1180px) {
+  .hero {
+    grid-template-columns: 1fr;
+    align-content: center;
+    gap: clamp(20px, 3vh, 32px);
+  }
+  .marks {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
   .ob-welcome {
     overflow: auto;
   }
-
-  .ob-welcome-body {
+  .band {
     grid-template-columns: 1fr;
   }
-
-  .ob-welcome-editorial {
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
+  .band-item + .band-item {
+    padding-left: 0;
+    border-left: 0;
+    border-top: 1px solid var(--line);
   }
+}
 
-  .ob-welcome-editorial,
-  .ob-welcome-visual {
-    padding: 28px 24px;
+@media (prefers-reduced-motion: reduce) {
+  .editorial,
+  .stage,
+  .band-item,
+  .caret,
+  .live-dot,
+  .link-pulse,
+  .station,
+  .evidence-row {
+    animation: none;
   }
 }

@@ -35,7 +35,7 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  padding: var(--s6) var(--s8);
+  padding: clamp(20px, 3.4vh, 40px) clamp(28px, 3.2vw, 56px) var(--nav-clear, 76px);
 }
 .ob-project-diagram-label {
   font-family: var(--font-mono);
@@ -47,12 +47,34 @@
   padding-bottom: var(--s4);
   border-bottom: 1px solid var(--line);
 }
+/* The diagram takes the slack in the column so the schematic, pull quote, and
+   footer stay anchored instead of floating mid-panel on a tall window. */
+.ob-project-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  padding: var(--s6) 0;
+}
 .ob-project-tree {
   width: 100%;
   max-width: 420px;
+  max-height: 100%;
   height: auto;
-  margin: var(--s8) 0 var(--s6);
-  flex-shrink: 0;
+}
+.ob-project-node {
+  animation: ob-project-node var(--slow) var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 120ms + 160ms);
+}
+
+@keyframes ob-project-node {
+  from {
+    opacity: 0;
+    r: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 .ob-project-schematic {
   border-top: 1px solid var(--line);
@@ -126,10 +148,11 @@
   flex-direction: column;
   min-width: 0;
   overflow: auto;
-  padding: var(--s6) var(--s8) var(--s6);
+  overscroll-behavior: contain;
+  padding: clamp(20px, 3.4vh, 40px) clamp(28px, 3.2vw, 56px) var(--nav-clear, 76px);
 }
 .ob-project-head {
-  padding-bottom: var(--s6);
+  padding-bottom: var(--s2);
 }
 .ob-project-eyebrow {
   display: flex;
@@ -174,8 +197,8 @@
   color: var(--text-dim);
 }
 .ob-project-section {
-  margin-top: var(--s6);
-  padding-top: var(--s6);
+  margin-top: var(--s5);
+  padding-top: var(--s5);
   border-top: 1px solid var(--line);
 }
 .ob-project-section-head {
@@ -384,9 +407,10 @@
 /* empty */
 .ob-project-empty {
   margin-top: var(--s4);
-  padding: var(--s8) 0;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
+  padding: var(--s5);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r);
+  background: var(--bg-panel);
   text-align: left;
 }
 .ob-project-empty-icon {
@@ -395,15 +419,15 @@
 }
 .ob-project-empty-title {
   margin: var(--s3) 0 0;
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
   color: var(--text);
 }
 .ob-project-empty-body {
   margin: var(--s2) 0 0;
-  max-width: 42ch;
-  font-size: var(--text-sm);
+  max-width: 48ch;
+  font-size: var(--text-xs);
   line-height: var(--leading-loose);
   color: var(--text-dim);
 }
@@ -418,7 +442,7 @@
   gap: var(--s3);
 }
 .ob-project-add {
-  margin-top: var(--s5);
+  margin-top: var(--s4);
   display: inline-flex;
   align-items: center;
   gap: var(--s2);
@@ -477,9 +501,12 @@
   .ob-project-diagram-inner {
     padding: var(--s6) var(--s6);
   }
+  .ob-project-stage {
+    flex: none;
+    padding: var(--s5) 0;
+  }
   .ob-project-tree {
     max-width: 360px;
-    margin: var(--s6) 0 var(--s4);
   }
   .ob-project-form {
     padding: var(--s6) var(--s6) var(--s6);

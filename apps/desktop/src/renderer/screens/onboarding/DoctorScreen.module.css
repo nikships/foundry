@@ -3,17 +3,18 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--s6);
-  padding: var(--s3) var(--s6) var(--s6);
-  overflow: auto;
+  padding: clamp(14px, 2.4vh, 28px) clamp(28px, 4.4vw, 72px) var(--nav-clear, 76px);
+  overflow: hidden;
 }
 .ob-doctor-body {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(320px, 0.92fr) minmax(420px, 1.08fr);
-  gap: var(--s10);
+  grid-template-columns: minmax(320px, 0.88fr) minmax(420px, 1.12fr);
+  gap: clamp(24px, 3.4vw, 64px);
   align-items: start;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* ── intro ─────────────────────────────────────────────── */
@@ -25,8 +26,26 @@
   top: 0;
   animation: ob-doctor-in var(--normal) var(--ease) both;
 }
-.ob-doctor-intro :global(.ob-eyebrow) {
-  margin-bottom: var(--s2);
+.ob-doctor-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-bottom: var(--s3);
+}
+.ob-doctor-eyebrow :global(.ob-eyebrow) {
+  margin: 0;
+}
+.ob-doctor-rule {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, var(--line-strong), transparent);
+}
+.ob-doctor-step {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  color: var(--text-faint);
 }
 .ob-doctor-intro :global(.ob-title) {
   margin-bottom: var(--s2);
@@ -41,8 +60,94 @@
   color: var(--text);
 }
 
+/* ── score ─────────────────────────────────────────────── */
+.ob-doctor-score {
+  margin-top: clamp(18px, 3vh, 34px);
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  padding-bottom: var(--s4);
+}
+.ob-doctor-score-num {
+  font-family: var(--font-mono);
+  font-size: clamp(38px, 3.6vw, 54px);
+  font-weight: 600;
+  line-height: 0.86;
+  letter-spacing: -0.045em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.ob-doctor-score-of {
+  font-size: 0.45em;
+  letter-spacing: 0;
+  color: var(--text-faint);
+}
+.ob-doctor-score-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.ob-doctor-score-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.ob-doctor-score-state {
+  font-size: var(--text-xs);
+  color: var(--amber);
+  line-height: 1.3;
+}
+.ob-doctor-score[data-ready] .ob-doctor-score-state {
+  color: var(--green);
+}
+.ob-doctor-score-live {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.ob-doctor-facts {
+  margin-top: var(--s5);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s2) var(--s5);
+  padding-top: var(--s4);
+  border-top: 1px solid var(--line);
+}
+.ob-doctor-fact {
+  min-width: 0;
+}
+.ob-doctor-fact dt {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.ob-doctor-fact dd {
+  margin: 5px 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .ob-doctor-meta {
-  margin-top: var(--s6);
+  margin-top: var(--s5);
   padding-bottom: var(--s2);
   border-bottom: 1px solid var(--line);
   display: flex;
@@ -119,38 +224,22 @@
   text-align: center;
 }
 
-/* telemetry — ruled, not boxed */
-.ob-doctor-telemetry {
-  margin-top: var(--s6);
-  border-top: 1px solid var(--line-strong);
-  padding-top: var(--s3);
-  animation: ob-doctor-in var(--normal) var(--ease) 180ms both;
-}
-.ob-doctor-telemetry-head,
-.ob-doctor-telemetry-foot {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--s3);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-  line-height: 1;
-}
+/* One segment per check, read straight off the run — no synthetic series: a
+   figure that invented its own numbers would be the one part of this screen
+   the operator could not trust. */
 .ob-doctor-signals {
   display: flex;
   align-items: stretch;
   gap: 3px;
-  height: 26px;
-  margin: var(--s3) 0;
+  height: 6px;
+  margin-top: calc(-1 * var(--s2));
 }
 .ob-doctor-signal {
   flex: 1 1 0;
   min-width: 2px;
   border-radius: 1px;
   background: var(--line-strong);
+  transition: background var(--normal) var(--ease);
 }
 .ob-doctor-signal.ok {
   background: var(--green);
@@ -160,25 +249,6 @@
 }
 .ob-doctor-signal.bad {
   background: var(--red);
-}
-.ob-doctor-telemetry-foot {
-  border-top: 1px solid var(--line);
-  padding-top: var(--s2);
-  text-transform: none;
-  letter-spacing: 0.06em;
-  font-size: 10px;
-  font-family: var(--font-mono);
-}
-.ob-doctor-telemetry-live {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--accent);
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  font-size: 10px;
-  font-family: var(--font-mono);
-  font-weight: 600;
 }
 .ob-doctor-live-dot {
   width: 5px;
@@ -198,19 +268,6 @@
   color: var(--text-dim);
   font-weight: 600;
 }
-.ob-doctor-scene {
-  margin-top: var(--s6);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  overflow: hidden;
-  background: var(--bg-base);
-}
-.ob-doctor-scene-art {
-  display: block;
-  width: 100%;
-  height: auto;
-}
-
 /* ── panel — clean surface layout without card border ── */
 .ob-doctor-panel-wrap {
   display: flex;
@@ -431,8 +488,7 @@
 
 @media (max-width: 960px) {
   .ob-doctor {
-    padding: var(--s3) var(--s4) var(--s4);
-    gap: var(--s5);
+    padding: var(--s3) var(--s4) var(--nav-clear, 76px);
   }
   .ob-doctor-body {
     grid-template-columns: 1fr;
@@ -440,9 +496,6 @@
   }
   .ob-doctor-intro {
     position: static;
-  }
-  .ob-doctor-telemetry-svg {
-    height: 64px;
   }
 }
 @media (max-width: 640px) {

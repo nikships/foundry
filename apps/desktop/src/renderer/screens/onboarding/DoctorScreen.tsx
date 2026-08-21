@@ -1,7 +1,7 @@
 import { ProviderIcon } from '../../components/media/BrandIcon.js';
 import DoctorList from '../../components/readiness/DoctorList.js';
 import { useOnboarding } from './OnboardingContext.js';
-import { SceneArt, StepFooter } from './shared.js';
+import { StepFooter } from './shared.js';
 import { Button } from '../../components/ui/Button.js';
 import styles from './DoctorScreen.module.css';
 
@@ -9,6 +9,7 @@ export default function DoctorScreen(): React.JSX.Element {
   const { checks, checking, recheck, canLeaveDoctor, doctorHint, bridge, models, error } =
     useOnboarding();
   const blocking = checks.filter((c) => !c.ok && c.blocking);
+  const passing = checks.filter((c) => c.ok).length;
   const providers = bridge?.providers ?? [];
   const connected = providers.filter((p) => p.authenticated).length;
   const attention = providers.filter((p) => p.accounts.length > 0 && !p.authenticated).length;
@@ -18,15 +19,52 @@ export default function DoctorScreen(): React.JSX.Element {
       <div className={styles.obDoctorBody}>
         {/* ── left: narrative, chips, signal strip ─────────────────── */}
         <div className={styles.obDoctorIntro}>
-          <p className="ob-eyebrow eyebrow">
-            <span className="index">05</span>Environment — 5 / 6
-          </p>
+          <div className={styles.obDoctorEyebrow}>
+            <p className="ob-eyebrow eyebrow">
+              <span className="index">03</span>Environment
+            </p>
+            <span className={styles.obDoctorRule} aria-hidden />
+            <span className={styles.obDoctorStep}>03 / 04</span>
+          </div>
           <h1 className="ob-title">Make the floor safe</h1>
           <p className="ob-lead">
             A <strong>usable model</strong> and <strong>git</strong> block the rest of setup until
             they work. Everything else is informational — install it later and it appears here
             automatically.
           </p>
+
+          {/* The pass count is the number the whole step turns green, so it
+              carries the scale rather than sitting inside a status line. */}
+          <div className={styles.obDoctorScore} data-ready={canLeaveDoctor || undefined}>
+            <span className={styles.obDoctorScoreNum}>
+              {passing}
+              <span className={styles.obDoctorScoreOf}>/{checks.length}</span>
+            </span>
+            <span className={styles.obDoctorScoreText}>
+              <span className={styles.obDoctorScoreLabel}>checks passing</span>
+              <span className={styles.obDoctorScoreState}>
+                {blocking.length === 0
+                  ? 'nothing is blocking'
+                  : `${blocking.length} blocking ${blocking.length === 1 ? 'check' : 'checks'}`}
+              </span>
+            </span>
+            <span className={styles.obDoctorScoreLive}>
+              <span className={styles.obDoctorLiveDot} />
+              {checking ? 'checking' : 'live'}
+            </span>
+          </div>
+
+          <div className={styles.obDoctorSignals} aria-hidden>
+            {checks.map((check) => (
+              <span
+                key={check.id}
+                className={`${styles.obDoctorSignal} ${
+                  check.ok ? styles.ok : check.blocking ? styles.bad : styles.warn
+                }`}
+                title={check.label}
+              />
+            ))}
+          </div>
 
           <div className={styles.obDoctorMeta}>
             <span className={styles.obDoctorMetaLabel}>Providers</span>
@@ -64,44 +102,21 @@ export default function DoctorScreen(): React.JSX.Element {
             })}
           </div>
 
-          {/* One segment per check, read straight off the run — no synthetic
-              series: a figure that invented its own numbers would be the one
-              part of this screen the operator could not trust. */}
-          <div className={styles.obDoctorTelemetry} aria-hidden>
-            <div className={styles.obDoctorTelemetryHead}>
-              <span>check results</span>
-              <span>
-                {checks.length} signals · {blocking.length} blocking
-              </span>
+          <dl className={styles.obDoctorFacts}>
+            <div className={styles.obDoctorFact}>
+              <dt>Models</dt>
+              <dd>{models.length} reachable</dd>
             </div>
-            <div className={styles.obDoctorSignals}>
-              {checks.map((check) => (
-                <span
-                  key={check.id}
-                  className={`${styles.obDoctorSignal} ${
-                    check.ok ? styles.ok : check.blocking ? styles.bad : styles.warn
-                  }`}
-                  title={check.label}
-                />
-              ))}
+            <div className={styles.obDoctorFact}>
+              <dt>Bridge</dt>
+              <dd>{bridge?.running ? `serving on ${bridge.port}` : 'idle'}</dd>
             </div>
-            <div className={styles.obDoctorTelemetryFoot}>
-              <span>{models.length} models reachable</span>
-              <span>{bridge?.running ? `bridge on ${bridge.port}` : 'bridge idle'}</span>
-              <span className={styles.obDoctorTelemetryLive}>
-                <span className={styles.obDoctorLiveDot} />
-                {checking ? 'checking' : 'live'}
-              </span>
-            </div>
-          </div>
+          </dl>
 
           <p className={`${styles.obDoctorClarify} faint`}>
             Only a <strong>usable model</strong> and git are blocking. An unconnected provider can
             stay that way — the factory still runs.
           </p>
-          <div className={styles.obDoctorScene} aria-hidden>
-            <SceneArt path="scenes/empty-state.png" className={styles.obDoctorSceneArt} />
-          </div>
         </div>
 
         {/* ── right: diagnostics panel ────────────────────────────── */}

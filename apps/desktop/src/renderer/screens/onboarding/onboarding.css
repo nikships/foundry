@@ -1,7 +1,7 @@
 /*
  * Shared onboarding chrome — the shell, stage, header, stepper, and footer
- * classes used by OnboardingShell, shared.tsx (StepFooter, Stepper, SceneArt),
- * and every step screen. Global by design: multiple components reference these
+ * classes used by OnboardingShell, shared.tsx (StepFooter, Stepper), and
+ * every step screen. Global by design: multiple components reference these
  * class names, so they cannot live in a per-component CSS module.
  */
 

@@ -3,15 +3,61 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--s5);
-  padding: var(--s3) var(--s6) var(--s6);
-  max-width: 860px;
-  width: 100%;
-  margin: 0 auto;
-  overflow: auto;
+  gap: clamp(16px, 2.6vh, 28px);
+  padding: clamp(14px, 2.4vh, 28px) clamp(28px, 4.4vw, 72px) var(--nav-clear, 76px);
+  overflow: hidden;
 }
+
+/* ── head ──────────────────────────────────────────────────────────────── */
+
 .ob-providers-head {
+  flex: none;
+  max-width: 64ch;
+  animation: ob-providers-rise var(--slow) var(--ease) both;
+}
+.ob-providers-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-bottom: var(--s3);
+}
+.ob-providers-eyebrow :global(.ob-eyebrow) {
+  margin: 0;
+}
+.ob-providers-rule {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, var(--line-strong), transparent);
+}
+.ob-providers-step {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  color: var(--text-faint);
+}
+.ob-providers-head :global(.ob-lead) {
+  margin-bottom: 0;
   max-width: 62ch;
+}
+
+/* ── two columns: credentials on the left, what they bought on the right ── */
+
+.ob-provider-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+  gap: clamp(20px, 2.4vw, 40px);
+  align-items: stretch;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.ob-provider-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+  min-width: 0;
 }
 
 .ob-provider-panel {
@@ -25,20 +71,26 @@
      content height is what makes the column overflow, which is where the
      scrollbar belongs. */
   flex: none;
+  animation: ob-providers-rise var(--slow) var(--ease) 60ms both;
 }
 .ob-provider-panel-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--s3);
   padding: var(--s3) var(--s4);
   border-bottom: 1px solid var(--line);
-  background: var(--bg-panel);
+  background: var(--bg-raised);
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
+  color: var(--text-dim);
+}
+.ob-provider-panel-meta {
   color: var(--text-faint);
+  letter-spacing: 0.1em;
 }
 .ob-provider-notice {
   display: flex;
@@ -46,6 +98,7 @@
   gap: var(--s3);
   padding: var(--s3) var(--s4);
   border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--amber-dim) 26%, transparent);
   font-size: var(--text-xs);
   color: var(--text-dim);
   line-height: var(--leading);
@@ -66,16 +119,22 @@
 .ob-provider-row {
   position: relative;
   display: grid;
-  grid-template-columns: 40px 1fr auto;
+  grid-template-columns: 34px 1fr auto;
   align-items: center;
-  gap: var(--s4);
+  gap: var(--s3);
   width: 100%;
-  padding: 14px var(--s4);
+  padding: 12px var(--s4);
   border-top: 1px solid var(--line);
   text-align: left;
+  transition: background var(--fast) var(--ease);
+  animation: ob-providers-rise var(--normal) var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 40ms + 120ms);
 }
 .ob-provider-row:first-child {
   border-top: 0;
+}
+.ob-provider-row:hover {
+  background: var(--bg-hover);
 }
 .ob-provider-row.on {
   background: var(--bg-raised);
@@ -97,9 +156,9 @@
 }
 
 .ob-provider-icon {
-  width: 40px;
-  height: 40px;
-  border: 1px solid var(--line-strong);
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
   border-radius: var(--r-sm);
   background: var(--bg-void);
   display: grid;
@@ -107,22 +166,22 @@
   flex: none;
 }
 .ob-provider-row.on .ob-provider-icon {
-  border-color: color-mix(in srgb, var(--accent) 22%, var(--line) 78%);
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--line) 72%);
 }
 .ob-provider-main {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 .ob-provider-name {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text);
   line-height: 1.2;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
 }
 .ob-provider-status {
   display: flex;
@@ -131,6 +190,7 @@
   font-size: var(--text-xs);
   color: var(--text-dim);
   line-height: 1.35;
+  min-width: 0;
 }
 .ob-status-text {
   font-size: var(--text-xs);
@@ -174,53 +234,99 @@
 
 .ob-key-form {
   display: grid;
-  grid-template-columns: 1fr 1fr auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto;
   align-items: end;
   gap: var(--s3);
   padding: var(--s4);
 }
+.ob-key-form :global(.field) {
+  margin-bottom: 0;
+}
 
-.ob-provider-facts {
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: transparent;
-  overflow: hidden;
-  flex: none;
-}
-.ob-facts-row {
+/* ── catalog rail ──────────────────────────────────────────────────────── */
+
+.ob-provider-catalog {
+  position: sticky;
+  top: 0;
+  min-width: 0;
+  /* Bounded by the viewport rather than the credential column: sticky keeps it
+     in view while the left side scrolls, and the model list takes the slack. */
+  max-height: 100%;
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--bg-panel);
+  overflow: hidden;
+  animation: ob-providers-rise var(--slow) var(--ease) 120ms both;
+}
+.ob-catalog-head {
+  display: flex;
   align-items: center;
-  gap: var(--s2) var(--s3);
-  padding: var(--s3) var(--s4);
-  border-top: 1px solid var(--line);
-  font-size: var(--text-xs);
-  line-height: 1.5;
+  justify-content: space-between;
+  gap: var(--s2);
+  padding: var(--s2) var(--s2) var(--s2) var(--s4);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-raised);
 }
-.ob-facts-row:first-child {
-  border-top: 0;
-}
-.ob-facts-k {
+.ob-catalog-title {
   font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* The reachable-model count is the one number this whole step exists to
+   change, so it is set at display scale rather than buried in a status row. */
+.ob-catalog-readout {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  padding: var(--s4);
+  border-bottom: 1px solid var(--line);
+}
+.ob-catalog-count {
+  font-family: var(--font-mono);
+  font-size: 40px;
+  font-weight: 600;
+  line-height: 0.9;
+  letter-spacing: -0.04em;
+  color: var(--text-ghost);
+  font-variant-numeric: tabular-nums;
+  transition: color var(--normal) var(--ease);
+}
+.ob-catalog-count[data-ok] {
+  color: var(--text);
+}
+.ob-catalog-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+.ob-catalog-sub {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-faint);
-  min-width: 56px;
 }
-.ob-facts-tail {
-  margin-left: auto;
-}
+
 .ob-model-list {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-content: flex-start;
   gap: 6px;
   list-style: none;
   margin: 0;
-  padding: var(--s3) var(--s4);
-  border-top: 1px solid var(--line);
+  padding: var(--s4);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .ob-model {
   display: inline-flex;
@@ -233,8 +339,15 @@
   background: var(--bg-raised);
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--text);
+  color: var(--text-dim);
   line-height: 1.2;
+  transition:
+    color var(--fast) var(--ease),
+    border-color var(--fast) var(--ease);
+}
+.ob-model:hover {
+  color: var(--text);
+  border-color: var(--line-strong);
 }
 .ob-model span {
   overflow: hidden;
@@ -269,16 +382,17 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px 14px;
+  gap: 8px 14px;
   padding: var(--s3) var(--s4);
   border-top: 1px solid var(--line);
+  margin-top: auto;
 }
 .ob-legend {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-faint);
   letter-spacing: 0.04em;
 }
@@ -294,17 +408,37 @@
   line-height: var(--leading);
 }
 
+@keyframes ob-providers-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 1100px) {
+  .ob-provider-grid {
+    grid-template-columns: 1fr;
+  }
+  .ob-provider-catalog {
+    position: static;
+  }
+}
+
 @media (max-width: 640px) {
   .ob-providers {
-    padding: var(--s3) var(--s4) var(--s4);
+    padding: var(--s3) var(--s4) var(--nav-clear, 76px);
   }
   .ob-provider-row {
-    grid-template-columns: 36px 1fr;
+    grid-template-columns: 34px 1fr;
   }
   .ob-provider-tail {
     grid-column: 1 / -1;
     justify-content: flex-start;
-    padding-left: 44px;
+    padding-left: 46px;
   }
   .ob-key-form {
     grid-template-columns: 1fr;
@@ -313,7 +447,13 @@
     flex-direction: column;
     align-items: flex-start;
   }
-  .ob-facts-tail {
-    margin-left: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ob-providers-head,
+  .ob-provider-panel,
+  .ob-provider-row,
+  .ob-provider-catalog {
+    animation: none;
   }
 }
