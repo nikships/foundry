@@ -17,10 +17,13 @@ import { ProjectStore } from '../../src/main/store/projects.js';
 import { openDb, projectDbPath, projectRunsDir } from '../../src/main/trace/db.js';
 import { Tracer } from '../../src/main/trace/tracer.js';
 import type { PipelineDef } from '../../src/shared/types.js';
+import type { ProposalInput } from '../../src/main/smith/proposals.js';
 
 export const E2E_RUN_ID = 'run_e2e_inspector';
 export const E2E_REQUEST = 'FOUNDRY_E2E_INSPECTOR_REQUEST';
 export const E2E_TRANSCRIPT = 'FOUNDRY_E2E_TRANSCRIPT_MARKER';
+export const E2E_SMITH_MESSAGE = 'FOUNDRY_E2E_SMITH_TRANSCRIPT';
+export const E2E_SMITH_PROPOSAL_NAME = 'e2e_planner';
 
 const FIXTURE_PIPELINE: PipelineDef = {
   id: 'prompt',
@@ -142,6 +145,9 @@ export function seedOnboardedFixture(userDataDir?: string): SeededFixture {
     db.close();
   }
 
+  seedSmithChat(supportDir, project.id);
+  seedSmithProposal(supportDir, project.id);
+
   return {
     userDataDir: root,
     supportDir,
@@ -149,4 +155,65 @@ export function seedOnboardedFixture(userDataDir?: string): SeededFixture {
     projectId: project.id,
     runId: E2E_RUN_ID,
   };
+}
+
+/** Persisted Smith transcript the chat screen and bubble restore on open. */
+function seedSmithChat(supportDir: string, projectId: string): void {
+  const stateDir = join(supportDir, 'pi', 'smith', projectId);
+  mkdirSync(stateDir, { recursive: true });
+  writeFileSync(
+    join(stateDir, 'chat-state.json'),
+    `${JSON.stringify(
+      {
+        sessionId: null,
+        modelOverride: null,
+        transcript: [
+          {
+            id: 'e2e-op',
+            kind: 'text',
+            text: 'What agents do I have?',
+            source: 'operator',
+            at: 1,
+          },
+          {
+            id: 'e2e-sm',
+            kind: 'text',
+            text: E2E_SMITH_MESSAGE,
+            source: 'smith',
+            at: 2,
+          },
+        ],
+      },
+      null,
+      2,
+    )}\n`,
+  );
+}
+
+/** Pending proposal the e2e harness injects via `FOUNDRY_E2E_SMITH_PROPOSAL`. */
+function seedSmithProposal(supportDir: string, projectId: string): void {
+  mkdirSync(join(supportDir, 'smith'), { recursive: true });
+  const input: ProposalInput = {
+    kind: 'agent',
+    mode: 'create',
+    name: E2E_SMITH_PROPOSAL_NAME,
+    spec: {
+      name: E2E_SMITH_PROPOSAL_NAME,
+      purpose: 'E2E fixture agent.',
+      model: 'inherit',
+      reasoningEffort: 'medium',
+      systemPrompt: 'You plan.',
+      userPrompt: 'Work on: {{request}}',
+      writes: [],
+      envelope: 'plan',
+      color: '#5ad2dd',
+    },
+    validation: [],
+    overwrites: false,
+    projectId,
+  };
+  writeFileSync(
+    join(supportDir, 'smith', 'pending-proposal.json'),
+    `${JSON.stringify(input, null, 2)}\n`,
+  );
 }

@@ -78,6 +78,14 @@ describe('screenContextBlock', () => {
     expect(block).not.toContain('—');
   });
 
+  it('names a settings pane when the operator is in Settings', () => {
+    const block = screenContextBlock({
+      route: 'settings',
+      entity: { kind: 'settings', id: 'models' },
+    });
+    expect(block).toContain('settings — settings models');
+  });
+
   it('stays compact: a descriptor, not a payload', () => {
     const block = screenContextBlock({
       route: 'pipelines',

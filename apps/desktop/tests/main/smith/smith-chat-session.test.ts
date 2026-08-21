@@ -6,7 +6,7 @@
  * rather than assumed.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../helpers/tmp.js';
@@ -19,6 +19,7 @@ import {
   type SmithTransportRequest,
 } from '../../../src/main/smith/chat-session.js';
 import type { AgentDef } from '../../../src/shared/types.js';
+import type { SmithChatState } from '../../../src/shared/ipc-contract.js';
 
 /** The scripted transport's request shape wants an AgentDef; Smith has none. */
 const smithAsAgent: AgentDef = {
@@ -137,6 +138,24 @@ describe('lifecycle', () => {
     await expect(h.session.send('hello')).rejects.toThrow(
       /smith chat session start failed: no provider signed in/,
     );
+    expect(h.session.snapshot().error).toMatch(/no provider signed in/);
+  });
+
+  it('cancel during a lazy open skips the paid turn', async () => {
+    const scripted = new ScriptedAgent(['should not run'], [], [], { handshakeDelayMs: 80 });
+    const h = harness({ scripted });
+    const parked = h.session.send('hello');
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    await h.session.cancel();
+    const result = await parked;
+    expect(result.interrupted).toBe(true);
+    expect(h.scripted.turnRequests).toHaveLength(0);
+  });
+
+  it('cancel is a no-op when no turn is running', async () => {
+    const h = harness({});
+    await expect(h.session.cancel()).resolves.toBeUndefined();
+    await expect(h.session.dispose()).resolves.toBeUndefined();
   });
 });
 
@@ -162,6 +181,14 @@ describe('persistence', () => {
     const h = harness({});
     expect(existsSync(join(h.stateDir, 'chat-state.json'))).toBe(false);
     expect(h.session.currentSessionId).toBeNull();
+  });
+
+  it('treats a corrupt pointer as a fresh chat, not a failure', async () => {
+    const h = harness({});
+    writeFileSync(join(h.stateDir, 'chat-state.json'), 'not-json{');
+    const relaunched = h.remake();
+    expect(relaunched.currentSessionId).toBeNull();
+    expect(relaunched.snapshot().transcript).toEqual([]);
   });
 });
 
@@ -323,6 +350,47 @@ describe('renderer snapshots', () => {
       expect.objectContaining({ source: 'readiness', kind: 'note' }),
       { id: 'ready-1', source: 'readiness', kind: 'tool', text: 'npm test', at: 2, done: true },
     ]);
+  });
+
+  it('ignores a readiness update whose row was never absorbed', () => {
+    const h = harness({});
+    h.session.absorbReadinessProgress({
+      type: 'entry_update',
+      entry: { id: 'ghost', kind: 'tool', text: 'nope', at: 1 },
+    });
+    expect(h.session.snapshot().transcript).toEqual([]);
+  });
+
+  it('pushes cloned snapshots through onChange and records a model warning', async () => {
+    const changes: SmithChatState[] = [];
+    const warnings: string[] = [];
+    const h = harness({});
+    const session = h.remake({
+      onChange: (state) => changes.push(state),
+      onModelWarning: (warning) => warnings.push(warning),
+      transport: (req: SmithTransportRequest) => {
+        const inner = h.scripted.transport({
+          agent: smithAsAgent,
+          cwd: req.cwd,
+          runId: 'smith-chat',
+          onPermission: (ask) => req.onPermission(ask),
+          onEvent: req.onEvent,
+          onModelWarning: req.onModelWarning,
+          phaseId: () => null,
+        });
+        const start = inner.start.bind(inner);
+        inner.start = async (existing) => {
+          await start(existing);
+          req.onModelWarning('fell back to inherit');
+        };
+        return inner;
+      },
+    });
+    await session.send('hello');
+    expect(changes.length).toBeGreaterThan(0);
+    expect(changes.at(-1)?.transcript[0]?.text).toBe('hello');
+    expect(warnings).toEqual(['fell back to inherit']);
+    expect(session.snapshot().transcript.some((row) => row.text.includes('fell back'))).toBe(true);
   });
 });
 

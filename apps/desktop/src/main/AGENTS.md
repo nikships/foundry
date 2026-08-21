@@ -5,7 +5,7 @@ Node main-process code. This is the only place that touches git, disk, child pro
 ## Project Overview
 
 - Owns the Electron lifecycle (`main.ts`), project registry, run orchestration, and all privileged I/O.
-- Subsystems (see siblings): `engine/` (sequencing/gates/worktrees), `pi/` (every agent call, run sessions and one-shots alike), `session/` (shared panel session + registry for detect/setup/readiness), `readiness/` (agent-readiness evaluation), `smith/` (entity-smith socket + approval queue), `trace/` (SQLite WAL), `store/` (JSON config), `system/` (PATH/procs/doctor), `ipc/` (routers), `updater.ts` (auto-update).
+- Subsystems (see siblings): `engine/` (sequencing/gates/worktrees), `pi/` (every agent call, run sessions and one-shots alike), `session/` (shared panel session + registry for detect/setup/readiness), `readiness/` (agent-readiness evaluation), `smith/` (native entity-smith chat + approval queue), `trace/` (SQLite WAL), `store/` (JSON config), `system/` (PATH/procs/doctor), `ipc/` (routers), `updater.ts` (auto-update).
 - State: `~/Library/Application Support/foundry/` (sharded per project). A run's file I/O belongs in `.foundry-worktrees/<runId>` on `foundry/<runId>`; merge/discard lives in `engine/worktree.ts`.
 
 ## Setup Commands
@@ -70,7 +70,7 @@ Main is minified via `esbuild` in `electron.vite.config.ts` (`externalizeDepsPlu
 | `session/`   | Shared `PanelSession` + `SessionRegistry` for one-shot panels |
 | `readiness/` | Agent-readiness evaluation, marker, remediation session       |
 | `bridge/`    | Vendored CLIProxyAPI: provider OAuth → local endpoint         |
-| `smith/`     | Entity-smith socket, validation, proposal queue               |
+| `smith/`     | Native in-app chat, entity/readiness tools, proposal queue    |
 | `ipc/`       | Domain routers, named channel seam                            |
 | `store/`     | JSON config, builtin restoration                              |
 | `system/`    | PATH, process control, doctor, notifications, dock badge      |

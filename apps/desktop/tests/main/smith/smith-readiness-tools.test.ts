@@ -330,6 +330,52 @@ describe('readiness_remediate', () => {
     expect(fresh.some((e) => e.type === 'phase' && e.phase === 'awaiting_merge')).toBe(true);
   });
 
+  it('forwards an in-place transcript update once, not as a second row', async () => {
+    const entry = { id: 'ready-1', kind: 'tool' as const, text: 'npm test', at: 1 };
+    let observe: ((state: ReadinessState) => void) | null = null;
+    const session: ReadinessSessionSurface = {
+      snapshot: () => ({ phase: 'idle', detail: '', entries: [] }) as unknown as ReadinessState,
+      makeReady: async () => {
+        observe?.({
+          phase: 'remediating',
+          detail: 'working',
+          entries: [entry],
+        } as unknown as ReadinessState);
+        observe?.({
+          phase: 'remediating',
+          detail: 'working',
+          entries: [{ ...entry, text: 'npm test --coverage', done: true }],
+        } as unknown as ReadinessState);
+        return {
+          phase: 'needs_continue',
+          detail: 'more to do',
+          entries: [],
+        } as unknown as ReadinessState;
+      },
+      confirmMerge: () => {
+        throw new Error('unused');
+      },
+    };
+    const events: ReadinessProgressEvent[] = [];
+    const answer = await answerOf(
+      readinessRemediateTool({
+        session: (obs) => {
+          observe = obs;
+          return session;
+        },
+        onProgress: (event) => events.push(event),
+      }),
+    );
+    expect(answer.phase).toBe('needs_continue');
+    expect(events.filter((e) => e.type === 'entry')).toHaveLength(1);
+    expect(events.filter((e) => e.type === 'entry_update')).toEqual([
+      expect.objectContaining({
+        type: 'entry_update',
+        entry: expect.objectContaining({ text: 'npm test --coverage', done: true }),
+      }),
+    ]);
+  });
+
   it('refuses to start while make-it-ready work is already in flight', async () => {
     const live: ReadinessSessionSurface = {
       snapshot: () =>

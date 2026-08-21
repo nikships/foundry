@@ -6,11 +6,12 @@
  * spec at the developer's `~/Library/Application Support/foundry/`.
  */
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { SMITH_E2E_PROPOSAL_ENV } from '../../src/main/smith/index.js';
 
 const require = createRequire(import.meta.url);
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../../..');
@@ -40,6 +41,10 @@ export async function launchFoundry(userDataDir: string): Promise<{
   window: Page;
 }> {
   assertBuiltApp();
+  const proposalPath = join(userDataDir, 'foundry', 'smith', 'pending-proposal.json');
+  const proposalEnv: Record<string, string> = existsSync(proposalPath)
+    ? { [SMITH_E2E_PROPOSAL_ENV]: readFileSync(proposalPath, 'utf8') }
+    : {};
   const app = await electron.launch({
     executablePath: electronExecutable(),
     args: [repoRoot, `--user-data-dir=${userDataDir}`],
@@ -48,6 +53,7 @@ export async function launchFoundry(userDataDir: string): Promise<{
       ...process.env,
       // A leftover electron-vite session must not pull the window onto HMR.
       ELECTRON_RENDERER_URL: '',
+      ...proposalEnv,
     },
     timeout: 30_000,
   });

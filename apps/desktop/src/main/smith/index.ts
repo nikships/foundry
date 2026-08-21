@@ -9,7 +9,43 @@
 
 import type { SmithProposal } from '@shared/types.js';
 import type { SmithChatSession } from './chat-session.js';
-import { ProposalQueue } from './proposals.js';
+import { ProposalQueue, type ProposalInput } from './proposals.js';
+
+/**
+ * Optional JSON `ProposalInput` the Electron UI smoke harness sets so a
+ * pending card can render without a model. Production launches leave it unset.
+ */
+export const SMITH_E2E_PROPOSAL_ENV = 'FOUNDRY_E2E_SMITH_PROPOSAL';
+
+/** Parse a fixture-seeded proposal. Malformed JSON is ignored, not thrown. */
+export function readSmithProposalSeed(env: NodeJS.ProcessEnv = process.env): ProposalInput | null {
+  const raw = env[SMITH_E2E_PROPOSAL_ENV];
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<ProposalInput>;
+    if (
+      (parsed.kind === 'agent' || parsed.kind === 'pipeline' || parsed.kind === 'envelope') &&
+      (parsed.mode === 'create' || parsed.mode === 'edit') &&
+      typeof parsed.name === 'string' &&
+      parsed.name &&
+      parsed.spec != null &&
+      typeof parsed.spec === 'object'
+    ) {
+      return {
+        kind: parsed.kind,
+        mode: parsed.mode,
+        name: parsed.name,
+        spec: parsed.spec,
+        validation: Array.isArray(parsed.validation) ? parsed.validation : [],
+        overwrites: parsed.overwrites === true,
+        projectId: typeof parsed.projectId === 'string' ? parsed.projectId : '',
+      };
+    }
+  } catch {
+    // A bad fixture must not take the app down.
+  }
+  return null;
+}
 
 /** Everything the Smith service needs from the wider app, kept to a narrow seam. */
 export interface SmithServiceDeps {
@@ -21,6 +57,8 @@ export interface SmithServiceDeps {
   save: (proposal: SmithProposal) => { ok: true; entity: unknown } | { ok: false; error: string };
   /** Opens one native chat lazily for a project that still exists. */
   createChat: (projectId: string, proposals: ProposalQueue) => SmithChatSession | null;
+  /** Optional pending proposal to enqueue at construction (tests / e2e). */
+  seedProposal?: ProposalInput;
 }
 
 export class SmithService {
@@ -35,6 +73,8 @@ export class SmithService {
       // promise to satisfy the async handler contract.
       (proposal) => Promise.resolve(deps.save(proposal)),
     );
+    const seed = deps.seedProposal ?? readSmithProposalSeed();
+    if (seed) void this.proposals.propose(seed);
   }
 
   /** One persistent native conversation per project, opened only on demand. */

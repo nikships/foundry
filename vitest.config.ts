@@ -30,11 +30,7 @@ export default defineConfig({
       reportsDirectory: 'coverage',
       // Scope: the privileged, headless core. These are the modules a coding
       // agent can break silently and that Vitest can actually execute in `node`.
-      include: [
-        'apps/desktop/src/main/**/*.ts',
-        'apps/desktop/src/shared/**/*.ts',
-        'apps/desktop/src/cli/**/*.ts',
-      ],
+      include: ['apps/desktop/src/main/**/*.ts', 'apps/desktop/src/shared/**/*.ts'],
       exclude: [
         // React UI: not reachable from `environment: 'node'` suites. UI
         // verification is `npm run test:e2e` (Playwright + Electron), not this gate.

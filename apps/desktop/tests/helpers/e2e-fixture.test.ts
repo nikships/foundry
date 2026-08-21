@@ -9,7 +9,14 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { openDb, projectDbPath } from '../../src/main/trace/db.js';
-import { E2E_REQUEST, E2E_RUN_ID, E2E_TRANSCRIPT, seedOnboardedFixture } from '../e2e/seed.js';
+import {
+  E2E_REQUEST,
+  E2E_RUN_ID,
+  E2E_SMITH_MESSAGE,
+  E2E_SMITH_PROPOSAL_NAME,
+  E2E_TRANSCRIPT,
+  seedOnboardedFixture,
+} from '../e2e/seed.js';
 
 interface SeededSettings {
   onboarded: boolean;
@@ -61,5 +68,25 @@ describe('e2e fixture seed', () => {
     } finally {
       db.close();
     }
+
+    const chat = JSON.parse(
+      readFileSync(
+        join(fixture.supportDir, 'pi', 'smith', fixture.projectId, 'chat-state.json'),
+        'utf8',
+      ),
+    ) as { transcript: Array<{ text: string; source: string }> };
+    expect(chat.transcript.map((row) => [row.source, row.text])).toEqual([
+      ['operator', 'What agents do I have?'],
+      ['smith', E2E_SMITH_MESSAGE],
+    ]);
+
+    const proposal = JSON.parse(
+      readFileSync(join(fixture.supportDir, 'smith', 'pending-proposal.json'), 'utf8'),
+    ) as { name: string; kind: string; mode: string };
+    expect(proposal).toMatchObject({
+      name: E2E_SMITH_PROPOSAL_NAME,
+      kind: 'agent',
+      mode: 'create',
+    });
   });
 });
