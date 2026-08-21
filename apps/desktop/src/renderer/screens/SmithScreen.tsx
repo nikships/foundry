@@ -10,40 +10,17 @@
  * renders inline at the transcript's tail, where the conversation produced it.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { SmithScreenContext } from '@shared/ipc-contract.js';
 import { useApp } from '../stores/app.js';
 import { useAgentModels } from '../hooks/useAgentModels.js';
 import { useSmithChat } from '../hooks/useSmithChat.js';
-import {
-  SMITH_TOOL_ICON,
-  groupTranscript,
-  type SmithTranscriptGroup,
-} from '../view-models/smith-chat-view.js';
 import { SMITH_NO_PROVIDER_COPY } from '../view-models/smith-copy.js';
 import ModelPicker from '../components/common/ModelPicker.js';
 import SmithProposalCard, { type SmithNavTarget } from '../components/smith/SmithProposalCard.js';
+import SmithTranscript from '../components/smith/SmithTranscript.js';
 import { Button } from '../components/ui/Button.js';
 import styles from './SmithScreen.module.css';
-
-function TranscriptRows({ group }: { group: SmithTranscriptGroup }): React.JSX.Element {
-  return (
-    <>
-      {group.entries.map((entry) => (
-        <div key={entry.id} className={`${styles.line} ${styles[entry.kind] ?? ''}`}>
-          {entry.kind === 'tool' && (
-            <span
-              className={`${styles.lineIcon} ${entry.done ? (entry.failed ? styles.iconFailed : styles.iconOk) : styles.iconWait}`}
-            >
-              {SMITH_TOOL_ICON[entry.toolKind ?? 'other'] ?? '·'}
-            </span>
-          )}
-          <span className={styles.lineText}>{entry.text}</span>
-        </div>
-      ))}
-    </>
-  );
-}
 
 export default function SmithScreen({
   screenContext,
@@ -58,19 +35,10 @@ export default function SmithScreen({
   const { state, send, cancel, newChat, setModel } = useSmithChat(projectId);
   const { models, refresh: refreshModels } = useAgentModels();
   const [draft, setDraft] = useState('');
-  const tailRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const running = state?.running ?? false;
   const transcript = useMemo(() => state?.transcript ?? [], [state?.transcript]);
-  const groups = useMemo(() => groupTranscript(transcript), [transcript]);
-
-  // Follow the tail while Smith is working, but stop once it settles so a
-  // reader who scrolled up to inspect a tool call is not yanked back down.
-  useEffect(() => {
-    if (!running) return;
-    tailRef.current?.scrollTo({ top: tailRef.current.scrollHeight });
-  }, [transcript, running]);
 
   const submit = (): void => {
     const text = draft.trim();
@@ -133,48 +101,28 @@ export default function SmithScreen({
         </div>
       </header>
 
-      <div className={`${styles.transcript} scroll`} ref={tailRef} data-testid="smith-transcript">
-        {!project && (
-          <div className={styles.emptyState}>
-            <p>Add a project from the sidebar. Smith works inside that project's checkout.</p>
-          </div>
-        )}
-        {project && transcript.length === 0 && !running && (
-          <div className={styles.emptyState}>
-            <h2 className={styles.emptyTitle}>Smith</h2>
-            <p>
-              Foundry's entity-smith. Ask it to create or edit agents, pipelines, and reports, check
-              whether this repository is agent-ready, or explain a run. Every entity write waits on
-              your approval, right here in the chat.
-            </p>
-            {models.length === 0 && <p className={styles.emptyHint}>{SMITH_NO_PROVIDER_COPY}</p>}
-          </div>
-        )}
-        {groups.map((group) =>
-          group.source === 'operator' ? (
-            <div key={group.id} className={styles.operatorTurn}>
-              {group.entries.map((entry) => (
-                <div key={entry.id} className={styles.operatorBubble}>
-                  {entry.text}
-                </div>
-              ))}
+      <SmithTranscript
+        entries={transcript}
+        running={running}
+        emptyState={
+          !project ? (
+            <div className={styles.emptyState}>
+              <p>Add a project from the sidebar. Smith works inside that project's checkout.</p>
             </div>
-          ) : group.source === 'readiness' ? (
-            <section key={group.id} className={styles.readinessBlock}>
-              <header className={styles.readinessHead}>
-                <span className={styles.readinessTag}>Readiness agent</span>
-              </header>
-              <TranscriptRows group={group} />
-            </section>
           ) : (
-            <div key={group.id} className={styles.smithTurn}>
-              <TranscriptRows group={group} />
+            <div className={styles.emptyState}>
+              <h2 className={styles.emptyTitle}>Smith</h2>
+              <p>
+                Foundry's entity-smith. Ask it to create or edit agents, pipelines, and reports,
+                check whether this repository is agent-ready, or explain a run. Every entity write
+                waits on your approval, right here in the chat.
+              </p>
+              {models.length === 0 && <p className={styles.emptyHint}>{SMITH_NO_PROVIDER_COPY}</p>}
             </div>
-          ),
-        )}
-        {running && <div className={`${styles.line} ${styles.note} ${styles.pulse}`}>…</div>}
-        <SmithProposalCard onApproved={onApproved} />
-      </div>
+          )
+        }
+        tail={<SmithProposalCard onApproved={onApproved} />}
+      />
 
       {state?.error && (
         <div className={styles.errorBanner} role="alert">

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, menu } from './api.js';
 import { useGlobalShortcuts } from './hooks/useGlobalShortcuts.js';
 import { AppProvider, useApp } from './stores/app.js';
@@ -17,6 +17,7 @@ import ReadinessFlow from './components/readiness/ReadinessFlow.js';
 import ConfirmModal from './components/common/ConfirmModal.js';
 import UpdateBanner from './components/layout/UpdateBanner.js';
 import SmithScreen from './screens/SmithScreen.js';
+import SmithBubble from './components/smith/SmithBubble.js';
 import { type SmithNavTarget } from './components/smith/SmithProposalCard.js';
 import type { ProjectDef, UpdateStatus } from '@shared/types.js';
 import type { SmithScreenContext } from '@shared/ipc-contract.js';
@@ -135,13 +136,22 @@ function AppInner(): React.JSX.Element {
     if (next === 'inspector') setInspectorRunId('');
   }, []);
 
+  /**
+   * What the operator is looking at right now. The mini chat bubble sends this
+   * live with every message; the dedicated screen sends the snapshot taken on
+   * entry (`smithContext`), because once the Smith screen is up the live value
+   * describes only Smith itself.
+   */
+  const liveScreenContext = useMemo(
+    () => describeScreen(view, { openRunId, inspectorRunId, designTab, settingsPane }),
+    [view, openRunId, inspectorRunId, designTab, settingsPane],
+  );
+
   /** The sidebar's Smith click: snapshot where the operator was, then open the chat. */
   const openSmith = useCallback((): void => {
-    if (view !== 'smith') {
-      setSmithContext(describeScreen(view, { openRunId, inspectorRunId, designTab, settingsPane }));
-    }
+    if (view !== 'smith') setSmithContext(liveScreenContext);
     go('smith');
-  }, [view, openRunId, inspectorRunId, designTab, settingsPane, go]);
+  }, [view, liveScreenContext, go]);
 
   /** Open Design on a specific tab — used by the menu and by cross-links. */
   const goDesign = useCallback(
@@ -331,8 +341,22 @@ function AppInner(): React.JSX.Element {
       )}
 
       {/*
+       * The Smith mini chat: one launcher on every screen (always visible —
+       * decided), one shared session with the dedicated Smith screen. It sends
+       * the live screen descriptor, and its Expand hands off to the screen at
+       * the same point.
+       */}
+      {ready && !needsOnboarding && (
+        <SmithBubble
+          screenContext={liveScreenContext}
+          onExpand={openSmith}
+          onApproved={(target) => void onSmithApproved(target)}
+        />
+      )}
+      {/*
        * The Smith proposal card renders inline in the chat transcript, on the
-       * Smith screen; only an engineer interrupt still overlays the app here.
+       * Smith screen and in the bubble; only an engineer interrupt still
+       * overlays the app here.
        */}
       {activeInterrupt && <InterruptSheet interrupt={activeInterrupt} />}
       {creatingProject && (
