@@ -1,0 +1,218 @@
+/**
+ * The floating Smith launcher and its popover. Sits above screen content and
+ * ordinary sheets (z 70) but below modals (90+), so an interrupt or a confirm
+ * still outranks the chat.
+ */
+
+.anchor {
+  position: fixed;
+  right: var(--s5);
+  bottom: var(--s5);
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--s3);
+}
+
+/* ── Launcher ───────────────────────────────────────────────────────────── */
+
+.launcher {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--r-full);
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow:
+    0 2px 8px rgb(0 0 0 / 35%),
+    0 8px 24px rgb(0 0 0 / 25%);
+  transition:
+    transform var(--fast) var(--ease),
+    box-shadow var(--fast) var(--ease);
+}
+
+.launcher:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 3px 10px rgb(0 0 0 / 40%),
+    0 10px 28px rgb(0 0 0 / 28%);
+}
+
+.launcher:active {
+  transform: translateY(0);
+}
+
+.launcherMark {
+  display: block;
+}
+
+.badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 11px;
+  height: 11px;
+  border-radius: var(--r-full);
+  background: var(--amber);
+  border: 2px solid var(--bg-base);
+}
+
+/* A pending proposal is waiting on the human; pulse so it reads as urgent. */
+.badgeProposal {
+  background: var(--red);
+  animation: smith-badge-pulse 1.6s var(--ease) infinite;
+}
+
+@keyframes smith-badge-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.25);
+  }
+}
+
+/* ── Popover ────────────────────────────────────────────────────────────── */
+
+.popover {
+  width: min(420px, calc(100vw - 48px));
+  height: min(560px, calc(100vh - 140px));
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--r-xl);
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  box-shadow:
+    0 4px 16px rgb(0 0 0 / 40%),
+    0 16px 48px rgb(0 0 0 / 30%);
+  overflow: hidden;
+}
+
+.popoverHead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s3);
+  border-bottom: 1px solid var(--line-faint);
+  background: var(--bg-raised);
+}
+
+.identity {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.identityMark {
+  color: var(--accent);
+}
+
+.scopeChip {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 var(--s2);
+  border-radius: var(--r-full);
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.headSpacer {
+  flex: 1;
+}
+
+.headAction {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition:
+    color var(--fast) var(--ease),
+    background var(--fast) var(--ease);
+}
+
+.headAction:hover {
+  background: var(--bg-input);
+  color: var(--text);
+}
+
+.headAction:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  line-height: var(--leading);
+  padding: var(--s4);
+}
+
+/* The inline proposal card, compacted for the popover's width. */
+.cardSlot {
+  font-size: var(--text-xs);
+}
+
+.cardSlot :global(pre) {
+  max-height: 180px;
+}
+
+.errorBanner {
+  flex: none;
+  margin: 0 var(--s3);
+  padding: var(--s2) var(--s3);
+  border-radius: var(--r-sm);
+  background: var(--red-dim);
+  border: 1px solid color-mix(in srgb, var(--red) 18%, transparent);
+  color: var(--red);
+  font-size: var(--text-xs);
+  line-height: var(--leading);
+}
+
+.composer {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s2);
+  padding: var(--s3);
+  border-top: 1px solid var(--line-faint);
+}
+
+.input {
+  flex: 1;
+  resize: none;
+  min-height: 34px;
+  max-height: 110px;
+  font-size: var(--text-sm);
+}

@@ -1,0 +1,113 @@
+.smith {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding: calc(var(--titlebar-h) + var(--s2)) var(--s5) var(--s4);
+  gap: var(--s3);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex: none;
+  flex-wrap: wrap;
+  padding-bottom: var(--s3);
+  border-bottom: 1px solid var(--line-faint);
+}
+
+.scopeChip {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 var(--s2);
+  border-radius: var(--r-full);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.headControls {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex: none;
+}
+
+.modelPicker {
+  min-width: 240px;
+}
+
+/* ── Transcript chrome (rows themselves live in SmithTranscript.module.css) ── */
+
+.emptyState {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s3);
+  text-align: center;
+  color: var(--text-dim);
+  font-size: var(--text-sm);
+  line-height: var(--leading);
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.emptyTitle {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.emptyHint {
+  color: var(--amber);
+  font-size: var(--text-sm);
+}
+
+/* ── Composer ───────────────────────────────────────────────────────────── */
+
+.errorBanner {
+  flex: none;
+  padding: var(--s3);
+  border-radius: var(--r-sm);
+  background: var(--red-dim);
+  border: 1px solid color-mix(in srgb, var(--red) 18%, transparent);
+  color: var(--red);
+  font-size: var(--text-sm);
+  line-height: var(--leading);
+}
+
+.composer {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s3);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--line-faint);
+}
+
+.input {
+  flex: 1;
+  resize: none;
+  min-height: 44px;
+  max-height: 160px;
+}
+
+.composerActions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}

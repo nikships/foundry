@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { ReadinessInspectResult, ReadinessState, ValidationIssue } from '@shared/types.js';
+import { useEffect, useMemo, useState } from 'react';
+import type { ReadinessInspectResult, ValidationIssue } from '@shared/types.js';
 import type { CompanionHostState } from '@shared/companion.js';
 import { api } from '../api.js';
 import { useApp } from '../stores/app.js';
@@ -12,13 +12,7 @@ import EmptyState from '../components/common/EmptyState.js';
 import BaseSyncBar from '../components/project/BaseSyncBar.js';
 import { Button } from '../components/ui/Button.js';
 import { Dropdown } from '../components/ui/Dropdown.js';
-import {
-  isReadinessLive,
-  isReadinessNeedsContinue,
-  isReadinessTerminal,
-  readinessBanner,
-  readinessFailureNote,
-} from '../view-models/readiness-view.js';
+import { readinessBanner } from '../view-models/readiness-view.js';
 import styles from './RunsScreen.module.css';
 
 export default function RunsScreen({
@@ -28,7 +22,6 @@ export default function RunsScreen({
   onAddProject,
   onNewProject,
   onOpenSettings,
-  onOpenReadiness,
 }: {
   request: string;
   onRequestChange: (request: string) => void;
@@ -37,7 +30,6 @@ export default function RunsScreen({
   /** Create a repository on GitHub instead of pointing at an existing checkout. */
   onNewProject?: () => void;
   onOpenSettings?: (pane: string) => void;
-  onOpenReadiness?: () => void;
 }): React.JSX.Element {
   const { pipelines, project, projectId, refreshAll } = useApp();
   const [selectedPipeline, setSelectedPipeline] = useState(
@@ -49,8 +41,6 @@ export default function RunsScreen({
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
   const [preflight, setPreflight] = useState<ValidationIssue[]>([]);
   const [readiness, setReadiness] = useState<ReadinessInspectResult | null>(null);
-  const [readinessChecking, setReadinessChecking] = useState(false);
-  const [readinessNote, setReadinessNote] = useState('');
   const [baseSyncing, setBaseSyncing] = useState(false);
   const [companion, setCompanion] = useState<CompanionHostState | null>(null);
 
@@ -82,19 +72,6 @@ export default function RunsScreen({
     if (selectedPipeline) localStorage.setItem('foundry.pipeline', selectedPipeline);
   }, [selectedPipeline]);
 
-  const refreshReadiness = useCallback(async (): Promise<void> => {
-    if (!projectId) return;
-    setReadiness(await api.readiness.inspect(projectId));
-  }, [projectId]);
-
-  // Both flags describe one project's session, so they reset with the project.
-  // Leaving them would render the previous project's "checking" state — which
-  // also hides the Check readiness button — over the new project's banner.
-  useEffect(() => {
-    setReadinessChecking(false);
-    setReadinessNote('');
-  }, [projectId]);
-
   useEffect(() => {
     if (!projectId) {
       setReadiness(null);
@@ -108,30 +85,6 @@ export default function RunsScreen({
       cancelled = true;
     };
   }, [projectId, project?.path, project?.readinessValidated, project?.readinessSkipped]);
-
-  // The modal and this banner read different sources (live session vs. the
-  // committed marker), so a finished check has to re-inspect here or the page
-  // keeps showing the pre-check verdict until the project is switched.
-  useEffect(() => {
-    if (!projectId) return;
-    let cancelled = false;
-    const off = api.on('readiness-progress', (data) => {
-      const next = data as ReadinessState;
-      if (cancelled || next?.projectId !== projectId) return;
-      setReadinessChecking(isReadinessLive(next.phase));
-      if (isReadinessNeedsContinue(next.phase)) {
-        setReadinessNote(readinessFailureNote(next));
-        return;
-      }
-      if (!isReadinessTerminal(next.phase)) return;
-      setReadinessNote(readinessFailureNote(next));
-      void refreshReadiness();
-    });
-    return () => {
-      cancelled = true;
-      off();
-    };
-  }, [projectId, refreshReadiness]);
 
   // Live preflight so missing commands and broken refs show before Start is hit.
   useEffect(() => {
@@ -163,13 +116,7 @@ export default function RunsScreen({
     [preflight],
   );
 
-  const banner = useMemo(
-    () =>
-      readiness
-        ? readinessBanner(readiness, { checking: readinessChecking, note: readinessNote })
-        : null,
-    [readiness, readinessChecking, readinessNote],
-  );
+  const banner = useMemo(() => (readiness ? readinessBanner(readiness) : null), [readiness]);
 
   const requestOk = request.trim().length > 0;
   const canStart =
@@ -283,16 +230,11 @@ export default function RunsScreen({
         <div
           className={banner.tone === 'ready' ? styles.readinessReady : styles.readinessBanner}
           data-testid="readiness-banner"
-          data-ready={readinessChecking ? 'checking' : banner.tone === 'ready' ? 'yes' : 'no'}
+          data-ready={banner.tone === 'ready' ? 'yes' : 'no'}
           role="status"
           aria-live="polite"
         >
           <p>{banner.message}</p>
-          {banner.action && onOpenReadiness && (
-            <Button size="sm" onClick={onOpenReadiness}>
-              {banner.action}
-            </Button>
-          )}
         </div>
       )}
       {project && (

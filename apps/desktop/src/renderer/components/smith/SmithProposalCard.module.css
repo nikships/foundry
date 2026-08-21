@@ -1,16 +1,16 @@
 /**
- * The Smith proposal preview card. Sits on a high-priority ModalShell like the
- * interrupt sheet, but ranks below it (engineer interrupts outrank a proposal)
- * and above the Smith terminal modal.
+ * The Smith proposal card, inline in the chat transcript. The accent border
+ * marks the one entry in the conversation that is waiting on the human.
  */
 
-.dialog {
-  width: min(720px, calc(100vw - 96px));
-  max-height: calc(100vh - 120px);
+.card {
   display: flex;
   flex-direction: column;
-  padding: var(--s6);
-  gap: var(--s4);
+  padding: var(--s4);
+  gap: var(--s3);
+  border-radius: var(--r-lg);
+  background: var(--bg-raised);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
 }
 
 .header {
@@ -83,8 +83,7 @@
 }
 
 .spec {
-  flex: 1;
-  min-height: 0;
+  max-height: 320px;
   overflow: auto;
   margin: 0;
   padding: var(--s3);

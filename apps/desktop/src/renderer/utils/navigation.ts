@@ -11,7 +11,11 @@
 /** A sidebar destination. Settings is reached from its own pinned control. */
 export type NavView = 'runs' | 'inspector' | 'design' | 'prs';
 
-export type View = NavView | 'settings';
+/**
+ * Smith is a full view (the chat screen) but not a numbered nav item: it keeps
+ * its own sidebar entry below the views, like Settings keeps its pinned one.
+ */
+export type View = NavView | 'settings' | 'smith';
 
 /**
  * Design's tabs, in dependency order: an envelope is a type, an agent declares

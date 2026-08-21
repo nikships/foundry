@@ -10,7 +10,7 @@ import { existsSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { AGENT_MARKS_DIR } from './store/agent-marks.js';
-import type { AgentDef, AppSettings, PipelineDef, RunRow } from '@shared/types.js';
+import type { AgentDef, AppSettings, PipelineDef, ReadinessState, RunRow } from '@shared/types.js';
 import { IPC, type DetectionState, type SetupState } from '@shared/ipc-contract.js';
 import { SettingsStore } from './store/settings.js';
 import { ProjectStore } from './store/projects.js';
@@ -24,8 +24,12 @@ import { ReadinessSessions } from './readiness/sessions.js';
 import type { PanelRegistry } from './session/index.js';
 import { piOneShots } from './pi/pi-oneshot.js';
 import type { OneShotFactory } from './pi/oneshot.js';
+import { SmithPiTransport } from './pi/smith-transport.js';
 import { UpdaterService } from './updater.js';
 import { SmithService } from './smith/index.js';
+import { SmithChatSession, type SmithToolFactory } from './smith/chat-session.js';
+import { smithListTool, smithProposeTool, smithShowTool } from './smith/entity-tools.js';
+import { readinessToolsFor } from './smith/readiness-tools.js';
 import { CompanionHost } from './companion/host.js';
 import { saveProposal } from './ipc/smith.js';
 import { notifyNeedsInput, notifyOutcome, setDockBadge } from './system/notify.js';
@@ -90,9 +94,10 @@ export class AppContext {
     this.setups = createSetups(this.oneShot, (state) =>
       this.broadcast(IPC.eventSetupProgress, state),
     );
-    this.readiness = new ReadinessSessions(this.oneShot, (state) =>
-      this.broadcast(IPC.eventReadinessProgress, state),
-    );
+    const smithReadinessObservers = new Map<string, (state: ReadinessState) => void>();
+    this.readiness = new ReadinessSessions(this.oneShot, (state) => {
+      smithReadinessObservers.get(state.projectId)?.(state);
+    });
 
     this.registry = new RunRegistry({
       appSupportDir: supportDir,
@@ -136,17 +141,71 @@ export class AppContext {
       onStateChanged: () => this.broadcast(IPC.eventCompanionChanged),
     });
 
-    // Smith is a skill an agent loads in the user's own terminal; the app only
-    // owns the socket it calls and the card that gates every write.
+    // Native chats open lazily per project and share one proposal queue, so
+    // every path preserves the one-card-at-a-time approval invariant.
     this.smith = new SmithService({
-      supportDir,
       broadcast: (channel, payload) => this.broadcast(channel, payload),
       channels: { proposalsChanged: IPC.eventSmithProposalsChanged },
       // The queue awaits a save; store access lives in the IPC layer, so the
       // handler is threaded through here rather than importing a store into the
       // queue.
       save: (proposal) => saveProposal(this, proposal),
-      socketCtx: this,
+      createChat: (projectId, proposals) => {
+        const project = this.projects.get(projectId);
+        if (!project) return null;
+        const chatRoot = join(supportDir, 'pi', 'smith', projectId);
+        let chat: SmithChatSession | null = null;
+        const toolFactories: SmithToolFactory[] = [
+          (toolCtx) => {
+            const deps = {
+              stores: this,
+              queue: proposals,
+              projectId: () => toolCtx.projectId,
+            };
+            return [smithListTool(deps), smithShowTool(deps), smithProposeTool(deps)];
+          },
+          (toolCtx) =>
+            readinessToolsFor({
+              project: () => {
+                const current = this.projects.get(toolCtx.projectId);
+                if (!current) throw new Error('project not found');
+                return { path: current.path, baseRef: current.baseRef };
+              },
+              session: (observe) => {
+                const current = this.projects.get(toolCtx.projectId);
+                if (!current) throw new Error('project not found');
+                smithReadinessObservers.set(toolCtx.projectId, observe);
+                return this.readiness.open(current, this.settings.get(), (next) => {
+                  const saved = this.projects.save(next);
+                  if (saved.ok) this.broadcast(IPC.eventSettingsChanged);
+                });
+              },
+              onProgress: (event) => chat?.absorbReadinessProgress(event),
+            }),
+        ];
+        chat = new SmithChatSession({
+          projectId,
+          projectPath: project.path,
+          stateDir: chatRoot,
+          smithModel: () => this.settings.get().smithModel,
+          toolFactories,
+          transport: (request) =>
+            new SmithPiTransport({
+              cwd: request.cwd,
+              supportDir,
+              sessionDir: join(chatRoot, 'sessions'),
+              model: request.model,
+              reasoningEffort: request.reasoningEffort,
+              harness: request.harness,
+              customTools: request.customTools,
+              onPermission: request.onPermission,
+              onEvent: request.onEvent,
+              onModelWarning: request.onModelWarning,
+            }),
+          onChange: (state) => this.broadcast(IPC.eventSmithProgress, state),
+        });
+        return chat;
+      },
     });
   }
 

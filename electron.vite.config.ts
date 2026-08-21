@@ -13,12 +13,9 @@ export default defineConfig({
     resolve: { alias },
     plugins: [externalizeDepsPlugin()],
     build: {
-      // The Smith helper binary builds alongside main so an agent running the
-      // foundry-smith skill can invoke it. It lands at out/main/foundry-cli.js.
       lib: {
         entry: {
           main: resolve(import.meta.dirname, 'apps/desktop/src/main/main.ts'),
-          'foundry-cli': resolve(import.meta.dirname, 'apps/desktop/src/cli/foundry-cli.ts'),
         },
       },
       rollupOptions: { output: { format: 'es' } },

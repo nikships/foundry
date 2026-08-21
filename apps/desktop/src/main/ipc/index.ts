@@ -42,7 +42,6 @@ export function registerIpc(ctx: AppContext): void {
   runs.register(ctx, handle);
   prs.register(ctx, handle);
   smith.register(ctx, handle);
-  smith.registerLaunch(ctx, handle);
   companion.register(ctx, handle);
   maintenance.register(ctx, handle);
   appRouter.register(ctx, handle);

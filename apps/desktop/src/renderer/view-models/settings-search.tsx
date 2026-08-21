@@ -33,9 +33,9 @@ export const SETTINGS_PANES: SettingsPaneMeta[] = [
   {
     id: 'models',
     label: 'Models & Providers',
-    hint: 'Providers, API keys, models, and agent defaults',
+    hint: 'Providers, API keys, models, agent defaults, and Smith',
     keywords:
-      'anthropic openai google openrouter xai api key subscription models bridge connect oauth reasoning helper pr writer',
+      'anthropic openai google openrouter xai api key subscription models bridge connect oauth reasoning helper pr writer smith chat',
   },
   {
     id: 'project',
@@ -47,9 +47,9 @@ export const SETTINGS_PANES: SettingsPaneMeta[] = [
   {
     id: 'app',
     label: 'App',
-    hint: 'Notifications, terminal, updates, phone, and maintenance',
+    hint: 'Notifications, updates, phone, and maintenance',
     keywords:
-      'notify updates terminal phone companion application quit relaunch retention history orphan version build replay intro',
+      'notify updates phone companion application quit relaunch retention history orphan version build replay intro',
   },
 ];
 
@@ -81,12 +81,6 @@ export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
     label: 'Software updates',
     note: 'Foundry checks only when you ask it to.',
     keywords: 'version update download install restart check',
-  },
-  {
-    pane: 'general',
-    label: 'Terminal',
-    note: 'Where Foundry hands you a shell, and which coding agent Smith starts in it.',
-    keywords: 'ghostty iterm warp terminal.app coding agent smith launcher droid claude codex',
   },
   {
     pane: 'general',
@@ -143,6 +137,12 @@ export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
     label: 'Helper tasks',
     note: 'Used for project detection and Agent Readiness.',
     keywords: 'detection readiness helper model reasoning effort',
+  },
+  {
+    pane: 'defaults',
+    label: 'Smith',
+    note: 'The model the in-app chat runs on.',
+    keywords: 'smith chat default model picker provider',
   },
   {
     pane: 'defaults',

@@ -10,7 +10,7 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 
 - **Pipeline / Phase / Agent / Envelope / Gate** — see `apps/desktop/src/shared/types.ts` and `apps/desktop/src/main/engine/`.
 - **Worktree isolation** — each run gets `.foundry-worktrees/<runId>` on branch `foundry/<runId>`. The base checkout is never mutated; merge/discard is an explicit operator action in `apps/desktop/src/main/engine/worktree.ts`.
-- **Smith** — Foundry's entity-smith. Not a feature of the app's UI: it is a skill (`skills/foundry-smith/`) the user loads into their own agent, in their own terminal, which drives the app through the `foundry-cli` helper over a unix socket. The app validates each proposal and holds every write behind a native approval card (`apps/desktop/src/main/smith/`, `SmithProposalCard`). Read-only ops answer immediately; there is no delete, and projects are list-only. The sidebar's Smith entry opens the user's preferred terminal (Settings → General) at the project root and starts the chosen coding agent (Droid, Claude Code, Codex, OpenCode, or Pi) with the skill and opening prompt — a handoff, not an embedded terminal.
+- **Smith** — Foundry's entity-smith: a native in-app chat on the bundled pi runtime. A dedicated screen and a Fin-style bubble share one persistent conversation per project. Ordinary checkout edits go through the agent's own tools (git is the undo); entity writes still gate on the inline approval card (`apps/desktop/src/main/smith/`, `SmithProposalCard`). Readiness (check / remediate / PR status) is absorbed into the same chat. There is no terminal handoff, no `foundry-cli`, and no shipped skill. Read-only entity ops answer immediately; there is no delete, and projects are list-only.
 - **Main owns privilege** — git, disk, child processes, CLIs, and SQLite live in `apps/desktop/src/main/`. The renderer (`apps/desktop/src/renderer/`) is unprivileged and reaches main only through the typed IPC seam (`apps/desktop/src/shared/ipc-contract.ts` → `apps/desktop/src/main/ipc/` → `apps/desktop/src/preload/bridge.ts` → `apps/desktop/src/renderer/api.ts`).
 
 ## Architecture
@@ -20,7 +20,6 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 ├── apps/
 │   ├── desktop/               ← native macOS Electron application
 │   │   ├── src/
-│   │   │   ├── cli/           ← foundry-cli: standalone Smith helper binary
 │   │   │   ├── main/          ← Node main process (privileged, modular domain subfolders)
 │   │   │   │   ├── bridge/    ← CLIProxyAPI provider OAuth & local endpoint
 │   │   │   │   ├── companion/ ← Companion mobile pairing & host server
@@ -29,7 +28,7 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 │   │   │   │   ├── pi/        ← in-process agent runtime sessions & one-shots
 │   │   │   │   ├── readiness/ ← agent-readiness evaluation & remediation
 │   │   │   │   ├── session/   ← shared PanelSession & SessionRegistry
-│   │   │   │   ├── smith/     ← Smith's socket, validation, approval queue
+│   │   │   │   ├── smith/     ← native Smith chat, entity/readiness tools, approval queue
 │   │   │   │   ├── store/     ← JSON config stores & builtins
 │   │   │   │   ├── system/    ← PATH resolution, process control, doctor
 │   │   │   │   ├── trace/     ← Tracer: sole SQLite writer (WAL)
@@ -58,7 +57,6 @@ Foundry is a native macOS Electron app (TypeScript + React 19, Electron 43) that
 ├── assets/                    ← shared branding assets & graphics
 ├── references/                ← pinned copies of pi-coding-agent vendor docs
 ├── scripts/                   ← check-css-collisions, check-docs-commands, audit-deps, engine-demo, fetch-bridge
-├── skills/                    ← agent skills for users (skills/foundry-smith)
 └── specs/                     ← historical architecture run plans
 
 .githooks/                     ← tracked git hooks (pre-commit); installed by npm run prepare
@@ -175,7 +173,7 @@ npm run build && npm run test:e2e
 `vitest.config.ts` is breached, and `npm run check` runs that variant rather than plain `npm test`,
 so local and CI enforce the same floor. An HTML report lands in `coverage/` (gitignored).
 
-- **Scope** — `apps/desktop/src/main/**`, `apps/desktop/src/shared/**`, `apps/desktop/src/cli/**`: the privileged, headless core that
+- **Scope** — `apps/desktop/src/main/**`, `apps/desktop/src/shared/**`: the privileged, headless core that
   Vitest can execute under `environment: node`. `apps/desktop/src/renderer/**` and `apps/desktop/src/preload/**` are excluded
   because they only run inside Electron, as is `apps/desktop/src/main/main.ts` (app bootstrap). UI verification
   is `npm run test:e2e` (Playwright launching `out/` against isolated fixtures). The fixture seeder
@@ -189,7 +187,7 @@ so local and CI enforce the same floor. An HTML report lands in `coverage/` (git
 **Conventions:**
 
 - Tests use **real git temp repositories** and `apps/desktop/tests/helpers/scripted-transport.ts` (an in-memory `AgentTransport` that performs real disk side effects in the worktree and answers asks through the real policy). Never use a network or model; do not mock git. Follow the executor pattern in `apps/desktop/tests/main/engine/executor.test.ts` for new engine behavior.
-- **Electron UI smoke** (`apps/desktop/tests/e2e/*.spec.ts`, `@playwright/test` + `_electron.launch()`): isolated `--user-data-dir`, seeded stores + WAL trace, no model or network. Onboarding walks Welcome → Ready; Inspector opens a seeded run and asserts the phase transcript. Failures write `test-results/` + `playwright-report/` (screenshot, trace, video). Interactive agent driving of the same app is the `foundry-ui` skill (CDP + agent-browser); do not add a second harness. The `e2e` CI job on `macos-26` is advisory — not a required check, not part of `npm run check`.
+- **Electron UI smoke** (`apps/desktop/tests/e2e/*.spec.ts`, `@playwright/test` + `_electron.launch()`): isolated `--user-data-dir`, seeded stores + WAL trace, no model or network. Onboarding walks Welcome → Ready; Inspector opens a seeded run and asserts the phase transcript; Smith opens the chat screen and bubble against a seeded transcript and inline proposal. Failures write `test-results/` + `playwright-report/` (screenshot, trace, video). Interactive agent driving of the same app is the `foundry-ui` skill (CDP + agent-browser); do not add a second harness. The `e2e` CI job on `macos-26` is advisory — not a required check, not part of `npm run check`.
 - `@lobehub/icons` is inlined via `server.deps.inline` so bare directory specifiers resolve under Vite.
 - `apps/desktop/tests/helpers/scripted-transport.ts` owns the agent-transport fixture. `apps/desktop/tests/main/system/doctor.test.ts` owns the provider-doctor fixtures, injected as `ProviderDoctorDeps` so no Bridge, port, or credential is involved.
 - New engine phase/gate behavior needs a dedicated executor test with a real worktree snapshot.

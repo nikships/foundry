@@ -11,9 +11,6 @@ directories:
 files:
   - out/**/*
   - package.json
-  # The Smith skill is read from outside the app by the user's own agent, so it
-  # has to ship in the bundle (and be unpacked below) rather than stay in the repo.
-  - skills/**/*
 
 # Not in `files`: those land in Resources/app, but main.ts resolves assets at
 # `process.resourcesPath/assets`. extraResources copies them there directly.
@@ -31,12 +28,6 @@ asar: true
 asarUnpack:
   # The native sqlite binding cannot be loaded from inside an asar archive.
   - '**/node_modules/better-sqlite3/**'
-  # The Smith helper CLI is run from outside the app (`node <path> …`) by
-  # whatever agent loaded the foundry-smith skill. A path inside app.asar is not
-  # a real file on disk, so unpack this one entry to give it one.
-  - 'out/main/foundry-cli.js'
-  # Same reason: an agent outside the app cannot read SKILL.md inside an asar.
-  - 'skills/**'
 
 mac:
   category: public.app-category.developer-tools

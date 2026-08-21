@@ -19,7 +19,7 @@ const EVENT_CHANNELS = {
   'detection-progress': IPC.eventDetectionProgress,
   'setup-progress': IPC.eventSetupProgress,
   'smith-proposals-changed': IPC.eventSmithProposalsChanged,
-  'readiness-progress': IPC.eventReadinessProgress,
+  'smith-progress': IPC.eventSmithProgress,
   'bridge-changed': IPC.eventBridgeChanged,
   'companion-changed': IPC.eventCompanionChanged,
 } as const;
@@ -79,7 +79,6 @@ const api: FoundryApi = {
     skip: (projectId) => call(IPC.readinessSkip, projectId),
     retry: (projectId) => call(IPC.readinessRetry, projectId),
     confirmMerge: (projectId) => call(IPC.readinessConfirmMerge, projectId),
-    answerAsk: (projectId, answers) => call(IPC.readinessAnswerAsk, projectId, answers),
     dismiss: (projectId) => call(IPC.readinessDismiss, projectId),
   },
   roster: {
@@ -159,11 +158,13 @@ const api: FoundryApi = {
     answer: (answer) => call(IPC.interruptsAnswer, answer),
   },
   smith: {
-    launchInfo: (projectId) => call(IPC.smithLaunchInfo, projectId),
-    start: (projectId) => call(IPC.smithStart, projectId),
-    openTerminal: (projectId) => call(IPC.smithOpenTerminal, projectId),
+    send: (projectId, text, screen) => call(IPC.smithSend, projectId, text, screen),
+    cancel: (projectId) => call(IPC.smithCancel, projectId),
+    newChat: (projectId) => call(IPC.smithNewChat, projectId),
+    state: (projectId) => call(IPC.smithState, projectId),
+    setModel: (projectId, model) => call(IPC.smithSetModel, projectId, model),
     proposalsList: () => call(IPC.smithProposalsList),
-    proposalAnswer: (id, answer) => call(IPC.smithProposalAnswer, id, answer),
+    answerProposal: (id, answer) => call(IPC.smithAnswerProposal, id, answer),
   },
   companion: {
     state: () => call(IPC.companionState),

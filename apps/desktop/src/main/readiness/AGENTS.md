@@ -4,6 +4,12 @@ Bespoke Agent Readiness Check. This is project onboarding, not a pipeline phase
 and not a run: there is no tracer row, no `foundry/<runId>` branch, and no
 zero-interrupt policy.
 
+The operator-facing surface is Smith. The chat's `readiness_check`,
+`readiness_remediate`, and `readiness_pr_status` tools wrap the machinery in
+this directory; there is no readiness modal and no parked ask-user channel.
+`needs_continue` still lives here, outside the chat session, so "New chat"
+never loses a half-done onboarding.
+
 ## Project Overview
 
 - `marker.ts` — parse/validate/write `.agents/agent-ready.json`.
@@ -11,16 +17,18 @@ zero-interrupt policy.
 - `session.ts` / `sessions.ts` — onboarding state machine + live registry. The transcript ring, cancel, and snapshot clone come from `session/PanelSession`; sweep/keep-limits come from `SessionRegistry`. Git/worktree/PR stay here.
 - `worktree.ts` — isolated `foundry-ready/<id>` worktree via `engine/git.ts`.
 - `merge.ts` — PR merge polling through the operator's `gh`.
-- `ask-user.ts` — parks an agent's question for a real UI; pipeline policy is untouched.
 - `prompt.ts` / `remediator.ts` — "Make it ready" agent turn.
+
+Smith's readiness tools (`src/main/smith/readiness-tools.ts`) are the only
+caller that starts or continues this session from the UI.
 
 ## Invariants
 
 - **The marker on the project's base ref is truth.** Run worktrees branch from
   that ref, so a marker present only in the operator's checkout proves nothing.
   `readMarkerAtBaseRef()` is the single reader; `inspectProject()` (the Runs
-  banner) and `ReadinessSession` finalization both go through it, so the modal
-  and the Runs page cannot disagree. `ProjectDef.readinessValidated` is a cache
+  banner) and `ReadinessSession` finalization both go through it, so Smith and
+  the Runs page cannot disagree. `ProjectDef.readinessValidated` is a cache
   and never outranks the file. Only when the base ref cannot be resolved at all
   does it fall back to the working checkout, and it says so in the detail.
 - **A merged PR is not proof.** `finalize()` re-reads the base ref after the
@@ -36,6 +44,7 @@ zero-interrupt policy.
   Continue resumes the last step on that branch (another remediator turn, open
   the PR again, or re-check the merge). Start over is the only path that
   discards it. `failed` means there is nothing left to resume.
-- AskUser exemption is scoped to readiness sessions. `permissions.evaluate`
-  still auto-answers pipeline runs.
+- **Remediation stays on `foundry-ready/<id>`**, even though Smith itself edits
+  the checkout directly. The deliverable is a reviewable PR; the proof is the
+  marker on the base ref; a half-done onboarding must survive "New chat".
 - Do not write SQLite. Do not call the run executor.

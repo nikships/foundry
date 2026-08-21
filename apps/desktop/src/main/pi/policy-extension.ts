@@ -14,7 +14,11 @@
  * Only ever between turns; mid-turn the agent is looking at the old schema.
  */
 
-import type { ExtensionAPI, ExtensionFactory } from '@earendil-works/pi-coding-agent';
+import type {
+  ExtensionAPI,
+  ExtensionFactory,
+  ToolDefinition,
+} from '@earendil-works/pi-coding-agent';
 import {
   gitDiffTool,
   readPhaseContextTool,
@@ -115,6 +119,32 @@ export function policyOnlyExtension(decide: FoundryExtensionOptions['decide']): 
   return {
     factory: (pi) => {
       installPolicy(pi, decide);
+      system.apply(pi);
+    },
+    useSystemPrompt(text) {
+      system.useSystemPrompt(text);
+    },
+  };
+}
+
+/**
+ * The extension Smith's chat session binds: the caller's own tools (entity /
+ * readiness, defined through the `tool-definition.ts` seam), the policy hook,
+ * and the per-turn system slot that carries the screen context. No envelope
+ * tool — a chat has no phase to answer for.
+ */
+export function smithExtension(opts: {
+  tools: readonly ToolDefinition[];
+  decide: FoundryExtensionOptions['decide'];
+}): {
+  factory: ExtensionFactory;
+  useSystemPrompt(text: string | null): void;
+} {
+  const system = systemPromptSlot();
+  return {
+    factory: (pi) => {
+      for (const tool of opts.tools) pi.registerTool(tool);
+      installPolicy(pi, opts.decide);
       system.apply(pi);
     },
     useSystemPrompt(text) {

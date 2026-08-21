@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
-  AppSettings,
   DoctorCheck,
   ModelInfo,
   OrphanWorktree,
@@ -8,7 +7,7 @@ import type {
   ReadinessInspectResult,
   UpdateStatus,
 } from '@shared/types.js';
-import { CODING_AGENTS, FIXED_ENGINE_DEFAULTS, TERMINAL_APPS } from '@shared/types.js';
+import { FIXED_ENGINE_DEFAULTS } from '@shared/types.js';
 import {
   BRIDGE_UNAVAILABLE_COPY,
   type BridgeState,
@@ -44,6 +43,7 @@ import {
   type SettingsPaneId,
   type SettingsToggleDef,
 } from '../view-models/settings-search.js';
+import { SMITH_NO_PROVIDER_COPY } from '../view-models/smith-copy.js';
 import styles from './SettingsScreen.module.css';
 
 // Envelopes is deliberately absent: it is an authoring surface, not a
@@ -175,7 +175,6 @@ export default function SettingsScreen({
   pane: initialPane,
   onPaneChange,
   onNewProject,
-  onOpenReadiness,
   paletteNonce = 0,
 }: {
   pane: string;
@@ -183,7 +182,6 @@ export default function SettingsScreen({
   onPaneChange?: (pane: string) => void;
   /** Create a repository on GitHub instead of pointing at an existing checkout. */
   onNewProject?: () => void;
-  onOpenReadiness?: (projectId: string) => void;
   /** Bumped by the app shell's ⌘K chord; each bump opens the search palette. */
   paletteNonce?: number;
 }): React.JSX.Element {
@@ -468,7 +466,6 @@ export default function SettingsScreen({
       await refreshAll();
       if (added) {
         selectProject(added.id);
-        onOpenReadiness?.(added.id);
       }
     });
   };
@@ -922,70 +919,6 @@ export default function SettingsScreen({
                               : 'Check for updates'}
                         </Button>
                       )}
-                    </div>
-                  </Section>
-
-                  <Section
-                    label="Terminal"
-                    note="Where Foundry hands you a shell, and which coding agent Smith starts in it."
-                  >
-                    <div className={styles.settingsFields}>
-                      <Field
-                        label="Preferred terminal"
-                        hint="Used by Smith's launcher. Ghostty is handed a ready-made session; the others open your project directory and you paste the bootstrap line."
-                      >
-                        <Dropdown
-                          value={settings.terminalApp ?? 'auto'}
-                          options={[
-                            {
-                              value: 'auto',
-                              label: 'Automatic',
-                              description: 'Prefers an installed terminal that can start Smith.',
-                            },
-                            ...TERMINAL_APPS.map((terminal) => ({
-                              value: terminal.id,
-                              label: terminal.label,
-                              description: terminal.prepared
-                                ? `Starts the Smith session for you — must be installed.`
-                                : terminal.id === 'terminal'
-                                  ? 'Ships with macOS, so it always resolves.'
-                                  : `Opens ${terminal.appName}.app — must be installed.`,
-                            })),
-                          ]}
-                          onChange={(next) => {
-                            void patchSettings({
-                              terminalApp:
-                                next === 'auto' ? null : (next as AppSettings['terminalApp']),
-                            });
-                          }}
-                        />
-                      </Field>
-                      <Field
-                        label="Coding agent"
-                        hint="Smith starts this CLI with the Foundry skill and opening prompt. The binary must be on your PATH."
-                      >
-                        <Dropdown
-                          value={settings.codingAgent ?? 'auto'}
-                          options={[
-                            {
-                              value: 'auto',
-                              label: 'Automatic',
-                              description: 'Uses the first supported CLI found on PATH.',
-                            },
-                            ...CODING_AGENTS.map((agent) => ({
-                              value: agent.id,
-                              label: agent.label,
-                              description: `${agent.label} (${agent.binary}) — must be on PATH.`,
-                            })),
-                          ]}
-                          onChange={(next) => {
-                            void patchSettings({
-                              codingAgent:
-                                next === 'auto' ? null : (next as AppSettings['codingAgent']),
-                            });
-                          }}
-                        />
-                      </Field>
                     </div>
                   </Section>
 
@@ -1577,6 +1510,23 @@ export default function SettingsScreen({
                       </Field>
                     </div>
                   </Section>
+                  <Section label="Smith" note="The model the in-app chat runs on.">
+                    <div className={styles.settingsFields}>
+                      <Field
+                        label="Default model"
+                        hint="Used when a new Smith chat opens. The header picker can still switch mid-conversation."
+                      >
+                        <ModelPicker
+                          value={settings.smithModel}
+                          models={models}
+                          allowInherit
+                          inheritLabel="First reachable model"
+                          emptyHint={SMITH_NO_PROVIDER_COPY}
+                          onChange={(v) => void set({ smithModel: v })}
+                        />
+                      </Field>
+                    </div>
+                  </Section>
                   <Section
                     label="Pull requests"
                     note="Who drafts a PR when a pipeline asks for one."
@@ -1706,13 +1656,6 @@ export default function SettingsScreen({
                               : readiness?.markerDetail ||
                                 'No valid .agents/agent-ready.json yet. Pipeline runs may fail until the repo is ready.'}
                         </p>
-                        {onOpenReadiness && projectDraft && (
-                          <div className={styles.settingsBtnrow}>
-                            <Button size="sm" onClick={() => onOpenReadiness(projectDraft.id)}>
-                              {readiness?.ready ? 'View readiness report' : 'Run readiness check'}
-                            </Button>
-                          </div>
-                        )}
                       </Section>
                       <Section label="Checks" note="Run against this repository.">
                         <DoctorList

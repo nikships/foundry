@@ -29,13 +29,10 @@ import type {
   PrMergeMethod,
   ProjectDef,
   PullRequest,
-  ReadinessAskAnswer,
   ReadinessInspectResult,
   ReadinessState,
   ReasoningEffort,
   RunRow,
-  SmithLaunchInfo,
-  SmithStartResult,
   SmithProposal,
   SmithProposalAnswer,
   StartRunInput,
@@ -176,6 +173,37 @@ export interface SetupState extends PanelStateCore {
   status: 'running' | 'done' | 'cancelled' | 'failed';
   script: string;
   rawReply: string;
+}
+
+/**
+ * What the operator is looking at when a Smith message arrives. This stays a
+ * compact descriptor rather than carrying screen data across the privileged
+ * seam; main resolves anything Smith needs through its normal tools.
+ */
+export interface SmithScreenContext {
+  route: string;
+  entity?: {
+    kind: 'run' | 'pipeline' | 'agent' | 'envelope' | 'project' | 'settings';
+    id: string;
+  };
+}
+
+/** One cloned transcript row shared by Smith's full and compact chat views. */
+export interface SmithTranscriptEntry extends PanelEntry {
+  source: 'operator' | 'smith' | 'readiness';
+}
+
+/**
+ * The complete renderer-facing state for one project's chat. Every read and
+ * push receives a fresh transcript array, never the session's live one.
+ */
+export interface SmithChatState {
+  projectId: string;
+  model: string;
+  activeModel: string;
+  running: boolean;
+  error: string | null;
+  transcript: SmithTranscriptEntry[];
 }
 
 export interface SetupSniffResult {
@@ -372,7 +400,7 @@ export interface FoundryApi {
     inspect(projectId: string): Promise<ReadinessInspectResult | null>;
     /**
      * Starts the dedicated evaluation. Returns as soon as the session exists;
-     * progress arrives on `readiness-progress`.
+     * Smith's readiness tools stream the progress into the chat.
      */
     evaluate(
       projectId: string,
@@ -384,7 +412,6 @@ export interface FoundryApi {
     skip(projectId: string): Promise<ReadinessState | null>;
     retry(projectId: string): Promise<{ sessionId: string } | { error: string }>;
     confirmMerge(projectId: string): Promise<ReadinessState | null>;
-    answerAsk(projectId: string, answers: ReadinessAskAnswer[]): Promise<boolean>;
     dismiss(projectId: string): Promise<boolean>;
   };
   roster: {
@@ -542,23 +569,20 @@ export interface FoundryApi {
     answer(answer: InterruptAnswer): Promise<boolean>;
   };
   smith: {
-    /**
-     * Everything needed to start a session in the user's own terminal: resolved
-     * CLI and skill paths, the bootstrap line, and the chosen terminal.
-     */
-    launchInfo(projectId: string): Promise<SmithLaunchInfo>;
-    /**
-     * The sidebar's Smith click. Starts the session outright when the preferred
-     * terminal can be handed one, and otherwise reports that the launcher has to
-     * take over. One call so the common path costs no modal.
-     */
-    start(projectId: string): Promise<SmithStartResult>;
-    /** Opens the project directory in the preferred terminal. */
-    openTerminal(projectId: string): Promise<{ ok: boolean; error?: string }>;
+    /** Starts one turn and returns immediately; progress arrives on `smith-progress`. */
+    send(
+      projectId: string,
+      text: string,
+      screen: SmithScreenContext,
+    ): Promise<SmithChatState | null>;
+    cancel(projectId: string): Promise<SmithChatState | null>;
+    newChat(projectId: string): Promise<SmithChatState | null>;
+    state(projectId: string): Promise<SmithChatState | null>;
+    setModel(projectId: string, model: string): Promise<SmithChatState | null>;
     /** The one pending proposal, or an empty list. Only ever one at a time. */
     proposalsList(): Promise<SmithProposal[]>;
-    /** Approve or reject the pending proposal, unblocking the waiting CLI. */
-    proposalAnswer(id: string, answer: SmithProposalAnswer): Promise<boolean>;
+    /** Approve or reject the pending proposal, unblocking Smith's tool call. */
+    answerProposal(id: string, answer: SmithProposalAnswer): Promise<boolean>;
   };
   companion: {
     /** Host status plus the paired devices. Starts nothing. */
@@ -604,7 +628,6 @@ export interface FoundryApi {
    * `detection-progress` is pushed rather than polled because a detection is
    * not a run: it has no trace rows and therefore no `change_id` cursor to walk.
    * `setup-progress` is the same shape for the worktree bootstrap generator.
-   * `readiness-progress` is the same shape for the Agent Readiness Check.
    */
   on(
     channel:
@@ -615,7 +638,7 @@ export interface FoundryApi {
       | 'detection-progress'
       | 'setup-progress'
       | 'smith-proposals-changed'
-      | 'readiness-progress'
+      | 'smith-progress'
       // A login completes in a browser, minutes after the call that started it
       // returned. Nothing polls the auth directory, so this is how a Settings
       // pane learns the account landed.
@@ -664,7 +687,6 @@ export const IPC = {
   readinessSkip: 'readiness:skip',
   readinessRetry: 'readiness:retry',
   readinessConfirmMerge: 'readiness:confirmMerge',
-  readinessAnswerAsk: 'readiness:answerAsk',
   readinessDismiss: 'readiness:dismiss',
   rosterList: 'roster:list',
   rosterStaleBuiltins: 'roster:staleBuiltins',
@@ -724,11 +746,13 @@ export const IPC = {
   prsFixConflicts: 'prs:fixConflicts',
   interruptsList: 'interrupts:list',
   interruptsAnswer: 'interrupts:answer',
-  smithLaunchInfo: 'smith:launchInfo',
-  smithStart: 'smith:start',
-  smithOpenTerminal: 'smith:openTerminal',
+  smithSend: 'smith:send',
+  smithCancel: 'smith:cancel',
+  smithNewChat: 'smith:newChat',
+  smithState: 'smith:state',
+  smithSetModel: 'smith:setModel',
   smithProposalsList: 'smith:proposalsList',
-  smithProposalAnswer: 'smith:proposalAnswer',
+  smithAnswerProposal: 'smith:answerProposal',
   companionState: 'companion:state',
   companionStart: 'companion:start',
   companionStop: 'companion:stop',
@@ -755,7 +779,7 @@ export const IPC = {
   eventDetectionProgress: 'event:detection-progress',
   eventSetupProgress: 'event:setup-progress',
   eventSmithProposalsChanged: 'event:smith-proposals-changed',
-  eventReadinessProgress: 'event:readiness-progress',
+  eventSmithProgress: 'event:smith-progress',
   eventBridgeChanged: 'event:bridge-changed',
   eventCompanionChanged: 'event:companion-changed',
 } as const;

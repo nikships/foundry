@@ -1,28 +1,22 @@
 /**
- * The Smith proposal preview card. A `foundry-cli create|edit` blocks its agent
- * until a human decides here: the card shows the entity kind, whether approving
- * creates or overwrites, the full definition, any non-blocking validation
- * warnings, and Approve / Reject. A reject simply unblocks the CLI — the user
- * describes the desired change to the agent in their own terminal.
+ * The Smith proposal card, re-homed as an inline transcript entry. A
+ * `smith_propose` tool call blocks its turn until a human decides here: the
+ * card shows the entity kind, whether approving creates or overwrites, the
+ * full definition, any non-blocking validation warnings, and Approve / Reject.
+ * A reject simply unblocks the tool — the next chat message is the revision
+ * guidance.
  *
- * Mounted unconditionally at the end of `App.tsx` (like `InterruptSheet`); it
- * renders nothing until a proposal is pending. On approve, main saves the entity
- * through the store layer and the card asks the host to open that entity's
- * editor — roster for agents, pipelines for pipelines, the envelopes settings
- * pane for envelopes.
- *
- * This is Foundry's entire Smith UI. The agent itself runs in the user's own
- * terminal under the `foundry-smith` skill; the app contributes the one thing a
- * terminal cannot: a native preview of the entity, and a human's Approve.
- *
- * Stacking: an engineer interrupt outranks this card.
+ * Renders nothing until a proposal is pending, then sits inline at the tail of
+ * the chat transcript rather than modally over the app: the operator is
+ * already looking at the conversation the proposal came from. On approve, main
+ * saves the entity through the store layer and the card asks the host to open
+ * that entity's editor. A failed save keeps the card up with the error.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { SmithProposal } from '@shared/types.js';
 import { api } from '../../api.js';
 import { Button } from '../ui/Button.js';
-import { ModalShell } from '../ui/ModalShell.js';
 import styles from './SmithProposalCard.module.css';
 
 /** Where a saved proposal should take the user. Consumed by App's deep-link nav. */
@@ -47,8 +41,6 @@ export default function SmithProposalCard({
   const [proposal, setProposal] = useState<SmithProposal | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
-  const dialogRef = useRef<HTMLElement>(null);
-  const approveRef = useRef<HTMLButtonElement>(null);
 
   const refresh = useCallback(async (): Promise<void> => {
     const list = await api.smith.proposalsList();
@@ -66,7 +58,6 @@ export default function SmithProposalCard({
     if (!proposalId) return;
     setError('');
     setSending(false);
-    approveRef.current?.focus();
   }, [proposalId]);
 
   if (!proposal) return null;
@@ -76,12 +67,12 @@ export default function SmithProposalCard({
     setSending(true);
     setError('');
     try {
-      const ok = await api.smith.proposalAnswer(proposal.id, { approved });
+      const ok = await api.smith.answerProposal(proposal.id, { approved });
       if (!ok) {
-        // A refused save leaves the proposal pending: surface why, stay open.
+        // A refused save leaves the proposal pending: surface why, stay up.
         setError(
           approved
-            ? 'The store refused this entity. The agent can revise and re-propose, or you can reject.'
+            ? 'The store refused this entity. Smith can revise and re-propose, or you can reject.'
             : 'Could not send that answer. Try again.',
         );
         setSending(false);
@@ -98,13 +89,10 @@ export default function SmithProposalCard({
   const pretty = JSON.stringify(proposal.spec, null, 2);
 
   return (
-    <ModalShell
-      dismissible={false}
-      highPriority
-      ariaLabelledBy="smith-proposal-title"
-      modalRef={dialogRef}
-      tabIndex={-1}
-      className={styles.dialog}
+    <section
+      className={styles.card}
+      aria-labelledby="smith-proposal-title"
+      data-testid="smith-proposal-card"
     >
       <header className={styles.header}>
         <span className={styles.kind}>{KIND_LABEL[proposal.kind]}</span>
@@ -148,15 +136,10 @@ export default function SmithProposalCard({
           {sending ? 'Sending…' : 'Reject'}
         </Button>
         <span className={styles.spacer} />
-        <Button
-          ref={approveRef}
-          variant="primary"
-          disabled={sending}
-          onClick={() => void answer(true)}
-        >
+        <Button variant="primary" disabled={sending} onClick={() => void answer(true)}>
           {sending ? 'Saving…' : 'Approve'}
         </Button>
       </footer>
-    </ModalShell>
+    </section>
   );
 }
