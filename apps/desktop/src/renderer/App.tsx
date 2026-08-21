@@ -16,9 +16,10 @@ import NewProjectWizard from './components/project/NewProjectWizard.js';
 import ReadinessFlow from './components/readiness/ReadinessFlow.js';
 import ConfirmModal from './components/common/ConfirmModal.js';
 import UpdateBanner from './components/layout/UpdateBanner.js';
-import SmithLauncher from './components/smith/SmithLauncher.js';
-import SmithProposalCard, { type SmithNavTarget } from './components/smith/SmithProposalCard.js';
+import SmithScreen from './screens/SmithScreen.js';
+import { type SmithNavTarget } from './components/smith/SmithProposalCard.js';
 import type { ProjectDef, UpdateStatus } from '@shared/types.js';
+import type { SmithScreenContext } from '@shared/ipc-contract.js';
 import {
   MENU_DESIGN_TABS,
   MENU_VIEWS,
@@ -26,6 +27,7 @@ import {
   type DesignTab,
   type View,
 } from './utils/navigation.js';
+import { describeScreen } from './view-models/smith-chat-view.js';
 import styles from './App.module.css';
 
 function AppInner(): React.JSX.Element {
@@ -41,9 +43,12 @@ function AppInner(): React.JSX.Element {
   /** ⌘K opens Settings' search palette; the nonce re-raises it on every press. */
   const [settingsPaletteNonce, setSettingsPaletteNonce] = useState(0);
   const [designTab, setDesignTab] = useState<DesignTab>('pipelines');
-  const [smithOpen, setSmithOpen] = useState(false);
-  /** Why the sidebar's one-click start failed, carried into the launcher. */
-  const [smithError, setSmithError] = useState('');
+  /**
+   * A descriptor of the screen the operator was on before opening Smith, sent
+   * with each `smith:send` so "why did this run fail?" resolves without naming
+   * the run. Snapshotted on entry — the Smith screen itself describes nothing.
+   */
+  const [smithContext, setSmithContext] = useState<SmithScreenContext>({ route: 'runs' });
   // Deep link for the active project's pipeline/agent/envelope editors after a
   // Smith approve. The nonce re-fires the target screen's effect on a repeat.
   const [smithNav, setSmithNav] = useState<(SmithNavTarget & { nonce: number }) | null>(null);
@@ -88,25 +93,6 @@ function AppInner(): React.JSX.Element {
     });
   }, [showToast]);
 
-  /**
-   * The sidebar's Smith click. With a terminal that takes a command this starts
-   * the session and shows nothing — the window itself is the feedback, and a
-   * modal in front of it would only be something to dismiss. The launcher opens
-   * exactly when the click could not finish the job, carrying the reason.
-   */
-  const openSmith = useCallback(async (): Promise<void> => {
-    const result = await api.smith.start(project?.id ?? '');
-    if (result.status === 'started') {
-      showToast('Smith is starting in your terminal.');
-      return;
-    }
-    // A failed launch is the one case worth carrying into the modal: the click
-    // already tried, so the launcher opens holding the reason rather than an
-    // untouched button the user has to press to learn what went wrong.
-    setSmithError(result.status === 'error' ? result.error : '');
-    setSmithOpen(true);
-  }, [project?.id, showToast]);
-
   // A Smith approve saved the entity; open its editor. The store save already
   // broadcast settings-changed (which refreshes the app), but refresh scoped
   // data too so the target is present before the screen's deep-link effect runs.
@@ -148,6 +134,14 @@ function AppInner(): React.JSX.Element {
     // a deep link from a run pins it to one run.
     if (next === 'inspector') setInspectorRunId('');
   }, []);
+
+  /** The sidebar's Smith click: snapshot where the operator was, then open the chat. */
+  const openSmith = useCallback((): void => {
+    if (view !== 'smith') {
+      setSmithContext(describeScreen(view, { openRunId, inspectorRunId, designTab, settingsPane }));
+    }
+    go('smith');
+  }, [view, openRunId, inspectorRunId, designTab, settingsPane, go]);
 
   /** Open Design on a specific tab — used by the menu and by cross-links. */
   const goDesign = useCallback(
@@ -269,6 +263,13 @@ function AppInner(): React.JSX.Element {
     );
   } else if (view === 'prs') {
     main = <PullRequestsScreen onOpenRun={openRun} />;
+  } else if (view === 'smith') {
+    main = (
+      <SmithScreen
+        screenContext={smithContext}
+        onApproved={(target) => void onSmithApproved(target)}
+      />
+    );
   } else if (view === 'settings') {
     main = (
       <SettingsScreen
@@ -308,7 +309,7 @@ function AppInner(): React.JSX.Element {
             }}
             onOpenInterruptRun={openRun}
             onOpenInspector={openInspector}
-            onOpenSmith={() => void openSmith()}
+            onOpenSmith={openSmith}
             inspectorRunId={inspectorRunId}
           />
           <div className={styles.sidebarDivider} aria-hidden />
@@ -330,24 +331,9 @@ function AppInner(): React.JSX.Element {
       )}
 
       {/*
-       * Stacking (bottom to top): the Smith launcher is an ordinary ModalShell
-       * (z-90), below the proposal card, which is below an engineer interrupt.
-       * The card and the interrupt both use `highPriority` (z-100), so DOM order
-       * breaks that tie — the interrupt renders last to stay on top.
+       * The Smith proposal card renders inline in the chat transcript, on the
+       * Smith screen; only an engineer interrupt still overlays the app here.
        */}
-      {smithOpen && (
-        <SmithLauncher
-          projectId={project?.id ?? ''}
-          initialError={smithError}
-          onClose={() => setSmithOpen(false)}
-          onOpenSettings={(pane) => {
-            setSmithOpen(false);
-            setSettingsPane(pane);
-            go('settings');
-          }}
-        />
-      )}
-      <SmithProposalCard onApproved={(target) => void onSmithApproved(target)} />
       {activeInterrupt && <InterruptSheet interrupt={activeInterrupt} />}
       {creatingProject && (
         <NewProjectWizard onClose={() => setCreatingProject(false)} onCreated={projectCreated} />

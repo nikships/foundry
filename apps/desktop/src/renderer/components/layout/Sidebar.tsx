@@ -129,7 +129,7 @@ export default function Sidebar({
   onOpenInterruptRun?: (runId: string) => void;
   /** Pin the Inspector to a run; the run may live in any project. */
   onOpenInspector?: (runId: string) => void;
-  /** Smith opens the launcher modal rather than switching the View, so it takes its own handler. */
+  /** Opens the Smith chat screen. Not a numbered nav item, so it takes its own handler. */
   onOpenSmith?: () => void;
   /** The run the Inspector is pinned to, so its activity row reads as selected. */
   inspectorRunId?: string;
@@ -240,17 +240,16 @@ export default function Sidebar({
           );
         })}
         {/*
-         * Smith sits below the views but opens the launcher modal rather than
-         * switching the View, so it is never `.active`. It is a handoff into the
-         * user's own terminal — the app has not embedded one since the skill
-         * replaced it.
+         * Smith sits below the views and opens the native chat screen. It has
+         * no ⌘-digit chord, so it stays outside NAV_ITEMS with its own handler.
          */}
         <button
           type="button"
-          className={`${styles.navItem} ${collapsed ? styles.navItemCollapsed : ''}`}
+          className={`${styles.navItem} ${view === 'smith' ? styles.active : ''} ${collapsed ? styles.navItemCollapsed : ''}`}
           onClick={() => onOpenSmith?.()}
           title={collapsed ? 'Smith' : undefined}
           aria-label="Smith"
+          aria-current={view === 'smith' ? 'page' : undefined}
           data-testid="nav-smith"
         >
           {collapsed ? (

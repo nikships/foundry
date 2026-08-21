@@ -7,7 +7,11 @@
     "@main/*": ["apps/desktop/src/main/*"],
     "@renderer/*": ["apps/desktop/src/renderer/*"]
   },
-  "ignore": ["apps/website/**", "apps/android/**"],
+  "ignore": [
+    "apps/website/**",
+    "apps/android/**",
+    "apps/desktop/src/renderer/components/smith/SmithLauncher.tsx"
+  ],
   "ignoreBinaries": ["pgrep"],
   "ignoreIssues": {
     "package.json": ["unresolved"]

@@ -660,11 +660,29 @@ export function createMockFoundryApi(): FoundryApi {
           ],
         };
         emitSmith();
+        // A canned turn that exercises the chat's visual language: a folded
+        // tool row, a readiness sub-agent block, and a text answer.
         smithState = {
           ...smithState,
           running: false,
           transcript: [
             ...smithState.transcript,
+            {
+              id: `smith-tool-${Date.now()}`,
+              kind: 'tool',
+              text: 'read AGENTS.md',
+              toolKind: 'read',
+              done: true,
+              source: 'smith',
+              at: Date.now(),
+            },
+            {
+              id: `readiness-${Date.now()}`,
+              kind: 'note',
+              text: 'Readiness agent: checklist evaluated, 9 of 11 criteria pass.',
+              source: 'readiness',
+              at: Date.now(),
+            },
             {
               id: `smith-${Date.now()}`,
               kind: 'text',
