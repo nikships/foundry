@@ -303,8 +303,10 @@ have to be perfect. You do have to be close.
   `plan`, `build`, `scout`, `review`, `document`, `pr`, `issue`) or a custom
   envelope's name.
 - `color` (string, **required**) — hex, e.g. `#5ad2dd`.
-- Optional: `cli`, `inheritDefaults`, `tools`, `disabledTools`, `customFields`,
-  `emblem`.
+- `toolProfile` (optional) — `"full"` (default) or `"read-only"`. `read-only`
+  opens the agent's session without `edit`, `write`, or `bash`: those tools are
+  absent from the registry, not merely refused. Pair it with `writes: []`.
+- Optional: `cli`, `inheritDefaults`, `customFields`, `emblem`.
 
 ### pipeline (`PipelineDef`)
 

@@ -21,6 +21,7 @@ import {
   FOUNDRY_TOOL_NAMES,
   readPhaseContextTool,
   reportProgressTool,
+  runToolsFor,
   submitEnvelopeTool,
   type PhaseContextEntry,
 } from '../../../src/main/pi/tools.js';
@@ -129,6 +130,37 @@ describe('the Foundry tool set', () => {
     const src = readFileSync(join(process.cwd(), 'apps/desktop/src/main/pi/tools.ts'), 'utf8');
     expect(src).not.toMatch(/\b(writeFile|writeFileSync|appendFile|mkdirSync|createWriteStream)\b/);
     expect(src).not.toMatch(/from 'node:fs'/);
+  });
+});
+
+describe('runToolsFor', () => {
+  it('gives a full agent every built-in plus Foundry’s three', () => {
+    expect(runToolsFor('full')).toEqual([
+      'read',
+      'bash',
+      'edit',
+      'write',
+      'grep',
+      'find',
+      'ls',
+      ...FOUNDRY_TOOL_NAMES,
+    ]);
+  });
+
+  it('treats an absent profile as full, so an older agent loses nothing', () => {
+    expect(runToolsFor(undefined)).toEqual(runToolsFor('full'));
+  });
+
+  it('drops edit, write, and bash for a read-only agent', () => {
+    const tools = runToolsFor('read-only');
+    expect(tools).toEqual(['read', 'grep', 'find', 'ls', ...FOUNDRY_TOOL_NAMES]);
+    for (const tool of ['edit', 'write', 'bash']) expect(tools).not.toContain(tool);
+  });
+
+  it('keeps Foundry’s own tools on a read-only agent, which is how a phase answers', () => {
+    // `submit_envelope` is the answer channel. Narrowing that away would leave
+    // a read-only phase unable to report at all.
+    for (const name of FOUNDRY_TOOL_NAMES) expect(runToolsFor('read-only')).toContain(name);
   });
 });
 

@@ -176,6 +176,52 @@ describe('loading a roster written before pr_writer shipped', () => {
   });
 });
 
+describe('loading a roster written before the tool knobs were removed', () => {
+  /** An agent as an older build wrote it: two tool lists nothing ever read. */
+  const legacy = (): Record<string, unknown> => ({
+    ...custom('helper'),
+    tools: ['read', 'bash'],
+    disabledTools: ['write'],
+  });
+
+  it('loads the agent and drops the fields nothing consumed', () => {
+    new JsonStore<unknown[]>(join(dir, 'roster.json'), () => []).write([legacy()]);
+
+    const helper = new RosterStore(dir).get('helper');
+
+    expect(helper?.purpose).toBe('Does a thing.');
+    expect(helper).not.toHaveProperty('tools');
+    expect(helper).not.toHaveProperty('disabledTools');
+  });
+
+  it('drops a toolProfile from the wider enum rather than narrowing on a guess', () => {
+    // `review` and `custom` were never wired to a tool list. Reading one as
+    // read-only would take the shell away from an agent whose prompt expects it.
+    new JsonStore<unknown[]>(join(dir, 'roster.json'), () => []).write([
+      { ...custom('helper'), toolProfile: 'review' },
+    ]);
+
+    expect(new RosterStore(dir).get('helper')?.toolProfile).toBeUndefined();
+  });
+
+  it('keeps a profile this build still honours', () => {
+    new JsonStore<unknown[]>(join(dir, 'roster.json'), () => []).write([
+      { ...custom('helper'), toolProfile: 'read-only' },
+    ]);
+
+    expect(new RosterStore(dir).get('helper')?.toolProfile).toBe('read-only');
+  });
+
+  it('does not report a shipped agent as edited just because the file was normalized', () => {
+    const stored = BUILTIN_AGENTS.map((agent) =>
+      agent.name === 'scout' ? { ...agent, tools: ['read'], disabledTools: [] } : agent,
+    );
+    new JsonStore<unknown[]>(join(dir, 'roster.json'), () => []).write(stored);
+
+    expect(new RosterStore(dir).staleBuiltins()).not.toContain('scout');
+  });
+});
+
 describe('loading a roster written by the broken build', () => {
   it('clears builtin on a name that was never shipped, so it can be deleted', () => {
     const stranded = { ...BUILTIN_AGENTS[0]!, name: 'jjl', builtin: true };

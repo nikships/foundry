@@ -570,6 +570,7 @@ export class Executor {
       runId: req.runId,
       model: req.agent.model,
       reasoningEffort: req.agent.reasoningEffort,
+      ...(req.agent.toolProfile ? { toolProfile: req.agent.toolProfile } : {}),
       supportDir: this.deps.supportDir,
       sessionDir: join(this.deps.tracer.runDir(req.runId), 'sessions'),
       onPermission: req.onPermission,

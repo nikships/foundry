@@ -36,6 +36,15 @@ import styles from './RosterScreen.module.css';
 
 const COLORS = ['#4fa8b8', '#9b7ede', '#d19a3d', '#3cb87a', '#e0605f', '#5b8fd9'];
 
+const TOOL_PROFILE_OPTIONS: DropdownOption[] = [
+  { value: 'full', label: 'Full', description: 'Read, search, edit, write, and run commands.' },
+  {
+    value: 'read-only',
+    label: 'Read-only',
+    description: 'Read and search only — no editing tool and no shell exist for this agent.',
+  },
+];
+
 const CREW = [
   ['Refiner', 'grounds a rough request in the repository'],
   ['Planner', 'turns the request into reviewable tasks'],
@@ -848,21 +857,39 @@ export default function RosterScreen({
                 </div>
               </section>
 
-              {/* ── write boundary ── */}
+              {/* ── tools and write boundary ── */}
               <section className={styles.rosterSection}>
                 <div className={styles.rosterSectionLabel}>
                   <p className="eyebrow">
-                    <span className="index">05</span>Write boundary
+                    <span className="index">05</span>Tools and write boundary
                   </p>
-                  <p>Paths this agent may modify. Everything else is refused at the tool layer.</p>
+                  <p>
+                    What this agent can call, and the paths it may modify. Everything else is
+                    refused at the tool layer.
+                  </p>
                 </div>
-                <BoundaryEditor
-                  value={draft.writes}
-                  onChange={(value) => setDraft({ ...draft, writes: value })}
-                />
+                <div className={styles.rosterStack}>
+                  <Field label="Tool surface">
+                    <Dropdown
+                      value={draft.toolProfile ?? 'full'}
+                      options={TOOL_PROFILE_OPTIONS}
+                      onChange={(next) =>
+                        setDraft({ ...draft, toolProfile: next as AgentDef['toolProfile'] })
+                      }
+                    />
+                    <span className={styles.hint}>
+                      Read-only opens the session without <code>edit</code>, <code>write</code>, or{' '}
+                      <code>bash</code>: those tools are absent from the registry, not merely
+                      denied.
+                    </span>
+                  </Field>
+                  <BoundaryEditor
+                    value={draft.writes}
+                    onChange={(value) => setDraft({ ...draft, writes: value })}
+                  />
+                </div>
               </section>
 
-              {/* ── system tools ── */}
               {/* ── validation + autosave ── */}
               <div className={styles.rosterStatusbar}>
                 {allIssues.length > 0 ? (

@@ -112,6 +112,38 @@ describe('loading a pipelines file', () => {
     expect(store.get('my-chain')?.name).toBe('My chain');
   });
 
+  it('loads a phase that still carries the removed tool knobs, and drops them', () => {
+    const stored = userPipeline();
+    stored.phases[0] = {
+      ...stored.phases[0]!,
+      // Written by a build whose phase schema declared these; nothing ever read
+      // them, and the phase must not fail to load because they are still there.
+      toolProfile: 'read-only',
+      tools: ['read', 'grep'],
+    } as (typeof stored.phases)[number];
+    writeStored([stored]);
+
+    const phase = new PipelineStore(dir).get('my-chain')?.phases[0];
+
+    expect(phase?.name).toBe('build');
+    expect(phase).not.toHaveProperty('toolProfile');
+    expect(phase).not.toHaveProperty('tools');
+  });
+
+  it('does not report a shipped chain as edited just because the file was normalized', () => {
+    const shipped = BUILTIN_PIPELINES[0]!;
+    writeStored([
+      {
+        ...shipped,
+        phases: shipped.phases.map((phase, i) =>
+          i === 0 ? ({ ...phase, tools: ['read'] } as typeof phase) : phase,
+        ),
+      },
+    ]);
+
+    expect(new PipelineStore(dir).staleBuiltins()).not.toContain(shipped.id);
+  });
+
   it('does not treat local canvas placement as a shipped-definition difference', () => {
     writeStored([{ ...BUILTIN_PIPELINES[0]!, canvas: { nodes: { plan: { x: 20, y: 40 } } } }]);
     expect(new PipelineStore(dir).staleBuiltins()).not.toContain(BUILTIN_PIPELINES[0]!.id);

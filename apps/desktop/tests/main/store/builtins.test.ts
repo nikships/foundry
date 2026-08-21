@@ -77,6 +77,48 @@ describe('shipped agents', () => {
   it('keeps the refiner read-only, since sharpening a request is not doing the work', () => {
     expect(agentByName('refiner')?.writes).toEqual([]);
   });
+
+  /**
+   * "You are read-only" used to be prompt text over a session that still held
+   * `edit`, `write`, and `bash`. The profile is what makes the claim true: the
+   * tool list is the allowlist, so these agents have nothing that could write.
+   */
+  it('backs every "read-only" claim with the read-only tool profile', () => {
+    for (const name of ['refiner', 'scout', 'reviewer', 'pr_writer', 'issue_writer']) {
+      const agent = agentByName(name)!;
+      expect(agent.toolProfile, name).toBe('read-only');
+      expect(agent.writes, name).toEqual([]);
+    }
+  });
+
+  it('leaves the writing agents on the full surface, shell included', () => {
+    for (const name of ['planner', 'builder', 'finisher', 'documenter']) {
+      expect(agentByName(name)?.toolProfile, name).toBeUndefined();
+    }
+  });
+
+  it('never tells a read-only agent to run a command it has no tool for', () => {
+    // A read-only session holds no `bash`, so an instruction to run something
+    // is an instruction the agent can only fail at. `no raw \`git diff\`` is
+    // about what the PR body may contain, not a command, hence the imperatives.
+    for (const agent of BUILTIN_AGENTS.filter((a) => a.toolProfile === 'read-only')) {
+      const prompts = `${agent.systemPrompt}\n${agent.userPrompt}`;
+      expect(prompts, agent.name).not.toMatch(/\b(run|execute|invoke) (the |a )?(command|shell)/i);
+      expect(prompts, agent.name).not.toMatch(/\brun\b[^.\n]{0,20}\b(git|npm|tests)\b/i);
+    }
+  });
+
+  it('hands the diff-reading read-only agents the git context instead of a shell', () => {
+    // `runners/agent.ts` injects branch, base ref, branch point, and a bounded
+    // diff stat for these agents; without a shell that block is their only
+    // route to the changed set.
+    for (const name of ['reviewer', 'pr_writer']) {
+      const agent = agentByName(name)!;
+      expect(`${agent.systemPrompt}\n${agent.userPrompt}`, name).toMatch(
+        /accumulated git context/i,
+      );
+    }
+  });
 });
 
 describe('shipped pipelines', () => {

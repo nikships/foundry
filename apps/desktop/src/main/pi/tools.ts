@@ -17,6 +17,7 @@
  */
 
 import { defineTool, type ToolDefinition } from '@earendil-works/pi-coding-agent';
+import type { ToolProfile } from '@shared/types.js';
 import type { Envelope } from '../engine/envelopes.js';
 import type { FoundryToolContext } from './transport.js';
 
@@ -37,6 +38,19 @@ export const BUILTIN_TOOLS = ['read', 'bash', 'edit', 'write', 'grep', 'find', '
  * against the operator's own checkout has nothing that could write to it.
  */
 export const READ_ONLY_TOOLS = ['read', 'grep', 'find', 'ls'] as const;
+
+/**
+ * The whole allowlist a run session is opened with, for one agent's profile.
+ *
+ * Foundry's own three tools are named alongside the built-ins because the list
+ * given to `createAgentSession` *is* the registry. A `read-only` agent gets the
+ * read subset: `edit`, `write`, and `bash` do not exist for it, which is the
+ * only form of read-only this directory recognises.
+ */
+export function runToolsFor(profile: ToolProfile | undefined): string[] {
+  const builtins = profile === 'read-only' ? READ_ONLY_TOOLS : BUILTIN_TOOLS;
+  return [...builtins, ...FOUNDRY_TOOL_NAMES];
+}
 
 /** One entry of the chain `read_phase_context` returns. */
 export interface PhaseContextEntry {

@@ -12,6 +12,7 @@ import {
   BUILTIN_ENVELOPE_KINDS,
   effectivePhaseEnvelope,
   type AgentDef,
+  type PhaseDef,
   type PipelineDef,
   type ValidationIssue,
 } from '@shared/types.js';
@@ -51,10 +52,6 @@ const phaseSchema = z.object({
   feedbackTo: z.string().optional(),
   feedbackRetries: z.number().int().min(0).max(5).optional(),
   question: z.string().optional(),
-  // A phase may narrow the agent's tool surface for its own turns and can never
-  // widen it, so an unexpected value is rejected rather than coerced.
-  toolProfile: z.enum(['full', 'read-only', 'review', 'custom']).optional(),
-  tools: z.array(z.string()).optional(),
   timeoutMs: z.number().int().min(1000).optional(),
   optional: z.boolean().optional(),
 });
@@ -89,6 +86,32 @@ export const pipelineSchema = z.object({
   canvas: canvasSchema.optional(),
 });
 
+/**
+ * Phase-level tool knobs that were declared but never consumed. A stored
+ * pipeline may still carry them; `staleBuiltins` compares stored against
+ * shipped structurally, so leaving them on a builtin would report it as edited
+ * forever.
+ */
+const REMOVED_PHASE_FIELDS = ['toolProfile', 'tools'] as const;
+
+function normalizePipeline(pipeline: PipelineDef): PipelineDef {
+  if (!pipeline.phases?.some((phase) => hasRemovedField(phase))) return pipeline;
+  return {
+    ...pipeline,
+    phases: pipeline.phases.map((phase) => {
+      if (!hasRemovedField(phase)) return phase;
+      const next: PhaseDef & Record<string, unknown> = { ...phase };
+      for (const field of REMOVED_PHASE_FIELDS) delete next[field];
+      return next as PhaseDef;
+    }),
+  };
+}
+
+function hasRemovedField(phase: PhaseDef): boolean {
+  const record: Record<string, unknown> = { ...phase };
+  return REMOVED_PHASE_FIELDS.some((field) => field in record);
+}
+
 export class PipelineStore {
   private readonly appStore: JsonStore<PipelineDef[]>;
   private readonly projectStores = new Map<string, JsonStore<PipelineDef[]>>();
@@ -105,7 +128,9 @@ export class PipelineStore {
         // shipped ids would fight over; its content is user state and stays.
         const shipped = new Set(BUILTIN_PIPELINES.map((p) => p.id));
         const byId = new Map(
-          list.map((p) => [p.id, shipped.has(p.id) ? p : { ...p, builtin: false }]),
+          list
+            .map(normalizePipeline)
+            .map((p) => [p.id, shipped.has(p.id) ? p : { ...p, builtin: false }] as const),
         );
         for (const builtin of BUILTIN_PIPELINES) {
           if (!byId.has(builtin.id)) byId.set(builtin.id, { ...builtin });
@@ -121,6 +146,12 @@ export class PipelineStore {
       store = new JsonStore<PipelineDef[]>(
         join(this.appSupportDir, 'project-overrides', projectId, 'pipelines.json'),
         () => this.appStore.read().map((p) => ({ ...p })),
+        // A project copy gets the same normalization as the app file; a project
+        // that opted in must not be the one place a removed field survives.
+        (raw) =>
+          Array.isArray(raw)
+            ? (raw as PipelineDef[]).map(normalizePipeline)
+            : this.appStore.read().map((p) => ({ ...p })),
       );
       this.projectStores.set(projectId, store);
     }
