@@ -209,8 +209,8 @@ export default function ProjectSetup({
         />
         <span className="hint">
           Saved when you leave the field. Runs via <code>sh -c</code> in the fresh worktree; PATH
-          comes from your login shell as usual. Keep it short — 5 min timeout, fail-fast with
-          setup.log.
+          comes from your login shell as usual. During a run it has no deadline; failures are
+          captured in setup.log, and the run&apos;s Kill action still stops it.
         </span>
       </Field>
 

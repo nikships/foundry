@@ -17,8 +17,8 @@ export interface GitResult {
   stdout: string;
 }
 
-async function git(cwd: string, args: string[], timeoutMs = 60_000): Promise<GitResult> {
-  const r = await runCommand({ argv: ['git', ...args], cwd, timeoutMs });
+async function git(cwd: string, args: string[]): Promise<GitResult> {
+  const r = await runCommand({ argv: ['git', ...args], cwd });
   return { ok: r.passed, stdout: r.outputTail };
 }
 
@@ -153,7 +153,6 @@ export async function showFileAtRef(
       encoding: 'utf8',
       env: spawnEnv(),
       maxBuffer: 8 * 1024 * 1024,
-      timeout: 30_000,
     });
     return stdout;
   } catch {
@@ -189,7 +188,6 @@ export async function diffPatch(cwd: string, base: string, path?: string): Promi
       encoding: 'utf8',
       env: spawnEnv(),
       maxBuffer: 64 * 1024 * 1024,
-      timeout: 60_000,
     });
     return stdout;
   } catch {
@@ -317,13 +315,13 @@ export async function addWorktree(
   baseRef?: string,
 ): Promise<GitResult> {
   if (baseRef && (await refExists(repo, baseRef))) {
-    return git(repo, ['worktree', 'add', '-b', branch, path, baseRef], 120_000);
+    return git(repo, ['worktree', 'add', '-b', branch, path, baseRef]);
   }
-  return git(repo, ['worktree', 'add', '-b', branch, path], 120_000);
+  return git(repo, ['worktree', 'add', '-b', branch, path]);
 }
 
 export async function removeWorktree(repo: string, path: string, force = true): Promise<GitResult> {
-  return git(repo, ['worktree', 'remove', ...(force ? ['--force'] : []), path], 120_000);
+  return git(repo, ['worktree', 'remove', ...(force ? ['--force'] : []), path]);
 }
 
 export async function pruneWorktrees(repo: string): Promise<GitResult> {
@@ -383,7 +381,7 @@ export async function preferredRemote(repo: string): Promise<string | null> {
 }
 
 export async function pushBranch(repo: string, remote: string, branch: string): Promise<GitResult> {
-  return git(repo, ['push', '-u', remote, branch], 180_000);
+  return git(repo, ['push', '-u', remote, branch]);
 }
 
 export async function deleteRemoteBranch(
@@ -391,7 +389,7 @@ export async function deleteRemoteBranch(
   remote: string,
   branch: string,
 ): Promise<GitResult> {
-  return git(repo, ['push', remote, '--delete', branch], 120_000);
+  return git(repo, ['push', remote, '--delete', branch]);
 }
 
 /**
@@ -405,12 +403,12 @@ export async function pushBranchForceWithLease(
   remote: string,
   branch: string,
 ): Promise<GitResult> {
-  return git(repo, ['push', '--force-with-lease', remote, branch], 180_000);
+  return git(repo, ['push', '--force-with-lease', remote, branch]);
 }
 
 /** Fetch one ref; the answer lands in FETCH_HEAD for the caller to resolve. */
 export async function fetchRef(repo: string, remote: string, ref: string): Promise<GitResult> {
-  return git(repo, ['fetch', remote, ref], 180_000);
+  return git(repo, ['fetch', remote, ref]);
 }
 
 /**
@@ -425,11 +423,7 @@ export async function fetchTrackingRef(
   branch: string,
 ): Promise<GitResult> {
   const name = branch.replace(/^refs\/heads\//, '');
-  return git(
-    repo,
-    ['fetch', remote, `+refs/heads/${name}:refs/remotes/${remote}/${name}`],
-    180_000,
-  );
+  return git(repo, ['fetch', remote, `+refs/heads/${name}:refs/remotes/${remote}/${name}`]);
 }
 
 /**
@@ -465,8 +459,8 @@ export async function fastForwardBase(
   baseRef: string,
 ): Promise<GitResult> {
   const onBase = (await currentBranch(repo)) === baseRef;
-  if (onBase) return git(repo, ['pull', '--ff-only', remote, baseRef], 180_000);
-  return git(repo, ['fetch', remote, `${baseRef}:${baseRef}`], 180_000);
+  if (onBase) return git(repo, ['pull', '--ff-only', remote, baseRef]);
+  return git(repo, ['fetch', remote, `${baseRef}:${baseRef}`]);
 }
 
 export interface MergeOutcome {
@@ -505,9 +499,9 @@ export async function mergeBranch(
   const startedOn = await currentBranch(repo);
   const onBase = startedOn === baseRef;
   if (!onBase) {
-    const checkout = await git(repo, ['checkout', baseRef], 120_000);
+    const checkout = await git(repo, ['checkout', baseRef]);
     if (!checkout.ok) {
-      const checkoutBranch = await git(repo, ['checkout', '-b', baseRef], 120_000);
+      const checkoutBranch = await git(repo, ['checkout', '-b', baseRef]);
       if (!checkoutBranch.ok) {
         return {
           ok: false,
@@ -520,13 +514,13 @@ export async function mergeBranch(
 
   const hasCommits = await refExists(repo, 'HEAD');
   const merged = hasCommits
-    ? await git(repo, ['merge', '--no-ff', branch, '-m', `foundry: merge ${branch}`], 120_000)
-    : await git(repo, ['merge', branch], 120_000);
+    ? await git(repo, ['merge', '--no-ff', branch, '-m', `foundry: merge ${branch}`])
+    : await git(repo, ['merge', branch]);
   if (merged.ok) return { ok: true, baseMoved: false, detail: merged.stdout };
 
   await git(repo, ['merge', '--abort']);
   if (startedOn && startedOn !== 'HEAD' && startedOn !== baseRef) {
-    await git(repo, ['checkout', startedOn], 120_000);
+    await git(repo, ['checkout', startedOn]);
   }
   return { ok: false, baseMoved: false, detail: merged.stdout.trim() || 'merge failed' };
 }

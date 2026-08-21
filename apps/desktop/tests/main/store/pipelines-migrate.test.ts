@@ -112,7 +112,7 @@ describe('loading a pipelines file', () => {
     expect(store.get('my-chain')?.name).toBe('My chain');
   });
 
-  it('loads a phase that still carries the removed tool knobs, and drops them', () => {
+  it('loads a phase that still carries removed tool and timeout knobs, and drops them', () => {
     const stored = userPipeline();
     stored.phases[0] = {
       ...stored.phases[0]!,
@@ -120,6 +120,7 @@ describe('loading a pipelines file', () => {
       // them, and the phase must not fail to load because they are still there.
       toolProfile: 'read-only',
       tools: ['read', 'grep'],
+      timeoutMs: 900_000,
     } as (typeof stored.phases)[number];
     writeStored([stored]);
 
@@ -128,6 +129,7 @@ describe('loading a pipelines file', () => {
     expect(phase?.name).toBe('build');
     expect(phase).not.toHaveProperty('toolProfile');
     expect(phase).not.toHaveProperty('tools');
+    expect(phase).not.toHaveProperty('timeoutMs');
   });
 
   it('does not report a shipped chain as edited just because the file was normalized', () => {

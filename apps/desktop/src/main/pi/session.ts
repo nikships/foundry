@@ -54,7 +54,6 @@ export interface InterruptRequest {
 export interface AgentSessionDeps {
   runId: string;
   worktree: string;
-  turnTimeoutMs: number;
   tracer: Tracer;
   protectedPaths: string[];
   /** Persisted runtime session to reopen when a terminal run is continued. */
@@ -104,7 +103,7 @@ export interface TurnOutcome {
   text: string;
   usage: UsageBreakdown;
   reason: string;
-  /** True when the operator (or a timeout abort) stopped the turn. */
+  /** True when the operator stopped the turn. */
   interrupted: boolean;
   /** What the transport claims conforms to the requested schema, if anything. */
   structuredOutput: Record<string, unknown> | null;
@@ -298,7 +297,7 @@ export class AgentSession {
     const transport = this.transport;
     if (!transport) throw new Error('agent session is not open');
     try {
-      return await transport.send(prompt, this.deps.turnTimeoutMs, {
+      return await transport.send(prompt, {
         outputFormat: ctx.outputFormat,
         ...(ctx.systemPrompt ? { systemPrompt: ctx.systemPrompt } : {}),
       });

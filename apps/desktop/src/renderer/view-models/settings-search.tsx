@@ -155,7 +155,7 @@ export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
     label: 'Advanced',
     note: 'Stable engine policy and context limits.',
     keywords:
-      'report retries check retries envelope gate compaction context rewind corrections turn timeout',
+      'report retries check retries envelope gate compaction context rewind corrections run resilience no deadline model retry failover',
   },
   // Project
   {

@@ -20,6 +20,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ContextBreakdown } from '@shared/types.js';
 import { pickModel, thinkingLevelFor, toTransportModel, type PiModel } from './model.js';
+import { continueWithModelFailover } from './model-failover.js';
 import { foundryResourceLoader, foundrySettings, openFoundrySession } from './open-session.js';
 import { foundryExtension } from './policy-extension.js';
 import { modelRuntime } from './runtime.js';
@@ -146,7 +147,7 @@ export class PiTransport implements AgentTransport {
     );
   }
 
-  async send(text: string, timeoutMs: number, opts: TurnOptions = {}): Promise<TurnResult> {
+  async send(text: string, opts: TurnOptions = {}): Promise<TurnResult> {
     const session = this.session;
     if (!session) throw new Error('pi session is not open');
     if (!this.alive) throw new Error('pi session is not alive');
@@ -157,20 +158,16 @@ export class PiTransport implements AgentTransport {
     this.extension.useSystemPrompt(opts.systemPrompt ?? null);
     this.events.startTurn();
 
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      void session.abort();
-    }, timeoutMs);
-    try {
-      await session.prompt(text, { expandPromptTemplates: false, source: 'extension' });
-      // prompt() already waits through retries and queued continuations.
-      // waitForIdle() is the documented settle API and is a no-op when idle.
-      await session.waitForIdle();
-    } finally {
-      clearTimeout(timer);
-    }
-    if (timedOut) throw new Error(`turn timed out after ${timeoutMs}ms`);
+    await session.prompt(text, { expandPromptTemplates: false, source: 'extension' });
+    // prompt() already waits through retries and queued continuations.
+    // waitForIdle() is the documented settle API and is a no-op when idle.
+    await session.waitForIdle();
+    await continueWithModelFailover({
+      session,
+      events: this.events,
+      availableModelCount: this.models.length,
+      onWarning: (warning) => this.opts.onModelWarning?.(warning),
+    });
 
     const last = lastAssistantStop(session);
     const interrupted = last?.stopReason === 'aborted';
@@ -188,9 +185,8 @@ export class PiTransport implements AgentTransport {
   }
 
   /**
-   * Model and thinking level are stated at create and never drift, so there is
-   * nothing to re-assert. The reply exists so the caller does not have to know
-   * which transport it is talking to.
+   * Failover deliberately changes the session's model. Do not reset it to the
+   * roster default between phases; report what the session is actually using.
    */
   applySettings(): Promise<{ model: string; warning?: string }> {
     return Promise.resolve({ model: this.activeModel });

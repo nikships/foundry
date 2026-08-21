@@ -88,12 +88,6 @@ describe('helper defaults', () => {
   });
 });
 
-describe('turn timeout default', () => {
-  it('gives agent turns thirty minutes on a fresh install', () => {
-    expect(defaultSettings().turnTimeoutMs).toBe(30 * 60_000);
-  });
-});
-
 describe('the compaction threshold', () => {
   it('defaults to 0.8 on a fresh install', () => {
     expect(defaultSettings().compactionThreshold).toBe(0.8);
@@ -168,7 +162,7 @@ describe('prAgent', () => {
 });
 
 describe('obsolete settings', () => {
-  it('drops appearance, polling, retry, rewind, and bridge keys during self-healing', () => {
+  it('drops appearance, polling, retry, rewind, timeout, and bridge keys during self-healing', () => {
     const migrated = migrate({
       ...defaultSettings(),
       appearance: 'dark',
@@ -176,6 +170,7 @@ describe('obsolete settings', () => {
       envelopeRetries: 0,
       gateRetries: 0,
       rewindAfterCorrections: 0,
+      turnTimeoutMs: 30 * 60_000,
       bridgePort: 37_799,
     });
     for (const key of [
@@ -184,6 +179,7 @@ describe('obsolete settings', () => {
       'envelopeRetries',
       'gateRetries',
       'rewindAfterCorrections',
+      'turnTimeoutMs',
       'bridgePort',
     ]) {
       expect(key in migrated).toBe(false);

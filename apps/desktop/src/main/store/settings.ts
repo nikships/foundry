@@ -28,7 +28,6 @@ export const appSettingsSchema = z.object({
     ),
   defaultModel: z.string().min(1),
   defaultReasoningEffort: z.enum(['off', 'low', 'medium', 'high', 'xhigh', 'max']),
-  turnTimeoutMs: z.number().int().min(300_000).max(3_600_000),
   compactionThreshold: z.number().min(COMPACTION_BAND[0]).max(COMPACTION_BAND[1]),
   notifications: z.object({
     accepted: z.boolean(),
@@ -52,7 +51,6 @@ export function defaultSettings(): AppSettings {
     prAgent: DEFAULT_PR_AGENT,
     defaultModel: 'inherit',
     defaultReasoningEffort: 'medium',
-    turnTimeoutMs: 30 * 60_000,
     compactionThreshold: 0.8,
     notifications: { accepted: true, rejected: true, failed: true, needsInput: true },
     dockBadge: true,

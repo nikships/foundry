@@ -106,7 +106,6 @@ export interface PhaseDef {
   feedbackRetries?: number;
   /** Engineer phases: what the sheet asks the human. */
   question?: string;
-  timeoutMs?: number;
   /** Code phases: a non-zero exit is recorded but does not fail the run. */
   optional?: boolean;
 }
@@ -267,7 +266,6 @@ export interface AppSettings {
   prAgent: string;
   defaultModel: string;
   defaultReasoningEffort: ReasoningEffort;
-  turnTimeoutMs: number;
   /**
    * How full an agent's context may get before the engine compacts it between
    * phases, as a fraction of the model's window.

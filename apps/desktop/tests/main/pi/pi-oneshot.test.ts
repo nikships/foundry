@@ -61,10 +61,15 @@ const spy = {
 class ScriptedPiSession {
   messages: { role: string; stopReason: string; errorMessage?: string }[] = [];
   state = { messages: this.messages };
+  agent = { state: { messages: this.messages as unknown[] } };
+  model: { provider: string; id: string; name: string; contextWindow: number } | null = null;
+  thinkingLevel = 'off';
   lastText = '';
   aborts = 0;
   disposed = 0;
   prompts: string[] = [];
+  customMessages: string[] = [];
+  cycles = 0;
   turn: (session: ScriptedPiSession) => void | Promise<void> = (s) => s.say('done');
   /** Held open so a test can drive the timeout and the abort paths. */
   hangUntilAbort = false;
@@ -106,6 +111,29 @@ class ScriptedPiSession {
 
   waitForIdle(): Promise<void> {
     return Promise.resolve();
+  }
+
+  async cycleModel(): Promise<
+    | {
+        model: { provider: string; id: string; name: string; contextWindow: number };
+        thinkingLevel: string;
+        isScoped: boolean;
+      }
+    | undefined
+  > {
+    if (spy.models.length <= 1) return undefined;
+    const current = spy.models.findIndex(
+      (model) => model.provider === this.model?.provider && model.id === this.model.id,
+    );
+    const model = spy.models[(current + 1) % spy.models.length]!;
+    this.model = model;
+    this.cycles += 1;
+    return { model, thinkingLevel: this.thinkingLevel, isScoped: false };
+  }
+
+  async sendCustomMessage(message: { content: string }): Promise<void> {
+    this.customMessages.push(message.content);
+    await this.turn(this);
   }
 
   abort(): Promise<void> {
@@ -161,7 +189,13 @@ vi.mock('@earendil-works/pi-coding-agent', () => ({
   createAgentSession: (opts: CreateCall) => {
     spy.creates.push(opts);
     spy.order.push('create');
-    return Promise.resolve({ session: spy.session! });
+    const session = spy.session!;
+    session.model = opts.model
+      ? (spy.models.find(
+          (model) => model.provider === opts.model?.provider && model.id === opts.model.id,
+        ) ?? null)
+      : (spy.models[0] ?? null);
+    return Promise.resolve({ session });
   },
 }));
 
@@ -297,12 +331,18 @@ describe('where a one-shot session lives', () => {
     expect(loader.systemPromptOverride?.(undefined)).toMatch(/Foundry helper/i);
   });
 
-  it('leaves compaction off, since one bounded question cannot need it', async () => {
+  it('leaves compaction off for a short-lived helper session', async () => {
     const h = harness();
     await h.open().send('go', 1000);
     expect(spy.settings[0]).toMatchObject({
       compaction: { enabled: false },
-      retry: { enabled: true },
+      httpIdleTimeoutMs: 300_000,
+      retry: {
+        enabled: true,
+        maxRetries: 5,
+        baseDelayMs: 2_000,
+        provider: { maxRetries: 0 },
+      },
     });
   });
 
@@ -338,6 +378,43 @@ describe('running one turn', () => {
     h.session.turn = (s) => s.say('', { stopReason: 'error', errorMessage: 'provider said no' });
     await expect(h.open().send('go', 1000)).rejects.toThrow(/provider said no/);
     expect(h.session.disposed).toBe(1);
+  });
+
+  it('continues a helper turn on the next model after retries are exhausted', async () => {
+    spy.models.push({
+      provider: 'openai',
+      id: 'gpt-5',
+      name: 'GPT-5',
+      contextWindow: 400_000,
+    });
+    const h = harness();
+    let attempt = 0;
+    h.session.turn = (s) => {
+      if (attempt++ === 0) {
+        s.emit({
+          type: 'auto_retry_start',
+          attempt: 5,
+          maxAttempts: 5,
+          delayMs: 32_000,
+          errorMessage: 'rate limited',
+        });
+        s.emit({
+          type: 'auto_retry_end',
+          success: false,
+          attempt: 5,
+          finalError: 'rate limited',
+        });
+        s.say('', { stopReason: 'error', errorMessage: 'rate limited' });
+        return;
+      }
+      s.say('recovered');
+    };
+
+    expect((await h.open().send('go')).text).toBe('recovered');
+    expect(h.session.prompts).toEqual(['go']);
+    expect(h.session.customMessages).toHaveLength(1);
+    expect(h.session.cycles).toBe(1);
+    expect(h.warnings.at(-1)).toMatch(/continuing this turn on openai\/gpt-5/);
   });
 
   it('aborts and fails a turn that outlasts its timeout', async () => {

@@ -163,7 +163,6 @@ function defaultMockSettings(): AppSettings {
     prAgent: 'pr_writer',
     defaultModel: 'inherit',
     defaultReasoningEffort: 'medium',
-    turnTimeoutMs: 30 * 60_000,
     compactionThreshold: 0.8,
     notifications: { accepted: true, rejected: true, failed: true, needsInput: true },
     dockBadge: true,

@@ -52,7 +52,6 @@ const phaseSchema = z.object({
   feedbackTo: z.string().optional(),
   feedbackRetries: z.number().int().min(0).max(5).optional(),
   question: z.string().optional(),
-  timeoutMs: z.number().int().min(1000).optional(),
   optional: z.boolean().optional(),
 });
 
@@ -92,7 +91,7 @@ export const pipelineSchema = z.object({
  * shipped structurally, so leaving them on a builtin would report it as edited
  * forever.
  */
-const REMOVED_PHASE_FIELDS = ['toolProfile', 'tools'] as const;
+const REMOVED_PHASE_FIELDS = ['toolProfile', 'tools', 'timeoutMs'] as const;
 
 function normalizePipeline(pipeline: PipelineDef): PipelineDef {
   if (!pipeline.phases?.some((phase) => hasRemovedField(phase))) return pipeline;
