@@ -14,27 +14,22 @@
  * - `needs_continue` state lives on the `ReadinessSession` the deps hand in —
  *   outside the chat session — so "New chat" never loses a paused onboarding.
  *
- * These are vendor-neutral tool specs: the chat session worker adapts them
- * into the pi registry (this module may not name `@earendil-works/pi-*`).
- * Every dependency is injected; there are no singletons, so tests drive the
- * exact same objects over real git temp repositories.
+ * These are factories with explicit deps so the chat session that registers
+ * them owns the wiring; nothing here reaches for `AppContext` or a registry
+ * import. Tool typing crosses the pi seam through `pi/tool-definition.ts`,
+ * same as the entity tools.
  */
 
 import type { ReadinessEntry, ReadinessPhase, ReadinessState } from '@shared/types.js';
+import { defineTool, type ToolDefinition } from '../pi/tool-definition.js';
 import { evaluateRepo } from '../readiness/evaluate.js';
 import { readMarkerAtBaseRef } from '../readiness/marker.js';
 
-/**
- * A vendor-neutral tool the chat session registers for Smith. `parameters` is
- * plain JSON Schema; `execute` answers with text (JSON) for the model to read.
- */
-export interface ReadinessToolDefinition {
-  name: 'readiness_check' | 'readiness_remediate' | 'readiness_pr_status';
-  label: string;
-  description: string;
-  parameters: Record<string, unknown>;
-  execute: (params: Record<string, unknown>) => Promise<string>;
-}
+export const READINESS_TOOL_NAMES = [
+  'readiness_check',
+  'readiness_remediate',
+  'readiness_pr_status',
+] as const;
 
 /**
  * Structured progress the chat renders as a distinct sub-agent seam. `entry`
@@ -67,7 +62,8 @@ export type ReadinessSessionProvider = (
   observe: (state: ReadinessState) => void,
 ) => ReadinessSessionSurface;
 
-export interface ReadinessToolsDeps {
+/** Everything the factories close over. The chat session owns all three. */
+export interface ReadinessToolDeps {
   /** The project the chat is scoped to. Read per call; never captured. */
   project: () => { path: string; baseRef: string };
   session: ReadinessSessionProvider;
@@ -89,8 +85,12 @@ const LIVE_PHASES: ReadonlySet<ReadinessPhase> = new Set([
   'finalizing',
 ]);
 
-function json(value: unknown): string {
-  return JSON.stringify(value);
+/** A tool answer is content plus details; these tools answer JSON text. */
+function json(value: unknown): {
+  content: [{ type: 'text'; text: string }];
+  details: undefined;
+} {
+  return { content: [{ type: 'text', text: JSON.stringify(value) }], details: undefined };
 }
 
 /**
@@ -153,10 +153,8 @@ function outcome(state: ReadinessState): Record<string, unknown> {
  * "How ready is this repo and why": the static checklist plus the marker as
  * committed on the base ref. Read-only; touches no session state.
  */
-export function createReadinessCheckTool(
-  deps: Pick<ReadinessToolsDeps, 'project'>,
-): ReadinessToolDefinition {
-  return {
+export function readinessCheckTool(deps: Pick<ReadinessToolDeps, 'project'>): ToolDefinition {
+  return defineTool({
     name: 'readiness_check',
     label: 'Readiness check',
     description:
@@ -192,7 +190,7 @@ export function createReadinessCheckTool(
         },
       });
     },
-  };
+  });
 }
 
 /**
@@ -201,10 +199,10 @@ export function createReadinessCheckTool(
  * its transcript as progress events. A miss parks on `needs_continue` with the
  * branch intact; calling again continues on that same branch.
  */
-export function createReadinessRemediateTool(
-  deps: Pick<ReadinessToolsDeps, 'session' | 'onProgress'>,
-): ReadinessToolDefinition {
-  return {
+export function readinessRemediateTool(
+  deps: Pick<ReadinessToolDeps, 'session' | 'onProgress'>,
+): ToolDefinition {
+  return defineTool({
     name: 'readiness_remediate',
     label: 'Make it ready',
     description:
@@ -226,7 +224,7 @@ export function createReadinessRemediateTool(
       const state = await session.makeReady();
       return json(outcome(state));
     },
-  };
+  });
 }
 
 /**
@@ -234,10 +232,10 @@ export function createReadinessRemediateTool(
  * the operator's gh, then re-reads the marker at the base ref after the
  * fast-forward — a merged PR on its own is not proof.
  */
-export function createReadinessPrStatusTool(
-  deps: Pick<ReadinessToolsDeps, 'session' | 'onProgress'>,
-): ReadinessToolDefinition {
-  return {
+export function readinessPrStatusTool(
+  deps: Pick<ReadinessToolDeps, 'session' | 'onProgress'>,
+): ToolDefinition {
+  return defineTool({
     name: 'readiness_pr_status',
     label: 'Readiness PR status',
     description:
@@ -266,14 +264,10 @@ export function createReadinessPrStatusTool(
         ready: state.phase === 'complete' && state.markerValid,
       });
     },
-  };
+  });
 }
 
 /** All three readiness tools, in the order the chat session registers them. */
-export function createReadinessTools(deps: ReadinessToolsDeps): ReadinessToolDefinition[] {
-  return [
-    createReadinessCheckTool(deps),
-    createReadinessRemediateTool(deps),
-    createReadinessPrStatusTool(deps),
-  ];
+export function readinessToolsFor(deps: ReadinessToolDeps): ToolDefinition[] {
+  return [readinessCheckTool(deps), readinessRemediateTool(deps), readinessPrStatusTool(deps)];
 }

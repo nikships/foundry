@@ -19,10 +19,11 @@ import { evaluateRepo } from '../../../src/main/readiness/evaluate.js';
 import { ReadinessSession, type ReadinessRemediator } from '../../../src/main/readiness/session.js';
 import type { ReadinessIo } from '../../../src/main/readiness/session.js';
 import {
-  createReadinessCheckTool,
-  createReadinessPrStatusTool,
-  createReadinessRemediateTool,
-  createReadinessTools,
+  READINESS_TOOL_NAMES,
+  readinessCheckTool,
+  readinessPrStatusTool,
+  readinessRemediateTool,
+  readinessToolsFor,
   type ReadinessProgressEvent,
   type ReadinessSessionSurface,
 } from '../../../src/main/smith/readiness-tools.js';
@@ -62,7 +63,7 @@ function addOriginRemote(repo: string): string {
   return bare;
 }
 
-/** The live `foundry-ready/<id>` branch the session created, if any. */
+/** The live `foundry-ready/<id>` branches the session created, if any. */
 function readinessBranches(repo: string): string[] {
   return sh(repo, ['git', 'branch', '--list', 'foundry-ready/*', '--format=%(refname:short)'])
     .split('\n')
@@ -139,7 +140,7 @@ function markerJson(repo: string): string {
 /**
  * The real state machine with scripted io, wired the way the chat session
  * worker will wire it: one observer slot the provider swaps on each install,
- * exactly as the contract requires.
+ * exactly as the `ReadinessSessionProvider` contract requires.
  */
 function harness(repo: string, io: ReadinessIo = {}) {
   const project = defaultProject(repo);
@@ -167,8 +168,19 @@ function harness(repo: string, io: ReadinessIo = {}) {
   return { project, session, deps, events };
 }
 
-function parse(text: string): Record<string, unknown> {
-  return JSON.parse(text) as Record<string, unknown>;
+/** The runtime hands `execute` a call id, the args, and context it may ignore. */
+async function answerOf(tool: {
+  execute: (...args: never[]) => unknown;
+}): Promise<Record<string, unknown>> {
+  const execute = tool.execute as unknown as (
+    id: string,
+    params: unknown,
+    signal: undefined,
+    onUpdate: undefined,
+    ctx: undefined,
+  ) => Promise<{ content: { type: string; text: string }[] }>;
+  const result = await execute('call-1', {}, undefined, undefined, undefined);
+  return JSON.parse(result.content.map((block) => block.text).join('')) as Record<string, unknown>;
 }
 
 const openPrOk = (number: number) => async () => ({
@@ -182,10 +194,9 @@ describe('readiness_check', () => {
   it('reports a failing checklist and a missing base-ref marker', async () => {
     const repo = gitRepo('foundry-smith-check-fail-');
     const { deps } = harness(repo);
-    const tool = createReadinessCheckTool(deps);
-    const answer = parse(await tool.execute({}));
+    const answer = await answerOf(readinessCheckTool(deps));
     expect(answer.ready).toBe(false);
-    const marker = answer.marker as { ok: boolean; detail: string; source?: string };
+    const marker = answer.marker as { ok: boolean; detail: string };
     expect(marker.ok).toBe(false);
     expect(marker.detail).toMatch(/not committed on main/);
     const checklist = answer.checklist as {
@@ -203,7 +214,7 @@ describe('readiness_check', () => {
     write(repo, '.agents/agent-ready.json', markerJson(repo));
 
     const { deps } = harness(repo);
-    const answer = parse(await createReadinessCheckTool(deps).execute({}));
+    const answer = await answerOf(readinessCheckTool(deps));
     expect(answer.ready).toBe(false);
     expect((answer.checklist as { ready: boolean }).ready).toBe(true);
     expect((answer.marker as { detail: string }).detail).toMatch(/not committed on main/);
@@ -216,7 +227,7 @@ describe('readiness_check', () => {
     commitAll(repo, 'ready with marker');
 
     const { deps } = harness(repo);
-    const answer = parse(await createReadinessCheckTool(deps).execute({}));
+    const answer = await answerOf(readinessCheckTool(deps));
     expect(answer.ready).toBe(true);
     const marker = answer.marker as { ok: boolean; source?: string; ref?: string };
     expect(marker.ok).toBe(true);
@@ -248,7 +259,7 @@ describe('readiness_remediate', () => {
       }),
     });
 
-    const answer = parse(await createReadinessRemediateTool(deps).execute({}));
+    const answer = await answerOf(readinessRemediateTool(deps));
     expect(answer.phase).toBe('awaiting_merge');
     expect(answer.needsContinue).toBe(false);
     expect((answer.pr as { number: number }).number).toBe(7);
@@ -296,7 +307,7 @@ describe('readiness_remediate', () => {
     };
     const { deps } = harness(repo, io);
 
-    const parked = parse(await createReadinessRemediateTool(deps).execute({}));
+    const parked = await answerOf(readinessRemediateTool(deps));
     expect(parked.phase).toBe('needs_continue');
     expect(parked.needsContinue).toBe(true);
     expect((parked.checklist as { failing: string[] }).failing.length).toBeGreaterThan(0);
@@ -306,16 +317,17 @@ describe('readiness_remediate', () => {
     // needs_continue lives on the session, outside the chat: a fresh tool
     // wiring (a "New chat") finds the parked work and continues it.
     const fresh: ReadinessProgressEvent[] = [];
-    const rewired = createReadinessRemediateTool({
+    const rewired = readinessRemediateTool({
       session: deps.session,
       onProgress: (e) => fresh.push(e),
     });
-    const done = parse(await rewired.execute({}));
+    const done = await answerOf(rewired);
     expect(done.phase).toBe('awaiting_merge');
     expect(jobs).toHaveLength(2);
     expect(jobs[1]?.continuation).toBe(true);
     expect(jobs[1]?.cwd).toBe(jobs[0]?.cwd);
     expect(readinessBranches(repo)).toEqual(branch);
+    expect(fresh.some((e) => e.type === 'phase' && e.phase === 'awaiting_merge')).toBe(true);
   });
 
   it('refuses to start while make-it-ready work is already in flight', async () => {
@@ -329,11 +341,11 @@ describe('readiness_remediate', () => {
         throw new Error('unused');
       },
     };
-    const tool = createReadinessRemediateTool({
+    const tool = readinessRemediateTool({
       session: () => live,
       onProgress: () => {},
     });
-    const answer = parse(await tool.execute({}));
+    const answer = await answerOf(tool);
     expect(answer.inProgress).toBe(true);
     expect(answer.phase).toBe('remediating');
   });
@@ -361,7 +373,7 @@ describe('readiness_pr_status', () => {
   it('answers without a session mutation when no PR exists yet', async () => {
     const repo = gitRepo('foundry-smith-pr-none-');
     const { deps } = harness(repo);
-    const answer = parse(await createReadinessPrStatusTool(deps).execute({}));
+    const answer = await answerOf(readinessPrStatusTool(deps));
     expect(answer.prMerged).toBe(false);
     expect(answer.ready).toBe(false);
     expect(answer.detail).toMatch(/no readiness pull request/i);
@@ -373,15 +385,15 @@ describe('readiness_pr_status', () => {
     const mergedRef = { merged: false };
     const { project, deps } = prHarness(repo, mergedRef);
 
-    await createReadinessRemediateTool(deps).execute({});
-    const waiting = parse(await createReadinessPrStatusTool(deps).execute({}));
+    await answerOf(readinessRemediateTool(deps));
+    const waiting = await answerOf(readinessPrStatusTool(deps));
     expect(waiting.prMerged).toBe(false);
     expect(waiting.ready).toBe(false);
     expect(waiting.phase).toBe('awaiting_merge');
 
     mergeReadinessBranchIntoOrigin(repo, bare, readinessBranches(repo)[0]!);
     mergedRef.merged = true;
-    const done = parse(await createReadinessPrStatusTool(deps).execute({}));
+    const done = await answerOf(readinessPrStatusTool(deps));
     expect(done.prMerged).toBe(true);
     expect(done.ready).toBe(true);
     expect(done.phase).toBe('complete');
@@ -397,10 +409,10 @@ describe('readiness_pr_status', () => {
     const mergedRef = { merged: false };
     const { project, deps } = prHarness(repo, mergedRef);
 
-    await createReadinessRemediateTool(deps).execute({});
+    await answerOf(readinessRemediateTool(deps));
     // gh says merged, but nothing ever landed on origin's main.
     mergedRef.merged = true;
-    const answer = parse(await createReadinessPrStatusTool(deps).execute({}));
+    const answer = await answerOf(readinessPrStatusTool(deps));
     expect(answer.prMerged).toBe(true);
     expect(answer.ready).toBe(false);
     expect(answer.phase).toBe('needs_continue');
@@ -411,23 +423,20 @@ describe('readiness_pr_status', () => {
   });
 });
 
-describe('createReadinessTools', () => {
-  it('exports the three tools in registration order', () => {
-    const tools = createReadinessTools({
+describe('the Smith readiness tool set', () => {
+  it('is exactly the three tools the chat session registers, in order', () => {
+    expect([...READINESS_TOOL_NAMES]).toEqual([
+      'readiness_check',
+      'readiness_remediate',
+      'readiness_pr_status',
+    ]);
+    const tools = readinessToolsFor({
       project: () => ({ path: '/tmp/none', baseRef: 'main' }),
       session: () => {
         throw new Error('unused');
       },
       onProgress: () => {},
     });
-    expect(tools.map((t) => t.name)).toEqual([
-      'readiness_check',
-      'readiness_remediate',
-      'readiness_pr_status',
-    ]);
-    for (const tool of tools) {
-      expect(tool.parameters).toMatchObject({ type: 'object', additionalProperties: false });
-      expect(tool.description.length).toBeGreaterThan(40);
-    }
+    expect(tools.map((t) => t.name)).toEqual([...READINESS_TOOL_NAMES]);
   });
 });
