@@ -5,9 +5,10 @@
  * wire-prefixed ids (`foundry___report_progress`), and no second schema dialect
  * to keep in sync. A tool is a plain object with a JSON Schema and a function.
  *
- * Three tools, and none of them writes the worktree:
+ * Four tools, and none of them writes the worktree:
  * - `report_progress` traces a line for the Inspector timeline.
  * - `read_phase_context` reads back the validated envelope chain.
+ * - `git_diff` returns the run's accumulated patch, bounded.
  * - `submit_envelope` is how a phase answers. Its schema is the phase's own
  *   envelope schema, so a conforming call always parses.
  *
@@ -16,14 +17,17 @@
  * propose; code disposes.
  */
 
+import { isAbsolute } from 'node:path';
 import { defineTool, type ToolDefinition } from '@earendil-works/pi-coding-agent';
 import type { ToolProfile } from '@shared/types.js';
+import { boundPatch, diffPatch } from '../engine/git.js';
 import type { Envelope } from '../engine/envelopes.js';
 import type { FoundryToolContext } from './transport.js';
 
 export const FOUNDRY_TOOL_NAMES = [
   'report_progress',
   'read_phase_context',
+  'git_diff',
   'submit_envelope',
 ] as const;
 export type FoundryToolName = (typeof FOUNDRY_TOOL_NAMES)[number];
@@ -42,10 +46,14 @@ export const READ_ONLY_TOOLS = ['read', 'grep', 'find', 'ls'] as const;
 /**
  * The whole allowlist a run session is opened with, for one agent's profile.
  *
- * Foundry's own three tools are named alongside the built-ins because the list
- * given to `createAgentSession` *is* the registry. A `read-only` agent gets the
- * read subset: `edit`, `write`, and `bash` do not exist for it, which is the
- * only form of read-only this directory recognises.
+ * Foundry's own tools are named alongside the built-ins because the list given
+ * to `createAgentSession` *is* the registry. A `read-only` agent gets the read
+ * subset: `edit`, `write`, and `bash` do not exist for it, which is the only
+ * form of read-only this directory recognises.
+ *
+ * Foundry's tools are in both profiles, `git_diff` included. It reads history
+ * the agent could already read through `read`, cannot run anything else, and is
+ * strictly narrower than the `bash` a full-surface agent already has.
  */
 export function runToolsFor(profile: ToolProfile | undefined): string[] {
   const builtins = profile === 'read-only' ? READ_ONLY_TOOLS : BUILTIN_TOOLS;
@@ -117,6 +125,116 @@ export function readPhaseContextTool(ctx: FoundryToolContext): AnyTool {
       const chain: PhaseContextEntry[] = [];
       for (const [phase, envelope] of ctx.envelopes()) chain.push({ phase, envelope });
       return Promise.resolve(text(JSON.stringify(chain)));
+    },
+  });
+}
+
+/**
+ * How much patch one `git_diff` answer may carry.
+ *
+ * 60 KB is roughly 15k tokens: a normal Foundry run's whole diff fits, and even
+ * at the cap it leaves the bulk of a modern context window for the request, the
+ * prior envelopes, and the reply. It is deliberately far above the 4 KB the
+ * prompt's `--stat` block gets, because a stat is a file list while a patch has
+ * to carry the hunks that answer "what changed". Past the cap the answer names
+ * the files it dropped and says to re-call with `path`, so the ceiling costs
+ * completeness in one reply rather than correctness.
+ */
+export const GIT_DIFF_MAX_CHARS = 60_000;
+
+/** Tells the model its answer is partial and how to get the rest. */
+export const GIT_DIFF_TRUNCATED_MARKER = '[truncated: patch exceeded the per-call limit]';
+
+/**
+ * Why a `path` was refused. Returned to the model as its tool result, so it can
+ * correct the argument rather than treating the call as broken.
+ */
+function rejectPath(path: string, reason: string): string {
+  return `refused path "${path}": ${reason}. Pass a repository-relative path inside the run worktree, or omit it for the whole diff.`;
+}
+
+/**
+ * Validates the one argument the model controls.
+ *
+ * A pathspec cannot leave the repository, but it can still name something
+ * outside this run's scope, and an absolute path would silently read another
+ * checkout. Both are refused here rather than normalised: guessing what the
+ * model meant is how a scope check stops being one.
+ */
+function validateDiffPath(
+  raw: unknown,
+): { ok: true; path?: string } | { ok: false; error: string } {
+  if (raw === undefined || raw === null) return { ok: true };
+  if (typeof raw !== 'string') return { ok: false, error: rejectPath(String(raw), 'not a string') };
+
+  const path = raw.trim();
+  if (!path) return { ok: true };
+  if (path.startsWith('-')) {
+    return { ok: false, error: rejectPath(path, 'a path may not begin with "-"') };
+  }
+  if (isAbsolute(path) || /^[a-zA-Z]:[\\/]/.test(path)) {
+    return { ok: false, error: rejectPath(path, 'absolute paths are not allowed') };
+  }
+  // Checked on the literal argument, not on a resolved path: `..` is refused
+  // outright, so there is no "resolves back inside" case to reason about.
+  if (path.split(/[\\/]/).some((segment) => segment === '..')) {
+    return { ok: false, error: rejectPath(path, '".." may not appear in the path') };
+  }
+  return { ok: true, path };
+}
+
+/**
+ * The read-only diff affordance: the accumulated patch for this run.
+ *
+ * It exists because `read-only` removes `bash`, and a reviewer or PR writer
+ * without a shell could otherwise see only the `--stat` in its prompt — a file
+ * list, which cannot answer what changed. The tool takes no argv, no flags, and
+ * no ref: the only input is an optional path filter, and the base is whatever
+ * the engine resolved as this run's branch point.
+ */
+export function gitDiffTool(ctx: FoundryToolContext): AnyTool {
+  return defineTool({
+    name: 'git_diff',
+    label: 'Git diff',
+    description:
+      "Return this run's accumulated changes as a unified diff, against the commit the run branched from. Covers committed and unstaged changes to tracked files. Read-only: it runs no other git command and changes nothing. Pass `path` to narrow a large diff to one file or directory.",
+    parameters: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description:
+            'Optional repository-relative file or directory to limit the diff to. No absolute paths, no "..".',
+        },
+      },
+      additionalProperties: false,
+    },
+    execute: async (_id, params) => {
+      const validated = validateDiffPath(field(params, 'path'));
+      if (!validated.ok) return text(validated.error);
+
+      const scope = ctx.diff();
+      const raw = await diffPatch(scope.cwd, scope.branchPointSha, validated.path);
+      const bounded = boundPatch(raw, GIT_DIFF_MAX_CHARS);
+      if (!bounded.text) {
+        return text(
+          validated.path
+            ? `no changes against the branch point under "${validated.path}"`
+            : 'no changes against the branch point',
+        );
+      }
+      if (!bounded.omitted.length) return text(bounded.text);
+
+      return text(
+        [
+          bounded.text,
+          '',
+          GIT_DIFF_TRUNCATED_MARKER,
+          'These changed files are not shown above. Call git_diff again with `path`',
+          'set to one of them to read its patch:',
+          ...bounded.omitted.map((path) => `- ${path}`),
+        ].join('\n'),
+      );
     },
   });
 }

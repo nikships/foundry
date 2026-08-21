@@ -108,15 +108,25 @@ describe('shipped agents', () => {
     }
   });
 
-  it('hands the diff-reading read-only agents the git context instead of a shell', () => {
-    // `runners/agent.ts` injects branch, base ref, branch point, and a bounded
-    // diff stat for these agents; without a shell that block is their only
-    // route to the changed set.
+  it('points the diff-reading read-only agents at git_diff, not at a shell', () => {
+    // Removing `bash` removed `git diff`, and the stat block `runners/agent.ts`
+    // injects is a file list that cannot say what changed inside a file. The
+    // tool is the replacement, so the prompt has to name it.
     for (const name of ['reviewer', 'pr_writer']) {
-      const agent = agentByName(name)!;
-      expect(`${agent.systemPrompt}\n${agent.userPrompt}`, name).toMatch(
-        /accumulated git context/i,
-      );
+      const prompts = `${agentByName(name)!.systemPrompt}\n${agentByName(name)!.userPrompt}`;
+      expect(prompts, name).toContain('`git_diff`');
+      expect(prompts, name).toMatch(/no shell/i);
+    }
+  });
+
+  it('never promises a read-only agent a capability the profile removed', () => {
+    for (const agent of BUILTIN_AGENTS.filter((a) => a.toolProfile === 'read-only')) {
+      const prompts = `${agent.systemPrompt}\n${agent.userPrompt}`;
+      // The stat is for orientation. A prompt that presents it as the record of
+      // what changed is telling the agent to review a file list.
+      if (/changed-file stat/i.test(prompts)) {
+        expect(prompts, agent.name).toMatch(/orientation|`git_diff`/i);
+      }
     }
   });
 });

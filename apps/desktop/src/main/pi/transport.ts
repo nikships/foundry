@@ -28,6 +28,13 @@ export interface FoundryToolContext {
   /** Validated envelopes for this run, keyed by phase name, insertion order. */
   envelopes: () => ReadonlyMap<string, Envelope>;
   tracer: Pick<Tracer, 'event'>;
+  /**
+   * The run's worktree and the commit it branched from — the scope `git_diff`
+   * answers within. The engine resolves both; the model never names a ref, so
+   * it cannot point the diff at history outside its own run. Read per call,
+   * not captured, because a session outlives any one phase.
+   */
+  diff: () => { cwd: string; branchPointSha: string };
 }
 
 /** A model this transport could run a turn on. */

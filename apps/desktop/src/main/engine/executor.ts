@@ -582,6 +582,11 @@ export class Executor {
         phaseId: req.phaseId,
         envelopes: () => this.envelopes,
         tracer: this.deps.tracer,
+        // Resolved here, not by the agent: `git_diff` answers within the run's
+        // own worktree and branch point, and a model-supplied ref would be a
+        // way to read outside it. Read per call because a repair can move the
+        // branch point under a session that is already open.
+        diff: () => ({ cwd: this.cwd, branchPointSha: this.handle?.branchPointSha ?? '' }),
       },
     });
   }

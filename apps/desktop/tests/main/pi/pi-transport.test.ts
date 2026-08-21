@@ -282,6 +282,7 @@ function toolContext(): FoundryToolContext {
     phaseId: () => null,
     envelopes: () => new Map(),
     tracer,
+    diff: () => ({ cwd: repo, branchPointSha: '' }),
   };
 }
 
@@ -388,6 +389,7 @@ describe('opening a session', () => {
     expect(spy.loaders[0]!.extensionFactories.map((e) => e.name)).toEqual(['foundry']);
     expect(spy.registeredTools).toContain('report_progress');
     expect(spy.registeredTools).toContain('read_phase_context');
+    expect(spy.registeredTools).toContain('git_diff');
   });
 
   it('names Foundry’s tools alongside the built-ins, because the list is the allowlist', async () => {
@@ -404,6 +406,7 @@ describe('opening a session', () => {
       'ls',
       'report_progress',
       'read_phase_context',
+      'git_diff',
       'submit_envelope',
     ]);
   });
@@ -421,11 +424,26 @@ describe('opening a session', () => {
       'ls',
       'report_progress',
       'read_phase_context',
+      'git_diff',
       'submit_envelope',
     ]);
     for (const tool of ['edit', 'write', 'bash']) {
       expect(spy.creates[0]!.tools).not.toContain(tool);
     }
+  });
+
+  it('gives a read-only agent git_diff, which is how it reads a diff without a shell', async () => {
+    // Removing `bash` removed the only way to run `git diff`. The tool is the
+    // replacement, so its presence in the read-only registry is the whole
+    // reason that profile is usable for a reviewer.
+    const readOnly = harness({ toolProfile: 'read-only' });
+    await readOnly.transport.start();
+    expect(spy.creates[0]!.tools).toContain('git_diff');
+
+    spy.creates = [];
+    const full = harness({ toolProfile: 'full' });
+    await full.transport.start();
+    expect(spy.creates[0]!.tools).toContain('git_diff');
   });
 
   it('gives an agent with no stated profile the full surface', async () => {

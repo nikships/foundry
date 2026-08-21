@@ -15,7 +15,12 @@
  */
 
 import type { ExtensionAPI, ExtensionFactory } from '@earendil-works/pi-coding-agent';
-import { readPhaseContextTool, reportProgressTool, type EnvelopeTool } from './tools.js';
+import {
+  gitDiffTool,
+  readPhaseContextTool,
+  reportProgressTool,
+  type EnvelopeTool,
+} from './tools.js';
 import type { FoundryToolContext, PermissionAsk, PermissionDecision } from './transport.js';
 
 /** Per-turn system role text, applied through `before_agent_start`. */
@@ -79,6 +84,7 @@ export function foundryExtension(opts: FoundryExtensionOptions): FoundryExtensio
     api = pi;
     pi.registerTool(reportProgressTool(opts.tools));
     pi.registerTool(readPhaseContextTool(opts.tools));
+    pi.registerTool(gitDiffTool(opts.tools));
     install(pending);
     installPolicy(pi, opts.decide);
     system.apply(pi);
