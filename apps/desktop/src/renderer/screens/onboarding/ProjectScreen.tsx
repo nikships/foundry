@@ -125,7 +125,7 @@ export default function ProjectScreen(): React.JSX.Element {
               <span className={styles.obProjectSchematicArrow}>→</span>
               <span className={styles.obProjectSchematicVal}>foundry/run_8f2c1a</span>
               <span className={`${styles.obProjectSchematicTag} ${styles.obProjectSchematicTagOn}`}>
-                gates 4/4
+                checks 4/4
               </span>
             </div>
             <div className={styles.obProjectSchematicRow}>
@@ -173,7 +173,7 @@ export default function ProjectScreen(): React.JSX.Element {
           </h1>
           <p className={styles.obProjectLead}>
             Foundry runs every change in an isolated git worktree and leaves the evidence behind —
-            prompts, tools, gates. Choose the repository it should start with.
+            prompts, tools, checks. Choose the repository it should start with.
           </p>
         </header>
 

@@ -252,7 +252,7 @@ export default function PhaseEditor({
           <div className={styles.fieldGroup}>
             <div className={styles.fieldHeader}>
               <label htmlFor={`phase-envelope-${index}`} className={styles.fieldLabel}>
-                Envelope
+                Report
               </label>
               {envelopeOverridden ? (
                 <span className={styles.fieldHint}>
@@ -300,14 +300,14 @@ export default function PhaseEditor({
                 className={styles.linkBtn}
                 onClick={() => onOpenDesignTab('envelopes')}
               >
-                Manage envelopes…
+                Manage reports…
               </button>
             )}
           </div>
 
           <div className={styles.fieldGroup}>
             <div className={styles.fieldHeader}>
-              <span className={styles.fieldLabel}>Gates</span>
+              <span className={styles.fieldLabel}>Checks</span>
               <span className={styles.fieldHint}>{activeGates.length} active</span>
             </div>
             <div className={styles.chipRow}>
@@ -324,7 +324,7 @@ export default function PhaseEditor({
                     })
                   }
                   className={styles.removableChip}
-                  title="Remove gate"
+                  title="Remove check"
                 >
                   {gate}
                   <span className={styles.chipClose}>×</span>
@@ -342,7 +342,7 @@ export default function PhaseEditor({
                 }
               }}
             >
-              <option value="">+ add gate</option>
+              <option value="">+ add check</option>
               {catalogGates
                 .filter((g) => g.id !== 'command_passes')
                 .filter((g) => !activeGates.includes(g.id))
@@ -409,7 +409,7 @@ export default function PhaseEditor({
               <label htmlFor={`phase-retries-${index}`} className={styles.fieldLabel}>
                 Retries
               </label>
-              <span className={styles.fieldHint}>0–5 on gate failure</span>
+              <span className={styles.fieldHint}>0–5 on check failure</span>
             </div>
             <input
               id={`phase-retries-${index}`}

@@ -22,7 +22,7 @@ test.describe('run / Inspector', () => {
       await expect(window.getByRole('button', { name: 'Run', exact: true })).toBeVisible();
       await expect(window.getByText(E2E_TRANSCRIPT).first()).toBeVisible();
       await expect(window.getByText('build').first()).toBeVisible();
-      await expect(window.getByText('envelope').first()).toBeVisible();
+      await expect(window.getByText('report').first()).toBeVisible();
     } finally {
       await app?.close();
     }

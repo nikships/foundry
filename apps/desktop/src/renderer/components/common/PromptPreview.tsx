@@ -64,7 +64,7 @@ export default function PromptPreview({
         <h3>Appended by the engine</h3>
         <p className={`faint ${styles.note}`}>
           The declared inputs for the phase, then this exact JSON shape — the{' '}
-          <strong>{agent.envelope}</strong> envelope
+          <strong>{agent.envelope}</strong> report
           {extraCount > 0 && (
             <>
               {' '}

@@ -216,7 +216,11 @@ function NodeCard({
                   {envelopeChip.label}
                   {envelopeChip.overridden && <span className={styles.overrideMark}>ovr</span>}
                 </Chip>
-                {gateNames(phase).length > 0 && <Chip>{gateNames(phase).length} gates</Chip>}
+                {gateNames(phase).length > 0 && (
+                  <Chip>
+                    {gateNames(phase).length} {gateNames(phase).length === 1 ? 'check' : 'checks'}
+                  </Chip>
+                )}
               </>
             )}
             {phase.kind === 'code' && (

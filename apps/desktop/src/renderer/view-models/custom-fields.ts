@@ -110,7 +110,7 @@ export function validateCustomFields(
       issues.push({
         level: 'error',
         where: at,
-        message: `"${field.name}" is a base field every envelope already carries — pick another name`,
+        message: `"${field.name}" is a base field every report already carries — pick another name`,
       });
     } else if (seen.has(field.name)) {
       issues.push({

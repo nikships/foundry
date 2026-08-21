@@ -45,7 +45,7 @@ function EnvelopeCard({ envelope }: { envelope: EnvelopeRow }): React.JSX.Elemen
   return (
     <div className={`${styles.laneEnvelope} ${envelope.valid ? 'ok' : 'fail'}`}>
       <div className={styles.laneEnvelopeHead}>
-        <span className="te-tag">envelope</span>
+        <span className="te-tag">report</span>
         <span className={styles.laneEnvelopeStatus}>{envelope.valid ? 'accepted' : 'invalid'}</span>
         {envelope.attempt > 1 && (
           <span className={styles.laneEnvelopeAttempt}>attempt {envelope.attempt}</span>

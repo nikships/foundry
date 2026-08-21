@@ -35,7 +35,7 @@ export interface SmithNavTarget {
 const KIND_LABEL: Record<SmithProposal['kind'], string> = {
   agent: 'agent',
   pipeline: 'pipeline',
-  envelope: 'envelope',
+  envelope: 'report',
 };
 
 export default function SmithProposalCard({

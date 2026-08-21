@@ -731,7 +731,7 @@ export default function RosterScreen({
                         : 'Higher effort costs more thinking tokens and takes longer.'}
                     </span>
                   </Field>
-                  <Field label="Envelope kind">
+                  <Field label="Report kind">
                     <Dropdown
                       value={draft.envelope}
                       options={envelopeOptions}
@@ -739,7 +739,7 @@ export default function RosterScreen({
                       onChange={(next) => setDraft({ ...draft, envelope: next })}
                     />
                     <span className={styles.hint}>
-                      The typed reply this agent must return. Parsed and validated on every turn.
+                      The typed report this agent must return. Parsed and validated on every turn.
                       {onOpenDesignTab && (
                         <>
                           {' '}
@@ -748,7 +748,7 @@ export default function RosterScreen({
                             className={styles.linkBtn}
                             onClick={() => onOpenDesignTab('envelopes')}
                           >
-                            Manage envelopes…
+                            Manage reports…
                           </button>
                         </>
                       )}
@@ -802,9 +802,9 @@ export default function RosterScreen({
                     <span className="index">04</span>Extra fields
                   </p>
                   <p>
-                    Added to the <code>{draft.envelope}</code> envelope for this agent only. Use
-                    these when one agent must report something the shared envelope does not carry;
-                    change the envelope itself when every agent using it should.
+                    Added to the <code>{draft.envelope}</code> report for this agent only. Use these
+                    when one agent must report something the shared report does not carry; change
+                    the report itself when every agent using it should.
                   </p>
                 </div>
                 <div className={styles.rosterStack}>
@@ -815,7 +815,7 @@ export default function RosterScreen({
                   />
                   {(draft.customFields?.length ?? 0) === 0 && (
                     <p className={styles.rosterFieldsEmpty}>
-                      No extra fields. This agent returns the {draft.envelope} envelope as defined.
+                      No extra fields. This agent returns the {draft.envelope} report as defined.
                     </p>
                   )}
                   <div className={styles.rosterFieldsFoot}>
@@ -834,7 +834,7 @@ export default function RosterScreen({
                             <code key={n}>{n}</code>
                           ))}{' '}
                           {shadowed.length === 1 ? 'overrides a field' : 'override fields'} of the
-                          same name on the <code>{draft.envelope}</code> envelope.
+                          same name on the <code>{draft.envelope}</code> report.
                         </>
                       ) : (
                         <>
@@ -903,7 +903,7 @@ export default function RosterScreen({
             <h1>Meet the crew</h1>
             <p className={styles.rosterEmptyLead}>
               Agents are editable specialists. Pipelines wire them into phases, and each phase can
-              use its own model, prompt, reply envelope, and write boundary.
+              use its own model, prompt, reply report, and write boundary.
             </p>
             <ul className={styles.rosterEmptyCrew}>
               {CREW.map(([name, purpose]) => (

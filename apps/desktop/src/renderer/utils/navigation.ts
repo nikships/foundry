@@ -41,12 +41,12 @@ export const DESIGN_TABS: { id: DesignTab; label: string; blurb: string; key: st
     id: 'agents',
     label: 'Agents',
     blurb:
-      'Who does the work. Model, prompts, and what it may write. Each agent declares the envelope it returns by default.',
+      'Who does the work. Model, prompts, and what it may write. Each agent declares the report it returns by default.',
     key: '2',
   },
   {
     id: 'envelopes',
-    label: 'Envelopes',
+    label: 'Reports',
     blurb: 'The shape of an answer. The typed reply an agent must hand back, checked every turn.',
     key: '3',
   },

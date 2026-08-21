@@ -28,7 +28,7 @@ export interface DesignScope {
 const NOUN: Record<DesignTab, string> = {
   pipelines: 'Pipelines',
   agents: 'Agents',
-  envelopes: 'Envelopes',
+  envelopes: 'Reports',
 };
 
 export function scopeFlagFor(tab: DesignTab, project: ProjectDef | null): boolean {
@@ -51,7 +51,7 @@ export function resolveDesignScope(tab: DesignTab, project: ProjectDef | null): 
       level: 'global',
       label: 'Global',
       detail:
-        'Envelopes are shared by every project, so a name means one shape everywhere. There is no per-project copy.',
+        'Reports are shared by every project, so a name means one shape everywhere. There is no per-project copy.',
       toggleable: false,
     };
   }

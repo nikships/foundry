@@ -1615,8 +1615,8 @@ export default function SettingsScreen({
                   <Section label="Advanced" note="Stable engine policy and context limits.">
                     <div className={styles.settingsFields}>
                       <Field
-                        label="Envelope retries"
-                        hint="Correction messages sent when a reply will not parse."
+                        label="Report retries"
+                        hint="Correction messages sent when a report will not parse."
                       >
                         <TextInput
                           type="number"
@@ -1627,8 +1627,8 @@ export default function SettingsScreen({
                         />
                       </Field>
                       <Field
-                        label="Gate retries"
-                        hint="Attempts to fix a gate violation before the phase fails."
+                        label="Check retries"
+                        hint="Attempts to fix a check violation before the phase fails."
                       >
                         <TextInput
                           type="number"

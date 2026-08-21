@@ -524,8 +524,8 @@ export default function EnvelopesEditor({
         );
       }
       const message = parts.length
-        ? `Delete envelope “${name}”? Used by ${parts.join(' and ')} — those will fall back to the generic envelope.`
-        : `Delete envelope “${name}”? Nothing currently uses it.`;
+        ? `Delete report “${name}”? Used by ${parts.join(' and ')} — those will fall back to the generic report.`
+        : `Delete report “${name}”? Nothing currently uses it.`;
       const accepted = await confirmManager.ask(message, {
         confirmLabel: 'Delete',
         variant: 'danger',
@@ -551,20 +551,20 @@ export default function EnvelopesEditor({
       <div className={styles.envelopeShell}>
         <header className={styles.envelopeHeader}>
           <div>
-            <h2 className={styles.envelopeTitle}>Envelopes</h2>
+            <h2 className={styles.envelopeTitle}>Reports</h2>
             <p className={styles.envelopeLead}>
               Named JSON shapes agents must return. Pick one on an agent or a pipeline phase — the
               live preview below is exactly what the agent is shown.
             </p>
           </div>
           <Button size="sm" variant="primary" onClick={() => void startBlank()} disabled={busy}>
-            New envelope
+            New report
           </Button>
         </header>
 
         <div className={styles.envelopeLayout}>
           {/* ── library rail ───────────────────────────────────────────── */}
-          <aside className={styles.envelopeList} aria-label="Envelope library">
+          <aside className={styles.envelopeList} aria-label="Report library">
             <div className={styles.envelopeListHead}>
               <span>Your library</span>
               <span className={styles.envelopeCount}>{envelopes.length}</span>
@@ -670,11 +670,9 @@ export default function EnvelopesEditor({
 
             {selection.kind === 'none' && !showEmptyHero && (
               <div className={styles.envelopeIdle}>
-                <p>
-                  Select an envelope to edit, or inspect a built-in to see the JSON agents return.
-                </p>
+                <p>Select a report to edit, or inspect a built-in to see the JSON agents return.</p>
                 <Button size="sm" onClick={() => void startBlank()}>
-                  New envelope
+                  New report
                 </Button>
               </div>
             )}
@@ -695,7 +693,7 @@ export default function EnvelopesEditor({
                 </div>
                 <p className={styles.envelopePreviewLabel}>
                   JSON the agent is shown — read-only. Built-ins cannot be edited; start from this
-                  to add your own fields on a custom envelope.
+                  to add your own fields on a custom report.
                 </p>
                 <pre className={`mono ${styles.envelopePreviewCode}`}>{builtinExample || '…'}</pre>
                 {selection.name === 'review' && (
@@ -766,7 +764,7 @@ export default function EnvelopesEditor({
                     <div>
                       <span>Fields</span>
                       <p className={styles.envelopeFieldsNote}>
-                        Every envelope already carries the four base fields. Add only what is unique
+                        Every report already carries the four base fields. Add only what is unique
                         to this shape.
                       </p>
                     </div>
