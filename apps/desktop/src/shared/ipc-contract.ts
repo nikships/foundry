@@ -457,8 +457,6 @@ export interface FoundryApi {
   bridge: {
     /** Bridge status plus every provider and its accounts. Starts nothing. */
     state(): Promise<BridgeState>;
-    /** Starts the Bridge if it is not already running. */
-    ensure(): Promise<BridgeActionResult>;
     /**
      * Begins a provider's OAuth flow in the operator's browser. Returns as soon
      * as the browser is open; the account lands asynchronously and the state
@@ -698,7 +696,6 @@ export const IPC = {
   catalogTemplateVariables: 'catalog:templateVariables',
   catalogAgentModels: 'catalog:agentModels',
   bridgeState: 'bridge:state',
-  bridgeEnsure: 'bridge:ensure',
   bridgeConnect: 'bridge:connect',
   bridgeDisconnect: 'bridge:disconnect',
   bridgeCancelLogin: 'bridge:cancelLogin',

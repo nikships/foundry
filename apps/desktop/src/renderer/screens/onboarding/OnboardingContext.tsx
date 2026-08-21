@@ -31,7 +31,6 @@ export type OnboardingContextValue = {
   providerBusy: string | null;
   connectProvider: (providerId: string) => Promise<void>;
   cancelProviderLogin: (providerId: string) => Promise<void>;
-  startBridge: () => Promise<void>;
   saveProviderKey: (providerId: string, apiKey: string) => Promise<void>;
   refreshProviders: () => Promise<void>;
   // project step
@@ -230,9 +229,6 @@ export function OnboardingProvider({
     }
   };
 
-  const startBridge = async (): Promise<void> => {
-    await runProviderAction('bridge', () => api.bridge.ensure());
-  };
   const connectProvider = async (providerId: string): Promise<void> => {
     await runProviderAction(providerId, () => api.bridge.connect(providerId));
   };
@@ -394,7 +390,6 @@ export function OnboardingProvider({
     providerBusy,
     connectProvider,
     cancelProviderLogin,
-    startBridge,
     saveProviderKey,
     refreshProviders,
     name,

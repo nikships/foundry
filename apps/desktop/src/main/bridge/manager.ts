@@ -3,7 +3,7 @@
  *
  * The Bridge is what turns an operator's Claude/ChatGPT/Gemini/Kimi/Grok
  * subscription into an OpenAI- or Anthropic-shaped endpoint pi can call. It is
- * started lazily on first `ensure()`, binds 127.0.0.1 inside 37700–37799
+ * started at app launch through `ensure()`, binds 127.0.0.1 inside 37700–37799
  * (scan-up on busy), writes its own merged config and auth directory under
  * Foundry's support dir, and reports ready only after the port accepts a
  * connection.
@@ -162,8 +162,9 @@ export class BridgeManager {
   }
 
   /**
-   * Lazily start the Bridge. Concurrent callers share one in-flight attempt, so
-   * two runs starting at once cannot produce two children. Never throws.
+   * Start the Bridge. App launch is the first caller; later calls are retries
+   * or idempotent readiness checks. Concurrent callers share one in-flight
+   * attempt, so two paths cannot produce two children. Never throws.
    */
   ensure(): Promise<BridgeEnsureResult> {
     if (this.running && this.activePort && this.child?.pid) {
