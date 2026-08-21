@@ -172,6 +172,7 @@ out/
 # AI
 .junie/
 .omo/
+.lavish/
 
 # Amp orb-generated portal metadata
 /.amp/portals/*
