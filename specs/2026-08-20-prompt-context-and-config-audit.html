@@ -944,8 +944,8 @@
           </p>
           <div class="meta-row">
             <span class="chip"><span class="pulse"></span> Active audit tracker</span>
-            <span class="chip"><b>4</b> remaining recommendations</span>
-            <span class="chip"><b>3</b> areas</span>
+            <span class="chip"><b>1</b> remaining recommendation</span>
+            <span class="chip"><b>1</b> area</span>
           </div>
           <p class="assumption" style="border: none; padding: 0; margin-top: 14px">
             Every finding cites the file it came from. Two claims about model behavior are marked as
@@ -961,34 +961,6 @@
           </p>
           <div class="wins">
             <div class="win">
-              <div class="tag">Tokens &amp; Latency</div>
-              <h3>The feedback loop re-sends the whole prompt</h3>
-              <p>
-                A red test jumps back to build and re-renders the entire phase prompt into the same
-                session that already holds it. Delta-only feedback (R6) saves tokens and latency.
-              </p>
-              <span class="refs">runners/agent.ts · executor.ts</span>
-            </div>
-            <div class="win">
-              <div class="tag">Dead surface &amp; Safety</div>
-              <h3>Pipeline/agent schema carries dead tool knobs</h3>
-              <p>
-                <code>tools</code>, <code>disabledTools</code>, and <code>toolProfile</code> exist
-                with no UI and no engine consumer. Wire <code>toolProfile: 'read-only'</code> to
-                omit write tools or delete all five fields (R8).
-              </p>
-              <span class="refs">roster.ts · pipelines.ts · runners/agent.ts</span>
-            </div>
-            <div class="win">
-              <div class="tag">Comprehension</div>
-              <h3>Vocabulary leaks across the operator interface</h3>
-              <p>
-                "Envelope" and "gate" still appear verbatim in operator-facing copy across the app.
-                Renaming them to "report" and "check" (R14) simplifies comprehension.
-              </p>
-              <span class="refs">RosterScreen.tsx · PhaseEditor.tsx · inspector/*</span>
-            </div>
-            <div class="win">
               <div class="tag">First-run friction</div>
               <h3>Readiness is the heaviest first-project step</h3>
               <p>
@@ -1002,7 +974,10 @@
           <div class="callout">
             <b>Status update:</b> High-impact foundations (project context cards, git diff context
             injection, 3-pane Settings redesign, 4-step onboarding, and refined brief propagation)
-            are now implemented in <code>main</code>.
+            are now implemented in <code>main</code>. R6 (delta-only feedback re-entry, #167), R8
+            (read-only enforced through the tool list plus a <code>git_diff</code> tool, #168), and
+            R14 (operator copy renamed to report/check, #166) have since landed too. R15 is the only
+            open recommendation.
           </div>
         </section>
 
@@ -1040,6 +1015,12 @@
                   machinery already exists for one-shots (a read-only session simply has no write
                   tool in its registry). A comment in the runner claims per-phase tool narrowing
                   that does not exist in the wiring.
+                </p>
+                <p>
+                  <b>Resolved (#168).</b> <code>toolProfile: 'read-only'</code> now opens the run
+                  session with the read subset, so edit / write / bash do not exist for those five
+                  agents, and a Foundry-owned <code>git_diff</code> tool replaces the shell they
+                  used to inspect a diff with.
                 </p>
               </div>
             </details>
@@ -1085,6 +1066,12 @@
                   the answer block + the feedback section, and sends all of it again. On a large
                   plan envelope this re-sends the biggest block in the run, once per feedback retry
                   (default 2).
+                </p>
+                <p>
+                  <b>Resolved (#167).</b> A re-entry whose live session still holds the rendered
+                  prompt now sends only the feedback evidence. A prompt ledger keyed on the session
+                  object forgets on compaction, rewind, close, and replacement, so every uncertainty
+                  falls back to the full prompt.
                 </p>
               </div>
             </details>
@@ -1149,6 +1136,12 @@
                   mechanism for real read-only narrowing (F1.4), or they should be deleted; today
                   they are pure surface.
                 </p>
+                <p>
+                  <b>Resolved (#168).</b> <code>toolProfile</code> became the read-only mechanism
+                  and gained a roster control; <code>tools</code>, <code>disabledTools</code>, and
+                  the phase-level copies were deleted, with normalize-on-read keeping older stored
+                  JSON loadable.
+                </p>
               </div>
             </details>
 
@@ -1168,6 +1161,11 @@
                   "Envelope kind — The typed reply this agent must return." "Create a pipeline to
                   orchestrate bounded agent phases and command gates." These appear in the roster
                   editor, phase editor, acceptance labels, inspector badges, and smith cards.
+                </p>
+                <p>
+                  <b>Resolved (#166).</b> Operator-facing copy now says "report" and "check" across
+                  those surfaces. Type identifiers, IPC channels, store keys, and the model-facing
+                  prompts keep the original vocabulary.
                 </p>
               </div>
             </details>
@@ -1255,8 +1253,8 @@
         <section id="recs">
           <h2><span class="num">§</span>Recommendations</h2>
           <p class="section-lede">
-            Four remaining changes, each with its expected impact, effort, risk, and any fixed
-            constraint it respects. Filter to focus on what matters to you.
+            One remaining change, with its expected impact, effort, risk, and any fixed constraint
+            it respects. R6, R8, and R14 landed in <code>main</code> as #167, #168, and #166.
           </p>
           <div class="filters" id="filters">
             <span class="fl-label">Effort</span>
@@ -1264,8 +1262,6 @@
             <button class="fbtn" data-filter="effort" data-value="M">M</button>
             <span class="fl-label" style="margin-left: 14px">Area</span>
             <button class="fbtn on" data-filter="area" data-value="all">All</button>
-            <button class="fbtn" data-filter="area" data-value="1">Prompts</button>
-            <button class="fbtn" data-filter="area" data-value="3">Config</button>
             <button class="fbtn" data-filter="area" data-value="4">Onboarding</button>
           </div>
           <div class="recs" id="recsGrid"></div>
@@ -1477,36 +1473,6 @@
     <script>
       // ---------- Recommendation data ----------
       const RECS = [
-        {
-          n: 6,
-          area: 1,
-          effort: 'M',
-          risk: 'Medium',
-          impact: 'tokens+latency',
-          title: 'Delta-only feedback loop',
-          sum: "When a failed test jumps back to a phase whose session already holds the rendered prompt, send only the feedback + 'continue' instead of re-rendering the whole prompt. Condition on no intervening rewind (a rewind drops the anchor, so the full prompt is needed again).",
-          inv: 'Corrections-into-same-live-session preserved; rewind semantics respected. Needs a dedicated executor test.',
-        },
-        {
-          n: 8,
-          area: 3,
-          effort: 'M',
-          risk: 'Medium',
-          impact: 'comprehension+safety',
-          title: 'Wire (or delete) the dead tool knobs',
-          sum: "Preferred: make toolProfile: 'read-only' actually open the session with no write tools (the read-only ideal, currently honored only by one-shots), set it on refiner/scout/reviewer/pr_writer/issue_writer, and delete the rest. Fallback: delete all five fields.",
-          inv: 'The tool-list-is-the-allowlist rule is strengthened; the boundary diff remains the guarantee.',
-        },
-        {
-          n: 14,
-          area: 4,
-          effort: 'M',
-          risk: 'Medium',
-          impact: 'comprehension',
-          title: 'Rename the two leakiest terms in the UI',
-          sum: "Internal names stay; operator-facing copy changes: 'envelope' → 'report', 'gate' → 'check' (inspector badges, acceptance labels, empty states). Phase kinds already prove the pattern (command, checkpoint).",
-          inv: 'None — type identifiers are unchanged.',
-        },
         {
           n: 15,
           area: 4,
