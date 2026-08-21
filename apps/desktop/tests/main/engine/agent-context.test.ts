@@ -38,6 +38,22 @@ describe('run-agent system context', () => {
     expect(role).not.toContain(LEGACY_CLAIM);
   });
 
+  it('omits shell guidance for a read-only profile even when the boundary allows writes', () => {
+    // The profile decides what tools exist; a boundary that would permit a
+    // write is irrelevant when no write tool was registered.
+    const role = agentSystemRole({
+      rosterRole: '# PR writer',
+      writes: ['docs/'],
+      toolProfile: 'read-only',
+      cwd: '/repo/.foundry-worktrees/run_1',
+      projectPath: '/repo',
+      setup: { command: 'npm ci', exitCode: 0 },
+    });
+
+    expect(role).not.toContain('# Worktree and shell');
+    expect(role).not.toContain('Setup ran');
+  });
+
   it('states when a writable run is operating directly in the project checkout', () => {
     const role = agentSystemRole({
       rosterRole: '# Builder',

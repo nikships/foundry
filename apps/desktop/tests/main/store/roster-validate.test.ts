@@ -46,6 +46,20 @@ describe('roster.validate', () => {
     expect(validate({ ...base, inheritDefaults: true })).toEqual([]);
     expect(validate({ ...base, inheritDefaults: false })).toEqual([]);
   });
+
+  it('accepts either tool profile', () => {
+    expect(validate({ ...base, toolProfile: 'full' })).toEqual([]);
+    expect(validate({ ...base, toolProfile: 'read-only' })).toEqual([]);
+  });
+
+  it('rejects a tool profile it cannot honour rather than widening it', () => {
+    // The narrowing is the tool list itself, so an unrecognised name has no
+    // mapping. Coercing it to `full` at save time would quietly hand an agent
+    // the shell its author meant to withhold.
+    const issues = validate({ ...base, toolProfile: 'review' as never });
+    expect(issues.some((i) => i.where === 'toolProfile')).toBe(true);
+    expect(issues.every((i) => i.level === 'error')).toBe(true);
+  });
 });
 
 describe('resolveAgentExecution', () => {

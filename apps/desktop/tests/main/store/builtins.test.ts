@@ -77,6 +77,58 @@ describe('shipped agents', () => {
   it('keeps the refiner read-only, since sharpening a request is not doing the work', () => {
     expect(agentByName('refiner')?.writes).toEqual([]);
   });
+
+  /**
+   * "You are read-only" used to be prompt text over a session that still held
+   * `edit`, `write`, and `bash`. The profile is what makes the claim true: the
+   * tool list is the allowlist, so these agents have nothing that could write.
+   */
+  it('backs every "read-only" claim with the read-only tool profile', () => {
+    for (const name of ['refiner', 'scout', 'reviewer', 'pr_writer', 'issue_writer']) {
+      const agent = agentByName(name)!;
+      expect(agent.toolProfile, name).toBe('read-only');
+      expect(agent.writes, name).toEqual([]);
+    }
+  });
+
+  it('leaves the writing agents on the full surface, shell included', () => {
+    for (const name of ['planner', 'builder', 'finisher', 'documenter']) {
+      expect(agentByName(name)?.toolProfile, name).toBeUndefined();
+    }
+  });
+
+  it('never tells a read-only agent to run a command it has no tool for', () => {
+    // A read-only session holds no `bash`, so an instruction to run something
+    // is an instruction the agent can only fail at. `no raw \`git diff\`` is
+    // about what the PR body may contain, not a command, hence the imperatives.
+    for (const agent of BUILTIN_AGENTS.filter((a) => a.toolProfile === 'read-only')) {
+      const prompts = `${agent.systemPrompt}\n${agent.userPrompt}`;
+      expect(prompts, agent.name).not.toMatch(/\b(run|execute|invoke) (the |a )?(command|shell)/i);
+      expect(prompts, agent.name).not.toMatch(/\brun\b[^.\n]{0,20}\b(git|npm|tests)\b/i);
+    }
+  });
+
+  it('points the diff-reading read-only agents at git_diff, not at a shell', () => {
+    // Removing `bash` removed `git diff`, and the stat block `runners/agent.ts`
+    // injects is a file list that cannot say what changed inside a file. The
+    // tool is the replacement, so the prompt has to name it.
+    for (const name of ['reviewer', 'pr_writer']) {
+      const prompts = `${agentByName(name)!.systemPrompt}\n${agentByName(name)!.userPrompt}`;
+      expect(prompts, name).toContain('`git_diff`');
+      expect(prompts, name).toMatch(/no shell/i);
+    }
+  });
+
+  it('never promises a read-only agent a capability the profile removed', () => {
+    for (const agent of BUILTIN_AGENTS.filter((a) => a.toolProfile === 'read-only')) {
+      const prompts = `${agent.systemPrompt}\n${agent.userPrompt}`;
+      // The stat is for orientation. A prompt that presents it as the record of
+      // what changed is telling the agent to review a file list.
+      if (/changed-file stat/i.test(prompts)) {
+        expect(prompts, agent.name).toMatch(/orientation|`git_diff`/i);
+      }
+    }
+  });
 });
 
 describe('shipped pipelines', () => {

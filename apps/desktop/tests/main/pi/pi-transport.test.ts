@@ -282,6 +282,7 @@ function toolContext(): FoundryToolContext {
     phaseId: () => null,
     envelopes: () => new Map(),
     tracer,
+    diff: () => ({ cwd: repo, branchPointSha: '' }),
   };
 }
 
@@ -294,7 +295,9 @@ interface Harness {
   cwd: string;
 }
 
-function harness(opts: { model?: string; reasoningEffort?: string } = {}): Harness {
+function harness(
+  opts: { model?: string; reasoningEffort?: string; toolProfile?: 'full' | 'read-only' } = {},
+): Harness {
   const supportDir = tempDir('foundry-pi-support-');
   const cwd = tempDir('foundry-pi-cwd-');
   const events: TransportEvent[] = [];
@@ -306,6 +309,7 @@ function harness(opts: { model?: string; reasoningEffort?: string } = {}): Harne
     runId: 'run_tx',
     model: opts.model ?? 'anthropic/claude-sonnet-4',
     reasoningEffort: (opts.reasoningEffort ?? 'medium') as never,
+    ...(opts.toolProfile ? { toolProfile: opts.toolProfile } : {}),
     supportDir,
     sessionDir: join(supportDir, 'runs', 'run_tx', 'sessions'),
     tools: toolContext(),
@@ -385,6 +389,7 @@ describe('opening a session', () => {
     expect(spy.loaders[0]!.extensionFactories.map((e) => e.name)).toEqual(['foundry']);
     expect(spy.registeredTools).toContain('report_progress');
     expect(spy.registeredTools).toContain('read_phase_context');
+    expect(spy.registeredTools).toContain('git_diff');
   });
 
   it('names Foundry’s tools alongside the built-ins, because the list is the allowlist', async () => {
@@ -401,8 +406,51 @@ describe('opening a session', () => {
       'ls',
       'report_progress',
       'read_phase_context',
+      'git_diff',
       'submit_envelope',
     ]);
+  });
+
+  it('opens a read-only agent’s session with no editing tool and no shell', async () => {
+    const h = harness({ toolProfile: 'read-only' });
+    await h.transport.start();
+    // The roster says this agent changes nothing, and the tool list is how that
+    // is true: `edit`, `write`, and `bash` are absent from the registry rather
+    // than refused by a policy the agent can still call into.
+    expect(spy.creates[0]!.tools).toEqual([
+      'read',
+      'grep',
+      'find',
+      'ls',
+      'report_progress',
+      'read_phase_context',
+      'git_diff',
+      'submit_envelope',
+    ]);
+    for (const tool of ['edit', 'write', 'bash']) {
+      expect(spy.creates[0]!.tools).not.toContain(tool);
+    }
+  });
+
+  it('gives a read-only agent git_diff, which is how it reads a diff without a shell', async () => {
+    // Removing `bash` removed the only way to run `git diff`. The tool is the
+    // replacement, so its presence in the read-only registry is the whole
+    // reason that profile is usable for a reviewer.
+    const readOnly = harness({ toolProfile: 'read-only' });
+    await readOnly.transport.start();
+    expect(spy.creates[0]!.tools).toContain('git_diff');
+
+    spy.creates = [];
+    const full = harness({ toolProfile: 'full' });
+    await full.transport.start();
+    expect(spy.creates[0]!.tools).toContain('git_diff');
+  });
+
+  it('gives an agent with no stated profile the full surface', async () => {
+    const h = harness({ toolProfile: 'full' });
+    await h.transport.start();
+    expect(spy.creates[0]!.tools).toContain('bash');
+    expect(spy.creates[0]!.tools).toContain('write');
   });
 
   it('leaves compaction to the engine and lets the runtime retry a flap', async () => {

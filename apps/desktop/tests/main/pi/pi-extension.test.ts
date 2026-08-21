@@ -76,6 +76,7 @@ function toolContext(): FoundryToolContext {
     phaseId: () => null,
     envelopes: () => new Map(),
     tracer,
+    diff: () => ({ cwd: repo, branchPointSha: '' }),
   };
 }
 
@@ -89,9 +90,13 @@ function bind(decide: (ask: PermissionAsk) => PermissionDecision | Promise<Permi
 const allow = (): PermissionDecision => ({ outcome: 'allow' });
 
 describe('what the extension registers', () => {
-  it('registers Foundry’s two standing tools when it binds', () => {
+  it('registers Foundry’s standing tools when it binds', () => {
     const { state } = bind(allow);
-    expect(state.tools.map((t) => t.name)).toEqual(['report_progress', 'read_phase_context']);
+    expect(state.tools.map((t) => t.name)).toEqual([
+      'report_progress',
+      'read_phase_context',
+      'git_diff',
+    ]);
   });
 
   it('installs an envelope tool that was set before it bound', () => {
@@ -128,7 +133,11 @@ describe('what the extension registers', () => {
   it('is a no-op when asked to install nothing', () => {
     const { handle, state } = bind(allow);
     handle.useEnvelopeTool(null);
-    expect(state.tools.map((t) => t.name)).toEqual(['report_progress', 'read_phase_context']);
+    expect(state.tools.map((t) => t.name)).toEqual([
+      'report_progress',
+      'read_phase_context',
+      'git_diff',
+    ]);
   });
 });
 

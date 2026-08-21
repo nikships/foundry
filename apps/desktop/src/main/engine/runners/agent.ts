@@ -520,10 +520,14 @@ export class AgentPhaseRunner implements PhaseRunner {
     // roster *system* prompt names it must still receive the real evidence —
     // including on the delta path, where the user message no longer carries it.
     const rendered = feedback === undefined ? baseline : renderPrompt(agent, phase, context);
+    // One role for both paths below: the delta trims the user message, never
+    // the standing rules, so a read-only agent is told it has no shell on a
+    // feedback re-entry exactly as it was on first entry.
     const systemPrompt = agentSystemRole({
       rosterRole: rendered.system,
       repositoryContext: ctx.project.contextSummary,
       writes: agent.writes,
+      ...(agent.toolProfile ? { toolProfile: agent.toolProfile } : {}),
       cwd: ctx.cwd,
       projectPath: ctx.project.path,
       setup: this.deps.setupExecution(),

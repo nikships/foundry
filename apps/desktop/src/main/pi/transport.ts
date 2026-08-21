@@ -11,7 +11,7 @@
  * implementation costs one file rather than a pass over every layer.
  */
 
-import type { ContextBreakdown, ReasoningEffort } from '@shared/types.js';
+import type { ContextBreakdown, ReasoningEffort, ToolProfile } from '@shared/types.js';
 import type { Envelope } from '../engine/envelopes.js';
 import type { Tracer } from '../trace/tracer.js';
 
@@ -28,6 +28,13 @@ export interface FoundryToolContext {
   /** Validated envelopes for this run, keyed by phase name, insertion order. */
   envelopes: () => ReadonlyMap<string, Envelope>;
   tracer: Pick<Tracer, 'event'>;
+  /**
+   * The run's worktree and the commit it branched from — the scope `git_diff`
+   * answers within. The engine resolves both; the model never names a ref, so
+   * it cannot point the diff at history outside its own run. Read per call,
+   * not captured, because a session outlives any one phase.
+   */
+  diff: () => { cwd: string; branchPointSha: string };
 }
 
 /** A model this transport could run a turn on. */
@@ -186,6 +193,12 @@ export interface AgentTransportOptions {
   runId: string;
   model: string;
   reasoningEffort: ReasoningEffort;
+  /**
+   * Which tools the session is opened with. Absent means the full set. A
+   * transport honours this by omitting the tools, never by refusing them: a
+   * tool the registry does not hold is one the agent cannot ask for.
+   */
+  toolProfile?: ToolProfile;
   /** Ruled on by `permissions.ts`; a started run never waits for a person. */
   onPermission: (ask: PermissionAsk) => PermissionDecision | Promise<PermissionDecision>;
   onEvent?: (event: TransportEvent) => void;

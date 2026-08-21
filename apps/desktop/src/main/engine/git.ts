@@ -170,6 +170,106 @@ export async function diffStat(cwd: string, base: string): Promise<string> {
   return (await git(cwd, ['diff', '--stat', base])).stdout;
 }
 
+/**
+ * `git diff <base>` as a unified patch, optionally narrowed to one pathspec.
+ *
+ * Deliberately not `runCommand`: that keeps only the last 4 KB of output, which
+ * would hand back a patch beginning mid-hunk. Bounding is the caller's job and
+ * happens by whole file sections, so what reaches a reader always parses.
+ *
+ * `path` goes after `--`, so a value that looks like an option is a pathspec to
+ * git rather than a flag. Callers still validate it: a pathspec cannot escape
+ * the repository, but this function is not where that is decided.
+ */
+export async function diffPatch(cwd: string, base: string, path?: string): Promise<string> {
+  const args = ['diff', '--no-color', '-M', base || 'HEAD', ...(path ? ['--', path] : [])];
+  try {
+    const { stdout } = await exec('git', args, {
+      cwd,
+      encoding: 'utf8',
+      env: spawnEnv(),
+      maxBuffer: 64 * 1024 * 1024,
+      timeout: 60_000,
+    });
+    return stdout;
+  } catch {
+    return '';
+  }
+}
+
+export interface BoundedPatch {
+  /** Unified diff, whole file sections only, within the caller's cap. */
+  text: string;
+  /** Files whose section did not fit, in diff order. */
+  omitted: string[];
+}
+
+/**
+ * Keeps whole file sections from the front of a patch until `maxChars` is
+ * reached, and names what it dropped.
+ *
+ * It stops at the first section that does not fit rather than continuing to
+ * collect smaller ones behind it: a patch that skips a file in the middle and
+ * silently resumes later reads as complete, and the omitted list would no
+ * longer match the order of what the reader is looking at.
+ */
+export function boundPatch(patch: string, maxChars: number): BoundedPatch {
+  const trimmed = patch.trimEnd();
+  if (!trimmed) return { text: '', omitted: [] };
+  if (trimmed.length <= maxChars) return { text: trimmed, omitted: [] };
+
+  const sections = splitPatchSections(trimmed);
+  const kept: string[] = [];
+  const omitted: string[] = [];
+  let used = 0;
+
+  for (const section of sections) {
+    const cost = section.body.length + 1;
+    if (!omitted.length && used + cost <= maxChars) {
+      kept.push(section.body);
+      used += cost;
+      continue;
+    }
+    omitted.push(section.path);
+  }
+
+  // A single file bigger than the whole cap would otherwise return no patch at
+  // all. A cut section still shows what kind of change it is, and its path is
+  // reported as omitted either way, so the reader is told to go look at it.
+  if (!kept.length && sections[0]) kept.push(sliceAtLineBoundary(sections[0].body, maxChars));
+
+  return { text: kept.join('\n'), omitted };
+}
+
+function splitPatchSections(patch: string): { path: string; body: string }[] {
+  const out: { path: string; body: string }[] = [];
+  let current: string[] = [];
+
+  const flush = (): void => {
+    if (!current.length) return;
+    out.push({ path: patchSectionPath(current[0]!), body: current.join('\n') });
+    current = [];
+  };
+
+  for (const line of patch.split('\n')) {
+    if (line.startsWith('diff --git ')) flush();
+    current.push(line);
+  }
+  flush();
+  return out;
+}
+
+function patchSectionPath(header: string): string {
+  const match = /^diff --git .* b\/(.+)$/.exec(header);
+  return stripQuotes(match?.[1]?.trim() ?? '') || '(unknown file)';
+}
+
+function sliceAtLineBoundary(text: string, maxChars: number): string {
+  const cut = text.slice(0, maxChars);
+  const lastBreak = cut.lastIndexOf('\n');
+  return lastBreak > 0 ? cut.slice(0, lastBreak) : cut;
+}
+
 /** Reverts a path whether it is tracked-and-modified or untracked. */
 export async function revertPath(cwd: string, path: string): Promise<boolean> {
   const tracked = await git(cwd, ['ls-files', '--error-unmatch', path]);

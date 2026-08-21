@@ -24,7 +24,7 @@ import { foundryResourceLoader, foundrySettings, openFoundrySession } from './op
 import { foundryExtension } from './policy-extension.js';
 import { modelRuntime } from './runtime.js';
 import { FOUNDRY_RUN_HARNESS } from './system-prompt.js';
-import { BUILTIN_TOOLS, submitEnvelopeTool, type EnvelopeTool } from './tools.js';
+import { runToolsFor, submitEnvelopeTool, type EnvelopeTool } from './tools.js';
 import { lastAssistantStop, VendorEventReader } from './vendor-events.js';
 import type {
   AgentTransport,
@@ -129,8 +129,9 @@ export class PiTransport implements AgentTransport {
       model: picked.model,
       thinkingLevel: thinkingLevelFor(this.opts.reasoningEffort),
       // Also the allowlist: a tool absent here is absent from the registry, so
-      // Foundry's own tools have to be named alongside the built-ins.
-      tools: [...BUILTIN_TOOLS, 'report_progress', 'read_phase_context', 'submit_envelope'],
+      // Foundry's own tools have to be named alongside the built-ins, and a
+      // read-only agent simply has no editing or shell tool to call.
+      tools: runToolsFor(this.opts.toolProfile),
       resourceLoader,
       settingsManager,
       sessionManager,

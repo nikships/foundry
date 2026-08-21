@@ -1,4 +1,4 @@
-import type { WriteBoundary } from '@shared/types.js';
+import type { ToolProfile, WriteBoundary } from '@shared/types.js';
 
 const LEGACY_SHELL_LINES = [
   "You inherit the operator's PATH and credentials. Project dependencies are available only when the worktree setup installed them.",
@@ -22,6 +22,8 @@ export function agentSystemRole(input: {
   rosterRole: string;
   repositoryContext?: string;
   writes: WriteBoundary;
+  /** Absent means the full tool surface, so a shell exists. */
+  toolProfile?: ToolProfile;
   cwd: string;
   projectPath: string;
   setup?: SetupExecution | null;
@@ -39,9 +41,12 @@ export function agentSystemRole(input: {
     );
   }
 
-  // A read-only agent has no shell tool. Shell/setup guidance would describe a
+  // A read-only agent has no shell tool — by profile, or because a boundary of
+  // `[]` leaves it nothing to write. Shell/setup guidance would describe a
   // capability it cannot use and encourage irrelevant work.
-  if (input.writes === null || input.writes.length !== 0) {
+  const hasShell =
+    input.toolProfile !== 'read-only' && (input.writes === null || input.writes.length !== 0);
+  if (hasShell) {
     const location =
       input.cwd === input.projectPath
         ? `Shell commands run from the project checkout at ${input.cwd}; this run is not isolated.`

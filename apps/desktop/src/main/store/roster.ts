@@ -41,11 +41,10 @@ export const agentSchema = z.object({
       }),
     )
     .optional(),
-  tools: z.array(z.string()).optional(),
-  disabledTools: z.array(z.string()).optional(),
-  // Absent reads as `full`. An unknown value is rejected rather than coerced:
-  // guessing which profile an operator meant is how least privilege gets wider.
-  toolProfile: z.enum(['full', 'read-only', 'review', 'custom']).optional(),
+  // Which tools the agent's run session is opened with. Absent reads as
+  // `full`. An unknown value is rejected rather than coerced: guessing which
+  // profile an operator meant is how least privilege gets wider.
+  toolProfile: z.enum(['full', 'read-only']).optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'a hex colour like #5ad2dd'),
   // Absent / `monogram` = initial; a library id or shipped portrait token;
   // `image:<file>` = a user upload. Empty string is treated as absent.
@@ -61,6 +60,29 @@ export const agentSchema = z.object({
   ),
   builtin: z.boolean().optional(),
 });
+
+/** Tool knobs that were declared but never consumed, and are gone. */
+const REMOVED_AGENT_FIELDS = ['tools', 'disabledTools'] as const;
+const TOOL_PROFILES = new Set(['full', 'read-only']);
+
+/**
+ * Normalize-on-read for a stored agent: an older file may carry the two tool
+ * lists nothing ever read, or a `toolProfile` from the wider enum that used to
+ * exist. Dropping them keeps the file loading, and an unrecognised profile
+ * falls back to `full` rather than to a narrower surface the agent's prompt
+ * does not expect.
+ */
+function normalizeAgent(agent: AgentDef): AgentDef {
+  const record = agent as AgentDef & Record<string, unknown>;
+  const legacy = REMOVED_AGENT_FIELDS.filter((field) => field in record);
+  const staleProfile = agent.toolProfile !== undefined && !TOOL_PROFILES.has(agent.toolProfile);
+  if (!legacy.length && !staleProfile) return agent;
+
+  const next = { ...record };
+  for (const field of legacy) delete next[field];
+  if (staleProfile) delete next.toolProfile;
+  return next as AgentDef;
+}
 
 /** Edit-time rail: same rules save uses, so the designer learns before clicking Save. */
 export function validate(agent: AgentDef, knownEnvelopes: string[] = []): ValidationIssue[] {
@@ -102,7 +124,9 @@ export class RosterStore {
         // hides its own Delete button. The flag says where an agent came from,
         // so a name that was never shipped cannot legitimately carry it.
         const byName = new Map(
-          list.map((a) => [a.name, shipped.has(a.name) ? a : { ...a, builtin: false }]),
+          list
+            .map(normalizeAgent)
+            .map((a) => [a.name, shipped.has(a.name) ? a : { ...a, builtin: false }] as const),
         );
         for (const builtin of BUILTIN_AGENTS) {
           if (!byName.has(builtin.name)) byName.set(builtin.name, { ...builtin });
@@ -118,6 +142,13 @@ export class RosterStore {
       store = new JsonStore<AgentDef[]>(
         join(this.appSupportDir, 'project-overrides', projectId, 'roster.json'),
         () => this.appStore.read().map((a) => ({ ...a })),
+        // A project copy predates the app roster's own normalization, so it
+        // gets the same pass: a project that opted in must not be the one place
+        // a removed field survives.
+        (raw) =>
+          Array.isArray(raw)
+            ? (raw as AgentDef[]).map(normalizeAgent)
+            : this.appStore.read().map((a) => ({ ...a })),
       );
       this.projectStores.set(projectId, store);
     }

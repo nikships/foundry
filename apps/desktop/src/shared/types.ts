@@ -169,6 +169,13 @@ export interface EnvelopeDef {
  */
 export type WriteBoundary = string[] | null;
 
+/**
+ * Which tools a run session is opened with. `read-only` is not a policy that
+ * refuses a write: the editing and shell tools are absent from the session's
+ * registry, so nothing the agent can call could write. Absent means `full`.
+ */
+export type ToolProfile = 'full' | 'read-only';
+
 export interface AgentDef {
   name: string;
   purpose: string;
@@ -186,6 +193,12 @@ export interface AgentDef {
   /** Built-in EnvelopeKind or a custom envelope name from the shared library. */
   envelope: string;
   customFields?: CustomEnvelopeField[];
+  /**
+   * The tool surface every session this agent opens is given. Absent means
+   * `full`. `read-only` drops `edit`, `write`, and `bash` from the registry —
+   * it is the tool list, not a refusal, so it cannot be talked around.
+   */
+  toolProfile?: ToolProfile;
   color: string;
   /**
    * How this agent is drawn. Absent or `monogram` is the initial letter.

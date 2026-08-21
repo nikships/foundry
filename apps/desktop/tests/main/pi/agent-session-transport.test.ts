@@ -189,6 +189,31 @@ describe('AgentSession has one transport', () => {
     await session.close();
   });
 
+  it('hands the transport factory the agent, so a tool profile reaches the session', async () => {
+    beginRun();
+    const scripted = new ScriptedAgent(['ok']);
+    const requests: TransportRequest[] = [];
+    const readOnly: AgentDef = { ...agent, toolProfile: 'read-only' };
+    const session = new AgentSession(readOnly, {
+      runId,
+      worktree,
+      turnTimeoutMs: 5_000,
+      tracer,
+      protectedPaths: [],
+      transport: (req) => {
+        requests.push(req);
+        return scripted.transport(req);
+      },
+    });
+
+    await session.send('go', { phaseId });
+
+    // The executor reads it off this request to pick the tool list; a profile
+    // the factory never sees is a profile the session cannot honour.
+    expect(requests[0]!.agent.toolProfile).toBe('read-only');
+    await session.close();
+  });
+
   it('refuses to answer a turn once the run has been killed', async () => {
     beginRun();
     const scripted = new ScriptedAgent(['ok']);
