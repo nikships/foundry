@@ -170,7 +170,7 @@ const command_passes: GateFn = async (_envelope, ctx, config) => {
   if (!argv.length) {
     return [{ item: 'command_passes', ok: false, note: 'gate is configured with no command' }];
   }
-  const result = await runCommand({ argv, cwd: ctx.cwd, timeoutMs: 600_000 });
+  const result = await runCommand({ argv, cwd: ctx.cwd });
   const label = argv.join(' ');
   return [
     {

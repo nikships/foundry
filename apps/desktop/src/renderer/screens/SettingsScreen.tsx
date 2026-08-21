@@ -1602,18 +1602,11 @@ export default function SettingsScreen({
                           disabled
                         />
                       </Field>
-                      <Field label="Turn timeout (minutes)">
-                        <TextInput
-                          type="number"
-                          min={5}
-                          max={60}
-                          value={Math.round(settings.turnTimeoutMs / 60000)}
-                          onChange={(e) =>
-                            void setInt(e.target.value, { min: 5, max: 60 }, (minutes) => ({
-                              turnTimeoutMs: minutes * 60_000,
-                            }))
-                          }
-                        />
+                      <Field
+                        label="Run resilience"
+                        hint="Pipeline work has no deadline. Transient model errors retry five times with exponential backoff, then continue on the next reachable model."
+                      >
+                        <TextInput value="No execution deadline" disabled />
                       </Field>
                     </div>
                   </Section>

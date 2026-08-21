@@ -154,7 +154,7 @@ export class SmithPiTransport implements AgentTransport {
     );
   }
 
-  async send(text: string, timeoutMs: number, opts: TurnOptions = {}): Promise<TurnResult> {
+  async send(text: string, opts: TurnOptions = {}): Promise<TurnResult> {
     const session = this.session;
     if (!session) throw new Error('smith session is not open');
     if (!this.alive) throw new Error('smith session is not alive');
@@ -163,18 +163,10 @@ export class SmithPiTransport implements AgentTransport {
     this.extension.useSystemPrompt(opts.systemPrompt ?? null);
     this.events.startTurn();
 
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      void session.abort();
-    }, timeoutMs);
-    try {
-      await session.prompt(text, { expandPromptTemplates: false, source: 'extension' });
-      await session.waitForIdle();
-    } finally {
-      clearTimeout(timer);
-    }
-    if (timedOut) throw new Error(`turn timed out after ${timeoutMs}ms`);
+    // No turn deadline: Smith is interactive, the operator is present, and
+    // cancel is the interrupt (deadlines were removed repo-wide with #171).
+    await session.prompt(text, { expandPromptTemplates: false, source: 'extension' });
+    await session.waitForIdle();
 
     const last = lastAssistantStop(session);
     if (last?.stopReason === 'error') {

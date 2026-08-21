@@ -187,7 +187,6 @@ export class AppContext {
           projectId,
           projectPath: project.path,
           stateDir: chatRoot,
-          turnTimeoutMs: this.settings.get().turnTimeoutMs,
           smithModel: () => this.settings.get().smithModel,
           toolFactories,
           transport: (request) =>

@@ -128,7 +128,6 @@ async function main(): Promise<void> {
   const runId = `run_demo_${Date.now().toString(36)}`;
   const executor = new Executor({
     tracer,
-    turnTimeoutMs: 10 * 60_000,
     envelopeRetries: 2,
     gateRetries: 1,
     compactionThreshold: settings.compactionThreshold,

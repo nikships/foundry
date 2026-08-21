@@ -584,29 +584,6 @@ export default function PhaseEditor({
               </p>
             )}
           </div>
-
-          <div className={styles.fieldGroup}>
-            <div className={styles.fieldHeader}>
-              <label htmlFor={`phase-timeout-${index}`} className={styles.fieldLabel}>
-                Timeout (minutes)
-              </label>
-              <span className={styles.fieldHint}>optional</span>
-            </div>
-            <input
-              id={`phase-timeout-${index}`}
-              type="number"
-              min={1}
-              className={styles.monoInput}
-              value={phase.timeoutMs ? Math.round(phase.timeoutMs / 60000) : ''}
-              onChange={(e) =>
-                onChange({
-                  ...phase,
-                  timeoutMs: e.target.value ? Number(e.target.value) * 60000 : undefined,
-                })
-              }
-              placeholder="e.g. 30"
-            />
-          </div>
         </>
       )}
 

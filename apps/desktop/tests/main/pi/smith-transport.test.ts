@@ -280,7 +280,7 @@ describe('running a chat turn', () => {
   it('sends the user message only and reads the final text back', async () => {
     const h = harness();
     await h.transport.start();
-    const result = await h.transport.send('hello smith', 1_000);
+    const result = await h.transport.send('hello smith');
     expect(h.session.prompts).toEqual(['hello smith']);
     expect(result.text).toBe('answered');
     expect(result.structuredOutput).toBeNull();

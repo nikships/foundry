@@ -54,7 +54,6 @@ export interface ExecutorDeps {
   tracer: Tracer;
   defaultModel?: string;
   defaultReasoningEffort?: ReasoningEffort;
-  turnTimeoutMs: number;
   envelopeRetries: number;
   gateRetries: number;
   /** Context occupancy at which a session is compacted between phases. */
@@ -241,7 +240,6 @@ export class Executor {
       const result = await runCommand({
         argv: ['sh', '-c', script],
         cwd: this.handle.path,
-        timeoutMs: 300_000,
         name: 'setup',
         runId,
         onPid: (pid, command) =>
@@ -548,7 +546,6 @@ export class Executor {
     const session = new AgentSession(effectiveAgent, {
       runId: this.deps.runId,
       worktree: this.cwd,
-      turnTimeoutMs: this.deps.turnTimeoutMs,
       tracer: this.deps.tracer,
       protectedPaths: this.deps.project.protectedPaths,
       existingSessionId: persistedSession?.agentSessionId,

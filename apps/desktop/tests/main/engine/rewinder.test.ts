@@ -237,7 +237,6 @@ describe('PhaseRewinder with ScriptedAgent', () => {
     return new AgentSession(agent, {
       runId,
       worktree: cwd,
-      turnTimeoutMs: 5_000,
       tracer,
       protectedPaths: [],
       transport: (req: TransportRequest): AgentTransport => scripted.transport(req),

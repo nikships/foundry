@@ -19,6 +19,7 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import { join } from 'node:path';
 import { pickModel, thinkingLevelFor } from './model.js';
+import { continueWithModelFailover } from './model-failover.js';
 import { foundryResourceLoader, foundrySettings, openFoundrySession } from './open-session.js';
 import { evaluate } from './policy.js';
 import { policyOnlyExtension } from './policy-extension.js';
@@ -41,10 +42,11 @@ class PiOneShot implements OneShotSession {
   private readonly events = new VendorEventReader();
   private readonly extension = policyOnlyExtension((ask) => this.decide(ask));
   private aborted = false;
+  private availableModelCount = 0;
 
   constructor(private readonly opts: PiOneShotOptions) {}
 
-  async send(prompt: string, timeoutMs: number): Promise<OneShotResult> {
+  async send(prompt: string, timeoutMs?: number): Promise<OneShotResult> {
     const session = await this.open();
     try {
       // An abort that landed while the session was still opening must not be
@@ -55,16 +57,24 @@ class PiOneShot implements OneShotSession {
       this.events.startTurn();
 
       let timedOut = false;
-      const timer = setTimeout(() => {
-        timedOut = true;
-        void session.abort();
-      }, timeoutMs);
+      const timer = timeoutMs
+        ? setTimeout(() => {
+            timedOut = true;
+            void session.abort();
+          }, timeoutMs)
+        : null;
       try {
         await session.prompt(prompt, { expandPromptTemplates: false, source: 'extension' });
         // prompt() already waits through retries. waitForIdle() is the settle API.
         await session.waitForIdle();
+        await continueWithModelFailover({
+          session,
+          events: this.events,
+          availableModelCount: this.availableModelCount,
+          onWarning: (warning) => this.opts.onWarning?.(warning),
+        });
       } finally {
-        clearTimeout(timer);
+        if (timer) clearTimeout(timer);
       }
       if (timedOut) throw new Error(`one-shot turn timed out after ${timeoutMs}ms`);
 
@@ -92,7 +102,9 @@ class PiOneShot implements OneShotSession {
 
   private async open(): Promise<PiAgentSession> {
     const runtime = await modelRuntime(this.opts.supportDir);
-    const picked = pickModel(await runtime.getAvailable(), this.opts.model);
+    const available = await runtime.getAvailable();
+    this.availableModelCount = available.length;
+    const picked = pickModel(available, this.opts.model);
     if (picked.warning) this.opts.onWarning?.(picked.warning);
 
     const agentDir = join(this.opts.supportDir, 'pi');

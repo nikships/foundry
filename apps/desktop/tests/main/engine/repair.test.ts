@@ -77,7 +77,6 @@ describe('rebaseOntoBase', () => {
       ontoSha,
       ontoLabel: 'main',
       agent: agentThat(() => sh(handle.path, ['git', 'rebase', ontoSha])),
-      timeoutMs: 60_000,
     });
 
     expect(outcome.ok).toBe(true);
@@ -100,7 +99,6 @@ describe('rebaseOntoBase', () => {
       ontoSha,
       ontoLabel: 'main',
       agent: agentThat(() => {}),
-      timeoutMs: 60_000,
     });
 
     expect(outcome.ok).toBe(false);
@@ -119,7 +117,6 @@ describe('rebaseOntoBase', () => {
       ontoLabel: 'main',
       // Starts the rebase, hits the conflict, walks away.
       agent: agentThat(() => trySh(handle.path, ['git', 'rebase', ontoSha])),
-      timeoutMs: 60_000,
     });
 
     expect(outcome.ok).toBe(false);
@@ -138,7 +135,6 @@ describe('rebaseOntoBase', () => {
       ontoSha,
       ontoLabel: 'main',
       agent: agentThat(() => sh(handle.path, ['git', 'reset', '--hard', ontoSha])),
-      timeoutMs: 60_000,
     });
 
     expect(outcome.ok).toBe(false);
@@ -156,14 +152,13 @@ describe('rebaseOntoBase', () => {
       ontoLabel: 'main',
       agent: {
         send: async () => {
-          throw new Error('one-shot turn timed out after 60000ms');
+          throw new Error('provider ended the repair turn');
         },
       },
-      timeoutMs: 60_000,
     });
 
     expect(outcome.ok).toBe(false);
-    expect(outcome.detail).toContain('timed out');
+    expect(outcome.detail).toContain('provider ended');
     expect(await headSha(handle.path)).toBe(before);
     expect(await resolveRef(handle.path, 'HEAD')).toBe(before);
   });
@@ -182,7 +177,6 @@ describe('repairAgent', () => {
       ontoSha,
       ontoLabel: 'main',
       agent: repairAgent(oneShots.factory, defaultSettings(), handle.path),
-      timeoutMs: 60_000,
     });
 
     expect(outcome.ok).toBe(true);

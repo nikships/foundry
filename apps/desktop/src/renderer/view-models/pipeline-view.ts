@@ -251,13 +251,6 @@ export function acceptanceReads(pipeline: PipelineDef): string {
   }
 }
 
-/** Formats a timeout millisecond duration to minutes/seconds string. */
-export function formatTimeout(ms: number | undefined): string {
-  if (!ms) return 'none';
-  if (ms % 60000 === 0) return `${ms / 60000}m`;
-  return `${Math.round(ms / 1000)}s`;
-}
-
 /** Formats a Date to a 24-hour clock string (HH:MM:SS). */
 export function formatClock(date: Date): string {
   return date.toLocaleTimeString('en-GB', { hour12: false });

@@ -66,7 +66,6 @@ export class CodePhaseRunner implements PhaseRunner {
     const result = await runCommand({
       argv: resolved.argv,
       cwd: ctx.cwd,
-      timeoutMs: phase.timeoutMs ?? 900_000,
       name: phase.name,
       runId,
       onPid: (pid, command) =>

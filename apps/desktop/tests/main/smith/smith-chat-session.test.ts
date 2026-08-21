@@ -65,7 +65,6 @@ function harness(opts: {
     projectId: 'proj_1',
     projectPath,
     stateDir,
-    turnTimeoutMs: 5_000,
     smithModel: opts.smithModel ?? (() => 'inherit'),
     ...(opts.toolFactories ? { toolFactories: opts.toolFactories } : {}),
     transport: (req: SmithTransportRequest) => {

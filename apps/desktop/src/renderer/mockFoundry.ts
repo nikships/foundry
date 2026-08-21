@@ -170,7 +170,6 @@ function defaultMockSettings(): AppSettings {
     defaultModel: 'inherit',
     defaultReasoningEffort: 'medium',
     smithModel: 'inherit',
-    turnTimeoutMs: 30 * 60_000,
     compactionThreshold: 0.8,
     notifications: { accepted: true, rejected: true, failed: true, needsInput: true },
     dockBadge: true,

@@ -61,7 +61,7 @@ export interface ScriptedAgentOptions {
   contextUsedAfterCompaction?: number;
   /** Compaction the transport refuses, the way a session too short to compact would. */
   compactFails?: boolean;
-  /** Turn indexes that are acknowledged but never completed, so the turn times out. */
+  /** Turn indexes that are acknowledged but never completed until interrupted. */
   stallOnTurns?: number[];
   /** Held-back session start, so a test can act while the session is still opening. */
   handshakeDelayMs?: number;
@@ -249,9 +249,7 @@ export class ScriptedAgent {
       transport.kill();
       throw new Error('agent session died mid-turn');
     }
-    // A stalled turn hangs until something ends it: a timeout interrupts the
-    // session, and so does a kill. Both are real paths a test needs to land on,
-    // so the turn parks rather than resolving.
+    // A stalled turn hangs until the operator interrupts or kills the session.
     if (this.options.stallOnTurns?.includes(n)) return transport.stall();
 
     const doomed = this.options.deleteEffects?.[n];
@@ -389,17 +387,8 @@ class ScriptedTransport implements AgentTransport {
     this.sessionId = existingSessionId ?? this.agent.nextSessionId();
   }
 
-  async send(text: string, timeoutMs: number, opts: TurnOptions = {}): Promise<TurnResult> {
-    const turn = this.agent.runTurn(this, text, opts);
-    let timer: NodeJS.Timeout | undefined;
-    const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`turn timed out after ${timeoutMs}ms`)), timeoutMs);
-    });
-    try {
-      return await Promise.race([turn, timeout]);
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
+  send(text: string, opts: TurnOptions = {}): Promise<TurnResult> {
+    return this.agent.runTurn(this, text, opts);
   }
 
   applySettings(): Promise<{ model: string; warning?: string }> {

@@ -82,7 +82,6 @@ describe('AgentSession has one transport', () => {
     return new AgentSession(agent, {
       runId,
       worktree,
-      turnTimeoutMs: 5_000,
       tracer,
       protectedPaths: [],
       transport,
@@ -197,7 +196,6 @@ describe('AgentSession has one transport', () => {
     const session = new AgentSession(readOnly, {
       runId,
       worktree,
-      turnTimeoutMs: 5_000,
       tracer,
       protectedPaths: [],
       transport: (req) => {

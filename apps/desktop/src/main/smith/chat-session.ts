@@ -89,7 +89,6 @@ export interface SmithChatSessionDeps {
    * invariant; the transcript itself is the transport's session file.
    */
   stateDir: string;
-  turnTimeoutMs: number;
   /**
    * The global `smithModel` setting, read at every open so a settings change
    * applies to the next session rather than requiring a restart.
@@ -215,7 +214,7 @@ export class SmithChatSession {
       if (this.cancelRequested) {
         return { text: '', usage: null, reason: 'cancelled', interrupted: true };
       }
-      const result = await transport.send(text, this.deps.turnTimeoutMs, {
+      const result = await transport.send(text, {
         ...(ctx.screen ? { systemPrompt: screenContextBlock(ctx.screen) } : {}),
       });
       return {

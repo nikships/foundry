@@ -13,7 +13,6 @@ import {
   commandText,
   defaultCanvasPosition,
   formatClock,
-  formatTimeout,
   gateNames,
   generatePipelineId,
   inheritEnvelopeOptionLabel,
@@ -150,14 +149,7 @@ describe('pipeline-view', () => {
     });
   });
 
-  describe('formatTimeout and formatClock', () => {
-    it('formats timeout milliseconds', () => {
-      expect(formatTimeout(undefined)).toBe('none');
-      expect(formatTimeout(0)).toBe('none');
-      expect(formatTimeout(120000)).toBe('2m');
-      expect(formatTimeout(45000)).toBe('45s');
-    });
-
+  describe('formatClock', () => {
     it('formats clock', () => {
       const d = new Date(2026, 7, 11, 14, 30, 0);
       expect(formatClock(d)).toMatch(/\d{2}:\d{2}:\d{2}/);

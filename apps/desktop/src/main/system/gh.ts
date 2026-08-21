@@ -44,11 +44,11 @@ interface GhResult {
   stderr: string;
 }
 
-async function gh(bin: string, cwd: string, args: string[], timeoutMs = 60_000): Promise<GhResult> {
+async function gh(bin: string, cwd: string, args: string[], timeoutMs?: number): Promise<GhResult> {
   try {
     const { stdout, stderr } = await exec(bin, args, {
       cwd,
-      timeout: timeoutMs,
+      ...(timeoutMs ? { timeout: timeoutMs } : {}),
       encoding: 'utf8',
       maxBuffer: 32 * 1024 * 1024,
       // Never let gh stop to ask a question a headless call cannot answer.
@@ -322,23 +322,18 @@ export async function openPr(
     };
   }
 
-  const created = await gh(
-    bin,
-    repo,
-    [
-      'pr',
-      'create',
-      '--head',
-      input.branch,
-      '--base',
-      input.baseRef,
-      '--title',
-      input.title,
-      '--body',
-      input.body,
-    ],
-    60_000,
-  );
+  const created = await gh(bin, repo, [
+    'pr',
+    'create',
+    '--head',
+    input.branch,
+    '--base',
+    input.baseRef,
+    '--title',
+    input.title,
+    '--body',
+    input.body,
+  ]);
   if (!created.ok) {
     const existing = await viewPr(repo, input.branch, opts);
     if (existing) {
@@ -390,10 +385,10 @@ export async function createIssue(
     ...(withLabels ? labels.flatMap((label) => ['--label', label]) : []),
   ];
 
-  let created = await gh(bin, repo, argv(true), 60_000);
+  let created = await gh(bin, repo, argv(true));
   let note = '';
   if (!created.ok && labels.length) {
-    const retried = await gh(bin, repo, argv(false), 60_000);
+    const retried = await gh(bin, repo, argv(false));
     if (retried.ok) {
       note = ` (labels ${labels.join(', ')} were not applied: ${firstLine(created)})`;
       created = retried;
@@ -530,7 +525,7 @@ export async function mergePr(
 ): Promise<MergePrOutcome> {
   const bin = opts.bin ?? 'gh';
   const pr = await viewPr(repo, prNumber, opts);
-  const merged = await gh(bin, repo, ['pr', 'merge', String(prNumber), `--${method}`], 120_000);
+  const merged = await gh(bin, repo, ['pr', 'merge', String(prNumber), `--${method}`]);
   if (!merged.ok) {
     return {
       ok: false,

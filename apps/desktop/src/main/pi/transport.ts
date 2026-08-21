@@ -133,8 +133,8 @@ export type TransportEvent =
 export interface AgentTransport {
   /** Open (or resume) the session. Called once, lazily, before the first turn. */
   start(existingSessionId?: string | null): Promise<void>;
-  send(text: string, timeoutMs: number, opts?: TurnOptions): Promise<TurnResult>;
-  /** Re-assert model and reasoning; a warning explains a substitution. */
+  send(text: string, opts?: TurnOptions): Promise<TurnResult>;
+  /** Report the live model after startup substitution or runtime failover. */
   applySettings(): Promise<{ model: string; warning?: string }>;
   contextStats(): Promise<ContextStats | null>;
   contextBreakdown(): Promise<ContextBreakdown | null>;
