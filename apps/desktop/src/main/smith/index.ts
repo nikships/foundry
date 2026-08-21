@@ -10,6 +10,7 @@
 
 import { join } from 'node:path';
 import type { SmithProposal } from '@shared/types.js';
+import type { SmithChatSession } from './chat-session.js';
 import { ProposalQueue } from './proposals.js';
 import { SmithSocketServer } from './socket-server.js';
 
@@ -24,13 +25,16 @@ export interface SmithServiceDeps {
   save: (proposal: SmithProposal) => { ok: true; entity: unknown } | { ok: false; error: string };
   /** Everything the socket server needs to answer and validate. */
   socketCtx: ConstructorParameters<typeof SmithSocketServer>[1];
+  /** Opens one native chat lazily for a project that still exists. */
+  createChat: (projectId: string, proposals: ProposalQueue) => SmithChatSession | null;
 }
 
 export class SmithService {
   readonly proposals: ProposalQueue;
   readonly socket: SmithSocketServer;
+  private readonly chats = new Map<string, SmithChatSession>();
 
-  constructor(deps: SmithServiceDeps) {
+  constructor(private readonly deps: SmithServiceDeps) {
     this.proposals = new ProposalQueue(
       () => deps.broadcast(deps.channels.proposalsChanged),
       // The queue awaits the save so an approve that fails the store keeps the
@@ -47,7 +51,18 @@ export class SmithService {
     this.socket.start();
   }
 
+  /** One persistent native conversation per project, opened only on demand. */
+  chat(projectId: string): SmithChatSession | null {
+    const existing = this.chats.get(projectId);
+    if (existing) return existing;
+    const chat = this.deps.createChat(projectId, this.proposals);
+    if (chat) this.chats.set(projectId, chat);
+    return chat;
+  }
+
   dispose(): void {
+    for (const chat of this.chats.values()) void chat.dispose();
+    this.chats.clear();
     this.proposals.cancelAll();
     this.socket.stop();
   }

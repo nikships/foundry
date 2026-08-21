@@ -178,6 +178,37 @@ export interface SetupState extends PanelStateCore {
   rawReply: string;
 }
 
+/**
+ * What the operator is looking at when a Smith message arrives. This stays a
+ * compact descriptor rather than carrying screen data across the privileged
+ * seam; main resolves anything Smith needs through its normal tools.
+ */
+export interface SmithScreenContext {
+  route: string;
+  entity?: {
+    kind: 'run' | 'pipeline' | 'agent' | 'envelope' | 'project' | 'settings';
+    id: string;
+  };
+}
+
+/** One cloned transcript row shared by Smith's full and compact chat views. */
+export interface SmithTranscriptEntry extends PanelEntry {
+  source: 'operator' | 'smith' | 'readiness';
+}
+
+/**
+ * The complete renderer-facing state for one project's chat. Every read and
+ * push receives a fresh transcript array, never the session's live one.
+ */
+export interface SmithChatState {
+  projectId: string;
+  model: string;
+  activeModel: string;
+  running: boolean;
+  error: string | null;
+  transcript: SmithTranscriptEntry[];
+}
+
 export interface SetupSniffResult {
   script: string;
   detail: string;
@@ -542,6 +573,16 @@ export interface FoundryApi {
     answer(answer: InterruptAnswer): Promise<boolean>;
   };
   smith: {
+    /** Starts one turn and returns immediately; progress arrives on `smith-progress`. */
+    send(
+      projectId: string,
+      text: string,
+      screen: SmithScreenContext,
+    ): Promise<SmithChatState | null>;
+    cancel(projectId: string): Promise<SmithChatState | null>;
+    newChat(projectId: string): Promise<SmithChatState | null>;
+    state(projectId: string): Promise<SmithChatState | null>;
+    setModel(projectId: string, model: string): Promise<SmithChatState | null>;
     /**
      * Everything needed to start a session in the user's own terminal: resolved
      * CLI and skill paths, the bootstrap line, and the chosen terminal.
@@ -557,8 +598,8 @@ export interface FoundryApi {
     openTerminal(projectId: string): Promise<{ ok: boolean; error?: string }>;
     /** The one pending proposal, or an empty list. Only ever one at a time. */
     proposalsList(): Promise<SmithProposal[]>;
-    /** Approve or reject the pending proposal, unblocking the waiting CLI. */
-    proposalAnswer(id: string, answer: SmithProposalAnswer): Promise<boolean>;
+    /** Approve or reject the pending proposal, unblocking Smith's tool call. */
+    answerProposal(id: string, answer: SmithProposalAnswer): Promise<boolean>;
   };
   companion: {
     /** Host status plus the paired devices. Starts nothing. */
@@ -615,6 +656,7 @@ export interface FoundryApi {
       | 'detection-progress'
       | 'setup-progress'
       | 'smith-proposals-changed'
+      | 'smith-progress'
       | 'readiness-progress'
       // A login completes in a browser, minutes after the call that started it
       // returned. Nothing polls the auth directory, so this is how a Settings
@@ -724,11 +766,16 @@ export const IPC = {
   prsFixConflicts: 'prs:fixConflicts',
   interruptsList: 'interrupts:list',
   interruptsAnswer: 'interrupts:answer',
+  smithSend: 'smith:send',
+  smithCancel: 'smith:cancel',
+  smithNewChat: 'smith:newChat',
+  smithState: 'smith:state',
+  smithSetModel: 'smith:setModel',
   smithLaunchInfo: 'smith:launchInfo',
   smithStart: 'smith:start',
   smithOpenTerminal: 'smith:openTerminal',
   smithProposalsList: 'smith:proposalsList',
-  smithProposalAnswer: 'smith:proposalAnswer',
+  smithAnswerProposal: 'smith:answerProposal',
   companionState: 'companion:state',
   companionStart: 'companion:start',
   companionStop: 'companion:stop',
@@ -755,6 +802,7 @@ export const IPC = {
   eventDetectionProgress: 'event:detection-progress',
   eventSetupProgress: 'event:setup-progress',
   eventSmithProposalsChanged: 'event:smith-proposals-changed',
+  eventSmithProgress: 'event:smith-progress',
   eventReadinessProgress: 'event:readiness-progress',
   eventBridgeChanged: 'event:bridge-changed',
   eventCompanionChanged: 'event:companion-changed',

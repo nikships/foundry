@@ -76,7 +76,7 @@ export default function SmithProposalCard({
     setSending(true);
     setError('');
     try {
-      const ok = await api.smith.proposalAnswer(proposal.id, { approved });
+      const ok = await api.smith.answerProposal(proposal.id, { approved });
       if (!ok) {
         // A refused save leaves the proposal pending: surface why, stay open.
         setError(

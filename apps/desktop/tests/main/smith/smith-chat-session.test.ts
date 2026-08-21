@@ -263,6 +263,69 @@ describe('screen context', () => {
   });
 });
 
+describe('renderer snapshots', () => {
+  it('folds operator and Smith rows into a cloned transcript', async () => {
+    const h = harness({ turns: ['Here is the answer.'] });
+    await h.session.send('What happened?');
+
+    const snapshot = h.session.snapshot();
+    expect(snapshot).toMatchObject({
+      projectId: 'proj_1',
+      running: false,
+      error: null,
+    });
+    expect(snapshot.transcript.map((entry) => [entry.source, entry.kind, entry.text])).toEqual([
+      ['operator', 'text', 'What happened?'],
+      ['smith', 'text', 'Here is the answer.'],
+    ]);
+
+    snapshot.transcript[0]!.text = 'mutated renderer copy';
+    expect(h.session.snapshot().transcript[0]!.text).toBe('What happened?');
+    expect(() => structuredClone(h.session.snapshot())).not.toThrow();
+  });
+
+  it('reports a running turn immediately and persists transcript snapshots', async () => {
+    const h = harness({ turns: ['', 'after'], stallOnTurns: [0] });
+    const parked = h.session.send('Long task');
+    expect(h.session.snapshot()).toMatchObject({ running: true, error: null });
+    expect(h.session.snapshot().transcript[0]).toMatchObject({
+      source: 'operator',
+      text: 'Long task',
+    });
+
+    await h.session.cancel();
+    await parked;
+    await h.session.dispose();
+    const relaunched = h.remake();
+    expect(relaunched.snapshot().transcript[0]).toMatchObject({
+      source: 'operator',
+      text: 'Long task',
+    });
+  });
+
+  it('places readiness progress on its own transcript seam', () => {
+    const h = harness({});
+    h.session.absorbReadinessProgress({
+      type: 'phase',
+      phase: 'remediating',
+      detail: 'Creating an isolated branch',
+    });
+    h.session.absorbReadinessProgress({
+      type: 'entry',
+      entry: { id: 'ready-1', kind: 'tool', text: 'npm test', at: 2 },
+    });
+    h.session.absorbReadinessProgress({
+      type: 'entry_update',
+      entry: { id: 'ready-1', kind: 'tool', text: 'npm test', at: 2, done: true },
+    });
+
+    expect(h.session.snapshot().transcript).toEqual([
+      expect.objectContaining({ source: 'readiness', kind: 'note' }),
+      { id: 'ready-1', source: 'readiness', kind: 'tool', text: 'npm test', at: 2, done: true },
+    ]);
+  });
+});
+
 describe('pluggable tools', () => {
   const listTool = defineTool({
     name: 'smith_list',

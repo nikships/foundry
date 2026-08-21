@@ -22,7 +22,13 @@ import type {
   ReadinessState,
   BaseSyncStatus,
 } from '@shared/types.js';
-import type { FoundryApi, SaveResult, EventPage, RunDetail } from '@shared/ipc-contract.js';
+import type {
+  EventPage,
+  FoundryApi,
+  RunDetail,
+  SaveResult,
+  SmithChatState,
+} from '@shared/ipc-contract.js';
 import { withoutHiddenModels } from '@shared/model-visibility.js';
 import { BUILTIN_AGENTS } from '../main/store/builtin-agents.js';
 import { BUILTIN_PIPELINES } from '../main/store/builtin-pipelines.js';
@@ -183,6 +189,14 @@ let mockPipelines: PipelineDef[] = BUILTIN_PIPELINES.map((p) => ({ ...p }));
 
 export function createMockFoundryApi(): FoundryApi {
   const listeners = new Map<string, Set<(data?: unknown) => void>>();
+  let smithState: SmithChatState = {
+    projectId: MOCK_PROJECTS[0]!.id,
+    model: mockSettings.smithModel,
+    activeModel: mockSettings.smithModel,
+    running: false,
+    error: null,
+    transcript: [],
+  };
 
   function on(channel: string, handler: (data?: unknown) => void): () => void {
     const set = listeners.get(channel) ?? new Set();
@@ -190,6 +204,16 @@ export function createMockFoundryApi(): FoundryApi {
     listeners.set(channel, set);
     return () => set.delete(handler);
   }
+
+  const smithSnapshot = (): SmithChatState => ({
+    ...smithState,
+    transcript: smithState.transcript.map((entry) => ({ ...entry })),
+  });
+
+  const emitSmith = (): void => {
+    const state = smithSnapshot();
+    listeners.get('smith-progress')?.forEach((handler) => handler(state));
+  };
 
   const api: FoundryApi = {
     settings: {
@@ -617,6 +641,62 @@ export function createMockFoundryApi(): FoundryApi {
       answer: async () => true,
     },
     smith: {
+      send: async (projectId, text) => {
+        if (!MOCK_PROJECTS.some((project) => project.id === projectId)) return null;
+        smithState = {
+          ...smithState,
+          projectId,
+          running: true,
+          error: null,
+          transcript: [
+            ...smithState.transcript,
+            {
+              id: `operator-${Date.now()}`,
+              kind: 'text',
+              text,
+              source: 'operator',
+              at: Date.now(),
+            },
+          ],
+        };
+        emitSmith();
+        smithState = {
+          ...smithState,
+          running: false,
+          transcript: [
+            ...smithState.transcript,
+            {
+              id: `smith-${Date.now()}`,
+              kind: 'text',
+              text: 'Web preview: Smith is ready to help with this project.',
+              source: 'smith',
+              at: Date.now(),
+            },
+          ],
+        };
+        emitSmith();
+        return smithSnapshot();
+      },
+      cancel: async (projectId) => {
+        if (smithState.projectId !== projectId) return null;
+        smithState = { ...smithState, running: false };
+        emitSmith();
+        return smithSnapshot();
+      },
+      newChat: async (projectId) => {
+        if (!MOCK_PROJECTS.some((project) => project.id === projectId)) return null;
+        smithState = { ...smithState, projectId, running: false, error: null, transcript: [] };
+        emitSmith();
+        return smithSnapshot();
+      },
+      state: async (projectId) =>
+        MOCK_PROJECTS.some((project) => project.id === projectId) ? smithSnapshot() : null,
+      setModel: async (projectId, model) => {
+        if (!MOCK_PROJECTS.some((project) => project.id === projectId)) return null;
+        smithState = { ...smithState, projectId, model, activeModel: model };
+        emitSmith();
+        return smithSnapshot();
+      },
       // The web preview has no app socket and no way to open a terminal, so the
       // launcher renders with empty paths and nothing can ever propose.
       launchInfo: async () => ({
@@ -639,7 +719,7 @@ export function createMockFoundryApi(): FoundryApi {
       start: async () => ({ status: 'needs-launcher' as const, reason: 'terminal' as const }),
       openTerminal: async () => ({ ok: false, error: 'Smith needs the desktop app.' }),
       proposalsList: async () => [],
-      proposalAnswer: async () => false,
+      answerProposal: async () => false,
     },
     companion: {
       // The web preview has no network host to bind; the pane renders "off".

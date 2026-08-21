@@ -11,6 +11,8 @@
  * user's message.
  */
 
+import type { SmithScreenContext } from '@shared/ipc-contract.js';
+
 /** Standing harness for the Smith chat session. Replaces Pi's own identity. */
 export const SMITH_CHAT_HARNESS = [
   "You are Smith, Foundry's entity-smith — a native chat agent inside the",
@@ -113,21 +115,6 @@ export const SMITH_CHAT_HARNESS = [
   '  already carries: `status`, `summary`, `artifacts`,',
   '  `notes_for_next_agent`.',
 ].join('\n');
-
-/**
- * What the operator is looking at when a message arrives — a compact
- * descriptor, not a payload, so "why did this run fail?" resolves without the
- * operator naming the run.
- */
-export interface SmithScreenContext {
-  /** The renderer route, e.g. `runs`, `pipelines`, `settings`. */
-  route: string;
-  /** The entity that screen is showing, when it shows one. */
-  entity?: {
-    kind: 'run' | 'pipeline' | 'agent' | 'envelope' | 'project' | 'settings';
-    id: string;
-  };
-}
 
 /**
  * Renders the per-turn standing context. Appended to the system role through

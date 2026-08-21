@@ -13,9 +13,9 @@
  * object as production with `tests/helpers/scripted-transport.ts`.
  *
  * The conversation itself is persisted by the transport's file-backed session
- * (pinned under `<supportDir>/pi/`, never `~/.pi`); this file keeps only a
- * small pointer — which session id to resume, and a model override — so the
- * chat survives an app relaunch.
+ * (pinned under `<supportDir>/pi/`, never `~/.pi`); this file keeps the small
+ * pointer needed to resume plus a renderer-ready transcript cache, so both the
+ * model context and the visible chat survive an app relaunch.
  *
  * A mid-conversation model switch opens a **successor session**: the model is
  * stated once at create and never drifts (see `references/sdk.md`), so the
@@ -26,8 +26,14 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { ReasoningEffort } from '@shared/types.js';
+import type {
+  SmithChatState,
+  SmithScreenContext,
+  SmithTranscriptEntry,
+} from '@shared/ipc-contract.js';
 import { evaluate } from '../pi/policy.js';
 import type { ToolDefinition } from '../pi/tool-definition.js';
+import { foldTranscript } from '../pi/transcript.js';
 import type {
   AgentTransport,
   PermissionAsk,
@@ -35,11 +41,9 @@ import type {
   TransportEvent,
   TurnUsage,
 } from '../pi/transport.js';
-import {
-  SMITH_CHAT_HARNESS,
-  screenContextBlock,
-  type SmithScreenContext,
-} from './system-prompt.js';
+import { shortId } from '../session/panel-session.js';
+import type { ReadinessProgressEvent } from './readiness-tools.js';
+import { SMITH_CHAT_HARNESS, screenContextBlock } from './system-prompt.js';
 
 /** What a tool factory gets to close over: the session's scope, nothing more. */
 export interface SmithToolFactoryContext {
@@ -80,7 +84,7 @@ export interface SmithChatSessionDeps {
   /** The project's checkout. Resolved by the caller; never `process.cwd()`. */
   projectPath: string;
   /**
-   * Where this session's pointer state lives (session id + model override).
+   * Where this session's pointer and renderer transcript cache live.
    * Pinned under `<supportDir>/pi/` by the caller, per the never-touch-`~/.pi`
    * invariant; the transcript itself is the transport's session file.
    */
@@ -100,6 +104,8 @@ export interface SmithChatSessionDeps {
   /** Live transcript stream for the chat surface. */
   onEvent?: (event: TransportEvent) => void;
   onModelWarning?: (warning: string) => void;
+  /** Receives a cloned state whenever the renderer-facing snapshot changes. */
+  onChange?: (state: SmithChatState) => void;
 }
 
 export interface SmithTurnContext {
@@ -119,9 +125,12 @@ interface PersistedChatState {
   sessionId: string | null;
   /** A header model switch, which outlives the session it was made in. */
   modelOverride: string | null;
+  /** Renderer-ready cache; pi's session file remains the model's history. */
+  transcript: SmithTranscriptEntry[];
 }
 
 const STATE_FILE = 'chat-state.json';
+const MAX_TRANSCRIPT_ENTRIES = 500;
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -132,8 +141,12 @@ export class SmithChatSession {
   private sessionId: string | null = null;
   private modelOverride: string | null = null;
   private turnActive = false;
+  private cancelRequested = false;
+  private lastError: string | null = null;
+  private transcript: SmithTranscriptEntry[] = [];
   private readonly customTools: ToolDefinition[];
   private readonly customToolNames: string[];
+  private readonly absorbTranscript: (event: TransportEvent) => void;
 
   constructor(private readonly deps: SmithChatSessionDeps) {
     const ctx: SmithToolFactoryContext = {
@@ -143,6 +156,17 @@ export class SmithChatSession {
     this.customTools = (deps.toolFactories ?? []).flatMap((factory) => factory(ctx));
     this.customToolNames = this.customTools.map((tool) => tool.name);
     this.restoreState();
+    this.absorbTranscript = foldTranscript<SmithTranscriptEntry>({
+      push: (row) => this.push({ ...row, source: 'smith' }),
+      flush: () => this.emit(),
+      // An operator row separates turns. Only grow the literal last row when
+      // it belongs to Smith, or a new answer would append to the prior turn.
+      last: () => {
+        const last = this.transcript[this.transcript.length - 1];
+        return last?.source === 'smith' ? last : null;
+      },
+      textCap: 20_000,
+    });
   }
 
   /** The model the next open would ask for: the header switch, or the setting. */
@@ -163,14 +187,34 @@ export class SmithChatSession {
     return this.turnActive;
   }
 
+  /** A clone for IPC reads and pushes; callers never receive the live array. */
+  snapshot(): SmithChatState {
+    return {
+      projectId: this.deps.projectId,
+      model: this.model,
+      activeModel: this.activeModel,
+      running: this.turnActive,
+      error: this.lastError,
+      transcript: this.transcript.map((entry) => ({ ...entry })),
+    };
+  }
+
   /** One user message: opens the session lazily, answers when the turn settles. */
   async send(text: string, ctx: SmithTurnContext = {}): Promise<SmithTurnOutcome> {
     if (this.turnActive) throw new Error('a Smith turn is already running');
     this.turnActive = true;
+    this.cancelRequested = false;
+    this.lastError = null;
+    this.push({ kind: 'text', text, source: 'operator' });
     try {
       await this.ensureStarted();
       const transport = this.transport;
       if (!transport) throw new Error('smith chat session is not open');
+      // Cancel can arrive while the lazy session is still opening, before
+      // there is a transport to interrupt. Do not start a paid turn after it.
+      if (this.cancelRequested) {
+        return { text: '', usage: null, reason: 'cancelled', interrupted: true };
+      }
       const result = await transport.send(text, this.deps.turnTimeoutMs, {
         ...(ctx.screen ? { systemPrompt: screenContextBlock(ctx.screen) } : {}),
       });
@@ -180,13 +224,21 @@ export class SmithChatSession {
         reason: result.reason,
         interrupted: result.interrupted,
       };
+    } catch (e) {
+      this.lastError = errorMessage(e);
+      this.push({ kind: 'error', text: this.lastError, source: 'smith' });
+      throw e;
     } finally {
       this.turnActive = false;
+      this.persistState();
+      this.emit();
     }
   }
 
   /** Ends the turn in flight, if any. The session stays open for the next one. */
   async cancel(): Promise<void> {
+    if (!this.turnActive) return;
+    this.cancelRequested = true;
     await this.transport?.interrupt();
   }
 
@@ -198,7 +250,10 @@ export class SmithChatSession {
     const transport = this.transport;
     this.transport = null;
     this.sessionId = null;
+    this.transcript = [];
+    this.lastError = null;
     this.persistState();
+    this.emit();
     if (transport) await transport.close();
   }
 
@@ -211,9 +266,11 @@ export class SmithChatSession {
   async setModel(model: string): Promise<void> {
     if (model === this.model) return;
     this.modelOverride = model;
+    this.lastError = null;
     this.persistState();
     const transport = this.transport;
     this.transport = null;
+    this.emit();
     if (transport) await transport.close();
   }
 
@@ -221,7 +278,25 @@ export class SmithChatSession {
   async dispose(): Promise<void> {
     const transport = this.transport;
     this.transport = null;
+    this.persistState();
     if (transport) await transport.close();
+  }
+
+  /** Adds readiness remediator progress as a visually distinct transcript seam. */
+  absorbReadinessProgress(event: ReadinessProgressEvent): void {
+    if (event.type === 'entry_update') {
+      const index = this.transcript.findIndex((entry) => entry.id === event.entry.id);
+      if (index >= 0) {
+        this.transcript[index] = { ...event.entry, source: 'readiness' };
+        this.emit();
+      }
+      return;
+    }
+    if (event.type === 'entry') {
+      this.push({ ...event.entry, source: 'readiness' });
+      return;
+    }
+    this.push({ kind: 'note', text: event.detail, source: 'readiness' });
   }
 
   /** Started lazily: a project whose Smith is never opened costs nothing. */
@@ -235,8 +310,14 @@ export class SmithChatSession {
       harness: SMITH_CHAT_HARNESS,
       customTools: this.customTools,
       onPermission: (ask) => this.decide(ask),
-      onEvent: (event) => this.deps.onEvent?.(event),
-      onModelWarning: (warning) => this.deps.onModelWarning?.(warning),
+      onEvent: (event) => {
+        this.absorbTranscript(event);
+        this.deps.onEvent?.(event);
+      },
+      onModelWarning: (warning) => {
+        this.push({ kind: 'note', text: warning.slice(0, 500), source: 'smith' });
+        this.deps.onModelWarning?.(warning);
+      },
     });
     try {
       await transport.start(this.sessionId);
@@ -247,6 +328,7 @@ export class SmithChatSession {
     this.transport = transport;
     this.sessionId = transport.id;
     this.persistState();
+    this.emit();
   }
 
   /**
@@ -273,15 +355,40 @@ export class SmithChatSession {
       const raw = JSON.parse(readFileSync(this.stateFile, 'utf8')) as Partial<PersistedChatState>;
       this.sessionId = typeof raw.sessionId === 'string' ? raw.sessionId : null;
       this.modelOverride = typeof raw.modelOverride === 'string' ? raw.modelOverride : null;
+      if (Array.isArray(raw.transcript)) {
+        this.transcript = raw.transcript
+          .slice(-MAX_TRANSCRIPT_ENTRIES)
+          .map((entry) => ({ ...entry }));
+      }
     } catch {
       // A missing or unreadable pointer is a fresh chat, not a failure.
     }
+  }
+
+  private push(
+    entry: Omit<SmithTranscriptEntry, 'id' | 'at'> &
+      Partial<Pick<SmithTranscriptEntry, 'id' | 'at'>>,
+  ): SmithTranscriptEntry {
+    const full: SmithTranscriptEntry = {
+      ...entry,
+      id: entry.id ?? shortId(),
+      at: entry.at ?? Date.now(),
+    };
+    this.transcript.push(full);
+    if (this.transcript.length > MAX_TRANSCRIPT_ENTRIES) this.transcript.shift();
+    this.emit();
+    return full;
+  }
+
+  private emit(): void {
+    this.deps.onChange?.(this.snapshot());
   }
 
   private persistState(): void {
     const state: PersistedChatState = {
       sessionId: this.sessionId,
       modelOverride: this.modelOverride,
+      transcript: this.transcript.map((entry) => ({ ...entry })),
     };
     try {
       mkdirSync(dirname(this.stateFile), { recursive: true });

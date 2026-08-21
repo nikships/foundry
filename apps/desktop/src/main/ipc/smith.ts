@@ -1,8 +1,8 @@
 /**
- * The Smith IPC slice: the approval gate, and the handoff into the user's
- * terminal. Five invoke channels — three that read what a session needs and get
- * one running, two that drive the proposal card — plus `saveProposal`, the store
- * write an approve resolves to.
+ * The Smith IPC slice: native chat lifecycle and the approval gate. Chat sends
+ * return immediately after marking a turn live; cloned transcript snapshots
+ * continue over `smith-progress`. The terminal handoff handlers remain only
+ * until the replacement cleanup lands.
  */
 
 import { existsSync } from 'node:fs';
@@ -20,7 +20,7 @@ import {
   type SmithProposalAnswer,
   type SmithStartResult,
 } from '@shared/types.js';
-import { IPC } from '@shared/ipc-contract.js';
+import { IPC, type SmithChatState, type SmithScreenContext } from '@shared/ipc-contract.js';
 import type { AppContext } from '../context.js';
 import { whichBinary } from '../system/env.js';
 import {
@@ -190,8 +190,52 @@ function launchInfo(ctx: LaunchCtx, projectId: string): SmithLaunchInfo {
 }
 
 export function register(ctx: Ctx, handle: Handle): void {
+  handle(
+    IPC.smithSend,
+    (projectId: string, text: string, screen: SmithScreenContext): SmithChatState | null => {
+      const chat = ctx.smith.chat(projectId);
+      if (!chat) return null;
+      if (!text.trim()) return chat.snapshot();
+      // The invoke acknowledges the turn; transcript progress and completion
+      // are pushed. SmithChatSession records failures in its own state before
+      // rejecting, so the detached promise cannot hide an error from the UI.
+      void chat.send(text, { screen }).catch(() => undefined);
+      return chat.snapshot();
+    },
+  );
+
+  handle(IPC.smithCancel, async (projectId: string): Promise<SmithChatState | null> => {
+    const chat = ctx.smith.chat(projectId);
+    if (!chat) return null;
+    await chat.cancel();
+    return chat.snapshot();
+  });
+
+  handle(IPC.smithNewChat, async (projectId: string): Promise<SmithChatState | null> => {
+    const chat = ctx.smith.chat(projectId);
+    if (!chat) return null;
+    await chat.newChat();
+    return chat.snapshot();
+  });
+
+  handle(
+    IPC.smithState,
+    (projectId: string): SmithChatState | null => ctx.smith.chat(projectId)?.snapshot() ?? null,
+  );
+
+  handle(
+    IPC.smithSetModel,
+    async (projectId: string, model: string): Promise<SmithChatState | null> => {
+      const chat = ctx.smith.chat(projectId);
+      if (!chat) return null;
+      if (!model.trim()) throw new Error('model is required');
+      await chat.setModel(model);
+      return chat.snapshot();
+    },
+  );
+
   handle(IPC.smithProposalsList, () => ctx.smith.proposals.list());
-  handle(IPC.smithProposalAnswer, (id: string, answer: SmithProposalAnswer) =>
+  handle(IPC.smithAnswerProposal, (id: string, answer: SmithProposalAnswer) =>
     ctx.smith.proposals.answer(id, answer),
   );
 }
