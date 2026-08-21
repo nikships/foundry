@@ -127,7 +127,6 @@ class TestRegistry {
     const agent = this.scripted();
     const executor = new Executor({
       tracer: this.tracer,
-      turnTimeoutMs: 30_000,
       envelopeRetries: 2,
       gateRetries: 2,
       compactionThreshold: 0.8,

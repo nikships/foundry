@@ -22,7 +22,6 @@ import { KIND_LABEL, phaseKindColor } from '../../utils/derive.js';
 import {
   commandText,
   defaultCanvasPosition,
-  formatTimeout,
   gateNames,
   issuePhaseIndex,
   phaseEnvelopeChip,
@@ -233,7 +232,6 @@ function NodeCard({
           <div className={styles.nodeChips}>
             <Chip color="var(--green)">approve</Chip>
             <Chip color="var(--red)">reject</Chip>
-            <Chip>{formatTimeout(phase.timeoutMs)}</Chip>
           </div>
         )}
       </button>

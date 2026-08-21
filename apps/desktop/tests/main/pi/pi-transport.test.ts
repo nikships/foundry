@@ -97,7 +97,7 @@ class ScriptedPiSession {
   thinkingLevel = 'medium';
   messages: ScriptedAssistantMessage[] = [];
   state = { messages: this.messages };
-  agent = { state: { messages: [] as unknown[] } };
+  agent = { state: { messages: this.messages as unknown[] } };
   lastText = '';
   contextUsage: { tokens: number; contextWindow: number } | undefined = undefined;
   activeTools: string[] = [];
@@ -107,10 +107,12 @@ class ScriptedPiSession {
   compactions = 0;
   compactRemoves = 0;
   prompts: string[] = [];
+  customMessages: string[] = [];
+  cycles = 0;
   bound = false;
   /** Set by a test to script what one `prompt()` does. */
   turn: (session: ScriptedPiSession) => void | Promise<void> = () => {};
-  /** Held open so a test can drive the timeout path. */
+  /** Held open so a test can drive explicit abort and kill paths. */
   hangUntilAbort = false;
 
   private subscriber: ((event: unknown) => void) | null = null;
@@ -175,6 +177,24 @@ class ScriptedPiSession {
 
   waitForIdle(): Promise<void> {
     return Promise.resolve();
+  }
+
+  async cycleModel(): Promise<
+    { model: PiModelStub; thinkingLevel: string; isScoped: boolean } | undefined
+  > {
+    if (spy.models.length <= 1) return undefined;
+    const current = spy.models.findIndex(
+      (model) => model.provider === this.model?.provider && model.id === this.model.id,
+    );
+    const model = spy.models[(current + 1) % spy.models.length]!;
+    this.model = model;
+    this.cycles += 1;
+    return { model, thinkingLevel: this.thinkingLevel, isScoped: false };
+  }
+
+  async sendCustomMessage(message: { content: string }): Promise<void> {
+    this.customMessages.push(message.content);
+    await this.turn(this);
   }
 
   abort(): Promise<void> {
@@ -458,7 +478,13 @@ describe('opening a session', () => {
     await h.transport.start();
     expect(spy.settings[0]).toMatchObject({
       compaction: { enabled: false },
-      retry: { enabled: true },
+      httpIdleTimeoutMs: 300_000,
+      retry: {
+        enabled: true,
+        maxRetries: 5,
+        baseDelayMs: 2_000,
+        provider: { maxRetries: 0 },
+      },
       projectTrusted: true,
     });
   });
@@ -467,7 +493,7 @@ describe('opening a session', () => {
     const h = harness();
     await h.transport.start();
     h.session.turn = (s) => s.say('done');
-    await h.transport.send('go', 1000);
+    await h.transport.send('go');
     // Unbound, the foundry extension's tools exist but its tool_call policy is
     // not live — every call in that turn would run unruled.
     expect(spy.order).toEqual(['create', 'bind', 'prompt']);
@@ -568,7 +594,7 @@ describe('running a turn', () => {
     const h = harness();
     await h.transport.start();
     h.session.turn = (s) => s.say('done');
-    await h.transport.send('do the thing', 1000, { systemPrompt: 'You build.' });
+    await h.transport.send('do the thing', { systemPrompt: 'You build.' });
     // The roster persona is installed as the system prompt. Stuffing it into
     // the user turn would replay it every phase and bust the prefix cache.
     expect(h.session.prompts).toEqual(['do the thing']);
@@ -578,7 +604,7 @@ describe('running a turn', () => {
     const h = harness();
     await h.transport.start();
     h.session.turn = (s) => s.say('  the answer  ');
-    const result = await h.transport.send('go', 1000);
+    const result = await h.transport.send('go');
     expect(result.text).toBe('the answer');
     expect(result.reason).toBe('stop');
     expect(result.interrupted).toBe(false);
@@ -600,7 +626,7 @@ describe('running a turn', () => {
       s.emit({ type: 'message_end', message: { role: 'assistant', usage: usage(50) } });
       s.say('done');
     };
-    const result = await h.transport.send('go', 1000);
+    const result = await h.transport.send('go');
     // A turn is several assistant messages; billing the last one would
     // undercount every turn that used a tool.
     expect(result.usage).toEqual({
@@ -627,8 +653,8 @@ describe('running a turn', () => {
       emitUsage(s);
       s.say('one');
     };
-    await h.transport.send('first', 1000);
-    const second = await h.transport.send('second', 1000);
+    await h.transport.send('first');
+    const second = await h.transport.send('second');
     // Usage is per turn in the trace; carrying it forward would make the last
     // phase of a run look like it used the whole run.
     expect(second.usage).toMatchObject({ inputTokens: 10 });
@@ -640,7 +666,7 @@ describe('running a turn', () => {
     h.session.turn = (s) => s.say('done');
     // Null rather than a row of zeros: an unmetered turn and a free turn are
     // different facts, and the trace should not claim the second one.
-    expect((await h.transport.send('go', 1000)).usage).toBeNull();
+    expect((await h.transport.send('go')).usage).toBeNull();
   });
 
   it('ignores usage on a message that is not the assistant’s', async () => {
@@ -656,14 +682,14 @@ describe('running a turn', () => {
       });
       s.say('done');
     };
-    expect((await h.transport.send('go', 1000)).usage).toBeNull();
+    expect((await h.transport.send('go')).usage).toBeNull();
   });
 
   it('reports an aborted turn as interrupted instead of throwing', async () => {
     const h = harness();
     await h.transport.start();
     h.session.turn = (s) => s.say('partial', { stopReason: 'aborted' });
-    const result = await h.transport.send('go', 1000);
+    const result = await h.transport.send('go');
     // A kill is an operator action, not a fault: the caller settles the run.
     expect(result.interrupted).toBe(true);
     expect(result.reason).toBe('aborted');
@@ -673,29 +699,158 @@ describe('running a turn', () => {
     const h = harness();
     await h.transport.start();
     h.session.turn = (s) => s.say('', { stopReason: 'error', errorMessage: 'provider said no' });
-    await expect(h.transport.send('go', 1000)).rejects.toThrow(/provider said no/);
+    await expect(h.transport.send('go')).rejects.toThrow(/provider said no/);
+    expect(h.session.cycles).toBe(0);
   });
 
-  it('aborts and fails a turn that outlasts its timeout', async () => {
+  it('continues the same turn on the next model after all five retries fail', async () => {
     const h = harness();
     await h.transport.start();
-    h.session.hangUntilAbort = true;
-    await expect(h.transport.send('go', 20)).rejects.toThrow(/timed out after 20ms/);
-    // Abort, not just reject: an orphaned agent loop would keep writing to the
-    // worktree after the phase was declared failed.
-    expect(h.session.aborts).toBe(1);
+    let attempt = 0;
+    h.session.turn = (s) => {
+      if (attempt++ === 0) {
+        s.emit({
+          type: 'auto_retry_start',
+          attempt: 5,
+          maxAttempts: 5,
+          delayMs: 32_000,
+          errorMessage: 'overloaded',
+        });
+        s.emit({
+          type: 'auto_retry_end',
+          success: false,
+          attempt: 5,
+          finalError: 'overloaded',
+        });
+        s.say('', { stopReason: 'error', errorMessage: 'overloaded' });
+        return;
+      }
+      s.say('finished on fallback');
+    };
+
+    const result = await h.transport.send('keep going');
+
+    expect(result.text).toBe('finished on fallback');
+    expect(h.session.prompts).toEqual(['keep going']);
+    expect(h.session.customMessages).toHaveLength(1);
+    expect(h.session.cycles).toBe(1);
+    expect(h.transport.activeModel).toBe('openai/gpt-5');
+    expect(h.warnings).toContain(
+      'anthropic/claude-sonnet-4 failed after 5 retries; continuing this turn on openai/gpt-5',
+    );
+  });
+
+  it('tries each available model in catalog order without replaying the user prompt', async () => {
+    spy.models.push({
+      provider: 'google',
+      id: 'gemini-2.5-pro',
+      name: 'Gemini 2.5 Pro',
+      contextWindow: 1_000_000,
+    });
+    const h = harness();
+    await h.transport.start();
+    let attempt = 0;
+    h.session.turn = (s) => {
+      if (attempt++ < 2) {
+        s.emit({
+          type: 'auto_retry_start',
+          attempt: 5,
+          maxAttempts: 5,
+          delayMs: 32_000,
+          errorMessage: 'request timed out',
+        });
+        s.emit({
+          type: 'auto_retry_end',
+          success: false,
+          attempt: 5,
+          finalError: 'request timed out',
+        });
+        s.say('', { stopReason: 'error', errorMessage: 'request timed out' });
+        return;
+      }
+      s.say('finished on the second fallback');
+    };
+
+    expect((await h.transport.send('keep going')).text).toBe('finished on the second fallback');
+    expect(h.session.prompts).toEqual(['keep going']);
+    expect(h.session.customMessages).toHaveLength(2);
+    expect(h.transport.activeModel).toBe('google/gemini-2.5-pro');
+    expect(h.warnings).toEqual([
+      'anthropic/claude-sonnet-4 failed after 5 retries; continuing this turn on openai/gpt-5',
+      'openai/gpt-5 failed after 5 retries; continuing this turn on google/gemini-2.5-pro',
+    ]);
+  });
+
+  it('returns the terminal error when no fallback model is available', async () => {
+    spy.models = [spy.models[0]!];
+    const h = harness();
+    await h.transport.start();
+    h.session.turn = (s) => {
+      s.emit({
+        type: 'auto_retry_start',
+        attempt: 5,
+        maxAttempts: 5,
+        delayMs: 32_000,
+        errorMessage: 'request timed out',
+      });
+      s.emit({
+        type: 'auto_retry_end',
+        success: false,
+        attempt: 5,
+        finalError: 'request timed out',
+      });
+      s.say('', { stopReason: 'error', errorMessage: 'request timed out' });
+    };
+
+    await expect(h.transport.send('go')).rejects.toThrow(/request timed out/);
+    expect(h.session.cycles).toBe(0);
+    expect(h.warnings).toEqual([]);
+  });
+
+  it('does not fail over when the operator cancels retry backoff', async () => {
+    const h = harness();
+    await h.transport.start();
+    h.session.turn = (s) => {
+      s.emit({
+        type: 'auto_retry_start',
+        attempt: 1,
+        maxAttempts: 5,
+        delayMs: 2_000,
+        errorMessage: 'overloaded',
+      });
+      s.emit({
+        type: 'auto_retry_end',
+        success: false,
+        attempt: 1,
+        finalError: 'Retry cancelled',
+      });
+      s.say('', { stopReason: 'aborted' });
+    };
+
+    expect((await h.transport.send('go')).interrupted).toBe(true);
+    expect(h.session.cycles).toBe(0);
+  });
+
+  it('does not arm an execution deadline for a turn', async () => {
+    const h = harness();
+    await h.transport.start();
+    h.session.turn = (s) => s.say('done');
+    const timer = vi.spyOn(globalThis, 'setTimeout');
+    await h.transport.send('go');
+    expect(timer).not.toHaveBeenCalled();
+    timer.mockRestore();
   });
 
   it('refuses to run a turn before the session is open', async () => {
     const h = harness();
-    await expect(h.transport.send('go', 1000)).rejects.toThrow(/not open/);
+    await expect(h.transport.send('go')).rejects.toThrow(/not open/);
   });
 
   it('refuses to run a turn on a killed session', async () => {
     const h = harness();
     await h.transport.start();
     h.transport.kill();
-    await expect(h.transport.send('go', 1000)).rejects.toThrow(/not (open|alive)/);
+    await expect(h.transport.send('go')).rejects.toThrow(/not (open|alive)/);
   });
 });
 
@@ -707,7 +862,7 @@ describe('the envelope tool', () => {
     const h = harness();
     await h.transport.start();
     h.session.turn = (s) => s.say('done');
-    await h.transport.send('go', 1000, { outputFormat: { type: 'json_schema', schema: build } });
+    await h.transport.send('go', { outputFormat: { type: 'json_schema', schema: build } });
     expect(spy.registeredTools).toContain('submit_envelope');
   });
 
@@ -716,9 +871,9 @@ describe('the envelope tool', () => {
     await h.transport.start();
     h.session.turn = (s) => s.say('done');
     const format = { type: 'json_schema', schema: build } as const;
-    await h.transport.send('one', 1000, { outputFormat: format });
+    await h.transport.send('one', { outputFormat: format });
     const after = spy.registeredTools.filter((t) => t === 'submit_envelope').length;
-    await h.transport.send('two', 1000, { outputFormat: format });
+    await h.transport.send('two', { outputFormat: format });
     // The runtime caches a compiled validator against the schema object it
     // first saw, so re-registering an identical shape churns for nothing.
     expect(spy.registeredTools.filter((t) => t === 'submit_envelope').length).toBe(after);
@@ -728,11 +883,11 @@ describe('the envelope tool', () => {
     const h = harness();
     await h.transport.start();
     h.session.turn = (s) => s.say('done');
-    await h.transport.send('one', 1000, {
+    await h.transport.send('one', {
       outputFormat: { type: 'json_schema', schema: build },
     });
     const before = spy.registeredTools.filter((t) => t === 'submit_envelope').length;
-    await h.transport.send('two', 1000, {
+    await h.transport.send('two', {
       outputFormat: { type: 'json_schema', schema: review },
     });
     // Mutating the live definition would keep the previous phase's validator,
@@ -744,7 +899,7 @@ describe('the envelope tool', () => {
     const h = harness();
     await h.transport.start();
     h.session.turn = (s) => s.say('prose only');
-    const result = await h.transport.send('go', 1000, {
+    const result = await h.transport.send('go', {
       outputFormat: { type: 'json_schema', schema: build },
     });
     // Null is what makes the caller fall back to parsing the text, which is
@@ -797,7 +952,7 @@ describe('translating the session’s events', () => {
       });
       s.say('hello');
     };
-    await h.transport.send('go', 1000);
+    await h.transport.send('go');
 
     expect(h.events).toEqual([
       { type: 'text_delta', messageId: '1', blockIndex: 0, delta: 'hel' },
@@ -823,7 +978,7 @@ describe('translating the session’s events', () => {
       });
       s.say('hi');
     };
-    await h.transport.send('go', 1000);
+    await h.transport.send('go');
     expect(h.events.find((e) => e.type === 'text_delta')).toMatchObject({ messageId: '1' });
   });
 
@@ -843,7 +998,7 @@ describe('translating the session’s events', () => {
       });
       s.say('done');
     };
-    await h.transport.send('go', 1000);
+    await h.transport.send('go');
     // Same block index, different message: without distinct ids the folder
     // would append the second message's prose onto the first one's row.
     const ids = h.events.map((e) => (e.type === 'text_delta' ? e.messageId : null));
@@ -869,7 +1024,7 @@ describe('translating the session’s events', () => {
       });
       s.say('done');
     };
-    await h.transport.send('go', 1000);
+    await h.transport.send('go');
     const result = h.events.find((e) => e.type === 'tool_result');
     expect(result).toMatchObject({ content: 'line one\nline two' });
   });
@@ -882,7 +1037,7 @@ describe('translating the session’s events', () => {
       s.emit({ type: 'tool_execution_end', toolCallId: 'c1', result: 'boom', isError: true });
       s.say('done');
     };
-    await h.transport.send('go', 1000);
+    await h.transport.send('go');
     expect(h.events.find((e) => e.type === 'tool_result')).toMatchObject({
       content: 'boom',
       isError: true,
@@ -896,7 +1051,7 @@ describe('translating the session’s events', () => {
       s.emit({ type: 'tool_execution_start', toolCallId: 'c1', toolName: 'bash', args: 'nope' });
       s.say('done');
     };
-    await h.transport.send('go', 1000);
+    await h.transport.send('go');
     // A malformed frame must not take the run down; an empty object is the
     // honest reading and the policy still gets to rule on it.
     expect(h.events.find((e) => e.type === 'tool_call')).toMatchObject({ input: {} });
@@ -1029,8 +1184,8 @@ describe('what the session can report', () => {
   it('has nothing to re-assert, and reports the model that is running', async () => {
     const h = harness({ model: 'openai/gpt-5' });
     await h.transport.start();
-    // Model and thinking level are stated once at create and cannot drift, so
-    // the reply exists only so the caller need not know which transport it is.
+    // The reply is the live model, including any failover that happened in the
+    // session, rather than blindly reasserting the roster's starting model.
     expect(await h.transport.applySettings()).toEqual({ model: 'openai/gpt-5' });
   });
 

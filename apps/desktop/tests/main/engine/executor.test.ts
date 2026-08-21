@@ -320,7 +320,6 @@ interface RunInput {
   /** The install default an `inherit` roster model resolves against. */
   defaultModel?: string;
   askHuman?: AskHuman;
-  turnTimeoutMs?: number;
   envelopeRetries?: number;
   gateRetries?: number;
   compactionThreshold?: number;
@@ -364,7 +363,6 @@ function start(input: RunInput): {
   const executor = new Executor({
     tracer: h.tracer,
     defaultModel: input.defaultModel,
-    turnTimeoutMs: input.turnTimeoutMs ?? 30_000,
     envelopeRetries: input.envelopeRetries ?? 2,
     gateRetries: input.gateRetries ?? 2,
     compactionThreshold: input.compactionThreshold ?? 0.8,
@@ -1318,7 +1316,6 @@ describe('engineer phases', () => {
     const outcome = await run({
       agents: [],
       request: 'ask me',
-      turnTimeoutMs: 5000,
       envelopeRetries: 1,
       gateRetries: 1,
       pipeline: pipe(
@@ -1347,7 +1344,6 @@ describe('engineer phases', () => {
     const outcome = await run({
       agents: [],
       request: 'ask me',
-      turnTimeoutMs: 5000,
       envelopeRetries: 1,
       gateRetries: 1,
       pipeline: pipe(
@@ -1784,31 +1780,29 @@ describe('the agent transport under the executor', () => {
     expect(handshakeCount(scripted)).toBe(1);
   });
 
-  it('fails the phase when a turn stalls, rather than degrading to another transport', async () => {
-    // Turn 0 is begun and never answered, so the turn times out. There is
-    // nothing weaker to retry it on, and inventing one silently would swap the
-    // operator's permission policy for the runtime's coarser gate.
+  it('leaves a stalled turn running until the operator kills it', async () => {
     const scripted = scriptedAgent([buildEnvelope()], [], [], { stallOnTurns: [0] });
-    const outcome = await run({
+    const launched = start({
       scripted,
-      turnTimeoutMs: 1500,
-      pipeline: pipe([agentPhase('build', { description: 'Prove a stalled turn fails loudly.' })], {
-        description: 'a transport that stalls',
-        acceptance: { kind: 'envelope_status', phase: 'build' },
-      }),
+      pipeline: pipe(
+        [agentPhase('build', { description: 'Prove a stalled turn has no deadline.' })],
+        {
+          description: 'a transport that stays live until the operator acts',
+          acceptance: { kind: 'envelope_status', phase: 'build' },
+        },
+      ),
     });
 
-    expect(outcome.status).toBe('rejected');
-    expect(h.tracer.run(outcome.runId)!.mode).toBe('pi');
-    // The run never claims a transport it did not use.
-    expect(h.tracer.agentSessions(outcome.runId)[0]!.mode).toBe('pi');
-    const failures = events(outcome.runId).filter((e) => e.name === 'builder: turn failed');
-    expect(failures.length).toBeGreaterThan(0);
-    expect(String(failures[0]!.payload.message)).toMatch(/timed out/i);
-    expect(h.tracer.openProcesses(outcome.runId)).toHaveLength(0);
+    await until(() => turnRequests(scripted).length === 1, 'stalled turn to begin');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(h.tracer.run(launched.runId)!.status).toBe('running');
+    expect(events(launched.runId).some((e) => e.name === 'builder: turn failed')).toBe(false);
+
+    launched.executor.cancel();
+    expect((await launched.done).status).toBe('killed');
   });
 
-  it('continues a timed-out run in the same worktree and persisted agent session', async () => {
+  it('continues a naturally failed run in the same worktree and persisted agent session', async () => {
     const pipeline = pipe(
       [
         codePhase('prepare', { argv: ['sh', '-c', 'echo prepared >> prepare-count'] }),
@@ -1819,8 +1813,8 @@ describe('the agent transport under the executor', () => {
         acceptance: { kind: 'envelope_status', phase: 'build' },
       },
     );
-    const stalled = scriptedAgent([buildEnvelope()], [], [], { stallOnTurns: [0] });
-    const first = await run({ pipeline, scripted: stalled, turnTimeoutMs: 50 });
+    const failed = scriptedAgent([buildEnvelope()], [], [], { dieOnTurns: [0] });
+    const first = await run({ pipeline, scripted: failed });
 
     expect(first.status).toBe('rejected');
     const before = h.tracer.run(first.runId)!;
@@ -1831,7 +1825,6 @@ describe('the agent transport under the executor', () => {
     const continued = scriptedAgent([buildEnvelope()]);
     const executor = new Executor({
       tracer: h.tracer,
-      turnTimeoutMs: 30_000,
       envelopeRetries: 2,
       gateRetries: 2,
       compactionThreshold: 0.8,

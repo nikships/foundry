@@ -16,7 +16,7 @@ import { abortRebase, isAncestor, resolveRef, status } from './git.js';
 
 /** The one method a repair needs; a one-shot session satisfies it structurally. */
 export interface RepairAgent {
-  send(text: string, timeoutMs: number): Promise<{ text: string }>;
+  send(text: string): Promise<{ text: string }>;
 }
 
 export interface RepairOutcome {
@@ -84,15 +84,13 @@ export async function rebaseOntoBase(input: {
   ontoSha: string;
   ontoLabel: string;
   agent: RepairAgent;
-  timeoutMs: number;
 }): Promise<RepairOutcome> {
   const { worktreePath, branch, ontoSha, ontoLabel } = input;
   const before = await resolveRef(worktreePath, 'HEAD');
 
   let reply = '';
   try {
-    reply = (await input.agent.send(rebasePrompt({ branch, ontoLabel, ontoSha }), input.timeoutMs))
-      .text;
+    reply = (await input.agent.send(rebasePrompt({ branch, ontoLabel, ontoSha }))).text;
   } catch (e) {
     await abortRebase(worktreePath);
     return { ok: false, detail: `the repair agent failed: ${(e as Error).message}` };

@@ -209,7 +209,6 @@ export class RunRegistry extends EventEmitter {
       tracer,
       defaultModel: settings.defaultModel,
       defaultReasoningEffort: settings.defaultReasoningEffort,
-      turnTimeoutMs: settings.turnTimeoutMs,
       envelopeRetries: FIXED_ENGINE_DEFAULTS.envelopeRetries,
       gateRetries: FIXED_ENGINE_DEFAULTS.gateRetries,
       compactionThreshold: settings.compactionThreshold,

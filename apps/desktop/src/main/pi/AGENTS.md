@@ -101,7 +101,7 @@ npm run typecheck && npm run lint && npm run build
 
 - Pinned official docs for this layer: `references/` at the repo root. Recopy from `node_modules/@earendil-works/pi-coding-agent/docs/` when the package pin bumps.
 - `session.ts` writes a per-agent context breakdown file next to the stream; the renderer reads it for the context gauge.
-- Model and thinking level are stated once at create and never drift, so `applySettings()` has nothing to re-assert and simply reports the active model.
+- Model and thinking level start from the roster. After five exhausted transient-error retries, the session cycles through the reachable model catalog without resetting its conversation; `applySettings()` reports that live model rather than reverting the failover between phases.
 - A model the install cannot reach is a **warning plus a fallback**, not a failed run: the trace records what actually ran.
 - A one-shot's caller never believes the agent's own account of what it did. `engine/repair.ts` re-derives its verdict from git; detection verifies each proposed command by running it. The turn produces a claim, not a result.
 - Cancelling a one-shot is `abort()`, and an abort landing before the session finishes opening skips the turn entirely — that window between the click and the first token is where a cancel most often lands.

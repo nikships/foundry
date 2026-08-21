@@ -18,7 +18,20 @@ import type { PiModel, PiThinkingLevel } from './model.js';
 /** In-memory settings: engine owns compaction, the runtime may retry a flap. */
 export function foundrySettings(): SettingsManager {
   return SettingsManager.inMemory(
-    { compaction: { enabled: false }, retry: { enabled: true } },
+    {
+      compaction: { enabled: false },
+      // This is connection liveness, not a turn deadline. A silent provider
+      // stream becomes a retryable timeout while the overall run stays alive.
+      httpIdleTimeoutMs: 300_000,
+      retry: {
+        enabled: true,
+        maxRetries: 5,
+        baseDelayMs: 2_000,
+        // One semantic retry loop owns the budget. Provider retries here would
+        // multiply the attempts invisibly before Pi's surfaced backoff begins.
+        provider: { maxRetries: 0 },
+      },
+    },
     { projectTrusted: true },
   );
 }

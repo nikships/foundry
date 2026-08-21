@@ -330,7 +330,6 @@ async function runRepair(
     ontoSha: input.ontoSha,
     ontoLabel: input.ontoLabel,
     agent: repairAgent(hooks.oneShot, settings, input.worktreePath),
-    timeoutMs: settings.turnTimeoutMs,
   });
   scoped.tracer.event({
     runId: input.runId,

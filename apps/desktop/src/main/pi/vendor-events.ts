@@ -48,6 +48,8 @@ export class VendorEventReader {
   /** Distinguishes text blocks of different messages in the folded trace. */
   private messageSeq = 0;
   private usage: TurnUsage | null = null;
+  private retryMaxAttempts = 0;
+  private exhaustedRetry = false;
   /** `bash_execution_update` is a chunk; the Inspector wants accumulated text. */
   private readonly bashOutput = new Map<string, string>();
 
@@ -56,10 +58,22 @@ export class VendorEventReader {
     return this.usage;
   }
 
+  /** True only when Pi spent the whole retry budget, not when a kill cancelled it. */
+  get retryExhausted(): boolean {
+    return this.exhaustedRetry;
+  }
+
   /** Called between turns: usage is per turn, the message counter is not. */
   startTurn(): void {
     this.usage = null;
     this.bashOutput.clear();
+    this.startModelAttempt();
+  }
+
+  /** A failover stays in the same turn, but begins a fresh retry budget. */
+  startModelAttempt(): void {
+    this.retryMaxAttempts = 0;
+    this.exhaustedRetry = false;
   }
 
   absorb(event: AgentSessionEvent, emit: (event: TransportEvent) => void): void {
@@ -138,12 +152,19 @@ export class VendorEventReader {
         return;
       }
       case 'auto_retry_start':
+        this.retryMaxAttempts = event.maxAttempts;
         emit({
           type: 'retry',
           attempt: event.attempt,
           maxAttempts: event.maxAttempts,
           message: event.errorMessage,
         });
+        return;
+      case 'auto_retry_end':
+        this.exhaustedRetry =
+          !event.success &&
+          event.attempt >= this.retryMaxAttempts &&
+          event.finalError !== 'Retry cancelled';
         return;
       default:
         return;

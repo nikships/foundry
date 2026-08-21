@@ -25,9 +25,6 @@ import { ensureMissingCommands, missingCommandRefs, preflightForRun } from './pr
 import * as ghLib from '../system/gh.js';
 import type { GhOptions } from '../system/gh.js';
 
-/** Matches `DetectSession`: the same question deserves the same patience. */
-const DETECT_FILL_TIMEOUT_MS = 300_000;
-
 export interface StartRunOutcome {
   ok: boolean;
   runId?: string;
@@ -94,7 +91,7 @@ export async function startRun(deps: StartRunDeps, input: StartRunInput): Promis
           reasoningEffort: settings.helperReasoningEffort,
           systemPrompt: DETECT_PROMPT,
         });
-        const turn = await session.send(buildDetectPrompt(sniffed), DETECT_FILL_TIMEOUT_MS);
+        const turn = await session.send(buildDetectPrompt(sniffed));
         return parseDetectReply(turn.text).commands;
       },
       save: (next) => {
