@@ -1197,6 +1197,41 @@ describe('feedback re-entry into an already-prompted phase', () => {
     expect(roles[1]).toContain('./check.sh');
     expect(roles[1]).not.toContain('(no feedback)');
   });
+
+  /**
+   * `compose()` derives one system role per entry and both paths return it, so
+   * a read-only agent must be told it has no shell on a feedback re-entry
+   * exactly as on first entry. A delta that trimmed the role's tool facts would
+   * leave the agent believing it can run commands it does not have.
+   */
+  it('keeps shell guidance out of a read-only agent’s role on both prompt paths', async () => {
+    installCheck('#!/bin/sh\ntest -f fix.txt\n');
+    const envelope = buildEnvelope({ summary: 'attempted', commit_message: 'work' });
+    const readOnly = buildAgent({ writes: ['fix.txt'], toolProfile: 'read-only' });
+
+    // The first run re-enters via the delta path; the second compacts in
+    // between, which forces the full path. The role must read the same way.
+    for (const options of [
+      {},
+      { contextUsed: 85_000, contextUsedAfterCompaction: 8_500 },
+    ] as ScriptedAgentOptions[]) {
+      const scripted = scriptedAgent([envelope, envelope], [null, 'fix.txt'], [], options);
+      const outcome = await run({
+        scripted,
+        project,
+        agents: [readOnly],
+        pipeline: repairPipeline(),
+      });
+      expect(outcome.status).toBe('accepted');
+
+      const roles = buildRoles(scripted);
+      expect(roles).toHaveLength(2);
+      for (const role of roles) {
+        expect(role).not.toContain('# Worktree and shell');
+        expect(role).not.toContain('Setup ran');
+      }
+    }
+  });
 });
 
 describe('acceptance criteria', () => {
