@@ -179,10 +179,11 @@ function fetchCatalog(version, dest) {
   const url = `https://raw.githubusercontent.com/router-for-me/CLIProxyAPI/v${version}/internal/registry/models/models.json`;
   const tmp = `${dest}.${process.pid}.tmp`;
   console.log(`downloading ${url}`);
-  const args = ['-fL', '--retry', '3', '--retry-delay', '5', '-o', tmp, url];
+  const args = ['-fL', '--retry', '3', '--retry-delay', '5'];
   if (process.env.GH_TOKEN) {
-    args.splice(args.length - 2, 0, '-H', `Authorization: Bearer ${process.env.GH_TOKEN}`);
+    args.push('-H', `Authorization: Bearer ${process.env.GH_TOKEN}`);
   }
+  args.push('-o', tmp, url);
   try {
     execFileSync('curl', args, { stdio: ['ignore', 'inherit', 'inherit'] });
     if (!catalogLooksValid(tmp)) {
