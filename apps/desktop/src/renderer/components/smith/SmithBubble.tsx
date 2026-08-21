@@ -58,6 +58,13 @@ export default function SmithBubble({
     return api.on('smith-proposals-changed', () => void refresh());
   }, []);
 
+  // A project switch resets the chat state to null (running=false), which
+  // would read as a finished turn from the previous project's running=true.
+  useEffect(() => {
+    wasRunningRef.current = false;
+    setFinishedWhileClosed(false);
+  }, [projectId]);
+
   // The "long task finished" badge: a running→settled edge observed while the
   // popover is closed. Reading `open` through a ref keeps the edge detector
   // from re-arming (and mis-firing) every time the popover toggles.

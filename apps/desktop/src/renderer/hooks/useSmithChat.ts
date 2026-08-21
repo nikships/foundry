@@ -21,7 +21,9 @@ export function useSmithChat(projectId: string): {
     setState(null);
     if (projectId) {
       void api.smith.state(projectId).then((next) => {
-        if (!cancelled && next) setState(next);
+        // A push may land before this snapshot resolves; the push is fresher,
+        // so the snapshot only fills an otherwise-empty surface.
+        if (!cancelled && next) setState((prev) => prev ?? next);
       });
     }
     const off = api.on('smith-progress', (data) => {
