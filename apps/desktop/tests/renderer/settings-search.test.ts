@@ -64,6 +64,11 @@ describe('searchSettings', () => {
     expect(hits.some((h) => h.pane === 'app' && h.sectionId === 'retention')).toBe(true);
   });
 
+  it('reaches the Smith default-model section under Models & Providers', () => {
+    const hits = searchSettings('smith');
+    expect(hits.some((h) => h.pane === 'models' && h.sectionId === 'smith')).toBe(true);
+  });
+
   it('matches section notes, so phrases in prose still surface the section', () => {
     const hits = searchSettings('moments that need you');
     expect(hits.some((h) => h.pane === 'app' && h.sectionId === 'notifications')).toBe(true);
