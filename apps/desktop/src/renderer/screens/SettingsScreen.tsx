@@ -175,7 +175,6 @@ export default function SettingsScreen({
   pane: initialPane,
   onPaneChange,
   onNewProject,
-  onOpenReadiness,
   paletteNonce = 0,
 }: {
   pane: string;
@@ -183,7 +182,6 @@ export default function SettingsScreen({
   onPaneChange?: (pane: string) => void;
   /** Create a repository on GitHub instead of pointing at an existing checkout. */
   onNewProject?: () => void;
-  onOpenReadiness?: (projectId: string) => void;
   /** Bumped by the app shell's ⌘K chord; each bump opens the search palette. */
   paletteNonce?: number;
 }): React.JSX.Element {
@@ -468,7 +466,6 @@ export default function SettingsScreen({
       await refreshAll();
       if (added) {
         selectProject(added.id);
-        onOpenReadiness?.(added.id);
       }
     });
   };
@@ -1666,13 +1663,6 @@ export default function SettingsScreen({
                               : readiness?.markerDetail ||
                                 'No valid .agents/agent-ready.json yet. Pipeline runs may fail until the repo is ready.'}
                         </p>
-                        {onOpenReadiness && projectDraft && (
-                          <div className={styles.settingsBtnrow}>
-                            <Button size="sm" onClick={() => onOpenReadiness(projectDraft.id)}>
-                              {readiness?.ready ? 'View readiness report' : 'Run readiness check'}
-                            </Button>
-                          </div>
-                        )}
                       </Section>
                       <Section label="Checks" note="Run against this repository.">
                         <DoctorList

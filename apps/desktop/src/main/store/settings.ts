@@ -5,7 +5,7 @@
 
 import { join } from 'node:path';
 import { z } from 'zod';
-import { CODING_AGENTS, DEFAULT_PR_AGENT, TERMINAL_APPS, type AppSettings } from '@shared/types.js';
+import { DEFAULT_PR_AGENT, type AppSettings } from '@shared/types.js';
 import { JsonStore } from './json-store.js';
 
 /**
@@ -38,8 +38,6 @@ export const appSettingsSchema = z.object({
     needsInput: z.boolean(),
   }),
   dockBadge: z.boolean(),
-  terminalApp: z.enum(['terminal', 'iterm', 'ghostty', 'warp', 'alacritty', 'kitty']).nullable(),
-  codingAgent: z.enum(['droid', 'claude', 'codex', 'opencode', 'pi']).nullable(),
   retentionDays: z.number().int().min(1).max(3650).nullable(),
   onboarded: z.boolean(),
   hiddenModelIds: z.array(z.string().min(1)),
@@ -58,8 +56,6 @@ export function defaultSettings(): AppSettings {
     compactionThreshold: 0.8,
     notifications: { accepted: true, rejected: true, failed: true, needsInput: true },
     dockBadge: true,
-    terminalApp: null,
-    codingAgent: null,
     retentionDays: null,
     onboarded: false,
     hiddenModelIds: [],
@@ -101,15 +97,6 @@ export function migrate(raw: unknown): AppSettings {
   }
   if (typeof merged.prAgent !== 'string' || !/^[a-z][a-z0-9_-]*$/.test(merged.prAgent)) {
     merged.prAgent = DEFAULT_PR_AGENT;
-  }
-  if (
-    merged.codingAgent !== null &&
-    !CODING_AGENTS.some((agent) => agent.id === merged.codingAgent)
-  ) {
-    merged.codingAgent = null;
-  }
-  if (merged.terminalApp !== null && !TERMINAL_APPS.some((app) => app.id === merged.terminalApp)) {
-    merged.terminalApp = null;
   }
   if (
     merged.helperReasoningEffort !== 'off' &&

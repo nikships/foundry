@@ -13,7 +13,6 @@ import SettingsScreen from './screens/SettingsScreen.js';
 import OnboardingShell from './screens/onboarding/OnboardingShell.js';
 import InterruptSheet from './components/run/InterruptSheet.js';
 import NewProjectWizard from './components/project/NewProjectWizard.js';
-import ReadinessFlow from './components/readiness/ReadinessFlow.js';
 import ConfirmModal from './components/common/ConfirmModal.js';
 import UpdateBanner from './components/layout/UpdateBanner.js';
 import SmithScreen from './screens/SmithScreen.js';
@@ -32,12 +31,10 @@ import { describeScreen } from './view-models/smith-chat-view.js';
 import styles from './App.module.css';
 
 function AppInner(): React.JSX.Element {
-  const { ready, settings, interrupts, project, refreshAll, refreshScoped, selectProject } =
-    useApp();
+  const { ready, settings, interrupts, refreshAll, refreshScoped, selectProject } = useApp();
   const [view, setView] = useState<View>('runs');
   const [runRequest, setRunRequest] = useState('');
   const [creatingProject, setCreatingProject] = useState(false);
-  const [readinessProjectId, setReadinessProjectId] = useState('');
   const [openRunId, setOpenRunId] = useState('');
   const [inspectorRunId, setInspectorRunId] = useState('');
   const [settingsPane, setSettingsPane] = useState('general');
@@ -172,7 +169,6 @@ function AppInner(): React.JSX.Element {
     if (added) {
       await refreshAll();
       selectProject(added.id);
-      setReadinessProjectId(added.id);
     }
   }, [refreshAll, selectProject]);
 
@@ -184,7 +180,6 @@ function AppInner(): React.JSX.Element {
     async (project: ProjectDef): Promise<void> => {
       await refreshAll();
       selectProject(project.id);
-      setReadinessProjectId(project.id);
     },
     [refreshAll, selectProject],
   );
@@ -255,9 +250,6 @@ function AppInner(): React.JSX.Element {
           setSettingsPane(pane);
           go('settings');
         }}
-        onOpenReadiness={() => {
-          if (project?.id) setReadinessProjectId(project.id);
-        }}
       />
     );
   } else if (view === 'inspector') {
@@ -286,7 +278,6 @@ function AppInner(): React.JSX.Element {
         pane={settingsPane}
         onPaneChange={setSettingsPane}
         onNewProject={newProject}
-        onOpenReadiness={(id) => setReadinessProjectId(id)}
         paletteNonce={settingsPaletteNonce}
       />
     );
@@ -361,9 +352,6 @@ function AppInner(): React.JSX.Element {
       {activeInterrupt && <InterruptSheet interrupt={activeInterrupt} />}
       {creatingProject && (
         <NewProjectWizard onClose={() => setCreatingProject(false)} onCreated={projectCreated} />
-      )}
-      {readinessProjectId && (
-        <ReadinessFlow projectId={readinessProjectId} onClose={() => setReadinessProjectId('')} />
       )}
       <ConfirmModal />
       {showBanner && (

@@ -1,6 +1,5 @@
 import type {
   ProjectDef,
-  ReadinessAskAnswer,
   ReadinessInspectResult,
   ReadinessState,
   ReasoningEffort,
@@ -126,12 +125,6 @@ export function register(ctx: Ctx, handle: Handle): void {
     const session = ctx.readiness.session(projectId);
     if (!session) return null;
     return session.confirmMerge();
-  });
-
-  handle(IPC.readinessAnswerAsk, (projectId: string, answers: ReadinessAskAnswer[]): boolean => {
-    const session = ctx.readiness.session(projectId);
-    if (!session) return false;
-    return session.answerAsk(answers);
   });
 
   handle(IPC.readinessDismiss, (projectId: string): boolean => {

@@ -221,37 +221,15 @@ describe('obsolete settings', () => {
   });
 });
 
-describe('codingAgent', () => {
-  it('defaults to automatic on a fresh install', () => {
-    expect(defaultSettings().codingAgent).toBeNull();
-  });
-
-  it('reads automatic when the field is missing', () => {
-    const stored = { ...defaultSettings() } as Record<string, unknown>;
-    delete stored.codingAgent;
-    expect(migrate(stored).codingAgent).toBeNull();
-    expect(seed(stored).get().codingAgent).toBeNull();
-  });
-
-  it('keeps a valid catalogued agent', () => {
-    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
-    expect(store.patch({ codingAgent: 'claude' })).toMatchObject({ ok: true });
-    expect(store.get().codingAgent).toBe('claude');
-    expect(store.patch({ codingAgent: 'pi' })).toMatchObject({ ok: true });
-    expect(store.get().codingAgent).toBe('pi');
-  });
-
-  it('refuses an unknown agent rather than storing it', () => {
-    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
-    expect(store.patch({ codingAgent: 'cursor' as never }).ok).toBe(false);
-    expect(store.get().codingAgent).toBeNull();
-  });
-
-  it('repairs a stored garbage agent name back to automatic', () => {
-    expect(
-      migrate({ ...defaultSettings(), codingAgent: 'cursor' as never }).codingAgent,
-    ).toBeNull();
-    expect(migrate({ ...defaultSettings(), codingAgent: '' as never }).codingAgent).toBeNull();
+describe('removed terminal/coding-agent settings', () => {
+  it('drops stored terminalApp and codingAgent keys during self-healing', () => {
+    const migrated = migrate({
+      ...defaultSettings(),
+      terminalApp: 'ghostty',
+      codingAgent: 'claude',
+    });
+    expect('terminalApp' in migrated).toBe(false);
+    expect('codingAgent' in migrated).toBe(false);
   });
 });
 

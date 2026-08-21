@@ -1,193 +1,22 @@
 /**
  * The Smith IPC slice: native chat lifecycle and the approval gate. Chat sends
  * return immediately after marking a turn live; cloned transcript snapshots
- * continue over `smith-progress`. The terminal handoff handlers remain only
- * until the replacement cleanup lands.
+ * continue over `smith-progress`.
  */
 
-import { existsSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
-import {
-  CODING_AGENTS,
-  codingAgentFor,
-  type AgentDef,
-  type AppSettings,
-  type CodingAgentInfo,
-  type EnvelopeDef,
-  type PipelineDef,
-  type SmithLaunchInfo,
-  type SmithProposal,
-  type SmithProposalAnswer,
-  type SmithStartResult,
+import type {
+  AgentDef,
+  EnvelopeDef,
+  PipelineDef,
+  SmithProposal,
+  SmithProposalAnswer,
 } from '@shared/types.js';
 import { IPC, type SmithChatState, type SmithScreenContext } from '@shared/ipc-contract.js';
 import type { AppContext } from '../context.js';
-import { whichBinary } from '../system/env.js';
-import {
-  foundryCliPath,
-  smithAgentArgv,
-  smithBootstrap,
-  smithPrompt,
-  smithSkillDir,
-} from '../smith/launch.js';
-import { prepareSession } from '../smith/session.js';
-import {
-  openDirectoryInTerminal,
-  preferredTerminal,
-  runCommandInTerminal,
-  terminalInstalled,
-} from '../system/terminal.js';
 import type { Handle } from './shared.js';
 import { notifySettings } from './shared.js';
 
 type Ctx = Pick<AppContext, 'smith' | 'broadcast'>;
-
-/** What the launcher reads and what the terminal button acts on. */
-type LaunchCtx = Pick<AppContext, 'projects' | 'settings' | 'smith' | 'supportDir'>;
-
-export function registerLaunch(ctx: LaunchCtx, handle: Handle): void {
-  handle(IPC.smithLaunchInfo, (projectId: string): SmithLaunchInfo => launchInfo(ctx, projectId));
-
-  /**
-   * The sidebar's click. Answers `started` only when a session is genuinely up,
-   * so the renderer never has to guess whether to open the launcher.
-   */
-  handle(IPC.smithStart, async (projectId: string): Promise<SmithStartResult> => {
-    const info = launchInfo(ctx, projectId);
-    const project = projectId ? ctx.projects.get(projectId) : null;
-    if (!project || !info.project?.exists) {
-      return { status: 'needs-launcher', reason: 'project' };
-    }
-    if (!info.canAutoStart) {
-      return { status: 'needs-launcher', reason: info.autoStartBlocked };
-    }
-    try {
-      await startPreparedSession(ctx, info, project);
-      return { status: 'started' };
-    } catch (e) {
-      return { status: 'error', error: (e as Error).message };
-    }
-  });
-
-  handle(
-    IPC.smithOpenTerminal,
-    async (projectId: string): Promise<{ ok: boolean; error?: string }> => {
-      const project = projectId ? ctx.projects.get(projectId) : null;
-      if (!project) return { ok: false, error: 'Select a project first' };
-      const info = launchInfo(ctx, projectId);
-      try {
-        if (info.canAutoStart) {
-          await startPreparedSession(ctx, info, project);
-        } else {
-          await openDirectoryInTerminal(project.path, info.terminal.appName);
-        }
-        return { ok: true };
-      } catch (e) {
-        return { ok: false, error: (e as Error).message };
-      }
-    },
-  );
-}
-
-/**
- * Writes the session files and hands them to the terminal. Shared by both
- * launch channels so the sidebar's one-click path and the launcher's button
- * cannot drift into starting two different sessions.
- */
-async function startPreparedSession(
-  ctx: LaunchCtx,
-  info: SmithLaunchInfo,
-  project: { id: string; path: string },
-): Promise<void> {
-  const session = prepareSession({
-    sessionDir: join(ctx.supportDir, 'smith'),
-    cliPath: info.cliPath,
-    agentArgv: smithAgentArgv({
-      id: info.agent.id,
-      agentPath: agentCliPath(info.agent),
-      prompt: info.prompt,
-      skillDir: info.skillDir,
-    }),
-    projectPath: project.path,
-    socketPath: info.socketPath,
-    shell: loginShell(),
-    projectId: project.id,
-  });
-  await runCommandInTerminal({
-    appName: info.terminal.appName,
-    directoryPath: project.path,
-    command: ['/bin/sh', session.scriptPath],
-  });
-}
-
-/**
- * The agent CLI a prepared session starts.
- *
- * Settings names which catalogued harness to start; the binary itself is still
- * a PATH lookup. Foundry never stores a user-typed command line. A bare name
- * is not something a script with its own PATH can be trusted to resolve, so an
- * auto-start demands a real file and declines otherwise rather than opening a
- * window that fails on its first line.
- */
-function agentCliPath(agent: CodingAgentInfo): string {
-  return whichBinary(agent.binary) ?? agent.binary;
-}
-
-function agentCliInstalled(agent: CodingAgentInfo): boolean {
-  const path = agentCliPath(agent);
-  return isAbsolute(path) && existsSync(path);
-}
-
-function preferredCodingAgent(id: AppSettings['codingAgent']): CodingAgentInfo {
-  if (id) return codingAgentFor(id);
-  return CODING_AGENTS.find(agentCliInstalled) ?? CODING_AGENTS[0]!;
-}
-
-/** The shell the window is left in once the agent exits. */
-function loginShell(): string {
-  const shell = process.env.SHELL;
-  return shell && existsSync(shell) ? shell : '/bin/zsh';
-}
-
-/**
- * Resolved once per launcher open rather than cached: the app can be moved, the
- * terminal preference changed, and the project switched between opens.
- */
-function launchInfo(ctx: LaunchCtx, projectId: string): SmithLaunchInfo {
-  const project = projectId ? ctx.projects.get(projectId) : null;
-  const cliPath = foundryCliPath();
-  const skillDir = smithSkillDir();
-  const settings = ctx.settings.get();
-  const terminal = preferredTerminal(settings.terminalApp);
-  const agent = preferredCodingAgent(settings.codingAgent);
-  const installed = terminalInstalled(terminal.appName);
-  const terminalCapable = !!terminal.prepared && installed;
-  const hasAgent = agentCliInstalled(agent);
-  const projectReady = !!project && existsSync(project.path);
-  // The project's own problems are reported by the launcher's own notice, so
-  // they are not repeated as an auto-start blocker — only as a reason not to
-  // claim the session will start itself.
-  const blocked = !terminalCapable ? 'terminal' : !hasAgent ? 'agent-cli' : undefined;
-  return {
-    cliPath,
-    skillDir,
-    socketPath: ctx.smith.socket.path(),
-    bootstrap: smithBootstrap({ cliPath, projectId: project?.id }),
-    terminal: { ...terminal, installed },
-    agent,
-    canAutoStart: !blocked && projectReady,
-    autoStartBlocked: blocked,
-    prompt: smithPrompt({ skillDir, projectName: project?.name }),
-    project: project
-      ? {
-          id: project.id,
-          name: project.name,
-          path: project.path,
-          exists: existsSync(project.path),
-        }
-      : null,
-  };
-}
 
 export function register(ctx: Ctx, handle: Handle): void {
   handle(

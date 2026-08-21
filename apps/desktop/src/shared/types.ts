@@ -280,14 +280,6 @@ export interface AppSettings {
   compactionThreshold: number;
   notifications: { accepted: boolean; rejected: boolean; failed: boolean; needsInput: boolean };
   dockBadge: boolean;
-  /** Which terminal emulator "Open in terminal" hands a directory to. */
-  terminalApp: TerminalAppId | null;
-  /**
-   * Which coding-agent CLI Smith starts in that terminal. Settings stores the
-   * catalog `id`, never a binary name, so a hand-edited file cannot put an
-   * arbitrary string on the session command line.
-   */
-  codingAgent: CodingAgentId | null;
   retentionDays: number | null;
   onboarded: boolean;
   /**
@@ -504,22 +496,6 @@ export type ReadinessPhase =
   | 'skipped'
   | 'failed';
 
-export interface ReadinessAskQuestion {
-  index: number;
-  question: string;
-  options: string[];
-}
-
-export interface ReadinessPendingAsk {
-  askId: string;
-  questions: ReadinessAskQuestion[];
-}
-
-export interface ReadinessAskAnswer {
-  index: number;
-  answer: string;
-}
-
 /**
  * What kind of work one tool call in a live transcript was, so a panel can
  * icon it without knowing tool names. Deliberately coarse and shared by every
@@ -573,7 +549,6 @@ export interface ReadinessState extends PanelStateCore {
   markerValid: boolean;
   markerDetail: string;
   evaluation: ReadinessEvaluation | null;
-  pendingAsk: ReadinessPendingAsk | null;
   pr: ReadinessPr | null;
   mergeDetail: string;
   skipDetail: string;
@@ -856,79 +831,13 @@ export interface ValidationIssue {
   message: string;
 }
 
-// ── Terminals ────────────────────────────────────────────────────────────────
-
-/** The terminal emulators Foundry can hand a directory to. */
-export type TerminalAppId = 'terminal' | 'iterm' | 'ghostty' | 'warp' | 'alacritty' | 'kitty';
-
-export interface TerminalAppInfo {
-  id: TerminalAppId;
-  label: string;
-  /**
-   * The macOS application name `open -a` resolves. Settings stores the `id`, not
-   * this, so the value handed to `open` is always one of ours — never a string a
-   * user typed.
-   */
-  appName: string;
-  /**
-   * Whether Foundry can start the session itself rather than only opening a
-   * directory at it. That needs an emulator which runs a command given on its
-   * own command line — on macOS, Ghostty's documented `open -na Ghostty.app
-   * --args -e <command>`. The others take a directory and nothing else, so they
-   * keep the copyable handoff.
-   */
-  prepared?: true;
-}
-
-/** Terminal.app first: it is the only one guaranteed to be installed. */
-export const TERMINAL_APPS: readonly TerminalAppInfo[] = [
-  { id: 'terminal', label: 'Terminal', appName: 'Terminal' },
-  { id: 'iterm', label: 'iTerm2', appName: 'iTerm' },
-  { id: 'ghostty', label: 'Ghostty', appName: 'Ghostty', prepared: true },
-  { id: 'warp', label: 'Warp', appName: 'Warp' },
-  { id: 'alacritty', label: 'Alacritty', appName: 'Alacritty' },
-  { id: 'kitty', label: 'kitty', appName: 'kitty' },
-] as const;
-
-// ── Coding agents (Smith's prepared-session CLI) ─────────────────────────────
+// ── Smith (the entity-smith's approval gate) ─────────────────────────────────
 
 /**
- * The coding-agent CLIs Foundry can start in a prepared Smith session.
- *
- * Settings stores the `id`. The binary name is looked up on PATH at launch, so
- * a hand-edited settings file cannot put an arbitrary string on the command
- * line — the same lock `terminalApp` has for `open -a`.
- */
-export type CodingAgentId = 'droid' | 'claude' | 'codex' | 'opencode' | 'pi';
-
-export interface CodingAgentInfo {
-  id: CodingAgentId;
-  label: string;
-  /** The PATH name `whichBinary()` looks up. Never stored in settings. */
-  binary: string;
-}
-
-/** Droid first: it is what existing Smith sessions already start. */
-export const CODING_AGENTS: readonly CodingAgentInfo[] = [
-  { id: 'droid', label: 'Droid', binary: 'droid' },
-  { id: 'claude', label: 'Claude Code', binary: 'claude' },
-  { id: 'codex', label: 'Codex', binary: 'codex' },
-  { id: 'opencode', label: 'OpenCode', binary: 'opencode' },
-  { id: 'pi', label: 'Pi', binary: 'pi' },
-] as const;
-
-/** The chosen agent, falling back to Droid for an id we no longer know. */
-export function codingAgentFor(id: CodingAgentId): CodingAgentInfo {
-  return CODING_AGENTS.find((agent) => agent.id === id) ?? CODING_AGENTS[0]!;
-}
-
-// ── Smith (the entity-smith skill's approval gate) ───────────────────────────
-
-/**
- * What Smith proposes writing through the helper CLI. One entity, staged for a
- * human to approve before the store is touched. `spec` is the entity JSON as the
- * store would save it (an `AgentDef`, `PipelineDef`, or `EnvelopeDef`), carried
- * as `unknown` because the card only needs to render and forward it.
+ * What Smith proposes writing through its entity tools. One entity, staged for
+ * a human to approve before the store is touched. `spec` is the entity JSON as
+ * the store would save it (an `AgentDef`, `PipelineDef`, or `EnvelopeDef`),
+ * carried as `unknown` because the card only needs to render and forward it.
  */
 export interface SmithProposal {
   id: string;
@@ -948,60 +857,14 @@ export interface SmithProposal {
 }
 
 /**
- * The answer a human gives a proposal card. The card sends no `note`: the agent
- * is sitting in the user's own terminal, so revision guidance is simply the next
- * thing they type there. `note` survives for the shutdown path, which explains
- * itself to a CLI it is unblocking.
+ * The answer a human gives a proposal card. The card sends no `note`: the next
+ * chat message is the revision guidance. `note` survives for the shutdown path,
+ * which explains itself to a tool call it is unblocking.
  */
 export interface SmithProposalAnswer {
   approved: boolean;
   note?: string;
 }
-
-/**
- * Everything the renderer needs to hand a Smith session off to the user's own
- * terminal. Resolved in main because only main knows where the app is installed,
- * where the skill shipped, and which terminal the settings chose.
- */
-export interface SmithLaunchInfo {
-  /** Absolute path to the helper binary. Invoke it as `node <cliPath>`. */
-  cliPath: string;
-  /** Absolute path to the skill directory shipped inside the app bundle. */
-  skillDir: string;
-  /** The unix socket the CLI connects to, for the troubleshooting case. */
-  socketPath: string;
-  /** A shell block that aliases `foundry-cli` and exports the project scope. */
-  bootstrap: string;
-  /** The terminal the launch button will use, and whether it is actually installed. */
-  terminal: TerminalAppInfo & { installed: boolean };
-  /** The coding-agent CLI the prepared session starts. */
-  agent: CodingAgentInfo;
-  /**
-   * True when this launch will start the agent itself: the chosen terminal
-   * supports being handed a command, and the agent CLI resolved to a real file.
-   * False falls back to opening the directory and letting the user paste.
-   */
-  canAutoStart: boolean;
-  /** Why an auto-start is unavailable, for the launcher to say so plainly. */
-  autoStartBlocked?: 'terminal' | 'agent-cli';
-  /** The opening instruction the agent is started with, shown before it is sent. */
-  prompt: string;
-  /** The project the session would scope to; null means no project is selected. */
-  project: { id: string; name: string; path: string; exists: boolean } | null;
-}
-
-/**
- * What the sidebar's Smith click did.
- *
- * `started` is the whole point of the prepared path: there is nothing to show,
- * because the session is already up in the user's terminal. Every other outcome
- * carries the reason the launcher has to open — so the modal is the exception,
- * not a toll booth in front of the common case.
- */
-export type SmithStartResult =
-  | { status: 'started' }
-  | { status: 'needs-launcher'; reason: SmithLaunchInfo['autoStartBlocked'] | 'project' }
-  | { status: 'error'; error: string };
 
 // ── Updater ──────────────────────────────────────────────────────────────────
 

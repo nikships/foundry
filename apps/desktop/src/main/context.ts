@@ -96,7 +96,6 @@ export class AppContext {
     );
     const smithReadinessObservers = new Map<string, (state: ReadinessState) => void>();
     this.readiness = new ReadinessSessions(this.oneShot, (state) => {
-      this.broadcast(IPC.eventReadinessProgress, state);
       smithReadinessObservers.get(state.projectId)?.(state);
     });
 
@@ -142,18 +141,15 @@ export class AppContext {
       onStateChanged: () => this.broadcast(IPC.eventCompanionChanged),
     });
 
-    // The old socket remains until the replacement cleanup lands. Native chats
-    // open lazily per project and share the same proposal queue, so both paths
-    // preserve the one-card-at-a-time approval invariant during the transition.
+    // Native chats open lazily per project and share one proposal queue, so
+    // every path preserves the one-card-at-a-time approval invariant.
     this.smith = new SmithService({
-      supportDir,
       broadcast: (channel, payload) => this.broadcast(channel, payload),
       channels: { proposalsChanged: IPC.eventSmithProposalsChanged },
       // The queue awaits a save; store access lives in the IPC layer, so the
       // handler is threaded through here rather than importing a store into the
       // queue.
       save: (proposal) => saveProposal(this, proposal),
-      socketCtx: this,
       createChat: (projectId, proposals) => {
         const project = this.projects.get(projectId);
         if (!project) return null;

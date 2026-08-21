@@ -29,13 +29,10 @@ import type {
   PrMergeMethod,
   ProjectDef,
   PullRequest,
-  ReadinessAskAnswer,
   ReadinessInspectResult,
   ReadinessState,
   ReasoningEffort,
   RunRow,
-  SmithLaunchInfo,
-  SmithStartResult,
   SmithProposal,
   SmithProposalAnswer,
   StartRunInput,
@@ -403,7 +400,7 @@ export interface FoundryApi {
     inspect(projectId: string): Promise<ReadinessInspectResult | null>;
     /**
      * Starts the dedicated evaluation. Returns as soon as the session exists;
-     * progress arrives on `readiness-progress`.
+     * Smith's readiness tools stream the progress into the chat.
      */
     evaluate(
       projectId: string,
@@ -415,7 +412,6 @@ export interface FoundryApi {
     skip(projectId: string): Promise<ReadinessState | null>;
     retry(projectId: string): Promise<{ sessionId: string } | { error: string }>;
     confirmMerge(projectId: string): Promise<ReadinessState | null>;
-    answerAsk(projectId: string, answers: ReadinessAskAnswer[]): Promise<boolean>;
     dismiss(projectId: string): Promise<boolean>;
   };
   roster: {
@@ -583,19 +579,6 @@ export interface FoundryApi {
     newChat(projectId: string): Promise<SmithChatState | null>;
     state(projectId: string): Promise<SmithChatState | null>;
     setModel(projectId: string, model: string): Promise<SmithChatState | null>;
-    /**
-     * Everything needed to start a session in the user's own terminal: resolved
-     * CLI and skill paths, the bootstrap line, and the chosen terminal.
-     */
-    launchInfo(projectId: string): Promise<SmithLaunchInfo>;
-    /**
-     * The sidebar's Smith click. Starts the session outright when the preferred
-     * terminal can be handed one, and otherwise reports that the launcher has to
-     * take over. One call so the common path costs no modal.
-     */
-    start(projectId: string): Promise<SmithStartResult>;
-    /** Opens the project directory in the preferred terminal. */
-    openTerminal(projectId: string): Promise<{ ok: boolean; error?: string }>;
     /** The one pending proposal, or an empty list. Only ever one at a time. */
     proposalsList(): Promise<SmithProposal[]>;
     /** Approve or reject the pending proposal, unblocking Smith's tool call. */
@@ -645,7 +628,6 @@ export interface FoundryApi {
    * `detection-progress` is pushed rather than polled because a detection is
    * not a run: it has no trace rows and therefore no `change_id` cursor to walk.
    * `setup-progress` is the same shape for the worktree bootstrap generator.
-   * `readiness-progress` is the same shape for the Agent Readiness Check.
    */
   on(
     channel:
@@ -657,7 +639,6 @@ export interface FoundryApi {
       | 'setup-progress'
       | 'smith-proposals-changed'
       | 'smith-progress'
-      | 'readiness-progress'
       // A login completes in a browser, minutes after the call that started it
       // returned. Nothing polls the auth directory, so this is how a Settings
       // pane learns the account landed.
@@ -706,7 +687,6 @@ export const IPC = {
   readinessSkip: 'readiness:skip',
   readinessRetry: 'readiness:retry',
   readinessConfirmMerge: 'readiness:confirmMerge',
-  readinessAnswerAsk: 'readiness:answerAsk',
   readinessDismiss: 'readiness:dismiss',
   rosterList: 'roster:list',
   rosterStaleBuiltins: 'roster:staleBuiltins',
@@ -771,9 +751,6 @@ export const IPC = {
   smithNewChat: 'smith:newChat',
   smithState: 'smith:state',
   smithSetModel: 'smith:setModel',
-  smithLaunchInfo: 'smith:launchInfo',
-  smithStart: 'smith:start',
-  smithOpenTerminal: 'smith:openTerminal',
   smithProposalsList: 'smith:proposalsList',
   smithAnswerProposal: 'smith:answerProposal',
   companionState: 'companion:state',
@@ -803,7 +780,6 @@ export const IPC = {
   eventSetupProgress: 'event:setup-progress',
   eventSmithProposalsChanged: 'event:smith-proposals-changed',
   eventSmithProgress: 'event:smith-progress',
-  eventReadinessProgress: 'event:readiness-progress',
   eventBridgeChanged: 'event:bridge-changed',
   eventCompanionChanged: 'event:companion-changed',
 } as const;

@@ -1,37 +1,30 @@
 /**
- * The Smith service: the proposal queue and the socket transport, wired together
- * and owned by `AppContext`. One instance per app, started at boot.
+ * The Smith service: the proposal queue and the native chat sessions, wired
+ * together and owned by `AppContext`. One instance per app.
  *
- * Smith itself does not live here. It is a skill (`skills/foundry-smith/`) that
- * any agent can load in the user's own terminal; the app's only job is to be
- * listening, to validate what that agent proposes, and to hold every write
- * behind a human's Approve. Nothing in this service spawns a process.
+ * Smith is Foundry's entity-smith, running as an in-process chat on the
+ * bundled pi runtime. The service validates what that agent proposes and
+ * holds every write behind a human's Approve.
  */
 
-import { join } from 'node:path';
 import type { SmithProposal } from '@shared/types.js';
 import type { SmithChatSession } from './chat-session.js';
 import { ProposalQueue } from './proposals.js';
-import { SmithSocketServer } from './socket-server.js';
 
 /** Everything the Smith service needs from the wider app, kept to a narrow seam. */
 export interface SmithServiceDeps {
-  supportDir: string;
   /** Broadcasts a channel + payload to every window. */
   broadcast: (channel: string, payload?: unknown) => void;
   /** Channel name, passed in so this module does not import the contract twice. */
   channels: { proposalsChanged: string };
   /** Persists an approved proposal; supplied by the IPC layer (store access). */
   save: (proposal: SmithProposal) => { ok: true; entity: unknown } | { ok: false; error: string };
-  /** Everything the socket server needs to answer and validate. */
-  socketCtx: ConstructorParameters<typeof SmithSocketServer>[1];
   /** Opens one native chat lazily for a project that still exists. */
   createChat: (projectId: string, proposals: ProposalQueue) => SmithChatSession | null;
 }
 
 export class SmithService {
   readonly proposals: ProposalQueue;
-  readonly socket: SmithSocketServer;
   private readonly chats = new Map<string, SmithChatSession>();
 
   constructor(private readonly deps: SmithServiceDeps) {
@@ -42,13 +35,6 @@ export class SmithService {
       // promise to satisfy the async handler contract.
       (proposal) => Promise.resolve(deps.save(proposal)),
     );
-
-    const socketPath = join(deps.supportDir, 'smith', 'foundry.sock');
-    this.socket = new SmithSocketServer(socketPath, deps.socketCtx, this.proposals);
-  }
-
-  start(): void {
-    this.socket.start();
   }
 
   /** One persistent native conversation per project, opened only on demand. */
@@ -64,6 +50,5 @@ export class SmithService {
     for (const chat of this.chats.values()) void chat.dispose();
     this.chats.clear();
     this.proposals.cancelAll();
-    this.socket.stop();
   }
 }

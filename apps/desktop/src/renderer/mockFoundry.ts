@@ -174,8 +174,6 @@ function defaultMockSettings(): AppSettings {
     compactionThreshold: 0.8,
     notifications: { accepted: true, rejected: true, failed: true, needsInput: true },
     dockBadge: true,
-    terminalApp: null,
-    codingAgent: null,
     retentionDays: null,
     onboarded: true,
     hiddenModelIds: [],
@@ -328,7 +326,6 @@ export function createMockFoundryApi(): FoundryApi {
       skip: async () => null,
       retry: async () => ({ error: 'no agent CLI in the web preview' }),
       confirmMerge: async () => null,
-      answerAsk: async () => false,
       dismiss: async () => false,
     },
     roster: {
@@ -715,27 +712,6 @@ export function createMockFoundryApi(): FoundryApi {
         emitSmith();
         return smithSnapshot();
       },
-      // The web preview has no app socket and no way to open a terminal, so the
-      // launcher renders with empty paths and nothing can ever propose.
-      launchInfo: async () => ({
-        cliPath: '',
-        skillDir: '',
-        socketPath: '',
-        bootstrap: '',
-        terminal: {
-          id: 'terminal' as const,
-          label: 'Terminal',
-          appName: 'Terminal',
-          installed: false,
-        },
-        agent: { id: 'droid' as const, label: 'Droid', binary: 'droid' },
-        canAutoStart: false,
-        autoStartBlocked: 'terminal' as const,
-        prompt: '',
-        project: null,
-      }),
-      start: async () => ({ status: 'needs-launcher' as const, reason: 'terminal' as const }),
-      openTerminal: async () => ({ ok: false, error: 'Smith needs the desktop app.' }),
       proposalsList: async () => [],
       answerProposal: async () => false,
     },

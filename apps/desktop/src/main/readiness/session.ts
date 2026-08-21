@@ -9,7 +9,6 @@
 import type {
   AppSettings,
   ProjectDef,
-  ReadinessAskAnswer,
   ReadinessEntry,
   ReadinessEvaluation,
   ReadinessPhase,
@@ -19,7 +18,6 @@ import type {
 import type { PrAction } from '@shared/ipc-contract.js';
 import { currentBranch, fastForwardBase, preferredRemote } from '../engine/git.js';
 import { PanelSession, shortId } from '../session/panel-session.js';
-import { answersComplete, answersFromUser, parkAskUser } from './ask-user.js';
 import { evaluateRepo } from './evaluate.js';
 import { ensureMarkerIgnored } from './ignore.js';
 import {
@@ -54,7 +52,6 @@ export interface ReadinessRemediator {
     onEntry: (entry: Omit<ReadinessEntry, 'id' | 'at'>) => ReadinessEntry;
     /** Re-emit after an in-place patch (text delta, tool result). */
     flush: () => void;
-    onAskUser: (params: Record<string, unknown>) => Promise<ReadinessAskAnswer[]>;
     signal: { cancelled: boolean };
   }): Promise<{ ok: boolean; detail: string }>;
 }
@@ -86,10 +83,6 @@ export class ReadinessSession {
   private worktree: ReadinessWorktree | null = null;
   private busy = false;
   private remediateAttempt = 0;
-  private askWaiter: {
-    resolve: (answers: ReadinessAskAnswer[]) => void;
-    reject: (error: Error) => void;
-  } | null = null;
   private pollRunning = false;
 
   constructor(private readonly deps: ReadinessSessionDeps) {
@@ -106,7 +99,6 @@ export class ReadinessSession {
         markerDetail: '',
         evaluation: null,
         entries: [],
-        pendingAsk: null,
         pr: null,
         mergeDetail: '',
         skipDetail: '',
@@ -342,7 +334,6 @@ export class ReadinessSession {
           priorSummary: this.priorSummary(),
           onEntry: (entry) => this.push(entry),
           flush: () => this.flush(),
-          onAskUser: (params) => this.waitForAsk(params),
           signal: this.cancelSignal,
         });
         if (!result.ok || this.cancelSignal.cancelled) {
@@ -555,7 +546,6 @@ export class ReadinessSession {
   skip(): ReadinessState {
     this.cancelSignal.cancelled = true;
     this.panel.noteCancelled();
-    this.failAsk('skipped');
     this.persist({ readinessSkipped: true });
     this.state.skipDetail =
       'The Agent Readiness process can be run again anytime from project settings.';
@@ -587,27 +577,9 @@ export class ReadinessSession {
     return this.evaluate();
   }
 
-  answerAsk(answers: ReadinessAskAnswer[]): boolean {
-    const pending = this.state.pendingAsk;
-    if (!pending || !this.askWaiter) return false;
-    if (!answersComplete(pending.questions, answers)) return false;
-    const waiter = this.askWaiter;
-    this.askWaiter = null;
-    this.state.pendingAsk = null;
-    this.emit();
-    waiter.resolve(
-      answersFromUser(pending.questions, answers).map((a) => ({
-        index: a.index,
-        answer: a.answer,
-      })),
-    );
-    return true;
-  }
-
   cancel(): void {
     if (this.panel.isTerminal()) return;
     this.cancelSignal.cancelled = true;
-    this.failAsk('cancelled');
     if (this.worktree) {
       // Abort the in-flight turn but keep the branch. makeReady parks when
       // the remediator returns; if nothing is running, park now.
@@ -623,26 +595,6 @@ export class ReadinessSession {
     if (this.state.phase === 'complete' && this.state.markerValid) {
       this.persist({ readinessValidated: true, readinessSkipped: false });
     }
-  }
-
-  private async waitForAsk(params: Record<string, unknown>): Promise<ReadinessAskAnswer[]> {
-    const pending = parkAskUser(params);
-    this.state.pendingAsk = pending;
-    this.push({
-      kind: 'note',
-      text: pending.questions[0]?.question || 'The agent has a question.',
-    });
-    this.emit();
-    return new Promise<ReadinessAskAnswer[]>((resolve, reject) => {
-      this.askWaiter = { resolve, reject };
-    });
-  }
-
-  private failAsk(reason: string): void {
-    if (!this.askWaiter) return;
-    this.askWaiter.reject(new Error(reason));
-    this.askWaiter = null;
-    this.state.pendingAsk = null;
   }
 
   private priorSummary(): string {
@@ -683,15 +635,6 @@ function cloneReadinessState(state: ReadinessState): ReadinessState {
         }
       : null,
     marker: state.marker ? { ...state.marker } : null,
-    pendingAsk: state.pendingAsk
-      ? {
-          ...state.pendingAsk,
-          questions: state.pendingAsk.questions.map((q) => ({
-            ...q,
-            options: [...q.options],
-          })),
-        }
-      : null,
     pr: state.pr ? { ...state.pr } : null,
   };
 }

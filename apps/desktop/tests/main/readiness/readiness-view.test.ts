@@ -54,7 +54,6 @@ function state(over: Partial<ReadinessState> = {}): ReadinessState {
     markerDetail: '',
     evaluation: null,
     entries: [],
-    pendingAsk: null,
     pr: null,
     mergeDetail: '',
     skipDetail: '',

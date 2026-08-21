@@ -1,18 +1,18 @@
 /**
- * The proposal queue. A `foundry-cli create|edit` blocks the calling agent
+ * The proposal queue. A `smith_propose` tool call blocks the calling agent
  * until a human decides, so exactly one proposal may be pending at a time:
  * concurrent writes fail fast rather than stacking a queue the user cannot see.
  *
- * The queue owns the blocking promise. The socket server enqueues and awaits;
+ * The queue owns the blocking promise. The entity tool enqueues and awaits;
  * the renderer's Approve/Reject answers through `answer`, which resolves that
- * promise and lets the CLI exit. This mirrors the engineer-interrupt pattern in
+ * promise and unblocks the tool. This mirrors the engineer-interrupt pattern in
  * `engine/registry.ts`, kept separate because a proposal is not a run event.
  */
 
 import { randomUUID } from 'node:crypto';
 import type { SmithProposal, ValidationIssue } from '@shared/types.js';
 
-/** What the socket server hands the queue; the queue assigns id and timestamp. */
+/** What the entity tool hands the queue; the queue assigns id and timestamp. */
 export interface ProposalInput {
   kind: SmithProposal['kind'];
   mode: SmithProposal['mode'];
@@ -24,8 +24,8 @@ export interface ProposalInput {
 }
 
 /**
- * The outcome the CLI receives. `approve` carries the saved entity so the CLI
- * can print it; `reject` carries the human's note so the agent can revise.
+ * The outcome the blocked tool call receives. `approve` carries the saved
+ * entity so the agent can read it; `reject` carries the optional note.
  */
 export type ProposalOutcome =
   { approved: true; entity: unknown } | { approved: false; note?: string };
@@ -33,7 +33,7 @@ export type ProposalOutcome =
 /**
  * How a proposal is settled once a human answers. The queue does not know how
  * to save — the caller (the smith IPC router) does the store write and reports
- * back the persisted entity or an error, and the queue relays it to the CLI.
+ * back the persisted entity or an error, and the queue relays it to the tool.
  */
 export type SaveHandler = (
   proposal: SmithProposal,
@@ -61,8 +61,8 @@ export class ProposalQueue {
 
   /**
    * Stages a proposal and blocks until it is answered. Rejects immediately with
-   * `proposal_pending` when one is already outstanding — the CLI turns that into
-   * a JSON error the agent can wait on and retry.
+   * `proposal_pending` when one is already outstanding — the tool turns that
+   * into a JSON error the agent can wait on and retry.
    */
   propose(input: ProposalInput): Promise<ProposalOutcome> {
     if (this.pending) return Promise.reject(new Error('proposal_pending'));
@@ -87,7 +87,7 @@ export class ProposalQueue {
    * Settles the pending proposal. On approve, the save handler runs first; a
    * failed save leaves the proposal pending and returns false so the card can
    * show the error rather than silently dismissing. On reject, the note travels
-   * back to the CLI.
+   * back to the blocked tool call.
    */
   async answer(id: string, decision: { approved: boolean; note?: string }): Promise<boolean> {
     const entry = this.pending;
@@ -113,8 +113,8 @@ export class ProposalQueue {
   }
 
   /**
-   * Fails any pending proposal so a waiting CLI unblocks on shutdown rather than
-   * hanging until its socket dies.
+   * Fails any pending proposal so a blocked tool call unblocks on shutdown
+   * rather than hanging forever.
    */
   cancelAll(): void {
     if (!this.pending) return;

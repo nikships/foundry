@@ -7,11 +7,6 @@ import type { ReadinessEntry } from '../../../src/shared/types.js';
 import { defaultProject } from '../../../src/main/store/projects.js';
 import { ProjectStore } from '../../../src/main/store/projects.js';
 import { defaultSettings } from '../../../src/main/store/settings.js';
-import {
-  answersComplete,
-  answersFromUser,
-  parkAskUser,
-} from '../../../src/main/readiness/ask-user.js';
 import { evaluateRepo } from '../../../src/main/readiness/evaluate.js';
 import { readMarker } from '../../../src/main/readiness/marker.js';
 import { mergeCheckFromView, pollPrMerged } from '../../../src/main/readiness/merge.js';
@@ -811,22 +806,10 @@ describe('make it ready, merge polling, and failed confirmation', () => {
   });
 });
 
-describe('readiness AskUser does not weaken pipeline zero-interrupt', () => {
-  it('parks questions instead of picking the first option', () => {
-    const pending = parkAskUser({
-      questions: [{ index: 0, question: 'which CI?', options: ['github', 'gitlab'] }],
-    });
-    expect(pending.questions[0]?.options[0]).toBe('github');
-    expect(answersComplete(pending.questions, [])).toBe(false);
-    const mapped = answersFromUser(pending.questions, [{ index: 0, answer: 'gitlab' }]);
-    expect(mapped[0]?.answer).toBe('gitlab');
-  });
-
-  it('denies an asking tool in a pipeline run rather than parking it', () => {
-    // Readiness parks a question because a human is watching it. A pipeline run
-    // has nobody to answer, and the policy has no "wait" outcome, so an
-    // interactive tool is unrecognised and fails closed — the parking above
-    // must never become the pipeline's path.
+describe('pipeline zero-interrupt policy', () => {
+  it('denies an asking tool in a pipeline run rather than waiting on it', () => {
+    // A pipeline run has nobody to answer, and the policy has no "wait"
+    // outcome, so an interactive tool is unrecognised and fails closed.
     const outcome = evaluate(
       {
         tool: 'ask_user',
@@ -837,47 +820,6 @@ describe('readiness AskUser does not weaken pipeline zero-interrupt', () => {
       { worktree: '/repo', writes: null, protectedPaths: [] },
     );
     expect(outcome.decision.outcome).toBe('deny');
-  });
-
-  it('surfaces a parked ask on the session and resumes only after a real answer', async () => {
-    const repo = gitRepo('foundry-ready-ask-');
-    let asked = false;
-    const remediator: ReadinessRemediator = {
-      async run(job) {
-        asked = true;
-        const answers = await job.onAskUser({
-          questions: [{ index: 0, question: 'Coverage floor?', options: ['70', '90'] }],
-        });
-        expect(answers[0]?.answer).toBe('70');
-        seedReadyFiles(job.cwd);
-        return { ok: true, detail: 'fixed' };
-      },
-    };
-    const { session } = sessionFor(repo, {
-      remediator,
-      openPr: async () => ({
-        ok: true,
-        detail: 'opened',
-        number: 8,
-        url: 'https://github.com/acme/widgets/pull/8',
-      }),
-      viewPrMerge: async () => ({
-        number: 8,
-        url: 'https://github.com/acme/widgets/pull/8',
-        merged: false,
-        state: 'OPEN',
-      }),
-    });
-    await session.inspect();
-    await session.evaluate();
-    const running = session.makeReady();
-    await viWaitFor(() => session.snapshot().pendingAsk !== null);
-    expect(session.snapshot().pendingAsk?.questions[0]?.question).toMatch(/Coverage/);
-    expect(session.answerAsk([])).toBe(false);
-    expect(session.answerAsk([{ index: 0, answer: '70' }])).toBe(true);
-    await running;
-    expect(asked).toBe(true);
-    expect(session.snapshot().phase).toBe('awaiting_merge');
   });
 });
 
@@ -934,7 +876,6 @@ describe('readiness remediator streams mid-turn work', () => {
         return full;
       },
       flush: () => {},
-      onAskUser: async () => [],
       signal,
     });
     return { result, entries, oneShots, dir };
@@ -999,11 +940,3 @@ describe('readiness remediator streams mid-turn work', () => {
     expect(result.detail).toContain('no model is available');
   });
 });
-
-async function viWaitFor(check: () => boolean, timeoutMs = 2_000): Promise<void> {
-  const start = Date.now();
-  while (!check()) {
-    if (Date.now() - start > timeoutMs) throw new Error('timed out waiting for readiness ask');
-    await new Promise((r) => setTimeout(r, 10));
-  }
-}
