@@ -267,6 +267,11 @@ export interface AppSettings {
   prAgent: string;
   defaultModel: string;
   defaultReasoningEffort: ReasoningEffort;
+  /**
+   * Model Smith's in-app chat runs on, as a `provider/model` id. `inherit`
+   * follows this install's default.
+   */
+  smithModel: string;
   turnTimeoutMs: number;
   /**
    * How full an agent's context may get before the engine compacts it between

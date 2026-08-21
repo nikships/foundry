@@ -88,6 +88,36 @@ describe('helper defaults', () => {
   });
 });
 
+describe('smithModel', () => {
+  it('defaults to inherit on a fresh install', () => {
+    expect(defaultSettings().smithModel).toBe('inherit');
+  });
+
+  it('reads inherit when the field is missing', () => {
+    const stored = { ...defaultSettings() } as Record<string, unknown>;
+    delete stored.smithModel;
+    expect(migrate(stored).smithModel).toBe('inherit');
+    expect(seed(stored).get().smithModel).toBe('inherit');
+  });
+
+  it('repairs a stored garbage value back to inherit', () => {
+    expect(migrate({ ...defaultSettings(), smithModel: '' }).smithModel).toBe('inherit');
+    expect(migrate({ ...defaultSettings(), smithModel: 12 as never }).smithModel).toBe('inherit');
+  });
+
+  it('persists an opaque provider/model id via patch', () => {
+    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
+    expect(store.patch({ smithModel: 'bridge-claude/claude-opus-5' })).toMatchObject({ ok: true });
+    expect(store.get().smithModel).toBe('bridge-claude/claude-opus-5');
+  });
+
+  it('refuses an empty model rather than storing it', () => {
+    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
+    expect(store.patch({ smithModel: '' }).ok).toBe(false);
+    expect(store.get().smithModel).toBe('inherit');
+  });
+});
+
 describe('turn timeout default', () => {
   it('gives agent turns thirty minutes on a fresh install', () => {
     expect(defaultSettings().turnTimeoutMs).toBe(30 * 60_000);

@@ -28,6 +28,7 @@ export const appSettingsSchema = z.object({
     ),
   defaultModel: z.string().min(1),
   defaultReasoningEffort: z.enum(['off', 'low', 'medium', 'high', 'xhigh', 'max']),
+  smithModel: z.string().min(1),
   turnTimeoutMs: z.number().int().min(300_000).max(3_600_000),
   compactionThreshold: z.number().min(COMPACTION_BAND[0]).max(COMPACTION_BAND[1]),
   notifications: z.object({
@@ -52,6 +53,7 @@ export function defaultSettings(): AppSettings {
     prAgent: DEFAULT_PR_AGENT,
     defaultModel: 'inherit',
     defaultReasoningEffort: 'medium',
+    smithModel: 'inherit',
     turnTimeoutMs: 30 * 60_000,
     compactionThreshold: 0.8,
     notifications: { accepted: true, rejected: true, failed: true, needsInput: true },
@@ -94,6 +96,9 @@ export function migrate(raw: unknown): AppSettings {
       merged.helperReasoningEffort = effort as AppSettings['helperReasoningEffort'];
   }
   if (!merged.helperModel) merged.helperModel = base.helperModel;
+  if (typeof merged.smithModel !== 'string' || !merged.smithModel) {
+    merged.smithModel = base.smithModel;
+  }
   if (typeof merged.prAgent !== 'string' || !/^[a-z][a-z0-9_-]*$/.test(merged.prAgent)) {
     merged.prAgent = DEFAULT_PR_AGENT;
   }
