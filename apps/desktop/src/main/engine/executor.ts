@@ -44,6 +44,7 @@ import { recordLanding } from './settle.js';
 import type { Envelope } from './envelopes.js';
 import type { CommandDriftRecord } from './detect.js';
 import { runCommand } from './commands.js';
+import { PromptLedger } from './prompt-ledger.js';
 import { createIssue, openPr, type GhOptions } from '../system/gh.js';
 import type { IssueAction, PrAction } from '@shared/ipc-contract.js';
 import { effectivePhaseEnvelope, resolveAgentExecution } from '@shared/types.js';
@@ -116,6 +117,13 @@ export class Executor {
   private readonly phaseIds = new Map<string, string>();
   private readonly feedback = new Map<string, string>();
   private readonly commandDrift = new Map<string, CommandDriftRecord>();
+  /**
+   * Which phase prompts each live session still holds, so a feedback re-entry
+   * can send a delta. Lives here rather than in the runner because only the
+   * executor sees the events that drop a prompt from a session's context:
+   * compaction, close, and replacement in `sessionFor`.
+   */
+  private readonly prompts = new PromptLedger();
   private setupExecution: SetupExecution | null = null;
   private cancelled = false;
   /**
@@ -139,6 +147,7 @@ export class Executor {
         rewindAfterCorrections: deps.rewindAfterCorrections,
         sessionFor: (agent, modelOverride) => this.sessionFor(agent, modelOverride),
         setupExecution: () => this.currentSetupExecution(),
+        prompts: this.prompts,
         onLiveText: deps.onLiveText,
       }),
       code: new CodePhaseRunner(),
@@ -520,7 +529,13 @@ export class Executor {
     if (existing?.model === model && existing.reasoningEffort === resolved.reasoningEffort) {
       return existing;
     }
-    if (existing) await existing.close();
+    if (existing) {
+      // The successor is a different session object, so it misses the ledger on
+      // identity alone; dropping the old entries keeps that from being the only
+      // thing standing between a replaced session and a wrong delta.
+      this.prompts.forget(existing);
+      await existing.close();
+    }
 
     const effectiveAgent = {
       ...agent,
@@ -582,6 +597,10 @@ export class Executor {
       const stats = await session.contextStats();
       if (!stats?.limit) continue;
       if (stats.used / stats.limit < effective) continue;
+      // A summarised conversation may no longer carry an earlier phase's
+      // prompt verbatim, and a compaction that refused still consumed the
+      // decision — forget either way and let the next entry render in full.
+      this.prompts.forget(session);
       await session.compact(stats);
     }
   }
@@ -594,6 +613,7 @@ export class Executor {
   private async closeSessions(): Promise<void> {
     for (const session of this.sessions.values()) {
       try {
+        this.prompts.forget(session);
         await session.close();
       } catch {
         // A session that will not close cleanly must not block the outcome.

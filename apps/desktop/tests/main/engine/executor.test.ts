@@ -949,6 +949,256 @@ describe('the repair loop', () => {
   });
 });
 
+/**
+ * A `feedbackTo` jump re-enters a phase whose live session already holds that
+ * phase's rendered prompt, so the re-entry may be a short delta. It may be a
+ * delta only while that is still true: after a rewind, a compaction, or a
+ * session replacement the prompt has to be rendered again in full. A wrong
+ * delta is a correctness bug; a needless full prompt only costs tokens.
+ */
+describe('feedback re-entry into an already-prompted phase', () => {
+  function installCheck(body: string): void {
+    writeFileSync(join(h.repo, 'check.sh'), body);
+    chmodSync(join(h.repo, 'check.sh'), 0o755);
+    sh(h.repo, ['git', 'add', '-A']);
+    sh(h.repo, ['git', 'commit', '-qm', 'add check']);
+  }
+
+  /** Fails until the builder writes fix.txt, then hands the failure to `build`. */
+  function repairPipeline(phases: PhaseDef[] = []): PipelineDef {
+    return pipe(
+      [
+        agentPhase('build', { description: 'Implement the change the request asks for.' }),
+        ...phases,
+        codePhase(
+          'test',
+          { ref: 'test' },
+          {
+            description: 'Run the project check and hand any failure back to the builder.',
+            feedbackTo: 'build',
+            feedbackRetries: 2,
+          },
+        ),
+      ],
+      {
+        description: 'build, test, repair',
+        acceptance: { kind: 'phase_flag', phase: 'test', flag: 'passed' },
+      },
+    );
+  }
+
+  const project = { commands: [{ name: 'test', argv: ['./check.sh'] }] };
+
+  /** Every prompt sent to the `build` agent, in order. */
+  function buildPrompts(agent: ScriptedAgent): string[] {
+    return turnRequests(agent).map((t) => t.text);
+  }
+
+  it('sends only the feedback evidence, not the whole prompt again', async () => {
+    installCheck('#!/bin/sh\ntest -f fix.txt\n');
+    const envelope = buildEnvelope({ summary: 'attempted', commit_message: 'work' });
+    const scripted = scriptedAgent([envelope, envelope], [null, 'fix.txt']);
+
+    const outcome = await run({ scripted, project, pipeline: repairPipeline() });
+    expect(outcome.status).toBe('accepted');
+
+    const prompts = buildPrompts(scripted);
+    expect(prompts).toHaveLength(2);
+    // The first entry is the whole phase prompt.
+    expect(prompts[0]).toContain('do the thing');
+    expect(prompts[0]).toContain(exampleFor('build'));
+    // The re-entry is the evidence plus a continue instruction, and nothing the
+    // session is already holding: no request, no envelope example.
+    expect(prompts[1]).toContain('A check failed after your last attempt');
+    expect(prompts[1]).toContain('./check.sh');
+    expect(prompts[1]).not.toContain('do the thing');
+    expect(prompts[1]).not.toContain(exampleFor('build'));
+    expect(prompts[1]!.length).toBeLessThan(prompts[0]!.length);
+
+    // Same live conversation: a delta is only correct because of that.
+    const turns = wireLog(scripted).filter((l) => l.startsWith('turn_started'));
+    for (const turn of turns) expect(turn).toContain('session=s1');
+    expect(handshakeCount(scripted)).toBe(1);
+
+    // The trace still records what was sent, under its own name rather than
+    // overwriting the first entry's record.
+    const dir = h.tracer.runDir(outcome.runId);
+    expect(readFileSync(join(dir, 'builder/prompts/build-1.md'), 'utf8')).toContain('do the thing');
+    const second = readFileSync(join(dir, 'builder/prompts/build-2.md'), 'utf8');
+    expect(second).toContain('A check failed after your last attempt');
+    expect(second).not.toContain(exampleFor('build'));
+    expect(
+      events(outcome.runId)
+        .filter((e) => e.type === 'log' && e.name === 'prompt')
+        .map((e) => e.payload.kind),
+    ).toEqual(['full', 'delta']);
+  });
+
+  it('renders the whole prompt again when a rewind dropped the anchor', async () => {
+    installCheck('#!/bin/sh\ntest -f fix.txt\n');
+    const envelope = buildEnvelope({ summary: 'attempted', commit_message: 'work' });
+    // The first reply cannot be parsed, so the first correction rewinds — which
+    // branches the conversation before the phase prompt itself.
+    const scripted = scriptedAgent(
+      ['prose, not JSON', envelope, envelope],
+      [null, null, 'fix.txt'],
+    );
+
+    const outcome = await run({
+      scripted,
+      project,
+      rewindAfterCorrections: 1,
+      pipeline: repairPipeline(),
+    });
+    expect(outcome.status).toBe('accepted');
+    expect(wireLog(scripted)).toContain('rewind');
+
+    const prompts = buildPrompts(scripted);
+    expect(prompts).toHaveLength(3);
+    // Turn 2 is the feedback re-entry, and the rewound session no longer holds
+    // the prompt: it arrives in full, feedback appended.
+    expect(prompts[2]).toContain('do the thing');
+    expect(prompts[2]).toContain(exampleFor('build'));
+    expect(prompts[2]).toContain('./check.sh');
+    expect(
+      events(outcome.runId)
+        .filter((e) => e.type === 'log' && e.name === 'prompt')
+        .map((e) => e.payload.kind),
+    ).toEqual(['full', 'full']);
+  });
+
+  it('renders the whole prompt again when the session was compacted in between', async () => {
+    installCheck('#!/bin/sh\ntest -f fix.txt\n');
+    const envelope = buildEnvelope({ summary: 'attempted', commit_message: 'work' });
+    const scripted = scriptedAgent([envelope, envelope], [null, 'fix.txt'], [], {
+      contextUsed: 85_000,
+      contextUsedAfterCompaction: 8_500,
+    });
+
+    const outcome = await run({ scripted, project, pipeline: repairPipeline() });
+    expect(outcome.status).toBe('accepted');
+    expect(wireLog(scripted).filter((l) => l === 'compact')).toHaveLength(1);
+
+    const prompts = buildPrompts(scripted);
+    expect(prompts).toHaveLength(2);
+    // A summarised conversation may no longer carry the prompt verbatim, so the
+    // re-entry cannot assume it is there.
+    expect(prompts[1]).toContain('do the thing');
+    expect(prompts[1]).toContain(exampleFor('build'));
+    expect(prompts[1]).toContain('./check.sh');
+  });
+
+  it('renders the whole prompt again when the agent session was replaced', async () => {
+    installCheck('#!/bin/sh\ntest -f fix.txt\n');
+    const envelope = buildEnvelope({ summary: 'attempted', commit_message: 'work' });
+    // The middle phase runs the same agent on another model, which closes the
+    // session and opens a successor that holds none of `build`'s prompt.
+    const scripted = scriptedAgent(
+      [envelope, envelope, envelope, envelope],
+      [null, null, 'fix.txt'],
+    );
+
+    const outcome = await run({
+      scripted,
+      project,
+      pipeline: repairPipeline([
+        agentPhase('probe', {
+          model: 'scripted-other',
+          description: 'Run the same agent on another model, which replaces its session.',
+        }),
+      ]),
+    });
+    expect(outcome.status).toBe('accepted');
+
+    const requests = turnRequests(scripted);
+    expect(requests).toHaveLength(4);
+    // build(s1) → probe(s2) → build(s3): each model change is a new session.
+    expect(requests.map((r) => r.sessionId)).toEqual(['s1', 's2', 's3', 's4']);
+    expect(requests[2]!.text).toContain('do the thing');
+    expect(requests[2]!.text).toContain(exampleFor('build'));
+    expect(requests[2]!.text).toContain('./check.sh');
+  });
+
+  /**
+   * `{{feedback}}` is a documented template token and `renderTemplate`
+   * substitutes it in the system template as well as the user one, so an agent
+   * whose roster role names it has always received the real evidence there.
+   * The delta trims the *user* message; the standing role is re-sent in full on
+   * every turn and must still carry the evidence, or a roster that reads its
+   * feedback from the system role silently starts seeing "(no feedback)".
+   */
+  const feedbackInRole = (): AgentDef =>
+    buildAgent({
+      systemPrompt: 'You build.\n\n# Last failure\n\n{{feedback}}',
+    });
+
+  /** Every system role sent to the `build` agent, in order. */
+  function buildRoles(agent: ScriptedAgent): string[] {
+    return turnRequests(agent).map((t) => t.systemPrompt ?? '');
+  }
+
+  it('carries the real evidence in the system role on the delta path', async () => {
+    installCheck('#!/bin/sh\ntest -f fix.txt\n');
+    const envelope = buildEnvelope({ summary: 'attempted', commit_message: 'work' });
+    const scripted = scriptedAgent([envelope, envelope], [null, 'fix.txt']);
+
+    const outcome = await run({
+      scripted,
+      project,
+      agents: [feedbackInRole()],
+      pipeline: repairPipeline(),
+    });
+    expect(outcome.status).toBe('accepted');
+
+    const roles = buildRoles(scripted);
+    expect(roles).toHaveLength(2);
+    // First entry: no failure has happened yet, so the token renders empty.
+    expect(roles[0]).toContain('(no feedback)');
+    // Re-entry: the user message is a delta, but the role still names the
+    // failing command, because the role is what this roster reads it from.
+    expect(buildPrompts(scripted)[1]).not.toContain('do the thing');
+    expect(roles[1]).toContain('./check.sh');
+    expect(roles[1]).toContain('test failed');
+    expect(roles[1]).not.toContain('(no feedback)');
+
+    // The trace agrees with the wire rather than recording a role never sent.
+    const record = readFileSync(
+      join(h.tracer.runDir(outcome.runId), 'builder/prompts/build-2.md'),
+      'utf8',
+    );
+    expect(record).toContain('./check.sh');
+    expect(record).not.toContain('(no feedback)');
+  });
+
+  it('carries the real evidence in the system role on the full path too', async () => {
+    installCheck('#!/bin/sh\ntest -f fix.txt\n');
+    const envelope = buildEnvelope({ summary: 'attempted', commit_message: 'work' });
+    // Compaction between the phases forces the re-entry down the full path.
+    const scripted = scriptedAgent([envelope, envelope], [null, 'fix.txt'], [], {
+      contextUsed: 85_000,
+      contextUsedAfterCompaction: 8_500,
+    });
+
+    const outcome = await run({
+      scripted,
+      project,
+      agents: [feedbackInRole()],
+      pipeline: repairPipeline(),
+    });
+    expect(outcome.status).toBe('accepted');
+    expect(wireLog(scripted).filter((l) => l === 'compact')).toHaveLength(1);
+
+    const roles = buildRoles(scripted);
+    expect(roles).toHaveLength(2);
+    expect(roles[0]).toContain('(no feedback)');
+    // The full prompt went back on the wire, and the role carries the evidence
+    // on this path as well — the two paths cannot disagree about the role.
+    expect(buildPrompts(scripted)[1]).toContain('do the thing');
+    expect(roles[1]).toContain('./check.sh');
+    expect(roles[1]).not.toContain('(no feedback)');
+  });
+});
+
 describe('acceptance criteria', () => {
   it('rejects a run whose reviewer did not approve, even though every phase ran', async () => {
     const scripted = scriptedAgent([reviewEnvelope(false)]);

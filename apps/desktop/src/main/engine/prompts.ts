@@ -177,6 +177,27 @@ export function renderPrompt(agent: AgentDef, phase: PhaseDef, ctx: RenderContex
 }
 
 /**
+ * Re-entry into a phase whose session already holds the rendered prompt: the
+ * evidence that sent the run back here, and nothing the session already has.
+ *
+ * The envelope example, the declared inputs, and the request are deliberately
+ * absent — they are earlier in the same conversation, and the tool schema plus
+ * the output constraint still ride on every turn.
+ */
+export function feedbackDelta(input: { phase: string; feedback: string }): string {
+  return [
+    `A check failed after your last attempt at the "${input.phase}" phase.`,
+    'Your instructions for that phase are earlier in this conversation and still apply.',
+    '',
+    '## Evidence',
+    '',
+    input.feedback,
+    '',
+    'Fix the underlying problem, then call submit_envelope again.',
+  ].join('\n');
+}
+
+/**
  * What the trace writes to disk: the two roles the model actually received.
  * Not a wire format — `session.send` takes user and system separately.
  */
