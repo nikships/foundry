@@ -17,6 +17,7 @@ import {
   groupTranscript,
   type SmithTranscriptGroup,
 } from '../../view-models/smith-chat-view.js';
+import MarkdownText from '../common/MarkdownText.js';
 import styles from './SmithTranscript.module.css';
 
 function TranscriptRows({ group }: { group: SmithTranscriptGroup }): React.JSX.Element {
@@ -31,7 +32,11 @@ function TranscriptRows({ group }: { group: SmithTranscriptGroup }): React.JSX.E
               {SMITH_TOOL_ICON[entry.toolKind ?? 'other'] ?? '·'}
             </span>
           )}
-          <span className={styles.lineText}>{entry.text}</span>
+          {entry.kind === 'text' ? (
+            <MarkdownText text={entry.text} />
+          ) : (
+            <span className={styles.lineText}>{entry.text}</span>
+          )}
         </div>
       ))}
     </>
