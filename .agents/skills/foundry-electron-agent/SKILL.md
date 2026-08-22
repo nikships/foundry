@@ -18,14 +18,14 @@ test suite, and reports back. Runs are asynchronous: dispatch, then poll.
 
 ## The managed agent
 
-| | |
-| --- | --- |
-| Agent ID | `foundry-electron` |
-| Base agent | `antigravity-preview-05-2026` (model `gemini-3.7-flash`, thinking enabled) |
-| Repo | `/workspace/foundry` — clone of `nikships/foundry`, branch `main` |
-| Pre-installed | Node 22.23.2, `npm ci` completed (772 packages), Electron 43 binary, `g++`/`make`/`python3` |
-| Verified baseline | `npm run typecheck` PASS ~18s · `npm run lint` PASS ~10s · `npm test` 1324 pass / 1 known env failure ~93s |
-| Scope | The Electron app only: `apps/desktop/src/{main,preload,renderer,shared}`, root `electron.vite.config.ts`, `electron-builder.yml`, `scripts/`, `tests` |
+|                   |                                                                                                                                                       |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Agent ID          | `foundry-electron`                                                                                                                                    |
+| Base agent        | `antigravity-preview-05-2026` (model `gemini-3.7-flash`, thinking enabled)                                                                            |
+| Repo              | `/workspace/foundry` — clone of `nikships/foundry`, branch `main`                                                                                     |
+| Pre-installed     | Node 22.23.2, `npm ci` completed (772 packages), Electron 43 binary, `g++`/`make`/`python3`                                                           |
+| Verified baseline | `npm run typecheck` PASS ~18s · `npm run lint` PASS ~10s · `npm test` 1324 pass / 1 known env failure ~93s                                            |
+| Scope             | The Electron app only: `apps/desktop/src/{main,preload,renderer,shared}`, root `electron.vite.config.ts`, `electron-builder.yml`, `scripts/`, `tests` |
 
 Every dispatch starts from a **fresh copy of that warm snapshot**, so runs never collide.
 The agent refreshes `main` and re-runs `npm ci` when the lockfile moved, then works.
