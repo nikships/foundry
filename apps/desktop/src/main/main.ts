@@ -2,6 +2,8 @@
  * App lifecycle. The window is a native macOS window: an inset traffic-light
  * title bar over a vibrant sidebar, with the renderer fully sandboxed. All
  * privileged work happens here or below.
+ *
+ * REMOTE AGENT SMOKE TEST: harmless marker comment verifying agent repository access.
  */
 
 import { app, BrowserWindow, Menu, shell } from 'electron';
