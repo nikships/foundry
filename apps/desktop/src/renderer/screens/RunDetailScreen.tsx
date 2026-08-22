@@ -233,6 +233,7 @@ export default function RunDetailScreen({
             disabled={killing}
             title={killing ? 'Killing…' : 'Stop the run without deleting its branch'}
             onClick={() => void kill()}
+            data-testid="run-kill"
           >
             {killing ? 'Killing…' : 'Kill run'}
           </Button>

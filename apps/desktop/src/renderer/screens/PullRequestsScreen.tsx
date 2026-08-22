@@ -86,6 +86,7 @@ function PrCard({
               className={`badge ${styles.runTag}`}
               title="This branch came from a Foundry run — open it"
               onClick={onOpenRun}
+              data-testid={`prs-run-tag-${pr.number}`}
             >
               foundry run
             </button>
@@ -130,6 +131,7 @@ function PrCard({
             disabled={busy}
             title="An agent rebases this branch onto the fetched base in the run's worktree; Foundry verifies and pushes the result"
             onClick={onFix}
+            data-testid={`prs-fix-${pr.number}`}
           >
             {busy ? 'Repairing…' : 'Fix with agent'}
           </Button>
@@ -139,6 +141,7 @@ function PrCard({
           value={method}
           disabled={busy}
           aria-label="How gh merges this PR"
+          data-testid={`prs-method-${pr.number}`}
           options={[
             { value: 'merge', label: 'merge commit' },
             { value: 'squash', label: 'squash' },
@@ -151,6 +154,7 @@ function PrCard({
           disabled={mergeBlocked}
           title={mergeHint}
           onClick={() => onMerge(method)}
+          data-testid={`prs-merge-${pr.number}`}
         >
           {busy ? 'Merging…' : 'Merge'}
         </Button>

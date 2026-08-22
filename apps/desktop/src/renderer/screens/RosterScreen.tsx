@@ -470,6 +470,7 @@ export default function RosterScreen({
                     type="button"
                     className={styles.rosterAction}
                     onClick={() => setShowPreview(true)}
+                    data-testid="agent-preview"
                   >
                     Preview prompt
                   </button>
@@ -477,6 +478,7 @@ export default function RosterScreen({
                     type="button"
                     className={styles.rosterAction}
                     onClick={() => void duplicate()}
+                    data-testid="agent-duplicate"
                   >
                     Duplicate
                   </button>
@@ -485,6 +487,7 @@ export default function RosterScreen({
                       type="button"
                       className={styles.rosterAction}
                       onClick={() => void resetToShipped()}
+                      data-testid="agent-reset"
                     >
                       Reset to shipped version
                     </button>
@@ -494,6 +497,7 @@ export default function RosterScreen({
                       type="button"
                       className={`${styles.rosterAction} ${styles.danger}`}
                       onClick={() => void remove()}
+                      data-testid="agent-delete"
                     >
                       Delete
                     </button>

@@ -36,12 +36,17 @@ export default function ConfirmModal(): React.JSX.Element | null {
           <p className={styles.message}>{request.message}</p>
         </div>
         <div className={styles.actions}>
-          <Button variant="ghost" onClick={() => confirmManager.resolve(request.id, false)}>
+          <Button
+            variant="ghost"
+            onClick={() => confirmManager.resolve(request.id, false)}
+            data-testid="confirm-cancel"
+          >
             {cancelLabel}
           </Button>
           <Button
             variant={isDanger ? 'danger' : 'primary'}
             onClick={() => confirmManager.resolve(request.id, true)}
+            data-testid="confirm-accept"
           >
             {confirmLabel}
           </Button>

@@ -313,6 +313,7 @@ export default function InspectorScreen({
             disabled={!hasVisibleTools}
             onClick={() => setCollapseSignal((n) => n + 1)}
             aria-label="Collapse all tool calls"
+            data-testid="inspector-collapse-all"
             title={
               hasVisibleTools
                 ? 'Collapse every tool call in all visible lanes'
@@ -342,6 +343,7 @@ export default function InspectorScreen({
               className={styles.densitySlider}
               title="Lanes per viewport"
               aria-label="Adjust visible lanes density"
+              data-testid="inspector-lanes"
             />
           </div>
         </footer>
