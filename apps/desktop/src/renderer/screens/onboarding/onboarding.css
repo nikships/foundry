@@ -147,8 +147,7 @@
 }
 /* Each step screen owns its own layout; no nested card wrapper here. */
 /* Step chrome for eyebrow/title/lead/footer — shared utility, not a card. */
-.ob-eyebrow,
-.eyebrow {
+.ob-eyebrow {
   margin: 0 0 var(--s2);
   font-family: var(--font-mono);
   font-size: 10px;
@@ -158,8 +157,7 @@
   color: var(--text-dim);
   line-height: 1;
 }
-.ob-eyebrow .index,
-.eyebrow .index {
+.ob-eyebrow .index {
   color: var(--accent);
   margin-right: var(--s2);
 }
