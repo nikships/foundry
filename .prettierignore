@@ -19,7 +19,15 @@ references
 # desktop app build, the repo gate, or CI. See apps/website/README.md.
 apps/website
 website
-.agents/agent-ready.json
+
+# Prose and agent scaffolding, not app source. Hand-tuned Markdown here
+# (tables, prompt bodies, historical plans) should stay exactly as written, and
+# a formatter diff on it is noise that fails the gate for no correctness gain.
+# `specs` and `.factory/docs` are already excluded from check:docs for the same
+# reason: they are records of the repo as it was, not living documentation.
+.agents
+.factory
+specs
 
 # Android application scaffold
 apps/android
