@@ -188,6 +188,8 @@ export default function RunsScreen({
               type="button"
               className={styles.phonePill}
               onClick={() => onOpenSettings?.('general')}
+              data-testid="companion-pill"
+              data-running={companion.running ? 'true' : 'false'}
               title={
                 companion.running
                   ? companion.devices.length
@@ -221,6 +223,7 @@ export default function RunsScreen({
               type="checkbox"
               checked={includeArchived}
               onChange={(e) => setIncludeArchived(e.target.checked)}
+              data-testid="runs-archived"
             />
             Show archived
           </label>
