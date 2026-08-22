@@ -32,6 +32,7 @@ test.describe('smith / chat', () => {
 
       await window.getByTestId('nav-smith').click();
       await expect(window.getByTestId('app-view')).toHaveAttribute('data-view', 'smith');
+      await expect(window.getByTestId('smith-bubble')).toBeHidden();
       await expect(window.getByTestId('smith-input')).toBeVisible();
       await expect(
         window.getByTestId('smith-transcript').getByText(E2E_SMITH_MESSAGE),

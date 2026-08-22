@@ -274,6 +274,7 @@ export default function Sidebar({
                   className={`${styles.runItem} ${pinned ? styles.active : ''}`}
                   aria-current={pinned || undefined}
                   title={`${run.request}\n${run.pipelineName} · ${projectName} · ${statusWord(run.status)}`}
+                  data-testid={`sidebar-run-${run.runId}`}
                   onClick={() => {
                     if (run.projectId !== project?.id) selectProject(run.projectId);
                     onOpenInspector?.(run.runId);
@@ -304,6 +305,7 @@ export default function Sidebar({
             className={styles.pendingCollapsed}
             title={`${pendingCount} ${pendingCount === 1 ? 'run needs' : 'runs need'} you — open`}
             aria-label={`${pendingCount} ${pendingCount === 1 ? 'run needs' : 'runs need'} you`}
+            data-testid="sidebar-pending"
             onClick={() => onOpenInterruptRun?.(firstWaiting.runId)}
           >
             <PendingEmblem className={styles.navEmblem} />
@@ -316,6 +318,7 @@ export default function Sidebar({
             type="button"
             className={styles.pending}
             title="Open the run waiting for you"
+            data-testid="sidebar-pending"
             onClick={() => onOpenInterruptRun?.(firstWaiting.runId)}
           >
             {pendingCount} {pendingCount === 1 ? 'run needs' : 'runs need'} you

@@ -37,7 +37,13 @@ export function StepFooter({
   return (
     <div className="ob-foot">
       {showBack ? (
-        <Button type="button" variant="ghost" disabled={busy} onClick={back}>
+        <Button
+          type="button"
+          variant="ghost"
+          disabled={busy}
+          onClick={back}
+          data-testid="onboarding-back"
+        >
           Back
         </Button>
       ) : null}
@@ -49,6 +55,7 @@ export function StepFooter({
         disabled={nextDisabled || busy}
         title={nextTitle}
         onClick={onNext ?? next}
+        data-testid="onboarding-next"
       >
         {busy ? 'Saving…' : nextLabel}
         {!busy ? <span aria-hidden="true"> →</span> : null}
@@ -75,6 +82,7 @@ export function Stepper({
           key={s.id}
           type="button"
           className={`ob-step-pill ${i === stepIndex ? 'on' : ''} ${i < stepIndex ? 'done' : ''}`}
+          data-testid={`onboarding-step-${s.id}`}
           onClick={() => {
             if (i > stepIndex && currentStep === 'doctor' && !canLeaveDoctor) return;
             if (i > stepIndex + 1) return;

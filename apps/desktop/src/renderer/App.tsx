@@ -332,12 +332,10 @@ function AppInner(): React.JSX.Element {
       )}
 
       {/*
-       * The Smith mini chat: one launcher on every screen (always visible —
-       * decided), one shared session with the dedicated Smith screen. It sends
-       * the live screen descriptor, and its Expand hands off to the screen at
-       * the same point.
+       * The Smith mini chat: floating launcher on other screens, hidden when
+       * already viewing the dedicated Smith screen.
        */}
-      {ready && !needsOnboarding && (
+      {ready && !needsOnboarding && view !== 'smith' && (
         <SmithBubble
           screenContext={liveScreenContext}
           onExpand={openSmith}

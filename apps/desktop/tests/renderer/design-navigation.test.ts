@@ -34,6 +34,14 @@ const inspectorSrc = read('src/renderer/screens/InspectorScreen.tsx');
 const prsSrc = read('src/renderer/screens/PullRequestsScreen.tsx');
 const runDetailSrc = read('src/renderer/screens/RunDetailScreen.tsx');
 const phaseDrawerSrc = read('src/renderer/components/pipeline/PhaseDrawer.tsx');
+const sidebarSrc = read('src/renderer/components/layout/Sidebar.tsx');
+const waterfallSrc = read('src/renderer/components/run/Waterfall.tsx');
+const outcomeBannerSrc = read('src/renderer/components/run/OutcomeBanner.tsx');
+const interruptSheetSrc = read('src/renderer/components/run/InterruptSheet.tsx');
+const proposalCardSrc = read('src/renderer/components/smith/SmithProposalCard.tsx');
+const confirmModalSrc = read('src/renderer/components/common/ConfirmModal.tsx');
+const onboardingSharedSrc = read('src/renderer/screens/onboarding/shared.tsx');
+const pipelinesScreenSrc = read('src/renderer/screens/PipelinesScreen.tsx');
 
 describe('the sidebar', () => {
   it('exposes Runs, Inspector, Design, and Pull Requests, in that order', () => {
@@ -230,6 +238,55 @@ describe('CDP automation hooks', () => {
     expect(runDetailSrc).toContain('data-testid="run-back"');
     expect(runDetailSrc).toContain('data-testid="run-open-inspector"');
     expect(phaseDrawerSrc).toContain('data-testid={`phase-tab-${t.id}`}');
+  });
+
+  it('stamps the decision surfaces an agent driver must be able to answer', () => {
+    // Run checkpoint + Smith entity approval: the two gates that block a run
+    // or a chat turn until someone clicks.
+    expect(interruptSheetSrc).toContain('data-testid="interrupt-approve"');
+    expect(interruptSheetSrc).toContain('data-testid="interrupt-reject"');
+    expect(proposalCardSrc).toContain('data-testid="smith-proposal-approve"');
+    expect(proposalCardSrc).toContain('data-testid="smith-proposal-reject"');
+    // In-app confirm (kill/merge/discard/delete flows); window.confirm is native.
+    expect(confirmModalSrc).toContain('data-testid="confirm-accept"');
+    expect(confirmModalSrc).toContain('data-testid="confirm-cancel"');
+  });
+
+  it('keeps run-detail actions and the phase lanes reachable by testid', () => {
+    expect(runDetailSrc).toContain('data-testid="run-kill"');
+    expect(waterfallSrc).toContain('data-testid={`phase-lane-${phase.phaseId}`}');
+    expect(outcomeBannerSrc).toContain('data-testid="outcome-resume"');
+    expect(outcomeBannerSrc).toContain('data-testid="outcome-fix-merge"');
+    expect(outcomeBannerSrc).toContain('data-testid="outcome-open-pr"');
+    expect(outcomeBannerSrc).toContain('data-testid="outcome-merge"');
+    expect(outcomeBannerSrc).toContain('data-testid="outcome-discard"');
+  });
+
+  it('exposes sidebar activity rows and per-PR actions by id', () => {
+    expect(sidebarSrc).toContain('data-testid={`sidebar-run-${run.runId}`}');
+    expect(sidebarSrc).toContain('data-testid="sidebar-pending"');
+    expect(prsSrc).toContain('data-testid={`prs-merge-${pr.number}`}');
+    expect(prsSrc).toContain('data-testid={`prs-fix-${pr.number}`}');
+    expect(prsSrc).toContain('data-testid={`prs-method-${pr.number}`}');
+    expect(prsSrc).toContain('data-testid={`prs-run-tag-${pr.number}`}');
+  });
+
+  it('covers the remaining editor and onboarding controls the skill documents', () => {
+    expect(runsSrc).toContain('data-testid="runs-archived"');
+    expect(runsSrc).toContain('data-testid="companion-pill"');
+    expect(rosterSrc).toContain('data-testid="agent-preview"');
+    expect(rosterSrc).toContain('data-testid="agent-duplicate"');
+    expect(rosterSrc).toContain('data-testid="agent-delete"');
+    expect(envelopesSrc).toContain('data-testid="envelope-new"');
+    expect(envelopesSrc).toContain('data-testid={`envelope-item-${env.name}`}');
+    expect(envelopesSrc).toContain('data-testid={`envelope-builtin-${kind}`}');
+    expect(pipelinesScreenSrc).toContain('data-testid="pipeline-dry-run"');
+    expect(pipelinesScreenSrc).toContain('data-testid="pipeline-settings"');
+    expect(onboardingSharedSrc).toContain('data-testid="onboarding-next"');
+    expect(onboardingSharedSrc).toContain('data-testid="onboarding-back"');
+    expect(onboardingSharedSrc).toContain('data-testid={`onboarding-step-${s.id}`}');
+    expect(settingsSrc).toContain('data-testid="settings-search"');
+    expect(settingsSrc).toContain('data-testid="settings-palette-input"');
   });
 });
 
