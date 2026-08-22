@@ -70,6 +70,23 @@ install_node() {
   mv "$stage" "$node_dir"
 }
 
+install_node_shims() {
+  local bin_dir="$HOME/.local/bin"
+  local command
+
+  mkdir -p "$bin_dir"
+  cat >"$bin_dir/node" <<EOF
+#!/usr/bin/env bash
+export KNIP_DISABLE_RAW_TRANSFER=1
+exec "$node_dir/bin/node" "\$@"
+EOF
+  chmod +x "$bin_dir/node"
+
+  for command in npm npx corepack; do
+    ln -sfn "$node_dir/bin/$command" "$bin_dir/$command"
+  done
+}
+
 write_login_environment() {
   local env_dir="$HOME/.config/foundry"
   local env_file="$env_dir/orb-env.sh"
@@ -83,7 +100,8 @@ write_login_environment() {
 foundry_orb_root=$quoted_repo_root
 case "\$PWD/" in
   "\$foundry_orb_root/"*)
-    export PATH="$node_dir/bin:\$PATH"
+    export PATH="$HOME/.local/bin:$node_dir/bin:\$PATH"
+    export KNIP_DISABLE_RAW_TRANSFER=1
     ;;
 esac
 unset foundry_orb_root
@@ -117,8 +135,10 @@ fi
 mkdir -p "$tool_root"
 run_step 'System packages' install_system_packages
 run_step 'Node 22' install_node
+run_step 'Node 22 command shims' install_node_shims
 
-export PATH="$node_dir/bin:$PATH"
+export PATH="$HOME/.local/bin:$node_dir/bin:$PATH"
+export KNIP_DISABLE_RAW_TRANSFER=1
 
 run_step 'Login-shell environment' write_login_environment
 run_step 'npm dependencies' install_node_dependencies
