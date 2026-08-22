@@ -160,6 +160,7 @@ export default function PipelinesScreen({
             className={styles.actionGhostBtn}
             title={acceptanceLabel(draft.acceptance)}
             onClick={() => setSheet('pipeline')}
+            data-testid="pipeline-settings"
           >
             <Settings2 size={13} strokeWidth={1.7} aria-hidden="true" />
             Settings
@@ -191,6 +192,7 @@ export default function PipelinesScreen({
             className={styles.dryRunBtn}
             disabled={draft.phases.length === 0}
             onClick={() => void preview()}
+            data-testid="pipeline-dry-run"
           >
             <Play size={13} strokeWidth={1.7} aria-hidden="true" />
             Dry run

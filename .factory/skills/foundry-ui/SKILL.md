@@ -175,79 +175,185 @@ agent-browser press "Meta+,"      # Settings      → data-view="settings"
 # Design sub-tabs (must be on Design first, or they switch you there):
 agent-browser press 'Meta+Shift+1'  # Design → Pipelines  (+ data-design-tab="pipelines")
 agent-browser press 'Meta+Shift+2'  # Design → Agents     (+ data-design-tab="agents")
-agent-browser press 'Meta+Shift+3'  # Design → Envelopes  (+ data-design-tab="envelopes")
+agent-browser press 'Meta+Shift+3'  # Design → Envelopes/Reports (+ data-design-tab="envelopes")
 
-# Confirm without a snapshot:
+# Settings search palette, from any view (a dialog owns it while open):
+agent-browser press Meta+k          # → [role=dialog] data-testid="settings-palette"
+
+# Confirm where you are without a snapshot:
 agent-browser eval 'const el = document.querySelector("[data-testid=\"app-view\"]"); el && {view: el.dataset.view, run: el.dataset.openRun, design: el.dataset.designTab, settings: el.dataset.settingsPane}'
 ```
 
 Settings panes have no chord. Once on Settings, eval the tab — do not walk
-ArrowRight from a guessed selected tab:
+ArrowDown from a guessed selected tab. Pane ids are `models`, `project`, `app`:
 
 ```bash
 agent-browser eval 'document.querySelector("[data-testid=\"settings-tab-project\"]")?.click()'
 # data-settings-pane becomes "project"
 ```
 
+Legacy deep links still resolve but land elsewhere: `general`,
+`maintenance`, and `about` normalize to `app`; everything else to
+`models`. Prefer the current ids.
+
 ### `data-testid` reference
 
 Stable selectors on key interactive elements. Use with `eval` +
 `querySelector` for reliable, instant clicks:
 
-| `data-testid`              | Element                                     |
-| -------------------------- | ------------------------------------------- |
-| `app-view`                 | `<main>` — current view + sub-state         |
-| `nav-runs`                 | Sidebar → Runs button                       |
-| `nav-inspector`            | Sidebar → Inspector button                  |
-| `nav-design`               | Sidebar → Design button                     |
-| `nav-prs`                  | Sidebar → Pull Requests button              |
-| `nav-smith`                | Sidebar → Smith button                      |
-| `nav-settings`             | Sidebar → Settings button                   |
-| `project-selector`         | Project dropdown trigger                    |
-| `sidebar-collapse`         | Collapse/expand sidebar toggle              |
-| `tab-pipelines`            | Design → Pipelines tab                      |
-| `tab-agents`               | Design → Agents tab                         |
-| `tab-envelopes`            | Design → Envelopes tab                      |
-| `agent-tab-{name}`         | Agent roster tab (e.g. `agent-tab-builder`) |
-| `agent-new`                | "+ New agent" button                        |
-| `pipeline-selector`        | Pipeline picker dropdown trigger            |
-| `pipeline-option-{id}`     | Pipeline option in the picker dropdown      |
-| `pipeline-new`             | "New pipeline" button in the picker         |
-| `run-request`              | Run composer request textarea               |
-| `run-pipeline`             | Run composer pipeline dropdown              |
-| `run-start`                | "Start run" button                          |
-| `base-sync`                | Local base-ref vs remote status bar         |
-| `base-sync-update`         | Fast-forward the local base ref             |
-| `base-sync-check`          | Re-fetch and compare the remote base ref    |
-| `run-row-{runId}`          | One past-run row on Runs                    |
-| `run-back`                 | Run detail ← Runs button                    |
-| `run-open-inspector`       | Run detail → Inspector deep-link button     |
-| `phase-tab-timeline`       | Run detail → Timeline                       |
-| `phase-tab-envelope`       | Run detail → Envelope                       |
-| `phase-tab-gates`          | Run detail → Gates                          |
-| `phase-tab-prompt`         | Run detail → Prompt                         |
-| `inspector-run`            | Inspector run picker                        |
-| `inspector-filter-all`     | Inspector filter: All                       |
-| `inspector-filter-running` | Inspector filter: Running                   |
-| `inspector-filter-failed`  | Inspector filter: Failed                    |
-| `inspector-raw-files`      | Inspector "Raw files"                       |
-| `prs-refresh`              | Pull Requests refresh (`data-loading`)      |
-| `settings-tab-general`     | Settings → General                          |
-| `settings-tab-clis`        | Settings → Agent CLI                        |
-| `settings-tab-defaults`    | Settings → Agent defaults                   |
-| `settings-tab-mcp`         | Settings → MCP Servers                      |
-| `settings-tab-project`     | Settings → Project                          |
-| `settings-tab-maintenance` | Settings → Maintenance                      |
-| `settings-tab-about`       | Settings → About                            |
+Shell and sidebar:
+
+| `data-testid`         | Element                                      |
+| --------------------- | -------------------------------------------- |
+| `app-view`            | `<main>` — current view + sub-state          |
+| `nav-runs`            | Sidebar → Runs button                        |
+| `nav-inspector`       | Sidebar → Inspector button                   |
+| `nav-design`          | Sidebar → Design button                      |
+| `nav-prs`             | Sidebar → Pull Requests button               |
+| `nav-smith`           | Sidebar → Smith chat (safe to open)          |
+| `nav-settings`        | Sidebar → Settings button                    |
+| `sidebar-run-{runId}` | Activity row → opens run pinned in Inspector |
+| `sidebar-pending`     | "`N` run(s) need you" interrupt jump         |
+| `project-selector`    | Project dropdown trigger                     |
+| `sidebar-collapse`    | Collapse/expand sidebar toggle               |
+| `companion-pill`      | Companion phone pill (`data-running`)        |
+
+Runs:
+
+| `data-testid`      | Element                                   |
+| ------------------ | ----------------------------------------- |
+| `run-request`      | Run composer request textarea (⌘↵ starts) |
+| `run-pipeline`     | Run composer pipeline dropdown            |
+| `run-start`        | "Start run" button                        |
+| `runs-archived`    | "Show archived" checkbox                  |
+| `readiness-banner` | Readiness strip (`data-ready` yes/no)     |
+| `base-sync`        | Local base-ref vs remote status bar       |
+| `base-sync-update` | Fast-forward the local base ref           |
+| `base-sync-check`  | Re-fetch and compare the remote base ref  |
+| `run-row-{runId}`  | One past-run row on Runs                  |
+
+Run detail:
+
+| `data-testid`          | Element                                     |
+| ---------------------- | ------------------------------------------- |
+| `run-back`             | ← Runs button                               |
+| `run-open-inspector`   | Deep-link this run into the Inspector       |
+| `run-kill`             | Kill run (live runs only; in-app confirm)   |
+| `phase-lane-{phaseId}` | Waterfall phase lane (`data-phase-name`)    |
+| `outcome-resume`       | Outcome banner → Continue run               |
+| `outcome-fix-merge`    | Outcome banner → Fix & merge with agent     |
+| `outcome-open-pr`      | Outcome banner → Open PR… form toggle       |
+| `pr-title` / `pr-body` | Inline PR form inputs                       |
+| `pr-create`            | Inline PR form submit                       |
+| `outcome-merge`        | Merge branch into base ref (in-app confirm) |
+| `outcome-discard`      | Discard worktree + branch (in-app confirm)  |
+| `phase-tab-timeline`   | Phase drawer → Timeline                     |
+| `phase-tab-envelope`   | Phase drawer → Envelope                     |
+| `phase-tab-gates`      | Phase drawer → Gates                        |
+| `phase-tab-prompt`     | Phase drawer → Prompt                       |
+
+Inspector:
+
+| `data-testid`              | Element                                    |
+| -------------------------- | ------------------------------------------ |
+| `inspector-run`            | Run picker (bare nav follows what is live) |
+| `inspector-filter-all`     | Filter: All                                |
+| `inspector-filter-running` | Filter: Running                            |
+| `inspector-filter-failed`  | Filter: Failed                             |
+| `inspector-raw-files`      | Raw files toggle                           |
+| `inspector-collapse-all`   | Collapse every visible tool call           |
+| `inspector-lanes`          | Lane-density range slider (1–6)            |
+
+Pull Requests:
+
+| `data-testid`     | Element                                        |
+| ----------------- | ---------------------------------------------- |
+| `prs-refresh`     | Refresh (`data-loading` while gh is in flight) |
+| `prs-merge-{n}`   | Merge button for PR #n (**native confirm**)    |
+| `prs-method-{n}`  | Merge-method dropdown for PR #n                |
+| `prs-fix-{n}`     | Fix-with-agent on a conflicting foundry PR     |
+| `prs-run-tag-{n}` | "foundry run" tag → open the run               |
+
+Design:
+
+| `data-testid`                                     | Element                                         |
+| ------------------------------------------------- | ----------------------------------------------- |
+| `tab-pipelines`                                   | Design → Pipelines tab                          |
+| `tab-agents`                                      | Design → Agents tab                             |
+| `tab-envelopes`                                   | Design → Envelopes tab (labelled Reports)       |
+| `pipeline-selector`                               | Pipeline picker trigger                         |
+| `pipeline-option-{id}`                            | Pipeline option in the picker dropdown          |
+| `pipeline-new`                                    | New pipeline button                             |
+| `pipeline-add-agent` / `-command` / `-checkpoint` | Ribbon add buttons                              |
+| `pipeline-phase-{name}`                           | Phase card on the canvas                        |
+| `pipeline-dry-run`                                | Dry run overlay opener (safe, Esc closes)       |
+| `pipeline-settings`                               | Pipeline acceptance/validation sheet opener     |
+| `agent-tab-{name}`                                | Agent roster tab (e.g. `agent-tab-builder`)     |
+| `agent-new`                                       | "+ New agent" button                            |
+| `agent-preview`                                   | Prompt preview overlay opener (safe, Esc)       |
+| `agent-duplicate`                                 | Duplicate agent                                 |
+| `agent-delete`                                    | Delete agent (custom agents only)               |
+| `agent-reset`                                     | Reset edited builtin to shipped version         |
+| `agent-mark-picker`                               | Agent mark/emblem picker overlay                |
+| `envelope-new`                                    | Reports → New report                            |
+| `envelope-item-{name}`                            | Custom report in the library rail               |
+| `envelope-builtin-{kind}`                         | Built-in report inspector entry (e.g. `review`) |
+
+Smith (chat screen + floating bubble):
+
+| `data-testid`                                 | Element                              |
+| --------------------------------------------- | ------------------------------------ |
+| `smith-input` / `smith-send` / `smith-cancel` | Screen composer (send spends tokens) |
+| `smith-model`                                 | Header model picker                  |
+| `smith-new-chat`                              | New chat (wipes the conversation)    |
+| `smith-transcript`                            | Chat transcript container            |
+| `smith-proposal-card`                         | Inline entity-approval card          |
+| `smith-proposal-approve`                      | Approve + save the proposed entity   |
+| `smith-proposal-reject`                       | Reject (unblocks Smith to revise)    |
+| `smith-bubble`                                | Floating launcher on other screens   |
+| `smith-bubble-input` / `-send` / `-cancel`    | Bubble composer                      |
+| `smith-bubble-expand`                         | Bubble → full Smith screen           |
+| `smith-bubble-close`                          | Dismiss the bubble                   |
+
+Settings:
+
+| `data-testid`            | Element                                |
+| ------------------------ | -------------------------------------- |
+| `settings-tab-models`    | Settings → Models & Providers          |
+| `settings-tab-project`   | Settings → Project                     |
+| `settings-tab-app`       | Settings → App                         |
+| `settings-search`        | Rail search input                      |
+| `settings-palette`       | ⌘K palette dialog                      |
+| `settings-palette-input` | ⌘K palette input                       |
+| `bridge-status`          | Bridge running/unavailable pill        |
+| `provider-card-{id}`     | Subscription provider card             |
+| `provider-key-{id}`      | Direct API-key card (e.g. `anthropic`) |
+| `providers-model-count`  | Reachable/hidden model count line      |
+| `reset-hidden-models`    | Un-hide all models                     |
+| `hide-model-{id}`        | Hide one model row                     |
+
+Overlays and decisions:
+
+| `data-testid`                         | Element                                        |
+| ------------------------------------- | ---------------------------------------------- |
+| `interrupt-notes`                     | Engineer-checkpoint notes textarea             |
+| `interrupt-approve`                   | Checkpoint Approve (Esc rejects!)              |
+| `interrupt-reject`                    | Checkpoint Reject                              |
+| `confirm-accept`                      | In-app ConfirmModal primary action             |
+| `confirm-cancel`                      | In-app ConfirmModal cancel                     |
+| `onboarding-step-{id}`                | Stepper pill: welcome/providers/doctor/project |
+| `onboarding-back` / `onboarding-next` | Step footer buttons                            |
+| `onboarding-provider-{id}`            | Onboarding provider row                        |
+| `update-dismiss`                      | Update banner ✕                                |
 
 `app-view` attributes (read via `dataset`, no snapshot):
 
 | Attribute            | When set        | Values                                                            |
 | -------------------- | --------------- | ----------------------------------------------------------------- |
-| `data-view`          | always          | `runs` `run-detail` `inspector` `design` `prs` `settings`         |
+| `data-view`          | always          | `runs` `run-detail` `inspector` `design` `prs` `smith` `settings` |
 | `data-open-run`      | run detail only | the full `run_*` id                                               |
 | `data-design-tab`    | Design only     | `pipelines` `agents` `envelopes`                                  |
-| `data-settings-pane` | Settings only   | `general` `clis` `defaults` `mcp` `project` `maintenance` `about` |
+| `data-settings-pane` | Settings only   | `models` `project` `app`                                          |
 
 ### Other driving notes
 
@@ -258,11 +364,18 @@ Stable selectors on key interactive elements. Use with `eval` +
   `data-testid` or `press` for all interaction.
 - The UI is the dark Factory theme; screenshots are mostly black with
   light text. That is correct, not a rendering failure.
-- Escape ladder: an open overlay (Dry run / Prompt preview) closes first;
-  otherwise a focused field blurs; otherwise Run detail goes back to Runs.
+- Escape ladder: an open dialog (⌘K palette / interrupt sheet / confirm /
+  Dry run / Prompt preview) closes or answers first — note the interrupt
+  sheet **rejects** on Escape rather than dismissing; otherwise a focused
+  field blurs; otherwise Run detail goes back to Runs.
 - Tab strips (Design / Agents / Settings) are roving-tabindex tablists:
   focus the selected tab and use ArrowLeft/ArrowRight (wrap), Home/End;
   selection follows focus. Prefer the `settings-tab-*` / `tab-*` testids.
+- Two kinds of confirm exist. The **in-app ConfirmModal** (`confirm-accept` /
+  `confirm-cancel`) backs kill run, merge/discard worktree, deletes — drive it
+  by testid. A **native `window.confirm`** (PR merge on the PRs screen)
+  renders outside the DOM; CDP cannot see or answer it. Avoid actions that
+  trigger the native one unless a human is present.
 - **Do not `agent-browser wait --text` across a long-running refresh.** The
   CLI has been SIGKILL'd mid-wait while the app stayed up. Poll with `eval`
   instead (`[data-testid="prs-refresh"]` has `data-loading="true"` while gh
@@ -275,39 +388,53 @@ Stable selectors on key interactive elements. Use with `eval` +
 No URL routing; one window, view state in React. The left sidebar is always
 present (except during Onboarding):
 
-| Sidebar button              | View                           | CDP shortcut     |
-| --------------------------- | ------------------------------ | ---------------- |
-| `button "Runs ⌘1"`          | Runs list + run composer       | `press Meta+1`   |
-| `button "Inspector ⌘2"`     | Live trace viewer              | `press Meta+2`   |
-| `button "Design ⌘3"`        | Pipeline/agent/envelope editor | `press Meta+3`   |
-| `button "Pull Requests ⌘4"` | PR list                        | `press Meta+4`   |
-| `button "Settings ⌘,"`      | Settings panes                 | `press "Meta+,"` |
+| Sidebar button              | View                           | CDP shortcut            |
+| --------------------------- | ------------------------------ | ----------------------- |
+| `button "Runs ⌘1"`          | Runs list + run composer       | `press Meta+1`          |
+| `button "Inspector ⌘2"`     | Live trace viewer              | `press Meta+2`          |
+| `button "Design ⌘3"`        | Pipeline/agent/envelope editor | `press Meta+3`          |
+| `button "Pull Requests ⌘4"` | PR list                        | `press Meta+4`          |
+| `button "Smith"`            | In-app Smith chat              | none — eval `nav-smith` |
+| `button "Settings ⌘,"`      | Settings panes                 | `press "Meta+,"`        |
 
 Design has three sub-tabs, each with its own shortcut:
 `press 'Meta+Shift+1'` (Pipelines), `'Meta+Shift+2'` (Agents),
-`'Meta+Shift+3'` (Envelopes).
+`'Meta+Shift+3'` (Envelopes — the tab labelled **Reports**).
 
-The sidebar also has the project dropdown (`data-testid="project-selector"`,
-shows the active project name) and the Add Project option inside it — **do not
-trigger the Add Project flow in automation**: it opens a native folder picker
-CDP cannot drive (if stuck, `press Escape` won't help; you must dismiss it
-manually or kill the app).
+⌘K (`press Meta+k`) opens the Settings search palette from any view — a
+`[role=dialog]` you can drive by keyboard (`fill` its input, ArrowUp/Down,
+Enter). A dialog being open suppresses ⌘K, so close overlays first.
 
-**Do not click Smith** (`nav-smith`) unless you intend to launch the user's
-preferred terminal. It is a handoff, not an in-app view — and with Ghostty
-preferred it opens a window and spawns a real agent CLI immediately, with no
-modal to back out of. The `SmithLauncher` modal appears only when that start
-could not run (no project, a terminal that takes no command, a missing agent
-CLI, or a failed launch).
+The sidebar also carries:
+
+- the project dropdown (`data-testid="project-selector"`) with an
+  Add/Create split option inside it — **do not trigger Add Project in
+  automation**: it opens a native folder picker CDP cannot drive (if stuck,
+  `press Escape` won't help; you must dismiss it manually or kill the app);
+  the Create-New half opens the in-app `NewProjectWizard`, which _is_ drivable;
+- the Activity list while runs exist: one row per recent run across projects,
+  `data-testid="sidebar-run-{runId}"`, each opening that run pinned in the
+  Inspector;
+- a pending-interrupt button (`data-testid="sidebar-pending"`,
+  "`N` run(s) need you") that jumps to the oldest waiting run.
+
+**Smith (`nav-smith`) is safe to open** — it is a native chat view
+(`data-view="smith"`), not a terminal handoff. What costs tokens is _sending_
+messages (`smith-send` / `smith-bubble-send`): they run real agent turns on the
+bundled pi runtime. Opening the screen, reading the transcript
+(`smith-transcript`), and answering the inline proposal card are all free.
+Entity writes always gate on `smith-proposal-card` regardless of how the chat
+was driven.
 
 ## Screens
 
 ### Runs (home, default view)
 
-- Heading "Runs", `checkbox "Show archived"`.
-- Composer: `data-testid="run-request"` textarea, pipeline dropdown
-  (`data-testid="run-pipeline"`), `data-testid="run-start"` button
-  (disabled while the textarea is empty).
+- Heading "Runs", `checkbox "Show archived"` (`runs-archived`), companion
+  phone pill (`companion-pill`, `data-running`).
+- Composer: `data-testid="run-request"` textarea (⌘↵ submits — do not type a
+  request and press Enter blindly), pipeline dropdown (`run-pipeline`),
+  `run-start` button (disabled while the textarea is empty).
 - Base-ref bar (`data-testid="base-sync"`, `data-state` is `checking` /
   `syncing` / `current` / `behind` / `ahead` / `diverged` / `error`):
   fetches the remote base on mount. When behind, `base-sync-update`
@@ -318,23 +445,37 @@ CLI, or a failed launch).
   label packs status, pipeline, age, prompt excerpt, `run_*` id, duration,
   tokens. Open it with eval on that testid, not by matching the packed label.
 
-**Warning:** filling the composer and clicking "Start run" spawns real agent
-CLIs and spends real tokens. Never start a run unless explicitly asked.
+**Warning:** filling the composer and clicking "Start run" (or ⌘↵) executes a
+real pipeline on real models and spends real tokens. Never start a run unless
+explicitly asked.
 
 ### Run detail
 
 Open via `run-row-{runId}`. `data-view` becomes `run-detail` and
 `data-open-run` is the full id. Contains:
 
-- `data-testid="run-back"` (← Runs), `data-testid="run-open-inspector"`
-  (deep-link this run into the Inspector).
-- Outcome banner ("Accepted — 'review' approved the work", `merged` chip).
-- Phase Gantt: one `button` per phase, labels like `planner plan 1m 34s`,
-  `builder build ×2 3m 17s`, `commit_plan 1.1s`. Click to select a phase.
+- `data-testid="run-back"` (← Runs), `run-open-inspector` (deep-link this run
+  into the Inspector), and `run-kill` on live runs only.
+- Outcome banner for finished runs: status headline, and when the worktree
+  still exists, action buttons — `outcome-resume`, `outcome-fix-merge`,
+  `outcome-open-pr` (opens an inline form: `pr-title`, `pr-body`,
+  `pr-create`), `outcome-merge`, `outcome-discard`. Merge/discard raise the
+  in-app confirm (`confirm-accept` answers it). A merged run shows a
+  `merged` chip instead.
+- Phase waterfall: one lane per phase, `phase-lane-{phaseId}` with
+  `data-phase-name`. Click to select; labels like `planner ×2`.
 - Right pane for the selected phase: `phase-tab-timeline` / `envelope` /
   `gates` / `prompt` (visible labels include counts, e.g. `Timeline29`).
   Timeline rows are expandable buttons: `⚙ read: path`, `· assistant`,
   `$ cmd`, `⛨ gate_name`, `∑ agent` (envelope), `▸/→/▪` phase markers.
+
+### Interrupts (engineer checkpoint)
+
+When a pipeline declares an engineer phase, a modal sheet blocks the app:
+notes textarea `interrupt-notes`, then `interrupt-reject` /
+`interrupt-approve`. **Escape rejects** — do not press it to "just close".
+The sidebar's `sidebar-pending` button jumps from any view to the run that is
+waiting.
 
 ### Inspector
 
@@ -346,82 +487,125 @@ Live trace viewer, cards per phase in a two-column masonry. Top bar:
   `inspector-raw-files` (shows a flat chronological list of every file
   READ/EDIT/CREATE/SEARCH and `$` command across the run; toggle again to
   go back).
-- `⤢` buttons expand individual tool-call cards.
+- Footer: `inspector-collapse-all` collapses every visible tool call;
+  `inspector-lanes` (a range input) sets lanes per viewport (1–6).
+- One lane per phase in a horizontal row; scroll horizontally for the rest.
 
 ### Design (Pipelines / Agents / Envelopes)
 
 Three sub-tabs under one view, switched via `Meta+Shift+1/2/3` or
-`data-testid="tab-pipelines"`, `tab-agents`, `tab-envelopes`.
+`data-testid="tab-pipelines"`, `tab-agents`, `tab-envelopes` (labelled
+**Reports**). A header badge shows whether entities are Global or
+project-scoped.
 
 **Pipelines** (`tab-pipelines`):
 
-- Pipeline picker: `data-testid="pipeline-selector"` (shows current pipeline
-  name + phase count), `data-testid="pipeline-option-{id}"` per pipeline,
-  `data-testid="pipeline-new"` to create one.
-- Editor: name/description textboxes (`aria-label="Pipeline name"`,
-  `aria-label="Pipeline description"`), a horizontal phase ribbon, add
-  buttons Agent / Command / Checkpoint.
-- `Dry run` opens an overlay showing the exact SYSTEM/USER prompt each agent
-  phase would receive. Nothing is sent; safe to click. Close with `Esc`.
+- Pipeline picker: `pipeline-selector` (current pipeline + phase count),
+  `pipeline-option-{id}` per pipeline, `pipeline-new` to create one.
+- Canvas: one card per phase (`pipeline-phase-{name}`), add buttons
+  `pipeline-add-agent` / `-command` / `-checkpoint`; the phase editor opens
+  in a right-hand sheet.
+- `pipeline-dry-run` shows the exact SYSTEM/USER prompt each agent phase
+  would receive. Nothing is sent; safe to click. Close with `Esc`.
+- `pipeline-settings` opens acceptance/validation settings.
 - Edits save automatically; validation status bottom-left.
 
 **Agents** (`tab-agents`):
 
-- Agent tabs: `data-testid="agent-tab-{name}"` (e.g. `agent-tab-builder`).
-  `data-testid="agent-new"` to create one.
-- `Preview prompt` — overlay with the rendered SYSTEM/USER prompt (safe,
-  close with Esc). `Duplicate`.
-- IDENTITY: `aria-label="Agent name"`, `aria-label="Agent purpose"`,
-  accent color buttons.
-- EXECUTION: CLI vendor combobox, model combobox + Refresh, reasoning-effort
-  radios, envelope-kind combobox.
-- PROMPTS: `aria-label="System prompt"` and `aria-label="User prompt template"`
-  textareas.
+- Agent tabs: `agent-tab-{name}` (e.g. `agent-tab-builder`);
+  `agent-new` to create one.
+- Header actions: `agent-preview` (rendered SYSTEM/USER prompt overlay,
+  safe, close with Esc), `agent-duplicate`, `agent-delete` (custom agents),
+  `agent-reset` (edited builtins).
+- Identity: mark picker (`agent-mark-picker`), `aria-label="Agent name"`
+  (renames commit on blur/Enter), `aria-label="Agent purpose"`, accent
+  swatches.
+- Execution: "Inherit model and reasoning" checkbox, model picker,
+  reasoning-effort radio group, report-kind dropdown ("Manage reports…"
+  cross-links to the Envelopes tab).
+- Prompts: `aria-label="System prompt"` and
+  `aria-label="User prompt template"` textareas. Tools & write boundary:
+  tool-surface dropdown plus path boundary editor.
 
 Renaming a shipped agent copies it under the new name (pipelines keep
-working); changing CLI vendor resets the model choice.
+working). Edits autosave after ~350 ms when valid; errors block the save.
+
+**Reports** (`tab-envelopes`):
+
+- Library rail: customs as `envelope-item-{name}`, built-ins as
+  `envelope-builtin-{kind}` (inspect-only JSON preview).
+- `envelope-new` starts a blank custom report; starter templates appear when
+  the library is empty. Field editor + live JSON preview; Delete goes through
+  the in-app confirm and reports where the envelope is still used.
+
+### Smith
+
+Native chat with Foundry's entity-smith, on a dedicated screen
+(`nav-smith` → `data-view="smith"`) plus a floating bubble on every other
+screen (`smith-bubble`; hidden while the screen is open). One persistent
+conversation per project.
+
+- Screen: composer `smith-input` (Enter sends, Shift+Enter newline),
+  `smith-send` / `smith-cancel` while running, `smith-model` picker,
+  `smith-new-chat` (wipes the conversation), transcript in
+  `smith-transcript`.
+- Bubble: `smith-bubble-input/-send/-cancel`, `smith-bubble-expand` opens
+  the full screen (carrying context about where you were), `smith-bubble-close`.
+- Entity writes arrive as an inline `smith-proposal-card` at the transcript
+  tail showing create/overwrite plus the full definition; answer with
+  `smith-proposal-approve` / `smith-proposal-reject`. Approving saves the
+  entity and deep-links Design to its editor.
+- Sending any message runs real agent turns on the configured model — same
+  warning as starting a run: do not send unless explicitly asked. Reading is
+  free.
 
 ### Settings
 
-Tabs (`settings-tab-{id}`): `General`, `Agent CLI`, `Agent defaults`,
-`MCP Servers`, `Project`, `Maintenance`, `About`. `data-settings-pane`
-mirrors the selected id (`clis` is the Agent CLI pane).
+Three panes on a left rail (`settings-tab-{id}`, mirrored by
+`data-settings-pane`): `models` (Models & Providers), `project`, `app`.
 
-- General: identity (engineer name), environment checks + `Re-check`,
-  notification checkboxes, `Check for updates`, `Relaunch Foundry`,
-  `Quit Foundry` (avoid the last two in automation unless intended).
-- Agent CLIs: per-vendor binary path textbox + extra-args textbox +
-  `Install docs`; environment checks.
-- Agent defaults: default model + reasoning effort, autonomy combobox,
-  limits (envelope retries, gate retries, turn timeout, trace poll cadence).
-- Project: project name, path + `Reveal in Finder`, repository checks
-  (git repo, base ref, submodules, clean worktree, project commands,
-  leftover run worktrees + `Fix`), base ref, merge policy, base-ref
-  sync bar (`data-testid="base-sync"` — same control as Runs).
-  **Do not click `Remove project`.**
-- Maintenance: run-history retention, `Apply retention now`,
-  `Compact trace databases`, leftover worktrees with `Remove` buttons
-  (destructive: deletes branch + uncommitted work; don't click casually).
-- About: version info.
+- Models & Providers: Bridge status pill (`bridge-status`), subscription
+  provider cards (`provider-card-{id}`) with Connect/Disconnect (connect
+  opens the system browser — fine; sign-in completes back in the app),
+  direct API-key cards (`provider-key-{id}`), model catalog with
+  hide buttons (`hide-model-{id}`, `reset-hidden-models`,
+  count line `providers-model-count`). Agent defaults (model, reasoning,
+  helper model, Smith model, PR writer) and Advanced limits sit below on
+  the same pane.
+- Project: name, path + `Reveal in Finder`, readiness note, repository
+  checks + re-check, base ref, merge policy, base-ref sync bar (`base-sync`
+  — same control as Runs), project commands, worktree setup script,
+  protected paths. **Do not click `Remove project`** (in-app confirm).
+- App: environment checks + re-check, notification toggles, software-update
+  controls, companion phone pairing (QR), Retention (`Apply retention now`,
+  `Compact trace databases` — both confirm first) and leftover worktrees
+  with destructive `Remove` buttons; build info and `Relaunch Foundry` /
+  `Quit Foundry` (never click those two in automation).
+- Search: rail input `settings-search`, or ⌘K from anywhere for the
+  palette (`settings-palette`) whose entries can jump panes or flip toggles
+  in place.
 
-Deep-linking: RunsScreen surfaces problems as "Open Settings" links that land
-on a specific pane.
+Deep-linking: Runs surfaces problems as "Open Settings" links that land on a
+specific pane.
 
 ### Onboarding
 
 Shown instead of the whole shell when settings have `onboarded: false`
-(always on a fresh `--user-data-dir`). Stepper nav: Welcome → Factory →
-Roster → CLIs → Ready → Project.
+(always on a fresh `--user-data-dir`). Stepper pills
+`onboarding-step-{id}`: `welcome` → `providers` → `doctor` → `project`;
+footer buttons are `onboarding-back` / `onboarding-next` on every step.
 
-- Welcome: `button "Begin"`.
-- Factory / Roster: info pages, `Back` / `Continue`.
-- CLIs: radios per vendor showing detection (`Ready` / `Not installed` /
-  `Needs sign-in`), pick the default harness.
-- Ready (doctor): per-CLI checks, `Re-check environment`, `Continue`.
-- Project: name textbox + `button "Choose a repository…"` (native folder
-  picker — automation dead end) and `Enter Foundry` (disabled until a repo is
-  chosen). To test the main UI without picking a repo, use the real state
-  instead, or pre-seed the temp dir's `settings.json` with `"onboarded": true`.
+- Welcome: intro, Begin/Continue.
+- Providers: connect a model provider — OAuth rows (`onboarding-provider-{id}`)
+  open the system browser and complete in-app, or paste an API key. The model
+  catalog is `data-testid="onboarding-models"`.
+- Ready (doctor): per-provider/per-CLI checks, `Re-check environment`,
+  Continue.
+- Project: pick from detected repositories, or `Choose a repository…`
+  (**native folder picker — automation dead end**) and `Enter Foundry`
+  (disabled until a repo is chosen). To test the main UI without picking a
+  repo, use the real state instead, or pre-seed the temp dir's
+  `settings.json` with `"onboarded": true`.
 
 ## Troubleshooting
 
@@ -444,8 +628,11 @@ Roster → CLIs → Ready → Project.
 - **Blank/stale UI after code changes**: `electron .` serves the last build;
   run `npm run build` and relaunch. For live HMR use `npm run dev` (but flag
   passthrough for the debug port is unreliable; prefer built launches).
-- **Buttons do nothing**: an overlay (Dry run / Prompt preview / interrupt
-  sheet) may be capturing input — `agent-browser press Escape` — or a native
-  dialog is open, which CDP cannot see or dismiss.
+- **Buttons do nothing**: an overlay (⌘K palette, Dry run, Prompt preview,
+  confirm modal) may be capturing input — `agent-browser press Escape`.
+  Exception: if it is an **interrupt sheet** (engineer checkpoint), Escape
+  _rejects_ the checkpoint rather than dismissing it — answer it with
+  `interrupt-approve` / `interrupt-reject` instead. A native dialog (PR-merge
+  confirm, folder picker) is open? CDP can neither see nor dismiss it.
 - **electron binary missing** (`electron/dist` not installed):
   `node node_modules/electron/install.js`.

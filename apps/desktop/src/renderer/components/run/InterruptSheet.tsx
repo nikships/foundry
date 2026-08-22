@@ -98,6 +98,7 @@ export default function InterruptSheet({
           rows={3}
           disabled={sending}
           placeholder="Anything you add here is sent to the agent as part of your answer."
+          data-testid="interrupt-notes"
         />
       </label>
       {error && (
@@ -106,7 +107,12 @@ export default function InterruptSheet({
         </p>
       )}
       <footer>
-        <Button disabled={sending} onClick={() => void answer('reject')} title="Reject (Esc)">
+        <Button
+          disabled={sending}
+          onClick={() => void answer('reject')}
+          title="Reject (Esc)"
+          data-testid="interrupt-reject"
+        >
           {sending ? 'Sending…' : 'Reject'}
         </Button>
         <div className={styles.spacer} />
@@ -116,6 +122,7 @@ export default function InterruptSheet({
           variant="primary"
           disabled={sending}
           onClick={() => void answer('approve')}
+          data-testid="interrupt-approve"
         >
           {sending ? 'Sending…' : 'Approve'}
         </Button>

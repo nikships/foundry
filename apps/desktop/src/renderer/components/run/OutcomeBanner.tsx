@@ -142,6 +142,7 @@ export default function OutcomeBanner({
               disabled={worktreeBusy}
               title="Retry the first failed phase and continue this pipeline in the same worktree"
               onClick={onResume}
+              data-testid="outcome-resume"
             >
               {worktreeBusy ? 'Continuing…' : 'Continue run'}
             </Button>
@@ -153,6 +154,7 @@ export default function OutcomeBanner({
               disabled={worktreeBusy}
               title="An agent rebases the run branch onto the base inside its worktree; Foundry verifies the result and merges it"
               onClick={onFixMerge}
+              data-testid="outcome-fix-merge"
             >
               {worktreeBusy ? 'Working…' : 'Fix & merge with agent'}
             </Button>
@@ -182,6 +184,7 @@ export default function OutcomeBanner({
               disabled={worktreeBusy || !ghReady}
               title={ghHint || 'Push the run branch and open a pull request on GitHub'}
               onClick={() => (prFormOpen ? setPrFormOpen(false) : openPrForm())}
+              data-testid="outcome-open-pr"
             >
               Open PR…
             </Button>
@@ -192,6 +195,7 @@ export default function OutcomeBanner({
             disabled={worktreeBusy}
             title="Merge the run branch into the project base ref locally, without a PR"
             onClick={onMerge}
+            data-testid="outcome-merge"
           >
             {worktreeBusy ? 'Working…' : 'Merge branch'}
           </Button>
@@ -201,6 +205,7 @@ export default function OutcomeBanner({
             disabled={worktreeBusy}
             title="Delete the run worktree and branch"
             onClick={onDiscard}
+            data-testid="outcome-discard"
           >
             Discard
           </Button>
@@ -237,6 +242,7 @@ export default function OutcomeBanner({
             value={prTitle}
             placeholder="Pull request title"
             onChange={(e) => setPrTitle(e.target.value)}
+            data-testid="pr-title"
           />
           <textarea
             className={`input ${styles.prBody}`}
@@ -244,6 +250,7 @@ export default function OutcomeBanner({
             placeholder="Pull request description"
             rows={5}
             onChange={(e) => setPrBody(e.target.value)}
+            data-testid="pr-body"
           />
           <div className={styles.prFormActions}>
             <span className="faint">
@@ -266,6 +273,7 @@ export default function OutcomeBanner({
                 size="sm"
                 disabled={worktreeBusy || !prTitle.trim()}
                 onClick={submitPr}
+                data-testid="pr-create"
               >
                 Create PR
               </Button>

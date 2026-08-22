@@ -66,7 +66,12 @@ export default function UpdateBanner({
           ) : null}
           <strong className={styles.title}>{title}</strong>
         </div>
-        <button className={styles.dismiss} onClick={onDismiss} aria-label="Dismiss update banner">
+        <button
+          className={styles.dismiss}
+          onClick={onDismiss}
+          aria-label="Dismiss update banner"
+          data-testid="update-dismiss"
+        >
           ✕
         </button>
       </div>

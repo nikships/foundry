@@ -132,11 +132,20 @@ export default function SmithProposalCard({
       )}
 
       <footer className={styles.footer}>
-        <Button disabled={sending} onClick={() => void answer(false)}>
+        <Button
+          disabled={sending}
+          onClick={() => void answer(false)}
+          data-testid="smith-proposal-reject"
+        >
           {sending ? 'Sending…' : 'Reject'}
         </Button>
         <span className={styles.spacer} />
-        <Button variant="primary" disabled={sending} onClick={() => void answer(true)}>
+        <Button
+          variant="primary"
+          disabled={sending}
+          onClick={() => void answer(true)}
+          data-testid="smith-proposal-approve"
+        >
           {sending ? 'Saving…' : 'Approve'}
         </Button>
       </footer>

@@ -732,6 +732,7 @@ export default function SettingsScreen({
                 placeholder="Search settings"
                 aria-label="Search settings"
                 spellCheck={false}
+                data-testid="settings-search"
                 onChange={(e) => setSearchQ(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && searchHits[0]) {
@@ -1963,6 +1964,7 @@ export default function SettingsScreen({
               role="dialog"
               aria-modal="true"
               aria-label="Search settings"
+              data-testid="settings-palette"
             >
               <div className={styles.palRow}>
                 <input
@@ -1972,6 +1974,7 @@ export default function SettingsScreen({
                   placeholder="Type a setting or action…"
                   aria-label="Search settings"
                   spellCheck={false}
+                  data-testid="settings-palette-input"
                   onChange={(e) => {
                     setPalQ(e.target.value);
                     setPalIdx(0);

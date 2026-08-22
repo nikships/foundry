@@ -557,7 +557,13 @@ export default function EnvelopesEditor({
               live preview below is exactly what the agent is shown.
             </p>
           </div>
-          <Button size="sm" variant="primary" onClick={() => void startBlank()} disabled={busy}>
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={() => void startBlank()}
+            disabled={busy}
+            data-testid="envelope-new"
+          >
             New report
           </Button>
         </header>
@@ -582,6 +588,7 @@ export default function EnvelopesEditor({
                         type="button"
                         className={`${styles.envelopeItem} ${on ? styles.on : ''}`}
                         onClick={() => void selectCustom(env.name)}
+                        data-testid={`envelope-item-${env.name}`}
                       >
                         <strong className="mono">{env.name}</strong>
                         <em>
@@ -621,6 +628,7 @@ export default function EnvelopesEditor({
                       type="button"
                       className={`${styles.envelopeItem} ${styles.envelopeBuiltinBtn} ${on ? styles.on : ''}`}
                       onClick={() => void selectBuiltin(kind)}
+                      data-testid={`envelope-builtin-${kind}`}
                     >
                       <strong className="mono">{kind}</strong>
                       <em>{BUILTIN_BLURBS[kind]}</em>

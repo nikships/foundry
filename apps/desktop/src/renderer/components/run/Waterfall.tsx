@@ -134,6 +134,8 @@ export default function Waterfall({
             key={phase.phaseId}
             className={`${styles.lane} ${phase.phaseId === selectedPhaseId ? styles.selected : ''} ${phase.status === 'queued' ? styles.queued : ''}`}
             onClick={() => onSelect(phase.phaseId)}
+            data-testid={`phase-lane-${phase.phaseId}`}
+            data-phase-name={phase.name}
           >
             <div className={styles.laneLabel}>
               {phase.kind === 'agent' ? (
