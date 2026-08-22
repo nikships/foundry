@@ -5,6 +5,7 @@
  * seam rather than navigating the window.
  */
 
+import { useMemo } from 'react';
 import { api } from '../../api.js';
 import { parseMarkdown, type MarkdownBlock, type MarkdownInline } from '../../utils/markdown.js';
 import styles from './MarkdownText.module.css';
@@ -102,7 +103,9 @@ function Block({ block }: { block: MarkdownBlock }): React.JSX.Element {
 }
 
 export default function MarkdownText({ text }: { text: string }): React.JSX.Element {
-  const blocks = parseMarkdown(text);
+  // The transcript re-renders on every progress push; parse only when the
+  // message itself changes.
+  const blocks = useMemo(() => parseMarkdown(text), [text]);
   return (
     <div className={styles.markdown}>
       {blocks.map((block, i) => (

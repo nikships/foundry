@@ -105,6 +105,28 @@ describe('parseInline', () => {
     ]);
   });
 
+  it('never nests a link inside a link label', () => {
+    expect(parseInline('[see https://a.com](https://b.com)')).toEqual([
+      {
+        type: 'link',
+        href: 'https://b.com',
+        children: [{ type: 'text', text: 'see https://a.com' }],
+      },
+    ]);
+  });
+
+  it('leaves trailing sentence punctuation out of a bare URL', () => {
+    expect(parseInline('read https://example.com/a.')).toEqual([
+      { type: 'text', text: 'read ' },
+      {
+        type: 'link',
+        href: 'https://example.com/a',
+        children: [{ type: 'text', text: 'https://example.com/a' }],
+      },
+      { type: 'text', text: '.' },
+    ]);
+  });
+
   it('leaves unbalanced markers as literal text', () => {
     expect(parseInline('2 * 3 * 4')).toEqual([{ type: 'text', text: '2 * 3 * 4' }]);
     // Underscores inside identifiers are never emphasis.

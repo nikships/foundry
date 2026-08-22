@@ -131,7 +131,8 @@ const EM_UNDERSCORE = /^_([^_\s](?:[^_]*[^_\s])?)_/;
 const LINK = /^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/;
 const BARE_URL = /^https?:\/\/[^\s<>)]+/;
 
-export function parseInline(text: string): MarkdownInline[] {
+export function parseInline(text: string, opts?: { noLinks?: boolean }): MarkdownInline[] {
+  const noLinks = opts?.noLinks ?? false;
   const out: MarkdownInline[] = [];
   let plain = '';
   const flush = (): void => {
@@ -153,7 +154,7 @@ export function parseInline(text: string): MarkdownInline[] {
     const strong = rest.match(STRONG);
     if (strong) {
       flush();
-      out.push({ type: 'strong', children: parseInline(strong[1]!) });
+      out.push({ type: 'strong', children: parseInline(strong[1]!, opts) });
       rest = rest.slice(strong[0].length);
       continue;
     }
@@ -163,22 +164,30 @@ export function parseInline(text: string): MarkdownInline[] {
     const em = rest.match(EM_STAR) ?? (afterWord ? null : rest.match(EM_UNDERSCORE));
     if (em) {
       flush();
-      out.push({ type: 'em', children: parseInline(em[1]!) });
+      out.push({ type: 'em', children: parseInline(em[1]!, opts) });
       rest = rest.slice(em[0].length);
       continue;
     }
-    const link = rest.match(LINK);
+    const link = noLinks ? null : rest.match(LINK);
     if (link) {
       flush();
-      out.push({ type: 'link', href: link[2]!, children: parseInline(link[1]!) });
+      // A link label never contains another link — nested <a> is invalid DOM
+      // and a click would bubble to both handlers.
+      out.push({
+        type: 'link',
+        href: link[2]!,
+        children: parseInline(link[1]!, { noLinks: true }),
+      });
       rest = rest.slice(link[0].length);
       continue;
     }
-    const bare = rest.match(BARE_URL);
+    const bare = noLinks ? null : rest.match(BARE_URL);
     if (bare) {
       flush();
-      out.push({ type: 'link', href: bare[0], children: [{ type: 'text', text: bare[0] }] });
-      rest = rest.slice(bare[0].length);
+      // Trailing sentence punctuation belongs to the prose, not the URL.
+      const href = bare[0].replace(/[.,;:!?]+$/, '');
+      out.push({ type: 'link', href, children: [{ type: 'text', text: href }] });
+      rest = rest.slice(href.length);
       continue;
     }
     plain += rest[0]!;
