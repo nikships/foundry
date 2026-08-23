@@ -18,6 +18,12 @@ Shape the delivery lifecycle to the way your team actually ships,<br>and run eve
 
 </div>
 
+
+
+https://github.com/user-attachments/assets/2a12273a-280f-4703-8690-c8c018e3d8d3
+
+
+
 ---
 
 ## Two lock-ins are slowing you down
