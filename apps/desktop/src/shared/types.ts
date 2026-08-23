@@ -850,7 +850,9 @@ export type SmithArtifactKind =
   | 'envelope_design'
   | 'checklist'
   | 'entity_comparison'
-  | 'change_receipt';
+  | 'change_receipt'
+  | 'project_card'
+  | 'pr_card';
 
 /** The protocol version this build reads. Unknown versions fail soft in the UI. */
 export const SMITH_ARTIFACT_VERSION = 1;
@@ -955,6 +957,89 @@ export interface SmithChangeReceiptArtifact extends SmithArtifactBase {
   receipt: ChangeReceiptDef;
 }
 
+export interface ProjectCardGithub {
+  available: boolean;
+  repo?: string;
+  detail?: string;
+  defaultBranch?: string;
+}
+
+export interface ProjectCardDivergence {
+  ahead: number;
+  behind: number;
+  state: BaseSyncState;
+  detail?: string;
+}
+
+export interface ProjectCardScopes {
+  roster: boolean;
+  pipelines: boolean;
+}
+
+export interface ProjectCardHealth {
+  ok: boolean;
+  summary?: string;
+  failedCount?: number;
+  totalCount?: number;
+  issues?: string[];
+}
+
+export interface ProjectCardDef {
+  id?: string;
+  name?: string;
+  path: string;
+  baseRef: string;
+  title?: string;
+  summary?: string;
+  isGit?: boolean;
+  github?: ProjectCardGithub;
+  commands?: ProjectCommand[];
+  setupScript?: string;
+  readinessValidated?: boolean;
+  readinessSkipped?: boolean;
+  scaffold?: boolean;
+  divergence?: ProjectCardDivergence;
+  scopes?: ProjectCardScopes;
+  health?: ProjectCardHealth;
+  contextSummary?: string;
+}
+
+/** A read-only project card: path, base ref, git/github state, commands, divergence, scopes, health. */
+export interface SmithProjectCardArtifact extends SmithArtifactBase {
+  kind: 'project_card';
+  project: ProjectCardDef;
+}
+
+export interface PrCardAction {
+  operation: 'create' | 'merge' | 'fix_conflicts';
+  status: 'success' | 'failure';
+  detail?: string;
+}
+
+export interface PrCardDef {
+  number: number;
+  title: string;
+  url: string;
+  headRefName: string;
+  baseRefName?: string;
+  body?: string;
+  author?: string;
+  isDraft?: boolean;
+  checks?: PrChecks;
+  mergeable?: 'mergeable' | 'conflicting' | 'unknown';
+  reviewDecision?: string;
+  additions?: number;
+  deletions?: number;
+  createdAt?: string;
+  action?: PrCardAction;
+}
+
+/** A read-only PR preview/card: number, title, branches, checks, merge/conflict state, external link. */
+export interface SmithPrCardArtifact extends SmithArtifactBase {
+  kind: 'pr_card';
+  pr: PrCardDef;
+}
+
 /**
  * One rich inline card in the Smith transcript. Artifacts are presentation
  * only: they perform no writes, never occupy the one-slot proposal queue, and
@@ -967,7 +1052,9 @@ export type SmithArtifact =
   | SmithEnvelopeDesignArtifact
   | SmithChecklistArtifact
   | SmithEntityComparisonArtifact
-  | SmithChangeReceiptArtifact;
+  | SmithChangeReceiptArtifact
+  | SmithProjectCardArtifact
+  | SmithPrCardArtifact;
 
 // ── Smith (the entity-smith's approval gate) ─────────────────────────────────
 

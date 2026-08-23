@@ -12,6 +12,8 @@ import type {
   ChecklistDef,
   EnvelopeDef,
   PipelineDef,
+  PrCardDef,
+  ProjectCardDef,
   SmithArtifact,
 } from '@shared/types.js';
 import { SMITH_ARTIFACT_VERSION } from '@shared/types.js';
@@ -31,6 +33,14 @@ import {
   groupChecklistItems,
   isRenderableArtifact,
   phaseWorkLabel,
+  prChecksGlyph,
+  prChecksLabel,
+  prMergeableLabel,
+  prSummary,
+  projectCardDivergenceLabel,
+  projectCardHealthLabel,
+  projectCardScopesLabel,
+  projectCardSummary,
   writesLabel,
 } from '@renderer/view-models/smith-artifact-view.js';
 
@@ -88,6 +98,26 @@ const receipt: ChangeReceiptDef = {
   },
 };
 
+const project: ProjectCardDef = {
+  name: 'Foundry',
+  path: '/Users/nik/foundry',
+  baseRef: 'main',
+  commands: [{ name: 'test', argv: ['npm', 'test'] }],
+  divergence: { ahead: 0, behind: 0, state: 'current' },
+  scopes: { roster: false, pipelines: false },
+  health: { ok: true, summary: 'All checks passing' },
+};
+
+const pr: PrCardDef = {
+  number: 188,
+  title: 'Add change receipt',
+  url: 'https://github.com/nikships/foundry/pull/188',
+  headRefName: 'fou-160',
+  baseRefName: 'main',
+  checks: 'passing',
+  mergeable: 'mergeable',
+};
+
 function artifactOf(kind: SmithArtifact['kind'], version = SMITH_ARTIFACT_VERSION): SmithArtifact {
   const base = { id: 'a1', version, createdAt: 0, warnings: [] };
   if (kind === 'pipeline_design') return { ...base, kind, pipeline };
@@ -95,6 +125,8 @@ function artifactOf(kind: SmithArtifact['kind'], version = SMITH_ARTIFACT_VERSIO
   if (kind === 'envelope_design') return { ...base, kind, envelope };
   if (kind === 'checklist') return { ...base, kind, checklist };
   if (kind === 'change_receipt') return { ...base, kind, receipt };
+  if (kind === 'project_card') return { ...base, kind, project };
+  if (kind === 'pr_card') return { ...base, kind, pr };
   return {
     ...base,
     kind,
@@ -117,6 +149,8 @@ describe('the artifact registry', () => {
     expect(isRenderableArtifact(artifactOf('checklist', 99))).toBe(false);
     expect(isRenderableArtifact(artifactOf('entity_comparison', 99))).toBe(false);
     expect(isRenderableArtifact(artifactOf('change_receipt', 99))).toBe(false);
+    expect(isRenderableArtifact(artifactOf('project_card', 99))).toBe(false);
+    expect(isRenderableArtifact(artifactOf('pr_card', 99))).toBe(false);
     expect(isRenderableArtifact({ kind: 'run_summary' } as unknown as SmithArtifact)).toBe(false);
   });
 
@@ -127,6 +161,8 @@ describe('the artifact registry', () => {
     expect(artifactName(artifactOf('checklist'))).toBe('Project Health');
     expect(artifactName(artifactOf('entity_comparison'))).toBe('planner');
     expect(artifactName(artifactOf('change_receipt'))).toBe('Checkout changes applied');
+    expect(artifactName(artifactOf('project_card'))).toBe('Foundry');
+    expect(artifactName(artifactOf('pr_card'))).toBe('#188 Add change receipt');
   });
 });
 
@@ -235,6 +271,66 @@ describe('display labels', () => {
     expect(
       phaseWorkLabel({ name: 'ask', kind: 'engineer', description: '', question: 'Ship it?' }),
     ).toBe('Ship it?');
+  });
+});
+
+describe('project card helpers', () => {
+  it('formats health, divergence, and scopes labels in domain language', () => {
+    expect(projectCardHealthLabel({ ok: true })).toBe('Healthy');
+    expect(projectCardHealthLabel({ ok: false, failedCount: 2 })).toBe('2 issues');
+    expect(projectCardHealthLabel(undefined)).toBe('Unknown health');
+
+    expect(projectCardDivergenceLabel({ ahead: 0, behind: 0, state: 'current' })).toBe(
+      'Up to date',
+    );
+    expect(projectCardDivergenceLabel({ ahead: 3, behind: 0, state: 'ahead' })).toBe('3 ahead');
+    expect(projectCardDivergenceLabel({ ahead: 0, behind: 2, state: 'behind' })).toBe('2 behind');
+    expect(projectCardDivergenceLabel({ ahead: 1, behind: 2, state: 'diverged' })).toBe(
+      '1 ahead, 2 behind',
+    );
+    expect(projectCardDivergenceLabel({ ahead: 0, behind: 0, state: 'no_remote' })).toBe(
+      'No remote',
+    );
+    expect(projectCardDivergenceLabel(undefined)).toBe('Up to date');
+
+    expect(projectCardScopesLabel({ roster: true, pipelines: true })).toBe(
+      'Custom roster & pipelines',
+    );
+    expect(projectCardScopesLabel({ roster: true, pipelines: false })).toBe('Custom roster');
+    expect(projectCardScopesLabel({ roster: false, pipelines: true })).toBe('Custom pipelines');
+    expect(projectCardScopesLabel({ roster: false, pipelines: false })).toBe('Global defaults');
+    expect(projectCardScopesLabel(undefined)).toBe('Global defaults');
+  });
+
+  it('formats project card summary', () => {
+    expect(projectCardSummary(project)).toBe('main · 1 command · Healthy · Up to date');
+    expect(projectCardSummary({ ...project, summary: 'Custom project summary' })).toBe(
+      'Custom project summary',
+    );
+  });
+});
+
+describe('PR card helpers', () => {
+  it('formats checks, glyphs, and mergeable labels in domain language', () => {
+    expect(prChecksLabel('passing')).toBe('Checks passed');
+    expect(prChecksLabel('failing')).toBe('Checks failed');
+    expect(prChecksLabel('pending')).toBe('Checks pending');
+    expect(prChecksLabel('none')).toBe('No checks');
+    expect(prChecksLabel(undefined)).toBe('No checks');
+
+    expect(prChecksGlyph('passing')).toBe('✓');
+    expect(prChecksGlyph('failing')).toBe('✕');
+    expect(prChecksGlyph('pending')).toBe('◌');
+    expect(prChecksGlyph('none')).toBe('—');
+
+    expect(prMergeableLabel('mergeable')).toBe('Mergeable');
+    expect(prMergeableLabel('conflicting')).toBe('Conflicts');
+    expect(prMergeableLabel('unknown')).toBe('Merge status unknown');
+    expect(prMergeableLabel(undefined)).toBe('Merge status unknown');
+  });
+
+  it('formats PR summary', () => {
+    expect(prSummary(pr)).toBe('fou-160 → main · Checks passed · Mergeable');
   });
 });
 
