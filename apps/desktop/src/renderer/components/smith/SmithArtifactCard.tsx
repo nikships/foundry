@@ -16,10 +16,14 @@ import {
 } from '../../view-models/smith-artifact-view.js';
 import { ChangeReceiptDesign } from './SmithChangeReceiptDesign.js';
 import { ChecklistDesign } from './SmithChecklistDesign.js';
+import { DataTableDesign } from './SmithDataTableDesign.js';
+import { DiagnosticsDesign } from './SmithDiagnosticsDesign.js';
 import { EntityComparisonDesign } from './SmithEntityComparisonDesign.js';
 import { ProjectCardDesign } from './SmithProjectCardDesign.js';
 import { PrCardDesign } from './SmithPrCardDesign.js';
 import { AgentDesign, EnvelopeDesign, PipelineDesign, ViewJson } from './SmithEntityDesign.js';
+import { EvidenceDisclosureDesign } from './SmithEvidenceDisclosureDesign.js';
+import { SettingsDiffDesign } from './SmithSettingsDiffDesign.js';
 import styles from './SmithArtifactCard.module.css';
 
 function DesignBody({
@@ -36,7 +40,14 @@ function DesignBody({
     return <AgentDesign agent={artifact.agent} compact={compact} />;
   }
   if (artifact.kind === 'envelope_design') {
-    return <EnvelopeDesign envelope={artifact.envelope} compact={compact} />;
+    return (
+      <EnvelopeDesign
+        envelope={artifact.envelope}
+        usage={artifact.usage}
+        sampleOutput={artifact.sampleOutput}
+        compact={compact}
+      />
+    );
   }
   if (artifact.kind === 'checklist') {
     return <ChecklistDesign checklist={artifact.checklist} compact={compact} />;
@@ -50,7 +61,19 @@ function DesignBody({
   if (artifact.kind === 'project_card') {
     return <ProjectCardDesign project={artifact.project} compact={compact} />;
   }
-  return <PrCardDesign pr={artifact.pr} compact={compact} />;
+  if (artifact.kind === 'pr_card') {
+    return <PrCardDesign pr={artifact.pr} compact={compact} />;
+  }
+  if (artifact.kind === 'settings_diff') {
+    return <SettingsDiffDesign diff={artifact.diff} compact={compact} />;
+  }
+  if (artifact.kind === 'diagnostics') {
+    return <DiagnosticsDesign diagnostics={artifact.diagnostics} compact={compact} />;
+  }
+  if (artifact.kind === 'data_table') {
+    return <DataTableDesign table={artifact.table} compact={compact} />;
+  }
+  return <EvidenceDisclosureDesign evidence={artifact.evidence} compact={compact} />;
 }
 
 export default function SmithArtifactCard({
@@ -101,7 +124,11 @@ export default function SmithArtifactCard({
             : artifact.kind === 'agent_design'
               ? artifact.agent
               : artifact.kind === 'envelope_design'
-                ? artifact.envelope
+                ? {
+                    ...artifact.envelope,
+                    ...(artifact.usage ? { usage: artifact.usage } : {}),
+                    ...(artifact.sampleOutput ? { sampleOutput: artifact.sampleOutput } : {}),
+                  }
                 : artifact.kind === 'checklist'
                   ? artifact.checklist
                   : artifact.kind === 'entity_comparison'
@@ -110,7 +137,15 @@ export default function SmithArtifactCard({
                       ? artifact.receipt
                       : artifact.kind === 'project_card'
                         ? artifact.project
-                        : artifact.pr
+                        : artifact.kind === 'pr_card'
+                          ? artifact.pr
+                          : artifact.kind === 'settings_diff'
+                            ? artifact.diff
+                            : artifact.kind === 'diagnostics'
+                              ? artifact.diagnostics
+                              : artifact.kind === 'data_table'
+                                ? artifact.table
+                                : artifact.evidence
         }
       />
     </section>

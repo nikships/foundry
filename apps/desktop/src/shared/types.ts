@@ -852,7 +852,11 @@ export type SmithArtifactKind =
   | 'entity_comparison'
   | 'change_receipt'
   | 'project_card'
-  | 'pr_card';
+  | 'pr_card'
+  | 'settings_diff'
+  | 'diagnostics'
+  | 'data_table'
+  | 'evidence_disclosure';
 
 /** The protocol version this build reads. Unknown versions fail soft in the UI. */
 export const SMITH_ARTIFACT_VERSION = 1;
@@ -882,10 +886,29 @@ export interface SmithAgentDesignArtifact extends SmithArtifactBase {
   agent: AgentDef;
 }
 
-/** A read-only envelope design: base fields plus the custom typed fields. */
+export interface EnvelopeUsageAgent {
+  name: string;
+  role?: string;
+}
+
+export interface EnvelopeUsagePhase {
+  pipelineId: string;
+  pipelineName?: string;
+  phaseName: string;
+}
+
+export interface EnvelopeUsageDef {
+  agents?: (string | EnvelopeUsageAgent)[];
+  pipelines?: string[];
+  phases?: EnvelopeUsagePhase[];
+}
+
+/** A read-only envelope design: base fields plus custom typed fields, usage, and sample output. */
 export interface SmithEnvelopeDesignArtifact extends SmithArtifactBase {
   kind: 'envelope_design';
   envelope: EnvelopeDef;
+  usage?: EnvelopeUsageDef;
+  sampleOutput?: Record<string, unknown>;
 }
 
 export type ChecklistItemStatus = 'pass' | 'warn' | 'fail' | 'info';
@@ -1040,6 +1063,164 @@ export interface SmithPrCardArtifact extends SmithArtifactBase {
   pr: PrCardDef;
 }
 
+export interface SettingsDiffChange {
+  key: string;
+  label: string;
+  previous?: unknown;
+  next?: unknown;
+  scope?: string;
+}
+
+export interface SettingsDiffSection {
+  section: string;
+  label?: string;
+  scope?: string;
+  changes: SettingsDiffChange[];
+}
+
+export interface SettingsDiffDef {
+  title?: string;
+  summary?: string;
+  scope?: 'global' | 'project' | string;
+  targetProjectId?: string;
+  sections: SettingsDiffSection[];
+  openSettingsTarget?: {
+    pane?: string;
+    section?: string;
+  };
+}
+
+/** A read-only settings diff: human labels and old/new values grouped by section/scope. */
+export interface SmithSettingsDiffArtifact extends SmithArtifactBase {
+  kind: 'settings_diff';
+  diff: SettingsDiffDef;
+}
+
+export interface DiagnosticsDef {
+  title?: string;
+  summary?: string;
+  category?: 'doctor' | 'orphans' | 'maintenance' | 'update' | 'lifecycle' | 'general';
+  doctor?: DoctorCheck[];
+  orphans?: OrphanWorktree[];
+  maintenance?: MaintenanceReport;
+  update?: UpdateStatus;
+  lifecycleWarning?: string;
+  items?: ChecklistItem[];
+}
+
+/** A read-only diagnostics/maintenance/update card: doctor checks, orphan worktrees, update status, lifecycle warnings. */
+export interface SmithDiagnosticsArtifact extends SmithArtifactBase {
+  kind: 'diagnostics';
+  diagnostics: DiagnosticsDef;
+}
+
+export type DataTableCatalogKind =
+  | 'runs'
+  | 'projects'
+  | 'agents'
+  | 'pipelines'
+  | 'envelopes'
+  | 'prs'
+  | 'doctor'
+  | 'models'
+  | 'custom';
+
+export type TableColumnType = 'text' | 'number' | 'status' | 'badge' | 'date' | 'code' | 'boolean';
+
+export interface TableColumnDef {
+  key: string;
+  label: string;
+  type?: TableColumnType;
+  width?: string;
+  align?: 'left' | 'center' | 'right';
+}
+
+export type TableCellStatusVariant =
+  'pass' | 'warn' | 'fail' | 'info' | 'neutral' | 'active' | 'muted';
+
+export interface TableCellStatus {
+  variant: TableCellStatusVariant;
+  label: string;
+}
+
+export type TableCellValue = string | number | boolean | TableCellStatus | null | undefined;
+
+export interface TableRowDef {
+  id: string;
+  cells: Record<string, TableCellValue>;
+  navTarget?: {
+    view?: 'runs' | 'inspector' | 'design' | 'prs' | 'settings' | 'smith';
+    targetId?: string;
+    tab?: 'pipelines' | 'agents' | 'envelopes';
+  };
+  disabled?: boolean;
+}
+
+export interface DataTableEmptyState {
+  message: string;
+  subtext?: string;
+}
+
+export interface DataTableDef {
+  title: string;
+  catalogKind?: DataTableCatalogKind;
+  summary?: string;
+  columns: TableColumnDef[];
+  rows: TableRowDef[];
+  emptyState?: DataTableEmptyState;
+  totalCount?: number;
+}
+
+/** A read-only bounded data catalog table with typed columns, status chips, empty state, and safe navigation. */
+export interface SmithDataTableArtifact extends SmithArtifactBase {
+  kind: 'data_table';
+  table: DataTableDef;
+}
+
+export interface ContextOccupancyDef {
+  usedTokens?: number;
+  maxTokens?: number;
+  percent?: number;
+  model?: string;
+  compactionThreshold?: number;
+}
+
+export type EvidenceItemKind =
+  'prompt' | 'command_output' | 'event_tail' | 'excerpt' | 'diff' | 'json' | 'log';
+
+export interface EvidenceItemDef {
+  id?: string;
+  label: string;
+  kind: EvidenceItemKind;
+  /** Bounded excerpt or text content. Capped in main. */
+  content: string;
+  language?: string;
+  truncated?: boolean;
+  totalLines?: number;
+  durationMs?: number;
+  exitCode?: number | null;
+}
+
+export interface EvidenceDisclosureDef {
+  title: string;
+  summary?: string;
+  runId?: string;
+  phaseName?: string;
+  occupancy?: ContextOccupancyDef;
+  phasePrompt?: {
+    systemPrompt?: string;
+    userPrompt?: string;
+    inputs?: Record<string, string>;
+  };
+  items: EvidenceItemDef[];
+}
+
+/** A read-only context and evidence disclosure: context occupancy meter, phase prompt, capped excerpts. */
+export interface SmithEvidenceDisclosureArtifact extends SmithArtifactBase {
+  kind: 'evidence_disclosure';
+  evidence: EvidenceDisclosureDef;
+}
+
 /**
  * One rich inline card in the Smith transcript. Artifacts are presentation
  * only: they perform no writes, never occupy the one-slot proposal queue, and
@@ -1054,7 +1235,11 @@ export type SmithArtifact =
   | SmithEntityComparisonArtifact
   | SmithChangeReceiptArtifact
   | SmithProjectCardArtifact
-  | SmithPrCardArtifact;
+  | SmithPrCardArtifact
+  | SmithSettingsDiffArtifact
+  | SmithDiagnosticsArtifact
+  | SmithDataTableArtifact
+  | SmithEvidenceDisclosureArtifact;
 
 // ── Smith (the entity-smith's approval gate) ─────────────────────────────────
 

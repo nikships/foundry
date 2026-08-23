@@ -1,0 +1,207 @@
+/**
+ * Data table design body for Smith artifact cards.
+ * Bounded typed catalog display with status chips and empty states.
+ */
+
+.dataTable {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  min-width: 0;
+}
+
+.dataTable.compact {
+  gap: var(--s2);
+  font-size: var(--text-xs);
+}
+
+/* ── Summary bar ── */
+
+.summaryBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+}
+
+.compact .summaryBar {
+  padding: var(--s1) var(--s2);
+  gap: var(--s1);
+}
+
+.summaryText {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text);
+  line-height: var(--leading);
+}
+
+.compact .summaryText {
+  font-size: var(--text-xs);
+}
+
+.catalogKindTag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--s2);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+/* ── Table container ── */
+
+.tableContainer {
+  overflow-x: auto;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--bg-input);
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+  text-align: left;
+}
+
+.compact .table {
+  font-size: 11px;
+}
+
+.table th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-raised);
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: var(--s2);
+  border-bottom: 1px solid var(--line);
+  z-index: 1;
+}
+
+.compact .table th {
+  padding: var(--s1) var(--s2);
+}
+
+.table td {
+  padding: var(--s2);
+  border-bottom: 1px solid var(--line);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.compact .table td {
+  padding: var(--s1) var(--s2);
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.table tr:hover td {
+  background: color-mix(in srgb, var(--bg-raised) 60%, transparent);
+}
+
+.alignLeft {
+  text-align: left;
+}
+
+.alignCenter {
+  text-align: center;
+}
+
+.alignRight {
+  text-align: right;
+}
+
+.codeCell {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
+/* ── Status Chips ── */
+
+.statusChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  border: 1px solid transparent;
+}
+
+.status_pass {
+  background: color-mix(in srgb, var(--green-dim) 50%, var(--bg-raised));
+  border-color: color-mix(in srgb, var(--green) 45%, var(--line-strong));
+  color: var(--green);
+}
+
+.status_warn {
+  background: color-mix(in srgb, var(--amber-dim) 50%, var(--bg-raised));
+  border-color: color-mix(in srgb, var(--amber) 45%, var(--line-strong));
+  color: var(--amber);
+}
+
+.status_fail {
+  background: color-mix(in srgb, var(--red-dim) 50%, var(--bg-raised));
+  border-color: color-mix(in srgb, var(--red) 45%, var(--line-strong));
+  color: var(--red);
+}
+
+.status_info,
+.status_active {
+  background: color-mix(in srgb, var(--accent-dim, #3b82f6) 40%, var(--bg-raised));
+  border-color: color-mix(in srgb, var(--accent, #3b82f6) 40%, var(--line-strong));
+  color: var(--accent, #3b82f6);
+}
+
+.status_neutral,
+.status_muted {
+  background: var(--bg-raised);
+  border-color: var(--line);
+  color: var(--text-dim);
+}
+
+/* ── Empty state ── */
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s1);
+  padding: var(--s4) var(--s3);
+  text-align: center;
+}
+
+.emptyMessage {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.emptySubtext {
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+}
