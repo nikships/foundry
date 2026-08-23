@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import type {
   AgentDef,
+  ChangeReceiptDef,
   ChecklistDef,
   EnvelopeDef,
   PipelineDef,
@@ -20,6 +21,9 @@ import {
   ARTIFACT_KIND_LABEL,
   acceptanceLabel,
   artifactName,
+  changeReceiptStatusLabel,
+  changeReceiptSummary,
+  changeReceiptTargetLabel,
   checklistStatusGlyph,
   checklistStatusLabel,
   checklistSummary,
@@ -76,7 +80,7 @@ const checklist: ChecklistDef = {
   ],
 };
 
-const receipt: SmithActionReceipt = {
+const actionReceipt: SmithActionReceipt = {
   operation: 'create',
   title: 'create pull request',
   target: 'run_7',
@@ -87,13 +91,28 @@ const receipt: SmithActionReceipt = {
   args: { runId: 'run_7' },
 };
 
+const changeReceipt: ChangeReceiptDef = {
+  title: 'Checkout changes applied',
+  target: 'direct_checkout',
+  status: 'success',
+  summary: 'Modified 2 files',
+  filesChanged: ['src/a.ts', 'src/b.ts'],
+  command: {
+    command: 'npm test',
+    passed: true,
+    exitCode: 0,
+    durationMs: 500,
+  },
+};
+
 function artifactOf(kind: SmithArtifact['kind'], version = SMITH_ARTIFACT_VERSION): SmithArtifact {
   const base = { id: 'a1', version, createdAt: 0, warnings: [] };
   if (kind === 'pipeline_design') return { ...base, kind, pipeline };
   if (kind === 'agent_design') return { ...base, kind, agent };
   if (kind === 'envelope_design') return { ...base, kind, envelope };
   if (kind === 'checklist') return { ...base, kind, checklist };
-  if (kind === 'action_receipt') return { ...base, kind, receipt };
+  if (kind === 'action_receipt') return { ...base, kind, receipt: actionReceipt };
+  if (kind === 'change_receipt') return { ...base, kind, receipt: changeReceipt };
   return {
     ...base,
     kind,
@@ -115,6 +134,7 @@ describe('the artifact registry', () => {
     expect(isRenderableArtifact(artifactOf('pipeline_design', 99))).toBe(false);
     expect(isRenderableArtifact(artifactOf('checklist', 99))).toBe(false);
     expect(isRenderableArtifact(artifactOf('entity_comparison', 99))).toBe(false);
+    expect(isRenderableArtifact(artifactOf('change_receipt', 99))).toBe(false);
     expect(isRenderableArtifact(artifactOf('action_receipt', 99))).toBe(false);
     expect(isRenderableArtifact({ kind: 'run_summary' } as unknown as SmithArtifact)).toBe(false);
   });
@@ -125,7 +145,43 @@ describe('the artifact registry', () => {
     expect(artifactName(artifactOf('envelope_design'))).toBe('severity_report');
     expect(artifactName(artifactOf('checklist'))).toBe('Project Health');
     expect(artifactName(artifactOf('entity_comparison'))).toBe('planner');
+    expect(artifactName(artifactOf('change_receipt'))).toBe('Checkout changes applied');
     expect(artifactName(artifactOf('action_receipt'))).toBe('create pull request');
+  });
+});
+
+describe('change receipt helpers', () => {
+  it('formats target and status labels in domain language', () => {
+    expect(changeReceiptTargetLabel('direct_checkout')).toBe('Direct checkout');
+    expect(changeReceiptTargetLabel('isolated_worktree')).toBe('Isolated worktree');
+
+    expect(changeReceiptStatusLabel('success')).toBe('Success');
+    expect(changeReceiptStatusLabel('failure')).toBe('Failed');
+  });
+
+  it('uses summary or derives from details when summary is omitted', () => {
+    expect(changeReceiptSummary(changeReceipt)).toBe('Modified 2 files');
+    expect(changeReceiptSummary({ ...changeReceipt, summary: undefined })).toBe(
+      '2 files changed · `npm test` (exit 0 in 500ms)',
+    );
+  });
+
+  it('derives summary from files and command when title/summary are missing', () => {
+    expect(
+      changeReceiptSummary({
+        target: 'direct_checkout',
+        status: 'success',
+        filesChanged: ['src/a.ts', 'src/b.ts'],
+        command: { command: 'npm test', passed: true, exitCode: 0 },
+      }),
+    ).toBe('2 files changed · `npm test` (exit 0)');
+
+    expect(
+      changeReceiptSummary({
+        target: 'isolated_worktree',
+        status: 'failure',
+      }),
+    ).toBe('Operation failed');
   });
 });
 
@@ -173,18 +229,26 @@ describe('checklist helpers', () => {
 
 describe('action receipts', () => {
   it('never lets a failed action read like a successful one', () => {
-    const ok = receiptOutcomeView(receipt);
-    const failed = receiptOutcomeView({ ...receipt, outcome: 'failed', failure: 'gh refused' });
+    const ok = receiptOutcomeView(actionReceipt);
+    const failed = receiptOutcomeView({
+      ...actionReceipt,
+      outcome: 'failed',
+      failure: 'gh refused',
+    });
     expect(ok.label).toBe('Done');
     expect(failed.label).toBe('Failed');
     expect(failed.color).not.toBe(ok.color);
   });
 
   it('shows the failure row only when the action failed', () => {
-    const rows = receiptRows(receipt).map((row) => row.label);
+    const rows = receiptRows(actionReceipt).map((row) => row.label);
     expect(rows).toEqual(['Operation', 'Target', 'Consequences', 'Risk', 'Took']);
 
-    const failedRows = receiptRows({ ...receipt, outcome: 'failed', failure: 'gh refused' });
+    const failedRows = receiptRows({
+      ...actionReceipt,
+      outcome: 'failed',
+      failure: 'gh refused',
+    });
     expect(failedRows).toContainEqual({ label: 'Failure', value: 'gh refused' });
     // The consequences the operator approved stay on a failed card: what was
     // attempted is as much of the record as what happened.

@@ -1,0 +1,261 @@
+/**
+ * Change / command receipt design body for Smith artifact cards.
+ * Compact mode tightens spacing for the titlebar bubble.
+ */
+
+.receipt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  min-width: 0;
+}
+
+.receipt.compact {
+  gap: var(--s2);
+  font-size: var(--text-xs);
+}
+
+/* ── Status and Target Header ── */
+
+.headerBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+}
+
+.compact .headerBar {
+  padding: var(--s1) var(--s2);
+  gap: var(--s1);
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.compact .badges {
+  gap: var(--s1);
+}
+
+.targetBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px var(--s2);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+}
+
+.targetBadge_isolated_worktree {
+  background: color-mix(in srgb, var(--accent-dim) 35%, var(--bg-raised));
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  color: var(--accent);
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px var(--s2);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+
+.statusBadge_success {
+  background: color-mix(in srgb, var(--green-dim) 40%, var(--bg-raised));
+  border-color: color-mix(in srgb, var(--green) 40%, var(--line-strong));
+  color: var(--green);
+}
+
+.statusBadge_failure {
+  background: color-mix(in srgb, var(--red-dim) 40%, var(--bg-raised));
+  border-color: color-mix(in srgb, var(--red) 40%, var(--line-strong));
+  color: var(--red);
+}
+
+.summaryText {
+  font-size: var(--text-sm);
+  color: var(--text);
+  line-height: var(--leading);
+  font-weight: 500;
+}
+
+.compact .summaryText {
+  font-size: var(--text-xs);
+}
+
+/* ── Command section ── */
+
+.commandBox {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+}
+
+.compact .commandBox {
+  padding: var(--s2);
+  gap: var(--s1);
+}
+
+.commandHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+}
+
+.commandCode {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commandMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.exitBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--s1);
+  border-radius: var(--r-sm);
+  font-weight: 600;
+  line-height: 14px;
+}
+
+.exitBadge_ok {
+  background: color-mix(in srgb, var(--green-dim) 35%, var(--bg-raised));
+  color: var(--green);
+}
+
+.exitBadge_bad {
+  background: color-mix(in srgb, var(--red-dim) 35%, var(--bg-raised));
+  color: var(--red);
+}
+
+/* ── Files changed section ── */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+}
+
+.compact .section {
+  padding: var(--s2);
+  gap: var(--s1);
+}
+
+.sectionTitle {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.filesList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fileItem {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diffstatPre {
+  margin: 0;
+  padding: var(--s2);
+  border-radius: var(--r-sm);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ── Output excerpt disclosure ── */
+
+.outputDisclosure {
+  min-width: 0;
+}
+
+.outputSummary {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+}
+
+.outputSummary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+.outputPre {
+  max-height: 260px;
+  overflow: auto;
+  margin: var(--s1) 0 0;
+  padding: var(--s2);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+}

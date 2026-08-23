@@ -14,6 +14,9 @@ import { SMITH_ARTIFACT_VERSION } from '@shared/types.js';
 import type {
   Acceptance,
   AgentDef,
+  ChangeReceiptDef,
+  ChangeReceiptStatus,
+  ChangeReceiptTarget,
   ChecklistDef,
   ChecklistItem,
   ChecklistItemStatus,
@@ -35,6 +38,7 @@ const SUPPORTED_ARTIFACT_KINDS: ReadonlyArray<SmithArtifact['kind']> = [
   'envelope_design',
   'checklist',
   'entity_comparison',
+  'change_receipt',
   'action_receipt',
 ];
 
@@ -50,6 +54,7 @@ export const ARTIFACT_KIND_LABEL: Record<SmithArtifact['kind'], string> = {
   envelope_design: 'report design',
   checklist: 'checklist',
   entity_comparison: 'entity comparison',
+  change_receipt: 'change receipt',
   action_receipt: 'action receipt',
 };
 
@@ -60,7 +65,49 @@ export function artifactName(artifact: SmithArtifact): string {
   if (artifact.kind === 'envelope_design') return artifact.envelope.name;
   if (artifact.kind === 'checklist') return artifact.checklist.title;
   if (artifact.kind === 'action_receipt') return artifact.receipt.title;
+  if (artifact.kind === 'change_receipt') {
+    return (
+      artifact.receipt.title ??
+      (artifact.receipt.command
+        ? artifact.receipt.command.command
+        : artifact.receipt.target === 'isolated_worktree'
+          ? 'Worktree changes'
+          : 'Checkout changes')
+    );
+  }
   return artifact.name;
+}
+
+// ── Change receipt helpers ───────────────────────────────────────────────────
+
+export function changeReceiptTargetLabel(target: ChangeReceiptTarget): string {
+  return target === 'isolated_worktree' ? 'Isolated worktree' : 'Direct checkout';
+}
+
+export function changeReceiptStatusLabel(status: ChangeReceiptStatus): string {
+  return status === 'success' ? 'Success' : 'Failed';
+}
+
+export function changeReceiptSummary(receipt: ChangeReceiptDef): string {
+  if (receipt.summary && receipt.summary.trim()) {
+    return receipt.summary.trim();
+  }
+  const parts: string[] = [];
+  if (receipt.filesChanged && receipt.filesChanged.length > 0) {
+    parts.push(
+      `${receipt.filesChanged.length} ${receipt.filesChanged.length === 1 ? 'file' : 'files'} changed`,
+    );
+  }
+  if (receipt.command) {
+    const exitText =
+      receipt.command.exitCode !== null ? `exit ${receipt.command.exitCode}` : 'running';
+    const durText =
+      receipt.command.durationMs !== undefined ? ` in ${receipt.command.durationMs}ms` : '';
+    parts.push(`\`${receipt.command.command}\` (${exitText}${durText})`);
+  }
+  return (
+    parts.join(' · ') || (receipt.status === 'success' ? 'Changes applied' : 'Operation failed')
+  );
 }
 
 // ── Checklist helpers ────────────────────────────────────────────────────────

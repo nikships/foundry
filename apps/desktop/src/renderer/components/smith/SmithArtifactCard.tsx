@@ -17,6 +17,7 @@ import {
   isRenderableArtifact,
 } from '../../view-models/smith-artifact-view.js';
 import SmithActionReceiptBody from './SmithActionReceipt.js';
+import { ChangeReceiptDesign } from './SmithChangeReceiptDesign.js';
 import { ChecklistDesign } from './SmithChecklistDesign.js';
 import { EntityComparisonDesign } from './SmithEntityComparisonDesign.js';
 import { AgentDesign, EnvelopeDesign, PipelineDesign, ViewJson } from './SmithEntityDesign.js';
@@ -43,16 +44,19 @@ function ArtifactBody({
   if (artifact.kind === 'checklist') {
     return <ChecklistDesign checklist={artifact.checklist} compact={compact} />;
   }
-  if (artifact.kind === 'action_receipt') {
-    return (
-      <SmithActionReceiptBody
-        receipt={artifact.receipt}
-        compact={compact}
-        {...(onOpenReceiptLink ? { onOpenLink: onOpenReceiptLink } : {})}
-      />
-    );
+  if (artifact.kind === 'entity_comparison') {
+    return <EntityComparisonDesign artifact={artifact} compact={compact} />;
   }
-  return <EntityComparisonDesign artifact={artifact} compact={compact} />;
+  if (artifact.kind === 'change_receipt') {
+    return <ChangeReceiptDesign receipt={artifact.receipt} compact={compact} />;
+  }
+  return (
+    <SmithActionReceiptBody
+      receipt={artifact.receipt}
+      compact={compact}
+      {...(onOpenReceiptLink ? { onOpenLink: onOpenReceiptLink } : {})}
+    />
+  );
 }
 
 /** The JSON an audit reader wants: the definition, or the record of what ran. */
@@ -61,7 +65,9 @@ function auditValue(artifact: SmithArtifact): unknown {
   if (artifact.kind === 'agent_design') return artifact.agent;
   if (artifact.kind === 'envelope_design') return artifact.envelope;
   if (artifact.kind === 'checklist') return artifact.checklist;
-  if (artifact.kind === 'action_receipt') return artifact.receipt;
+  if (artifact.kind === 'change_receipt' || artifact.kind === 'action_receipt') {
+    return artifact.receipt;
+  }
   return { before: artifact.before, after: artifact.after };
 }
 

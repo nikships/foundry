@@ -850,6 +850,7 @@ export type SmithArtifactKind =
   | 'envelope_design'
   | 'checklist'
   | 'entity_comparison'
+  | 'change_receipt'
   | 'action_receipt';
 
 /**
@@ -933,6 +934,35 @@ export interface SmithEntityComparisonArtifact extends SmithArtifactBase {
   targetProjectId?: string;
 }
 
+export type ChangeReceiptTarget = 'direct_checkout' | 'isolated_worktree';
+export type ChangeReceiptStatus = 'success' | 'failure';
+
+export interface ChangeReceiptCommand {
+  command: string;
+  exitCode: number | null;
+  durationMs?: number;
+  passed: boolean;
+  timedOut?: boolean;
+}
+
+export interface ChangeReceiptDef {
+  title?: string;
+  target: ChangeReceiptTarget;
+  status: ChangeReceiptStatus;
+  summary?: string;
+  filesChanged?: string[];
+  diffstat?: string;
+  command?: ChangeReceiptCommand;
+  /** Bounded command output or diff excerpt shown behind a disclosure. Capped in main. */
+  outputExcerpt?: string;
+}
+
+/** A read-only durable receipt for direct checkout edits or command runs. */
+export interface SmithChangeReceiptArtifact extends SmithArtifactBase {
+  kind: 'change_receipt';
+  receipt: ChangeReceiptDef;
+}
+
 /**
  * Where the thing an action affected can be found afterwards. Identifiers and
  * a URL only: a receipt outlives the session that produced it, so it must not
@@ -994,6 +1024,7 @@ export type SmithArtifact =
   | SmithEnvelopeDesignArtifact
   | SmithChecklistArtifact
   | SmithEntityComparisonArtifact
+  | SmithChangeReceiptArtifact
   | SmithActionReceiptArtifact;
 
 // ── Smith (the entity-smith's approval gate) ─────────────────────────────────
