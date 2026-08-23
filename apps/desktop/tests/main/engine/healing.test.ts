@@ -259,6 +259,35 @@ describe('heal', () => {
     expect(outcome.detail).toBe('cancelled');
   });
 
+  it('aborts the session when the work around the turn throws, not just the turn', async () => {
+    const cwd = scratchRepo();
+    let aborted = 0;
+    await expect(
+      heal({
+        phase: 'test',
+        request: 'make it work',
+        cwd,
+        failure: failure(),
+        attempts: 2,
+        protectedPaths: [],
+        agent: {
+          send: async () => ({ text: 'fixed' }),
+          abort: () => {
+            aborted += 1;
+          },
+        },
+        // The trace write inside the real `rerun` can throw on a full disk;
+        // whatever the cause, the session must not outlive the call.
+        rerun: async () => {
+          throw new Error('disk full');
+        },
+        cancelled: () => false,
+      }),
+    ).rejects.toThrow('disk full');
+
+    expect(aborted).toBe(1);
+  });
+
   it('reports an agent that threw, and still enforces the boundary', async () => {
     const cwd = scratchRepo();
     const outcome = await heal({

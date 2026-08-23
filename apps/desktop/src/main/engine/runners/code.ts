@@ -36,6 +36,10 @@ export class CodePhaseRunner implements PhaseRunner {
   readonly kind = 'code' as const;
 
   private readonly feedbackUsed = new Map<string, number>();
+  /** How many times each phase has healed, so re-entry cannot clobber a log. */
+  private readonly healVisits = new Map<string, number>();
+  /** Healing turns each phase has already spent, budgeted across the run. */
+  private readonly healSpent = new Map<string, number>();
 
   async run(phase: PhaseDef, ctx: RunContext): Promise<PhaseJump> {
     const { tracer, runId } = ctx;
@@ -167,9 +171,16 @@ export class CodePhaseRunner implements PhaseRunner {
 
   /**
    * The bounded healing loop, or `null` when this failure gets no healer:
-   * healing is off for the run, or the phase is not one healing applies to.
-   * A missing command, a scaffold skip, and an optional failure never reach
+   * healing is off for the run, the phase is not one healing applies to, or
+   * the phase has already spent its healing budget on an earlier visit. A
+   * missing command, a scaffold skip, and an optional failure never reach
    * here — they are answered before the command ever ran, or above.
+   *
+   * The budget is per phase per run, not per visit. A `feedbackTo` route can
+   * come back to the same phase several times, and a per-visit budget would
+   * quietly multiply healing turns by the feedback retries — the phase would
+   * be entitled to more model time the more the run struggled, which is
+   * exactly backwards.
    */
   private async tryHeal(
     phase: PhaseDef,
@@ -182,9 +193,18 @@ export class CodePhaseRunner implements PhaseRunner {
     if (!healingEligible(phase)) return null;
     if (ctx.cancelled()) return null;
 
+    const spent = this.healSpent.get(phase.name) ?? 0;
+    const budget = support.attempts - spent;
+    if (budget < 1) return null;
+
     const { tracer, runId } = ctx;
     const phaseId = ctx.phaseId(phase.name);
+    this.healVisits.set(phase.name, (this.healVisits.get(phase.name) ?? 0) + 1);
     const agent = support.open(ctx.cwd);
+    // A healing turn blocks the phase on a model for as long as its timeout
+    // allows, and it can write. Cancelling has to reach it directly, or Stop
+    // would leave an agent editing the worktree of a run the operator ended.
+    const release = ctx.onCancel(() => agent.abort());
     tracer.event({
       runId,
       phaseId,
@@ -193,24 +213,30 @@ export class CodePhaseRunner implements PhaseRunner {
       payload: {
         model: support.model,
         reasoningEffort: support.reasoningEffort,
-        attempts: support.attempts,
+        attempts: budget,
         command: failure.command,
         exitCode: failure.exitCode,
       },
     });
 
-    const outcome = await heal({
-      phase: phase.name,
-      request: ctx.request,
-      cwd: ctx.cwd,
-      failure,
-      attempts: support.attempts,
-      protectedPaths: ctx.project.protectedPaths,
-      agent,
-      rerun: () => this.execute(phase, ctx, resolved.argv),
-      cancelled: () => ctx.cancelled(),
-      onAttempt: (attempt) => this.traceAttempt(phase, ctx, support.model, attempt),
-    });
+    let outcome;
+    try {
+      outcome = await heal({
+        phase: phase.name,
+        request: ctx.request,
+        cwd: ctx.cwd,
+        failure,
+        attempts: budget,
+        protectedPaths: ctx.project.protectedPaths,
+        agent,
+        rerun: () => this.execute(phase, ctx, resolved.argv),
+        cancelled: () => ctx.cancelled(),
+        onAttempt: (attempt) => this.traceAttempt(phase, ctx, support.model, attempt),
+      });
+    } finally {
+      release();
+      this.healSpent.set(phase.name, spent + (outcome?.attempts.length ?? 0));
+    }
 
     tracer.event({
       runId,
@@ -220,7 +246,7 @@ export class CodePhaseRunner implements PhaseRunner {
       payload: {
         model: support.model,
         attempts: outcome.attempts.length,
-        budget: support.attempts,
+        budget,
         detail: outcome.detail,
         // Named here rather than inferred by a reader: this is the reason the
         // failure escalates (or does not) once healing is out of attempts.
@@ -240,9 +266,15 @@ export class CodePhaseRunner implements PhaseRunner {
   ): void {
     const { tracer, runId } = ctx;
     const phaseId = ctx.phaseId(phase.name);
+    // The attempt number restarts at 1 every time the phase is entered, and a
+    // `feedbackTo` route can enter it again — so the visit has to be in the
+    // name or the second visit's first attempt would overwrite the first
+    // visit's evidence.
+    const visit = this.healVisits.get(phase.name) ?? 1;
+    const suffix = visit > 1 ? `${visit}-${attempt.attempt}` : `${attempt.attempt}`;
     tracer.writeRunFile(
       runId,
-      `commands/${phase.name}.heal-${attempt.attempt}.log`,
+      `commands/${phase.name}.heal-${suffix}.log`,
       attempt.result.outputTail,
     );
     tracer.event({

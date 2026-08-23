@@ -1129,13 +1129,92 @@ describe('healing a failed programmatic phase', () => {
     });
 
     expect(outcome.status).toBe('accepted');
-    // Both healing turns were spent before the failure escalated.
+    // Both healing turns were spent before the failure escalated, and the
+    // phase's re-entry did not hand it a fresh budget: healing is bounded per
+    // run, so a struggling run does not earn more model time than a calm one.
     expect(spy.prompts).toHaveLength(2);
     const gaveUp = events(outcome.runId).find((e) => e.name === 'healing test gave up');
     expect(gaveUp?.payload).toMatchObject({ attempts: 2, budget: 2, escalation: 'build' });
     expect(
       events(outcome.runId).find((e) => e.type === 'correction' && e.name === 'feedback to build'),
     ).toBeDefined();
+  });
+
+  it('does not open a second healing session when the phase is re-entered', async () => {
+    installCheck('#!/bin/sh\ntest -f fix.txt\n');
+    const envelope = buildEnvelope({ summary: 'attempted', commit_message: 'work' });
+    const scripted = scriptedAgent([envelope, envelope], [null, 'fix.txt']);
+    // One turn of budget, spent on the first visit and unavailable on the second.
+    const spy = healingSpy([() => undefined]);
+
+    const outcome = await run({
+      scripted,
+      project,
+      healing: spy.support,
+      pipeline: pipe(
+        [
+          agentPhase('build', { description: 'Implement the change the request asks for.' }),
+          codePhase(
+            'test',
+            { ref: 'test' },
+            {
+              description: 'Run the project check, heal it once, then hand it back.',
+              feedbackTo: 'build',
+              feedbackRetries: 2,
+            },
+          ),
+        ],
+        {
+          description: 'a healing budget that does not renew on re-entry',
+          acceptance: { kind: 'phase_flag', phase: 'test', flag: 'passed' },
+        },
+      ),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    expect(spy.opens).toHaveLength(1);
+    expect(events(outcome.runId).filter((e) => e.name === 'healing test')).toHaveLength(1);
+  });
+
+  it('interrupts the healing turn in flight rather than waiting out its timeout', async () => {
+    installCheck('#!/bin/sh\nexit 1\n');
+    const cancel = { fire: (): void => undefined };
+    let aborted = false;
+    /**
+     * A turn that answers only once something aborts it — which is what a real
+     * provider call is: `cancelled()` is polled between awaits, and a turn
+     * already in flight has no next await point for up to its 15 minute
+     * timeout. If cancel cannot reach the agent, this test hangs.
+     */
+    const support: ExecutorDeps['healing'] = {
+      attempts: 1,
+      model: 'provider/healer',
+      reasoningEffort: 'medium',
+      open: () => {
+        let release = (): void => undefined;
+        const interrupted = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        return {
+          send: async () => {
+            cancel.fire();
+            await interrupted;
+            return { text: 'interrupted mid-turn' };
+          },
+          abort: () => {
+            aborted = true;
+            release();
+          },
+        };
+      },
+    };
+
+    const started = start({ project, healing: support, pipeline: healPipeline() });
+    cancel.fire = () => started.executor.cancel();
+    const outcome = await started.done;
+
+    expect(aborted).toBe(true);
+    expect(outcome.status).toBe('killed');
   });
 
   it('fails the run normally when healing is exhausted and no owner is configured', async () => {

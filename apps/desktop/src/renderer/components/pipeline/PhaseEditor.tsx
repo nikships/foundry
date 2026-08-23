@@ -565,6 +565,10 @@ export default function PhaseEditor({
               checked={healEnabled}
               onChange={(heal) => onChange({ ...phase, heal })}
               label="Heal on failure"
+              // `optional` already decided this, so the switch reports rather
+              // than offers: accepting a click it cannot honour would read as
+              // a broken control.
+              disabled={!!phase.optional}
               hint={
                 phase.optional
                   ? 'An optional phase never heals: its failure does not fail the run.'

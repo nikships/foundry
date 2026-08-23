@@ -211,12 +211,33 @@ export async function heal(input: {
   /** Reported per pass, so the caller can trace an attempt as it lands. */
   onAttempt?: (attempt: HealAttempt) => void;
 }): Promise<HealOutcome> {
+  // Every exit aborts the session, including the ones this function does not
+  // model: a boundary check, a trace write, or the re-run itself can throw, and
+  // an agent left un-aborted on the way out would outlive the phase.
+  try {
+    return await healLoop(input);
+  } finally {
+    input.agent.abort();
+  }
+}
+
+async function healLoop(input: {
+  phase: string;
+  request: string;
+  cwd: string;
+  failure: CommandResult;
+  attempts: number;
+  protectedPaths: string[];
+  agent: HealingAgent;
+  rerun: () => Promise<CommandResult>;
+  cancelled: () => boolean;
+  onAttempt?: (attempt: HealAttempt) => void;
+}): Promise<HealOutcome> {
   const attempts: HealAttempt[] = [];
   let last = input.failure;
 
   for (let attempt = 1; attempt <= input.attempts; attempt += 1) {
     if (input.cancelled()) {
-      input.agent.abort();
       return { healed: false, attempts, result: last, detail: 'cancelled' };
     }
 
@@ -239,7 +260,6 @@ export async function heal(input: {
         )
       ).text;
     } catch (e) {
-      input.agent.abort();
       // A turn that never answered still may have written; the boundary is
       // enforced either way so a protected path cannot survive on a failure.
       const violations = (
@@ -268,7 +288,6 @@ export async function heal(input: {
     });
 
     if (input.cancelled()) {
-      input.agent.abort();
       attempts.push({ attempt, reply, result: last, violations });
       input.onAttempt?.(attempts[attempts.length - 1]!);
       return { healed: false, attempts, result: last, detail: 'cancelled' };
@@ -280,7 +299,6 @@ export async function heal(input: {
     input.onAttempt?.(record);
 
     if (last.passed) {
-      input.agent.abort();
       return {
         healed: true,
         attempts,
@@ -290,7 +308,6 @@ export async function heal(input: {
     }
   }
 
-  input.agent.abort();
   return {
     healed: false,
     attempts,

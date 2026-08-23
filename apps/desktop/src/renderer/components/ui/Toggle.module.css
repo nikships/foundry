@@ -8,6 +8,11 @@
   border: none;
 }
 
+.toggleDisabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
 .track {
   display: flex;
   flex-shrink: 0;

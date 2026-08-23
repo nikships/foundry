@@ -117,6 +117,8 @@ const HANDOFF_DIR = '.foundry-handoff';
 
 export class Executor {
   private readonly sessions = new Map<string, AgentSession>();
+  /** Interrupts for in-flight work a cancel cannot reach through `sessions`. */
+  private readonly aborts = new Set<() => void>();
   private readonly envelopes = new Map<string, Envelope>();
   private readonly commandResults = new Map<string, CommandResult>();
   private readonly phaseIds = new Map<string, string>();
@@ -161,6 +163,31 @@ export class Executor {
   cancel(): void {
     this.cancelled = true;
     for (const session of this.sessions.values()) session.kill();
+    // A turn that is not an agent session has no entry in `sessions` to kill,
+    // so without this a cancel would wait out its timeout.
+    for (const abort of this.aborts) {
+      try {
+        abort();
+      } catch {
+        // One uncooperative abort must not keep the rest from being called.
+      }
+    }
+  }
+
+  /**
+   * Registers an interrupt for work that is blocking a phase on something
+   * other than an agent session, and returns its own removal.
+   *
+   * Cancelling already-finished work is harmless but pointless, so a caller
+   * that completes normally is expected to unregister rather than leave a
+   * stale abort behind for the rest of the run.
+   */
+  private onCancel(abort: () => void): () => void {
+    this.aborts.add(abort);
+    // A cancel that arrived first still has to reach this caller: it missed the
+    // sweep above, and `cancelled()` alone would not stop the turn.
+    if (this.cancelled) abort();
+    return () => this.aborts.delete(abort);
   }
 
   /**
@@ -442,6 +469,7 @@ export class Executor {
       commandDrift: this.commandDrift,
       healing: this.deps.healing ?? null,
       cancelled: () => this.cancelled,
+      onCancel: (abort) => this.onCancel(abort),
       phaseId: (name: string) => this.phaseId(name),
       askHuman: (req) => this.deps.askHuman(req),
       recordPr: (input) => this.recordPr(input),

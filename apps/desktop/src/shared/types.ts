@@ -215,7 +215,10 @@ export interface AgentDef {
   builtin?: boolean;
 }
 
-/** Where a code phase's argv came from, which is what decides default healing. */
+/**
+ * Which kind of command a code phase carries, for the Designer's source
+ * control. Engine behaviour does not branch on it.
+ */
 export type CommandSource = 'ref' | 'builtin' | 'argv';
 
 /** Which of the three `CommandSpec` shapes a phase carries. */
