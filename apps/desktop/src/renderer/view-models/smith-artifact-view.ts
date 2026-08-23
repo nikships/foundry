@@ -14,6 +14,9 @@ import { SMITH_ARTIFACT_VERSION } from '@shared/types.js';
 import type {
   Acceptance,
   AgentDef,
+  ChecklistDef,
+  ChecklistItem,
+  ChecklistItemStatus,
   CommandSpec,
   EnvelopeDef,
   GateSpec,
@@ -28,6 +31,7 @@ const SUPPORTED_ARTIFACT_KINDS: ReadonlyArray<SmithArtifact['kind']> = [
   'pipeline_design',
   'agent_design',
   'envelope_design',
+  'checklist',
 ];
 
 export function isRenderableArtifact(artifact: SmithArtifact): boolean {
@@ -40,13 +44,79 @@ export const ARTIFACT_KIND_LABEL: Record<SmithArtifact['kind'], string> = {
   pipeline_design: 'pipeline design',
   agent_design: 'agent design',
   envelope_design: 'report design',
+  checklist: 'checklist',
 };
 
 /** The identifying name the card's title shows. */
 export function artifactName(artifact: SmithArtifact): string {
   if (artifact.kind === 'pipeline_design') return artifact.pipeline.id;
   if (artifact.kind === 'agent_design') return artifact.agent.name;
-  return artifact.envelope.name;
+  if (artifact.kind === 'envelope_design') return artifact.envelope.name;
+  return artifact.checklist.title;
+}
+
+// ── Checklist helpers ────────────────────────────────────────────────────────
+
+export interface GroupedChecklistItems {
+  fail: ChecklistItem[];
+  warn: ChecklistItem[];
+  pass: ChecklistItem[];
+  info: ChecklistItem[];
+}
+
+export function groupChecklistItems(items: ChecklistItem[]): GroupedChecklistItems {
+  const groups: GroupedChecklistItems = { fail: [], warn: [], pass: [], info: [] };
+  for (const item of items) {
+    if (item.status === 'fail') groups.fail.push(item);
+    else if (item.status === 'warn') groups.warn.push(item);
+    else if (item.status === 'pass') groups.pass.push(item);
+    else groups.info.push(item);
+  }
+  return groups;
+}
+
+export function checklistSummary(checklist: ChecklistDef): string {
+  if (checklist.summary && checklist.summary.trim()) {
+    return checklist.summary.trim();
+  }
+  const counts = { pass: 0, warn: 0, fail: 0, info: 0 };
+  for (const item of checklist.items) {
+    if (item.status in counts) {
+      counts[item.status] += 1;
+    }
+  }
+  const parts: string[] = [];
+  if (counts.fail > 0) parts.push(`${counts.fail} failed`);
+  if (counts.warn > 0) parts.push(`${counts.warn} ${counts.warn === 1 ? 'warning' : 'warnings'}`);
+  if (counts.pass > 0) parts.push(`${counts.pass} passed`);
+  if (counts.info > 0) parts.push(`${counts.info} info`);
+  return parts.join(' · ') || 'No checks';
+}
+
+export function checklistStatusLabel(status: ChecklistItemStatus): string {
+  switch (status) {
+    case 'pass':
+      return 'Passed';
+    case 'warn':
+      return 'Warning';
+    case 'fail':
+      return 'Failed';
+    case 'info':
+      return 'Info';
+  }
+}
+
+export function checklistStatusGlyph(status: ChecklistItemStatus): string {
+  switch (status) {
+    case 'pass':
+      return '✓';
+    case 'warn':
+      return '⚠';
+    case 'fail':
+      return '✕';
+    case 'info':
+      return 'ℹ';
+  }
 }
 
 // ── Display labels ───────────────────────────────────────────────────────────

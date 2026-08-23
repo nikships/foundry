@@ -6,15 +6,25 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { AgentDef, EnvelopeDef, PipelineDef, SmithArtifact } from '@shared/types.js';
+import type {
+  AgentDef,
+  ChecklistDef,
+  EnvelopeDef,
+  PipelineDef,
+  SmithArtifact,
+} from '@shared/types.js';
 import { SMITH_ARTIFACT_VERSION } from '@shared/types.js';
 import {
   ARTIFACT_KIND_LABEL,
   acceptanceLabel,
   artifactName,
+  checklistStatusGlyph,
+  checklistStatusLabel,
+  checklistSummary,
   commandLabel,
   compareEntities,
   gateLabel,
+  groupChecklistItems,
   isRenderableArtifact,
   phaseWorkLabel,
   writesLabel,
@@ -48,11 +58,24 @@ const envelope: EnvelopeDef = {
   fields: [{ name: 'severity', type: 'string', required: true }],
 };
 
+const checklist: ChecklistDef = {
+  title: 'Project Health',
+  summary: '1 failed · 1 warning · 2 passed',
+  items: [
+    { label: 'Git repo', status: 'pass' },
+    { label: 'Linting', status: 'pass' },
+    { label: 'Tests passing', status: 'warn', detail: '1 test skipped' },
+    { label: 'Build clean', status: 'fail', detail: 'Type error in main.ts' },
+    { label: 'Environment', status: 'info', detail: 'Node 22.0.0' },
+  ],
+};
+
 function artifactOf(kind: SmithArtifact['kind'], version = SMITH_ARTIFACT_VERSION): SmithArtifact {
   const base = { id: 'a1', version, createdAt: 0, warnings: [] };
   if (kind === 'pipeline_design') return { ...base, kind, pipeline };
   if (kind === 'agent_design') return { ...base, kind, agent };
-  return { ...base, kind, envelope };
+  if (kind === 'envelope_design') return { ...base, kind, envelope };
+  return { ...base, kind, checklist };
 }
 
 describe('the artifact registry', () => {
@@ -64,6 +87,7 @@ describe('the artifact registry', () => {
 
   it('fails soft on a future version or an unknown kind', () => {
     expect(isRenderableArtifact(artifactOf('pipeline_design', 99))).toBe(false);
+    expect(isRenderableArtifact(artifactOf('checklist', 99))).toBe(false);
     expect(isRenderableArtifact({ kind: 'run_summary' } as unknown as SmithArtifact)).toBe(false);
   });
 
@@ -71,6 +95,49 @@ describe('the artifact registry', () => {
     expect(artifactName(artifactOf('pipeline_design'))).toBe('ship-it');
     expect(artifactName(artifactOf('agent_design'))).toBe('planner');
     expect(artifactName(artifactOf('envelope_design'))).toBe('severity_report');
+    expect(artifactName(artifactOf('checklist'))).toBe('Project Health');
+  });
+});
+
+describe('checklist helpers', () => {
+  it('groups items by pass/warn/fail/info status', () => {
+    const groups = groupChecklistItems(checklist.items);
+    expect(groups.fail).toHaveLength(1);
+    expect(groups.fail[0]!.label).toBe('Build clean');
+    expect(groups.warn).toHaveLength(1);
+    expect(groups.warn[0]!.label).toBe('Tests passing');
+    expect(groups.pass).toHaveLength(2);
+    expect(groups.info).toHaveLength(1);
+    expect(groups.info[0]!.label).toBe('Environment');
+  });
+
+  it('formats custom summary if provided', () => {
+    expect(checklistSummary(checklist)).toBe('1 failed · 1 warning · 2 passed');
+  });
+
+  it('derives summary line from item counts when omitted', () => {
+    const withoutSummary: ChecklistDef = {
+      title: 'Doctor',
+      items: [
+        { label: 'Check 1', status: 'pass' },
+        { label: 'Check 2', status: 'pass' },
+        { label: 'Check 3', status: 'warn' },
+        { label: 'Check 4', status: 'fail' },
+      ],
+    };
+    expect(checklistSummary(withoutSummary)).toBe('1 failed · 1 warning · 2 passed');
+  });
+
+  it('formats status labels and glyphs', () => {
+    expect(checklistStatusLabel('pass')).toBe('Passed');
+    expect(checklistStatusLabel('warn')).toBe('Warning');
+    expect(checklistStatusLabel('fail')).toBe('Failed');
+    expect(checklistStatusLabel('info')).toBe('Info');
+
+    expect(checklistStatusGlyph('pass')).toBe('✓');
+    expect(checklistStatusGlyph('warn')).toBe('⚠');
+    expect(checklistStatusGlyph('fail')).toBe('✕');
+    expect(checklistStatusGlyph('info')).toBe('ℹ');
   });
 });
 

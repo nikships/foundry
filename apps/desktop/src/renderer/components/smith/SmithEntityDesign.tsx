@@ -263,3 +263,5 @@ export function EnvelopeDesign({
     </div>
   );
 }
+
+export { ChecklistDesign } from './SmithChecklistDesign.js';

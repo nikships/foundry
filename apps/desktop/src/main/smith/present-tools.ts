@@ -16,6 +16,7 @@ import { randomUUID } from 'node:crypto';
 import {
   SMITH_ARTIFACT_VERSION,
   type AgentDef,
+  type ChecklistDef,
   type EnvelopeDef,
   type PipelineDef,
   type SmithArtifact,
@@ -31,7 +32,7 @@ import { field, json, resolveProjectId } from './tool-helpers.js';
 
 export const SMITH_PRESENT_TOOL_NAME = 'smith_present';
 
-const ARTIFACT_KINDS = ['pipeline_design', 'agent_design', 'envelope_design'] as const;
+const ARTIFACT_KINDS = ['pipeline_design', 'agent_design', 'envelope_design', 'checklist'] as const;
 
 /**
  * Ceiling on the serialized entity payload. Generous for any real design —
@@ -41,6 +42,8 @@ const ARTIFACT_KINDS = ['pipeline_design', 'agent_design', 'envelope_design'] as
 export const MAX_ARTIFACT_JSON = 32_000;
 const MAX_RATIONALE = 2_000;
 const MAX_WARNINGS = 20;
+
+const VALID_CHECKLIST_STATUSES = new Set(['pass', 'warn', 'fail', 'info']);
 
 /**
  * Field names that read as credentials. An artifact is persisted with the
@@ -82,12 +85,147 @@ export function findSecretKey(value: unknown, path = ''): string | null {
   return null;
 }
 
+export function validateChecklist(spec: unknown): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  if (spec == null || typeof spec !== 'object' || Array.isArray(spec)) {
+    return [{ level: 'error', where: 'spec', message: 'checklist must be an object' }];
+  }
+
+  const raw = spec as Record<string, unknown>;
+
+  if (typeof raw.title !== 'string' || !raw.title.trim()) {
+    issues.push({ level: 'error', where: 'title', message: 'checklist title is required' });
+  } else if (raw.title.length > 200) {
+    issues.push({
+      level: 'warning',
+      where: 'title',
+      message: 'title exceeds 200 characters and may be truncated',
+    });
+  }
+
+  if (raw.summary !== undefined) {
+    if (typeof raw.summary !== 'string') {
+      issues.push({ level: 'error', where: 'summary', message: 'summary must be a string' });
+    } else if (raw.summary.length > 500) {
+      issues.push({
+        level: 'warning',
+        where: 'summary',
+        message: 'summary exceeds 500 characters',
+      });
+    }
+  }
+
+  if (!Array.isArray(raw.items)) {
+    issues.push({ level: 'error', where: 'items', message: 'checklist items must be an array' });
+  } else if (raw.items.length === 0) {
+    issues.push({
+      level: 'error',
+      where: 'items',
+      message: 'checklist must contain at least one item',
+    });
+  } else if (raw.items.length > 100) {
+    issues.push({
+      level: 'error',
+      where: 'items',
+      message: `checklist cannot exceed 100 items (${raw.items.length} supplied)`,
+    });
+  } else {
+    for (let i = 0; i < raw.items.length; i += 1) {
+      const item = raw.items[i];
+      const where = `items[${i}]`;
+      if (item == null || typeof item !== 'object' || Array.isArray(item)) {
+        issues.push({ level: 'error', where, message: 'item must be an object' });
+        continue;
+      }
+
+      const itemObj = item as Record<string, unknown>;
+
+      if (typeof itemObj.label !== 'string' || !itemObj.label.trim()) {
+        issues.push({
+          level: 'error',
+          where: `${where}.label`,
+          message: 'item label is required',
+        });
+      } else if (itemObj.label.length > 200) {
+        issues.push({
+          level: 'warning',
+          where: `${where}.label`,
+          message: 'item label exceeds 200 characters',
+        });
+      }
+
+      if (typeof itemObj.status !== 'string' || !VALID_CHECKLIST_STATUSES.has(itemObj.status)) {
+        issues.push({
+          level: 'error',
+          where: `${where}.status`,
+          message: `invalid item status "${String(itemObj.status)}" (must be pass, warn, fail, or info)`,
+        });
+      }
+
+      if (itemObj.id !== undefined && typeof itemObj.id !== 'string') {
+        issues.push({ level: 'error', where: `${where}.id`, message: 'id must be a string' });
+      }
+
+      if (itemObj.detail !== undefined) {
+        if (typeof itemObj.detail !== 'string') {
+          issues.push({
+            level: 'error',
+            where: `${where}.detail`,
+            message: 'detail must be a string',
+          });
+        } else if (itemObj.detail.length > 500) {
+          issues.push({
+            level: 'warning',
+            where: `${where}.detail`,
+            message: 'item detail exceeds 500 characters',
+          });
+        }
+      }
+
+      if (itemObj.evidence !== undefined) {
+        if (typeof itemObj.evidence !== 'string') {
+          issues.push({
+            level: 'error',
+            where: `${where}.evidence`,
+            message: 'evidence must be a string',
+          });
+        } else if (itemObj.evidence.length > 4000) {
+          issues.push({
+            level: 'warning',
+            where: `${where}.evidence`,
+            message: 'evidence exceeds 4000 characters',
+          });
+        }
+      }
+
+      if (itemObj.fix !== undefined) {
+        if (typeof itemObj.fix !== 'string') {
+          issues.push({
+            level: 'error',
+            where: `${where}.fix`,
+            message: 'fix must be a string',
+          });
+        } else if (itemObj.fix.length > 500) {
+          issues.push({
+            level: 'warning',
+            where: `${where}.fix`,
+            message: 'fix guidance exceeds 500 characters',
+          });
+        }
+      }
+    }
+  }
+
+  return issues;
+}
+
 function validateSpec(
   stores: SmithEntityStores,
   kind: SmithArtifactKind,
   spec: object,
   projectId?: string,
 ): ValidationIssue[] {
+  if (kind === 'checklist') return validateChecklist(spec);
   const envelopeNames = stores.envelopes.list().map((envelope) => envelope.name);
   if (kind === 'agent_design') return validateAgent(spec as AgentDef, envelopeNames);
   if (kind === 'envelope_design') return validateEnvelope(spec as EnvelopeDef);
@@ -102,10 +240,11 @@ function validateSpec(
 function buildArtifact(
   kind: SmithArtifactKind,
   spec: object,
-  base: Omit<SmithArtifact, 'kind' | 'pipeline' | 'agent' | 'envelope'>,
+  base: Omit<SmithArtifact, 'kind' | 'pipeline' | 'agent' | 'envelope' | 'checklist'>,
 ): SmithArtifact {
   if (kind === 'agent_design') return { ...base, kind, agent: spec as AgentDef };
   if (kind === 'envelope_design') return { ...base, kind, envelope: spec as EnvelopeDef };
+  if (kind === 'checklist') return { ...base, kind, checklist: spec as ChecklistDef };
   return { ...base, kind, pipeline: spec as PipelineDef };
 }
 
@@ -114,9 +253,10 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
     name: SMITH_PRESENT_TOOL_NAME,
     label: 'Smith present',
     description:
-      'Show the operator a rich inline design card in the chat. Use it before proposing a ' +
-      'non-trivial pipeline, agent, or envelope, and whenever the operator asks for a design: ' +
-      'the card renders the structured definition far better than prose or JSON. It is ' +
+      'Show the operator a rich inline design or checklist report card in the chat. Use it before ' +
+      'proposing a non-trivial pipeline, agent, or envelope, or to present a checklist/doctor/readiness/' +
+      'validation report, and whenever the operator asks for a design or report: ' +
+      'the card renders structured definitions far better than prose or JSON. It is ' +
       'presentation only — it saves nothing, needs no approval, and is not evidence any action ' +
       'succeeded. Do not repeat the card content in prose; add only rationale, uncertainty, or ' +
       'a recommendation.',
@@ -126,13 +266,12 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
         kind: {
           type: 'string',
           enum: [...ARTIFACT_KINDS],
-          description: 'Which design card to show.',
+          description: 'Which design or checklist card to show.',
         },
         spec: {
           type: 'object',
           description:
-            'The full entity JSON, exactly as the store would save it — the same shape ' +
-            'smith_propose takes.',
+            'The full entity JSON (pipeline/agent/envelope) or checklist definition (title, items, optional summary).',
         },
         rationale: {
           type: 'string',

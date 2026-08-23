@@ -844,7 +844,8 @@ export interface ValidationIssue {
  * `main/smith/present-tools.ts`, a renderer registration in
  * `renderer/view-models/smith-artifact-view.ts`, and tests for both.
  */
-export type SmithArtifactKind = 'pipeline_design' | 'agent_design' | 'envelope_design';
+export type SmithArtifactKind =
+  'pipeline_design' | 'agent_design' | 'envelope_design' | 'checklist';
 
 /** The protocol version this build reads. Unknown versions fail soft in the UI. */
 export const SMITH_ARTIFACT_VERSION = 1;
@@ -880,6 +881,31 @@ export interface SmithEnvelopeDesignArtifact extends SmithArtifactBase {
   envelope: EnvelopeDef;
 }
 
+export type ChecklistItemStatus = 'pass' | 'warn' | 'fail' | 'info';
+
+export interface ChecklistItem {
+  id?: string;
+  label: string;
+  status: ChecklistItemStatus;
+  detail?: string;
+  /** Expandable evidence, output excerpt, or diagnostics shown behind a disclosure. */
+  evidence?: string;
+  /** Suggested fix or remediation guidance note. */
+  fix?: string;
+}
+
+export interface ChecklistDef {
+  title: string;
+  summary?: string;
+  items: ChecklistItem[];
+}
+
+/** A read-only checklist report: readiness findings, doctor results, validation, project health. */
+export interface SmithChecklistArtifact extends SmithArtifactBase {
+  kind: 'checklist';
+  checklist: ChecklistDef;
+}
+
 /**
  * One rich inline card in the Smith transcript. Artifacts are presentation
  * only: they perform no writes, never occupy the one-slot proposal queue, and
@@ -887,7 +913,10 @@ export interface SmithEnvelopeDesignArtifact extends SmithArtifactBase {
  * the main boundary before they reach the renderer or persisted chat state.
  */
 export type SmithArtifact =
-  SmithPipelineDesignArtifact | SmithAgentDesignArtifact | SmithEnvelopeDesignArtifact;
+  | SmithPipelineDesignArtifact
+  | SmithAgentDesignArtifact
+  | SmithEnvelopeDesignArtifact
+  | SmithChecklistArtifact;
 
 // ── Smith (the entity-smith's approval gate) ─────────────────────────────────
 
