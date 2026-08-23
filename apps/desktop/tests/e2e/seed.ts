@@ -24,6 +24,7 @@ export const E2E_REQUEST = 'FOUNDRY_E2E_INSPECTOR_REQUEST';
 export const E2E_TRANSCRIPT = 'FOUNDRY_E2E_TRANSCRIPT_MARKER';
 export const E2E_SMITH_MESSAGE = 'FOUNDRY_E2E_SMITH_TRANSCRIPT';
 export const E2E_SMITH_PROPOSAL_NAME = 'e2e_planner';
+export const E2E_SMITH_ARTIFACT_PIPELINE = 'e2e-designed-pipeline';
 
 const FIXTURE_PIPELINE: PipelineDef = {
   id: 'prompt',
@@ -186,6 +187,43 @@ function seedSmithChat(supportDir: string, projectId: string): void {
             text: E2E_SMITH_MESSAGE,
             source: 'smith',
             at: 2,
+          },
+          // A presented design card, restored the way smith_present persists it.
+          {
+            id: 'e2e-artifact',
+            kind: 'artifact',
+            source: 'smith',
+            at: 3,
+            artifact: {
+              id: 'e2e-artifact',
+              kind: 'pipeline_design',
+              version: 1,
+              createdAt: 3,
+              projectId,
+              rationale: 'A single build phase keeps the fixture legible.',
+              warnings: [],
+              pipeline: {
+                id: E2E_SMITH_ARTIFACT_PIPELINE,
+                name: 'Designed pipeline',
+                description: 'Seeded design artifact for the Electron UI smoke.',
+                acceptance: { kind: 'all_phases_pass' },
+                phases: [
+                  {
+                    name: 'build',
+                    kind: 'agent',
+                    description: 'Build the change.',
+                    agent: 'builder',
+                    prompt: { inputs: ['request'] },
+                  },
+                  {
+                    name: 'test',
+                    kind: 'code',
+                    description: 'Run the checks.',
+                    command: { ref: 'test' },
+                  },
+                ],
+              },
+            },
           },
         ],
       },

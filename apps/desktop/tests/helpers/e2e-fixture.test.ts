@@ -74,11 +74,18 @@ describe('e2e fixture seed', () => {
         join(fixture.supportDir, 'pi', 'smith', fixture.projectId, 'chat-state.json'),
         'utf8',
       ),
-    ) as { transcript: Array<{ text: string; source: string }> };
-    expect(chat.transcript.map((row) => [row.source, row.text])).toEqual([
-      ['operator', 'What agents do I have?'],
-      ['smith', E2E_SMITH_MESSAGE],
+    ) as {
+      transcript: Array<{ kind: string; text?: string; source: string; artifact?: unknown }>;
+    };
+    expect(chat.transcript.map((row) => [row.source, row.kind, row.text])).toEqual([
+      ['operator', 'text', 'What agents do I have?'],
+      ['smith', 'text', E2E_SMITH_MESSAGE],
+      ['smith', 'artifact', undefined],
     ]);
+    expect(chat.transcript[2]!.artifact).toMatchObject({
+      kind: 'pipeline_design',
+      version: 1,
+    });
 
     const proposal = JSON.parse(
       readFileSync(join(fixture.supportDir, 'smith', 'pending-proposal.json'), 'utf8'),

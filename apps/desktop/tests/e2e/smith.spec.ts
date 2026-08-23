@@ -1,5 +1,10 @@
 import { expect, test, type ElectronApplication } from '@playwright/test';
-import { E2E_SMITH_MESSAGE, E2E_SMITH_PROPOSAL_NAME, seedOnboardedFixture } from './seed.js';
+import {
+  E2E_SMITH_ARTIFACT_PIPELINE,
+  E2E_SMITH_MESSAGE,
+  E2E_SMITH_PROPOSAL_NAME,
+  seedOnboardedFixture,
+} from './seed.js';
 import { launchFoundry } from './harness.js';
 
 test.describe('smith / chat', () => {
@@ -22,6 +27,11 @@ test.describe('smith / chat', () => {
       const popover = window.getByTestId('smith-popover');
       await expect(popover).toBeVisible();
       await expect(popover.getByText(E2E_SMITH_MESSAGE)).toBeVisible();
+      // The seeded design artifact renders as a card in the compact bubble too.
+      await expect(popover.getByTestId('smith-artifact-card')).toBeVisible();
+      await expect(
+        popover.getByRole('heading', { name: E2E_SMITH_ARTIFACT_PIPELINE }),
+      ).toBeVisible();
       await expect(popover.getByTestId('smith-proposal-card')).toBeVisible();
       await expect(
         popover.getByRole('heading', { name: `Smith wants to create ${E2E_SMITH_PROPOSAL_NAME}` }),
@@ -37,9 +47,26 @@ test.describe('smith / chat', () => {
       await expect(
         window.getByTestId('smith-transcript').getByText(E2E_SMITH_MESSAGE),
       ).toBeVisible();
+      // The same artifact model renders on the full screen: phases in order,
+      // details behind a disclosure, JSON collapsed rather than the body.
+      const artifact = window.getByTestId('smith-artifact-card');
+      await expect(artifact).toBeVisible();
+      await expect(
+        artifact.getByRole('heading', { name: E2E_SMITH_ARTIFACT_PIPELINE }),
+      ).toBeVisible();
+      await expect(artifact.getByTestId('smith-design-phase-build')).toBeVisible();
+      await expect(artifact.getByTestId('smith-design-phase-test')).toBeVisible();
+      await artifact.getByTestId('smith-design-phase-build').click();
+      // Exact match: the collapsed View JSON <pre> contains the phrase too.
+      await expect(artifact.getByText('Build the change.', { exact: true })).toBeVisible();
+      await expect(artifact.getByText('View JSON')).toBeVisible();
       await expect(window.getByTestId('smith-proposal-card')).toBeVisible();
       await expect(
         window.getByRole('heading', { name: `Smith wants to create ${E2E_SMITH_PROPOSAL_NAME}` }),
+      ).toBeVisible();
+      // The seeded entity proposal renders the semantic agent design, not JSON.
+      await expect(
+        window.getByTestId('smith-proposal-card').getByText('E2E fixture agent.', { exact: true }),
       ).toBeVisible();
     } finally {
       await app?.close();

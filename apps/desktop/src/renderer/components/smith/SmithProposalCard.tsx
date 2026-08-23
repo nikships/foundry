@@ -1,10 +1,19 @@
 /** Inline approval card for entity saves and fixed privileged Smith actions. */
 
 import { useCallback, useEffect, useState } from 'react';
-import type { SmithEntityProposal, SmithPrivateDisplay, SmithProposal } from '@shared/types.js';
+import type {
+  AgentDef,
+  EnvelopeDef,
+  PipelineDef,
+  SmithEntityProposal,
+  SmithPrivateDisplay,
+  SmithProposal,
+} from '@shared/types.js';
 import { api } from '../../api.js';
+import { compareEntities } from '../../view-models/smith-artifact-view.js';
 import QrCode from '../media/QrCode.js';
 import { Button } from '../ui/Button.js';
+import { AgentDesign, EnvelopeDesign, PipelineDesign, ViewJson } from './SmithEntityDesign.js';
 import styles from './SmithProposalCard.module.css';
 
 export interface SmithNavTarget {
@@ -21,11 +30,21 @@ const KIND_LABEL: Record<SmithEntityProposal['kind'], string> = {
 export default function SmithProposalCard({
   projectId,
   onCompleted,
+  onRequestChanges,
+  compact,
 }: {
   /** Conversation scope; absent means All projects. */
   projectId?: string;
   /** Refreshes app state; entity saves additionally provide a Design target. */
   onCompleted: (target?: SmithNavTarget) => void | Promise<void>;
+  /**
+   * Request changes: the proposal was rejected to unblock Smith's tool call,
+   * and the operator should land in the composer to write the revision. The
+   * host owns the composer, so it gets the prefill text to place there.
+   */
+  onRequestChanges?: (prefill: string) => void;
+  /** Tighter design bodies for the titlebar bubble. */
+  compact?: boolean;
 }): React.JSX.Element | null {
   const [proposal, setProposal] = useState<SmithProposal | null>(null);
   const [privateDisplay, setPrivateDisplay] = useState<SmithPrivateDisplay | null>(null);
@@ -61,8 +80,9 @@ export default function SmithProposalCard({
     setPrivateDisplay(null);
   }, [projectId]);
 
-  const answer = async (approved: boolean): Promise<void> => {
+  const answer = async (verdict: 'approve' | 'reject' | 'request-changes'): Promise<void> => {
     if (!proposal || sending) return;
+    const approved = verdict === 'approve';
     setSending(true);
     setError('');
     try {
@@ -80,6 +100,12 @@ export default function SmithProposalCard({
         await onCompleted(
           proposal.type === 'entity' ? { kind: proposal.kind, name: proposal.name } : undefined,
         );
+      }
+      // Request changes is a reject that lands the operator in the composer:
+      // Smith's tool call is already unblocked, and the next message is the
+      // revision guidance — never a silent re-propose of the same spec.
+      if (verdict === 'request-changes' && proposal.type === 'entity') {
+        onRequestChanges?.(`Revise the ${KIND_LABEL[proposal.kind]} ${proposal.name}: `);
       }
       await refresh();
     } catch (caught) {
@@ -102,7 +128,9 @@ export default function SmithProposalCard({
       proposal={proposal}
       sending={sending}
       error={error}
-      onAnswer={(approved) => void answer(approved)}
+      compact={compact}
+      requestChanges={!!onRequestChanges}
+      onAnswer={(verdict) => void answer(verdict)}
     />
   ) : (
     <section
@@ -143,7 +171,7 @@ export default function SmithProposalCard({
         approveLabel={
           proposal.risk === 'destructive' ? 'Approve destructive action' : 'Approve action'
         }
-        onAnswer={(approved) => void answer(approved)}
+        onAnswer={(verdict) => void answer(verdict)}
       />
     </section>
   );
@@ -187,17 +215,41 @@ function PrivateDisplayCard({
   );
 }
 
+/** The same read-only design bodies the artifact cards draw — one renderer per concept. */
+function EntityDesignBody({
+  proposal,
+  compact,
+}: {
+  proposal: SmithEntityProposal;
+  compact?: boolean;
+}): React.JSX.Element {
+  if (proposal.kind === 'pipeline') {
+    return <PipelineDesign pipeline={proposal.spec as PipelineDef} compact={compact} />;
+  }
+  if (proposal.kind === 'agent') {
+    return <AgentDesign agent={proposal.spec as AgentDef} compact={compact} />;
+  }
+  return <EnvelopeDesign envelope={proposal.spec as EnvelopeDef} compact={compact} />;
+}
+
 function EntityCard({
   proposal,
   sending,
   error,
+  compact,
+  requestChanges,
   onAnswer,
 }: {
   proposal: SmithEntityProposal;
   sending: boolean;
   error: string;
-  onAnswer: (approved: boolean) => void;
+  compact?: boolean;
+  requestChanges: boolean;
+  onAnswer: (verdict: 'approve' | 'reject' | 'request-changes') => void;
 }): React.JSX.Element {
+  const changes = proposal.overwrites
+    ? compareEntities(proposal.kind, proposal.previous, proposal.spec)
+    : [];
   return (
     <section className={styles.card} data-testid="smith-proposal-card">
       <header className={styles.header}>
@@ -210,13 +262,39 @@ function EntityCard({
           <span className={styles.name}>{proposal.name}</span>
         </h2>
       </header>
+      <p className={styles.scopeNote}>
+        Scope:{' '}
+        {(proposal.targetProjectId ?? proposal.projectId)
+          ? `project ${proposal.targetProjectId ?? proposal.projectId}`
+          : 'global (all projects)'}
+      </p>
       {proposal.overwrites && (
         <p className={styles.overwriteNote}>
           A {KIND_LABEL[proposal.kind]} named <strong>{proposal.name}</strong> already exists.
           Approving replaces its current definition.
         </p>
       )}
-      <pre className={`${styles.spec} selectable`}>{JSON.stringify(proposal.spec, null, 2)}</pre>
+      <EntityDesignBody proposal={proposal} compact={compact} />
+      {changes.length > 0 && (
+        <div className={styles.changes} data-testid="smith-proposal-changes">
+          <span className={styles.changesTitle}>What changes</span>
+          {changes.map((change, index) => (
+            <span key={`${change.where}-${index}`} className={styles.change}>
+              <span className={styles.changeKind} data-change={change.kind}>
+                {change.kind}
+              </span>
+              <span className={styles.changeWhere}>{change.where}</span>
+              {change.kind === 'changed' || change.kind === 'reordered' ? (
+                <span className={styles.changeValue}>
+                  {change.before} → {change.after}
+                </span>
+              ) : (
+                <span className={styles.changeValue}>{change.after ?? change.before}</span>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
       {proposal.validation.length > 0 && (
         <div className={styles.warnings}>
           {proposal.validation.map((issue, index) => (
@@ -227,11 +305,13 @@ function EntityCard({
           ))}
         </div>
       )}
+      <ViewJson value={proposal.spec} />
       <CardFooter
         sending={sending}
         error={error}
         approveDisabled={false}
         approveLabel="Approve"
+        requestChanges={requestChanges}
         onAnswer={onAnswer}
       />
     </section>
@@ -243,13 +323,16 @@ function CardFooter({
   error,
   approveDisabled,
   approveLabel,
+  requestChanges,
   onAnswer,
 }: {
   sending: boolean;
   error: string;
   approveDisabled: boolean;
   approveLabel: string;
-  onAnswer: (approved: boolean) => void;
+  /** Shows the Request changes affordance (entity proposals in a chat host). */
+  requestChanges?: boolean;
+  onAnswer: (verdict: 'approve' | 'reject' | 'request-changes') => void;
 }): React.JSX.Element {
   return (
     <>
@@ -259,9 +342,18 @@ function CardFooter({
         </p>
       )}
       <footer className={styles.footer}>
+        {requestChanges && (
+          <Button
+            disabled={sending}
+            onClick={() => onAnswer('request-changes')}
+            data-testid="smith-proposal-request-changes"
+          >
+            {sending ? 'Sending…' : 'Request changes'}
+          </Button>
+        )}
         <Button
           disabled={sending}
-          onClick={() => onAnswer(false)}
+          onClick={() => onAnswer('reject')}
           data-testid="smith-proposal-reject"
         >
           {sending ? 'Sending…' : 'Reject'}
@@ -270,7 +362,7 @@ function CardFooter({
         <Button
           variant="primary"
           disabled={sending || approveDisabled}
-          onClick={() => onAnswer(true)}
+          onClick={() => onAnswer('approve')}
           data-testid="smith-proposal-approve"
         >
           {sending ? 'Running…' : approveLabel}

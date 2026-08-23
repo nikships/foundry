@@ -22,6 +22,18 @@ inline human approval.
 - `smith_entities`, `smith_settings`, `smith_projects`, `smith_runs`,
   `smith_prs`, `smith_interrupts`, `smith_providers`, `smith_companion`, and
   `smith_system`: fixed operation enums over existing handlers.
+- `smith_present` (`present-tools.ts`): agent-callable rich UI artifacts. Smith
+  picks a registered kind and supplies typed entity data; the renderer owns the
+  visuals. Artifacts are presentation only — validated (store rails), size- and
+  secret-capped, emitted straight into the transcript, never on the proposal
+  queue, and persisted with chat state (unsupported versions restore as a
+  readable note). Adding an artifact kind takes exactly this path: the
+  `SmithArtifact` union in `shared/types.ts`, validation/emission in
+  `present-tools.ts`, renderer registration in
+  `renderer/view-models/smith-artifact-view.ts` plus a design body in
+  `renderer/components/smith/`, a persistence/restore decision in
+  `chat-session.ts`, and tests in `smith-present-tools.test.ts` +
+  `smith-artifact-view.test.ts`. Never infer cards from Smith's Markdown.
 - Readiness exposes its three conversational tools plus `readiness_manage`.
 - Read-only operations invoke immediately. Persistent/destructive/credential,
   process, Git/PR, lifecycle, network, and maintenance actions enqueue an action

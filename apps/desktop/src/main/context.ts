@@ -29,6 +29,7 @@ import { UpdaterService } from './updater.js';
 import { SmithService } from './smith/index.js';
 import { SmithChatSession, type SmithToolFactory } from './smith/chat-session.js';
 import { smithListTool, smithProposeTool, smithShowTool } from './smith/entity-tools.js';
+import { smithPresentTool } from './smith/present-tools.js';
 import { smithEntitiesTool } from './smith/entity-action-tools.js';
 import { smithSettingsTool } from './smith/settings-tools.js';
 import { smithProjectsTool } from './smith/project-tools.js';
@@ -174,7 +175,18 @@ export class AppContext {
               queue: proposals,
               projectId: () => toolCtx.projectId,
             };
-            return [smithListTool(deps), smithShowTool(deps), smithProposeTool(deps)];
+            return [
+              smithListTool(deps),
+              smithShowTool(deps),
+              smithProposeTool(deps),
+              smithPresentTool({
+                stores: this,
+                projectId: () => toolCtx.projectId,
+                // The factory runs before the session exists; by the first
+                // tool call `chat` is assigned, and a session always is.
+                emit: (artifact) => chat?.absorbArtifact(artifact),
+              }),
+            ];
           },
           (toolCtx) => {
             const deps = {

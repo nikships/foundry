@@ -141,6 +141,73 @@
   tab-size: 2;
 }
 
+/* Semantic before/after rows for an overwrite, derived from the stored entity. */
+.changes {
+  margin: 0;
+  padding: var(--s3);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.changesTitle {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.change {
+  display: flex;
+  gap: var(--s2);
+  align-items: baseline;
+  font-size: var(--text-sm);
+  line-height: var(--leading);
+  min-width: 0;
+}
+
+.changeKind {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.changeKind[data-change='added'] {
+  color: var(--green);
+}
+
+.changeKind[data-change='removed'] {
+  color: var(--red);
+}
+
+.changeKind[data-change='changed'],
+.changeKind[data-change='reordered'] {
+  color: var(--amber);
+}
+
+.changeWhere {
+  flex: none;
+  font-family: var(--font-mono);
+  color: var(--text);
+  font-size: var(--text-xs);
+}
+
+.changeValue {
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
 .warnings {
   margin: 0;
   padding: var(--s3);
