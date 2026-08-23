@@ -10,7 +10,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { AGENT_MARKS_DIR } from './store/agent-marks.js';
-import type { AgentDef, PipelineDef, ReadinessState, RunRow } from '@shared/types.js';
+import type { AgentDef, AppTheme, PipelineDef, ReadinessState, RunRow } from '@shared/types.js';
 import { IPC, type DetectionState, type SetupState } from '@shared/ipc-contract.js';
 import { SettingsStore } from './store/settings.js';
 import { ProjectStore } from './store/projects.js';
@@ -53,6 +53,11 @@ export interface Scope {
   ownPipelines?: boolean;
 }
 
+/** Native paint shown before (and behind) the renderer. Keep in sync with --bg-base. */
+export function themeBackgroundColor(theme: AppTheme): string {
+  return theme === 'light' ? '#f7f7f5' : '#020202';
+}
+
 export class AppContext {
   readonly settings: SettingsStore;
   readonly projects: ProjectStore;
@@ -75,6 +80,19 @@ export class AppContext {
    * access level) and never where the runtime keeps its state.
    */
   readonly oneShot: OneShotFactory;
+  private window: BrowserWindow | null = null;
+
+  attachWindow(window: BrowserWindow): void {
+    this.window = window;
+    this.applyTheme(this.settings.get().theme);
+    window.once('closed', () => {
+      if (this.window === window) this.window = null;
+    });
+  }
+
+  applyTheme(theme: AppTheme): void {
+    this.window?.setBackgroundColor(themeBackgroundColor(theme));
+  }
 
   constructor(
     readonly supportDir: string,

@@ -217,7 +217,7 @@
   justify-content: center;
   align-items: flex-start;
   padding-top: 14vh;
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--overlay);
   backdrop-filter: blur(3px);
   animation: fade-in 140ms var(--ease);
 }

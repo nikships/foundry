@@ -4,9 +4,10 @@ import './design/tokens-base.css';
 import './design/tokens-factory.css';
 import './design/factory/factory.css';
 
-// `data-brand` is set before render so the FOUC guard in index.html releases
-// only once the Factory token sheet is already imported — no palette flashes.
+// Safe startup fallback. AppProvider replaces this with persisted settings and
+// marks the document ready before the renderer becomes visible.
 document.documentElement.setAttribute('data-brand', 'factory');
+document.documentElement.setAttribute('data-theme', 'dark');
 document.documentElement.style.colorScheme = 'dark';
 
 const container = document.getElementById('app');

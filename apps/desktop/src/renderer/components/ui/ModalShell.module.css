@@ -4,13 +4,13 @@
   z-index: 90;
   display: grid;
   place-items: center;
-  background: rgba(2, 2, 2, 0.72);
+  background: var(--overlay);
   animation: fade-in var(--fast) var(--ease);
 }
 
 .overlay-backdrop.highPriority {
   z-index: 100;
-  background: rgba(2, 2, 2, 0.8);
+  background: var(--overlay-strong);
 }
 
 .modal {

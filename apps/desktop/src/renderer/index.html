@@ -10,16 +10,14 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; img-src 'self' file: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'"
     />
-    <meta name="color-scheme" content="dark" />
+    <meta name="color-scheme" content="dark light" />
     <!--
-      FOUC guard. `main.tsx` sets `data-brand` before the first render, once the
-      Factory token sheet is already imported, so nothing paints until the palette
-      is resolved. Until then the window's own `backgroundColor` shows through,
-      and that is already the renderer's base colour (set in main.ts before the
-      BrowserWindow is constructed). Hence html and body stay transparent.
+      FOUC guard. The app store releases the renderer only after persisted settings
+      have selected the palette. Until then the matching native window background
+      shows through, so html and body stay transparent.
     -->
     <style>
-      html:not([data-brand]) #app {
+      html:not([data-theme-ready]) #app {
         visibility: hidden;
       }
       html,

@@ -4,7 +4,7 @@ import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
 import { noIssues, notifySettings } from './shared.js';
 
-type Ctx = Pick<AppContext, 'settings' | 'broadcast'>;
+type Ctx = Pick<AppContext, 'settings' | 'broadcast' | 'applyTheme'>;
 
 export function register(ctx: Ctx, handle: Handle): void {
   handle(IPC.settingsGet, () => ctx.settings.get());
@@ -16,6 +16,7 @@ export function register(ctx: Ctx, handle: Handle): void {
         issues: result.issues.map((m) => ({ level: 'error', where: 'settings', message: m })),
       };
     }
+    ctx.applyTheme(result.settings.theme);
     notifySettings(ctx);
     return { ok: true, issues: noIssues, value: result.settings };
   });

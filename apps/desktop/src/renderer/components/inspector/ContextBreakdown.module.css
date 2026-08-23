@@ -42,7 +42,7 @@
   border: 1px solid var(--line-strong);
   border-radius: var(--r-lg);
   background: var(--bg-panel);
-  box-shadow: 0 12px 32px rgb(0 0 0 / 55%);
+  box-shadow: var(--shadow-lg);
   text-align: left;
 }
 

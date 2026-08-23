@@ -8,7 +8,8 @@ import { app, BrowserWindow, Menu, shell } from 'electron';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdirSync } from 'node:fs';
-import { AppContext } from './context.js';
+import { AppContext, themeBackgroundColor } from './context.js';
+import type { AppTheme } from '@shared/types.js';
 import { registerIpc } from './ipc/index.js';
 import { killAll } from './system/procs.js';
 import { resolveEnv } from './system/env.js';
@@ -18,14 +19,8 @@ const DEV_URL = process.env.ELECTRON_RENDERER_URL;
 
 let ctx: AppContext | null = null;
 
-/**
- * The window's own backgroundColor is what the user sees between the frame
- * appearing and the first paint, so it has to match the renderer's base colour.
- * Factory paints an opaque industrial base; desktop bleed-through would wash it out.
- */
-const WINDOW_BACKGROUND = '#020202';
-
-function createWindow(): BrowserWindow {
+/** The native first paint must match the persisted renderer palette. */
+function createWindow(theme: AppTheme): BrowserWindow {
   const rawWidth = (process.env.FOUNDRY_WIDTH ?? '').trim();
   const requestedWidth = rawWidth ? Number(rawWidth) : NaN;
   const width = Number.isFinite(requestedWidth) && requestedWidth >= 600 ? requestedWidth : 1440;
@@ -37,7 +32,7 @@ function createWindow(): BrowserWindow {
     show: false,
     title: 'Foundry',
     titleBarStyle: 'hiddenInset',
-    backgroundColor: WINDOW_BACKGROUND,
+    backgroundColor: themeBackgroundColor(theme),
     webPreferences: {
       preload: join(here, '../preload/bridge.cjs'),
       contextIsolation: true,
@@ -226,14 +221,18 @@ if (!app.requestSingleInstanceLock()) {
     // remain reachable without the operator toggling the server again.
     await ctx.companion.restore();
 
-    createWindow();
+    const window = createWindow(ctx.settings.get().theme);
+    ctx.attachWindow(window);
 
     // A packaged app should discover updates without requiring the user to
     // find the menu item first. The service is a no-op in development builds.
     void ctx.updater.check();
 
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      if (BrowserWindow.getAllWindows().length === 0 && ctx) {
+        const window = createWindow(ctx.settings.get().theme);
+        ctx.attachWindow(window);
+      }
     });
   });
 

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
+  AppTheme,
   DoctorCheck,
   ModelInfo,
   OrphanWorktree,
@@ -892,6 +893,28 @@ export default function SettingsScreen({
                     />
                   </Section>
 
+                  <Section
+                    label="Appearance"
+                    note="Choose the palette Foundry uses across the desktop."
+                  >
+                    <Field
+                      label="Theme"
+                      className={styles.settingsNarrow}
+                      hint="Saved automatically and applied immediately."
+                    >
+                      <Dropdown
+                        value={settings.theme}
+                        options={[
+                          { value: 'dark', label: 'Dark' },
+                          { value: 'light', label: 'Light' },
+                        ]}
+                        aria-label="Theme"
+                        data-testid="settings-theme"
+                        onChange={(next) => void set({ theme: next as AppTheme })}
+                      />
+                    </Field>
+                  </Section>
+
                   <Section label="Notifications" note="Only the moments that need you.">
                     <div className={styles.settingsToggles}>
                       {(Object.keys(NOTIFY_LABELS) as Array<keyof typeof NOTIFY_LABELS>).map(
@@ -1113,12 +1136,10 @@ export default function SettingsScreen({
                     )}
                   </Section>
 
-                  <Section
-                    label="Application"
-                    note="Restart after changing settings or installing an update."
-                  >
+                  <Section label="Application" note="Quit or relaunch the desktop app.">
                     <p className={styles.hint}>
-                      Restart Foundry after changing settings or installing an update.
+                      Theme and other preferences save automatically; relaunch only when you need a
+                      fresh app process or have installed an update.
                     </p>
                     <div className={styles.settingsBtnrow}>
                       <Button size="sm" onClick={() => void relaunchApp()}>

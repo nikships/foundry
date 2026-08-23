@@ -67,6 +67,33 @@ describe('unknown keys on disk', () => {
   });
 });
 
+describe('theme', () => {
+  it('defaults fresh and legacy installs to dark', () => {
+    expect(defaultSettings().theme).toBe('dark');
+    const stored = { ...defaultSettings() } as Record<string, unknown>;
+    delete stored.theme;
+    expect(migrate(stored).theme).toBe('dark');
+    expect(seed(stored).get().theme).toBe('dark');
+  });
+
+  it('repairs an invalid stored theme to dark', () => {
+    expect(migrate({ ...defaultSettings(), theme: 'sepia' as never }).theme).toBe('dark');
+  });
+
+  it('persists light and rejects invalid patches without losing it', () => {
+    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
+    expect(store.patch({ theme: 'light' })).toMatchObject({ ok: true });
+    expect(store.get().theme).toBe('light');
+    const onDisk = JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf8')) as Record<
+      string,
+      unknown
+    >;
+    expect(onDisk.theme).toBe('light');
+    expect(store.patch({ theme: 'sepia' as never }).ok).toBe(false);
+    expect(store.get().theme).toBe('light');
+  });
+});
+
 describe('helper defaults', () => {
   it('defaults to inherit / high on a fresh install', () => {
     expect(defaultSettings().helperModel).toBe('inherit');

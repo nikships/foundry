@@ -56,7 +56,7 @@
   border-right: none;
 }
 .roster-cell:hover {
-  background: color-mix(in srgb, #ffffff 2.5%, transparent);
+  background: color-mix(in srgb, var(--text) 2.5%, transparent);
 }
 .roster-cell.on {
   background: color-mix(in srgb, var(--hue) 9%, transparent);
