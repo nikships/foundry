@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PipelineStore } from '../../../src/main/store/pipelines.js';
 import { JsonStore } from '../../../src/main/store/json-store.js';
 import { BUILTIN_PIPELINES } from '../../../src/shared/builtin-pipelines.js';
-import type { PipelineDef } from '../../../src/shared/types.js';
+import { healingEligible, type PipelineDef } from '../../../src/shared/types.js';
 
 let dir: string;
 
@@ -144,6 +144,47 @@ describe('loading a pipelines file', () => {
     ]);
 
     expect(new PipelineStore(dir).staleBuiltins()).not.toContain(shipped.id);
+  });
+
+  it('loads a pipeline written before healing existed, and heals its project commands', () => {
+    // No `heal` anywhere, which is every pipeline file on disk today. The
+    // phase has to load unchanged and pick up the default rather than needing
+    // an edit to get a healer.
+    const stored = userPipeline();
+    stored.phases = [
+      ...stored.phases,
+      {
+        name: 'test',
+        kind: 'code',
+        description: "Run the project's test command.",
+        command: { ref: 'test' },
+        feedbackTo: 'build',
+      },
+    ];
+    writeStored([stored]);
+
+    const phase = new PipelineStore(dir).get('my-chain')?.phases[1];
+    expect(phase).not.toHaveProperty('heal');
+    expect(healingEligible(phase!)).toBe(true);
+  });
+
+  it('round-trips an explicit heal choice on a phase', () => {
+    const stored = userPipeline();
+    stored.phases = [
+      ...stored.phases,
+      {
+        name: 'lint',
+        kind: 'code',
+        description: 'Run the linter, with healing turned off by hand.',
+        command: { ref: 'lint' },
+        heal: false,
+      },
+    ];
+    writeStored([stored]);
+
+    const phase = new PipelineStore(dir).get('my-chain')?.phases[1];
+    expect(phase?.heal).toBe(false);
+    expect(healingEligible(phase!)).toBe(false);
   });
 
   it('does not treat local canvas placement as a shipped-definition difference', () => {

@@ -704,6 +704,10 @@ export default function SettingsScreen({
     () => modelForEffortPicker(settings?.helperModel, models, settings?.defaultModel),
     [models, settings?.helperModel, settings?.defaultModel],
   );
+  const healingModelInfo = useMemo(
+    () => modelForEffortPicker(settings?.healingModel, models, settings?.defaultModel),
+    [models, settings?.healingModel, settings?.defaultModel],
+  );
   const smithModelInfo = useMemo(
     () => modelForEffortPicker(settings?.smithModel, models),
     [models, settings?.smithModel],
@@ -1537,6 +1541,40 @@ export default function SettingsScreen({
                               model={helperModelInfo}
                               onChange={(effort) => void set({ helperReasoningEffort: effort })}
                               data-testid="settings-helper-effort"
+                            />
+                          </Field>
+                        </div>
+                      </Section>
+                      <Section
+                        label="Healing"
+                        note="Repairs a failed check before the failure escalates."
+                      >
+                        <p className={styles.settingsLead}>
+                          When a command phase fails, this model gets a bounded turn in the
+                          run&rsquo;s worktree to make the smallest fix. The exact command is re-run
+                          after every attempt, and only exit 0 counts. If it cannot be fixed, the
+                          failure escalates the way it always has.
+                        </p>
+                        <div className={styles.settingsFields}>
+                          <Field label="Healing model">
+                            <ModelPicker
+                              value={settings.healingModel}
+                              models={models}
+                              allowInherit
+                              inheritLabel="Same as default model"
+                              emptyHint="No models are reachable. Connect a provider under Providers."
+                              onChange={(v) => void set({ healingModel: v })}
+                            />
+                          </Field>
+                          <Field
+                            label="Healing reasoning effort"
+                            hint="Only the levels the healing model offers."
+                          >
+                            <ReasoningEffortPicker
+                              value={settings.healingReasoningEffort}
+                              model={healingModelInfo}
+                              onChange={(effort) => void set({ healingReasoningEffort: effort })}
+                              data-testid="settings-healing-effort"
                             />
                           </Field>
                         </div>

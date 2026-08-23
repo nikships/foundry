@@ -172,6 +172,8 @@ function defaultMockSettings(): AppSettings {
     prAgent: 'pr_writer',
     defaultModel: 'inherit',
     defaultReasoningEffort: 'medium',
+    healingModel: 'inherit',
+    healingReasoningEffort: 'medium',
     smithModel: 'inherit',
     smithReasoningEffort: 'medium',
     compactionThreshold: 0.8,

@@ -120,6 +120,7 @@ export class AppContext {
         setDockBadge(this.registry.liveRunCount(), this.settings.get());
         this.broadcast(IPC.eventRunsChanged);
       },
+      oneShot: this.oneShot,
       projectById: (id) => this.projects.get(id),
       saveProject: (next) => this.projects.save(next),
       notifySettings: () => this.broadcast(IPC.eventSettingsChanged),

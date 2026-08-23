@@ -26,8 +26,10 @@ import type { ContextBreakdownResult } from '@shared/ipc-contract.js';
 import { appDbPath, appRunsDir, openDb, projectDbPath, projectRunsDir } from '../trace/db.js';
 import { Tracer } from '../trace/tracer.js';
 import { Executor } from './executor.js';
+import { healingSupport } from './healing.js';
 import { commandMatches, isAlive, killRun, terminate } from '../system/procs.js';
 import type { BridgeTrace } from '../bridge/service.js';
+import type { OneShotFactory } from '../pi/oneshot.js';
 import { breakdownFile, type CapturedBreakdown, type InterruptRequest } from '../pi/session.js';
 
 export interface RegistryDeps {
@@ -37,6 +39,12 @@ export interface RegistryDeps {
   onRunFinished: (run: RunRow) => void;
   onInterruptsChanged: () => void;
   onRunsChanged: () => void;
+  /**
+   * How a failing code phase opens its healing turn. Omitted means no healing:
+   * a test-only harness that never wires a runtime gets the pre-healing
+   * escalation path rather than a session it cannot open.
+   */
+  oneShot?: OneShotFactory;
   /** Live project row + save, so auto-merge can apply command drift. */
   projectById?: (id: string) => ProjectDef | null;
   saveProject?: (next: ProjectDef) => { ok: boolean };
@@ -210,6 +218,7 @@ export class RunRegistry extends EventEmitter {
       gateRetries: FIXED_ENGINE_DEFAULTS.gateRetries,
       compactionThreshold: settings.compactionThreshold,
       rewindAfterCorrections: FIXED_ENGINE_DEFAULTS.rewindAfterCorrections,
+      healing: this.deps.oneShot ? healingSupport(this.deps.oneShot, settings) : null,
       supportDir: this.deps.appSupportDir,
       agents: input.agents,
       envelopeDefs: input.envelopeDefs,

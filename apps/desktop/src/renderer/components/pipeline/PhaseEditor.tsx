@@ -2,8 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   BUILTIN_ENVELOPE_BLURBS,
   BUILTIN_ENVELOPE_KINDS,
+  commandSourceOf,
   effectivePhaseEnvelope,
+  healingEligible,
   type AgentDef,
+  type CommandSource,
   type EnvelopeKind,
   type PhaseDef,
   type PhaseKind,
@@ -27,8 +30,6 @@ import { Button } from '../ui/Button.js';
 import { IssueLine } from '../ui/Issues.js';
 import { Toggle } from '../ui/Toggle.js';
 import styles from './PhaseEditor.module.css';
-
-type CommandSource = 'ref' | 'builtin' | 'argv';
 
 function isBuiltinEnvelope(env: string | undefined): env is EnvelopeKind {
   return env ? (BUILTIN_ENVELOPE_KINDS as readonly string[]).includes(env) : false;
@@ -76,12 +77,14 @@ export default function PhaseEditor({
     return [...standard, ...envelopeInputs].filter((i) => !inputs.includes(i));
   }, [earlier, inputs]);
 
-  const commandSource: CommandSource = useMemo(() => {
-    if (phase.kind !== 'code' || !phase.command) return 'ref';
-    if ('ref' in phase.command) return 'ref';
-    if ('builtin' in phase.command) return 'builtin';
-    return 'argv';
-  }, [phase]);
+  const commandSource: CommandSource = useMemo(
+    () => (phase.kind === 'code' ? commandSourceOf(phase.command) : 'ref'),
+    [phase.kind, phase.command],
+  );
+
+  // The engine's own rule, so the toggle cannot draw a phase as healing that
+  // would not heal — including the default an unset `heal` resolves to.
+  const healEnabled = healingEligible(phase);
 
   const selectedAgent = useMemo(
     () => agents.find((agent) => agent.name === phase.agent),
@@ -554,6 +557,23 @@ export default function PhaseEditor({
               onChange={(optional) => onChange({ ...phase, optional })}
               label="Optional"
               hint="Non-zero exit is recorded in the trace but does not fail the run."
+            />
+          </div>
+
+          <div className={styles.fieldGroup}>
+            <Toggle
+              checked={healEnabled}
+              onChange={(heal) => onChange({ ...phase, heal })}
+              label="Heal on failure"
+              // `optional` already decided this, so the switch reports rather
+              // than offers: accepting a click it cannot honour would read as
+              // a broken control.
+              disabled={!!phase.optional}
+              hint={
+                phase.optional
+                  ? 'An optional phase never heals: its failure does not fail the run.'
+                  : 'A failed command gets a bounded agent turn to make the smallest fix, then the exact command runs again. On by default.'
+              }
             />
           </div>
         </>
