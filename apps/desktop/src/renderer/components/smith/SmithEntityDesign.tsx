@@ -268,6 +268,8 @@ export function EnvelopeDesign({
   );
 }
 
+export { ChecklistDesign } from './SmithChecklistDesign.js';
+
 export function RunSummaryDesign({
   artifact,
   compact,

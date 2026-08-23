@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import type {
   AgentDef,
+  ChecklistDef,
   EnvelopeDef,
   PipelineDef,
   SmithArtifact,
@@ -18,9 +19,13 @@ import {
   ARTIFACT_KIND_LABEL,
   acceptanceLabel,
   artifactName,
+  checklistStatusGlyph,
+  checklistStatusLabel,
+  checklistSummary,
   commandLabel,
   compareEntities,
   gateLabel,
+  groupChecklistItems,
   isRenderableArtifact,
   isolationLabel,
   phaseWorkLabel,
@@ -79,11 +84,24 @@ const runSummary: SmithRunSummaryArtifact = {
   ],
 };
 
+const checklist: ChecklistDef = {
+  title: 'Project Health',
+  summary: '1 failed · 1 warning · 2 passed',
+  items: [
+    { label: 'Git repo', status: 'pass' },
+    { label: 'Linting', status: 'pass' },
+    { label: 'Tests passing', status: 'warn', detail: '1 test skipped' },
+    { label: 'Build clean', status: 'fail', detail: 'Type error in main.ts' },
+    { label: 'Environment', status: 'info', detail: 'Node 22.0.0' },
+  ],
+};
+
 function artifactOf(kind: SmithArtifact['kind'], version = SMITH_ARTIFACT_VERSION): SmithArtifact {
   const base = { id: 'a1', version, createdAt: 0, warnings: [] };
   if (kind === 'pipeline_design') return { ...base, kind, pipeline };
   if (kind === 'agent_design') return { ...base, kind, agent };
   if (kind === 'envelope_design') return { ...base, kind, envelope };
+  if (kind === 'checklist') return { ...base, kind, checklist };
   return { ...runSummary, ...base, kind: 'run_summary' };
 }
 
@@ -96,6 +114,8 @@ describe('the artifact registry', () => {
 
   it('fails soft on a future version or an unknown kind', () => {
     expect(isRenderableArtifact(artifactOf('pipeline_design', 99))).toBe(false);
+    expect(isRenderableArtifact(artifactOf('checklist', 99))).toBe(false);
+    expect(isRenderableArtifact(artifactOf('run_summary', 99))).toBe(false);
     expect(isRenderableArtifact({ kind: 'unknown_kind' } as unknown as SmithArtifact)).toBe(false);
   });
 
@@ -103,7 +123,90 @@ describe('the artifact registry', () => {
     expect(artifactName(artifactOf('pipeline_design'))).toBe('ship-it');
     expect(artifactName(artifactOf('agent_design'))).toBe('planner');
     expect(artifactName(artifactOf('envelope_design'))).toBe('severity_report');
+    expect(artifactName(artifactOf('checklist'))).toBe('Project Health');
     expect(artifactName(artifactOf('run_summary'))).toBe('Ship it');
+  });
+});
+
+describe('checklist helpers', () => {
+  it('groups items by pass/warn/fail/info status', () => {
+    const groups = groupChecklistItems(checklist.items);
+    expect(groups.fail).toHaveLength(1);
+    expect(groups.fail[0]!.label).toBe('Build clean');
+    expect(groups.warn).toHaveLength(1);
+    expect(groups.warn[0]!.label).toBe('Tests passing');
+    expect(groups.pass).toHaveLength(2);
+    expect(groups.info).toHaveLength(1);
+    expect(groups.info[0]!.label).toBe('Environment');
+  });
+
+  it('formats custom summary if provided', () => {
+    expect(checklistSummary(checklist)).toBe('1 failed · 1 warning · 2 passed');
+  });
+
+  it('derives summary line from item counts when omitted', () => {
+    const withoutSummary: ChecklistDef = {
+      title: 'Doctor',
+      items: [
+        { label: 'Check 1', status: 'pass' },
+        { label: 'Check 2', status: 'pass' },
+        { label: 'Check 3', status: 'warn' },
+        { label: 'Check 4', status: 'fail' },
+      ],
+    };
+    expect(checklistSummary(withoutSummary)).toBe('1 failed · 1 warning · 2 passed');
+  });
+
+  it('formats status labels and glyphs', () => {
+    expect(checklistStatusLabel('pass')).toBe('Passed');
+    expect(checklistStatusLabel('warn')).toBe('Warning');
+    expect(checklistStatusLabel('fail')).toBe('Failed');
+    expect(checklistStatusLabel('info')).toBe('Info');
+
+    expect(checklistStatusGlyph('pass')).toBe('✓');
+    expect(checklistStatusGlyph('warn')).toBe('⚠');
+    expect(checklistStatusGlyph('fail')).toBe('✕');
+    expect(checklistStatusGlyph('info')).toBe('ℹ');
+  });
+});
+
+describe('display labels', () => {
+  it('says acceptance in domain language', () => {
+    expect(acceptanceLabel({ kind: 'all_phases_pass' })).toMatch(/every phase/);
+    expect(acceptanceLabel({ kind: 'last_phase_pass' })).toMatch(/last phase/);
+    expect(acceptanceLabel({ kind: 'phase_flag', phase: 'review', flag: 'approved' })).toContain(
+      'review',
+    );
+    expect(acceptanceLabel({ kind: 'envelope_status', phase: 'build' })).toContain('build');
+  });
+
+  it('labels every command shape', () => {
+    expect(commandLabel({ ref: 'test' })).toBe('test');
+    expect(commandLabel({ builtin: 'git_commit' })).toBe('git_commit');
+    expect(commandLabel({ argv: ['npm', 'test'] })).toBe('npm test');
+    expect(commandLabel(undefined)).toBe('');
+  });
+
+  it('labels gates, boundaries, and phase work', () => {
+    expect(gateLabel('lint_passes')).toBe('lint_passes');
+    expect(gateLabel({ gate: 'command_passes', config: {} })).toBe('command_passes');
+    expect(writesLabel(null)).toMatch(/unrestricted/);
+    expect(writesLabel([])).toBe('read-only');
+    expect(writesLabel(['src/**'])).toBe('src/**');
+    expect(phaseWorkLabel(pipeline.phases[0]!)).toBe('planner');
+    expect(phaseWorkLabel(pipeline.phases[1]!)).toBe('test');
+    expect(
+      phaseWorkLabel({ name: 'ask', kind: 'engineer', description: '', question: 'Ship it?' }),
+    ).toBe('Ship it?');
+  });
+
+  it('labels run statuses and isolation', () => {
+    expect(runStatusLabel('accepted')).toBe('accepted');
+    expect(runStatusLabel('running')).toBe('running');
+    expect(runStatusLabel('failed')).toBe('failed');
+    expect(isolationLabel(true, 'foundry/run_1')).toBe('isolated worktree (foundry/run_1)');
+    expect(isolationLabel(true)).toBe('isolated worktree');
+    expect(isolationLabel(false)).toBe('direct checkout');
   });
 });
 

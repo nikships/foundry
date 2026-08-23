@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import type { RunDetail } from '../../../src/shared/ipc-contract.js';
 import type {
   AgentDef,
+  ChecklistDef,
   EnvelopeDef,
   PipelineDef,
   ProjectDef,
@@ -23,6 +24,7 @@ import {
   MAX_ARTIFACT_JSON,
   findSecretKey,
   smithPresentTool,
+  validateChecklist,
   type SmithPresentToolDeps,
 } from '../../../src/main/smith/present-tools.js';
 
@@ -147,6 +149,35 @@ const mockRunDetail: RunDetail = {
   live: false,
 };
 
+const validChecklist: ChecklistDef = {
+  title: 'Doctor Report',
+  summary: '1 failed · 1 warning · 1 passed',
+  items: [
+    {
+      id: 'git',
+      label: 'Git binary available',
+      status: 'pass',
+      detail: 'git 2.44.0 found in PATH',
+    },
+    {
+      id: 'model',
+      label: 'Selected model reachable',
+      status: 'warn',
+      detail: 'Provider responded with high latency',
+      evidence: 'GET /v1/models took 2100ms (threshold: 1500ms)',
+      fix: 'Check network connectivity or switch to local model',
+    },
+    {
+      id: 'worktree',
+      label: 'Clean working tree',
+      status: 'fail',
+      detail: 'Uncommitted changes detected in repository',
+      evidence: 'M src/shared/types.ts\n?? new-file.ts',
+      fix: 'Commit or stash changes before initiating a pipeline run',
+    },
+  ],
+};
+
 function makeStores(agents: AgentDef[] = [validAgent]): SmithEntityStores {
   return {
     roster: { get: (name: string) => agents.find((a) => a.name === name) ?? null },
@@ -221,7 +252,7 @@ describe('smith_present', () => {
     expect(artifact.pipeline).not.toBe(validPipeline);
   });
 
-  it('emits agent and envelope artifacts through the same registry', async () => {
+  it('emits agent, envelope, and checklist artifacts through the same registry', async () => {
     const { deps, emitted } = makeDeps();
     const tool = smithPresentTool(deps);
     expect(await answerOf(tool, { kind: 'agent_design', spec: validAgent })).toMatchObject({
@@ -230,7 +261,37 @@ describe('smith_present', () => {
     expect(await answerOf(tool, { kind: 'envelope_design', spec: validEnvelope })).toMatchObject({
       ok: true,
     });
-    expect(emitted.map((artifact) => artifact.kind)).toEqual(['agent_design', 'envelope_design']);
+    expect(await answerOf(tool, { kind: 'checklist', spec: validChecklist })).toMatchObject({
+      ok: true,
+    });
+    expect(emitted.map((artifact) => artifact.kind)).toEqual([
+      'agent_design',
+      'envelope_design',
+      'checklist',
+    ]);
+  });
+
+  it('emits a versioned checklist artifact with items and acknowledges with its id', async () => {
+    const { deps, emitted } = makeDeps();
+    const res = (await answerOf(smithPresentTool(deps), {
+      kind: 'checklist',
+      spec: validChecklist,
+      rationale: 'Pre-flight check before run.',
+    })) as { ok: boolean; artifactId: string };
+
+    expect(res.ok).toBe(true);
+    expect(emitted).toHaveLength(1);
+    const artifact = emitted[0]!;
+    expect(res.artifactId).toBe(artifact.id);
+    expect(artifact).toMatchObject({
+      kind: 'checklist',
+      version: SMITH_ARTIFACT_VERSION,
+      rationale: 'Pre-flight check before run.',
+      warnings: [],
+    });
+    if (artifact.kind !== 'checklist') throw new Error('expected checklist artifact');
+    expect(artifact.checklist).toEqual(validChecklist);
+    expect(() => structuredClone(artifact)).not.toThrow();
   });
 
   it('emits a run_summary artifact derived authoritatively from trace', async () => {
@@ -330,6 +391,59 @@ describe('smith_present', () => {
     expect(emitted).toHaveLength(0);
   });
 
+  it('refuses invalid checklist specs', async () => {
+    const { deps, emitted } = makeDeps();
+    const tool = smithPresentTool(deps);
+
+    // Missing title
+    const res1 = (await answerOf(tool, {
+      kind: 'checklist',
+      spec: { ...validChecklist, title: '' },
+    })) as { ok: boolean; validation?: unknown[] };
+    expect(res1.ok).toBe(false);
+    expect(res1.validation).toContainEqual(
+      expect.objectContaining({ where: 'title', level: 'error' }),
+    );
+
+    // Empty items
+    const res2 = (await answerOf(tool, {
+      kind: 'checklist',
+      spec: { title: 'Check', items: [] },
+    })) as { ok: boolean; validation?: unknown[] };
+    expect(res2.ok).toBe(false);
+    expect(res2.validation).toContainEqual(
+      expect.objectContaining({ where: 'items', level: 'error' }),
+    );
+
+    // Invalid item status
+    const res3 = (await answerOf(tool, {
+      kind: 'checklist',
+      spec: {
+        title: 'Check',
+        items: [{ label: 'Item 1', status: 'unknown_status' }],
+      },
+    })) as { ok: boolean; validation?: unknown[] };
+    expect(res3.ok).toBe(false);
+    expect(res3.validation).toContainEqual(
+      expect.objectContaining({ where: 'items[0].status', level: 'error' }),
+    );
+
+    // Missing item label
+    const res4 = (await answerOf(tool, {
+      kind: 'checklist',
+      spec: {
+        title: 'Check',
+        items: [{ label: '', status: 'pass' }],
+      },
+    })) as { ok: boolean; validation?: unknown[] };
+    expect(res4.ok).toBe(false);
+    expect(res4.validation).toContainEqual(
+      expect.objectContaining({ where: 'items[0].label', level: 'error' }),
+    );
+
+    expect(emitted).toHaveLength(0);
+  });
+
   it('lets warnings ride onto the artifact instead of blocking it', async () => {
     const { deps, emitted } = makeDeps();
     const res = (await answerOf(smithPresentTool(deps), {
@@ -392,5 +506,52 @@ describe('findSecretKey', () => {
     expect(findSecretKey({ a: { token: 'x' } })).toBe('a.token');
     expect(findSecretKey({ a: [{ password: 'x' }] })).toBe('a[0].password');
     expect(findSecretKey({ name: 'fine', writes: null })).toBeNull();
+  });
+});
+
+describe('validateChecklist', () => {
+  it('accepts a valid checklist without errors', () => {
+    expect(validateChecklist(validChecklist)).toEqual([]);
+  });
+
+  it('flags non-object specs', () => {
+    expect(validateChecklist(null)).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'spec' }),
+    );
+    expect(validateChecklist('invalid')).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'spec' }),
+    );
+  });
+
+  it('flags warnings for oversized fields without failing validation', () => {
+    const oversized = {
+      title: 'T'.repeat(250),
+      summary: 'S'.repeat(600),
+      items: [
+        {
+          label: 'L'.repeat(250),
+          status: 'pass',
+          detail: 'D'.repeat(600),
+          evidence: 'E'.repeat(4500),
+          fix: 'F'.repeat(600),
+        },
+      ],
+    };
+    const issues = validateChecklist(oversized);
+    expect(issues.filter((i) => i.level === 'error')).toEqual([]);
+    expect(issues).toContainEqual(expect.objectContaining({ level: 'warning', where: 'title' }));
+    expect(issues).toContainEqual(expect.objectContaining({ level: 'warning', where: 'summary' }));
+    expect(issues).toContainEqual(
+      expect.objectContaining({ level: 'warning', where: 'items[0].label' }),
+    );
+    expect(issues).toContainEqual(
+      expect.objectContaining({ level: 'warning', where: 'items[0].detail' }),
+    );
+    expect(issues).toContainEqual(
+      expect.objectContaining({ level: 'warning', where: 'items[0].evidence' }),
+    );
+    expect(issues).toContainEqual(
+      expect.objectContaining({ level: 'warning', where: 'items[0].fix' }),
+    );
   });
 });

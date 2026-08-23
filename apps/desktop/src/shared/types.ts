@@ -845,7 +845,7 @@ export interface ValidationIssue {
  * `renderer/view-models/smith-artifact-view.ts`, and tests for both.
  */
 export type SmithArtifactKind =
-  'pipeline_design' | 'agent_design' | 'envelope_design' | 'run_summary';
+  'pipeline_design' | 'agent_design' | 'envelope_design' | 'checklist' | 'run_summary';
 
 /** The protocol version this build reads. Unknown versions fail soft in the UI. */
 export const SMITH_ARTIFACT_VERSION = 1;
@@ -879,6 +879,31 @@ export interface SmithAgentDesignArtifact extends SmithArtifactBase {
 export interface SmithEnvelopeDesignArtifact extends SmithArtifactBase {
   kind: 'envelope_design';
   envelope: EnvelopeDef;
+}
+
+export type ChecklistItemStatus = 'pass' | 'warn' | 'fail' | 'info';
+
+export interface ChecklistItem {
+  id?: string;
+  label: string;
+  status: ChecklistItemStatus;
+  detail?: string;
+  /** Expandable evidence, output excerpt, or diagnostics shown behind a disclosure. */
+  evidence?: string;
+  /** Suggested fix or remediation guidance note. */
+  fix?: string;
+}
+
+export interface ChecklistDef {
+  title: string;
+  summary?: string;
+  items: ChecklistItem[];
+}
+
+/** A read-only checklist report: readiness findings, doctor results, validation, project health. */
+export interface SmithChecklistArtifact extends SmithArtifactBase {
+  kind: 'checklist';
+  checklist: ChecklistDef;
 }
 
 /** A lightweight snapshot of one phase in a run's mini waterfall. */
@@ -932,6 +957,7 @@ export type SmithArtifact =
   | SmithPipelineDesignArtifact
   | SmithAgentDesignArtifact
   | SmithEnvelopeDesignArtifact
+  | SmithChecklistArtifact
   | SmithRunSummaryArtifact;
 
 // ── Smith (the entity-smith's approval gate) ─────────────────────────────────
