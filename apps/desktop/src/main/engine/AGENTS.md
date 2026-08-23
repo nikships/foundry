@@ -8,6 +8,7 @@ Deterministic runner that owns phase sequencing, retries, write boundaries, gate
 - Worktree: `.foundry-worktrees/<runId>` on `foundry/<runId>`; `.foundry-handoff/` JSON files pass envelopes between phases. `worktree.ts` owns create/merge/discard. `settle.ts` owns landing a finished run (`landRun` / `repairBranch`) so the IPC routers stay logic-free. `base-sync.ts` inspects and fast-forwards the project's local base ref against the preferred remote so a run does not start from a stale `main`; inspect never moves a local branch, and sync is ff-only.
 - Envelopes: Zod schemas in `envelopes.ts`; `jsonSchemaFor()` exposes defaults as required and emits no `$schema` dialect (pi compiles the schema itself and does not want a dialect declared). Example, output constraint, and parser come from the same definition.
 - Gates: return evidence (`GateCheck`), not a verdict; unknown gate → fail (`gates.ts`).
+- Healing (`healing.ts`): a failed code phase gets a bounded write-capable one-shot in the run's worktree before the failure escalates. The command stays frozen and is re-run after every attempt; only exit 0 counts. Eligibility is `healingEligible` in `shared/types.ts` so the Designer's toggle and the engine agree: on for every non-`optional` code phase unless `heal: false`. It deliberately does not depend on the command's source — a repo with a pre-commit hook makes `git_commit` a quality gate, so a commit failure is usually the most repairable one there is.
 - Context: `phase-context.ts` / `prompts.ts` render prompts from templates + `request` / `envelope:<phase>` / `handoff_files` / `feedback`.
 
 ## Setup Commands
@@ -43,6 +44,7 @@ npx vitest run apps/desktop/tests/main/engine/gates.test.ts
 npx vitest run apps/desktop/tests/main/session/panel-session.test.ts
 npx vitest run apps/desktop/tests/main/engine/detect-session.test.ts
 npx vitest run apps/desktop/tests/main/engine/setup-session.test.ts
+npx vitest run apps/desktop/tests/main/engine/healing.test.ts
 npx vitest run apps/desktop/tests/main/engine/settle.test.ts
 npx vitest run apps/desktop/tests/main/engine/base-sync.test.ts
 ```
@@ -65,6 +67,7 @@ npx vitest run apps/desktop/tests/main/engine/base-sync.test.ts
 - **Settlement invariants live in `settle.ts`.** `recordLanding` is the one place a run becomes merged — operator `landRun` and the executor's auto-merge both go through it. `setBranchPoint` before a post-repair merge, `setWorktree(null)` after discard, drift only after `merged=true`, `notifyRuns` after every tracer write. The executor still fire-and-forgets `worktree.settle` so `finish()` can return `accepted (merging)` without waiting.
 - **Kill outranks acceptance.** Once cancellation fires, stop recovery and settle `killed`; do not let a protocol fallback complete the run.
 - **Setup script** (`setupScript` via `sh -c` at worktree root) runs before agent phases; failure keeps the worktree for inspection. A `scaffold` project treats a missing referenced code command as a warning and skips that code phase.
+- **Healing never decides its own success, and never replaces escalation.** A healer gets `FIXED_ENGINE_DEFAULTS.healingAttempts` turns, each judged by re-running the phase's exact argv; boundary enforcement is the same post-turn `git diff` an agent phase gets, with `writes: null` so only protected paths are denied. Exhaustion falls through to the existing `feedbackTo` budget (or fails the run) — it does not add a loop. Optional failures, missing/unconfigured commands, scaffold skips, and setup failures never heal: they are answered before or above the healer. A run with no configured healing behaves exactly as it did before healing existed.
 
 ## Code Style
 

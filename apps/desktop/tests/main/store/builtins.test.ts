@@ -17,6 +17,7 @@ import { validate as validatePipeline } from '../../../src/main/store/pipelines.
 import { validate as validateAgent } from '../../../src/main/store/roster.js';
 import { exampleFor, schemaFor } from '../../../src/main/engine/envelopes.js';
 import {
+  healingEligible,
   PR_FALLBACK_HEADINGS,
   PR_TEMPLATE_SEARCH_PATHS,
   type PhaseDef,
@@ -290,6 +291,19 @@ describe('shipped pipelines', () => {
           agentByName(target!.agent!)?.writes,
           `${pipeline.id}/${phase.name} feeds back to an agent that can actually write the fix`,
         ).toBeNull();
+      }
+    }
+  });
+
+  it('heals every code phase whose failure fails the run, without any of them saying so', () => {
+    for (const pipeline of BUILTIN_PIPELINES) {
+      for (const phase of pipeline.phases) {
+        if (phase.kind !== 'code') continue;
+        // The shipped chains predate healing and carry no `heal` field. The
+        // default has to land where it is wanted on its own, or every phase
+        // would need editing to get a healer.
+        expect(phase.heal, `${pipeline.id}/${phase.name} does not pin healing`).toBeUndefined();
+        expect(healingEligible(phase), `${pipeline.id}/${phase.name} heals`).toBe(true);
       }
     }
   });

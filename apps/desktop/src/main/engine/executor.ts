@@ -43,6 +43,7 @@ import * as worktreeLib from './worktree.js';
 import { recordLanding } from './settle.js';
 import type { Envelope } from './envelopes.js';
 import type { CommandDriftRecord } from './detect.js';
+import type { HealingSupport } from './healing.js';
 import { runCommand } from './commands.js';
 import { PromptLedger } from './prompt-ledger.js';
 import { createIssue, openPr, type GhOptions } from '../system/gh.js';
@@ -63,6 +64,11 @@ export interface ExecutorDeps {
    * instead of appending another correction. `0` disables.
    */
   rewindAfterCorrections: number;
+  /**
+   * How a failing code phase opens a healing turn. Omitted (or null) means no
+   * healing: a red command escalates through `feedbackTo` or fails the run.
+   */
+  healing?: HealingSupport | null;
   /** Foundry's Application Support directory; the agent runtime's state lives under it. */
   supportDir: string;
   agents: AgentDef[];
@@ -434,6 +440,7 @@ export class Executor {
       commandResults: this.commandResults,
       feedback: this.feedback,
       commandDrift: this.commandDrift,
+      healing: this.deps.healing ?? null,
       cancelled: () => this.cancelled,
       phaseId: (name: string) => this.phaseId(name),
       askHuman: (req) => this.deps.askHuman(req),

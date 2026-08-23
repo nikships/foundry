@@ -5,7 +5,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tempDir } from '../../helpers/tmp.js';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -324,6 +324,8 @@ interface RunInput {
   gateRetries?: number;
   compactionThreshold?: number;
   rewindAfterCorrections?: number;
+  /** Omitted means no healing, which is what a run with no model configured gets. */
+  healing?: ExecutorDeps['healing'];
   gh?: GhOptions;
   landing?: ExecutorDeps['landing'];
 }
@@ -367,6 +369,7 @@ function start(input: RunInput): {
     gateRetries: input.gateRetries ?? 2,
     compactionThreshold: input.compactionThreshold ?? 0.8,
     rewindAfterCorrections: input.rewindAfterCorrections ?? 2,
+    healing: input.healing ?? null,
     supportDir: h.support,
     transport: transportSeam(input),
     agents: input.agents ?? [buildAgent()],
@@ -944,6 +947,340 @@ describe('the repair loop', () => {
     expect(h.tracer.phases(outcome.runId).find((p) => p.name === 'test')!.error).toContain(
       'repair attempt',
     );
+  });
+});
+
+/**
+ * Healing sits between a red command and the escalation it used to trigger
+ * immediately. The command stays frozen, so what these pin down is the engine's
+ * half: who is eligible, how many turns they get, that only the re-run's exit
+ * code counts, and that exhaustion still lands on the existing bounded feedback
+ * path rather than looping.
+ */
+describe('healing a failed programmatic phase', () => {
+  function installCheck(body: string): void {
+    writeFileSync(join(h.repo, 'check.sh'), body);
+    chmodSync(join(h.repo, 'check.sh'), 0o755);
+    sh(h.repo, ['git', 'add', '-A']);
+    sh(h.repo, ['git', 'commit', '-qm', 'add check']);
+  }
+
+  /** Passes only once `fix.txt` exists, which is what a healer has to write. */
+  const fixableCheck = '#!/bin/sh\ntest -f fix.txt\n';
+
+  interface HealingSpy {
+    support: ExecutorDeps['healing'];
+    /** Every worktree a healing session was opened against, in order. */
+    readonly opens: string[];
+    /** Every prompt a healing turn was sent, in order. */
+    readonly prompts: string[];
+  }
+
+  /**
+   * A healing stand-in behind the same interface the real one-shot satisfies:
+   * each turn runs `work` in the worktree it was opened against, so the
+   * re-run has something real to judge.
+   */
+  function healingSpy(
+    turns: ((cwd: string) => void)[],
+    over: Partial<NonNullable<ExecutorDeps['healing']>> = {},
+  ): HealingSpy {
+    const opens: string[] = [];
+    const prompts: string[] = [];
+    let index = 0;
+    return {
+      opens,
+      prompts,
+      support: {
+        attempts: turns.length || 1,
+        model: 'provider/healer',
+        reasoningEffort: 'medium',
+        ...over,
+        open: (cwd) => {
+          opens.push(cwd);
+          return {
+            send: async (text) => {
+              prompts.push(text);
+              turns[index++]?.(cwd);
+              return { text: 'made the smallest fix' };
+            },
+            abort: () => undefined,
+          };
+        },
+      },
+    };
+  }
+
+  const project = { commands: [{ name: 'test', argv: ['./check.sh'] }] };
+
+  const healPipeline = (over: Partial<PhaseDef> = {}): PipelineDef =>
+    pipe(
+      [
+        codePhase(
+          'test',
+          { ref: 'test' },
+          { description: 'Run the project check and let a healer repair it.', ...over },
+        ),
+      ],
+      {
+        description: 'a check a healer may repair',
+        acceptance: { kind: 'phase_flag', phase: 'test', flag: 'passed' },
+      },
+    );
+
+  it('repairs the failure and accepts once the exact command passes', async () => {
+    installCheck(fixableCheck);
+    const spy = healingSpy([(cwd) => writeFileSync(join(cwd, 'fix.txt'), 'healed\n')]);
+
+    const outcome = await run({ project, healing: spy.support, pipeline: healPipeline() });
+
+    expect(outcome.status).toBe('accepted');
+    expect(h.tracer.phases(outcome.runId)[0]!.status).toBe('success');
+    // The healer worked in the run's own worktree, never the checkout.
+    const worktree = h.tracer.run(outcome.runId)!.worktreePath!;
+    expect(spy.opens).toEqual([worktree]);
+    expect(existsSync(join(worktree, 'fix.txt'))).toBe(true);
+    expect(existsSync(join(h.repo, 'fix.txt'))).toBe(false);
+  });
+
+  it('re-runs the exact same argv rather than anything the healer chose', async () => {
+    installCheck(fixableCheck);
+    const spy = healingSpy([(cwd) => writeFileSync(join(cwd, 'fix.txt'), 'healed\n')]);
+
+    const outcome = await run({ project, healing: spy.support, pipeline: healPipeline() });
+
+    const calls = events(outcome.runId).filter(
+      (e) => e.type === 'tool_call' && e.name.startsWith('test:'),
+    );
+    expect(calls).toHaveLength(2);
+    expect(new Set(calls.map((e) => JSON.stringify(e.payload.argv)))).toEqual(
+      new Set([JSON.stringify(['./check.sh'])]),
+    );
+    expect(calls.map((e) => e.payload.passed)).toEqual([false, true]);
+  });
+
+  it('records the healing model, the attempt count, and the command log', async () => {
+    installCheck(fixableCheck);
+    const spy = healingSpy([(cwd) => writeFileSync(join(cwd, 'fix.txt'), 'healed\n')]);
+
+    const outcome = await run({ project, healing: spy.support, pipeline: healPipeline() });
+
+    const started = events(outcome.runId).find((e) => e.name === 'healing test');
+    expect(started?.payload).toMatchObject({ model: 'provider/healer', attempts: 1 });
+    const attempt = events(outcome.runId).find(
+      (e) => e.type === 'correction' && e.name === 'healing attempt 1 on test',
+    );
+    expect(attempt?.payload).toMatchObject({ model: 'provider/healer', passed: true });
+    expect(String(attempt?.payload.summary)).toContain('smallest fix');
+    const settled = events(outcome.runId).find((e) => e.name === 'healing test succeeded');
+    expect(settled?.payload).toMatchObject({ escalation: 'none' });
+    expect(existsSync(join(h.tracer.runDir(outcome.runId), 'commands', 'test.heal-1.log'))).toBe(
+      true,
+    );
+  });
+
+  it('hands the healer the frozen command, the failure, and the run request', async () => {
+    installCheck(fixableCheck);
+    const spy = healingSpy([(cwd) => writeFileSync(join(cwd, 'fix.txt'), 'healed\n')]);
+
+    await run({
+      project: { ...project, protectedPaths: ['vendor/'] },
+      healing: spy.support,
+      request: 'teach the widget to fly',
+      pipeline: healPipeline(),
+    });
+
+    expect(spy.prompts).toHaveLength(1);
+    expect(spy.prompts[0]).toContain('./check.sh');
+    expect(spy.prompts[0]).toContain('exited 1');
+    expect(spy.prompts[0]).toContain('teach the widget to fly');
+    expect(spy.prompts[0]).toContain('vendor/');
+  });
+
+  it('escalates through feedbackTo once its attempts are spent', async () => {
+    installCheck('#!/bin/sh\ntest -f fix.txt\n');
+    const envelope = buildEnvelope({ summary: 'attempted', commit_message: 'work' });
+    // The healer cannot fix it; the builder can, on the feedback re-entry.
+    const scripted = scriptedAgent([envelope, envelope], [null, 'fix.txt']);
+    const spy = healingSpy([() => undefined, () => undefined]);
+
+    const outcome = await run({
+      scripted,
+      project,
+      healing: spy.support,
+      pipeline: pipe(
+        [
+          agentPhase('build', { description: 'Implement the change the request asks for.' }),
+          codePhase(
+            'test',
+            { ref: 'test' },
+            {
+              description: 'Run the project check, heal it, then hand it back to the builder.',
+              feedbackTo: 'build',
+              feedbackRetries: 2,
+            },
+          ),
+        ],
+        {
+          description: 'healing that gives up, then feedback that converges',
+          acceptance: { kind: 'phase_flag', phase: 'test', flag: 'passed' },
+        },
+      ),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    // Both healing turns were spent before the failure escalated.
+    expect(spy.prompts).toHaveLength(2);
+    const gaveUp = events(outcome.runId).find((e) => e.name === 'healing test gave up');
+    expect(gaveUp?.payload).toMatchObject({ attempts: 2, budget: 2, escalation: 'build' });
+    expect(
+      events(outcome.runId).find((e) => e.type === 'correction' && e.name === 'feedback to build'),
+    ).toBeDefined();
+  });
+
+  it('fails the run normally when healing is exhausted and no owner is configured', async () => {
+    installCheck('#!/bin/sh\nexit 1\n');
+    const spy = healingSpy([() => undefined, () => undefined]);
+
+    const outcome = await run({ project, healing: spy.support, pipeline: healPipeline() });
+
+    expect(outcome.status).toBe('rejected');
+    expect(h.tracer.phases(outcome.runId)[0]!.error).toBe('exit 1');
+    const gaveUp = events(outcome.runId).find((e) => e.name === 'healing test gave up');
+    expect(gaveUp?.payload.escalation).toBe('no feedback owner: the run fails');
+  });
+
+  it('reverts a healing write to a protected path and still fails the run', async () => {
+    installCheck('#!/bin/sh\nexit 1\n');
+    const spy = healingSpy([
+      (cwd) => {
+        mkdirSync(join(cwd, 'vendor'), { recursive: true });
+        writeFileSync(join(cwd, 'vendor', 'lib.txt'), 'rewritten\n');
+      },
+    ]);
+
+    const outcome = await run({
+      project: { ...project, protectedPaths: ['vendor/'] },
+      healing: spy.support,
+      pipeline: healPipeline(),
+    });
+
+    expect(outcome.status).toBe('rejected');
+    const worktree = h.tracer.run(outcome.runId)!.worktreePath!;
+    expect(existsSync(join(worktree, 'vendor', 'lib.txt'))).toBe(false);
+    const attempt = events(outcome.runId).find(
+      (e) => e.type === 'correction' && e.name === 'healing attempt 1 on test',
+    );
+    expect(attempt?.payload.violations).toEqual(['vendor/lib.txt (protected path)']);
+  });
+
+  it('does not heal an optional failure — it never fails the run to begin with', async () => {
+    installCheck('#!/bin/sh\nexit 1\n');
+    const spy = healingSpy([() => undefined]);
+
+    const outcome = await run({
+      project,
+      healing: spy.support,
+      pipeline: pipe([codePhase('test', { ref: 'test' }, { optional: true })], {
+        description: 'an optional check nothing needs to repair',
+      }),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    expect(spy.opens).toEqual([]);
+  });
+
+  it('heals a literal argv too: what a command is does not predict a repairable failure', async () => {
+    const spy = healingSpy([(cwd) => writeFileSync(join(cwd, 'fix.txt'), 'healed\n')]);
+    const outcome = await run({
+      healing: spy.support,
+      pipeline: pipe([codePhase('check', { argv: ['test', '-f', 'fix.txt'] })], {
+        description: 'a literal command whose failure a healer can repair',
+      }),
+    });
+
+    expect(outcome.status).toBe('accepted');
+    expect(spy.opens).toHaveLength(1);
+  });
+
+  it('skips healing on a project command the phase opted out of', async () => {
+    installCheck('#!/bin/sh\nexit 1\n');
+    const spy = healingSpy([() => undefined]);
+
+    const outcome = await run({
+      project,
+      healing: spy.support,
+      pipeline: healPipeline({ heal: false }),
+    });
+
+    expect(outcome.status).toBe('rejected');
+    expect(spy.opens).toEqual([]);
+  });
+
+  it('does not heal a missing project command — that is configuration, not a fault', async () => {
+    const spy = healingSpy([() => undefined]);
+    const outcome = await run({
+      project: { commands: [] },
+      healing: spy.support,
+      pipeline: healPipeline(),
+    });
+
+    expect(outcome.status).toBe('rejected');
+    expect(spy.opens).toEqual([]);
+    expect(h.tracer.phases(outcome.runId)[0]!.error).toContain('is not configured');
+  });
+
+  it('does not heal a scaffold skip — there is no command to repair yet', async () => {
+    const spy = healingSpy([() => undefined]);
+    const outcome = await run({
+      project: { commands: [], scaffold: true },
+      healing: spy.support,
+      pipeline: healPipeline(),
+    });
+
+    expect(h.tracer.phases(outcome.runId)[0]!.status).toBe('skipped');
+    expect(spy.opens).toEqual([]);
+  });
+
+  it('leaves the pre-healing behaviour intact when no healing model is configured', async () => {
+    installCheck('#!/bin/sh\nexit 1\n');
+    const outcome = await run({ project, pipeline: healPipeline() });
+
+    expect(outcome.status).toBe('rejected');
+    expect(events(outcome.runId).some((e) => e.name.startsWith('healing'))).toBe(false);
+  });
+
+  it('stops healing when the run is cancelled mid-turn', async () => {
+    installCheck('#!/bin/sh\nexit 1\n');
+    const opens: string[] = [];
+    let cancel: (() => void) | null = null;
+    const support: ExecutorDeps['healing'] = {
+      attempts: 3,
+      model: 'provider/healer',
+      reasoningEffort: 'medium',
+      open: (cwd) => {
+        opens.push(cwd);
+        return {
+          send: async () => {
+            cancel?.();
+            return { text: 'stopped' };
+          },
+          abort: () => undefined,
+        };
+      },
+    };
+
+    const started = start({ project, healing: support, pipeline: healPipeline() });
+    cancel = () => started.executor.cancel();
+    const outcome = await started.done;
+
+    expect(outcome.status).toBe('killed');
+    // One turn was opened; the cancel landed before a second could start.
+    expect(opens).toHaveLength(1);
+    // The command was not re-run after the cancel: only the original failure.
+    expect(
+      events(outcome.runId).filter((e) => e.type === 'tool_call' && e.name.startsWith('test:')),
+    ).toHaveLength(1);
   });
 });
 

@@ -108,6 +108,12 @@ export interface PhaseDef {
   question?: string;
   /** Code phases: a non-zero exit is recorded but does not fail the run. */
   optional?: boolean;
+  /**
+   * Code phases: whether a failing command gets a healing agent before the
+   * failure escalates. Absent means on, which is what every phase whose
+   * failure fails the run wants. `false` opts one out.
+   */
+  heal?: boolean;
 }
 
 /** A freely positioned point on the Pipelines canvas, in canvas coordinates. */
@@ -209,6 +215,39 @@ export interface AgentDef {
   builtin?: boolean;
 }
 
+/** Where a code phase's argv came from, which is what decides default healing. */
+export type CommandSource = 'ref' | 'builtin' | 'argv';
+
+/** Which of the three `CommandSpec` shapes a phase carries. */
+export function commandSourceOf(command: CommandSpec | undefined): CommandSource {
+  if (!command) return 'ref';
+  if ('ref' in command) return 'ref';
+  if ('builtin' in command) return 'builtin';
+  return 'argv';
+}
+
+/**
+ * Whether a failed command gets a healing agent before the failure escalates.
+ *
+ * `optional` always wins: a phase whose failure does not fail the run has
+ * nothing to repair. Otherwise an explicit `heal` decides, and the default is
+ * on for every remaining code phase.
+ *
+ * The command's source deliberately does not enter into it. Treating a commit
+ * as un-healable plumbing was the obvious line to draw and the wrong one: a
+ * repository with a pre-commit hook turns `git_commit` into a quality gate, so
+ * the most common real commit failure is a check the hook ran and a fix the
+ * hook itself named. What a command *is* does not predict whether its failure
+ * is repairable, so the phase says, not the argv.
+ *
+ * Shared because the Designer's toggle and the engine's decision must be the
+ * same rule: a phase the editor draws as healing has to actually heal.
+ */
+export function healingEligible(phase: Pick<PhaseDef, 'optional' | 'heal'>): boolean {
+  if (phase.optional) return false;
+  return phase.heal ?? true;
+}
+
 /**
  * The envelope a phase actually uses. Matches the engine rule
  * `phase.envelope ?? agent.envelope`. An absent phase envelope is inheritance,
@@ -267,6 +306,13 @@ export interface AppSettings {
   defaultModel: string;
   defaultReasoningEffort: ReasoningEffort;
   /**
+   * Model the healing agent runs on when a programmatic phase's command fails,
+   * as a `provider/model` id. `inherit` follows `defaultModel`.
+   */
+  healingModel: string;
+  /** Reasoning effort a healing turn opens at. */
+  healingReasoningEffort: ReasoningEffort;
+  /**
    * Model Smith's in-app chat runs on, as a `provider/model` id. `inherit`
    * follows this install's default.
    */
@@ -298,6 +344,12 @@ export const FIXED_ENGINE_DEFAULTS = {
   envelopeRetries: 3,
   gateRetries: 2,
   rewindAfterCorrections: 2,
+  /**
+   * How many healing turns one failing command gets before the failure
+   * escalates through `feedbackTo` (or fails the run). Bounded here rather
+   * than per pipeline: an unbounded healer is a run that never ends.
+   */
+  healingAttempts: 2,
 } as const;
 
 export type MergePolicy = 'auto' | 'ask' | 'never';
