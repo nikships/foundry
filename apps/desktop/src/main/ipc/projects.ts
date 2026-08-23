@@ -9,6 +9,7 @@ import {
   type NewRepoInput,
   type NewRepoResult,
   type SaveResult,
+  type SetupSniffResult,
   type TryCommandResult,
 } from '@shared/ipc-contract.js';
 import { runCommand } from '../engine/commands.js';
@@ -57,8 +58,21 @@ async function resolveTurnModel(supportDir: string, stored: string): Promise<str
 
 export function register(ctx: Ctx, handle: Handle): void {
   const projectOf = (projectId: string) => ctx.projects.get(projectId);
-  const detections = ctx.detections;
-  const setups = ctx.setups;
+
+  // Fills a missing context summary in the background and re-broadcasts once
+  // it lands; the add/create call has long since returned by then.
+  const fillContextSummary = (project: ProjectDef): void => {
+    void ensureProjectContext({
+      project,
+      settings: ctx.settings.get(),
+      oneShot: ctx.oneShot,
+      persist: (next) => {
+        const current = ctx.projects.get(next.id);
+        if (!current) return;
+        ctx.projects.save({ ...current, contextSummary: next.contextSummary });
+      },
+    }).then(() => notifySettings(ctx));
+  };
 
   handle(IPC.projectsList, () => ctx.projects.list());
 
@@ -94,19 +108,7 @@ export function register(ctx: Ctx, handle: Handle): void {
         });
       }
     }
-    void ensureProjectContext({
-      project: ctx.projects.get(project.id) ?? project,
-      settings: ctx.settings.get(),
-      oneShot: ctx.oneShot,
-      persist: (next) => {
-        const current = ctx.projects.get(next.id);
-        if (!current) return;
-        ctx.projects.save({
-          ...current,
-          contextSummary: next.contextSummary,
-        });
-      },
-    }).then(() => notifySettings(ctx));
+    fillContextSummary(ctx.projects.get(project.id) ?? project);
     notifySettings(ctx);
     return ctx.projects.get(project.id) ?? project;
   });
@@ -144,19 +146,7 @@ export function register(ctx: Ctx, handle: Handle): void {
     }
     const curBranch = await currentBranch(path);
     const project = ctx.projects.add(path, curBranch || undefined, { scaffold: true });
-    void ensureProjectContext({
-      project,
-      settings: ctx.settings.get(),
-      oneShot: ctx.oneShot,
-      persist: (next) => {
-        const current = ctx.projects.get(next.id);
-        if (!current) return;
-        ctx.projects.save({
-          ...current,
-          contextSummary: next.contextSummary,
-        });
-      },
-    }).then(() => notifySettings(ctx));
+    fillContextSummary(project);
     notifySettings(ctx);
     return { ...created, project: ctx.projects.get(project.id) ?? project };
   });
@@ -249,7 +239,7 @@ export function register(ctx: Ctx, handle: Handle): void {
       const settings = ctx.settings.get();
       const model = await resolveTurnModel(ctx.supportDir, settings.helperModel);
 
-      const detectionId = detections.start({
+      const detectionId = ctx.detections.start({
         projectId: project.id,
         projectPath: project.path,
         existingCommands: project.commands.map((c) => c.name),
@@ -260,9 +250,9 @@ export function register(ctx: Ctx, handle: Handle): void {
     },
   );
 
-  handle(IPC.projectsCancelDetection, (detectionId: string) => detections.cancel(detectionId));
+  handle(IPC.projectsCancelDetection, (detectionId: string) => ctx.detections.cancel(detectionId));
 
-  handle(IPC.projectsDetection, (detectionId: string) => detections.get(detectionId));
+  handle(IPC.projectsDetection, (detectionId: string) => ctx.detections.get(detectionId));
 
   handle(IPC.projectsSetupScriptGet, (id: string): string => {
     const project = projectOf(id);
@@ -290,42 +280,30 @@ export function register(ctx: Ctx, handle: Handle): void {
     return { ok: true, issues: noIssues, value: result.projects };
   });
 
-  handle(IPC.projectsSetupScriptSniff, async (id: string) => {
+  handle(IPC.projectsSetupScriptSniff, async (id: string): Promise<SetupSniffResult> => {
     const project = projectOf(id);
-    if (!project) return { script: '', detail: 'project not found', sources: [] as string[] };
+    if (!project) return { script: '', detail: 'project not found', sources: [] };
     return sniffSetupScript(project.path);
   });
 
-  handle(IPC.projectsSetupScriptTry, async (id: string, script: string) => {
-    const project = projectOf(id);
-    if (!project) {
-      return {
-        exitCode: null as number | null,
-        passed: false,
-        outputTail: 'project not found',
-        durationMs: 0,
-      };
-    }
-    if (!script.trim()) {
-      return {
-        exitCode: 0 as number | null,
-        passed: true,
-        outputTail: 'nothing to run',
-        durationMs: 0,
-      };
-    }
-    const result = await runCommand({
-      argv: ['sh', '-c', script],
-      cwd: project.path,
-      timeoutMs: 300_000,
-    });
-    return {
-      exitCode: result.exitCode,
-      passed: result.passed,
-      outputTail: result.outputTail,
-      durationMs: result.durationMs,
-    };
-  });
+  handle(
+    IPC.projectsSetupScriptTry,
+    async (id: string, script: string): Promise<TryCommandResult> => {
+      const project = projectOf(id);
+      if (!project) {
+        return { exitCode: null, passed: false, outputTail: 'project not found', durationMs: 0 };
+      }
+      if (!script.trim()) {
+        return { exitCode: 0, passed: true, outputTail: 'nothing to run', durationMs: 0 };
+      }
+      const { exitCode, passed, outputTail, durationMs } = await runCommand({
+        argv: ['sh', '-c', script],
+        cwd: project.path,
+        timeoutMs: 300_000,
+      });
+      return { exitCode, passed, outputTail, durationMs };
+    },
+  );
 
   handle(
     IPC.projectsSetupScriptAskAgent,
@@ -334,7 +312,7 @@ export function register(ctx: Ctx, handle: Handle): void {
       if (!project) return { error: 'project not found' };
       const settings = ctx.settings.get();
       const model = await resolveTurnModel(ctx.supportDir, settings.helperModel);
-      const setupId = setups.start({
+      const setupId = ctx.setups.start({
         projectId: project.id,
         projectPath: project.path,
         settings,
@@ -344,9 +322,9 @@ export function register(ctx: Ctx, handle: Handle): void {
     },
   );
 
-  handle(IPC.projectsSetupProgress, (setupId: string) => setups.get(setupId));
+  handle(IPC.projectsSetupProgress, (setupId: string) => ctx.setups.get(setupId));
 
-  handle(IPC.projectsSetupCancel, (setupId: string) => setups.cancel(setupId));
+  handle(IPC.projectsSetupCancel, (setupId: string) => ctx.setups.cancel(setupId));
 
   handle(IPC.projectsCheck, async (id: string) => {
     const project = projectOf(id);

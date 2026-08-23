@@ -1,4 +1,5 @@
 import { IPC } from '@shared/ipc-contract.js';
+import type { SmithActionRisk } from '@shared/types.js';
 import { defineTool, type ToolDefinition } from '../pi/tool-definition.js';
 import {
   booleanField,
@@ -8,7 +9,7 @@ import {
   numberField,
   parseOperation,
   proposeAction,
-  resolveProjectId,
+  requireProjectId,
   stringField,
   type SmithActionToolDeps,
 } from './tool-helpers.js';
@@ -30,6 +31,39 @@ export const SMITH_RUN_OPERATIONS = [
   'open_worktree',
   'reveal_files',
 ] as const;
+
+type RunOperation = (typeof SMITH_RUN_OPERATIONS)[number];
+type RunReadOperation = 'detail' | 'events' | 'context' | 'prompt';
+type RunActionOperation = Exclude<RunOperation, 'list' | 'live_tail' | RunReadOperation>;
+
+/** Project-scoped reads keyed by the id they take. */
+const READS: Record<RunReadOperation, { channel: string; idField: 'runId' | 'phaseId' }> = {
+  detail: { channel: IPC.runsDetail, idField: 'runId' },
+  events: { channel: IPC.runsEvents, idField: 'runId' },
+  context: { channel: IPC.runsContextBreakdown, idField: 'runId' },
+  prompt: { channel: IPC.runsPrompt, idField: 'phaseId' },
+};
+
+const ACTION_CHANNELS: Record<RunActionOperation, string> = {
+  start: IPC.runsStart,
+  resume: IPC.runsResume,
+  kill: IPC.runsKill,
+  archive: IPC.runsArchive,
+  merge: IPC.runsMergeWorktree,
+  fix_merge: IPC.runsFixMerge,
+  discard: IPC.runsDiscardWorktree,
+  open_worktree: IPC.runsOpenWorktree,
+  reveal_files: IPC.runsRevealFiles,
+};
+
+const RISKS: Partial<Record<RunOperation, SmithActionRisk>> = {
+  kill: 'destructive',
+  discard: 'destructive',
+  merge: 'git',
+  fix_merge: 'git',
+  open_worktree: 'external',
+  reveal_files: 'external',
+};
 
 export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
   return defineTool({
@@ -57,95 +91,79 @@ export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
     execute: async (_id, params) => {
       const op = parseOperation(params, SMITH_RUN_OPERATIONS);
       if (!op) return json({ ok: false, error: 'unknown operation' });
+
+      // A live tail is keyed by phase alone; it needs no project scope.
       if (op === 'live_tail') {
         const phaseId = stringField(params, 'phaseId');
         return phaseId
           ? immediate(deps, IPC.runsLiveTail, phaseId)
           : json({ ok: false, error: 'phaseId is required' });
       }
-      const scope = resolveProjectId(field(params, 'projectId'), deps.projectId(), true);
+
+      const scope = requireProjectId(field(params, 'projectId'), deps.projectId());
       if (!scope.ok) return json(scope);
-      const projectId = scope.projectId as string;
-      if (op === 'list')
-        return immediate(
-          deps,
-          IPC.runsList,
-          projectId,
-          booleanField(params, 'includeArchived') ?? false,
-        );
-      const channel = {
-        detail: IPC.runsDetail,
-        events: IPC.runsEvents,
-        context: IPC.runsContextBreakdown,
-        prompt: IPC.runsPrompt,
-      }[op as 'detail'] as string | undefined;
-      if (channel) {
-        const id = stringField(params, op === 'prompt' ? 'phaseId' : 'runId');
-        if (!id)
-          return json({ ok: false, error: `${op === 'prompt' ? 'phaseId' : 'runId'} is required` });
+      const projectId = scope.projectId;
+
+      if (op === 'list') {
+        const includeArchived = booleanField(params, 'includeArchived') ?? false;
+        return immediate(deps, IPC.runsList, projectId, includeArchived);
+      }
+
+      const read = op in READS ? READS[op as RunReadOperation] : null;
+      if (read) {
+        const id = stringField(params, read.idField);
+        if (!id) return json({ ok: false, error: `${read.idField} is required` });
         if (op === 'events') {
           const cursor = numberField(params, 'afterChangeId');
           if (cursor === null) return json({ ok: false, error: 'afterChangeId is required' });
-          return immediate(deps, channel, projectId, id, cursor);
+          return immediate(deps, read.channel, projectId, id, cursor);
         }
         if (op === 'context') {
           const agent = stringField(params, 'agent');
           if (!agent) return json({ ok: false, error: 'agent is required' });
-          return immediate(deps, channel, projectId, id, agent);
+          return immediate(deps, read.channel, projectId, id, agent);
         }
-        return immediate(deps, channel, projectId, id);
+        return immediate(deps, read.channel, projectId, id);
       }
-      const runId = op === 'start' ? null : stringField(params, 'runId');
-      if (op !== 'start' && !runId) return json({ ok: false, error: 'runId is required' });
-      let args: unknown[];
-      if (op === 'start') {
-        const pipelineId = stringField(params, 'pipelineId'),
-          request = stringField(params, 'request');
-        if (!pipelineId || !request)
-          return json({ ok: false, error: 'pipelineId and request are required' });
-        args = [{ projectId, pipelineId, request }];
-      } else if (op === 'archive') {
-        const archived = booleanField(params, 'archived');
-        if (archived === undefined) return json({ ok: false, error: 'archived is required' });
-        args = [projectId, runId, archived];
-      } else args = [projectId, runId];
-      const channels = {
-        start: IPC.runsStart,
-        resume: IPC.runsResume,
-        kill: IPC.runsKill,
-        archive: IPC.runsArchive,
-        merge: IPC.runsMergeWorktree,
-        fix_merge: IPC.runsFixMerge,
-        discard: IPC.runsDiscardWorktree,
-        open_worktree: IPC.runsOpenWorktree,
-        reveal_files: IPC.runsRevealFiles,
-      } as const;
-      const risk = ['kill', 'discard'].includes(op)
-        ? 'destructive'
-        : ['merge', 'fix_merge'].includes(op)
-          ? 'git'
-          : ['open_worktree', 'reveal_files'].includes(op)
-            ? 'external'
-            : 'write';
-      const shownArgs =
-        op === 'start'
-          ? {
-              projectId,
-              pipelineId: stringField(params, 'pipelineId'),
-              request: stringField(params, 'request'),
-            }
-          : op === 'archive'
-            ? { projectId, runId, archived: booleanField(params, 'archived') }
-            : { projectId, runId };
+
+      const gated = resolveGatedArgs(op as RunActionOperation, params, projectId);
+      if (!gated.ok) return json({ ok: false, error: gated.error });
       return proposeAction(deps, {
         operation: op,
         title: `${op.replaceAll('_', ' ')} run`,
         summary: `${op.replaceAll('_', ' ')} the selected run.`,
-        args: shownArgs,
-        risk,
-        projectId,
-        execute: () => deps.invoke(channels[op as keyof typeof channels], ...args),
+        args: gated.shownArgs,
+        risk: RISKS[op] ?? 'write',
+        execute: () => deps.invoke(ACTION_CHANNELS[op as RunActionOperation], ...gated.args),
       });
     },
   });
+}
+
+type GatedArgs =
+  { ok: true; args: unknown[]; shownArgs: Record<string, unknown> } | { ok: false; error: string };
+
+/** `start` names a pipeline; everything else names an existing run. */
+function resolveGatedArgs(op: RunActionOperation, params: unknown, projectId: string): GatedArgs {
+  if (op === 'start') {
+    const pipelineId = stringField(params, 'pipelineId');
+    const request = stringField(params, 'request');
+    if (!pipelineId || !request) {
+      return { ok: false, error: 'pipelineId and request are required' };
+    }
+    const input = { projectId, pipelineId, request };
+    return { ok: true, args: [input], shownArgs: input };
+  }
+  const runId = stringField(params, 'runId');
+  if (!runId) return { ok: false, error: 'runId is required' };
+  if (op === 'archive') {
+    const archived = booleanField(params, 'archived');
+    if (archived === undefined) return { ok: false, error: 'archived is required' };
+    return {
+      ok: true,
+      args: [projectId, runId, archived],
+      shownArgs: { projectId, runId, archived },
+    };
+  }
+  return { ok: true, args: [projectId, runId], shownArgs: { projectId, runId } };
 }

@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes, Ref } from 'react';
+import { cx } from './cx.js';
 
 type ButtonVariant = 'primary' | 'danger' | 'ghost';
 type ButtonSize = 'sm';
@@ -19,11 +20,5 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
  * (onClick, disabled, title, type, children, ref) spread through unchanged.
  */
 export function Button({ variant, size, className, ref, ...rest }: ButtonProps): React.JSX.Element {
-  return (
-    <button
-      ref={ref}
-      className={['btn', variant, size, className].filter(Boolean).join(' ')}
-      {...rest}
-    />
-  );
+  return <button ref={ref} className={cx('btn', variant, size, className)} {...rest} />;
 }

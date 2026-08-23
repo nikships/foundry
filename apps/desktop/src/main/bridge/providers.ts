@@ -16,14 +16,6 @@
 /** Providers Foundry can authenticate through the Bridge. */
 export type BridgeProviderId = 'claude' | 'codex' | 'gemini' | 'kimi' | 'grok';
 
-export const BRIDGE_PROVIDER_IDS: readonly BridgeProviderId[] = [
-  'claude',
-  'codex',
-  'gemini',
-  'kimi',
-  'grok',
-] as const;
-
 /** pi's API kinds, named here so `models.ts` never spells one wrong. */
 export type BridgeApi =
   'anthropic-messages' | 'openai-responses' | 'openai-completions' | 'google-generative-ai';
@@ -107,6 +99,11 @@ export const BRIDGE_PROVIDERS: readonly BridgeProviderDef[] = [
   },
 ] as const;
 
+/** Provider ids in table order. Derived so the table stays the only list. */
+export const BRIDGE_PROVIDER_IDS: readonly BridgeProviderId[] = BRIDGE_PROVIDERS.map(
+  (provider) => provider.id,
+);
+
 export function bridgeProvider(id: string): BridgeProviderDef | undefined {
   return BRIDGE_PROVIDERS.find((provider) => provider.id === id);
 }
@@ -119,7 +116,7 @@ export function bridgeProvider(id: string): BridgeProviderDef | undefined {
  * the table instead of trusted.
  */
 export function isBridgeProvider(id: string): id is BridgeProviderId {
-  return BRIDGE_PROVIDER_IDS.some((known) => known === id);
+  return bridgeProvider(id) !== undefined;
 }
 
 /** The provider that claims this auth file's `type`, or undefined. */

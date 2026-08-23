@@ -344,8 +344,7 @@ export default function PhaseEditor({
             >
               <option value="">+ add check</option>
               {catalogGates
-                .filter((g) => g.id !== 'command_passes')
-                .filter((g) => !activeGates.includes(g.id))
+                .filter((g) => g.id !== 'command_passes' && !activeGates.includes(g.id))
                 .map((g) => (
                   <option key={g.id} value={g.id}>
                     {g.id} — {g.description}
@@ -562,29 +561,27 @@ export default function PhaseEditor({
 
       {/* ── Checkpoint Specific ──────────────────────────────────────── */}
       {phase.kind === 'engineer' && (
-        <>
-          <div className={styles.fieldGroup}>
-            <div className={styles.fieldHeader}>
-              <label htmlFor={`phase-question-${index}`} className={styles.fieldLabel}>
-                Question
-              </label>
-              <span className={styles.fieldHint}>shown on interrupt sheet</span>
-            </div>
-            <textarea
-              id={`phase-question-${index}`}
-              rows={3}
-              className={styles.textarea}
-              placeholder="What this checkpoint asks the human operator."
-              value={phase.question ?? ''}
-              onChange={(e) => onChange({ ...phase, question: e.target.value })}
-            />
-            {!phase.question?.trim() && (
-              <p className={styles.warningText}>
-                No question set — the interrupt sheet opens with no question text.
-              </p>
-            )}
+        <div className={styles.fieldGroup}>
+          <div className={styles.fieldHeader}>
+            <label htmlFor={`phase-question-${index}`} className={styles.fieldLabel}>
+              Question
+            </label>
+            <span className={styles.fieldHint}>shown on interrupt sheet</span>
           </div>
-        </>
+          <textarea
+            id={`phase-question-${index}`}
+            rows={3}
+            className={styles.textarea}
+            placeholder="What this checkpoint asks the human operator."
+            value={phase.question ?? ''}
+            onChange={(e) => onChange({ ...phase, question: e.target.value })}
+          />
+          {!phase.question?.trim() && (
+            <p className={styles.warningText}>
+              No question set — the interrupt sheet opens with no question text.
+            </p>
+          )}
+        </div>
       )}
 
       {/* ── Danger Zone ──────────────────────────────────────────────── */}

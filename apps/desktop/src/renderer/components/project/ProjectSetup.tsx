@@ -6,17 +6,24 @@ import { api } from '../../api.js';
 import { Button } from '../ui/Button.js';
 import { Field, Textarea } from '../ui/Field.js';
 import { CodeBlock } from '../ui/CodeBlock.js';
+import { cx } from '../ui/cx.js';
 import { duration } from '../../utils/format.js';
+import PanelTranscript from '../readiness/PanelTranscript.js';
 import styles from './ProjectCommands.module.css';
 import panelStyles from '../readiness/DetectionPanel.module.css';
 
-const TOOL_ICON: Record<string, string> = {
-  command: '⚙',
-  read: '◇',
-  edit: '✎',
-  search: '⌕',
-  other: '·',
+const STATUS_LABEL: Partial<Record<SetupState['status'], string>> = {
+  running: 'Reading the repo',
+  done: 'Finished',
 };
+
+interface TryState {
+  running: boolean;
+  passed?: boolean;
+  exitCode?: number | null;
+  output?: string;
+  durationMs?: number;
+}
 
 function SetupPanel({
   state,
@@ -27,46 +34,18 @@ function SetupPanel({
   onCancel: () => void;
   onUse: (script: string) => void;
 }): React.JSX.Element {
-  const tailRef = useRef<HTMLDivElement | null>(null);
   const live = state.status === 'running';
-  useEffect(() => {
-    if (!live) return;
-    tailRef.current?.scrollTo({ top: tailRef.current.scrollHeight });
-  }, [state.entries, live]);
 
   return (
     <div className={`field ${panelStyles.detection}`}>
       <label>
-        {state.status === 'running'
-          ? 'Reading the repo'
-          : state.status === 'done'
-            ? 'Finished'
-            : state.status}
+        {STATUS_LABEL[state.status] ?? state.status}
         <span className={`faint ${panelStyles.model}`}>
           {state.model === 'inherit' ? '' : ` · ${modelLabel(state.model)}`}
         </span>
       </label>
       <span className="hint">{state.detail}</span>
-      <div className={`${panelStyles.transcript} scroll`} ref={tailRef}>
-        {state.entries.map((e) => (
-          <div key={e.id} className={`${panelStyles.line} ${panelStyles[e.kind] ?? ''}`}>
-            {e.kind === 'tool' && (
-              <span
-                className={`${panelStyles.transcriptIcon} ${e.done ? (e.failed ? panelStyles.failed : panelStyles.ok) : panelStyles.wait}`}
-              >
-                {TOOL_ICON[e.toolKind ?? 'other'] ?? '·'}
-              </span>
-            )}
-            <span className={panelStyles.transcriptText}>{e.text}</span>
-          </div>
-        ))}
-        {live && (
-          <div className={`${panelStyles.line} ${panelStyles.note} ${panelStyles.pulse}`}>…</div>
-        )}
-        {!state.entries.length && !live && (
-          <div className={`${panelStyles.line} ${panelStyles.note}`}>Nothing was reported.</div>
-        )}
-      </div>
+      <PanelTranscript entries={state.entries} live={live} />
       {live && (
         <div className={`row ${panelStyles.actions}`}>
           <Button variant="ghost" size="sm" onClick={onCancel}>
@@ -75,17 +54,17 @@ function SetupPanel({
         </div>
       )}
       {state.status === 'done' && state.script && (
-        <div style={{ marginTop: 8 }}>
+        <div className={styles.setupResult}>
           <CodeBlock maxHeight={180}>{state.script}</CodeBlock>
-          <div className="row" style={{ marginTop: 8 }}>
+          <div className={`row ${styles.setupResultActions}`}>
             <Button size="sm" onClick={() => onUse(state.script)}>
               Use this script
             </Button>
           </div>
         </div>
       )}
-      {state.rawReply && state.status !== 'running' && (
-        <details style={{ marginTop: 8 }} className="faint">
+      {state.rawReply && !live && (
+        <details className={`faint ${styles.setupResult}`}>
           <summary className="linkish">Raw reply</summary>
           <CodeBlock maxHeight={160}>{state.rawReply}</CodeBlock>
         </details>
@@ -107,26 +86,21 @@ export default function ProjectSetup({
   const [settingUp, setSettingUp] = useState<SetupState | null>(null);
   const [starting, setStarting] = useState(false);
   const [setupError, setSetupError] = useState('');
-  const [tryState, setTryState] = useState<{
-    running: boolean;
-    passed?: boolean;
-    exitCode?: number | null;
-    output?: string;
-    durationMs?: number;
-  } | null>(null);
+  const [tryState, setTryState] = useState<TryState | null>(null);
   const setupIdRef = useRef('');
 
   useEffect(() => {
     setDraft(project.setupScript ?? '');
   }, [project.id, project.setupScript]);
 
-  useEffect(() => {
-    return api.on('setup-progress', (data) => {
-      const s = data as SetupState | undefined;
-      if (!s || s.setupId !== setupIdRef.current) return;
-      setSettingUp(s);
-    });
-  }, []);
+  useEffect(
+    () =>
+      api.on('setup-progress', (data) => {
+        const state = data as SetupState | undefined;
+        if (state && state.setupId === setupIdRef.current) setSettingUp(state);
+      }),
+    [],
+  );
 
   const commit = (): void => {
     if (draft !== (project.setupScript ?? '')) onChange(draft);
@@ -136,10 +110,10 @@ export default function ProjectSetup({
     setSniffing(true);
     setSniffDetail('');
     try {
-      const r = await api.projects.setupScriptSniff(project.id);
-      setDraft(r.script);
-      setSniffDetail(r.detail);
-      // Don't auto-save; user reviews then saves via blur/Use.
+      // Fills the draft only; the operator reviews, then blur or Use saves it.
+      const result = await api.projects.setupScriptSniff(project.id);
+      setDraft(result.script);
+      setSniffDetail(result.detail);
     } catch (e) {
       setSniffDetail((e as Error).message);
     } finally {
@@ -149,13 +123,13 @@ export default function ProjectSetup({
 
   const tryIt = async (): Promise<void> => {
     setTryState({ running: true });
-    const r = await api.projects.setupScriptTry(project.id, draft);
+    const result = await api.projects.setupScriptTry(project.id, draft);
     setTryState({
       running: false,
-      passed: r.passed,
-      exitCode: r.exitCode,
-      output: r.outputTail,
-      durationMs: r.durationMs,
+      passed: result.passed,
+      exitCode: result.exitCode,
+      output: result.outputTail,
+      durationMs: result.durationMs,
     });
   };
 
@@ -170,8 +144,9 @@ export default function ProjectSetup({
         return;
       }
       setupIdRef.current = started.setupId;
-      const cur = await api.projects.setupProgress(started.setupId);
-      if (cur && cur.setupId === setupIdRef.current) setSettingUp(cur);
+      // The first progress event may already have fired before this returned.
+      const current = await api.projects.setupProgress(started.setupId);
+      if (current && current.setupId === setupIdRef.current) setSettingUp(current);
     } catch (e) {
       setSetupError((e as Error).message);
     } finally {
@@ -214,7 +189,7 @@ export default function ProjectSetup({
         </span>
       </Field>
 
-      <div className={styles.commandActionsRow} style={{ marginTop: 8 }}>
+      <div className={cx(styles.commandActionsRow, styles.actionsRowSpaced)}>
         <Button size="sm" disabled={sniffing} onClick={() => void sniff()}>
           {sniffing ? 'Reading…' : 'Detect from manifests'}
         </Button>
@@ -240,18 +215,11 @@ export default function ProjectSetup({
         </Button>
       </div>
 
-      {sniffDetail && (
-        <span className="hint" style={{ marginTop: 6 }}>
-          {sniffDetail}
-        </span>
-      )}
+      {sniffDetail && <span className={`hint ${styles.sniffDetail}`}>{sniffDetail}</span>}
       {setupError && <span className={styles.detectError}>{setupError}</span>}
 
       {tryState && !tryState.running && (
-        <div
-          className={`${styles.result} ${tryState.passed ? styles.ok : ''}`}
-          style={{ marginTop: 8 }}
-        >
+        <div className={cx(styles.result, tryState.passed && styles.ok, styles.tryResult)}>
           <span className={styles.mark}>{tryState.passed ? '✓' : '✕'}</span> exit{' '}
           {tryState.exitCode ?? '—'} in {duration(tryState.durationMs)}
           {tryState.output && (

@@ -72,6 +72,22 @@ function Time({ iso }: { iso: string }): React.JSX.Element {
   return <span className="te-time">{clockTime(iso)}</span>;
 }
 
+function ExpandToggle({
+  expanded,
+  hiddenCount,
+  onToggle,
+}: {
+  expanded: boolean;
+  hiddenCount: number;
+  onToggle: () => void;
+}): React.JSX.Element {
+  return (
+    <button className="te-expand-btn" onClick={onToggle}>
+      {expanded ? '▲ Show less' : `▼ Show ${hiddenCount} more lines`}
+    </button>
+  );
+}
+
 /**
  * Render monospaced text with line capping and expand/collapse button.
  * Avoids giant outputs that overflow the view.
@@ -97,9 +113,11 @@ function TruncatedOutput({
     <div className="te-output-wrapper">
       <pre className={`te-output ${mono ? 'mono' : ''}`}>{visibleLines.join('\n')}</pre>
       {hasMore && (
-        <button className="te-expand-btn" onClick={() => setExpanded((v) => !v)}>
-          {expanded ? '▲ Show less' : `▼ Show ${lines.length - maxLines} more lines`}
-        </button>
+        <ExpandToggle
+          expanded={expanded}
+          hiddenCount={lines.length - maxLines}
+          onToggle={() => setExpanded((v) => !v)}
+        />
       )}
     </div>
   );
@@ -112,6 +130,73 @@ interface DiffLine {
   text: string;
 }
 
+const DIFF_PREFIX: Record<DiffLine['type'], string> = {
+  add: '+',
+  del: '-',
+  hunk: '@',
+  ctx: ' ',
+};
+
+/** Line-level diff of old vs new text, with up to 2 lines of shared context. */
+function diffStrings(oldStr: string, newStr: string): DiffLine[] {
+  const oldLines = oldStr.split('\n');
+  const newLines = newStr.split('\n');
+
+  if (!oldStr && newStr) return newLines.map((l) => ({ type: 'add', text: l }));
+  if (!newStr && oldStr) return oldLines.map((l) => ({ type: 'del', text: l }));
+
+  let prefixLen = 0;
+  while (
+    prefixLen < oldLines.length &&
+    prefixLen < newLines.length &&
+    oldLines[prefixLen] === newLines[prefixLen]
+  ) {
+    prefixLen++;
+  }
+
+  let suffixLen = 0;
+  while (
+    suffixLen < oldLines.length - prefixLen &&
+    suffixLen < newLines.length - prefixLen &&
+    oldLines[oldLines.length - 1 - suffixLen] === newLines[newLines.length - 1 - suffixLen]
+  ) {
+    suffixLen++;
+  }
+
+  const lines: DiffLine[] = [];
+  for (let i = Math.max(0, prefixLen - 2); i < prefixLen; i++) {
+    lines.push({ type: 'ctx', text: oldLines[i]! });
+  }
+  for (const l of oldLines.slice(prefixLen, oldLines.length - suffixLen)) {
+    lines.push({ type: 'del', text: l });
+  }
+  for (const l of newLines.slice(prefixLen, newLines.length - suffixLen)) {
+    lines.push({ type: 'add', text: l });
+  }
+  const ctxSuffixEnd = Math.min(oldLines.length, oldLines.length - suffixLen + 2);
+  for (let i = oldLines.length - suffixLen; i < ctxSuffixEnd; i++) {
+    lines.push({ type: 'ctx', text: oldLines[i]! });
+  }
+  return lines;
+}
+
+/** Unified-diff text as classified lines, or all-context when it is not a diff. */
+function parseUnifiedDiff(rawResult: string): DiffLine[] {
+  const rLines = rawResult.split('\n');
+  if (!rLines.some((l) => l.startsWith('@@') || l.startsWith('+') || l.startsWith('-'))) {
+    return rLines.map((l) => ({ type: 'ctx', text: l }));
+  }
+  const lines: DiffLine[] = [];
+  for (const l of rLines) {
+    if (l.startsWith('+++') || l.startsWith('---')) continue;
+    if (l.startsWith('@@')) lines.push({ type: 'hunk', text: l });
+    else if (l.startsWith('+')) lines.push({ type: 'add', text: l.slice(1) });
+    else if (l.startsWith('-')) lines.push({ type: 'del', text: l.slice(1) });
+    else lines.push({ type: 'ctx', text: l.startsWith(' ') ? l.slice(1) : l });
+  }
+  return lines;
+}
+
 function computeDiff(
   oldStr?: string,
   newStr?: string,
@@ -119,82 +204,19 @@ function computeDiff(
   rawResult?: string,
 ): { lines: DiffLine[]; addCount: number; delCount: number } {
   let lines: DiffLine[] = [];
-
   if (oldStr !== undefined || newStr !== undefined) {
-    const oldLines = (oldStr ?? '').split('\n');
-    const newLines = (newStr ?? '').split('\n');
-
-    if (!oldStr && newStr) {
-      lines = newLines.map((l) => ({ type: 'add', text: l }));
-    } else if (!newStr && oldStr) {
-      lines = oldLines.map((l) => ({ type: 'del', text: l }));
-    } else {
-      // Find common prefix lines
-      let prefixLen = 0;
-      while (
-        prefixLen < oldLines.length &&
-        prefixLen < newLines.length &&
-        oldLines[prefixLen] === newLines[prefixLen]
-      ) {
-        prefixLen++;
-      }
-
-      // Find common suffix lines
-      let suffixLen = 0;
-      while (
-        suffixLen < oldLines.length - prefixLen &&
-        suffixLen < newLines.length - prefixLen &&
-        oldLines[oldLines.length - 1 - suffixLen] === newLines[newLines.length - 1 - suffixLen]
-      ) {
-        suffixLen++;
-      }
-
-      // Context prefix (up to 2 lines)
-      const ctxPrefixStart = Math.max(0, prefixLen - 2);
-      for (let i = ctxPrefixStart; i < prefixLen; i++) {
-        lines.push({ type: 'ctx', text: oldLines[i]! });
-      }
-
-      // Deleted lines
-      const delSlice = oldLines.slice(prefixLen, oldLines.length - suffixLen);
-      for (const l of delSlice) {
-        lines.push({ type: 'del', text: l });
-      }
-
-      // Added lines
-      const addSlice = newLines.slice(prefixLen, newLines.length - suffixLen);
-      for (const l of addSlice) {
-        lines.push({ type: 'add', text: l });
-      }
-
-      // Context suffix (up to 2 lines)
-      const ctxSuffixEnd = Math.min(oldLines.length, oldLines.length - suffixLen + 2);
-      for (let i = oldLines.length - suffixLen; i < ctxSuffixEnd; i++) {
-        lines.push({ type: 'ctx', text: oldLines[i]! });
-      }
-    }
+    lines = diffStrings(oldStr ?? '', newStr ?? '');
   } else if (content !== undefined) {
-    const cLines = content.split('\n');
-    lines = cLines.map((l) => ({ type: 'add', text: l }));
+    lines = content.split('\n').map((l) => ({ type: 'add', text: l }));
   } else if (rawResult) {
-    const rLines = rawResult.split('\n');
-    if (rLines.some((l) => l.startsWith('@@') || l.startsWith('+') || l.startsWith('-'))) {
-      for (const l of rLines) {
-        if (l.startsWith('+++') || l.startsWith('---')) continue;
-        if (l.startsWith('@@')) lines.push({ type: 'hunk', text: l });
-        else if (l.startsWith('+')) lines.push({ type: 'add', text: l.slice(1) });
-        else if (l.startsWith('-')) lines.push({ type: 'del', text: l.slice(1) });
-        else lines.push({ type: 'ctx', text: l.startsWith(' ') ? l.slice(1) : l });
-      }
-    } else {
-      lines = rLines.map((l) => ({ type: 'ctx', text: l }));
-    }
+    lines = parseUnifiedDiff(rawResult);
   }
 
-  const addCount = lines.filter((l) => l.type === 'add').length;
-  const delCount = lines.filter((l) => l.type === 'del').length;
-
-  return { lines, addCount, delCount };
+  return {
+    lines,
+    addCount: lines.filter((l) => l.type === 'add').length,
+    delCount: lines.filter((l) => l.type === 'del').length,
+  };
 }
 
 function DiffView({
@@ -231,27 +253,19 @@ function DiffView({
         </div>
       )}
       <div className="te-diff-body mono">
-        {visibleLines.map((line, idx) => {
-          const prefix =
-            line.type === 'add'
-              ? '+'
-              : line.type === 'del'
-                ? '-'
-                : line.type === 'hunk'
-                  ? '@'
-                  : ' ';
-          return (
-            <div key={idx} className={`te-diff-line ${line.type}`}>
-              <span className="te-diff-prefix">{prefix}</span>
-              <span className="te-diff-text">{line.text || ' '}</span>
-            </div>
-          );
-        })}
+        {visibleLines.map((line, idx) => (
+          <div key={idx} className={`te-diff-line ${line.type}`}>
+            <span className="te-diff-prefix">{DIFF_PREFIX[line.type]}</span>
+            <span className="te-diff-text">{line.text || ' '}</span>
+          </div>
+        ))}
       </div>
       {hasMore && (
-        <button className="te-expand-btn" onClick={() => setExpanded((v) => !v)}>
-          {expanded ? '▲ Show less' : `▼ Show ${lines.length - maxLines} more lines`}
-        </button>
+        <ExpandToggle
+          expanded={expanded}
+          hiddenCount={lines.length - maxLines}
+          onToggle={() => setExpanded((v) => !v)}
+        />
       )}
     </div>
   );
@@ -302,34 +316,28 @@ function parseJsonEnvelope(text: string): EnvelopePayload | null {
   if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return null;
   try {
     const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-    if (
-      parsed &&
-      typeof parsed === 'object' &&
-      !Array.isArray(parsed) &&
-      ('status' in parsed ||
-        'summary' in parsed ||
-        'commit_message' in parsed ||
-        'notes_for_next_agent' in parsed)
-    ) {
-      return {
-        status: typeof parsed.status === 'string' ? parsed.status : undefined,
-        summary: typeof parsed.summary === 'string' ? parsed.summary : undefined,
-        notes_for_next_agent:
-          typeof parsed.notes_for_next_agent === 'string' ? parsed.notes_for_next_agent : undefined,
-        changed_files: Array.isArray(parsed.changed_files)
-          ? (parsed.changed_files as string[])
-          : undefined,
-        artifacts: Array.isArray(parsed.artifacts) ? (parsed.artifacts as string[]) : undefined,
-        commit_message:
-          typeof parsed.commit_message === 'string' ? parsed.commit_message : undefined,
-        diff_matches_claims:
-          typeof parsed.diff_matches_claims === 'boolean' ? parsed.diff_matches_claims : undefined,
-      };
-    }
+    const marker =
+      'status' in parsed ||
+      'summary' in parsed ||
+      'commit_message' in parsed ||
+      'notes_for_next_agent' in parsed;
+    if (!marker) return null;
+    return {
+      status: typeof parsed.status === 'string' ? parsed.status : undefined,
+      summary: typeof parsed.summary === 'string' ? parsed.summary : undefined,
+      notes_for_next_agent:
+        typeof parsed.notes_for_next_agent === 'string' ? parsed.notes_for_next_agent : undefined,
+      changed_files: Array.isArray(parsed.changed_files)
+        ? (parsed.changed_files as string[])
+        : undefined,
+      artifacts: Array.isArray(parsed.artifacts) ? (parsed.artifacts as string[]) : undefined,
+      commit_message: typeof parsed.commit_message === 'string' ? parsed.commit_message : undefined,
+      diff_matches_claims:
+        typeof parsed.diff_matches_claims === 'boolean' ? parsed.diff_matches_claims : undefined,
+    };
   } catch {
-    // Not valid JSON
+    return null;
   }
-  return null;
 }
 
 function EnvelopeCardBlock({
@@ -390,7 +398,7 @@ function TextBlock({ event }: { event: EventRow }): React.JSX.Element {
             <span className="te-tag json">data</span>
             <Time iso={event.startedAt} />
           </div>
-          <TruncatedOutput text={pretty} maxLines={12} mono={true} />
+          <TruncatedOutput text={pretty} maxLines={12} />
         </div>
       );
     } catch {

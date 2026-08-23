@@ -27,25 +27,21 @@ const SYSTEM_ROLE = [
   'You are read-only. Do not create, edit, delete, or execute files.',
 ].join('\n');
 
-function promptFor(): string {
-  return [
-    'Inspect the repository using read-only tools and return Markdown with exactly these headings:',
-    '## Stack',
-    '## Repository layout',
-    '## Conventions',
-    '## Verification',
-    '## Setup',
-    '',
-    'Keep the whole card concise. Name only facts supported by repository files. Under Verification, give the exact commands the repository documents or configures. Under Setup, report manifests, required runtimes, and documented bootstrap steps; do not claim anything was installed or executed.',
-  ].join('\n');
-}
+const PROMPT = [
+  'Inspect the repository using read-only tools and return Markdown with exactly these headings:',
+  ...REQUIRED_HEADINGS,
+  '',
+  'Keep the whole card concise. Name only facts supported by repository files. Under Verification, give the exact commands the repository documents or configures. Under Setup, report manifests, required runtimes, and documented bootstrap steps; do not claim anything was installed or executed.',
+].join('\n');
 
-export function ensureProjectContext(input: {
+interface ProjectContextInput {
   project: ProjectDef;
   settings: Pick<AppSettings, 'helperModel' | 'helperReasoningEffort'>;
   oneShot: OneShotFactory;
   persist: (project: ProjectDef) => void;
-}): Promise<ProjectDef> {
+}
+
+export function ensureProjectContext(input: ProjectContextInput): Promise<ProjectDef> {
   if (input.project.contextSummary?.trim()) return Promise.resolve(input.project);
   const existing = inFlight.get(input.project.path);
   if (existing) return existing;
@@ -57,12 +53,7 @@ export function ensureProjectContext(input: {
   return pending;
 }
 
-async function generateProjectContext(input: {
-  project: ProjectDef;
-  settings: Pick<AppSettings, 'helperModel' | 'helperReasoningEffort'>;
-  oneShot: OneShotFactory;
-  persist: (project: ProjectDef) => void;
-}): Promise<ProjectDef> {
+async function generateProjectContext(input: ProjectContextInput): Promise<ProjectDef> {
   try {
     const session = input.oneShot({
       cwd: input.project.path,
@@ -71,7 +62,7 @@ async function generateProjectContext(input: {
       access: 'read',
       systemPrompt: SYSTEM_ROLE,
     });
-    const result = await session.send(promptFor(), CONTEXT_TIMEOUT_MS);
+    const result = await session.send(PROMPT, CONTEXT_TIMEOUT_MS);
     const contextSummary = result.interrupted ? '' : result.text.trim().slice(0, MAX_CONTEXT_CHARS);
     if (!contextSummary || REQUIRED_HEADINGS.some((heading) => !contextSummary.includes(heading))) {
       return input.project;

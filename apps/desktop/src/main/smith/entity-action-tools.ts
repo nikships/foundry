@@ -9,6 +9,7 @@ import {
   objectField,
   parseOperation,
   proposeAction,
+  requireProjectId,
   resolveProjectId,
   stringField,
   type SmithActionToolDeps,
@@ -36,6 +37,9 @@ export const SMITH_ENTITY_OPERATIONS = [
   'pipeline_duplicate',
   'pipeline_reset',
 ] as const;
+
+type EntityOperation = (typeof SMITH_ENTITY_OPERATIONS)[number];
+
 const MIMES: Record<string, string> = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -45,7 +49,62 @@ const MIMES: Record<string, string> = {
   '.svg': 'image/svg+xml',
 };
 
+/** Immediate reads that forward one object argument. */
+const OBJECT_READS: Partial<Record<EntityOperation, readonly [channel: string, field: string]>> = {
+  agent_validate: [IPC.rosterValidate, 'agent'],
+  agent_preview: [IPC.rosterPreview, 'agent'],
+  envelope_validate: [IPC.envelopesValidate, 'definition'],
+  pipeline_validate: [IPC.pipelinesValidate, 'pipeline'],
+};
+
+/** Immediate reads that forward one string argument. */
+const STRING_READS: Partial<Record<EntityOperation, readonly [channel: string, field: string]>> = {
+  envelope_usage: [IPC.envelopesUsage, 'name'],
+  envelope_preview: [IPC.envelopesPreview, 'name'],
+};
+
+/** Gated actions that take one named argument, optionally scoped to a project. */
+const SINGLE_FIELD_ACTIONS: Partial<
+  Record<EntityOperation, { channel: string; field: string; scoped: boolean }>
+> = {
+  agent_remove: { channel: IPC.rosterRemove, field: 'name', scoped: true },
+  agent_duplicate: { channel: IPC.rosterDuplicate, field: 'name', scoped: true },
+  agent_reset: { channel: IPC.rosterReset, field: 'name', scoped: true },
+  agent_remove_mark: { channel: IPC.rosterRemoveMark, field: 'emblem', scoped: false },
+  envelope_remove: { channel: IPC.envelopesRemove, field: 'name', scoped: false },
+  envelope_duplicate: { channel: IPC.envelopesDuplicate, field: 'name', scoped: false },
+  pipeline_remove: { channel: IPC.pipelinesRemove, field: 'id', scoped: true },
+  pipeline_duplicate: { channel: IPC.pipelinesDuplicate, field: 'id', scoped: true },
+  pipeline_reset: { channel: IPC.pipelinesReset, field: 'id', scoped: true },
+};
+
+const DESTRUCTIVE: ReadonlySet<EntityOperation> = new Set([
+  'agent_remove',
+  'agent_reset',
+  'agent_remove_mark',
+  'envelope_remove',
+  'pipeline_remove',
+  'pipeline_reset',
+]);
+
+const label = (op: EntityOperation): string => op.replaceAll('_', ' ');
+
 export function smithEntitiesTool(deps: SmithActionToolDeps): ToolDefinition {
+  const proposeChannelCall = (
+    op: EntityOperation,
+    channel: string,
+    args: unknown[],
+    shownArgs: Record<string, unknown>,
+  ) =>
+    proposeAction(deps, {
+      operation: op,
+      title: label(op),
+      summary: `Perform ${label(op)}.`,
+      args: shownArgs,
+      risk: DESTRUCTIVE.has(op) ? 'destructive' : 'write',
+      execute: () => deps.invoke(channel, ...args),
+    });
+
   return defineTool({
     name: 'smith_entities',
     label: 'Smith entities',
@@ -74,118 +133,84 @@ export function smithEntitiesTool(deps: SmithActionToolDeps): ToolDefinition {
     execute: async (_id, params) => {
       const op = parseOperation(params, SMITH_ENTITY_OPERATIONS);
       if (!op) return json({ ok: false, error: 'unknown operation' });
-      const scoped =
-        (op.startsWith('agent_') && op !== 'agent_upload_mark' && op !== 'agent_remove_mark') ||
-        op.startsWith('pipeline_');
-      const scope = resolveProjectId(
-        field(params, 'projectId'),
-        deps.projectId(),
-        op === 'pipeline_dry_run',
-      );
+      const explicitProject = field(params, 'projectId');
+      const scope =
+        op === 'pipeline_dry_run'
+          ? requireProjectId(explicitProject, deps.projectId())
+          : resolveProjectId(explicitProject, deps.projectId());
       if (!scope.ok) return json(scope);
       const projectId = scope.projectId;
+
       if (op === 'agent_stale') return immediate(deps, IPC.rosterStaleBuiltins, projectId);
       if (op === 'pipeline_stale') return immediate(deps, IPC.pipelinesStaleBuiltins, projectId);
-      const objectReads = {
-        agent_validate: [IPC.rosterValidate, 'agent'],
-        agent_preview: [IPC.rosterPreview, 'agent'],
-        envelope_validate: [IPC.envelopesValidate, 'definition'],
-        pipeline_validate: [IPC.pipelinesValidate, 'pipeline'],
-      } as const;
-      if (op in objectReads) {
-        const [channel, name] = objectReads[op as keyof typeof objectReads];
+
+      const objectRead = OBJECT_READS[op];
+      if (objectRead) {
+        const [channel, name] = objectRead;
         const value = objectField(params, name);
         if (!value) return json({ ok: false, error: `${name} is required` });
         return immediate(deps, channel, value, ...(op === 'pipeline_validate' ? [projectId] : []));
       }
-      const stringReads = {
-        envelope_usage: [IPC.envelopesUsage, 'name'],
-        envelope_preview: [IPC.envelopesPreview, 'name'],
-      } as const;
-      if (op in stringReads) {
-        const [channel, name] = stringReads[op as keyof typeof stringReads];
+
+      const stringRead = STRING_READS[op];
+      if (stringRead) {
+        const [channel, name] = stringRead;
         const value = stringField(params, name);
         return value
           ? immediate(deps, channel, value)
           : json({ ok: false, error: `${name} is required` });
       }
+
       if (op === 'pipeline_dry_run') {
-        const pipelineId = stringField(params, 'pipelineId'),
-          request = stringField(params, 'request');
-        if (!pipelineId || !request || !projectId)
+        const pipelineId = stringField(params, 'pipelineId');
+        const request = stringField(params, 'request');
+        if (!pipelineId || !request || !projectId) {
           return json({ ok: false, error: 'pipelineId, projectId, and request are required' });
+        }
         return immediate(deps, IPC.pipelinesDryRun, pipelineId, projectId, request);
       }
+
       if (op === 'agent_upload_mark') {
         const filePath = stringField(params, 'filePath');
         if (!filePath) return json({ ok: false, error: 'filePath is required' });
         const mime = MIMES[extname(filePath).toLowerCase()];
-        if (!mime)
+        if (!mime) {
           return json({
             ok: false,
             error: 'unsupported mark type; use PNG, JPEG, WebP, GIF, or SVG',
           });
+        }
         return proposeAction(deps, {
           operation: op,
           title: 'Upload agent mark',
           summary: `Read and upload ${filePath}.`,
           args: { filePath, mime },
           risk: 'write',
+          // The bytes are read after approval, so a rejected card never reads
+          // the file and the proposal never carries its contents.
           execute: async () =>
             deps.invoke(IPC.rosterUploadMark, (await readFile(filePath)).toString('base64'), mime),
         });
       }
-      let channel: string;
-      let args: unknown[];
-      let shownArgs: Record<string, unknown>;
+
       if (op === 'agent_rename') {
-        const from = stringField(params, 'from'),
-          to = stringField(params, 'to');
+        const from = stringField(params, 'from');
+        const to = stringField(params, 'to');
         if (!from || !to) return json({ ok: false, error: 'from and to are required' });
-        channel = IPC.rosterRename;
-        args = [from, to, projectId];
-        shownArgs = { from, to, ...(projectId ? { projectId } : {}) };
-      } else {
-        const maps: Record<string, [string, string, boolean]> = {
-          agent_remove: [IPC.rosterRemove, 'name', true],
-          agent_duplicate: [IPC.rosterDuplicate, 'name', true],
-          agent_reset: [IPC.rosterReset, 'name', true],
-          agent_remove_mark: [IPC.rosterRemoveMark, 'emblem', false],
-          envelope_remove: [IPC.envelopesRemove, 'name', false],
-          envelope_duplicate: [IPC.envelopesDuplicate, 'name', false],
-          pipeline_remove: [IPC.pipelinesRemove, 'id', true],
-          pipeline_duplicate: [IPC.pipelinesDuplicate, 'id', true],
-          pipeline_reset: [IPC.pipelinesReset, 'id', true],
-        };
-        const map = maps[op];
-        if (!map) return json({ ok: false, error: 'unknown operation' });
-        const value = stringField(params, map[1]);
-        if (!value) return json({ ok: false, error: `${map[1]} is required` });
-        channel = map[0];
-        args = map[2] ? [value, projectId] : [value];
-        shownArgs = {
-          [map[1]]: value,
-          ...(map[2] && projectId ? { projectId } : {}),
-        };
+        return proposeChannelCall(op, IPC.rosterRename, [from, to, projectId], {
+          from,
+          to,
+          ...(projectId ? { projectId } : {}),
+        });
       }
-      const risk = [
-        'agent_remove',
-        'agent_reset',
-        'agent_remove_mark',
-        'envelope_remove',
-        'pipeline_remove',
-        'pipeline_reset',
-      ].includes(op)
-        ? 'destructive'
-        : 'write';
-      return proposeAction(deps, {
-        operation: op,
-        title: op.replaceAll('_', ' '),
-        summary: `Perform ${op.replaceAll('_', ' ')}.`,
-        args: shownArgs,
-        risk,
-        ...(scoped && projectId ? { projectId } : {}),
-        execute: () => deps.invoke(channel, ...args),
+
+      const action = SINGLE_FIELD_ACTIONS[op];
+      if (!action) return json({ ok: false, error: 'unknown operation' });
+      const value = stringField(params, action.field);
+      if (!value) return json({ ok: false, error: `${action.field} is required` });
+      return proposeChannelCall(op, action.channel, action.scoped ? [value, projectId] : [value], {
+        [action.field]: value,
+        ...(action.scoped && projectId ? { projectId } : {}),
       });
     },
   });

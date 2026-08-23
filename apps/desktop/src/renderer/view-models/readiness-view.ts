@@ -54,8 +54,9 @@ export type ReadinessExitAction = {
  * settled phases just close. Skip, Retry, and OK stay separate actions.
  */
 export function readinessExitAction(phase: ReadinessPhase): ReadinessExitAction {
-  if (isReadinessLive(phase)) return { kind: 'cancel', label: 'Cancel' };
-  return { kind: 'close', label: 'Close' };
+  return isReadinessLive(phase)
+    ? { kind: 'cancel', label: 'Cancel' }
+    : { kind: 'close', label: 'Close' };
 }
 
 /**
@@ -70,9 +71,8 @@ const VALIDATION_PHASES = new Set<ReadinessPhase>(['verifying', 'finalizing']);
 /** The banner note for a settled session, or '' when it has nothing to add. */
 export function readinessFailureNote(state: ReadinessState): string {
   if (state.phase === 'needs_continue') return state.detail;
-  if (state.phase !== 'failed') return '';
-  if (!state.failedPhase || !VALIDATION_PHASES.has(state.failedPhase)) return '';
-  return state.detail;
+  const explains = state.failedPhase != null && VALIDATION_PHASES.has(state.failedPhase);
+  return state.phase === 'failed' && explains ? state.detail : '';
 }
 
 export interface ReadinessBanner {

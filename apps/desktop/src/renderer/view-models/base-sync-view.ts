@@ -28,19 +28,12 @@ export function baseSyncBanner(
   opts: { busy?: BaseSyncBusy | null } = {},
 ): BaseSyncBanner {
   const baseRef = status?.baseRef || 'main';
-  if (opts.busy === 'checking') {
-    return {
-      tone: 'quiet',
-      message: `Checking whether ${baseRef} is current with the remote…`,
-      action: null,
-    };
-  }
-  if (opts.busy === 'syncing') {
-    return {
-      tone: 'quiet',
-      message: `Updating ${baseRef} from the remote…`,
-      action: null,
-    };
+  if (opts.busy) {
+    const message =
+      opts.busy === 'checking'
+        ? `Checking whether ${baseRef} is current with the remote…`
+        : `Updating ${baseRef} from the remote…`;
+    return { tone: 'quiet', message, action: null };
   }
   if (!status) {
     return { tone: 'quiet', message: 'Could not check the base branch.', action: 'Check again' };
@@ -94,7 +87,6 @@ export function showBaseSyncOnRuns(
   status: BaseSyncStatus | null,
   busy: BaseSyncBusy | null,
 ): boolean {
-  if (busy) return true;
-  if (!status) return true;
+  if (busy || !status) return true;
   return status.state !== 'no_remote';
 }

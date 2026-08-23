@@ -18,6 +18,7 @@ import {
 } from '@shared/types.js';
 import { JsonStore } from './json-store.js';
 import { BUILTIN_PIPELINES } from './builtin-pipelines.js';
+import { uniqueCopyName, upsertBy } from './collections.js';
 import { GATES } from '../engine/gates.js';
 
 const commandSchema = z.union([
@@ -94,21 +95,19 @@ export const pipelineSchema = z.object({
 const REMOVED_PHASE_FIELDS = ['toolProfile', 'tools', 'timeoutMs'] as const;
 
 function normalizePipeline(pipeline: PipelineDef): PipelineDef {
-  if (!pipeline.phases?.some((phase) => hasRemovedField(phase))) return pipeline;
-  return {
-    ...pipeline,
-    phases: pipeline.phases.map((phase) => {
-      if (!hasRemovedField(phase)) return phase;
-      const next: PhaseDef & Record<string, unknown> = { ...phase };
-      for (const field of REMOVED_PHASE_FIELDS) delete next[field];
-      return next as PhaseDef;
-    }),
-  };
+  if (!pipeline.phases?.some(hasRemovedField)) return pipeline;
+  return { ...pipeline, phases: pipeline.phases.map(stripRemovedFields) };
 }
 
 function hasRemovedField(phase: PhaseDef): boolean {
-  const record: Record<string, unknown> = { ...phase };
-  return REMOVED_PHASE_FIELDS.some((field) => field in record);
+  return REMOVED_PHASE_FIELDS.some((field) => field in phase);
+}
+
+function stripRemovedFields(phase: PhaseDef): PhaseDef {
+  if (!hasRemovedField(phase)) return phase;
+  const next: PhaseDef & Record<string, unknown> = { ...phase };
+  for (const field of REMOVED_PHASE_FIELDS) delete next[field];
+  return next;
 }
 
 export class PipelineStore {
@@ -241,7 +240,7 @@ export class PipelineStore {
     const existing = new Set(this.list(opts).map((p) => p.id));
     const copy: PipelineDef = {
       ...source,
-      id: uniqueCopyId(id, existing),
+      id: uniqueCopyName(id, existing),
       name: `${source.name} (copy)`,
       builtin: false,
     };
@@ -265,21 +264,6 @@ export class PipelineStore {
   }
 }
 
-function upsertBy<T>(list: T[], match: (item: T) => boolean, value: T): T[] {
-  const index = list.findIndex(match);
-  if (index < 0) return [...list, value];
-  const copy = [...list];
-  copy[index] = value;
-  return copy;
-}
-
-function uniqueCopyId(base: string, existing: Set<string>): string {
-  let candidate = `${base}-copy`;
-  let n = 2;
-  while (existing.has(candidate)) candidate = `${base}-copy-${n++}`;
-  return candidate;
-}
-
 /**
  * The validation rail. Errors block a save; warnings are shown and allowed,
  * because a project command that does not exist yet is a real intermediate
@@ -300,157 +284,119 @@ export function validate(
     return issues;
   }
 
-  const agentNames = new Set(agents.map((a) => a.name));
-  const known = new Set([...BUILTIN_ENVELOPE_KINDS, ...knownEnvelopes]);
+  const shared = {
+    pipeline,
+    agentNames: new Set(agents.map((a) => a.name)),
+    commandNames,
+    knownEnvelopes: new Set([...BUILTIN_ENVELOPE_KINDS, ...knownEnvelopes]),
+  };
   const seen = new Set<string>();
   pipeline.phases.forEach((phase, index) => {
     const where = `phases[${index}] ${phase.name}`;
-    if (seen.has(phase.name)) {
-      issues.push({ level: 'error', where, message: `duplicate phase name "${phase.name}"` });
-    }
+    const ctx: PhaseContext = {
+      ...shared,
+      index,
+      error: (message) => issues.push({ level: 'error', where, message }),
+      warn: (message) => issues.push({ level: 'warning', where, message }),
+    };
+    if (seen.has(phase.name)) ctx.error(`duplicate phase name "${phase.name}"`);
     seen.add(phase.name);
 
     // A description that only restates the name tells a reader nothing they
     // could not already see, so it is rejected the same way a blank one is.
     const flat = phase.description.trim().replace(/\.$/, '').toLowerCase();
     if (flat === phase.name.replace(/_/g, ' ').toLowerCase()) {
-      issues.push({
-        level: 'error',
-        where,
-        message: `description only restates the phase name — say what it does and why`,
-      });
+      ctx.error('description only restates the phase name — say what it does and why');
     }
 
-    if (phase.kind === 'agent')
-      validateAgentPhase(phase, index, where, agentNames, pipeline, known, issues);
-    if (phase.kind === 'code')
-      validateCodePhase(phase, index, where, commandNames, pipeline, issues);
+    if (phase.kind === 'agent') validateAgentPhase(phase, ctx);
+    if (phase.kind === 'code') validateCodePhase(phase, ctx);
     if (phase.kind === 'engineer' && !phase.question) {
-      issues.push({
-        level: 'warning',
-        where,
-        message: 'an engineer phase with no question shows an empty sheet',
-      });
+      ctx.warn('an engineer phase with no question shows an empty sheet');
     }
   });
 
   const acceptance = pipeline.acceptance;
-  if (acceptance.kind === 'phase_flag' || acceptance.kind === 'envelope_status') {
-    const target = pipeline.phases.find((p) => p.name === acceptance.phase);
-    if (!target) {
+  if (acceptance.kind !== 'phase_flag' && acceptance.kind !== 'envelope_status') return issues;
+  const target = pipeline.phases.find((p) => p.name === acceptance.phase);
+  if (!target) {
+    issues.push({
+      level: 'error',
+      where: 'acceptance',
+      message: `acceptance names phase "${acceptance.phase}", which does not exist`,
+    });
+    return issues;
+  }
+  if (acceptance.kind === 'phase_flag' && acceptance.flag === 'approved') {
+    const declared = effectivePhaseEnvelope(target, agents);
+    if (declared !== 'review') {
       issues.push({
-        level: 'error',
+        level: 'warning',
         where: 'acceptance',
-        message: `acceptance names phase "${acceptance.phase}", which does not exist`,
+        message: `"approved" comes from a review envelope; "${target.name}" declares ${declared ?? 'none'}`,
       });
-    } else if (acceptance.kind === 'phase_flag' && acceptance.flag === 'approved') {
-      const declared = effectivePhaseEnvelope(target, agents);
-      if (declared !== 'review') {
-        issues.push({
-          level: 'warning',
-          where: 'acceptance',
-          message: `"approved" comes from a review envelope; "${target.name}" declares ${declared ?? 'none'}`,
-        });
-      }
     }
   }
   return issues;
 }
 
-function validateAgentPhase(
-  phase: PipelineDef['phases'][number],
-  index: number,
-  where: string,
-  agentNames: Set<string>,
-  pipeline: PipelineDef,
-  knownEnvelopes: Set<string>,
-  issues: ValidationIssue[],
-): void {
+/** What one phase is checked against, plus where its issues are recorded. */
+interface PhaseContext {
+  pipeline: PipelineDef;
+  index: number;
+  agentNames: Set<string>;
+  commandNames: string[];
+  knownEnvelopes: Set<string>;
+  error(message: string): void;
+  warn(message: string): void;
+}
+
+function validateAgentPhase(phase: PhaseDef, ctx: PhaseContext): void {
   if (!phase.agent) {
-    issues.push({ level: 'error', where, message: 'an agent phase needs an agent' });
-  } else if (!agentNames.has(phase.agent)) {
-    issues.push({
-      level: 'error',
-      where,
-      message: `no agent named "${phase.agent}" in the roster`,
-    });
+    ctx.error('an agent phase needs an agent');
+  } else if (!ctx.agentNames.has(phase.agent)) {
+    ctx.error(`no agent named "${phase.agent}" in the roster`);
   }
-  if (!phase.prompt) {
-    issues.push({ level: 'error', where, message: 'an agent phase needs a prompt spec' });
+  if (!phase.prompt) ctx.error('an agent phase needs a prompt spec');
+  if (phase.envelope && !ctx.knownEnvelopes.has(phase.envelope)) {
+    ctx.warn(`envelope "${phase.envelope}" is not in the library — runs will fall back to generic`);
   }
-  if (phase.envelope && !knownEnvelopes.has(phase.envelope)) {
-    issues.push({
-      level: 'warning',
-      where,
-      message: `envelope "${phase.envelope}" is not in the library — runs will fall back to generic`,
-    });
+
+  for (const spec of phase.gates ?? []) {
+    const gate = typeof spec === 'string' ? spec : spec.gate;
+    if (!GATES[gate]) ctx.error(`unknown gate "${gate}"`);
+    if (gate !== 'command_passes') continue;
+    const argv = typeof spec === 'string' ? undefined : (spec.config?.argv as string[] | undefined);
+    if (!argv?.length) ctx.error('command_passes needs a configured command');
   }
-  for (const raw of phase.gates ?? []) {
-    const gate = typeof raw === 'string' ? raw : raw.gate;
-    if (!GATES[gate]) {
-      issues.push({ level: 'error', where, message: `unknown gate "${gate}"` });
-    }
-    if (gate === 'command_passes') {
-      const argv = typeof raw === 'string' ? undefined : (raw.config?.argv as string[] | undefined);
-      if (!argv?.length) {
-        issues.push({
-          level: 'error',
-          where,
-          message: 'command_passes needs a configured command',
-        });
-      }
-    }
-  }
+
+  const earlier = ctx.pipeline.phases.slice(0, ctx.index);
   for (const input of phase.prompt?.inputs ?? []) {
     if (!input.startsWith('envelope:')) continue;
     const target = input.slice('envelope:'.length).split('.')[0]!;
-    const earlier = pipeline.phases.slice(0, index).some((p) => p.name === target);
-    if (!earlier) {
-      issues.push({
-        level: 'error',
-        where,
-        message: `input "${input}" names a phase that does not run before this one`,
-      });
+    if (!earlier.some((p) => p.name === target)) {
+      ctx.error(`input "${input}" names a phase that does not run before this one`);
     }
   }
 }
 
-function validateCodePhase(
-  phase: PipelineDef['phases'][number],
-  index: number,
-  where: string,
-  commandNames: string[],
-  pipeline: PipelineDef,
-  issues: ValidationIssue[],
-): void {
+function validateCodePhase(phase: PhaseDef, ctx: PhaseContext): void {
   if (!phase.command) {
-    issues.push({ level: 'error', where, message: 'a code phase needs a command' });
-  } else if ('ref' in phase.command && !commandNames.includes(phase.command.ref)) {
-    issues.push({
-      level: 'warning',
-      where,
-      message: `project command "${phase.command.ref}" is not configured for this project yet`,
-    });
+    ctx.error('a code phase needs a command');
+  } else if ('ref' in phase.command && !ctx.commandNames.includes(phase.command.ref)) {
+    ctx.warn(`project command "${phase.command.ref}" is not configured for this project yet`);
   }
   if (!phase.feedbackTo) return;
-  const targetIndex = pipeline.phases.findIndex((p) => p.name === phase.feedbackTo);
-  if (targetIndex < 0) {
-    issues.push({
-      level: 'error',
-      where,
-      message: `feedback_to names "${phase.feedbackTo}", which is not a phase in this pipeline`,
-    });
-  } else if (targetIndex >= index) {
-    issues.push({
-      level: 'error',
-      where,
-      message: `feedback_to must point at an earlier phase; "${phase.feedbackTo}" runs later`,
-    });
-  } else if (pipeline.phases[targetIndex]!.kind !== 'agent') {
-    issues.push({
-      level: 'error',
-      where,
-      message: `feedback_to must point at an agent phase; "${phase.feedbackTo}" is a ${pipeline.phases[targetIndex]!.kind} phase`,
-    });
+
+  const targetIndex = ctx.pipeline.phases.findIndex((p) => p.name === phase.feedbackTo);
+  const target = ctx.pipeline.phases[targetIndex];
+  if (!target) {
+    ctx.error(`feedback_to names "${phase.feedbackTo}", which is not a phase in this pipeline`);
+  } else if (targetIndex >= ctx.index) {
+    ctx.error(`feedback_to must point at an earlier phase; "${phase.feedbackTo}" runs later`);
+  } else if (target.kind !== 'agent') {
+    ctx.error(
+      `feedback_to must point at an agent phase; "${phase.feedbackTo}" is a ${target.kind} phase`,
+    );
   }
 }

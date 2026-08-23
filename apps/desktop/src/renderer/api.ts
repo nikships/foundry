@@ -52,6 +52,8 @@ export const api: FoundryApi = {
   ...guarded,
   runs: {
     ...guarded.runs,
+    // Spelled out rather than left to `guard`: its wrapper is variadic, and a
+    // read-only query with three plain string arguments has nothing to clone.
     contextBreakdown: (projectId, runId, agent) =>
       window.foundry.runs.contextBreakdown(projectId, runId, agent),
   },

@@ -43,6 +43,9 @@ export default function SmithProposalCard({
     return api.on('smith-proposals-changed', () => void refresh());
   }, [refresh]);
 
+  // A different proposal, or a different scope, must not inherit the previous
+  // card's in-flight state. A new proposal also supersedes a private display;
+  // a scope change clears the display outright.
   const proposalId = proposal?.id ?? '';
   useEffect(() => {
     setError('');
@@ -58,8 +61,6 @@ export default function SmithProposalCard({
     setPrivateDisplay(null);
   }, [projectId]);
 
-  if (!proposal && !privateDisplay) return null;
-
   const answer = async (approved: boolean): Promise<void> => {
     if (!proposal || sending) return;
     setSending(true);
@@ -72,7 +73,6 @@ export default function SmithProposalCard({
       setSecret('');
       if (!result.ok) {
         setError(result.error);
-        setSending(false);
         return;
       }
       if (result.privateDisplay) setPrivateDisplay(result.privateDisplay);
@@ -82,51 +82,21 @@ export default function SmithProposalCard({
         );
       }
       await refresh();
-      setSending(false);
     } catch (caught) {
       setSecret('');
       setError(caught instanceof Error ? caught.message : 'Could not send that answer.');
+    } finally {
       setSending(false);
     }
   };
 
-  if (!proposal && privateDisplay) {
-    const encoded = JSON.stringify(privateDisplay.payload);
-    return (
-      <section className={styles.card} data-testid="smith-private-display">
-        <header className={styles.header}>
-          <span className={styles.kind}>private</span>
-          <h2 className={styles.title}>Companion pairing</h2>
-        </header>
-        <p className={styles.summary}>Scan this QR on the device you want to pair.</p>
-        <div className={styles.qr}>
-          <QrCode value={encoded} size={200} title="Companion pairing QR code" />
-        </div>
-        <footer className={styles.footer}>
-          <Button
-            onClick={() => {
-              void navigator.clipboard.writeText(encoded);
-            }}
-          >
-            Copy pairing code
-          </Button>
-          <Button
-            onClick={() => {
-              void api.companion.pairingPayload({ refresh: true }).then((payload) => {
-                if (payload) setPrivateDisplay({ kind: 'companion-pairing', payload });
-              });
-            }}
-          >
-            Refresh
-          </Button>
-          <span className={styles.spacer} />
-          <Button onClick={() => setPrivateDisplay(null)}>Dismiss</Button>
-        </footer>
-      </section>
-    );
+  // A pending proposal outranks a display left over from the previous answer.
+  if (!proposal) {
+    return privateDisplay ? (
+      <PrivateDisplayCard display={privateDisplay} onChange={setPrivateDisplay} />
+    ) : null;
   }
 
-  if (!proposal) return null;
   return proposal.type === 'entity' ? (
     <EntityCard
       proposal={proposal}
@@ -175,6 +145,44 @@ export default function SmithProposalCard({
         }
         onAnswer={(approved) => void answer(approved)}
       />
+    </section>
+  );
+}
+
+function PrivateDisplayCard({
+  display,
+  onChange,
+}: {
+  display: SmithPrivateDisplay;
+  onChange: (next: SmithPrivateDisplay | null) => void;
+}): React.JSX.Element {
+  const encoded = JSON.stringify(display.payload);
+  return (
+    <section className={styles.card} data-testid="smith-private-display">
+      <header className={styles.header}>
+        <span className={styles.kind}>private</span>
+        <h2 className={styles.title}>Companion pairing</h2>
+      </header>
+      <p className={styles.summary}>Scan this QR on the device you want to pair.</p>
+      <div className={styles.qr}>
+        <QrCode value={encoded} size={200} title="Companion pairing QR code" />
+      </div>
+      <footer className={styles.footer}>
+        <Button onClick={() => void navigator.clipboard.writeText(encoded)}>
+          Copy pairing code
+        </Button>
+        <Button
+          onClick={() => {
+            void api.companion.pairingPayload({ refresh: true }).then((payload) => {
+              if (payload) onChange({ kind: 'companion-pairing', payload });
+            });
+          }}
+        >
+          Refresh
+        </Button>
+        <span className={styles.spacer} />
+        <Button onClick={() => onChange(null)}>Dismiss</Button>
+      </footer>
     </section>
   );
 }

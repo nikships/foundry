@@ -8,17 +8,22 @@ import type {
   PipelineDef,
 } from '@shared/types.js';
 
+function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+}
+
 /** Composition line: "3 agents · 1 command · 1 checkpoint". */
 export function phaseComposition(phases: PhaseDef[]): string {
-  const agents = phases.filter((p) => p.kind === 'agent').length;
-  const commands = phases.filter((p) => p.kind === 'code').length;
-  const checkpoints = phases.filter((p) => p.kind === 'engineer').length;
-  const parts: string[] = [];
-  if (agents) parts.push(`${agents} agent${agents === 1 ? '' : 's'}`);
-  if (commands) parts.push(`${commands} command${commands === 1 ? '' : 's'}`);
-  if (checkpoints) parts.push(`${checkpoints} checkpoint${checkpoints === 1 ? '' : 's'}`);
-  if (!parts.length) return 'Empty';
-  return parts.join(' · ');
+  const counts: [PhaseKind, string][] = [
+    ['agent', 'agent'],
+    ['code', 'command'],
+    ['engineer', 'checkpoint'],
+  ];
+  const parts = counts
+    .map(([kind, noun]) => [phases.filter((p) => p.kind === kind).length, noun] as const)
+    .filter(([count]) => count > 0)
+    .map(([count, noun]) => plural(count, noun));
+  return parts.length ? parts.join(' · ') : 'Empty';
 }
 
 /** The command a code phase runs, as one display string. */
@@ -36,28 +41,17 @@ export function gateNames(phase: PhaseDef): string[] {
   return (phase.gates ?? []).map((g) => (typeof g === 'string' ? g : g.gate));
 }
 
-function uniquePhaseName(base: string, taken: Set<string>): string {
+/** `base`, else `base<sep>2`, `base<sep>3`, … — the first name not already taken. */
+function uniqueName(base: string, taken: Set<string>, separator: string): string {
   if (!taken.has(base)) return base;
   let n = 2;
-  while (taken.has(`${base}_${n}`)) n += 1;
-  return `${base}_${n}`;
-}
-
-function uniqueDisplayName(base: string, taken: Set<string>): string {
-  if (!taken.has(base)) return base;
-  let n = 2;
-  while (taken.has(`${base} ${n}`)) n += 1;
-  return `${base} ${n}`;
+  while (taken.has(`${base}${separator}${n}`)) n += 1;
+  return `${base}${separator}${n}`;
 }
 
 /** Generated pipeline ids must match the store's lowercase kebab-case contract. */
 export function generatePipelineId(existingIds: Iterable<string>, now?: number): string {
-  const taken = new Set(existingIds);
-  const base = `pipeline-${now ?? Date.now()}`;
-  if (!taken.has(base)) return base;
-  let n = 2;
-  while (taken.has(`${base}-${n}`)) n += 1;
-  return `${base}-${n}`;
+  return uniqueName(`pipeline-${now ?? Date.now()}`, new Set(existingIds), '-');
 }
 
 /** Defaults the workbench uses when inserting a complete, schema-valid phase. */
@@ -74,7 +68,7 @@ export function blankPhase(
 ): PhaseDef {
   if (kind === 'agent') {
     return {
-      name: uniquePhaseName('new_agent', taken),
+      name: uniqueName('new_agent', taken, '_'),
       kind: 'agent',
       description: 'Do the implementation work for this run.',
       agent: defaults.preferredAgent || 'builder',
@@ -85,14 +79,14 @@ export function blankPhase(
   if (kind === 'code') {
     const commandName = defaults.commandNames?.find((name) => name.trim().length > 0);
     return {
-      name: uniquePhaseName('new_command', taken),
+      name: uniqueName('new_command', taken, '_'),
       kind: 'code',
       description: 'Run a project command to check the current work.',
       command: commandName ? { ref: commandName } : { builtin: 'git_status' },
     };
   }
   return {
-    name: uniquePhaseName('new_checkpoint', taken),
+    name: uniqueName('new_checkpoint', taken, '_'),
     kind: 'engineer',
     description: 'Pause the run so an operator can review the work so far.',
     question: 'Should the run continue?',
@@ -216,7 +210,7 @@ export function acceptanceSummary(acceptance: Acceptance, phases: PhaseDef[]): s
   switch (acceptance.kind) {
     case 'all_phases_pass':
       return phases.length
-        ? `Accepted when all ${phases.length} phase${phases.length === 1 ? '' : 's'} pass.`
+        ? `Accepted when all ${plural(phases.length, 'phase')} pass.`
         : 'Accepted when every phase ends in success. This pipeline has no phases yet.';
     case 'last_phase_pass': {
       const last = phases[phases.length - 1];
@@ -234,12 +228,11 @@ export function acceptanceSummary(acceptance: Acceptance, phases: PhaseDef[]): s
 /** What the acceptance rule actually reads, in the words the screen shows. */
 export function acceptanceReads(pipeline: PipelineDef): string {
   const acceptance = pipeline.acceptance;
-  const last = pipeline.phases[pipeline.phases.length - 1];
+  const count = pipeline.phases.length;
+  const last = pipeline.phases[count - 1];
   switch (acceptance.kind) {
     case 'all_phases_pass':
-      return `Reads every phase status. ${pipeline.phases.length || 'No'} phase${
-        pipeline.phases.length === 1 ? '' : 's'
-      } must end in success.`;
+      return `Reads every phase status. ${count ? plural(count, 'phase') : 'No phases'} must end in success.`;
     case 'last_phase_pass':
       return last
         ? `Reads the status of the last phase, ${last.name}. Nothing before it decides the run.`
@@ -271,9 +264,10 @@ export function newPipelineDraft(input: {
     input.existing.map((pipeline) => pipeline.id),
     input.now,
   );
-  const name = uniqueDisplayName(
+  const name = uniqueName(
     'New Pipeline',
     new Set(input.existing.map((pipeline) => pipeline.name)),
+    ' ',
   );
   const starter = blankPhase('agent', new Set(), { preferredAgent: input.preferredAgent });
   const position = defaultCanvasPosition(0);

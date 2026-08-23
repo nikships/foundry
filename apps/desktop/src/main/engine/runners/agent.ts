@@ -51,7 +51,6 @@ export interface AgentRunnerDeps {
    */
   prompts: PromptLedger;
   onLiveText?: (phaseId: string, text: string) => void;
-  /** Reports the transport mode when a session falls back mid-turn. */
 }
 
 export class AgentPhaseRunner implements PhaseRunner {
@@ -258,7 +257,7 @@ export class AgentPhaseRunner implements PhaseRunner {
     phaseId: string,
     firstPrompt: string,
     systemPrompt: string,
-    envelopeKind: PhaseDef['envelope'] & string,
+    envelopeKind: string,
     gateAttempt: number,
     ctx: RunContext,
     rewinder: PhaseRewinder,

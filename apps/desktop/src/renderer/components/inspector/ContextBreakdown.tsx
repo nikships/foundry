@@ -144,24 +144,15 @@ export default function ContextBreakdownDisclosure({
       const openUp = spaceBelow < Math.min(200, panelMaxH) && spaceAbove > spaceBelow;
       const maxHeight = Math.min(panelMaxH, openUp ? spaceAbove - gap : spaceBelow - gap);
       // Keep the panel inside the viewport horizontally — align to the wrap's right edge.
-      let left = rect.right - panelWidth;
-      left = Math.max(pad, Math.min(left, viewportW - panelWidth - pad));
-      setPanelStyle(
-        openUp
-          ? {
-              top: rect.top - gap,
-              left,
-              width: panelWidth,
-              maxHeight: Math.max(80, maxHeight),
-              transform: 'translateY(-100%)',
-            }
-          : {
-              top: rect.bottom + gap,
-              left,
-              width: panelWidth,
-              maxHeight: Math.max(80, maxHeight),
-            },
-      );
+      const left = Math.max(pad, Math.min(rect.right - panelWidth, viewportW - panelWidth - pad));
+      setPanelStyle({
+        left,
+        width: panelWidth,
+        maxHeight: Math.max(80, maxHeight),
+        ...(openUp
+          ? { top: rect.top - gap, transform: 'translateY(-100%)' }
+          : { top: rect.bottom + gap }),
+      });
     };
     measure();
     window.addEventListener('resize', measure);

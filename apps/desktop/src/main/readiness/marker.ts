@@ -15,7 +15,6 @@ import { refExists, showFileAtRef } from '../engine/git.js';
 import {
   READINESS_CRITERION_IDS,
   type AgentReadyMarker,
-  type AgentReadyStack,
   type ReadinessCriterion,
   type ReadinessCriterionId,
   type ReadinessEvaluation,
@@ -197,7 +196,6 @@ export function markerFromEvaluation(
     ...c,
     status: c.status === 'fail' ? 'n/a' : c.status,
   }));
-  const stack: AgentReadyStack = evaluation.stack;
   return {
     schemaVersion: MARKER_SCHEMA_VERSION,
     generatedAt: meta.generatedAt,
@@ -205,7 +203,7 @@ export function markerFromEvaluation(
     agent: { harness: 'pi', model: meta.model, reasoningEffort: meta.reasoningEffort },
     verdict: 'ready',
     summary: evaluation.summary,
-    stack,
+    stack: evaluation.stack,
     criteria,
   };
 }

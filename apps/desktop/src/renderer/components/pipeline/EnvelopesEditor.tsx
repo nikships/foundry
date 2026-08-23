@@ -302,13 +302,12 @@ export default function EnvelopesEditor({
 
   // Live validate + example for the draft under edit.
   useEffect(() => {
-    if (!draft || selection.kind !== 'custom') {
-      if (selection.kind !== 'custom') {
-        setIssues([]);
-        setExample('');
-      }
+    if (selection.kind !== 'custom') {
+      setIssues([]);
+      setExample('');
       return;
     }
+    if (!draft) return;
     let cancelled = false;
     void api.envelopes.validate(draft).then((result) => {
       if (cancelled) return;

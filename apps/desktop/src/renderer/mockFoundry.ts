@@ -37,6 +37,9 @@ function nowIso(offsetMs = 0): string {
   return new Date(Date.now() + offsetMs).toISOString();
 }
 
+const UNAVAILABLE = 'Not available in web preview.';
+const NO_AGENT_CLI = 'no agent CLI in the web preview';
+
 const MOCK_PROJECTS: ProjectDef[] = [
   {
     id: 'demo-project',
@@ -197,6 +200,9 @@ export function createMockFoundryApi(): FoundryApi {
   }
 
   const smithKey = (projectId?: string): string => projectId ?? 'global';
+  /** The global scope always exists; a named project must be one we know. */
+  const smithScopeExists = (projectId?: string): boolean =>
+    !projectId || MOCK_PROJECTS.some((project) => project.id === projectId);
   const smithSnapshot = (projectId?: string): SmithChatState => {
     const key = smithKey(projectId);
     const state =
@@ -220,6 +226,16 @@ export function createMockFoundryApi(): FoundryApi {
     listeners.get('smith-progress')?.forEach((handler) => handler(state));
   };
 
+  /** Store a patched Smith state, push it, and hand back the fresh snapshot. */
+  const putSmith = (
+    projectId: string | undefined,
+    patch: Partial<SmithChatState>,
+  ): SmithChatState => {
+    smithStates.set(smithKey(projectId), { ...smithSnapshot(projectId), ...patch });
+    emitSmith(projectId);
+    return smithSnapshot(projectId);
+  };
+
   const api: FoundryApi = {
     settings: {
       get: async () => ({ ...mockSettings, onboarded: onboardingDone }),
@@ -239,7 +255,7 @@ export function createMockFoundryApi(): FoundryApi {
         detail: 'creating a repository needs the gh CLI, which the web preview cannot reach',
       }),
       chooseParentDir: async () => null,
-      createGithub: async () => ({ ok: false, detail: 'Not available in web preview.' }),
+      createGithub: async () => ({ ok: false, detail: UNAVAILABLE }),
       save: async (project): Promise<SaveResult<ProjectDef[]>> => {
         const idx = MOCK_PROJECTS.findIndex((p) => p.id === project.id);
         if (idx >= 0) MOCK_PROJECTS[idx] = project;
@@ -254,7 +270,7 @@ export function createMockFoundryApi(): FoundryApi {
         durationMs: 42,
       }),
       sniffCommands: async () => ({ commands: [], via: 'none', detail: '(web preview)' }),
-      askAgentCommands: async () => ({ error: 'no agent CLI in the web preview' }),
+      askAgentCommands: async () => ({ error: NO_AGENT_CLI }),
       cancelDetection: async () => false,
       detection: async () => null,
       setupScriptGet: async () => '',
@@ -266,7 +282,7 @@ export function createMockFoundryApi(): FoundryApi {
         outputTail: '(web preview)',
         durationMs: 0,
       }),
-      setupScriptAskAgent: async () => ({ error: 'no agent CLI in the web preview' }),
+      setupScriptAskAgent: async () => ({ error: NO_AGENT_CLI }),
       setupProgress: async () => null,
       setupCancel: async () => false,
       check: async (): Promise<DoctorCheck[]> => [
@@ -326,12 +342,12 @@ export function createMockFoundryApi(): FoundryApi {
         validatedCache: true,
         ready: true,
       }),
-      evaluate: async () => ({ error: 'no agent CLI in the web preview' }),
-      makeReady: async () => ({ error: 'no agent CLI in the web preview' }),
+      evaluate: async () => ({ error: NO_AGENT_CLI }),
+      makeReady: async () => ({ error: NO_AGENT_CLI }),
       cancel: async () => false,
       get: async (): Promise<ReadinessState | null> => null,
       skip: async () => null,
-      retry: async () => ({ error: 'no agent CLI in the web preview' }),
+      retry: async () => ({ error: NO_AGENT_CLI }),
       confirmMerge: async () => null,
       dismiss: async () => false,
     },
@@ -549,7 +565,7 @@ export function createMockFoundryApi(): FoundryApi {
           },
         ],
       }),
-      resume: async () => ({ ok: false, detail: 'Not available in web preview.' }),
+      resume: async () => ({ ok: false, detail: UNAVAILABLE }),
       list: async () => [...MOCK_RUNS],
       detail: async (_projectId, runId): Promise<RunDetail> => {
         const run = MOCK_RUNS.find((r) => r.runId === runId) ?? null;
@@ -588,9 +604,9 @@ export function createMockFoundryApi(): FoundryApi {
       promptFor: async () => '(web preview)',
       kill: async () => false,
       archive: async () => {},
-      mergeWorktree: async () => ({ ok: false, detail: 'Not available in web preview.' }),
-      fixMerge: async () => ({ ok: false, detail: 'Not available in web preview.' }),
-      discardWorktree: async () => ({ ok: false, detail: 'Not available in web preview.' }),
+      mergeWorktree: async () => ({ ok: false, detail: UNAVAILABLE }),
+      fixMerge: async () => ({ ok: false, detail: UNAVAILABLE }),
+      discardWorktree: async () => ({ ok: false, detail: UNAVAILABLE }),
       openWorktree: async () => {},
       revealFiles: async () => {},
     },
@@ -636,9 +652,9 @@ export function createMockFoundryApi(): FoundryApi {
           },
         ],
       }),
-      create: async () => ({ ok: false, detail: 'Not available in web preview.' }),
-      merge: async () => ({ ok: false, detail: 'Not available in web preview.' }),
-      fixConflicts: async () => ({ ok: false, detail: 'Not available in web preview.' }),
+      create: async () => ({ ok: false, detail: UNAVAILABLE }),
+      merge: async () => ({ ok: false, detail: UNAVAILABLE }),
+      fixConflicts: async () => ({ ok: false, detail: UNAVAILABLE }),
     },
     interrupts: {
       list: async (): Promise<PendingInterrupt[]> => [],
@@ -646,96 +662,60 @@ export function createMockFoundryApi(): FoundryApi {
     },
     smith: {
       send: async (projectId, text) => {
-        if (projectId && !MOCK_PROJECTS.some((project) => project.id === projectId)) return null;
-        const currentSmithState = smithSnapshot(projectId);
-        let smithState: SmithChatState = {
-          ...currentSmithState,
+        if (!smithScopeExists(projectId)) return null;
+        const at = Date.now();
+        const asked = putSmith(projectId, {
           running: true,
           error: null,
           transcript: [
-            ...currentSmithState.transcript,
-            {
-              id: `operator-${Date.now()}`,
-              kind: 'text',
-              text,
-              source: 'operator',
-              at: Date.now(),
-            },
+            ...smithSnapshot(projectId).transcript,
+            { id: `operator-${at}`, kind: 'text', text, source: 'operator', at },
           ],
-        };
-        smithStates.set(smithKey(projectId), smithState);
-        emitSmith(projectId);
+        });
         // A canned turn that exercises the chat's visual language: a folded
         // tool row, a readiness sub-agent block, and a text answer.
-        smithState = {
-          ...smithState,
+        return putSmith(projectId, {
           running: false,
           transcript: [
-            ...smithState.transcript,
+            ...asked.transcript,
             {
-              id: `smith-tool-${Date.now()}`,
+              id: `smith-tool-${at}`,
               kind: 'tool',
               text: 'read AGENTS.md',
               toolKind: 'read',
               done: true,
               source: 'smith',
-              at: Date.now(),
+              at,
             },
             {
-              id: `readiness-${Date.now()}`,
+              id: `readiness-${at}`,
               kind: 'note',
               text: 'Readiness agent: checklist evaluated, 9 of 11 criteria pass.',
               source: 'readiness',
-              at: Date.now(),
+              at,
             },
             {
-              id: `smith-${Date.now()}`,
+              id: `smith-${at}`,
               kind: 'text',
               text: 'Web preview: Smith is ready to help with this project.',
               source: 'smith',
-              at: Date.now(),
+              at,
             },
           ],
-        };
-        smithStates.set(smithKey(projectId), smithState);
-        emitSmith(projectId);
-        return smithSnapshot(projectId);
+        });
       },
-      cancel: async (projectId) => {
-        const state = { ...smithSnapshot(projectId), running: false };
-        smithStates.set(smithKey(projectId), state);
-        emitSmith(projectId);
-        return smithSnapshot(projectId);
-      },
-      newChat: async (projectId) => {
-        if (projectId && !MOCK_PROJECTS.some((project) => project.id === projectId)) return null;
-        const state = { ...smithSnapshot(projectId), running: false, error: null, transcript: [] };
-        smithStates.set(smithKey(projectId), state);
-        emitSmith(projectId);
-        return smithSnapshot(projectId);
-      },
-      state: async (projectId) =>
-        !projectId || MOCK_PROJECTS.some((project) => project.id === projectId)
-          ? smithSnapshot(projectId)
+      cancel: async (projectId) => putSmith(projectId, { running: false }),
+      newChat: async (projectId) =>
+        smithScopeExists(projectId)
+          ? putSmith(projectId, { running: false, error: null, transcript: [] })
           : null,
-      setModel: async (projectId, model) => {
-        if (projectId && !MOCK_PROJECTS.some((project) => project.id === projectId)) return null;
-        const state = { ...smithSnapshot(projectId), model, activeModel: model };
-        smithStates.set(smithKey(projectId), state);
-        emitSmith(projectId);
-        return smithSnapshot(projectId);
-      },
-      setReasoningEffort: async (projectId, effort) => {
-        if (projectId && !MOCK_PROJECTS.some((project) => project.id === projectId)) return null;
-        const state = {
-          ...smithSnapshot(projectId),
-          reasoningEffort: effort,
-          activeReasoningEffort: effort,
-        };
-        smithStates.set(smithKey(projectId), state);
-        emitSmith(projectId);
-        return smithSnapshot(projectId);
-      },
+      state: async (projectId) => (smithScopeExists(projectId) ? smithSnapshot(projectId) : null),
+      setModel: async (projectId, model) =>
+        smithScopeExists(projectId) ? putSmith(projectId, { model, activeModel: model }) : null,
+      setReasoningEffort: async (projectId, effort) =>
+        smithScopeExists(projectId)
+          ? putSmith(projectId, { reasoningEffort: effort, activeReasoningEffort: effort })
+          : null,
       proposalsList: async () => [],
       answerProposal: async () => ({ ok: false, error: 'proposal not found' }),
     },
@@ -746,14 +726,14 @@ export function createMockFoundryApi(): FoundryApi {
         origin: null,
         protocolVersion: 1,
         devices: [],
-        detail: 'Not available in web preview.',
+        detail: UNAVAILABLE,
       }),
       start: async () => ({
         running: false,
         origin: null,
         protocolVersion: 1,
         devices: [],
-        detail: 'Not available in web preview.',
+        detail: UNAVAILABLE,
       }),
       stop: async () => ({ running: false, origin: null, protocolVersion: 1, devices: [] }),
       pairingPayload: async () => null,
@@ -844,21 +824,18 @@ export function createMockFoundryApi(): FoundryApi {
 }
 
 export function installMockFoundryIfNeeded(): void {
-  const w = window as unknown as Record<string, unknown>;
-  if (w.foundry || w.__foundryWebMockInstalled) return;
-  w.__foundryWebMockInstalled = true;
+  if (window.foundry || window.__foundryWebMockInstalled) return;
+  window.__foundryWebMockInstalled = true;
   // Import-time side effects in mockFoundry must not synchronously import api.ts
   // again. This function is called from api.ts; keep the install synchronous.
-  const mock = createMockFoundryApi();
-  w.foundry = mock as unknown as never;
-  if (!w.foundryMenu) {
-    w.foundryMenu = {
+  window.foundry = createMockFoundryApi();
+  if (!window.foundryMenu) {
+    window.foundryMenu = {
       on() {
         return () => {};
       },
-    } as never;
+    };
   }
   if (!document.title.includes('web')) document.title = `${document.title} — web preview`;
-  // eslint-disable-next-line no-console
-  console.info('[web] renderer running with mocked foundry API');
+  console.warn('[web] renderer running with mocked foundry API');
 }

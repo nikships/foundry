@@ -133,7 +133,8 @@ const api: FoundryApi = {
     resume: (projectId, runId) => call(IPC.runsResume, projectId, runId),
     list: (projectId, includeArchived) => call(IPC.runsList, projectId, includeArchived),
     detail: (projectId, runId) => call(IPC.runsDetail, projectId, runId),
-    events: (projectId, runId, afterRowid) => call(IPC.runsEvents, projectId, runId, afterRowid),
+    events: (projectId, runId, afterChangeId) =>
+      call(IPC.runsEvents, projectId, runId, afterChangeId),
     liveTail: (phaseId) => call(IPC.runsLiveTail, phaseId),
     contextBreakdown: (projectId, runId, agent) =>
       call(IPC.runsContextBreakdown, projectId, runId, agent),

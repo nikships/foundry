@@ -58,16 +58,13 @@ export interface AskTurn {
 }
 
 export class PanelSession<TState extends PanelStateCore> {
-  readonly state: TState;
   private oneshot: OneShotSession | null = null;
   private _cancelled = false;
 
   constructor(
-    state: TState,
+    readonly state: TState,
     private readonly hooks: PanelSessionHooks<TState>,
-  ) {
-    this.state = state;
-  }
+  ) {}
 
   get cancelled(): boolean {
     return this._cancelled;

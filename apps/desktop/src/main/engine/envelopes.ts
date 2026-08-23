@@ -172,17 +172,11 @@ function resolveBase(
       exampleKind: kind,
     };
   }
+  const generic = schemas.generic as z.ZodObject<z.ZodRawShape>;
   const def = defs?.find((d) => d.name === kind);
-  if (def) {
-    return {
-      baseSchema: schemas.generic as z.ZodObject<z.ZodRawShape>,
-      libraryFields: def.fields,
-      exampleKind: 'generic',
-    };
-  }
   return {
-    baseSchema: schemas.generic as z.ZodObject<z.ZodRawShape>,
-    libraryFields: [],
+    baseSchema: generic,
+    libraryFields: def?.fields ?? [],
     exampleKind: 'generic',
   };
 }

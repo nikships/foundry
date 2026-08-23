@@ -140,10 +140,8 @@ const ADDED_COLUMNS: { table: string; column: string; ddl: string }[] = [
 
 function addMissingColumns(db: Db): void {
   for (const { table, column, ddl } of ADDED_COLUMNS) {
-    const present = (db.pragma(`table_info(${table})`) as { name: string }[]).some(
-      (c) => c.name === column,
-    );
-    if (!present) db.exec(ddl);
+    const columns = db.pragma(`table_info(${table})`) as { name: string }[];
+    if (!columns.some((c) => c.name === column)) db.exec(ddl);
   }
 }
 
@@ -160,11 +158,15 @@ export function openDb(dbPath: string): Db {
 }
 
 export function projectDbPath(appSupportDir: string, projectPath: string): string {
-  return join(appSupportDir, 'projects', projectHash(projectPath), 'trace.db');
+  return join(projectDir(appSupportDir, projectPath), 'trace.db');
 }
 
 export function projectRunsDir(appSupportDir: string, projectPath: string): string {
-  return join(appSupportDir, 'projects', projectHash(projectPath), 'runs');
+  return join(projectDir(appSupportDir, projectPath), 'runs');
+}
+
+function projectDir(appSupportDir: string, projectPath: string): string {
+  return join(appSupportDir, 'projects', projectHash(projectPath));
 }
 
 /**

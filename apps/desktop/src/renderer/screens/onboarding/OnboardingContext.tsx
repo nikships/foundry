@@ -150,10 +150,10 @@ export function OnboardingProvider({
         next[p.id] = p.name;
       }
       for (const id of Object.keys(next)) if (!projects.some((p) => p.id === id)) delete next[id];
-      const pk = Object.keys(prev),
-        nk = Object.keys(next);
-      if (pk.length === nk.length && nk.every((k) => prev[k] === next[k])) return prev;
-      return next;
+      const nextKeys = Object.keys(next);
+      const unchanged =
+        Object.keys(prev).length === nextKeys.length && nextKeys.every((k) => prev[k] === next[k]);
+      return unchanged ? prev : next;
     });
   }, [projects, renamingId]);
 
@@ -341,12 +341,10 @@ export function OnboardingProvider({
       setNameDrafts((prev) => ({ ...prev, [id]: project.name }));
     }
   };
-  const canEnterProject = useMemo(() => {
-    if (busy) return false;
-    if (!projects.length) return false;
-    if (!selectedId) return false;
-    return projects.some((p) => p.id === selectedId);
-  }, [busy, projects, selectedId]);
+  const canEnterProject = useMemo(
+    () => !busy && projects.some((p) => p.id === selectedId),
+    [busy, projects, selectedId],
+  );
   const projectBlockingHint = !projects.length
     ? 'Pick a project or add a repository to continue.'
     : !selectedId

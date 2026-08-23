@@ -141,9 +141,21 @@ interface PersistedChatState {
 
 const STATE_FILE = 'chat-state.json';
 const MAX_TRANSCRIPT_ENTRIES = 500;
+const MAX_TRANSCRIPT_TEXT = 20_000;
+const MAX_WARNING_TEXT = 500;
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+/** The project this scope belongs to, or undefined in the global conversation. */
+function scopeProjectId(scope: SmithScope): string | undefined {
+  return scope.kind === 'project' ? scope.projectId : undefined;
+}
+
+/** Where this scope's session runs: the project checkout, or Smith's workspace. */
+function scopeCwd(scope: SmithScope): string {
+  return scope.kind === 'project' ? scope.projectPath : scope.workspace;
 }
 
 export class SmithChatSession {
@@ -160,11 +172,10 @@ export class SmithChatSession {
   private readonly absorbTranscript: (event: TransportEvent) => void;
 
   constructor(private readonly deps: SmithChatSessionDeps) {
-    const projectId = deps.scope.kind === 'project' ? deps.scope.projectId : undefined;
-    const cwd = deps.scope.kind === 'project' ? deps.scope.projectPath : deps.scope.workspace;
+    const projectId = scopeProjectId(deps.scope);
     const ctx: SmithToolFactoryContext = {
       ...(projectId ? { projectId } : {}),
-      cwd,
+      cwd: scopeCwd(deps.scope),
       scope: deps.scope,
     };
     this.customTools = (deps.toolFactories ?? []).flatMap((factory) => factory(ctx));
@@ -179,7 +190,7 @@ export class SmithChatSession {
         const last = this.transcript[this.transcript.length - 1];
         return last?.source === 'smith' ? last : null;
       },
-      textCap: 20_000,
+      textCap: MAX_TRANSCRIPT_TEXT,
     });
   }
 
@@ -216,8 +227,9 @@ export class SmithChatSession {
 
   /** A clone for IPC reads and pushes; callers never receive the live array. */
   snapshot(): SmithChatState {
+    const projectId = scopeProjectId(this.deps.scope);
     return {
-      ...(this.deps.scope.kind === 'project' ? { projectId: this.deps.scope.projectId } : {}),
+      ...(projectId ? { projectId } : {}),
       model: this.model,
       activeModel: this.activeModel,
       reasoningEffort: this.reasoningEffort,
@@ -238,15 +250,14 @@ export class SmithChatSession {
     let started: AgentTransport | null = null;
     try {
       await this.ensureStarted();
-      const transport = this.transport;
-      started = transport;
-      if (!transport) throw new Error('smith chat session is not open');
+      started = this.transport;
+      if (!started) throw new Error('smith chat session is not open');
       // Cancel can arrive while the lazy session is still opening, before
       // there is a transport to interrupt. Do not start a paid turn after it.
       if (this.cancelRequested) {
         return { text: '', usage: null, reason: 'cancelled', interrupted: true };
       }
-      const result = await transport.send(text, {
+      const result = await started.send(text, {
         ...(ctx.screen ? { systemPrompt: screenContextBlock(ctx.screen) } : {}),
       });
       return {
@@ -373,12 +384,10 @@ export class SmithChatSession {
   /** Started lazily: a project whose Smith is never opened costs nothing. */
   private async ensureStarted(): Promise<void> {
     if (this.transport?.alive) return;
+    const projectId = scopeProjectId(this.deps.scope);
     const transport = this.deps.transport({
-      ...(this.deps.scope.kind === 'project' ? { projectId: this.deps.scope.projectId } : {}),
-      cwd:
-        this.deps.scope.kind === 'project'
-          ? this.deps.scope.projectPath
-          : this.deps.scope.workspace,
+      ...(projectId ? { projectId } : {}),
+      cwd: scopeCwd(this.deps.scope),
       model: this.model,
       reasoningEffort: this.reasoningEffort,
       harness: `${SMITH_CHAT_HARNESS}\n\n${scopeContextBlock(this.deps.scope)}`,
@@ -389,7 +398,7 @@ export class SmithChatSession {
         this.deps.onEvent?.(event);
       },
       onModelWarning: (warning) => {
-        this.push({ kind: 'note', text: warning.slice(0, 500), source: 'smith' });
+        this.push({ kind: 'note', text: warning.slice(0, MAX_WARNING_TEXT), source: 'smith' });
         this.deps.onModelWarning?.(warning);
       },
     });
@@ -417,9 +426,8 @@ export class SmithChatSession {
    * nothing would revert it.
    */
   private decide(ask: PermissionAsk): PermissionDecision {
-    const cwd =
-      this.deps.scope.kind === 'project' ? this.deps.scope.projectPath : this.deps.scope.workspace;
-    return evaluate(ask, { worktree: cwd, writes: null, protectedPaths: [] }, this.customToolNames)
+    const worktree = scopeCwd(this.deps.scope);
+    return evaluate(ask, { worktree, writes: null, protectedPaths: [] }, this.customToolNames)
       .decision;
   }
 

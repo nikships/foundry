@@ -77,26 +77,21 @@ export default function DoctorScreen(): React.JSX.Element {
           <div className={styles.obStatusRow} role="list" aria-label="Provider status">
             {providers.map((provider, idx) => {
               const bad = provider.accounts.length > 0 && !provider.authenticated;
+              const status = provider.authenticated
+                ? { className: styles.ok, label: 'connected', mark: '✓' }
+                : bad
+                  ? { className: styles.bad, label: 'needs attention', mark: '✕' }
+                  : { className: '', label: 'not connected', mark: '·' };
               return (
                 <div
                   key={provider.id}
                   role="listitem"
-                  className={`${styles.obStatusChip} ${
-                    provider.authenticated ? styles.ok : bad ? styles.bad : ''
-                  }`}
-                  title={`${provider.label}${
-                    provider.authenticated
-                      ? ' — connected'
-                      : bad
-                        ? ' — needs attention'
-                        : ' — not connected'
-                  }`}
+                  className={`${styles.obStatusChip} ${status.className}`}
+                  title={`${provider.label} — ${status.label}`}
                   style={{ ['--i' as string]: String(idx) }}
                 >
                   <ProviderIcon provider={provider.icon} size={18} />
-                  <span className={styles.obMark}>
-                    {provider.authenticated ? '✓' : bad ? '✕' : '·'}
-                  </span>
+                  <span className={styles.obMark}>{status.mark}</span>
                 </div>
               );
             })}

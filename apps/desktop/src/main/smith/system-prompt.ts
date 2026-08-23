@@ -1,9 +1,8 @@
 /**
- * Smith's standing identity for the in-app chat, distilled from the shipped
- * skill (`skills/foundry-smith/SKILL.md`). The persona and the entity schemas
- * survive; everything about the helper CLI, the unix socket, and terminal
- * setup is dropped — the in-process tools carry that contract now, in their
- * own descriptions.
+ * Smith's standing identity for the in-app chat, distilled from the skill this
+ * app once shipped. The persona and the entity schemas survive; everything
+ * about the helper CLI, the unix socket, and terminal setup is dropped — the
+ * in-process tools carry that contract now, in their own descriptions.
  *
  * Installed as the session's `systemPromptOverride` (the same pattern as
  * `pi/system-prompt.ts`); the per-turn screen context is appended through the

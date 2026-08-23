@@ -10,7 +10,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { AGENT_MARKS_DIR } from './store/agent-marks.js';
-import type { AgentDef, AppSettings, PipelineDef, ReadinessState, RunRow } from '@shared/types.js';
+import type { AgentDef, PipelineDef, ReadinessState, RunRow } from '@shared/types.js';
 import { IPC, type DetectionState, type SetupState } from '@shared/ipc-contract.js';
 import { SettingsStore } from './store/settings.js';
 import { ProjectStore } from './store/projects.js';
@@ -308,10 +308,6 @@ export class AppContext {
   commandNames(projectId?: string): string[] {
     if (!projectId) return [];
     return this.projects.get(projectId)?.commands.map((c) => c.name) ?? [];
-  }
-
-  currentSettings(): AppSettings {
-    return this.settings.get();
   }
 
   dispose(): void {

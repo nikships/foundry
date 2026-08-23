@@ -2,11 +2,11 @@ import { IPC } from '@shared/ipc-contract.js';
 import { defineTool, type ToolDefinition } from '../pi/tool-definition.js';
 import {
   immediate,
+  json,
   objectField,
   parseOperation,
   proposeAction,
   type SmithActionToolDeps,
-  json,
 } from './tool-helpers.js';
 
 export const SMITH_SETTINGS_OPERATIONS = [
@@ -16,6 +16,13 @@ export const SMITH_SETTINGS_OPERATIONS = [
   'catalog_template_variables',
   'catalog_models',
 ] as const;
+
+const READS = {
+  get: IPC.settingsGet,
+  catalog_gates: IPC.catalogGates,
+  catalog_template_variables: IPC.catalogTemplateVariables,
+  catalog_models: IPC.catalogAgentModels,
+} as const;
 
 export function smithSettingsTool(deps: SmithActionToolDeps): ToolDefinition {
   return defineTool({
@@ -35,10 +42,7 @@ export function smithSettingsTool(deps: SmithActionToolDeps): ToolDefinition {
     execute: async (_id, params) => {
       const op = parseOperation(params, SMITH_SETTINGS_OPERATIONS);
       if (!op) return json({ ok: false, error: 'unknown operation' });
-      if (op === 'get') return immediate(deps, IPC.settingsGet);
-      if (op === 'catalog_gates') return immediate(deps, IPC.catalogGates);
-      if (op === 'catalog_template_variables') return immediate(deps, IPC.catalogTemplateVariables);
-      if (op === 'catalog_models') return immediate(deps, IPC.catalogAgentModels);
+      if (op !== 'patch') return immediate(deps, READS[op]);
       const patch = objectField(params, 'patch');
       if (!patch) return json({ ok: false, error: 'patch must be an object' });
       return proposeAction(deps, {

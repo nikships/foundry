@@ -65,10 +65,12 @@ export default function InterruptSheet({
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const contextBits = [
-    interrupt.runId ? `run ${interrupt.runId.slice(0, 8)}` : null,
-    interrupt.phaseId ? `phase ${interrupt.phaseId}` : null,
-  ].filter(Boolean);
+  const context = [
+    interrupt.runId && `run ${interrupt.runId.slice(0, 8)}`,
+    interrupt.phaseId && `phase ${interrupt.phaseId}`,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <ModalShell
@@ -83,9 +85,7 @@ export default function InterruptSheet({
         <span className={`badge ${styles.kind}`}>checkpoint</span>
         <h2 id="interrupt-title">{interrupt.title}</h2>
       </header>
-      {contextBits.length > 0 && (
-        <p className={`${styles.context} mono faint`}>{contextBits.join(' · ')}</p>
-      )}
+      {context && <p className={`${styles.context} mono faint`}>{context}</p>}
       <p className={`${styles.body} selectable`}>{interrupt.body}</p>
       <label className="field">
         <span>

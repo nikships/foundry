@@ -158,10 +158,7 @@ export class RunRegistry extends EventEmitter {
     }
     if (!entry) return { breakdown: null, reason: 'not_live' };
     if (!answer) return { breakdown: null, reason: 'not_started' };
-    return {
-      breakdown: null,
-      reason: 'unanswered',
-    };
+    return { breakdown: null, reason: 'unanswered' };
   }
 
   start(input: ExecutorInput): string {

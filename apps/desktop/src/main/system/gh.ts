@@ -79,20 +79,37 @@ function safeParse<T>(text: string): T | null {
   }
 }
 
+/** gh prints the URL of what it just created as the last https line on stdout. */
+function createdUrl(stdout: string): string | undefined {
+  return stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('https://'))
+    .pop();
+}
+
+function numberFromUrl(url: string | undefined, kind: 'pull' | 'issues'): number | undefined {
+  const parsed = Number(url && new RegExp(`/${kind}/(\\d+)`).exec(url)?.[1]);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 /**
  * Whether PR features can work for this repo, checked in the order the fixes
  * differ: install gh, sign in, then have a remote GitHub can resolve.
  */
+/** Installed and signed in, or the reason not. Checked from `cwd`. */
+async function ghUsable(bin: string, cwd: string): Promise<string | null> {
+  const version = await gh(bin, cwd, ['--version'], 10_000);
+  if (!version.ok) return 'GitHub CLI (gh) is not installed or not on PATH';
+  const auth = await gh(bin, cwd, ['auth', 'status'], 15_000);
+  if (!auth.ok) return 'gh is not signed in — run `gh auth login` in a terminal';
+  return null;
+}
+
 export async function ghStatus(repo: string, opts: GhOptions = {}): Promise<GhStatus> {
   const bin = opts.bin ?? 'gh';
-  const version = await gh(bin, repo, ['--version'], 10_000);
-  if (!version.ok) {
-    return { available: false, detail: 'GitHub CLI (gh) is not installed or not on PATH' };
-  }
-  const auth = await gh(bin, repo, ['auth', 'status'], 15_000);
-  if (!auth.ok) {
-    return { available: false, detail: 'gh is not signed in — run `gh auth login` in a terminal' };
-  }
+  const unusable = await ghUsable(bin, repo);
+  if (unusable) return { available: false, detail: unusable };
   const view = await gh(bin, repo, ['repo', 'view', '--json', 'nameWithOwner'], 30_000);
   if (!view.ok) {
     return {
@@ -100,8 +117,7 @@ export async function ghStatus(repo: string, opts: GhOptions = {}): Promise<GhSt
       detail: firstLine(view) || 'gh could not resolve this repo on GitHub',
     };
   }
-  const parsed = safeParse<{ nameWithOwner?: string }>(view.stdout);
-  const name = parsed?.nameWithOwner;
+  const name = safeParse<{ nameWithOwner?: string }>(view.stdout)?.nameWithOwner;
   return {
     available: true,
     detail: name ? `gh is signed in; repo resolves to ${name}` : 'gh is signed in',
@@ -120,14 +136,8 @@ export async function ghStatus(repo: string, opts: GhOptions = {}): Promise<GhSt
 export async function githubAccount(opts: GhOptions = {}): Promise<GithubAccount> {
   const bin = opts.bin ?? 'gh';
   const cwd = homedir();
-  const version = await gh(bin, cwd, ['--version'], 10_000);
-  if (!version.ok) {
-    return { available: false, detail: 'GitHub CLI (gh) is not installed or not on PATH' };
-  }
-  const auth = await gh(bin, cwd, ['auth', 'status'], 15_000);
-  if (!auth.ok) {
-    return { available: false, detail: 'gh is not signed in — run `gh auth login` in a terminal' };
-  }
+  const unusable = await ghUsable(bin, cwd);
+  if (unusable) return { available: false, detail: unusable };
   const user = await gh(bin, cwd, ['api', 'user'], 30_000);
   const login = safeParse<{ login?: string }>(user.stdout)?.login;
   if (!user.ok || !login) {
@@ -140,15 +150,15 @@ export async function githubAccount(opts: GhOptions = {}): Promise<GithubAccount
   const orgsResult = await gh(bin, cwd, ['api', 'user/orgs', '--paginate'], 30_000);
   const orgs = orgsResult.ok
     ? (safeParse<{ login?: string }[]>(orgsResult.stdout) ?? [])
-        .map((o) => o?.login)
-        .filter((name): name is string => !!name)
+        .map((org) => org?.login)
+        .filter((name): name is string => !!name && name !== login)
     : [];
 
   return {
     available: true,
     detail: `signed in as ${login}`,
     login,
-    owners: [login, ...orgs.filter((name) => name !== login)],
+    owners: [login, ...orgs],
   };
 }
 
@@ -226,7 +236,7 @@ export async function createRepo(
     `${created.stdout}\n${created.stderr}`
       .split('\n')
       .map((line) => line.trim())
-      .find((line) => /^https:\/\/github\.com\//.test(line)) ?? `https://github.com/${target}`;
+      .find((line) => line.startsWith('https://github.com/')) ?? `https://github.com/${target}`;
 
   return { ok: true, detail: `created ${target}`, url, nameWithOwner: target, path };
 }
@@ -238,6 +248,19 @@ interface PrRef {
   baseRefName: string;
 }
 
+/**
+ * A PR without a number and URL cannot be acted on, so a row missing either is
+ * treated as "no PR" rather than partially trusted.
+ */
+function identifiedPr<T extends { number?: number; url?: string }>(
+  result: GhResult,
+): (T & { number: number; url: string }) | null {
+  if (!result.ok) return null;
+  const parsed = safeParse<T>(result.stdout);
+  if (!parsed || typeof parsed.number !== 'number' || typeof parsed.url !== 'string') return null;
+  return parsed as T & { number: number; url: string };
+}
+
 /** The PR for a branch or number, or null when none exists. */
 export async function viewPr(
   repo: string,
@@ -245,15 +268,15 @@ export async function viewPr(
   opts: GhOptions = {},
 ): Promise<PrRef | null> {
   const bin = opts.bin ?? 'gh';
-  const r = await gh(
-    bin,
-    repo,
-    ['pr', 'view', String(ref), '--json', 'number,url,headRefName,baseRefName'],
-    30_000,
+  const parsed = identifiedPr<Partial<PrRef>>(
+    await gh(
+      bin,
+      repo,
+      ['pr', 'view', String(ref), '--json', 'number,url,headRefName,baseRefName'],
+      30_000,
+    ),
   );
-  if (!r.ok) return null;
-  const parsed = safeParse<Partial<PrRef>>(r.stdout);
-  if (!parsed || typeof parsed.number !== 'number' || typeof parsed.url !== 'string') return null;
+  if (!parsed) return null;
   return {
     number: parsed.number,
     url: parsed.url,
@@ -276,20 +299,15 @@ export async function viewPrMergeState(
   opts: GhOptions = {},
 ): Promise<PrMergeState | null> {
   const bin = opts.bin ?? 'gh';
-  const r = await gh(
-    bin,
-    repo,
-    ['pr', 'view', String(ref), '--json', 'number,url,state,mergedAt'],
-    30_000,
-  );
-  if (!r.ok) return null;
-  const parsed = safeParse<{
+  const parsed = identifiedPr<{
     number?: number;
     url?: string;
     state?: string;
     mergedAt?: string | null;
-  }>(r.stdout);
-  if (!parsed || typeof parsed.number !== 'number' || typeof parsed.url !== 'string') return null;
+  }>(
+    await gh(bin, repo, ['pr', 'view', String(ref), '--json', 'number,url,state,mergedAt'], 30_000),
+  );
+  if (!parsed) return null;
   const state = parsed.state ?? '';
   const merged = state.toUpperCase() === 'MERGED' || Boolean(parsed.mergedAt);
   return {
@@ -347,17 +365,11 @@ export async function openPr(
     return { ok: false, detail: firstLine(created) || 'gh pr create failed' };
   }
 
-  // gh prints the new PR's URL as the last non-empty stdout line.
-  const url = created.stdout
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => /^https:\/\//.test(line))
-    .pop();
-  const number = url ? Number(/\/pull\/(\d+)/.exec(url)?.[1]) : NaN;
+  const url = createdUrl(created.stdout);
   return {
     ok: true,
     detail: url ? `opened ${url}` : created.stdout.trim() || 'pull request opened',
-    number: Number.isFinite(number) ? number : undefined,
+    number: numberFromUrl(url, 'pull'),
     url,
   };
 }
@@ -398,14 +410,9 @@ export async function createIssue(
     return { ok: false, detail: firstLine(created) || 'gh issue create failed' };
   }
 
-  // gh prints the new issue's URL as the last non-empty stdout line.
-  const url = created.stdout
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => /^https:\/\//.test(line))
-    .pop();
-  const number = url ? Number(/\/issues\/(\d+)/.exec(url)?.[1]) : NaN;
-  if (!url || !Number.isFinite(number)) {
+  const url = createdUrl(created.stdout);
+  const number = numberFromUrl(url, 'issues');
+  if (!url || number === undefined) {
     return {
       ok: false,
       detail: `gh issue create did not report an issue URL: ${created.stdout.trim() || 'empty output'}`,
@@ -420,22 +427,29 @@ export async function createIssue(
  * list row has room for. Failure wins over pending: a red check is the fact
  * to surface even while others still spin.
  */
+const FAILING_STATES = new Set([
+  'FAILURE',
+  'ERROR',
+  'TIMED_OUT',
+  'ACTION_REQUIRED',
+  'STARTUP_FAILURE',
+]);
+const PENDING_STATES = new Set(['EXPECTED', 'PENDING', 'QUEUED', 'IN_PROGRESS', '']);
+
 export function summarizeChecks(rollup: unknown): PrChecks {
   if (!Array.isArray(rollup) || rollup.length === 0) return 'none';
-  const failing = new Set(['FAILURE', 'ERROR', 'TIMED_OUT', 'ACTION_REQUIRED', 'STARTUP_FAILURE']);
-  const pendingStates = new Set(['EXPECTED', 'PENDING', 'QUEUED', 'IN_PROGRESS', '']);
   let sawFailing = false;
   let sawPending = false;
   for (const item of rollup) {
-    const c = (item ?? {}) as Record<string, unknown>;
-    const status = String(c.status ?? '').toUpperCase();
+    const check = (item ?? {}) as Record<string, unknown>;
+    const status = String(check.status ?? '').toUpperCase();
     if (status && status !== 'COMPLETED') {
       sawPending = true;
       continue;
     }
-    const state = String(c.state ?? c.conclusion ?? '').toUpperCase();
-    if (failing.has(state)) sawFailing = true;
-    else if (pendingStates.has(state)) sawPending = true;
+    const state = String(check.state ?? check.conclusion ?? '').toUpperCase();
+    if (FAILING_STATES.has(state)) sawFailing = true;
+    else if (PENDING_STATES.has(state)) sawPending = true;
   }
   if (sawFailing) return 'failing';
   return sawPending ? 'pending' : 'passing';
@@ -457,8 +471,12 @@ interface RawPr {
   statusCheckRollup?: unknown;
 }
 
+const MERGEABLE: Record<string, PullRequest['mergeable']> = {
+  MERGEABLE: 'mergeable',
+  CONFLICTING: 'conflicting',
+};
+
 function mapPr(raw: RawPr): PullRequest {
-  const mergeable = String(raw.mergeable ?? '').toUpperCase();
   return {
     number: raw.number,
     title: raw.title,
@@ -471,12 +489,7 @@ function mapPr(raw: RawPr): PullRequest {
     deletions: raw.deletions ?? 0,
     isDraft: !!raw.isDraft,
     checks: summarizeChecks(raw.statusCheckRollup),
-    mergeable:
-      mergeable === 'MERGEABLE'
-        ? 'mergeable'
-        : mergeable === 'CONFLICTING'
-          ? 'conflicting'
-          : 'unknown',
+    mergeable: MERGEABLE[String(raw.mergeable ?? '').toUpperCase()] ?? 'unknown',
     reviewDecision: raw.reviewDecision ?? '',
   };
 }
@@ -526,18 +539,11 @@ export async function mergePr(
   const bin = opts.bin ?? 'gh';
   const pr = await viewPr(repo, prNumber, opts);
   const merged = await gh(bin, repo, ['pr', 'merge', String(prNumber), `--${method}`]);
-  if (!merged.ok) {
-    return {
-      ok: false,
-      detail: firstLine(merged) || 'gh pr merge failed',
-      headRefName: pr?.headRefName,
-      baseRefName: pr?.baseRefName,
-      url: pr?.url,
-    };
-  }
   return {
-    ok: true,
-    detail: `merged #${prNumber} (${method})`,
+    ok: merged.ok,
+    detail: merged.ok
+      ? `merged #${prNumber} (${method})`
+      : firstLine(merged) || 'gh pr merge failed',
     headRefName: pr?.headRefName,
     baseRefName: pr?.baseRefName,
     url: pr?.url,

@@ -1,3 +1,4 @@
+import { cx } from './cx.js';
 import styles from './Toggle.module.css';
 
 /** A labelled on/off switch. The whole row is the control. */
@@ -20,8 +21,8 @@ export function Toggle({
       className={styles.toggle}
       onClick={() => onChange(!checked)}
     >
-      <span className={`${styles.track} ${checked ? styles.trackOn : ''}`} aria-hidden="true">
-        <span className={`${styles.knob} ${checked ? styles.knobOn : ''}`} />
+      <span className={cx(styles.track, checked && styles.trackOn)} aria-hidden="true">
+        <span className={cx(styles.knob, checked && styles.knobOn)} />
       </span>
       <span className={styles.text}>
         <span className={styles.label}>{label}</span>

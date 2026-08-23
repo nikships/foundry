@@ -132,170 +132,168 @@ export default function PhaseDrawer({
   };
 
   return (
-    <>
-      <div className={styles.drawer}>
-        <header className={styles.head}>
-          {phase.kind === 'agent' && <AgentAvatar name={phase.owner} size={34} />}
-          <div className={styles.title}>
-            <div className="row">
-              <h2>{phase.name}</h2>
-              <StatusBadge status={phase.status} />
-              {phase.attempt > 1 && (
-                <span className={`badge ${styles.attempts}`}>attempt {phase.attempt}</span>
-              )}
-            </div>
-            <p className={`faint ${styles.sub} mono`}>
-              {phase.kind}
-              {phase.owner ? ` · ${phase.owner}` : ''}
-              {model ? ` · ${modelLabel(model)}` : ''} · {duration(elapsed)}
-              {usage.reported ? ` · ${tokens(usage.totalTokens)} tok` : ''}
-            </p>
+    <div className={styles.drawer}>
+      <header className={styles.head}>
+        {phase.kind === 'agent' && <AgentAvatar name={phase.owner} size={34} />}
+        <div className={styles.title}>
+          <div className="row">
+            <h2>{phase.name}</h2>
+            <StatusBadge status={phase.status} />
+            {phase.attempt > 1 && (
+              <span className={`badge ${styles.attempts}`}>attempt {phase.attempt}</span>
+            )}
           </div>
-        </header>
-        {phase.description && <p className={`${styles.desc} faint`}>{phase.description}</p>}
-        {phase.error && <p className={`${styles.errorBanner} selectable`}>{phase.error}</p>}
-        <p className={`eyebrow ${styles.eyebrow}`}>
-          <span className="index">01</span>Phase detail
-        </p>
-        <nav className={styles.tabs} data-testid="phase-tabs">
-          {tabs.map((t) => (
-            <button
-              key={t.id}
-              className={`${styles.tab} ${tab === t.id ? styles.active : ''}`}
-              onClick={() => setTab(t.id)}
-              data-testid={`phase-tab-${t.id}`}
-              aria-pressed={tab === t.id}
-            >
-              {t.label}
-              {t.count ? <span className={styles.count}>{t.count}</span> : null}
-            </button>
-          ))}
-        </nav>
-        <div className={`${styles.body} scroll`}>
-          {tab === 'timeline' && (
-            <>
-              <p className={`eyebrow ${styles.sectionLabel}`}>
-                <span className="index">02</span>Timeline
-              </p>
-              {liveTailError && (
-                <p className={styles.inlineError} role="alert">
-                  Live tail: {liveTailError}
-                </p>
-              )}
-              {liveTail && (
-                <CodeBlock maxHeight={240} className={styles.live}>
-                  {liveTail}
-                  <span className={styles.liveCursor} />
-                </CodeBlock>
-              )}
-              <ol className={styles.events}>
-                {timelineEvents.map((event) => (
-                  <li key={event.eventId} className={EVENT_CLASS[event.type] ?? ''}>
-                    <button className={styles.event} onClick={() => toggle(event.eventId)}>
-                      <span className={styles.icon}>{EVENT_ICON[event.type] ?? '·'}</span>
-                      <span className={styles.eventName}>{event.name}</span>
-                      <span className={styles.spacer} />
-                      {event.endedAt && (
-                        <span className={`mono faint ${styles.duration}`}>
-                          {duration(
-                            new Date(event.endedAt).getTime() - new Date(event.startedAt).getTime(),
-                          )}
-                        </span>
-                      )}
-                      <span className={`mono faint ${styles.timestamp}`}>
-                        {clockTime(event.startedAt)}
-                      </span>
-                    </button>
-                    {openEvents.has(event.eventId) && Object.keys(event.payload).length > 0 && (
-                      <JsonView value={event.payload} />
-                    )}
-                  </li>
-                ))}
-              </ol>
-              {!timelineEvents.length && !liveTail && !liveTailError && (
-                <p className={`faint ${styles.padded}`}>Nothing recorded for this phase yet.</p>
-              )}
-            </>
-          )}
-          {tab === 'envelope' && (
-            <>
-              <p className={`eyebrow ${styles.sectionLabel}`}>
-                <span className="index">02</span>Report
-              </p>
-              {envelopes.map((envelope) => (
-                <div key={envelope.envelopeId} className={styles.blockCard}>
-                  <div className={`spread ${styles.blockHead}`}>
-                    <span className="mono faint">
-                      attempt {envelope.attempt} · {envelope.schemaKind}
-                    </span>
-                    <StatusBadge
-                      status={envelope.valid ? 'success' : 'fail'}
-                      label={envelope.valid ? 'parsed' : 'did not parse'}
-                    />
-                  </div>
-                  <JsonView value={envelope.payload} />
-                </div>
-              ))}
-              {!envelopes.length && (
-                <p className={`faint ${styles.padded}`}>This phase did not return a report.</p>
-              )}
-            </>
-          )}
-          {tab === 'gates' && (
-            <>
-              <p className={`eyebrow ${styles.sectionLabel}`}>
-                <span className="index">02</span>Checks
-              </p>
-              {gates.map((gate) => (
-                <div key={gate.id} className={styles.blockCard}>
-                  <div className={`spread ${styles.blockHead}`}>
-                    <span className={`${styles.gateName} mono`}>{gate.gate}</span>
-                    <StatusBadge status={gate.passed ? 'success' : 'fail'} />
-                  </div>
-                  <ul className={styles.checks}>
-                    {gate.checks.map((check, i) => (
-                      <li key={i} className={check.ok ? '' : styles.failed}>
-                        <span className={styles.mark}>{check.ok ? '✓' : '✕'}</span>
-                        <span className={styles.checkBody}>
-                          <span className={`mono ${styles.item}`}>{check.item}</span>
-                          <em className="faint">{check.note}</em>
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                  {!gate.checks.length && (
-                    <p className="faint">This check recorded no individual checks.</p>
-                  )}
-                </div>
-              ))}
-              {!gates.length && (
-                <p className={`faint ${styles.padded}`}>No checks ran on this phase.</p>
-              )}
-            </>
-          )}
-          {tab === 'prompt' && (
-            <>
-              <p className={`eyebrow ${styles.sectionLabel}`}>
-                <span className="index">02</span>Prompt
-              </p>
-              {promptLoading && <p className={`faint ${styles.padded}`}>Loading prompt…</p>}
-              {promptError && (
-                <p className={`${styles.inlineError} ${styles.padded}`} role="alert">
-                  {promptError}
-                </p>
-              )}
-              {!promptLoading && !promptError && prompt ? <CodeBlock>{prompt}</CodeBlock> : null}
-              {!promptLoading && !promptError && !prompt && (
-                <p className={`faint ${styles.padded}`}>
-                  {phase.kind === 'agent'
-                    ? 'No prompt was recorded for this phase.'
-                    : 'Only agent phases have prompts.'}
-                </p>
-              )}
-            </>
-          )}
+          <p className={`faint ${styles.sub} mono`}>
+            {phase.kind}
+            {phase.owner ? ` · ${phase.owner}` : ''}
+            {model ? ` · ${modelLabel(model)}` : ''} · {duration(elapsed)}
+            {usage.reported ? ` · ${tokens(usage.totalTokens)} tok` : ''}
+          </p>
         </div>
+      </header>
+      {phase.description && <p className={`${styles.desc} faint`}>{phase.description}</p>}
+      {phase.error && <p className={`${styles.errorBanner} selectable`}>{phase.error}</p>}
+      <p className={`eyebrow ${styles.eyebrow}`}>
+        <span className="index">01</span>Phase detail
+      </p>
+      <nav className={styles.tabs} data-testid="phase-tabs">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            className={`${styles.tab} ${tab === t.id ? styles.active : ''}`}
+            onClick={() => setTab(t.id)}
+            data-testid={`phase-tab-${t.id}`}
+            aria-pressed={tab === t.id}
+          >
+            {t.label}
+            {t.count ? <span className={styles.count}>{t.count}</span> : null}
+          </button>
+        ))}
+      </nav>
+      <div className={`${styles.body} scroll`}>
+        {tab === 'timeline' && (
+          <>
+            <p className={`eyebrow ${styles.sectionLabel}`}>
+              <span className="index">02</span>Timeline
+            </p>
+            {liveTailError && (
+              <p className={styles.inlineError} role="alert">
+                Live tail: {liveTailError}
+              </p>
+            )}
+            {liveTail && (
+              <CodeBlock maxHeight={240} className={styles.live}>
+                {liveTail}
+                <span className={styles.liveCursor} />
+              </CodeBlock>
+            )}
+            <ol className={styles.events}>
+              {timelineEvents.map((event) => (
+                <li key={event.eventId} className={EVENT_CLASS[event.type] ?? ''}>
+                  <button className={styles.event} onClick={() => toggle(event.eventId)}>
+                    <span className={styles.icon}>{EVENT_ICON[event.type] ?? '·'}</span>
+                    <span className={styles.eventName}>{event.name}</span>
+                    <span className={styles.spacer} />
+                    {event.endedAt && (
+                      <span className={`mono faint ${styles.duration}`}>
+                        {duration(
+                          new Date(event.endedAt).getTime() - new Date(event.startedAt).getTime(),
+                        )}
+                      </span>
+                    )}
+                    <span className={`mono faint ${styles.timestamp}`}>
+                      {clockTime(event.startedAt)}
+                    </span>
+                  </button>
+                  {openEvents.has(event.eventId) && Object.keys(event.payload).length > 0 && (
+                    <JsonView value={event.payload} />
+                  )}
+                </li>
+              ))}
+            </ol>
+            {!timelineEvents.length && !liveTail && !liveTailError && (
+              <p className={`faint ${styles.padded}`}>Nothing recorded for this phase yet.</p>
+            )}
+          </>
+        )}
+        {tab === 'envelope' && (
+          <>
+            <p className={`eyebrow ${styles.sectionLabel}`}>
+              <span className="index">02</span>Report
+            </p>
+            {envelopes.map((envelope) => (
+              <div key={envelope.envelopeId} className={styles.blockCard}>
+                <div className={`spread ${styles.blockHead}`}>
+                  <span className="mono faint">
+                    attempt {envelope.attempt} · {envelope.schemaKind}
+                  </span>
+                  <StatusBadge
+                    status={envelope.valid ? 'success' : 'fail'}
+                    label={envelope.valid ? 'parsed' : 'did not parse'}
+                  />
+                </div>
+                <JsonView value={envelope.payload} />
+              </div>
+            ))}
+            {!envelopes.length && (
+              <p className={`faint ${styles.padded}`}>This phase did not return a report.</p>
+            )}
+          </>
+        )}
+        {tab === 'gates' && (
+          <>
+            <p className={`eyebrow ${styles.sectionLabel}`}>
+              <span className="index">02</span>Checks
+            </p>
+            {gates.map((gate) => (
+              <div key={gate.id} className={styles.blockCard}>
+                <div className={`spread ${styles.blockHead}`}>
+                  <span className={`${styles.gateName} mono`}>{gate.gate}</span>
+                  <StatusBadge status={gate.passed ? 'success' : 'fail'} />
+                </div>
+                <ul className={styles.checks}>
+                  {gate.checks.map((check, i) => (
+                    <li key={i} className={check.ok ? '' : styles.failed}>
+                      <span className={styles.mark}>{check.ok ? '✓' : '✕'}</span>
+                      <span className={styles.checkBody}>
+                        <span className={`mono ${styles.item}`}>{check.item}</span>
+                        <em className="faint">{check.note}</em>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                {!gate.checks.length && (
+                  <p className="faint">This check recorded no individual checks.</p>
+                )}
+              </div>
+            ))}
+            {!gates.length && (
+              <p className={`faint ${styles.padded}`}>No checks ran on this phase.</p>
+            )}
+          </>
+        )}
+        {tab === 'prompt' && (
+          <>
+            <p className={`eyebrow ${styles.sectionLabel}`}>
+              <span className="index">02</span>Prompt
+            </p>
+            {promptLoading && <p className={`faint ${styles.padded}`}>Loading prompt…</p>}
+            {promptError && (
+              <p className={`${styles.inlineError} ${styles.padded}`} role="alert">
+                {promptError}
+              </p>
+            )}
+            {!promptLoading && !promptError && prompt ? <CodeBlock>{prompt}</CodeBlock> : null}
+            {!promptLoading && !promptError && !prompt && (
+              <p className={`faint ${styles.padded}`}>
+                {phase.kind === 'agent'
+                  ? 'No prompt was recorded for this phase.'
+                  : 'Only agent phases have prompts.'}
+              </p>
+            )}
+          </>
+        )}
       </div>
-    </>
+    </div>
   );
 }

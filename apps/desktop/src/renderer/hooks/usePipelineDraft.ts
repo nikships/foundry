@@ -55,33 +55,43 @@ function withLocalCanvas(pipeline: PipelineDef): PipelineDef {
   return stored ? { ...pipeline, canvas: stored } : pipeline;
 }
 
+function clonePhase(phase: PhaseDef): PhaseDef {
+  return {
+    ...phase,
+    prompt: phase.prompt
+      ? { ...phase.prompt, inputs: [...(phase.prompt.inputs ?? [])] }
+      : undefined,
+    command: phase.command
+      ? 'argv' in phase.command
+        ? { ...phase.command, argv: [...phase.command.argv] }
+        : { ...phase.command }
+      : undefined,
+    gates: phase.gates ? [...phase.gates] : undefined,
+  };
+}
+
+function cloneCanvas(canvas: PipelineCanvas | undefined): PipelineCanvas | undefined {
+  if (!canvas) return undefined;
+  return {
+    nodes: canvas.nodes
+      ? Object.fromEntries(Object.entries(canvas.nodes).map(([name, at]) => [name, { ...at }]))
+      : undefined,
+    viewport: canvas.viewport ? { ...canvas.viewport } : undefined,
+  };
+}
+
 function clonePipeline(p: PipelineDef): PipelineDef {
   return {
     ...p,
     acceptance: { ...p.acceptance },
-    phases: p.phases.map((phase) => ({
-      ...phase,
-      prompt: phase.prompt
-        ? { ...phase.prompt, inputs: phase.prompt.inputs ? [...phase.prompt.inputs] : [] }
-        : undefined,
-      command: phase.command
-        ? 'argv' in phase.command
-          ? { ...phase.command, argv: [...phase.command.argv] }
-          : { ...phase.command }
-        : undefined,
-      gates: phase.gates ? [...phase.gates] : undefined,
-    })),
-    canvas: p.canvas
-      ? {
-          nodes: p.canvas.nodes
-            ? Object.fromEntries(
-                Object.entries(p.canvas.nodes).map(([name, point]) => [name, { ...point }]),
-              )
-            : undefined,
-          viewport: p.canvas.viewport ? { ...p.canvas.viewport } : undefined,
-        }
-      : undefined,
+    phases: p.phases.map(clonePhase),
+    canvas: cloneCanvas(p.canvas),
   };
+}
+
+/** Load a pipeline into a fresh draft, preferring the operator's local canvas. */
+function draftFrom(pipeline: PipelineDef | null): PipelineDef | null {
+  return pipeline ? withLocalCanvas(clonePipeline(pipeline)) : null;
 }
 
 function canvasForPhases(phases: PhaseDef[], canvas: PipelineCanvas | undefined): PipelineCanvas {
@@ -94,6 +104,25 @@ function canvasForPhases(phases: PhaseDef[], canvas: PipelineCanvas | undefined)
 
 function formatIssues(issues: ValidationIssue[]): string {
   return issues.map((issue) => issue.message).join(' ');
+}
+
+function errorMessage(err: unknown, fallback = ''): string {
+  const message = err instanceof Error ? err.message : String(err);
+  return message || fallback;
+}
+
+/** Rename or drop a node in the canvas map, leaving the canvas alone otherwise. */
+function renameCanvasNode(
+  canvas: PipelineCanvas | undefined,
+  from: string | undefined,
+  to: string | null,
+): PipelineCanvas | undefined {
+  const nodes = canvas?.nodes;
+  if (!from || !nodes?.[from]) return canvas;
+  const entries = Object.entries(nodes)
+    .filter(([name]) => to !== null || name !== from)
+    .map(([name, at]) => [name === from && to !== null ? to : name, at] as const);
+  return { ...canvas, nodes: Object.fromEntries(entries) };
 }
 
 export function usePipelineDraft(deepLink?: {
@@ -154,10 +183,11 @@ export function usePipelineDraft(deepLink?: {
   const pendingSaveRef = useRef<PipelineDef | null>(null);
   const preserveSelectionRef = useRef<{ id: string; phase: number | null } | null>(null);
 
-  const selected = useMemo(() => {
-    if (selectedId) return pipelines.find((p) => p.id === selectedId) ?? null;
-    return pipelines[0] ?? null;
-  }, [pipelines, selectedId]);
+  const selected = useMemo(
+    () =>
+      selectedId ? (pipelines.find((p) => p.id === selectedId) ?? null) : (pipelines[0] ?? null),
+    [pipelines, selectedId],
+  );
 
   // Synchronize selectedId if pipelines change or if initially unset.
   // A just-created / duplicated id must not snap back to pipelines[0] while
@@ -199,17 +229,12 @@ export function usePipelineDraft(deepLink?: {
     if (preserved && selectedId === preserved.id && currentId !== preserved.id) {
       return;
     }
-    if (currentId !== prevSelectedIdRef.current) {
-      prevSelectedIdRef.current = currentId;
-      if (preserved && preserved.id === currentId) {
-        preserveSelectionRef.current = null;
-        setDraft(selected ? withLocalCanvas(clonePipeline(selected)) : null);
-        setActivePhase(preserved.phase);
-        return;
-      }
-      setDraft(selected ? withLocalCanvas(clonePipeline(selected)) : null);
-      setActivePhase(null);
-    }
+    if (currentId === prevSelectedIdRef.current) return;
+    prevSelectedIdRef.current = currentId;
+    const restoredPhase = preserved?.id === currentId ? preserved.phase : null;
+    if (preserved?.id === currentId) preserveSelectionRef.current = null;
+    setDraft(draftFrom(selected));
+    setActivePhase(restoredPhase);
   }, [selected, selectedId]);
 
   const commandNames = useMemo(
@@ -217,6 +242,10 @@ export function usePipelineDraft(deepLink?: {
     [project?.commands],
   );
   const agents = useMemo(() => appAgents.map((r) => r.name), [appAgents]);
+  const preferredAgent = useMemo(
+    () => (agents.includes('builder') ? 'builder' : (agents[0] ?? 'builder')),
+    [agents],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -259,8 +288,7 @@ export function usePipelineDraft(deepLink?: {
         await refreshAll();
         return true;
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        setActionError(message || 'Could not save this pipeline.');
+        setActionError(errorMessage(err, 'Could not save this pipeline.'));
         console.error('Failed to save pipeline draft:', err);
         return false;
       } finally {
@@ -270,41 +298,43 @@ export function usePipelineDraft(deepLink?: {
     [projectId, refreshAll],
   );
 
+  const clearSaveTimer = useCallback((): void => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = null;
+  }, []);
+
+  /** Drop a queued save outright — used before a delete or a reset. */
+  const cancelPendingSave = useCallback((): void => {
+    clearSaveTimer();
+    pendingSaveRef.current = null;
+  }, [clearSaveTimer]);
+
   // Debounced auto-save
   const scheduleSave = useCallback(
     (next: PipelineDef): void => {
       pendingSaveRef.current = next;
       setSaving(true);
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      clearSaveTimer();
       saveTimerRef.current = setTimeout(() => {
-        if (pendingSaveRef.current) {
-          void commitSave(pendingSaveRef.current);
-          pendingSaveRef.current = null;
-        }
+        const pending = pendingSaveRef.current;
+        if (!pending) return;
+        pendingSaveRef.current = null;
+        void commitSave(pending);
       }, 600);
     },
-    [commitSave],
+    [clearSaveTimer, commitSave],
   );
 
   // Flush any pending save before unmounting or switching
   const flushSave = useCallback(async (): Promise<void> => {
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
-    if (pendingSaveRef.current) {
-      const p = pendingSaveRef.current;
-      pendingSaveRef.current = null;
-      await commitSave(p);
-    }
-  }, [commitSave]);
+    clearSaveTimer();
+    const pending = pendingSaveRef.current;
+    if (!pending) return;
+    pendingSaveRef.current = null;
+    await commitSave(pending);
+  }, [clearSaveTimer, commitSave]);
 
-  useEffect(
-    () => () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    },
-    [],
-  );
+  useEffect(() => clearSaveTimer, [clearSaveTimer]);
 
   const updateDraft = useCallback(
     (patch: Partial<PipelineDef>): void => {
@@ -334,10 +364,18 @@ export function usePipelineDraft(deepLink?: {
     [flushSave, selectedId],
   );
 
+  /** Install a freshly created / duplicated pipeline as the live draft. */
+  const adoptPipeline = useCallback((pipeline: PipelineDef, phase: number | null): void => {
+    preserveSelectionRef.current = { id: pipeline.id, phase };
+    setSelectedId(pipeline.id);
+    setDraft(draftFrom(pipeline));
+    setIssues([]);
+    setActivePhase(phase);
+  }, []);
+
   const createPipeline = useCallback(async (): Promise<boolean> => {
     setActionError('');
     await flushSave();
-    const preferredAgent = agents.includes('builder') ? 'builder' : (agents[0] ?? 'builder');
     const fresh = newPipelineDraft({ existing: pipelines, preferredAgent });
     try {
       const result = await api.pipelines.save(plain(fresh), projectId || undefined);
@@ -346,19 +384,14 @@ export function usePipelineDraft(deepLink?: {
         return false;
       }
       await refreshAll();
-      if (fresh.canvas) persistCanvas(fresh.id, fresh.canvas);
-      preserveSelectionRef.current = { id: fresh.id, phase: 0 };
-      setSelectedId(fresh.id);
-      setDraft(withLocalCanvas(clonePipeline(fresh)));
-      setIssues([]);
-      setActivePhase(0);
+      persistCanvas(fresh.id, fresh.canvas);
+      adoptPipeline(fresh, 0);
       return true;
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setActionError(message || 'Could not create that pipeline.');
+      setActionError(errorMessage(err, 'Could not create that pipeline.'));
       return false;
     }
-  }, [agents, flushSave, pipelines, projectId, refreshAll]);
+  }, [adoptPipeline, flushSave, pipelines, preferredAgent, projectId, refreshAll]);
 
   const duplicate = useCallback(async (): Promise<boolean> => {
     if (!draft) return false;
@@ -371,45 +404,32 @@ export function usePipelineDraft(deepLink?: {
         return false;
       }
       await refreshAll();
-      preserveSelectionRef.current = { id: copy.id, phase: null };
-      setSelectedId(copy.id);
-      setDraft(withLocalCanvas(clonePipeline(copy)));
-      setIssues([]);
-      setActivePhase(null);
+      adoptPipeline(copy, null);
       return true;
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setActionError(message || 'Could not duplicate that pipeline.');
+      setActionError(errorMessage(err, 'Could not duplicate that pipeline.'));
       return false;
     }
-  }, [draft, flushSave, projectId, refreshAll]);
+  }, [adoptPipeline, draft, flushSave, projectId, refreshAll]);
 
   const remove = useCallback(async (): Promise<void> => {
     if (!draft || pipelines.length <= 1) return;
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-      pendingSaveRef.current = null;
-    }
+    cancelPendingSave();
     await api.pipelines.remove(draft.id, projectId || undefined);
     const nextList = pipelines.filter((p) => p.id !== draft.id);
     await refreshAll();
-    if (nextList.length > 0) {
-      setSelectedId(nextList[0].id);
-    }
-  }, [draft, pipelines, projectId, refreshAll]);
+    if (nextList.length > 0) setSelectedId(nextList[0].id);
+  }, [cancelPendingSave, draft, pipelines, projectId, refreshAll]);
 
   const resetToShipped = useCallback(async (): Promise<void> => {
     if (!draft?.builtin) return;
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = null;
-    pendingSaveRef.current = null;
+    cancelPendingSave();
     setSaving(false);
     setActionError('');
     try {
       const next = await api.pipelines.reset(draft.id, projectId || undefined);
       const reset = next.find((pipeline) => pipeline.id === draft.id);
-      if (reset) setDraft(withLocalCanvas(clonePipeline(reset)));
+      if (reset) setDraft(draftFrom(reset));
       setStaleBuiltins((current) => {
         const updated = new Set(current);
         updated.delete(draft.id);
@@ -417,28 +437,19 @@ export function usePipelineDraft(deepLink?: {
       });
       await refreshAll();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : String(err));
+      setActionError(errorMessage(err));
     }
-  }, [draft, projectId, refreshAll]);
+  }, [cancelPendingSave, draft, projectId, refreshAll]);
 
   const updatePhase = useCallback(
     (index: number, patch: Partial<PhaseDef>): void => {
       if (!draft) return;
       const phases = draft.phases.map((phase, i) => (i === index ? { ...phase, ...patch } : phase));
       const previousName = draft.phases[index]?.name;
-      const nextName = phases[index]?.name;
-      const nodes = draft.canvas?.nodes;
+      const nextName = phases[index]?.name ?? null;
       const canvas =
-        previousName && nextName && previousName !== nextName && nodes?.[previousName]
-          ? {
-              ...draft.canvas,
-              nodes: Object.fromEntries(
-                Object.entries(nodes).map(([name, point]) => [
-                  name === previousName ? nextName : name,
-                  point,
-                ]),
-              ),
-            }
+        nextName && nextName !== previousName
+          ? renameCanvasNode(draft.canvas, previousName, nextName)
           : draft.canvas;
       updateDraft({ phases, canvas });
     },
@@ -449,7 +460,6 @@ export function usePipelineDraft(deepLink?: {
     (kind: PhaseKind, at?: number): number => {
       if (!draft) return 0;
       const taken = new Set(draft.phases.map((p) => p.name));
-      const preferredAgent = agents.includes('builder') ? 'builder' : (agents[0] ?? 'builder');
       const phase = blankPhase(kind, taken, { preferredAgent, commandNames });
       const index =
         at != null ? Math.min(Math.max(0, at), draft.phases.length) : draft.phases.length;
@@ -459,7 +469,7 @@ export function usePipelineDraft(deepLink?: {
       setActivePhase(index);
       return index;
     },
-    [agents, commandNames, draft, updateDraft],
+    [commandNames, draft, preferredAgent, updateDraft],
   );
 
   const movePhase = useCallback(
@@ -481,20 +491,9 @@ export function usePipelineDraft(deepLink?: {
       if (!draft) return;
       const removedName = draft.phases[index]?.name;
       const phases = draft.phases.filter((_, i) => i !== index);
-      const nodes = draft.canvas?.nodes;
-      const canvas =
-        removedName && nodes?.[removedName]
-          ? {
-              ...draft.canvas,
-              nodes: Object.fromEntries(
-                Object.entries(nodes).filter(([name]) => name !== removedName),
-              ),
-            }
-          : draft.canvas;
-      updateDraft({ phases, canvas });
+      updateDraft({ phases, canvas: renameCanvasNode(draft.canvas, removedName, null) });
       setActivePhase((cur) => {
-        if (cur === null) return null;
-        if (cur === index) return null;
+        if (cur === null || cur === index) return null;
         return cur > index ? cur - 1 : cur;
       });
     },
@@ -509,15 +508,17 @@ export function usePipelineDraft(deepLink?: {
   const setAcceptanceKind = useCallback(
     (kind: Acceptance['kind']): void => {
       if (!draft) return;
-      const fallback = draft.phases[draft.phases.length - 1]?.name ?? '';
       const cur = draft.acceptance;
-      const phase = 'phase' in cur ? cur.phase : fallback;
-      const acceptance: Acceptance =
-        kind === 'phase_flag'
-          ? { kind, phase, flag: cur.kind === 'phase_flag' ? cur.flag : 'approved' }
-          : kind === 'envelope_status'
-            ? { kind, phase }
-            : { kind };
+      const phase =
+        'phase' in cur ? cur.phase : (draft.phases[draft.phases.length - 1]?.name ?? '');
+      let acceptance: Acceptance;
+      if (kind === 'phase_flag') {
+        acceptance = { kind, phase, flag: cur.kind === 'phase_flag' ? cur.flag : 'approved' };
+      } else if (kind === 'envelope_status') {
+        acceptance = { kind, phase };
+      } else {
+        acceptance = { kind };
+      }
       updateDraft({ acceptance });
     },
     [draft, updateDraft],
@@ -525,30 +526,27 @@ export function usePipelineDraft(deepLink?: {
 
   const setAcceptancePhase = useCallback(
     (phase: string): void => {
-      if (!draft) return;
-      const cur = draft.acceptance;
-      if (cur.kind === 'envelope_status' || cur.kind === 'phase_flag') {
-        updateDraft({ acceptance: { ...cur, phase } as Acceptance });
-      }
+      const cur = draft?.acceptance;
+      if (cur?.kind === 'envelope_status') updateDraft({ acceptance: { ...cur, phase } });
+      else if (cur?.kind === 'phase_flag') updateDraft({ acceptance: { ...cur, phase } });
     },
     [draft, updateDraft],
   );
 
   const setAcceptanceFlag = useCallback(
     (flag: string): void => {
-      if (!draft) return;
-      const cur = draft.acceptance;
-      if (cur.kind === 'phase_flag') {
-        updateDraft({ acceptance: { ...cur, flag } as Acceptance });
+      const cur = draft?.acceptance;
+      // The setter takes a plain string so the screen's picker does not have to
+      // carry the union; only the two legal flags are ever offered.
+      if (cur?.kind === 'phase_flag') {
+        updateDraft({ acceptance: { ...cur, flag: flag as typeof cur.flag } });
       }
     },
     [draft, updateDraft],
   );
 
   const setIsolation = useCallback(
-    (isolation: boolean): void => {
-      updateDraft({ isolation });
-    },
+    (isolation: boolean): void => updateDraft({ isolation }),
     [updateDraft],
   );
 
@@ -556,10 +554,9 @@ export function usePipelineDraft(deepLink?: {
     if (!draft) return;
     setDryRunError(null);
     try {
-      const res = await api.pipelines.dryRun(draft.id, projectId, 'Implement the requested task');
-      setDryRun(res);
+      setDryRun(await api.pipelines.dryRun(draft.id, projectId, 'Implement the requested task'));
     } catch (err) {
-      setDryRunError(err instanceof Error ? err.message : String(err));
+      setDryRunError(errorMessage(err));
     }
   }, [draft, projectId]);
 
@@ -568,10 +565,10 @@ export function usePipelineDraft(deepLink?: {
     setDryRunError(null);
   }, []);
 
-  const isDirty = useMemo(() => {
-    if (!draft || !selected) return false;
-    return !pipelineFlowEquals(draft, selected);
-  }, [draft, selected]);
+  const isDirty = useMemo(
+    () => (draft && selected ? !pipelineFlowEquals(draft, selected) : false),
+    [draft, selected],
+  );
 
   return {
     pipelines,

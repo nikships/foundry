@@ -44,16 +44,19 @@ export function usageFor(events: EventRow[]): PhaseUsage {
   return sum;
 }
 
+/** Elapsed time of a span, measured to `now` while it is still open. */
+function elapsed(startedAt: string | null, endedAt: string | null, now: number): number | null {
+  if (!startedAt) return null;
+  const end = endedAt ? new Date(endedAt).getTime() : now;
+  return end - new Date(startedAt).getTime();
+}
+
 export function runDuration(run: RunRow, now = Date.now()): number | null {
-  if (!run.startedAt) return null;
-  const end = run.endedAt ? new Date(run.endedAt).getTime() : now;
-  return end - new Date(run.startedAt).getTime();
+  return elapsed(run.startedAt, run.endedAt, now);
 }
 
 export function phaseDuration(phase: PhaseRow, now: number): number | null {
-  if (!phase.startedAt) return null;
-  const end = phase.endedAt ? new Date(phase.endedAt).getTime() : now;
-  return end - new Date(phase.startedAt).getTime();
+  return elapsed(phase.startedAt, phase.endedAt, now);
 }
 
 /** The model a phase actually ran on, recorded when its agent session opened. */

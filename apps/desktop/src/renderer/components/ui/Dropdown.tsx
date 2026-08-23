@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { cx } from './cx.js';
 import styles from './Dropdown.module.css';
 
 export interface DropdownOption {
@@ -150,6 +151,11 @@ export function Dropdown({
     [close, onChange],
   );
 
+  const pickActive = useCallback((): void => {
+    const option = activeIndex >= 0 ? options[activeIndex] : undefined;
+    if (option) pick(option);
+  }, [activeIndex, options, pick]);
+
   const moveActive = useCallback(
     (delta: number): void => {
       if (!enabledIndexes.length) return;
@@ -214,11 +220,8 @@ export function Dropdown({
     }
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      if (!open) openMenu();
-      else if (activeIndex >= 0) {
-        const option = options[activeIndex];
-        if (option) pick(option);
-      }
+      if (open) pickActive();
+      else openMenu();
       return;
     }
     if (e.key === 'Escape' && open) {
@@ -242,8 +245,7 @@ export function Dropdown({
       if (enabledIndexes.length) setActiveIndex(enabledIndexes[enabledIndexes.length - 1]!);
     } else if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      const option = activeIndex >= 0 ? options[activeIndex] : undefined;
-      if (option) pick(option);
+      pickActive();
     } else if (e.key === 'Escape' || e.key === 'Tab') {
       e.preventDefault();
       close();
@@ -255,9 +257,7 @@ export function Dropdown({
     ? renderValue(selected)
     : selected
       ? selected.label
-      : value
-        ? value
-        : placeholder;
+      : value || placeholder;
 
   const menuStyle: CSSProperties | undefined = pos
     ? {
@@ -272,12 +272,12 @@ export function Dropdown({
   let lastGroup: string | undefined;
 
   return (
-    <div ref={rootRef} className={[styles.root, className].filter(Boolean).join(' ')}>
+    <div ref={rootRef} className={cx(styles.root, className)}>
       <button
         ref={triggerRef}
         id={id}
         type="button"
-        className={['select', styles.trigger, triggerClassName].filter(Boolean).join(' ')}
+        className={cx('select', styles.trigger, triggerClassName)}
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -324,22 +324,18 @@ export function Dropdown({
                     aria-disabled={option.disabled || undefined}
                     className={
                       option.render
-                        ? [
+                        ? cx(
                             styles.customOption,
-                            isActive ? styles.active : '',
-                            option.disabled ? styles.disabled : '',
-                          ]
-                            .filter(Boolean)
-                            .join(' ')
-                        : [
+                            isActive && styles.active,
+                            option.disabled && styles.disabled,
+                          )
+                        : cx(
                             styles.option,
-                            isSelected ? styles.selected : '',
-                            isActive ? styles.active : '',
-                            option.disabled ? styles.disabled : '',
-                            option.description ? styles.rich : '',
-                          ]
-                            .filter(Boolean)
-                            .join(' ')
+                            isSelected && styles.selected,
+                            isActive && styles.active,
+                            option.disabled && styles.disabled,
+                            Boolean(option.description) && styles.rich,
+                          )
                     }
                     onMouseEnter={() => {
                       if (!option.disabled) setActiveIndex(index);

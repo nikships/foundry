@@ -13,6 +13,12 @@
 import type React from 'react';
 
 export type SettingsPaneId = 'models' | 'project' | 'app';
+
+/**
+ * The section groupings this registry is written in, which predate the
+ * three-pane rail. `currentPane` folds them onto the panes that render today,
+ * so a section can be re-homed without rewriting every entry below.
+ */
 type LegacySettingsPaneId =
   'general' | 'providers' | 'defaults' | 'project' | 'maintenance' | 'about';
 
@@ -358,9 +364,8 @@ export function searchSettings(query: string, cap = 12): SettingsHit[] {
 export function paneMatchesQuery(pane: SettingsPaneId, query: string): boolean {
   const q = query.trim();
   if (!q) return true;
-  return searchSettings(q, SETTINGS_SECTIONS.length + SETTINGS_PANES.length).some(
-    (hit) => hit.pane === pane,
-  );
+  const everything = SETTINGS_SECTIONS.length + SETTINGS_PANES.length;
+  return searchSettings(q, everything).some((hit) => hit.pane === pane);
 }
 
 /** Wraps the first case-insensitive occurrence of `q` in a mark. */

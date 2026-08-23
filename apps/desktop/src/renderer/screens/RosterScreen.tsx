@@ -71,6 +71,80 @@ function providerFor(model: string, models: ModelInfo[]): string {
   return models.find((m) => m.id === model)?.provider ?? '';
 }
 
+/** Provider mark plus the model's label — or `inherit` when no connected provider offers the id. */
+function ModelBadge({
+  model,
+  models,
+  size,
+}: {
+  model: string;
+  models: ModelInfo[];
+  size: number;
+}): React.JSX.Element {
+  return (
+    <>
+      <ProviderIcon provider={providerFor(model, models)} size={size} />
+      {model === 'inherit' || !models.some((m) => m.id === model) ? 'inherit' : modelLabel(model)}
+    </>
+  );
+}
+
+function MarkTrigger({
+  draft,
+  size,
+  onClick,
+}: {
+  draft: AgentDef;
+  size: number;
+  onClick: () => void;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      data-mark-trigger
+      aria-label={`Change mark for ${draft.name}`}
+      onClick={onClick}
+      className={styles.avatarTrigger}
+    >
+      <AgentAvatar name={draft.name} emblem={draft.emblem} color={draft.color} size={size} />
+      <span className={styles.avatarTriggerOverlay} aria-hidden />
+    </button>
+  );
+}
+
+function CustomAccentSwatch({
+  color,
+  onChange,
+}: {
+  color: string;
+  onChange: (color: string) => void;
+}): React.JSX.Element {
+  const isCustom = !COLORS.includes(color.toLowerCase());
+  const safeValue = /^#[0-9a-fA-F]{6}$/.test(color) ? color : '#4fa8b8';
+  return (
+    <label
+      className={`${styles.swatch} ${styles.colorPickerWrapper} ${isCustom ? styles.on : ''}`}
+      title="Custom accent color"
+    >
+      <span
+        className={styles.swatchDot}
+        style={{
+          background: isCustom
+            ? color
+            : 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)',
+        }}
+      />
+      <input
+        type="color"
+        aria-label="Custom accent color"
+        value={safeValue}
+        onChange={(e) => onChange(e.target.value.toLowerCase())}
+        className={styles.colorInput}
+      />
+    </label>
+  );
+}
+
 export default function RosterScreen({
   onOpenDesignTab,
   openAgent,
@@ -360,598 +434,530 @@ export default function RosterScreen({
     }
   };
 
+  // tests/renderer/roster-draft.test.ts uses this declaration as a source
+  // marker delimiting createAgent, so it stays in place below it.
   const TEMPLATE_TOKENS = ['request', 'worktree', 'plan.envelope.summary'].map((t) => `{{${t}}}`);
 
   return (
-    <>
-      <div className={styles.rosterScreen}>
-        {/* ── agent strip: every agent, one horizontal band ── */}
-        <div
-          className={styles.rosterTabs}
-          role="tablist"
-          aria-label="Agents"
-          onKeyDown={onTablistKey}
-        >
-          <div className={styles.rosterTabsInner}>
-            {agents.map((agent) => {
-              const isActive = agent.name === selectedName;
-              return (
-                <button
-                  key={agent.name}
-                  type="button"
-                  role="tab"
-                  aria-selected={isActive}
-                  tabIndex={isActive ? 0 : -1}
-                  className={`${styles.rosterCell} ${isActive ? styles.on : ''}`}
-                  style={{ ['--hue' as string]: agent.color ?? 'var(--accent)' }}
-                  onClick={() => selectAgent(agent.name)}
-                  data-testid={`agent-tab-${agent.name}`}
-                >
-                  <AgentAvatar name={agent.name} size={30} />
-                  <span className={styles.rosterCellWho}>
-                    <span className={styles.rosterCellName}>{agent.name}</span>
-                    {staleBuiltins.has(agent.name) && (
-                      <span className={styles.staleBadge}>Shipped update</span>
-                    )}
-                    <span className={styles.rosterCellRole}>{agent.purpose}</span>
-                    <span className={styles.rosterCellModel}>
-                      {isActive && <span className={styles.rosterCellDot} aria-hidden />}
-                      <ProviderIcon provider={providerFor(agent.model, models)} size={11} />
-                      {agent.model === 'inherit' || !models.some((m) => m.id === agent.model)
-                        ? 'inherit'
-                        : modelLabel(agent.model)}
-                    </span>
+    <div className={styles.rosterScreen}>
+      {/* ── agent strip: every agent, one horizontal band ── */}
+      <div
+        className={styles.rosterTabs}
+        role="tablist"
+        aria-label="Agents"
+        onKeyDown={onTablistKey}
+      >
+        <div className={styles.rosterTabsInner}>
+          {agents.map((agent) => {
+            const isActive = agent.name === selectedName;
+            return (
+              <button
+                key={agent.name}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                tabIndex={isActive ? 0 : -1}
+                className={`${styles.rosterCell} ${isActive ? styles.on : ''}`}
+                style={{ ['--hue' as string]: agent.color ?? 'var(--accent)' }}
+                onClick={() => selectAgent(agent.name)}
+                data-testid={`agent-tab-${agent.name}`}
+              >
+                <AgentAvatar name={agent.name} size={30} />
+                <span className={styles.rosterCellWho}>
+                  <span className={styles.rosterCellName}>{agent.name}</span>
+                  {staleBuiltins.has(agent.name) && (
+                    <span className={styles.staleBadge}>Shipped update</span>
+                  )}
+                  <span className={styles.rosterCellRole}>{agent.purpose}</span>
+                  <span className={styles.rosterCellModel}>
+                    {isActive && <span className={styles.rosterCellDot} aria-hidden />}
+                    <ModelBadge model={agent.model} models={models} size={11} />
                   </span>
-                  {isActive && <span className={styles.rosterCellUnderline} aria-hidden />}
-                </button>
-              );
-            })}
-            <button
-              type="button"
-              className={styles.rosterNew}
-              onClick={() => void createAgent()}
-              data-testid="agent-new"
-            >
-              + New agent
-            </button>
-          </div>
+                </span>
+                {isActive && <span className={styles.rosterCellUnderline} aria-hidden />}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            className={styles.rosterNew}
+            onClick={() => void createAgent()}
+            data-testid="agent-new"
+          >
+            + New agent
+          </button>
         </div>
+      </div>
 
-        {draft && (
-          <div className={styles.rosterScroll}>
-            <div className={styles.rosterPage}>
-              {/* ── title row ── */}
-              <div className={styles.rosterHead}>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: 'var(--s4)',
-                    minWidth: 0,
-                  }}
-                >
-                  <button
-                    type="button"
-                    data-mark-trigger
-                    aria-label={`Change mark for ${draft.name}`}
-                    onClick={() => setShowIconPicker(true)}
-                    className={styles.avatarTrigger}
-                  >
-                    <AgentAvatar
-                      name={draft.name}
-                      emblem={draft.emblem}
-                      color={draft.color}
-                      size={52}
-                    />
-                    <span className={styles.avatarTriggerOverlay} aria-hidden />
-                  </button>
-                  <div className={styles.rosterHeadMain}>
-                    <div className={styles.rosterHeadTitlerow}>
-                      <h1
-                        className={styles.rosterTitle}
-                        style={{ color: draft.color ?? 'var(--accent)' }}
-                      >
-                        {draft.name}
-                      </h1>
-                      <span className={styles.rosterHeadMeta}>
-                        <ProviderIcon provider={providerFor(draft.model, models)} size={13} />
-                        {draft.model === 'inherit' || !models.some((m) => m.id === draft.model)
-                          ? 'inherit'
-                          : modelLabel(draft.model)}{' '}
-                        · {draft.envelope}
-                      </span>
-                    </div>
-                    <p className={styles.rosterHeadSub}>
-                      {draft.purpose || 'No purpose yet.'}{' '}
-                      <span className={styles.rosterHeadTag}>
-                        {draft.builtin ? 'Shipped with Foundry, editable' : 'Custom agent'}
-                      </span>
-                      {staleBuiltins.has(draft.name) && (
-                        <span className={styles.staleBadge}>Shipped version differs</span>
-                      )}
-                    </p>
+      {draft && (
+        <div className={styles.rosterScroll}>
+          <div className={styles.rosterPage}>
+            {/* ── title row ── */}
+            <div className={styles.rosterHead}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 'var(--s4)',
+                  minWidth: 0,
+                }}
+              >
+                <MarkTrigger draft={draft} size={52} onClick={() => setShowIconPicker(true)} />
+                <div className={styles.rosterHeadMain}>
+                  <div className={styles.rosterHeadTitlerow}>
+                    <h1
+                      className={styles.rosterTitle}
+                      style={{ color: draft.color ?? 'var(--accent)' }}
+                    >
+                      {draft.name}
+                    </h1>
+                    <span className={styles.rosterHeadMeta}>
+                      <ModelBadge model={draft.model} models={models} size={13} /> ·{' '}
+                      {draft.envelope}
+                    </span>
                   </div>
-                </div>
-                <div className={styles.rosterHeadActions}>
-                  <button
-                    type="button"
-                    className={styles.rosterAction}
-                    onClick={() => setShowPreview(true)}
-                    data-testid="agent-preview"
-                  >
-                    Preview prompt
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.rosterAction}
-                    onClick={() => void duplicate()}
-                    data-testid="agent-duplicate"
-                  >
-                    Duplicate
-                  </button>
-                  {draft.builtin && staleBuiltins.has(draft.name) && (
-                    <button
-                      type="button"
-                      className={styles.rosterAction}
-                      onClick={() => void resetToShipped()}
-                      data-testid="agent-reset"
-                    >
-                      Reset to shipped version
-                    </button>
-                  )}
-                  {!draft.builtin && (
-                    <button
-                      type="button"
-                      className={`${styles.rosterAction} ${styles.danger}`}
-                      onClick={() => void remove()}
-                      data-testid="agent-delete"
-                    >
-                      Delete
-                    </button>
-                  )}
+                  <p className={styles.rosterHeadSub}>
+                    {draft.purpose || 'No purpose yet.'}{' '}
+                    <span className={styles.rosterHeadTag}>
+                      {draft.builtin ? 'Shipped with Foundry, editable' : 'Custom agent'}
+                    </span>
+                    {staleBuiltins.has(draft.name) && (
+                      <span className={styles.staleBadge}>Shipped version differs</span>
+                    )}
+                  </p>
                 </div>
               </div>
-
-              {/* ── identity ── */}
-              <section className={styles.rosterSection}>
-                <div className={styles.rosterSectionLabel}>
-                  <p className="eyebrow">
-                    <span className="index">01</span>Identity
-                  </p>
-                  <p>How this agent is referenced in pipelines and run logs.</p>
-                </div>
-                <div className={styles.rosterFields}>
-                  <Field label="Mark" className={styles.span2}>
-                    <div className={styles.identityMarkRow}>
-                      <button
-                        type="button"
-                        data-mark-trigger
-                        aria-label={`Change mark for ${draft.name}`}
-                        onClick={() => setShowIconPicker(true)}
-                        className={styles.avatarTrigger}
-                      >
-                        <AgentAvatar
-                          name={draft.name}
-                          emblem={draft.emblem}
-                          color={draft.color}
-                          size={44}
-                        />
-                        <span className={styles.avatarTriggerOverlay} aria-hidden />
-                      </button>
-                      <div className={styles.identityMarkInfo}>
-                        <div className={styles.identityMarkMeta}>
-                          <span className={styles.identityMarkLabel}>
-                            {markLabel(draft.emblem)}
-                          </span>
-                          <span className={styles.identityMarkDot} aria-hidden>
-                            ·
-                          </span>
-                          <button
-                            type="button"
-                            data-mark-trigger
-                            onClick={() => setShowIconPicker(true)}
-                            className={styles.changeMarkBtn}
-                          >
-                            Change mark
-                          </button>
-                          {!isDefaultMark({
-                            name: draft.name,
-                            emblem: draft.emblem,
-                            builtin: draft.builtin,
-                          }) && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setDraft({
-                                  ...draft,
-                                  emblem: defaultEmblemFor({
-                                    name: draft.name,
-                                    builtin: draft.builtin,
-                                  }),
-                                })
-                              }
-                              className={styles.resetMarkBtn}
-                            >
-                              <RotateCcw size={11} />
-                              Reset
-                            </button>
-                          )}
-                        </div>
-                        <span className={styles.hint}>
-                          An emblem, a custom upload, or the initial letter. Shown wherever this
-                          agent appears.
-                        </span>
-                      </div>
-                    </div>
-                  </Field>
-                  <Field label="Name">
-                    <TextInput
-                      mono
-                      value={nameDraft}
-                      aria-label="Agent name"
-                      onChange={(e) => {
-                        setNameDraft(e.target.value);
-                        setRenameError('');
-                      }}
-                      onBlur={() => void commitName()}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') e.currentTarget.blur();
-                        if (e.key === 'Escape') {
-                          setNameDraft(draft.name);
-                          setRenameError('');
-                          e.currentTarget.blur();
-                        }
-                      }}
-                    />
-                    <span className={styles.hint}>
-                      {draft.builtin
-                        ? 'Renaming a shipped agent copies it under the new name and leaves the original in place, so pipelines keep working.'
-                        : 'Applied when you leave the field. Pipeline phases naming this agent are repointed for you.'}
-                    </span>
-                    {renameError && <span className={styles.hint}>{renameError}</span>}
-                  </Field>
-                  <Field label="Purpose">
-                    <TextInput
-                      value={draft.purpose}
-                      aria-label="Agent purpose"
-                      onChange={(e) => setDraft({ ...draft, purpose: e.target.value })}
-                    />
-                    <span className={styles.hint}>
-                      One line, shown wherever this agent appears.
-                    </span>
-                  </Field>
-                  <Field label="Accent" className={styles.span2}>
-                    <div className={styles.swatches}>
-                      {COLORS.map((c) => (
-                        <button
-                          key={c}
-                          type="button"
-                          className={`${styles.swatch} ${draft.color === c ? styles.on : ''}`}
-                          aria-label={`Accent ${c}`}
-                          aria-pressed={draft.color === c}
-                          onClick={() => setDraft({ ...draft, color: c })}
-                        >
-                          <span className={styles.swatchDot} style={{ background: c }} />
-                        </button>
-                      ))}
-                      {(() => {
-                        const lower = draft.color.toLowerCase();
-                        const isCustom = !COLORS.includes(lower);
-                        const safeValue = /^#[0-9a-fA-F]{6}$/.test(draft.color)
-                          ? draft.color
-                          : '#4fa8b8';
-                        return (
-                          <label
-                            className={`${styles.swatch} ${styles.colorPickerWrapper} ${isCustom ? styles.on : ''}`}
-                            title="Custom accent color"
-                          >
-                            <span
-                              className={styles.swatchDot}
-                              style={{
-                                background: isCustom
-                                  ? draft.color
-                                  : 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)',
-                              }}
-                            />
-                            <input
-                              type="color"
-                              aria-label="Custom accent color"
-                              value={safeValue}
-                              onChange={(e) =>
-                                setDraft({ ...draft, color: e.target.value.toLowerCase() })
-                              }
-                              className={styles.colorInput}
-                            />
-                          </label>
-                        );
-                      })()}
-                      <span className={styles.swatchHex}>{draft.color}</span>
-                    </div>
-                    <span className={styles.hint}>
-                      Used for this agent's lane in the waterfall.
-                    </span>
-                  </Field>
-                </div>
-              </section>
-
-              {/* ── execution ── */}
-              <section className={styles.rosterSection}>
-                <div className={styles.rosterSectionLabel}>
-                  <p className="eyebrow">
-                    <span className="index">02</span>Execution
-                  </p>
-                  <p>Model selection and reasoning effort for this agent.</p>
-                </div>
-                <div className={styles.rosterFields}>
-                  <Field label="Defaults" className={styles.span2}>
-                    <label className={styles.rosterCheck}>
-                      <input
-                        type="checkbox"
-                        checked={!!draft.inheritDefaults}
-                        onChange={(e) => setDraft({ ...draft, inheritDefaults: e.target.checked })}
-                      />
-                      Inherit model and reasoning from Agent defaults
-                    </label>
-                    <span className={styles.hint}>
-                      Uses the default model and reasoning from Settings → Agent defaults.
-                    </span>
-                  </Field>
-                  <Field label="Model">
-                    <ModelPicker
-                      value={
-                        draft.inheritDefaults ? (settings?.defaultModel ?? 'inherit') : draft.model
-                      }
-                      models={models}
-                      allowInherit
-                      disabled={!!draft.inheritDefaults}
-                      emptyHint="No models are reachable. Connect a provider under Settings → Providers, or use Inherit."
-                      onChange={(value) => setDraft({ ...draft, model: value })}
-                      onRefresh={() => void refreshModels()}
-                    />
-                    <span className={styles.hint}>
-                      {draft.inheritDefaults
-                        ? 'Following Settings → Agent defaults.'
-                        : '“Inherit” uses the default model from Settings.'}
-                    </span>
-                  </Field>
-                  <Field label="Reasoning effort">
-                    <ReasoningEffortPicker
-                      value={
-                        draft.inheritDefaults
-                          ? (settings?.defaultReasoningEffort ?? 'medium')
-                          : draft.reasoningEffort
-                      }
-                      model={rosterModelInfo}
-                      disabled={!!draft.inheritDefaults}
-                      onChange={(effort) => setDraft({ ...draft, reasoningEffort: effort })}
-                      data-testid="roster-effort"
-                    />
-                    <span className={styles.hint}>
-                      {draft.inheritDefaults
-                        ? 'Following Settings → Agent defaults.'
-                        : 'Only the levels the chosen model offers.'}
-                    </span>
-                  </Field>
-                  <Field label="Report kind">
-                    <Dropdown
-                      value={draft.envelope}
-                      options={envelopeOptions}
-                      triggerClassName="mono"
-                      onChange={(next) => setDraft({ ...draft, envelope: next })}
-                    />
-                    <span className={styles.hint}>
-                      The typed report this agent must return. Parsed and validated on every turn.
-                      {onOpenDesignTab && (
-                        <>
-                          {' '}
-                          <button
-                            type="button"
-                            className={styles.linkBtn}
-                            onClick={() => onOpenDesignTab('envelopes')}
-                          >
-                            Manage reports…
-                          </button>
-                        </>
-                      )}
-                    </span>
-                  </Field>
-                </div>
-              </section>
-
-              {/* ── prompts ── */}
-              <section className={styles.rosterSection}>
-                <div className={styles.rosterSectionLabel}>
-                  <p className="eyebrow">
-                    <span className="index">03</span>Prompts
-                  </p>
-                  <p>The system prompt is fixed per agent; the template is filled per phase.</p>
-                </div>
-                <div className={styles.rosterStack}>
-                  <Field label="System prompt">
-                    <Textarea
-                      value={draft.systemPrompt}
-                      rows={7}
-                      aria-label="System prompt"
-                      onChange={(e) => setDraft({ ...draft, systemPrompt: e.target.value })}
-                    />
-                    <span className={styles.hint}>
-                      The agent's standing instructions. Sent once, at the start of its session.
-                    </span>
-                  </Field>
-                  <Field label="User prompt template">
-                    <Textarea
-                      value={draft.userPrompt}
-                      rows={6}
-                      aria-label="User prompt template"
-                      onChange={(e) => setDraft({ ...draft, userPrompt: e.target.value })}
-                    />
-                    <span className={styles.hint}>
-                      Supports{' '}
-                      {TEMPLATE_TOKENS.map((token) => (
-                        <code key={token}>{token}</code>
-                      ))}{' '}
-                      Declared inputs not referenced here are appended to the prompt automatically.
-                    </span>
-                  </Field>
-                </div>
-              </section>
-
-              {/* ── extra envelope fields ── */}
-              <section className={styles.rosterSection}>
-                <div className={styles.rosterSectionLabel}>
-                  <p className="eyebrow">
-                    <span className="index">04</span>Extra fields
-                  </p>
-                  <p>
-                    Added to the <code>{draft.envelope}</code> report for this agent only. Use these
-                    when one agent must report something the shared report does not carry; change
-                    the report itself when every agent using it should.
-                  </p>
-                </div>
-                <div className={styles.rosterStack}>
-                  <CustomFieldsEditor
-                    idPrefix={`agent-${draft.name}`}
-                    fields={draft.customFields ?? []}
-                    onChange={(customFields) => setDraft({ ...draft, customFields })}
-                  />
-                  {(draft.customFields?.length ?? 0) === 0 && (
-                    <p className={styles.rosterFieldsEmpty}>
-                      No extra fields. This agent returns the {draft.envelope} report as defined.
-                    </p>
-                  )}
-                  <div className={styles.rosterFieldsFoot}>
-                    <Button
-                      size="sm"
-                      onClick={() =>
-                        setDraft({ ...draft, customFields: addField(draft.customFields ?? []) })
-                      }
-                    >
-                      Add field
-                    </Button>
-                    <span className={styles.hint}>
-                      {shadowed.length > 0 ? (
-                        <>
-                          {shadowed.map((n) => (
-                            <code key={n}>{n}</code>
-                          ))}{' '}
-                          {shadowed.length === 1 ? 'overrides a field' : 'override fields'} of the
-                          same name on the <code>{draft.envelope}</code> report.
-                        </>
-                      ) : (
-                        <>
-                          Names are snake_case and must not reuse a base field (<code>status</code>,{' '}
-                          <code>summary</code>, <code>artifacts</code>,{' '}
-                          <code>notes_for_next_agent</code>).
-                        </>
-                      )}
-                    </span>
-                  </div>
-                </div>
-              </section>
-
-              {/* ── tools and write boundary ── */}
-              <section className={styles.rosterSection}>
-                <div className={styles.rosterSectionLabel}>
-                  <p className="eyebrow">
-                    <span className="index">05</span>Tools and write boundary
-                  </p>
-                  <p>
-                    What this agent can call, and the paths it may modify. Everything else is
-                    refused at the tool layer.
-                  </p>
-                </div>
-                <div className={styles.rosterStack}>
-                  <Field label="Tool surface">
-                    <Dropdown
-                      value={draft.toolProfile ?? 'full'}
-                      options={TOOL_PROFILE_OPTIONS}
-                      onChange={(next) =>
-                        setDraft({ ...draft, toolProfile: next as AgentDef['toolProfile'] })
-                      }
-                    />
-                    <span className={styles.hint}>
-                      Read-only opens the session without <code>edit</code>, <code>write</code>, or{' '}
-                      <code>bash</code>: those tools are absent from the registry, not merely
-                      denied.
-                    </span>
-                  </Field>
-                  <BoundaryEditor
-                    value={draft.writes}
-                    onChange={(value) => setDraft({ ...draft, writes: value })}
-                  />
-                </div>
-              </section>
-
-              {/* ── validation + autosave ── */}
-              <div className={styles.rosterStatusbar}>
-                {allIssues.length > 0 ? (
-                  <ul className={styles.issues}>
-                    {allIssues.map((issue, i) => (
-                      <li key={i} className={issue.level}>
-                        <strong>{issue.where}</strong> {issue.message}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <span className={styles.rosterStatusOk}>
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 14 14"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.6"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden
-                    >
-                      <path d="M2.5 7.5 5.5 10.5 11.5 3.5" />
-                    </svg>
-                    No validation issues
-                  </span>
+              <div className={styles.rosterHeadActions}>
+                <button
+                  type="button"
+                  className={styles.rosterAction}
+                  onClick={() => setShowPreview(true)}
+                  data-testid="agent-preview"
+                >
+                  Preview prompt
+                </button>
+                <button
+                  type="button"
+                  className={styles.rosterAction}
+                  onClick={() => void duplicate()}
+                  data-testid="agent-duplicate"
+                >
+                  Duplicate
+                </button>
+                {draft.builtin && staleBuiltins.has(draft.name) && (
+                  <button
+                    type="button"
+                    className={styles.rosterAction}
+                    onClick={() => void resetToShipped()}
+                    data-testid="agent-reset"
+                  >
+                    Reset to shipped version
+                  </button>
                 )}
-                {actionError && <p className={styles.actionErr}>{actionError}</p>}
-                <span className={styles.rosterAutosave}>Changes save automatically</span>
+                {!draft.builtin && (
+                  <button
+                    type="button"
+                    className={`${styles.rosterAction} ${styles.danger}`}
+                    onClick={() => void remove()}
+                    data-testid="agent-delete"
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
             </div>
+
+            {/* ── identity ── */}
+            <section className={styles.rosterSection}>
+              <div className={styles.rosterSectionLabel}>
+                <p className="eyebrow">
+                  <span className="index">01</span>Identity
+                </p>
+                <p>How this agent is referenced in pipelines and run logs.</p>
+              </div>
+              <div className={styles.rosterFields}>
+                <Field label="Mark" className={styles.span2}>
+                  <div className={styles.identityMarkRow}>
+                    <MarkTrigger draft={draft} size={44} onClick={() => setShowIconPicker(true)} />
+                    <div className={styles.identityMarkInfo}>
+                      <div className={styles.identityMarkMeta}>
+                        <span className={styles.identityMarkLabel}>{markLabel(draft.emblem)}</span>
+                        <span className={styles.identityMarkDot} aria-hidden>
+                          ·
+                        </span>
+                        <button
+                          type="button"
+                          data-mark-trigger
+                          onClick={() => setShowIconPicker(true)}
+                          className={styles.changeMarkBtn}
+                        >
+                          Change mark
+                        </button>
+                        {!isDefaultMark({
+                          name: draft.name,
+                          emblem: draft.emblem,
+                          builtin: draft.builtin,
+                        }) && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDraft({
+                                ...draft,
+                                emblem: defaultEmblemFor({
+                                  name: draft.name,
+                                  builtin: draft.builtin,
+                                }),
+                              })
+                            }
+                            className={styles.resetMarkBtn}
+                          >
+                            <RotateCcw size={11} />
+                            Reset
+                          </button>
+                        )}
+                      </div>
+                      <span className={styles.hint}>
+                        An emblem, a custom upload, or the initial letter. Shown wherever this agent
+                        appears.
+                      </span>
+                    </div>
+                  </div>
+                </Field>
+                <Field label="Name">
+                  <TextInput
+                    mono
+                    value={nameDraft}
+                    aria-label="Agent name"
+                    onChange={(e) => {
+                      setNameDraft(e.target.value);
+                      setRenameError('');
+                    }}
+                    onBlur={() => void commitName()}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') e.currentTarget.blur();
+                      if (e.key === 'Escape') {
+                        setNameDraft(draft.name);
+                        setRenameError('');
+                        e.currentTarget.blur();
+                      }
+                    }}
+                  />
+                  <span className={styles.hint}>
+                    {draft.builtin
+                      ? 'Renaming a shipped agent copies it under the new name and leaves the original in place, so pipelines keep working.'
+                      : 'Applied when you leave the field. Pipeline phases naming this agent are repointed for you.'}
+                  </span>
+                  {renameError && <span className={styles.hint}>{renameError}</span>}
+                </Field>
+                <Field label="Purpose">
+                  <TextInput
+                    value={draft.purpose}
+                    aria-label="Agent purpose"
+                    onChange={(e) => setDraft({ ...draft, purpose: e.target.value })}
+                  />
+                  <span className={styles.hint}>One line, shown wherever this agent appears.</span>
+                </Field>
+                <Field label="Accent" className={styles.span2}>
+                  <div className={styles.swatches}>
+                    {COLORS.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        className={`${styles.swatch} ${draft.color === c ? styles.on : ''}`}
+                        aria-label={`Accent ${c}`}
+                        aria-pressed={draft.color === c}
+                        onClick={() => setDraft({ ...draft, color: c })}
+                      >
+                        <span className={styles.swatchDot} style={{ background: c }} />
+                      </button>
+                    ))}
+                    <CustomAccentSwatch
+                      color={draft.color}
+                      onChange={(color) => setDraft({ ...draft, color })}
+                    />
+                    <span className={styles.swatchHex}>{draft.color}</span>
+                  </div>
+                  <span className={styles.hint}>Used for this agent's lane in the waterfall.</span>
+                </Field>
+              </div>
+            </section>
+
+            {/* ── execution ── */}
+            <section className={styles.rosterSection}>
+              <div className={styles.rosterSectionLabel}>
+                <p className="eyebrow">
+                  <span className="index">02</span>Execution
+                </p>
+                <p>Model selection and reasoning effort for this agent.</p>
+              </div>
+              <div className={styles.rosterFields}>
+                <Field label="Defaults" className={styles.span2}>
+                  <label className={styles.rosterCheck}>
+                    <input
+                      type="checkbox"
+                      checked={!!draft.inheritDefaults}
+                      onChange={(e) => setDraft({ ...draft, inheritDefaults: e.target.checked })}
+                    />
+                    Inherit model and reasoning from Agent defaults
+                  </label>
+                  <span className={styles.hint}>
+                    Uses the default model and reasoning from Settings → Agent defaults.
+                  </span>
+                </Field>
+                <Field label="Model">
+                  <ModelPicker
+                    value={
+                      draft.inheritDefaults ? (settings?.defaultModel ?? 'inherit') : draft.model
+                    }
+                    models={models}
+                    allowInherit
+                    disabled={!!draft.inheritDefaults}
+                    emptyHint="No models are reachable. Connect a provider under Settings → Providers, or use Inherit."
+                    onChange={(value) => setDraft({ ...draft, model: value })}
+                    onRefresh={() => void refreshModels()}
+                  />
+                  <span className={styles.hint}>
+                    {draft.inheritDefaults
+                      ? 'Following Settings → Agent defaults.'
+                      : '“Inherit” uses the default model from Settings.'}
+                  </span>
+                </Field>
+                <Field label="Reasoning effort">
+                  <ReasoningEffortPicker
+                    value={
+                      draft.inheritDefaults
+                        ? (settings?.defaultReasoningEffort ?? 'medium')
+                        : draft.reasoningEffort
+                    }
+                    model={rosterModelInfo}
+                    disabled={!!draft.inheritDefaults}
+                    onChange={(effort) => setDraft({ ...draft, reasoningEffort: effort })}
+                    data-testid="roster-effort"
+                  />
+                  <span className={styles.hint}>
+                    {draft.inheritDefaults
+                      ? 'Following Settings → Agent defaults.'
+                      : 'Only the levels the chosen model offers.'}
+                  </span>
+                </Field>
+                <Field label="Report kind">
+                  <Dropdown
+                    value={draft.envelope}
+                    options={envelopeOptions}
+                    triggerClassName="mono"
+                    onChange={(next) => setDraft({ ...draft, envelope: next })}
+                  />
+                  <span className={styles.hint}>
+                    The typed report this agent must return. Parsed and validated on every turn.
+                    {onOpenDesignTab && (
+                      <>
+                        {' '}
+                        <button
+                          type="button"
+                          className={styles.linkBtn}
+                          onClick={() => onOpenDesignTab('envelopes')}
+                        >
+                          Manage reports…
+                        </button>
+                      </>
+                    )}
+                  </span>
+                </Field>
+              </div>
+            </section>
+
+            {/* ── prompts ── */}
+            <section className={styles.rosterSection}>
+              <div className={styles.rosterSectionLabel}>
+                <p className="eyebrow">
+                  <span className="index">03</span>Prompts
+                </p>
+                <p>The system prompt is fixed per agent; the template is filled per phase.</p>
+              </div>
+              <div className={styles.rosterStack}>
+                <Field label="System prompt">
+                  <Textarea
+                    value={draft.systemPrompt}
+                    rows={7}
+                    aria-label="System prompt"
+                    onChange={(e) => setDraft({ ...draft, systemPrompt: e.target.value })}
+                  />
+                  <span className={styles.hint}>
+                    The agent's standing instructions. Sent once, at the start of its session.
+                  </span>
+                </Field>
+                <Field label="User prompt template">
+                  <Textarea
+                    value={draft.userPrompt}
+                    rows={6}
+                    aria-label="User prompt template"
+                    onChange={(e) => setDraft({ ...draft, userPrompt: e.target.value })}
+                  />
+                  <span className={styles.hint}>
+                    Supports{' '}
+                    {TEMPLATE_TOKENS.map((token) => (
+                      <code key={token}>{token}</code>
+                    ))}{' '}
+                    Declared inputs not referenced here are appended to the prompt automatically.
+                  </span>
+                </Field>
+              </div>
+            </section>
+
+            {/* ── extra envelope fields ── */}
+            <section className={styles.rosterSection}>
+              <div className={styles.rosterSectionLabel}>
+                <p className="eyebrow">
+                  <span className="index">04</span>Extra fields
+                </p>
+                <p>
+                  Added to the <code>{draft.envelope}</code> report for this agent only. Use these
+                  when one agent must report something the shared report does not carry; change the
+                  report itself when every agent using it should.
+                </p>
+              </div>
+              <div className={styles.rosterStack}>
+                <CustomFieldsEditor
+                  idPrefix={`agent-${draft.name}`}
+                  fields={draft.customFields ?? []}
+                  onChange={(customFields) => setDraft({ ...draft, customFields })}
+                />
+                {(draft.customFields?.length ?? 0) === 0 && (
+                  <p className={styles.rosterFieldsEmpty}>
+                    No extra fields. This agent returns the {draft.envelope} report as defined.
+                  </p>
+                )}
+                <div className={styles.rosterFieldsFoot}>
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      setDraft({ ...draft, customFields: addField(draft.customFields ?? []) })
+                    }
+                  >
+                    Add field
+                  </Button>
+                  <span className={styles.hint}>
+                    {shadowed.length > 0 ? (
+                      <>
+                        {shadowed.map((n) => (
+                          <code key={n}>{n}</code>
+                        ))}{' '}
+                        {shadowed.length === 1 ? 'overrides a field' : 'override fields'} of the
+                        same name on the <code>{draft.envelope}</code> report.
+                      </>
+                    ) : (
+                      <>
+                        Names are snake_case and must not reuse a base field (<code>status</code>,{' '}
+                        <code>summary</code>, <code>artifacts</code>,{' '}
+                        <code>notes_for_next_agent</code>).
+                      </>
+                    )}
+                  </span>
+                </div>
+              </div>
+            </section>
+
+            {/* ── tools and write boundary ── */}
+            <section className={styles.rosterSection}>
+              <div className={styles.rosterSectionLabel}>
+                <p className="eyebrow">
+                  <span className="index">05</span>Tools and write boundary
+                </p>
+                <p>
+                  What this agent can call, and the paths it may modify. Everything else is refused
+                  at the tool layer.
+                </p>
+              </div>
+              <div className={styles.rosterStack}>
+                <Field label="Tool surface">
+                  <Dropdown
+                    value={draft.toolProfile ?? 'full'}
+                    options={TOOL_PROFILE_OPTIONS}
+                    onChange={(next) =>
+                      setDraft({ ...draft, toolProfile: next as AgentDef['toolProfile'] })
+                    }
+                  />
+                  <span className={styles.hint}>
+                    Read-only opens the session without <code>edit</code>, <code>write</code>, or{' '}
+                    <code>bash</code>: those tools are absent from the registry, not merely denied.
+                  </span>
+                </Field>
+                <BoundaryEditor
+                  value={draft.writes}
+                  onChange={(value) => setDraft({ ...draft, writes: value })}
+                />
+              </div>
+            </section>
+
+            {/* ── validation + autosave ── */}
+            <div className={styles.rosterStatusbar}>
+              {allIssues.length > 0 ? (
+                <ul className={styles.issues}>
+                  {allIssues.map((issue, i) => (
+                    <li key={i} className={issue.level}>
+                      <strong>{issue.where}</strong> {issue.message}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <span className={styles.rosterStatusOk}>
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 14 14"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden
+                  >
+                    <path d="M2.5 7.5 5.5 10.5 11.5 3.5" />
+                  </svg>
+                  No validation issues
+                </span>
+              )}
+              {actionError && <p className={styles.actionErr}>{actionError}</p>}
+              <span className={styles.rosterAutosave}>Changes save automatically</span>
+            </div>
           </div>
-        )}
-        {!draft && (
-          <div className={styles.rosterEmpty}>
-            <p className="eyebrow">Agents</p>
-            <h1>Meet the crew</h1>
-            <p className={styles.rosterEmptyLead}>
-              Agents are editable specialists. Pipelines wire them into phases, and each phase can
-              use its own model, prompt, reply report, and write boundary.
-            </p>
-            <ul className={styles.rosterEmptyCrew}>
-              {CREW.map(([name, purpose]) => (
-                <li key={name}>
-                  <strong>{name}</strong>
-                  <span>{purpose}</span>
-                </li>
-              ))}
-            </ul>
-            <Button variant="primary" onClick={() => void createAgent()}>
-              Create your first agent
-            </Button>
-          </div>
-        )}
-        {showPreview && draft && (
-          <PromptPreview agent={draft} onClose={() => setShowPreview(false)} />
-        )}
-        {showIconPicker && draft && (
-          <AgentIconPicker
-            name={draft.name}
-            emblem={draft.emblem}
-            color={draft.color}
-            builtin={draft.builtin}
-            onChange={(emblem) => setDraft({ ...draft, emblem })}
-            onColorChange={(color) => setDraft({ ...draft, color })}
-            onClose={() => setShowIconPicker(false)}
-          />
-        )}
-      </div>
-    </>
+        </div>
+      )}
+      {!draft && (
+        <div className={styles.rosterEmpty}>
+          <p className="eyebrow">Agents</p>
+          <h1>Meet the crew</h1>
+          <p className={styles.rosterEmptyLead}>
+            Agents are editable specialists. Pipelines wire them into phases, and each phase can use
+            its own model, prompt, reply report, and write boundary.
+          </p>
+          <ul className={styles.rosterEmptyCrew}>
+            {CREW.map(([name, purpose]) => (
+              <li key={name}>
+                <strong>{name}</strong>
+                <span>{purpose}</span>
+              </li>
+            ))}
+          </ul>
+          <Button variant="primary" onClick={() => void createAgent()}>
+            Create your first agent
+          </Button>
+        </div>
+      )}
+      {showPreview && draft && (
+        <PromptPreview agent={draft} onClose={() => setShowPreview(false)} />
+      )}
+      {showIconPicker && draft && (
+        <AgentIconPicker
+          name={draft.name}
+          emblem={draft.emblem}
+          color={draft.color}
+          builtin={draft.builtin}
+          onChange={(emblem) => setDraft({ ...draft, emblem })}
+          onColorChange={(color) => setDraft({ ...draft, color })}
+          onClose={() => setShowIconPicker(false)}
+        />
+      )}
+    </div>
   );
 }

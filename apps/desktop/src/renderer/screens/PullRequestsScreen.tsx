@@ -176,6 +176,10 @@ export default function PullRequestsScreen({
   const [mergingNumber, setMergingNumber] = useState<number | null>(null);
   const [notes, setNotes] = useState<Record<number, { text: string; error: boolean }>>({});
 
+  const setNote = (number: number, text: string, error = false): void => {
+    setNotes((n) => ({ ...n, [number]: { text, error } }));
+  };
+
   const refresh = useCallback(async (): Promise<void> => {
     if (!projectId) {
       // A removed project must not strand `loading` at its initial true.
@@ -221,13 +225,13 @@ export default function PullRequestsScreen({
     )
       return;
     setMergingNumber(pr.number);
-    setNotes((n) => ({ ...n, [pr.number]: { text: '', error: false } }));
+    setNote(pr.number, '');
     try {
       const result = await api.prs.merge(projectId, pr.number, method);
-      setNotes((n) => ({ ...n, [pr.number]: { text: result.detail, error: !result.ok } }));
+      setNote(pr.number, result.detail, !result.ok);
       if (result.ok) setPrs((rows) => rows.filter((row) => row.number !== pr.number));
     } catch (e) {
-      setNotes((n) => ({ ...n, [pr.number]: { text: (e as Error).message, error: true } }));
+      setNote(pr.number, (e as Error).message, true);
     } finally {
       setMergingNumber(null);
     }
@@ -241,19 +245,13 @@ export default function PullRequestsScreen({
   const fixConflicts = async (pr: PullRequest): Promise<void> => {
     if (mergingNumber !== null) return;
     setMergingNumber(pr.number);
-    setNotes((n) => ({
-      ...n,
-      [pr.number]: {
-        text: 'The agent is rebasing the branch onto the fetched base…',
-        error: false,
-      },
-    }));
+    setNote(pr.number, 'The agent is rebasing the branch onto the fetched base…');
     try {
       const result = await api.prs.fixConflicts(projectId, pr.number);
-      setNotes((n) => ({ ...n, [pr.number]: { text: result.detail, error: !result.ok } }));
+      setNote(pr.number, result.detail, !result.ok);
       if (result.ok) await refresh();
     } catch (e) {
-      setNotes((n) => ({ ...n, [pr.number]: { text: (e as Error).message, error: true } }));
+      setNote(pr.number, (e as Error).message, true);
     } finally {
       setMergingNumber(null);
     }

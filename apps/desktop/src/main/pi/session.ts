@@ -456,10 +456,6 @@ export class AgentSession {
     this.killed = true;
     this.transport?.kill();
   }
-
-  static emptyUsage(): UsageBreakdown {
-    return toUsageBreakdown(null);
-  }
 }
 
 function normaliseRewindPath(path: string): string {
