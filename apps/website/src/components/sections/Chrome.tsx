@@ -4,7 +4,8 @@ import { RUN } from '../../data/foundry';
 import {
   DOWNLOAD_URL as RELEASES,
   REPO_URL as REPO,
-  SMITH_URL,
+  ISSUES_URL,
+  AGENTS_MD_URL,
   NAV_LINKS,
   HERO_STATS,
   HERO_SPEC,
@@ -21,11 +22,14 @@ export function Nav() {
       }`}
     >
       <div className="wrap flex h-[60px] items-center gap-7">
-        <a href="#top" className="flex items-center gap-[10px] font-mono text-[12px] font-semibold uppercase tracking-[0.18em]">
+        <a
+          href="#top"
+          className="flex items-center gap-[10px] font-mono text-[12px] font-semibold uppercase tracking-[0.18em]"
+        >
           <img src="/media/app-icon.webp" alt="" width={22} height={22} className="rounded-sm" />
           Foundry
         </a>
-        <nav className="ml-auto hidden gap-1 lg:flex">
+        <nav className="ml-auto hidden gap-1 xl:flex">
           {NAV_LINKS.map((link) => (
             <a
               key={link.id}
@@ -36,7 +40,7 @@ export function Nav() {
             </a>
           ))}
         </nav>
-        <div className="ml-auto lg:ml-0">
+        <div className="ml-auto xl:ml-0">
           <Button href={RELEASES} variant="primary">
             Download
           </Button>
@@ -50,7 +54,11 @@ export function Hero() {
   const [ref, inView] = useInView<HTMLElement>(0.05);
 
   return (
-    <section ref={ref} id="top" className="relative flex min-h-[min(92vh,880px)] items-center overflow-hidden">
+    <section
+      ref={ref}
+      id="top"
+      className="relative flex min-h-[min(92vh,880px)] items-center overflow-hidden"
+    >
       <div className="absolute inset-0 z-0">
         <LoopVideo
           src="/media/loop/foundry-intake-chamber.mp4"
@@ -73,19 +81,19 @@ export function Hero() {
           <div className="flex items-center gap-3">
             <span aria-hidden="true" className="h-px w-[22px] bg-accent" />
             <span className="font-mono text-[11px] uppercase tracking-eyebrow text-text-dim">
-              The software factory for builders who ship
+              Your SDLC · your models · your rules
             </span>
           </div>
 
-          <h1 className="mt-7 max-w-[16ch] text-[clamp(40px,6.2vw,64px)] font-semibold leading-[1.04] tracking-tighter">
-            Describe what you want.{' '}
-            <span className="text-accent">Watch it get built.</span>
+          <h1 className="mt-7 max-w-[18ch] text-[clamp(40px,6.2vw,64px)] font-semibold leading-[1.04] tracking-tighter">
+            The software factory you configure,{' '}
+            <span className="text-accent">not the one you&rsquo;re handed.</span>
           </h1>
 
-          <p className="mt-7 max-w-[48ch] text-[17px] leading-[1.65] text-text-dim">
-            Foundry is a native macOS app that runs a crew of bounded agents as a pipeline — in an isolated
-            worktree, powered by in-process Pi with your own subscriptions or API keys, and with every phase
-            leaving typed evidence you can open.{' '}
+          <p className="mt-7 max-w-[50ch] text-[17px] leading-[1.65] text-text-dim">
+            A native macOS app that runs your delivery lifecycle as data — phases, checks,
+            boundaries, human checkpoints — with a different model on every seat, mixed freely
+            across providers, in an isolated git worktree that ends in a pull request.{' '}
             <strong className="font-medium text-text">Agent proposes. Code disposes.</strong>
           </p>
 
@@ -96,7 +104,9 @@ export function Hero() {
             <Button href={REPO}>Read the source</Button>
           </div>
 
-          <p className="mt-7 font-mono text-[11px] uppercase tracking-label text-text-ghost">{HERO_SPEC}</p>
+          <p className="mt-7 font-mono text-[11px] uppercase tracking-label text-text-ghost">
+            {HERO_SPEC}
+          </p>
         </div>
       </div>
 
@@ -109,9 +119,15 @@ export function Hero() {
                 i % 2 === 1 ? 'border-l border-line' : ''
               } ${i >= 2 ? 'border-t border-line md:border-t-0' : ''}`}
             >
-              <dt className="font-mono text-[10px] uppercase tracking-eyebrow text-text-ghost">{s.label}</dt>
-              <dd className="mt-2 font-mono text-[26px] leading-none tabular-nums text-text">{s.value}</dd>
-              <dd className="mt-2 max-w-[26ch] text-[11px] leading-[1.5] text-text-faint">{s.note}</dd>
+              <dt className="font-mono text-[10px] uppercase tracking-eyebrow text-text-ghost">
+                {s.label}
+              </dt>
+              <dd className="mt-2 font-mono text-[26px] leading-none tabular-nums text-text">
+                {s.value}
+              </dd>
+              <dd className="mt-2 max-w-[26ch] text-[11px] leading-[1.5] text-text-faint">
+                {s.note}
+              </dd>
             </div>
           ))}
         </div>
@@ -135,12 +151,13 @@ export function ClosingCta() {
       </div>
 
       <div className="wrap relative z-[1] py-[116px] text-center">
-        <Eyebrow index="12">Stop prompting. Start shipping.</Eyebrow>
+        <Eyebrow index="14">Stop prompting. Start shipping.</Eyebrow>
         <h2 className="mx-auto mt-5 max-w-[17ch] text-[clamp(34px,5.2vw,60px)] font-semibold leading-[1.04] tracking-tight">
           Run a shop, not a chat.
         </h2>
         <p className="mx-auto mt-[22px] max-w-[54ch] text-[17px] leading-[1.65] text-text-dim">
-          Free and MIT-licensed. Bring your own model subscriptions or API keys, and your own repos.
+          Free and MIT-licensed. Bring the model subscriptions you already pay for, or your own API
+          keys, and your own repos.
         </p>
         <div className="mt-[34px] flex flex-wrap justify-center gap-3">
           <Button href={RELEASES} variant="primary">
@@ -153,6 +170,7 @@ export function ClosingCta() {
           <span>Apple Silicon</span>
           <span>MIT</span>
           <span>No account required</span>
+          <span>No telemetry</span>
         </div>
       </div>
     </section>
@@ -162,9 +180,8 @@ export function ClosingCta() {
 const FOOTER_LINKS: Array<[string, string]> = [
   [REPO, 'Source'],
   [RELEASES, 'Releases'],
-  ['https://github.com/nikships/foundry/issues', 'Issues'],
-  ['https://github.com/nikships/foundry/blob/main/AGENTS.md', 'AGENTS.md'],
-  [SMITH_URL, 'Smith Skill'],
+  [ISSUES_URL, 'Issues'],
+  [AGENTS_MD_URL, 'AGENTS.md'],
 ];
 
 export function Footer() {
@@ -191,8 +208,8 @@ export function Footer() {
           </nav>
         </div>
         <p className="mt-2 border-t border-line-faint pt-[26px] font-mono text-[10.5px] tracking-[0.06em] text-text-ghost">
-          MIT · Built for builders who ship · Agent proposes, code disposes. This page is static, ships no
-          trackers, and sets no cookies. Trace shown: {RUN.branch}.
+          MIT · Built for builders who ship · Agent proposes, code disposes. This page is static,
+          ships no trackers, and sets no cookies. Trace shown: {RUN.branch}.
         </p>
       </div>
     </footer>

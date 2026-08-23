@@ -138,7 +138,7 @@ export function PipelineCanvasDemo() {
     added += 1;
     setPhases((prev) => {
       const last = prev[prev.length - 1] ?? { x: 40, y: 40 };
-      const base = { x: last.x + 64, y: last.y + 168, gates: 0 };
+      const base = { x: last.x + 64, y: last.y + 168, checks: 0 };
       if (kind === 'agent') {
         return [
           ...prev,
@@ -147,8 +147,8 @@ export function PipelineCanvasDemo() {
             kind,
             name: `new_phase_${added}`,
             agent: 'reviewer',
-            envelope: 'review',
-            gates: 1,
+            report: 'review',
+            checks: 1,
             desc: 'Describe what this phase is for — a phase without a description will not save.',
           },
         ];
@@ -274,8 +274,8 @@ export function PipelineCanvasDemo() {
                 {p.kind === 'agent' ? (
                   <>
                     <Chip color={agentColor(p.agent)}>{p.agent}</Chip>
-                    <Chip title="Envelope">{p.envelope}</Chip>
-                    {p.gates ? <Chip>{p.gates === 1 ? '1 gate' : `${p.gates} gates`}</Chip> : null}
+                    <Chip title="Report">{p.report}</Chip>
+                    {p.checks ? <Chip>{p.checks === 1 ? '1 check' : `${p.checks} checks`}</Chip> : null}
                     {p.retries ? <Chip>retries {p.retries}</Chip> : null}
                   </>
                 ) : p.kind === 'code' ? (

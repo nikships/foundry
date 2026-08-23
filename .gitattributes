@@ -1,5 +1,6 @@
 # The marketing site is a standalone app: it is not part of the desktop build,
 # `npm run check`, or CI. Keeping it out of language stats and collapsing it in
 # diffs stops it from dominating review of the actual application.
-website/** linguist-vendored=true
-website/public/media/** binary
+apps/website/** linguist-vendored=true
+apps/website/public/media/** binary
+apps/website/media-src/** binary
