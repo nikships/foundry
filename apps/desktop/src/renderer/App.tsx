@@ -330,8 +330,8 @@ function AppInner(): React.JSX.Element {
       )}
 
       {/*
-       * The Smith mini chat: floating launcher on other screens, hidden when
-       * already viewing the dedicated Smith screen.
+       * The Smith mini chat: a launcher docked in the titlebar band on other
+       * screens, hidden when already viewing the dedicated Smith screen.
        */}
       {ready && !needsOnboarding && view !== 'smith' && (
         <SmithBubble
