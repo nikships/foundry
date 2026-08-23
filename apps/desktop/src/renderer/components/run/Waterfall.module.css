@@ -1,87 +1,114 @@
+/*
+ * Run timeline. Label / track / duration are one grid template shared by the
+ * axis and every lane, so the ruler cannot drift out of alignment with the
+ * bars it annotates. The duration lives in its own column rather than floating
+ * over the bar, so no amount of event density can obscure it.
+ */
 .waterfall {
-  position: relative;
+  --col-label: 178px;
+  --col-time: 88px;
   display: flex;
   flex-direction: column;
-  gap: var(--lane-gap);
+  gap: 2px;
   padding: var(--s5) var(--s6) var(--s4);
 }
-.eyebrow {
+
+.header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
   margin-bottom: var(--s3);
 }
-.axis {
-  position: absolute;
-  inset: var(--s5) var(--s6) var(--s4);
-  left: calc(var(--s6) + 168px);
-  pointer-events: none;
+.scale-note {
+  font-size: 10px;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--text-ghost);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: var(--col-label) minmax(0, 1fr) var(--col-time);
+  align-items: center;
+  column-gap: var(--s3);
+}
+.grid-label,
+.grid-time {
+  display: block;
+}
+
+/* ── axis ─────────────────────────────────────────────────────────────── */
+.ruler {
+  position: relative;
+  height: 22px;
 }
 .tick {
   position: absolute;
-  top: 0;
   bottom: 0;
-}
-.tick i {
-  position: absolute;
-  top: 14px;
-  bottom: 0;
-  width: 1px;
-  background: var(--line-faint);
-}
-.tick em {
-  position: absolute;
-  top: 0;
-  left: 4px;
-  font-family: var(--font-mono);
+  transform: translateX(-50%);
   font-size: 10px;
   font-weight: 500;
-  letter-spacing: var(--label-tracking);
-  text-transform: uppercase;
-  font-style: normal;
+  letter-spacing: 0.04em;
   color: var(--text-ghost);
+  white-space: nowrap;
 }
+/* The zero tick has nothing to its left to centre against. */
+.tick:first-child {
+  transform: none;
+}
+.break-label {
+  position: absolute;
+  bottom: 0;
+  display: grid;
+  place-items: end center;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--amber);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* ── lanes ────────────────────────────────────────────────────────────── */
 .lane {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  height: var(--lane-h);
-  padding: 0 var(--s2);
-  border: 1px solid transparent;
-  border-bottom: 1px solid transparent;
+  height: 38px;
+  padding: 0;
+  border: 0;
   border-radius: var(--r-sm);
   background: transparent;
   color: inherit;
   font: inherit;
   cursor: default;
   text-align: left;
-  transition:
-    background var(--fast) var(--ease),
-    border-color var(--fast) var(--ease);
+  transition: background var(--fast) var(--ease);
 }
 .lane:hover {
   background: var(--bg-hover);
 }
 .lane.selected {
   background: var(--bg-active);
-  border-color: var(--line);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
-.lane.selected :global(.lane) {
-  border-color: transparent;
+.lane.inactive {
+  opacity: 0.45;
 }
-.lane.queued {
-  opacity: 0.5;
-}
+
 .lane-label {
   display: flex;
   align-items: center;
   gap: var(--s2);
-  width: 160px;
-  flex: none;
+  padding-left: var(--s2);
   min-width: 0;
+}
+.kind-slot {
+  width: 24px;
+  display: grid;
+  place-items: center;
+  flex: none;
 }
 .kind-dot {
   width: 8px;
   height: 8px;
   border-radius: var(--r-full);
-  flex: none;
 }
 .lane-name {
   font-size: var(--text-sm);
@@ -90,94 +117,100 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex: 1;
 }
 .attempt {
-  font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 500;
   letter-spacing: var(--label-tracking);
   color: var(--amber);
+  flex: none;
 }
-/* Not overflow:hidden — a short phase renders its duration label
-   outside the bar, which must stay legible. */
+
+/* ── track ────────────────────────────────────────────────────────────── */
 .track {
-  flex: 1;
   position: relative;
-  height: 28px;
+  display: block;
+  height: 22px;
   background: var(--bg-input);
   border: 1px solid var(--line-faint);
-  border-radius: var(--r-sm);
+  border-radius: 2px;
+  overflow: hidden;
 }
+.grid-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.045);
+}
+/* A collapsed idle stretch is marked in every lane so the break reads as a
+   property of the axis, not of one phase. */
+.break-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(-45deg, rgba(245, 166, 35, 0.1) 0 4px, transparent 4px 8px);
+  border-left: 1px dashed rgba(245, 166, 35, 0.4);
+  border-right: 1px dashed rgba(245, 166, 35, 0.4);
+}
+.not-started {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.03) 0 5px,
+    transparent 5px 10px
+  );
+}
+
 .bar {
   position: absolute;
-  top: 3px;
-  bottom: 3px;
-  border-radius: var(--r-sm);
-  background: var(--lane-color);
-  opacity: 0.9;
-  display: flex;
-  align-items: center;
-  padding: 0 6px;
+  top: 4px;
+  height: 14px;
+  border-radius: 2px;
 }
 .bar.running {
   animation: pulse 1.4s var(--ease) infinite;
 }
-.bar.success {
-  background: var(--green);
-}
-.bar.fail {
-  background: var(--red);
-}
-.bar.queued {
-  background: transparent;
-}
-.bar-time {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: white;
-  white-space: nowrap;
-}
-.bar-time.outside {
+.end-cap {
   position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--text-dim);
-  pointer-events: none;
-}
-.mark {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 3px;
+  top: 4px;
+  height: 14px;
+  width: 2px;
   border-radius: 1px;
 }
-.mark.tool {
+
+/* Tool calls are binned to pixel columns and drawn under the bar, so hundreds
+   of them read as texture instead of painting the lane solid. */
+.density {
+  position: absolute;
+  bottom: 0;
+  width: 2px;
+  border-radius: 1px 1px 0 0;
   background: var(--blue);
-  opacity: 0.7;
 }
-.mark.correction {
+.flag {
+  position: absolute;
+  top: 2px;
+  width: 2px;
+  height: 18px;
+  border-radius: 1px;
+}
+.flag.correction {
   background: var(--amber);
 }
-.mark.gate {
-  background: var(--green);
-}
-.mark.gate-fail {
+.flag.gate-fail {
   background: var(--red);
 }
-.mark.interrupt {
+.flag.interrupt {
   background: var(--purple);
 }
-.not-started {
-  position: absolute;
-  left: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-family: var(--font-mono);
-  font-size: 10px;
+
+/* ── duration gutter ──────────────────────────────────────────────────── */
+.lane-time {
+  text-align: right;
+  padding-right: var(--s2);
+  font-size: var(--text-xs);
   font-weight: 500;
-  letter-spacing: var(--label-tracking);
-  text-transform: uppercase;
+  white-space: nowrap;
 }
