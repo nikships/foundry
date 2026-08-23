@@ -61,7 +61,20 @@ test.describe('smith / chat', () => {
       await expect(card).toBeHidden();
       await window.getByTestId('smith-scope').selectOption('__all__');
       await expect(window.getByTestId('smith-scope')).toHaveValue('__all__');
-      await expect(window.getByTestId('smith-input')).toBeEnabled();
+
+      // Smith refuses to send on a model the operator did not choose, and the
+      // catalog here is whatever this machine's credentials expose — a CI
+      // runner has none, a developer's install has its own set. So assert the
+      // invariant rather than a fixed state: the composer is open exactly when
+      // no notice is explaining why it is not.
+      const notice = window.getByTestId('smith-model-blocked');
+      const input = window.getByTestId('smith-input');
+      if (await notice.isVisible()) {
+        await expect(input).toBeDisabled();
+        await expect(notice).toContainText(/select|not available/i);
+      } else {
+        await expect(input).toBeEnabled();
+      }
     } finally {
       await app?.close();
     }

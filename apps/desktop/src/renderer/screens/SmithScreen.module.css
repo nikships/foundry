@@ -52,6 +52,22 @@
   min-width: 120px;
 }
 
+/*
+ * Sits above the header rather than under the picker that triggers it: the
+ * header is a single row of controls, and a sentence growing inside it pushes
+ * the effort picker and New chat out of line with the title.
+ */
+.modelNotice {
+  flex: none;
+  padding: var(--s2) var(--s3);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--amber) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--amber) 22%, transparent);
+  color: var(--amber);
+  font-size: var(--text-sm);
+  line-height: var(--leading);
+}
+
 /* ── Transcript chrome (rows themselves live in SmithTranscript.module.css) ── */
 
 .emptyState {

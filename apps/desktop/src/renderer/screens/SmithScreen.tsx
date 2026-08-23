@@ -80,6 +80,12 @@ export default function SmithScreen({
 
   return (
     <div className={styles.smith}>
+      {modelBlocked && models.length > 0 && (
+        <div className={styles.modelNotice} role="status" data-testid="smith-model-blocked">
+          {modelBlocked}
+        </div>
+      )}
+
       <header className={styles.head}>
         <p className="eyebrow">
           <span className="index">07</span>Smith
@@ -93,6 +99,10 @@ export default function SmithScreen({
               allowInherit
               inheritLabel={SMITH_MODEL_UNSET_LABEL}
               emptyHint={SMITH_NO_PROVIDER_COPY}
+              // The header is one fixed row. Its notices render above it, so a
+              // wrapped sentence cannot grow the row and drag the effort picker
+              // and New chat out of alignment with the title.
+              showNotes={false}
               onChange={(v) => void setModel(v)}
               onRefresh={() => void refreshModels()}
             />
@@ -144,12 +154,6 @@ export default function SmithScreen({
         }
         tail={<SmithProposalCard projectId={scopeId} onCompleted={onCompleted} />}
       />
-
-      {modelBlocked && models.length > 0 && (
-        <div className={styles.errorBanner} role="status" data-testid="smith-model-blocked">
-          {modelBlocked}
-        </div>
-      )}
 
       {state?.error && (
         <div className={styles.errorBanner} role="alert">
