@@ -92,7 +92,7 @@ node node_modules/electron/install.js
 (`git config core.hooksPath .githooks`). If hooks are not firing, run `npm run prepare` by hand — the
 `prepare` step is best-effort and never fails an install.
 
-**Pre-commit hook** (`.githooks/pre-commit`): runs ESLint and Prettier against the **staged files only**,
+**Pre-commit hook** (`.githooks/pre-commit`): checks staged file/payload sizes, then runs ESLint and Prettier against the **staged files only**,
 so feedback is seconds rather than minutes. It is a convenience, not the gate — `npm run check` and CI
 remain authoritative.
 
@@ -201,6 +201,8 @@ so local and CI enforce the same floor. An HTML report lands in `coverage/` (git
 - **Prettier** — `prettier --check .` must pass. Run `npm run format` to fix.
 - **Knip** — `npm run knip` flags dead code / unused exports. Intentional unused exports need an explicit comment or pr-template note so a bot doesn't remove them.
 - **No `any`** unless intentionally justified; use `type` imports where possible (`consistent-type-imports`).
+- **Naming is linted:** camelCase for variables/functions/parameters, PascalCase for types/classes/React components, and UPPER_CASE for constants where applicable. Serialized object keys are API/data contracts and are not renamed to satisfy identifier style.
+- **Complexity is linted:** ordinary functions cap at 20 (modified cyclomatic complexity); branch-heavy route/validation modules cap at 40, declarative JSX has a migration ceiling of 45, and the focused QR algorithm caps at 60. Split a function rather than raising a ceiling.
 
 ```bash
 npm run typecheck           # tsc --noEmit -p tsconfig.json
@@ -217,20 +219,24 @@ npm run knip                # dead code
 npm run build               # electron-vite build (minified via esbuild)
 npm run check:css           # fails if <style> blocks redefine tokens-base.css classes
 npm run check:docs          # fails if a documented command no longer exists
+npm run check:files         # rejects tracked files >10 MiB (and staged payloads >20 MiB in the hook)
+npm run check:duplicate     # jscpd, max 2% duplication under apps/desktop/src
 npm run audit:deps          # npm audit --audit-level=high (clean env)
-npm run check               # full local gate (typecheck + lint + format:check + knip + test:coverage + build + check:css + check:docs + audit:deps)
+npm run check               # full local gate (typecheck + lint + format:check + knip + test:coverage + build + check:css + check:docs + check:files + check:duplicate + audit:deps)
 npm run fetch:bridge        # downloads + checksums the pinned CLIProxyAPI into resources/bridge/
 npm run package             # build + icons + fetch:bridge + electron-builder --mac --arm64 (local DMG)
 ```
 
 - `check:css` (`scripts/check-css-collisions.mjs`) walks `apps/desktop/src/renderer/**/*.tsx` and fails if an inline `<style>` redefines a class owned by `design/tokens-base.css` (e.g. `.btn`, `.field`). Move it to a `.module.css` file.
 - `check:docs` (`scripts/check-docs-commands.mjs`) keeps this file honest. It parses every `npm run …`, `make …`, and `scripts/…` reference in the `AGENTS.md` guides, `README.md`, the `Makefile`, and `.github/workflows/**`, then asserts each target actually exists — and, in the other direction, that every `package.json` script is documented and every step composed into `npm run check` is named here. Failures print `file:line` plus the fix. It is **static**: nothing documented is ever executed, so GUI and packaging commands (`npm run dev`, `npm run package`) are validated by existence only. `specs/` and `.factory/docs/` are excluded on purpose — they are historical records that describe the repo as it was. Two scripts are intentionally undocumented and allowlisted in the script: `icons` (an implementation detail of `package`) and `engine:demo` (a local scratch harness).
+- `check:files` (`scripts/check-file-sizes.mjs`) scans tracked and untracked-to-be-added files and rejects any blob over 10 MiB. The pre-commit `--staged` mode reads the index (so partial staging is honest) and also caps the total staged payload at 20 MiB. Existing media remains ordinary Git binary data; adopting LFS requires an explicit migration.
+- `check:duplicate` runs jscpd over TypeScript, TSX, and CSS under `apps/desktop/src/**` with a 2% maximum and generated/dependency paths ignored.
 - `audit:deps` (`scripts/audit-deps.mjs`) spawns `npm audit` in a clean env (strips `npm_config_allow_scripts`) so it works on npm 12.
 - `fetch:bridge` (`scripts/fetch-bridge.mjs`) downloads the CLIProxyAPI release pinned in `package.json` → `config.bridge` and verifies both the archive and the extracted binary against their recorded sha256. It also writes that tag's `models.json` next to the binary — Foundry has no separate model allowlist, so a CLIProxyAPI bump is enough for new models to appear. It is **fail-closed**: a mismatch leaves nothing executable behind and exits non-zero. `resources/bridge/` is gitignored; `electron-builder.yml` ships it as `extraResources` and signs it through `mac.binaries`. `mac-package.yml` must run this before electron-builder — `mac.binaries` codesigns `Contents/Resources/bridge/cli-proxy-api`, and a missing file fails signing. `node scripts/fetch-bridge.mjs --bump` (or `--bump <version>`) rewrites the pin from a new upstream release; `.github/workflows/update-cliproxyapi.yml` does that every 12 hours and opens a PR. A checkout that skipped the fetch simply has no Bridge — the manager reports `binary_missing` and the app runs on whatever other credentials pi has.
 
 **CI** (`.github/workflows/ci.yml`):
 
-- `verify` job: typecheck, lint, format:check, check:docs, knip, test:coverage, build, audit:deps (`macos-26`).
+- `verify` job: typecheck, lint (including naming, complexity, and process boundaries), check:files, check:duplicate, format:check, check:docs, knip, test:coverage, build, audit:deps (`macos-26`).
 - `android` job: runs `./gradlew :app:testDebugUnitTest` on `ubuntu-latest` (JDK 21) in `apps/android`.
 - `e2e` job: `npm run build` then `npm run test:e2e` on `macos-26`. Advisory — not a required check. Artifacts (`playwright-report/`, `test-results/`) upload on every run.
 - `actionlint` on `ubuntu-latest` (1.7.12+, required for `macos-26` label).

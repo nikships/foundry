@@ -1,5 +1,5 @@
 /**
- * The agents Foundry ships with. Prompts are owned here, in the app tree,
+ * The agents Foundry ships with. Prompts are pure shared seed data,
  * and every one is editable in the Roster editor: these are defaults, not law.
  *
  * The envelope example is NOT written into these prompts. It is generated from

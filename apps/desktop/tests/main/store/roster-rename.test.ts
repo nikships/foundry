@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RosterStore } from '../../../src/main/store/roster.js';
 import { PipelineStore } from '../../../src/main/store/pipelines.js';
 import { JsonStore } from '../../../src/main/store/json-store.js';
-import { BUILTIN_AGENTS } from '../../../src/main/store/builtin-agents.js';
+import { BUILTIN_AGENTS } from '../../../src/shared/builtin-agents.js';
 import type { AgentDef } from '../../../src/shared/types.js';
 
 let dir: string;

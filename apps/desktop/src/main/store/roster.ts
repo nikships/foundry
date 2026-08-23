@@ -13,7 +13,7 @@ import { z } from 'zod';
 import { REASONING_EFFORTS } from '@shared/reasoning-effort.js';
 import { BUILTIN_ENVELOPE_KINDS, type AgentDef, type ValidationIssue } from '@shared/types.js';
 import { JsonStore } from './json-store.js';
-import { BUILTIN_AGENTS } from './builtin-agents.js';
+import { BUILTIN_AGENTS } from '@shared/builtin-agents.js';
 import { uniqueCopyName, upsertBy } from './collections.js';
 
 export const agentSchema = z.object({

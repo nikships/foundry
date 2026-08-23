@@ -10,7 +10,7 @@ import { tempDir } from '../../helpers/tmp.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PipelineStore } from '../../../src/main/store/pipelines.js';
 import { JsonStore } from '../../../src/main/store/json-store.js';
-import { BUILTIN_PIPELINES } from '../../../src/main/store/builtin-pipelines.js';
+import { BUILTIN_PIPELINES } from '../../../src/shared/builtin-pipelines.js';
 import type { PipelineDef } from '../../../src/shared/types.js';
 
 let dir: string;

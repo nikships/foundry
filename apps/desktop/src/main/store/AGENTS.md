@@ -5,7 +5,7 @@ Configuration is JSON, not opaque database state. `JsonStore<T>` caches reads an
 ## Project Overview
 
 - `json-store.ts` — generic cached JSON store (atomic write, normalize-on-read).
-- `builtin-agents.ts` / `builtin-pipelines.ts` — seeds for fresh installs / `reset()`. Builtins are seeds, not authoritative overlays.
+- `src/shared/builtin-agents.ts` / `builtin-pipelines.ts` — pure seeds imported for fresh installs / `reset()` and the browser preview. Builtins are seeds, not authoritative overlays.
 - `roster.ts` / `pipelines.ts` / `settings.ts` / `projects.ts` / `envelopes.ts` — domain stores owning validation + hydration for their domain.
 - User-edited copies of builtins must never be clobbered when `builtin-*` changes; a missing shipped builtin is restored and forks/user copies are marked `non-builtin`.
 

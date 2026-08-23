@@ -59,41 +59,35 @@ function packageRoots(repoRoot: string): string[] {
 
 function nodeInstallLine(root: string, rel: string): { line: string; source: string } | null {
   const hasPkg = existsSync(join(root, 'package.json'));
-  const hasPnpmLock = existsSync(join(root, 'pnpm-lock.yaml'));
-  const hasYarnLock = existsSync(join(root, 'yarn.lock'));
-  const hasBunLock = existsSync(join(root, 'bun.lockb'));
-  const hasNpmLock = existsSync(join(root, 'package-lock.yaml'));
-  const hasAnyLock = hasPnpmLock || hasYarnLock || hasBunLock || hasNpmLock;
+  const locks = [
+    { file: 'pnpm-lock.yaml', present: existsSync(join(root, 'pnpm-lock.yaml')) },
+    { file: 'yarn.lock', present: existsSync(join(root, 'yarn.lock')) },
+    { file: 'bun.lockb', present: existsSync(join(root, 'bun.lockb')) },
+    { file: 'package-lock.yaml', present: existsSync(join(root, 'package-lock.yaml')) },
+  ];
+  const sourceFile = locks.find((lock) => lock.present)?.file ?? 'package.json';
+  const hasAnyLock = sourceFile !== 'package.json';
 
   // A package.json without a lockfile still needs an install, but a lockfile
   // without a package.json (workspace root pointing at packages/*) is still
   // actionable at that root.
   if (!hasPkg && !hasAnyLock) return null;
 
-  const sourceFile = hasPnpmLock
-    ? 'pnpm-lock.yaml'
-    : hasYarnLock
-      ? 'yarn.lock'
-      : hasBunLock
-        ? 'bun.lockb'
-        : hasNpmLock
-          ? 'package-lock.yaml'
-          : 'package.json';
   const source = rel ? `${rel}/${sourceFile}` : sourceFile;
 
   const runner = nodeRunnerFor(root);
   let line: string;
   if (runner === 'pnpm') {
     // pnpm without a lock still works but should not pass --frozen.
-    const flag = hasPnpmLock ? ' --frozen-lockfile' : '';
+    const flag = sourceFile === 'pnpm-lock.yaml' ? ' --frozen-lockfile' : '';
     line = rel ? `pnpm --dir ${rel} install${flag}` : `pnpm install${flag}`;
   } else if (runner === 'yarn') {
-    const flag = hasYarnLock ? ' --frozen-lockfile' : '';
+    const flag = sourceFile === 'yarn.lock' ? ' --frozen-lockfile' : '';
     line = rel ? `yarn --cwd ${rel} install${flag}` : `yarn install${flag}`;
   } else if (runner === 'bun') {
     line = rel ? `bun --cwd ${rel} install` : 'bun install';
   } else {
-    const verb = hasNpmLock ? 'ci' : 'install';
+    const verb = sourceFile === 'package-lock.yaml' ? 'ci' : 'install';
     line = rel ? `npm ${verb} --prefix ${rel}` : `npm ${verb}`;
   }
   return { line, source };

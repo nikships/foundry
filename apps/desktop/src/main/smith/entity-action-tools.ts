@@ -12,6 +12,7 @@ import {
   requireProjectId,
   resolveProjectId,
   stringField,
+  type JsonToolResult,
   type SmithActionToolDeps,
 } from './tool-helpers.js';
 
@@ -89,6 +90,90 @@ const DESTRUCTIVE: ReadonlySet<EntityOperation> = new Set([
 
 const label = (op: EntityOperation): string => op.replaceAll('_', ' ');
 
+type ProposeChannelCall = (
+  op: EntityOperation,
+  channel: string,
+  args: unknown[],
+  shownArgs: Record<string, unknown>,
+) => Promise<JsonToolResult>;
+
+async function executeEntityRead(
+  deps: SmithActionToolDeps,
+  op: EntityOperation,
+  params: unknown,
+  projectId: string | undefined,
+): Promise<JsonToolResult | null> {
+  if (op === 'agent_stale') return immediate(deps, IPC.rosterStaleBuiltins, projectId);
+  if (op === 'pipeline_stale') return immediate(deps, IPC.pipelinesStaleBuiltins, projectId);
+  const objectRead = OBJECT_READS[op];
+  if (objectRead) {
+    const [channel, name] = objectRead;
+    const value = objectField(params, name);
+    if (!value) return json({ ok: false, error: `${name} is required` });
+    return immediate(deps, channel, value, ...(op === 'pipeline_validate' ? [projectId] : []));
+  }
+  const stringRead = STRING_READS[op];
+  if (!stringRead) return null;
+  const [channel, name] = stringRead;
+  const value = stringField(params, name);
+  return value
+    ? immediate(deps, channel, value)
+    : json({ ok: false, error: `${name} is required` });
+}
+
+function executeDryRun(
+  deps: SmithActionToolDeps,
+  params: unknown,
+  projectId: string | undefined,
+): Promise<JsonToolResult> | JsonToolResult {
+  const pipelineId = stringField(params, 'pipelineId');
+  const request = stringField(params, 'request');
+  if (!pipelineId || !request || !projectId) {
+    return json({ ok: false, error: 'pipelineId, projectId, and request are required' });
+  }
+  return immediate(deps, IPC.pipelinesDryRun, pipelineId, projectId, request);
+}
+
+function executeMarkUpload(
+  deps: SmithActionToolDeps,
+  params: unknown,
+): Promise<JsonToolResult> | JsonToolResult {
+  const filePath = stringField(params, 'filePath');
+  if (!filePath) return json({ ok: false, error: 'filePath is required' });
+  const mime = MIMES[extname(filePath).toLowerCase()];
+  if (!mime) {
+    return json({
+      ok: false,
+      error: 'unsupported mark type; use PNG, JPEG, WebP, GIF, or SVG',
+    });
+  }
+  return proposeAction(deps, {
+    operation: 'agent_upload_mark',
+    title: 'Upload agent mark',
+    summary: `Read and upload ${filePath}.`,
+    args: { filePath, mime },
+    risk: 'write',
+    // The bytes are read after approval, so a rejected card never reads the file.
+    execute: async () =>
+      deps.invoke(IPC.rosterUploadMark, (await readFile(filePath)).toString('base64'), mime),
+  });
+}
+
+function executeRename(
+  params: unknown,
+  projectId: string | undefined,
+  proposeChannelCall: ProposeChannelCall,
+): Promise<JsonToolResult> | JsonToolResult {
+  const from = stringField(params, 'from');
+  const to = stringField(params, 'to');
+  if (!from || !to) return json({ ok: false, error: 'from and to are required' });
+  return proposeChannelCall('agent_rename', IPC.rosterRename, [from, to, projectId], {
+    from,
+    to,
+    ...(projectId ? { projectId } : {}),
+  });
+}
+
 export function smithEntitiesTool(deps: SmithActionToolDeps): ToolDefinition {
   const proposeChannelCall = (
     op: EntityOperation,
@@ -141,68 +226,11 @@ export function smithEntitiesTool(deps: SmithActionToolDeps): ToolDefinition {
       if (!scope.ok) return json(scope);
       const projectId = scope.projectId;
 
-      if (op === 'agent_stale') return immediate(deps, IPC.rosterStaleBuiltins, projectId);
-      if (op === 'pipeline_stale') return immediate(deps, IPC.pipelinesStaleBuiltins, projectId);
-
-      const objectRead = OBJECT_READS[op];
-      if (objectRead) {
-        const [channel, name] = objectRead;
-        const value = objectField(params, name);
-        if (!value) return json({ ok: false, error: `${name} is required` });
-        return immediate(deps, channel, value, ...(op === 'pipeline_validate' ? [projectId] : []));
-      }
-
-      const stringRead = STRING_READS[op];
-      if (stringRead) {
-        const [channel, name] = stringRead;
-        const value = stringField(params, name);
-        return value
-          ? immediate(deps, channel, value)
-          : json({ ok: false, error: `${name} is required` });
-      }
-
-      if (op === 'pipeline_dry_run') {
-        const pipelineId = stringField(params, 'pipelineId');
-        const request = stringField(params, 'request');
-        if (!pipelineId || !request || !projectId) {
-          return json({ ok: false, error: 'pipelineId, projectId, and request are required' });
-        }
-        return immediate(deps, IPC.pipelinesDryRun, pipelineId, projectId, request);
-      }
-
-      if (op === 'agent_upload_mark') {
-        const filePath = stringField(params, 'filePath');
-        if (!filePath) return json({ ok: false, error: 'filePath is required' });
-        const mime = MIMES[extname(filePath).toLowerCase()];
-        if (!mime) {
-          return json({
-            ok: false,
-            error: 'unsupported mark type; use PNG, JPEG, WebP, GIF, or SVG',
-          });
-        }
-        return proposeAction(deps, {
-          operation: op,
-          title: 'Upload agent mark',
-          summary: `Read and upload ${filePath}.`,
-          args: { filePath, mime },
-          risk: 'write',
-          // The bytes are read after approval, so a rejected card never reads
-          // the file and the proposal never carries its contents.
-          execute: async () =>
-            deps.invoke(IPC.rosterUploadMark, (await readFile(filePath)).toString('base64'), mime),
-        });
-      }
-
-      if (op === 'agent_rename') {
-        const from = stringField(params, 'from');
-        const to = stringField(params, 'to');
-        if (!from || !to) return json({ ok: false, error: 'from and to are required' });
-        return proposeChannelCall(op, IPC.rosterRename, [from, to, projectId], {
-          from,
-          to,
-          ...(projectId ? { projectId } : {}),
-        });
-      }
+      const read = await executeEntityRead(deps, op, params, projectId);
+      if (read) return read;
+      if (op === 'pipeline_dry_run') return executeDryRun(deps, params, projectId);
+      if (op === 'agent_upload_mark') return executeMarkUpload(deps, params);
+      if (op === 'agent_rename') return executeRename(params, projectId, proposeChannelCall);
 
       const action = SINGLE_FIELD_ACTIONS[op];
       if (!action) return json({ ok: false, error: 'unknown operation' });
