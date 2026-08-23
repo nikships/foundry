@@ -18,6 +18,8 @@ import { ChangeReceiptDesign } from './SmithChangeReceiptDesign.js';
 import { CheckpointDesign } from './SmithCheckpointDesign.js';
 import { ChecklistDesign } from './SmithChecklistDesign.js';
 import { EntityComparisonDesign } from './SmithEntityComparisonDesign.js';
+import { ProjectCardDesign } from './SmithProjectCardDesign.js';
+import { PrCardDesign } from './SmithPrCardDesign.js';
 import { AgentDesign, EnvelopeDesign, PipelineDesign, ViewJson } from './SmithEntityDesign.js';
 import { ProviderStatusDesign } from './SmithProviderStatusDesign.js';
 import { ReadinessJourneyDesign } from './SmithReadinessJourneyDesign.js';
@@ -45,6 +47,12 @@ function DesignBody({
   if (artifact.kind === 'entity_comparison') {
     return <EntityComparisonDesign artifact={artifact} compact={compact} />;
   }
+  if (artifact.kind === 'change_receipt') {
+    return <ChangeReceiptDesign receipt={artifact.receipt} compact={compact} />;
+  }
+  if (artifact.kind === 'project_card') {
+    return <ProjectCardDesign project={artifact.project} compact={compact} />;
+  }
   if (artifact.kind === 'engineer_checkpoint') {
     return <CheckpointDesign checkpoint={artifact.checkpoint} compact={compact} />;
   }
@@ -54,7 +62,7 @@ function DesignBody({
   if (artifact.kind === 'provider_status') {
     return <ProviderStatusDesign status={artifact.status} compact={compact} />;
   }
-  return <ChangeReceiptDesign receipt={artifact.receipt} compact={compact} />;
+  return <PrCardDesign pr={artifact.pr} compact={compact} />;
 }
 
 /** The payload the audit disclosure shows for each kind. */
@@ -78,6 +86,10 @@ function artifactPayload(artifact: SmithArtifact): unknown {
       return artifact.status;
     case 'change_receipt':
       return artifact.receipt;
+    case 'project_card':
+      return artifact.project;
+    case 'pr_card':
+      return artifact.pr;
   }
 }
 
