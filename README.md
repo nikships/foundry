@@ -2,7 +2,7 @@
 
 # Foundry
 
-**Describe what you want. Watch it get built.**
+**Your SDLC. Your models. Your rules.**
 
 [![Version](https://img.shields.io/github/v/release/nikships/foundry?style=for-the-badge)](https://github.com/nikships/foundry/releases)
 [![Stars](https://img.shields.io/github/stars/nikships/foundry?style=for-the-badge)](https://github.com/nikships/foundry/stargazers)
@@ -10,9 +10,9 @@
 
 <img src="assets/icon/app-icon-1024.png" alt="Foundry app icon" width="140">
 
-**The software factory for builders who ship.**
+**The software factory you configure, not the one you're handed.**
 
-If you're still babysitting a single agent in a terminal, you're moving slow.<br>Foundry runs a whole team, in parallel, in isolation — and shows you every move.
+Shape the delivery lifecycle to the way your team actually ships,<br>and run every phase of it on whichever model you want — from any provider, all at once.
 
 [Download latest for Mac or Android](https://github.com/nikships/foundry/releases/latest) · macOS 26+ · Apple Silicon
 
@@ -20,13 +20,13 @@ If you're still babysitting a single agent in a terminal, you're moving slow.<br
 
 ---
 
-## You're moving too slow
+## Two lock-ins are slowing you down
 
-Claude Code is incredible. But one agent, one chat, one thread — you prompt, you wait, you review, you re-prompt. You are the orchestrator, the QA, and the git janitor.
+**Someone else's process.** Every agent tool ships one opinion about how software gets built — one loop, one definition of done, one place a human is allowed to interject. If your team specs before it builds, or gates on a security pass, or needs a sign-off before a PR opens, you bend your process to the tool.
 
-**Foundry is the factory you actually wanted.** You describe the work, pick how rigorous to be, and a roster of specialists builds it in an isolated worktree while you watch a live waterfall of real evidence. When it's right, you merge. When it's not, you see exactly where the line failed, retool the pipeline, and run it again — scrap the part, not the factory.
+**Someone else's model.** Pick a vendor, get their strengths and their outages. When their reasoning model degrades on a Tuesday, your whole pipeline degrades with it. One family is better at open-ended planning, another at grinding out precise code, a third at catching what both missed — and you get to use exactly one.
 
-Builders using Foundry aren't just prompting. They're shipping.
+**Foundry removes both.** You define the lifecycle as data — phases, checks, boundaries, human checkpoints — and you assign a model per agent and per phase, mixed freely across providers, with automatic failover to the next reachable model when one dies mid-run.
 
 <p align="center">
   <img src="assets/readme/onboarding-hero.png" alt="Foundry onboarding — the factory" width="820">
@@ -38,17 +38,31 @@ Foundry is a native macOS app. Not a CLI wrapper. Not a chat skin.
 
 You point it at any git repo. Every run gets its own branch and worktree. Every phase leaves typed evidence — what was tried, what was checked, why it passed or failed. Code judges the work, not the model.
 
-**Agent proposes. Code disposes.** That's why the same request gives you the same _kind_ of result twice.
+**Agent proposes. Code disposes.** That's why the same request gives you the same _kind_ of result twice, no matter which model answered.
 
 <p align="center">
   <img src="assets/readme/concepts.png" alt="Three primitives: run as data, typed reports, checks that leave evidence" width="820">
 </p>
 
-## Pipelines, not prompts
+## Structure the SDLC to your liking
 
-A pipeline is a recipe — not a mega-prompt. Each phase has one job and one way to be judged. Drag to reorder, swap who does what, add a checkpoint. Save it. Ship it again tomorrow.
+A pipeline is a recipe — data, not a mega-prompt and not a script. You compose it on a freeform canvas out of three kinds of phase:
 
-Six built-ins, from fast to full-factory — every one ends in a pull request:
+| Phase kind   | What it is                                                                     |
+| ------------ | ------------------------------------------------------------------------------ |
+| **agent**    | A specialist takes a turn and must return a typed envelope                     |
+| **code**     | A real command in the worktree — your tests, your linter, your build, a commit |
+| **engineer** | A checkpoint that stops and asks _you_ a question before the line moves on     |
+
+Then you decide, per phase:
+
+- **What proves it.** Attach gates: `artifacts_exist`, `files_non_empty`, `json_parses`, `verdict_consistent`, `disapproval_halts`, `command_passes` (your argv, must exit 0). A gate returns evidence, not an opinion.
+- **What it may touch.** A write boundary per agent: unrestricted, read-only, or an allowlist of paths and globs. Enforced after every call by diffing git, so a violation is reverted and the phase fails.
+- **What it must return.** Built-in envelopes (brief, plan, build, scout, review, document, pr, issue) or your own named envelope with typed fields, validated on the way out.
+- **Where failure goes.** `feedbackTo` hands the evidence back to an earlier agent phase with its own retry budget, instead of failing the run.
+- **What "done" means.** Acceptance is explicit: last phase passes, every phase passes, a named phase sets a flag, or a named phase's envelope reports success.
+
+Six built-ins ship as starting points, not as the menu — fork any of them, reorder phases by dragging, insert your own checkpoint, save it, run it tomorrow:
 
 | Pipeline                         | When to use it                                               |
 | -------------------------------- | ------------------------------------------------------------ |
@@ -61,15 +75,41 @@ Six built-ins, from fast to full-factory — every one ends in a pull request:
 
 Nothing is committed unproven: every code edit runs your tests before the commit that records it, and a reviewer who doesn't approve halts the run before it can reach the PR.
 
-All editable on a freeform canvas. No scripts to write.
+No scripts to write. No YAML to learn. Dry-run a pipeline to see the rendered prompts without spending a run.
 
 <p align="center">
   <img src="assets/readme/pipeline-canvas.png" alt="Pipeline canvas — drag phases, set boundaries, save instantly" width="820">
 </p>
 
+## Never bet a run on one model
+
+Foundry keeps no model allowlist of its own. A model id is an opaque `provider/model` string, so anything your install can actually reach is selectable anywhere a model is chosen.
+
+**Mix providers inside a single run.** Model and reasoning effort are set per agent, and any phase can override the agent's choice. Plan on one family, build on another, review with a third — because a reviewer that shares the builder's blind spots isn't a review.
+
+**Cast each role for what that model is actually good at.** A run might look like this:
+
+| Phase             | Cast                                                                |
+| ----------------- | ------------------------------------------------------------------- |
+| **refine → plan** | **Claude** — creative reach, turns a vague ask into a real approach |
+| **build**         | **GPT** — mechanical precision and thoroughness, follows the plan   |
+| **review**        | **Gemini** — broad world knowledge, a genuine second opinion        |
+
+Then swap any seat. Put **Kimi K2** on the build, **GLM** or **DeepSeek** on the review, **Qwen** on the docs — Chinese open-weight models are first-class here, whether you reach them through a provider or run them yourself. Nobody's roster is hardcoded, including this one.
+
+**Bring whatever you already pay for.**
+
+- **Subscriptions** — sign in to Claude, ChatGPT (Codex), Gemini, Kimi, or Grok through the built-in Bridge, which turns the subscription you already have into a local endpoint. No per-token cost. Let the big labs keep subsidizing your inference while you keep the freedom to walk: your process lives here, not in their walled garden, and the day one of them raises the price or nerfs a model, you change a dropdown instead of rebuilding your workflow.
+- **Direct API keys** — Anthropic, OpenAI, Google, Vertex, Bedrock, Azure, OpenRouter, Groq, Cerebras, Fireworks, Together, DeepSeek, Mistral, MiniMax, Moonshot, NVIDIA, xAI, Z.ai, Baseten, Hugging Face, Cloudflare and more. Keys are held in the runtime's credential store on your Mac.
+- **Local and self-hosted** — a hand-added OpenAI-compatible endpoint in the runtime's model file survives every regeneration, so your own inference stays in the picker.
+
+**Failover is automatic and mid-turn.** When a model exhausts its retries, the run continues on the next reachable model in catalog order, keeping the conversation and tool results intact and giving the fallback its own retry budget. A provider going down degrades a run's speed, not its outcome.
+
+**The picker is honest.** A provider with no usable credential isn't listed, so a model you can select is a model a run can start on. Hide the ones you never want. Reasoning effort offers only the levels that model genuinely supports.
+
 ## A crew, not a chatbot
 
-Seven specialists, each with their own model, prompt, and write boundaries. Or bring your own.
+Seven specialists, each with their own model, prompt, tool surface, and write boundaries. Or bring your own.
 
 | Agent          | What they do                                          |
 | -------------- | ----------------------------------------------------- |
@@ -81,7 +121,7 @@ Seven specialists, each with their own model, prompt, and write boundaries. Or b
 | **finisher**   | Audits to ship bar and closes the gaps                |
 | **documenter** | Leaves the trail for the next person                  |
 
-You're not locked in — open the Roster, retune the prompt, change the model, tighten what they can touch.
+You're not locked in — open the Roster, retune the prompt, change the model, drop an agent to a read-only tool surface, tighten what it can touch.
 
 <p align="center">
   <img src="assets/readme/roster.png" alt="Roster — seven agents, each tunable" width="820">
@@ -89,7 +129,7 @@ You're not locked in — open the Roster, retune the prompt, change the model, t
 
 ## Watch every move
 
-No black box. The Inspector is a live waterfall — tool calls streaming mid-phase, reports and check evidence inspectable per phase, tokens and timing filling in as you go. Same view for live runs and history.
+No black box. The Inspector is a live waterfall — tool calls streaming mid-phase, reports and check evidence inspectable per phase, tokens and timing filling in as you go, and the model that actually answered recorded alongside the one you picked. Same view for live runs and history.
 
 Pause at any checkpoint. Approve, edit, or reject — the factory keeps going.
 
@@ -107,21 +147,21 @@ Failed runs keep their worktree so you can open it, learn, and discard deliberat
 
 ## Get started in 60 seconds
 
-**Requirements:** macOS 26+, Apple Silicon, `git`, and a model provider signed in through Settings → Providers.
+**Requirements:** macOS 26+, Apple Silicon, `git`, and at least one model reachable — a subscription signed in or an API key stored under Settings → Providers.
 
 1. [Download `Foundry.dmg`](https://github.com/nikships/foundry/releases/latest) and drag to Applications
-2. Open Foundry, add any git repo as a project
+2. Open Foundry, connect a provider, add any git repo as a project
 3. Describe the work — _"Add rate limiting to the public API"_ is a complete brief
-4. Pick a pipeline and hit run
+4. Pick a pipeline (or fork one into your own shape) and hit run
 5. Watch the waterfall, inspect any phase, merge when you're happy
 
 No `npm ci`. No setup script. Just download and build.
 
 ## Philosophy
 
-**Agent proposes, code disposes.** Agents do the creative work. Code decides if it counted. Sequencing, retries, and acceptance live in the factory — never in a prompt.
+**Agent proposes, code disposes.** Agents do the creative work. Code decides if it counted. Sequencing, retries, and acceptance live in the factory — never in a prompt, and never in a single vendor's hands.
 
-That's why Foundry doesn't feel like chatting. It feels like running a shop.
+That's why Foundry doesn't feel like chatting. It feels like running a shop you own.
 
 ---
 
