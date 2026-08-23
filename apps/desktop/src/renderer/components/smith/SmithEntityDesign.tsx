@@ -269,6 +269,10 @@ export function EnvelopeDesign({
 }
 
 export { ChecklistDesign } from './SmithChecklistDesign.js';
+export { EntityComparisonDesign } from './SmithEntityComparisonDesign.js';
+export { ChangeReceiptDesign } from './SmithChangeReceiptDesign.js';
+export { ProjectCardDesign } from './SmithProjectCardDesign.js';
+export { PrCardDesign } from './SmithPrCardDesign.js';
 
 export function RunSummaryDesign({
   artifact,

@@ -12,6 +12,7 @@
 
 import { useEffect, useMemo, useRef } from 'react';
 import type { SmithTranscriptEntry } from '@shared/ipc-contract.js';
+import type { SmithReceiptLink } from '@shared/types.js';
 import {
   SMITH_TOOL_ICON,
   groupTranscript,
@@ -25,10 +26,12 @@ import styles from './SmithTranscript.module.css';
 function TranscriptRows({
   group,
   compact,
+  onOpenReceiptLink,
   onOpenInspector,
 }: {
   group: SmithTranscriptGroup;
   compact?: boolean;
+  onOpenReceiptLink?: (link: SmithReceiptLink) => void;
   onOpenInspector?: (runId: string) => void;
 }): React.JSX.Element {
   return (
@@ -40,6 +43,7 @@ function TranscriptRows({
             artifact={entry.artifact}
             compact={compact}
             onOpenInspector={onOpenInspector}
+            {...(onOpenReceiptLink ? { onOpenReceiptLink } : {})}
           />
         ) : (
           <div key={entry.id} className={cx(styles.line, styles[entry.kind])}>
@@ -71,6 +75,7 @@ export default function SmithTranscript({
   compact,
   emptyState,
   tail,
+  onOpenReceiptLink,
   onOpenInspector,
 }: {
   entries: SmithTranscriptEntry[];
@@ -81,6 +86,8 @@ export default function SmithTranscript({
   emptyState?: React.ReactNode;
   /** Rendered after the last group — the inline proposal card lives here. */
   tail?: React.ReactNode;
+  /** Follows an action receipt's link to what the action affected. */
+  onOpenReceiptLink?: (link: SmithReceiptLink) => void;
   onOpenInspector?: (runId: string) => void;
 }): React.JSX.Element {
   const tailRef = useRef<HTMLDivElement | null>(null);
@@ -114,11 +121,21 @@ export default function SmithTranscript({
             <header className={styles.readinessHead}>
               <span className={styles.readinessTag}>Readiness agent</span>
             </header>
-            <TranscriptRows group={group} compact={compact} onOpenInspector={onOpenInspector} />
+            <TranscriptRows
+              group={group}
+              compact={compact}
+              onOpenInspector={onOpenInspector}
+              {...(onOpenReceiptLink ? { onOpenReceiptLink } : {})}
+            />
           </section>
         ) : (
           <div key={group.id} className={styles.smithTurn}>
-            <TranscriptRows group={group} compact={compact} onOpenInspector={onOpenInspector} />
+            <TranscriptRows
+              group={group}
+              compact={compact}
+              onOpenInspector={onOpenInspector}
+              {...(onOpenReceiptLink ? { onOpenReceiptLink } : {})}
+            />
           </div>
         ),
       )}

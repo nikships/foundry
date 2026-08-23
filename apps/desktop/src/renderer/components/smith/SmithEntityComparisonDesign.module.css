@@ -1,0 +1,287 @@
+/**
+ * Entity comparison design body for Smith artifact cards.
+ * Compact mode tightens spacing for the titlebar bubble.
+ */
+
+.comparison {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  min-width: 0;
+}
+
+.comparison.compact {
+  gap: var(--s2);
+  font-size: var(--text-xs);
+}
+
+/* ── Toggle bar ── */
+
+.toggleBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+}
+
+.scopeNote {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.compact .scopeNote {
+  font-size: 10px;
+}
+
+.segmentedToggle {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+}
+
+.toggleButton {
+  padding: 3px var(--s2);
+  border-radius: calc(var(--r-sm) - 2px);
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background var(--fast) var(--ease),
+    color var(--fast) var(--ease);
+}
+
+.compact .toggleButton {
+  padding: 2px var(--s1);
+  font-size: 10px;
+}
+
+.toggleButton:hover {
+  color: var(--text);
+}
+
+.toggleButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.toggleButtonActive {
+  background: var(--bg-raised);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+/* ── What changes summary ── */
+
+.changes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+}
+
+.compact .changes {
+  padding: var(--s2);
+  gap: var(--s1);
+}
+
+.changesTitle {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.changeList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.compact .changeList {
+  gap: var(--s1);
+}
+
+.change {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s2);
+  font-size: var(--text-sm);
+  line-height: var(--leading);
+}
+
+.compact .change {
+  font-size: var(--text-xs);
+  gap: var(--s1);
+}
+
+.changeKind {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--s1);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 16px;
+  border: 1px solid transparent;
+  flex: none;
+}
+
+.changeKind[data-change='added'] {
+  background: color-mix(in srgb, var(--green-dim) 35%, var(--bg-raised));
+  border-color: color-mix(in srgb, var(--green) 30%, transparent);
+  color: var(--green);
+}
+
+.changeKind[data-change='removed'] {
+  background: color-mix(in srgb, var(--red-dim) 35%, var(--bg-raised));
+  border-color: color-mix(in srgb, var(--red) 30%, transparent);
+  color: var(--red);
+}
+
+.changeKind[data-change='changed'] {
+  background: color-mix(in srgb, var(--amber-dim) 35%, var(--bg-raised));
+  border-color: color-mix(in srgb, var(--amber) 30%, transparent);
+  color: var(--amber);
+}
+
+.changeKind[data-change='reordered'] {
+  background: color-mix(in srgb, var(--accent-dim) 35%, var(--bg-raised));
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--accent);
+}
+
+.changeWhere {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.changeValue {
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+.noChanges {
+  margin: 0;
+  padding: var(--s2) var(--s3);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+}
+
+.compact .noChanges {
+  padding: var(--s2);
+  font-size: var(--text-xs);
+}
+
+/* ── Unified view ── */
+
+.unifiedBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.sectionHeader {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* ── Split (Before / After) view ── */
+
+.splitView {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s3);
+  min-width: 0;
+}
+
+.splitStacked {
+  grid-template-columns: 1fr;
+  gap: var(--s2);
+}
+
+.splitPane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s3);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--bg-input);
+  min-width: 0;
+}
+
+.compact .splitPane {
+  padding: var(--s2);
+  gap: var(--s1);
+}
+
+.paneHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding-bottom: var(--s2);
+  border-bottom: 1px solid var(--line-faint);
+}
+
+.paneName {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: var(--text-xs);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paneBadgeBefore,
+.paneBadgeAfter {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px var(--s2);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 14px;
+  flex: none;
+}
+
+.paneBadgeBefore {
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+}
+
+.paneBadgeAfter {
+  background: color-mix(in srgb, var(--accent-dim) 40%, var(--bg-raised));
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--accent);
+}

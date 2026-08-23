@@ -12,6 +12,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import type { SmithScreenContext } from '@shared/ipc-contract.js';
+import type { SmithReceiptLink } from '@shared/types.js';
 import { modelChoiceBlock } from '@shared/model-choice.js';
 import { modelForEffortPicker } from '@shared/reasoning-effort.js';
 import { SMITH_MODEL_UNSET_LABEL } from '../view-models/smith-chat-view.js';
@@ -30,12 +31,15 @@ import styles from './SmithScreen.module.css';
 export default function SmithScreen({
   screenContext,
   onCompleted,
+  onOpenReceiptLink,
   onOpenInspector,
 }: {
   /** What the operator was looking at before opening Smith, sent with each message. */
   screenContext: SmithScreenContext;
   /** Navigates to the saved entity's editor after an approved proposal saves. */
   onCompleted: (target?: SmithNavTarget) => void | Promise<void>;
+  /** Opens what a settled action affected, from its receipt card. */
+  onOpenReceiptLink?: (link: SmithReceiptLink) => void;
   onOpenInspector?: (runId: string) => void;
 }): React.JSX.Element {
   const { projects, smithProjectId } = useApp();
@@ -152,6 +156,7 @@ export default function SmithScreen({
         entries={transcript}
         running={running}
         onOpenInspector={onOpenInspector}
+        {...(onOpenReceiptLink ? { onOpenReceiptLink } : {})}
         emptyState={
           <div className={styles.emptyState}>
             <h2 className={styles.emptyTitle}>Smith</h2>

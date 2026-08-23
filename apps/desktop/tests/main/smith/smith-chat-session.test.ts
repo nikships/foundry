@@ -654,6 +654,39 @@ describe('artifact rows', () => {
     expect(rowText(rows[2])).toMatch(/could not be restored/);
   });
 
+  it('restores an action receipt intact, with nothing that could re-run it', async () => {
+    const h = harness({});
+    const receiptArtifact = {
+      id: 'rec-1',
+      kind: 'action_receipt' as const,
+      version: 1,
+      createdAt: 99,
+      warnings: [],
+      receipt: {
+        operation: 'merge',
+        title: 'merge run',
+        target: 'run_7',
+        consequences: 'merge the selected run.',
+        risk: 'git' as const,
+        outcome: 'failed' as const,
+        durationMs: 240,
+        failure: 'the base moved',
+        args: { runId: 'run_7' },
+      },
+    };
+    h.session.absorbArtifact(receiptArtifact);
+
+    const relaunched = h.remake();
+    const restored = relaunched.snapshot().transcript[0]!;
+    if (restored.kind !== 'artifact') throw new Error('expected artifact row');
+    expect(restored.artifact).toEqual(receiptArtifact);
+    // A restored receipt is data: the failure survives, and nothing in it is
+    // callable, so reading the chat after a relaunch cannot repeat the action.
+    for (const value of Object.values(restored.artifact)) {
+      expect(typeof value).not.toBe('function');
+    }
+  });
+
   it('keeps a new answer from growing into an artifact card', async () => {
     const h = harness({ turns: ['first', 'second'] });
     await h.session.send('one');

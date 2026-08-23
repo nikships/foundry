@@ -34,6 +34,16 @@ inline human approval.
   `renderer/components/smith/`, a persistence/restore decision in
   `chat-session.ts`, and tests in `smith-present-tools.test.ts` +
   `smith-artifact-view.test.ts`. Never infer cards from Smith's Markdown.
+- `action_receipt` (`receipts.ts`) is the one artifact kind the model may not
+  present. It is minted by main on the proposal answer path — the queue reports
+  every settled **action** through `ActionSettledHandler`, `SmithService` builds
+  the receipt from the executor's real result and files it into the proposing
+  conversation. Approval is not success: a failed or refused execution produces
+  a failed receipt carrying the executor's words. A receipt holds a snapshot
+  plus identifiers only — no executor, no handle, no retry — so one restored
+  after a relaunch can be read but never re-run. `SmithPresentableArtifactKind`
+  keeps it out of `smith_present`'s enum by type, not by convention. Entity
+  saves get no receipt: their evidence is the stored definition.
 - Readiness exposes its three conversational tools plus `readiness_manage`.
 - Read-only operations invoke immediately. Persistent/destructive/credential,
   process, Git/PR, lifecycle, network, and maintenance actions enqueue an action

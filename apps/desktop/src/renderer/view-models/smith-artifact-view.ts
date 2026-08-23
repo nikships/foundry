@@ -14,6 +14,9 @@ import { SMITH_ARTIFACT_VERSION } from '@shared/types.js';
 import type {
   Acceptance,
   AgentDef,
+  ChangeReceiptDef,
+  ChangeReceiptStatus,
+  ChangeReceiptTarget,
   ChecklistDef,
   ChecklistItem,
   ChecklistItemStatus,
@@ -22,7 +25,15 @@ import type {
   GateSpec,
   PhaseDef,
   PipelineDef,
+  PrCardDef,
+  PrChecks,
+  ProjectCardDef,
+  ProjectCardDivergence,
+  ProjectCardHealth,
+  ProjectCardScopes,
+  SmithActionReceipt,
   SmithArtifact,
+  SmithReceiptLink,
   WriteBoundary,
 } from '@shared/types.js';
 
@@ -33,6 +44,11 @@ const SUPPORTED_ARTIFACT_KINDS: ReadonlyArray<SmithArtifact['kind']> = [
   'envelope_design',
   'checklist',
   'run_summary',
+  'entity_comparison',
+  'change_receipt',
+  'project_card',
+  'pr_card',
+  'action_receipt',
 ];
 
 export function isRenderableArtifact(artifact: SmithArtifact): boolean {
@@ -47,6 +63,11 @@ export const ARTIFACT_KIND_LABEL: Record<SmithArtifact['kind'], string> = {
   envelope_design: 'report design',
   checklist: 'checklist',
   run_summary: 'run summary',
+  entity_comparison: 'entity comparison',
+  change_receipt: 'change receipt',
+  project_card: 'project card',
+  pr_card: 'pull request',
+  action_receipt: 'action receipt',
 };
 
 /** The identifying name the card's title shows. */
@@ -55,7 +76,27 @@ export function artifactName(artifact: SmithArtifact): string {
   if (artifact.kind === 'agent_design') return artifact.agent.name;
   if (artifact.kind === 'envelope_design') return artifact.envelope.name;
   if (artifact.kind === 'checklist') return artifact.checklist.title;
-  return artifact.pipelineName || artifact.pipelineId || artifact.runId;
+  if (artifact.kind === 'run_summary') {
+    return artifact.pipelineName || artifact.pipelineId || artifact.runId;
+  }
+  if (artifact.kind === 'action_receipt') return artifact.receipt.title;
+  if (artifact.kind === 'change_receipt') {
+    return (
+      artifact.receipt.title ??
+      (artifact.receipt.command
+        ? artifact.receipt.command.command
+        : artifact.receipt.target === 'isolated_worktree'
+          ? 'Worktree changes'
+          : 'Checkout changes')
+    );
+  }
+  if (artifact.kind === 'project_card') {
+    return artifact.project.name ?? artifact.project.title ?? artifact.project.path;
+  }
+  if (artifact.kind === 'pr_card') {
+    return `#${artifact.pr.number} ${artifact.pr.title}`;
+  }
+  return artifact.name;
 }
 
 export function runStatusLabel(status: string): string {
@@ -78,6 +119,146 @@ export function runStatusLabel(status: string): string {
 export function isolationLabel(isolation?: boolean, branch?: string | null): string {
   if (isolation === false) return 'direct checkout';
   return branch ? `isolated worktree (${branch})` : 'isolated worktree';
+}
+
+// ── Project card helpers ─────────────────────────────────────────────────────
+
+export function projectCardHealthLabel(health?: ProjectCardHealth): string {
+  if (!health) return 'Unknown health';
+  if (health.ok) return 'Healthy';
+  const count = health.failedCount ?? 1;
+  return `${count} issue${count === 1 ? '' : 's'}`;
+}
+
+export function projectCardDivergenceLabel(divergence?: ProjectCardDivergence): string {
+  if (!divergence) return 'Up to date';
+  switch (divergence.state) {
+    case 'current':
+      return 'Up to date';
+    case 'ahead':
+      return `${divergence.ahead} ahead`;
+    case 'behind':
+      return `${divergence.behind} behind`;
+    case 'diverged':
+      return `${divergence.ahead} ahead, ${divergence.behind} behind`;
+    case 'no_remote':
+      return 'No remote';
+    case 'error':
+      return 'Sync error';
+  }
+}
+
+export function projectCardScopesLabel(scopes?: ProjectCardScopes): string {
+  if (!scopes) return 'Global defaults';
+  if (scopes.roster && scopes.pipelines) return 'Custom roster & pipelines';
+  if (scopes.roster) return 'Custom roster';
+  if (scopes.pipelines) return 'Custom pipelines';
+  return 'Global defaults';
+}
+
+export function projectCardSummary(project: ProjectCardDef): string {
+  if (project.summary && project.summary.trim()) {
+    return project.summary.trim();
+  }
+  const parts: string[] = [project.baseRef];
+  if (project.commands && project.commands.length > 0) {
+    parts.push(`${project.commands.length} command${project.commands.length === 1 ? '' : 's'}`);
+  } else if (project.scaffold) {
+    parts.push('scaffold');
+  }
+  if (project.health) {
+    parts.push(projectCardHealthLabel(project.health));
+  }
+  if (project.divergence) {
+    parts.push(projectCardDivergenceLabel(project.divergence));
+  }
+  return parts.join(' · ');
+}
+
+// ── PR card helpers ──────────────────────────────────────────────────────────
+
+export function prChecksLabel(checks?: PrChecks): string {
+  switch (checks) {
+    case 'passing':
+      return 'Checks passed';
+    case 'failing':
+      return 'Checks failed';
+    case 'pending':
+      return 'Checks pending';
+    case 'none':
+    case undefined:
+      return 'No checks';
+  }
+}
+
+export function prChecksGlyph(checks?: PrChecks): string {
+  switch (checks) {
+    case 'passing':
+      return '✓';
+    case 'failing':
+      return '✕';
+    case 'pending':
+      return '◌';
+    case 'none':
+    case undefined:
+      return '—';
+  }
+}
+
+export function prMergeableLabel(mergeable?: 'mergeable' | 'conflicting' | 'unknown'): string {
+  switch (mergeable) {
+    case 'mergeable':
+      return 'Mergeable';
+    case 'conflicting':
+      return 'Conflicts';
+    case 'unknown':
+    case undefined:
+      return 'Merge status unknown';
+  }
+}
+
+export function prSummary(pr: PrCardDef): string {
+  const parts: string[] = [];
+  parts.push(`${pr.headRefName} → ${pr.baseRefName ?? 'base'}`);
+  if (pr.checks && pr.checks !== 'none') {
+    parts.push(prChecksLabel(pr.checks));
+  }
+  if (pr.mergeable) {
+    parts.push(prMergeableLabel(pr.mergeable));
+  }
+  return parts.join(' · ');
+}
+
+// ── Change receipt helpers ───────────────────────────────────────────────────
+
+export function changeReceiptTargetLabel(target: ChangeReceiptTarget): string {
+  return target === 'isolated_worktree' ? 'Isolated worktree' : 'Direct checkout';
+}
+
+export function changeReceiptStatusLabel(status: ChangeReceiptStatus): string {
+  return status === 'success' ? 'Success' : 'Failed';
+}
+
+export function changeReceiptSummary(receipt: ChangeReceiptDef): string {
+  if (receipt.summary && receipt.summary.trim()) {
+    return receipt.summary.trim();
+  }
+  const parts: string[] = [];
+  if (receipt.filesChanged && receipt.filesChanged.length > 0) {
+    parts.push(
+      `${receipt.filesChanged.length} ${receipt.filesChanged.length === 1 ? 'file' : 'files'} changed`,
+    );
+  }
+  if (receipt.command) {
+    const exitText =
+      receipt.command.exitCode !== null ? `exit ${receipt.command.exitCode}` : 'running';
+    const durText =
+      receipt.command.durationMs !== undefined ? ` in ${receipt.command.durationMs}ms` : '';
+    parts.push(`\`${receipt.command.command}\` (${exitText}${durText})`);
+  }
+  return (
+    parts.join(' · ') || (receipt.status === 'success' ? 'Changes applied' : 'Operation failed')
+  );
 }
 
 // ── Checklist helpers ────────────────────────────────────────────────────────
@@ -142,6 +323,60 @@ export function checklistStatusGlyph(status: ChecklistItemStatus): string {
     case 'info':
       return 'ℹ';
   }
+}
+
+// ── Action receipts ──────────────────────────────────────────────────────────
+
+/**
+ * How a settled action reads at a glance. Deliberately unambiguous about
+ * failure: an approved action that did not work must never look like one that
+ * did, so the two share no wording and no color.
+ */
+export interface ReceiptOutcomeView {
+  label: string;
+  /** A token name, so the card never hard-codes a hex value. */
+  color: string;
+}
+
+export function receiptOutcomeView(receipt: SmithActionReceipt): ReceiptOutcomeView {
+  return receipt.outcome === 'succeeded'
+    ? { label: 'Done', color: 'var(--status-success)' }
+    : { label: 'Failed', color: 'var(--status-fail)' };
+}
+
+/** The receipt's detail rows, in reading order, skipping what it does not carry. */
+export function receiptRows(receipt: SmithActionReceipt): { label: string; value: string }[] {
+  return [
+    { label: 'Operation', value: receipt.operation },
+    { label: 'Target', value: receipt.target },
+    { label: 'Consequences', value: receipt.consequences },
+    { label: 'Risk', value: receipt.risk },
+    { label: 'Took', value: receiptDuration(receipt.durationMs) },
+    ...(receipt.failure ? [{ label: 'Failure', value: receipt.failure }] : []),
+  ];
+}
+
+/** Executor wall time, bounded to two units so it never reads as a stopwatch. */
+export function receiptDuration(ms: number): string {
+  if (ms < 1000) return `${Math.max(0, Math.round(ms))}ms`;
+  const seconds = ms / 1000;
+  if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}m ${Math.round(seconds % 60)
+    .toString()
+    .padStart(2, '0')}s`;
+}
+
+/** The link kinds this build knows how to follow. */
+const RECEIPT_LINK_KINDS: ReadonlyArray<SmithReceiptLink['kind']> = ['url', 'run', 'entity'];
+
+/**
+ * Whether this build can act on a receipt's link. A persisted receipt outlives
+ * the build that wrote it, so a link kind from a newer Foundry renders as inert
+ * text rather than as a control that would do nothing.
+ */
+export function isActionableLink(link: SmithReceiptLink | undefined): link is SmithReceiptLink {
+  return !!link && RECEIPT_LINK_KINDS.includes(link.kind);
 }
 
 // ── Display labels ───────────────────────────────────────────────────────────

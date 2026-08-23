@@ -16,6 +16,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SmithScreenContext } from '@shared/ipc-contract.js';
+import type { SmithReceiptLink } from '@shared/types.js';
 import { api } from '../../api.js';
 import { useApp } from '../../stores/app.js';
 import { useSmithChat } from '../../hooks/useSmithChat.js';
@@ -62,6 +63,7 @@ export default function SmithBubble({
   screenContext,
   onExpand,
   onCompleted,
+  onOpenReceiptLink,
   onOpenInspector,
 }: {
   /** What the operator is looking at right now, sent with each message. */
@@ -70,6 +72,8 @@ export default function SmithBubble({
   onExpand: () => void;
   /** Navigates to the saved entity's editor after an approved proposal saves. */
   onCompleted: (target?: SmithNavTarget) => void | Promise<void>;
+  /** Opens what a settled action affected, from its receipt card. */
+  onOpenReceiptLink?: (link: SmithReceiptLink) => void;
   onOpenInspector?: (runId: string) => void;
 }): React.JSX.Element {
   const { projects, smithProjectId } = useApp();
@@ -210,6 +214,16 @@ export default function SmithBubble({
             running={running}
             compact
             onOpenInspector={onOpenInspector}
+            {...(onOpenReceiptLink
+              ? {
+                  // Following a link navigates the app behind the popover, so
+                  // leaving it open would hide the screen it just opened.
+                  onOpenReceiptLink: (link: SmithReceiptLink) => {
+                    close();
+                    onOpenReceiptLink(link);
+                  },
+                }
+              : {})}
             emptyState={
               <div className={styles.empty}>
                 {smithProject ? (
