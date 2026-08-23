@@ -1,7 +1,11 @@
 /**
- * The Smith mini chat: a Fin-style floating launcher stuck to the bottom-right
- * of every screen, opening a compact popover over the same conversation the
+ * The Smith mini chat: a launcher docked at the right end of the titlebar band
+ * on every screen, opening a compact popover over the same conversation the
  * dedicated Smith screen shows — one shared session, two views.
+ *
+ * It lives in the titlebar strip rather than floating bottom-right because
+ * every screen reserves `--titlebar-h` and none anchors a control there, so the
+ * launcher cannot cover screen chrome (see SmithBubble.module.css).
  *
  * Always visible by design (not configurable). The launcher badges when a
  * proposal is waiting on the operator, and when a turn finishes while the
@@ -247,7 +251,7 @@ export default function SmithBubble({
         aria-expanded={open}
         data-testid="smith-bubble"
       >
-        <SmithEmblem size={22} className={styles.launcherMark} />
+        <SmithEmblem size={17} className={styles.launcherMark} />
         {badge && (
           <span
             className={`${styles.badge} ${proposalPending ? styles.badgeProposal : ''}`}
