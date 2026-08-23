@@ -18,7 +18,6 @@ import { readMarkerAtBaseRef } from './marker.js';
 import { createAgentRemediator, resolveReadinessModel } from './remediator.js';
 import { ReadinessSession, type ReadinessIo } from './session.js';
 import * as ghLib from '../system/gh.js';
-import type { PrMergeView } from './merge.js';
 
 /**
  * The single readiness verdict. Reads the marker from the project's base ref —
@@ -45,11 +44,16 @@ export function defaultReadinessIo(oneShot: OneShotFactory): ReadinessIo {
   return {
     remediator: createAgentRemediator({ oneShot }),
     openPr: (repo, input) => ghLib.openPr(repo, input),
-    viewPrMerge: async (repo, ref): Promise<PrMergeView | null> => {
-      const viewed = await ghLib.viewPrMergeState(repo, ref);
-      return viewed;
-    },
+    viewPrMerge: (repo, ref) => ghLib.viewPrMergeState(repo, ref),
   };
+}
+
+/**
+ * `needs_continue` is parked, not finished: a session in that phase still owns
+ * its worktree, so it must survive as a live session for Continue to reuse.
+ */
+function isEnded(phase: ReadinessState['phase']): boolean {
+  return phase === 'complete' || phase === 'skipped' || phase === 'failed';
 }
 
 export class ReadinessSessions {
@@ -76,22 +80,14 @@ export class ReadinessSessions {
   ): ReadinessSession {
     this.registry.sweep();
     const existing = this.registry.get(project.id);
-    if (existing) {
-      const phase = existing.snapshot().phase;
-      // needs_continue is parked, not finished: keep the session so Continue
-      // reuses the worktree. Treating it like failed would open a new session
-      // and throw the paid work away.
-      if (phase !== 'complete' && phase !== 'skipped' && phase !== 'failed') return existing;
-    }
+    if (existing && !isEnded(existing.snapshot().phase)) return existing;
     const session = new ReadinessSession({
       project,
       settings,
       persist,
       io: io ?? defaultReadinessIo(this.oneShot),
       onChange: (state) => {
-        if (state.phase === 'complete' || state.phase === 'skipped' || state.phase === 'failed') {
-          this.registry.markEnded(state.projectId);
-        }
+        if (isEnded(state.phase)) this.registry.markEnded(state.projectId);
         this.onProgress(state);
       },
     });

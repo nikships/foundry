@@ -34,7 +34,7 @@ import {
   objectField,
   parseOperation,
   proposeAction,
-  resolveProjectId,
+  requireProjectId,
   type SmithActionToolDeps,
 } from './tool-helpers.js';
 
@@ -122,8 +122,20 @@ const LIVE_PHASES: ReadonlySet<ReadinessPhase> = new Set([
 function createProgressForwarder(
   onProgress: (event: ReadinessProgressEvent) => void,
 ): (state: ReadinessState) => void {
+  type EntrySnapshot = Pick<ReadinessEntry, 'id' | 'text' | 'done' | 'failed'>;
+  const snapshotOf = (entry: ReadinessEntry): EntrySnapshot => ({
+    id: entry.id,
+    text: entry.text,
+    done: entry.done,
+    failed: entry.failed,
+  });
+  const changed = (entry: ReadinessEntry, last: EntrySnapshot): boolean =>
+    entry.id === last.id &&
+    (entry.text !== last.text || entry.done !== last.done || entry.failed !== last.failed);
+
   const seen = new Set<string>();
-  let lastEmitted: Pick<ReadinessEntry, 'id' | 'text' | 'done' | 'failed'> | null = null;
+  // Only the newest row is tracked: readiness patches the row it is working on.
+  let lastEmitted: EntrySnapshot | null = null;
   let lastPhase: ReadinessPhase | null = null;
   let lastDetail: string | null = null;
   return (state) => {
@@ -131,16 +143,10 @@ function createProgressForwarder(
       if (!seen.has(entry.id)) {
         seen.add(entry.id);
         onProgress({ type: 'entry', entry });
-        lastEmitted = { id: entry.id, text: entry.text, done: entry.done, failed: entry.failed };
-      } else if (
-        lastEmitted &&
-        entry.id === lastEmitted.id &&
-        (entry.text !== lastEmitted.text ||
-          entry.done !== lastEmitted.done ||
-          entry.failed !== lastEmitted.failed)
-      ) {
+        lastEmitted = snapshotOf(entry);
+      } else if (lastEmitted && changed(entry, lastEmitted)) {
         onProgress({ type: 'entry_update', entry });
-        lastEmitted = { id: entry.id, text: entry.text, done: entry.done, failed: entry.failed };
+        lastEmitted = snapshotOf(entry);
       }
     }
     if (state.phase !== lastPhase || state.detail !== lastDetail) {
@@ -164,7 +170,9 @@ function outcome(state: ReadinessState): Record<string, unknown> {
       ? {
           ready: state.evaluation.ready,
           summary: state.evaluation.summary,
-          failing: state.evaluation.criteria.filter((c) => c.status === 'fail').map((c) => c.id),
+          failing: state.evaluation.criteria
+            .filter((criterion) => criterion.status === 'fail')
+            .map((criterion) => criterion.id),
         }
       : null,
   };
@@ -203,10 +211,10 @@ export function readinessCheckTool(deps: Pick<ReadinessToolDeps, 'project'>): To
           ready: evaluation.ready,
           summary: evaluation.summary,
           stack: evaluation.stack,
-          criteria: evaluation.criteria.map((c) => ({
-            id: c.id,
-            status: c.status,
-            notes: c.notes,
+          criteria: evaluation.criteria.map((criterion) => ({
+            id: criterion.id,
+            status: criterion.status,
+            notes: criterion.notes,
           })),
         },
       });
@@ -236,11 +244,7 @@ export function readinessRemediateTool(
       const session = deps.session(createProgressForwarder(deps.onProgress));
       const before = session.snapshot();
       if (LIVE_PHASES.has(before.phase)) {
-        return json({
-          inProgress: true,
-          phase: before.phase,
-          detail: before.detail,
-        });
+        return json({ inProgress: true, phase: before.phase, detail: before.detail });
       }
       return proposeAction(deps, {
         operation: 'remediate',
@@ -248,7 +252,6 @@ export function readinessRemediateTool(
         summary: 'Run the readiness remediator in its isolated readiness worktree.',
         args: { projectId: deps.projectId() },
         risk: 'git',
-        projectId: deps.projectId(),
         execute: async () => ({ ok: true, result: outcome(await session.makeReady()) }),
       });
     },
@@ -290,7 +293,6 @@ export function readinessPrStatusTool(
         summary: 'Check the readiness PR, fast-forward the base, and verify its marker.',
         args: { projectId: deps.projectId(), pr: before.pr },
         risk: 'git',
-        projectId: deps.projectId(),
         execute: async () => {
           const state = await session.confirmMerge();
           return {
@@ -323,6 +325,17 @@ export function readinessToolsFor(deps: ReadinessToolDeps): ToolDefinition[] {
   ];
 }
 
+type ManageOperation = (typeof READINESS_MANAGE_OPERATIONS)[number];
+
+const MANAGE_ACTION_CHANNELS: Record<Exclude<ManageOperation, 'inspect' | 'state'>, string> = {
+  evaluate: IPC.readinessEvaluate,
+  cancel: IPC.readinessCancel,
+  skip: IPC.readinessSkip,
+  retry: IPC.readinessRetry,
+  confirm_merge: IPC.readinessConfirmMerge,
+  dismiss: IPC.readinessDismiss,
+};
+
 export function readinessManageTool(deps: SmithActionToolDeps): ToolDefinition {
   return defineTool({
     name: 'readiness_manage',
@@ -341,27 +354,21 @@ export function readinessManageTool(deps: SmithActionToolDeps): ToolDefinition {
     execute: async (_id, params) => {
       const operation = parseOperation(params, READINESS_MANAGE_OPERATIONS);
       if (!operation) return json({ ok: false, error: 'unknown operation' });
-      const scope = resolveProjectId(field(params, 'projectId'), deps.projectId(), true);
+      const scope = requireProjectId(field(params, 'projectId'), deps.projectId());
       if (!scope.ok) return json(scope);
-      const projectId = scope.projectId as string;
+      const projectId = scope.projectId;
       if (operation === 'inspect') return immediate(deps, IPC.readinessInspect, projectId);
       if (operation === 'state') return immediate(deps, IPC.readinessGet, projectId);
-      const channel = {
-        evaluate: IPC.readinessEvaluate,
-        cancel: IPC.readinessCancel,
-        skip: IPC.readinessSkip,
-        retry: IPC.readinessRetry,
-        confirm_merge: IPC.readinessConfirmMerge,
-        dismiss: IPC.readinessDismiss,
-      }[operation as Exclude<typeof operation, 'inspect' | 'state'>];
+
+      const channel = MANAGE_ACTION_CHANNELS[operation];
       const options = operation === 'evaluate' ? objectField(params, 'options') : null;
+      const label = operation.replaceAll('_', ' ');
       return proposeAction(deps, {
         operation,
-        title: `${operation.replaceAll('_', ' ')} readiness`,
-        summary: `${operation.replaceAll('_', ' ')} readiness for project ${projectId}.`,
+        title: `${label} readiness`,
+        summary: `${label} readiness for project ${projectId}.`,
         args: { projectId, ...(options ? { options } : {}) },
         risk: operation === 'confirm_merge' ? 'git' : 'write',
-        projectId,
         execute: () => deps.invoke(channel, projectId, ...(options ? [options] : [])),
       });
     },

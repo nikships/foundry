@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type {
   DetectCommandsResult,
   DetectionProposal,
@@ -11,6 +11,7 @@ import DetectionPanel from '../readiness/DetectionPanel.js';
 import { CodeBlock } from '../ui/CodeBlock.js';
 import { Field, TextInput } from '../ui/Field.js';
 import { Button } from '../ui/Button.js';
+import { cx } from '../ui/cx.js';
 import styles from './ProjectCommands.module.css';
 
 interface TryState {
@@ -19,6 +20,11 @@ interface TryState {
   exitCode?: number | null;
   output?: string;
   durationMs?: number;
+}
+
+function upsert(list: ProjectCommand[], entry: ProjectCommand): ProjectCommand[] {
+  const existing = list.findIndex((c) => c.name === entry.name);
+  return existing < 0 ? [...list, entry] : list.map((c, i) => (i === existing ? entry : c));
 }
 
 export default function ProjectCommands({
@@ -41,15 +47,14 @@ export default function ProjectCommands({
   // not paint over a newer one the user just started.
   const detectionIdRef = useRef<string>('');
 
-  useEffect(() => {
-    return api.on('detection-progress', (data) => {
-      const state = data as DetectionState | undefined;
-      if (!state || state.detectionId !== detectionIdRef.current) return;
-      setDetection(state);
-    });
-  }, []);
-
-  const setCommands = (commands: ProjectCommand[]): void => onChange(commands);
+  useEffect(
+    () =>
+      api.on('detection-progress', (data) => {
+        const state = data as DetectionState | undefined;
+        if (state && state.detectionId === detectionIdRef.current) setDetection(state);
+      }),
+    [],
+  );
 
   // Manifest sniffing: free, no model, no agent. Proposes; never writes.
   const sniff = async (): Promise<void> => {
@@ -96,20 +101,15 @@ export default function ProjectCommands({
     void api.projects.cancelDetection(detectionIdRef.current);
   };
 
-  const upsert = useCallback((list: ProjectCommand[], entry: ProjectCommand): ProjectCommand[] => {
-    const existing = list.findIndex((c) => c.name === entry.name);
-    return existing < 0 ? [...list, entry] : list.map((c, i) => (i === existing ? entry : c));
-  }, []);
-
   const accept = (command: DetectCommandsResult['commands'][number]): void => {
-    setCommands(upsert(project.commands, { name: command.name, argv: command.argv }));
+    onChange(upsert(project.commands, { name: command.name, argv: command.argv }));
     setFound((prev) =>
       prev ? { ...prev, commands: prev.commands.filter((c) => c.name !== command.name) } : prev,
     );
   };
 
   const acceptProposal = (proposal: DetectionProposal): void => {
-    setCommands(upsert(project.commands, { name: proposal.name, argv: proposal.argv }));
+    onChange(upsert(project.commands, { name: proposal.name, argv: proposal.argv }));
     setDetection((prev) =>
       prev ? { ...prev, proposals: prev.proposals.filter((p) => p.name !== proposal.name) } : prev,
     );
@@ -119,12 +119,10 @@ export default function ProjectCommands({
 
   const acceptAllProposals = (): void => {
     if (!detection) return;
-    let next = project.commands;
-    for (const p of detection.proposals) {
-      if (p.verify === 'running') continue;
-      next = upsert(next, { name: p.name, argv: p.argv });
-    }
-    setCommands(next);
+    const next = detection.proposals
+      .filter((p) => p.verify !== 'running')
+      .reduce((list, p) => upsert(list, { name: p.name, argv: p.argv }), project.commands);
+    onChange(next);
     setDetection((prev) =>
       prev ? { ...prev, proposals: prev.proposals.filter((p) => p.verify === 'running') } : prev,
     );
@@ -132,7 +130,7 @@ export default function ProjectCommands({
 
   const add = (): void => {
     const hasTest = project.commands.some((c) => c.name === 'test');
-    setCommands([
+    onChange([
       ...project.commands,
       {
         name: hasTest ? `command-${project.commands.length + 1}` : 'test',
@@ -141,15 +139,15 @@ export default function ProjectCommands({
     ]);
   };
   const remove = (index: number): void => {
-    setCommands(project.commands.filter((_, i) => i !== index));
+    onChange(project.commands.filter((_, i) => i !== index));
   };
   const argvText = (index: number): string => project.commands[index]!.argv.join(' ');
   const setName = (index: number, name: string): void => {
-    setCommands(project.commands.map((c, i) => (i === index ? { ...c, name } : c)));
+    onChange(project.commands.map((c, i) => (i === index ? { ...c, name } : c)));
   };
   const setArgv = (index: number, value: string): void => {
     const argv = value.split(/\s+/).filter(Boolean);
-    setCommands(project.commands.map((c, i) => (i === index ? { ...c, argv } : c)));
+    onChange(project.commands.map((c, i) => (i === index ? { ...c, argv } : c)));
   };
   const tryIt = async (name: string, argv: string[]): Promise<void> => {
     setResults((prev) => ({ ...prev, [name]: { running: true } }));
@@ -215,7 +213,7 @@ export default function ProjectCommands({
                   </div>
                 </div>
                 {result && !result.running && (
-                  <div className={`${styles.result} ${result.passed ? styles.ok : ''}`}>
+                  <div className={cx(styles.result, result.passed && styles.ok)}>
                     <button
                       className={styles.resultHead}
                       onClick={() => setExpanded(isOpen ? '' : command.name)}
@@ -281,7 +279,7 @@ export default function ProjectCommands({
             <div className={styles.commands}>
               {found.commands.map((c) => (
                 <div key={c.name} className={`row ${styles.found}`}>
-                  <span className={`${styles.mark} ${c.verified ? styles.ok : ''}`}>
+                  <span className={cx(styles.mark, c.verified && styles.ok)}>
                     {c.verified ? '✓' : '✕'}
                   </span>
                   <span className={styles.name}>{c.name}</span>

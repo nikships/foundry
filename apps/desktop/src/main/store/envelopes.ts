@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { BUILTIN_ENVELOPE_KINDS, type EnvelopeDef, type ValidationIssue } from '@shared/types.js';
 import { JsonStore } from './json-store.js';
+import { uniqueCopyName, upsertBy } from './collections.js';
 
 /** Base fields every envelope carries; custom fields may not collide with these. */
 export const RESERVED_ENVELOPE_FIELDS = [
@@ -70,10 +71,13 @@ export const envelopeDefSchema = z
 
 export function validate(def: EnvelopeDef): ValidationIssue[] {
   const parsed = envelopeDefSchema.safeParse(def);
-  if (parsed.success) return [];
-  return parsed.error.issues.map((i) => ({
+  return parsed.success ? [] : toIssues(parsed.error, def.name);
+}
+
+function toIssues(error: z.ZodError, name: string): ValidationIssue[] {
+  return error.issues.map((i) => ({
     level: 'error' as const,
-    where: i.path.join('.') || def.name || 'envelope',
+    where: i.path.join('.') || name || 'envelope',
     message: i.message,
   }));
 }
@@ -96,9 +100,9 @@ export class EnvelopeStore {
   save(
     def: EnvelopeDef,
   ): { ok: true; envelopes: EnvelopeDef[] } | { ok: false; issues: ValidationIssue[] } {
-    const issues = validate(def);
-    if (issues.length) return { ok: false, issues };
-    const value = envelopeDefSchema.parse(def) as EnvelopeDef;
+    const parsed = envelopeDefSchema.safeParse(def);
+    if (!parsed.success) return { ok: false, issues: toIssues(parsed.error, def.name) };
+    const value = parsed.data as EnvelopeDef;
     const next = this.store.update((current) =>
       upsertBy(current, (e) => e.name === value.name, value),
     );
@@ -116,25 +120,9 @@ export class EnvelopeStore {
     const copy: EnvelopeDef = {
       ...source,
       name: uniqueCopyName(name, existing),
-      description: source.description,
       fields: source.fields.map((f) => ({ ...f })),
     };
     this.save(copy);
     return copy;
   }
-}
-
-function upsertBy<T>(list: T[], match: (item: T) => boolean, value: T): T[] {
-  const index = list.findIndex(match);
-  if (index < 0) return [...list, value];
-  const copy = [...list];
-  copy[index] = value;
-  return copy;
-}
-
-function uniqueCopyName(base: string, existing: Set<string>): string {
-  let candidate = `${base}-copy`;
-  let n = 2;
-  while (existing.has(candidate)) candidate = `${base}-copy-${n++}`;
-  return candidate;
 }

@@ -17,7 +17,7 @@
  */
 
 import { existsSync, readdirSync } from 'node:fs';
-import { basename, join, relative } from 'node:path';
+import { join, relative } from 'node:path';
 
 /** Where the install commands keep cwd at the git root without a shell cd. */
 function nodeRunnerFor(root: string): 'pnpm' | 'yarn' | 'bun' | 'npm' {
@@ -58,13 +58,11 @@ function packageRoots(repoRoot: string): string[] {
 }
 
 function nodeInstallLine(root: string, rel: string): { line: string; source: string } | null {
-  const pkgJson = join(root, 'package.json');
-  const hasPkg = existsSync(pkgJson);
+  const hasPkg = existsSync(join(root, 'package.json'));
   const hasPnpmLock = existsSync(join(root, 'pnpm-lock.yaml'));
   const hasYarnLock = existsSync(join(root, 'yarn.lock'));
   const hasBunLock = existsSync(join(root, 'bun.lockb'));
   const hasNpmLock = existsSync(join(root, 'package-lock.yaml'));
-  const hasYarnModernLock = existsSync(join(root, 'yarn.lock')); // same file, different flag handling
   const hasAnyLock = hasPnpmLock || hasYarnLock || hasBunLock || hasNpmLock;
 
   // A package.json without a lockfile still needs an install, but a lockfile
@@ -72,82 +70,61 @@ function nodeInstallLine(root: string, rel: string): { line: string; source: str
   // actionable at that root.
   if (!hasPkg && !hasAnyLock) return null;
 
-  const runner = nodeRunnerFor(root);
-  const source = rel
-    ? `${rel}/${hasPnpmLock ? 'pnpm-lock.yaml' : hasYarnLock ? 'yarn.lock' : hasBunLock ? 'bun.lockb' : hasNpmLock ? 'package-lock.yaml' : 'package.json'}`
-    : hasPnpmLock
-      ? 'pnpm-lock.yaml'
-      : hasYarnLock
-        ? 'yarn.lock'
-        : hasBunLock
-          ? 'bun.lockb'
-          : hasNpmLock
-            ? 'package-lock.yaml'
-            : 'package.json';
+  const sourceFile = hasPnpmLock
+    ? 'pnpm-lock.yaml'
+    : hasYarnLock
+      ? 'yarn.lock'
+      : hasBunLock
+        ? 'bun.lockb'
+        : hasNpmLock
+          ? 'package-lock.yaml'
+          : 'package.json';
+  const source = rel ? `${rel}/${sourceFile}` : sourceFile;
 
+  const runner = nodeRunnerFor(root);
   let line: string;
   if (runner === 'pnpm') {
-    line = rel ? `pnpm --dir ${rel} install --frozen-lockfile` : 'pnpm install --frozen-lockfile';
     // pnpm without a lock still works but should not pass --frozen.
-    if (!hasPnpmLock) line = rel ? `pnpm --dir ${rel} install` : 'pnpm install';
+    const flag = hasPnpmLock ? ' --frozen-lockfile' : '';
+    line = rel ? `pnpm --dir ${rel} install${flag}` : `pnpm install${flag}`;
   } else if (runner === 'yarn') {
-    if (rel) {
-      line = `yarn --cwd ${rel} install --frozen-lockfile`;
-      if (!hasYarnLock) line = `yarn --cwd ${rel} install`;
-    } else {
-      line = 'yarn install --frozen-lockfile';
-      if (!hasYarnLock) line = 'yarn install';
-    }
-    void hasYarnModernLock;
+    const flag = hasYarnLock ? ' --frozen-lockfile' : '';
+    line = rel ? `yarn --cwd ${rel} install${flag}` : `yarn install${flag}`;
   } else if (runner === 'bun') {
     line = rel ? `bun --cwd ${rel} install` : 'bun install';
   } else {
-    // npm
-    if (rel) {
-      line = hasNpmLock ? `npm ci --prefix ${rel}` : `npm install --prefix ${rel}`;
-    } else {
-      line = hasNpmLock ? 'npm ci' : 'npm install';
-    }
+    const verb = hasNpmLock ? 'ci' : 'install';
+    line = rel ? `npm ${verb} --prefix ${rel}` : `npm ${verb}`;
   }
   return { line, source };
 }
 
 function pythonInstallLine(root: string, rel: string): { line: string; source: string } | null {
-  const hasUvLock = existsSync(join(root, 'uv.lock'));
-  const hasPyproject = existsSync(join(root, 'pyproject.toml'));
-  const hasReqs = existsSync(join(root, 'requirements.txt'));
-  const hasPipfileLock = existsSync(join(root, 'Pipfile.lock'));
-  if (!hasUvLock && !hasPyproject && !hasReqs && !hasPipfileLock) return null;
-
-  if (hasUvLock) {
-    const source = rel ? `${rel}/uv.lock` : 'uv.lock';
-    const line = rel ? `uv sync --directory ${rel}` : 'uv sync';
-    return { line, source };
+  if (existsSync(join(root, 'uv.lock'))) {
+    return {
+      line: rel ? `uv sync --directory ${rel}` : 'uv sync',
+      source: rel ? `${rel}/uv.lock` : 'uv.lock',
+    };
   }
-  if (hasReqs) {
-    const source = rel ? `${rel}/requirements.txt` : 'requirements.txt';
+  if (existsSync(join(root, 'requirements.txt'))) {
     const file = rel ? `${rel}/requirements.txt` : 'requirements.txt';
-    return { line: `pip install -r ${file}`, source };
+    return { line: `pip install -r ${file}`, source: file };
   }
-  if (hasPyproject) {
-    const source = rel ? `${rel}/pyproject.toml` : 'pyproject.toml';
+  if (existsSync(join(root, 'pyproject.toml'))) {
     // Bare pyproject without uv or requirements: let pip handle it. Keep cwd
     // at root via cd shim rather than guessing a --directory flag.
-    const line = rel ? `(cd ${rel} && pip install -e .)` : 'pip install -e .';
-    return { line, source };
+    return {
+      line: rel ? `(cd ${rel} && pip install -e .)` : 'pip install -e .',
+      source: rel ? `${rel}/pyproject.toml` : 'pyproject.toml',
+    };
   }
   return null;
 }
 
 function cargoInstallLine(root: string, rel: string): { line: string; source: string } | null {
   if (!existsSync(join(root, 'Cargo.toml'))) return null;
-  if (!existsSync(join(root, 'Cargo.lock'))) {
-    // No lock: fetch still useful as a warm-up, but note it.
-    const source = rel ? `${rel}/Cargo.toml` : 'Cargo.toml';
-    const arg = rel ? ` --manifest-path ${rel}/Cargo.toml` : '';
-    return { line: `cargo fetch${arg}`, source };
-  }
-  const source = rel ? `${rel}/Cargo.lock` : 'Cargo.lock';
+  const sourceFile = existsSync(join(root, 'Cargo.lock')) ? 'Cargo.lock' : 'Cargo.toml';
+  const source = rel ? `${rel}/${sourceFile}` : sourceFile;
   const arg = rel ? ` --manifest-path ${rel}/Cargo.toml` : '';
   return { line: `cargo fetch${arg}`, source };
 }
@@ -162,13 +139,8 @@ function goInstallLine(root: string, rel: string): { line: string; source: strin
 
 function rubyInstallLine(root: string, rel: string): { line: string; source: string } | null {
   if (!existsSync(join(root, 'Gemfile.lock')) && !existsSync(join(root, 'Gemfile'))) return null;
-  const source = existsSync(join(root, 'Gemfile.lock'))
-    ? rel
-      ? `${rel}/Gemfile.lock`
-      : 'Gemfile.lock'
-    : rel
-      ? `${rel}/Gemfile`
-      : 'Gemfile';
+  const sourceFile = existsSync(join(root, 'Gemfile.lock')) ? 'Gemfile.lock' : 'Gemfile';
+  const source = rel ? `${rel}/${sourceFile}` : sourceFile;
   const line = rel ? `(cd ${rel} && bundle install)` : 'bundle install';
   return { line, source };
 }
@@ -209,9 +181,6 @@ export async function sniffSetupScript(repoRoot: string): Promise<SetupSniffResu
     add(cargoInstallLine(root, rel), 'cargo');
     add(goInstallLine(root, rel), 'go');
     add(rubyInstallLine(root, rel), 'ruby');
-
-    // For repo root only, consider Makefile-style bootstrap? Not needed for install.
-    void basename;
   }
 
   if (!lines.length) {
@@ -222,8 +191,6 @@ export async function sniffSetupScript(repoRoot: string): Promise<SetupSniffResu
     };
   }
 
-  // Prefer deterministic ordering: node first, then python, rust, go, ruby,
-  // matching the order above. Duplicates already deduped per ecosystem.
   const script = lines.join('\n');
   const detail = `found ${sources.join(', ')} — ${lines.length} install step(s)`;
   return { script, sources, detail };
@@ -246,8 +213,6 @@ Rules:
 - If the repository truly needs no dependency install (pure docs, no manifests), reply {"script":""} — empty string. Omit the install rather than guessing.
 - Do not include markdown fences or prose outside the JSON.
 `;
-
-export const SETUP_TOOLS = ['Read', 'Grep', 'Glob', 'LS'];
 
 export interface SetupParseResult {
   script: string;

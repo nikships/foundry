@@ -16,7 +16,7 @@ import type {
   ReasoningEffort,
 } from '@shared/types.js';
 import type { PrAction } from '@shared/ipc-contract.js';
-import { currentBranch, fastForwardBase, preferredRemote } from '../engine/git.js';
+import { currentBranch, fastForwardBase, headSha, preferredRemote } from '../engine/git.js';
 import { PanelSession, shortId } from '../session/panel-session.js';
 import { evaluateRepo } from './evaluate.js';
 import { ensureMarkerIgnored } from './ignore.js';
@@ -25,14 +25,14 @@ import {
   markerFromEvaluation,
   readMarkerAtBaseRef,
   writeMarker,
+  type MarkerRead,
 } from './marker.js';
-import { mergeCheckFromView, pollPrMerged, type PrMergeView } from './merge.js';
+import { mergeCheckFromView, pollPrMerged, type MergeCheck, type PrMergeView } from './merge.js';
 import { resolveReadinessModel } from './remediator.js';
 import {
   commitReadinessWork,
   createReadinessWorktree,
   discardReadinessWorktree,
-  readinessHeadSha,
   type ReadinessWorktree,
 } from './worktree.js';
 
@@ -146,27 +146,24 @@ export class ReadinessSession {
     this.panel.emit();
   }
 
-  private setPhase(phase: ReadinessPhase, detail: string): void {
-    // An isolated branch is recoverable work. Never settle `failed` while it
-    // still exists — park on Continue so a connection drop, a verify miss, or
-    // a gh hiccup cannot throw the paid turn away.
-    if (phase === 'failed' && this.worktree) {
-      if (!this.state.failedPhase) this.state.failedPhase = this.state.phase;
-      phase = 'needs_continue';
-      detail = withResumeHint(this.state.failedPhase, detail);
-    } else if (phase === 'failed' && this.state.phase !== 'failed') {
-      this.state.failedPhase = this.state.phase;
+  private setPhase(requested: ReadinessPhase, requestedDetail: string): void {
+    let phase = requested;
+    let detail = requestedDetail;
+    if (phase === 'failed') {
+      // An isolated branch is recoverable work. Never settle `failed` while it
+      // still exists — park on Continue so a connection drop, a verify miss,
+      // or a gh hiccup cannot throw the paid turn away.
+      if (this.worktree) {
+        this.state.failedPhase ??= this.state.phase;
+        phase = 'needs_continue';
+        detail = withResumeHint(this.state.failedPhase, detail);
+      } else if (this.state.phase !== 'failed') {
+        this.state.failedPhase = this.state.phase;
+      }
     }
     this.state.phase = phase;
     this.state.detail = detail;
-    if (
-      phase === 'complete' ||
-      phase === 'skipped' ||
-      phase === 'failed' ||
-      phase === 'needs_continue'
-    ) {
-      this.state.endedAt = this.panel.now();
-    }
+    if (SETTLED_PHASES.has(phase)) this.state.endedAt = this.panel.now();
     this.emit();
   }
 
@@ -186,16 +183,25 @@ export class ReadinessSession {
   }
 
   /** The marker as committed on the base ref: the same check `inspectProject` runs. */
-  private async readAuthoritativeMarker(): Promise<ReturnType<typeof readMarkerAtBaseRef>> {
+  private async readAuthoritativeMarker(): Promise<MarkerRead> {
     return readMarkerAtBaseRef(this.deps.project.path, this.deps.project.baseRef);
+  }
+
+  private applyMarker(read: MarkerRead): void {
+    this.state.marker = read.marker;
+    this.state.markerValid = read.ok;
+    this.state.markerDetail = read.detail;
+  }
+
+  private fail(message: string): void {
+    this.setPhase('failed', message);
+    this.push({ kind: 'error', text: message });
   }
 
   async inspect(): Promise<ReadinessState> {
     this.setPhase('inspecting', `Checking ${AGENT_READY_PATH} on ${this.deps.project.baseRef}`);
     const read = await this.readAuthoritativeMarker();
-    this.state.marker = read.marker;
-    this.state.markerValid = read.ok;
-    this.state.markerDetail = read.detail;
+    this.applyMarker(read);
     if (read.ok && read.marker) {
       this.persist({ readinessValidated: true, readinessSkipped: false });
       this.setPhase('complete', 'Repository is already agent-ready.');
@@ -226,38 +232,34 @@ export class ReadinessSession {
     try {
       const evaluation = evaluateRepo(this.deps.project.path);
       this.state.evaluation = evaluation;
-      if (evaluation.ready) {
-        // A green checklist plus a committed marker is already the finished
-        // state; asking for "Make it ready" again would be busywork.
-        const read = await this.readAuthoritativeMarker();
-        if (read.ok && read.marker) {
-          this.state.marker = read.marker;
-          this.state.markerValid = true;
-          this.state.markerDetail = read.detail;
-          this.persist({ readinessValidated: true, readinessSkipped: false });
-          this.push({ kind: 'note', text: evaluation.summary });
-          this.setPhase('complete', 'Repository is already agent-ready.');
-          return this.snapshot();
-        }
-        this.push({ kind: 'note', text: evaluation.summary });
-        this.setPhase(
-          'not_ready',
-          `Every check passes, but ${AGENT_READY_PATH} is not committed on ${this.deps.project.baseRef} yet (${read.detail}). Make it ready commits the proof so runs branching from that ref can see it.`,
-        );
-      } else {
+      if (!evaluation.ready) {
         this.push({ kind: 'note', text: evaluation.summary });
         this.setPhase('not_ready', evaluation.summary);
+        return this.snapshot();
       }
+      // A green checklist plus a committed marker is already the finished
+      // state; asking for "Make it ready" again would be busywork.
+      const read = await this.readAuthoritativeMarker();
+      if (read.ok && read.marker) {
+        this.applyMarker(read);
+        this.persist({ readinessValidated: true, readinessSkipped: false });
+        this.push({ kind: 'note', text: evaluation.summary });
+        this.setPhase('complete', 'Repository is already agent-ready.');
+        return this.snapshot();
+      }
+      this.push({ kind: 'note', text: evaluation.summary });
+      this.setPhase(
+        'not_ready',
+        `Every check passes, but ${AGENT_READY_PATH} is not committed on ${this.deps.project.baseRef} yet (${read.detail}). Make it ready commits the proof so runs branching from that ref can see it.`,
+      );
     } catch (e) {
-      this.setPhase('failed', (e as Error).message);
-      this.push({ kind: 'error', text: (e as Error).message });
+      this.fail((e as Error).message);
     }
     return this.snapshot();
   }
 
   async makeReady(): Promise<ReadinessState> {
-    if (this.busy) return this.snapshot();
-    if (isReadinessMakeReadyLive(this.state.phase)) return this.snapshot();
+    if (this.busy || isReadinessMakeReadyLive(this.state.phase)) return this.snapshot();
     this.cancelSignal.cancelled = false;
     this.panel.clearCancelled();
     if (this.state.phase === 'needs_continue' && this.state.failedPhase === 'finalizing') {
@@ -266,8 +268,7 @@ export class ReadinessSession {
       try {
         await this.finalize(this.state.mergeDetail || this.state.detail);
       } catch (e) {
-        this.setPhase('failed', (e as Error).message);
-        this.push({ kind: 'error', text: (e as Error).message });
+        this.fail((e as Error).message);
       } finally {
         this.busy = false;
       }
@@ -281,9 +282,7 @@ export class ReadinessSession {
     // second readiness PR against a repo that is already ready.
     const already = await this.readAuthoritativeMarker();
     if (already.ok && already.marker) {
-      this.state.marker = already.marker;
-      this.state.markerValid = true;
-      this.state.markerDetail = already.detail;
+      this.applyMarker(already);
       this.persist({ readinessValidated: true, readinessSkipped: false });
       this.setPhase('complete', 'Repository is already agent-ready.');
       return this.snapshot();
@@ -295,26 +294,25 @@ export class ReadinessSession {
     const project = this.deps.project;
     const continuing = !!this.worktree;
     try {
-      if (!this.worktree) {
+      if (this.worktree) {
+        this.push({
+          kind: 'note',
+          text: `Continuing on ${this.worktree.branch}. Previous changes are kept.`,
+        });
+      } else {
         this.setPhase('remediating', 'Creating an isolated branch');
         this.worktree = await createReadinessWorktree({
           repo: project.path,
           sessionId: this.sessionId,
           baseRef: project.baseRef || (await currentBranch(project.path)) || 'main',
         });
-        this.push({
-          kind: 'note',
-          text: `Isolated on ${this.worktree.branch}`,
-        });
-      } else {
-        this.push({
-          kind: 'note',
-          text: `Continuing on ${this.worktree.branch}. Previous changes are kept.`,
-        });
+        this.push({ kind: 'note', text: `Isolated on ${this.worktree.branch}` });
       }
+
+      const evaluation = this.state.evaluation;
       this.setPhase(
         'remediating',
-        this.state.evaluation?.ready
+        evaluation?.ready
           ? 'Writing the marker on the isolated branch'
           : continuing
             ? 'Sending the remaining failures back to the agent on the same branch'
@@ -322,43 +320,50 @@ export class ReadinessSession {
       );
 
       const remediator = this.deps.io?.remediator;
-      if (remediator && this.state.evaluation && !this.state.evaluation.ready) {
-        this.remediateAttempt += 1;
-        const result = await remediator.run({
-          cwd: this.worktree.path,
-          evaluation: this.state.evaluation,
-          model: this.state.model,
-          reasoningEffort: this.state.reasoningEffort,
-          continuation: continuing,
-          attempt: this.remediateAttempt,
-          priorSummary: this.priorSummary(),
-          onEntry: (entry) => this.push(entry),
-          flush: () => this.flush(),
-          signal: this.cancelSignal,
-        });
-        if (!result.ok || this.cancelSignal.cancelled) {
-          const detail = this.cancelSignal.cancelled
-            ? result.ok
-              ? 'Paused.'
-              : result.detail
-            : result.detail;
-          this.push({ kind: 'error', text: detail });
-          this.setPhase('failed', detail);
+      if (!evaluation?.ready) {
+        if (!remediator) {
+          this.setPhase('failed', 'No remediator is configured to make this repository ready.');
           return this.snapshot();
         }
-      } else if (!this.state.evaluation?.ready && !remediator) {
-        this.setPhase('failed', 'No remediator is configured to make this repository ready.');
-        return this.snapshot();
+        if (evaluation && !(await this.remediate(remediator, evaluation, continuing))) {
+          return this.snapshot();
+        }
       }
 
       await this.verifyAndOpenPr();
     } catch (e) {
-      this.setPhase('failed', (e as Error).message);
-      this.push({ kind: 'error', text: (e as Error).message });
+      this.fail((e as Error).message);
     } finally {
       this.busy = false;
     }
     return this.snapshot();
+  }
+
+  /** One remediator turn. False means the session already parked with a reason. */
+  private async remediate(
+    remediator: ReadinessRemediator,
+    evaluation: ReadinessEvaluation,
+    continuing: boolean,
+  ): Promise<boolean> {
+    if (!this.worktree) throw new Error('no readiness worktree');
+    this.remediateAttempt += 1;
+    const result = await remediator.run({
+      cwd: this.worktree.path,
+      evaluation,
+      model: this.state.model,
+      reasoningEffort: this.state.reasoningEffort,
+      continuation: continuing,
+      attempt: this.remediateAttempt,
+      priorSummary: this.priorSummary(),
+      onEntry: (entry) => this.push(entry),
+      flush: () => this.flush(),
+      signal: this.cancelSignal,
+    });
+    if (result.ok && !this.cancelSignal.cancelled) return true;
+    const detail = this.cancelSignal.cancelled && result.ok ? 'Paused.' : result.detail;
+    this.push({ kind: 'error', text: detail });
+    this.setPhase('failed', detail);
+    return false;
   }
 
   private async verifyAndOpenPr(): Promise<void> {
@@ -387,14 +392,11 @@ export class ReadinessSession {
     }
     const alreadyMarked = await readMarkerAtBaseRef(this.worktree.path, 'HEAD');
     if (alreadyMarked.ok && alreadyMarked.marker) {
-      this.state.marker = alreadyMarked.marker;
-      this.state.markerValid = true;
-      this.state.markerDetail = alreadyMarked.detail;
+      this.applyMarker(alreadyMarked);
     } else {
       this.push({ kind: 'note', text: 'Writing .agents/agent-ready.json last…' });
-      const commit = (await readinessHeadSha(this.worktree.path)) || 'HEAD';
       const marker = markerFromEvaluation(evaluation, {
-        commit,
+        commit: (await headSha(this.worktree.path)) || 'HEAD',
         generatedAt: new Date((this.deps.io?.now ?? Date.now)()).toISOString(),
         model: this.state.model,
         reasoningEffort: this.state.reasoningEffort,
@@ -404,13 +406,9 @@ export class ReadinessSession {
 
       // The PR is only proof if the marker is actually in the commit it carries.
       const committed = await readMarkerAtBaseRef(this.worktree.path, 'HEAD');
-      this.state.marker = committed.marker;
-      this.state.markerValid = committed.ok;
-      this.state.markerDetail = committed.detail;
+      this.applyMarker(committed);
       if (!committed.ok) {
-        const why = `The marker did not survive the commit: ${committed.detail}`;
-        this.setPhase('failed', why);
-        this.push({ kind: 'error', text: why });
+        this.fail(`The marker did not survive the commit: ${committed.detail}`);
         return;
       }
     }
@@ -442,6 +440,13 @@ export class ReadinessSession {
     void this.pollMerge();
   }
 
+  private applyMergeCheck(check: MergeCheck): void {
+    this.state.mergeDetail = check.detail;
+    if (check.pr) {
+      this.state.pr = { number: check.pr.number, url: check.pr.url, merged: check.pr.merged };
+    }
+  }
+
   private async pollMerge(): Promise<void> {
     if (this.pollRunning || !this.state.pr) return;
     const view = this.deps.io?.viewPrMerge;
@@ -459,9 +464,7 @@ export class ReadinessSession {
       sleep: this.deps.io?.sleep,
       intervalMs,
       onTick: (next) => {
-        this.state.mergeDetail = next.detail;
-        if (next.pr)
-          this.state.pr = { number: next.pr.number, url: next.pr.url, merged: next.pr.merged };
+        this.applyMergeCheck(next);
         this.emit();
       },
     });
@@ -483,9 +486,7 @@ export class ReadinessSession {
       return this.snapshot();
     }
     const check = mergeCheckFromView(await view(this.deps.project.path, this.state.pr.number));
-    this.state.mergeDetail = check.detail;
-    if (check.pr)
-      this.state.pr = { number: check.pr.number, url: check.pr.url, merged: check.pr.merged };
+    this.applyMergeCheck(check);
     if (!check.merged) {
       this.setPhase('awaiting_merge', check.detail);
       this.push({ kind: 'note', text: check.detail });
@@ -521,16 +522,14 @@ export class ReadinessSession {
     }
 
     const read = await this.readAuthoritativeMarker();
-    this.state.marker = read.marker;
-    this.state.markerValid = read.ok;
-    this.state.markerDetail = read.detail;
+    this.applyMarker(read);
     if (!read.ok) {
       this.persist({ readinessValidated: false });
-      const why = ffDetail
-        ? `${read.detail} (${ffDetail})`
-        : `${read.detail}. Pull ${this.deps.project.baseRef}, then continue — runs branch from that ref, so the marker has to be committed there.`;
-      this.setPhase('failed', why);
-      this.push({ kind: 'error', text: why });
+      this.fail(
+        ffDetail
+          ? `${read.detail} (${ffDetail})`
+          : `${read.detail}. Pull ${this.deps.project.baseRef}, then continue — runs branch from that ref, so the marker has to be committed there.`,
+      );
       return;
     }
 
@@ -598,15 +597,13 @@ export class ReadinessSession {
   }
 
   private priorSummary(): string {
-    const chunks: string[] = [];
-    for (const entry of this.state.entries) {
-      if (entry.kind !== 'note' && entry.kind !== 'text') continue;
-      const text = entry.text.trim();
-      if (!text) continue;
-      chunks.push(text);
-    }
-    const joined = chunks.slice(-16).join('\n');
-    return joined.length > 2_000 ? joined.slice(-2_000) : joined;
+    const joined = this.state.entries
+      .filter((entry) => entry.kind === 'note' || entry.kind === 'text')
+      .map((entry) => entry.text.trim())
+      .filter(Boolean)
+      .slice(-16)
+      .join('\n');
+    return joined.slice(-2_000);
   }
 
   private async cleanupWorktree(): Promise<void> {
@@ -651,14 +648,20 @@ function withResumeHint(phase: ReadinessPhase | undefined, detail: string): stri
   return `${text} The isolated branch is still here — Continue resumes without starting over.`;
 }
 
+/** Phases that stamp `endedAt`: `needs_continue` is parked, but it has stopped. */
+const SETTLED_PHASES = new Set<ReadinessPhase>(['complete', 'skipped', 'failed', 'needs_continue']);
+
+/** Phases where "Make it ready" is already mid-flight and must not be re-entered. */
+const MAKE_READY_LIVE_PHASES = new Set<ReadinessPhase>([
+  'remediating',
+  'verifying',
+  'pr_ready',
+  'confirming_merge',
+  'finalizing',
+]);
+
 function isReadinessMakeReadyLive(phase: ReadinessPhase): boolean {
-  return (
-    phase === 'remediating' ||
-    phase === 'verifying' ||
-    phase === 'pr_ready' ||
-    phase === 'confirming_merge' ||
-    phase === 'finalizing'
-  );
+  return MAKE_READY_LIVE_PHASES.has(phase);
 }
 
 function prBody(evaluation: ReadinessEvaluation): string {

@@ -21,13 +21,10 @@ export default function ConfirmModal(): React.JSX.Element | null {
     (isDanger ? (/delete/i.test(request.message) ? 'Delete' : 'Remove') : 'Confirm');
   const cancelLabel = request.opts?.cancelLabel ?? 'Cancel';
   const title = request.opts?.title ?? (isDanger ? 'Confirmation Required' : 'Confirmation');
+  const resolve = (accepted: boolean) => (): void => confirmManager.resolve(request.id, accepted);
 
   return (
-    <ModalShell
-      highPriority
-      onClose={() => confirmManager.resolve(request.id, false)}
-      ariaLabelledBy="confirm-dialog-title"
-    >
+    <ModalShell highPriority onClose={resolve(false)} ariaLabelledBy="confirm-dialog-title">
       <div className={styles.dialog}>
         <div className={styles.body}>
           <h3 id="confirm-dialog-title" className={styles.title}>
@@ -36,16 +33,12 @@ export default function ConfirmModal(): React.JSX.Element | null {
           <p className={styles.message}>{request.message}</p>
         </div>
         <div className={styles.actions}>
-          <Button
-            variant="ghost"
-            onClick={() => confirmManager.resolve(request.id, false)}
-            data-testid="confirm-cancel"
-          >
+          <Button variant="ghost" onClick={resolve(false)} data-testid="confirm-cancel">
             {cancelLabel}
           </Button>
           <Button
             variant={isDanger ? 'danger' : 'primary'}
-            onClick={() => confirmManager.resolve(request.id, true)}
+            onClick={resolve(true)}
             data-testid="confirm-accept"
           >
             {confirmLabel}

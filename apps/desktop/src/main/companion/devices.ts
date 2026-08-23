@@ -43,6 +43,18 @@ function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
+/** Constant-time comparison of a stored hex hash against a candidate digest. */
+function tokenMatches(storedHex: string, candidate: Buffer): boolean {
+  const stored = Buffer.from(storedHex, 'hex');
+  return stored.length === candidate.length && timingSafeEqual(stored, candidate);
+}
+
+/** True while the stamp is fresh enough that a poll need not rewrite the file. */
+function isSeenRecently(lastSeenAt: string | null, now: number): boolean {
+  const previous = lastSeenAt ? Date.parse(lastSeenAt) : NaN;
+  return Number.isFinite(previous) && now - previous < LAST_SEEN_DEBOUNCE_MS;
+}
+
 function emptyFile(): CompanionFile {
   return { desktopId: '', enabled: false, lastPort: null, devices: [] };
 }
@@ -152,29 +164,26 @@ export class DeviceStore {
     if (!token) return null;
     const candidate = Buffer.from(hashToken(token), 'hex');
     const file = this.store.read();
-    const match = file.devices.find((d) => {
-      const stored = Buffer.from(d.tokenHash, 'hex');
-      return stored.length === candidate.length && timingSafeEqual(stored, candidate);
-    });
+    const match = file.devices.find((d) => tokenMatches(d.tokenHash, candidate));
     if (!match) return null;
     const now = this.now();
-    const previous = match.lastSeenAt ? Date.parse(match.lastSeenAt) : NaN;
-    if (!Number.isFinite(previous) || now - previous >= LAST_SEEN_DEBOUNCE_MS) {
-      match.lastSeenAt = new Date(now).toISOString();
-      this.store.write(file);
-    }
-    return this.project(match);
+    if (isSeenRecently(match.lastSeenAt, now)) return this.project(match);
+
+    const stamped: DeviceRecord = { ...match, lastSeenAt: new Date(now).toISOString() };
+    this.store.write({
+      ...file,
+      devices: file.devices.map((d) => (d === match ? stamped : d)),
+    });
+    return this.project(stamped);
   }
 
   /** Deletes the device row, which is what invalidates its token. */
   unpair(deviceId: string): boolean {
-    let removed = false;
-    this.store.update((file) => {
-      const devices = file.devices.filter((d) => d.deviceId !== deviceId);
-      removed = devices.length !== file.devices.length;
-      return { ...file, devices };
-    });
-    return removed;
+    const file = this.store.read();
+    const devices = file.devices.filter((d) => d.deviceId !== deviceId);
+    if (devices.length === file.devices.length) return false;
+    this.store.write({ ...file, devices });
+    return true;
   }
 
   list(): CompanionDevice[] {

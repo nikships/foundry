@@ -15,13 +15,24 @@ import {
   type Emblem,
 } from './SidebarEmblems.js';
 import { Dropdown, type DropdownOption } from '../ui/Dropdown.js';
+import { cx } from '../ui/cx.js';
 import styles from './Sidebar.module.css';
 
 const SIDEBAR_COLLAPSED_KEY = 'foundry.sidebarCollapsed';
+/** Sentinel value for the Add / Create row, which is an action rather than a project. */
+const ADD_OR_CREATE = '__split_add_create__';
 
 const items: { id: NavView; label: string; key: string; Emblem: Emblem }[] = NAV_ITEMS.map(
   (item) => ({ ...item, Emblem: NAV_EMBLEMS[item.id] }),
 );
+
+function PlusIcon(): React.JSX.Element {
+  return (
+    <svg className={styles.splitIcon} width="12" height="12" viewBox="0 0 14 14" fill="none">
+      <path d="M7 2.5v9M2.5 7h9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 function SplitProjectOption({
   onAdd,
@@ -34,74 +45,52 @@ function SplitProjectOption({
 }): React.JSX.Element {
   const [hoverSide, setHoverSide] = useState<'left' | 'right' | null>(null);
 
-  const handleAdd = (e: React.MouseEvent) => {
+  const run = (action?: () => void) => (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    if (!action) return;
     close();
-    onAdd();
+    action();
   };
 
-  const handleNew = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    if (onNew) {
-      close();
-      onNew();
-    }
-  };
-
-  const handleRowClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  // Only fires for the gap between the halves; each half stops propagation.
+  const handleRowClick = (e: React.MouseEvent<HTMLDivElement>): void => {
     e.stopPropagation();
     e.preventDefault();
     close();
     const rect = e.currentTarget.getBoundingClientRect();
     const isLeft = e.clientX - rect.left < rect.width / 2;
-    if (isLeft) {
-      onAdd();
-    } else if (onNew) {
-      onNew();
-    }
+    if (isLeft) onAdd();
+    else onNew?.();
   };
+
+  const half = (
+    side: 'left' | 'right',
+    action: (() => void) | undefined,
+    title: string,
+    label: string,
+  ): React.JSX.Element => (
+    <div
+      className={cx(
+        styles.splitOptionHalf,
+        hoverSide === side && styles.splitOptionHalfActive,
+        !action && styles.disabled,
+      )}
+      onMouseEnter={() => setHoverSide(side)}
+      onMouseLeave={() => setHoverSide(null)}
+      onClick={run(action)}
+      title={title}
+    >
+      <PlusIcon />
+      <span>{label}</span>
+    </div>
+  );
 
   return (
     <div className={styles.splitOptionRow} onClick={handleRowClick}>
-      <div
-        className={`${styles.splitOptionHalf} ${hoverSide === 'left' ? styles.splitOptionHalfActive : ''}`}
-        onMouseEnter={() => setHoverSide('left')}
-        onMouseLeave={() => setHoverSide(null)}
-        onClick={handleAdd}
-        title="Add an existing project folder"
-      >
-        <svg className={styles.splitIcon} width="12" height="12" viewBox="0 0 14 14" fill="none">
-          <path
-            d="M7 2.5v9M2.5 7h9"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-          />
-        </svg>
-        <span>Add Project</span>
-      </div>
-
+      {half('left', onAdd, 'Add an existing project folder', 'Add Project')}
       <div className={styles.splitDivider} />
-
-      <div
-        className={`${styles.splitOptionHalf} ${hoverSide === 'right' ? styles.splitOptionHalfActive : ''} ${!onNew ? styles.disabled : ''}`}
-        onMouseEnter={() => setHoverSide('right')}
-        onMouseLeave={() => setHoverSide(null)}
-        onClick={handleNew}
-        title="Create a new project repository"
-      >
-        <svg className={styles.splitIcon} width="12" height="12" viewBox="0 0 14 14" fill="none">
-          <path
-            d="M7 2.5v9M2.5 7h9"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-          />
-        </svg>
-        <span>Create New</span>
-      </div>
+      {half('right', onNew, 'Create a new project repository', 'Create New')}
     </div>
   );
 }
@@ -153,7 +142,7 @@ export default function Sidebar({
 
   const dropdownOptions: DropdownOption[] = [
     {
-      value: '__split_add_create__',
+      value: ADD_OR_CREATE,
       label: 'Add / Create New Project',
       divider: true,
       render: (_option, { close }) => (
@@ -171,25 +160,25 @@ export default function Sidebar({
     }),
   ];
 
-  const projectTitle = project?.name ?? 'Project';
   const projectAriaLabel = project ? `Project: ${project.name}` : 'Project';
+  const chooseProject = (next: string): void => {
+    if (next === ADD_OR_CREATE) onAddProject();
+    else selectProject(next);
+  };
+  const navItemClass = (active: boolean, extra?: string): string =>
+    cx(styles.navItem, active && styles.active, collapsed && styles.navItemCollapsed, extra);
+  const pendingLabel = `${pendingCount} ${pendingCount === 1 ? 'run needs' : 'runs need'} you`;
 
   return (
-    <aside className={`${styles.sidebar} ${collapsed ? styles.collapsed : ''}`}>
+    <aside className={cx(styles.sidebar, collapsed && styles.collapsed)}>
       {collapsed ? (
         <div className={styles.projectPickerCollapsed}>
           <Dropdown
             value={project?.id ?? ''}
             options={dropdownOptions}
-            onChange={(next) => {
-              if (next === '__split_add_create__') {
-                onAddProject();
-                return;
-              }
-              selectProject(next);
-            }}
+            onChange={chooseProject}
             aria-label={projectAriaLabel}
-            placeholder={projectTitle}
+            placeholder={project?.name ?? 'Project'}
             triggerClassName={styles.emblemProjectTrigger}
             renderValue={() => <ProjectEmblem className={styles.navEmblem} />}
             data-testid="project-selector"
@@ -201,13 +190,7 @@ export default function Sidebar({
           <Dropdown
             value={project?.id ?? ''}
             options={dropdownOptions}
-            onChange={(next) => {
-              if (next === '__split_add_create__') {
-                onAddProject();
-                return;
-              }
-              selectProject(next);
-            }}
+            onChange={chooseProject}
             aria-label={projectAriaLabel}
             placeholder="Select or add project…"
             data-testid="project-selector"
@@ -221,7 +204,7 @@ export default function Sidebar({
           return (
             <button
               key={item.id}
-              className={`${styles.navItem} ${active ? styles.active : ''} ${collapsed ? styles.navItemCollapsed : ''}`}
+              className={navItemClass(active)}
               onClick={() => onNavigate(item.id)}
               title={collapsed ? `${item.label} (⌘${item.key})` : undefined}
               aria-label={collapsed ? `${item.label} ⌘${item.key}` : undefined}
@@ -245,7 +228,7 @@ export default function Sidebar({
          */}
         <button
           type="button"
-          className={`${styles.navItem} ${view === 'smith' ? styles.active : ''} ${collapsed ? styles.navItemCollapsed : ''}`}
+          className={navItemClass(view === 'smith')}
           onClick={() => onOpenSmith?.()}
           title={collapsed ? 'Smith' : undefined}
           aria-label="Smith"
@@ -271,7 +254,7 @@ export default function Sidebar({
                 <button
                   key={run.runId}
                   type="button"
-                  className={`${styles.runItem} ${pinned ? styles.active : ''}`}
+                  className={cx(styles.runItem, pinned && styles.active)}
                   aria-current={pinned || undefined}
                   title={`${run.request}\n${run.pipelineName} · ${projectName} · ${statusWord(run.status)}`}
                   data-testid={`sidebar-run-${run.runId}`}
@@ -281,7 +264,7 @@ export default function Sidebar({
                   }}
                 >
                   <span
-                    className={`${styles.runDot} ${running ? styles.runDotLive : ''}`}
+                    className={cx(styles.runDot, running && styles.runDotLive)}
                     style={{ background: statusColor(run.status) }}
                   />
                   <span className={styles.runBody}>
@@ -298,13 +281,14 @@ export default function Sidebar({
         </div>
       )}
       <div className={styles.spacer} />
-      {pendingCount > 0 && firstWaiting ? (
-        collapsed ? (
+      {pendingCount > 0 &&
+        firstWaiting &&
+        (collapsed ? (
           <button
             type="button"
             className={styles.pendingCollapsed}
-            title={`${pendingCount} ${pendingCount === 1 ? 'run needs' : 'runs need'} you — open`}
-            aria-label={`${pendingCount} ${pendingCount === 1 ? 'run needs' : 'runs need'} you`}
+            title={`${pendingLabel} — open`}
+            aria-label={pendingLabel}
             data-testid="sidebar-pending"
             onClick={() => onOpenInterruptRun?.(firstWaiting.runId)}
           >
@@ -321,13 +305,12 @@ export default function Sidebar({
             data-testid="sidebar-pending"
             onClick={() => onOpenInterruptRun?.(firstWaiting.runId)}
           >
-            {pendingCount} {pendingCount === 1 ? 'run needs' : 'runs need'} you
+            {pendingLabel}
           </button>
-        )
-      ) : null}
+        ))}
       <button
         type="button"
-        className={`${styles.collapseToggle} ${collapsed ? styles.collapseToggleCollapsed : ''}`}
+        className={cx(styles.collapseToggle, collapsed && styles.collapseToggleCollapsed)}
         onClick={toggleCollapsed}
         aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
@@ -340,7 +323,7 @@ export default function Sidebar({
         )}
       </button>
       <button
-        className={`${styles.navItem} ${view === 'settings' ? styles.active : ''} ${collapsed ? styles.navItemCollapsed : ''} ${styles.settingsItem}`}
+        className={navItemClass(view === 'settings', styles.settingsItem)}
         onClick={() => onOpenSettings('general')}
         title={collapsed ? 'Settings (⌘,)' : undefined}
         aria-label={collapsed ? 'Settings ⌘,' : undefined}

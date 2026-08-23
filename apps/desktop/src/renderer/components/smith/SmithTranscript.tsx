@@ -18,16 +18,20 @@ import {
   type SmithTranscriptGroup,
 } from '../../view-models/smith-chat-view.js';
 import MarkdownText from '../common/MarkdownText.js';
+import { cx } from '../ui/cx.js';
 import styles from './SmithTranscript.module.css';
 
 function TranscriptRows({ group }: { group: SmithTranscriptGroup }): React.JSX.Element {
   return (
     <>
       {group.entries.map((entry) => (
-        <div key={entry.id} className={`${styles.line} ${styles[entry.kind] ?? ''}`}>
+        <div key={entry.id} className={cx(styles.line, styles[entry.kind])}>
           {entry.kind === 'tool' && (
             <span
-              className={`${styles.lineIcon} ${entry.done ? (entry.failed ? styles.iconFailed : styles.iconOk) : styles.iconWait}`}
+              className={cx(
+                styles.lineIcon,
+                entry.done ? (entry.failed ? styles.iconFailed : styles.iconOk) : styles.iconWait,
+              )}
             >
               {SMITH_TOOL_ICON[entry.toolKind ?? 'other'] ?? '·'}
             </span>
@@ -69,7 +73,7 @@ export default function SmithTranscript({
 
   return (
     <div
-      className={`${styles.transcript} ${compact ? styles.compact : ''} scroll`}
+      className={cx(styles.transcript, compact && styles.compact, 'scroll')}
       ref={tailRef}
       data-testid="smith-transcript"
     >
@@ -96,7 +100,7 @@ export default function SmithTranscript({
           </div>
         ),
       )}
-      {running && <div className={`${styles.line} ${styles.note} ${styles.pulse}`}>…</div>}
+      {running && <div className={cx(styles.line, styles.note, styles.pulse)}>…</div>}
       {tail}
     </div>
   );

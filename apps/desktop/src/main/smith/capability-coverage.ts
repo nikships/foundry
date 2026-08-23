@@ -19,10 +19,17 @@ const read = (tool: string, operation: string): SmithCapabilityCoverage => ({
   operation,
   mode: 'immediate',
 });
+
 const approve = (tool: string, operation: string): SmithCapabilityCoverage => ({
   tool,
   operation,
   mode: 'approval',
+});
+
+const secure = (tool: string, operation: string): SmithCapabilityCoverage => ({
+  tool,
+  operation,
+  mode: 'secure',
 });
 
 export const SMITH_CAPABILITY_COVERAGE: Readonly<Record<string, SmithCapabilityCoverage>> = {
@@ -95,7 +102,7 @@ export const SMITH_CAPABILITY_COVERAGE: Readonly<Record<string, SmithCapabilityC
   [IPC.bridgeConnect]: approve('smith_providers', 'connect'),
   [IPC.bridgeDisconnect]: approve('smith_providers', 'disconnect'),
   [IPC.bridgeCancelLogin]: approve('smith_providers', 'cancel_login'),
-  [IPC.bridgeSetApiKey]: { tool: 'smith_providers', operation: 'set_api_key', mode: 'secure' },
+  [IPC.bridgeSetApiKey]: secure('smith_providers', 'set_api_key'),
   [IPC.bridgeClearApiKey]: approve('smith_providers', 'clear_api_key'),
   [IPC.bridgeStoredKeys]: read('smith_providers', 'stored_keys'),
   [IPC.runsStart]: approve('smith_runs', 'start'),
@@ -123,11 +130,7 @@ export const SMITH_CAPABILITY_COVERAGE: Readonly<Record<string, SmithCapabilityC
   [IPC.companionState]: read('smith_companion', 'state'),
   [IPC.companionStart]: approve('smith_companion', 'start'),
   [IPC.companionStop]: approve('smith_companion', 'stop'),
-  [IPC.companionPairingPayload]: {
-    tool: 'smith_companion',
-    operation: 'pairing',
-    mode: 'secure',
-  },
+  [IPC.companionPairingPayload]: secure('smith_companion', 'pairing'),
   [IPC.companionUnpair]: approve('smith_companion', 'unpair'),
   [IPC.doctorRun]: read('smith_system', 'doctor'),
   [IPC.maintenanceOrphans]: read('smith_system', 'orphans'),
@@ -145,8 +148,10 @@ export const SMITH_CAPABILITY_COVERAGE: Readonly<Record<string, SmithCapabilityC
   [IPC.updaterGetStatus]: read('smith_system', 'update_status'),
 };
 
-/** Event constants are subscriptions, not invokes, and Smith lifecycle invokes
- * are intentionally implemented by the chat seam rather than Smith tools. */
+/**
+ * Event constants are subscriptions, not invokes, and Smith lifecycle invokes
+ * are intentionally implemented by the chat seam rather than Smith tools.
+ */
 export function uncoveredSmithInvokeChannels(
   ipc: Readonly<Record<string, string>> = IPC,
   coverage: Readonly<Record<string, SmithCapabilityCoverage>> = SMITH_CAPABILITY_COVERAGE,

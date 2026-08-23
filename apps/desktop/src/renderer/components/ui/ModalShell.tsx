@@ -1,5 +1,6 @@
-import type { ReactNode, RefObject } from 'react';
+import type { MouseEvent, ReactNode, RefObject } from 'react';
 import { useEscapeToClose } from '../../hooks/useEscapeToClose.js';
+import { cx } from './cx.js';
 import styles from './ModalShell.module.css';
 
 interface ModalShellProps {
@@ -17,6 +18,8 @@ interface ModalShellProps {
   highPriority?: boolean;
 }
 
+const noop = (): void => {};
+
 export function ModalShell({
   children,
   onClose,
@@ -28,31 +31,26 @@ export function ModalShell({
   tabIndex,
   highPriority = false,
 }: ModalShellProps): React.JSX.Element {
-  useEscapeToClose(onClose ?? (() => {}), Boolean(dismissible && onClose));
-
   const resolvedRef = modalRef ?? sheetRef;
-  const overlayBackdropClass = `${styles.overlayBackdrop} ${highPriority ? styles.highPriority : ''}`;
-  const modalClass = className ? `${styles.modal} ${className}` : styles.modal;
+  const closeOnBackdrop = dismissible && Boolean(onClose);
+  useEscapeToClose(onClose ?? noop, closeOnBackdrop);
 
-  const handleBackdrop = (e: React.MouseEvent<HTMLDivElement>): void => {
+  const handleBackdrop = (e: MouseEvent<HTMLDivElement>): void => {
     if (e.target !== e.currentTarget) return;
-    if (dismissible && onClose) {
-      onClose();
-    } else if (resolvedRef?.current) {
-      resolvedRef.current.focus();
-    }
+    if (closeOnBackdrop) onClose?.();
+    else resolvedRef?.current?.focus();
   };
 
   return (
     <div
-      className={overlayBackdropClass}
+      className={cx(styles.overlayBackdrop, highPriority && styles.highPriority)}
       role="presentation"
       onClick={dismissible ? handleBackdrop : undefined}
-      onMouseDown={!dismissible ? handleBackdrop : undefined}
+      onMouseDown={dismissible ? undefined : handleBackdrop}
     >
       <section
-        ref={resolvedRef as RefObject<HTMLDivElement>}
-        className={modalClass}
+        ref={resolvedRef}
+        className={cx(styles.modal, className)}
         role="dialog"
         aria-modal="true"
         aria-labelledby={ariaLabelledBy}

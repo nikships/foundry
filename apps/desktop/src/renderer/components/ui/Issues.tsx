@@ -1,5 +1,19 @@
 import type { ValidationIssue } from '@shared/types.js';
+import { cx } from './cx.js';
 import styles from './Issues.module.css';
+
+function Tally({ tone, children }: { tone?: string; children: string }): React.JSX.Element {
+  return (
+    <span className={cx(styles.countItem, tone)}>
+      <span className={styles.dot} aria-hidden="true" />
+      {children}
+    </span>
+  );
+}
+
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
 
 /**
  * Live validation tally. Warnings never read as failure: a pipeline with
@@ -14,28 +28,15 @@ export function IssueCount({
 }): React.JSX.Element {
   if (!errors && !warnings) {
     return (
-      <span className={`${styles.count} ${styles.valid}`}>
-        <span className={styles.countItem}>
-          <span className={styles.dot} aria-hidden="true" />
-          Valid
-        </span>
+      <span className={cx(styles.count, styles.valid)}>
+        <Tally>Valid</Tally>
       </span>
     );
   }
   return (
     <span className={styles.count}>
-      {errors > 0 && (
-        <span className={`${styles.countItem} ${styles.errors}`}>
-          <span className={styles.dot} aria-hidden="true" />
-          {errors} error{errors === 1 ? '' : 's'}
-        </span>
-      )}
-      {warnings > 0 && (
-        <span className={`${styles.countItem} ${styles.warnings}`}>
-          <span className={styles.dot} aria-hidden="true" />
-          {warnings} warning{warnings === 1 ? '' : 's'}
-        </span>
-      )}
+      {errors > 0 && <Tally tone={styles.errors}>{plural(errors, 'error')}</Tally>}
+      {warnings > 0 && <Tally tone={styles.warnings}>{plural(warnings, 'warning')}</Tally>}
     </span>
   );
 }
@@ -48,12 +49,10 @@ export function IssueLine({
   issue: ValidationIssue;
   showWhere?: boolean;
 }): React.JSX.Element {
-  const isError = issue.level === 'error';
+  const warn = issue.level !== 'error';
   return (
-    <p className={`${styles.line} ${isError ? '' : styles.lineWarn}`}>
-      <span className={`${styles.level} ${isError ? '' : styles.levelWarn}`}>
-        {isError ? 'Err' : 'Warn'}
-      </span>
+    <p className={cx(styles.line, warn && styles.lineWarn)}>
+      <span className={cx(styles.level, warn && styles.levelWarn)}>{warn ? 'Warn' : 'Err'}</span>
       <span className={styles.message}>
         {showWhere && issue.where && <span className={styles.where}>{issue.where} — </span>}
         {issue.message}

@@ -1,5 +1,6 @@
 import type { UpdateStatus } from '@shared/types.js';
 import { Button } from '../ui/Button.js';
+import { cx } from '../ui/cx.js';
 import styles from './UpdateBanner.module.css';
 
 interface Props {
@@ -8,6 +9,47 @@ interface Props {
   onRestart: () => void;
   onRetry: () => void;
   onDismiss: () => void;
+}
+
+const TONE_CLASS: Record<string, string> = {
+  available: styles.toneCyan,
+  downloading: styles.toneCyan,
+  ready: styles.toneGreen,
+  error: styles.toneRed,
+};
+
+function copyFor(status: UpdateStatus): { title: string; detail: string } {
+  switch (status.stage) {
+    case 'checking':
+      return {
+        title: 'Checking for updates…',
+        detail: 'Looking for the latest version of Foundry.',
+      };
+    case 'available':
+      return {
+        title: status.version ? `Foundry v${status.version} is available` : 'Update available',
+        detail: 'Download now and restart when the install finishes.',
+      };
+    case 'downloading':
+      return {
+        title: `Downloading update… ${Math.round(status.percent ?? 0)}%`,
+        detail: status.version
+          ? `Foundry v${status.version} is downloading.`
+          : 'Your update is on its way.',
+      };
+    case 'ready':
+      return {
+        title: status.version ? `Foundry v${status.version} is ready` : 'Update ready to install',
+        detail: 'Restart Foundry now to apply the update.',
+      };
+    case 'error':
+      return {
+        title: 'Update failed',
+        detail: status.message || 'Something went wrong while checking for updates.',
+      };
+    default:
+      return { title: '', detail: '' };
+  }
 }
 
 export default function UpdateBanner({
@@ -20,50 +62,16 @@ export default function UpdateBanner({
   // Idle is handled as a transient toast by the shell, not as a persistent banner.
   if (status.stage === 'idle') return null;
 
-  let title = '';
-  let detail = '';
-  let tone: 'cyan' | 'green' | 'red' | 'default' = 'default';
-
-  if (status.stage === 'checking') {
-    title = 'Checking for updates…';
-    detail = 'Looking for the latest version of Foundry.';
-  } else if (status.stage === 'available') {
-    title = status.version ? `Foundry v${status.version} is available` : 'Update available';
-    detail = 'Download now and restart when the install finishes.';
-    tone = 'cyan';
-  } else if (status.stage === 'downloading') {
-    const pct = Math.round(status.percent ?? 0);
-    title = `Downloading update… ${pct}%`;
-    detail = status.version
-      ? `Foundry v${status.version} is downloading.`
-      : 'Your update is on its way.';
-    tone = 'cyan';
-  } else if (status.stage === 'ready') {
-    title = status.version ? `Foundry v${status.version} is ready` : 'Update ready to install';
-    detail = 'Restart Foundry now to apply the update.';
-    tone = 'green';
-  } else if (status.stage === 'error') {
-    title = 'Update failed';
-    detail = status.message || 'Something went wrong while checking for updates.';
-    tone = 'red';
-  }
-
-  const toneClass =
-    tone === 'green'
-      ? styles.toneGreen
-      : tone === 'cyan'
-        ? styles.toneCyan
-        : tone === 'red'
-          ? styles.toneRed
-          : '';
+  const { title, detail } = copyFor(status);
+  const percent = Math.min(100, Math.max(0, status.percent ?? 0));
 
   return (
-    <div className={`${styles.banner} ${toneClass}`} role="status" aria-live="polite">
+    <div className={cx(styles.banner, TONE_CLASS[status.stage])} role="status" aria-live="polite">
       <div className={styles.head}>
         <div className={styles.titleRow}>
-          {status.stage === 'checking' ? (
-            <span className={`${styles.spinner} ${styles.sm}`} aria-hidden />
-          ) : null}
+          {status.stage === 'checking' && (
+            <span className={cx(styles.spinner, styles.sm)} aria-hidden />
+          )}
           <strong className={styles.title}>{title}</strong>
         </div>
         <button
@@ -80,10 +88,7 @@ export default function UpdateBanner({
       {status.stage === 'downloading' && (
         <div className={styles.progress} aria-label={`Download ${status.percent ?? 0} percent`}>
           <div className={styles.track}>
-            <div
-              className={styles.fill}
-              style={{ width: `${Math.min(100, Math.max(0, status.percent ?? 0))}%` }}
-            />
+            <div className={styles.fill} style={{ width: `${percent}%` }} />
           </div>
           <span className={`${styles.percent} mono`}>{Math.round(status.percent ?? 0)}%</span>
         </div>

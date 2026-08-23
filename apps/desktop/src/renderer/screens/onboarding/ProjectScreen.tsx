@@ -14,8 +14,15 @@ const BRANCHES = [
 /** Vertical drop from the fork commit to the branch node. */
 const BRANCH_DROP = 40;
 
+/** Illustrative main → run-branch rows shown under the worktree diagram. */
+const SCHEMATIC_ROWS = [
+  { branch: 'foundry/run_8f2c1a', tag: 'checks 4/4', tagOn: true, dim: false },
+  { branch: 'foundry/run_31de07', tag: '$0.42', tagOn: false, dim: false },
+  { branch: 'foundry/run_…', tag: 'queued', tagOn: false, dim: true },
+] as const;
+
 export default function ProjectScreen(): React.JSX.Element {
-  const { projects } = useApp();
+  const { projects, selectProject } = useApp();
   const {
     name,
     setName,
@@ -38,7 +45,6 @@ export default function ProjectScreen(): React.JSX.Element {
     projectBlockingHint,
     finish,
   } = useOnboarding();
-  const { selectProject } = useApp();
 
   return (
     <div className={styles.obProject}>
@@ -120,26 +126,25 @@ export default function ProjectScreen(): React.JSX.Element {
           </div>
 
           <div className={styles.obProjectSchematic}>
-            <div className={styles.obProjectSchematicRow}>
-              <span className={styles.obProjectSchematicKey}>main</span>
-              <span className={styles.obProjectSchematicArrow}>→</span>
-              <span className={styles.obProjectSchematicVal}>foundry/run_8f2c1a</span>
-              <span className={`${styles.obProjectSchematicTag} ${styles.obProjectSchematicTagOn}`}>
-                checks 4/4
-              </span>
-            </div>
-            <div className={styles.obProjectSchematicRow}>
-              <span className={styles.obProjectSchematicKey}>main</span>
-              <span className={styles.obProjectSchematicArrow}>→</span>
-              <span className={styles.obProjectSchematicVal}>foundry/run_31de07</span>
-              <span className={styles.obProjectSchematicTag}>$0.42</span>
-            </div>
-            <div className={`${styles.obProjectSchematicRow} ${styles.obProjectSchematicRowDim}`}>
-              <span className={styles.obProjectSchematicKey}>main</span>
-              <span className={styles.obProjectSchematicArrow}>→</span>
-              <span className={styles.obProjectSchematicVal}>foundry/run_…</span>
-              <span className={styles.obProjectSchematicTag}>queued</span>
-            </div>
+            {SCHEMATIC_ROWS.map((row) => (
+              <div
+                key={row.branch}
+                className={`${styles.obProjectSchematicRow} ${
+                  row.dim ? styles.obProjectSchematicRowDim : ''
+                }`}
+              >
+                <span className={styles.obProjectSchematicKey}>main</span>
+                <span className={styles.obProjectSchematicArrow}>→</span>
+                <span className={styles.obProjectSchematicVal}>{row.branch}</span>
+                <span
+                  className={`${styles.obProjectSchematicTag} ${
+                    row.tagOn ? styles.obProjectSchematicTagOn : ''
+                  }`}
+                >
+                  {row.tag}
+                </span>
+              </div>
+            ))}
           </div>
 
           <p className={styles.obProjectQuote}>
@@ -379,12 +384,7 @@ export default function ProjectScreen(): React.JSX.Element {
       </main>
 
       {creatingProject && (
-        <NewProjectWizard
-          onClose={cancelCreateProject}
-          onCreated={async (project) => {
-            await projectCreated(project);
-          }}
-        />
+        <NewProjectWizard onClose={cancelCreateProject} onCreated={projectCreated} />
       )}
     </div>
   );

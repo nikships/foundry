@@ -20,7 +20,6 @@ import {
 import { SETUP_PROMPT, parseSetupReply, sniffSetupScript } from './setup.js';
 
 export type { SetupState };
-export type SetupStatus = SetupState['status'];
 
 export interface SetupSessionDeps {
   projectId: string;

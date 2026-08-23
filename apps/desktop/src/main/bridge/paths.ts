@@ -56,14 +56,13 @@ export function bridgeBinaryCandidates(repoRoot = process.cwd()): string[] {
  */
 export function bridgeBinaryPath(repoRoot = process.cwd()): string | null {
   for (const candidate of bridgeBinaryCandidates(repoRoot)) {
-    if (!existsSync(candidate)) continue;
     try {
       const stats = statSync(candidate);
       // The fetch script chmods 0755. A non-executable file here means someone
       // copied it by hand, and spawning it would fail with EACCES at run time.
       if (stats.isFile() && (stats.mode & 0o111) !== 0) return candidate;
     } catch {
-      // Unreadable candidate: try the next one.
+      // Missing or unreadable candidate: try the next one.
     }
   }
   return null;

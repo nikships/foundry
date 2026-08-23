@@ -65,7 +65,7 @@ export default function ReasoningEffortPicker({
       onChange={(next) => onChange(next as ReasoningEffort)}
       disabled={disabled}
       aria-label={ariaLabel}
-      {...(testId ? { 'data-testid': testId } : {})}
+      data-testid={testId}
     />
   );
 }

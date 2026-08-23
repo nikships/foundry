@@ -15,6 +15,33 @@ import { Dropdown } from '../components/ui/Dropdown.js';
 import { readinessBanner } from '../view-models/readiness-view.js';
 import styles from './RunsScreen.module.css';
 
+function companionPill(companion: CompanionHostState): {
+  title: string;
+  label: string;
+  dot: string;
+} {
+  if (!companion.running) {
+    return {
+      title: 'Companion host is off · Click to open Settings',
+      label: 'Phone off',
+      dot: styles.dotFaint,
+    };
+  }
+  const devices = companion.devices;
+  if (!devices.length) {
+    return {
+      title: `Companion host active · Waiting for a phone to scan QR (${companion.origin})`,
+      label: 'Pair phone',
+      dot: styles.dotOrange,
+    };
+  }
+  return {
+    title: `Companion host active · Paired to ${devices.map((d) => d.name).join(', ')}`,
+    label: devices.length === 1 ? devices[0]!.name : `${devices.length} phones`,
+    dot: styles.dotGreen,
+  };
+}
+
 export default function RunsScreen({
   request,
   onRequestChange,
@@ -175,6 +202,7 @@ export default function RunsScreen({
   };
 
   const openProjectCommands = (): void => onOpenSettings?.('project');
+  const pill = companion ? companionPill(companion) : null;
 
   return (
     <div className={styles.screen}>
@@ -183,39 +211,17 @@ export default function RunsScreen({
           <span className="index">01</span>Runs
         </p>
         <div className={styles.headActions}>
-          {companion && (
+          {companion && pill && (
             <button
               type="button"
               className={styles.phonePill}
               onClick={() => onOpenSettings?.('general')}
               data-testid="companion-pill"
               data-running={companion.running ? 'true' : 'false'}
-              title={
-                companion.running
-                  ? companion.devices.length
-                    ? `Companion host active · Paired to ${companion.devices.map((d) => d.name).join(', ')}`
-                    : `Companion host active · Waiting for a phone to scan QR (${companion.origin})`
-                  : 'Companion host is off · Click to open Settings'
-              }
+              title={pill.title}
             >
-              <span
-                className={`${styles.phoneDot} ${
-                  companion.running
-                    ? companion.devices.length
-                      ? styles.dotGreen
-                      : styles.dotOrange
-                    : styles.dotFaint
-                }`}
-              />
-              <span className="mono">
-                {companion.running
-                  ? companion.devices.length
-                    ? companion.devices.length === 1
-                      ? companion.devices[0]!.name
-                      : `${companion.devices.length} phones`
-                    : 'Pair phone'
-                  : 'Phone off'}
-              </span>
+              <span className={`${styles.phoneDot} ${pill.dot}`} />
+              <span className="mono">{pill.label}</span>
             </button>
           )}
           <label className={styles.archived}>

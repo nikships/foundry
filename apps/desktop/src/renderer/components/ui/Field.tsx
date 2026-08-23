@@ -1,4 +1,5 @@
 import type { InputHTMLAttributes, ReactNode, Ref, TextareaHTMLAttributes } from 'react';
+import { cx } from './cx.js';
 
 interface FieldProps {
   label?: ReactNode;
@@ -26,7 +27,7 @@ export function Field({
   children,
 }: FieldProps): React.JSX.Element {
   return (
-    <div className={className ? `field ${className}` : 'field'}>
+    <div className={cx('field', className)}>
       {label != null && <label htmlFor={htmlFor}>{label}</label>}
       {children}
       {hint && <span className="hint">{hint}</span>}
@@ -43,18 +44,12 @@ interface TextInputProps extends InputHTMLAttributes<HTMLInputElement> {
 }
 
 export function TextInput({ mono, className, ref, ...rest }: TextInputProps): React.JSX.Element {
-  return (
-    <input
-      ref={ref}
-      className={['input', mono && 'mono', className].filter(Boolean).join(' ')}
-      {...rest}
-    />
-  );
+  return <input ref={ref} className={cx('input', mono && 'mono', className)} {...rest} />;
 }
 
 export function Textarea({
   className,
   ...rest
 }: TextareaHTMLAttributes<HTMLTextAreaElement>): React.JSX.Element {
-  return <textarea className={['textarea', className].filter(Boolean).join(' ')} {...rest} />;
+  return <textarea className={cx('textarea', className)} {...rest} />;
 }

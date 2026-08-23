@@ -120,13 +120,16 @@ export default function RunDetailScreen({
     }
   };
 
+  const withDriftNote = (base: string): string => {
+    const extra = commandDriftConfirm(view.events);
+    return extra ? `${base}\n\n${extra}` : base;
+  };
+
   const mergeWorktree = useConfirmAction(
-    () => {
-      const base =
-        'Merge this run’s branch into the project base ref? Uncommitted work in the worktree is included only if the merge path commits it first.';
-      const extra = commandDriftConfirm(view.events);
-      return extra ? `${base}\n\n${extra}` : base;
-    },
+    () =>
+      withDriftNote(
+        'Merge this run’s branch into the project base ref? Uncommitted work in the worktree is included only if the merge path commits it first.',
+      ),
     async (): Promise<void> => {
       if (worktreeBusy) return;
       const result = await withWorktree('Merged.', () => api.runs.mergeWorktree(projectId, runId));
@@ -135,12 +138,10 @@ export default function RunDetailScreen({
   );
 
   const fixMerge = useConfirmAction(
-    () => {
-      const base =
-        'Have an agent rebase this run’s branch onto the base and merge it? The agent works only inside the run’s worktree, and a repair that doesn’t verify is rolled back.';
-      const extra = commandDriftConfirm(view.events);
-      return extra ? `${base}\n\n${extra}` : base;
-    },
+    () =>
+      withDriftNote(
+        'Have an agent rebase this run’s branch onto the base and merge it? The agent works only inside the run’s worktree, and a repair that doesn’t verify is rolled back.',
+      ),
     async (): Promise<void> => {
       if (worktreeBusy) return;
       const result = await withWorktree(
@@ -318,17 +319,13 @@ export default function RunDetailScreen({
 }
 
 function commandDriftConfirm(events: EventRow[]): string {
+  const argv = (value: unknown): string =>
+    Array.isArray(value) ? value.filter((a): a is string => typeof a === 'string').join(' ') : '?';
   const drifts = events.filter((event) => event.name === 'command_drift');
   if (!drifts.length) return '';
   const lines = drifts.map((event) => {
     const name = typeof event.payload.name === 'string' ? event.payload.name : 'command';
-    const from = Array.isArray(event.payload.from)
-      ? event.payload.from.filter((a): a is string => typeof a === 'string').join(' ')
-      : '?';
-    const to = Array.isArray(event.payload.to)
-      ? event.payload.to.filter((a): a is string => typeof a === 'string').join(' ')
-      : '?';
-    return `${name}: ${from} → ${to}`;
+    return `${name}: ${argv(event.payload.from)} → ${argv(event.payload.to)}`;
   });
   return `This will also update project commands to match the worktree:\n${lines.join('\n')}`;
 }

@@ -30,6 +30,16 @@ import {
 import { describeScreen } from './view-models/smith-chat-view.js';
 import styles from './App.module.css';
 
+/**
+ * The line a finished check should show. An unpackaged build and a real
+ * failure both carry their own message; "No update available" is the updater's
+ * word for nothing to do, which reads better as a plain reassurance.
+ */
+function checkCompleteToast(message: string | undefined): string {
+  if (!message || message === 'No update available') return "You're up to date";
+  return message;
+}
+
 function AppInner(): React.JSX.Element {
   const { ready, settings, interrupts, refreshAll, selectProject } = useApp();
   const [view, setView] = useState<View>('runs');
@@ -76,15 +86,8 @@ function AppInner(): React.JSX.Element {
     return api.on('updater-status', (data) => {
       if (!data) return;
       const next = data as UpdateStatus;
-      const prev = prevStageRef.current;
-      if (prev === 'checking' && next.stage === 'idle') {
-        const isUnpackaged = next.message === 'Updates are disabled in unpackaged builds';
-        const msg = isUnpackaged
-          ? next.message
-          : next.message && next.message !== 'No update available'
-            ? next.message
-            : "You're up to date";
-        showToast(msg ?? "You're up to date");
+      if (prevStageRef.current === 'checking' && next.stage === 'idle') {
+        showToast(checkCompleteToast(next.message));
       }
       prevStageRef.current = next.stage;
       setUpdateStatus(next);
@@ -104,12 +107,6 @@ function AppInner(): React.JSX.Element {
     [refreshAll],
   );
 
-  const handleUpdateDownload = useCallback(async (): Promise<void> => {
-    await api.updater.download();
-  }, []);
-  const handleUpdateRestart = useCallback(async (): Promise<void> => {
-    await api.updater.quitAndInstall();
-  }, []);
   const handleUpdateRetry = useCallback(async (): Promise<void> => {
     setUpdateDismissedKey(null);
     await api.updater.check();
@@ -192,6 +189,14 @@ function AppInner(): React.JSX.Element {
     setOpenRunId('');
   }, []);
 
+  const openSettingsPane = useCallback(
+    (pane: string): void => {
+      setSettingsPane(pane);
+      go('settings');
+    },
+    [go],
+  );
+
   const openSettingsSearch = useCallback((): void => {
     go('settings');
     setSettingsPaletteNonce((n) => n + 1);
@@ -226,59 +231,56 @@ function AppInner(): React.JSX.Element {
     });
   }, [go, goDesign, addProject]);
 
-  let main: React.JSX.Element | null = null;
-  if (view === 'runs' && openRunId) {
-    main = (
-      <RunDetailScreen
-        key={openRunId}
-        runId={openRunId}
-        onBack={() => setOpenRunId('')}
-        onOpenInspector={openInspector}
-      />
-    );
-  } else if (view === 'runs') {
-    main = (
-      <RunsScreen
-        request={runRequest}
-        onRequestChange={setRunRequest}
-        onOpen={openRun}
-        onAddProject={() => void addProject()}
-        onNewProject={newProject}
-        onOpenSettings={(pane) => {
-          setSettingsPane(pane);
-          go('settings');
-        }}
-      />
-    );
-  } else if (view === 'inspector') {
-    main = <InspectorScreen pinnedRunId={inspectorRunId} />;
-  } else if (view === 'design') {
-    main = (
-      <DesignScreen
-        tab={designTab}
-        onTabChange={setDesignTab}
-        openTarget={smithNav?.name}
-        openNonce={smithNav?.nonce}
-      />
-    );
-  } else if (view === 'prs') {
-    main = <PullRequestsScreen onOpenRun={openRun} />;
-  } else if (view === 'smith') {
-    main = (
-      <SmithScreen
-        screenContext={smithContext}
-        onCompleted={(target) => void onSmithCompleted(target)}
-      />
-    );
-  } else if (view === 'settings') {
-    main = (
-      <SettingsScreen
-        pane={settingsPane}
-        onPaneChange={setSettingsPane}
-        onNewProject={newProject}
-        paletteNonce={settingsPaletteNonce}
-      />
-    );
+  function renderMain(): React.JSX.Element | null {
+    switch (view) {
+      case 'runs':
+        return openRunId ? (
+          <RunDetailScreen
+            key={openRunId}
+            runId={openRunId}
+            onBack={() => setOpenRunId('')}
+            onOpenInspector={openInspector}
+          />
+        ) : (
+          <RunsScreen
+            request={runRequest}
+            onRequestChange={setRunRequest}
+            onOpen={openRun}
+            onAddProject={() => void addProject()}
+            onNewProject={newProject}
+            onOpenSettings={openSettingsPane}
+          />
+        );
+      case 'inspector':
+        return <InspectorScreen pinnedRunId={inspectorRunId} />;
+      case 'design':
+        return (
+          <DesignScreen
+            tab={designTab}
+            onTabChange={setDesignTab}
+            openTarget={smithNav?.name}
+            openNonce={smithNav?.nonce}
+          />
+        );
+      case 'prs':
+        return <PullRequestsScreen onOpenRun={openRun} />;
+      case 'smith':
+        return (
+          <SmithScreen
+            screenContext={smithContext}
+            onCompleted={(target) => void onSmithCompleted(target)}
+          />
+        );
+      case 'settings':
+        return (
+          <SettingsScreen
+            pane={settingsPane}
+            onPaneChange={setSettingsPane}
+            onNewProject={newProject}
+            paletteNonce={settingsPaletteNonce}
+          />
+        );
+    }
   }
 
   return (
@@ -302,10 +304,7 @@ function AppInner(): React.JSX.Element {
             onNavigate={go}
             onAddProject={addProject}
             onNewProject={newProject}
-            onOpenSettings={(pane) => {
-              setSettingsPane(pane);
-              go('settings');
-            }}
+            onOpenSettings={openSettingsPane}
             onOpenInterruptRun={openRun}
             onOpenInspector={openInspector}
             onOpenSmith={openSmith}
@@ -320,7 +319,7 @@ function AppInner(): React.JSX.Element {
             data-design-tab={view === 'design' ? designTab : undefined}
             data-settings-pane={view === 'settings' ? settingsPane : undefined}
           >
-            {main}
+            {renderMain()}
           </main>
         </>
       ) : (
@@ -353,8 +352,8 @@ function AppInner(): React.JSX.Element {
       {showBanner && (
         <UpdateBanner
           status={updateStatus}
-          onDownload={() => void handleUpdateDownload()}
-          onRestart={() => void handleUpdateRestart()}
+          onDownload={() => void api.updater.download()}
+          onRestart={() => void api.updater.quitAndInstall()}
           onRetry={() => void handleUpdateRetry()}
           onDismiss={handleUpdateDismiss}
         />

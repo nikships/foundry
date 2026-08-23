@@ -31,18 +31,16 @@ const NOUN: Record<DesignTab, string> = {
   envelopes: 'Reports',
 };
 
-export function scopeFlagFor(tab: DesignTab, project: ProjectDef | null): boolean {
-  if (!project) return false;
-  if (tab === 'agents') return project.ownRoster;
-  if (tab === 'pipelines') return project.ownPipelines;
-  return false;
-}
-
 /** Which `ProjectDef` flag a tab toggles, or null when the tab has no copy. */
 export function scopeFieldFor(tab: DesignTab): 'ownRoster' | 'ownPipelines' | null {
   if (tab === 'agents') return 'ownRoster';
   if (tab === 'pipelines') return 'ownPipelines';
   return null;
+}
+
+export function scopeFlagFor(tab: DesignTab, project: ProjectDef | null): boolean {
+  const field = scopeFieldFor(tab);
+  return project && field ? project[field] : false;
 }
 
 export function resolveDesignScope(tab: DesignTab, project: ProjectDef | null): DesignScope {

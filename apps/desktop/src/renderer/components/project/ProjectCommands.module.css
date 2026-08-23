@@ -79,21 +79,12 @@
   font-size: var(--text-xs);
   margin-top: var(--s2);
 }
-.detectPicker {
-  margin-top: var(--s2);
-  min-width: 0;
-}
 .detectError {
   font-size: var(--text-xs);
   color: var(--red);
 }
 .output {
   overflow-y: auto;
-}
-.two {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--s4);
 }
 
 .commandActionsRow {
@@ -102,10 +93,24 @@
   gap: var(--s2);
 }
 
+/* Spacing hooks for the setup-script pane, which stacks under the transcript. */
+.actionsRowSpaced {
+  margin-top: var(--s2);
+}
+.setupResult {
+  margin-top: var(--s2);
+}
+.setupResultActions {
+  margin-top: var(--s2);
+}
+.sniffDetail {
+  margin-top: 6px;
+}
+.tryResult {
+  margin-top: var(--s2);
+}
+
 @media (max-width: 1120px) {
-  .two {
-    grid-template-columns: 1fr;
-  }
   .command .name {
     flex-basis: 110px;
     width: auto;

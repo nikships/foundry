@@ -1,18 +1,11 @@
-import { useEffect, useRef } from 'react';
 import type { DetectionState, DetectionProposal } from '@shared/ipc-contract.js';
 import { modelLabel } from '@shared/model-label.js';
 import { duration } from '../../utils/format.js';
 import { Button } from '../ui/Button.js';
 import { CodeBlock } from '../ui/CodeBlock.js';
+import { cx } from '../ui/cx.js';
+import PanelTranscript from './PanelTranscript.js';
 import styles from './DetectionPanel.module.css';
-
-const TOOL_ICON: Record<string, string> = {
-  command: '⚙',
-  read: '◇',
-  edit: '✎',
-  search: '⌕',
-  other: '·',
-};
 
 const STATUS_LABEL: Record<DetectionState['status'], string> = {
   running: 'Reading the repo',
@@ -22,13 +15,16 @@ const STATUS_LABEL: Record<DetectionState['status'], string> = {
   failed: 'Failed',
 };
 
+const VERIFY_MARK: Record<DetectionProposal['verify'], { glyph: string; tone: string }> = {
+  pending: { glyph: '·', tone: styles.wait },
+  running: { glyph: '◌', tone: styles.wait },
+  pass: { glyph: '✓', tone: styles.ok },
+  fail: { glyph: '✕', tone: styles.failed },
+};
+
 function VerifyMark({ proposal }: { proposal: DetectionProposal }): React.JSX.Element {
-  if (proposal.verify === 'pending')
-    return <span className={`${styles.mark} ${styles.wait}`}>·</span>;
-  if (proposal.verify === 'running')
-    return <span className={`${styles.mark} ${styles.wait}`}>◌</span>;
-  if (proposal.verify === 'pass') return <span className={`${styles.mark} ${styles.ok}`}>✓</span>;
-  return <span className={`${styles.mark} ${styles.failed}`}>✕</span>;
+  const { glyph, tone } = VERIFY_MARK[proposal.verify];
+  return <span className={cx(styles.mark, tone)}>{glyph}</span>;
 }
 
 /**
@@ -55,15 +51,6 @@ export default function DetectionPanel({
   onToggleRaw: () => void;
 }): React.JSX.Element {
   const live = state.status === 'running' || state.status === 'verifying';
-  const tailRef = useRef<HTMLDivElement | null>(null);
-
-  // Follow the tail while the agent is working, but stop once it is done so a
-  // reader who scrolled up to inspect a tool call is not yanked back down.
-  useEffect(() => {
-    if (!live) return;
-    tailRef.current?.scrollTo({ top: tailRef.current.scrollHeight });
-  }, [state.entries, live]);
-
   const usable = state.proposals.filter((p) => p.verify !== 'running');
 
   return (
@@ -76,24 +63,7 @@ export default function DetectionPanel({
       </label>
       <span className="hint">{state.detail}</span>
 
-      <div className={`${styles.transcript} scroll`} ref={tailRef}>
-        {state.entries.map((entry) => (
-          <div key={entry.id} className={`${styles.line} ${styles[entry.kind] ?? ''}`}>
-            {entry.kind === 'tool' && (
-              <span
-                className={`${styles.transcriptIcon} ${entry.done ? (entry.failed ? styles.failed : styles.ok) : styles.wait}`}
-              >
-                {TOOL_ICON[entry.toolKind ?? 'other'] ?? '·'}
-              </span>
-            )}
-            <span className={styles.transcriptText}>{entry.text}</span>
-          </div>
-        ))}
-        {live && <div className={`${styles.line} ${styles.note} ${styles.pulse}`}>…</div>}
-        {!state.entries.length && !live && (
-          <div className={`${styles.line} ${styles.note}`}>Nothing was reported.</div>
-        )}
-      </div>
+      <PanelTranscript entries={state.entries} live={live} />
 
       {live && (
         <div className={`row ${styles.actions}`}>

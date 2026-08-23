@@ -85,17 +85,20 @@ export interface ScreenPosition {
  * Smith screen itself, which would describe nothing.
  */
 export function describeScreen(view: View, position: ScreenPosition): SmithScreenContext {
-  if (view === 'runs' && position.openRunId) {
-    return { route: 'run-detail', entity: { kind: 'run', id: position.openRunId } };
+  switch (view) {
+    case 'runs':
+      return position.openRunId
+        ? { route: 'run-detail', entity: { kind: 'run', id: position.openRunId } }
+        : { route: view };
+    case 'inspector':
+      return position.inspectorRunId
+        ? { route: 'inspector', entity: { kind: 'run', id: position.inspectorRunId } }
+        : { route: view };
+    case 'design':
+      return { route: `design/${position.designTab}` };
+    case 'settings':
+      return { route: 'settings', entity: { kind: 'settings', id: position.settingsPane } };
+    default:
+      return { route: view };
   }
-  if (view === 'inspector' && position.inspectorRunId) {
-    return { route: 'inspector', entity: { kind: 'run', id: position.inspectorRunId } };
-  }
-  if (view === 'design') {
-    return { route: `design/${position.designTab}` };
-  }
-  if (view === 'settings') {
-    return { route: 'settings', entity: { kind: 'settings', id: position.settingsPane } };
-  }
-  return { route: view };
 }

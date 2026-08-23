@@ -4,11 +4,9 @@
  * worktree handle or finish().
  */
 
-import type { PhaseDef, PhaseKind } from '@shared/types.js';
+import type { CommandResult, PhaseDef, PhaseKind, PipelineDef, ProjectDef } from '@shared/types.js';
 import type { Tracer } from '../trace/tracer.js';
-import type { ProjectDef, PipelineDef } from '@shared/types.js';
 import type { Envelope } from './envelopes.js';
-import type { CommandResult } from '@shared/types.js';
 import type { InterruptRequest } from '../pi/session.js';
 import type { IssueAction, PrAction } from '@shared/ipc-contract.js';
 import type { CommandDriftRecord } from './detect.js';

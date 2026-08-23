@@ -14,18 +14,16 @@ export interface UpdaterBroadcaster {
 
 export class UpdaterService {
   private status: UpdateStatus = { stage: 'idle' };
-  private broadcaster?: UpdaterBroadcaster;
   private updater?: typeof pkg.autoUpdater;
-  private isPackaged: boolean;
+  private readonly isPackaged: boolean;
   private checkInFlight?: Promise<UpdateStatus>;
   private downloadInFlight?: Promise<UpdateStatus>;
 
   constructor(
-    broadcaster?: UpdaterBroadcaster,
+    private readonly broadcaster?: UpdaterBroadcaster,
     customAutoUpdater?: typeof pkg.autoUpdater,
     isPackagedOverride?: boolean,
   ) {
-    this.broadcaster = broadcaster;
     this.isPackaged = isPackagedOverride ?? (app ? app.isPackaged : false);
 
     if (customAutoUpdater) {
@@ -43,15 +41,9 @@ export class UpdaterService {
     }
   }
 
-  public setBroadcaster(broadcaster: UpdaterBroadcaster): void {
-    this.broadcaster = broadcaster;
-  }
-
   private setStatus(next: UpdateStatus): void {
     this.status = next;
-    if (this.broadcaster) {
-      this.broadcaster(IPC.eventUpdaterStatus, this.getStatus());
-    }
+    this.broadcaster?.(IPC.eventUpdaterStatus, this.getStatus());
   }
 
   public getStatus(): UpdateStatus {
@@ -118,15 +110,17 @@ export class UpdaterService {
     }
   }
 
+  private disabledStatus(): UpdateStatus {
+    const status: UpdateStatus = {
+      stage: 'idle',
+      message: 'Updates are disabled in unpackaged builds',
+    };
+    this.setStatus(status);
+    return status;
+  }
+
   public async check(_options?: { interactive?: boolean }): Promise<UpdateStatus> {
-    if (!this.isPackaged || !this.updater) {
-      const status: UpdateStatus = {
-        stage: 'idle',
-        message: 'Updates are disabled in unpackaged builds',
-      };
-      this.setStatus(status);
-      return status;
-    }
+    if (!this.isPackaged || !this.updater) return this.disabledStatus();
     if (this.status.stage === 'downloading' || this.status.stage === 'ready') {
       return this.getStatus();
     }
@@ -153,14 +147,7 @@ export class UpdaterService {
   }
 
   public async download(): Promise<UpdateStatus> {
-    if (!this.isPackaged || !this.updater) {
-      const status: UpdateStatus = {
-        stage: 'idle',
-        message: 'Updates are disabled in unpackaged builds',
-      };
-      this.setStatus(status);
-      return status;
-    }
+    if (!this.isPackaged || !this.updater) return this.disabledStatus();
     if (this.status.stage === 'ready') return this.getStatus();
     if (this.downloadInFlight) return this.downloadInFlight;
 
@@ -185,9 +172,7 @@ export class UpdaterService {
   }
 
   public async quitAndInstall(): Promise<void> {
-    if (!this.isPackaged || !this.updater) {
-      return;
-    }
+    if (!this.isPackaged || !this.updater) return;
     this.updater.quitAndInstall(false, true);
   }
 }

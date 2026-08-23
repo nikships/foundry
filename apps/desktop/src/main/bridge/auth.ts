@@ -86,14 +86,16 @@ export const AUTH_WATCH_DEBOUNCE_MS = 400;
 export function readAccounts(authDir: string): BridgeAccount[] {
   let files: string[];
   try {
-    files = readdirSync(authDir);
+    files = readdirSync(authDir)
+      .filter((name) => name.endsWith('.json'))
+      .sort();
   } catch {
     return [];
   }
 
   const now = Date.now();
   const accounts: BridgeAccount[] = [];
-  for (const file of files.filter((name) => name.endsWith('.json')).sort()) {
+  for (const file of files) {
     const parsed = readAuthFile(join(authDir, file));
     if (!parsed) continue;
     const provider = providerForAuthType(parsed.type);
@@ -105,7 +107,7 @@ export function readAccounts(authDir: string): BridgeAccount[] {
       label: parsed.email || parsed.login || file,
       ...(expiresAt ? { expiresAt } : {}),
       expired: expiresAt ? Date.parse(expiresAt) < now : false,
-      disabled: parsed.disabled === true,
+      disabled: parsed.disabled,
     });
   }
   return accounts;
@@ -250,9 +252,9 @@ export async function startLogin(opts: StartLoginOptions): Promise<{
  * from "was not logged in".
  */
 export function logout(authDir: string, provider: BridgeProviderId): number {
-  const own = readAccounts(authDir).filter((account) => account.provider === provider);
   let removed = 0;
-  for (const account of own) {
+  for (const account of readAccounts(authDir)) {
+    if (account.provider !== provider) continue;
     try {
       rmSync(join(authDir, account.id), { force: true });
       removed += 1;
@@ -270,30 +272,38 @@ export function cancelLogin(child: ChildProcess | null): void {
   if (pid && isAlive(pid)) killTree(pid, 'SIGTERM');
 }
 
+/** The only fields read out of an auth file. Everything else is a token. */
 interface RawAuthFile {
   type: string;
   email?: string;
   login?: string;
   expired?: string;
-  disabled?: boolean;
+  disabled: boolean;
 }
 
 function readAuthFile(path: string): RawAuthFile | null {
+  let record: Record<string, unknown>;
   try {
     const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
     if (!parsed || typeof parsed !== 'object') return null;
-    const record = parsed as Record<string, unknown>;
-    if (typeof record.type !== 'string') return null;
-    return {
-      type: record.type,
-      ...(typeof record.email === 'string' ? { email: record.email } : {}),
-      ...(typeof record.login === 'string' ? { login: record.login } : {}),
-      ...(typeof record.expired === 'string' ? { expired: record.expired } : {}),
-      ...(typeof record.disabled === 'boolean' ? { disabled: record.disabled } : {}),
-    };
+    record = parsed as Record<string, unknown>;
   } catch {
     return null;
   }
+  if (typeof record.type !== 'string') return null;
+  // Only these five fields are read out: the rest of the file is refresh and
+  // access tokens, and nothing above this function may see them.
+  return {
+    type: record.type,
+    email: asString(record.email),
+    login: asString(record.login),
+    expired: asString(record.expired),
+    disabled: record.disabled === true,
+  };
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
 }
 
 /** Normalises the provider's timestamp; an unparseable one means "no expiry". */

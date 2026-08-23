@@ -10,6 +10,7 @@ import { basename, join } from 'node:path';
 import { z } from 'zod';
 import type { ProjectDef, ValidationIssue } from '@shared/types.js';
 import { JsonStore } from './json-store.js';
+import { upsertBy } from './collections.js';
 
 export const projectSchema = z.object({
   id: z.string().min(1),
@@ -89,13 +90,9 @@ export class ProjectStore {
         })),
       };
     }
-    const next = this.store.update((current) => {
-      const index = current.findIndex((p) => p.id === project.id);
-      if (index < 0) return [...current, parsed.data];
-      const copy = [...current];
-      copy[index] = parsed.data;
-      return copy;
-    });
+    const next = this.store.update((current) =>
+      upsertBy(current, (p) => p.id === project.id, parsed.data),
+    );
     return { ok: true, projects: next };
   }
 

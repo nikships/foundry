@@ -61,12 +61,16 @@ export function useDebouncedSave<T>(opts: UseDebouncedSaveOptions<T>): UseDeboun
   const optsRef = useRef(opts);
   optsRef.current = opts;
 
-  /** Writes the pending snapshot now (clearing any pending timer first). */
-  const flush = useCallback(async (): Promise<void> => {
+  const clearTimer = useCallback((): void => {
     if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
+  }, []);
+
+  /** Writes the pending snapshot now (clearing any pending timer first). */
+  const flush = useCallback(async (): Promise<void> => {
+    clearTimer();
     const toSave = pendingRef.current;
     pendingRef.current = null;
     if (!toSave) return;
@@ -92,15 +96,12 @@ export function useDebouncedSave<T>(opts: UseDebouncedSaveOptions<T>): UseDeboun
     } catch (e) {
       onError?.(e as Error);
     }
-  }, []);
+  }, [clearTimer]);
 
   const cancel = useCallback((): void => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
+    clearTimer();
     pendingRef.current = null;
-  }, []);
+  }, [clearTimer]);
 
   const flushRef = useRef(flush);
   flushRef.current = flush;
@@ -108,21 +109,15 @@ export function useDebouncedSave<T>(opts: UseDebouncedSaveOptions<T>): UseDeboun
   // Schedule a flush shortly after the value settles. The cleanup clears the
   // timer on every change so we persist once per pause, not once per keystroke.
   useEffect(() => {
-    if (!value) return;
-    if (disabled) return;
+    if (!value || disabled) return;
     const persisted = optsRef.current.compare(value);
     if (requirePersisted && !persisted) return;
     if (JSON.stringify(value) === JSON.stringify(persisted)) return;
     pendingRef.current = value;
-    if (timerRef.current) clearTimeout(timerRef.current);
+    clearTimer();
     timerRef.current = setTimeout(() => void flushRef.current(), delay);
-    return () => {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-  }, [value, disabled, delay, requirePersisted]);
+    return clearTimer;
+  }, [value, disabled, delay, requirePersisted, clearTimer]);
 
   // An unmount is the last chance to persist; callers flush on switch.
   useEffect(() => () => void flushRef.current(), []);

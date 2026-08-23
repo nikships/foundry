@@ -33,25 +33,31 @@ const END = '__FOUNDRY_PATH_END__';
 /** A profile that never returns would hang startup; the fallback is fine. */
 const SHELL_TIMEOUT_MS = 5_000;
 
+/** Relative to `$HOME`; the rest of the common install dirs are absolute. */
+const HOME_BIN_DIRS = [
+  '.npm-global/bin',
+  '.local/bin',
+  '.cargo/bin',
+  '.bun/bin',
+  'go/bin',
+  '.volta/bin',
+  '.asdf/shims',
+];
+
+const SYSTEM_BIN_DIRS = [
+  '/opt/homebrew/bin',
+  '/opt/homebrew/sbin',
+  '/usr/local/bin',
+  '/usr/local/sbin',
+];
+
 /**
  * Where developer tooling actually installs on macOS. Used to repair a PATH the
  * login shell could not supply, and never to replace one it did.
  */
 function commonBinDirs(): string[] {
   const home = homedir();
-  return [
-    join(home, '.npm-global/bin'),
-    join(home, '.local/bin'),
-    join(home, '.cargo/bin'),
-    join(home, '.bun/bin'),
-    join(home, 'go/bin'),
-    join(home, '.volta/bin'),
-    join(home, '.asdf/shims'),
-    '/opt/homebrew/bin',
-    '/opt/homebrew/sbin',
-    '/usr/local/bin',
-    '/usr/local/sbin',
-  ];
+  return [...HOME_BIN_DIRS.map((dir) => join(home, dir)), ...SYSTEM_BIN_DIRS];
 }
 
 /** Order-preserving dedupe, so the shell's own precedence is never reshuffled. */
@@ -112,23 +118,18 @@ export async function resolveEnv(): Promise<ResolvedEnv> {
   if (resolved) return resolved;
 
   const fromShell = await askLoginShell();
-  const inherited = process.env.PATH ?? '';
-  const missing = commonBinDirs().filter((dir) => existsSync(dir));
+  const installed = commonBinDirs().filter((dir) => existsSync(dir));
 
-  if (fromShell) {
-    // The shell is authoritative, but a GUI launch can still miss a directory
-    // the user installed after their last profile edit, so known-good dirs are
-    // appended rather than prepended: they never outrank the user's own order.
-    resolved = { path: mergePath(fromShell, missing), via: 'login-shell' };
-  } else {
-    resolved = {
-      path: mergePath(inherited, missing),
-      via: 'fallback',
-      detail: process.env.SHELL
-        ? `${process.env.SHELL} did not answer; using the inherited PATH plus known install dirs`
-        : 'no SHELL in the environment; using the inherited PATH plus known install dirs',
-    };
-  }
+  // The shell is authoritative, but a GUI launch can still miss a directory the
+  // user installed after their last profile edit, so known-good dirs are
+  // appended rather than prepended: they never outrank the user's own order.
+  resolved = fromShell
+    ? { path: mergePath(fromShell, installed), via: 'login-shell' }
+    : {
+        path: mergePath(process.env.PATH ?? '', installed),
+        via: 'fallback',
+        detail: `${process.env.SHELL ? `${process.env.SHELL} did not answer` : 'no SHELL in the environment'}; using the inherited PATH plus known install dirs`,
+      };
   return resolved;
 }
 

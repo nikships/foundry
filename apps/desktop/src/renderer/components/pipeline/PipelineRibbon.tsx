@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import type { PipelineDef } from '@shared/types.js';
 import { useApp } from '../../stores/app.js';
 import { phaseKindColor } from '../../utils/derive.js';
@@ -23,7 +24,7 @@ export default function PipelineRibbon({ pipeline }: { pipeline: PipelineDef }):
           connector = <span className={styles.arrow}>→</span>;
         }
         return (
-          <span key={phase.name} style={{ display: 'contents' }}>
+          <Fragment key={phase.name}>
             <span
               className={styles.chip}
               style={{ borderColor: `color-mix(in srgb, ${color} 45%, transparent)`, color }}
@@ -31,7 +32,7 @@ export default function PipelineRibbon({ pipeline }: { pipeline: PipelineDef }):
               {phase.name}
             </span>
             {connector}
-          </span>
+          </Fragment>
         );
       })}
     </div>

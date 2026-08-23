@@ -54,6 +54,15 @@ import styles from './SettingsScreen.module.css';
 // preference, and lives in Design alongside the editors that reference it.
 type Pane = SettingsPaneId;
 
+/** Old pane ids from saved navigation state still land somewhere sensible. */
+function normalizePane(value: string): Pane {
+  if (value === 'project') return 'project';
+  if (value === 'general' || value === 'maintenance' || value === 'about' || value === 'app') {
+    return 'app';
+  }
+  return 'models';
+}
+
 /**
  * Tests pin these literals (tests/design-navigation.test.ts reads this source),
  * so the rail renders from this list rather than the search registry's own
@@ -147,6 +156,50 @@ function Section({
   );
 }
 
+/** QR + copy/refresh block shared by the first-pairing and pair-another states. */
+function PairingQr({
+  payload,
+  copied,
+  onCopy,
+  onRefresh,
+  lead,
+}: {
+  payload: CompanionPairingPayload | null;
+  copied: boolean;
+  onCopy: () => void;
+  onRefresh: () => void;
+  lead: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <div className={styles.qrContainer}>
+      <div className={styles.qrFrame}>
+        {payload ? (
+          <QrCode
+            value={`foundry://pair?origin=${encodeURIComponent(payload.origin)}&secret=${encodeURIComponent(payload.secret)}`}
+            size={220}
+            bgColor="#FFFFFF"
+            fgColor="#000000"
+            title="Foundry Companion Pairing QR"
+          />
+        ) : (
+          <div className={styles.qrPlaceholder}>Generating pairing code…</div>
+        )}
+      </div>
+      <div className={styles.qrDetails}>
+        <div className={styles.qrLead}>{lead}</div>
+        <div className={styles.settingsBtnrow}>
+          <Button size="sm" disabled={!payload} onClick={onCopy}>
+            {copied ? 'Copied to clipboard!' : 'Copy pairing code'}
+          </Button>
+          <Button size="sm" onClick={onRefresh}>
+            Refresh QR code
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Checkbox styled as a switch, so the whole row stays click-to-toggle. */
 function Toggle({
   checked,
@@ -191,13 +244,6 @@ export default function SettingsScreen({
 }): React.JSX.Element {
   const { settings, project, projects, agents, refreshAll, patchSettings, selectProject } =
     useApp();
-  const normalizePane = (value: string): Pane => {
-    if (value === 'project') return 'project';
-    if (value === 'general' || value === 'maintenance' || value === 'about' || value === 'app') {
-      return 'app';
-    }
-    return 'models';
-  };
   const [pane, setPane] = useState<Pane>(normalizePane(initialPane));
   const { models, refresh: refreshModels } = useAgentModels();
   const [modelFilter, setModelFilter] = useState('');
@@ -283,6 +329,13 @@ export default function SettingsScreen({
     return api.on('companion-changed', reload);
   }, [loadPairingPayload]);
 
+  const copyPairingPayload = (): void => {
+    if (!pairingPayload) return;
+    void navigator.clipboard.writeText(JSON.stringify(pairingPayload));
+    setCopiedPayload(true);
+    setTimeout(() => setCopiedPayload(false), 2000);
+  };
+
   const toggleCompanion = async (on: boolean): Promise<void> => {
     setCompanionBusy(true);
     try {
@@ -313,9 +366,6 @@ export default function SettingsScreen({
     if (lastProjectSyncedIdRef.current !== project.id) {
       setProjectDraft(plain({ ...project }));
       lastProjectSyncedIdRef.current = project.id;
-      void api.projects.check(project.id).then(setProjectChecks);
-      void api.readiness.inspect(project.id).then(setReadiness);
-      return;
     }
     void api.projects.check(project.id).then(setProjectChecks);
     void api.readiness.inspect(project.id).then(setReadiness);
@@ -482,8 +532,7 @@ export default function SettingsScreen({
       try {
         const result = await api.maintenance.removeWorktree(orphan.projectId, orphan.path);
         setMaintenanceNote(result.detail);
-        if (result.ok === false) setErrors([result.detail]);
-        else setErrors([]);
+        setErrors(result.ok ? [] : [result.detail]);
         await loadOrphans();
       } catch (e) {
         setErrors([(e as Error).message]);
@@ -507,8 +556,7 @@ export default function SettingsScreen({
     try {
       const result = await action();
       setProviderNotes((notes) => ({ ...notes, [key]: result.detail }));
-      if (!result.ok) setErrors([result.detail]);
-      else setErrors([]);
+      setErrors(result.ok ? [] : [result.detail]);
     } catch (e) {
       setProviderNotes((notes) => ({ ...notes, [key]: (e as Error).message }));
       setErrors([(e as Error).message]);
@@ -967,22 +1015,13 @@ export default function SettingsScreen({
                     {companion?.running && (
                       <>
                         {companion.devices.length === 0 ? (
-                          <div className={styles.qrContainer}>
-                            <div className={styles.qrFrame}>
-                              {pairingPayload ? (
-                                <QrCode
-                                  value={`foundry://pair?origin=${encodeURIComponent(pairingPayload.origin)}&secret=${encodeURIComponent(pairingPayload.secret)}`}
-                                  size={220}
-                                  bgColor="#FFFFFF"
-                                  fgColor="#000000"
-                                  title="Foundry Companion Pairing QR"
-                                />
-                              ) : (
-                                <div className={styles.qrPlaceholder}>Generating pairing code…</div>
-                              )}
-                            </div>
-                            <div className={styles.qrDetails}>
-                              <div className={styles.qrLead}>
+                          <PairingQr
+                            payload={pairingPayload}
+                            copied={copiedPayload}
+                            onCopy={copyPairingPayload}
+                            onRefresh={() => void loadPairingPayload(true)}
+                            lead={
+                              <>
                                 <span className={`${styles.settingsPill} ${styles.info}`}>
                                   Waiting for a phone…
                                 </span>
@@ -993,29 +1032,9 @@ export default function SettingsScreen({
                                   Open Foundry on your Android phone and scan this code, or copy the
                                   pairing payload to paste.
                                 </p>
-                              </div>
-                              <div className={styles.settingsBtnrow}>
-                                <Button
-                                  size="sm"
-                                  disabled={!pairingPayload}
-                                  onClick={() => {
-                                    if (pairingPayload) {
-                                      void navigator.clipboard.writeText(
-                                        JSON.stringify(pairingPayload),
-                                      );
-                                      setCopiedPayload(true);
-                                      setTimeout(() => setCopiedPayload(false), 2000);
-                                    }
-                                  }}
-                                >
-                                  {copiedPayload ? 'Copied to clipboard!' : 'Copy pairing code'}
-                                </Button>
-                                <Button size="sm" onClick={() => void loadPairingPayload(true)}>
-                                  Refresh QR code
-                                </Button>
-                              </div>
-                            </div>
-                          </div>
+                              </>
+                            }
+                          />
                         ) : (
                           <div className={styles.settingsFields}>
                             <div className={styles.pairedDevicesHeader}>
@@ -1073,51 +1092,20 @@ export default function SettingsScreen({
                             </div>
 
                             {showPairMore && (
-                              <div className={styles.qrContainer}>
-                                <div className={styles.qrFrame}>
-                                  {pairingPayload ? (
-                                    <QrCode
-                                      value={`foundry://pair?origin=${encodeURIComponent(pairingPayload.origin)}&secret=${encodeURIComponent(pairingPayload.secret)}`}
-                                      size={220}
-                                      bgColor="#FFFFFF"
-                                      fgColor="#000000"
-                                      title="Foundry Companion Pairing QR"
-                                    />
-                                  ) : (
-                                    <div className={styles.qrPlaceholder}>
-                                      Generating pairing code…
-                                    </div>
-                                  )}
-                                </div>
-                                <div className={styles.qrDetails}>
-                                  <div className={styles.qrLead}>
+                              <PairingQr
+                                payload={pairingPayload}
+                                copied={copiedPayload}
+                                onCopy={copyPairingPayload}
+                                onRefresh={() => void loadPairingPayload(true)}
+                                lead={
+                                  <>
                                     <strong>Pair an additional phone</strong>
                                     <p className={styles.hint}>
                                       Scan this QR code in Foundry on another phone.
                                     </p>
-                                  </div>
-                                  <div className={styles.settingsBtnrow}>
-                                    <Button
-                                      size="sm"
-                                      disabled={!pairingPayload}
-                                      onClick={() => {
-                                        if (pairingPayload) {
-                                          void navigator.clipboard.writeText(
-                                            JSON.stringify(pairingPayload),
-                                          );
-                                          setCopiedPayload(true);
-                                          setTimeout(() => setCopiedPayload(false), 2000);
-                                        }
-                                      }}
-                                    >
-                                      {copiedPayload ? 'Copied to clipboard!' : 'Copy pairing code'}
-                                    </Button>
-                                    <Button size="sm" onClick={() => void loadPairingPayload(true)}>
-                                      Refresh QR code
-                                    </Button>
-                                  </div>
-                                </div>
-                              </div>
+                                  </>
+                                }
+                              />
                             )}
                           </div>
                         )}
@@ -1458,10 +1446,6 @@ export default function SettingsScreen({
                       </>
                     )}
                   </Section>
-                </>
-              )}
-              {pane === 'models' && (
-                <>
                   <Section label="Agent defaults" note="What an agent set to inherit gets.">
                     <p className={styles.settingsLead}>
                       Used by any agent that inherits model or reasoning. A per-agent choice always
@@ -1922,10 +1906,6 @@ export default function SettingsScreen({
                       </p>
                     )}
                   </Section>
-                </>
-              )}
-              {pane === 'app' && (
-                <>
                   <Section label="Foundry" note="A software factory you can watch.">
                     <p className={styles.settingsLead}>
                       A software factory you can watch. Pipelines are data, agents are

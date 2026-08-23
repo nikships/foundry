@@ -35,6 +35,7 @@ import type {
   CompanionPairingPayload,
   CompanionPairRequest,
   CompanionPairResult,
+  CompanionPipelineSummary,
   CompanionProjectSummary,
   CompanionSessionInfo,
 } from '@shared/companion.js';
@@ -43,7 +44,14 @@ import type { Tracer } from '../trace/tracer.js';
 import type { OneShotFactory } from '../pi/oneshot.js';
 import type { GhOptions } from '../system/gh.js';
 import * as ghLib from '../system/gh.js';
-import { createRunPr, eventPage, runDetail, runPrDraft, startRun } from '../engine/operations.js';
+import {
+  createRunPr,
+  eventPage,
+  runDetail,
+  runPrDraft,
+  startRun,
+  type StartRunDeps,
+} from '../engine/operations.js';
 import { DeviceStore } from './devices.js';
 import { PairingSecrets } from './pairing.js';
 
@@ -130,6 +138,8 @@ interface LanCandidate {
   usable: boolean;
 }
 
+type BindOutcome = { ok: true; server: Server; port: number } | { ok: false; detail: string };
+
 function isVirtualName(name: string): boolean {
   const lower = name.toLowerCase();
   return VIRTUAL_INTERFACE_PREFIXES.some((prefix) => lower.startsWith(prefix));
@@ -206,37 +216,39 @@ export class CompanionHost {
     const requested = this.deps.port ?? this.devices.lastPort() ?? 0;
     let bound = await this.bind(host, requested);
     let reassigned: number | null = null;
-    if (typeof bound === 'string' && requested !== 0) {
+    if (!bound.ok && requested !== 0) {
       // The remembered port is gone (another process took it, or the OS is
       // still holding it). An ephemeral port beats refusing to serve.
-      const retry = await this.bind(host, 0);
-      if (typeof retry !== 'string') reassigned = requested;
-      bound = retry;
+      bound = await this.bind(host, 0);
+      if (bound.ok) reassigned = requested;
     }
-    if (typeof bound === 'string') {
-      this.detail = `could not bind ${host}: ${bound}`;
+    if (!bound.ok) {
+      this.detail = `could not bind ${host}: ${bound.detail}`;
       return this.state();
     }
 
-    const address = bound.address();
-    const port = typeof address === 'object' && address ? address.port : 0;
-    this.server = bound;
-    this.origin = `http://${host}:${port}`;
-    this.devices.rememberPort(port);
-    this.detail = startupWarning(chosen, reassigned, port);
+    this.server = bound.server;
+    this.origin = `http://${host}:${bound.port}`;
+    this.devices.rememberPort(bound.port);
+    this.detail = startupWarning(chosen, reassigned, bound.port);
     this.deps.onStateChanged();
     return this.state();
   }
 
-  /** Listens, answering the server on success or the failure message. */
-  private bind(host: string, port: number): Promise<Server | string> {
+  /** Listens, answering the server and its port, or the failure message. */
+  private bind(host: string, port: number): Promise<BindOutcome> {
     const server = createServer((req, res) => void this.handle(req, res));
-    return new Promise<Server | string>((resolve) => {
-      const onError = (e: Error): void => resolve(e.message);
+    return new Promise<BindOutcome>((resolve) => {
+      const onError = (e: Error): void => resolve({ ok: false, detail: e.message });
       server.once('error', onError);
       server.listen(port, host, () => {
         server.removeListener('error', onError);
-        resolve(server);
+        const address = server.address();
+        resolve({
+          ok: true,
+          server,
+          port: typeof address === 'object' && address ? address.port : 0,
+        });
       });
     });
   }
@@ -290,14 +302,10 @@ export class CompanionHost {
     try {
       await this.route(req, res);
     } catch (e) {
-      if (e instanceof RouteError) {
-        this.json(res, e.status, {
-          error: { code: e.code, message: e.message },
-        } satisfies CompanionError);
-        return;
-      }
-      this.json(res, 500, {
-        error: { code: 'internal', message: (e as Error).message || 'internal error' },
+      const status = e instanceof RouteError ? e.status : 500;
+      const code: CompanionErrorCode = e instanceof RouteError ? e.code : 'internal';
+      this.json(res, status, {
+        error: { code, message: errorMessage(e) || 'internal error' },
       } satisfies CompanionError);
     }
   }
@@ -384,18 +392,7 @@ export class CompanionHost {
       return this.deps.projects().map((project): CompanionProjectSummary => ({
         id: project.id,
         name: project.name,
-        pipelines: this.deps.pipelinesFor(project.id).map((p) => ({
-          id: p.id,
-          name: p.name,
-          description: p.description,
-          phases: p.phases.map((phase) => ({
-            id: phase.name,
-            name: phase.name,
-            kind: phase.kind,
-            isFeedbackTarget: !!phase.feedbackTo,
-            ...(phase.feedbackTo ? { feedbackTo: phase.feedbackTo } : {}),
-          })),
-        })),
+        pipelines: this.deps.pipelinesFor(project.id).map(summarizePipeline),
       }));
     }
 
@@ -502,15 +499,15 @@ export class CompanionHost {
     throw new RouteError(404, 'not_found', 'no such route');
   }
 
-  private startDeps() {
+  private startDeps(): StartRunDeps {
     return {
-      projectById: (id: string) => this.deps.projectById(id),
-      pipelineFor: (projectId: string, pipelineId: string) =>
+      projectById: (id) => this.deps.projectById(id),
+      pipelineFor: (projectId, pipelineId) =>
         this.deps.pipelinesFor(projectId).find((p) => p.id === pipelineId) ?? null,
-      rosterFor: (projectId: string) => this.deps.rosterFor(projectId),
+      rosterFor: (projectId) => this.deps.rosterFor(projectId),
       envelopeDefs: () => this.deps.envelopeDefs(),
       settings: () => this.deps.settings(),
-      saveProject: (next: ProjectDef) => this.deps.saveProject(next),
+      saveProject: (next) => this.deps.saveProject(next),
       oneShot: this.deps.oneShot,
       registry: this.deps.registry,
     };
@@ -550,9 +547,28 @@ function startupWarning(
   return notes.length ? notes.join('; ') : undefined;
 }
 
+function summarizePipeline(pipeline: PipelineDef): CompanionPipelineSummary {
+  return {
+    id: pipeline.id,
+    name: pipeline.name,
+    description: pipeline.description,
+    phases: pipeline.phases.map((phase) => ({
+      id: phase.name,
+      name: phase.name,
+      kind: phase.kind,
+      isFeedbackTarget: !!phase.feedbackTo,
+      ...(phase.feedbackTo ? { feedbackTo: phase.feedbackTo } : {}),
+    })),
+  };
+}
+
 function bearerToken(req: IncomingMessage): string {
   const header = req.headers.authorization ?? '';
   return header.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : '';
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function readJson(req: IncomingMessage): Promise<unknown> {

@@ -122,8 +122,10 @@ export function mergeModelsJson(
 
 /** Reads models.json, treating an absent or unparseable file as empty. */
 export function readModelsJson(modelsPath: string): ModelsJson | null {
+  const raw = readFileOrNull(modelsPath);
+  if (raw === null) return null;
   try {
-    const parsed: unknown = JSON.parse(readFileSync(modelsPath, 'utf8'));
+    const parsed: unknown = JSON.parse(raw);
     return isRecord(parsed) ? (parsed as ModelsJson) : null;
   } catch {
     return null;
@@ -145,13 +147,7 @@ export interface WriteModelsResult {
  */
 export function writeModelsJson(modelsPath: string, next: ModelsJson): WriteModelsResult {
   const rendered = `${JSON.stringify(next, null, 2)}\n`;
-  let existing: string | null = null;
-  try {
-    existing = readFileSync(modelsPath, 'utf8');
-  } catch {
-    existing = null;
-  }
-  if (existing === rendered) return { changed: false, path: modelsPath };
+  if (readFileOrNull(modelsPath) === rendered) return { changed: false, path: modelsPath };
 
   // pi builds its own directory when a runtime is first created, and a Bridge
   // login can easily happen before any run has done that.
@@ -191,6 +187,14 @@ export function regenerateModels(input: {
   const generated = generateProviders(input.authenticated, input.baseUrl, catalog);
   const merged = mergeModelsJson(readModelsJson(input.modelsPath), generated);
   return writeModelsJson(input.modelsPath, merged);
+}
+
+function readFileOrNull(path: string): string | null {
+  try {
+    return readFileSync(path, 'utf8');
+  } catch {
+    return null;
+  }
 }
 
 function trimSlash(value: string): string {

@@ -16,6 +16,9 @@ import { JsonStore } from './json-store.js';
  */
 const COMPACTION_BAND = [0.5, 0.95] as const;
 
+/** Same shape a roster agent name has: the setting names one of them. */
+const PR_AGENT_NAME = /^[a-z][a-z0-9_-]*$/;
+
 export const appSettingsSchema = z.object({
   helperModel: z.string().min(1),
   helperReasoningEffort: z.enum(REASONING_EFFORTS),
@@ -23,10 +26,7 @@ export const appSettingsSchema = z.object({
   prAgent: z
     .string()
     .min(1)
-    .regex(
-      /^[a-z][a-z0-9_-]*$/,
-      'lowercase letters, digits, dash, underscore; must start with a letter',
-    ),
+    .regex(PR_AGENT_NAME, 'lowercase letters, digits, dash, underscore; must start with a letter'),
   defaultModel: z.string().min(1),
   defaultReasoningEffort: z.enum(REASONING_EFFORTS),
   smithModel: z.string().min(1),
@@ -72,33 +72,29 @@ export function defaultSettings(): AppSettings {
 export function migrate(raw: unknown): AppSettings {
   const base = defaultSettings();
   const stored = raw && typeof raw === 'object' ? (raw as Partial<AppSettings>) : {};
+  const legacy = stored as Record<string, unknown>;
   const merged = { ...base };
   for (const key of Object.keys(base) as (keyof AppSettings)[]) {
     if (Object.hasOwn(stored, key) && stored[key] !== undefined) {
       Object.assign(merged, { [key]: stored[key] });
     }
   }
-  const legacy = raw as Record<string, unknown> | null;
-  if (typeof stored.helperModel !== 'string' || !stored.helperModel) {
-    const readiness = legacy?.readinessModel;
-    const detection = legacy?.detectModel;
-    merged.helperModel =
-      (typeof readiness === 'string' && readiness !== 'inherit' ? readiness : undefined) ??
-      (typeof detection === 'string' ? detection : undefined) ??
-      base.helperModel;
+
+  if (!isNonEmptyString(stored.helperModel)) {
+    merged.helperModel = legacyHelperModel(legacy) || base.helperModel;
   }
-  if (stored.helperReasoningEffort === undefined) {
-    const effort = legacy?.readinessReasoningEffort;
-    if (typeof effort === 'string')
-      merged.helperReasoningEffort = effort as AppSettings['helperReasoningEffort'];
+  if (
+    stored.helperReasoningEffort === undefined &&
+    typeof legacy.readinessReasoningEffort === 'string'
+  ) {
+    merged.helperReasoningEffort =
+      legacy.readinessReasoningEffort as AppSettings['helperReasoningEffort'];
   }
-  if (!merged.helperModel) merged.helperModel = base.helperModel;
-  if (typeof merged.smithModel !== 'string' || !merged.smithModel) {
-    merged.smithModel = base.smithModel;
-  }
-  if (typeof merged.prAgent !== 'string' || !/^[a-z][a-z0-9_-]*$/.test(merged.prAgent)) {
+  if (!isNonEmptyString(merged.smithModel)) merged.smithModel = base.smithModel;
+  if (!isNonEmptyString(merged.prAgent) || !PR_AGENT_NAME.test(merged.prAgent)) {
     merged.prAgent = DEFAULT_PR_AGENT;
   }
+
   // A stored effort outside the known set is repaired to the shipped default.
   // Whether the chosen model actually offers the level is a separate question,
   // answered against the live catalog rather than against a stored file.
@@ -109,6 +105,7 @@ export function migrate(raw: unknown): AppSettings {
   ] as const) {
     if (!isReasoningEffort(merged[key])) merged[key] = base[key];
   }
+
   // A read is not a save, so an out-of-band value is clamped rather than
   // rejected: refusing it here would leave the app with no threshold at all.
   merged.compactionThreshold = clamp(
@@ -116,16 +113,26 @@ export function migrate(raw: unknown): AppSettings {
     base.compactionThreshold,
     COMPACTION_BAND,
   );
-  if (!Array.isArray(merged.hiddenModelIds)) {
-    merged.hiddenModelIds = [];
-  } else {
-    merged.hiddenModelIds = [
-      ...new Set(
-        merged.hiddenModelIds.filter((id): id is string => typeof id === 'string' && id.length > 0),
-      ),
-    ];
-  }
+  merged.hiddenModelIds = Array.isArray(merged.hiddenModelIds)
+    ? [...new Set(merged.hiddenModelIds.filter(isNonEmptyString))]
+    : [];
   return merged;
+}
+
+/**
+ * Readiness and detection each carried their own model before one helper pair
+ * replaced them; a file written back then still names the old keys. Readiness
+ * wins because it was the more deliberate of the two, and its `inherit` is not
+ * a choice worth carrying forward.
+ */
+function legacyHelperModel(legacy: Record<string, unknown>): string | undefined {
+  const { readinessModel, detectModel } = legacy;
+  if (typeof readinessModel === 'string' && readinessModel !== 'inherit') return readinessModel;
+  return typeof detectModel === 'string' ? detectModel : undefined;
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
 }
 
 function clamp(

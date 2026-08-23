@@ -33,18 +33,15 @@ function readPkg(root: string): Record<string, unknown> | null {
   }
 }
 
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+}
+
 function hasPrettier(root: string): boolean {
   if (existsSync(join(root, '.prettierignore'))) return true;
   if (PRETTIER_CONFIGS.some((name) => existsSync(join(root, name)))) return true;
   const pkg = readPkg(root);
-  if (pkg) {
-    const deps = {
-      ...((pkg.dependencies as Record<string, unknown> | undefined) ?? {}),
-      ...((pkg.devDependencies as Record<string, unknown> | undefined) ?? {}),
-    };
-    if ('prettier' in deps) return true;
-  }
-  return false;
+  return 'prettier' in { ...record(pkg?.dependencies), ...record(pkg?.devDependencies) };
 }
 
 /**
@@ -87,14 +84,12 @@ function appendToIgnore(file: string, entry: string): boolean {
  */
 export function ensureMarkerIgnored(root: string): string[] {
   const touched: string[] = [];
-  if (hasPrettier(root)) {
-    if (appendToIgnore(join(root, '.prettierignore'), AGENT_READY_PATH)) {
-      touched.push('.prettierignore');
-    }
+  if (hasPrettier(root) && appendToIgnore(join(root, '.prettierignore'), AGENT_READY_PATH)) {
+    touched.push('.prettierignore');
   }
   const eslintIgnore = join(root, '.eslintignore');
-  if (existsSync(eslintIgnore)) {
-    if (appendToIgnore(eslintIgnore, AGENT_READY_PATH)) touched.push('.eslintignore');
+  if (existsSync(eslintIgnore) && appendToIgnore(eslintIgnore, AGENT_READY_PATH)) {
+    touched.push('.eslintignore');
   }
   return touched;
 }

@@ -35,9 +35,11 @@ export function prWriterOptions(
 ): PrWriterOption[] {
   const seen = new Set<string>();
   const options: PrWriterOption[] = [];
-  const builtins = agents.filter((agent) => agent.builtin);
-  const custom = agents.filter((agent) => !agent.builtin);
-  for (const agent of [...builtins, ...custom]) {
+  const builtinsFirst = [
+    ...agents.filter((agent) => agent.builtin),
+    ...agents.filter((agent) => !agent.builtin),
+  ];
+  for (const agent of builtinsFirst) {
     if (seen.has(agent.name)) continue;
     seen.add(agent.name);
     options.push({

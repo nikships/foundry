@@ -66,13 +66,10 @@ export interface PhaseContextEntry {
   envelope: Envelope;
 }
 
-/**
- * `TSchema` is an empty interface, so any JSON Schema object satisfies it
- * structurally — but `Static<TSchema>` then degrades to `unknown`, which is why
- * every `execute` below narrows its params by hand instead of trusting
- * inference.
- */
-type AnyTool = ToolDefinition;
+// `ToolDefinition`'s `TSchema` is an empty interface, so any JSON Schema object
+// satisfies it structurally — but `Static<TSchema>` then degrades to `unknown`,
+// which is why every `execute` below narrows its params by hand instead of
+// trusting inference.
 
 /** A tool answer is content plus details; Foundry's tools return plain text. */
 function text(value: string): { content: [{ type: 'text'; text: string }]; details: undefined } {
@@ -85,7 +82,7 @@ function field(params: unknown, name: string): unknown {
     : undefined;
 }
 
-export function reportProgressTool(ctx: FoundryToolContext): AnyTool {
+export function reportProgressTool(ctx: FoundryToolContext): ToolDefinition {
   return defineTool({
     name: 'report_progress',
     label: 'Progress',
@@ -114,7 +111,7 @@ export function reportProgressTool(ctx: FoundryToolContext): AnyTool {
   });
 }
 
-export function readPhaseContextTool(ctx: FoundryToolContext): AnyTool {
+export function readPhaseContextTool(ctx: FoundryToolContext): ToolDefinition {
   return defineTool({
     name: 'read_phase_context',
     label: 'Phase context',
@@ -192,7 +189,7 @@ function validateDiffPath(
  * no ref: the only input is an optional path filter, and the base is whatever
  * the engine resolved as this run's branch point.
  */
-export function gitDiffTool(ctx: FoundryToolContext): AnyTool {
+export function gitDiffTool(ctx: FoundryToolContext): ToolDefinition {
   return defineTool({
     name: 'git_diff',
     label: 'Git diff',
@@ -241,7 +238,7 @@ export function gitDiffTool(ctx: FoundryToolContext): AnyTool {
 
 /** The tool plus the arguments the agent last submitted through it. */
 export interface EnvelopeTool {
-  definition: AnyTool;
+  definition: ToolDefinition;
   /** The most recent submission, or null when the turn never called the tool. */
   submitted(): Record<string, unknown> | null;
 }
