@@ -17,6 +17,8 @@ import {
 import { ChangeReceiptDesign } from './SmithChangeReceiptDesign.js';
 import { ChecklistDesign } from './SmithChecklistDesign.js';
 import { EntityComparisonDesign } from './SmithEntityComparisonDesign.js';
+import { ProjectCardDesign } from './SmithProjectCardDesign.js';
+import { PrCardDesign } from './SmithPrCardDesign.js';
 import { AgentDesign, EnvelopeDesign, PipelineDesign, ViewJson } from './SmithEntityDesign.js';
 import styles from './SmithArtifactCard.module.css';
 
@@ -42,7 +44,13 @@ function DesignBody({
   if (artifact.kind === 'entity_comparison') {
     return <EntityComparisonDesign artifact={artifact} compact={compact} />;
   }
-  return <ChangeReceiptDesign receipt={artifact.receipt} compact={compact} />;
+  if (artifact.kind === 'change_receipt') {
+    return <ChangeReceiptDesign receipt={artifact.receipt} compact={compact} />;
+  }
+  if (artifact.kind === 'project_card') {
+    return <ProjectCardDesign project={artifact.project} compact={compact} />;
+  }
+  return <PrCardDesign pr={artifact.pr} compact={compact} />;
 }
 
 export default function SmithArtifactCard({
@@ -98,7 +106,11 @@ export default function SmithArtifactCard({
                   ? artifact.checklist
                   : artifact.kind === 'entity_comparison'
                     ? { before: artifact.before, after: artifact.after }
-                    : artifact.receipt
+                    : artifact.kind === 'change_receipt'
+                      ? artifact.receipt
+                      : artifact.kind === 'project_card'
+                        ? artifact.project
+                        : artifact.pr
         }
       />
     </section>
