@@ -1,28 +1,48 @@
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { EventRow, PhaseRow, RunRow } from '@shared/types.js';
 import { useApp } from '../../stores/app.js';
 import { duration } from '../../utils/format.js';
 import { isAutoAllowPolicy, phaseDuration, phaseKindColor } from '../../utils/derive.js';
+import {
+  axisLabel,
+  axisTicks,
+  buildTimeScale,
+  densityBins,
+  type Span,
+  type TimeScale,
+} from '../../utils/time-scale.js';
 import AgentAvatar from '../media/AgentAvatar.js';
 import { cx } from '../ui/cx.js';
 import styles from './Waterfall.module.css';
 
-/** Event types that get a tick on a phase bar, mapped to their mark style. */
-const MARK_STYLE: Partial<Record<EventRow['type'], string>> = {
-  tool_call: styles.tool,
+/**
+ * Events that earn a full-height flag on the bar. Tool calls are deliberately
+ * absent: they are the high-volume type and render as a density strip instead,
+ * so a phase with hundreds of them stays readable.
+ */
+const FLAG_STYLE: Partial<Record<EventRow['type'], string>> = {
   correction: styles.correction,
-  gate_pass: styles.gate,
   gate_fail: styles.gateFail,
   interrupt: styles.interrupt,
 };
 
-const BAR_STATUS_STYLE: Record<string, string> = {
-  queued: styles.queued,
-  running: styles.running,
-  success: styles.success,
-  fail: styles.fail,
-  skipped: styles.skipped,
+/** Status colour for the bar's end cap and the duration gutter. */
+const STATUS_COLOR: Record<string, string> = {
+  success: 'var(--green)',
+  fail: 'var(--red)',
+  running: 'var(--accent-bright)',
+  skipped: 'var(--text-faint)',
+  queued: 'var(--text-ghost)',
 };
+
+interface LaneBar {
+  left: number;
+  width: number;
+  span: Span;
+}
+
+/** Track width the scale is measured against before the first layout pass. */
+const FALLBACK_TRACK_PX = 640;
 
 export default function Waterfall({
   run,
@@ -40,147 +60,210 @@ export default function Waterfall({
   onSelect: (phaseId: string) => void;
 }): React.JSX.Element {
   const { agentColor } = useApp();
-  const laneColor = (phase: PhaseRow): string =>
-    phaseKindColor(phase.kind, agentColor(phase.owner));
+  const rulerRef = useRef<HTMLDivElement>(null);
+  const [trackPx, setTrackPx] = useState(FALLBACK_TRACK_PX);
+
+  // Tick density depends on real pixels, so measure rather than guess.
+  useEffect(() => {
+    const node = rulerRef.current;
+    if (!node || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(([entry]) => {
+      const width = entry?.contentRect.width ?? 0;
+      if (width > 0) setTrackPx(width);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  const laneColor = useCallback(
+    (phase: PhaseRow): string => phaseKindColor(phase.kind, agentColor(phase.owner)),
+    [agentColor],
+  );
+
   const t0 = useMemo(() => new Date(run.startedAt).getTime(), [run.startedAt]);
-  const span = useMemo(() => {
+  const total = useMemo(() => {
     const end = run.endedAt ? new Date(run.endedAt).getTime() : now;
     return Math.max(end - t0, 1000);
   }, [run.endedAt, now, t0]);
 
-  const pct = (ms: number): number => Math.min(100, Math.max(0, ((ms - t0) / span) * 100));
-
-  const barFor = (phase: PhaseRow): { left: number; width: number; running: boolean } | null => {
-    if (!phase.startedAt) return null;
-    const start = new Date(phase.startedAt).getTime();
-    const end = phase.endedAt ? new Date(phase.endedAt).getTime() : now;
-    const left = pct(start);
-    return { left, width: Math.max(0.6, pct(end) - left), running: !phase.endedAt };
-  };
-
-  /** Place duration inside wide bars; beside short bars, flipping left near the right edge. */
-  const labelFor = (bar: {
-    left: number;
-    width: number;
-  }): { inside: boolean; style: React.CSSProperties } => {
-    if (bar.width > 6) return { inside: true, style: {} };
-    const end = bar.left + bar.width;
-    if (end > 88) return { inside: false, style: { right: `calc(${100 - bar.left}% + 6px)` } };
-    return { inside: false, style: { left: `calc(${end}% + 6px)` } };
-  };
-
-  const marksFor = (
-    phase: PhaseRow,
-  ): { left: number; width: number; style: string; label: string }[] => {
-    const events = eventsByPhase.get(phase.phaseId) ?? [];
-    return events
-      .filter((event) => MARK_STYLE[event.type] && !isAutoAllowPolicy(event))
-      .map((event) => {
-        const start = new Date(event.startedAt).getTime();
-        const end = event.endedAt ? new Date(event.endedAt).getTime() : start + 400;
-        const left = pct(start);
-        return {
-          left,
-          width: Math.max(0.35, pct(end) - left),
-          style: MARK_STYLE[event.type]!,
-          label: event.name,
-        };
-      });
-  };
-
-  const ticks = useMemo(() => {
-    let step = 300_000;
-    if (span <= 60_000) step = 10_000;
-    else if (span <= 600_000) step = 60_000;
-    const out: { left: number; label: string }[] = [];
-    for (let ms = step; ms < span; ms += step) {
-      out.push({ left: (ms / span) * 100, label: duration(ms) });
+  /** Phase spans as ms offsets from run start; the scale's active stretches. */
+  const spans = useMemo(() => {
+    const out = new Map<string, Span>();
+    for (const phase of phases) {
+      if (!phase.startedAt) continue;
+      const start = new Date(phase.startedAt).getTime() - t0;
+      const end = (phase.endedAt ? new Date(phase.endedAt).getTime() : now) - t0;
+      out.set(phase.phaseId, { start: Math.max(0, start), end: Math.max(start, end) });
     }
     return out;
-  }, [span]);
+  }, [phases, t0, now]);
+
+  const scale: TimeScale = useMemo(
+    () => buildTimeScale([...spans.values()], total),
+    [spans, total],
+  );
+  const ticks = useMemo(() => axisTicks(scale, trackPx), [scale, trackPx]);
+  const breaks = useMemo(() => scale.segments.filter((s) => s.kind === 'break'), [scale]);
+
+  const barFor = (phase: PhaseRow): LaneBar | null => {
+    const span = spans.get(phase.phaseId);
+    if (!span) return null;
+    const left = scale.toPercent(span.start);
+    return { left, width: Math.max(0, scale.toPercent(span.end) - left), span };
+  };
+
+  /** Tool-call offsets for the density strip, plus the flagged one-off events. */
+  const activityFor = (
+    phase: PhaseRow,
+  ): { tools: number[]; flags: { at: number; style: string; label: string }[] } => {
+    const events = eventsByPhase.get(phase.phaseId) ?? [];
+    const tools: number[] = [];
+    const flags: { at: number; style: string; label: string }[] = [];
+    for (const event of events) {
+      if (isAutoAllowPolicy(event)) continue;
+      const at = new Date(event.startedAt).getTime() - t0;
+      if (event.type === 'tool_call') tools.push(at);
+      else if (FLAG_STYLE[event.type]) {
+        flags.push({ at, style: FLAG_STYLE[event.type]!, label: event.name });
+      }
+    }
+    return { tools, flags };
+  };
 
   return (
     <div className={styles.waterfall}>
-      <p className={`eyebrow ${styles.eyebrow}`}>
-        <span className="index">01</span>Timeline
-      </p>
-      <div className={styles.axis}>
-        {ticks.map((tick) => (
-          <span key={tick.left} className={styles.tick} style={{ left: `${tick.left}%` }}>
-            <i />
-            <em className="mono">{tick.label}</em>
-          </span>
-        ))}
+      <div className={styles.header}>
+        <p className="eyebrow">
+          <span className="index">01</span>Timeline
+        </p>
+        {scale.compressed && (
+          <span className={`${styles.scaleNote} mono`}>elapsed &middot; idle compressed</span>
+        )}
       </div>
+
+      <div className={styles.row}>
+        <span className={styles.gridLabel} />
+        <div className={styles.ruler} ref={rulerRef}>
+          {ticks.map((tick) => (
+            <span key={tick.t} className={`${styles.tick} mono`} style={{ left: `${tick.x}%` }}>
+              {axisLabel(tick.t)}
+            </span>
+          ))}
+          {breaks.map((seg) => (
+            <span
+              key={seg.t0}
+              className={`${styles.breakLabel} mono`}
+              style={{ left: `${seg.x0}%`, width: `${seg.x1 - seg.x0}%` }}
+              title={`${duration(seg.t1 - seg.t0)} with no phase running`}
+            >
+              {duration(seg.t1 - seg.t0)} idle
+            </span>
+          ))}
+        </div>
+        <span className={styles.gridTime} />
+      </div>
+
       {phases.map((phase) => {
         const bar = barFor(phase);
-        const label = bar ? labelFor(bar) : null;
-        const elapsed = duration(phaseDuration(phase, now));
+        const hue = laneColor(phase);
+        const elapsed = phaseDuration(phase, now);
+        const { tools, flags } = bar ? activityFor(phase) : { tools: [], flags: [] };
+        const barPx = bar ? Math.max(2, (bar.width / 100) * trackPx) : 0;
+        const bins = bar ? densityBins(tools, bar.span, barPx) : [];
+
         return (
           <button
             key={phase.phaseId}
             className={cx(
+              styles.row,
               styles.lane,
               phase.phaseId === selectedPhaseId && styles.selected,
-              phase.status === 'queued' && styles.queued,
+              !bar && styles.inactive,
             )}
             onClick={() => onSelect(phase.phaseId)}
             data-testid={`phase-lane-${phase.phaseId}`}
             data-phase-name={phase.name}
           >
-            <div className={styles.laneLabel}>
+            <span className={styles.laneLabel}>
               {phase.kind === 'agent' ? (
-                <AgentAvatar name={phase.owner} size={26} />
+                <AgentAvatar name={phase.owner} size={24} />
               ) : (
-                <span className={styles.kindDot} style={{ background: laneColor(phase) }} />
+                <span className={styles.kindSlot}>
+                  <span className={styles.kindDot} style={{ background: hue }} />
+                </span>
               )}
               <span className={styles.laneName}>{phase.name}</span>
               {phase.attempt > 1 && (
                 <span className={`${styles.attempt} mono`} title={`attempt ${phase.attempt}`}>
-                  ×{phase.attempt}
+                  &times;{phase.attempt}
                 </span>
               )}
-            </div>
-            <div className={styles.track}>
-              {bar && label ? (
+            </span>
+
+            <span className={styles.track}>
+              {ticks.map((tick) => (
+                <span key={tick.t} className={styles.gridLine} style={{ left: `${tick.x}%` }} />
+              ))}
+              {breaks.map((seg) => (
+                <span
+                  key={seg.t0}
+                  className={styles.breakFill}
+                  style={{ left: `${seg.x0}%`, width: `${seg.x1 - seg.x0}%` }}
+                />
+              ))}
+
+              {bar ? (
                 <>
-                  <div
-                    className={cx(
-                      styles.bar,
-                      BAR_STATUS_STYLE[phase.status],
-                      bar.running && styles.running,
-                    )}
-                    style={
-                      {
-                        left: `${bar.left}%`,
-                        width: `${bar.width}%`,
-                        '--lane-color': laneColor(phase),
-                      } as React.CSSProperties
-                    }
-                  >
-                    {label.inside && <span className={`${styles.barTime} mono`}>{elapsed}</span>}
-                  </div>
-                  {!label.inside && (
+                  {/* The bar keeps the agent/kind hue; status reads from the
+                      end cap and the gutter, so identity survives completion. */}
+                  <span
+                    className={cx(styles.bar, phase.status === 'running' && styles.running)}
+                    style={{
+                      left: `${bar.left}%`,
+                      width: `max(2px, ${bar.width}%)`,
+                      background: hue,
+                    }}
+                  />
+                  {(phase.status === 'success' || phase.status === 'fail') && (
                     <span
-                      className={cx(styles.barTime, styles.outside, 'mono')}
-                      style={label.style}
-                    >
-                      {elapsed}
-                    </span>
+                      className={styles.endCap}
+                      style={{
+                        left: `calc(${bar.left + bar.width}% - 2px)`,
+                        background: STATUS_COLOR[phase.status],
+                      }}
+                    />
                   )}
-                  {marksFor(phase).map((mark, i) => (
+                  {bins.map((bin) => (
                     <span
-                      key={i}
-                      className={cx(styles.mark, mark.style)}
-                      style={{ left: `${mark.left}%`, width: `${mark.width}%` }}
-                      title={mark.label}
+                      key={bin.index}
+                      className={styles.density}
+                      style={{
+                        left: `calc(${bar.left}% + ${((bin.index / bin.total) * bar.width * trackPx) / 100}px)`,
+                        height: `${2 + Math.round((bin.count / bin.peak) * 3)}px`,
+                        opacity: 0.35 + 0.55 * (bin.count / bin.peak),
+                      }}
+                    />
+                  ))}
+                  {flags.map((flag, i) => (
+                    <span
+                      key={`${flag.label}-${i}`}
+                      className={cx(styles.flag, flag.style)}
+                      style={{ left: `calc(${scale.toPercent(flag.at)}% - 1px)` }}
+                      title={flag.label}
                     />
                   ))}
                 </>
               ) : (
-                <span className={`${styles.notStarted} faint`}>queued</span>
+                <span className={styles.notStarted} />
               )}
-            </div>
+            </span>
+
+            <span
+              className={`${styles.laneTime} mono`}
+              style={{ color: STATUS_COLOR[phase.status] ?? 'var(--text)' }}
+            >
+              {bar ? duration(elapsed) : phase.status === 'skipped' ? 'skipped' : 'queued'}
+            </span>
           </button>
         );
       })}
