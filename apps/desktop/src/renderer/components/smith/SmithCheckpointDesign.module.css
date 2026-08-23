@@ -1,0 +1,215 @@
+/**
+ * Engineer-checkpoint design body for Smith artifact cards.
+ * Compact mode tightens spacing for the titlebar bubble.
+ */
+
+.checkpoint {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  min-width: 0;
+}
+
+.checkpoint.compact {
+  gap: var(--s2);
+  font-size: var(--text-xs);
+}
+
+/* ── Header ── */
+
+.headerBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+}
+
+.compact .headerBar {
+  padding: var(--s1) var(--s2);
+  gap: var(--s1);
+}
+
+.kindBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px var(--s2);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: color-mix(in srgb, var(--accent-dim) 40%, var(--bg-raised));
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  color: var(--accent);
+  flex: none;
+}
+
+.context {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px var(--s2);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+  flex: none;
+}
+
+.statusBadgePending {
+  background: color-mix(in srgb, var(--amber-dim) 45%, var(--bg-raised));
+  border-color: color-mix(in srgb, var(--amber) 40%, var(--line-strong));
+  color: var(--amber);
+}
+
+.statusBadgeSettled {
+  background: var(--bg-raised);
+  border-color: var(--line);
+  color: var(--text-dim);
+}
+
+/* ── Question ── */
+
+.question {
+  margin: 0;
+  padding: var(--s2) var(--s3);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+  font-size: var(--text-sm);
+  line-height: var(--leading);
+  color: var(--text);
+  overflow-wrap: break-word;
+}
+
+.compact .question {
+  padding: var(--s2);
+  font-size: var(--text-xs);
+}
+
+/* ── Answer ── */
+
+.answerField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  min-width: 0;
+}
+
+.answerLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.answerInput {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: var(--s2);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--text-xs);
+  line-height: var(--leading);
+}
+
+.answerInput:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+}
+
+.answerReadOnly {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  padding: var(--s2) var(--s3);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+}
+
+.compact .answerReadOnly {
+  padding: var(--s2);
+}
+
+.answerText {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: var(--leading);
+  color: var(--text-dim);
+  overflow-wrap: break-word;
+}
+
+/* ── Decisions (labels, not controls) ── */
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.compact .actions {
+  gap: var(--s1);
+}
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--s2);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  color: var(--text-dim);
+}
+
+.actionApprove {
+  border-color: color-mix(in srgb, var(--green) 35%, var(--line));
+  color: var(--green);
+}
+
+.actionReject {
+  border-color: color-mix(in srgb, var(--red) 35%, var(--line));
+  color: var(--red);
+}
+
+.actionTaken {
+  font-weight: 700;
+  background: color-mix(in srgb, var(--bg-input) 60%, var(--bg-raised));
+  box-shadow: inset 0 0 0 1px currentcolor;
+}
+
+.gateNote {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-faint);
+  overflow-wrap: break-word;
+}

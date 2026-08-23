@@ -18,6 +18,7 @@ import {
 } from '../../view-models/smith-artifact-view.js';
 import SmithActionReceiptBody from './SmithActionReceipt.js';
 import { ChangeReceiptDesign } from './SmithChangeReceiptDesign.js';
+import { CheckpointDesign } from './SmithCheckpointDesign.js';
 import { ChecklistDesign } from './SmithChecklistDesign.js';
 import { EntityComparisonDesign } from './SmithEntityComparisonDesign.js';
 import { ProjectCardDesign } from './SmithProjectCardDesign.js';
@@ -29,6 +30,8 @@ import {
   RunSummaryDesign,
   ViewJson,
 } from './SmithEntityDesign.js';
+import { ProviderStatusDesign } from './SmithProviderStatusDesign.js';
+import { ReadinessJourneyDesign } from './SmithReadinessJourneyDesign.js';
 import styles from './SmithArtifactCard.module.css';
 
 function ArtifactBody({
@@ -68,6 +71,15 @@ function ArtifactBody({
   if (artifact.kind === 'project_card') {
     return <ProjectCardDesign project={artifact.project} compact={compact} />;
   }
+  if (artifact.kind === 'engineer_checkpoint') {
+    return <CheckpointDesign checkpoint={artifact.checkpoint} compact={compact} />;
+  }
+  if (artifact.kind === 'readiness_journey') {
+    return <ReadinessJourneyDesign journey={artifact.journey} compact={compact} />;
+  }
+  if (artifact.kind === 'provider_status') {
+    return <ProviderStatusDesign status={artifact.status} compact={compact} />;
+  }
   if (artifact.kind === 'pr_card') {
     return <PrCardDesign pr={artifact.pr} compact={compact} />;
   }
@@ -92,6 +104,9 @@ function auditValue(artifact: SmithArtifact): unknown {
   }
   if (artifact.kind === 'project_card') return artifact.project;
   if (artifact.kind === 'pr_card') return artifact.pr;
+  if (artifact.kind === 'engineer_checkpoint') return artifact.checkpoint;
+  if (artifact.kind === 'readiness_journey') return artifact.journey;
+  if (artifact.kind === 'provider_status') return artifact.status;
   return { before: artifact.before, after: artifact.after };
 }
 

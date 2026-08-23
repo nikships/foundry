@@ -13,12 +13,15 @@ import type { RunDetail } from '../../../src/shared/ipc-contract.js';
 import type {
   AgentDef,
   ChangeReceiptDef,
+  CheckpointDef,
   ChecklistDef,
   EnvelopeDef,
   PipelineDef,
   PrCardDef,
   ProjectCardDef,
   ProjectDef,
+  ProviderStatusDef,
+  ReadinessJourneyDef,
   SmithArtifact,
 } from '../../../src/shared/types.js';
 import { SMITH_ARTIFACT_VERSION } from '../../../src/shared/types.js';
@@ -27,12 +30,16 @@ import {
   MAX_ARTIFACT_JSON,
   derivePrCard,
   deriveProjectCard,
+  findProviderSecretField,
   findSecretKey,
   smithPresentTool,
   validateChangeReceipt,
   validateChecklist,
+  validateCheckpoint,
   validatePrCard,
   validateProjectCard,
+  validateProviderStatus,
+  validateReadinessJourney,
   type SmithPresentToolDeps,
 } from '../../../src/main/smith/present-tools.js';
 
@@ -254,6 +261,80 @@ const validPrCard: PrCardDef = {
   },
 };
 
+const validCheckpoint: CheckpointDef = {
+  interruptId: 'int_7',
+  title: 'Drop the legacy column?',
+  question: 'The migration drops `users.legacy_id`. Proceed?',
+  runId: 'run_9f2c1a',
+  phaseId: 'review',
+  pipelineId: 'ship-it',
+  raisedAt: '2026-08-23T10:00:00Z',
+  draftAnswer: 'Yes — nothing reads that column.',
+  actions: [
+    { id: 'approve', label: 'Approve', kind: 'approve' },
+    { id: 'reject', label: 'Reject', kind: 'reject' },
+    { id: 'edit', label: 'Edit answer', kind: 'edit' },
+  ],
+};
+
+const validJourney: ReadinessJourneyDef = {
+  projectId: 'proj_1',
+  projectName: 'foundry',
+  phase: 'needs_continue',
+  detail: 'Two criteria still fail after remediation.',
+  marker: {
+    valid: false,
+    detail: 'No .agents/agent-ready.json on origin/main.',
+    source: 'base-ref',
+    ref: 'origin/main',
+  },
+  criteria: [
+    { id: 'lint_format', status: 'pass' },
+    { id: 'typecheck', status: 'fail', notes: 'tsc reports 3 errors' },
+    { id: 'coverage', status: 'n/a', notes: 'no coverage tooling' },
+  ],
+  stack: { languages: ['typescript'], monorepo: true, packages: ['apps/desktop'] },
+  checklistSummary: '1 failing · 1 passing · 1 n/a',
+  work: [
+    { id: 'w1', kind: 'text', text: 'Reading tsconfig.json' },
+    { id: 'w2', kind: 'tool', text: 'npm run typecheck', toolKind: 'command', failed: true },
+  ],
+  pr: { number: 42, url: 'https://github.com/nikships/foundry/pull/42', merged: false },
+  actions: ['Continue', 'Start over'],
+};
+
+const validProviderStatus: ProviderStatusDef = {
+  title: 'Providers',
+  summary: '1 of 2 providers connected',
+  providers: [
+    {
+      id: 'anthropic',
+      label: 'Anthropic',
+      connection: 'connected',
+      authenticated: true,
+      keyPresent: false,
+      accounts: [{ label: 'nik@example.com', expired: false, disabled: false }],
+    },
+    {
+      id: 'openai',
+      label: 'OpenAI',
+      connection: 'error',
+      authenticated: false,
+      keyPresent: true,
+      error: 'refresh failed',
+    },
+  ],
+  bridge: { running: true, port: 52810, baseUrl: 'http://127.0.0.1:52810' },
+  companion: {
+    running: true,
+    origin: 'http://192.168.1.20:52811',
+    protocolVersion: 2,
+    devices: [
+      { deviceId: 'dev_1', name: 'Pixel 9', pairedAt: '2026-08-01T00:00:00Z', lastSeenAt: null },
+    ],
+  },
+};
+
 function makeStores(
   agents: AgentDef[] = [validAgent],
   pipelines: PipelineDef[] = [validPipeline],
@@ -380,6 +461,15 @@ describe('smith_present', () => {
     ).toMatchObject({
       ok: true,
     });
+    expect(
+      await answerOf(tool, { kind: 'engineer_checkpoint', spec: validCheckpoint }),
+    ).toMatchObject({ ok: true });
+    expect(await answerOf(tool, { kind: 'readiness_journey', spec: validJourney })).toMatchObject({
+      ok: true,
+    });
+    expect(
+      await answerOf(tool, { kind: 'provider_status', spec: validProviderStatus }),
+    ).toMatchObject({ ok: true });
     expect(emitted.map((artifact) => artifact.kind)).toEqual([
       'agent_design',
       'envelope_design',
@@ -388,6 +478,9 @@ describe('smith_present', () => {
       'change_receipt',
       'project_card',
       'pr_card',
+      'engineer_checkpoint',
+      'readiness_journey',
+      'provider_status',
     ]);
   });
 
@@ -508,6 +601,158 @@ describe('smith_present', () => {
     expect(res3.ok).toBe(false);
     expect(res3.validation).toContainEqual(
       expect.objectContaining({ where: 'checks', level: 'error' }),
+    );
+
+    expect(emitted).toHaveLength(0);
+  });
+
+  it('emits an engineer_checkpoint artifact carrying no executor and no approval', async () => {
+    const { deps, emitted } = makeDeps();
+    const res = (await answerOf(smithPresentTool(deps), {
+      kind: 'engineer_checkpoint',
+      spec: validCheckpoint,
+      rationale: 'The column is unreferenced.',
+    })) as { ok: boolean; artifactId: string };
+
+    expect(res.ok).toBe(true);
+    expect(emitted).toHaveLength(1);
+    const artifact = emitted[0]!;
+    expect(res.artifactId).toBe(artifact.id);
+    expect(artifact).toMatchObject({
+      kind: 'engineer_checkpoint',
+      version: SMITH_ARTIFACT_VERSION,
+      rationale: 'The column is unreferenced.',
+      warnings: [],
+    });
+    if (artifact.kind !== 'engineer_checkpoint') throw new Error('expected checkpoint artifact');
+    expect(artifact.checkpoint).toEqual(validCheckpoint);
+    // Presentation only: nothing on the artifact can answer the interrupt.
+    expect(Object.keys(artifact)).not.toContain('execute');
+    expect(() => structuredClone(artifact)).not.toThrow();
+  });
+
+  it('emits a readiness_journey artifact with marker, criteria, work, and PR', async () => {
+    const { deps, emitted } = makeDeps();
+    const res = (await answerOf(smithPresentTool(deps), {
+      kind: 'readiness_journey',
+      spec: validJourney,
+    })) as { ok: boolean; artifactId: string };
+
+    expect(res.ok).toBe(true);
+    const artifact = emitted[0]!;
+    expect(res.artifactId).toBe(artifact.id);
+    if (artifact.kind !== 'readiness_journey') throw new Error('expected journey artifact');
+    expect(artifact.journey).toEqual(validJourney);
+    expect(artifact.journey.marker.valid).toBe(false);
+    expect(() => structuredClone(artifact)).not.toThrow();
+  });
+
+  it('emits a provider_status artifact with key-present metadata and paired devices', async () => {
+    const { deps, emitted } = makeDeps();
+    const res = (await answerOf(smithPresentTool(deps), {
+      kind: 'provider_status',
+      spec: validProviderStatus,
+    })) as { ok: boolean; artifactId: string };
+
+    expect(res.ok).toBe(true);
+    const artifact = emitted[0]!;
+    expect(res.artifactId).toBe(artifact.id);
+    if (artifact.kind !== 'provider_status') throw new Error('expected provider artifact');
+    expect(artifact.status).toEqual(validProviderStatus);
+    // `keyPresent` is the only credential-adjacent field allowed through.
+    const serialized = JSON.stringify(artifact);
+    expect(serialized).toContain('keyPresent');
+    expect(serialized).not.toMatch(/"(apiKey|api_key|token|secret)"/);
+    expect(() => structuredClone(artifact)).not.toThrow();
+  });
+
+  it('refuses a provider_status spec carrying a key, masked prefix, or pairing payload', async () => {
+    const { deps, emitted } = makeDeps();
+    const tool = smithPresentTool(deps);
+
+    // `findSecretKey` catches the bare credential names first.
+    const withKey = (await answerOf(tool, {
+      kind: 'provider_status',
+      spec: {
+        providers: [
+          {
+            id: 'openai',
+            label: 'OpenAI',
+            connection: 'connected',
+            authenticated: true,
+            api_key: 'sk-live-123',
+          },
+        ],
+      },
+    })) as { ok: boolean; error?: string };
+    expect(withKey.ok).toBe(false);
+    expect(withKey.error).toMatch(/credential/);
+    expect(JSON.stringify(withKey)).not.toContain('sk-live-123');
+
+    // A masked prefix is refused by name, not by looking like a key.
+    const withMask = (await answerOf(tool, {
+      kind: 'provider_status',
+      spec: {
+        providers: [
+          {
+            id: 'openai',
+            label: 'OpenAI',
+            connection: 'connected',
+            authenticated: true,
+            maskedKeyPrefix: 'sk-live-…',
+          },
+        ],
+      },
+    })) as { ok: boolean; error?: string; validation?: { where: string }[] };
+    expect(withMask.ok).toBe(false);
+    expect(JSON.stringify(withMask)).not.toContain('sk-live-…');
+
+    // The renderer-only QR/pairing payload may never enter an artifact.
+    const withPairing = (await answerOf(tool, {
+      kind: 'provider_status',
+      spec: {
+        companion: {
+          running: true,
+          pairingPayload: { origin: 'http://192.168.1.20:52811', expiresAt: 'soon' },
+        },
+      },
+    })) as { ok: boolean; error?: string; validation?: { where: string }[] };
+    expect(withPairing.ok).toBe(false);
+
+    expect(emitted).toHaveLength(0);
+  });
+
+  it('refuses invalid checkpoint, journey, and provider specs', async () => {
+    const { deps, emitted } = makeDeps();
+    const tool = smithPresentTool(deps);
+
+    const noQuestion = (await answerOf(tool, {
+      kind: 'engineer_checkpoint',
+      spec: { ...validCheckpoint, question: '' },
+    })) as { ok: boolean; validation?: unknown[] };
+    expect(noQuestion.ok).toBe(false);
+    expect(noQuestion.validation).toContainEqual(
+      expect.objectContaining({ where: 'question', level: 'error' }),
+    );
+
+    const badPhase = (await answerOf(tool, {
+      kind: 'readiness_journey',
+      spec: { ...validJourney, phase: 'almost_ready' },
+    })) as { ok: boolean; validation?: unknown[] };
+    expect(badPhase.ok).toBe(false);
+    expect(badPhase.validation).toContainEqual(
+      expect.objectContaining({ where: 'phase', level: 'error' }),
+    );
+
+    const badConnection = (await answerOf(tool, {
+      kind: 'provider_status',
+      spec: {
+        providers: [{ id: 'x', label: 'X', connection: 'flaky', authenticated: true }],
+      },
+    })) as { ok: boolean; validation?: unknown[] };
+    expect(badConnection.ok).toBe(false);
+    expect(badConnection.validation).toContainEqual(
+      expect.objectContaining({ where: 'providers[0].connection', level: 'error' }),
     );
 
     expect(emitted).toHaveLength(0);
@@ -880,6 +1125,187 @@ describe('findSecretKey', () => {
     expect(findSecretKey({ a: { token: 'x' } })).toBe('a.token');
     expect(findSecretKey({ a: [{ password: 'x' }] })).toBe('a[0].password');
     expect(findSecretKey({ name: 'fine', writes: null })).toBeNull();
+  });
+});
+
+describe('validateCheckpoint', () => {
+  it('accepts a valid checkpoint without errors', () => {
+    expect(validateCheckpoint(validCheckpoint)).toEqual([]);
+  });
+
+  it('requires the identity a checkpoint card cannot be drawn without', () => {
+    const issues = validateCheckpoint({});
+    for (const where of ['interruptId', 'title', 'question']) {
+      expect(issues).toContainEqual(expect.objectContaining({ level: 'error', where }));
+    }
+  });
+
+  it('flags a non-object spec and a bad action kind', () => {
+    expect(validateCheckpoint(null)).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'spec' }),
+    );
+    expect(
+      validateCheckpoint({
+        ...validCheckpoint,
+        actions: [{ id: 'x', label: 'Maybe', kind: 'defer' }],
+      }),
+    ).toContainEqual(expect.objectContaining({ level: 'error', where: 'actions[0].kind' }));
+  });
+
+  it('accepts only approve or reject as a recorded decision', () => {
+    expect(validateCheckpoint({ ...validCheckpoint, decision: 'approve' })).toEqual([]);
+    expect(validateCheckpoint({ ...validCheckpoint, decision: 'defer' })).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'decision' }),
+    );
+  });
+
+  it('warns rather than fails on an over-long question or draft answer', () => {
+    const issues = validateCheckpoint({
+      ...validCheckpoint,
+      question: 'q'.repeat(5_000),
+      draftAnswer: 'a'.repeat(9_000),
+    });
+    expect(issues.filter((issue) => issue.level === 'error')).toEqual([]);
+    expect(issues).toContainEqual(expect.objectContaining({ level: 'warning', where: 'question' }));
+    expect(issues).toContainEqual(
+      expect.objectContaining({ level: 'warning', where: 'draftAnswer' }),
+    );
+  });
+});
+
+describe('validateReadinessJourney', () => {
+  it('accepts a valid journey without errors', () => {
+    expect(validateReadinessJourney(validJourney)).toEqual([]);
+  });
+
+  it('requires the authoritative marker and a criteria array', () => {
+    const issues = validateReadinessJourney({ phase: 'complete' });
+    expect(issues).toContainEqual(expect.objectContaining({ level: 'error', where: 'marker' }));
+    expect(issues).toContainEqual(expect.objectContaining({ level: 'error', where: 'criteria' }));
+  });
+
+  it('requires marker validity to be stated explicitly, not inferred', () => {
+    expect(
+      validateReadinessJourney({
+        ...validJourney,
+        marker: { detail: 'unknown' },
+      }),
+    ).toContainEqual(expect.objectContaining({ level: 'error', where: 'marker.valid' }));
+  });
+
+  it('rejects an unknown criterion status, work kind, or marker source', () => {
+    expect(
+      validateReadinessJourney({
+        ...validJourney,
+        criteria: [{ id: 'typecheck', status: 'maybe' }],
+      }),
+    ).toContainEqual(expect.objectContaining({ level: 'error', where: 'criteria[0].status' }));
+    expect(
+      validateReadinessJourney({
+        ...validJourney,
+        work: [{ id: 'w1', kind: 'diagram', text: 'x' }],
+      }),
+    ).toContainEqual(expect.objectContaining({ level: 'error', where: 'work[0].kind' }));
+    expect(
+      validateReadinessJourney({
+        ...validJourney,
+        marker: { ...validJourney.marker, source: 'cache' },
+      }),
+    ).toContainEqual(expect.objectContaining({ level: 'error', where: 'marker.source' }));
+  });
+
+  it('caps the criteria and work arrays rather than persisting an unbounded card', () => {
+    const criteria = Array.from({ length: 200 }, (_, i) => ({ id: `c${i}`, status: 'pass' }));
+    expect(validateReadinessJourney({ ...validJourney, criteria })).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'criteria' }),
+    );
+    const work = Array.from({ length: 400 }, (_, i) => ({ id: `w${i}`, kind: 'text', text: 'x' }));
+    expect(validateReadinessJourney({ ...validJourney, work })).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'work' }),
+    );
+  });
+
+  it('requires a PR to name its number, url, and merge state together', () => {
+    const issues = validateReadinessJourney({ ...validJourney, pr: { number: 42 } });
+    expect(issues).toContainEqual(expect.objectContaining({ level: 'error', where: 'pr.url' }));
+    expect(issues).toContainEqual(expect.objectContaining({ level: 'error', where: 'pr.merged' }));
+  });
+});
+
+describe('validateProviderStatus', () => {
+  it('accepts a valid provider status without errors', () => {
+    expect(validateProviderStatus(validProviderStatus)).toEqual([]);
+  });
+
+  it('requires each provider to state connection and auth', () => {
+    const issues = validateProviderStatus({ providers: [{ id: 'x', label: 'X' }] });
+    expect(issues).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'providers[0].connection' }),
+    );
+    expect(issues).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'providers[0].authenticated' }),
+    );
+  });
+
+  it('refuses every credential-shaped field except keyPresent', () => {
+    expect(validateProviderStatus({ providers: [], apiKey: 'sk-1' })).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'apiKey' }),
+    );
+    expect(
+      validateProviderStatus({
+        providers: [
+          {
+            id: 'x',
+            label: 'X',
+            connection: 'connected',
+            authenticated: true,
+            maskedKeyPrefix: 'sk-…',
+          },
+        ],
+      }),
+    ).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'providers[0].maskedKeyPrefix' }),
+    );
+    // The renderer-only pairing payload, by any name that reads like one.
+    expect(
+      validateProviderStatus({ companion: { running: true, pairingSecret: 'abc' } }),
+    ).toContainEqual(expect.objectContaining({ level: 'error', where: 'companion.pairingSecret' }));
+    expect(validateProviderStatus({ companion: { running: true, qrPayload: {} } })).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'companion.qrPayload' }),
+    );
+    // And `keyPresent` still passes: the card needs it to offer replace/clear.
+    expect(
+      validateProviderStatus({
+        providers: [
+          { id: 'x', label: 'X', connection: 'connected', authenticated: true, keyPresent: true },
+        ],
+      }),
+    ).toEqual([]);
+  });
+
+  it('names the forbidden field without echoing its value', () => {
+    const issues = validateProviderStatus({ providers: [], token: 'ghp_secretvalue' });
+    expect(JSON.stringify(issues)).not.toContain('ghp_secretvalue');
+    expect(issues).toContainEqual(expect.objectContaining({ where: 'token' }));
+  });
+
+  it('validates the Companion device list as metadata only', () => {
+    const issues = validateProviderStatus({
+      companion: { running: true, devices: [{ name: 'Pixel' }] },
+    });
+    expect(issues).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'companion.devices[0].deviceId' }),
+    );
+  });
+});
+
+describe('findProviderSecretField', () => {
+  it('finds forbidden fields at any depth and allows keyPresent', () => {
+    expect(findProviderSecretField({ providers: [{ apiKey: 'x' }] })).toBe('providers[0].apiKey');
+    expect(findProviderSecretField({ companion: { pairing: {} } })).toBe('companion.pairing');
+    expect(findProviderSecretField({ a: { qr: 'data' } })).toBe('a.qr');
+    expect(findProviderSecretField({ providers: [{ keyPresent: true }] })).toBeNull();
+    expect(findProviderSecretField({ bridge: { running: true, port: 1 } })).toBeNull();
   });
 });
 
