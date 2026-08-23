@@ -15,16 +15,22 @@ import type {
   ChecklistDef,
   EnvelopeDef,
   PipelineDef,
+  PrCardDef,
+  ProjectCardDef,
   SmithArtifact,
 } from '../../../src/shared/types.js';
 import { SMITH_ARTIFACT_VERSION } from '../../../src/shared/types.js';
 import type { SmithEntityStores } from '../../../src/main/smith/entity-tools.js';
 import {
   MAX_ARTIFACT_JSON,
+  derivePrCard,
+  deriveProjectCard,
   findSecretKey,
   smithPresentTool,
   validateChangeReceipt,
   validateChecklist,
+  validatePrCard,
+  validateProjectCard,
   type SmithPresentToolDeps,
 } from '../../../src/main/smith/present-tools.js';
 
@@ -107,6 +113,58 @@ const validReceipt: ChangeReceiptDef = {
   outputExcerpt: 'Tests: 1540 passed, 1540 total',
 };
 
+const validProjectCard: ProjectCardDef = {
+  id: 'proj_1',
+  name: 'Foundry',
+  path: '/Users/nik/foundry',
+  baseRef: 'main',
+  title: 'Foundry project card',
+  summary: 'main · 3 commands · Healthy',
+  isGit: true,
+  github: {
+    available: true,
+    repo: 'nikships/foundry',
+  },
+  commands: [{ name: 'test', argv: ['npm', 'test'] }],
+  setupScript: 'npm ci',
+  readinessValidated: true,
+  divergence: {
+    ahead: 0,
+    behind: 0,
+    state: 'current',
+  },
+  scopes: {
+    roster: false,
+    pipelines: false,
+  },
+  health: {
+    ok: true,
+    summary: 'All checks passing',
+    failedCount: 0,
+    totalCount: 5,
+  },
+};
+
+const validPrCard: PrCardDef = {
+  number: 188,
+  title: '[smith] add change/command receipt artifact (FOU-160)',
+  url: 'https://github.com/nikships/foundry/pull/188',
+  headRefName: 'fou-160-change-receipt',
+  baseRefName: 'main',
+  body: 'Implements the change_receipt artifact.',
+  author: 'nikships',
+  isDraft: false,
+  checks: 'passing',
+  mergeable: 'mergeable',
+  reviewDecision: 'APPROVED',
+  additions: 450,
+  deletions: 12,
+  action: {
+    operation: 'create',
+    status: 'success',
+  },
+};
+
 function makeStores(
   agents: AgentDef[] = [validAgent],
   pipelines: PipelineDef[] = [validPipeline],
@@ -184,7 +242,7 @@ describe('smith_present', () => {
     expect(artifact.pipeline).not.toBe(validPipeline);
   });
 
-  it('emits agent, envelope, checklist, entity_comparison, and change_receipt artifacts through the same registry', async () => {
+  it('emits agent, envelope, checklist, entity_comparison, change_receipt, project_card, and pr_card artifacts through the same registry', async () => {
     const { deps, emitted } = makeDeps();
     const tool = smithPresentTool(deps);
     expect(await answerOf(tool, { kind: 'agent_design', spec: validAgent })).toMatchObject({
@@ -213,13 +271,153 @@ describe('smith_present', () => {
     ).toMatchObject({
       ok: true,
     });
+    expect(
+      await answerOf(tool, {
+        kind: 'project_card',
+        spec: validProjectCard,
+      }),
+    ).toMatchObject({
+      ok: true,
+    });
+    expect(
+      await answerOf(tool, {
+        kind: 'pr_card',
+        spec: validPrCard,
+      }),
+    ).toMatchObject({
+      ok: true,
+    });
     expect(emitted.map((artifact) => artifact.kind)).toEqual([
       'agent_design',
       'envelope_design',
       'checklist',
       'entity_comparison',
       'change_receipt',
+      'project_card',
+      'pr_card',
     ]);
+  });
+
+  it('emits a versioned project_card artifact and acknowledges with its id', async () => {
+    const { deps, emitted } = makeDeps();
+    const tool = smithPresentTool(deps);
+    const res = (await answerOf(tool, {
+      kind: 'project_card',
+      spec: validProjectCard,
+      rationale: 'Project health and base divergence overview.',
+    })) as { ok: boolean; artifactId: string };
+
+    expect(res.ok).toBe(true);
+    expect(emitted).toHaveLength(1);
+    const artifact = emitted[0]!;
+    expect(res.artifactId).toBe(artifact.id);
+    expect(artifact).toMatchObject({
+      kind: 'project_card',
+      version: SMITH_ARTIFACT_VERSION,
+      rationale: 'Project health and base divergence overview.',
+      warnings: [],
+    });
+    if (artifact.kind !== 'project_card') throw new Error('expected project_card artifact');
+    expect(artifact.project).toEqual(validProjectCard);
+    expect(() => structuredClone(artifact)).not.toThrow();
+  });
+
+  it('refuses invalid project_card specs', async () => {
+    const { deps, emitted } = makeDeps();
+    const tool = smithPresentTool(deps);
+
+    // Missing path
+    const res1 = (await answerOf(tool, {
+      kind: 'project_card',
+      spec: { ...validProjectCard, path: '' },
+    })) as { ok: boolean; validation?: unknown[] };
+    expect(res1.ok).toBe(false);
+    expect(res1.validation).toContainEqual(
+      expect.objectContaining({ where: 'path', level: 'error' }),
+    );
+
+    // Missing baseRef
+    const res2 = (await answerOf(tool, {
+      kind: 'project_card',
+      spec: { ...validProjectCard, baseRef: '' },
+    })) as { ok: boolean; validation?: unknown[] };
+    expect(res2.ok).toBe(false);
+    expect(res2.validation).toContainEqual(
+      expect.objectContaining({ where: 'baseRef', level: 'error' }),
+    );
+
+    // Invalid divergence state
+    const res3 = (await answerOf(tool, {
+      kind: 'project_card',
+      spec: { ...validProjectCard, divergence: { ahead: 0, behind: 0, state: 'invalid' } },
+    })) as { ok: boolean; validation?: unknown[] };
+    expect(res3.ok).toBe(false);
+    expect(res3.validation).toContainEqual(
+      expect.objectContaining({ where: 'divergence.state', level: 'error' }),
+    );
+
+    expect(emitted).toHaveLength(0);
+  });
+
+  it('emits a versioned pr_card artifact and acknowledges with its id', async () => {
+    const { deps, emitted } = makeDeps();
+    const tool = smithPresentTool(deps);
+    const res = (await answerOf(tool, {
+      kind: 'pr_card',
+      spec: validPrCard,
+      rationale: 'PR preview with checks and merge status.',
+    })) as { ok: boolean; artifactId: string };
+
+    expect(res.ok).toBe(true);
+    expect(emitted).toHaveLength(1);
+    const artifact = emitted[0]!;
+    expect(res.artifactId).toBe(artifact.id);
+    expect(artifact).toMatchObject({
+      kind: 'pr_card',
+      version: SMITH_ARTIFACT_VERSION,
+      rationale: 'PR preview with checks and merge status.',
+      warnings: [],
+    });
+    if (artifact.kind !== 'pr_card') throw new Error('expected pr_card artifact');
+    expect(artifact.pr).toEqual(validPrCard);
+    expect(() => structuredClone(artifact)).not.toThrow();
+  });
+
+  it('refuses invalid pr_card specs', async () => {
+    const { deps, emitted } = makeDeps();
+    const tool = smithPresentTool(deps);
+
+    // Invalid number
+    const res1 = (await answerOf(tool, {
+      kind: 'pr_card',
+      spec: { ...validPrCard, number: 0 },
+    })) as { ok: boolean; validation?: unknown[] };
+    expect(res1.ok).toBe(false);
+    expect(res1.validation).toContainEqual(
+      expect.objectContaining({ where: 'number', level: 'error' }),
+    );
+
+    // Missing url
+    const res2 = (await answerOf(tool, {
+      kind: 'pr_card',
+      spec: { ...validPrCard, url: '' },
+    })) as { ok: boolean; validation?: unknown[] };
+    expect(res2.ok).toBe(false);
+    expect(res2.validation).toContainEqual(
+      expect.objectContaining({ where: 'url', level: 'error' }),
+    );
+
+    // Invalid checks
+    const res3 = (await answerOf(tool, {
+      kind: 'pr_card',
+      spec: { ...validPrCard, checks: 'unknown_check' },
+    })) as { ok: boolean; validation?: unknown[] };
+    expect(res3.ok).toBe(false);
+    expect(res3.validation).toContainEqual(
+      expect.objectContaining({ where: 'checks', level: 'error' }),
+    );
+
+    expect(emitted).toHaveLength(0);
   });
 
   it('emits a versioned change_receipt artifact and acknowledges with its id', async () => {
@@ -584,5 +782,148 @@ describe('validateChangeReceipt', () => {
     expect(issues).toContainEqual(
       expect.objectContaining({ level: 'warning', where: 'outputExcerpt' }),
     );
+  });
+});
+
+describe('validateProjectCard', () => {
+  it('accepts a valid project card without errors', () => {
+    expect(validateProjectCard(validProjectCard)).toEqual([]);
+  });
+
+  it('flags non-object specs', () => {
+    expect(validateProjectCard(null)).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'spec' }),
+    );
+    expect(validateProjectCard('invalid')).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'spec' }),
+    );
+  });
+
+  it('flags warnings for oversized fields without failing validation', () => {
+    const oversized: ProjectCardDef = {
+      path: '/Users/nik/foundry',
+      baseRef: 'main',
+      title: 'T'.repeat(250),
+      summary: 'S'.repeat(600),
+      setupScript: 'X'.repeat(8500),
+      contextSummary: 'C'.repeat(4500),
+    };
+    const issues = validateProjectCard(oversized);
+    expect(issues.filter((i) => i.level === 'error')).toEqual([]);
+    expect(issues).toContainEqual(expect.objectContaining({ level: 'warning', where: 'title' }));
+    expect(issues).toContainEqual(expect.objectContaining({ level: 'warning', where: 'summary' }));
+    expect(issues).toContainEqual(
+      expect.objectContaining({ level: 'warning', where: 'setupScript' }),
+    );
+    expect(issues).toContainEqual(
+      expect.objectContaining({ level: 'warning', where: 'contextSummary' }),
+    );
+  });
+});
+
+describe('validatePrCard', () => {
+  it('accepts a valid PR card without errors', () => {
+    expect(validatePrCard(validPrCard)).toEqual([]);
+  });
+
+  it('flags non-object specs', () => {
+    expect(validatePrCard(null)).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'spec' }),
+    );
+    expect(validatePrCard('invalid')).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'spec' }),
+    );
+  });
+
+  it('flags warnings for oversized fields without failing validation', () => {
+    const oversized: PrCardDef = {
+      number: 1,
+      title: 'T'.repeat(250),
+      url: 'https://github.com/nikships/foundry/pull/1',
+      headRefName: 'branch-1',
+      body: 'B'.repeat(8500),
+    };
+    const issues = validatePrCard(oversized);
+    expect(issues.filter((i) => i.level === 'error')).toEqual([]);
+    expect(issues).toContainEqual(expect.objectContaining({ level: 'warning', where: 'title' }));
+    expect(issues).toContainEqual(expect.objectContaining({ level: 'warning', where: 'body' }));
+  });
+});
+
+describe('deriveProjectCard', () => {
+  it('constructs a project card definition from typed project and doctor inputs', () => {
+    const project = {
+      id: 'p1',
+      name: 'Repo',
+      path: '/path/repo',
+      baseRef: 'main',
+      isolation: true,
+      mergePolicy: 'ask' as const,
+      commands: [{ name: 'test', argv: ['npm', 'test'] }],
+      protectedPaths: [],
+      ownRoster: false,
+      ownPipelines: false,
+      addedAt: '2026-08-23',
+    };
+    const card = deriveProjectCard({
+      project,
+      github: { available: true, repo: 'owner/repo', detail: 'connected' },
+      divergence: {
+        projectId: 'p1',
+        baseRef: 'main',
+        remote: 'origin',
+        localSha: 'abc',
+        remoteSha: 'abc',
+        ahead: 0,
+        behind: 0,
+        state: 'current',
+        fetched: true,
+        detail: 'up to date',
+      },
+      scopes: { roster: false, pipelines: false },
+      doctorChecks: [
+        { id: 'path', label: 'Project folder', ok: true, detail: '/path/repo' },
+        { id: 'repo', label: 'Git repository', ok: true, detail: 'git' },
+      ],
+    });
+
+    expect(card.path).toBe('/path/repo');
+    expect(card.baseRef).toBe('main');
+    expect(card.github?.repo).toBe('owner/repo');
+    expect(card.divergence?.state).toBe('current');
+    expect(card.health?.ok).toBe(true);
+    expect(card.health?.totalCount).toBe(2);
+  });
+});
+
+describe('derivePrCard', () => {
+  it('constructs a PR card definition from PullRequest object', () => {
+    const pr = {
+      number: 42,
+      title: 'Fix boundary',
+      url: 'https://github.com/nikships/foundry/pull/42',
+      author: 'nik',
+      headRefName: 'fix-boundary',
+      baseRefName: 'main',
+      createdAt: '2026-08-23',
+      additions: 10,
+      deletions: 2,
+      isDraft: false,
+      checks: 'passing' as const,
+      mergeable: 'mergeable' as const,
+      reviewDecision: 'APPROVED',
+    };
+    const card = derivePrCard({
+      pr,
+      body: 'Summary of fixes',
+      action: { operation: 'create', status: 'success' },
+    });
+
+    expect(card.number).toBe(42);
+    expect(card.title).toBe('Fix boundary');
+    expect(card.headRefName).toBe('fix-boundary');
+    expect(card.checks).toBe('passing');
+    expect(card.body).toBe('Summary of fixes');
+    expect(card.action?.status).toBe('success');
   });
 });

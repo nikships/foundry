@@ -20,6 +20,8 @@ import SmithActionReceiptBody from './SmithActionReceipt.js';
 import { ChangeReceiptDesign } from './SmithChangeReceiptDesign.js';
 import { ChecklistDesign } from './SmithChecklistDesign.js';
 import { EntityComparisonDesign } from './SmithEntityComparisonDesign.js';
+import { ProjectCardDesign } from './SmithProjectCardDesign.js';
+import { PrCardDesign } from './SmithPrCardDesign.js';
 import { AgentDesign, EnvelopeDesign, PipelineDesign, ViewJson } from './SmithEntityDesign.js';
 import styles from './SmithArtifactCard.module.css';
 
@@ -50,6 +52,12 @@ function ArtifactBody({
   if (artifact.kind === 'change_receipt') {
     return <ChangeReceiptDesign receipt={artifact.receipt} compact={compact} />;
   }
+  if (artifact.kind === 'project_card') {
+    return <ProjectCardDesign project={artifact.project} compact={compact} />;
+  }
+  if (artifact.kind === 'pr_card') {
+    return <PrCardDesign pr={artifact.pr} compact={compact} />;
+  }
   return (
     <SmithActionReceiptBody
       receipt={artifact.receipt}
@@ -68,6 +76,8 @@ function auditValue(artifact: SmithArtifact): unknown {
   if (artifact.kind === 'change_receipt' || artifact.kind === 'action_receipt') {
     return artifact.receipt;
   }
+  if (artifact.kind === 'project_card') return artifact.project;
+  if (artifact.kind === 'pr_card') return artifact.pr;
   return { before: artifact.before, after: artifact.after };
 }
 

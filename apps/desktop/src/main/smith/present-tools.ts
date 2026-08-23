@@ -16,14 +16,25 @@ import { randomUUID } from 'node:crypto';
 import {
   SMITH_ARTIFACT_VERSION,
   type AgentDef,
+  type BaseSyncStatus,
   type ChangeReceiptCommand,
   type ChangeReceiptDef,
   type ChangeReceiptStatus,
   type ChangeReceiptTarget,
   type ChecklistDef,
+  type DoctorCheck,
   type EntityComparisonKind,
   type EnvelopeDef,
+  type GhStatus,
   type PipelineDef,
+  type PrCardAction,
+  type PrCardDef,
+  type ProjectCardDef,
+  type ProjectCardDivergence,
+  type ProjectCardGithub,
+  type ProjectCardHealth,
+  type ProjectDef,
+  type PullRequest,
   type SmithArtifact,
   type SmithPresentableArtifactKind,
   type ValidationIssue,
@@ -50,6 +61,8 @@ const ARTIFACT_KINDS = [
   'checklist',
   'entity_comparison',
   'change_receipt',
+  'project_card',
+  'pr_card',
 ] as const satisfies readonly SmithPresentableArtifactKind[];
 
 const ENTITY_COMPARISON_KINDS = ['agent', 'pipeline', 'envelope'] as const;
@@ -66,6 +79,17 @@ const MAX_WARNINGS = 20;
 const VALID_CHECKLIST_STATUSES = new Set(['pass', 'warn', 'fail', 'info']);
 const VALID_RECEIPT_TARGETS = new Set(['direct_checkout', 'isolated_worktree']);
 const VALID_RECEIPT_STATUSES = new Set(['success', 'failure']);
+const VALID_BASE_SYNC_STATES = new Set([
+  'current',
+  'behind',
+  'ahead',
+  'diverged',
+  'no_remote',
+  'error',
+]);
+const VALID_PR_CHECKS = new Set(['passing', 'failing', 'pending', 'none']);
+const VALID_PR_MERGEABLE = new Set(['mergeable', 'conflicting', 'unknown']);
+const VALID_PR_ACTIONS = new Set(['create', 'merge', 'fix_conflicts']);
 
 /**
  * Field names that read as credentials. An artifact is persisted with the
@@ -436,6 +460,377 @@ export async function deriveChangeReceiptFromGit(
   };
 }
 
+export function validateProjectCard(spec: unknown): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  if (spec == null || typeof spec !== 'object' || Array.isArray(spec)) {
+    return [{ level: 'error', where: 'spec', message: 'project card must be an object' }];
+  }
+
+  const raw = spec as Record<string, unknown>;
+
+  if (typeof raw.path !== 'string' || !raw.path.trim()) {
+    issues.push({ level: 'error', where: 'path', message: 'project path is required' });
+  } else if (raw.path.length > 500) {
+    issues.push({ level: 'warning', where: 'path', message: 'path exceeds 500 characters' });
+  }
+
+  if (typeof raw.baseRef !== 'string' || !raw.baseRef.trim()) {
+    issues.push({ level: 'error', where: 'baseRef', message: 'baseRef is required' });
+  } else if (raw.baseRef.length > 100) {
+    issues.push({
+      level: 'warning',
+      where: 'baseRef',
+      message: 'baseRef exceeds 100 characters',
+    });
+  }
+
+  if (raw.name !== undefined) {
+    if (typeof raw.name !== 'string') {
+      issues.push({ level: 'error', where: 'name', message: 'name must be a string' });
+    } else if (raw.name.length > 200) {
+      issues.push({ level: 'warning', where: 'name', message: 'name exceeds 200 characters' });
+    }
+  }
+
+  if (raw.title !== undefined) {
+    if (typeof raw.title !== 'string') {
+      issues.push({ level: 'error', where: 'title', message: 'title must be a string' });
+    } else if (raw.title.length > 200) {
+      issues.push({ level: 'warning', where: 'title', message: 'title exceeds 200 characters' });
+    }
+  }
+
+  if (raw.summary !== undefined) {
+    if (typeof raw.summary !== 'string') {
+      issues.push({ level: 'error', where: 'summary', message: 'summary must be a string' });
+    } else if (raw.summary.length > 500) {
+      issues.push({
+        level: 'warning',
+        where: 'summary',
+        message: 'summary exceeds 500 characters',
+      });
+    }
+  }
+
+  if (raw.github !== undefined) {
+    if (typeof raw.github !== 'object' || raw.github == null || Array.isArray(raw.github)) {
+      issues.push({ level: 'error', where: 'github', message: 'github must be an object' });
+    } else {
+      const gh = raw.github as Record<string, unknown>;
+      if (typeof gh.available !== 'boolean') {
+        issues.push({
+          level: 'error',
+          where: 'github.available',
+          message: 'github.available must be a boolean',
+        });
+      }
+      if (gh.repo !== undefined && typeof gh.repo !== 'string') {
+        issues.push({
+          level: 'error',
+          where: 'github.repo',
+          message: 'github.repo must be a string',
+        });
+      }
+    }
+  }
+
+  if (raw.commands !== undefined) {
+    if (!Array.isArray(raw.commands)) {
+      issues.push({ level: 'error', where: 'commands', message: 'commands must be an array' });
+    } else {
+      for (let i = 0; i < raw.commands.length; i += 1) {
+        const cmd = raw.commands[i];
+        if (typeof cmd !== 'object' || cmd == null || Array.isArray(cmd)) {
+          issues.push({
+            level: 'error',
+            where: `commands[${i}]`,
+            message: 'command must be an object',
+          });
+        } else {
+          const c = cmd as Record<string, unknown>;
+          if (typeof c.name !== 'string' || !c.name.trim()) {
+            issues.push({
+              level: 'error',
+              where: `commands[${i}].name`,
+              message: 'command name is required',
+            });
+          }
+          if (!Array.isArray(c.argv) || c.argv.some((a) => typeof a !== 'string')) {
+            issues.push({
+              level: 'error',
+              where: `commands[${i}].argv`,
+              message: 'command argv must be a string array',
+            });
+          }
+        }
+      }
+    }
+  }
+
+  if (raw.setupScript !== undefined) {
+    if (typeof raw.setupScript !== 'string') {
+      issues.push({
+        level: 'error',
+        where: 'setupScript',
+        message: 'setupScript must be a string',
+      });
+    } else if (raw.setupScript.length > 8000) {
+      issues.push({
+        level: 'warning',
+        where: 'setupScript',
+        message: 'setupScript exceeds 8000 characters',
+      });
+    }
+  }
+
+  if (raw.divergence !== undefined) {
+    if (
+      typeof raw.divergence !== 'object' ||
+      raw.divergence == null ||
+      Array.isArray(raw.divergence)
+    ) {
+      issues.push({ level: 'error', where: 'divergence', message: 'divergence must be an object' });
+    } else {
+      const div = raw.divergence as Record<string, unknown>;
+      if (typeof div.ahead !== 'number' || typeof div.behind !== 'number') {
+        issues.push({
+          level: 'error',
+          where: 'divergence',
+          message: 'divergence ahead and behind must be numbers',
+        });
+      }
+      if (typeof div.state !== 'string' || !VALID_BASE_SYNC_STATES.has(div.state)) {
+        issues.push({
+          level: 'error',
+          where: 'divergence.state',
+          message: `invalid divergence state "${String(div.state)}"`,
+        });
+      }
+    }
+  }
+
+  if (raw.scopes !== undefined) {
+    if (typeof raw.scopes !== 'object' || raw.scopes == null || Array.isArray(raw.scopes)) {
+      issues.push({ level: 'error', where: 'scopes', message: 'scopes must be an object' });
+    } else {
+      const sc = raw.scopes as Record<string, unknown>;
+      if (typeof sc.roster !== 'boolean' || typeof sc.pipelines !== 'boolean') {
+        issues.push({
+          level: 'error',
+          where: 'scopes',
+          message: 'scopes roster and pipelines must be booleans',
+        });
+      }
+    }
+  }
+
+  if (raw.health !== undefined) {
+    if (typeof raw.health !== 'object' || raw.health == null || Array.isArray(raw.health)) {
+      issues.push({ level: 'error', where: 'health', message: 'health must be an object' });
+    } else {
+      const h = raw.health as Record<string, unknown>;
+      if (typeof h.ok !== 'boolean') {
+        issues.push({ level: 'error', where: 'health.ok', message: 'health.ok must be a boolean' });
+      }
+    }
+  }
+
+  if (raw.contextSummary !== undefined) {
+    if (typeof raw.contextSummary !== 'string') {
+      issues.push({
+        level: 'error',
+        where: 'contextSummary',
+        message: 'contextSummary must be a string',
+      });
+    } else if (raw.contextSummary.length > 4000) {
+      issues.push({
+        level: 'warning',
+        where: 'contextSummary',
+        message: 'contextSummary exceeds 4000 characters',
+      });
+    }
+  }
+
+  return issues;
+}
+
+export function validatePrCard(spec: unknown): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  if (spec == null || typeof spec !== 'object' || Array.isArray(spec)) {
+    return [{ level: 'error', where: 'spec', message: 'PR card must be an object' }];
+  }
+
+  const raw = spec as Record<string, unknown>;
+
+  if (typeof raw.number !== 'number' || raw.number < 1) {
+    issues.push({
+      level: 'error',
+      where: 'number',
+      message: 'PR number must be a positive number',
+    });
+  }
+
+  if (typeof raw.title !== 'string' || !raw.title.trim()) {
+    issues.push({ level: 'error', where: 'title', message: 'PR title is required' });
+  } else if (raw.title.length > 200) {
+    issues.push({ level: 'warning', where: 'title', message: 'PR title exceeds 200 characters' });
+  }
+
+  if (typeof raw.url !== 'string' || !raw.url.trim()) {
+    issues.push({ level: 'error', where: 'url', message: 'PR url is required' });
+  }
+
+  if (typeof raw.headRefName !== 'string' || !raw.headRefName.trim()) {
+    issues.push({ level: 'error', where: 'headRefName', message: 'headRefName is required' });
+  }
+
+  if (raw.baseRefName !== undefined && typeof raw.baseRefName !== 'string') {
+    issues.push({ level: 'error', where: 'baseRefName', message: 'baseRefName must be a string' });
+  }
+
+  if (raw.body !== undefined) {
+    if (typeof raw.body !== 'string') {
+      issues.push({ level: 'error', where: 'body', message: 'body must be a string' });
+    } else if (raw.body.length > 8000) {
+      issues.push({ level: 'warning', where: 'body', message: 'body exceeds 8000 characters' });
+    }
+  }
+
+  if (
+    raw.checks !== undefined &&
+    (typeof raw.checks !== 'string' || !VALID_PR_CHECKS.has(raw.checks))
+  ) {
+    issues.push({
+      level: 'error',
+      where: 'checks',
+      message: `invalid checks "${String(raw.checks)}" (must be passing, failing, pending, or none)`,
+    });
+  }
+
+  if (
+    raw.mergeable !== undefined &&
+    (typeof raw.mergeable !== 'string' || !VALID_PR_MERGEABLE.has(raw.mergeable))
+  ) {
+    issues.push({
+      level: 'error',
+      where: 'mergeable',
+      message: `invalid mergeable "${String(raw.mergeable)}" (must be mergeable, conflicting, or unknown)`,
+    });
+  }
+
+  if (raw.action !== undefined) {
+    if (typeof raw.action !== 'object' || raw.action == null || Array.isArray(raw.action)) {
+      issues.push({ level: 'error', where: 'action', message: 'action must be an object' });
+    } else {
+      const act = raw.action as Record<string, unknown>;
+      if (typeof act.operation !== 'string' || !VALID_PR_ACTIONS.has(act.operation)) {
+        issues.push({
+          level: 'error',
+          where: 'action.operation',
+          message: `invalid action operation "${String(act.operation)}"`,
+        });
+      }
+      if (
+        typeof act.status !== 'string' ||
+        (act.status !== 'success' && act.status !== 'failure')
+      ) {
+        issues.push({
+          level: 'error',
+          where: 'action.status',
+          message: `invalid action status "${String(act.status)}"`,
+        });
+      }
+    }
+  }
+
+  return issues;
+}
+
+export function deriveProjectCard(params: {
+  project: ProjectDef;
+  github?: GhStatus;
+  divergence?: BaseSyncStatus;
+  scopes?: { roster: boolean; pipelines: boolean };
+  doctorChecks?: DoctorCheck[];
+  title?: string;
+  summary?: string;
+}): ProjectCardDef {
+  const failedChecks = params.doctorChecks?.filter((c) => !c.ok) ?? [];
+  const health: ProjectCardHealth | undefined = params.doctorChecks
+    ? {
+        ok: failedChecks.length === 0,
+        summary:
+          failedChecks.length === 0
+            ? 'All checks passing'
+            : `${failedChecks.length} failed check${failedChecks.length === 1 ? '' : 's'}`,
+        failedCount: failedChecks.length,
+        totalCount: params.doctorChecks.length,
+        issues: failedChecks.map((c) => c.label),
+      }
+    : undefined;
+
+  const divergence: ProjectCardDivergence | undefined = params.divergence
+    ? {
+        ahead: params.divergence.ahead,
+        behind: params.divergence.behind,
+        state: params.divergence.state,
+        detail: params.divergence.detail,
+      }
+    : undefined;
+
+  const github: ProjectCardGithub | undefined = params.github
+    ? {
+        available: params.github.available,
+        repo: params.github.repo,
+        detail: params.github.detail,
+      }
+    : undefined;
+
+  return {
+    id: params.project.id,
+    name: params.project.name,
+    path: params.project.path,
+    baseRef: params.project.baseRef,
+    title: params.title,
+    summary: params.summary,
+    isGit: true,
+    github,
+    commands: params.project.commands,
+    setupScript: params.project.setupScript,
+    readinessValidated: params.project.readinessValidated,
+    readinessSkipped: params.project.readinessSkipped,
+    scaffold: params.project.scaffold,
+    divergence,
+    scopes: params.scopes,
+    health,
+    contextSummary: params.project.contextSummary?.slice(0, 4000),
+  };
+}
+
+export function derivePrCard(params: {
+  pr: PullRequest;
+  body?: string;
+  action?: PrCardAction;
+}): PrCardDef {
+  return {
+    number: params.pr.number,
+    title: params.pr.title,
+    url: params.pr.url,
+    headRefName: params.pr.headRefName,
+    baseRefName: params.pr.baseRefName,
+    body: params.body?.slice(0, 8000),
+    author: params.pr.author,
+    isDraft: params.pr.isDraft,
+    checks: params.pr.checks,
+    mergeable: params.pr.mergeable,
+    reviewDecision: params.pr.reviewDecision || undefined,
+    additions: params.pr.additions,
+    deletions: params.pr.deletions,
+    createdAt: params.pr.createdAt,
+    action: params.action,
+  };
+}
+
 function validateSpec(
   stores: SmithEntityStores,
   kind: SmithPresentableArtifactKind,
@@ -445,6 +840,8 @@ function validateSpec(
 ): ValidationIssue[] {
   if (kind === 'checklist') return validateChecklist(spec);
   if (kind === 'change_receipt') return validateChangeReceipt(spec);
+  if (kind === 'project_card') return validateProjectCard(spec);
+  if (kind === 'pr_card') return validatePrCard(spec);
   const targetKind =
     kind === 'entity_comparison'
       ? comparisonKind === 'agent'
@@ -482,6 +879,8 @@ function buildArtifact(
   if (kind === 'envelope_design') return { ...base, kind, envelope: spec as EnvelopeDef };
   if (kind === 'checklist') return { ...base, kind, checklist: spec as ChecklistDef };
   if (kind === 'change_receipt') return { ...base, kind, receipt: spec as ChangeReceiptDef };
+  if (kind === 'project_card') return { ...base, kind, project: spec as ProjectCardDef };
+  if (kind === 'pr_card') return { ...base, kind, pr: spec as PrCardDef };
   if (kind === 'entity_comparison') {
     return {
       ...base,
@@ -501,9 +900,9 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
     name: SMITH_PRESENT_TOOL_NAME,
     label: 'Smith present',
     description:
-      'Show the operator a rich inline design, checklist report, entity comparison, or change receipt card in the chat. Use it before ' +
+      'Show the operator a rich inline design, checklist report, entity comparison, change receipt, project card, or pull request card in the chat. Use it before ' +
       'proposing a non-trivial pipeline, agent, or envelope, to compare a proposed edit against the stored definition, ' +
-      'to record a change/command receipt after direct checkout work, or to present a checklist/doctor/readiness/validation report: ' +
+      'to record a change/command receipt after direct checkout work, to show project state/divergence/health, or to present a PR preview/result: ' +
       'the card renders structured definitions and receipts far better than prose or JSON. It is ' +
       'presentation only — it saves nothing, needs no approval, and is not evidence any action ' +
       'succeeded. Do not repeat the card content in prose; add only rationale, uncertainty, or ' +
@@ -514,7 +913,8 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
         kind: {
           type: 'string',
           enum: [...ARTIFACT_KINDS],
-          description: 'Which design, checklist, comparison, or change receipt card to show.',
+          description:
+            'Which design, checklist, comparison, change receipt, project card, or PR card to show.',
         },
         entityKind: {
           type: 'string',
@@ -530,7 +930,7 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
         spec: {
           type: 'object',
           description:
-            'The full entity JSON, checklist definition, comparison edit, or change receipt definition (target, status, filesChanged, diffstat, command, outputExcerpt).',
+            'The full entity JSON, checklist definition, comparison edit, change receipt, project card, or PR card definition.',
         },
         rationale: {
           type: 'string',
