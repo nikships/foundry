@@ -460,7 +460,13 @@ export default function SettingsScreen({
   const palSel = Math.min(palIdx, Math.max(0, palEntries.length - 1));
   const set = async (patch: Parameters<typeof patchSettings>[0]): Promise<void> => {
     // Always replace the banner: a successful patch must clear a prior failure.
-    setErrors(await patchSettings(patch));
+    // An IPC failure rejects rather than returning validation issues; surface it
+    // instead of leaving a picker (including Theme) looking like it saved.
+    try {
+      setErrors(await patchSettings(patch));
+    } catch {
+      setErrors(['Could not save your settings. Please try again.']);
+    }
   };
   const setInt = async (
     raw: string,

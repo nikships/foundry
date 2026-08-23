@@ -80,18 +80,18 @@ export class AppContext {
    * access level) and never where the runtime keeps its state.
    */
   readonly oneShot: OneShotFactory;
-  private window: BrowserWindow | null = null;
+  private themeWindow: BrowserWindow | null = null;
 
   attachWindow(window: BrowserWindow): void {
-    this.window = window;
+    this.themeWindow = window;
     this.applyTheme(this.settings.get().theme);
     window.once('closed', () => {
-      if (this.window === window) this.window = null;
+      if (this.themeWindow === window) this.themeWindow = null;
     });
   }
 
   applyTheme(theme: AppTheme): void {
-    this.window?.setBackgroundColor(themeBackgroundColor(theme));
+    this.themeWindow?.setBackgroundColor(themeBackgroundColor(theme));
   }
 
   constructor(
