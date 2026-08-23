@@ -15,9 +15,12 @@ import {
   isRenderableArtifact,
 } from '../../view-models/smith-artifact-view.js';
 import { ChangeReceiptDesign } from './SmithChangeReceiptDesign.js';
+import { CheckpointDesign } from './SmithCheckpointDesign.js';
 import { ChecklistDesign } from './SmithChecklistDesign.js';
 import { EntityComparisonDesign } from './SmithEntityComparisonDesign.js';
 import { AgentDesign, EnvelopeDesign, PipelineDesign, ViewJson } from './SmithEntityDesign.js';
+import { ProviderStatusDesign } from './SmithProviderStatusDesign.js';
+import { ReadinessJourneyDesign } from './SmithReadinessJourneyDesign.js';
 import styles from './SmithArtifactCard.module.css';
 
 function DesignBody({
@@ -42,7 +45,40 @@ function DesignBody({
   if (artifact.kind === 'entity_comparison') {
     return <EntityComparisonDesign artifact={artifact} compact={compact} />;
   }
+  if (artifact.kind === 'engineer_checkpoint') {
+    return <CheckpointDesign checkpoint={artifact.checkpoint} compact={compact} />;
+  }
+  if (artifact.kind === 'readiness_journey') {
+    return <ReadinessJourneyDesign journey={artifact.journey} compact={compact} />;
+  }
+  if (artifact.kind === 'provider_status') {
+    return <ProviderStatusDesign status={artifact.status} compact={compact} />;
+  }
   return <ChangeReceiptDesign receipt={artifact.receipt} compact={compact} />;
+}
+
+/** The payload the audit disclosure shows for each kind. */
+function artifactPayload(artifact: SmithArtifact): unknown {
+  switch (artifact.kind) {
+    case 'pipeline_design':
+      return artifact.pipeline;
+    case 'agent_design':
+      return artifact.agent;
+    case 'envelope_design':
+      return artifact.envelope;
+    case 'checklist':
+      return artifact.checklist;
+    case 'entity_comparison':
+      return { before: artifact.before, after: artifact.after };
+    case 'engineer_checkpoint':
+      return artifact.checkpoint;
+    case 'readiness_journey':
+      return artifact.journey;
+    case 'provider_status':
+      return artifact.status;
+    case 'change_receipt':
+      return artifact.receipt;
+  }
 }
 
 export default function SmithArtifactCard({
@@ -86,21 +122,7 @@ export default function SmithArtifactCard({
         </ul>
       )}
       {artifact.rationale && <p className={styles.rationale}>{artifact.rationale}</p>}
-      <ViewJson
-        value={
-          artifact.kind === 'pipeline_design'
-            ? artifact.pipeline
-            : artifact.kind === 'agent_design'
-              ? artifact.agent
-              : artifact.kind === 'envelope_design'
-                ? artifact.envelope
-                : artifact.kind === 'checklist'
-                  ? artifact.checklist
-                  : artifact.kind === 'entity_comparison'
-                    ? { before: artifact.before, after: artifact.after }
-                    : artifact.receipt
-        }
-      />
+      <ViewJson value={artifactPayload(artifact)} />
     </section>
   );
 }

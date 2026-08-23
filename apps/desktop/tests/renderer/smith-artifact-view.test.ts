@@ -9,9 +9,12 @@ import { describe, expect, it } from 'vitest';
 import type {
   AgentDef,
   ChangeReceiptDef,
+  CheckpointDef,
   ChecklistDef,
   EnvelopeDef,
   PipelineDef,
+  ProviderStatusDef,
+  ReadinessJourneyDef,
   SmithArtifact,
 } from '@shared/types.js';
 import { SMITH_ARTIFACT_VERSION } from '@shared/types.js';
@@ -19,18 +22,35 @@ import {
   ARTIFACT_KIND_LABEL,
   acceptanceLabel,
   artifactName,
+  bridgeStatusLine,
   changeReceiptStatusLabel,
   changeReceiptSummary,
   changeReceiptTargetLabel,
   checklistStatusGlyph,
   checklistStatusLabel,
   checklistSummary,
+  checkpointActions,
+  checkpointAnswerEditable,
+  checkpointContext,
+  checkpointStatusLabel,
   commandLabel,
   compareEntities,
+  criterionLabel,
+  criterionStatusLabel,
   gateLabel,
   groupChecklistItems,
+  groupJourneyCriteria,
+  isJourneyPhaseLive,
   isRenderableArtifact,
+  journeyActions,
+  journeyMarkerVerdict,
+  journeyNeedsContinue,
+  journeySummary,
   phaseWorkLabel,
+  providerConnectionLabel,
+  providerKeyLabel,
+  providerStatusSummary,
+  readinessPhaseLabel,
   writesLabel,
 } from '@renderer/view-models/smith-artifact-view.js';
 
@@ -88,6 +108,48 @@ const receipt: ChangeReceiptDef = {
   },
 };
 
+const checkpoint: CheckpointDef = {
+  interruptId: 'int_1',
+  title: 'Ship the migration?',
+  question: 'The migration drops a column. Proceed?',
+  runId: 'run_abcdef123456',
+  phaseId: 'review',
+  pipelineId: 'ship-it',
+  draftAnswer: 'Yes, the column is unused.',
+};
+
+const journey: ReadinessJourneyDef = {
+  projectId: 'proj_1',
+  projectName: 'foundry',
+  phase: 'needs_continue',
+  marker: { valid: false, detail: 'No marker on origin/main.' },
+  criteria: [
+    { id: 'lint_format', status: 'pass' },
+    { id: 'typecheck', status: 'fail', notes: 'tsc reports 3 errors' },
+    { id: 'coverage', status: 'n/a', notes: 'no coverage tooling' },
+  ],
+};
+
+const providerStatus: ProviderStatusDef = {
+  providers: [
+    { id: 'anthropic', label: 'Anthropic', connection: 'connected', authenticated: true },
+    {
+      id: 'openai',
+      label: 'OpenAI',
+      connection: 'error',
+      authenticated: false,
+      keyPresent: true,
+      error: 'refresh failed',
+    },
+  ],
+  bridge: { running: true, port: 52810, baseUrl: 'http://127.0.0.1:52810' },
+  companion: {
+    running: true,
+    origin: 'http://192.168.1.20:52811',
+    devices: [{ deviceId: 'dev_1', name: 'Pixel 9', pairedAt: '2026-08-01T00:00:00Z' }],
+  },
+};
+
 function artifactOf(kind: SmithArtifact['kind'], version = SMITH_ARTIFACT_VERSION): SmithArtifact {
   const base = { id: 'a1', version, createdAt: 0, warnings: [] };
   if (kind === 'pipeline_design') return { ...base, kind, pipeline };
@@ -95,6 +157,9 @@ function artifactOf(kind: SmithArtifact['kind'], version = SMITH_ARTIFACT_VERSIO
   if (kind === 'envelope_design') return { ...base, kind, envelope };
   if (kind === 'checklist') return { ...base, kind, checklist };
   if (kind === 'change_receipt') return { ...base, kind, receipt };
+  if (kind === 'engineer_checkpoint') return { ...base, kind, checkpoint };
+  if (kind === 'readiness_journey') return { ...base, kind, journey };
+  if (kind === 'provider_status') return { ...base, kind, status: providerStatus };
   return {
     ...base,
     kind,
@@ -117,6 +182,9 @@ describe('the artifact registry', () => {
     expect(isRenderableArtifact(artifactOf('checklist', 99))).toBe(false);
     expect(isRenderableArtifact(artifactOf('entity_comparison', 99))).toBe(false);
     expect(isRenderableArtifact(artifactOf('change_receipt', 99))).toBe(false);
+    expect(isRenderableArtifact(artifactOf('engineer_checkpoint', 99))).toBe(false);
+    expect(isRenderableArtifact(artifactOf('readiness_journey', 99))).toBe(false);
+    expect(isRenderableArtifact(artifactOf('provider_status', 99))).toBe(false);
     expect(isRenderableArtifact({ kind: 'run_summary' } as unknown as SmithArtifact)).toBe(false);
   });
 
@@ -127,6 +195,145 @@ describe('the artifact registry', () => {
     expect(artifactName(artifactOf('checklist'))).toBe('Project Health');
     expect(artifactName(artifactOf('entity_comparison'))).toBe('planner');
     expect(artifactName(artifactOf('change_receipt'))).toBe('Checkout changes applied');
+    expect(artifactName(artifactOf('engineer_checkpoint'))).toBe('Ship the migration?');
+    expect(artifactName(artifactOf('readiness_journey'))).toBe('foundry');
+    expect(artifactName(artifactOf('provider_status'))).toBe('Providers and Companion');
+  });
+});
+
+describe('engineer checkpoint helpers', () => {
+  it('joins run, phase, and pipeline context the way InterruptSheet does', () => {
+    expect(checkpointContext(checkpoint)).toBe('run run_abcd · phase review · pipeline ship-it');
+    expect(checkpointContext({ interruptId: 'i', title: 't', question: 'q' })).toBe('');
+  });
+
+  it('defaults to approve/reject/edit when the spec named no actions', () => {
+    expect(checkpointActions(checkpoint).map((action) => action.kind)).toEqual([
+      'approve',
+      'reject',
+      'edit',
+    ]);
+    expect(
+      checkpointActions({
+        ...checkpoint,
+        actions: [{ id: 'ok', label: 'Ship it', kind: 'approve' }],
+      }).map((action) => action.label),
+    ).toEqual(['Ship it']);
+  });
+
+  it('stops offering an editable answer once the checkpoint is answered', () => {
+    expect(checkpointAnswerEditable(checkpoint)).toBe(true);
+    expect(checkpointAnswerEditable({ ...checkpoint, answered: true })).toBe(false);
+    expect(
+      checkpointAnswerEditable({
+        ...checkpoint,
+        actions: [{ id: 'ok', label: 'Approve', kind: 'approve' }],
+      }),
+    ).toBe(false);
+  });
+
+  it('reads as pending or as settled history, never both', () => {
+    expect(checkpointStatusLabel(checkpoint)).toBe('Awaiting decision');
+    expect(checkpointStatusLabel({ ...checkpoint, answered: true, decision: 'approve' })).toBe(
+      'Approved',
+    );
+    expect(checkpointStatusLabel({ ...checkpoint, answered: true, decision: 'reject' })).toBe(
+      'Rejected',
+    );
+    expect(checkpointStatusLabel({ ...checkpoint, answered: true })).toBe('Answered');
+  });
+});
+
+describe('readiness journey helpers', () => {
+  it('labels every readiness phase and marks the live ones', () => {
+    expect(readinessPhaseLabel('remediating')).toMatch(/worktree/);
+    expect(readinessPhaseLabel('needs_continue')).toMatch(/Continue/);
+    expect(readinessPhaseLabel('complete')).toBe('Agent-ready');
+
+    expect(isJourneyPhaseLive('remediating')).toBe(true);
+    expect(isJourneyPhaseLive('verifying')).toBe(true);
+    // Waiting on the operator to merge is not work in flight.
+    expect(isJourneyPhaseLive('pr_ready')).toBe(false);
+    expect(isJourneyPhaseLive('needs_continue')).toBe(false);
+    expect(isJourneyPhaseLive('complete')).toBe(false);
+  });
+
+  it('groups criteria by pass/fail/n-a and names them readably', () => {
+    const groups = groupJourneyCriteria(journey.criteria);
+    expect(groups.fail.map((criterion) => criterion.id)).toEqual(['typecheck']);
+    expect(groups.pass.map((criterion) => criterion.id)).toEqual(['lint_format']);
+    expect(groups.na.map((criterion) => criterion.id)).toEqual(['coverage']);
+
+    expect(criterionLabel('lint_format')).toBe('lint format');
+    expect(criterionStatusLabel('pass')).toBe('Passed');
+    expect(criterionStatusLabel('fail')).toBe('Failed');
+    expect(criterionStatusLabel('n/a')).toBe('Not applicable');
+  });
+
+  it('reports the committed marker as the verdict, not the criteria', () => {
+    expect(journeyMarkerVerdict(journey)).toBe('No marker on origin/main.');
+    expect(
+      journeyMarkerVerdict({
+        ...journey,
+        marker: { valid: true, detail: 'ok', summary: 'Ready at 3f2a1b0.' },
+      }),
+    ).toBe('Ready at 3f2a1b0.');
+    // A valid marker with no summary still says readiness, never a criteria count.
+    expect(journeyMarkerVerdict({ ...journey, marker: { valid: true, detail: 'ok' } })).toMatch(
+      /committed marker/,
+    );
+  });
+
+  it('derives a summary from criteria counts when no detail is given', () => {
+    expect(journeySummary(journey)).toBe('1 failing · 1 passing · 1 n/a');
+    expect(journeySummary({ ...journey, detail: 'Paused after verify.' })).toBe(
+      'Paused after verify.',
+    );
+    expect(journeySummary({ ...journey, criteria: [] })).toBe(
+      readinessPhaseLabel('needs_continue'),
+    );
+  });
+
+  it('offers the needs_continue actions from the phase, not from the action list', () => {
+    expect(journeyNeedsContinue(journey)).toBe(true);
+    expect(journeyActions(journey)).toEqual(['Continue', 'Start over', 'Skip']);
+    expect(journeyActions({ ...journey, actions: ['Continue'] })).toEqual(['Continue']);
+    expect(journeyActions({ ...journey, phase: 'complete' })).toEqual([]);
+  });
+});
+
+describe('provider status helpers', () => {
+  it('labels connection states in the operator\u2019s terms', () => {
+    expect(providerConnectionLabel('connected')).toBe('Connected');
+    expect(providerConnectionLabel('authenticating')).toBe('Signing in');
+    expect(providerConnectionLabel('disconnected')).toBe('Not connected');
+    expect(providerConnectionLabel('error')).toBe('Error');
+  });
+
+  it('says only whether a key exists, never anything about its value', () => {
+    expect(providerKeyLabel(true)).toBe('API key stored');
+    expect(providerKeyLabel(false)).toBe('No API key');
+    expect(providerKeyLabel(undefined)).toBe('No API key');
+  });
+
+  it('summarizes providers, Bridge, and Companion device count', () => {
+    expect(providerStatusSummary(providerStatus)).toBe(
+      '1/2 providers connected · 1 in error · Bridge serving · Companion on (1 device)',
+    );
+    expect(providerStatusSummary({ summary: 'All good.' })).toBe('All good.');
+    expect(providerStatusSummary({})).toBe('No provider or Companion state reported');
+    expect(providerStatusSummary({ companion: { running: false } })).toBe('Companion off');
+  });
+
+  it('reports the Bridge endpoint when serving and the reason when it is not', () => {
+    expect(bridgeStatusLine(providerStatus)).toBe('Serving on http://127.0.0.1:52810');
+    expect(bridgeStatusLine({ bridge: { running: true, port: 52810 } })).toBe(
+      'Serving on port 52810',
+    );
+    expect(bridgeStatusLine({ bridge: { running: false, reason: 'binary_missing' } })).toBe(
+      'binary_missing',
+    );
+    expect(bridgeStatusLine({})).toBe('');
   });
 });
 

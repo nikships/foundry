@@ -267,3 +267,6 @@ export function EnvelopeDesign({
 export { ChecklistDesign } from './SmithChecklistDesign.js';
 export { EntityComparisonDesign } from './SmithEntityComparisonDesign.js';
 export { ChangeReceiptDesign } from './SmithChangeReceiptDesign.js';
+export { CheckpointDesign } from './SmithCheckpointDesign.js';
+export { ReadinessJourneyDesign } from './SmithReadinessJourneyDesign.js';
+export { ProviderStatusDesign } from './SmithProviderStatusDesign.js';

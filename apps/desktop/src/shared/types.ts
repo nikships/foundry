@@ -850,7 +850,10 @@ export type SmithArtifactKind =
   | 'envelope_design'
   | 'checklist'
   | 'entity_comparison'
-  | 'change_receipt';
+  | 'change_receipt'
+  | 'engineer_checkpoint'
+  | 'readiness_journey'
+  | 'provider_status';
 
 /** The protocol version this build reads. Unknown versions fail soft in the UI. */
 export const SMITH_ARTIFACT_VERSION = 1;
@@ -956,6 +959,187 @@ export interface SmithChangeReceiptArtifact extends SmithArtifactBase {
 }
 
 /**
+ * What the operator may do with an engineer checkpoint from inside the chat.
+ * `edit` means the answer text is editable before approving; it is not a third
+ * decision. The engine still accepts only approve/reject.
+ */
+export type CheckpointActionKind = 'approve' | 'reject' | 'edit';
+
+export interface CheckpointAction {
+  id: string;
+  label: string;
+  kind: CheckpointActionKind;
+}
+
+/**
+ * A live engineer checkpoint presented as a card: the question, where in the
+ * run it came from, and the answer the operator may edit before deciding.
+ *
+ * Presentation only, like every artifact. Answering an interrupt is a
+ * privileged write, so the card's approve/reject routes through
+ * `smith_interrupts answer` and its queue approval card — the artifact never
+ * carries an executor and never bypasses that gate.
+ */
+export interface CheckpointDef {
+  interruptId: string;
+  title: string;
+  question: string;
+  runId?: string;
+  phaseId?: string;
+  /** The pipeline the run is executing, for context the run id cannot give. */
+  pipelineId?: string;
+  /** ISO timestamp the engine raised the checkpoint. */
+  raisedAt?: string;
+  /** Prefilled answer text the operator edits before approving. */
+  draftAnswer?: string;
+  /** Approve/reject/edit affordances, mirroring `PendingInterrupt.options`. */
+  actions?: CheckpointAction[];
+  /** True once this interrupt has been settled, so the card reads as history. */
+  answered?: boolean;
+  /** The decision recorded, when the checkpoint has already been answered. */
+  decision?: 'approve' | 'reject';
+}
+
+/** A read-only engineer-checkpoint card: question, run context, draft answer. */
+export interface SmithEngineerCheckpointArtifact extends SmithArtifactBase {
+  kind: 'engineer_checkpoint';
+  checkpoint: CheckpointDef;
+}
+
+/**
+ * The marker as committed on the base ref — the only readiness truth. A marker
+ * in the working tree, or a merged PR on its own, proves nothing.
+ */
+export interface ReadinessJourneyMarker {
+  valid: boolean;
+  detail: string;
+  summary?: string;
+  /** Which tree answered: the base ref, or the working checkout as a fallback. */
+  source?: 'base-ref' | 'worktree';
+  ref?: string;
+  commit?: string;
+  generatedAt?: string;
+}
+
+/** One criterion row, grouped by status in the card. */
+export interface ReadinessJourneyCriterion {
+  id: string;
+  status: ReadinessCriterionStatus;
+  notes?: string;
+}
+
+/** One live sub-agent transcript row from the remediation session. */
+export interface ReadinessJourneyWorkEntry {
+  id: string;
+  kind: 'text' | 'tool' | 'note' | 'error';
+  text: string;
+  toolKind?: TranscriptToolKind;
+  done?: boolean;
+  failed?: boolean;
+}
+
+/** The readiness PR and whether it merged. Merging alone is not readiness. */
+export interface ReadinessJourneyPr {
+  number: number;
+  url: string;
+  merged: boolean;
+  mergeDetail?: string;
+}
+
+/**
+ * The whole readiness journey in one card: what the authoritative marker says,
+ * which criteria group where, what phase remediation reached, the live
+ * sub-agent work, PR/merge status, and the `needs_continue` affordances.
+ */
+export interface ReadinessJourneyDef {
+  projectId?: string;
+  projectName?: string;
+  phase: ReadinessPhase;
+  detail?: string;
+  marker: ReadinessJourneyMarker;
+  criteria: ReadinessJourneyCriterion[];
+  stack?: AgentReadyStack;
+  /** The remediation checklist summary — an explanation, not the verdict. */
+  checklistSummary?: string;
+  work?: ReadinessJourneyWorkEntry[];
+  pr?: ReadinessJourneyPr;
+  /**
+   * What the operator can do next, named in the words the readiness flow uses
+   * (`Continue`, `Start over`, `Skip`). Labels only: the artifact performs no
+   * action, and every one of these routes through `readiness_manage` approval.
+   */
+  actions?: string[];
+}
+
+/** A read-only readiness-journey card: marker, criteria, remediation, PR. */
+export interface SmithReadinessJourneyArtifact extends SmithArtifactBase {
+  kind: 'readiness_journey';
+  journey: ReadinessJourneyDef;
+}
+
+export type ProviderStatusConnection = 'connected' | 'authenticating' | 'disconnected' | 'error';
+
+/**
+ * One provider row: connection, auth, and whether a direct key exists.
+ *
+ * Deliberately metadata only. `keyPresent` says a key exists so the card can
+ * offer to replace or clear it; the value, a masked prefix, or anything else
+ * that narrows it never enters an artifact — a key belongs only in the masked
+ * approval card, which is not persisted with the chat.
+ */
+export interface ProviderStatusEntry {
+  id: string;
+  label: string;
+  connection: ProviderStatusConnection;
+  authenticated: boolean;
+  /** True when pi holds a direct API key for this provider. Never its value. */
+  keyPresent?: boolean;
+  /** Accounts as metadata: label, expiry, disabled. Never a token. */
+  accounts?: { label: string; expired?: boolean; disabled?: boolean; expiresAt?: string }[];
+  loginInFlight?: boolean;
+  error?: string;
+}
+
+/** The Bridge as the card reports it: serving, or why it is not. */
+export interface ProviderStatusBridge {
+  running: boolean;
+  port?: number;
+  baseUrl?: string;
+  reason?: string;
+  detail?: string;
+}
+
+/**
+ * Companion status as the card reports it: whether the host serves, on what
+ * origin, and which devices are paired.
+ *
+ * The pairing secret and QR payload are renderer-only private displays. They
+ * are absent from this type by construction, so a Companion card cannot leak
+ * one into an artifact, the transcript, or persisted chat state.
+ */
+export interface ProviderStatusCompanion {
+  running: boolean;
+  origin?: string;
+  protocolVersion?: number;
+  detail?: string;
+  devices?: { deviceId: string; name: string; pairedAt?: string; lastSeenAt?: string | null }[];
+}
+
+export interface ProviderStatusDef {
+  title?: string;
+  summary?: string;
+  providers?: ProviderStatusEntry[];
+  bridge?: ProviderStatusBridge;
+  companion?: ProviderStatusCompanion;
+}
+
+/** A read-only provider / Companion status card. Carries no secret, ever. */
+export interface SmithProviderStatusArtifact extends SmithArtifactBase {
+  kind: 'provider_status';
+  status: ProviderStatusDef;
+}
+
+/**
  * One rich inline card in the Smith transcript. Artifacts are presentation
  * only: they perform no writes, never occupy the one-slot proposal queue, and
  * carry no executor, secret, or private payload — validated and size-capped at
@@ -967,7 +1151,10 @@ export type SmithArtifact =
   | SmithEnvelopeDesignArtifact
   | SmithChecklistArtifact
   | SmithEntityComparisonArtifact
-  | SmithChangeReceiptArtifact;
+  | SmithChangeReceiptArtifact
+  | SmithEngineerCheckpointArtifact
+  | SmithReadinessJourneyArtifact
+  | SmithProviderStatusArtifact;
 
 // ── Smith (the entity-smith's approval gate) ─────────────────────────────────
 

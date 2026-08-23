@@ -17,6 +17,8 @@ import type {
   ChangeReceiptDef,
   ChangeReceiptStatus,
   ChangeReceiptTarget,
+  CheckpointActionKind,
+  CheckpointDef,
   ChecklistDef,
   ChecklistItem,
   ChecklistItemStatus,
@@ -25,6 +27,12 @@ import type {
   GateSpec,
   PhaseDef,
   PipelineDef,
+  ProviderStatusConnection,
+  ProviderStatusDef,
+  ReadinessCriterionStatus,
+  ReadinessJourneyCriterion,
+  ReadinessJourneyDef,
+  ReadinessPhase,
   SmithArtifact,
   WriteBoundary,
 } from '@shared/types.js';
@@ -37,6 +45,9 @@ const SUPPORTED_ARTIFACT_KINDS: ReadonlyArray<SmithArtifact['kind']> = [
   'checklist',
   'entity_comparison',
   'change_receipt',
+  'engineer_checkpoint',
+  'readiness_journey',
+  'provider_status',
 ];
 
 export function isRenderableArtifact(artifact: SmithArtifact): boolean {
@@ -52,6 +63,9 @@ export const ARTIFACT_KIND_LABEL: Record<SmithArtifact['kind'], string> = {
   checklist: 'checklist',
   entity_comparison: 'entity comparison',
   change_receipt: 'change receipt',
+  engineer_checkpoint: 'engineer checkpoint',
+  readiness_journey: 'readiness journey',
+  provider_status: 'provider status',
 };
 
 /** The identifying name the card's title shows. */
@@ -60,6 +74,13 @@ export function artifactName(artifact: SmithArtifact): string {
   if (artifact.kind === 'agent_design') return artifact.agent.name;
   if (artifact.kind === 'envelope_design') return artifact.envelope.name;
   if (artifact.kind === 'checklist') return artifact.checklist.title;
+  if (artifact.kind === 'engineer_checkpoint') return artifact.checkpoint.title;
+  if (artifact.kind === 'readiness_journey') {
+    return artifact.journey.projectName ?? artifact.journey.projectId ?? 'Agent readiness';
+  }
+  if (artifact.kind === 'provider_status') {
+    return artifact.status.title ?? 'Providers and Companion';
+  }
   if (artifact.kind === 'change_receipt') {
     return (
       artifact.receipt.title ??
@@ -103,6 +124,226 @@ export function changeReceiptSummary(receipt: ChangeReceiptDef): string {
   return (
     parts.join(' · ') || (receipt.status === 'success' ? 'Changes applied' : 'Operation failed')
   );
+}
+
+// ── Engineer checkpoint helpers ──────────────────────────────────────────────
+
+/**
+ * The default approve/reject/edit affordances, used when the spec named none.
+ * `edit` is the editable answer, not a third decision: the engine takes only
+ * approve or reject, and either way the answer is written through the
+ * interrupt-answer approval card.
+ */
+const DEFAULT_CHECKPOINT_ACTIONS: ReadonlyArray<{
+  id: string;
+  label: string;
+  kind: CheckpointActionKind;
+}> = [
+  { id: 'approve', label: 'Approve', kind: 'approve' },
+  { id: 'reject', label: 'Reject', kind: 'reject' },
+  { id: 'edit', label: 'Edit answer', kind: 'edit' },
+];
+
+export function checkpointActions(
+  checkpoint: CheckpointDef,
+): ReadonlyArray<{ id: string; label: string; kind: CheckpointActionKind }> {
+  return checkpoint.actions && checkpoint.actions.length > 0
+    ? checkpoint.actions
+    : DEFAULT_CHECKPOINT_ACTIONS;
+}
+
+/** True when the operator may still edit the answer text on this card. */
+export function checkpointAnswerEditable(checkpoint: CheckpointDef): boolean {
+  if (checkpoint.answered) return false;
+  return checkpointActions(checkpoint).some((action) => action.kind === 'edit');
+}
+
+/** Run/phase/pipeline context in the same `·`-joined form InterruptSheet uses. */
+export function checkpointContext(checkpoint: CheckpointDef): string {
+  return [
+    checkpoint.runId && `run ${checkpoint.runId.slice(0, 8)}`,
+    checkpoint.phaseId && `phase ${checkpoint.phaseId}`,
+    checkpoint.pipelineId && `pipeline ${checkpoint.pipelineId}`,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/**
+ * What the card says about where this checkpoint stands. An artifact is
+ * history as often as it is live, so an answered checkpoint must read as
+ * settled rather than as something still waiting on the operator.
+ */
+export function checkpointStatusLabel(checkpoint: CheckpointDef): string {
+  if (!checkpoint.answered) return 'Awaiting decision';
+  if (checkpoint.decision === 'approve') return 'Approved';
+  if (checkpoint.decision === 'reject') return 'Rejected';
+  return 'Answered';
+}
+
+// ── Readiness journey helpers ────────────────────────────────────────────────
+
+const READINESS_PHASE_LABEL: Record<ReadinessPhase, string> = {
+  idle: 'Not started',
+  inspecting: 'Inspecting the repository',
+  confirming: 'Awaiting confirmation',
+  evaluating: 'Evaluating the checklist',
+  not_ready: 'Not ready',
+  remediating: 'Remediating on the readiness worktree',
+  verifying: 'Re-verifying the checklist',
+  needs_continue: 'Paused — needs Continue',
+  pr_ready: 'Pull request open',
+  awaiting_merge: 'Awaiting merge',
+  confirming_merge: 'Confirming the merge',
+  finalizing: 'Finalizing',
+  complete: 'Agent-ready',
+  skipped: 'Skipped',
+  failed: 'Failed',
+};
+
+export function readinessPhaseLabel(phase: ReadinessPhase): string {
+  return READINESS_PHASE_LABEL[phase] ?? phase;
+}
+
+/** Phases where remediation or verification is actually moving. */
+const JOURNEY_LIVE_PHASES: ReadonlySet<ReadinessPhase> = new Set<ReadinessPhase>([
+  'inspecting',
+  'evaluating',
+  'remediating',
+  'verifying',
+  'confirming_merge',
+  'finalizing',
+]);
+
+export function isJourneyPhaseLive(phase: ReadinessPhase): boolean {
+  return JOURNEY_LIVE_PHASES.has(phase);
+}
+
+/**
+ * Whether the card offers the `needs_continue` affordances. The phase decides,
+ * not the action list: a spec that forgot to name them should still not imply
+ * a paused onboarding has nothing left to do.
+ */
+export function journeyNeedsContinue(journey: ReadinessJourneyDef): boolean {
+  return journey.phase === 'needs_continue';
+}
+
+const DEFAULT_NEEDS_CONTINUE_ACTIONS = ['Continue', 'Start over', 'Skip'];
+
+export function journeyActions(journey: ReadinessJourneyDef): string[] {
+  if (journey.actions && journey.actions.length > 0) return journey.actions;
+  return journeyNeedsContinue(journey) ? [...DEFAULT_NEEDS_CONTINUE_ACTIONS] : [];
+}
+
+export interface GroupedJourneyCriteria {
+  fail: ReadinessJourneyCriterion[];
+  pass: ReadinessJourneyCriterion[];
+  na: ReadinessJourneyCriterion[];
+}
+
+export function groupJourneyCriteria(
+  criteria: ReadinessJourneyCriterion[],
+): GroupedJourneyCriteria {
+  const groups: GroupedJourneyCriteria = { fail: [], pass: [], na: [] };
+  for (const criterion of criteria) {
+    if (criterion.status === 'fail') groups.fail.push(criterion);
+    else if (criterion.status === 'pass') groups.pass.push(criterion);
+    else groups.na.push(criterion);
+  }
+  return groups;
+}
+
+export function criterionStatusLabel(status: ReadinessCriterionStatus): string {
+  if (status === 'pass') return 'Passed';
+  if (status === 'fail') return 'Failed';
+  return 'Not applicable';
+}
+
+/** `lint_format` reads as "lint format" in a card, not as an identifier. */
+export function criterionLabel(id: string): string {
+  return id.replaceAll('_', ' ');
+}
+
+/**
+ * The verdict line. The marker committed on the base ref is the only readiness
+ * truth, so the criteria and even a merged PR are explanation, never the
+ * answer — the summary has to say which one it is reporting.
+ */
+export function journeyMarkerVerdict(journey: ReadinessJourneyDef): string {
+  if (journey.marker.valid) {
+    return journey.marker.summary?.trim() || 'The committed marker says this repository is ready.';
+  }
+  return journey.marker.detail?.trim() || 'No valid marker on the base ref.';
+}
+
+export function journeySummary(journey: ReadinessJourneyDef): string {
+  if (journey.detail && journey.detail.trim()) return journey.detail.trim();
+  const groups = groupJourneyCriteria(journey.criteria);
+  const parts: string[] = [];
+  if (groups.fail.length > 0) parts.push(`${groups.fail.length} failing`);
+  if (groups.pass.length > 0) parts.push(`${groups.pass.length} passing`);
+  if (groups.na.length > 0) parts.push(`${groups.na.length} n/a`);
+  return parts.join(' · ') || readinessPhaseLabel(journey.phase);
+}
+
+// ── Provider / Companion status helpers ──────────────────────────────────────
+
+export function providerConnectionLabel(connection: ProviderStatusConnection): string {
+  switch (connection) {
+    case 'connected':
+      return 'Connected';
+    case 'authenticating':
+      return 'Signing in';
+    case 'disconnected':
+      return 'Not connected';
+    case 'error':
+      return 'Error';
+  }
+}
+
+/**
+ * What the card may say about a direct API key: that one exists, or that none
+ * does. Never a value and never a masked prefix — a key lives only in the
+ * approval card, which is not part of the transcript.
+ */
+export function providerKeyLabel(keyPresent: boolean | undefined): string {
+  return keyPresent ? 'API key stored' : 'No API key';
+}
+
+export function providerStatusSummary(status: ProviderStatusDef): string {
+  if (status.summary && status.summary.trim()) return status.summary.trim();
+  const parts: string[] = [];
+  const providers = status.providers ?? [];
+  if (providers.length > 0) {
+    const connected = providers.filter((provider) => provider.connection === 'connected').length;
+    parts.push(`${connected}/${providers.length} providers connected`);
+  }
+  const failing = providers.filter((provider) => provider.connection === 'error').length;
+  if (failing > 0) parts.push(`${failing} in error`);
+  if (status.bridge) parts.push(status.bridge.running ? 'Bridge serving' : 'Bridge stopped');
+  if (status.companion) {
+    const devices = status.companion.devices?.length ?? 0;
+    parts.push(
+      status.companion.running
+        ? `Companion on (${devices} ${devices === 1 ? 'device' : 'devices'})`
+        : 'Companion off',
+    );
+  }
+  return parts.join(' · ') || 'No provider or Companion state reported';
+}
+
+/** The Bridge line: serving on its port, or the reason it is not. */
+export function bridgeStatusLine(status: ProviderStatusDef): string {
+  const bridge = status.bridge;
+  if (!bridge) return '';
+  if (bridge.running) {
+    return bridge.baseUrl
+      ? `Serving on ${bridge.baseUrl}`
+      : bridge.port
+        ? `Serving on port ${bridge.port}`
+        : 'Serving';
+  }
+  return bridge.detail?.trim() || bridge.reason?.trim() || 'Not running';
 }
 
 // ── Checklist helpers ────────────────────────────────────────────────────────

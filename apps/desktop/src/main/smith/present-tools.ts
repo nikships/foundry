@@ -20,10 +20,14 @@ import {
   type ChangeReceiptDef,
   type ChangeReceiptStatus,
   type ChangeReceiptTarget,
+  type CheckpointDef,
   type ChecklistDef,
   type EntityComparisonKind,
   type EnvelopeDef,
   type PipelineDef,
+  type ProviderStatusDef,
+  type ReadinessJourneyDef,
+  type ReadinessPhase,
   type SmithArtifact,
   type SmithArtifactKind,
   type ValidationIssue,
@@ -45,6 +49,9 @@ const ARTIFACT_KINDS = [
   'checklist',
   'entity_comparison',
   'change_receipt',
+  'engineer_checkpoint',
+  'readiness_journey',
+  'provider_status',
 ] as const;
 
 const ENTITY_COMPARISON_KINDS = ['agent', 'pipeline', 'envelope'] as const;
@@ -61,6 +68,38 @@ const MAX_WARNINGS = 20;
 const VALID_CHECKLIST_STATUSES = new Set(['pass', 'warn', 'fail', 'info']);
 const VALID_RECEIPT_TARGETS = new Set(['direct_checkout', 'isolated_worktree']);
 const VALID_RECEIPT_STATUSES = new Set(['success', 'failure']);
+const VALID_CHECKPOINT_ACTION_KINDS = new Set(['approve', 'reject', 'edit']);
+const VALID_CHECKPOINT_DECISIONS = new Set(['approve', 'reject']);
+const VALID_READINESS_PHASES: ReadonlySet<string> = new Set<ReadinessPhase>([
+  'idle',
+  'inspecting',
+  'confirming',
+  'evaluating',
+  'not_ready',
+  'remediating',
+  'verifying',
+  'needs_continue',
+  'pr_ready',
+  'awaiting_merge',
+  'confirming_merge',
+  'finalizing',
+  'complete',
+  'skipped',
+  'failed',
+]);
+const VALID_CRITERION_STATUSES = new Set(['pass', 'fail', 'n/a']);
+const VALID_WORK_KINDS = new Set(['text', 'tool', 'note', 'error']);
+const VALID_PROVIDER_CONNECTIONS = new Set([
+  'connected',
+  'authenticating',
+  'disconnected',
+  'error',
+]);
+const MAX_CHECKPOINT_ANSWER = 8_000;
+const MAX_JOURNEY_CRITERIA = 60;
+const MAX_JOURNEY_WORK = 200;
+const MAX_STATUS_PROVIDERS = 40;
+const MAX_STATUS_DEVICES = 40;
 
 /**
  * Field names that read as credentials. An artifact is persisted with the
@@ -114,6 +153,385 @@ export function findSecretKey(value: unknown, path = ''): string | null {
     if (found) return found;
   }
   return null;
+}
+
+/**
+ * Anything credential-shaped on a provider/Companion payload, beyond the
+ * `keyPresent` boolean the card is allowed to know. A masked prefix or a
+ * pairing payload is as unwelcome here as the value itself: this artifact is
+ * echoed to every window and persisted with the chat, while a key belongs only
+ * in the approval card and a QR payload only in a renderer-local display.
+ */
+const PROVIDER_FORBIDDEN_FIELD = /(key|token|secret|credential|password|pairing|qr)/i;
+const PROVIDER_ALLOWED_FIELD = /^keyPresent$/;
+
+/** Depth-first scan naming the first forbidden provider/Companion field. */
+export function findProviderSecretField(value: unknown, path = ''): string | null {
+  if (value == null || typeof value !== 'object') return null;
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i += 1) {
+      const found = findProviderSecretField(value[i], `${path}[${i}]`);
+      if (found) return found;
+    }
+    return null;
+  }
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    const here = path ? `${path}.${key}` : key;
+    if (PROVIDER_FORBIDDEN_FIELD.test(key) && !PROVIDER_ALLOWED_FIELD.test(key)) return here;
+    const found = findProviderSecretField(child, here);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** A required non-empty string. Narrows so callers can keep reading. */
+function requireString(
+  issues: ValidationIssue[],
+  value: unknown,
+  where: string,
+  what: string,
+): value is string {
+  if (typeof value !== 'string' || !value.trim()) {
+    issues.push({ level: 'error', where, message: `${what} is required` });
+    return false;
+  }
+  return true;
+}
+
+/** An optional string: a wrong type is an error, an over-long one a warning. */
+function optionalString(
+  issues: ValidationIssue[],
+  value: unknown,
+  where: string,
+  max: number,
+): void {
+  if (value === undefined || value === null) return;
+  if (typeof value !== 'string') {
+    issues.push({ level: 'error', where, message: `${where} must be a string` });
+    return;
+  }
+  if (value.length > max) {
+    issues.push({ level: 'warning', where, message: `${where} exceeds ${max} characters` });
+  }
+}
+
+function optionalBoolean(issues: ValidationIssue[], value: unknown, where: string): void {
+  if (value !== undefined && typeof value !== 'boolean') {
+    issues.push({ level: 'error', where, message: `${where} must be a boolean` });
+  }
+}
+
+function optionalNumber(issues: ValidationIssue[], value: unknown, where: string): void {
+  if (value !== undefined && typeof value !== 'number') {
+    issues.push({ level: 'error', where, message: `${where} must be a number` });
+  }
+}
+
+function requireEnum(
+  issues: ValidationIssue[],
+  value: unknown,
+  where: string,
+  allowed: ReadonlySet<string>,
+): void {
+  if (typeof value !== 'string' || !allowed.has(value)) {
+    issues.push({
+      level: 'error',
+      where,
+      message: `invalid ${where} "${String(value)}" (must be ${[...allowed].join(', ')})`,
+    });
+  }
+}
+
+function optionalEnum(
+  issues: ValidationIssue[],
+  value: unknown,
+  where: string,
+  allowed: ReadonlySet<string>,
+): void {
+  if (value === undefined) return;
+  requireEnum(issues, value, where, allowed);
+}
+
+/** The value as a plain object, or null with the error already recorded. */
+function objectAt(
+  issues: ValidationIssue[],
+  value: unknown,
+  where: string,
+): Record<string, unknown> | null {
+  if (value == null || typeof value !== 'object' || Array.isArray(value)) {
+    issues.push({ level: 'error', where, message: `${where} must be an object` });
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+/** An optional array, capped so an oversized card never reaches the renderer. */
+function arrayAt(
+  issues: ValidationIssue[],
+  value: unknown,
+  where: string,
+  max: number,
+): unknown[] | null {
+  if (value === undefined) return null;
+  if (!Array.isArray(value)) {
+    issues.push({ level: 'error', where, message: `${where} must be an array` });
+    return null;
+  }
+  if (value.length > max) {
+    issues.push({
+      level: 'error',
+      where,
+      message: `${where} cannot exceed ${max} entries (${value.length} supplied)`,
+    });
+    return null;
+  }
+  return value;
+}
+
+export function validateCheckpoint(spec: unknown): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const raw = objectAt(issues, spec, 'spec');
+  if (!raw) return issues;
+
+  requireString(issues, raw.interruptId, 'interruptId', 'checkpoint interruptId');
+  requireString(issues, raw.title, 'title', 'checkpoint title');
+  requireString(issues, raw.question, 'question', 'checkpoint question');
+  optionalString(issues, raw.title, 'title', 200);
+  optionalString(issues, raw.question, 'question', 4_000);
+  optionalString(issues, raw.runId, 'runId', 200);
+  optionalString(issues, raw.phaseId, 'phaseId', 200);
+  optionalString(issues, raw.pipelineId, 'pipelineId', 200);
+  optionalString(issues, raw.raisedAt, 'raisedAt', 100);
+  optionalString(issues, raw.draftAnswer, 'draftAnswer', MAX_CHECKPOINT_ANSWER);
+  optionalBoolean(issues, raw.answered, 'answered');
+  optionalEnum(issues, raw.decision, 'decision', VALID_CHECKPOINT_DECISIONS);
+
+  const actions = arrayAt(issues, raw.actions, 'actions', 10);
+  for (const [index, entry] of (actions ?? []).entries()) {
+    const where = `actions[${index}]`;
+    const action = objectAt(issues, entry, where);
+    if (!action) continue;
+    requireString(issues, action.id, `${where}.id`, 'action id');
+    requireString(issues, action.label, `${where}.label`, 'action label');
+    optionalString(issues, action.label, `${where}.label`, 100);
+    requireEnum(issues, action.kind, `${where}.kind`, VALID_CHECKPOINT_ACTION_KINDS);
+  }
+
+  return issues;
+}
+
+export function validateReadinessJourney(spec: unknown): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const raw = objectAt(issues, spec, 'spec');
+  if (!raw) return issues;
+
+  requireEnum(issues, raw.phase, 'phase', VALID_READINESS_PHASES);
+  optionalString(issues, raw.projectId, 'projectId', 200);
+  optionalString(issues, raw.projectName, 'projectName', 200);
+  optionalString(issues, raw.detail, 'detail', 500);
+  optionalString(issues, raw.checklistSummary, 'checklistSummary', 500);
+
+  const marker = objectAt(issues, raw.marker, 'marker');
+  if (marker) {
+    if (typeof marker.valid !== 'boolean') {
+      issues.push({
+        level: 'error',
+        where: 'marker.valid',
+        message: 'marker validity is required and must be a boolean',
+      });
+    }
+    requireString(issues, marker.detail, 'marker.detail', 'marker detail');
+    optionalString(issues, marker.detail, 'marker.detail', 500);
+    optionalString(issues, marker.summary, 'marker.summary', 500);
+    optionalString(issues, marker.ref, 'marker.ref', 200);
+    optionalString(issues, marker.commit, 'marker.commit', 200);
+    optionalString(issues, marker.generatedAt, 'marker.generatedAt', 100);
+    optionalEnum(issues, marker.source, 'marker.source', new Set(['base-ref', 'worktree']));
+  }
+
+  if (!Array.isArray(raw.criteria)) {
+    issues.push({ level: 'error', where: 'criteria', message: 'criteria must be an array' });
+  } else {
+    const criteria = arrayAt(issues, raw.criteria, 'criteria', MAX_JOURNEY_CRITERIA);
+    for (const [index, entry] of (criteria ?? []).entries()) {
+      const where = `criteria[${index}]`;
+      const criterion = objectAt(issues, entry, where);
+      if (!criterion) continue;
+      requireString(issues, criterion.id, `${where}.id`, 'criterion id');
+      requireEnum(issues, criterion.status, `${where}.status`, VALID_CRITERION_STATUSES);
+      optionalString(issues, criterion.notes, `${where}.notes`, 500);
+    }
+  }
+
+  if (raw.stack !== undefined) {
+    const stack = objectAt(issues, raw.stack, 'stack');
+    if (stack) {
+      optionalBoolean(issues, stack.monorepo, 'stack.monorepo');
+      for (const key of ['languages', 'packages'] as const) {
+        if (stack[key] === undefined) continue;
+        const list = arrayAt(issues, stack[key], `stack.${key}`, 60);
+        for (const [index, value] of (list ?? []).entries()) {
+          if (typeof value !== 'string') {
+            issues.push({
+              level: 'error',
+              where: `stack.${key}[${index}]`,
+              message: `stack.${key} entries must be strings`,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  const work = arrayAt(issues, raw.work, 'work', MAX_JOURNEY_WORK);
+  for (const [index, entry] of (work ?? []).entries()) {
+    const where = `work[${index}]`;
+    const row = objectAt(issues, entry, where);
+    if (!row) continue;
+    requireString(issues, row.id, `${where}.id`, 'work entry id');
+    requireEnum(issues, row.kind, `${where}.kind`, VALID_WORK_KINDS);
+    requireString(issues, row.text, `${where}.text`, 'work entry text');
+    optionalString(issues, row.text, `${where}.text`, 2_000);
+    optionalEnum(
+      issues,
+      row.toolKind,
+      `${where}.toolKind`,
+      new Set(['command', 'read', 'edit', 'search', 'other']),
+    );
+    optionalBoolean(issues, row.done, `${where}.done`);
+    optionalBoolean(issues, row.failed, `${where}.failed`);
+  }
+
+  if (raw.pr !== undefined) {
+    const pr = objectAt(issues, raw.pr, 'pr');
+    if (pr) {
+      if (typeof pr.number !== 'number') {
+        issues.push({ level: 'error', where: 'pr.number', message: 'pr number must be a number' });
+      }
+      requireString(issues, pr.url, 'pr.url', 'pr url');
+      if (typeof pr.merged !== 'boolean') {
+        issues.push({
+          level: 'error',
+          where: 'pr.merged',
+          message: 'pr merged must be a boolean',
+        });
+      }
+      optionalString(issues, pr.mergeDetail, 'pr.mergeDetail', 500);
+    }
+  }
+
+  const actions = arrayAt(issues, raw.actions, 'actions', 8);
+  for (const [index, action] of (actions ?? []).entries()) {
+    if (typeof action !== 'string' || !action.trim()) {
+      issues.push({
+        level: 'error',
+        where: `actions[${index}]`,
+        message: 'action label must be a non-empty string',
+      });
+    } else {
+      optionalString(issues, action, `actions[${index}]`, 60);
+    }
+  }
+
+  return issues;
+}
+
+export function validateProviderStatus(spec: unknown): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const raw = objectAt(issues, spec, 'spec');
+  if (!raw) return issues;
+
+  optionalString(issues, raw.title, 'title', 200);
+  optionalString(issues, raw.summary, 'summary', 500);
+
+  const providers = arrayAt(issues, raw.providers, 'providers', MAX_STATUS_PROVIDERS);
+  for (const [index, entry] of (providers ?? []).entries()) {
+    const where = `providers[${index}]`;
+    const provider = objectAt(issues, entry, where);
+    if (!provider) continue;
+    requireString(issues, provider.id, `${where}.id`, 'provider id');
+    requireString(issues, provider.label, `${where}.label`, 'provider label');
+    requireEnum(issues, provider.connection, `${where}.connection`, VALID_PROVIDER_CONNECTIONS);
+    if (typeof provider.authenticated !== 'boolean') {
+      issues.push({
+        level: 'error',
+        where: `${where}.authenticated`,
+        message: 'provider authenticated is required and must be a boolean',
+      });
+    }
+    optionalBoolean(issues, provider.keyPresent, `${where}.keyPresent`);
+    optionalBoolean(issues, provider.loginInFlight, `${where}.loginInFlight`);
+    optionalString(issues, provider.error, `${where}.error`, 500);
+
+    const accounts = arrayAt(issues, provider.accounts, `${where}.accounts`, 20);
+    for (const [accountIndex, accountEntry] of (accounts ?? []).entries()) {
+      const accountWhere = `${where}.accounts[${accountIndex}]`;
+      const account = objectAt(issues, accountEntry, accountWhere);
+      if (!account) continue;
+      requireString(issues, account.label, `${accountWhere}.label`, 'account label');
+      optionalString(issues, account.label, `${accountWhere}.label`, 200);
+      optionalBoolean(issues, account.expired, `${accountWhere}.expired`);
+      optionalBoolean(issues, account.disabled, `${accountWhere}.disabled`);
+      optionalString(issues, account.expiresAt, `${accountWhere}.expiresAt`, 100);
+    }
+  }
+
+  if (raw.bridge !== undefined) {
+    const bridge = objectAt(issues, raw.bridge, 'bridge');
+    if (bridge) {
+      if (typeof bridge.running !== 'boolean') {
+        issues.push({
+          level: 'error',
+          where: 'bridge.running',
+          message: 'bridge running is required and must be a boolean',
+        });
+      }
+      optionalNumber(issues, bridge.port, 'bridge.port');
+      optionalString(issues, bridge.baseUrl, 'bridge.baseUrl', 500);
+      optionalString(issues, bridge.reason, 'bridge.reason', 200);
+      optionalString(issues, bridge.detail, 'bridge.detail', 500);
+    }
+  }
+
+  if (raw.companion !== undefined) {
+    const companion = objectAt(issues, raw.companion, 'companion');
+    if (companion) {
+      if (typeof companion.running !== 'boolean') {
+        issues.push({
+          level: 'error',
+          where: 'companion.running',
+          message: 'companion running is required and must be a boolean',
+        });
+      }
+      optionalString(issues, companion.origin, 'companion.origin', 500);
+      optionalNumber(issues, companion.protocolVersion, 'companion.protocolVersion');
+      optionalString(issues, companion.detail, 'companion.detail', 500);
+
+      const devices = arrayAt(issues, companion.devices, 'companion.devices', MAX_STATUS_DEVICES);
+      for (const [index, entry] of (devices ?? []).entries()) {
+        const where = `companion.devices[${index}]`;
+        const device = objectAt(issues, entry, where);
+        if (!device) continue;
+        requireString(issues, device.deviceId, `${where}.deviceId`, 'device id');
+        requireString(issues, device.name, `${where}.name`, 'device name');
+        optionalString(issues, device.pairedAt, `${where}.pairedAt`, 100);
+        optionalString(issues, device.lastSeenAt, `${where}.lastSeenAt`, 100);
+      }
+    }
+  }
+
+  const forbidden = findProviderSecretField(raw);
+  if (forbidden) {
+    issues.push({
+      level: 'error',
+      where: forbidden,
+      message:
+        'provider status must not carry a key, token, or pairing field — a key belongs only in ' +
+        'the masked approval card and a pairing payload only in the renderer-local display',
+    });
+  }
+
+  return issues;
 }
 
 export function validateChecklist(spec: unknown): ValidationIssue[] {
@@ -440,6 +858,9 @@ function validateSpec(
 ): ValidationIssue[] {
   if (kind === 'checklist') return validateChecklist(spec);
   if (kind === 'change_receipt') return validateChangeReceipt(spec);
+  if (kind === 'engineer_checkpoint') return validateCheckpoint(spec);
+  if (kind === 'readiness_journey') return validateReadinessJourney(spec);
+  if (kind === 'provider_status') return validateProviderStatus(spec);
   const targetKind =
     kind === 'entity_comparison'
       ? comparisonKind === 'agent'
@@ -475,6 +896,9 @@ function buildArtifact(
     | 'after'
     | 'targetProjectId'
     | 'receipt'
+    | 'checkpoint'
+    | 'journey'
+    | 'status'
   >,
   extra?: {
     entityKind?: EntityComparisonKind;
@@ -487,6 +911,13 @@ function buildArtifact(
   if (kind === 'envelope_design') return { ...base, kind, envelope: spec as EnvelopeDef };
   if (kind === 'checklist') return { ...base, kind, checklist: spec as ChecklistDef };
   if (kind === 'change_receipt') return { ...base, kind, receipt: spec as ChangeReceiptDef };
+  if (kind === 'engineer_checkpoint') {
+    return { ...base, kind, checkpoint: spec as CheckpointDef };
+  }
+  if (kind === 'readiness_journey') {
+    return { ...base, kind, journey: spec as ReadinessJourneyDef };
+  }
+  if (kind === 'provider_status') return { ...base, kind, status: spec as ProviderStatusDef };
   if (kind === 'entity_comparison') {
     return {
       ...base,
@@ -506,20 +937,28 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
     name: SMITH_PRESENT_TOOL_NAME,
     label: 'Smith present',
     description:
-      'Show the operator a rich inline design, checklist report, entity comparison, or change receipt card in the chat. Use it before ' +
-      'proposing a non-trivial pipeline, agent, or envelope, to compare a proposed edit against the stored definition, ' +
-      'to record a change/command receipt after direct checkout work, or to present a checklist/doctor/readiness/validation report: ' +
-      'the card renders structured definitions and receipts far better than prose or JSON. It is ' +
-      'presentation only — it saves nothing, needs no approval, and is not evidence any action ' +
-      'succeeded. Do not repeat the card content in prose; add only rationale, uncertainty, or ' +
-      'a recommendation.',
+      'Show the operator a rich inline card in the chat: an entity design, a checklist report, ' +
+      'an entity comparison, a change receipt, an engineer checkpoint, the readiness journey, or ' +
+      'provider/Companion status. Use it before proposing a non-trivial pipeline, agent, or ' +
+      'envelope, to compare a proposed edit against the stored definition, to record a ' +
+      'change/command receipt after direct checkout work, to present a ' +
+      'checklist/doctor/readiness/validation report, to surface a pending engineer checkpoint ' +
+      'with its run context, to show the whole readiness journey (marker, criteria, remediation, ' +
+      'PR), or to report provider connection and paired Companion devices. It is presentation ' +
+      'only — it saves nothing, needs no approval, answers no checkpoint, and is not evidence ' +
+      'any action succeeded: approving a checkpoint or changing readiness still goes through the ' +
+      'approval card. Never put an API key, token, masked key prefix, or Companion pairing ' +
+      'payload in a spec. Do not repeat the card content in prose; add only rationale, ' +
+      'uncertainty, or a recommendation.',
     parameters: {
       type: 'object',
       properties: {
         kind: {
           type: 'string',
           enum: [...ARTIFACT_KINDS],
-          description: 'Which design, checklist, comparison, or change receipt card to show.',
+          description:
+            'Which card to show: a design, checklist, comparison, change receipt, engineer ' +
+            'checkpoint, readiness journey, or provider/Companion status.',
         },
         entityKind: {
           type: 'string',
@@ -535,7 +974,13 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
         spec: {
           type: 'object',
           description:
-            'The full entity JSON, checklist definition, comparison edit, or change receipt definition (target, status, filesChanged, diffstat, command, outputExcerpt).',
+            'The card payload. Entity JSON for a design or comparison edit; a checklist ' +
+            'definition; a change receipt (target, status, filesChanged, diffstat, command, ' +
+            'outputExcerpt); an engineer checkpoint (interruptId, title, question, runId, ' +
+            'phaseId, draftAnswer, actions); a readiness journey (phase, marker, criteria, work, ' +
+            'pr, actions); or provider status (providers with connection/authenticated/' +
+            'keyPresent, bridge, companion with paired devices). Never a key, token, or pairing ' +
+            'payload.',
         },
         rationale: {
           type: 'string',

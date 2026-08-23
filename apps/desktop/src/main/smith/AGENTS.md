@@ -34,6 +34,15 @@ inline human approval.
   `renderer/components/smith/`, a persistence/restore decision in
   `chat-session.ts`, and tests in `smith-present-tools.test.ts` +
   `smith-artifact-view.test.ts`. Never infer cards from Smith's Markdown.
+  Three kinds report live app state and keep the gates that own it:
+  `engineer_checkpoint` shows a checkpoint's question, run/phase context, and
+  editable answer but answers nothing — the write is `smith_interrupts answer`
+  on the approval queue; `readiness_journey` reports the marker committed on
+  the base ref as the only verdict, with criteria, remediation work, and PR as
+  explanation; `provider_status` carries connection/auth/error metadata plus a
+  `keyPresent` boolean and paired devices, and `validateProviderStatus`
+  refuses any other key/token/pairing/QR field so the masked secret card and
+  the renderer-only pairing payload stay out of the transcript.
 - Readiness exposes its three conversational tools plus `readiness_manage`.
 - Read-only operations invoke immediately. Persistent/destructive/credential,
   process, Git/PR, lifecycle, network, and maintenance actions enqueue an action
