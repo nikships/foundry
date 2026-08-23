@@ -20,6 +20,7 @@ import { isKnownPrWriter, prWriterOptions } from '../view-models/pr-draft.js';
 import { useApp } from '../stores/app.js';
 import { useAgentModels } from '../hooks/useAgentModels.js';
 import ModelPicker from '../components/common/ModelPicker.js';
+import ReasoningEffortPicker from '../components/common/ReasoningEffortPicker.js';
 import { ProviderIcon } from '../components/media/BrandIcon.js';
 import DoctorList from '../components/readiness/DoctorList.js';
 import ProjectCommands from '../components/project/ProjectCommands.js';
@@ -636,6 +637,13 @@ export default function SettingsScreen({
         m.provider.toLowerCase().includes(q),
     );
   }, [models, modelFilter]);
+
+  // Null for `inherit` or a model the catalog no longer offers, where the
+  // effort picker has no capability list to filter by and shows every level.
+  const smithModelInfo = useMemo(
+    () => models.find((model) => model.id === settings?.smithModel) ?? null,
+    [models, settings?.smithModel],
+  );
 
   const visibleGroups = useMemo(() => {
     const map = new Map<string, ModelInfo[]>();
@@ -1524,6 +1532,17 @@ export default function SettingsScreen({
                           inheritLabel="First reachable model"
                           emptyHint={SMITH_NO_PROVIDER_COPY}
                           onChange={(v) => void set({ smithModel: v })}
+                        />
+                      </Field>
+                      <Field
+                        label="Default reasoning effort"
+                        hint="Only the levels the chosen model offers. A stored level it drops falls back to that model's default."
+                      >
+                        <ReasoningEffortPicker
+                          value={settings.smithReasoningEffort}
+                          model={smithModelInfo}
+                          onChange={(effort) => void set({ smithReasoningEffort: effort })}
+                          data-testid="settings-smith-effort"
                         />
                       </Field>
                     </div>

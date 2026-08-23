@@ -8,6 +8,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { SmithChatState, SmithScreenContext } from '../../../src/shared/ipc-contract.js';
 import { IPC } from '../../../src/shared/ipc-contract.js';
+import type { ReasoningEffort } from '../../../src/shared/types.js';
 import { register } from '../../../src/main/ipc/smith.js';
 import type { Handle } from '../../../src/main/ipc/shared.js';
 
@@ -18,6 +19,8 @@ function state(over: Partial<SmithChatState> = {}): SmithChatState {
     projectId: 'proj_1',
     model: 'inherit',
     activeModel: 'provider/model',
+    reasoningEffort: 'medium',
+    activeReasoningEffort: 'medium',
     running: false,
     error: null,
     transcript: [],
@@ -57,6 +60,9 @@ function harness(chatPresent = true) {
     setModel: vi.fn(async (model: string) => {
       current = { ...current, model, activeModel: model };
     }),
+    setReasoningEffort: vi.fn(async (effort: ReasoningEffort) => {
+      current = { ...current, reasoningEffort: effort, activeReasoningEffort: effort };
+    }),
   };
   const answer = vi.fn(async () => ({ ok: true as const }));
   const handlers = new Map<string, Handler>();
@@ -83,6 +89,7 @@ describe('Smith chat IPC router', () => {
       IPC.smithNewChat,
       IPC.smithState,
       IPC.smithSetModel,
+      IPC.smithSetReasoningEffort,
       IPC.smithProposalsList,
       IPC.smithAnswerProposal,
     ]);
@@ -126,6 +133,29 @@ describe('Smith chat IPC router', () => {
     expect(chat.cancel).toHaveBeenCalledOnce();
     expect(chat.newChat).toHaveBeenCalledOnce();
     expect(chat.setModel).toHaveBeenCalledWith('provider/next');
+  });
+
+  it('delegates a reasoning-effort switch and reports the effective level', async () => {
+    const { handlers, chat } = harness();
+    const setEffort = handlers.get(IPC.smithSetReasoningEffort) as (
+      projectId: string,
+      effort: string,
+    ) => Promise<SmithChatState>;
+
+    const next = await setEffort('proj_1', 'high');
+    expect(next).toMatchObject({ reasoningEffort: 'high', activeReasoningEffort: 'high' });
+    expect(chat.setReasoningEffort).toHaveBeenCalledWith('high');
+  });
+
+  it('refuses an unknown effort rather than passing it toward a provider', async () => {
+    const { handlers, chat } = harness();
+    const setEffort = handlers.get(IPC.smithSetReasoningEffort) as (
+      projectId: string,
+      effort: string,
+    ) => Promise<SmithChatState>;
+
+    await expect(setEffort('proj_1', 'ludicrous')).rejects.toThrow(/known reasoning effort/);
+    expect(chat.setReasoningEffort).not.toHaveBeenCalled();
   });
 
   it('answers null when the requested project has no chat', async () => {

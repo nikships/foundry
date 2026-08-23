@@ -8,9 +8,11 @@ import type {
   AgentDef,
   EnvelopeDef,
   PipelineDef,
+  ReasoningEffort,
   SmithEntityProposal,
   SmithProposalAnswer,
 } from '@shared/types.js';
+import { isReasoningEffort } from '@shared/reasoning-effort.js';
 import { IPC, type SmithChatState, type SmithScreenContext } from '@shared/ipc-contract.js';
 import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
@@ -63,6 +65,22 @@ export function register(ctx: Ctx, handle: Handle): void {
       if (!chat) return null;
       if (!model.trim()) throw new Error('model is required');
       await chat.setModel(model);
+      return chat.snapshot();
+    },
+  );
+
+  handle(
+    IPC.smithSetReasoningEffort,
+    async (
+      projectId: string | undefined,
+      effort: ReasoningEffort,
+    ): Promise<SmithChatState | null> => {
+      const chat = ctx.smith.chat(projectId);
+      if (!chat) return null;
+      // The renderer's picker is filtered by the model's capabilities, but the
+      // channel is not the picker: an unknown level would reach a provider.
+      if (!isReasoningEffort(effort)) throw new Error('a known reasoning effort is required');
+      await chat.setReasoningEffort(effort);
       return chat.snapshot();
     },
   );

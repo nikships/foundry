@@ -170,6 +170,7 @@ function defaultMockSettings(): AppSettings {
     defaultModel: 'inherit',
     defaultReasoningEffort: 'medium',
     smithModel: 'inherit',
+    smithReasoningEffort: 'medium',
     compactionThreshold: 0.8,
     notifications: { accepted: true, rejected: true, failed: true, needsInput: true },
     dockBadge: true,
@@ -204,6 +205,8 @@ export function createMockFoundryApi(): FoundryApi {
         ...(projectId ? { projectId } : {}),
         model: mockSettings.smithModel,
         activeModel: mockSettings.smithModel,
+        reasoningEffort: mockSettings.smithReasoningEffort,
+        activeReasoningEffort: mockSettings.smithReasoningEffort,
         running: false,
         error: null,
         transcript: [],
@@ -718,6 +721,17 @@ export function createMockFoundryApi(): FoundryApi {
       setModel: async (projectId, model) => {
         if (projectId && !MOCK_PROJECTS.some((project) => project.id === projectId)) return null;
         const state = { ...smithSnapshot(projectId), model, activeModel: model };
+        smithStates.set(smithKey(projectId), state);
+        emitSmith(projectId);
+        return smithSnapshot(projectId);
+      },
+      setReasoningEffort: async (projectId, effort) => {
+        if (projectId && !MOCK_PROJECTS.some((project) => project.id === projectId)) return null;
+        const state = {
+          ...smithSnapshot(projectId),
+          reasoningEffort: effort,
+          activeReasoningEffort: effort,
+        };
         smithStates.set(smithKey(projectId), state);
         emitSmith(projectId);
         return smithSnapshot(projectId);

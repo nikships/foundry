@@ -48,6 +48,10 @@
   min-width: 240px;
 }
 
+.effortPicker {
+  min-width: 120px;
+}
+
 /* ── Transcript chrome (rows themselves live in SmithTranscript.module.css) ── */
 
 .emptyState {

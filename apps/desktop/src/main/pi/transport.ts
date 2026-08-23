@@ -157,6 +157,14 @@ export interface AgentTransport {
   readonly lastUserMessageId: string | null;
   readonly availableModels: TransportModel[];
   readonly activeModel: string;
+  /**
+   * The reasoning effort this session opened with — what a caller displaying
+   * "what is running" should read rather than what it asked for. A transport
+   * that clamps the requested level to its resolved model reports the clamped
+   * value; one that passes the caller's level through reports that. It is
+   * fixed at open either way: pi states the thinking level at create.
+   */
+  readonly activeReasoningEffort: ReasoningEffort;
 }
 
 export interface RewindFile {

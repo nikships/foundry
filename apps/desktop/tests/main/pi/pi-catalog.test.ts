@@ -39,25 +39,66 @@ describe('the agent model catalog', () => {
     expect(modelKey(model({ provider: 'anthropic' }))).toBe('anthropic/claude-opus-5');
   });
 
-  it('offers only the thinking levels the model’s map allows', () => {
+  it('drops only the levels the map explicitly nulls out', () => {
     const efforts = reasoningEffortsFor(
       model({
         thinkingLevelMap: { off: null, minimal: null, low: 'low', high: 'high', max: 'max' },
       }),
     );
-    expect(efforts).toEqual(['low', 'high', 'max']);
+    // `medium` is absent from the map, which per `references/models.md` means
+    // the provider's default mapping — supported, not withheld.
+    expect(efforts).toEqual(['low', 'medium', 'high', 'max']);
   });
 
-  it('falls back to a conservative set without a map, and to off for a plain model', () => {
+  it('reads a partial map as an addition, not an allowlist', () => {
+    // `{max: 'max'}` is the shape most current flagship models ship. Reading it
+    // as an allowlist would leave `max` the only choice and quietly rewrite a
+    // request for `medium` into the most expensive level the model has.
+    expect(reasoningEffortsFor(model({ thinkingLevelMap: { max: 'max' } }))).toEqual([
+      'off',
+      'low',
+      'medium',
+      'high',
+      'max',
+    ]);
+    expect(
+      reasoningEffortsFor(model({ thinkingLevelMap: { xhigh: 'xhigh', max: 'max' } })),
+    ).toEqual(['off', 'low', 'medium', 'high', 'xhigh', 'max']);
+  });
+
+  it('withholds the extended levels unless the map names them', () => {
+    // Omitted means unsupported for `xhigh` / `max` alone — the one place the
+    // tristate rule is not "absent implies available".
     expect(reasoningEffortsFor(model())).toEqual(['off', 'low', 'medium', 'high']);
+    expect(reasoningEffortsFor(model({ thinkingLevelMap: { low: null } }))).toEqual([
+      'off',
+      'medium',
+      'high',
+    ]);
+  });
+
+  it('honours a model that cannot stop thinking, and one that never starts', () => {
+    expect(reasoningEffortsFor(model({ thinkingLevelMap: { off: null } }))).toEqual([
+      'low',
+      'medium',
+      'high',
+    ]);
     expect(reasoningEffortsFor(model({ reasoning: false }))).toEqual(['off']);
+    // Nulling out every level still leaves something a picker can render.
+    expect(
+      reasoningEffortsFor(
+        model({
+          thinkingLevelMap: { off: null, low: null, medium: null, high: null },
+        }),
+      ),
+    ).toEqual(['off']);
   });
 
   it('picks medium as the default when it is offered, and the first level otherwise', () => {
     expect(toModelInfo(model()).defaultReasoningEffort).toBe('medium');
     expect(
-      toModelInfo(model({ thinkingLevelMap: { low: 'low', high: 'high' } })).defaultReasoningEffort,
-    ).toBe('low');
+      toModelInfo(model({ thinkingLevelMap: { medium: null, low: 'low' } })).defaultReasoningEffort,
+    ).toBe('off');
   });
 
   it('marks a Bridge-routed model with its lab’s icon, not the bridge provider id', () => {

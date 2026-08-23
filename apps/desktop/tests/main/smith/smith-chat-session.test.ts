@@ -18,7 +18,7 @@ import {
   type SmithToolFactory,
   type SmithTransportRequest,
 } from '../../../src/main/smith/chat-session.js';
-import type { AgentDef } from '../../../src/shared/types.js';
+import type { AgentDef, ReasoningEffort } from '../../../src/shared/types.js';
 import type { SmithChatState } from '../../../src/shared/ipc-contract.js';
 
 /** The scripted transport's request shape wants an AgentDef; Smith has none. */
@@ -39,6 +39,8 @@ interface Harness {
   scripted: ScriptedAgent;
   /** Every model the session asked its transport factory for, in order. */
   modelsRequested: string[];
+  /** Every reasoning effort it asked for, in the same order. */
+  effortsRequested: ReasoningEffort[];
   stateDir: string;
   projectPath: string;
   remake(over?: Partial<SmithChatSessionDeps>): SmithChatSession;
@@ -49,6 +51,7 @@ function harness(opts: {
   asks?: ScriptedAsk[][];
   stallOnTurns?: number[];
   smithModel?: () => string;
+  smithReasoningEffort?: () => ReasoningEffort;
   toolFactories?: SmithToolFactory[];
   scripted?: ScriptedAgent;
 }): Harness {
@@ -60,16 +63,19 @@ function harness(opts: {
       ...(opts.stallOnTurns ? { stallOnTurns: opts.stallOnTurns } : {}),
     });
   const modelsRequested: string[] = [];
+  const effortsRequested: ReasoningEffort[] = [];
 
   const deps = (over: Partial<SmithChatSessionDeps> = {}): SmithChatSessionDeps => ({
     scope: { kind: 'project', projectId: 'proj_1', projectPath },
     stateDir,
     smithModel: opts.smithModel ?? (() => 'inherit'),
+    ...(opts.smithReasoningEffort ? { smithReasoningEffort: opts.smithReasoningEffort } : {}),
     ...(opts.toolFactories ? { toolFactories: opts.toolFactories } : {}),
     transport: (req: SmithTransportRequest) => {
       modelsRequested.push(req.model);
+      effortsRequested.push(req.reasoningEffort);
       return scripted.transport({
-        agent: smithAsAgent,
+        agent: { ...smithAsAgent, reasoningEffort: req.reasoningEffort },
         cwd: req.cwd,
         runId: 'smith-chat',
         onPermission: (ask) => req.onPermission(ask),
@@ -85,6 +91,7 @@ function harness(opts: {
     session: new SmithChatSession(deps()),
     scripted,
     modelsRequested,
+    effortsRequested,
     stateDir,
     projectPath,
     remake: (over) => new SmithChatSession(deps(over)),
@@ -266,6 +273,140 @@ describe('model selection', () => {
     await h.session.send('still here');
     // No successor opened: nothing changed, so nothing was torn down.
     expect(h.scripted.sessionOpens).toBe(1);
+  });
+});
+
+describe('reasoning effort', () => {
+  it('resolves the effort from the global setting at open', async () => {
+    const h = harness({ smithReasoningEffort: () => 'high' });
+    await h.session.send('hello');
+    expect(h.effortsRequested).toEqual(['high']);
+    expect(h.session.snapshot().reasoningEffort).toBe('high');
+  });
+
+  it('defaults to medium when no setting is supplied', async () => {
+    const h = harness({});
+    await h.session.send('hello');
+    expect(h.effortsRequested).toEqual(['medium']);
+  });
+
+  it('reads the setting per open, so a settings change applies without a restart', async () => {
+    let setting: ReasoningEffort = 'low';
+    const h = harness({ smithReasoningEffort: () => setting });
+    await h.session.send('hello');
+    setting = 'high';
+    await h.session.newChat();
+    await h.session.send('hello again');
+    expect(h.effortsRequested).toEqual(['low', 'high']);
+  });
+
+  it('switches mid-conversation via a successor session over the same history', async () => {
+    const h = harness({ smithReasoningEffort: () => 'low', turns: ['one', 'two'] });
+    await h.session.send('hello');
+    expect(h.session.currentSessionId).toBe('s1');
+
+    await h.session.setReasoningEffort('high');
+    expect(h.session.reasoningEffort).toBe('high');
+
+    await h.session.send('continue');
+    // The thinking level is stated at create, so a switch reopens — but on the
+    // same session id, so the conversation carries forward.
+    expect(h.scripted.sessionOpens).toBe(2);
+    expect(h.session.currentSessionId).toBe('s1');
+    expect(h.effortsRequested).toEqual(['low', 'high']);
+  });
+
+  it('lets the turn in flight finish rather than aborting the answer', async () => {
+    const h = harness({
+      smithReasoningEffort: () => 'low',
+      turns: ['the long answer', 'after'],
+      stallOnTurns: [0],
+    });
+    const parked = h.session.send('long question');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await h.session.setReasoningEffort('high');
+    // The running turn was opened at 'low' and is not reopened under it.
+    expect(h.effortsRequested).toEqual(['low']);
+
+    // Ending the stall the way a finished turn does, not the way a cancel
+    // does: the switch must not have closed the transport under it.
+    h.scripted.finishStall();
+    const result = await parked;
+    expect(result.interrupted).toBe(false);
+    expect(result.text).toBe('the long answer');
+
+    await h.session.send('next');
+    expect(h.effortsRequested).toEqual(['low', 'high']);
+  });
+
+  it('clears the override on New chat, so a fresh chat opens at the setting', async () => {
+    const h = harness({ smithReasoningEffort: () => 'low' });
+    await h.session.setReasoningEffort('max');
+    expect(h.session.reasoningEffort).toBe('max');
+
+    await h.session.newChat();
+    expect(h.session.reasoningEffort).toBe('low');
+    const state = JSON.parse(readFileSync(join(h.stateDir, 'chat-state.json'), 'utf8')) as {
+      reasoningEffortOverride: string | null;
+    };
+    expect(state.reasoningEffortOverride).toBeNull();
+  });
+
+  it('persists the switch, outliving both the session and the app', async () => {
+    const h = harness({ smithReasoningEffort: () => 'low' });
+    await h.session.send('hello');
+    await h.session.setReasoningEffort('max');
+    await h.session.dispose();
+
+    const relaunched = h.remake();
+    expect(relaunched.reasoningEffort).toBe('max');
+  });
+
+  it('keeps the header choice to this chat rather than editing the install default', async () => {
+    const h = harness({ smithReasoningEffort: () => 'low' });
+    await h.session.setReasoningEffort('max');
+    expect(h.session.reasoningEffort).toBe('max');
+
+    // A second chat in the same install still opens at the setting: the
+    // override lives in this conversation's pointer, not in Settings → Smith.
+    const other = harness({ smithReasoningEffort: () => 'low' });
+    expect(other.session.reasoningEffort).toBe('low');
+  });
+
+  it('treats a switch to the current effort as a no-op', async () => {
+    const h = harness({ smithReasoningEffort: () => 'high', turns: ['one', 'two'] });
+    await h.session.send('hello');
+    await h.session.setReasoningEffort('high');
+    await h.session.send('still here');
+    expect(h.scripted.sessionOpens).toBe(1);
+  });
+
+  it('repairs a stored effort outside the known levels back to the setting', async () => {
+    const h = harness({ smithReasoningEffort: () => 'low' });
+    writeFileSync(
+      join(h.stateDir, 'chat-state.json'),
+      JSON.stringify({
+        sessionId: null,
+        modelOverride: null,
+        reasoningEffortOverride: 'ludicrous',
+        transcript: [],
+      }),
+    );
+    expect(h.remake().reasoningEffort).toBe('low');
+  });
+
+  it('reports the level the model actually ran at, not the one asked for', async () => {
+    // The scripted model offers off–high; `max` is clamped to its default.
+    const h = harness({ smithReasoningEffort: () => 'max' });
+    await h.session.send('hello');
+    const snapshot = h.session.snapshot();
+    expect(snapshot.reasoningEffort).toBe('max');
+    expect(snapshot.activeReasoningEffort).toBe('medium');
+  });
+
+  it('reports the requested level before a session exists to clamp it', () => {
+    const h = harness({ smithReasoningEffort: () => 'max' });
+    expect(h.session.snapshot().activeReasoningEffort).toBe('max');
   });
 });
 

@@ -272,6 +272,12 @@ export interface AppSettings {
    */
   smithModel: string;
   /**
+   * Reasoning effort a new Smith chat opens at. A level the chosen model does
+   * not support is normalized to that model's default before it reaches a
+   * provider; the chat header can still override this per conversation.
+   */
+  smithReasoningEffort: ReasoningEffort;
+  /**
    * How full an agent's context may get before the engine compacts it between
    * phases, as a fraction of the model's window.
    */

@@ -17,6 +17,7 @@ import { useAgentModels } from '../hooks/useAgentModels.js';
 import { useSmithChat } from '../hooks/useSmithChat.js';
 import { SMITH_NO_PROVIDER_COPY } from '../view-models/smith-copy.js';
 import ModelPicker from '../components/common/ModelPicker.js';
+import ReasoningEffortPicker from '../components/common/ReasoningEffortPicker.js';
 import SmithProposalCard, { type SmithNavTarget } from '../components/smith/SmithProposalCard.js';
 import SmithScopePicker from '../components/smith/SmithScopePicker.js';
 import SmithTranscript from '../components/smith/SmithTranscript.js';
@@ -35,13 +36,19 @@ export default function SmithScreen({
   const { projects, smithProjectId } = useApp();
   const smithProject = projects.find((project) => project.id === smithProjectId) ?? null;
   const scopeId = smithProjectId ?? undefined;
-  const { state, send, cancel, newChat, setModel } = useSmithChat(scopeId);
+  const { state, send, cancel, newChat, setModel, setReasoningEffort } = useSmithChat(scopeId);
   const { models, refresh: refreshModels } = useAgentModels();
   const [draft, setDraft] = useState('');
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const running = state?.running ?? false;
   const transcript = useMemo(() => state?.transcript ?? [], [state?.transcript]);
+  // The effort options belong to the model actually running, so the levels on
+  // offer follow a header model switch rather than the stored default.
+  const activeModelInfo = useMemo(
+    () => models.find((model) => model.id === state?.activeModel) ?? null,
+    [models, state?.activeModel],
+  );
 
   const submit = (): void => {
     const text = draft.trim();
@@ -75,6 +82,14 @@ export default function SmithScreen({
               emptyHint={SMITH_NO_PROVIDER_COPY}
               onChange={(v) => void setModel(v)}
               onRefresh={() => void refreshModels()}
+            />
+          </div>
+          <div className={styles.effortPicker}>
+            <ReasoningEffortPicker
+              value={state?.reasoningEffort ?? 'medium'}
+              model={activeModelInfo}
+              onChange={(effort) => void setReasoningEffort(effort)}
+              data-testid="smith-effort"
             />
           </div>
           <Button

@@ -118,6 +118,45 @@ describe('smithModel', () => {
   });
 });
 
+describe('smithReasoningEffort', () => {
+  it('defaults to medium on a fresh install', () => {
+    expect(defaultSettings().smithReasoningEffort).toBe('medium');
+  });
+
+  it('reads medium when the field is missing — an install predating the setting', () => {
+    const stored = { ...defaultSettings() } as Record<string, unknown>;
+    delete stored.smithReasoningEffort;
+    expect(migrate(stored).smithReasoningEffort).toBe('medium');
+    expect(seed(stored).get().smithReasoningEffort).toBe('medium');
+  });
+
+  it('repairs a stored value outside the known levels', () => {
+    expect(
+      migrate({ ...defaultSettings(), smithReasoningEffort: 'ludicrous' as never })
+        .smithReasoningEffort,
+    ).toBe('medium');
+    expect(
+      migrate({ ...defaultSettings(), smithReasoningEffort: 3 as never }).smithReasoningEffort,
+    ).toBe('medium');
+  });
+
+  it('keeps every known level, including the two only some models offer', () => {
+    for (const effort of ['off', 'low', 'medium', 'high', 'xhigh', 'max'] as const) {
+      expect(
+        migrate({ ...defaultSettings(), smithReasoningEffort: effort }).smithReasoningEffort,
+      ).toBe(effort);
+    }
+  });
+
+  it('persists a level via patch and refuses one it does not know', () => {
+    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
+    expect(store.patch({ smithReasoningEffort: 'max' })).toMatchObject({ ok: true });
+    expect(store.get().smithReasoningEffort).toBe('max');
+    expect(store.patch({ smithReasoningEffort: 'turbo' as never }).ok).toBe(false);
+    expect(store.get().smithReasoningEffort).toBe('max');
+  });
+});
+
 describe('the compaction threshold', () => {
   it('defaults to 0.8 on a fresh install', () => {
     expect(defaultSettings().compactionThreshold).toBe(0.8);

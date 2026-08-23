@@ -354,7 +354,8 @@ beforeEach(() => {
       id: 'claude-sonnet-4',
       name: 'Claude Sonnet 4',
       contextWindow: 200_000,
-      thinkingLevelMap: { off: null, low: 1, medium: 2, high: 3 },
+      reasoning: true,
+      thinkingLevelMap: { off: null },
     },
     { provider: 'openai', id: 'gpt-5', name: 'GPT-5', contextWindow: 400_000, reasoning: true },
   ];
@@ -568,7 +569,7 @@ describe('choosing a model', () => {
       'anthropic/claude-sonnet-4',
       'openai/gpt-5',
     ]);
-    // Thinking levels come from the model's own map when it has one.
+    // A map subtracts the levels it nulls out; the rest stay available.
     expect(h.transport.availableModels[0]!.supportedReasoningEfforts).toEqual([
       'low',
       'medium',
