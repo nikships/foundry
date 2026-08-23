@@ -20,6 +20,7 @@ import { EnvelopeStore } from './store/envelopes.js';
 import { RunRegistry } from './engine/registry.js';
 import { createDetections, type DetectStart } from './engine/detect-session.js';
 import { createSetups, type SetupStart } from './engine/setup-session.js';
+import { runDetail } from './engine/operations.js';
 import { ReadinessSessions } from './readiness/sessions.js';
 import type { PanelRegistry } from './session/index.js';
 import { piOneShots } from './pi/pi-oneshot.js';
@@ -185,6 +186,12 @@ export class AppContext {
                 // The factory runs before the session exists; by the first
                 // tool call `chat` is assigned, and a session always is.
                 emit: (artifact) => chat?.absorbArtifact(artifact),
+                runLookup: (projectId, runId) => {
+                  const project = this.projects.get(projectId);
+                  if (!project) return null;
+                  const tracer = this.registry.tracerFor(project);
+                  return runDetail(tracer, runId, this.registry.isLive(runId));
+                },
               }),
             ];
           },

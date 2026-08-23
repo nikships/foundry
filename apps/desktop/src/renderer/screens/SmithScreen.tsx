@@ -32,6 +32,7 @@ export default function SmithScreen({
   screenContext,
   onCompleted,
   onOpenReceiptLink,
+  onOpenInspector,
 }: {
   /** What the operator was looking at before opening Smith, sent with each message. */
   screenContext: SmithScreenContext;
@@ -39,6 +40,7 @@ export default function SmithScreen({
   onCompleted: (target?: SmithNavTarget) => void | Promise<void>;
   /** Opens what a settled action affected, from its receipt card. */
   onOpenReceiptLink?: (link: SmithReceiptLink) => void;
+  onOpenInspector?: (runId: string) => void;
 }): React.JSX.Element {
   const { projects, smithProjectId } = useApp();
   const smithProject = projects.find((project) => project.id === smithProjectId) ?? null;
@@ -153,6 +155,7 @@ export default function SmithScreen({
       <SmithTranscript
         entries={transcript}
         running={running}
+        onOpenInspector={onOpenInspector}
         {...(onOpenReceiptLink ? { onOpenReceiptLink } : {})}
         emptyState={
           <div className={styles.emptyState}>

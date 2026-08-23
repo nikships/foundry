@@ -64,6 +64,7 @@ export default function SmithBubble({
   onExpand,
   onCompleted,
   onOpenReceiptLink,
+  onOpenInspector,
 }: {
   /** What the operator is looking at right now, sent with each message. */
   screenContext: SmithScreenContext;
@@ -73,6 +74,7 @@ export default function SmithBubble({
   onCompleted: (target?: SmithNavTarget) => void | Promise<void>;
   /** Opens what a settled action affected, from its receipt card. */
   onOpenReceiptLink?: (link: SmithReceiptLink) => void;
+  onOpenInspector?: (runId: string) => void;
 }): React.JSX.Element {
   const { projects, smithProjectId } = useApp();
   const smithProject = projects.find((project) => project.id === smithProjectId) ?? null;
@@ -211,6 +213,7 @@ export default function SmithBubble({
             entries={transcript}
             running={running}
             compact
+            onOpenInspector={onOpenInspector}
             {...(onOpenReceiptLink
               ? {
                   // Following a link navigates the app behind the popover, so

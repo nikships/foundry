@@ -13,6 +13,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import type { RunDetail } from '@shared/ipc-contract.js';
 import {
   SMITH_ARTIFACT_VERSION,
   type AgentDef,
@@ -37,6 +38,8 @@ import {
   type PullRequest,
   type SmithArtifact,
   type SmithPresentableArtifactKind,
+  type SmithRunSummaryArtifact,
+  type SmithRunSummaryPhase,
   type ValidationIssue,
 } from '@shared/types.js';
 import { defineTool, type ToolDefinition } from '../pi/tool-definition.js';
@@ -45,7 +48,7 @@ import { validate as validatePipeline } from '../store/pipelines.js';
 import { validate as validateEnvelope } from '../store/envelopes.js';
 import { changedPaths, diffStat } from '../engine/git.js';
 import type { SmithEntityStores } from './entity-tools.js';
-import { field, json, resolveProjectId } from './tool-helpers.js';
+import { field, json, resolveProjectId, stringField } from './tool-helpers.js';
 
 export const SMITH_PRESENT_TOOL_NAME = 'smith_present';
 
@@ -59,6 +62,7 @@ const ARTIFACT_KINDS = [
   'agent_design',
   'envelope_design',
   'checklist',
+  'run_summary',
   'entity_comparison',
   'change_receipt',
   'project_card',
@@ -104,6 +108,8 @@ export interface SmithPresentToolDeps {
   projectId: () => string | undefined;
   /** Hands the finished artifact to the chat session's transcript. */
   emit: (artifact: SmithArtifact) => void;
+  /** Authoritative run detail lookup from trace, used to derive run_summary snapshots. */
+  runLookup?: (projectId: string, runId: string) => RunDetail | null;
 }
 
 function parseArtifactKind(raw: unknown): SmithPresentableArtifactKind | null {
@@ -892,7 +898,103 @@ function buildArtifact(
       ...(extra?.targetProjectId ? { targetProjectId: extra.targetProjectId } : {}),
     };
   }
-  return { ...base, kind, pipeline: spec as PipelineDef };
+  return { ...base, kind: 'pipeline_design', pipeline: spec as PipelineDef };
+}
+
+function buildRunSummaryArtifact(
+  detail: RunDetail,
+  base: Omit<
+    SmithRunSummaryArtifact,
+    | 'kind'
+    | 'runId'
+    | 'pipelineId'
+    | 'pipelineName'
+    | 'request'
+    | 'status'
+    | 'startedAt'
+    | 'endedAt'
+    | 'durationMs'
+    | 'totalTokens'
+    | 'isolation'
+    | 'worktreePath'
+    | 'branch'
+    | 'baseRef'
+    | 'outcomeDetail'
+    | 'activePhase'
+    | 'failedPhase'
+    | 'phases'
+    | 'prNumber'
+    | 'prUrl'
+    | 'issueNumber'
+    | 'issueUrl'
+    | 'live'
+  >,
+): SmithRunSummaryArtifact {
+  const run = detail.run!;
+  const startedTime = run.startedAt ? new Date(run.startedAt).getTime() : 0;
+  const endedTime = run.endedAt ? new Date(run.endedAt).getTime() : 0;
+  const durationMs =
+    startedTime > 0 && endedTime > 0
+      ? Math.max(0, endedTime - startedTime)
+      : startedTime > 0
+        ? Math.max(0, Date.now() - startedTime)
+        : undefined;
+
+  const phases: SmithRunSummaryPhase[] = detail.phases.map((p) => {
+    const pStart = p.startedAt ? new Date(p.startedAt).getTime() : 0;
+    const pEnd = p.endedAt ? new Date(p.endedAt).getTime() : 0;
+    const pDuration =
+      pStart > 0 && pEnd > 0
+        ? Math.max(0, pEnd - pStart)
+        : pStart > 0
+          ? Math.max(0, Date.now() - pStart)
+          : undefined;
+    const env = detail.envelopes.find((e) => e.phaseId === p.phaseId);
+    const envSummary = typeof env?.payload?.summary === 'string' ? env.payload.summary : null;
+
+    return {
+      phaseId: p.phaseId,
+      name: p.name,
+      kind: p.kind,
+      status: p.status,
+      owner: p.owner || undefined,
+      startedAt: p.startedAt,
+      endedAt: p.endedAt,
+      durationMs: pDuration,
+      error: p.error,
+      envelopeSummary: envSummary,
+    };
+  });
+
+  const activePhase = phases.find((p) => p.status === 'running')?.name ?? null;
+  const failedPhase = phases.find((p) => p.status === 'fail')?.name ?? null;
+
+  return {
+    ...base,
+    kind: 'run_summary',
+    runId: run.runId,
+    pipelineId: run.pipelineId,
+    pipelineName: run.pipelineName,
+    request: run.request,
+    status: run.status,
+    startedAt: run.startedAt,
+    endedAt: run.endedAt,
+    durationMs,
+    totalTokens: run.totalTokens,
+    isolation: run.worktreePath !== null,
+    worktreePath: run.worktreePath,
+    branch: run.branch,
+    baseRef: run.baseRef,
+    outcomeDetail: run.outcomeDetail,
+    activePhase,
+    failedPhase,
+    phases,
+    prNumber: run.prNumber,
+    prUrl: run.prUrl,
+    issueNumber: run.issueNumber,
+    issueUrl: run.issueUrl,
+    live: detail.live,
+  };
 }
 
 export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
@@ -900,8 +1002,9 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
     name: SMITH_PRESENT_TOOL_NAME,
     label: 'Smith present',
     description:
-      'Show the operator a rich inline design, checklist report, entity comparison, change receipt, project card, or pull request card in the chat. Use it before ' +
+      'Show the operator a rich inline design, checklist report, run summary, entity comparison, change receipt, project card, or pull request card in the chat. Use it before ' +
       'proposing a non-trivial pipeline, agent, or envelope, to compare a proposed edit against the stored definition, ' +
+      'for checklist/readiness/doctor reports (checklist), for run summaries (run_summary) when reporting on run status, progress, or outcomes, ' +
       'to record a change/command receipt after direct checkout work, to show project state/divergence/health, or to present a PR preview/result: ' +
       'the card renders structured definitions and receipts far better than prose or JSON. It is ' +
       'presentation only — it saves nothing, needs no approval, and is not evidence any action ' +
@@ -914,7 +1017,7 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
           type: 'string',
           enum: [...ARTIFACT_KINDS],
           description:
-            'Which design, checklist, comparison, change receipt, project card, or PR card to show.',
+            'Which design, checklist, run summary, comparison, change receipt, project card, or PR card to show.',
         },
         entityKind: {
           type: 'string',
@@ -930,35 +1033,91 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
         spec: {
           type: 'object',
           description:
-            'The full entity JSON, checklist definition, comparison edit, change receipt, project card, or PR card definition.',
+            'The full entity JSON, checklist definition, comparison edit, change receipt, project card, PR card definition, or run_summary spec object.',
+        },
+        runId: {
+          type: 'string',
+          description: 'The run ID to summarize (for run_summary artifacts).',
         },
         rationale: {
           type: 'string',
-          description: 'Optional short design rationale or tradeoffs, shown on the card.',
+          description: 'Optional short design rationale, context, or notes, shown on the card.',
         },
         projectId: {
           type: 'string',
-          description: 'Optional project whose roster/commands the design is validated against.',
+          description: 'Optional project scope.',
         },
       },
-      required: ['kind', 'spec'],
+      required: ['kind'],
       additionalProperties: false,
     },
     execute: (_id, params) => {
       const kind = parseArtifactKind(field(params, 'kind'));
       if (!kind) return Promise.resolve(json({ ok: false, error: 'unknown artifact kind' }));
-      const spec = field(params, 'spec');
-      if (spec == null || typeof spec !== 'object' || Array.isArray(spec)) {
-        return Promise.resolve(json({ ok: false, error: 'present needs a spec object' }));
-      }
-      const scope = resolveProjectId(field(params, 'projectId'), deps.projectId());
-      if (!scope.ok) return Promise.resolve(json(scope));
 
-      const secretPath = findSecretKey(spec);
+      const secretPath = findSecretKey(params);
       if (secretPath) {
         return Promise.resolve(
           json({ ok: false, error: `spec must not carry a credential field (${secretPath})` }),
         );
+      }
+
+      const rawRationale = field(params, 'rationale');
+      const rationale =
+        typeof rawRationale === 'string' && rawRationale.trim()
+          ? rawRationale.slice(0, MAX_RATIONALE)
+          : undefined;
+
+      const scope = resolveProjectId(field(params, 'projectId'), deps.projectId());
+      if (!scope.ok) return Promise.resolve(json(scope));
+
+      if (kind === 'run_summary') {
+        const spec = field(params, 'spec');
+        const runId =
+          stringField(params, 'runId') ||
+          (spec && typeof spec === 'object' && !Array.isArray(spec)
+            ? stringField(spec, 'runId')
+            : null);
+        if (!runId) return Promise.resolve(json({ ok: false, error: 'run_summary needs a runId' }));
+
+        let detail: RunDetail | null = null;
+        let targetProjectId = scope.projectId;
+
+        if (scope.projectId && deps.runLookup) {
+          detail = deps.runLookup(scope.projectId, runId);
+        } else if (!scope.projectId && deps.runLookup) {
+          for (const project of deps.stores.projects.list()) {
+            const d = deps.runLookup(project.id, runId);
+            if (d && d.run) {
+              detail = d;
+              targetProjectId = project.id;
+              break;
+            }
+          }
+        }
+
+        if (!detail || !detail.run) {
+          return Promise.resolve(json({ ok: false, error: `run not found: ${runId}` }));
+        }
+
+        const sessionProject = deps.projectId();
+        const artifact = buildRunSummaryArtifact(detail, {
+          id: randomUUID(),
+          version: SMITH_ARTIFACT_VERSION,
+          createdAt: Date.now(),
+          ...(targetProjectId || sessionProject
+            ? { projectId: targetProjectId ?? sessionProject }
+            : {}),
+          ...(rationale ? { rationale } : {}),
+          warnings: [],
+        });
+        deps.emit(artifact);
+        return Promise.resolve(json({ ok: true, artifactId: artifact.id }));
+      }
+
+      const spec = field(params, 'spec');
+      if (spec == null || typeof spec !== 'object' || Array.isArray(spec)) {
+        return Promise.resolve(json({ ok: false, error: 'present needs a spec object' }));
       }
 
       let serialized: string;
@@ -1040,12 +1199,6 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
       const issues = validateSpec(deps.stores, kind, spec, scope.projectId, entityKind);
       const errors = issues.filter((issue) => issue.level === 'error');
       if (errors.length) return Promise.resolve(json({ ok: false, validation: errors }));
-
-      const rawRationale = field(params, 'rationale');
-      const rationale =
-        typeof rawRationale === 'string' && rawRationale.trim()
-          ? rawRationale.slice(0, MAX_RATIONALE)
-          : undefined;
 
       const sessionProject = deps.projectId();
       const targetProject = scope.projectId;

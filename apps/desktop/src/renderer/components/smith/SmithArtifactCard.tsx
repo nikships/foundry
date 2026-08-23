@@ -22,17 +22,25 @@ import { ChecklistDesign } from './SmithChecklistDesign.js';
 import { EntityComparisonDesign } from './SmithEntityComparisonDesign.js';
 import { ProjectCardDesign } from './SmithProjectCardDesign.js';
 import { PrCardDesign } from './SmithPrCardDesign.js';
-import { AgentDesign, EnvelopeDesign, PipelineDesign, ViewJson } from './SmithEntityDesign.js';
+import {
+  AgentDesign,
+  EnvelopeDesign,
+  PipelineDesign,
+  RunSummaryDesign,
+  ViewJson,
+} from './SmithEntityDesign.js';
 import styles from './SmithArtifactCard.module.css';
 
 function ArtifactBody({
   artifact,
   compact,
   onOpenReceiptLink,
+  onOpenInspector,
 }: {
   artifact: SmithArtifact;
   compact?: boolean;
   onOpenReceiptLink?: (link: SmithReceiptLink) => void;
+  onOpenInspector?: (runId: string) => void;
 }): React.JSX.Element {
   if (artifact.kind === 'pipeline_design') {
     return <PipelineDesign pipeline={artifact.pipeline} compact={compact} />;
@@ -45,6 +53,11 @@ function ArtifactBody({
   }
   if (artifact.kind === 'checklist') {
     return <ChecklistDesign checklist={artifact.checklist} compact={compact} />;
+  }
+  if (artifact.kind === 'run_summary') {
+    return (
+      <RunSummaryDesign artifact={artifact} compact={compact} onOpenInspector={onOpenInspector} />
+    );
   }
   if (artifact.kind === 'entity_comparison') {
     return <EntityComparisonDesign artifact={artifact} compact={compact} />;
@@ -73,6 +86,7 @@ function auditValue(artifact: SmithArtifact): unknown {
   if (artifact.kind === 'agent_design') return artifact.agent;
   if (artifact.kind === 'envelope_design') return artifact.envelope;
   if (artifact.kind === 'checklist') return artifact.checklist;
+  if (artifact.kind === 'run_summary') return artifact;
   if (artifact.kind === 'change_receipt' || artifact.kind === 'action_receipt') {
     return artifact.receipt;
   }
@@ -85,12 +99,14 @@ export default function SmithArtifactCard({
   artifact,
   compact,
   onOpenReceiptLink,
+  onOpenInspector,
 }: {
   artifact: SmithArtifact;
   /** Tighter layout for the titlebar bubble; same data, no overflow. */
   compact?: boolean;
   /** Follows a receipt's link. Absent means the receipt shows it as plain text. */
   onOpenReceiptLink?: (link: SmithReceiptLink) => void;
+  onOpenInspector?: (runId: string) => void;
 }): React.JSX.Element {
   if (!isRenderableArtifact(artifact)) {
     return (
@@ -118,6 +134,7 @@ export default function SmithArtifactCard({
         artifact={artifact}
         compact={compact}
         {...(onOpenReceiptLink ? { onOpenReceiptLink } : {})}
+        {...(onOpenInspector ? { onOpenInspector } : {})}
       />
       {artifact.warnings.length > 0 && (
         <ul className={styles.warnings}>

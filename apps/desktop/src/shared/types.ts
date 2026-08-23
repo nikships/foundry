@@ -849,6 +849,7 @@ export type SmithArtifactKind =
   | 'agent_design'
   | 'envelope_design'
   | 'checklist'
+  | 'run_summary'
   | 'entity_comparison'
   | 'change_receipt'
   | 'project_card'
@@ -919,6 +920,47 @@ export interface ChecklistDef {
 export interface SmithChecklistArtifact extends SmithArtifactBase {
   kind: 'checklist';
   checklist: ChecklistDef;
+}
+
+/** A lightweight snapshot of one phase in a run's mini waterfall. */
+export interface SmithRunSummaryPhase {
+  phaseId?: string;
+  name: string;
+  kind: PhaseKind;
+  status: PhaseStatus;
+  owner?: string;
+  startedAt?: string | null;
+  endedAt?: string | null;
+  durationMs?: number;
+  error?: string | null;
+  envelopeSummary?: string | null;
+}
+
+/** A read-only snapshot of run progress and outcome: pipeline, phases, duration, outcome. */
+export interface SmithRunSummaryArtifact extends SmithArtifactBase {
+  kind: 'run_summary';
+  runId: string;
+  pipelineId: string;
+  pipelineName: string;
+  request: string;
+  status: RunStatus;
+  startedAt: string;
+  endedAt?: string | null;
+  durationMs?: number;
+  totalTokens?: number;
+  isolation?: boolean;
+  worktreePath?: string | null;
+  branch?: string | null;
+  baseRef?: string | null;
+  outcomeDetail?: string | null;
+  activePhase?: string | null;
+  failedPhase?: string | null;
+  phases: SmithRunSummaryPhase[];
+  prNumber?: number | null;
+  prUrl?: string | null;
+  issueNumber?: number | null;
+  issueUrl?: string | null;
+  live?: boolean;
 }
 
 export type EntityComparisonKind = 'agent' | 'pipeline' | 'envelope';
@@ -1108,6 +1150,7 @@ export type SmithArtifact =
   | SmithAgentDesignArtifact
   | SmithEnvelopeDesignArtifact
   | SmithChecklistArtifact
+  | SmithRunSummaryArtifact
   | SmithEntityComparisonArtifact
   | SmithChangeReceiptArtifact
   | SmithProjectCardArtifact
