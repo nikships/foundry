@@ -89,19 +89,19 @@ Foundry keeps no model allowlist of its own. A model id is an opaque `provider/m
 
 **Cast each role for what that model is actually good at.** A run might look like this:
 
-| Phase             | Cast                                                                |
-| ----------------- | ------------------------------------------------------------------- |
-| **refine → plan** | **Claude** — creative reach, turns a vague ask into a real approach |
-| **build**         | **GPT** — mechanical precision and thoroughness, follows the plan   |
-| **review**        | **Gemini** — broad world knowledge, a genuine second opinion        |
+| Phase             | Cast                                                                                       |
+| ----------------- | ------------------------------------------------------------------------------------------ |
+| **refine → plan** | **Claude Opus 5** — creative reach, turns a vague ask into an approach worth building      |
+| **build**         | **GPT-5.6 Sol** — mechanical precision and thoroughness, executes the plan as written      |
+| **review**        | **Gemini 3.1 Pro** — broad world knowledge, a second opinion from outside the build's head |
 
-Then swap any seat. Put **Kimi K2** on the build, **GLM** or **DeepSeek** on the review, **Qwen** on the docs — Chinese open-weight models are first-class here, whether you reach them through a provider or run them yourself. Nobody's roster is hardcoded, including this one.
+Then swap any seat. Put **Kimi K3** on a frontend build, **GLM-5.2** or **DeepSeek V4** on the review, **Qwen3-Coder-Next** on the docs — Chinese open-weight models are first-class here, whether you reach them through a hosted API or run the weights yourself. Nobody's roster is hardcoded, including this one.
 
 **Bring whatever you already pay for.**
 
 - **Subscriptions** — sign in to Claude, ChatGPT (Codex), Gemini, Kimi, or Grok through the built-in Bridge, which turns the subscription you already have into a local endpoint. No per-token cost. Let the big labs keep subsidizing your inference while you keep the freedom to walk: your process lives here, not in their walled garden, and the day one of them raises the price or nerfs a model, you change a dropdown instead of rebuilding your workflow.
 - **Direct API keys** — Anthropic, OpenAI, Google, Vertex, Bedrock, Azure, OpenRouter, Groq, Cerebras, Fireworks, Together, DeepSeek, Mistral, MiniMax, Moonshot, NVIDIA, xAI, Z.ai, Baseten, Hugging Face, Cloudflare and more. Keys are held in the runtime's credential store on your Mac.
-- **Local and self-hosted** — a hand-added OpenAI-compatible endpoint in the runtime's model file survives every regeneration, so your own inference stays in the picker.
+- **Local and self-hosted** — a hand-added OpenAI-compatible endpoint in the runtime's model file survives every regeneration, so your own inference stays in the picker. An open coder that fits in unified memory can hold a seat next to a frontier model in the same run.
 
 **Failover is automatic and mid-turn.** When a model exhausts its retries, the run continues on the next reachable model in catalog order, keeping the conversation and tool results intact and giving the fallback its own retry budget. A provider going down degrades a run's speed, not its outcome.
 
