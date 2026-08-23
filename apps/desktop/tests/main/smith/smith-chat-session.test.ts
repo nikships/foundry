@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../helpers/tmp.js';
 import { ScriptedAgent, type ScriptedAsk } from '../../helpers/scripted-transport.js';
 import { defineTool } from '../../../src/main/pi/tool-definition.js';
+import { ModelNotChosen } from '../../../src/main/pi/transport.js';
 import {
   SmithChatSession,
   type SmithChatSessionDeps,
@@ -530,6 +531,31 @@ describe('renderer snapshots', () => {
     expect(changes.at(-1)?.transcript[0]?.text).toBe('hello');
     expect(warnings).toEqual(['fell back to inherit']);
     expect(session.snapshot().transcript.some((row) => row.text.includes('fell back'))).toBe(true);
+  });
+
+  it('surfaces the pick-a-model refusal as itself, not as a session crash', async () => {
+    const h = harness({});
+    const session = h.remake({
+      transport: (req: SmithTransportRequest) => {
+        const inner = h.scripted.transport({
+          agent: smithAsAgent,
+          cwd: req.cwd,
+          runId: 'smith-chat',
+          onPermission: (ask) => req.onPermission(ask),
+          onEvent: req.onEvent,
+          onModelWarning: req.onModelWarning,
+          phaseId: () => null,
+        });
+        inner.start = () =>
+          Promise.reject(new ModelNotChosen('unset', 'No model is selected. Choose one.'));
+        return inner;
+      },
+    });
+
+    await expect(session.send('hello')).rejects.toBeInstanceOf(ModelNotChosen);
+    // Wrapped in "smith chat session start failed: …" the actionable sentence
+    // would be buried in noise the operator can do nothing with.
+    expect(session.snapshot().error).toBe('No model is selected. Choose one.');
   });
 });
 

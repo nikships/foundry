@@ -126,6 +126,24 @@ export type TransportEvent =
   | { type: 'usage'; usage: TurnUsage };
 
 /**
+ * A transport was asked to open without a usable model choice.
+ *
+ * Lives on the neutral seam so a caller can recognise the refusal without
+ * importing a vendor-bound transport module. Thrown by `start()`; a transport
+ * that is free to substitute a model does not throw it at all.
+ */
+export class ModelNotChosen extends Error {
+  constructor(
+    /** `unset`: nothing picked yet. `unavailable`: the pick is not reachable. */
+    readonly reason: 'unset' | 'unavailable',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ModelNotChosen';
+  }
+}
+
+/**
  * The lifecycle `AgentSession` drives. Every method is allowed to answer `null`
  * for "this transport cannot tell you" — a diagnostic is never worth a failed
  * run, and the engine's guards are post-hoc and code-owned either way.

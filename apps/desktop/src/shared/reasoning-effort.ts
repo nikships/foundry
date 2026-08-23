@@ -17,10 +17,11 @@ import type { ReasoningEffort } from './types.js';
  *
  * A non-empty readonly tuple rather than an array, so `z.enum()` can be built
  * from it: the store's schemas derive from this one declaration instead of
- * repeating the literals, and a seventh level cannot be half-added.
+ * repeating the literals, and a new level cannot be half-added.
  */
 export const REASONING_EFFORTS = [
   'off',
+  'minimal',
   'low',
   'medium',
   'high',
@@ -36,6 +37,26 @@ export interface ReasoningCapableModel {
 
 export function isReasoningEffort(value: unknown): value is ReasoningEffort {
   return typeof value === 'string' && REASONING_EFFORTS.includes(value as ReasoningEffort);
+}
+
+/**
+ * The catalog entry an effort picker should filter by.
+ *
+ * Walks `chosen` then `fallback`, skipping `inherit` and ids the catalog does
+ * not currently offer. Null means the picker has nothing to filter against
+ * and offers every known level.
+ */
+export function modelForEffortPicker<T extends { id: string }>(
+  chosen: string | null | undefined,
+  models: readonly T[],
+  fallback?: string | null,
+): T | null {
+  for (const id of [chosen, fallback]) {
+    if (!id || id === 'inherit') continue;
+    const match = models.find((model) => model.id === id);
+    if (match) return match;
+  }
+  return null;
 }
 
 /**

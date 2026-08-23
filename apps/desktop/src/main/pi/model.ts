@@ -16,11 +16,17 @@ import type {
   AgentSession as PiAgentSession,
   getLastAssistantUsage,
 } from '@earendil-works/pi-coding-agent';
-import { normalizeReasoningEffort } from '@shared/reasoning-effort.js';
+import { MODEL_UNSET_MESSAGE, modelUnavailableMessage } from '@shared/model-choice.js';
+import { REASONING_EFFORTS, normalizeReasoningEffort } from '@shared/reasoning-effort.js';
 import type { ReasoningEffort } from '@shared/types.js';
 import type { TransportModel } from './transport.js';
 
-/** A roster entry may decline to pick a model and take this install's default. */
+/**
+ * A roster entry may decline to pick a model and take this install's default.
+ *
+ * For Smith this sentinel means "nothing chosen yet" rather than "choose for
+ * me": `requireModel` refuses it instead of letting the runtime pick.
+ */
 export const INHERIT_MODEL = 'inherit';
 
 export type PiModel = NonNullable<PiAgentSession['model']>;
@@ -37,10 +43,17 @@ export function thinkingLevelFor(effort: string): PiThinkingLevel {
  *
  * `thinkingLevelMap` is **tristate, not an allowlist** (`references/models.md`,
  * "Thinking Level Map"): a string means supported, `null` means unsupported,
- * and an **omitted** key means the standard levels through `high` fall back to
- * the provider's default mapping while `xhigh` / `max` are unsupported. Maps
- * are routinely partial — `{"max": "max"}` is a model that adds `max` on top of
- * the standard four, not one that offers `max` alone.
+ * and an **omitted** key means `off` / `low` / `medium` / `high` fall back to
+ * the provider's default mapping, while `minimal` / `xhigh` / `max` are
+ * unsupported unless named. Maps are routinely partial — `{"max": "max"}` is a
+ * model that adds `max` on top of the standard four, not one that offers `max`
+ * alone.
+ *
+ * `minimal` is opt-in even though pi lists it among the standard levels: most
+ * providers reject it, and offering it from an omitted key would put a value
+ * in the picker that OpenAI and Claude refuse. A Bridge model that supports it
+ * names it in CLIProxyAPI's `thinking.levels`, which becomes a string entry
+ * here.
  *
  * Reading the map as an allowlist is therefore wrong in the expensive
  * direction: of the 1004 reasoning models in the pinned catalog, 400 carry a
@@ -50,19 +63,19 @@ export function thinkingLevelFor(effort: string): PiThinkingLevel {
 export function effortsFor(model: Pick<PiModel, 'reasoning' | 'thinkingLevelMap'>): string[] {
   if (!model.reasoning) return ['off'];
   const map = model.thinkingLevelMap as Record<string, unknown> | undefined;
-  const standard = STANDARD_EFFORTS.filter((level) => map?.[level] !== null);
-  const extended = EXTENDED_EFFORTS.filter(
-    (level) => map?.[level] !== null && map?.[level] !== undefined,
-  );
+  const offered = REASONING_EFFORTS.filter((level) => {
+    const mapped = map?.[level];
+    if (mapped === null) return false;
+    if (mapped === undefined && OMITTED_UNSUPPORTED.has(level)) return false;
+    return true;
+  });
   // Every model can decline to think, so a map that nulls out everything still
   // leaves `off` rather than an empty list no picker could render.
-  return [...standard, ...extended].length ? [...standard, ...extended] : ['off'];
+  return offered.length ? [...offered] : ['off'];
 }
 
-/** Available unless explicitly nulled: an omitted key is the provider default. */
-const STANDARD_EFFORTS = ['off', 'low', 'medium', 'high'] as const;
 /** Available only when the map names them: omitted means unsupported. */
-const EXTENDED_EFFORTS = ['xhigh', 'max'] as const;
+const OMITTED_UNSUPPORTED: ReadonlySet<string> = new Set(['minimal', 'xhigh', 'max']);
 
 export function toTransportModel(model: PiModel): TransportModel {
   const levels = effortsFor(model);
@@ -96,6 +109,29 @@ export function clampEffortToModel(
  * model the install cannot reach is a warning rather than a failure: the turn
  * still runs, on something, and the trace says what happened.
  */
+/**
+ * Why a chosen model cannot be used, or ok when it can.
+ *
+ * Callers that must not silently substitute a model use this instead of
+ * `pickModel`. Both answers are refusals rather than fallbacks: running a
+ * different model than the operator picked is the failure being prevented.
+ * The copy comes from the shared module the renderer's gate reads, so the
+ * disabled composer and this refusal always give the same reason.
+ */
+export function requireModel(
+  available: readonly PiModel[],
+  wanted: string,
+): { ok: true } | { ok: false; reason: 'unset' | 'unavailable'; message: string } {
+  if (!wanted || wanted === INHERIT_MODEL) {
+    return { ok: false, reason: 'unset', message: MODEL_UNSET_MESSAGE };
+  }
+  const match = available.some(
+    (model) => `${model.provider}/${model.id}` === wanted || model.id === wanted,
+  );
+  if (match) return { ok: true };
+  return { ok: false, reason: 'unavailable', message: modelUnavailableMessage(wanted) };
+}
+
 export function pickModel(
   available: readonly PiModel[],
   wanted: string,

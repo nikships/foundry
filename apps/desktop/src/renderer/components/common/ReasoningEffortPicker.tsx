@@ -5,6 +5,7 @@ import { Dropdown, type DropdownOption } from '../ui/Dropdown.js';
 
 const LABELS: Record<ReasoningEffort, string> = {
   off: 'Off',
+  minimal: 'Minimal',
   low: 'Low',
   medium: 'Medium',
   high: 'High',

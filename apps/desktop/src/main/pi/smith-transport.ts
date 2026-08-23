@@ -26,6 +26,7 @@ import type { ContextBreakdown, ReasoningEffort } from '@shared/types.js';
 import {
   clampEffortToModel,
   pickModel,
+  requireModel,
   thinkingLevelFor,
   toTransportModel,
   type PiModel,
@@ -35,6 +36,7 @@ import { smithExtension } from './policy-extension.js';
 import { modelRuntime } from './runtime.js';
 import { BUILTIN_TOOLS } from './tools.js';
 import { lastAssistantStop, VendorEventReader } from './vendor-events.js';
+import { ModelNotChosen } from './transport.js';
 import type {
   AgentTransport,
   ContextStats,
@@ -127,6 +129,14 @@ export class SmithPiTransport implements AgentTransport {
     const runtime = await modelRuntime(this.opts.supportDir);
     const available = await runtime.getAvailable();
     this.models = available.map(toTransportModel);
+
+    // Smith refuses rather than substitutes. A run can fall back to another
+    // model and say so in the trace, but a chat is a conversation the operator
+    // is having with a model they named: answering as a different one, or as
+    // whichever the runtime happened to reach first, is not a lesser version
+    // of the request. Refusing keeps the picker's label honest.
+    const required = requireModel(available, this.opts.model);
+    if (!required.ok) throw new ModelNotChosen(required.reason, required.message);
 
     const picked = pickModel(available, this.opts.model);
     this.resolvedModel = picked.model;

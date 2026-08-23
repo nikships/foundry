@@ -10,7 +10,7 @@ export type PhaseStatus = 'queued' | 'running' | 'success' | 'fail' | 'skipped';
 export type RunStatus = 'running' | 'accepted' | 'rejected' | 'failed' | 'killed';
 /** Which agent transport answered for a run. Agent phases run in-process on pi. */
 export type RunMode = 'pi';
-export type ReasoningEffort = 'off' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export type ReasoningEffort = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export type EnvelopeKind =
   'generic' | 'brief' | 'plan' | 'build' | 'scout' | 'review' | 'document' | 'pr' | 'issue';
 

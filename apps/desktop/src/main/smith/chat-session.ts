@@ -36,6 +36,7 @@ import type {
 import { evaluate } from '../pi/policy.js';
 import type { ToolDefinition } from '../pi/tool-definition.js';
 import { foldTranscript } from '../pi/transcript.js';
+import { ModelNotChosen } from '../pi/transport.js';
 import type {
   AgentTransport,
   PermissionAsk,
@@ -396,6 +397,10 @@ export class SmithChatSession {
       await transport.start(this.sessionId);
     } catch (e) {
       await transport.close().catch(() => undefined);
+      // The "pick a model" gate is an instruction to the operator, not a
+      // failure to report. Wrapping it in session-start noise would bury the
+      // one sentence that says what to do about it.
+      if (e instanceof ModelNotChosen) throw e;
       throw new Error(`smith chat session start failed: ${errorMessage(e)}`);
     }
     this.transport = transport;

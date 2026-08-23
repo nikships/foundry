@@ -12,6 +12,9 @@
 
 import { useMemo, useRef, useState } from 'react';
 import type { SmithScreenContext } from '@shared/ipc-contract.js';
+import { modelChoiceBlock } from '@shared/model-choice.js';
+import { modelForEffortPicker } from '@shared/reasoning-effort.js';
+import { SMITH_MODEL_UNSET_LABEL } from '../view-models/smith-chat-view.js';
 import { useApp } from '../stores/app.js';
 import { useAgentModels } from '../hooks/useAgentModels.js';
 import { useSmithChat } from '../hooks/useSmithChat.js';
@@ -43,16 +46,26 @@ export default function SmithScreen({
 
   const running = state?.running ?? false;
   const transcript = useMemo(() => state?.transcript ?? [], [state?.transcript]);
-  // The effort options belong to the model actually running, so the levels on
-  // offer follow a header model switch rather than the stored default.
+  // The effort options belong to the model the header is set to, falling back
+  // to the running session if inherit is still selected there.
   const activeModelInfo = useMemo(
-    () => models.find((model) => model.id === state?.activeModel) ?? null,
-    [models, state?.activeModel],
+    () => modelForEffortPicker(state?.model, models, state?.activeModel),
+    [models, state?.model, state?.activeModel],
+  );
+  // Smith will not answer on a model nobody chose, so the composer is gated on
+  // the same rule main enforces at session open rather than on a second guess.
+  const modelBlocked = useMemo(
+    () =>
+      modelChoiceBlock(
+        state?.model,
+        models.map((model) => model.id),
+      ),
+    [models, state?.model],
   );
 
   const submit = (): void => {
     const text = draft.trim();
-    if (!text || running) return;
+    if (!text || running || modelBlocked) return;
     setDraft('');
     void send(text, screenContext);
     inputRef.current?.focus();
@@ -78,7 +91,7 @@ export default function SmithScreen({
               value={state?.model ?? 'inherit'}
               models={models}
               allowInherit
-              inheritLabel="Default (Settings → Smith)"
+              inheritLabel={SMITH_MODEL_UNSET_LABEL}
               emptyHint={SMITH_NO_PROVIDER_COPY}
               onChange={(v) => void setModel(v)}
               onRefresh={() => void refreshModels()}
@@ -132,6 +145,12 @@ export default function SmithScreen({
         tail={<SmithProposalCard projectId={scopeId} onCompleted={onCompleted} />}
       />
 
+      {modelBlocked && models.length > 0 && (
+        <div className={styles.errorBanner} role="status" data-testid="smith-model-blocked">
+          {modelBlocked}
+        </div>
+      )}
+
       {state?.error && (
         <div className={styles.errorBanner} role="alert">
           {state.error}
@@ -146,12 +165,15 @@ export default function SmithScreen({
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
           placeholder={
-            smithProject
-              ? `Ask Smith anything about ${smithProject.name}…`
-              : 'Ask Smith to manage Foundry across all projects…'
+            modelBlocked
+              ? 'Select a model to start the conversation…'
+              : smithProject
+                ? `Ask Smith anything about ${smithProject.name}…`
+                : 'Ask Smith to manage Foundry across all projects…'
           }
           rows={2}
           aria-label="Message Smith"
+          disabled={!!modelBlocked}
           data-testid="smith-input"
         />
         <div className={styles.composerActions}>
@@ -162,7 +184,8 @@ export default function SmithScreen({
           ) : (
             <Button
               variant="primary"
-              disabled={!draft.trim()}
+              disabled={!draft.trim() || !!modelBlocked}
+              title={modelBlocked ?? undefined}
               onClick={submit}
               data-testid="smith-send"
             >
