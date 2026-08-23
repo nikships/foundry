@@ -16,6 +16,10 @@ import { randomUUID } from 'node:crypto';
 import {
   SMITH_ARTIFACT_VERSION,
   type AgentDef,
+  type ChangeReceiptCommand,
+  type ChangeReceiptDef,
+  type ChangeReceiptStatus,
+  type ChangeReceiptTarget,
   type ChecklistDef,
   type EntityComparisonKind,
   type EnvelopeDef,
@@ -28,6 +32,7 @@ import { defineTool, type ToolDefinition } from '../pi/tool-definition.js';
 import { validate as validateAgent } from '../store/roster.js';
 import { validate as validatePipeline } from '../store/pipelines.js';
 import { validate as validateEnvelope } from '../store/envelopes.js';
+import { changedPaths, diffStat } from '../engine/git.js';
 import type { SmithEntityStores } from './entity-tools.js';
 import { field, json, resolveProjectId } from './tool-helpers.js';
 
@@ -39,6 +44,7 @@ const ARTIFACT_KINDS = [
   'envelope_design',
   'checklist',
   'entity_comparison',
+  'change_receipt',
 ] as const;
 
 const ENTITY_COMPARISON_KINDS = ['agent', 'pipeline', 'envelope'] as const;
@@ -53,6 +59,8 @@ const MAX_RATIONALE = 2_000;
 const MAX_WARNINGS = 20;
 
 const VALID_CHECKLIST_STATUSES = new Set(['pass', 'warn', 'fail', 'info']);
+const VALID_RECEIPT_TARGETS = new Set(['direct_checkout', 'isolated_worktree']);
+const VALID_RECEIPT_STATUSES = new Set(['success', 'failure']);
 
 /**
  * Field names that read as credentials. An artifact is persisted with the
@@ -242,6 +250,187 @@ export function validateChecklist(spec: unknown): ValidationIssue[] {
   return issues;
 }
 
+export function validateChangeReceipt(spec: unknown): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  if (spec == null || typeof spec !== 'object' || Array.isArray(spec)) {
+    return [{ level: 'error', where: 'spec', message: 'change receipt must be an object' }];
+  }
+
+  const raw = spec as Record<string, unknown>;
+
+  if (typeof raw.target !== 'string' || !VALID_RECEIPT_TARGETS.has(raw.target)) {
+    issues.push({
+      level: 'error',
+      where: 'target',
+      message: `invalid target "${String(raw.target)}" (must be direct_checkout or isolated_worktree)`,
+    });
+  }
+
+  if (typeof raw.status !== 'string' || !VALID_RECEIPT_STATUSES.has(raw.status)) {
+    issues.push({
+      level: 'error',
+      where: 'status',
+      message: `invalid status "${String(raw.status)}" (must be success or failure)`,
+    });
+  }
+
+  if (raw.title !== undefined) {
+    if (typeof raw.title !== 'string') {
+      issues.push({ level: 'error', where: 'title', message: 'title must be a string' });
+    } else if (raw.title.length > 200) {
+      issues.push({ level: 'warning', where: 'title', message: 'title exceeds 200 characters' });
+    }
+  }
+
+  if (raw.summary !== undefined) {
+    if (typeof raw.summary !== 'string') {
+      issues.push({ level: 'error', where: 'summary', message: 'summary must be a string' });
+    } else if (raw.summary.length > 500) {
+      issues.push({
+        level: 'warning',
+        where: 'summary',
+        message: 'summary exceeds 500 characters',
+      });
+    }
+  }
+
+  if (raw.filesChanged !== undefined) {
+    if (!Array.isArray(raw.filesChanged)) {
+      issues.push({
+        level: 'error',
+        where: 'filesChanged',
+        message: 'filesChanged must be an array',
+      });
+    } else if (raw.filesChanged.length > 100) {
+      issues.push({
+        level: 'warning',
+        where: 'filesChanged',
+        message: 'filesChanged exceeds 100 items and may be truncated',
+      });
+    } else {
+      for (let i = 0; i < raw.filesChanged.length; i += 1) {
+        const file = raw.filesChanged[i];
+        if (typeof file !== 'string' || !file.trim()) {
+          issues.push({
+            level: 'error',
+            where: `filesChanged[${i}]`,
+            message: 'changed file path must be a non-empty string',
+          });
+        } else if (file.length > 500) {
+          issues.push({
+            level: 'warning',
+            where: `filesChanged[${i}]`,
+            message: 'changed file path exceeds 500 characters',
+          });
+        }
+      }
+    }
+  }
+
+  if (raw.diffstat !== undefined) {
+    if (typeof raw.diffstat !== 'string') {
+      issues.push({ level: 'error', where: 'diffstat', message: 'diffstat must be a string' });
+    } else if (raw.diffstat.length > 4000) {
+      issues.push({
+        level: 'warning',
+        where: 'diffstat',
+        message: 'diffstat exceeds 4000 characters',
+      });
+    }
+  }
+
+  if (raw.command !== undefined) {
+    if (raw.command == null || typeof raw.command !== 'object' || Array.isArray(raw.command)) {
+      issues.push({ level: 'error', where: 'command', message: 'command must be an object' });
+    } else {
+      const cmd = raw.command as Record<string, unknown>;
+      if (typeof cmd.command !== 'string' || !cmd.command.trim()) {
+        issues.push({
+          level: 'error',
+          where: 'command.command',
+          message: 'command text is required',
+        });
+      }
+      if (cmd.exitCode !== null && typeof cmd.exitCode !== 'number') {
+        issues.push({
+          level: 'error',
+          where: 'command.exitCode',
+          message: 'exitCode must be a number or null',
+        });
+      }
+      if (typeof cmd.passed !== 'boolean') {
+        issues.push({
+          level: 'error',
+          where: 'command.passed',
+          message: 'command passed must be a boolean',
+        });
+      }
+      if (cmd.durationMs !== undefined && typeof cmd.durationMs !== 'number') {
+        issues.push({
+          level: 'error',
+          where: 'command.durationMs',
+          message: 'durationMs must be a number',
+        });
+      }
+      if (cmd.timedOut !== undefined && typeof cmd.timedOut !== 'boolean') {
+        issues.push({
+          level: 'error',
+          where: 'command.timedOut',
+          message: 'timedOut must be a boolean',
+        });
+      }
+    }
+  }
+
+  if (raw.outputExcerpt !== undefined) {
+    if (typeof raw.outputExcerpt !== 'string') {
+      issues.push({
+        level: 'error',
+        where: 'outputExcerpt',
+        message: 'outputExcerpt must be a string',
+      });
+    } else if (raw.outputExcerpt.length > 4000) {
+      issues.push({
+        level: 'warning',
+        where: 'outputExcerpt',
+        message: 'outputExcerpt exceeds 4000 characters',
+      });
+    }
+  }
+
+  return issues;
+}
+
+export async function deriveChangeReceiptFromGit(
+  cwd: string,
+  options: {
+    target?: ChangeReceiptTarget;
+    command?: ChangeReceiptCommand;
+    outputExcerpt?: string;
+    title?: string;
+    summary?: string;
+    baseRef?: string;
+  } = {},
+): Promise<ChangeReceiptDef> {
+  const stat = await diffStat(cwd, options.baseRef || 'HEAD');
+  const changed = await changedPaths(cwd);
+  const status: ChangeReceiptStatus = options.command
+    ? options.command.passed
+      ? 'success'
+      : 'failure'
+    : 'success';
+  return {
+    title: options.title,
+    target: options.target ?? 'direct_checkout',
+    status,
+    summary: options.summary,
+    filesChanged: changed,
+    diffstat: stat.trim() || undefined,
+    command: options.command,
+    outputExcerpt: options.outputExcerpt?.slice(0, 4000),
+  };
+}
+
 function validateSpec(
   stores: SmithEntityStores,
   kind: SmithArtifactKind,
@@ -250,6 +439,7 @@ function validateSpec(
   comparisonKind?: EntityComparisonKind,
 ): ValidationIssue[] {
   if (kind === 'checklist') return validateChecklist(spec);
+  if (kind === 'change_receipt') return validateChangeReceipt(spec);
   const targetKind =
     kind === 'entity_comparison'
       ? comparisonKind === 'agent'
@@ -284,6 +474,7 @@ function buildArtifact(
     | 'before'
     | 'after'
     | 'targetProjectId'
+    | 'receipt'
   >,
   extra?: {
     entityKind?: EntityComparisonKind;
@@ -295,6 +486,7 @@ function buildArtifact(
   if (kind === 'agent_design') return { ...base, kind, agent: spec as AgentDef };
   if (kind === 'envelope_design') return { ...base, kind, envelope: spec as EnvelopeDef };
   if (kind === 'checklist') return { ...base, kind, checklist: spec as ChecklistDef };
+  if (kind === 'change_receipt') return { ...base, kind, receipt: spec as ChangeReceiptDef };
   if (kind === 'entity_comparison') {
     return {
       ...base,
@@ -314,10 +506,10 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
     name: SMITH_PRESENT_TOOL_NAME,
     label: 'Smith present',
     description:
-      'Show the operator a rich inline design, checklist report, or entity comparison card in the chat. Use it before ' +
+      'Show the operator a rich inline design, checklist report, entity comparison, or change receipt card in the chat. Use it before ' +
       'proposing a non-trivial pipeline, agent, or envelope, to compare a proposed edit against the stored definition, ' +
-      'or to present a checklist/doctor/readiness/validation report, and whenever the operator asks for a design or comparison: ' +
-      'the card renders structured definitions far better than prose or JSON. It is ' +
+      'to record a change/command receipt after direct checkout work, or to present a checklist/doctor/readiness/validation report: ' +
+      'the card renders structured definitions and receipts far better than prose or JSON. It is ' +
       'presentation only — it saves nothing, needs no approval, and is not evidence any action ' +
       'succeeded. Do not repeat the card content in prose; add only rationale, uncertainty, or ' +
       'a recommendation.',
@@ -327,7 +519,7 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
         kind: {
           type: 'string',
           enum: [...ARTIFACT_KINDS],
-          description: 'Which design, checklist, or entity comparison card to show.',
+          description: 'Which design, checklist, comparison, or change receipt card to show.',
         },
         entityKind: {
           type: 'string',
@@ -343,7 +535,7 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
         spec: {
           type: 'object',
           description:
-            'The full entity JSON (pipeline/agent/envelope), checklist definition, or proposed edit for entity_comparison.',
+            'The full entity JSON, checklist definition, comparison edit, or change receipt definition (target, status, filesChanged, diffstat, command, outputExcerpt).',
         },
         rationale: {
           type: 'string',

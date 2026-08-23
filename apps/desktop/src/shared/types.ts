@@ -845,7 +845,12 @@ export interface ValidationIssue {
  * `renderer/view-models/smith-artifact-view.ts`, and tests for both.
  */
 export type SmithArtifactKind =
-  'pipeline_design' | 'agent_design' | 'envelope_design' | 'checklist' | 'entity_comparison';
+  | 'pipeline_design'
+  | 'agent_design'
+  | 'envelope_design'
+  | 'checklist'
+  | 'entity_comparison'
+  | 'change_receipt';
 
 /** The protocol version this build reads. Unknown versions fail soft in the UI. */
 export const SMITH_ARTIFACT_VERSION = 1;
@@ -921,6 +926,35 @@ export interface SmithEntityComparisonArtifact extends SmithArtifactBase {
   targetProjectId?: string;
 }
 
+export type ChangeReceiptTarget = 'direct_checkout' | 'isolated_worktree';
+export type ChangeReceiptStatus = 'success' | 'failure';
+
+export interface ChangeReceiptCommand {
+  command: string;
+  exitCode: number | null;
+  durationMs?: number;
+  passed: boolean;
+  timedOut?: boolean;
+}
+
+export interface ChangeReceiptDef {
+  title?: string;
+  target: ChangeReceiptTarget;
+  status: ChangeReceiptStatus;
+  summary?: string;
+  filesChanged?: string[];
+  diffstat?: string;
+  command?: ChangeReceiptCommand;
+  /** Bounded command output or diff excerpt shown behind a disclosure. Capped in main. */
+  outputExcerpt?: string;
+}
+
+/** A read-only durable receipt for direct checkout edits or command runs. */
+export interface SmithChangeReceiptArtifact extends SmithArtifactBase {
+  kind: 'change_receipt';
+  receipt: ChangeReceiptDef;
+}
+
 /**
  * One rich inline card in the Smith transcript. Artifacts are presentation
  * only: they perform no writes, never occupy the one-slot proposal queue, and
@@ -932,7 +966,8 @@ export type SmithArtifact =
   | SmithAgentDesignArtifact
   | SmithEnvelopeDesignArtifact
   | SmithChecklistArtifact
-  | SmithEntityComparisonArtifact;
+  | SmithEntityComparisonArtifact
+  | SmithChangeReceiptArtifact;
 
 // ── Smith (the entity-smith's approval gate) ─────────────────────────────────
 

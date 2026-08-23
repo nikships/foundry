@@ -14,6 +14,7 @@ import {
   artifactName,
   isRenderableArtifact,
 } from '../../view-models/smith-artifact-view.js';
+import { ChangeReceiptDesign } from './SmithChangeReceiptDesign.js';
 import { ChecklistDesign } from './SmithChecklistDesign.js';
 import { EntityComparisonDesign } from './SmithEntityComparisonDesign.js';
 import { AgentDesign, EnvelopeDesign, PipelineDesign, ViewJson } from './SmithEntityDesign.js';
@@ -38,7 +39,10 @@ function DesignBody({
   if (artifact.kind === 'checklist') {
     return <ChecklistDesign checklist={artifact.checklist} compact={compact} />;
   }
-  return <EntityComparisonDesign artifact={artifact} compact={compact} />;
+  if (artifact.kind === 'entity_comparison') {
+    return <EntityComparisonDesign artifact={artifact} compact={compact} />;
+  }
+  return <ChangeReceiptDesign receipt={artifact.receipt} compact={compact} />;
 }
 
 export default function SmithArtifactCard({
@@ -92,7 +96,9 @@ export default function SmithArtifactCard({
                 ? artifact.envelope
                 : artifact.kind === 'checklist'
                   ? artifact.checklist
-                  : { before: artifact.before, after: artifact.after }
+                  : artifact.kind === 'entity_comparison'
+                    ? { before: artifact.before, after: artifact.after }
+                    : artifact.receipt
         }
       />
     </section>

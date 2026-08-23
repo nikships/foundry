@@ -11,6 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import type {
   AgentDef,
+  ChangeReceiptDef,
   ChecklistDef,
   EnvelopeDef,
   PipelineDef,
@@ -22,6 +23,7 @@ import {
   MAX_ARTIFACT_JSON,
   findSecretKey,
   smithPresentTool,
+  validateChangeReceipt,
   validateChecklist,
   type SmithPresentToolDeps,
 } from '../../../src/main/smith/present-tools.js';
@@ -87,6 +89,22 @@ const validChecklist: ChecklistDef = {
       fix: 'Commit or stash changes before initiating a pipeline run',
     },
   ],
+};
+
+const validReceipt: ChangeReceiptDef = {
+  title: 'Direct checkout changes',
+  target: 'direct_checkout',
+  status: 'success',
+  summary: 'Modified 2 files and passed tests',
+  filesChanged: ['src/shared/types.ts', 'src/main/smith/present-tools.ts'],
+  diffstat: '2 files changed, 20 insertions(+), 5 deletions(-)',
+  command: {
+    command: 'npm test',
+    exitCode: 0,
+    passed: true,
+    durationMs: 1420,
+  },
+  outputExcerpt: 'Tests: 1540 passed, 1540 total',
 };
 
 function makeStores(
@@ -166,7 +184,7 @@ describe('smith_present', () => {
     expect(artifact.pipeline).not.toBe(validPipeline);
   });
 
-  it('emits agent, envelope, checklist, and entity_comparison artifacts through the same registry', async () => {
+  it('emits agent, envelope, checklist, entity_comparison, and change_receipt artifacts through the same registry', async () => {
     const { deps, emitted } = makeDeps();
     const tool = smithPresentTool(deps);
     expect(await answerOf(tool, { kind: 'agent_design', spec: validAgent })).toMatchObject({
@@ -187,12 +205,80 @@ describe('smith_present', () => {
     ).toMatchObject({
       ok: true,
     });
+    expect(
+      await answerOf(tool, {
+        kind: 'change_receipt',
+        spec: validReceipt,
+      }),
+    ).toMatchObject({
+      ok: true,
+    });
     expect(emitted.map((artifact) => artifact.kind)).toEqual([
       'agent_design',
       'envelope_design',
       'checklist',
       'entity_comparison',
+      'change_receipt',
     ]);
+  });
+
+  it('emits a versioned change_receipt artifact and acknowledges with its id', async () => {
+    const { deps, emitted } = makeDeps();
+    const tool = smithPresentTool(deps);
+    const res = (await answerOf(tool, {
+      kind: 'change_receipt',
+      spec: validReceipt,
+      rationale: 'Ran tests after edit.',
+    })) as { ok: boolean; artifactId: string };
+
+    expect(res.ok).toBe(true);
+    expect(emitted).toHaveLength(1);
+    const artifact = emitted[0]!;
+    expect(res.artifactId).toBe(artifact.id);
+    expect(artifact).toMatchObject({
+      kind: 'change_receipt',
+      version: SMITH_ARTIFACT_VERSION,
+      rationale: 'Ran tests after edit.',
+      warnings: [],
+    });
+    if (artifact.kind !== 'change_receipt') throw new Error('expected change receipt artifact');
+    expect(artifact.receipt).toEqual(validReceipt);
+    expect(() => structuredClone(artifact)).not.toThrow();
+  });
+
+  it('refuses invalid change_receipt specs', async () => {
+    const { deps, emitted } = makeDeps();
+    const tool = smithPresentTool(deps);
+
+    // Invalid target
+    const res1 = (await answerOf(tool, {
+      kind: 'change_receipt',
+      spec: { ...validReceipt, target: 'invalid_target' },
+    })) as { ok: boolean; validation?: unknown[] };
+    expect(res1.ok).toBe(false);
+    expect(res1.validation).toContainEqual(
+      expect.objectContaining({ where: 'target', level: 'error' }),
+    );
+
+    // Invalid status
+    const res2 = (await answerOf(tool, {
+      kind: 'change_receipt',
+      spec: { ...validReceipt, status: 'pending' },
+    })) as { ok: boolean; validation?: unknown[] };
+    expect(res2.ok).toBe(false);
+    expect(res2.validation).toContainEqual(
+      expect.objectContaining({ where: 'status', level: 'error' }),
+    );
+
+    // Invalid command
+    const res3 = (await answerOf(tool, {
+      kind: 'change_receipt',
+      spec: { ...validReceipt, command: { command: '', exitCode: 'zero', passed: 'yes' } },
+    })) as { ok: boolean; validation?: unknown[] };
+    expect(res3.ok).toBe(false);
+    expect(res3.validation?.length).toBeGreaterThan(0);
+
+    expect(emitted).toHaveLength(0);
   });
 
   it('emits a versioned entity_comparison artifact with before fetched from the store and after validated', async () => {
@@ -449,6 +535,40 @@ describe('validateChecklist', () => {
     );
     expect(issues).toContainEqual(
       expect.objectContaining({ level: 'warning', where: 'items[0].fix' }),
+    );
+  });
+});
+
+describe('validateChangeReceipt', () => {
+  it('accepts a valid change receipt without errors', () => {
+    expect(validateChangeReceipt(validReceipt)).toEqual([]);
+  });
+
+  it('flags non-object specs', () => {
+    expect(validateChangeReceipt(null)).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'spec' }),
+    );
+    expect(validateChangeReceipt('invalid')).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'spec' }),
+    );
+  });
+
+  it('flags warnings for oversized fields without failing validation', () => {
+    const oversized: ChangeReceiptDef = {
+      title: 'T'.repeat(250),
+      summary: 'S'.repeat(600),
+      target: 'direct_checkout',
+      status: 'success',
+      diffstat: 'D'.repeat(4500),
+      outputExcerpt: 'O'.repeat(4500),
+    };
+    const issues = validateChangeReceipt(oversized);
+    expect(issues.filter((i) => i.level === 'error')).toEqual([]);
+    expect(issues).toContainEqual(expect.objectContaining({ level: 'warning', where: 'title' }));
+    expect(issues).toContainEqual(expect.objectContaining({ level: 'warning', where: 'summary' }));
+    expect(issues).toContainEqual(expect.objectContaining({ level: 'warning', where: 'diffstat' }));
+    expect(issues).toContainEqual(
+      expect.objectContaining({ level: 'warning', where: 'outputExcerpt' }),
     );
   });
 });
