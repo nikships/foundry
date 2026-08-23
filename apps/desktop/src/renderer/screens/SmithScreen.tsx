@@ -161,7 +161,16 @@ export default function SmithScreen({
             {models.length === 0 && <p className={styles.emptyHint}>{SMITH_NO_PROVIDER_COPY}</p>}
           </div>
         }
-        tail={<SmithProposalCard projectId={scopeId} onCompleted={onCompleted} />}
+        tail={
+          <SmithProposalCard
+            projectId={scopeId}
+            onCompleted={onCompleted}
+            onRequestChanges={(prefill) => {
+              setDraft((prev) => prev || prefill);
+              inputRef.current?.focus();
+            }}
+          />
+        }
       />
 
       {state?.error && (

@@ -27,8 +27,10 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { isReasoningEffort } from '@shared/reasoning-effort.js';
-import type { ReasoningEffort } from '@shared/types.js';
+import { SMITH_ARTIFACT_VERSION } from '@shared/types.js';
+import type { ReasoningEffort, SmithArtifact } from '@shared/types.js';
 import type {
+  SmithChatEntry,
   SmithChatState,
   SmithScreenContext,
   SmithTranscriptEntry,
@@ -148,6 +150,31 @@ function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+/**
+ * One persisted row, restored fail-soft. An artifact from a newer build (or a
+ * corrupt one) becomes a readable note rather than a render error or a lost
+ * chat: the surrounding conversation always survives.
+ */
+function restoreEntry(entry: SmithTranscriptEntry): SmithTranscriptEntry {
+  if (entry.kind !== 'artifact') return { ...entry };
+  const artifact = entry.artifact as SmithArtifact | undefined;
+  if (
+    artifact &&
+    typeof artifact === 'object' &&
+    typeof artifact.kind === 'string' &&
+    artifact.version === SMITH_ARTIFACT_VERSION
+  ) {
+    return { ...entry, artifact: { ...artifact } };
+  }
+  return {
+    id: entry.id,
+    kind: 'note',
+    text: 'An earlier design card could not be restored by this version of Foundry.',
+    source: 'smith',
+    at: entry.at,
+  };
+}
+
 /** The project this scope belongs to, or undefined in the global conversation. */
 function scopeProjectId(scope: SmithScope): string | undefined {
   return scope.kind === 'project' ? scope.projectId : undefined;
@@ -181,14 +208,15 @@ export class SmithChatSession {
     this.customTools = (deps.toolFactories ?? []).flatMap((factory) => factory(ctx));
     this.customToolNames = this.customTools.map((tool) => tool.name);
     this.restoreState();
-    this.absorbTranscript = foldTranscript<SmithTranscriptEntry>({
+    this.absorbTranscript = foldTranscript<SmithChatEntry>({
       push: (row) => this.push({ ...row, source: 'smith' }),
       flush: () => this.emit(),
-      // An operator row separates turns. Only grow the literal last row when
-      // it belongs to Smith, or a new answer would append to the prior turn.
+      // An operator row separates turns, and an artifact card separates text.
+      // Only grow the literal last row when it is Smith's own chat row, or a
+      // new answer would append to the prior turn (or to a card).
       last: () => {
         const last = this.transcript[this.transcript.length - 1];
-        return last?.source === 'smith' ? last : null;
+        return last?.source === 'smith' && last.kind !== 'artifact' ? last : null;
       },
       textCap: MAX_TRANSCRIPT_TEXT,
     });
@@ -345,6 +373,22 @@ export class SmithChatSession {
     if (transport) await transport.close();
   }
 
+  /**
+   * Adds a `smith_present` artifact card to the transcript, mid-turn.
+   * Persisted immediately: the card must survive a relaunch even when the
+   * turn that produced it never settles (a cancel, a crash).
+   */
+  absorbArtifact(artifact: SmithArtifact): void {
+    this.append({
+      id: artifact.id,
+      kind: 'artifact',
+      source: 'smith',
+      artifact,
+      at: artifact.createdAt,
+    });
+    this.persistState();
+  }
+
   /** Adds readiness remediator progress as a visually distinct transcript seam. */
   absorbReadinessProgress(event: ReadinessProgressEvent): void {
     if (event.type === 'entry_update') {
@@ -446,7 +490,7 @@ export class SmithChatSession {
       if (Array.isArray(raw.transcript)) {
         this.transcript = raw.transcript
           .slice(-MAX_TRANSCRIPT_ENTRIES)
-          .map((entry) => ({ ...entry }));
+          .map((entry) => restoreEntry(entry));
       }
     } catch {
       // A missing or unreadable pointer is a fresh chat, not a failure.
@@ -454,18 +498,21 @@ export class SmithChatSession {
   }
 
   private push(
-    entry: Omit<SmithTranscriptEntry, 'id' | 'at'> &
-      Partial<Pick<SmithTranscriptEntry, 'id' | 'at'>>,
-  ): SmithTranscriptEntry {
-    const full: SmithTranscriptEntry = {
+    entry: Omit<SmithChatEntry, 'id' | 'at'> & Partial<Pick<SmithChatEntry, 'id' | 'at'>>,
+  ): SmithChatEntry {
+    const full: SmithChatEntry = {
       ...entry,
       id: entry.id ?? shortId(),
       at: entry.at ?? Date.now(),
     };
-    this.transcript.push(full);
+    this.append(full);
+    return full;
+  }
+
+  private append(entry: SmithTranscriptEntry): void {
+    this.transcript.push(entry);
     if (this.transcript.length > MAX_TRANSCRIPT_ENTRIES) this.transcript.shift();
     this.emit();
-    return full;
   }
 
   private emit(): void {

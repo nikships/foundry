@@ -99,6 +99,11 @@ function harness(opts: {
   };
 }
 
+/** Chat rows carry text; artifact rows do not. Tests reading text mean chat rows. */
+function rowText(entry: { kind: string; text?: string } | undefined): string {
+  return entry && entry.kind !== 'artifact' && typeof entry.text === 'string' ? entry.text : '';
+}
+
 describe('lifecycle', () => {
   it('opens lazily on the first message and reuses the session after', async () => {
     const h = harness({ turns: ['first answer', 'second answer'] });
@@ -441,13 +446,14 @@ describe('renderer snapshots', () => {
       running: false,
       error: null,
     });
-    expect(snapshot.transcript.map((entry) => [entry.source, entry.kind, entry.text])).toEqual([
+    expect(snapshot.transcript.map((entry) => [entry.source, entry.kind, rowText(entry)])).toEqual([
       ['operator', 'text', 'What happened?'],
       ['smith', 'text', 'Here is the answer.'],
     ]);
 
-    snapshot.transcript[0]!.text = 'mutated renderer copy';
-    expect(h.session.snapshot().transcript[0]!.text).toBe('What happened?');
+    const first = snapshot.transcript[0]!;
+    if (first.kind !== 'artifact') first.text = 'mutated renderer copy';
+    expect(rowText(h.session.snapshot().transcript[0])).toBe('What happened?');
     expect(() => structuredClone(h.session.snapshot())).not.toThrow();
   });
 
@@ -528,9 +534,11 @@ describe('renderer snapshots', () => {
     });
     await session.send('hello');
     expect(changes.length).toBeGreaterThan(0);
-    expect(changes.at(-1)?.transcript[0]?.text).toBe('hello');
+    expect(rowText(changes.at(-1)?.transcript[0])).toBe('hello');
     expect(warnings).toEqual(['fell back to inherit']);
-    expect(session.snapshot().transcript.some((row) => row.text.includes('fell back'))).toBe(true);
+    expect(session.snapshot().transcript.some((row) => rowText(row).includes('fell back'))).toBe(
+      true,
+    );
   });
 
   it('surfaces the pick-a-model refusal as itself, not as a session crash', async () => {
@@ -556,6 +564,72 @@ describe('renderer snapshots', () => {
     // Wrapped in "smith chat session start failed: …" the actionable sentence
     // would be buried in noise the operator can do nothing with.
     expect(session.snapshot().error).toBe('No model is selected. Choose one.');
+  });
+});
+
+describe('artifact rows', () => {
+  const artifact = {
+    id: 'art-1',
+    kind: 'agent_design' as const,
+    version: 1,
+    createdAt: 42,
+    warnings: [],
+    agent: {
+      name: 'planner',
+      purpose: 'Plan.',
+      model: 'inherit',
+      reasoningEffort: 'medium' as const,
+      systemPrompt: 's',
+      userPrompt: 'u',
+      writes: [] as string[],
+      envelope: 'plan',
+      color: '#5ad2dd',
+    },
+  };
+
+  it('appends an artifact row, persists it, and restores it on relaunch', async () => {
+    const h = harness({});
+    h.session.absorbArtifact(artifact);
+    expect(h.session.snapshot().transcript).toEqual([
+      { id: 'art-1', kind: 'artifact', source: 'smith', artifact, at: 42 },
+    ]);
+    expect(() => structuredClone(h.session.snapshot())).not.toThrow();
+
+    // Persisted immediately — no turn needs to settle for the card to survive.
+    const relaunched = h.remake();
+    const restored = relaunched.snapshot().transcript[0]!;
+    expect(restored.kind).toBe('artifact');
+    if (restored.kind !== 'artifact') throw new Error('expected artifact row');
+    expect(restored.artifact).toEqual(artifact);
+  });
+
+  it('restores an unsupported artifact version as a readable note, keeping the chat', async () => {
+    const h = harness({ turns: ['ok'] });
+    await h.session.send('hello');
+    h.session.absorbArtifact({ ...artifact, version: 99 });
+    await h.session.dispose();
+
+    const relaunched = h.remake();
+    const rows = relaunched.snapshot().transcript;
+    // The conversation around the bad card survives.
+    expect(rows.map((row) => row.kind)).toEqual(['text', 'text', 'note']);
+    expect(rowText(rows[2])).toMatch(/could not be restored/);
+  });
+
+  it('keeps a new answer from growing into an artifact card', async () => {
+    const h = harness({ turns: ['first', 'second'] });
+    await h.session.send('one');
+    h.session.absorbArtifact(artifact);
+    await h.session.send('two');
+    const kinds = h.session.snapshot().transcript.map((row) => [row.kind, row.source]);
+    expect(kinds).toEqual([
+      ['text', 'operator'],
+      ['text', 'smith'],
+      ['artifact', 'smith'],
+      ['text', 'operator'],
+      ['text', 'smith'],
+    ]);
+    expect(rowText(h.session.snapshot().transcript[4])).toBe('second');
   });
 });
 

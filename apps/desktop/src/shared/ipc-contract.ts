@@ -33,6 +33,7 @@ import type {
   ReadinessState,
   ReasoningEffort,
   RunRow,
+  SmithArtifact,
   SmithProposal,
   SmithProposalAnswer,
   SmithProposalAnswerResult,
@@ -189,10 +190,26 @@ export interface SmithScreenContext {
   };
 }
 
-/** One cloned transcript row shared by Smith's full and compact chat views. */
-export interface SmithTranscriptEntry extends PanelEntry {
+/** One folded chat row shared by Smith's full and compact views. */
+export interface SmithChatEntry extends PanelEntry {
   source: 'operator' | 'smith' | 'readiness';
 }
+
+/**
+ * One rich artifact card in the transcript, emitted by `smith_present`.
+ * Always Smith's. Presentation only: it holds validated, size-capped data,
+ * never an executor, secret, or approval — those stay on the proposal path.
+ */
+export interface SmithArtifactEntry {
+  id: string;
+  kind: 'artifact';
+  source: 'smith';
+  artifact: SmithArtifact;
+  at: number;
+}
+
+/** One cloned transcript row shared by Smith's full and compact chat views. */
+export type SmithTranscriptEntry = SmithChatEntry | SmithArtifactEntry;
 
 /**
  * The complete renderer-facing state for one project's chat. Every read and

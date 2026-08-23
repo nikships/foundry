@@ -218,7 +218,15 @@ export default function SmithBubble({
             }
             tail={
               <div className={styles.cardSlot}>
-                <SmithProposalCard projectId={scopeId} onCompleted={onCompleted} />
+                <SmithProposalCard
+                  projectId={scopeId}
+                  onCompleted={onCompleted}
+                  compact
+                  onRequestChanges={(prefill) => {
+                    setDraft((prev) => prev || prefill);
+                    inputRef.current?.focus();
+                  }}
+                />
               </div>
             }
           />

@@ -18,31 +18,42 @@ import {
   type SmithTranscriptGroup,
 } from '../../view-models/smith-chat-view.js';
 import MarkdownText from '../common/MarkdownText.js';
+import SmithArtifactCard from './SmithArtifactCard.js';
 import { cx } from '../ui/cx.js';
 import styles from './SmithTranscript.module.css';
 
-function TranscriptRows({ group }: { group: SmithTranscriptGroup }): React.JSX.Element {
+function TranscriptRows({
+  group,
+  compact,
+}: {
+  group: SmithTranscriptGroup;
+  compact?: boolean;
+}): React.JSX.Element {
   return (
     <>
-      {group.entries.map((entry) => (
-        <div key={entry.id} className={cx(styles.line, styles[entry.kind])}>
-          {entry.kind === 'tool' && (
-            <span
-              className={cx(
-                styles.lineIcon,
-                entry.done ? (entry.failed ? styles.iconFailed : styles.iconOk) : styles.iconWait,
-              )}
-            >
-              {SMITH_TOOL_ICON[entry.toolKind ?? 'other'] ?? '·'}
-            </span>
-          )}
-          {entry.kind === 'text' ? (
-            <MarkdownText text={entry.text} />
-          ) : (
-            <span className={styles.lineText}>{entry.text}</span>
-          )}
-        </div>
-      ))}
+      {group.entries.map((entry) =>
+        entry.kind === 'artifact' ? (
+          <SmithArtifactCard key={entry.id} artifact={entry.artifact} compact={compact} />
+        ) : (
+          <div key={entry.id} className={cx(styles.line, styles[entry.kind])}>
+            {entry.kind === 'tool' && (
+              <span
+                className={cx(
+                  styles.lineIcon,
+                  entry.done ? (entry.failed ? styles.iconFailed : styles.iconOk) : styles.iconWait,
+                )}
+              >
+                {SMITH_TOOL_ICON[entry.toolKind ?? 'other'] ?? '·'}
+              </span>
+            )}
+            {entry.kind === 'text' ? (
+              <MarkdownText text={entry.text} />
+            ) : (
+              <span className={styles.lineText}>{entry.text}</span>
+            )}
+          </div>
+        ),
+      )}
     </>
   );
 }
@@ -81,22 +92,24 @@ export default function SmithTranscript({
       {groups.map((group) =>
         group.source === 'operator' ? (
           <div key={group.id} className={styles.operatorTurn}>
-            {group.entries.map((entry) => (
-              <div key={entry.id} className={styles.operatorBubble}>
-                {entry.text}
-              </div>
-            ))}
+            {group.entries.map((entry) =>
+              entry.kind === 'artifact' ? null : (
+                <div key={entry.id} className={styles.operatorBubble}>
+                  {entry.text}
+                </div>
+              ),
+            )}
           </div>
         ) : group.source === 'readiness' ? (
           <section key={group.id} className={styles.readinessBlock}>
             <header className={styles.readinessHead}>
               <span className={styles.readinessTag}>Readiness agent</span>
             </header>
-            <TranscriptRows group={group} />
+            <TranscriptRows group={group} compact={compact} />
           </section>
         ) : (
           <div key={group.id} className={styles.smithTurn}>
-            <TranscriptRows group={group} />
+            <TranscriptRows group={group} compact={compact} />
           </div>
         ),
       )}

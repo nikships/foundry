@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { SmithTranscriptEntry } from '@shared/ipc-contract.js';
+import type { SmithChatEntry, SmithTranscriptEntry } from '@shared/ipc-contract.js';
 import type { ModelInfo } from '@shared/types.js';
 import {
   describeScreen,
@@ -17,7 +17,7 @@ import {
 function entry(
   id: string,
   source: SmithTranscriptEntry['source'],
-  kind: SmithTranscriptEntry['kind'] = 'text',
+  kind: SmithChatEntry['kind'] = 'text',
 ): SmithTranscriptEntry {
   return { id, kind, text: id, source, at: 0 };
 }

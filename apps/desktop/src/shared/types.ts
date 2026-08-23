@@ -835,6 +835,60 @@ export interface ValidationIssue {
   message: string;
 }
 
+// ── Smith artifacts (agent-callable rich chat cards) ─────────────────────────
+
+/**
+ * The artifact kinds Smith may present. A finite union on purpose: Smith
+ * selects a kind and supplies typed data; the renderer owns layout, copy,
+ * icons, and actions. Adding a kind means a shared type here, validation in
+ * `main/smith/present-tools.ts`, a renderer registration in
+ * `renderer/view-models/smith-artifact-view.ts`, and tests for both.
+ */
+export type SmithArtifactKind = 'pipeline_design' | 'agent_design' | 'envelope_design';
+
+/** The protocol version this build reads. Unknown versions fail soft in the UI. */
+export const SMITH_ARTIFACT_VERSION = 1;
+
+interface SmithArtifactBase {
+  id: string;
+  /** Bumped when a kind's data contract changes shape incompatibly. */
+  version: number;
+  createdAt: number;
+  /** The presenting conversation's scope. Absent means the global chat. */
+  projectId?: string;
+  /** Smith's design rationale/tradeoffs — the one thing prose adds to a card. */
+  rationale?: string;
+  /** Store-validation warnings that rode along; errors never become artifacts. */
+  warnings: ValidationIssue[];
+}
+
+/** A read-only pipeline design, rendered as ordered phase cards — never JSON. */
+export interface SmithPipelineDesignArtifact extends SmithArtifactBase {
+  kind: 'pipeline_design';
+  pipeline: PipelineDef;
+}
+
+/** A read-only agent design: identity, model, boundary, envelope, prompts. */
+export interface SmithAgentDesignArtifact extends SmithArtifactBase {
+  kind: 'agent_design';
+  agent: AgentDef;
+}
+
+/** A read-only envelope design: base fields plus the custom typed fields. */
+export interface SmithEnvelopeDesignArtifact extends SmithArtifactBase {
+  kind: 'envelope_design';
+  envelope: EnvelopeDef;
+}
+
+/**
+ * One rich inline card in the Smith transcript. Artifacts are presentation
+ * only: they perform no writes, never occupy the one-slot proposal queue, and
+ * carry no executor, secret, or private payload — validated and size-capped at
+ * the main boundary before they reach the renderer or persisted chat state.
+ */
+export type SmithArtifact =
+  SmithPipelineDesignArtifact | SmithAgentDesignArtifact | SmithEnvelopeDesignArtifact;
+
 // ── Smith (the entity-smith's approval gate) ─────────────────────────────────
 
 /**
@@ -891,6 +945,12 @@ export interface SmithEntityProposal extends SmithProposalBase {
   mode: 'create' | 'edit';
   /** The entity's identifying name (agents/envelopes) or id (pipelines). */
   name: string;
+  /**
+   * The current stored definition when this proposal overwrites one, captured
+   * by main at propose time so the card can show a real before/after rather
+   * than trusting the model's memory of the entity.
+   */
+  previous?: unknown;
   /** The entity JSON, validated but not yet saved. */
   spec: unknown;
   /** Non-blocking warnings the store surfaced; errors would have refused earlier. */

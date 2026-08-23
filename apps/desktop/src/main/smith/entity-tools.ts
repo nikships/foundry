@@ -199,7 +199,7 @@ export function smithProposeTool(deps: SmithEntityToolDeps): ToolDefinition {
       if (!scope.ok) return json(scope);
       const targetProject = scope.projectId;
       const sessionProject = deps.projectId();
-      const { name, issues, overwrites } = prepare(deps.stores, kind, spec, targetProject);
+      const { name, issues, previous } = prepare(deps.stores, kind, spec, targetProject);
       if (!name) return json({ ok: false, error: `${kind} spec is missing its name` });
 
       // Validation is the gate before any card. Warnings pass through onto the
@@ -216,7 +216,9 @@ export function smithProposeTool(deps: SmithEntityToolDeps): ToolDefinition {
           name,
           spec,
           validation: issues.filter((issue) => issue.level === 'warning'),
-          overwrites,
+          overwrites: previous != null,
+          // The stored definition, so the card can render a real before/after.
+          ...(previous != null ? { previous } : {}),
           ...(sessionProject ? { projectId: sessionProject } : {}),
           ...(targetProject && targetProject !== sessionProject
             ? { targetProjectId: targetProject }
@@ -255,21 +257,22 @@ function showEntity(
 }
 
 /**
- * Resolves the spec's identifying name, validates it, and decides whether an
- * approve would overwrite an existing entity (stores upsert by name/id).
+ * Resolves the spec's identifying name, validates it, and captures the stored
+ * definition an approve would overwrite (stores upsert by name/id); `previous`
+ * doubles as the overwrite flag and the card's before/after source.
  */
 function prepare(
   stores: SmithEntityStores,
   kind: WritableKind,
   spec: object,
   projectId?: string,
-): { name: string; issues: ValidationIssue[]; overwrites: boolean } {
+): { name: string; issues: ValidationIssue[]; previous: unknown } {
   if (kind === 'agent') {
     const agent = spec as AgentDef;
     return {
       name: agent.name ?? '',
       issues: validateAgent(agent, envelopeNames(stores)),
-      overwrites: !!stores.roster.get(agent.name, stores.rosterScope(projectId)),
+      previous: stores.roster.get(agent.name, stores.rosterScope(projectId)),
     };
   }
   if (kind === 'pipeline') {
@@ -282,14 +285,14 @@ function prepare(
         stores.commandNames(projectId),
         envelopeNames(stores),
       ),
-      overwrites: !!stores.pipelines.get(pipeline.id, stores.pipelineScope(projectId)),
+      previous: stores.pipelines.get(pipeline.id, stores.pipelineScope(projectId)),
     };
   }
   const envelope = spec as EnvelopeDef;
   return {
     name: envelope.name ?? '',
     issues: validateEnvelope(envelope),
-    overwrites: !!stores.envelopes.get(envelope.name),
+    previous: stores.envelopes.get(envelope.name),
   };
 }
 
