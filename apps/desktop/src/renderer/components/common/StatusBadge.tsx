@@ -1,4 +1,5 @@
 import { statusColor, statusWord } from '../../utils/format.js';
+import { cx } from '../ui/cx.js';
 import styles from './StatusBadge.module.css';
 
 export default function StatusBadge({
@@ -11,8 +12,6 @@ export default function StatusBadge({
   dot?: boolean;
 }): React.JSX.Element {
   const color = statusColor(status);
-  const text = label ?? statusWord(status);
-  const spinning = status === 'running';
   return (
     <span
       className="badge"
@@ -20,11 +19,11 @@ export default function StatusBadge({
     >
       {dot && (
         <span
-          className={`${styles.dot} ${spinning ? styles.spinning : ''}`}
+          className={cx(styles.dot, status === 'running' && styles.spinning)}
           style={{ background: color }}
         />
       )}
-      {text}
+      {label ?? statusWord(status)}
     </span>
   );
 }

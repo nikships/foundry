@@ -1,6 +1,8 @@
+import type { CSSProperties } from 'react';
 import type { DoctorCheck } from '@shared/types.js';
 import { api } from '../../api.js';
 import { Button } from '../ui/Button.js';
+import { cx } from '../ui/cx.js';
 import styles from './DoctorList.module.css';
 
 export function DoctorCheckbox({
@@ -16,21 +18,24 @@ export function DoctorCheckbox({
 }): React.JSX.Element {
   return (
     <span
-      className={`${styles.checkbox} ${ok ? styles.checkboxOk : styles.checkboxBad} ${
-        checking ? styles.checkboxChecking : ''
-      } ${animate ? styles.checkboxAnimated : ''}`}
-      style={{ ['--check-delay' as string]: `${index * 110 + 120}ms` }}
+      className={cx(
+        styles.checkbox,
+        ok ? styles.checkboxOk : styles.checkboxBad,
+        checking && styles.checkboxChecking,
+        animate && styles.checkboxAnimated,
+      )}
+      style={{ '--check-delay': `${index * 110 + 120}ms` } as CSSProperties}
       aria-hidden="true"
     >
-      {ok ? (
-        <svg
-          className={styles.checkIcon}
-          viewBox="0 0 16 16"
-          width="11"
-          height="11"
-          fill="none"
-          aria-hidden="true"
-        >
+      <svg
+        className={ok ? styles.checkIcon : styles.crossIcon}
+        viewBox="0 0 16 16"
+        width="11"
+        height="11"
+        fill="none"
+        aria-hidden="true"
+      >
+        {ok ? (
           <polyline
             points="3.2 8.2 6.4 11.4 12.8 4.6"
             stroke="currentColor"
@@ -38,24 +43,15 @@ export function DoctorCheckbox({
             strokeLinecap="round"
             strokeLinejoin="round"
           />
-        </svg>
-      ) : (
-        <svg
-          className={styles.crossIcon}
-          viewBox="0 0 16 16"
-          width="11"
-          height="11"
-          fill="none"
-          aria-hidden="true"
-        >
+        ) : (
           <path
             d="M4.5 4.5 L11.5 11.5 M11.5 4.5 L4.5 11.5"
             stroke="currentColor"
             strokeWidth="1.9"
             strokeLinecap="round"
           />
-        </svg>
-      )}
+        )}
+      </svg>
     </span>
   );
 }
@@ -81,17 +77,11 @@ export default function DoctorList({
   /** Whether a recheck is currently in progress. */
   checking?: boolean;
 }): React.JSX.Element {
-  const openFix = (check: DoctorCheck): void => {
-    if (!check.fix) return;
-    if (check.fix.kind === 'open-url') {
-      void api.app.openExternal(check.fix.value);
-      return;
-    }
-    if (check.fix.kind === 'open-settings') {
-      // project-commands is a deep link into the Project pane.
-      const pane = check.fix.value === 'project-commands' ? 'project' : check.fix.value;
-      onOpenSettings?.(pane);
-    }
+  const openFix = (fix: NonNullable<DoctorCheck['fix']>): void => {
+    if (fix.kind === 'open-url') void api.app.openExternal(fix.value);
+    // project-commands is a deep link into the Project pane.
+    else if (fix.kind === 'open-settings')
+      onOpenSettings?.(fix.value === 'project-commands' ? 'project' : fix.value);
   };
 
   return (
@@ -105,20 +95,24 @@ export default function DoctorList({
         </div>
       )}
       <ul>
-        {checks.map((check, idx) => (
-          <li key={check.id} className={check.ok ? '' : styles.bad}>
-            <DoctorCheckbox ok={check.ok} index={idx} animate={animate} checking={checking} />
-            <span className={styles.text}>
-              <strong>{check.label}</strong>
-              <em className="faint">{check.detail}</em>
-            </span>
-            {!check.ok && check.fix && (check.fix.kind === 'open-url' || onOpenSettings) && (
-              <Button size="sm" onClick={() => openFix(check)}>
-                {check.fix.kind === 'open-url' ? 'Open docs' : 'Fix'}
-              </Button>
-            )}
-          </li>
-        ))}
+        {checks.map((check, idx) => {
+          const fix = check.ok ? undefined : check.fix;
+          const showFix = fix && (fix.kind === 'open-url' || Boolean(onOpenSettings));
+          return (
+            <li key={check.id} className={check.ok ? '' : styles.bad}>
+              <DoctorCheckbox ok={check.ok} index={idx} animate={animate} checking={checking} />
+              <span className={styles.text}>
+                <strong>{check.label}</strong>
+                <em className="faint">{check.detail}</em>
+              </span>
+              {showFix && (
+                <Button size="sm" onClick={() => openFix(fix)}>
+                  {fix.kind === 'open-url' ? 'Open docs' : 'Fix'}
+                </Button>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

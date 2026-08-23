@@ -125,19 +125,13 @@ export class Executor {
   private readonly prompts = new PromptLedger();
   private setupExecution: SetupExecution | null = null;
   private cancelled = false;
-  /**
-   * The host install as it looked when this run started. Snapshotted so an
-   * operator installing a skill mid-run cannot widen what a running agent
-   * reaches, and so every phase agrees on what had to be withheld.
-   */
   private handle: worktreeLib.WorktreeHandle | null = null;
   private cwd: string;
-  private mode: Mode;
+  private readonly mode: Mode = 'pi';
   private readonly runners: Record<PhaseKind, PhaseRunner>;
 
   constructor(private readonly deps: ExecutorDeps) {
     this.cwd = deps.project.path;
-    this.mode = 'pi';
     this.runners = {
       agent: new AgentPhaseRunner({
         agents: deps.agents,

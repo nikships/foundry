@@ -46,17 +46,7 @@ export async function runCommand(input: RunCommandInput): Promise<CommandResult>
   const name = input.name ?? cmd ?? 'command';
   const started = Date.now();
 
-  if (!cmd) {
-    return {
-      name,
-      command,
-      exitCode: null,
-      passed: false,
-      durationMs: 0,
-      outputTail: 'no command given',
-      timedOut: false,
-    };
-  }
+  if (!cmd) return failedResult(name, command, started, 'no command given');
 
   return await new Promise<CommandResult>((resolvePromise) => {
     let child: ChildProcess;

@@ -58,6 +58,9 @@ export interface PhaseInput {
   description: string;
 }
 
+/** What a statement placeholder accepts; booleans are stored as 0/1 by callers. */
+type SqlValue = string | number | null;
+
 export class Tracer {
   /**
    * Hands out change_ids. In-memory because the db has a single writer (the
@@ -71,14 +74,31 @@ export class Tracer {
     /** Files stay the raw record: runs/{runId}/… under the project dir. */
     private readonly runsDir: string,
   ) {
-    const row = this.db
-      .prepare('SELECT COALESCE(MAX(change_id), 0) AS max_change FROM events')
-      .get() as { max_change: number };
-    this.changeCounter = row.max_change;
+    this.changeCounter =
+      this.one<{ max_change: number }>(
+        'SELECT COALESCE(MAX(change_id), 0) AS max_change FROM events',
+      )?.max_change ?? 0;
   }
 
   private nextChangeId(): number {
     return ++this.changeCounter;
+  }
+
+  // ── statement helpers ─────────────────────────────────────────────────────
+
+  private one<T>(sql: string, ...args: SqlValue[]): T | undefined {
+    return this.db.prepare<SqlValue[], T>(sql).get(...args);
+  }
+
+  private many<T>(sql: string, ...args: SqlValue[]): T[] {
+    return this.db.prepare<SqlValue[], T>(sql).all(...args);
+  }
+
+  private exec(
+    sql: string,
+    ...args: SqlValue[]
+  ): { changes: number; lastInsertRowid: number | bigint } {
+    return this.db.prepare<SqlValue[]>(sql).run(...args);
   }
 
   // ── runs ──────────────────────────────────────────────────────────────────
@@ -95,27 +115,24 @@ export class Tracer {
     branchPointSha?: string | null;
     mode: RunMode;
   }): void {
-    this.db
-      .prepare(
-        `INSERT INTO runs (run_id, project_id, pipeline_id, pipeline_name, pipeline_snapshot_json,
-           request, status, engineer, worktree_path, branch, base_ref, branch_point_sha, mode, started_at)
-         VALUES (?,?,?,?,?,?,'running',?,?,?,?,?,?,?)`,
-      )
-      .run(
-        input.runId,
-        input.projectId,
-        input.pipeline.id,
-        input.pipeline.name,
-        JSON.stringify(input.pipeline),
-        input.request.slice(0, 4000),
-        input.engineer,
-        input.worktreePath,
-        input.branch,
-        input.baseRef,
-        input.branchPointSha ?? null,
-        input.mode,
-        nowIso(),
-      );
+    this.exec(
+      `INSERT INTO runs (run_id, project_id, pipeline_id, pipeline_name, pipeline_snapshot_json,
+         request, status, engineer, worktree_path, branch, base_ref, branch_point_sha, mode, started_at)
+       VALUES (?,?,?,?,?,?,'running',?,?,?,?,?,?,?)`,
+      input.runId,
+      input.projectId,
+      input.pipeline.id,
+      input.pipeline.name,
+      JSON.stringify(input.pipeline),
+      input.request.slice(0, 4000),
+      input.engineer,
+      input.worktreePath,
+      input.branch,
+      input.baseRef,
+      input.branchPointSha ?? null,
+      input.mode,
+      nowIso(),
+    );
     mkdirSync(this.runDir(input.runId), { recursive: true });
     this.writeRunFile(input.runId, 'request.md', input.request);
     this.writeRunFile(input.runId, 'pipeline.json', JSON.stringify(input.pipeline, null, 2));
@@ -127,101 +144,99 @@ export class Tracer {
    * the app may write `runs.status` for a terminal state.
    */
   finishRun(runId: string, status: RunStatus, outcomeDetail?: string): RunRow | null {
-    const totals = this.db
-      .prepare(
-        `SELECT COALESCE(SUM(tokens),0) AS tokens FROM events WHERE run_id = ? AND type = 'agent_end'`,
-      )
-      .get(runId) as { tokens: number };
-    this.db
-      .prepare(
-        `UPDATE runs SET status = ?, ended_at = ?, total_tokens = ?,
-           outcome_detail = COALESCE(?, outcome_detail) WHERE run_id = ?`,
-      )
-      .run(status, nowIso(), totals.tokens, outcomeDetail ?? null, runId);
+    const totals = this.one<{ tokens: number }>(
+      `SELECT COALESCE(SUM(tokens),0) AS tokens FROM events WHERE run_id = ? AND type = 'agent_end'`,
+      runId,
+    );
+    this.exec(
+      `UPDATE runs SET status = ?, ended_at = ?, total_tokens = ?,
+         outcome_detail = COALESCE(?, outcome_detail) WHERE run_id = ?`,
+      status,
+      nowIso(),
+      totals?.tokens ?? 0,
+      outcomeDetail ?? null,
+      runId,
+    );
     return this.run(runId);
   }
 
   /** Reopens a terminal run before its failed phase is attempted again. */
   reopenRun(runId: string): void {
-    this.db
-      .prepare(
-        "UPDATE runs SET status = 'running', ended_at = NULL, outcome_detail = NULL WHERE run_id = ?",
-      )
-      .run(runId);
+    this.exec(
+      "UPDATE runs SET status = 'running', ended_at = NULL, outcome_detail = NULL WHERE run_id = ?",
+      runId,
+    );
   }
 
   setBranchPoint(runId: string, sha: string): void {
-    this.db.prepare('UPDATE runs SET branch_point_sha = ? WHERE run_id = ?').run(sha, runId);
+    this.exec('UPDATE runs SET branch_point_sha = ? WHERE run_id = ?', sha, runId);
   }
 
   setRunMode(runId: string, mode: RunMode): void {
-    this.db.prepare('UPDATE runs SET mode = ? WHERE run_id = ?').run(mode, runId);
+    this.exec('UPDATE runs SET mode = ? WHERE run_id = ?', mode, runId);
   }
 
   setWorktree(runId: string, path: string | null, branch: string | null): void {
-    this.db
-      .prepare('UPDATE runs SET worktree_path = ?, branch = ? WHERE run_id = ?')
-      .run(path, branch, runId);
+    this.exec(
+      'UPDATE runs SET worktree_path = ?, branch = ? WHERE run_id = ?',
+      path,
+      branch,
+      runId,
+    );
   }
 
   setMerged(runId: string, merged: boolean): void {
-    this.db.prepare('UPDATE runs SET merged = ? WHERE run_id = ?').run(merged ? 1 : 0, runId);
+    this.exec('UPDATE runs SET merged = ? WHERE run_id = ?', merged ? 1 : 0, runId);
   }
 
   setPr(runId: string, prNumber: number, prUrl: string): void {
-    this.db
-      .prepare('UPDATE runs SET pr_number = ?, pr_url = ? WHERE run_id = ?')
-      .run(prNumber, prUrl, runId);
+    this.exec('UPDATE runs SET pr_number = ?, pr_url = ? WHERE run_id = ?', prNumber, prUrl, runId);
   }
 
   setIssue(runId: string, issueNumber: number, issueUrl: string): void {
-    this.db
-      .prepare('UPDATE runs SET issue_number = ?, issue_url = ? WHERE run_id = ?')
-      .run(issueNumber, issueUrl, runId);
+    this.exec(
+      'UPDATE runs SET issue_number = ?, issue_url = ? WHERE run_id = ?',
+      issueNumber,
+      issueUrl,
+      runId,
+    );
   }
 
   setArchived(runId: string, archived: boolean): void {
-    this.db.prepare('UPDATE runs SET archived = ? WHERE run_id = ?').run(archived ? 1 : 0, runId);
+    this.exec('UPDATE runs SET archived = ? WHERE run_id = ?', archived ? 1 : 0, runId);
   }
 
   run(runId: string): RunRow | null {
-    const row = this.db.prepare('SELECT * FROM runs WHERE run_id = ?').get(runId) as
-      RawRun | undefined;
+    const row = this.one<RawRun>('SELECT * FROM runs WHERE run_id = ?', runId);
     return row ? mapRun(row) : null;
   }
 
   runs(opts: { projectId?: string; includeArchived?: boolean; limit?: number } = {}): RunRow[] {
     const where: string[] = [];
-    const args: unknown[] = [];
+    const args: SqlValue[] = [];
     if (opts.projectId) {
       where.push('project_id = ?');
       args.push(opts.projectId);
     }
     if (!opts.includeArchived) where.push('archived = 0');
-    const sql =
-      'SELECT * FROM runs' +
-      (where.length ? ` WHERE ${where.join(' AND ')}` : '') +
-      ' ORDER BY started_at DESC LIMIT ?';
     args.push(opts.limit ?? 200);
-    const rows = this.db.prepare(sql).all(...args) as RawRun[];
-    const summary = this.db.prepare(
-      'SELECT name, status, kind FROM phases WHERE run_id = ? ORDER BY seq',
+    const rows = this.many<RawRun>(
+      'SELECT * FROM runs' +
+        (where.length ? ` WHERE ${where.join(' AND ')}` : '') +
+        ' ORDER BY started_at DESC LIMIT ?',
+      ...args,
     );
-    return rows.map((r) => ({
-      ...mapRun(r),
-      phaseSummary: summary.all(r.run_id) as {
-        name: string;
-        status: PhaseStatus;
-        kind: PhaseKind;
-      }[],
-    }));
+    const summary = this.db.prepare<
+      SqlValue[],
+      { name: string; status: PhaseStatus; kind: PhaseKind }
+    >('SELECT name, status, kind FROM phases WHERE run_id = ? ORDER BY seq');
+    return rows.map((r) => ({ ...mapRun(r), phaseSummary: summary.all(r.run_id) }));
   }
 
   activeRunIds(): string[] {
-    const rows = this.db.prepare("SELECT run_id FROM runs WHERE status = 'running'").all() as {
-      run_id: string;
-    }[];
-    return rows.map((r) => r.run_id);
+    return this.many<{ run_id: string }>("SELECT run_id FROM runs WHERE status = 'running'").map(
+      (r) => r.run_id,
+    );
   }
 
   // ── phases ────────────────────────────────────────────────────────────────
@@ -240,29 +255,28 @@ export class Tracer {
   beginQueuedPhase(phaseId: string): void {
     const row = this.rawPhase(phaseId);
     if (!row) return;
-    this.db
-      .prepare(
-        "UPDATE phases SET status = 'running', error = NULL, started_at = ?, ended_at = NULL WHERE phase_id = ?",
-      )
-      .run(nowIso(), phaseId);
-    this.emitPhaseStart(row.run_id, phaseId, {
-      name: row.name,
-      kind: row.kind,
-      owner: row.owner,
-      description: row.description,
-    });
+    this.exec(
+      "UPDATE phases SET status = 'running', error = NULL, started_at = ?, ended_at = NULL WHERE phase_id = ?",
+      nowIso(),
+      phaseId,
+    );
+    this.emitPhaseStart(row.run_id, phaseId, row);
   }
 
   setPhaseAttempt(phaseId: string, attempt: number): void {
-    this.db.prepare('UPDATE phases SET attempt = ? WHERE phase_id = ?').run(attempt, phaseId);
+    this.exec('UPDATE phases SET attempt = ? WHERE phase_id = ?', attempt, phaseId);
   }
 
   closePhase(phaseId: string, status: PhaseStatus, error?: string | null): void {
     const row = this.rawPhase(phaseId);
     if (!row) return;
-    this.db
-      .prepare('UPDATE phases SET status = ?, error = ?, ended_at = ? WHERE phase_id = ?')
-      .run(status, error ?? null, nowIso(), phaseId);
+    this.exec(
+      'UPDATE phases SET status = ?, error = ?, ended_at = ? WHERE phase_id = ?',
+      status,
+      error ?? null,
+      nowIso(),
+      phaseId,
+    );
     this.event({
       runId: row.run_id,
       phaseId,
@@ -273,10 +287,9 @@ export class Tracer {
   }
 
   phases(runId: string): PhaseRow[] {
-    const rows = this.db
-      .prepare('SELECT * FROM phases WHERE run_id = ? ORDER BY seq')
-      .all(runId) as RawPhase[];
-    return rows.map(mapPhase);
+    return this.many<RawPhase>('SELECT * FROM phases WHERE run_id = ? ORDER BY seq', runId).map(
+      mapPhase,
+    );
   }
 
   phase(phaseId: string): PhaseRow | null {
@@ -285,8 +298,7 @@ export class Tracer {
   }
 
   private rawPhase(phaseId: string): RawPhase | undefined {
-    return this.db.prepare('SELECT * FROM phases WHERE phase_id = ?').get(phaseId) as
-      RawPhase | undefined;
+    return this.one<RawPhase>('SELECT * FROM phases WHERE phase_id = ?', phaseId);
   }
 
   private insertPhase(
@@ -295,22 +307,19 @@ export class Tracer {
     startedAt: string | null,
   ): string {
     const phaseId = `ph_${newId()}`;
-    this.db
-      .prepare(
-        `INSERT INTO phases (phase_id, run_id, seq, name, kind, owner, description, status, attempt, started_at)
-         VALUES (?,?,?,?,?,?,?,?,0,?)`,
-      )
-      .run(
-        phaseId,
-        input.runId,
-        input.seq,
-        input.name,
-        input.kind,
-        input.owner,
-        input.description,
-        status,
-        startedAt,
-      );
+    this.exec(
+      `INSERT INTO phases (phase_id, run_id, seq, name, kind, owner, description, status, attempt, started_at)
+       VALUES (?,?,?,?,?,?,?,?,0,?)`,
+      phaseId,
+      input.runId,
+      input.seq,
+      input.name,
+      input.kind,
+      input.owner,
+      input.description,
+      status,
+      startedAt,
+    );
     return phaseId;
   }
 
@@ -333,24 +342,21 @@ export class Tracer {
   event(input: EventInput): string {
     const eventId = `evt_${newId()}`;
     const startedAt = input.startedAt ?? nowIso();
-    this.db
-      .prepare(
-        `INSERT INTO events (event_id, run_id, phase_id, parent_id, type, name, payload_json, tokens, started_at, ended_at, change_id)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-      )
-      .run(
-        eventId,
-        input.runId,
-        input.phaseId ?? null,
-        input.parentId ?? null,
-        input.type,
-        input.name,
-        JSON.stringify(input.payload ?? {}),
-        input.tokens ?? 0,
-        startedAt,
-        input.endedAt ?? null,
-        this.nextChangeId(),
-      );
+    this.exec(
+      `INSERT INTO events (event_id, run_id, phase_id, parent_id, type, name, payload_json, tokens, started_at, ended_at, change_id)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      eventId,
+      input.runId,
+      input.phaseId ?? null,
+      input.parentId ?? null,
+      input.type,
+      input.name,
+      JSON.stringify(input.payload ?? {}),
+      input.tokens ?? 0,
+      startedAt,
+      input.endedAt ?? null,
+      this.nextChangeId(),
+    );
     this.appendJsonl(input.runId, {
       event_id: eventId,
       ts: startedAt,
@@ -368,21 +374,13 @@ export class Tracer {
    * never silently erases a turn's token count.
    */
   endEvent(eventId: string, payloadPatch?: Record<string, unknown>, tokens?: number): void {
-    const existing = this.db
-      .prepare('SELECT payload_json, tokens FROM events WHERE event_id = ?')
-      .get(eventId) as { payload_json: string; tokens: number } | undefined;
+    const existing = this.storedEvent(eventId);
     if (!existing) return;
-    this.db
-      .prepare(
-        'UPDATE events SET ended_at = ?, payload_json = ?, tokens = ?, change_id = ? WHERE event_id = ?',
-      )
-      .run(
-        nowIso(),
-        mergePayloadJson(existing.payload_json, payloadPatch),
-        tokens ?? existing.tokens,
-        this.nextChangeId(),
-        eventId,
-      );
+    this.updateEvent(eventId, {
+      ended_at: nowIso(),
+      payload_json: mergePayloadJson(existing.payload_json, payloadPatch),
+      tokens: tokens ?? existing.tokens,
+    });
   }
 
   /**
@@ -392,18 +390,12 @@ export class Tracer {
    * closed, or the span ends before the tool has even run.
    */
   renameEvent(eventId: string, name: string, payloadPatch?: Record<string, unknown>): void {
-    const existing = this.db
-      .prepare('SELECT payload_json FROM events WHERE event_id = ?')
-      .get(eventId) as { payload_json: string } | undefined;
+    const existing = this.storedEvent(eventId);
     if (!existing) return;
-    this.db
-      .prepare('UPDATE events SET name = ?, payload_json = ?, change_id = ? WHERE event_id = ?')
-      .run(
-        name,
-        mergePayloadJson(existing.payload_json, payloadPatch),
-        this.nextChangeId(),
-        eventId,
-      );
+    this.updateEvent(eventId, {
+      name,
+      payload_json: mergePayloadJson(existing.payload_json, payloadPatch),
+    });
   }
 
   /**
@@ -413,13 +405,29 @@ export class Tracer {
    * paragraph rather than a confetti of delta rows.
    */
   patchEvent(eventId: string, payloadPatch: Record<string, unknown>): void {
-    const existing = this.db
-      .prepare('SELECT payload_json FROM events WHERE event_id = ?')
-      .get(eventId) as { payload_json: string } | undefined;
+    const existing = this.storedEvent(eventId);
     if (!existing) return;
-    this.db
-      .prepare('UPDATE events SET payload_json = ?, change_id = ? WHERE event_id = ?')
-      .run(mergePayloadJson(existing.payload_json, payloadPatch), this.nextChangeId(), eventId);
+    this.updateEvent(eventId, {
+      payload_json: mergePayloadJson(existing.payload_json, payloadPatch),
+    });
+  }
+
+  private storedEvent(eventId: string): { payload_json: string; tokens: number } | undefined {
+    return this.one('SELECT payload_json, tokens FROM events WHERE event_id = ?', eventId);
+  }
+
+  /**
+   * The single in-place patch path. Every update stamps a fresh change_id, or
+   * the renderer's cursor poll would never re-serve the row.
+   */
+  private updateEvent(eventId: string, columns: Record<string, SqlValue>): void {
+    const assignments = Object.keys(columns).map((column) => `${column} = ?`);
+    this.exec(
+      `UPDATE events SET ${assignments.join(', ')}, change_id = ? WHERE event_id = ?`,
+      ...Object.values(columns),
+      this.nextChangeId(),
+      eventId,
+    );
   }
 
   /**
@@ -431,12 +439,12 @@ export class Tracer {
    * last row's. Callers replace rows by event_id.
    */
   eventsAfter(runId: string, afterChangeId: number, limit = 500): EventRow[] {
-    const rows = this.db
-      .prepare(
-        'SELECT rowid, * FROM events WHERE run_id = ? AND change_id > ? ORDER BY rowid LIMIT ?',
-      )
-      .all(runId, afterChangeId, limit) as RawEvent[];
-    return rows.map(mapEvent);
+    return this.many<RawEvent>(
+      'SELECT rowid, * FROM events WHERE run_id = ? AND change_id > ? ORDER BY rowid LIMIT ?',
+      runId,
+      afterChangeId,
+      limit,
+    ).map(mapEvent);
   }
 
   // ── envelopes ─────────────────────────────────────────────────────────────
@@ -450,28 +458,26 @@ export class Tracer {
     valid: boolean;
     attempt: number;
   }): void {
-    this.db
-      .prepare(
-        `INSERT INTO envelopes (envelope_id, run_id, phase_id, agent, schema_kind, payload_json, valid, attempt, created_at)
-         VALUES (?,?,?,?,?,?,?,?,?)`,
-      )
-      .run(
-        `env_${newId()}`,
-        input.runId,
-        input.phaseId,
-        input.agent,
-        input.schemaKind,
-        JSON.stringify(input.payload ?? {}),
-        input.valid ? 1 : 0,
-        input.attempt,
-        nowIso(),
-      );
+    this.exec(
+      `INSERT INTO envelopes (envelope_id, run_id, phase_id, agent, schema_kind, payload_json, valid, attempt, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?)`,
+      `env_${newId()}`,
+      input.runId,
+      input.phaseId,
+      input.agent,
+      input.schemaKind,
+      JSON.stringify(input.payload ?? {}),
+      input.valid ? 1 : 0,
+      input.attempt,
+      nowIso(),
+    );
   }
 
   envelopes(runId: string): EnvelopeRow[] {
-    const rows = this.db
-      .prepare('SELECT * FROM envelopes WHERE run_id = ? ORDER BY created_at')
-      .all(runId) as RawEnvelope[];
+    const rows = this.many<RawEnvelope>(
+      'SELECT * FROM envelopes WHERE run_id = ? ORDER BY created_at',
+      runId,
+    );
     return rows.map((r) => ({
       envelopeId: r.envelope_id,
       runId: r.run_id,
@@ -495,20 +501,17 @@ export class Tracer {
     passed: boolean;
     checks: GateCheck[];
   }): void {
-    this.db
-      .prepare(
-        `INSERT INTO gate_results (run_id, phase_id, attempt, gate, passed, checks_json, created_at)
-         VALUES (?,?,?,?,?,?,?)`,
-      )
-      .run(
-        input.runId,
-        input.phaseId,
-        input.attempt,
-        input.gate,
-        input.passed ? 1 : 0,
-        JSON.stringify(input.checks),
-        nowIso(),
-      );
+    this.exec(
+      `INSERT INTO gate_results (run_id, phase_id, attempt, gate, passed, checks_json, created_at)
+       VALUES (?,?,?,?,?,?,?)`,
+      input.runId,
+      input.phaseId,
+      input.attempt,
+      input.gate,
+      input.passed ? 1 : 0,
+      JSON.stringify(input.checks),
+      nowIso(),
+    );
     this.event({
       runId: input.runId,
       phaseId: input.phaseId,
@@ -519,9 +522,10 @@ export class Tracer {
   }
 
   gateResults(runId: string): GateResultRow[] {
-    const rows = this.db
-      .prepare('SELECT * FROM gate_results WHERE run_id = ? ORDER BY id')
-      .all(runId) as RawGate[];
+    const rows = this.many<RawGate>(
+      'SELECT * FROM gate_results WHERE run_id = ? ORDER BY id',
+      runId,
+    );
     return rows.map((r) => ({
       id: r.id,
       runId: r.run_id,
@@ -529,7 +533,7 @@ export class Tracer {
       attempt: r.attempt,
       gate: r.gate,
       passed: !!r.passed,
-      checks: (safeJson(r.checks_json) as unknown as GateCheck[]) ?? [],
+      checks: safeJsonArray<GateCheck>(r.checks_json),
       createdAt: r.created_at,
     }));
   }
@@ -545,26 +549,24 @@ export class Tracer {
     mode: RunMode;
     color: string;
   }): void {
-    this.db
-      .prepare(
-        `INSERT INTO agent_sessions (run_id, agent, model, reasoning_effort, agent_session_id, mode, color, created_at, last_used_at)
-         VALUES (?,?,?,?,?,?,?,?,?)
-         ON CONFLICT(run_id, agent) DO UPDATE SET
-           model = excluded.model, reasoning_effort = excluded.reasoning_effort,
-           agent_session_id = excluded.agent_session_id, mode = excluded.mode,
-           last_used_at = excluded.last_used_at`,
-      )
-      .run(
-        input.runId,
-        input.agent,
-        input.model,
-        input.reasoningEffort,
-        input.agentSessionId,
-        input.mode,
-        input.color,
-        nowIso(),
-        nowIso(),
-      );
+    const now = nowIso();
+    this.exec(
+      `INSERT INTO agent_sessions (run_id, agent, model, reasoning_effort, agent_session_id, mode, color, created_at, last_used_at)
+       VALUES (?,?,?,?,?,?,?,?,?)
+       ON CONFLICT(run_id, agent) DO UPDATE SET
+         model = excluded.model, reasoning_effort = excluded.reasoning_effort,
+         agent_session_id = excluded.agent_session_id, mode = excluded.mode,
+         last_used_at = excluded.last_used_at`,
+      input.runId,
+      input.agent,
+      input.model,
+      input.reasoningEffort,
+      input.agentSessionId,
+      input.mode,
+      input.color,
+      now,
+      now,
+    );
   }
 
   /**
@@ -577,17 +579,18 @@ export class Tracer {
     contextTokens: number,
     contextWindow: number,
   ): void {
-    this.db
-      .prepare(
-        'UPDATE agent_sessions SET context_tokens = ?, context_window = ?, last_used_at = ? WHERE run_id = ? AND agent = ?',
-      )
-      .run(contextTokens, contextWindow, nowIso(), runId, agent);
+    this.exec(
+      'UPDATE agent_sessions SET context_tokens = ?, context_window = ?, last_used_at = ? WHERE run_id = ? AND agent = ?',
+      contextTokens,
+      contextWindow,
+      nowIso(),
+      runId,
+      agent,
+    );
   }
 
   agentSessions(runId: string): AgentSessionRow[] {
-    const rows = this.db
-      .prepare('SELECT * FROM agent_sessions WHERE run_id = ?')
-      .all(runId) as RawAgentSession[];
+    const rows = this.many<RawAgentSession>('SELECT * FROM agent_sessions WHERE run_id = ?', runId);
     return rows.map((r) => ({
       runId: r.run_id,
       agent: r.agent,
@@ -620,16 +623,20 @@ export class Tracer {
     pid: number;
     command: string;
   }): number {
-    const info = this.db
-      .prepare(
-        'INSERT INTO processes (run_id, kind, name, pid, command, started_at) VALUES (?,?,?,?,?,?)',
-      )
-      .run(input.runId, input.kind, input.name, input.pid, input.command, nowIso());
+    const info = this.exec(
+      'INSERT INTO processes (run_id, kind, name, pid, command, started_at) VALUES (?,?,?,?,?,?)',
+      input.runId,
+      input.kind,
+      input.name,
+      input.pid,
+      input.command,
+      nowIso(),
+    );
     return Number(info.lastInsertRowid);
   }
 
   endProcess(id: number): void {
-    this.db.prepare('UPDATE processes SET ended_at = ? WHERE id = ?').run(nowIso(), id);
+    this.exec('UPDATE processes SET ended_at = ? WHERE id = ?', nowIso(), id);
   }
 
   openProcesses(runId?: string): {
@@ -640,13 +647,12 @@ export class Tracer {
     pid: number;
     command: string;
   }[] {
-    const rows = (
-      runId
-        ? this.db
-            .prepare('SELECT * FROM processes WHERE ended_at IS NULL AND run_id = ?')
-            .all(runId)
-        : this.db.prepare('SELECT * FROM processes WHERE ended_at IS NULL').all()
-    ) as RawProcess[];
+    const rows = runId
+      ? this.many<RawProcess>(
+          'SELECT * FROM processes WHERE ended_at IS NULL AND run_id = ?',
+          runId,
+        )
+      : this.many<RawProcess>('SELECT * FROM processes WHERE ended_at IS NULL');
     return rows.map((r) => ({
       id: r.id,
       runId: r.run_id,
@@ -744,22 +750,25 @@ export class Tracer {
 
   deleteRunsOlderThan(days: number): string[] {
     const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
-    const rows = this.db
-      .prepare("SELECT run_id FROM runs WHERE status != 'running' AND started_at < ?")
-      .all(cutoff) as { run_id: string }[];
-    const ids = rows.map((r) => r.run_id);
-    const tx = this.db.transaction((runIds: string[]) => {
-      for (const id of runIds) {
-        this.db.prepare('DELETE FROM events WHERE run_id = ?').run(id);
-        this.db.prepare('DELETE FROM envelopes WHERE run_id = ?').run(id);
-        this.db.prepare('DELETE FROM gate_results WHERE run_id = ?').run(id);
-        this.db.prepare('DELETE FROM agent_sessions WHERE run_id = ?').run(id);
-        this.db.prepare('DELETE FROM processes WHERE run_id = ?').run(id);
-        this.db.prepare('DELETE FROM phases WHERE run_id = ?').run(id);
-        this.db.prepare('DELETE FROM runs WHERE run_id = ?').run(id);
+    const ids = this.many<{ run_id: string }>(
+      "SELECT run_id FROM runs WHERE status != 'running' AND started_at < ?",
+      cutoff,
+    ).map((r) => r.run_id);
+    // Children before parents: `runs` is the foreign-key target of the rest.
+    const tables = [
+      'events',
+      'envelopes',
+      'gate_results',
+      'agent_sessions',
+      'processes',
+      'phases',
+      'runs',
+    ];
+    this.db.transaction(() => {
+      for (const id of ids) {
+        for (const table of tables) this.exec(`DELETE FROM ${table} WHERE run_id = ?`, id);
       }
-    });
-    tx(ids);
+    })();
     return ids;
   }
 
@@ -878,6 +887,16 @@ function safeJson(text: string | null): Record<string, unknown> {
     return JSON.parse(text) as Record<string, unknown>;
   } catch {
     return {};
+  }
+}
+
+function safeJsonArray<T>(text: string | null): T[] {
+  if (!text) return [];
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
+  } catch {
+    return [];
   }
 }
 

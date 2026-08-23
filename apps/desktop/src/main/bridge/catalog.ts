@@ -55,6 +55,22 @@ const PI_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as
 /** Claude's adaptive-thinking compat, applied to every anthropic-messages model. */
 const CLAUDE_COMPAT = { forceAdaptiveThinking: true, supportsStrictTools: true };
 
+/** Which pi thinking dialect a provider's levels are translated into. */
+type ThinkingKind = 'claude' | 'codex' | 'default';
+
+/**
+ * Levels a provider pins whatever the catalog offers: Claude has no discrete
+ * low tier to expose, and Codex spells "no thinking" `none`.
+ */
+const PINNED_THINKING_LEVELS: Record<ThinkingKind, Record<string, string | null>> = {
+  claude: { off: null, minimal: null },
+  codex: { off: 'none', minimal: null },
+  default: {},
+};
+
+/** Codex plan channels, poorest tier first. Unlisted channels rank lowest. */
+const CODEX_CHANNEL_TIERS = ['codex-free', 'codex-team', 'codex-plus', 'codex-pro'];
+
 /**
  * Reads the vendored catalog, or an empty document when the file is missing
  * or unparseable. A checkout that skipped `fetch:bridge` has no catalog, and
@@ -132,24 +148,20 @@ export function channelsForProvider(
         return channel === 'xai' || channel === 'grok';
     }
   };
+  const matched = channels.filter(match);
   // Codex: walk richer tiers first so an id that appears in several plans
   // keeps the pro metadata, then append ids that only a newer tier added.
-  const matched = channels.filter(match);
   if (provider === 'codex') {
-    return [...matched].sort((a, b) => codexChannelRank(b) - codexChannelRank(a));
+    return matched.sort((a, b) => codexChannelRank(b) - codexChannelRank(a));
   }
   return matched;
 }
 
 function codexChannelRank(channel: string): number {
-  if (channel === 'codex-pro') return 4;
-  if (channel === 'codex-plus') return 3;
-  if (channel === 'codex-team') return 2;
-  if (channel === 'codex-free') return 1;
-  return 0;
+  return CODEX_CHANNEL_TIERS.indexOf(channel) + 1;
 }
 
-function thinkingKind(provider: BridgeProviderId): 'claude' | 'codex' | 'default' {
+function thinkingKind(provider: BridgeProviderId): ThinkingKind {
   if (provider === 'claude') return 'claude';
   if (provider === 'codex') return 'codex';
   return 'default';
@@ -166,13 +178,12 @@ export function isAgentModel(model: CliproxyModel): boolean {
   return outputs.some((modality) => modality.toLowerCase() === 'text');
 }
 
-function toCatalogModel(model: CliproxyModel, kind: 'claude' | 'codex' | 'default'): CatalogModel {
+function toCatalogModel(model: CliproxyModel, kind: ThinkingKind): CatalogModel {
   const thinking = model.thinking ?? undefined;
-  const name = model.display_name || model.displayName || model.name || model.id;
   const input = modalities(model.supportedInputModalities);
   const converted: CatalogModel = {
     id: model.id,
-    name,
+    name: model.display_name || model.displayName || model.name || model.id,
     reasoning: thinking != null,
     input: input.length ? input : ['text'],
     contextWindow: numberOr(model.context_length ?? model.inputTokenLimit, 128_000),
@@ -186,29 +197,20 @@ function toCatalogModel(model: CliproxyModel, kind: 'claude' | 'codex' | 'defaul
 
 function thinkingLevelMap(
   thinking: CliproxyThinking | undefined,
-  kind: 'claude' | 'codex' | 'default',
+  kind: ThinkingKind,
 ): Record<string, string | null> | undefined {
   if (!thinking?.levels?.length) return undefined;
+  const pinned = PINNED_THINKING_LEVELS[kind];
   const offered = new Set(thinking.levels.map((level) => level.toLowerCase()));
   const map: Record<string, string | null> = {};
   for (const level of PI_LEVELS) {
-    if (kind === 'claude' && (level === 'off' || level === 'minimal')) {
-      map[level] = null;
-      continue;
-    }
-    if (kind === 'codex' && level === 'off') {
-      map[level] = 'none';
-      continue;
-    }
-    if (kind === 'codex' && level === 'minimal') {
-      map[level] = null;
-      continue;
-    }
-    if (level === 'off' && thinking.zero_allowed) {
+    if (level in pinned) {
+      map[level] = pinned[level] ?? null;
+    } else if (level === 'off' && thinking.zero_allowed) {
       map[level] = 'off';
-      continue;
+    } else {
+      map[level] = offered.has(level) ? level : null;
     }
-    map[level] = offered.has(level) ? level : null;
   }
   return map;
 }
@@ -225,40 +227,44 @@ function modalities(values: string[] | undefined): ('text' | 'image')[] {
 
 function asCliproxyModel(value: unknown): CliproxyModel | null {
   if (!isRecord(value)) return null;
-  const id = typeof value.id === 'string' ? value.id.trim() : '';
+  const id = asString(value.id)?.trim();
   if (!id) return null;
-  const model: CliproxyModel = { id };
-  if (typeof value.display_name === 'string') model.display_name = value.display_name;
-  if (typeof value.displayName === 'string') model.displayName = value.displayName;
-  if (typeof value.name === 'string') model.name = value.name;
-  if (value.thinking && typeof value.thinking === 'object' && !Array.isArray(value.thinking)) {
-    const raw = value.thinking as Record<string, unknown>;
-    const thinking: CliproxyThinking = {};
-    if (Array.isArray(raw.levels)) {
-      thinking.levels = raw.levels.filter((level): level is string => typeof level === 'string');
-    }
-    if (typeof raw.zero_allowed === 'boolean') thinking.zero_allowed = raw.zero_allowed;
-    model.thinking = thinking;
-  } else if (value.thinking === null) {
-    model.thinking = null;
-  }
-  if (typeof value.context_length === 'number') model.context_length = value.context_length;
-  if (typeof value.max_completion_tokens === 'number') {
-    model.max_completion_tokens = value.max_completion_tokens;
-  }
-  if (typeof value.inputTokenLimit === 'number') model.inputTokenLimit = value.inputTokenLimit;
-  if (typeof value.outputTokenLimit === 'number') model.outputTokenLimit = value.outputTokenLimit;
-  if (Array.isArray(value.supportedInputModalities)) {
-    model.supportedInputModalities = value.supportedInputModalities.filter(
-      (item): item is string => typeof item === 'string',
-    );
-  }
-  if (Array.isArray(value.supportedOutputModalities)) {
-    model.supportedOutputModalities = value.supportedOutputModalities.filter(
-      (item): item is string => typeof item === 'string',
-    );
-  }
-  return model;
+  return {
+    id,
+    display_name: asString(value.display_name),
+    displayName: asString(value.displayName),
+    name: asString(value.name),
+    thinking: asThinking(value.thinking),
+    context_length: asNumber(value.context_length),
+    max_completion_tokens: asNumber(value.max_completion_tokens),
+    inputTokenLimit: asNumber(value.inputTokenLimit),
+    outputTokenLimit: asNumber(value.outputTokenLimit),
+    supportedInputModalities: asStringArray(value.supportedInputModalities),
+    supportedOutputModalities: asStringArray(value.supportedOutputModalities),
+  };
+}
+
+/** Distinguishes "no thinking block" (undefined) from an explicit null. */
+function asThinking(value: unknown): CliproxyThinking | null | undefined {
+  if (value === null) return null;
+  if (!isRecord(value)) return undefined;
+  return {
+    levels: asStringArray(value.levels),
+    zero_allowed: typeof value.zero_allowed === 'boolean' ? value.zero_allowed : undefined,
+  };
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function asNumber(value: unknown): number | undefined {
+  return typeof value === 'number' ? value : undefined;
+}
+
+function asStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.filter((item): item is string => typeof item === 'string');
 }
 
 function numberOr(value: number | undefined, fallback: number): number {

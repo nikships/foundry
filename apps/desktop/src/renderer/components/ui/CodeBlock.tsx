@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
+import { cx } from './cx.js';
 import styles from './CodeBlock.module.css';
 
 interface CodeBlockProps {
@@ -19,15 +20,11 @@ export function CodeBlock({
   maxHeight,
   style,
 }: CodeBlockProps): React.JSX.Element {
-  const combinedClass = className
-    ? `${styles.block} selectable ${className}`
-    : `${styles.block} selectable`;
-
-  const combinedStyle: CSSProperties | undefined =
-    maxHeight !== undefined ? { ...style, maxHeight } : style;
-
   return (
-    <pre className={combinedClass} style={combinedStyle}>
+    <pre
+      className={cx(styles.block, 'selectable', className)}
+      style={maxHeight === undefined ? style : { ...style, maxHeight }}
+    >
       {children}
     </pre>
   );

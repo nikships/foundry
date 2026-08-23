@@ -8,7 +8,7 @@
  */
 
 import type { AppSettings } from '@shared/types.js';
-import type { DetectionProposal, DetectionState } from '@shared/ipc-contract.js';
+import type { DetectionState } from '@shared/ipc-contract.js';
 import { modelLabel } from '@shared/model-label.js';
 import type { OneShotFactory } from '../pi/oneshot.js';
 import {
@@ -21,9 +21,7 @@ import {
 import { buildDetectPrompt, DETECT_PROMPT, parseDetectReply, sniffCommands } from './detect.js';
 import { runCommand } from './commands.js';
 
-export type { DetectionProposal, DetectionState };
-export type DetectionStatus = DetectionState['status'];
-export type VerifyState = DetectionProposal['verify'];
+export type { DetectionState };
 
 const VERIFY_TIMEOUT_MS = 300_000;
 

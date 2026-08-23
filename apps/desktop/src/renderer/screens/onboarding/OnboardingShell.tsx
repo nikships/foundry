@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { FoundryGlyph } from '../../components/media/BrandIcon.js';
-import { OnboardingProvider } from './OnboardingContext.js';
-import { Stepper } from './shared.js';
-import { useOnboarding } from './OnboardingContext.js';
+import { OnboardingProvider, useOnboarding } from './OnboardingContext.js';
+import { Stepper, type StepId } from './shared.js';
 import './onboarding.css';
 
 import WelcomeScreen from './WelcomeScreen.js';
@@ -10,7 +9,7 @@ import ProvidersScreen from './ProvidersScreen.js';
 import DoctorScreen from './DoctorScreen.js';
 import ProjectScreen from './ProjectScreen.js';
 
-const STEP_COMPONENTS: Record<string, React.ComponentType> = {
+const STEP_COMPONENTS: Record<StepId, React.ComponentType> = {
   welcome: WelcomeScreen,
   providers: ProvidersScreen,
   doctor: DoctorScreen,
@@ -19,7 +18,7 @@ const STEP_COMPONENTS: Record<string, React.ComponentType> = {
 
 function OnboardingShellInner(): React.JSX.Element {
   const { step, stepIndex, canLeaveDoctor, go, entered } = useOnboarding();
-  const Active = STEP_COMPONENTS[step] ?? WelcomeScreen;
+  const Active = STEP_COMPONENTS[step];
   return (
     <div className={`ob-shell ${entered ? 'in' : ''}`}>
       <div className="ob-backdrop" aria-hidden>

@@ -33,6 +33,7 @@ export function smithCompanionTool(deps: SmithActionToolDeps): ToolDefinition {
       const op = parseOperation(params, SMITH_COMPANION_OPERATIONS);
       if (!op) return json({ ok: false, error: 'unknown operation' });
       if (op === 'state') return immediate(deps, IPC.companionState);
+
       if (op === 'unpair') {
         const deviceId = stringField(params, 'deviceId');
         if (!deviceId) return json({ ok: false, error: 'deviceId is required' });
@@ -45,31 +46,39 @@ export function smithCompanionTool(deps: SmithActionToolDeps): ToolDefinition {
           execute: () => deps.invoke(IPC.companionUnpair, deviceId),
         });
       }
-      const channel =
-        op === 'start'
-          ? IPC.companionStart
-          : op === 'stop'
-            ? IPC.companionStop
-            : IPC.companionPairingPayload;
-      const args = op === 'pairing' ? { refresh: booleanField(params, 'refresh') ?? false } : {};
+
+      if (op === 'pairing') {
+        const refresh = booleanField(params, 'refresh') ?? false;
+        return proposeAction(deps, {
+          operation: op,
+          title: 'pairing Companion',
+          summary: 'pairing Companion services.',
+          args: { refresh },
+          risk: 'network',
+          // The payload is a renderer-only display; Smith learns only that
+          // one exists.
+          execute: async () => {
+            const payload = (await deps.invoke(IPC.companionPairingPayload, {
+              refresh,
+            })) as SmithPrivateDisplay['payload'] | null;
+            return {
+              modelResult: { ok: true, available: payload != null },
+              ...(payload
+                ? { privateDisplay: { kind: 'companion-pairing' as const, payload } }
+                : {}),
+            };
+          },
+        });
+      }
+
+      const channel = op === 'start' ? IPC.companionStart : IPC.companionStop;
       return proposeAction(deps, {
         operation: op,
         title: `${op} Companion`,
         summary: `${op} Companion services.`,
-        args,
+        args: {},
         risk: 'network',
-        execute: async () => {
-          const result = await deps.invoke(
-            channel,
-            ...(op === 'pairing' ? [{ refresh: args.refresh }] : []),
-          );
-          if (op !== 'pairing') return result;
-          const payload = result as SmithPrivateDisplay['payload'] | null;
-          return {
-            modelResult: { ok: true, available: payload != null },
-            ...(payload ? { privateDisplay: { kind: 'companion-pairing' as const, payload } } : {}),
-          };
-        },
+        execute: () => deps.invoke(channel),
       });
     },
   });

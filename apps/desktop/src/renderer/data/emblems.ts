@@ -372,9 +372,10 @@ const KEYWORD_HINTS: { match: RegExp; ids: string[] }[] = [
   { match: /release|deploy|ship|merge/i, ids: ['merge', 'bolt', 'flag', 'cycle'] },
 ];
 
+const DEFAULT_EMBLEM_SUGGESTIONS = ['operator', 'anvil', 'stations', 'spark'];
+
 export function suggestedEmblemIds(agentName: string): string[] {
-  const hit = KEYWORD_HINTS.find((h) => h.match.test(agentName));
-  return hit ? hit.ids : ['operator', 'anvil', 'stations', 'spark'];
+  return KEYWORD_HINTS.find((h) => h.match.test(agentName))?.ids ?? DEFAULT_EMBLEM_SUGGESTIONS;
 }
 
 /** Forces the initial-letter avatar, even when a painted portrait exists. */
@@ -433,6 +434,6 @@ export function isDefaultMark(agent: {
   emblem?: string;
   builtin?: boolean;
 }): boolean {
-  if (agent.builtin) return resolveAgentMark(agent.emblem).kind === 'portrait';
-  return resolveAgentMark(agent.emblem).kind === 'monogram';
+  const expected: AgentMarkKind = agent.builtin ? 'portrait' : 'monogram';
+  return resolveAgentMark(agent.emblem).kind === expected;
 }

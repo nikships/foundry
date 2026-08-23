@@ -156,6 +156,7 @@ function NodeCard({
   const color = phaseKindColor(phase.kind, agentColor(phase.agent ?? null));
   const envelopeChip = phaseEnvelopeChip(phase, agentEnvelope(phase.agent ?? null));
   const checkpoint = phase.kind === 'engineer';
+  const checkCount = gateNames(phase).length;
 
   return (
     <article
@@ -215,9 +216,9 @@ function NodeCard({
                   {envelopeChip.label}
                   {envelopeChip.overridden && <span className={styles.overrideMark}>ovr</span>}
                 </Chip>
-                {gateNames(phase).length > 0 && (
+                {checkCount > 0 && (
                   <Chip>
-                    {gateNames(phase).length} {gateNames(phase).length === 1 ? 'check' : 'checks'}
+                    {checkCount} {checkCount === 1 ? 'check' : 'checks'}
                   </Chip>
                 )}
               </>

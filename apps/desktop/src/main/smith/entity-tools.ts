@@ -29,15 +29,18 @@ import { validate as validateAgent } from '../store/roster.js';
 import { validate as validatePipeline } from '../store/pipelines.js';
 import { validate as validateEnvelope } from '../store/envelopes.js';
 import type { ProposalQueue } from './proposals.js';
-import { field, json, resolveProjectId } from './tool-helpers.js';
+import { errorMessage, field, json, resolveProjectId } from './tool-helpers.js';
 
 export const SMITH_TOOL_NAMES = ['smith_list', 'smith_show', 'smith_propose'] as const;
 
-/** The entity kinds the tools read. Only the first three are written here. */
-type EntityKind = 'agent' | 'pipeline' | 'envelope' | 'project';
+const KIND_VALUES = ['agent', 'pipeline', 'envelope', 'project'] as const;
+const WRITABLE_KIND_VALUES = ['agent', 'pipeline', 'envelope'] as const;
+
+/** The entity kinds the tools read. Only the writable three are written here. */
+type EntityKind = (typeof KIND_VALUES)[number];
 
 /** The entity kinds Smith may write. `project` is deliberately not among them. */
-type WritableKind = 'agent' | 'pipeline' | 'envelope';
+type WritableKind = (typeof WRITABLE_KIND_VALUES)[number];
 
 /**
  * What the tools read. A structural slice rather than `AppContext`, so the
@@ -65,9 +68,6 @@ export interface SmithEntityToolDeps {
    */
   projectId: () => string | undefined;
 }
-
-const KIND_VALUES: readonly EntityKind[] = ['agent', 'pipeline', 'envelope', 'project'];
-const WRITABLE_KIND_VALUES: readonly WritableKind[] = ['agent', 'pipeline', 'envelope'];
 
 function parseKind(raw: unknown): EntityKind | null {
   return typeof raw === 'string' && (KIND_VALUES as readonly string[]).includes(raw)
@@ -103,7 +103,7 @@ export function smithListTool(deps: SmithEntityToolDeps): ToolDefinition {
     execute: (_id, params) => {
       const kind = parseKind(field(params, 'kind'));
       if (!kind) return Promise.resolve(json({ ok: false, error: 'unknown kind' }));
-      const scope = resolveProjectId(field(params, 'projectId'), deps.projectId(), false);
+      const scope = resolveProjectId(field(params, 'projectId'), deps.projectId());
       if (!scope.ok) return Promise.resolve(json(scope));
       return Promise.resolve(
         json({ ok: true, kind, entities: listEntities(deps.stores, kind, scope.projectId) }),
@@ -141,7 +141,7 @@ export function smithShowTool(deps: SmithEntityToolDeps): ToolDefinition {
       const rawName = field(params, 'name');
       const name = typeof rawName === 'string' ? rawName : '';
       if (!name) return Promise.resolve(json({ ok: false, error: 'show needs a name' }));
-      const scope = resolveProjectId(field(params, 'projectId'), deps.projectId(), false);
+      const scope = resolveProjectId(field(params, 'projectId'), deps.projectId());
       if (!scope.ok) return Promise.resolve(json(scope));
       const entity = showEntity(deps.stores, kind, name, scope.projectId);
       if (!entity) {
@@ -195,18 +195,18 @@ export function smithProposeTool(deps: SmithEntityToolDeps): ToolDefinition {
         return json({ ok: false, error: 'propose needs a spec object' });
       }
 
-      const scope = resolveProjectId(field(params, 'projectId'), deps.projectId(), false);
+      const scope = resolveProjectId(field(params, 'projectId'), deps.projectId());
       if (!scope.ok) return json(scope);
-      const projectId = scope.projectId;
-      const { name, issues, overwrites } = prepare(deps.stores, kind, spec, projectId);
+      const targetProject = scope.projectId;
+      const sessionProject = deps.projectId();
+      const { name, issues, overwrites } = prepare(deps.stores, kind, spec, targetProject);
       if (!name) return json({ ok: false, error: `${kind} spec is missing its name` });
 
       // Validation is the gate before any card. Warnings pass through onto the
       // card; only errors refuse here, matching the store's own save contract.
-      const errors = issues.filter((i) => i.level === 'error');
+      const errors = issues.filter((issue) => issue.level === 'error');
       if (errors.length) return json({ ok: false, validation: errors });
 
-      const warnings = issues.filter((i) => i.level === 'warning');
       let outcome;
       try {
         outcome = await deps.queue.propose({
@@ -215,14 +215,16 @@ export function smithProposeTool(deps: SmithEntityToolDeps): ToolDefinition {
           mode,
           name,
           spec,
-          validation: warnings,
+          validation: issues.filter((issue) => issue.level === 'warning'),
           overwrites,
-          ...(deps.projectId() ? { projectId: deps.projectId() } : {}),
-          ...(projectId && projectId !== deps.projectId() ? { targetProjectId: projectId } : {}),
+          ...(sessionProject ? { projectId: sessionProject } : {}),
+          ...(targetProject && targetProject !== sessionProject
+            ? { targetProjectId: targetProject }
+            : {}),
         });
       } catch (e) {
         // The one race the model is told to expect: another proposal is pending.
-        return json({ ok: false, error: (e as Error).message });
+        return json({ ok: false, error: errorMessage(e) });
       }
 
       if (outcome.approved) return json(outcome.result);
@@ -234,9 +236,7 @@ export function smithProposeTool(deps: SmithEntityToolDeps): ToolDefinition {
 function listEntities(stores: SmithEntityStores, kind: EntityKind, projectId?: string): unknown[] {
   if (kind === 'agent') return stores.rosterFor(projectId);
   if (kind === 'pipeline') return stores.pipelinesFor(projectId);
-  if (kind === 'project') {
-    return stores.projects.list();
-  }
+  if (kind === 'project') return stores.projects.list();
   return stores.envelopes.list();
 }
 
@@ -246,8 +246,9 @@ function showEntity(
   name: string,
   projectId?: string,
 ): unknown {
-  if (kind === 'project')
+  if (kind === 'project') {
     return stores.projects.list().find((project) => project.id === name) ?? null;
+  }
   if (kind === 'agent') return stores.roster.get(name, stores.rosterScope(projectId));
   if (kind === 'pipeline') return stores.pipelines.get(name, stores.pipelineScope(projectId));
   return stores.envelopes.get(name);
@@ -265,21 +266,22 @@ function prepare(
 ): { name: string; issues: ValidationIssue[]; overwrites: boolean } {
   if (kind === 'agent') {
     const agent = spec as AgentDef;
-    const known = stores.envelopes.list().map((e) => e.name);
     return {
       name: agent.name ?? '',
-      issues: validateAgent(agent, known),
+      issues: validateAgent(agent, envelopeNames(stores)),
       overwrites: !!stores.roster.get(agent.name, stores.rosterScope(projectId)),
     };
   }
   if (kind === 'pipeline') {
     const pipeline = spec as PipelineDef;
-    const agents = stores.rosterFor(projectId);
-    const commandNames = stores.commandNames(projectId);
-    const known = stores.envelopes.list().map((e) => e.name);
     return {
       name: pipeline.id ?? '',
-      issues: validatePipeline(pipeline, agents, commandNames, known),
+      issues: validatePipeline(
+        pipeline,
+        stores.rosterFor(projectId),
+        stores.commandNames(projectId),
+        envelopeNames(stores),
+      ),
       overwrites: !!stores.pipelines.get(pipeline.id, stores.pipelineScope(projectId)),
     };
   }
@@ -289,4 +291,8 @@ function prepare(
     issues: validateEnvelope(envelope),
     overwrites: !!stores.envelopes.get(envelope.name),
   };
+}
+
+function envelopeNames(stores: SmithEntityStores): string[] {
+  return stores.envelopes.list().map((envelope) => envelope.name);
 }

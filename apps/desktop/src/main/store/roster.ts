@@ -14,6 +14,7 @@ import { REASONING_EFFORTS } from '@shared/reasoning-effort.js';
 import { BUILTIN_ENVELOPE_KINDS, type AgentDef, type ValidationIssue } from '@shared/types.js';
 import { JsonStore } from './json-store.js';
 import { BUILTIN_AGENTS } from './builtin-agents.js';
+import { uniqueCopyName, upsertBy } from './collections.js';
 
 export const agentSchema = z.object({
   name: z
@@ -190,10 +191,11 @@ export class RosterStore {
     opts: { projectId?: string; ownRoster?: boolean } = {},
     knownEnvelopes: string[] = [],
   ): { ok: true; agents: AgentDef[] } | { ok: false; issues: ValidationIssue[] } {
-    const issues = validate(agent, knownEnvelopes);
-    // Warnings (unknown envelope name) must not block autosave.
-    if (issues.some((i) => i.level === 'error')) return { ok: false, issues };
-    const value = agentSchema.parse(agent) as AgentDef;
+    // Warnings (an unknown envelope name) must not block autosave, and only
+    // the schema produces errors — so a failed parse is the whole gate.
+    const parsed = agentSchema.safeParse(agent);
+    if (!parsed.success) return { ok: false, issues: validate(agent, knownEnvelopes) };
+    const value = parsed.data as AgentDef;
     const next = this.storeFor(opts).update((current) =>
       upsertBy(current, (a) => a.name === value.name, value),
     );
@@ -278,19 +280,4 @@ export class RosterStore {
       upsertBy(current, (agent) => agent.name === name, structuredClone(shipped)),
     );
   }
-}
-
-function upsertBy<T>(list: T[], match: (item: T) => boolean, value: T): T[] {
-  const index = list.findIndex(match);
-  if (index < 0) return [...list, value];
-  const copy = [...list];
-  copy[index] = value;
-  return copy;
-}
-
-function uniqueCopyName(base: string, existing: Set<string>): string {
-  let candidate = `${base}-copy`;
-  let n = 2;
-  while (existing.has(candidate)) candidate = `${base}-copy-${n++}`;
-  return candidate;
 }

@@ -27,7 +27,7 @@ import { modelRuntime } from './runtime.js';
 import { FOUNDRY_ONESHOT_HARNESS } from './system-prompt.js';
 import { BUILTIN_TOOLS, READ_ONLY_TOOLS } from './tools.js';
 import { lastAssistantStop, VendorEventReader } from './vendor-events.js';
-import type { OneShotOptions, OneShotResult, OneShotSession } from './oneshot.js';
+import type { OneShotFactory, OneShotOptions, OneShotResult, OneShotSession } from './oneshot.js';
 import type { PermissionAsk, PermissionDecision } from './transport.js';
 
 /** What every one-shot needs that only the composition root knows. */
@@ -172,6 +172,6 @@ class PiOneShot implements OneShotSession {
 }
 
 /** The production factory, bound to the directory Foundry keeps pi state in. */
-export function piOneShots(supportDir: string): (opts: OneShotOptions) => OneShotSession {
+export function piOneShots(supportDir: string): OneShotFactory {
   return (opts) => new PiOneShot({ ...opts, supportDir });
 }

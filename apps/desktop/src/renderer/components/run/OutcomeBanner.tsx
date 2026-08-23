@@ -3,6 +3,7 @@ import type { EnvelopeRow, GhStatus, PhaseRow, RunRow } from '@shared/types.js';
 import { useBrandedAsset } from '../../hooks/useBrandedAsset.js';
 import { manualPrDraft } from '../../view-models/pr-draft.js';
 import { Button } from '../ui/Button.js';
+import { cx } from '../ui/cx.js';
 import styles from './OutcomeBanner.module.css';
 
 function headlineFor(status: RunRow['status']): string {
@@ -28,6 +29,28 @@ function artFor(status: RunRow['status']): string {
   if (status === 'accepted') return 'scenes/run-accepted.png';
   if (status === 'rejected') return 'scenes/run-rejected.png';
   return 'scenes/run-failed.png';
+}
+
+/** The GitHub issue this run filed, when it filed one. */
+function IssueLink({
+  run,
+  onOpenUrl,
+}: {
+  run: RunRow;
+  onOpenUrl: (url: string) => void;
+}): React.JSX.Element | null {
+  if (!run.issueUrl) return null;
+  const url = run.issueUrl;
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      title="Open the GitHub issue this run filed"
+      onClick={() => onOpenUrl(url)}
+    >
+      Issue #{run.issueNumber ?? '?'} ↗
+    </Button>
+  );
 }
 
 function explanationFor(run: RunRow, phases: PhaseRow[]): string {
@@ -89,6 +112,7 @@ export default function OutcomeBanner({
   const art = useBrandedAsset(artFor(run.status));
   const color = colorFor(run.status);
   const hasWorktree = !!run.worktreePath && !run.merged;
+  const prUrl = run.prUrl ?? '';
   const [prFormOpen, setPrFormOpen] = useState(false);
   const [prTitle, setPrTitle] = useState('');
   const [prBody, setPrBody] = useState('');
@@ -122,7 +146,7 @@ export default function OutcomeBanner({
         <p>{explanationFor(run, phases)}</p>
         {worktreeMessage && (
           <p
-            className={`${styles.note} mono ${worktreeError ? styles.bad : 'faint'}`}
+            className={cx(styles.note, 'mono', worktreeError ? styles.bad : 'faint')}
             role={worktreeError ? 'alert' : undefined}
           >
             {worktreeBusy ? 'Working… ' : ''}
@@ -159,22 +183,13 @@ export default function OutcomeBanner({
               {worktreeBusy ? 'Working…' : 'Fix & merge with agent'}
             </Button>
           )}
-          {run.issueUrl && (
-            <Button
-              variant="ghost"
-              size="sm"
-              title="Open the GitHub issue this run filed"
-              onClick={() => onOpenUrl(run.issueUrl!)}
-            >
-              Issue #{run.issueNumber ?? '?'} ↗
-            </Button>
-          )}
+          <IssueLink run={run} onOpenUrl={onOpenUrl} />
           {run.prUrl ? (
             <Button
               size="sm"
               disabled={worktreeBusy}
               title="Open this run's pull request on GitHub"
-              onClick={() => onOpenUrl(run.prUrl!)}
+              onClick={() => onOpenUrl(prUrl)}
             >
               PR #{run.prNumber ?? '?'} ↗
             </Button>
@@ -212,22 +227,13 @@ export default function OutcomeBanner({
         </div>
       ) : run.merged ? (
         <div className={styles.actions}>
-          {run.issueUrl && (
-            <Button
-              variant="ghost"
-              size="sm"
-              title="Open the GitHub issue this run filed"
-              onClick={() => onOpenUrl(run.issueUrl!)}
-            >
-              Issue #{run.issueNumber ?? '?'} ↗
-            </Button>
-          )}
+          <IssueLink run={run} onOpenUrl={onOpenUrl} />
           {run.prUrl && (
             <Button
               variant="ghost"
               size="sm"
               title="Open this run's pull request on GitHub"
-              onClick={() => onOpenUrl(run.prUrl!)}
+              onClick={() => onOpenUrl(prUrl)}
             >
               PR #{run.prNumber ?? '?'} ↗
             </Button>

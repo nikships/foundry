@@ -81,18 +81,13 @@ export class ProposalQueue {
       return { ok: true };
     }
 
-    if (
-      answer.secret !== undefined &&
-      (entry.proposal.type !== 'action' || !entry.proposal.secretRequest)
-    ) {
+    const secretRequest =
+      entry.proposal.type === 'action' ? entry.proposal.secretRequest : undefined;
+    if (answer.secret !== undefined && !secretRequest) {
       return { ok: false, error: 'this proposal does not accept a secret' };
     }
-    if (
-      entry.proposal.type === 'action' &&
-      entry.proposal.secretRequest &&
-      !answer.secret?.trim()
-    ) {
-      return { ok: false, error: `${entry.proposal.secretRequest.label} is required` };
+    if (secretRequest && !answer.secret?.trim()) {
+      return { ok: false, error: `${secretRequest.label} is required` };
     }
 
     entry.executing = true;
@@ -100,7 +95,11 @@ export class ProposalQueue {
     try {
       executed = await entry.executor(answer);
     } catch (error) {
-      executed = { ok: false, error: message(error), retryable: entry.proposal.type === 'entity' };
+      executed = {
+        ok: false,
+        error: errorMessage(error),
+        retryable: entry.proposal.type === 'entity',
+      };
     }
 
     if (!executed.ok) {
@@ -127,10 +126,9 @@ export class ProposalQueue {
     entry.resolve({ approved: false, note: 'Foundry is shutting down' });
   }
 
+  /** The default executor: an entity proposal saves, and may be retried. */
   private entityExecutor(proposal: SmithProposal): ProposalExecutor {
-    if (proposal.type !== 'entity') {
-      throw new Error('action proposals require an executor');
-    }
+    if (proposal.type !== 'entity') throw new Error('action proposals require an executor');
     return async () => {
       const saved = await this.save(proposal);
       return saved.ok
@@ -146,6 +144,6 @@ export class ProposalQueue {
   }
 }
 
-function message(error: unknown): string {
+function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }

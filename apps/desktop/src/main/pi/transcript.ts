@@ -74,7 +74,7 @@ export function foldTranscript<Row extends TranscriptRow>(
         const open = openTools.get(event.callId);
         if (!open) return;
         // Live command output replaces the label's trailing view, not the name.
-        open.text = event.content ? `${open.text.split('\n')[0]}\n${event.content}` : open.text;
+        if (event.content) open.text = `${open.text.split('\n')[0]}\n${event.content}`;
         target.flush();
         return;
       }

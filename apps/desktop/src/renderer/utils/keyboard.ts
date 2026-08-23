@@ -30,6 +30,11 @@ const DESIGN_TAB_KEYS: Record<string, DesignTab> = {
  */
 const SHIFTED_DIGITS: Record<string, string> = { '!': '1', '@': '2', '#': '3' };
 
+/** ⌘ on mac, Ctrl elsewhere. Alt is never part of a Foundry chord. */
+function hasModifier(e: ShortcutKey): boolean {
+  return (e.metaKey || e.ctrlKey) && !e.altKey;
+}
+
 /**
  * Mirrors the native menu accelerators (⌘1–⌘4, ⌘,) so the same chords work
  * when the menu cannot intercept them — synthetic input (CDP automation) and
@@ -37,8 +42,7 @@ const SHIFTED_DIGITS: Record<string, string> = { '!': '1', '@': '2', '#': '3' };
  * first, so this only ever sees events the menu did not handle.
  */
 export function viewShortcut(e: ShortcutKey): View | null {
-  const mod = e.metaKey || e.ctrlKey;
-  if (!mod || e.altKey || e.shiftKey) return null;
+  if (!hasModifier(e) || e.shiftKey) return null;
   return VIEW_KEYS[e.key] ?? null;
 }
 
@@ -47,8 +51,7 @@ export function viewShortcut(e: ShortcutKey): View | null {
  * only means anything once Design is the active view; the caller decides that.
  */
 export function designTabShortcut(e: ShortcutKey): DesignTab | null {
-  const mod = e.metaKey || e.ctrlKey;
-  if (!mod || e.altKey || !e.shiftKey) return null;
+  if (!hasModifier(e) || !e.shiftKey) return null;
   return DESIGN_TAB_KEYS[SHIFTED_DIGITS[e.key] ?? e.key] ?? null;
 }
 
@@ -58,15 +61,15 @@ export function designTabShortcut(e: ShortcutKey): DesignTab | null {
  * top of Settings, so the app shell handles it separately.
  */
 export function settingsSearchShortcut(e: ShortcutKey): boolean {
-  const mod = e.metaKey || e.ctrlKey;
-  return mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'k';
+  return hasModifier(e) && !e.shiftKey && e.key.toLowerCase() === 'k';
 }
+
+const EDITABLE_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
 
 export function isEditableTarget(target: unknown): boolean {
   const el = target as { tagName?: string; isContentEditable?: boolean } | null;
   if (!el?.tagName) return false;
-  if (el.isContentEditable) return true;
-  return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT';
+  return Boolean(el.isContentEditable) || EDITABLE_TAGS.has(el.tagName);
 }
 
 /**

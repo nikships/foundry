@@ -67,6 +67,11 @@ async function loadScoped(projectId: string | undefined): Promise<[AgentDef[], P
   return Promise.all([api.roster.list(projectId), api.pipelines.list(projectId)]);
 }
 
+const PROJECT_KEY = 'foundry.project';
+const SMITH_PROJECT_KEY = 'foundry.smithProject';
+/** Stored stand-in for Smith's “All projects” scope, which is a null id. */
+const SMITH_ALL_PROJECTS = '__all__';
+
 export function AppProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [projects, setProjects] = useState<ProjectDef[]>([]);
@@ -75,13 +80,13 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
   const [envelopes, setEnvelopes] = useState<EnvelopeDef[]>([]);
   const [interrupts, setInterrupts] = useState<PendingInterrupt[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>(
-    () => safeGetItem('foundry.project') ?? '',
+    () => safeGetItem(PROJECT_KEY) ?? '',
   );
-  const smithPreferenceRef = useRef(safeGetItem('foundry.smithProject'));
+  const smithPreferenceRef = useRef(safeGetItem(SMITH_PROJECT_KEY));
   const [smithProjectId, setSmithProjectId] = useState<string | null>(() => {
     const stored = smithPreferenceRef.current;
-    if (stored === '__all__') return null;
-    return stored ?? safeGetItem('foundry.project');
+    if (stored === SMITH_ALL_PROJECTS) return null;
+    return stored ?? safeGetItem(PROJECT_KEY);
   });
   const [ready, setReady] = useState(false);
 
@@ -95,6 +100,11 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
     [projects, selectedProjectId],
   );
   const projectId = project?.id ?? '';
+
+  const rememberSmithScope = useCallback((id: string | null): void => {
+    smithPreferenceRef.current = id ?? SMITH_ALL_PROJECTS;
+    safeSetItem(SMITH_PROJECT_KEY, smithPreferenceRef.current);
+  }, []);
 
   const refreshScoped = useCallback(async (): Promise<void> => {
     const id = (project?.id ?? selectedProjectIdRef.current) || undefined;
@@ -117,7 +127,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
     if (!nextProjects.some((p) => p.id === scopeId)) {
       scopeId = nextProjects[0]?.id ?? '';
       setSelectedProjectId(scopeId);
-      safeSetItem('foundry.project', scopeId);
+      safeSetItem(PROJECT_KEY, scopeId);
     }
 
     const smithScope = resolveSmithProjectId(
@@ -127,32 +137,35 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
       smithPreferenceRef.current !== null,
     );
     if (smithScope !== smithProjectId) setSmithProjectId(smithScope);
-    smithPreferenceRef.current = smithScope ?? '__all__';
-    safeSetItem('foundry.smithProject', smithPreferenceRef.current);
+    rememberSmithScope(smithScope);
 
     const [nextAgents, nextPipelines] = await loadScoped(scopeId || undefined);
     setAgents(nextAgents);
     setPipelines(nextPipelines);
     setReady(true);
-  }, [smithProjectId]);
+  }, [smithProjectId, rememberSmithScope]);
 
   const refreshInterrupts = useCallback(async (): Promise<void> => {
     setInterrupts(await api.interrupts.list());
   }, []);
 
-  const selectProject = useCallback((id: string): void => {
-    setSelectedProjectId(id);
-    safeSetItem('foundry.project', id);
-    setSmithProjectId(id);
-    smithPreferenceRef.current = id;
-    safeSetItem('foundry.smithProject', id);
-  }, []);
+  const selectProject = useCallback(
+    (id: string): void => {
+      setSelectedProjectId(id);
+      safeSetItem(PROJECT_KEY, id);
+      setSmithProjectId(id);
+      rememberSmithScope(id);
+    },
+    [rememberSmithScope],
+  );
 
-  const selectSmithProject = useCallback((id: string | null): void => {
-    setSmithProjectId(id);
-    smithPreferenceRef.current = id ?? '__all__';
-    safeSetItem('foundry.smithProject', smithPreferenceRef.current);
-  }, []);
+  const selectSmithProject = useCallback(
+    (id: string | null): void => {
+      setSmithProjectId(id);
+      rememberSmithScope(id);
+    },
+    [rememberSmithScope],
+  );
 
   useEffect(() => {
     if (!ready) return;

@@ -24,8 +24,39 @@ import SmithProposalCard, { type SmithNavTarget } from './SmithProposalCard.js';
 import SmithScopePicker from './SmithScopePicker.js';
 import SmithTranscript from './SmithTranscript.js';
 import { Button } from '../ui/Button.js';
+import { cx } from '../ui/cx.js';
 import { SmithEmblem } from '../layout/SidebarEmblems.js';
 import styles from './SmithBubble.module.css';
+
+function HeadAction({
+  onClick,
+  title,
+  label,
+  testId,
+  children,
+}: {
+  onClick: () => void;
+  title: string;
+  label: string;
+  testId: string;
+  /** Path data for a 16×16 viewBox glyph. */
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      className={styles.headAction}
+      onClick={onClick}
+      title={title}
+      aria-label={label}
+      data-testid={testId}
+    >
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+        {children}
+      </svg>
+    </button>
+  );
+}
 
 export default function SmithBubble({
   screenContext,
@@ -58,8 +89,7 @@ export default function SmithBubble({
 
   useEffect(() => {
     const refresh = async (): Promise<void> => {
-      const list = await api.smith.proposalsList();
-      setProposalPending(list.length > 0);
+      setProposalPending((await api.smith.proposalsList()).length > 0);
     };
     void refresh();
     return api.on('smith-proposals-changed', () => void refresh());
@@ -127,62 +157,50 @@ export default function SmithBubble({
             </span>
             <SmithScopePicker running={running} />
             <span className={styles.headSpacer} />
-            <button
-              type="button"
-              className={styles.headAction}
+            <HeadAction
               onClick={() => void newChat()}
               title="New chat — wipes the conversation and starts fresh"
-              aria-label="New chat"
-              data-testid="smith-bubble-new-chat"
+              label="New chat"
+              testId="smith-bubble-new-chat"
             >
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
-                <circle cx="8" cy="8" r="6.4" stroke="currentColor" strokeWidth="1.3" />
-                <path
-                  d="M8 5.2v5.6M5.2 8h5.6"
-                  stroke="currentColor"
-                  strokeWidth="1.3"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </button>
-            <button
-              type="button"
-              className={styles.headAction}
+              <circle cx="8" cy="8" r="6.4" stroke="currentColor" strokeWidth="1.3" />
+              <path
+                d="M8 5.2v5.6M5.2 8h5.6"
+                stroke="currentColor"
+                strokeWidth="1.3"
+                strokeLinecap="round"
+              />
+            </HeadAction>
+            <HeadAction
               onClick={() => {
                 close();
                 onExpand();
               }}
               title="Open the full Smith screen"
-              aria-label="Expand to the Smith screen"
-              data-testid="smith-bubble-expand"
+              label="Expand to the Smith screen"
+              testId="smith-bubble-expand"
             >
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
-                <path
-                  d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9"
-                  stroke="currentColor"
-                  strokeWidth="1.3"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
-            <button
-              type="button"
-              className={styles.headAction}
+              <path
+                d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9"
+                stroke="currentColor"
+                strokeWidth="1.3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </HeadAction>
+            <HeadAction
               onClick={close}
               title="Close"
-              aria-label="Close Smith chat"
-              data-testid="smith-bubble-close"
+              label="Close Smith chat"
+              testId="smith-bubble-close"
             >
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
-                <path
-                  d="M4 4l8 8M12 4l-8 8"
-                  stroke="currentColor"
-                  strokeWidth="1.3"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </button>
+              <path
+                d="M4 4l8 8M12 4l-8 8"
+                stroke="currentColor"
+                strokeWidth="1.3"
+                strokeLinecap="round"
+              />
+            </HeadAction>
           </header>
 
           <SmithTranscript
@@ -254,7 +272,7 @@ export default function SmithBubble({
         <SmithEmblem size={17} className={styles.launcherMark} />
         {badge && (
           <span
-            className={`${styles.badge} ${proposalPending ? styles.badgeProposal : ''}`}
+            className={cx(styles.badge, proposalPending && styles.badgeProposal)}
             aria-hidden
             data-testid="smith-bubble-badge"
           />

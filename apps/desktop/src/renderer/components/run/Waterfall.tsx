@@ -4,16 +4,25 @@ import { useApp } from '../../stores/app.js';
 import { duration } from '../../utils/format.js';
 import { isAutoAllowPolicy, phaseDuration, phaseKindColor } from '../../utils/derive.js';
 import AgentAvatar from '../media/AgentAvatar.js';
+import { cx } from '../ui/cx.js';
 import styles from './Waterfall.module.css';
 
-const MARK_CLASS: Partial<Record<EventRow['type'], string>> = {
-  tool_call: 'tool',
-  correction: 'correction',
-  gate_pass: 'gate',
-  gate_fail: 'gate-fail',
-  interrupt: 'interrupt',
+/** Event types that get a tick on a phase bar, mapped to their mark style. */
+const MARK_STYLE: Partial<Record<EventRow['type'], string>> = {
+  tool_call: styles.tool,
+  correction: styles.correction,
+  gate_pass: styles.gate,
+  gate_fail: styles.gateFail,
+  interrupt: styles.interrupt,
 };
-const MARKED = new Set(Object.keys(MARK_CLASS));
+
+const BAR_STATUS_STYLE: Record<string, string> = {
+  queued: styles.queued,
+  running: styles.running,
+  success: styles.success,
+  fail: styles.fail,
+  skipped: styles.skipped,
+};
 
 export default function Waterfall({
   run,
@@ -62,10 +71,10 @@ export default function Waterfall({
 
   const marksFor = (
     phase: PhaseRow,
-  ): { left: number; width: number; kind: string; label: string }[] => {
+  ): { left: number; width: number; style: string; label: string }[] => {
     const events = eventsByPhase.get(phase.phaseId) ?? [];
     return events
-      .filter((event) => MARKED.has(event.type) && !isAutoAllowPolicy(event))
+      .filter((event) => MARK_STYLE[event.type] && !isAutoAllowPolicy(event))
       .map((event) => {
         const start = new Date(event.startedAt).getTime();
         const end = event.endedAt ? new Date(event.endedAt).getTime() : start + 400;
@@ -73,7 +82,7 @@ export default function Waterfall({
         return {
           left,
           width: Math.max(0.35, pct(end) - left),
-          kind: MARK_CLASS[event.type]!,
+          style: MARK_STYLE[event.type]!,
           label: event.name,
         };
       });
@@ -89,28 +98,6 @@ export default function Waterfall({
     }
     return out;
   }, [span]);
-
-  const markStyleFor = (kind: string): string => {
-    const map: Record<string, string> = {
-      tool: styles.tool,
-      correction: styles.correction,
-      gate: styles.gate,
-      'gate-fail': styles.gateFail,
-      interrupt: styles.interrupt,
-    };
-    return map[kind] ?? '';
-  };
-
-  const barStatusStyle = (status: string): string => {
-    const map: Record<string, string> = {
-      queued: styles.queued,
-      running: styles.running,
-      success: styles.success,
-      fail: styles.fail,
-      skipped: styles.skipped,
-    };
-    return map[status] ?? '';
-  };
 
   return (
     <div className={styles.waterfall}>
@@ -132,7 +119,11 @@ export default function Waterfall({
         return (
           <button
             key={phase.phaseId}
-            className={`${styles.lane} ${phase.phaseId === selectedPhaseId ? styles.selected : ''} ${phase.status === 'queued' ? styles.queued : ''}`}
+            className={cx(
+              styles.lane,
+              phase.phaseId === selectedPhaseId && styles.selected,
+              phase.status === 'queued' && styles.queued,
+            )}
             onClick={() => onSelect(phase.phaseId)}
             data-testid={`phase-lane-${phase.phaseId}`}
             data-phase-name={phase.name}
@@ -154,18 +145,24 @@ export default function Waterfall({
               {bar && label ? (
                 <>
                   <div
-                    className={`${styles.bar} ${barStatusStyle(phase.status)} ${bar.running ? styles.running : ''}`}
-                    style={{
-                      left: `${bar.left}%`,
-                      width: `${bar.width}%`,
-                      ['--lane-color' as string]: laneColor(phase) as string,
-                    }}
+                    className={cx(
+                      styles.bar,
+                      BAR_STATUS_STYLE[phase.status],
+                      bar.running && styles.running,
+                    )}
+                    style={
+                      {
+                        left: `${bar.left}%`,
+                        width: `${bar.width}%`,
+                        '--lane-color': laneColor(phase),
+                      } as React.CSSProperties
+                    }
                   >
                     {label.inside && <span className={`${styles.barTime} mono`}>{elapsed}</span>}
                   </div>
                   {!label.inside && (
                     <span
-                      className={`${styles.barTime} ${styles.outside} mono`}
+                      className={cx(styles.barTime, styles.outside, 'mono')}
                       style={label.style}
                     >
                       {elapsed}
@@ -174,7 +171,7 @@ export default function Waterfall({
                   {marksFor(phase).map((mark, i) => (
                     <span
                       key={i}
-                      className={`${styles.mark} ${markStyleFor(mark.kind)}`}
+                      className={cx(styles.mark, mark.style)}
                       style={{ left: `${mark.left}%`, width: `${mark.width}%` }}
                       title={mark.label}
                     />

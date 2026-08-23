@@ -31,11 +31,7 @@ export default function QrCode({
       let d = '';
       for (let r = 0; r < matrixSize; r++) {
         for (let c = 0; c < matrixSize; c++) {
-          if (matrix[r]![c]) {
-            const x = c + margin;
-            const y = r + margin;
-            d += `M${x},${y}h1v1h-1z `;
-          }
+          if (matrix[r]![c]) d += `M${c + margin},${r + margin}h1v1h-1z `;
         }
       }
       return { pathData: d.trim(), totalSize };

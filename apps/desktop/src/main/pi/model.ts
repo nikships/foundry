@@ -105,11 +105,6 @@ export function clampEffortToModel(
 }
 
 /**
- * Pick the model the caller asked for. A caller may decline to choose, and a
- * model the install cannot reach is a warning rather than a failure: the turn
- * still runs, on something, and the trace says what happened.
- */
-/**
  * Why a chosen model cannot be used, or ok when it can.
  *
  * Callers that must not silently substitute a model use this instead of
@@ -132,6 +127,11 @@ export function requireModel(
   return { ok: false, reason: 'unavailable', message: modelUnavailableMessage(wanted) };
 }
 
+/**
+ * Pick the model the caller asked for. A caller may decline to choose, and a
+ * model the install cannot reach is a warning rather than a failure: the turn
+ * still runs, on something, and the trace says what happened.
+ */
 export function pickModel(
   available: readonly PiModel[],
   wanted: string,

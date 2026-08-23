@@ -31,9 +31,8 @@ export default function PromptPreview({
   );
 
   // The effective envelope lives in main: the selected shape extended with this
-  // agent's own fields. Re-read per envelope/field change so the preview shows
-  // the draft being edited rather than the last saved agent.
-  const fieldSignature = JSON.stringify(agent.customFields ?? []);
+  // agent's own fields. Re-read per draft change so the preview shows what is
+  // being edited rather than the last saved agent.
   useEffect(() => {
     let cancelled = false;
     void api.roster.preview(agent).then((json) => {
@@ -42,9 +41,7 @@ export default function PromptPreview({
     return () => {
       cancelled = true;
     };
-    // `agent` is a fresh object per keystroke; the envelope and its fields are
-    // what actually change the generated shape.
-  }, [agent, agent.envelope, fieldSignature]);
+  }, [agent]);
 
   const extraCount = agent.customFields?.length ?? 0;
 

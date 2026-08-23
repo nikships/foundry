@@ -10,8 +10,6 @@ import type { SettleHooks } from '../engine/settle.js';
  */
 export type Handle = <T>(channel: string, fn: (...args: never[]) => Promise<T> | T) => void;
 
-export type Router<Ctx = AppContext> = (ctx: Ctx, handle: Handle) => void;
-
 /** A router handler, retained so Electron and main-process callers share it. */
 export type MainHandler = (...args: never[]) => unknown;
 

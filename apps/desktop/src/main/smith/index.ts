@@ -24,51 +24,53 @@ export function readSmithProposalSeed(env: NodeJS.ProcessEnv = process.env): Pro
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as Partial<ProposalInput>;
-    if (
-      parsed.type === 'entity' &&
-      (parsed.kind === 'agent' || parsed.kind === 'pipeline' || parsed.kind === 'envelope') &&
-      (parsed.mode === 'create' || parsed.mode === 'edit') &&
-      typeof parsed.name === 'string' &&
-      parsed.name &&
-      parsed.spec != null &&
-      typeof parsed.spec === 'object'
-    ) {
-      return {
-        type: 'entity',
-        kind: parsed.kind,
-        mode: parsed.mode,
-        name: parsed.name,
-        spec: parsed.spec,
-        validation: Array.isArray(parsed.validation) ? parsed.validation : [],
-        overwrites: parsed.overwrites === true,
-        ...(typeof parsed.projectId === 'string' ? { projectId: parsed.projectId } : {}),
-      };
-    }
-    if (
-      parsed.type === 'action' &&
-      typeof parsed.operation === 'string' &&
-      parsed.operation &&
-      typeof parsed.title === 'string' &&
-      typeof parsed.summary === 'string' &&
-      parsed.args != null &&
-      typeof parsed.args === 'object' &&
-      typeof parsed.risk === 'string'
-    ) {
-      return {
-        type: 'action',
-        operation: parsed.operation,
-        title: parsed.title,
-        summary: parsed.summary,
-        args: parsed.args as Record<string, unknown>,
-        risk: parsed.risk,
-        ...(typeof parsed.projectId === 'string' ? { projectId: parsed.projectId } : {}),
-        ...(parsed.secretRequest ? { secretRequest: parsed.secretRequest } : {}),
-      };
-    }
+    return parsed.type === 'entity'
+      ? entitySeed(parsed)
+      : parsed.type === 'action'
+        ? actionSeed(parsed)
+        : null;
   } catch {
     // A bad fixture must not take the app down.
+    return null;
   }
-  return null;
+}
+
+function entitySeed(parsed: Partial<ProposalInput>): ProposalInput | null {
+  if (parsed.type !== 'entity') return null;
+  const kind = parsed.kind;
+  const mode = parsed.mode;
+  if (kind !== 'agent' && kind !== 'pipeline' && kind !== 'envelope') return null;
+  if (mode !== 'create' && mode !== 'edit') return null;
+  if (typeof parsed.name !== 'string' || !parsed.name) return null;
+  if (parsed.spec == null || typeof parsed.spec !== 'object') return null;
+  return {
+    type: 'entity',
+    kind,
+    mode,
+    name: parsed.name,
+    spec: parsed.spec,
+    validation: Array.isArray(parsed.validation) ? parsed.validation : [],
+    overwrites: parsed.overwrites === true,
+    ...(typeof parsed.projectId === 'string' ? { projectId: parsed.projectId } : {}),
+  };
+}
+
+function actionSeed(parsed: Partial<ProposalInput>): ProposalInput | null {
+  if (parsed.type !== 'action') return null;
+  if (typeof parsed.operation !== 'string' || !parsed.operation) return null;
+  if (typeof parsed.title !== 'string' || typeof parsed.summary !== 'string') return null;
+  if (parsed.args == null || typeof parsed.args !== 'object') return null;
+  if (typeof parsed.risk !== 'string') return null;
+  return {
+    type: 'action',
+    operation: parsed.operation,
+    title: parsed.title,
+    summary: parsed.summary,
+    args: parsed.args as Record<string, unknown>,
+    risk: parsed.risk,
+    ...(typeof parsed.projectId === 'string' ? { projectId: parsed.projectId } : {}),
+    ...(parsed.secretRequest ? { secretRequest: parsed.secretRequest } : {}),
+  };
 }
 
 /** Everything the Smith service needs from the wider app, kept to a narrow seam. */
@@ -86,6 +88,8 @@ export interface SmithServiceDeps {
   /** Optional pending proposal to enqueue at construction (tests / e2e). */
   seedProposal?: ProposalInput;
 }
+
+const GLOBAL_SCOPE_KEY = 'global';
 
 export class SmithService {
   readonly proposals: ProposalQueue;
@@ -124,7 +128,7 @@ export class SmithService {
 
   /** One persistent native conversation per project/global scope, opened lazily. */
   chat(projectId?: string): SmithChatSession | null {
-    const key = projectId ?? 'global';
+    const key = projectId ?? GLOBAL_SCOPE_KEY;
     const existing = this.chats.get(key);
     if (existing) return existing;
     const chat = this.deps.createChat(projectId, this.proposals);

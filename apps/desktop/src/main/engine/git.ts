@@ -26,11 +26,6 @@ export async function isRepo(cwd: string): Promise<boolean> {
   return (await git(cwd, ['rev-parse', '--git-dir'])).ok;
 }
 
-export async function repoRoot(cwd: string): Promise<string | null> {
-  const r = await git(cwd, ['rev-parse', '--show-toplevel']);
-  return r.ok ? r.stdout.trim() : null;
-}
-
 export async function refExists(cwd: string, ref: string): Promise<boolean> {
   return (await git(cwd, ['rev-parse', '--verify', '--quiet', ref])).ok;
 }
@@ -121,10 +116,6 @@ export async function pathExistsAtRef(cwd: string, ref: string, path: string): P
 
 export async function checkoutPath(cwd: string, ref: string, path: string): Promise<GitResult> {
   return git(cwd, ['checkout', ref, '--', path]);
-}
-
-export async function cleanPath(cwd: string, path: string): Promise<GitResult> {
-  return git(cwd, ['clean', '-fd', '--', path]);
 }
 
 export async function addAll(cwd: string): Promise<GitResult> {

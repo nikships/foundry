@@ -7,12 +7,13 @@ import {
   numberField,
   parseOperation,
   proposeAction,
-  resolveProjectId,
+  requireProjectId,
   stringField,
   type SmithActionToolDeps,
 } from './tool-helpers.js';
 
 export const SMITH_PR_OPERATIONS = ['status', 'list', 'create', 'merge', 'fix_conflicts'] as const;
+
 export function smithPrsTool(deps: SmithActionToolDeps): ToolDefinition {
   return defineTool({
     name: 'smith_prs',
@@ -36,43 +37,70 @@ export function smithPrsTool(deps: SmithActionToolDeps): ToolDefinition {
     execute: async (_id, params) => {
       const op = parseOperation(params, SMITH_PR_OPERATIONS);
       if (!op) return json({ ok: false, error: 'unknown operation' });
-      const scope = resolveProjectId(field(params, 'projectId'), deps.projectId(), true);
+      const scope = requireProjectId(field(params, 'projectId'), deps.projectId());
       if (!scope.ok) return json(scope);
-      const projectId = scope.projectId as string;
-      if (op === 'status' || op === 'list')
-        return immediate(deps, op === 'status' ? IPC.prsStatus : IPC.prsList, projectId);
-      let args: unknown[];
-      if (op === 'create') {
-        const runId = stringField(params, 'runId'),
-          title = stringField(params, 'title'),
-          body = stringField(params, 'body');
-        if (!runId || !title || !body)
-          return json({ ok: false, error: 'runId, title, and body are required' });
-        args = [projectId, runId, title, body];
-      } else {
-        const prNumber = numberField(params, 'prNumber');
-        if (prNumber === null) return json({ ok: false, error: 'prNumber is required' });
-        if (op === 'merge') {
-          const method = stringField(params, 'method');
-          if (method !== 'merge' && method !== 'squash')
-            return json({ ok: false, error: 'method must be merge or squash' });
-          args = [projectId, prNumber, method];
-        } else args = [projectId, prNumber];
-      }
-      const channel =
-        op === 'create' ? IPC.prsCreate : op === 'merge' ? IPC.prsMerge : IPC.prsFixConflicts;
+      const projectId = scope.projectId;
+
+      if (op === 'status') return immediate(deps, IPC.prsStatus, projectId);
+      if (op === 'list') return immediate(deps, IPC.prsList, projectId);
+
+      const gated =
+        op === 'create' ? createArgs(params, projectId) : prNumberArgs(op, params, projectId);
+      if (!gated.ok) return json({ ok: false, error: gated.error });
       return proposeAction(deps, {
         operation: op,
         title: `${op.replaceAll('_', ' ')} pull request`,
         summary: `${op.replaceAll('_', ' ')} using GitHub.`,
-        args:
-          op === 'create'
-            ? { projectId, runId: args[1], title: args[2], body: args[3] }
-            : { projectId, prNumber: args[1], ...(op === 'merge' ? { method: args[2] } : {}) },
+        args: gated.shownArgs,
         risk: op === 'merge' ? 'destructive' : 'git',
-        projectId,
-        execute: () => deps.invoke(channel, ...args),
+        execute: () => deps.invoke(gated.channel, ...gated.args),
       });
     },
   });
+}
+
+type GatedCall =
+  | { ok: true; channel: string; args: unknown[]; shownArgs: Record<string, unknown> }
+  | { ok: false; error: string };
+
+function createArgs(params: unknown, projectId: string): GatedCall {
+  const runId = stringField(params, 'runId');
+  const title = stringField(params, 'title');
+  const body = stringField(params, 'body');
+  if (!runId || !title || !body) {
+    return { ok: false, error: 'runId, title, and body are required' };
+  }
+  return {
+    ok: true,
+    channel: IPC.prsCreate,
+    args: [projectId, runId, title, body],
+    shownArgs: { projectId, runId, title, body },
+  };
+}
+
+function prNumberArgs(
+  op: 'merge' | 'fix_conflicts',
+  params: unknown,
+  projectId: string,
+): GatedCall {
+  const prNumber = numberField(params, 'prNumber');
+  if (prNumber === null) return { ok: false, error: 'prNumber is required' };
+  if (op === 'fix_conflicts') {
+    return {
+      ok: true,
+      channel: IPC.prsFixConflicts,
+      args: [projectId, prNumber],
+      shownArgs: { projectId, prNumber },
+    };
+  }
+  const method = stringField(params, 'method');
+  if (method !== 'merge' && method !== 'squash') {
+    return { ok: false, error: 'method must be merge or squash' };
+  }
+  return {
+    ok: true,
+    channel: IPC.prsMerge,
+    args: [projectId, prNumber, method],
+    shownArgs: { projectId, prNumber, method },
+  };
 }

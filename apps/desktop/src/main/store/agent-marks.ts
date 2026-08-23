@@ -50,12 +50,9 @@ export function saveAgentMark(
   if (!isAgentMarkMime(mime)) {
     return { ok: false, error: 'Use a PNG, JPEG, WebP, GIF, or SVG image.' };
   }
-  let bytes: Buffer;
-  try {
-    bytes = Buffer.from(bytesB64, 'base64');
-  } catch {
-    return { ok: false, error: 'The image data could not be read.' };
-  }
+  // Base64 decoding never throws — it drops what it cannot read — so an
+  // unusable payload arrives here as an empty buffer rather than an error.
+  const bytes = Buffer.from(bytesB64, 'base64');
   if (!bytes.length) return { ok: false, error: 'The image was empty.' };
   if (bytes.length > MAX_AGENT_MARK_BYTES) {
     return { ok: false, error: 'Keep the image under 2 MB.' };

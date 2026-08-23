@@ -171,13 +171,8 @@ async function fromPython(root: string, repoRoot: string): Promise<CommandCandid
   // not a uv project, so it is offered only where uv actually manages the env.
   const usesUv = existsSync(join(root, 'uv.lock'));
   const rel = relative(repoRoot, root);
-  const source = pyproject
-    ? rel
-      ? `${rel}/pyproject.toml`
-      : 'pyproject.toml'
-    : rel
-      ? `${rel}/requirements.txt`
-      : 'requirements.txt';
+  const sourceFile = pyproject ? 'pyproject.toml' : 'requirements.txt';
+  const source = rel ? `${rel}/${sourceFile}` : sourceFile;
   if (usesUv) {
     const prefix = rel ? ['uv', 'run', '--directory', rel] : ['uv', 'run'];
     return [{ name: 'test', argv: [...prefix, 'pytest'], source }];
@@ -210,13 +205,8 @@ async function fromGradle(root: string, repoRoot: string): Promise<CommandCandid
   }
   const rel = relative(repoRoot, root);
   const cmd = wrapper ? (rel ? join(rel, 'gradlew') : './gradlew') : 'gradle';
-  const source = wrapper
-    ? rel
-      ? `${rel}/gradlew`
-      : 'gradlew'
-    : rel
-      ? `${rel}/build.gradle`
-      : 'build.gradle';
+  const sourceFile = wrapper ? 'gradlew' : 'build.gradle';
+  const source = rel ? `${rel}/${sourceFile}` : sourceFile;
   // Gradle's -p selects the project dir without a shell cd.
   const projectFlag = rel ? ['-p', rel] : [];
   return [
@@ -234,7 +224,7 @@ async function fromSwift(root: string, repoRoot: string): Promise<CommandCandida
   const pkgFlag = rel ? ['--package-path', rel] : [];
   // No testTarget means `swift test` fails with an empty suite error; build is
   // the verification command those packages actually have (common for apps).
-  const hasTestTarget = /\.testTarget\s*\(/.test(text) || /testTarget\s*\(/.test(text);
+  const hasTestTarget = /testTarget\s*\(/.test(text);
   const out: CommandCandidate[] = [];
   if (hasTestTarget) {
     out.push({ name: 'test', argv: ['swift', 'test', ...pkgFlag], source });

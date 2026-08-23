@@ -61,6 +61,11 @@ export default function ProvidersScreen(): React.JSX.Element {
   const bridgeReady = bridge?.running === true;
   const connectedCount = providers.filter((provider) => provider.authenticated).length;
 
+  const saveKey = async (): Promise<void> => {
+    await saveProviderKey(keyProvider, keyDraft);
+    setKeyDraft('');
+  };
+
   return (
     <div className={styles.obProviders}>
       <header className={styles.obProvidersHead}>
@@ -204,12 +209,7 @@ export default function ProvidersScreen(): React.JSX.Element {
               <Button
                 type="button"
                 disabled={!!providerBusy || !keyDraft.trim()}
-                onClick={() =>
-                  void (async () => {
-                    await saveProviderKey(keyProvider, keyDraft);
-                    setKeyDraft('');
-                  })()
-                }
+                onClick={() => void saveKey()}
               >
                 {providerBusy === `key:${keyProvider}` ? 'Saving…' : 'Save key'}
               </Button>

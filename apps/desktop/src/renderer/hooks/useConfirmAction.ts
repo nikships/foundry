@@ -40,17 +40,12 @@ class ConfirmManager {
         },
       };
       this.queue.push(req);
-      if (this.queue.length === 1) {
-        this.notify();
-      }
+      if (this.queue.length === 1) this.notify();
     });
   }
 
   resolve(id: string, accepted: boolean): void {
-    const found = this.queue.find((r) => r.id === id);
-    if (found) {
-      found.resolve(accepted);
-    }
+    this.queue.find((r) => r.id === id)?.resolve(accepted);
   }
 
   private notify(): void {
@@ -76,9 +71,7 @@ export function useConfirmAction<Args extends unknown[] = []>(
     async (...args: Args): Promise<boolean> => {
       const promptText = typeof message === 'function' ? message(...args) : message;
       const accepted = await confirmManager.ask(promptText, opts);
-      if (!accepted) {
-        return false;
-      }
+      if (!accepted) return false;
       await action(...args);
       return true;
     },

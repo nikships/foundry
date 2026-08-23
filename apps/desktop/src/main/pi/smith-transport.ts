@@ -246,13 +246,11 @@ export class SmithPiTransport implements AgentTransport {
   }
 
   /** A chat never rewinds; correcting Smith is just the next message. */
-  getRewindInfo(messageId: string): Promise<RewindInfo | null> {
-    void messageId;
+  getRewindInfo(_messageId: string): Promise<RewindInfo | null> {
     return Promise.resolve(null);
   }
 
-  rewind(params: RewindParams): Promise<RewindOutcome | null> {
-    void params;
+  rewind(_params: RewindParams): Promise<RewindOutcome | null> {
     return Promise.resolve(null);
   }
 

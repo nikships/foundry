@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { cx } from './cx.js';
 import styles from './SegmentedControl.module.css';
 
 interface SegmentOption {
@@ -14,20 +15,15 @@ interface SegmentedControlProps {
 }
 
 /**
- * A compact toggle group: the shared `.modes` / `.mode` / `.mode.on` primitive
- * that was duplicated byte-for-byte in PhaseEditor and BoundaryEditor. The
- * active segment is marked with `on`; a `className` lets a caller add site
+ * A compact toggle group: the shared `.modes` / `.mode` / `.mode.on` primitive.
+ * The active segment is marked with `on`; a `className` lets a caller add site
  * spacing.
  */
 export function SegmentedControl({ options, className }: SegmentedControlProps): React.JSX.Element {
   return (
-    <div className={className ? `${styles.modes} ${className}` : styles.modes}>
+    <div className={cx(styles.modes, className)}>
       {options.map((opt, i) => (
-        <button
-          key={i}
-          className={`${styles.mode} ${opt.on ? styles.on : ''}`}
-          onClick={opt.onClick}
-        >
+        <button key={i} className={cx(styles.mode, opt.on && styles.on)} onClick={opt.onClick}>
           {opt.label}
         </button>
       ))}

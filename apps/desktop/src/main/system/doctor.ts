@@ -64,30 +64,24 @@ export async function checkProviders(deps: ProviderDoctorDeps): Promise<DoctorCh
   });
 
   let models: ModelInfo[] = [];
-  let modelsDetail = '';
+  let readFailure = '';
   try {
     models = await deps.agentModels();
   } catch (error) {
-    modelsDetail = `the model catalog could not be read: ${error instanceof Error ? error.message : String(error)}`;
+    readFailure = `the model catalog could not be read: ${error instanceof Error ? error.message : String(error)}`;
   }
-  const hidden = deps.hiddenModelIds ? deps.hiddenModelIds() : [];
-  const visible = withoutHiddenModels(models, hidden);
-  let detail = '';
-  if (models.length > 0) {
-    detail =
-      visible.length > 0
-        ? `${models.length} model${models.length === 1 ? '' : 's'} available, including ${visible[0]!.displayName}`
-        : `${models.length} model${models.length === 1 ? '' : 's'} available`;
-  } else {
-    detail =
-      modelsDetail ||
-      'no model has a working credential — connect a provider or add an API key before starting a run';
-  }
+  const visible = withoutHiddenModels(models, deps.hiddenModelIds?.() ?? []);
+  const count = `${models.length} model${models.length === 1 ? '' : 's'} available`;
   checks.push({
     id: 'agent-models',
     label: 'Usable models',
     ok: models.length > 0,
-    detail,
+    detail: models.length
+      ? visible.length
+        ? `${count}, including ${visible[0]!.displayName}`
+        : count
+      : readFailure ||
+        'no model has a working credential — connect a provider or add an API key before starting a run',
     blocking: models.length === 0,
     fix: models.length ? undefined : PROVIDERS_PANE,
   });
@@ -97,27 +91,35 @@ export async function checkProviders(deps: ProviderDoctorDeps): Promise<DoctorCh
   // account that actually expired.
   for (const provider of deps.bridgeProviders()) {
     if (!provider.accounts.length) continue;
-    const expired = provider.accounts.filter((account) => account.expired);
-    const disabled = provider.accounts.filter((account) => account.disabled);
-    const soonest = provider.accounts
-      .map((account) => account.expiresAt)
-      .filter((at): at is string => !!at)
-      .sort()[0];
-    let detail = soonest ? `signed in, valid until ${soonest}` : 'signed in';
-    if (expired.length) detail = `the sign-in expired — reconnect ${provider.label}`;
-    else if (disabled.length === provider.accounts.length) {
-      detail = `every ${provider.label} account is disabled`;
-    }
     checks.push({
       id: `provider:${provider.id}`,
       label: `${provider.label} account`,
       ok: provider.authenticated,
-      detail,
+      detail: providerDetail(provider),
       fix: provider.authenticated ? undefined : PROVIDERS_PANE,
     });
   }
 
   return checks;
+}
+
+function providerDetail(provider: BridgeProviderStatus): string {
+  if (provider.accounts.some((account) => account.expired)) {
+    return `the sign-in expired — reconnect ${provider.label}`;
+  }
+  if (provider.accounts.every((account) => account.disabled)) {
+    return `every ${provider.label} account is disabled`;
+  }
+  const soonest = provider.accounts
+    .map((account) => account.expiresAt)
+    .filter((at): at is string => !!at)
+    .sort()[0];
+  return soonest ? `signed in, valid until ${soonest}` : 'signed in';
+}
+
+/** A version/status invocation of a CLI, run from wherever the app started. */
+function probe(argv: string[], timeoutMs: number): ReturnType<typeof runCommand> {
+  return runCommand({ argv, cwd: process.cwd(), timeoutMs });
 }
 
 export async function runDoctor(deps: ProviderDoctorDeps): Promise<DoctorCheck[]> {
@@ -139,11 +141,7 @@ export async function runDoctor(deps: ProviderDoctorDeps): Promise<DoctorCheck[]
         : `${env.detail ?? 'could not ask your login shell'} — project commands may not find node, npm, cargo, go or uv`,
   });
 
-  const git = await runCommand({
-    argv: ['git', '--version'],
-    cwd: process.cwd(),
-    timeoutMs: 10_000,
-  });
+  const git = await probe(['git', '--version'], 10_000);
   checks.push({
     id: 'git',
     label: 'git',
@@ -154,11 +152,7 @@ export async function runDoctor(deps: ProviderDoctorDeps): Promise<DoctorCheck[]
 
   // Pull requests ride on the operator's own gh install and login; Foundry
   // holds no GitHub token. Never blocking — local merge works without it.
-  const gh = await runCommand({
-    argv: ['gh', '--version'],
-    cwd: process.cwd(),
-    timeoutMs: 10_000,
-  });
+  const gh = await probe(['gh', '--version'], 10_000);
   if (!gh.passed) {
     checks.push({
       id: 'gh',
@@ -174,11 +168,7 @@ export async function runDoctor(deps: ProviderDoctorDeps): Promise<DoctorCheck[]
       ok: true,
       detail: gh.outputTail.trim().split('\n')[0] ?? 'installed',
     });
-    const ghAuth = await runCommand({
-      argv: ['gh', 'auth', 'status'],
-      cwd: process.cwd(),
-      timeoutMs: 15_000,
-    });
+    const ghAuth = await probe(['gh', 'auth', 'status'], 15_000);
     checks.push({
       id: 'gh:auth',
       label: 'GitHub CLI authentication',
@@ -193,13 +183,13 @@ export async function runDoctor(deps: ProviderDoctorDeps): Promise<DoctorCheck[]
   }
 
   // macOS 26 is the floor; the version conveniences are verified only there.
-  const major = Number(release().split('.')[0] ?? 0);
-  const macOsOk = major >= 25;
+  const version = release();
+  const macOsOk = Number(version.split('.')[0] ?? 0) >= 25;
   checks.push({
     id: 'macos',
     label: 'macOS 26 or newer',
     ok: macOsOk,
-    detail: macOsOk ? `darwin ${release()}` : `darwin ${release()} is below the supported floor`,
+    detail: macOsOk ? `darwin ${version}` : `darwin ${version} is below the supported floor`,
   });
 
   return checks;
@@ -240,7 +230,7 @@ export async function checkProject(project: ProjectDef): Promise<DoctorCheck[]> 
         : `"${project.baseRef}" does not exist in this repo`,
   });
 
-  const submodules = existsSync(`${project.path}/.gitmodules`);
+  const submodules = existsSync(join(project.path, '.gitmodules'));
   checks.push({
     id: 'submodules',
     label: 'Submodules',
@@ -283,16 +273,15 @@ export async function checkProject(project: ProjectDef): Promise<DoctorCheck[]> 
   });
 
   const worktrees = await listWorktrees(project.path);
-  const leftover = worktrees.filter((w) => w.path.includes('.foundry-worktrees'));
-  const leftoverCount = leftover.length;
+  const leftover = worktrees.filter((w) => w.path.includes('.foundry-worktrees')).length;
   checks.push({
     id: 'worktrees',
     label: 'Leftover run worktrees',
-    ok: leftoverCount === 0,
-    detail: leftoverCount
-      ? `${leftoverCount} left from earlier runs: review or sweep them in Maintenance`
+    ok: leftover === 0,
+    detail: leftover
+      ? `${leftover} left from earlier runs: review or sweep them in Maintenance`
       : 'none',
-    fix: leftoverCount ? { kind: 'open-settings', value: 'maintenance' } : undefined,
+    fix: leftover ? { kind: 'open-settings', value: 'maintenance' } : undefined,
   });
 
   return checks;

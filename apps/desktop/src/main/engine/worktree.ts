@@ -121,12 +121,11 @@ export async function findOrphans(input: {
   return all
     .filter((w) => w.path.includes(WORKTREE_DIR))
     .map((w) => {
-      const runId = w.path.split('/').pop() ?? null;
+      const runId = w.path.split('/').pop() || null;
       return { path: w.path, branch: w.branch, runId, projectId: input.projectId };
     })
     .filter((w) => {
-      const name = w.path.split('/').pop() ?? '';
-      if (name.startsWith('ready-')) return false;
+      if (w.runId?.startsWith('ready-')) return false;
       return !w.runId || !active.has(w.runId);
     });
 }

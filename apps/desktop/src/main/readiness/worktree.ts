@@ -13,7 +13,6 @@ import {
   commit,
   deleteBranch,
   excludeLocally,
-  headSha,
   pruneWorktrees,
   removeWorktree,
 } from '../engine/git.js';
@@ -32,11 +31,6 @@ export function readinessWorktreePath(repo: string, sessionId: string): string {
 
 export function readinessBranchName(sessionId: string): string {
   return `foundry-ready/${sessionId}`;
-}
-
-export function isReadinessWorktreePath(path: string): boolean {
-  const base = path.split('/').pop() ?? '';
-  return base.startsWith('ready-');
 }
 
 export async function createReadinessWorktree(input: {
@@ -77,8 +71,4 @@ export async function discardReadinessWorktree(
   if (existsSync(handle.path)) await removeWorktree(repo, handle.path);
   await pruneWorktrees(repo);
   await deleteBranch(repo, handle.branch);
-}
-
-export async function readinessHeadSha(cwd: string): Promise<string> {
-  return headSha(cwd);
 }

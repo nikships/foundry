@@ -86,9 +86,8 @@ export function parseMarkdown(source: string): MarkdownBlock[] {
       continue;
     }
 
-    const listMatch = line.match(BULLET_ITEM) ?? line.match(ORDERED_ITEM);
-    if (listMatch) {
-      const ordered = ORDERED_ITEM.test(line);
+    const ordered = ORDERED_ITEM.test(line);
+    if (ordered || BULLET_ITEM.test(line)) {
       const itemPattern = ordered ? ORDERED_ITEM : BULLET_ITEM;
       const items: MarkdownInline[][] = [];
       while (i < lines.length) {

@@ -1,6 +1,8 @@
 import { IPC } from '@shared/ipc-contract.js';
+import type { SmithActionRisk } from '@shared/types.js';
 import { defineTool, type ToolDefinition } from '../pi/tool-definition.js';
 import {
+  errorMessage,
   field,
   immediate,
   json,
@@ -40,6 +42,114 @@ export const SMITH_PROJECT_OPERATIONS = [
   'base_inspect',
   'base_sync',
 ] as const;
+
+type ProjectOperation = (typeof SMITH_PROJECT_OPERATIONS)[number];
+
+/**
+ * One declared argument of an operation. `kind` decides both how the value is
+ * read out of the tool params and what a missing value reports; `script` is a
+ * string that may legitimately be empty (clearing a project's setup script).
+ */
+interface ArgSpec {
+  name: string;
+  kind: 'string' | 'script' | 'object' | 'stringArray';
+}
+
+interface ActionSpec {
+  channel: string;
+  risk: SmithActionRisk;
+  args?: readonly ArgSpec[];
+}
+
+/** Immediate reads: one string argument each, forwarded unchanged. */
+const READS: Partial<Record<ProjectOperation, readonly [channel: string, field: string]>> = {
+  detection: [IPC.projectsDetection, 'detectionId'],
+  setup_get: [IPC.projectsSetupScriptGet, 'projectId'],
+  setup_sniff: [IPC.projectsSetupScriptSniff, 'projectId'],
+  setup_progress: [IPC.projectsSetupProgress, 'setupId'],
+  check: [IPC.projectsCheck, 'projectId'],
+  scope_copies: [IPC.projectsScopeCopies, 'projectId'],
+  base_inspect: [IPC.projectsBaseSyncInspect, 'projectId'],
+};
+
+const PROJECT_ID = [{ name: 'projectId', kind: 'string' }] as const satisfies readonly ArgSpec[];
+
+/** Every gated operation: its handler, its risk badge, and its arguments. */
+const ACTIONS: Partial<Record<ProjectOperation, ActionSpec>> = {
+  add: { channel: IPC.projectsAdd, risk: 'write' },
+  choose_parent: { channel: IPC.projectsChooseParentDir, risk: 'write' },
+  create_github: {
+    channel: IPC.projectsCreateGithub,
+    risk: 'external',
+    args: [{ name: 'input', kind: 'object' }],
+  },
+  save: {
+    channel: IPC.projectsSave,
+    risk: 'write',
+    args: [{ name: 'project', kind: 'object' }],
+  },
+  remove: { channel: IPC.projectsRemove, risk: 'destructive', args: PROJECT_ID },
+  export: { channel: IPC.projectsExport, risk: 'write', args: PROJECT_ID },
+  try_command: {
+    channel: IPC.projectsTryCommand,
+    risk: 'shell',
+    args: [
+      { name: 'projectId', kind: 'string' },
+      { name: 'argv', kind: 'stringArray' },
+    ],
+  },
+  sniff_commands: { channel: IPC.projectsSniffCommands, risk: 'shell', args: PROJECT_ID },
+  ask_commands: { channel: IPC.projectsAskAgentCommands, risk: 'write', args: PROJECT_ID },
+  cancel_detection: {
+    channel: IPC.projectsCancelDetection,
+    risk: 'write',
+    args: [{ name: 'detectionId', kind: 'string' }],
+  },
+  setup_save: {
+    channel: IPC.projectsSetupScriptSave,
+    risk: 'write',
+    args: [
+      { name: 'projectId', kind: 'string' },
+      { name: 'script', kind: 'script' },
+    ],
+  },
+  setup_try: {
+    channel: IPC.projectsSetupScriptTry,
+    risk: 'shell',
+    args: [
+      { name: 'projectId', kind: 'string' },
+      { name: 'script', kind: 'script' },
+    ],
+  },
+  setup_ask: { channel: IPC.projectsSetupScriptAskAgent, risk: 'write', args: PROJECT_ID },
+  setup_cancel: {
+    channel: IPC.projectsSetupCancel,
+    risk: 'write',
+    args: [{ name: 'setupId', kind: 'string' }],
+  },
+  reveal: {
+    channel: IPC.projectsReveal,
+    risk: 'external',
+    args: [{ name: 'path', kind: 'string' }],
+  },
+  base_sync: { channel: IPC.projectsBaseSync, risk: 'git', args: PROJECT_ID },
+};
+
+function readArg(params: unknown, arg: ArgSpec): unknown {
+  if (arg.kind === 'object') return objectField(params, arg.name);
+  if (arg.kind === 'stringArray') return stringArrayField(params, arg.name);
+  if (arg.kind === 'script') {
+    const value = field(params, arg.name);
+    return typeof value === 'string' ? value : null;
+  }
+  return stringField(params, arg.name);
+}
+
+function missingArgsError(args: readonly ArgSpec[]): string {
+  const names = args.map((arg) => arg.name).join(' and ');
+  return `${names} ${args.length > 1 ? 'are' : 'is'} required`;
+}
+
 export function smithProjectsTool(deps: SmithActionToolDeps): ToolDefinition {
   return defineTool({
     name: 'smith_projects',
@@ -67,130 +177,52 @@ export function smithProjectsTool(deps: SmithActionToolDeps): ToolDefinition {
       if (!op) return json({ ok: false, error: 'unknown operation' });
       if (op === 'list') return immediate(deps, IPC.projectsList);
       if (op === 'github_account') return immediate(deps, IPC.projectsGithubAccount);
-      if (op === 'show') {
-        const projectId = stringField(params, 'projectId');
-        if (!projectId) return json({ ok: false, error: 'projectId is required' });
-        try {
-          const projects = await deps.invoke<unknown[]>(IPC.projectsList);
-          return json({
-            ok: true,
-            result:
-              projects.find(
-                (p) =>
-                  typeof p === 'object' && p !== null && (p as { id?: string }).id === projectId,
-              ) ?? null,
-          });
-        } catch (error) {
-          return json({ ok: false, error: error instanceof Error ? error.message : String(error) });
-        }
-      }
-      const immediateMap = {
-        detection: [IPC.projectsDetection, 'detectionId'],
-        setup_get: [IPC.projectsSetupScriptGet, 'projectId'],
-        setup_sniff: [IPC.projectsSetupScriptSniff, 'projectId'],
-        setup_progress: [IPC.projectsSetupProgress, 'setupId'],
-        check: [IPC.projectsCheck, 'projectId'],
-        scope_copies: [IPC.projectsScopeCopies, 'projectId'],
-        base_inspect: [IPC.projectsBaseSyncInspect, 'projectId'],
-      } as const;
-      if (op in immediateMap) {
-        const [channel, name] = immediateMap[op as keyof typeof immediateMap];
+      if (op === 'show') return showProject(deps, stringField(params, 'projectId'));
+
+      const read = READS[op];
+      if (read) {
+        const [channel, name] = read;
         const value = stringField(params, name);
         return value
           ? immediate(deps, channel, value)
           : json({ ok: false, error: `${name} is required` });
       }
-      const channels = {
-        add: IPC.projectsAdd,
-        choose_parent: IPC.projectsChooseParentDir,
-        create_github: IPC.projectsCreateGithub,
-        save: IPC.projectsSave,
-        remove: IPC.projectsRemove,
-        export: IPC.projectsExport,
-        try_command: IPC.projectsTryCommand,
-        sniff_commands: IPC.projectsSniffCommands,
-        ask_commands: IPC.projectsAskAgentCommands,
-        cancel_detection: IPC.projectsCancelDetection,
-        setup_save: IPC.projectsSetupScriptSave,
-        setup_try: IPC.projectsSetupScriptTry,
-        setup_ask: IPC.projectsSetupScriptAskAgent,
-        setup_cancel: IPC.projectsSetupCancel,
-        reveal: IPC.projectsReveal,
-        base_sync: IPC.projectsBaseSync,
-      } as const;
-      let args: unknown[] = [];
-      if (op === 'create_github' || op === 'save') {
-        const value = objectField(params, op === 'save' ? 'project' : 'input');
-        if (!value)
-          return json({ ok: false, error: `${op === 'save' ? 'project' : 'input'} is required` });
-        args = [value];
-      } else if (op === 'try_command') {
-        const id = stringField(params, 'projectId'),
-          argv = stringArrayField(params, 'argv');
-        if (!id || !argv) return json({ ok: false, error: 'projectId and argv are required' });
-        args = [id, argv];
-      } else if (op === 'setup_save' || op === 'setup_try') {
-        const id = stringField(params, 'projectId'),
-          script = field(params, 'script');
-        if (!id || typeof script !== 'string')
-          return json({ ok: false, error: 'projectId and script are required' });
-        args = [id, script];
-      } else {
-        const names: Record<string, string> = {
-          remove: 'projectId',
-          export: 'projectId',
-          sniff_commands: 'projectId',
-          ask_commands: 'projectId',
-          cancel_detection: 'detectionId',
-          setup_ask: 'projectId',
-          setup_cancel: 'setupId',
-          reveal: 'path',
-          base_sync: 'projectId',
-        };
-        const name = names[op];
-        if (name) {
-          const value = stringField(params, name);
-          if (!value) return json({ ok: false, error: `${name} is required` });
-          args = [value];
-        }
+
+      const action = ACTIONS[op];
+      if (!action) return json({ ok: false, error: 'unknown operation' });
+      const specs = action.args ?? [];
+      const values = specs.map((arg) => readArg(params, arg));
+      if (values.some((value) => value === null)) {
+        return json({ ok: false, error: missingArgsError(specs) });
       }
-      const risk = ['remove'].includes(op)
-        ? 'destructive'
-        : ['try_command', 'sniff_commands', 'setup_try'].includes(op)
-          ? 'shell'
-          : op === 'base_sync'
-            ? 'git'
-            : ['create_github', 'reveal'].includes(op)
-              ? 'external'
-              : 'write';
-      const shownArgs =
-        op === 'create_github'
-          ? { input: args[0] }
-          : op === 'save'
-            ? { project: args[0] }
-            : op === 'try_command'
-              ? { projectId: args[0], argv: args[1] }
-              : op === 'setup_save' || op === 'setup_try'
-                ? { projectId: args[0], script: args[1] }
-                : args.length
-                  ? {
-                      [op === 'reveal'
-                        ? 'path'
-                        : op.includes('detection')
-                          ? 'detectionId'
-                          : op.includes('setup_cancel')
-                            ? 'setupId'
-                            : 'projectId']: args[0],
-                    }
-                  : {};
       return proposeAction(deps, {
         operation: op,
         title: `${op.replaceAll('_', ' ')} project`,
         summary: `Perform ${op.replaceAll('_', ' ')}.`,
-        args: shownArgs,
-        risk,
-        execute: () => deps.invoke(channels[op as keyof typeof channels], ...args),
+        args: Object.fromEntries(specs.map((arg, index) => [arg.name, values[index]])),
+        risk: action.risk,
+        execute: () => deps.invoke(action.channel, ...values),
       });
     },
   });
+}
+
+/** `show` is a projection over the project list, not a handler of its own. */
+async function showProject(
+  deps: Pick<SmithActionToolDeps, 'invoke'>,
+  projectId: string | null,
+): Promise<ReturnType<typeof json>> {
+  if (!projectId) return json({ ok: false, error: 'projectId is required' });
+  try {
+    const projects = await deps.invoke<unknown[]>(IPC.projectsList);
+    const match = projects.find(
+      (project) =>
+        typeof project === 'object' &&
+        project !== null &&
+        (project as { id?: string }).id === projectId,
+    );
+    return json({ ok: true, result: match ?? null });
+  } catch (error) {
+    return json({ ok: false, error: errorMessage(error) });
+  }
 }

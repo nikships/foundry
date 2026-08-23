@@ -1,6 +1,11 @@
 /** Shared parsing and approval helpers for Smith's fixed domain tools. */
 
-import type { SmithActionRisk, SmithPrivateDisplay, SmithSecretRequest } from '@shared/types.js';
+import type {
+  SmithActionRisk,
+  SmithPrivateDisplay,
+  SmithProposalExecutionResult,
+  SmithSecretRequest,
+} from '@shared/types.js';
 import type { MainInvoker } from '../ipc/shared.js';
 import type { ProposalQueue } from './proposals.js';
 
@@ -67,18 +72,30 @@ export function parseOperation<const T extends readonly string[]>(
 export type ProjectResolution =
   { ok: true; projectId: string | undefined } | { ok: false; error: string };
 
+/** The same resolution for operations that cannot run without a project. */
+export type RequiredProjectResolution =
+  { ok: true; projectId: string } | { ok: false; error: string };
+
+/** An explicit `projectId` argument wins over the conversation's own scope. */
 export function resolveProjectId(
   explicit: unknown,
   sessionProjectId: string | undefined,
-  required: boolean,
 ): ProjectResolution {
   if (explicit !== undefined && (typeof explicit !== 'string' || !explicit.trim())) {
     return { ok: false, error: 'projectId must be a non-empty string' };
   }
-  const projectId = typeof explicit === 'string' ? explicit : sessionProjectId;
-  return required && !projectId
-    ? { ok: false, error: 'projectId is required in All projects scope' }
-    : { ok: true, projectId };
+  return { ok: true, projectId: typeof explicit === 'string' ? explicit : sessionProjectId };
+}
+
+export function requireProjectId(
+  explicit: unknown,
+  sessionProjectId: string | undefined,
+): RequiredProjectResolution {
+  const resolved = resolveProjectId(explicit, sessionProjectId);
+  if (!resolved.ok) return resolved;
+  return resolved.projectId
+    ? { ok: true, projectId: resolved.projectId }
+    : { ok: false, error: 'projectId is required in All projects scope' };
 }
 
 export async function immediate(
@@ -90,7 +107,7 @@ export async function immediate(
     const result = await deps.invoke(channel, ...args);
     return json({ ok: true, result: result ?? null });
   } catch (error) {
-    return json({ ok: false, error: message(error) });
+    return json({ ok: false, error: errorMessage(error) });
   }
 }
 
@@ -100,7 +117,6 @@ export interface ActionRequest {
   summary: string;
   args: Record<string, unknown>;
   risk: SmithActionRisk;
-  projectId?: string;
   secretRequest?: SmithSecretRequest;
   execute: (
     secret?: string,
@@ -111,6 +127,7 @@ export async function proposeAction(
   deps: Pick<SmithActionToolDeps, 'queue' | 'projectId'>,
   request: ActionRequest,
 ): Promise<JsonToolResult> {
+  const projectId = deps.projectId();
   try {
     const outcome = await deps.queue.propose(
       {
@@ -120,28 +137,14 @@ export async function proposeAction(
         summary: request.summary,
         args: request.args,
         risk: request.risk,
-        ...(deps.projectId() ? { projectId: deps.projectId() } : {}),
+        ...(projectId ? { projectId } : {}),
         ...(request.secretRequest ? { secretRequest: request.secretRequest } : {}),
       },
       async (answer) => {
         try {
-          const raw = await request.execute(answer.secret);
-          if (raw != null && typeof raw === 'object' && 'modelResult' in raw) {
-            const split = raw as {
-              modelResult: unknown;
-              privateDisplay?: SmithPrivateDisplay;
-            };
-            return {
-              ok: true,
-              modelResult: split.modelResult,
-              ...(split.privateDisplay ? { privateDisplay: split.privateDisplay } : {}),
-            };
-          }
-          const failure = failureMessage(raw);
-          if (failure) return { ok: false, error: failure };
-          return { ok: true, modelResult: { ok: true, result: raw ?? null } };
+          return executionResult(await request.execute(answer.secret));
         } catch (error) {
-          return { ok: false, error: message(error) };
+          return { ok: false, error: errorMessage(error) };
         }
       },
     );
@@ -150,8 +153,28 @@ export async function proposeAction(
     }
     return json(outcome.result);
   } catch (error) {
-    return json({ ok: false, error: message(error) });
+    return json({ ok: false, error: errorMessage(error) });
   }
+}
+
+/**
+ * Reads what an executor returned. A `{ modelResult }` shape splits the model's
+ * answer from an operator-only display; anything else is the handler's own
+ * return value, which may itself carry a failure the model must see.
+ */
+function executionResult(raw: unknown): SmithProposalExecutionResult {
+  if (raw != null && typeof raw === 'object' && 'modelResult' in raw) {
+    const split = raw as { modelResult: unknown; privateDisplay?: SmithPrivateDisplay };
+    return {
+      ok: true,
+      modelResult: split.modelResult,
+      ...(split.privateDisplay ? { privateDisplay: split.privateDisplay } : {}),
+    };
+  }
+  const failure = failureMessage(raw);
+  return failure
+    ? { ok: false, error: failure }
+    : { ok: true, modelResult: { ok: true, result: raw ?? null } };
 }
 
 const SECRET_FIELD = /^(api[_-]?key|key|token|secret)$/i;
@@ -172,6 +195,6 @@ function failureMessage(value: unknown): string | null {
   return 'action failed';
 }
 
-export function message(error: unknown): string {
+export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }

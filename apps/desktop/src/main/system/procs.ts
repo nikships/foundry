@@ -57,25 +57,23 @@ export function killTree(pid: number, signal: NodeJS.Signals = 'SIGTERM'): void 
  * which is why the escalation is worth waiting for rather than fire-and-forget.
  */
 export async function terminate(pid: number, graceMs = TERMINATE_GRACE_MS): Promise<boolean> {
-  if (!isAlive(pid)) return true;
-  killTree(pid, 'SIGTERM');
-  const deadline = Date.now() + graceMs;
-  while (isAlive(pid) && Date.now() < deadline) await sleep(50);
-  if (!isAlive(pid)) return true;
-  killTree(pid, 'SIGKILL');
-  const killDeadline = Date.now() + graceMs;
-  while (isAlive(pid) && Date.now() < killDeadline) await sleep(50);
+  for (const signal of ['SIGTERM', 'SIGKILL'] as const) {
+    if (!isAlive(pid)) return true;
+    killTree(pid, signal);
+    const deadline = Date.now() + graceMs;
+    while (isAlive(pid) && Date.now() < deadline) await sleep(50);
+  }
   return !isAlive(pid);
 }
 
 export function childPids(pid: number): number[] {
   try {
-    const out = execFileSync('pgrep', ['-P', String(pid)], { encoding: 'utf8' });
-    return out
+    return execFileSync('pgrep', ['-P', String(pid)], { encoding: 'utf8' })
       .split('\n')
-      .map((l) => Number(l.trim()))
+      .map((line) => Number(line.trim()))
       .filter((n) => Number.isFinite(n) && n > 0);
   } catch {
+    // No children, or pgrep is unavailable.
     return [];
   }
 }
@@ -101,11 +99,10 @@ export function isAlive(pid: number): boolean {
  */
 export function commandMatches(pid: number, recorded: string): boolean {
   try {
-    const out = execFileSync('ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8' });
-    const live = out.trim();
-    if (!live) return false;
-    const head = recorded.split(' ')[0] ?? recorded;
-    return live.includes(head);
+    const live = execFileSync('ps', ['-p', String(pid), '-o', 'command='], {
+      encoding: 'utf8',
+    }).trim();
+    return !!live && live.includes(recorded.split(' ')[0] ?? recorded);
   } catch {
     return false;
   }

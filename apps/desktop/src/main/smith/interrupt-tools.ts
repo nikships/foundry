@@ -11,6 +11,7 @@ import {
 } from './tool-helpers.js';
 
 export const SMITH_INTERRUPT_OPERATIONS = ['list', 'answer'] as const;
+
 export function smithInterruptsTool(deps: SmithActionToolDeps): ToolDefinition {
   return defineTool({
     name: 'smith_interrupts',
@@ -31,14 +32,19 @@ export function smithInterruptsTool(deps: SmithActionToolDeps): ToolDefinition {
       const op = parseOperation(params, SMITH_INTERRUPT_OPERATIONS);
       if (!op) return json({ ok: false, error: 'unknown operation' });
       if (op === 'list') return immediate(deps, IPC.interruptsList);
-      const interruptId = stringField(params, 'interruptId'),
-        decision = stringField(params, 'decision');
-      if (!interruptId || (decision !== 'approve' && decision !== 'reject'))
+
+      const interruptId = stringField(params, 'interruptId');
+      const decision = stringField(params, 'decision');
+      if (!interruptId || (decision !== 'approve' && decision !== 'reject')) {
         return json({ ok: false, error: 'interruptId and a valid decision are required' });
+      }
       const text = field(params, 'text');
-      if (text !== undefined && typeof text !== 'string')
+      if (text !== undefined && typeof text !== 'string') {
         return json({ ok: false, error: 'text must be a string' });
+      }
       const answer = { interruptId, decision, ...(typeof text === 'string' ? { text } : {}) };
+      // The card shows the question being answered, so the operator is not
+      // approving an opaque id. A lookup miss is not fatal.
       const listed = await deps.invoke<unknown[]>(IPC.interruptsList).catch(() => []);
       const interrupt = listed.find(
         (item) =>

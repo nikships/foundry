@@ -27,6 +27,91 @@ const FILTERS: { id: LaneFilter; label: string }[] = [
   { id: 'failed', label: 'Failed' },
 ];
 
+const LANE_COUNT_KEY = 'inspectorLaneCount';
+
+function loadLaneCount(): number {
+  try {
+    // Prefer localStorage so the preference survives app restarts, but
+    // fall back to sessionStorage for sessions that already saved there.
+    const fromLocal =
+      typeof localStorage !== 'undefined' ? localStorage.getItem(LANE_COUNT_KEY) : null;
+    const fromSession =
+      typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(LANE_COUNT_KEY) : null;
+    const saved = fromLocal ?? fromSession;
+    if (saved) {
+      const n = parseInt(saved, 10);
+      if (n >= 1 && n <= 6) return n;
+    }
+  } catch {
+    // ignore storage access errors (e.g. tests without DOM)
+  }
+  return 3;
+}
+
+function InspectorFooter({
+  disabledAll = false,
+  hasVisibleTools = false,
+  laneCount,
+  onLaneCount,
+  onCollapse,
+}: {
+  /** No project: everything renders but nothing is interactive. */
+  disabledAll?: boolean;
+  hasVisibleTools?: boolean;
+  laneCount: number;
+  onLaneCount: (n: number) => void;
+  onCollapse?: () => void;
+}): React.JSX.Element {
+  return (
+    <footer className={styles.inspectorFooter}>
+      <Button
+        size="sm"
+        variant="ghost"
+        disabled={disabledAll || !hasVisibleTools}
+        onClick={disabledAll ? undefined : onCollapse}
+        aria-label="Collapse all tool calls"
+        data-testid={disabledAll ? undefined : 'inspector-collapse-all'}
+        title={
+          disabledAll
+            ? 'No project, nothing to collapse'
+            : hasVisibleTools
+              ? 'Collapse every tool call in all visible lanes'
+              : 'No visible tool calls to collapse'
+        }
+      >
+        Collapse all tool calls
+      </Button>
+      <span className={styles.inspectorFooterHint}>
+        {disabledAll
+          ? 'Collapses every tool call across all visible agents'
+          : 'Collapses every tool call across all visible agents — re-expand any step individually'}
+      </span>
+      <div className={styles.inspectorDensity}>
+        <span className={styles.densityLabel}>Lanes</span>
+        <span className={styles.densityValue} aria-hidden>
+          {laneCount}
+        </span>
+        <input
+          type="range"
+          min="1"
+          max="6"
+          step="1"
+          value={laneCount}
+          onChange={(e) => {
+            const n = parseInt(e.target.value, 10);
+            if (!Number.isNaN(n) && n >= 1 && n <= 6) onLaneCount(n);
+          }}
+          className={styles.densitySlider}
+          disabled={disabledAll}
+          title="Lanes per viewport"
+          aria-label="Adjust visible lanes density"
+          data-testid={disabledAll ? undefined : 'inspector-lanes'}
+        />
+      </div>
+    </footer>
+  );
+}
+
 export default function InspectorScreen({
   pinnedRunId,
 }: {
@@ -45,31 +130,14 @@ export default function InspectorScreen({
   const [now, setNow] = useState(Date.now());
   const [filesError, setFilesError] = useState('');
   const [collapseSignal, setCollapseSignal] = useState(0);
-  const [laneCount, setLaneCount] = useState<number>(() => {
-    try {
-      // Prefer localStorage so the preference survives app restarts, but
-      // fall back to sessionStorage for sessions that already saved there.
-      const fromLocal =
-        typeof localStorage !== 'undefined' ? localStorage.getItem('inspectorLaneCount') : null;
-      const fromSession =
-        typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('inspectorLaneCount') : null;
-      const saved = fromLocal ?? fromSession;
-      if (saved) {
-        const n = parseInt(saved, 10);
-        if (n >= 1 && n <= 6) return n;
-      }
-    } catch {
-      // ignore storage access errors (e.g. tests without DOM)
-    }
-    return 3;
-  });
+  const [laneCount, setLaneCount] = useState<number>(loadLaneCount);
 
   useEffect(() => {
     try {
       if (typeof localStorage !== 'undefined')
-        localStorage.setItem('inspectorLaneCount', String(laneCount));
+        localStorage.setItem(LANE_COUNT_KEY, String(laneCount));
       if (typeof sessionStorage !== 'undefined')
-        sessionStorage.setItem('inspectorLaneCount', String(laneCount));
+        sessionStorage.setItem(LANE_COUNT_KEY, String(laneCount));
     } catch {
       // ignore storage access errors
     }
@@ -90,7 +158,8 @@ export default function InspectorScreen({
     return (live ?? runs[0])?.runId ?? '';
   }, [runs]);
 
-  const runId = pickedRunId && runs.some((r) => r.runId === pickedRunId) ? pickedRunId : autoRunId;
+  const pickedIsValid = Boolean(pickedRunId) && runs.some((r) => r.runId === pickedRunId);
+  const runId = pickedIsValid ? pickedRunId : autoRunId;
   const { view, eventsByPhase, envelopesByPhase, refresh: refreshRun } = useRun(projectId, runId);
 
   const live = view.live;
@@ -100,14 +169,15 @@ export default function InspectorScreen({
     return () => window.clearInterval(timer);
   }, [live]);
 
-  const lanes = useMemo(() => {
-    const phases = view.phases.filter((phase) => {
-      if (filter === 'running') return phase.status === 'running';
-      if (filter === 'failed') return phase.status === 'fail';
-      return true;
-    });
-    return phases;
-  }, [view.phases, filter]);
+  const lanes = useMemo(
+    () =>
+      view.phases.filter((phase) => {
+        if (filter === 'running') return phase.status === 'running';
+        if (filter === 'failed') return phase.status === 'fail';
+        return true;
+      }),
+    [view.phases, filter],
+  );
 
   const visibleLanes = focusedPhaseId ? lanes.filter((p) => p.phaseId === focusedPhaseId) : lanes;
 
@@ -138,41 +208,7 @@ export default function InspectorScreen({
           title="No project yet"
           body="Add a git repository from the sidebar. The Inspector follows that project's runs."
         />
-        <footer className={styles.inspectorFooter}>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled
-            title="No project, nothing to collapse"
-            aria-label="Collapse all tool calls"
-          >
-            Collapse all tool calls
-          </Button>
-          <span className={styles.inspectorFooterHint}>
-            Collapses every tool call across all visible agents
-          </span>
-          <div className={styles.inspectorDensity}>
-            <span className={styles.densityLabel}>Lanes</span>
-            <span className={styles.densityValue} aria-hidden>
-              {laneCount}
-            </span>
-            <input
-              type="range"
-              min="1"
-              max="6"
-              step="1"
-              value={laneCount}
-              onChange={(e) => {
-                const n = parseInt(e.target.value, 10);
-                if (!Number.isNaN(n) && n >= 1 && n <= 6) setLaneCount(n);
-              }}
-              className={styles.densitySlider}
-              disabled
-              title="Lanes per viewport"
-              aria-label="Adjust visible lanes density"
-            />
-          </div>
-        </footer>
+        <InspectorFooter disabledAll laneCount={laneCount} onLaneCount={setLaneCount} />
       </div>
     );
   }
@@ -189,7 +225,7 @@ export default function InspectorScreen({
           </p>
           <Dropdown
             className={styles.inspectorSelect}
-            value={pickedRunId && runs.some((r) => r.runId === pickedRunId) ? pickedRunId : ''}
+            value={pickedIsValid ? pickedRunId : ''}
             options={[
               {
                 value: '',
@@ -254,14 +290,8 @@ export default function InspectorScreen({
           </div>
         )}
 
-        {listLoading && !runs.length && !listError && (
-          <div className={styles.inspectorSkeleton} aria-hidden>
-            <div className={styles.skelRow} />
-            <div className={styles.skelRow} />
-            <div className={styles.skelRow} />
-          </div>
-        )}
-        {view.loading && runId && !view.error && (
+        {((listLoading && !runs.length && !listError) ||
+          (view.loading && runId && !view.error)) && (
           <div className={styles.inspectorSkeleton} aria-hidden>
             <div className={styles.skelRow} />
             <div className={styles.skelRow} />
@@ -306,47 +336,12 @@ export default function InspectorScreen({
             ))}
           </div>
         )}
-        <footer className={styles.inspectorFooter}>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={!hasVisibleTools}
-            onClick={() => setCollapseSignal((n) => n + 1)}
-            aria-label="Collapse all tool calls"
-            data-testid="inspector-collapse-all"
-            title={
-              hasVisibleTools
-                ? 'Collapse every tool call in all visible lanes'
-                : 'No visible tool calls to collapse'
-            }
-          >
-            Collapse all tool calls
-          </Button>
-          <span className={styles.inspectorFooterHint}>
-            Collapses every tool call across all visible agents — re-expand any step individually
-          </span>
-          <div className={styles.inspectorDensity}>
-            <span className={styles.densityLabel}>Lanes</span>
-            <span className={styles.densityValue} aria-hidden>
-              {laneCount}
-            </span>
-            <input
-              type="range"
-              min="1"
-              max="6"
-              step="1"
-              value={laneCount}
-              onChange={(e) => {
-                const n = parseInt(e.target.value, 10);
-                if (!Number.isNaN(n) && n >= 1 && n <= 6) setLaneCount(n);
-              }}
-              className={styles.densitySlider}
-              title="Lanes per viewport"
-              aria-label="Adjust visible lanes density"
-              data-testid="inspector-lanes"
-            />
-          </div>
-        </footer>
+        <InspectorFooter
+          hasVisibleTools={hasVisibleTools}
+          laneCount={laneCount}
+          onLaneCount={setLaneCount}
+          onCollapse={() => setCollapseSignal((n) => n + 1)}
+        />
       </div>
     </CollapseContext.Provider>
   );

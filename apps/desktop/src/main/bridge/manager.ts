@@ -168,13 +168,7 @@ export class BridgeManager {
    */
   ensure(): Promise<BridgeEnsureResult> {
     if (this.running && this.activePort && this.child?.pid) {
-      return Promise.resolve({
-        ok: true,
-        port: this.activePort,
-        pid: this.child.pid,
-        baseUrl: `http://${BRIDGE_HOST}:${this.activePort}`,
-        command: this.argv.join(' '),
-      });
+      return Promise.resolve(this.ready(this.activePort, this.child.pid));
     }
     if (this.ensuring) return this.ensuring;
     this.ensuring = this.start().finally(() => {
@@ -269,10 +263,14 @@ export class BridgeManager {
         if (this.recordedPid === child.pid) this.closeRecordedRow();
       });
     }
+    return this.ready(port, child.pid);
+  }
+
+  private ready(port: number, pid: number): BridgeEnsureResult {
     return {
       ok: true,
       port,
-      pid: child.pid,
+      pid,
       baseUrl: `http://${BRIDGE_HOST}:${port}`,
       command: this.argv.join(' '),
     };
@@ -328,10 +326,7 @@ export class BridgeManager {
 
 function clampPort(port: number): number {
   if (!Number.isFinite(port)) return DEFAULT_BRIDGE_PORT;
-  const n = Math.round(port);
-  if (n < BRIDGE_PORT_MIN) return BRIDGE_PORT_MIN;
-  if (n > BRIDGE_PORT_MAX) return BRIDGE_PORT_MAX;
-  return n;
+  return Math.min(Math.max(Math.round(port), BRIDGE_PORT_MIN), BRIDGE_PORT_MAX);
 }
 
 async function findFreePort(

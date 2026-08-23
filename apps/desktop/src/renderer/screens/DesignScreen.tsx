@@ -54,13 +54,7 @@ export default function DesignScreen({
   );
 
   /** Jump to another tab and select something there — the cross-link path. */
-  const crossLink = useCallback(
-    (next: DesignTab): void => {
-      setConsumedNonce(openNonce);
-      onTabChange(next);
-    },
-    [onTabChange, openNonce],
-  );
+  const crossLink = selectTab;
 
   const liveNonce = openNonce && openNonce !== consumedNonce ? openNonce : 0;
   const deepLink = liveNonce ? openTarget : undefined;
