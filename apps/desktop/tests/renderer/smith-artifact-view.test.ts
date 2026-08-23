@@ -11,7 +11,9 @@ import type {
   ChecklistDef,
   EnvelopeDef,
   PipelineDef,
+  SmithActionReceipt,
   SmithArtifact,
+  SmithReceiptLink,
 } from '@shared/types.js';
 import { SMITH_ARTIFACT_VERSION } from '@shared/types.js';
 import {
@@ -25,8 +27,12 @@ import {
   compareEntities,
   gateLabel,
   groupChecklistItems,
+  isActionableLink,
   isRenderableArtifact,
   phaseWorkLabel,
+  receiptDuration,
+  receiptOutcomeView,
+  receiptRows,
   writesLabel,
 } from '@renderer/view-models/smith-artifact-view.js';
 
@@ -70,12 +76,24 @@ const checklist: ChecklistDef = {
   ],
 };
 
+const receipt: SmithActionReceipt = {
+  operation: 'create',
+  title: 'create pull request',
+  target: 'run_7',
+  consequences: 'create using GitHub.',
+  risk: 'git',
+  outcome: 'succeeded',
+  durationMs: 1500,
+  args: { runId: 'run_7' },
+};
+
 function artifactOf(kind: SmithArtifact['kind'], version = SMITH_ARTIFACT_VERSION): SmithArtifact {
   const base = { id: 'a1', version, createdAt: 0, warnings: [] };
   if (kind === 'pipeline_design') return { ...base, kind, pipeline };
   if (kind === 'agent_design') return { ...base, kind, agent };
   if (kind === 'envelope_design') return { ...base, kind, envelope };
   if (kind === 'checklist') return { ...base, kind, checklist };
+  if (kind === 'action_receipt') return { ...base, kind, receipt };
   return {
     ...base,
     kind,
@@ -97,6 +115,7 @@ describe('the artifact registry', () => {
     expect(isRenderableArtifact(artifactOf('pipeline_design', 99))).toBe(false);
     expect(isRenderableArtifact(artifactOf('checklist', 99))).toBe(false);
     expect(isRenderableArtifact(artifactOf('entity_comparison', 99))).toBe(false);
+    expect(isRenderableArtifact(artifactOf('action_receipt', 99))).toBe(false);
     expect(isRenderableArtifact({ kind: 'run_summary' } as unknown as SmithArtifact)).toBe(false);
   });
 
@@ -106,6 +125,7 @@ describe('the artifact registry', () => {
     expect(artifactName(artifactOf('envelope_design'))).toBe('severity_report');
     expect(artifactName(artifactOf('checklist'))).toBe('Project Health');
     expect(artifactName(artifactOf('entity_comparison'))).toBe('planner');
+    expect(artifactName(artifactOf('action_receipt'))).toBe('create pull request');
   });
 });
 
@@ -148,6 +168,50 @@ describe('checklist helpers', () => {
     expect(checklistStatusGlyph('warn')).toBe('⚠');
     expect(checklistStatusGlyph('fail')).toBe('✕');
     expect(checklistStatusGlyph('info')).toBe('ℹ');
+  });
+});
+
+describe('action receipts', () => {
+  it('never lets a failed action read like a successful one', () => {
+    const ok = receiptOutcomeView(receipt);
+    const failed = receiptOutcomeView({ ...receipt, outcome: 'failed', failure: 'gh refused' });
+    expect(ok.label).toBe('Done');
+    expect(failed.label).toBe('Failed');
+    expect(failed.color).not.toBe(ok.color);
+  });
+
+  it('shows the failure row only when the action failed', () => {
+    const rows = receiptRows(receipt).map((row) => row.label);
+    expect(rows).toEqual(['Operation', 'Target', 'Consequences', 'Risk', 'Took']);
+
+    const failedRows = receiptRows({ ...receipt, outcome: 'failed', failure: 'gh refused' });
+    expect(failedRows).toContainEqual({ label: 'Failure', value: 'gh refused' });
+    // The consequences the operator approved stay on a failed card: what was
+    // attempted is as much of the record as what happened.
+    expect(failedRows).toContainEqual({ label: 'Consequences', value: 'create using GitHub.' });
+  });
+
+  it('reports executor duration in bounded units', () => {
+    expect(receiptDuration(0)).toBe('0ms');
+    expect(receiptDuration(420)).toBe('420ms');
+    expect(receiptDuration(1500)).toBe('1.5s');
+    expect(receiptDuration(45_000)).toBe('45s');
+    expect(receiptDuration(125_000)).toBe('2m 05s');
+    // A clock skewed backwards must not render a negative duration.
+    expect(receiptDuration(-5)).toBe('0ms');
+  });
+
+  it('follows only the link kinds this build knows', () => {
+    expect(isActionableLink(undefined)).toBe(false);
+    expect(isActionableLink({ kind: 'url', label: 'Open', url: 'https://x.test' })).toBe(true);
+    expect(
+      isActionableLink({ kind: 'run', label: 'Open run', projectId: 'p1', runId: 'run_7' }),
+    ).toBe(true);
+    expect(
+      isActionableLink({ kind: 'entity', label: 'Open agent', entity: 'agent', name: 'planner' }),
+    ).toBe(true);
+    // A receipt written by a newer Foundry stays readable, not clickable.
+    expect(isActionableLink({ kind: 'dashboard' } as unknown as SmithReceiptLink)).toBe(false);
   });
 });
 

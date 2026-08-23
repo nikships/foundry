@@ -22,7 +22,9 @@ import type {
   GateSpec,
   PhaseDef,
   PipelineDef,
+  SmithActionReceipt,
   SmithArtifact,
+  SmithReceiptLink,
   WriteBoundary,
 } from '@shared/types.js';
 
@@ -33,6 +35,7 @@ const SUPPORTED_ARTIFACT_KINDS: ReadonlyArray<SmithArtifact['kind']> = [
   'envelope_design',
   'checklist',
   'entity_comparison',
+  'action_receipt',
 ];
 
 export function isRenderableArtifact(artifact: SmithArtifact): boolean {
@@ -47,6 +50,7 @@ export const ARTIFACT_KIND_LABEL: Record<SmithArtifact['kind'], string> = {
   envelope_design: 'report design',
   checklist: 'checklist',
   entity_comparison: 'entity comparison',
+  action_receipt: 'action receipt',
 };
 
 /** The identifying name the card's title shows. */
@@ -55,6 +59,7 @@ export function artifactName(artifact: SmithArtifact): string {
   if (artifact.kind === 'agent_design') return artifact.agent.name;
   if (artifact.kind === 'envelope_design') return artifact.envelope.name;
   if (artifact.kind === 'checklist') return artifact.checklist.title;
+  if (artifact.kind === 'action_receipt') return artifact.receipt.title;
   return artifact.name;
 }
 
@@ -120,6 +125,60 @@ export function checklistStatusGlyph(status: ChecklistItemStatus): string {
     case 'info':
       return 'ℹ';
   }
+}
+
+// ── Action receipts ──────────────────────────────────────────────────────────
+
+/**
+ * How a settled action reads at a glance. Deliberately unambiguous about
+ * failure: an approved action that did not work must never look like one that
+ * did, so the two share no wording and no color.
+ */
+export interface ReceiptOutcomeView {
+  label: string;
+  /** A token name, so the card never hard-codes a hex value. */
+  color: string;
+}
+
+export function receiptOutcomeView(receipt: SmithActionReceipt): ReceiptOutcomeView {
+  return receipt.outcome === 'succeeded'
+    ? { label: 'Done', color: 'var(--status-success)' }
+    : { label: 'Failed', color: 'var(--status-fail)' };
+}
+
+/** The receipt's detail rows, in reading order, skipping what it does not carry. */
+export function receiptRows(receipt: SmithActionReceipt): { label: string; value: string }[] {
+  return [
+    { label: 'Operation', value: receipt.operation },
+    { label: 'Target', value: receipt.target },
+    { label: 'Consequences', value: receipt.consequences },
+    { label: 'Risk', value: receipt.risk },
+    { label: 'Took', value: receiptDuration(receipt.durationMs) },
+    ...(receipt.failure ? [{ label: 'Failure', value: receipt.failure }] : []),
+  ];
+}
+
+/** Executor wall time, bounded to two units so it never reads as a stopwatch. */
+export function receiptDuration(ms: number): string {
+  if (ms < 1000) return `${Math.max(0, Math.round(ms))}ms`;
+  const seconds = ms / 1000;
+  if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}m ${Math.round(seconds % 60)
+    .toString()
+    .padStart(2, '0')}s`;
+}
+
+/** The link kinds this build knows how to follow. */
+const RECEIPT_LINK_KINDS: ReadonlyArray<SmithReceiptLink['kind']> = ['url', 'run', 'entity'];
+
+/**
+ * Whether this build can act on a receipt's link. A persisted receipt outlives
+ * the build that wrote it, so a link kind from a newer Foundry renders as inert
+ * text rather than as a control that would do nothing.
+ */
+export function isActionableLink(link: SmithReceiptLink | undefined): link is SmithReceiptLink {
+  return !!link && RECEIPT_LINK_KINDS.includes(link.kind);
 }
 
 // ── Display labels ───────────────────────────────────────────────────────────

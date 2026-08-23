@@ -1,30 +1,35 @@
 /**
- * One rich artifact card in the Smith transcript, emitted by `smith_present`.
+ * One rich artifact card in the Smith transcript: a design `smith_present`
+ * emitted, or a receipt main recorded when an approved action settled.
  *
  * Read-only by contract: an artifact never blocks, never looks pending, and
  * carries no approval controls — the accent-bordered proposal card stays the
- * only element in the conversation waiting on the human. Unknown kinds and
- * versions fail soft to a readable note so a downgraded build still restores
- * the chat around them.
+ * only element in the conversation waiting on the human. A receipt's link is
+ * navigation, not a retry: it opens what the action affected and re-runs
+ * nothing. Unknown kinds and versions fail soft to a readable note so a
+ * downgraded build still restores the chat around them.
  */
 
-import type { SmithArtifact } from '@shared/types.js';
+import type { SmithArtifact, SmithReceiptLink } from '@shared/types.js';
 import {
   ARTIFACT_KIND_LABEL,
   artifactName,
   isRenderableArtifact,
 } from '../../view-models/smith-artifact-view.js';
+import SmithActionReceiptBody from './SmithActionReceipt.js';
 import { ChecklistDesign } from './SmithChecklistDesign.js';
 import { EntityComparisonDesign } from './SmithEntityComparisonDesign.js';
 import { AgentDesign, EnvelopeDesign, PipelineDesign, ViewJson } from './SmithEntityDesign.js';
 import styles from './SmithArtifactCard.module.css';
 
-function DesignBody({
+function ArtifactBody({
   artifact,
   compact,
+  onOpenReceiptLink,
 }: {
   artifact: SmithArtifact;
   compact?: boolean;
+  onOpenReceiptLink?: (link: SmithReceiptLink) => void;
 }): React.JSX.Element {
   if (artifact.kind === 'pipeline_design') {
     return <PipelineDesign pipeline={artifact.pipeline} compact={compact} />;
@@ -38,22 +43,44 @@ function DesignBody({
   if (artifact.kind === 'checklist') {
     return <ChecklistDesign checklist={artifact.checklist} compact={compact} />;
   }
+  if (artifact.kind === 'action_receipt') {
+    return (
+      <SmithActionReceiptBody
+        receipt={artifact.receipt}
+        compact={compact}
+        {...(onOpenReceiptLink ? { onOpenLink: onOpenReceiptLink } : {})}
+      />
+    );
+  }
   return <EntityComparisonDesign artifact={artifact} compact={compact} />;
+}
+
+/** The JSON an audit reader wants: the definition, or the record of what ran. */
+function auditValue(artifact: SmithArtifact): unknown {
+  if (artifact.kind === 'pipeline_design') return artifact.pipeline;
+  if (artifact.kind === 'agent_design') return artifact.agent;
+  if (artifact.kind === 'envelope_design') return artifact.envelope;
+  if (artifact.kind === 'checklist') return artifact.checklist;
+  if (artifact.kind === 'action_receipt') return artifact.receipt;
+  return { before: artifact.before, after: artifact.after };
 }
 
 export default function SmithArtifactCard({
   artifact,
   compact,
+  onOpenReceiptLink,
 }: {
   artifact: SmithArtifact;
   /** Tighter layout for the titlebar bubble; same data, no overflow. */
   compact?: boolean;
+  /** Follows a receipt's link. Absent means the receipt shows it as plain text. */
+  onOpenReceiptLink?: (link: SmithReceiptLink) => void;
 }): React.JSX.Element {
   if (!isRenderableArtifact(artifact)) {
     return (
       <section className={styles.card} data-testid="smith-artifact-fallback">
         <p className={styles.fallback}>
-          Smith presented a design this version of Foundry cannot render.
+          Smith presented a card this version of Foundry cannot render.
         </p>
         <ViewJson value={artifact} />
       </section>
@@ -65,12 +92,17 @@ export default function SmithArtifactCard({
       className={styles.card}
       aria-label={`${ARTIFACT_KIND_LABEL[artifact.kind]}: ${artifactName(artifact)}`}
       data-testid="smith-artifact-card"
+      data-artifact-kind={artifact.kind}
     >
       <header className={styles.header}>
         <span className={styles.kind}>{ARTIFACT_KIND_LABEL[artifact.kind]}</span>
         <h3 className={styles.title}>{artifactName(artifact)}</h3>
       </header>
-      <DesignBody artifact={artifact} compact={compact} />
+      <ArtifactBody
+        artifact={artifact}
+        compact={compact}
+        {...(onOpenReceiptLink ? { onOpenReceiptLink } : {})}
+      />
       {artifact.warnings.length > 0 && (
         <ul className={styles.warnings}>
           {artifact.warnings.map((issue, index) => (
@@ -82,19 +114,7 @@ export default function SmithArtifactCard({
         </ul>
       )}
       {artifact.rationale && <p className={styles.rationale}>{artifact.rationale}</p>}
-      <ViewJson
-        value={
-          artifact.kind === 'pipeline_design'
-            ? artifact.pipeline
-            : artifact.kind === 'agent_design'
-              ? artifact.agent
-              : artifact.kind === 'envelope_design'
-                ? artifact.envelope
-                : artifact.kind === 'checklist'
-                  ? artifact.checklist
-                  : { before: artifact.before, after: artifact.after }
-        }
-      />
+      <ViewJson value={auditValue(artifact)} />
     </section>
   );
 }

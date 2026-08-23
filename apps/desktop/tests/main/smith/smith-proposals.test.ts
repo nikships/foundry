@@ -6,11 +6,13 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
+import type { SmithActionProposal } from '../../../src/shared/types.js';
 import {
   ProposalQueue,
   type EntityProposalInput,
   type ProposalInput,
 } from '../../../src/main/smith/proposals.js';
+import type { ActionExecutionRecord } from '../../../src/main/smith/receipts.js';
 
 const input = (over: Partial<EntityProposalInput> = {}): ProposalInput => ({
   type: 'entity',
@@ -215,6 +217,117 @@ describe('ProposalQueue', () => {
     expect(answer.ok).toBe(true);
     expect(JSON.stringify(await pending)).not.toContain(secret);
     expect(JSON.stringify(answer)).toContain(secret);
+  });
+
+  it('reports a settled action once, with what the executor returned', async () => {
+    const settled: Array<[SmithActionProposal, ActionExecutionRecord]> = [];
+    const queue = new ProposalQueue(
+      () => {},
+      async () => ({ ok: true, entity: {} }),
+      (proposal, execution) => settled.push([proposal, execution]),
+    );
+    const pending = queue.propose(
+      {
+        type: 'action',
+        operation: 'create',
+        title: 'create pull request',
+        summary: 'create using GitHub.',
+        args: { runId: 'run_7' },
+        risk: 'git',
+      },
+      () => ({ ok: true, modelResult: { ok: true, url: 'https://x.test/pull/1' } }),
+    );
+    await queue.answer(queue.list()[0]!.id, { approved: true });
+    await pending;
+
+    expect(settled).toHaveLength(1);
+    const [proposal, execution] = settled[0]!;
+    expect(proposal.operation).toBe('create');
+    expect(execution.outcome).toBe('succeeded');
+    expect(execution.result).toEqual({ ok: true, url: 'https://x.test/pull/1' });
+    expect(execution.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it('reports a failed action too — approval is not success', async () => {
+    const settled: ActionExecutionRecord[] = [];
+    const queue = new ProposalQueue(
+      () => {},
+      async () => ({ ok: true, entity: {} }),
+      (_proposal, execution) => settled.push(execution),
+    );
+    const pending = queue.propose(
+      {
+        type: 'action',
+        operation: 'update_check',
+        title: 'Check for updates',
+        summary: 'Contact the update service.',
+        args: {},
+        risk: 'network',
+      },
+      () => {
+        throw new Error('offline');
+      },
+    );
+    await queue.answer(queue.list()[0]!.id, { approved: true });
+    await pending;
+
+    expect(settled).toEqual([expect.objectContaining({ outcome: 'failed', error: 'offline' })]);
+  });
+
+  it('reports nothing for a rejected action or an entity save', async () => {
+    const settled: unknown[] = [];
+    const queue = new ProposalQueue(
+      () => {},
+      async () => ({ ok: true, entity: {} }),
+      (proposal, execution) => settled.push([proposal, execution]),
+    );
+
+    const rejected = queue.propose(
+      {
+        type: 'action',
+        operation: 'kill',
+        title: 'kill run',
+        summary: 'kill the selected run.',
+        args: { runId: 'run_7' },
+        risk: 'destructive',
+      },
+      () => ({ ok: true, modelResult: { ok: true } }),
+    );
+    await queue.answer(queue.list()[0]!.id, { approved: false });
+    await rejected;
+    expect(settled).toEqual([]);
+
+    // An entity save's evidence is the stored definition, not a receipt.
+    const entity = queue.propose(input());
+    await queue.answer(queue.list()[0]!.id, { approved: true });
+    await entity;
+    expect(settled).toEqual([]);
+  });
+
+  it('keeps the action outcome when recording the receipt throws', async () => {
+    const queue = new ProposalQueue(
+      () => {},
+      async () => ({ ok: true, entity: {} }),
+      () => {
+        throw new Error('transcript is gone');
+      },
+    );
+    const pending = queue.propose(
+      {
+        type: 'action',
+        operation: 'archive',
+        title: 'archive run',
+        summary: 'archive the selected run.',
+        args: { runId: 'run_7' },
+        risk: 'write',
+      },
+      () => ({ ok: true, modelResult: { ok: true } }),
+    );
+    await expect(queue.answer(queue.list()[0]!.id, { approved: true })).resolves.toEqual({
+      ok: true,
+    });
+    await expect(pending).resolves.toEqual({ approved: true, result: { ok: true } });
+    expect(queue.list()).toEqual([]);
   });
 
   it('cancelAll unblocks a waiting CLI on shutdown', async () => {
