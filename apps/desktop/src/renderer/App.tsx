@@ -295,6 +295,7 @@ function AppInner(): React.JSX.Element {
           <SmithScreen
             screenContext={smithContext}
             onCompleted={(target) => void onSmithCompleted(target)}
+            onOpenInspector={openInspector}
             onOpenReceiptLink={openReceiptLink}
           />
         );
@@ -364,6 +365,7 @@ function AppInner(): React.JSX.Element {
           screenContext={liveScreenContext}
           onExpand={openSmith}
           onCompleted={(target) => void onSmithCompleted(target)}
+          onOpenInspector={openInspector}
           onOpenReceiptLink={openReceiptLink}
         />
       )}

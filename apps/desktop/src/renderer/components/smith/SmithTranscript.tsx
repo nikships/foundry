@@ -27,10 +27,12 @@ function TranscriptRows({
   group,
   compact,
   onOpenReceiptLink,
+  onOpenInspector,
 }: {
   group: SmithTranscriptGroup;
   compact?: boolean;
   onOpenReceiptLink?: (link: SmithReceiptLink) => void;
+  onOpenInspector?: (runId: string) => void;
 }): React.JSX.Element {
   return (
     <>
@@ -40,6 +42,7 @@ function TranscriptRows({
             key={entry.id}
             artifact={entry.artifact}
             compact={compact}
+            onOpenInspector={onOpenInspector}
             {...(onOpenReceiptLink ? { onOpenReceiptLink } : {})}
           />
         ) : (
@@ -73,6 +76,7 @@ export default function SmithTranscript({
   emptyState,
   tail,
   onOpenReceiptLink,
+  onOpenInspector,
 }: {
   entries: SmithTranscriptEntry[];
   running: boolean;
@@ -84,6 +88,7 @@ export default function SmithTranscript({
   tail?: React.ReactNode;
   /** Follows an action receipt's link to what the action affected. */
   onOpenReceiptLink?: (link: SmithReceiptLink) => void;
+  onOpenInspector?: (runId: string) => void;
 }): React.JSX.Element {
   const tailRef = useRef<HTMLDivElement | null>(null);
   const groups = useMemo(() => groupTranscript(entries), [entries]);
@@ -119,6 +124,7 @@ export default function SmithTranscript({
             <TranscriptRows
               group={group}
               compact={compact}
+              onOpenInspector={onOpenInspector}
               {...(onOpenReceiptLink ? { onOpenReceiptLink } : {})}
             />
           </section>
@@ -127,6 +133,7 @@ export default function SmithTranscript({
             <TranscriptRows
               group={group}
               compact={compact}
+              onOpenInspector={onOpenInspector}
               {...(onOpenReceiptLink ? { onOpenReceiptLink } : {})}
             />
           </div>

@@ -51,6 +51,7 @@ const SUPPORTED_ARTIFACT_KINDS: ReadonlyArray<SmithArtifact['kind']> = [
   'agent_design',
   'envelope_design',
   'checklist',
+  'run_summary',
   'entity_comparison',
   'change_receipt',
   'project_card',
@@ -72,6 +73,7 @@ export const ARTIFACT_KIND_LABEL: Record<SmithArtifact['kind'], string> = {
   agent_design: 'agent design',
   envelope_design: 'report design',
   checklist: 'checklist',
+  run_summary: 'run summary',
   entity_comparison: 'entity comparison',
   change_receipt: 'change receipt',
   project_card: 'project card',
@@ -88,6 +90,9 @@ export function artifactName(artifact: SmithArtifact): string {
   if (artifact.kind === 'agent_design') return artifact.agent.name;
   if (artifact.kind === 'envelope_design') return artifact.envelope.name;
   if (artifact.kind === 'checklist') return artifact.checklist.title;
+  if (artifact.kind === 'run_summary') {
+    return artifact.pipelineName || artifact.pipelineId || artifact.runId;
+  }
   if (artifact.kind === 'engineer_checkpoint') return artifact.checkpoint.title;
   if (artifact.kind === 'readiness_journey') {
     return artifact.journey.projectName ?? artifact.journey.projectId ?? 'Agent readiness';
@@ -113,6 +118,28 @@ export function artifactName(artifact: SmithArtifact): string {
     return `#${artifact.pr.number} ${artifact.pr.title}`;
   }
   return artifact.name;
+}
+
+export function runStatusLabel(status: string): string {
+  switch (status) {
+    case 'accepted':
+      return 'accepted';
+    case 'running':
+      return 'running';
+    case 'failed':
+      return 'failed';
+    case 'rejected':
+      return 'rejected';
+    case 'killed':
+      return 'killed';
+    default:
+      return status;
+  }
+}
+
+export function isolationLabel(isolation?: boolean, branch?: string | null): string {
+  if (isolation === false) return 'direct checkout';
+  return branch ? `isolated worktree (${branch})` : 'isolated worktree';
 }
 
 // ── Project card helpers ─────────────────────────────────────────────────────

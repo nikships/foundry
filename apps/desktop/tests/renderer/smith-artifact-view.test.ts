@@ -20,6 +20,7 @@ import type {
   SmithActionReceipt,
   SmithArtifact,
   SmithReceiptLink,
+  SmithRunSummaryArtifact,
 } from '@shared/types.js';
 import { SMITH_ARTIFACT_VERSION } from '@shared/types.js';
 import {
@@ -47,6 +48,7 @@ import {
   isJourneyPhaseLive,
   isActionableLink,
   isRenderableArtifact,
+  isolationLabel,
   journeyActions,
   journeyMarkerVerdict,
   journeyNeedsContinue,
@@ -67,6 +69,7 @@ import {
   receiptDuration,
   receiptOutcomeView,
   receiptRows,
+  runStatusLabel,
   writesLabel,
 } from '@renderer/view-models/smith-artifact-view.js';
 
@@ -96,6 +99,29 @@ const pipeline: PipelineDef = {
 const envelope: EnvelopeDef = {
   name: 'severity_report',
   fields: [{ name: 'severity', type: 'string', required: true }],
+};
+
+const runSummary: SmithRunSummaryArtifact = {
+  id: 'a1',
+  kind: 'run_summary',
+  version: SMITH_ARTIFACT_VERSION,
+  createdAt: 0,
+  warnings: [],
+  runId: 'run_123',
+  pipelineId: 'ship-it',
+  pipelineName: 'Ship it',
+  request: 'Build feature',
+  status: 'accepted',
+  startedAt: '2026-08-23T00:00:00.000Z',
+  phases: [
+    {
+      name: 'plan',
+      kind: 'agent',
+      status: 'success',
+      owner: 'planner',
+      durationMs: 1200,
+    },
+  ],
 };
 
 const checklist: ChecklistDef = {
@@ -203,6 +229,7 @@ function artifactOf(kind: SmithArtifact['kind'], version = SMITH_ARTIFACT_VERSIO
   if (kind === 'agent_design') return { ...base, kind, agent };
   if (kind === 'envelope_design') return { ...base, kind, envelope };
   if (kind === 'checklist') return { ...base, kind, checklist };
+  if (kind === 'run_summary') return { ...runSummary, ...base, kind: 'run_summary' };
   if (kind === 'action_receipt') return { ...base, kind, receipt: actionReceipt };
   if (kind === 'change_receipt') return { ...base, kind, receipt: changeReceipt };
   if (kind === 'project_card') return { ...base, kind, project };
@@ -230,6 +257,7 @@ describe('the artifact registry', () => {
   it('fails soft on a future version or an unknown kind', () => {
     expect(isRenderableArtifact(artifactOf('pipeline_design', 99))).toBe(false);
     expect(isRenderableArtifact(artifactOf('checklist', 99))).toBe(false);
+    expect(isRenderableArtifact(artifactOf('run_summary', 99))).toBe(false);
     expect(isRenderableArtifact(artifactOf('entity_comparison', 99))).toBe(false);
     expect(isRenderableArtifact(artifactOf('change_receipt', 99))).toBe(false);
     expect(isRenderableArtifact(artifactOf('project_card', 99))).toBe(false);
@@ -238,7 +266,7 @@ describe('the artifact registry', () => {
     expect(isRenderableArtifact(artifactOf('readiness_journey', 99))).toBe(false);
     expect(isRenderableArtifact(artifactOf('provider_status', 99))).toBe(false);
     expect(isRenderableArtifact(artifactOf('action_receipt', 99))).toBe(false);
-    expect(isRenderableArtifact({ kind: 'run_summary' } as unknown as SmithArtifact)).toBe(false);
+    expect(isRenderableArtifact({ kind: 'unknown_kind' } as unknown as SmithArtifact)).toBe(false);
   });
 
   it('names each artifact by its identifying field', () => {
@@ -246,6 +274,7 @@ describe('the artifact registry', () => {
     expect(artifactName(artifactOf('agent_design'))).toBe('planner');
     expect(artifactName(artifactOf('envelope_design'))).toBe('severity_report');
     expect(artifactName(artifactOf('checklist'))).toBe('Project Health');
+    expect(artifactName(artifactOf('run_summary'))).toBe('Ship it');
     expect(artifactName(artifactOf('entity_comparison'))).toBe('planner');
     expect(artifactName(artifactOf('change_receipt'))).toBe('Checkout changes applied');
     expect(artifactName(artifactOf('project_card'))).toBe('Foundry');
@@ -550,6 +579,15 @@ describe('display labels', () => {
     expect(
       phaseWorkLabel({ name: 'ask', kind: 'engineer', description: '', question: 'Ship it?' }),
     ).toBe('Ship it?');
+  });
+
+  it('labels run statuses and isolation', () => {
+    expect(runStatusLabel('accepted')).toBe('accepted');
+    expect(runStatusLabel('running')).toBe('running');
+    expect(runStatusLabel('failed')).toBe('failed');
+    expect(isolationLabel(true, 'foundry/run_1')).toBe('isolated worktree (foundry/run_1)');
+    expect(isolationLabel(true)).toBe('isolated worktree');
+    expect(isolationLabel(false)).toBe('direct checkout');
   });
 });
 
