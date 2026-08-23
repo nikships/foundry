@@ -20,6 +20,8 @@ import SmithActionReceiptBody from './SmithActionReceipt.js';
 import { ChangeReceiptDesign } from './SmithChangeReceiptDesign.js';
 import { CheckpointDesign } from './SmithCheckpointDesign.js';
 import { ChecklistDesign } from './SmithChecklistDesign.js';
+import { DataTableDesign } from './SmithDataTableDesign.js';
+import { DiagnosticsDesign } from './SmithDiagnosticsDesign.js';
 import { EntityComparisonDesign } from './SmithEntityComparisonDesign.js';
 import { ProjectCardDesign } from './SmithProjectCardDesign.js';
 import { PrCardDesign } from './SmithPrCardDesign.js';
@@ -30,8 +32,10 @@ import {
   RunSummaryDesign,
   ViewJson,
 } from './SmithEntityDesign.js';
+import { EvidenceDisclosureDesign } from './SmithEvidenceDisclosureDesign.js';
 import { ProviderStatusDesign } from './SmithProviderStatusDesign.js';
 import { ReadinessJourneyDesign } from './SmithReadinessJourneyDesign.js';
+import { SettingsDiffDesign } from './SmithSettingsDiffDesign.js';
 import styles from './SmithArtifactCard.module.css';
 
 function ArtifactBody({
@@ -52,7 +56,14 @@ function ArtifactBody({
     return <AgentDesign agent={artifact.agent} compact={compact} />;
   }
   if (artifact.kind === 'envelope_design') {
-    return <EnvelopeDesign envelope={artifact.envelope} compact={compact} />;
+    return (
+      <EnvelopeDesign
+        envelope={artifact.envelope}
+        usage={artifact.usage}
+        sampleOutput={artifact.sampleOutput}
+        compact={compact}
+      />
+    );
   }
   if (artifact.kind === 'checklist') {
     return <ChecklistDesign checklist={artifact.checklist} compact={compact} />;
@@ -70,6 +81,18 @@ function ArtifactBody({
   }
   if (artifact.kind === 'project_card') {
     return <ProjectCardDesign project={artifact.project} compact={compact} />;
+  }
+  if (artifact.kind === 'settings_diff') {
+    return <SettingsDiffDesign diff={artifact.diff} compact={compact} />;
+  }
+  if (artifact.kind === 'diagnostics') {
+    return <DiagnosticsDesign diagnostics={artifact.diagnostics} compact={compact} />;
+  }
+  if (artifact.kind === 'data_table') {
+    return <DataTableDesign table={artifact.table} compact={compact} />;
+  }
+  if (artifact.kind === 'evidence_disclosure') {
+    return <EvidenceDisclosureDesign evidence={artifact.evidence} compact={compact} />;
   }
   if (artifact.kind === 'engineer_checkpoint') {
     return <CheckpointDesign checkpoint={artifact.checkpoint} compact={compact} />;
@@ -96,7 +119,13 @@ function ArtifactBody({
 function auditValue(artifact: SmithArtifact): unknown {
   if (artifact.kind === 'pipeline_design') return artifact.pipeline;
   if (artifact.kind === 'agent_design') return artifact.agent;
-  if (artifact.kind === 'envelope_design') return artifact.envelope;
+  if (artifact.kind === 'envelope_design') {
+    return {
+      ...artifact.envelope,
+      ...(artifact.usage ? { usage: artifact.usage } : {}),
+      ...(artifact.sampleOutput ? { sampleOutput: artifact.sampleOutput } : {}),
+    };
+  }
   if (artifact.kind === 'checklist') return artifact.checklist;
   if (artifact.kind === 'run_summary') return artifact;
   if (artifact.kind === 'change_receipt' || artifact.kind === 'action_receipt') {
@@ -107,6 +136,10 @@ function auditValue(artifact: SmithArtifact): unknown {
   if (artifact.kind === 'engineer_checkpoint') return artifact.checkpoint;
   if (artifact.kind === 'readiness_journey') return artifact.journey;
   if (artifact.kind === 'provider_status') return artifact.status;
+  if (artifact.kind === 'settings_diff') return artifact.diff;
+  if (artifact.kind === 'diagnostics') return artifact.diagnostics;
+  if (artifact.kind === 'data_table') return artifact.table;
+  if (artifact.kind === 'evidence_disclosure') return artifact.evidence;
   return { before: artifact.before, after: artifact.after };
 }
 

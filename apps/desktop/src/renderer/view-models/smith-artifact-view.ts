@@ -23,7 +23,10 @@ import type {
   ChecklistItem,
   ChecklistItemStatus,
   CommandSpec,
+  DataTableDef,
+  DiagnosticsDef,
   EnvelopeDef,
+  EvidenceDisclosureDef,
   GateSpec,
   PhaseDef,
   PipelineDef,
@@ -39,9 +42,12 @@ import type {
   ReadinessJourneyCriterion,
   ReadinessJourneyDef,
   ReadinessPhase,
+  SettingsDiffDef,
   SmithActionReceipt,
   SmithArtifact,
   SmithReceiptLink,
+  TableCellStatus,
+  TableCellValue,
   WriteBoundary,
 } from '@shared/types.js';
 
@@ -56,6 +62,10 @@ const SUPPORTED_ARTIFACT_KINDS: ReadonlyArray<SmithArtifact['kind']> = [
   'change_receipt',
   'project_card',
   'pr_card',
+  'settings_diff',
+  'diagnostics',
+  'data_table',
+  'evidence_disclosure',
   'engineer_checkpoint',
   'readiness_journey',
   'provider_status',
@@ -78,6 +88,10 @@ export const ARTIFACT_KIND_LABEL: Record<SmithArtifact['kind'], string> = {
   change_receipt: 'change receipt',
   project_card: 'project card',
   pr_card: 'pull request',
+  settings_diff: 'settings diff',
+  diagnostics: 'diagnostics',
+  data_table: 'data catalog',
+  evidence_disclosure: 'context & evidence',
   engineer_checkpoint: 'engineer checkpoint',
   readiness_journey: 'readiness journey',
   provider_status: 'provider status',
@@ -116,6 +130,18 @@ export function artifactName(artifact: SmithArtifact): string {
   }
   if (artifact.kind === 'pr_card') {
     return `#${artifact.pr.number} ${artifact.pr.title}`;
+  }
+  if (artifact.kind === 'settings_diff') {
+    return artifact.diff.title ?? 'Settings changes';
+  }
+  if (artifact.kind === 'diagnostics') {
+    return artifact.diagnostics.title ?? 'Diagnostics report';
+  }
+  if (artifact.kind === 'data_table') {
+    return artifact.table.title;
+  }
+  if (artifact.kind === 'evidence_disclosure') {
+    return artifact.evidence.title;
   }
   return artifact.name;
 }
@@ -564,6 +590,122 @@ export function checklistStatusGlyph(status: ChecklistItemStatus): string {
     case 'info':
       return 'ℹ';
   }
+}
+
+// ── Settings diff helpers ───────────────────────────────────────────────────
+
+export function settingsDiffSummary(diff: SettingsDiffDef): string {
+  if (diff.summary && diff.summary.trim()) {
+    return diff.summary.trim();
+  }
+  const totalChanges = diff.sections.reduce((acc, sec) => acc + sec.changes.length, 0);
+  const sectionCount = diff.sections.length;
+  return `${totalChanges} ${totalChanges === 1 ? 'change' : 'changes'} across ${sectionCount} ${
+    sectionCount === 1 ? 'section' : 'sections'
+  }`;
+}
+
+export function formatSettingValue(value: unknown): string {
+  if (value === undefined || value === null) return '—';
+  if (typeof value === 'boolean') return value ? 'Enabled' : 'Disabled';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+// ── Diagnostics helpers ─────────────────────────────────────────────────────
+
+export function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(Math.abs(bytes)) / Math.log(k));
+  const idx = Math.min(i, sizes.length - 1);
+  return `${parseFloat((bytes / Math.pow(k, idx)).toFixed(1))} ${sizes[idx]}`;
+}
+
+export function diagnosticsSummary(diagnostics: DiagnosticsDef): string {
+  if (diagnostics.summary && diagnostics.summary.trim()) {
+    return diagnostics.summary.trim();
+  }
+  const parts: string[] = [];
+  if (diagnostics.doctor && diagnostics.doctor.length > 0) {
+    const failed = diagnostics.doctor.filter((d) => !d.ok).length;
+    const passed = diagnostics.doctor.length - failed;
+    if (failed > 0) parts.push(`${failed} doctor ${failed === 1 ? 'check' : 'checks'} failed`);
+    else parts.push(`${passed} doctor ${passed === 1 ? 'check' : 'checks'} passed`);
+  }
+  if (diagnostics.orphans && diagnostics.orphans.length > 0) {
+    parts.push(
+      `${diagnostics.orphans.length} orphan ${diagnostics.orphans.length === 1 ? 'worktree' : 'worktrees'}`,
+    );
+  }
+  if (diagnostics.maintenance) {
+    const { runsDeleted, bytesReclaimed, worktreesRemoved } = diagnostics.maintenance;
+    parts.push(`${runsDeleted} runs cleared, ${formatBytes(bytesReclaimed)} reclaimed`);
+    if (worktreesRemoved > 0) {
+      parts.push(
+        `${worktreesRemoved} ${worktreesRemoved === 1 ? 'worktree' : 'worktrees'} removed`,
+      );
+    }
+  }
+  if (diagnostics.update) {
+    parts.push(`Update: ${diagnostics.update.stage}`);
+  }
+  if (diagnostics.lifecycleWarning) {
+    parts.push('Lifecycle warning');
+  }
+  if (diagnostics.items && diagnostics.items.length > 0) {
+    parts.push(checklistSummary({ title: 'Diagnostics', items: diagnostics.items }));
+  }
+  return parts.join(' · ') || 'Diagnostics completed';
+}
+
+// ── Data table helpers ──────────────────────────────────────────────────────
+
+export function dataTableSummary(table: DataTableDef): string {
+  if (table.summary && table.summary.trim()) {
+    return table.summary.trim();
+  }
+  const total = table.totalCount ?? table.rows.length;
+  const kindLabel = table.catalogKind ? `${table.catalogKind} · ` : '';
+  return `${kindLabel}${total} ${total === 1 ? 'item' : 'items'}`;
+}
+
+export function formatCellValue(value: TableCellValue): { text: string; status?: TableCellStatus } {
+  if (value === undefined || value === null) return { text: '—' };
+  if (typeof value === 'object' && 'variant' in value && 'label' in value) {
+    return { text: value.label, status: value };
+  }
+  if (typeof value === 'boolean') return { text: value ? 'Yes' : 'No' };
+  return { text: String(value) };
+}
+
+// ── Evidence disclosure helpers ─────────────────────────────────────────────
+
+export function evidenceSummary(evidence: EvidenceDisclosureDef): string {
+  if (evidence.summary && evidence.summary.trim()) {
+    return evidence.summary.trim();
+  }
+  const parts: string[] = [];
+  if (evidence.occupancy && evidence.occupancy.percent !== undefined) {
+    parts.push(`${Math.round(evidence.occupancy.percent)}% context`);
+  }
+  if (evidence.phaseName) {
+    parts.push(`Phase: ${evidence.phaseName}`);
+  }
+  if (evidence.items.length > 0) {
+    parts.push(`${evidence.items.length} ${evidence.items.length === 1 ? 'item' : 'items'}`);
+  }
+  return parts.join(' · ') || 'Context & evidence';
+}
+
+export function occupancyStatus(
+  percent: number,
+  compactionThreshold = 80,
+): 'ok' | 'warn' | 'critical' {
+  if (percent >= 90) return 'critical';
+  if (percent >= compactionThreshold) return 'warn';
+  return 'ok';
 }
 
 // ── Action receipts ──────────────────────────────────────────────────────────

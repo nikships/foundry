@@ -11,12 +11,16 @@ import type {
   ChangeReceiptDef,
   CheckpointDef,
   ChecklistDef,
+  DataTableDef,
+  DiagnosticsDef,
   EnvelopeDef,
+  EvidenceDisclosureDef,
   PipelineDef,
   PrCardDef,
   ProjectCardDef,
   ProviderStatusDef,
   ReadinessJourneyDef,
+  SettingsDiffDef,
   SmithActionReceipt,
   SmithArtifact,
   SmithReceiptLink,
@@ -42,6 +46,12 @@ import {
   compareEntities,
   criterionLabel,
   criterionStatusLabel,
+  dataTableSummary,
+  diagnosticsSummary,
+  evidenceSummary,
+  formatBytes,
+  formatCellValue,
+  formatSettingValue,
   gateLabel,
   groupChecklistItems,
   groupJourneyCriteria,
@@ -53,6 +63,7 @@ import {
   journeyMarkerVerdict,
   journeyNeedsContinue,
   journeySummary,
+  occupancyStatus,
   phaseWorkLabel,
   prChecksGlyph,
   prChecksLabel,
@@ -70,6 +81,7 @@ import {
   receiptOutcomeView,
   receiptRows,
   runStatusLabel,
+  settingsDiffSummary,
   writesLabel,
 } from '@renderer/view-models/smith-artifact-view.js';
 
@@ -181,6 +193,63 @@ const pr: PrCardDef = {
   mergeable: 'mergeable',
 };
 
+const diff: SettingsDiffDef = {
+  title: 'Model settings updated',
+  summary: '2 changes in Models',
+  scope: 'global',
+  sections: [
+    {
+      section: 'models',
+      label: 'Models & Providers',
+      changes: [
+        {
+          key: 'smithModel',
+          label: 'Smith Default Model',
+          previous: 'inherit',
+          next: 'anthropic/claude-3-7-sonnet',
+        },
+      ],
+    },
+  ],
+};
+
+const diagnostics: DiagnosticsDef = {
+  title: 'System Diagnostics',
+  summary: 'All doctor checks passed',
+  category: 'doctor',
+  doctor: [{ id: 'git', label: 'Git binary', ok: true, detail: 'git 2.44.0 found' }],
+};
+
+const table: DataTableDef = {
+  title: 'Active Runs',
+  catalogKind: 'runs',
+  columns: [
+    { key: 'id', label: 'Run ID' },
+    { key: 'status', label: 'Status', type: 'status' },
+  ],
+  rows: [
+    {
+      id: 'run_1',
+      cells: { id: 'run_1', status: { variant: 'pass', label: 'Succeeded' } },
+    },
+  ],
+};
+
+const evidence: EvidenceDisclosureDef = {
+  title: 'Phase Execution Context',
+  phaseName: 'build',
+  occupancy: { usedTokens: 12000, maxTokens: 128000, percent: 9.4 },
+  items: [
+    {
+      label: 'Build Output',
+      kind: 'command_output',
+      content: 'Build succeeded in 1.2s',
+      exitCode: 0,
+      durationMs: 1200,
+    },
+  ],
+};
+
 const checkpoint: CheckpointDef = {
   interruptId: 'int_1',
   title: 'Ship the migration?',
@@ -234,12 +303,16 @@ function artifactOf(kind: SmithArtifact['kind'], version = SMITH_ARTIFACT_VERSIO
   if (kind === 'change_receipt') return { ...base, kind, receipt: changeReceipt };
   if (kind === 'project_card') return { ...base, kind, project };
   if (kind === 'pr_card') return { ...base, kind, pr };
+  if (kind === 'settings_diff') return { ...base, kind, diff };
+  if (kind === 'diagnostics') return { ...base, kind, diagnostics };
+  if (kind === 'data_table') return { ...base, kind, table };
+  if (kind === 'evidence_disclosure') return { ...base, kind, evidence };
   if (kind === 'engineer_checkpoint') return { ...base, kind, checkpoint };
   if (kind === 'readiness_journey') return { ...base, kind, journey };
   if (kind === 'provider_status') return { ...base, kind, status: providerStatus };
   return {
     ...base,
-    kind,
+    kind: 'entity_comparison',
     entityKind: 'agent',
     name: 'planner',
     before: agent,
@@ -262,6 +335,10 @@ describe('the artifact registry', () => {
     expect(isRenderableArtifact(artifactOf('change_receipt', 99))).toBe(false);
     expect(isRenderableArtifact(artifactOf('project_card', 99))).toBe(false);
     expect(isRenderableArtifact(artifactOf('pr_card', 99))).toBe(false);
+    expect(isRenderableArtifact(artifactOf('settings_diff', 99))).toBe(false);
+    expect(isRenderableArtifact(artifactOf('diagnostics', 99))).toBe(false);
+    expect(isRenderableArtifact(artifactOf('data_table', 99))).toBe(false);
+    expect(isRenderableArtifact(artifactOf('evidence_disclosure', 99))).toBe(false);
     expect(isRenderableArtifact(artifactOf('engineer_checkpoint', 99))).toBe(false);
     expect(isRenderableArtifact(artifactOf('readiness_journey', 99))).toBe(false);
     expect(isRenderableArtifact(artifactOf('provider_status', 99))).toBe(false);
@@ -279,6 +356,10 @@ describe('the artifact registry', () => {
     expect(artifactName(artifactOf('change_receipt'))).toBe('Checkout changes applied');
     expect(artifactName(artifactOf('project_card'))).toBe('Foundry');
     expect(artifactName(artifactOf('pr_card'))).toBe('#188 Add change receipt');
+    expect(artifactName(artifactOf('settings_diff'))).toBe('Model settings updated');
+    expect(artifactName(artifactOf('diagnostics'))).toBe('System Diagnostics');
+    expect(artifactName(artifactOf('data_table'))).toBe('Active Runs');
+    expect(artifactName(artifactOf('evidence_disclosure'))).toBe('Phase Execution Context');
     expect(artifactName(artifactOf('action_receipt'))).toBe('create pull request');
     expect(artifactName(artifactOf('engineer_checkpoint'))).toBe('Ship the migration?');
     expect(artifactName(artifactOf('readiness_journey'))).toBe('foundry');
@@ -454,6 +535,74 @@ describe('change receipt helpers', () => {
         status: 'failure',
       }),
     ).toBe('Operation failed');
+  });
+});
+
+describe('settings diff helpers', () => {
+  it('formats custom summary or derives from sections', () => {
+    expect(settingsDiffSummary(diff)).toBe('2 changes in Models');
+    expect(settingsDiffSummary({ ...diff, summary: undefined })).toBe('1 change across 1 section');
+  });
+
+  it('formats setting values into readable strings', () => {
+    expect(formatSettingValue(undefined)).toBe('—');
+    expect(formatSettingValue(null)).toBe('—');
+    expect(formatSettingValue(true)).toBe('Enabled');
+    expect(formatSettingValue(false)).toBe('Disabled');
+    expect(formatSettingValue('hello')).toBe('hello');
+    expect(formatSettingValue({ key: 'val' })).toBe('{"key":"val"}');
+  });
+});
+
+describe('diagnostics helpers', () => {
+  it('formats bytes cleanly', () => {
+    expect(formatBytes(0)).toBe('0 B');
+    expect(formatBytes(1024)).toBe('1 KB');
+    expect(formatBytes(1048576)).toBe('1 MB');
+    expect(formatBytes(1073741824)).toBe('1 GB');
+  });
+
+  it('formats diagnostics summary with doctor and orphan counts', () => {
+    expect(diagnosticsSummary(diagnostics)).toBe('All doctor checks passed');
+    expect(
+      diagnosticsSummary({
+        doctor: [
+          { id: '1', label: 'Check 1', ok: true, detail: '' },
+          { id: '2', label: 'Check 2', ok: false, detail: '' },
+        ],
+        orphans: [{ path: '/tmp/wt', branch: 'foundry/1', runId: '1', projectId: 'p1' }],
+      }),
+    ).toBe('1 doctor check failed · 1 orphan worktree');
+  });
+});
+
+describe('data table helpers', () => {
+  it('derives table summary from items', () => {
+    expect(dataTableSummary(table)).toBe('runs · 1 item');
+    expect(dataTableSummary({ ...table, summary: 'Custom Summary' })).toBe('Custom Summary');
+  });
+
+  it('formats cell values and status objects', () => {
+    expect(formatCellValue(undefined)).toEqual({ text: '—' });
+    expect(formatCellValue(true)).toEqual({ text: 'Yes' });
+    expect(formatCellValue(false)).toEqual({ text: 'No' });
+    expect(formatCellValue('text')).toEqual({ text: 'text' });
+    expect(formatCellValue({ variant: 'pass', label: 'Active' })).toEqual({
+      text: 'Active',
+      status: { variant: 'pass', label: 'Active' },
+    });
+  });
+});
+
+describe('evidence disclosure helpers', () => {
+  it('formats evidence summary from occupancy and items', () => {
+    expect(evidenceSummary(evidence)).toBe('9% context · Phase: build · 1 item');
+  });
+
+  it('evaluates occupancy status based on compaction threshold', () => {
+    expect(occupancyStatus(50)).toBe('ok');
+    expect(occupancyStatus(82)).toBe('warn');
+    expect(occupancyStatus(95)).toBe('critical');
   });
 });
 

@@ -43,6 +43,14 @@ inline human approval.
   `keyPresent` boolean and paired devices, and `validateProviderStatus`
   refuses any other key/token/pairing/QR field so the masked secret card and
   the renderer-only pairing payload stay out of the transcript.
+  Four more report app state without any write path: `settings_diff` shows
+  labelled old/new values for a settings change (the change itself is still a
+  `smith_settings` action on the approval queue), `diagnostics` carries
+  doctor/orphan/maintenance/update results, `data_table` presents bounded typed
+  catalogs of entities, runs, or projects, and `evidence_disclosure` discloses
+  context occupancy plus capped command/diff/prompt excerpts. Every one goes
+  through the same `findSecretKey` boundary as the rest, so a credential-shaped
+  field anywhere in the params is refused before a card exists.
 - `action_receipt` (`receipts.ts`) is the one artifact kind the model may not
   present. It is minted by main on the proposal answer path — the queue reports
   every settled **action** through `ActionSettledHandler`, `SmithService` builds

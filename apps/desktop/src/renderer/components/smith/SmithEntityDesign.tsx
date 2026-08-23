@@ -11,7 +11,13 @@
  */
 
 import { useState } from 'react';
-import type { AgentDef, EnvelopeDef, PipelineDef, SmithRunSummaryArtifact } from '@shared/types.js';
+import type {
+  AgentDef,
+  EnvelopeDef,
+  EnvelopeUsageDef,
+  PipelineDef,
+  SmithRunSummaryArtifact,
+} from '@shared/types.js';
 import { useApp } from '../../stores/app.js';
 import { duration, statusColor, tokens } from '../../utils/format.js';
 import { phaseKindColor } from '../../utils/derive.js';
@@ -233,11 +239,20 @@ export function AgentDesign({
 
 export function EnvelopeDesign({
   envelope,
+  usage,
+  sampleOutput,
   compact,
 }: {
   envelope: EnvelopeDef;
+  usage?: EnvelopeUsageDef;
+  sampleOutput?: Record<string, unknown>;
   compact?: boolean;
 }): React.JSX.Element {
+  const hasAgents = usage?.agents && usage.agents.length > 0;
+  const hasPhases = usage?.phases && usage.phases.length > 0;
+  const hasPipelines = usage?.pipelines && usage.pipelines.length > 0;
+  const hasUsage = hasAgents || hasPhases || hasPipelines;
+
   return (
     <div className={cx(styles.design, compact && styles.compact)}>
       {envelope.description && <p className={styles.blurb}>{envelope.description}</p>}
@@ -264,6 +279,46 @@ export function EnvelopeDesign({
       <p className={styles.baseNote}>
         Plus the base fields every envelope carries: {ENVELOPE_BASE_FIELDS.join(', ')}.
       </p>
+
+      {hasUsage && (
+        <div className={styles.usageSection} data-testid="envelope-usage">
+          <span className={styles.usageHeading}>Usage in agents & pipelines</span>
+          <div className={styles.usageChips}>
+            {hasAgents &&
+              usage.agents!.map((agent, i) => {
+                const name = typeof agent === 'string' ? agent : agent.name;
+                const role = typeof agent === 'object' && agent.role ? ` (${agent.role})` : '';
+                return (
+                  <span key={`agent-${i}`} className={styles.usageChip}>
+                    Agent: {name}
+                    {role}
+                  </span>
+                );
+              })}
+            {hasPhases &&
+              usage.phases!.map((phase, i) => (
+                <span key={`phase-${i}`} className={styles.usageChip}>
+                  Phase: {phase.pipelineName ?? phase.pipelineId} → {phase.phaseName}
+                </span>
+              ))}
+            {hasPipelines &&
+              usage.pipelines!.map((pipeline, i) => (
+                <span key={`pipeline-${i}`} className={styles.usageChip}>
+                  Pipeline: {pipeline}
+                </span>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {sampleOutput && (
+        <details className={styles.sampleOutputDetails} data-testid="envelope-sample-output">
+          <summary className={styles.viewJsonSummary}>Sample Output</summary>
+          <pre className={cx(styles.sampleOutputPre, 'selectable')}>
+            {JSON.stringify(sampleOutput, null, 2)}
+          </pre>
+        </details>
+      )}
     </div>
   );
 }

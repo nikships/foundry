@@ -15,13 +15,17 @@ import type {
   ChangeReceiptDef,
   CheckpointDef,
   ChecklistDef,
+  DataTableDef,
+  DiagnosticsDef,
   EnvelopeDef,
+  EvidenceDisclosureDef,
   PipelineDef,
   PrCardDef,
   ProjectCardDef,
   ProjectDef,
   ProviderStatusDef,
   ReadinessJourneyDef,
+  SettingsDiffDef,
   SmithArtifact,
 } from '../../../src/shared/types.js';
 import { SMITH_ARTIFACT_VERSION } from '../../../src/shared/types.js';
@@ -36,10 +40,14 @@ import {
   validateChangeReceipt,
   validateChecklist,
   validateCheckpoint,
+  validateDataTable,
+  validateDiagnostics,
+  validateEvidenceDisclosure,
   validatePrCard,
   validateProjectCard,
   validateProviderStatus,
   validateReadinessJourney,
+  validateSettingsDiff,
   type SmithPresentToolDeps,
 } from '../../../src/main/smith/present-tools.js';
 
@@ -261,6 +269,97 @@ const validPrCard: PrCardDef = {
   },
 };
 
+const validSettingsDiff: SettingsDiffDef = {
+  title: 'Updated Settings',
+  summary: '2 settings modified',
+  scope: 'global',
+  sections: [
+    {
+      section: 'models',
+      label: 'Models & Providers',
+      changes: [
+        {
+          key: 'smithModel',
+          label: 'Smith Model',
+          previous: 'inherit',
+          next: 'anthropic/claude-3-7-sonnet',
+        },
+      ],
+    },
+  ],
+};
+
+const validDiagnostics: DiagnosticsDef = {
+  title: 'System Diagnostics',
+  summary: '1 doctor check passed, 1 orphan found',
+  category: 'general',
+  doctor: [{ id: 'git', label: 'Git available', ok: true, detail: 'git 2.44' }],
+  orphans: [{ path: '/tmp/worktree', branch: 'foundry/123', runId: '123', projectId: 'p1' }],
+  maintenance: { runsDeleted: 3, bytesReclaimed: 1048576, worktreesRemoved: 2 },
+  update: { stage: 'available', version: '0.2.0', message: 'New version ready' },
+  lifecycleWarning: 'Relaunch required to apply updates.',
+};
+
+const validDataTable: DataTableDef = {
+  title: 'Project Runs',
+  catalogKind: 'runs',
+  summary: 'Recent 2 runs',
+  columns: [
+    { key: 'id', label: 'Run ID', type: 'code' },
+    { key: 'status', label: 'Status', type: 'status' },
+    { key: 'duration', label: 'Duration', type: 'text' },
+  ],
+  rows: [
+    {
+      id: 'run-1',
+      cells: {
+        id: 'run-1',
+        status: { variant: 'pass', label: 'Passed' },
+        duration: '1m 20s',
+      },
+    },
+    {
+      id: 'run-2',
+      cells: {
+        id: 'run-2',
+        status: { variant: 'fail', label: 'Failed' },
+        duration: '45s',
+      },
+    },
+  ],
+};
+
+const validEvidence: EvidenceDisclosureDef = {
+  title: 'Phase Execution Context',
+  summary: 'Context and excerpts for phase review',
+  runId: 'run-1',
+  phaseName: 'review',
+  occupancy: {
+    usedTokens: 15400,
+    maxTokens: 128000,
+    percent: 12.0,
+    model: 'anthropic/claude-3-7-sonnet',
+  },
+  phasePrompt: {
+    systemPrompt: 'Review the diff.',
+    userPrompt: 'Review changes in {{request}}',
+  },
+  items: [
+    {
+      label: 'Linter output',
+      kind: 'command_output',
+      content: 'All files passed lint checks.',
+      exitCode: 0,
+      durationMs: 450,
+    },
+    {
+      label: 'Git Diff Excerpt',
+      kind: 'diff',
+      content: '--- a/src/index.ts\n+++ b/src/index.ts',
+    },
+  ],
+};
+
 const validCheckpoint: CheckpointDef = {
   interruptId: 'int_7',
   title: 'Drop the legacy column?',
@@ -422,7 +521,14 @@ describe('smith_present', () => {
     expect(await answerOf(tool, { kind: 'agent_design', spec: validAgent })).toMatchObject({
       ok: true,
     });
-    expect(await answerOf(tool, { kind: 'envelope_design', spec: validEnvelope })).toMatchObject({
+    expect(
+      await answerOf(tool, {
+        kind: 'envelope_design',
+        spec: validEnvelope,
+        usage: { agents: ['planner'], pipelines: ['ship-it'] },
+        sampleOutput: { status: 'passed', summary: 'ok' },
+      }),
+    ).toMatchObject({
       ok: true,
     });
     expect(await answerOf(tool, { kind: 'checklist', spec: validChecklist })).toMatchObject({
@@ -462,6 +568,38 @@ describe('smith_present', () => {
       ok: true,
     });
     expect(
+      await answerOf(tool, {
+        kind: 'settings_diff',
+        spec: validSettingsDiff,
+      }),
+    ).toMatchObject({
+      ok: true,
+    });
+    expect(
+      await answerOf(tool, {
+        kind: 'diagnostics',
+        spec: validDiagnostics,
+      }),
+    ).toMatchObject({
+      ok: true,
+    });
+    expect(
+      await answerOf(tool, {
+        kind: 'data_table',
+        spec: validDataTable,
+      }),
+    ).toMatchObject({
+      ok: true,
+    });
+    expect(
+      await answerOf(tool, {
+        kind: 'evidence_disclosure',
+        spec: validEvidence,
+      }),
+    ).toMatchObject({
+      ok: true,
+    });
+    expect(
       await answerOf(tool, { kind: 'engineer_checkpoint', spec: validCheckpoint }),
     ).toMatchObject({ ok: true });
     expect(await answerOf(tool, { kind: 'readiness_journey', spec: validJourney })).toMatchObject({
@@ -478,6 +616,10 @@ describe('smith_present', () => {
       'change_receipt',
       'project_card',
       'pr_card',
+      'settings_diff',
+      'diagnostics',
+      'data_table',
+      'evidence_disclosure',
       'engineer_checkpoint',
       'readiness_journey',
       'provider_status',
@@ -543,6 +685,102 @@ describe('smith_present', () => {
     );
 
     expect(emitted).toHaveLength(0);
+  });
+
+  it('emits a versioned settings_diff artifact and acknowledges with its id', async () => {
+    const { deps, emitted } = makeDeps();
+    const tool = smithPresentTool(deps);
+    const res = (await answerOf(tool, {
+      kind: 'settings_diff',
+      spec: validSettingsDiff,
+      rationale: 'Updated model choices.',
+    })) as { ok: boolean; artifactId: string };
+
+    expect(res.ok).toBe(true);
+    expect(emitted).toHaveLength(1);
+    const artifact = emitted[0]!;
+    expect(res.artifactId).toBe(artifact.id);
+    expect(artifact).toMatchObject({
+      kind: 'settings_diff',
+      version: SMITH_ARTIFACT_VERSION,
+      rationale: 'Updated model choices.',
+      warnings: [],
+    });
+    if (artifact.kind !== 'settings_diff') throw new Error('expected settings diff artifact');
+    expect(artifact.diff).toEqual(validSettingsDiff);
+    expect(() => structuredClone(artifact)).not.toThrow();
+  });
+
+  it('emits a versioned diagnostics artifact and acknowledges with its id', async () => {
+    const { deps, emitted } = makeDeps();
+    const tool = smithPresentTool(deps);
+    const res = (await answerOf(tool, {
+      kind: 'diagnostics',
+      spec: validDiagnostics,
+      rationale: 'Diagnostics pre-check.',
+    })) as { ok: boolean; artifactId: string };
+
+    expect(res.ok).toBe(true);
+    expect(emitted).toHaveLength(1);
+    const artifact = emitted[0]!;
+    expect(res.artifactId).toBe(artifact.id);
+    expect(artifact).toMatchObject({
+      kind: 'diagnostics',
+      version: SMITH_ARTIFACT_VERSION,
+      rationale: 'Diagnostics pre-check.',
+      warnings: [],
+    });
+    if (artifact.kind !== 'diagnostics') throw new Error('expected diagnostics artifact');
+    expect(artifact.diagnostics).toEqual(validDiagnostics);
+    expect(() => structuredClone(artifact)).not.toThrow();
+  });
+
+  it('emits a versioned data_table artifact and acknowledges with its id', async () => {
+    const { deps, emitted } = makeDeps();
+    const tool = smithPresentTool(deps);
+    const res = (await answerOf(tool, {
+      kind: 'data_table',
+      spec: validDataTable,
+      rationale: 'Recent runs catalog.',
+    })) as { ok: boolean; artifactId: string };
+
+    expect(res.ok).toBe(true);
+    expect(emitted).toHaveLength(1);
+    const artifact = emitted[0]!;
+    expect(res.artifactId).toBe(artifact.id);
+    expect(artifact).toMatchObject({
+      kind: 'data_table',
+      version: SMITH_ARTIFACT_VERSION,
+      rationale: 'Recent runs catalog.',
+      warnings: [],
+    });
+    if (artifact.kind !== 'data_table') throw new Error('expected data table artifact');
+    expect(artifact.table).toEqual(validDataTable);
+    expect(() => structuredClone(artifact)).not.toThrow();
+  });
+
+  it('emits a versioned evidence_disclosure artifact and acknowledges with its id', async () => {
+    const { deps, emitted } = makeDeps();
+    const tool = smithPresentTool(deps);
+    const res = (await answerOf(tool, {
+      kind: 'evidence_disclosure',
+      spec: validEvidence,
+      rationale: 'Review phase context.',
+    })) as { ok: boolean; artifactId: string };
+
+    expect(res.ok).toBe(true);
+    expect(emitted).toHaveLength(1);
+    const artifact = emitted[0]!;
+    expect(res.artifactId).toBe(artifact.id);
+    expect(artifact).toMatchObject({
+      kind: 'evidence_disclosure',
+      version: SMITH_ARTIFACT_VERSION,
+      rationale: 'Review phase context.',
+      warnings: [],
+    });
+    if (artifact.kind !== 'evidence_disclosure') throw new Error('expected evidence artifact');
+    expect(artifact.evidence).toEqual(validEvidence);
+    expect(() => structuredClone(artifact)).not.toThrow();
   });
 
   it('emits a versioned pr_card artifact and acknowledges with its id', async () => {
@@ -1452,6 +1690,134 @@ describe('validatePrCard', () => {
     expect(issues.filter((i) => i.level === 'error')).toEqual([]);
     expect(issues).toContainEqual(expect.objectContaining({ level: 'warning', where: 'title' }));
     expect(issues).toContainEqual(expect.objectContaining({ level: 'warning', where: 'body' }));
+  });
+});
+
+describe('validateSettingsDiff', () => {
+  it('accepts a valid settings diff without errors', () => {
+    expect(validateSettingsDiff(validSettingsDiff)).toEqual([]);
+  });
+
+  it('flags non-object specs and missing sections', () => {
+    expect(validateSettingsDiff(null)).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'spec' }),
+    );
+    expect(validateSettingsDiff({ title: 'Diff', sections: [] })).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'sections' }),
+    );
+  });
+
+  it('flags missing section identifier or change key/label', () => {
+    const issues = validateSettingsDiff({
+      sections: [{ section: '', changes: [{ key: '', label: '' }] }],
+    });
+    expect(issues).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'sections[0].section' }),
+    );
+    expect(issues).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'sections[0].changes[0].key' }),
+    );
+    expect(issues).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'sections[0].changes[0].label' }),
+    );
+  });
+});
+
+describe('validateDiagnostics', () => {
+  it('accepts a valid diagnostics definition without errors', () => {
+    expect(validateDiagnostics(validDiagnostics)).toEqual([]);
+  });
+
+  it('flags non-object specs and empty diagnostics without content', () => {
+    expect(validateDiagnostics(null)).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'spec' }),
+    );
+    expect(validateDiagnostics({})).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'spec' }),
+    );
+  });
+
+  it('flags invalid doctor check or orphan worktree shape', () => {
+    const issues = validateDiagnostics({
+      doctor: [{ id: '', label: '', ok: 'not-bool' }],
+      orphans: [{ path: '', branch: '', projectId: 123 }],
+    });
+    expect(issues.length).toBeGreaterThan(0);
+    expect(issues).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'doctor[0].id' }),
+    );
+    expect(issues).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'doctor[0].ok' }),
+    );
+    expect(issues).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'orphans[0].path' }),
+    );
+  });
+});
+
+describe('validateDataTable', () => {
+  it('accepts a valid data table without errors', () => {
+    expect(validateDataTable(validDataTable)).toEqual([]);
+  });
+
+  it('flags missing title or empty columns', () => {
+    expect(validateDataTable(null)).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'spec' }),
+    );
+    expect(validateDataTable({ title: '', columns: [] })).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'title' }),
+    );
+    expect(validateDataTable({ title: 'Table', columns: [] })).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'columns' }),
+    );
+  });
+
+  it('flags invalid column keys and labels', () => {
+    const issues = validateDataTable({
+      title: 'Table',
+      columns: [{ key: '', label: '' }],
+      rows: [],
+    });
+    expect(issues).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'columns[0].key' }),
+    );
+    expect(issues).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'columns[0].label' }),
+    );
+  });
+});
+
+describe('validateEvidenceDisclosure', () => {
+  it('accepts a valid evidence disclosure without errors', () => {
+    expect(validateEvidenceDisclosure(validEvidence)).toEqual([]);
+  });
+
+  it('flags missing title or empty disclosure content', () => {
+    expect(validateEvidenceDisclosure(null)).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'spec' }),
+    );
+    expect(validateEvidenceDisclosure({ title: '', items: [] })).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'title' }),
+    );
+    expect(validateEvidenceDisclosure({ title: 'Context', items: [] })).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'items' }),
+    );
+  });
+
+  it('flags invalid evidence item kinds or missing labels', () => {
+    const issues = validateEvidenceDisclosure({
+      title: 'Context',
+      items: [{ label: '', kind: 'unknown_kind', content: 123 }],
+    });
+    expect(issues).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'items[0].label' }),
+    );
+    expect(issues).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'items[0].kind' }),
+    );
+    expect(issues).toContainEqual(
+      expect.objectContaining({ level: 'error', where: 'items[0].content' }),
+    );
   });
 });
 

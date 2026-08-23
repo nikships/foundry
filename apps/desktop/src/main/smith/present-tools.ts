@@ -24,9 +24,13 @@ import {
   type ChangeReceiptTarget,
   type CheckpointDef,
   type ChecklistDef,
+  type DataTableDef,
+  type DiagnosticsDef,
   type DoctorCheck,
   type EntityComparisonKind,
   type EnvelopeDef,
+  type EnvelopeUsageDef,
+  type EvidenceDisclosureDef,
   type GhStatus,
   type PipelineDef,
   type PrCardAction,
@@ -40,6 +44,7 @@ import {
   type PullRequest,
   type ReadinessJourneyDef,
   type ReadinessPhase,
+  type SettingsDiffDef,
   type SmithArtifact,
   type SmithPresentableArtifactKind,
   type SmithRunSummaryArtifact,
@@ -71,6 +76,10 @@ const ARTIFACT_KINDS = [
   'change_receipt',
   'project_card',
   'pr_card',
+  'settings_diff',
+  'diagnostics',
+  'data_table',
+  'evidence_disclosure',
   'engineer_checkpoint',
   'readiness_journey',
   'provider_status',
@@ -139,7 +148,7 @@ const MAX_STATUS_DEVICES = 40;
  * chat and echoed to every window, so a payload smuggling one of these is
  * refused outright rather than redacted.
  */
-const SECRET_KEY = /^(api[_-]?key|key|token|secret|password|credential)$/i;
+const SECRET_KEY = /^(api[_-]?key|private[_-]?key|token|secret|password|credential)$/i;
 
 export interface SmithPresentToolDeps {
   stores: SmithEntityStores;
@@ -854,6 +863,677 @@ export function validateChangeReceipt(spec: unknown): ValidationIssue[] {
   return issues;
 }
 
+export function validateSettingsDiff(spec: unknown): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  if (spec == null || typeof spec !== 'object' || Array.isArray(spec)) {
+    return [{ level: 'error', where: 'spec', message: 'settings diff must be an object' }];
+  }
+  const raw = spec as Record<string, unknown>;
+
+  if (raw.title !== undefined) {
+    if (typeof raw.title !== 'string') {
+      issues.push({ level: 'error', where: 'title', message: 'title must be a string' });
+    } else if (raw.title.length > 200) {
+      issues.push({ level: 'warning', where: 'title', message: 'title exceeds 200 characters' });
+    }
+  }
+
+  if (raw.summary !== undefined) {
+    if (typeof raw.summary !== 'string') {
+      issues.push({ level: 'error', where: 'summary', message: 'summary must be a string' });
+    } else if (raw.summary.length > 500) {
+      issues.push({
+        level: 'warning',
+        where: 'summary',
+        message: 'summary exceeds 500 characters',
+      });
+    }
+  }
+
+  if (raw.scope !== undefined && typeof raw.scope !== 'string') {
+    issues.push({ level: 'error', where: 'scope', message: 'scope must be a string' });
+  }
+
+  if (raw.targetProjectId !== undefined && typeof raw.targetProjectId !== 'string') {
+    issues.push({
+      level: 'error',
+      where: 'targetProjectId',
+      message: 'targetProjectId must be a string',
+    });
+  }
+
+  if (!Array.isArray(raw.sections)) {
+    issues.push({
+      level: 'error',
+      where: 'sections',
+      message: 'settings diff sections must be an array',
+    });
+  } else if (raw.sections.length === 0) {
+    issues.push({
+      level: 'error',
+      where: 'sections',
+      message: 'settings diff must contain at least one section',
+    });
+  } else if (raw.sections.length > 50) {
+    issues.push({
+      level: 'error',
+      where: 'sections',
+      message: `sections cannot exceed 50 (${raw.sections.length} supplied)`,
+    });
+  } else {
+    let totalChanges = 0;
+    for (let i = 0; i < raw.sections.length; i += 1) {
+      const section = raw.sections[i];
+      const where = `sections[${i}]`;
+      if (section == null || typeof section !== 'object' || Array.isArray(section)) {
+        issues.push({ level: 'error', where, message: 'section must be an object' });
+        continue;
+      }
+      const secObj = section as Record<string, unknown>;
+      if (typeof secObj.section !== 'string' || !secObj.section.trim()) {
+        issues.push({
+          level: 'error',
+          where: `${where}.section`,
+          message: 'section identifier is required',
+        });
+      }
+      if (secObj.label !== undefined && typeof secObj.label !== 'string') {
+        issues.push({
+          level: 'error',
+          where: `${where}.label`,
+          message: 'section label must be a string',
+        });
+      }
+      if (!Array.isArray(secObj.changes)) {
+        issues.push({
+          level: 'error',
+          where: `${where}.changes`,
+          message: 'section changes must be an array',
+        });
+      } else if (secObj.changes.length === 0) {
+        issues.push({
+          level: 'error',
+          where: `${where}.changes`,
+          message: 'section must contain at least one change',
+        });
+      } else {
+        totalChanges += secObj.changes.length;
+        for (let j = 0; j < secObj.changes.length; j += 1) {
+          const change = secObj.changes[j];
+          const changeWhere = `${where}.changes[${j}]`;
+          if (change == null || typeof change !== 'object' || Array.isArray(change)) {
+            issues.push({
+              level: 'error',
+              where: changeWhere,
+              message: 'change must be an object',
+            });
+            continue;
+          }
+          const chObj = change as Record<string, unknown>;
+          if (typeof chObj.key !== 'string' || !chObj.key.trim()) {
+            issues.push({
+              level: 'error',
+              where: `${changeWhere}.key`,
+              message: 'change key is required',
+            });
+          }
+          if (typeof chObj.label !== 'string' || !chObj.label.trim()) {
+            issues.push({
+              level: 'error',
+              where: `${changeWhere}.label`,
+              message: 'change label is required',
+            });
+          }
+        }
+      }
+    }
+    if (totalChanges > 100) {
+      issues.push({
+        level: 'warning',
+        where: 'sections',
+        message: `total changes exceed 100 (${totalChanges} changes)`,
+      });
+    }
+  }
+
+  if (raw.openSettingsTarget !== undefined) {
+    if (
+      raw.openSettingsTarget == null ||
+      typeof raw.openSettingsTarget !== 'object' ||
+      Array.isArray(raw.openSettingsTarget)
+    ) {
+      issues.push({
+        level: 'error',
+        where: 'openSettingsTarget',
+        message: 'openSettingsTarget must be an object',
+      });
+    }
+  }
+
+  return issues;
+}
+
+export function validateDiagnostics(spec: unknown): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  if (spec == null || typeof spec !== 'object' || Array.isArray(spec)) {
+    return [{ level: 'error', where: 'spec', message: 'diagnostics must be an object' }];
+  }
+  const raw = spec as Record<string, unknown>;
+
+  if (raw.title !== undefined) {
+    if (typeof raw.title !== 'string') {
+      issues.push({ level: 'error', where: 'title', message: 'title must be a string' });
+    } else if (raw.title.length > 200) {
+      issues.push({ level: 'warning', where: 'title', message: 'title exceeds 200 characters' });
+    }
+  }
+
+  if (raw.summary !== undefined) {
+    if (typeof raw.summary !== 'string') {
+      issues.push({ level: 'error', where: 'summary', message: 'summary must be a string' });
+    } else if (raw.summary.length > 500) {
+      issues.push({
+        level: 'warning',
+        where: 'summary',
+        message: 'summary exceeds 500 characters',
+      });
+    }
+  }
+
+  const VALID_CATEGORIES = new Set([
+    'doctor',
+    'orphans',
+    'maintenance',
+    'update',
+    'lifecycle',
+    'general',
+  ]);
+  if (
+    raw.category !== undefined &&
+    (typeof raw.category !== 'string' || !VALID_CATEGORIES.has(raw.category))
+  ) {
+    issues.push({
+      level: 'error',
+      where: 'category',
+      message: `invalid category "${String(raw.category)}"`,
+    });
+  }
+
+  const hasContent =
+    raw.doctor !== undefined ||
+    raw.orphans !== undefined ||
+    raw.maintenance !== undefined ||
+    raw.update !== undefined ||
+    raw.lifecycleWarning !== undefined ||
+    raw.items !== undefined;
+
+  if (!hasContent) {
+    issues.push({
+      level: 'error',
+      where: 'spec',
+      message:
+        'diagnostics must contain at least one of: doctor, orphans, maintenance, update, lifecycleWarning, or items',
+    });
+  }
+
+  if (raw.doctor !== undefined) {
+    if (!Array.isArray(raw.doctor)) {
+      issues.push({ level: 'error', where: 'doctor', message: 'doctor checks must be an array' });
+    } else {
+      for (let i = 0; i < raw.doctor.length; i += 1) {
+        const check = raw.doctor[i];
+        const where = `doctor[${i}]`;
+        if (check == null || typeof check !== 'object' || Array.isArray(check)) {
+          issues.push({ level: 'error', where, message: 'doctor check must be an object' });
+          continue;
+        }
+        const cObj = check as Record<string, unknown>;
+        if (typeof cObj.id !== 'string' || !cObj.id.trim()) {
+          issues.push({ level: 'error', where: `${where}.id`, message: 'check id is required' });
+        }
+        if (typeof cObj.label !== 'string' || !cObj.label.trim()) {
+          issues.push({
+            level: 'error',
+            where: `${where}.label`,
+            message: 'check label is required',
+          });
+        }
+        if (typeof cObj.ok !== 'boolean') {
+          issues.push({
+            level: 'error',
+            where: `${where}.ok`,
+            message: 'check ok must be a boolean',
+          });
+        }
+        if (typeof cObj.detail !== 'string') {
+          issues.push({
+            level: 'error',
+            where: `${where}.detail`,
+            message: 'check detail must be a string',
+          });
+        }
+      }
+    }
+  }
+
+  if (raw.orphans !== undefined) {
+    if (!Array.isArray(raw.orphans)) {
+      issues.push({ level: 'error', where: 'orphans', message: 'orphans must be an array' });
+    } else {
+      for (let i = 0; i < raw.orphans.length; i += 1) {
+        const orphan = raw.orphans[i];
+        const where = `orphans[${i}]`;
+        if (orphan == null || typeof orphan !== 'object' || Array.isArray(orphan)) {
+          issues.push({ level: 'error', where, message: 'orphan must be an object' });
+          continue;
+        }
+        const oObj = orphan as Record<string, unknown>;
+        if (typeof oObj.path !== 'string' || !oObj.path.trim()) {
+          issues.push({
+            level: 'error',
+            where: `${where}.path`,
+            message: 'orphan path is required',
+          });
+        }
+        if (typeof oObj.branch !== 'string' || !oObj.branch.trim()) {
+          issues.push({
+            level: 'error',
+            where: `${where}.branch`,
+            message: 'orphan branch is required',
+          });
+        }
+        if (typeof oObj.projectId !== 'string') {
+          issues.push({
+            level: 'error',
+            where: `${where}.projectId`,
+            message: 'orphan projectId is required',
+          });
+        }
+      }
+    }
+  }
+
+  if (raw.maintenance !== undefined) {
+    if (
+      raw.maintenance == null ||
+      typeof raw.maintenance !== 'object' ||
+      Array.isArray(raw.maintenance)
+    ) {
+      issues.push({
+        level: 'error',
+        where: 'maintenance',
+        message: 'maintenance report must be an object',
+      });
+    } else {
+      const mObj = raw.maintenance as Record<string, unknown>;
+      if (typeof mObj.runsDeleted !== 'number') {
+        issues.push({
+          level: 'error',
+          where: 'maintenance.runsDeleted',
+          message: 'runsDeleted must be a number',
+        });
+      }
+      if (typeof mObj.bytesReclaimed !== 'number') {
+        issues.push({
+          level: 'error',
+          where: 'maintenance.bytesReclaimed',
+          message: 'bytesReclaimed must be a number',
+        });
+      }
+      if (typeof mObj.worktreesRemoved !== 'number') {
+        issues.push({
+          level: 'error',
+          where: 'maintenance.worktreesRemoved',
+          message: 'worktreesRemoved must be a number',
+        });
+      }
+    }
+  }
+
+  if (raw.update !== undefined) {
+    if (raw.update == null || typeof raw.update !== 'object' || Array.isArray(raw.update)) {
+      issues.push({ level: 'error', where: 'update', message: 'update status must be an object' });
+    } else {
+      const uObj = raw.update as Record<string, unknown>;
+      const VALID_UPDATE_STAGES = new Set([
+        'idle',
+        'checking',
+        'available',
+        'downloading',
+        'ready',
+        'error',
+      ]);
+      if (typeof uObj.stage !== 'string' || !VALID_UPDATE_STAGES.has(uObj.stage)) {
+        issues.push({
+          level: 'error',
+          where: 'update.stage',
+          message: `invalid update stage "${String(uObj.stage)}"`,
+        });
+      }
+    }
+  }
+
+  if (raw.lifecycleWarning !== undefined) {
+    if (typeof raw.lifecycleWarning !== 'string') {
+      issues.push({
+        level: 'error',
+        where: 'lifecycleWarning',
+        message: 'lifecycleWarning must be a string',
+      });
+    } else if (raw.lifecycleWarning.length > 2000) {
+      issues.push({
+        level: 'warning',
+        where: 'lifecycleWarning',
+        message: 'lifecycleWarning exceeds 2000 characters',
+      });
+    }
+  }
+
+  if (raw.items !== undefined) {
+    if (!Array.isArray(raw.items)) {
+      issues.push({ level: 'error', where: 'items', message: 'items must be an array' });
+    } else {
+      issues.push(
+        ...validateChecklist({ title: 'Diagnostics', items: raw.items }).filter(
+          (i) => i.where !== 'title',
+        ),
+      );
+    }
+  }
+
+  return issues;
+}
+
+export function validateDataTable(spec: unknown): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  if (spec == null || typeof spec !== 'object' || Array.isArray(spec)) {
+    return [{ level: 'error', where: 'spec', message: 'data table must be an object' }];
+  }
+  const raw = spec as Record<string, unknown>;
+
+  if (typeof raw.title !== 'string' || !raw.title.trim()) {
+    issues.push({ level: 'error', where: 'title', message: 'table title is required' });
+  } else if (raw.title.length > 200) {
+    issues.push({ level: 'warning', where: 'title', message: 'title exceeds 200 characters' });
+  }
+
+  if (raw.summary !== undefined) {
+    if (typeof raw.summary !== 'string') {
+      issues.push({ level: 'error', where: 'summary', message: 'summary must be a string' });
+    } else if (raw.summary.length > 500) {
+      issues.push({
+        level: 'warning',
+        where: 'summary',
+        message: 'summary exceeds 500 characters',
+      });
+    }
+  }
+
+  const VALID_CATALOG_KINDS = new Set([
+    'runs',
+    'projects',
+    'agents',
+    'pipelines',
+    'envelopes',
+    'prs',
+    'doctor',
+    'models',
+    'custom',
+  ]);
+  if (
+    raw.catalogKind !== undefined &&
+    (typeof raw.catalogKind !== 'string' || !VALID_CATALOG_KINDS.has(raw.catalogKind))
+  ) {
+    issues.push({
+      level: 'error',
+      where: 'catalogKind',
+      message: `invalid catalogKind "${String(raw.catalogKind)}"`,
+    });
+  }
+
+  if (!Array.isArray(raw.columns)) {
+    issues.push({ level: 'error', where: 'columns', message: 'table columns must be an array' });
+  } else if (raw.columns.length === 0) {
+    issues.push({
+      level: 'error',
+      where: 'columns',
+      message: 'table must contain at least one column',
+    });
+  } else if (raw.columns.length > 20) {
+    issues.push({
+      level: 'error',
+      where: 'columns',
+      message: `columns cannot exceed 20 (${raw.columns.length} supplied)`,
+    });
+  } else {
+    for (let i = 0; i < raw.columns.length; i += 1) {
+      const col = raw.columns[i];
+      const where = `columns[${i}]`;
+      if (col == null || typeof col !== 'object' || Array.isArray(col)) {
+        issues.push({ level: 'error', where, message: 'column must be an object' });
+        continue;
+      }
+      const colObj = col as Record<string, unknown>;
+      if (typeof colObj.key !== 'string' || !colObj.key.trim()) {
+        issues.push({ level: 'error', where: `${where}.key`, message: 'column key is required' });
+      }
+      if (typeof colObj.label !== 'string' || !colObj.label.trim()) {
+        issues.push({
+          level: 'error',
+          where: `${where}.label`,
+          message: 'column label is required',
+        });
+      }
+    }
+  }
+
+  if (!Array.isArray(raw.rows)) {
+    issues.push({ level: 'error', where: 'rows', message: 'table rows must be an array' });
+  } else if (raw.rows.length > 100) {
+    issues.push({
+      level: 'error',
+      where: 'rows',
+      message: `rows cannot exceed 100 (${raw.rows.length} supplied)`,
+    });
+  } else {
+    for (let i = 0; i < raw.rows.length; i += 1) {
+      const row = raw.rows[i];
+      const where = `rows[${i}]`;
+      if (row == null || typeof row !== 'object' || Array.isArray(row)) {
+        issues.push({ level: 'error', where, message: 'row must be an object' });
+        continue;
+      }
+      const rowObj = row as Record<string, unknown>;
+      if (rowObj.id !== undefined && typeof rowObj.id !== 'string') {
+        issues.push({ level: 'error', where: `${where}.id`, message: 'row id must be a string' });
+      }
+      if (rowObj.cells == null || typeof rowObj.cells !== 'object' || Array.isArray(rowObj.cells)) {
+        issues.push({
+          level: 'error',
+          where: `${where}.cells`,
+          message: 'row cells must be an object',
+        });
+      }
+    }
+  }
+
+  return issues;
+}
+
+export function validateEvidenceDisclosure(spec: unknown): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  if (spec == null || typeof spec !== 'object' || Array.isArray(spec)) {
+    return [{ level: 'error', where: 'spec', message: 'evidence disclosure must be an object' }];
+  }
+  const raw = spec as Record<string, unknown>;
+
+  if (typeof raw.title !== 'string' || !raw.title.trim()) {
+    issues.push({ level: 'error', where: 'title', message: 'title is required' });
+  } else if (raw.title.length > 200) {
+    issues.push({ level: 'warning', where: 'title', message: 'title exceeds 200 characters' });
+  }
+
+  if (raw.summary !== undefined) {
+    if (typeof raw.summary !== 'string') {
+      issues.push({ level: 'error', where: 'summary', message: 'summary must be a string' });
+    } else if (raw.summary.length > 500) {
+      issues.push({
+        level: 'warning',
+        where: 'summary',
+        message: 'summary exceeds 500 characters',
+      });
+    }
+  }
+
+  if (raw.occupancy !== undefined) {
+    if (
+      raw.occupancy == null ||
+      typeof raw.occupancy !== 'object' ||
+      Array.isArray(raw.occupancy)
+    ) {
+      issues.push({ level: 'error', where: 'occupancy', message: 'occupancy must be an object' });
+    } else {
+      const occ = raw.occupancy as Record<string, unknown>;
+      if (
+        occ.percent !== undefined &&
+        (typeof occ.percent !== 'number' || occ.percent < 0 || occ.percent > 100)
+      ) {
+        issues.push({
+          level: 'error',
+          where: 'occupancy.percent',
+          message: 'occupancy percent must be between 0 and 100',
+        });
+      }
+      if (occ.usedTokens !== undefined && typeof occ.usedTokens !== 'number') {
+        issues.push({
+          level: 'error',
+          where: 'occupancy.usedTokens',
+          message: 'usedTokens must be a number',
+        });
+      }
+      if (occ.maxTokens !== undefined && typeof occ.maxTokens !== 'number') {
+        issues.push({
+          level: 'error',
+          where: 'occupancy.maxTokens',
+          message: 'maxTokens must be a number',
+        });
+      }
+    }
+  }
+
+  if (raw.phasePrompt !== undefined) {
+    if (
+      raw.phasePrompt == null ||
+      typeof raw.phasePrompt !== 'object' ||
+      Array.isArray(raw.phasePrompt)
+    ) {
+      issues.push({
+        level: 'error',
+        where: 'phasePrompt',
+        message: 'phasePrompt must be an object',
+      });
+    }
+  }
+
+  if (!Array.isArray(raw.items)) {
+    issues.push({ level: 'error', where: 'items', message: 'evidence items must be an array' });
+  } else if (
+    raw.items.length === 0 &&
+    raw.occupancy === undefined &&
+    raw.phasePrompt === undefined
+  ) {
+    issues.push({
+      level: 'error',
+      where: 'items',
+      message: 'disclosure must contain at least one evidence item, prompt, or occupancy',
+    });
+  } else if (raw.items.length > 50) {
+    issues.push({
+      level: 'error',
+      where: 'items',
+      message: `items cannot exceed 50 (${raw.items.length} supplied)`,
+    });
+  } else {
+    const VALID_ITEM_KINDS = new Set([
+      'prompt',
+      'command_output',
+      'event_tail',
+      'excerpt',
+      'diff',
+      'json',
+      'log',
+    ]);
+    for (let i = 0; i < raw.items.length; i += 1) {
+      const item = raw.items[i];
+      const where = `items[${i}]`;
+      if (item == null || typeof item !== 'object' || Array.isArray(item)) {
+        issues.push({ level: 'error', where, message: 'evidence item must be an object' });
+        continue;
+      }
+      const itemObj = item as Record<string, unknown>;
+      if (typeof itemObj.label !== 'string' || !itemObj.label.trim()) {
+        issues.push({
+          level: 'error',
+          where: `${where}.label`,
+          message: 'item label is required',
+        });
+      }
+      if (typeof itemObj.kind !== 'string' || !VALID_ITEM_KINDS.has(itemObj.kind)) {
+        issues.push({
+          level: 'error',
+          where: `${where}.kind`,
+          message: `invalid evidence item kind "${String(itemObj.kind)}"`,
+        });
+      }
+      if (typeof itemObj.content !== 'string') {
+        issues.push({
+          level: 'error',
+          where: `${where}.content`,
+          message: 'item content must be a string',
+        });
+      } else if (itemObj.content.length > 8000) {
+        issues.push({
+          level: 'warning',
+          where: `${where}.content`,
+          message: 'item content exceeds 8000 characters and may be truncated',
+        });
+      }
+    }
+  }
+
+  return issues;
+}
+
+export function validateEnvelopeUsage(usage: unknown): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  if (usage == null || typeof usage !== 'object' || Array.isArray(usage)) {
+    return [{ level: 'error', where: 'usage', message: 'usage must be an object' }];
+  }
+  const raw = usage as Record<string, unknown>;
+  if (raw.agents !== undefined && !Array.isArray(raw.agents)) {
+    issues.push({
+      level: 'error',
+      where: 'usage.agents',
+      message: 'usage agents must be an array',
+    });
+  }
+  if (raw.phases !== undefined && !Array.isArray(raw.phases)) {
+    issues.push({
+      level: 'error',
+      where: 'usage.phases',
+      message: 'usage phases must be an array',
+    });
+  }
+  if (raw.pipelines !== undefined && !Array.isArray(raw.pipelines)) {
+    issues.push({
+      level: 'error',
+      where: 'usage.pipelines',
+      message: 'usage pipelines must be an array',
+    });
+  }
+  return issues;
+}
+
 export async function deriveChangeReceiptFromGit(
   cwd: string,
   options: {
@@ -1266,6 +1946,10 @@ function validateSpec(
   if (kind === 'change_receipt') return validateChangeReceipt(spec);
   if (kind === 'project_card') return validateProjectCard(spec);
   if (kind === 'pr_card') return validatePrCard(spec);
+  if (kind === 'settings_diff') return validateSettingsDiff(spec);
+  if (kind === 'diagnostics') return validateDiagnostics(spec);
+  if (kind === 'data_table') return validateDataTable(spec);
+  if (kind === 'evidence_disclosure') return validateEvidenceDisclosure(spec);
   if (kind === 'engineer_checkpoint') return validateCheckpoint(spec);
   if (kind === 'readiness_journey') return validateReadinessJourney(spec);
   if (kind === 'provider_status') return validateProviderStatus(spec);
@@ -1279,7 +1963,26 @@ function validateSpec(
       : kind;
   const envelopeNames = stores.envelopes.list().map((envelope) => envelope.name);
   if (targetKind === 'agent_design') return validateAgent(spec as AgentDef, envelopeNames);
-  if (targetKind === 'envelope_design') return validateEnvelope(spec as EnvelopeDef);
+  if (targetKind === 'envelope_design') {
+    const rawEnvelope = spec as EnvelopeDef & { usage?: unknown; sampleOutput?: unknown };
+    const issues = validateEnvelope(spec as EnvelopeDef);
+    if (rawEnvelope.usage !== undefined) {
+      issues.push(...validateEnvelopeUsage(rawEnvelope.usage));
+    }
+    if (
+      rawEnvelope.sampleOutput !== undefined &&
+      (rawEnvelope.sampleOutput == null ||
+        typeof rawEnvelope.sampleOutput !== 'object' ||
+        Array.isArray(rawEnvelope.sampleOutput))
+    ) {
+      issues.push({
+        level: 'error',
+        where: 'sampleOutput',
+        message: 'sampleOutput must be an object',
+      });
+    }
+    return issues;
+  }
   return validatePipeline(
     spec as PipelineDef,
     stores.rosterFor(projectId),
@@ -1300,14 +2003,36 @@ function buildArtifact(
     name?: string;
     before?: unknown;
     targetProjectId?: string;
+    usage?: EnvelopeUsageDef;
+    sampleOutput?: Record<string, unknown>;
   },
 ): SmithArtifact {
   if (kind === 'agent_design') return { ...base, kind, agent: spec as AgentDef };
-  if (kind === 'envelope_design') return { ...base, kind, envelope: spec as EnvelopeDef };
+  if (kind === 'envelope_design') {
+    const rawEnvelope = spec as EnvelopeDef & {
+      usage?: EnvelopeUsageDef;
+      sampleOutput?: Record<string, unknown>;
+    };
+    const usage = extra?.usage ?? rawEnvelope.usage;
+    const sampleOutput = extra?.sampleOutput ?? rawEnvelope.sampleOutput;
+    return {
+      ...base,
+      kind,
+      envelope: spec as EnvelopeDef,
+      ...(usage ? { usage } : {}),
+      ...(sampleOutput ? { sampleOutput } : {}),
+    };
+  }
   if (kind === 'checklist') return { ...base, kind, checklist: spec as ChecklistDef };
   if (kind === 'change_receipt') return { ...base, kind, receipt: spec as ChangeReceiptDef };
   if (kind === 'project_card') return { ...base, kind, project: spec as ProjectCardDef };
   if (kind === 'pr_card') return { ...base, kind, pr: spec as PrCardDef };
+  if (kind === 'settings_diff') return { ...base, kind, diff: spec as SettingsDiffDef };
+  if (kind === 'diagnostics') return { ...base, kind, diagnostics: spec as DiagnosticsDef };
+  if (kind === 'data_table') return { ...base, kind, table: spec as DataTableDef };
+  if (kind === 'evidence_disclosure') {
+    return { ...base, kind, evidence: spec as EvidenceDisclosureDef };
+  }
   if (kind === 'engineer_checkpoint') {
     return { ...base, kind, checkpoint: spec as CheckpointDef };
   }
@@ -1432,19 +2157,23 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
     description:
       'Show the operator a rich inline card in the chat: an entity design, a checklist report, ' +
       'a run summary, an entity comparison, a change receipt, a project card, a pull request ' +
-      'card, an engineer checkpoint, the readiness journey, or provider/Companion status. Use it ' +
-      'before proposing a non-trivial pipeline, agent, or envelope, to compare a proposed edit ' +
-      'against the stored definition, to record a change/command receipt after direct checkout ' +
-      'work, to present a checklist/doctor/readiness/validation report, for run summaries ' +
-      '(run_summary) when reporting on run status, progress, or outcomes, to show project ' +
-      'state/divergence/health, to present a PR preview/result, to surface a pending engineer ' +
-      'checkpoint with its run context, to show the whole readiness journey (marker, criteria, ' +
-      'remediation, PR), or to report provider connection and paired Companion devices. It is ' +
-      'presentation only — it saves nothing, needs no approval, answers no checkpoint, and is ' +
-      'not evidence any action succeeded: approving a checkpoint or changing readiness still ' +
-      'goes through the approval card. Never put an API key, token, masked key prefix, or ' +
-      'Companion pairing payload in a spec. Do not repeat the card content in prose; add only ' +
-      'rationale, uncertainty, or a recommendation.',
+      'card, a settings diff, a diagnostics report, a data catalog table, a context/evidence ' +
+      'disclosure, an engineer checkpoint, the readiness journey, or provider/Companion status. ' +
+      'Use it before proposing a non-trivial pipeline, agent, or envelope, to compare a proposed ' +
+      'edit against the stored definition, to record a change/command receipt after direct ' +
+      'checkout work, to present a checklist/doctor/readiness/validation report, for run ' +
+      'summaries (run_summary) when reporting on run status, progress, or outcomes, to show ' +
+      'project state/divergence/health, to present a PR preview/result, to display settings ' +
+      'changes with human labels and old/new values, to present doctor/orphan/update ' +
+      'diagnostics, to present bounded catalogs of entities/runs/projects, to disclose context ' +
+      'occupancy and capped evidence, to surface a pending engineer checkpoint with its run ' +
+      'context, to show the whole readiness journey (marker, criteria, remediation, PR), or to ' +
+      'report provider connection and paired Companion devices. It is presentation only — it ' +
+      'saves nothing, needs no approval, answers no checkpoint, and is not evidence any action ' +
+      'succeeded: approving a checkpoint or changing readiness still goes through the approval ' +
+      'card. Never put an API key, token, masked key prefix, or Companion pairing payload in a ' +
+      'spec. Do not repeat the card content in prose; add only rationale, uncertainty, or a ' +
+      'recommendation.',
     parameters: {
       type: 'object',
       properties: {
@@ -1453,8 +2182,8 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
           enum: [...ARTIFACT_KINDS],
           description:
             'Which card to show: a design, checklist, run summary, comparison, change receipt, ' +
-            'project card, PR card, engineer checkpoint, readiness journey, or ' +
-            'provider/Companion status.',
+            'project card, PR card, settings diff, diagnostics, data table, evidence ' +
+            'disclosure, engineer checkpoint, readiness journey, or provider/Companion status.',
         },
         entityKind: {
           type: 'string',
@@ -1473,10 +2202,22 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
             'The card payload. Entity JSON for a design or comparison edit; a checklist ' +
             'definition; a run_summary spec object; a change receipt (target, status, ' +
             'filesChanged, diffstat, command, outputExcerpt); a project card or PR card ' +
-            'definition; an engineer checkpoint (interruptId, title, question, runId, phaseId, ' +
-            'draftAnswer, actions); a readiness journey (phase, marker, criteria, work, pr, ' +
-            'actions); or provider status (providers with connection/authenticated/keyPresent, ' +
-            'bridge, companion with paired devices). Never a key, token, or pairing payload.',
+            'definition; a settings diff, diagnostics report, data table definition, or ' +
+            'context/evidence disclosure definition; an engineer checkpoint (interruptId, ' +
+            'title, question, runId, phaseId, draftAnswer, actions); a readiness journey ' +
+            '(phase, marker, criteria, work, pr, actions); or provider status (providers with ' +
+            'connection/authenticated/keyPresent, bridge, companion with paired devices). Never ' +
+            'a key, token, or pairing payload.',
+        },
+        usage: {
+          type: 'object',
+          description:
+            'When kind is envelope_design, optional usage breakdown by agents, pipelines, and phases.',
+        },
+        sampleOutput: {
+          type: 'object',
+          description:
+            'When kind is envelope_design, optional sample JSON output for the envelope.',
         },
         runId: {
           type: 'string',
@@ -1504,6 +2245,11 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
           json({ ok: false, error: `spec must not carry a credential field (${secretPath})` }),
         );
       }
+
+      // `params` is scanned whole above, so a credential hidden in `usage` or
+      // `sampleOutput` is already refused before either is read here.
+      const paramUsage = field(params, 'usage');
+      const paramSampleOutput = field(params, 'sampleOutput');
 
       const rawRationale = field(params, 'rationale');
       const rationale =
@@ -1640,6 +2386,24 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
       // Same gate as smith_propose: errors are the model's to fix and never
       // reach the operator; warnings become part of the card.
       const issues = validateSpec(deps.stores, kind, spec, scope.projectId, entityKind);
+      if (kind === 'envelope_design') {
+        if (paramUsage !== undefined) {
+          issues.push(...validateEnvelopeUsage(paramUsage));
+        }
+        if (
+          paramSampleOutput !== undefined &&
+          (paramSampleOutput == null ||
+            typeof paramSampleOutput !== 'object' ||
+            Array.isArray(paramSampleOutput))
+        ) {
+          issues.push({
+            level: 'error',
+            where: 'sampleOutput',
+            message: 'sampleOutput must be an object',
+          });
+        }
+      }
+
       const errors = issues.filter((issue) => issue.level === 'error');
       if (errors.length) return Promise.resolve(json({ ok: false, validation: errors }));
 
@@ -1665,7 +2429,13 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
                 ? { targetProjectId: targetProject }
                 : {}),
             }
-          : undefined,
+          : kind === 'envelope_design'
+            ? {
+                usage: (paramUsage as EnvelopeUsageDef | undefined) ?? undefined,
+                sampleOutput:
+                  (paramSampleOutput as Record<string, unknown> | undefined) ?? undefined,
+              }
+            : undefined,
       );
       deps.emit(artifact);
       return Promise.resolve(json({ ok: true, artifactId: artifact.id }));
