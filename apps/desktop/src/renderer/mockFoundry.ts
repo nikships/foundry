@@ -30,8 +30,8 @@ import type {
   SmithChatState,
 } from '@shared/ipc-contract.js';
 import { withoutHiddenModels } from '@shared/model-visibility.js';
-import { BUILTIN_AGENTS } from '../main/store/builtin-agents.js';
-import { BUILTIN_PIPELINES } from '../main/store/builtin-pipelines.js';
+import { BUILTIN_AGENTS } from '@shared/builtin-agents.js';
+import { BUILTIN_PIPELINES } from '@shared/builtin-pipelines.js';
 
 function nowIso(offsetMs = 0): string {
   return new Date(Date.now() + offsetMs).toISOString();

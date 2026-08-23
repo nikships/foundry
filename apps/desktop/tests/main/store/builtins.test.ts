@@ -11,8 +11,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { BUILTIN_AGENTS } from '../../../src/main/store/builtin-agents.js';
-import { BUILTIN_PIPELINES } from '../../../src/main/store/builtin-pipelines.js';
+import { BUILTIN_AGENTS } from '../../../src/shared/builtin-agents.js';
+import { BUILTIN_PIPELINES } from '../../../src/shared/builtin-pipelines.js';
 import { validate as validatePipeline } from '../../../src/main/store/pipelines.js';
 import { validate as validateAgent } from '../../../src/main/store/roster.js';
 import { exampleFor, schemaFor } from '../../../src/main/engine/envelopes.js';

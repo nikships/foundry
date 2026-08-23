@@ -17,7 +17,7 @@ import {
   type ValidationIssue,
 } from '@shared/types.js';
 import { JsonStore } from './json-store.js';
-import { BUILTIN_PIPELINES } from './builtin-pipelines.js';
+import { BUILTIN_PIPELINES } from '@shared/builtin-pipelines.js';
 import { uniqueCopyName, upsertBy } from './collections.js';
 import { GATES } from '../engine/gates.js';
 

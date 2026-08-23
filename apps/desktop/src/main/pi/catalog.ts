@@ -44,30 +44,26 @@ export function modelKey(model: { provider: string; id: string }): string {
  */
 export function providerOf(id: string, displayName = ''): string {
   const s = `${id} ${displayName}`.toLowerCase();
-  if (
-    s.includes('claude') ||
-    s.includes('opus') ||
-    s.includes('sonnet') ||
-    s.includes('haiku') ||
-    s.includes('fable')
-  ) {
-    return 'claude';
-  }
-  if (s.includes('gpt') || s.includes('codex') || s.includes('openai')) return 'openai';
-  if (s.includes('gemini')) return 'gemini';
-  if (s.includes('gemma')) return 'gemma';
-  if (s.includes('palm')) return 'palm';
-  if (s.includes('kimi') || s.includes('moonshot')) return 'kimi';
-  if (s.includes('glm') || s.includes('zai') || s.includes('z.ai') || s.includes('zhipu')) {
-    return 'zai';
-  }
-  if (s.includes('deepseek')) return 'deepseek';
-  if (s.includes('minimax')) return 'minimax';
-  if (s.includes('nemotron')) return 'nvidia';
-  if (s.includes('grok')) return 'grok';
-  if (s.includes('meta') || s.includes('llama')) return 'meta';
-  return 'openai';
+  return (
+    MODEL_BRANDS.find((brand) => brand.matches.some((token) => s.includes(token)))?.provider ??
+    'openai'
+  );
 }
+
+const MODEL_BRANDS = [
+  { provider: 'claude', matches: ['claude', 'opus', 'sonnet', 'haiku', 'fable'] },
+  { provider: 'openai', matches: ['gpt', 'codex', 'openai'] },
+  { provider: 'gemini', matches: ['gemini'] },
+  { provider: 'gemma', matches: ['gemma'] },
+  { provider: 'palm', matches: ['palm'] },
+  { provider: 'kimi', matches: ['kimi', 'moonshot'] },
+  { provider: 'zai', matches: ['glm', 'zai', 'z.ai', 'zhipu'] },
+  { provider: 'deepseek', matches: ['deepseek'] },
+  { provider: 'minimax', matches: ['minimax'] },
+  { provider: 'nvidia', matches: ['nemotron'] },
+  { provider: 'grok', matches: ['grok'] },
+  { provider: 'meta', matches: ['meta', 'llama'] },
+] as const;
 
 /**
  * The thinking levels a model actually offers.

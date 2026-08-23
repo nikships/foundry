@@ -193,6 +193,48 @@ export class ReadinessSession {
     this.state.markerDetail = read.detail;
   }
 
+  private applyExistingMarker(read: MarkerRead): boolean {
+    if (!read.ok || !read.marker) return false;
+    this.applyMarker(read);
+    this.persist({ readinessValidated: true, readinessSkipped: false });
+    return true;
+  }
+
+  private async continueFinalization(): Promise<boolean> {
+    if (this.state.phase !== 'needs_continue' || this.state.failedPhase !== 'finalizing') {
+      return false;
+    }
+    this.busy = true;
+    this.state.endedAt = undefined;
+    try {
+      await this.finalize(this.state.mergeDetail || this.state.detail);
+    } catch (error) {
+      this.fail((error as Error).message);
+    } finally {
+      this.busy = false;
+    }
+    return true;
+  }
+
+  private async prepareWorktree(): Promise<boolean> {
+    if (this.worktree) {
+      this.push({
+        kind: 'note',
+        text: `Continuing on ${this.worktree.branch}. Previous changes are kept.`,
+      });
+      return true;
+    }
+    const project = this.deps.project;
+    this.setPhase('remediating', 'Creating an isolated branch');
+    this.worktree = await createReadinessWorktree({
+      repo: project.path,
+      sessionId: this.sessionId,
+      baseRef: project.baseRef || (await currentBranch(project.path)) || 'main',
+    });
+    this.push({ kind: 'note', text: `Isolated on ${this.worktree.branch}` });
+    return false;
+  }
+
   private fail(message: string): void {
     this.setPhase('failed', message);
     this.push({ kind: 'error', text: message });
@@ -240,9 +282,7 @@ export class ReadinessSession {
       // A green checklist plus a committed marker is already the finished
       // state; asking for "Make it ready" again would be busywork.
       const read = await this.readAuthoritativeMarker();
-      if (read.ok && read.marker) {
-        this.applyMarker(read);
-        this.persist({ readinessValidated: true, readinessSkipped: false });
+      if (this.applyExistingMarker(read)) {
         this.push({ kind: 'note', text: evaluation.summary });
         this.setPhase('complete', 'Repository is already agent-ready.');
         return this.snapshot();
@@ -262,18 +302,7 @@ export class ReadinessSession {
     if (this.busy || isReadinessMakeReadyLive(this.state.phase)) return this.snapshot();
     this.cancelSignal.cancelled = false;
     this.panel.clearCancelled();
-    if (this.state.phase === 'needs_continue' && this.state.failedPhase === 'finalizing') {
-      this.busy = true;
-      this.state.endedAt = undefined;
-      try {
-        await this.finalize(this.state.mergeDetail || this.state.detail);
-      } catch (e) {
-        this.fail((e as Error).message);
-      } finally {
-        this.busy = false;
-      }
-      return this.snapshot();
-    }
+    if (await this.continueFinalization()) return this.snapshot();
     if (!this.state.evaluation) await this.evaluate();
     if (this.state.phase === 'failed' || this.state.phase === 'complete') return this.snapshot();
 
@@ -281,9 +310,7 @@ export class ReadinessSession {
     // (the operator pulls in another terminal). Remediating then would open a
     // second readiness PR against a repo that is already ready.
     const already = await this.readAuthoritativeMarker();
-    if (already.ok && already.marker) {
-      this.applyMarker(already);
-      this.persist({ readinessValidated: true, readinessSkipped: false });
+    if (this.applyExistingMarker(already)) {
       this.setPhase('complete', 'Repository is already agent-ready.');
       return this.snapshot();
     }
@@ -291,33 +318,11 @@ export class ReadinessSession {
     this.busy = true;
     this.state.endedAt = undefined;
     this.state.failedPhase = undefined;
-    const project = this.deps.project;
-    const continuing = !!this.worktree;
     try {
-      if (this.worktree) {
-        this.push({
-          kind: 'note',
-          text: `Continuing on ${this.worktree.branch}. Previous changes are kept.`,
-        });
-      } else {
-        this.setPhase('remediating', 'Creating an isolated branch');
-        this.worktree = await createReadinessWorktree({
-          repo: project.path,
-          sessionId: this.sessionId,
-          baseRef: project.baseRef || (await currentBranch(project.path)) || 'main',
-        });
-        this.push({ kind: 'note', text: `Isolated on ${this.worktree.branch}` });
-      }
+      const continuing = await this.prepareWorktree();
 
       const evaluation = this.state.evaluation;
-      this.setPhase(
-        'remediating',
-        evaluation?.ready
-          ? 'Writing the marker on the isolated branch'
-          : continuing
-            ? 'Sending the remaining failures back to the agent on the same branch'
-            : 'The agent is fixing the repository on an isolated branch',
-      );
+      this.setPhase('remediating', remediationDetail(evaluation, continuing));
 
       const remediator = this.deps.io?.remediator;
       if (!evaluation?.ready) {
@@ -662,6 +667,13 @@ const MAKE_READY_LIVE_PHASES = new Set<ReadinessPhase>([
 
 function isReadinessMakeReadyLive(phase: ReadinessPhase): boolean {
   return MAKE_READY_LIVE_PHASES.has(phase);
+}
+
+function remediationDetail(evaluation: ReadinessEvaluation | null, continuing: boolean): string {
+  if (evaluation?.ready) return 'Writing the marker on the isolated branch';
+  return continuing
+    ? 'Sending the remaining failures back to the agent on the same branch'
+    : 'The agent is fixing the repository on an isolated branch';
 }
 
 function prBody(evaluation: ReadinessEvaluation): string {

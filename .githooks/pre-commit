@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Foundry pre-commit hook — fast, scoped feedback on staged files.
 #
-# Runs ESLint and Prettier against the files in this commit only. It is a
-# convenience, NOT the gate: `npm run check` and CI remain authoritative and run
-# the full typecheck, dead-code, coverage, build, and audit suite. Nothing here
-# builds, spawns a model, or touches the network.
+# Checks staged blob sizes, then runs ESLint and Prettier against the files in
+# this commit only. It is a convenience, NOT the gate: `npm run check` and CI
+# remain authoritative and run the full typecheck, dead-code, coverage, build,
+# and audit suite. Nothing here builds, spawns a model, or touches the network.
 #
 # Installed by `npm run prepare` (sets git's core.hooksPath to .githooks).
 # Install manually with:  git config core.hooksPath .githooks
@@ -33,10 +33,18 @@ if [ -z "$repo_root" ]; then
 fi
 cd "$repo_root" || exit 1
 
+failed=0
+echo "pre-commit: file sizes"
+if ! node scripts/check-file-sizes.mjs --staged; then
+  echo ""
+  echo "pre-commit: staged files exceed the repository size guardrails."
+  failed=1
+fi
+
 if [ ! -d node_modules ]; then
   echo "pre-commit: node_modules missing — skipping lint/format checks."
   echo "            Run 'npm ci', then 'npm run check' before opening a PR."
-  exit 0
+  exit "$failed"
 fi
 
 # Staged, still-present files. ACMR excludes deletions; -z survives spaces.
@@ -65,8 +73,6 @@ for path in "${staged[@]}"; do
     *.ts | *.tsx | *.js | *.jsx | *.mjs | *.cjs) lintable[${#lintable[@]}]="$path" ;;
   esac
 done
-
-failed=0
 
 if [ ${#lintable[@]} -gt 0 ]; then
   echo "pre-commit: eslint (${#lintable[@]} file(s))"
