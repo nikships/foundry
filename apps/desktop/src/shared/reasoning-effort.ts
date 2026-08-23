@@ -42,21 +42,21 @@ export function isReasoningEffort(value: unknown): value is ReasoningEffort {
 /**
  * The catalog entry an effort picker should filter by.
  *
- * Walks `chosen` then `fallback`, skipping `inherit` and ids the catalog does
- * not currently offer. Null means the picker has nothing to filter against
- * and offers every known level.
+ * `inherit` (or an empty choice) defers to `fallback`, which is how helper
+ * effort follows the default model. A concrete id the catalog does not offer
+ * is null rather than the fallback — the stored choice is gone, and showing
+ * another model's levels would be a lie. Null means the picker has nothing
+ * to filter against and offers every known level.
  */
 export function modelForEffortPicker<T extends { id: string }>(
   chosen: string | null | undefined,
   models: readonly T[],
   fallback?: string | null,
 ): T | null {
-  for (const id of [chosen, fallback]) {
-    if (!id || id === 'inherit') continue;
-    const match = models.find((model) => model.id === id);
-    if (match) return match;
-  }
-  return null;
+  const id =
+    chosen && chosen !== 'inherit' ? chosen : fallback && fallback !== 'inherit' ? fallback : null;
+  if (!id) return null;
+  return models.find((model) => model.id === id) ?? null;
 }
 
 /**

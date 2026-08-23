@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import {
   REASONING_EFFORTS,
   isReasoningEffort,
+  modelForEffortPicker,
   normalizeReasoningEffort,
   supportedReasoningEfforts,
 } from '../../src/shared/reasoning-effort.js';
@@ -40,6 +41,11 @@ describe('supportedReasoningEfforts', () => {
         defaultReasoningEffort: 'high',
       }),
     ).toEqual(['off', 'high', 'max']);
+    expect(
+      supportedReasoningEfforts({
+        supportedReasoningEfforts: ['high', 'minimal', 'low'],
+      }),
+    ).toEqual(['minimal', 'low', 'high']);
   });
 
   it('offers off alone for a model with no reasoning', () => {
@@ -82,5 +88,23 @@ describe('normalizeReasoningEffort', () => {
 
   it('takes the caller at their word for an unknown model', () => {
     expect(normalizeReasoningEffort('max', null)).toBe('max');
+  });
+});
+
+describe('modelForEffortPicker', () => {
+  const gemini = { id: 'bridge-gemini/gemini-3.7-flash-high' };
+  const luna = { id: 'bridge-codex/gpt-5.6-luna' };
+  const models = [gemini, luna];
+
+  it('resolves a concrete choice, skipping inherit', () => {
+    expect(modelForEffortPicker(gemini.id, models)).toBe(gemini);
+    expect(modelForEffortPicker('inherit', models)).toBeNull();
+    expect(modelForEffortPicker('inherit', models, luna.id)).toBe(luna);
+  });
+
+  it('uses the fallback only for inherit, not for a vanished catalog id', () => {
+    expect(modelForEffortPicker('inherit', models, gemini.id)).toBe(gemini);
+    expect(modelForEffortPicker('gone', models, luna.id)).toBeNull();
+    expect(modelForEffortPicker(undefined, models, 'inherit')).toBeNull();
   });
 });

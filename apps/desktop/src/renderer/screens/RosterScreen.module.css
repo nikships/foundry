@@ -529,45 +529,6 @@
   accent-color: var(--accent);
 }
 
-.roster-seg {
-  display: flex;
-  height: 34px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  overflow: hidden;
-}
-.roster-seg.disabled {
-  opacity: 0.55;
-}
-.roster-seg-btn {
-  flex: 1;
-  border: none;
-  border-right: 1px solid var(--line);
-  background: transparent;
-  color: var(--text-faint);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  cursor: default;
-  transition:
-    color var(--fast) var(--ease),
-    background var(--fast) var(--ease);
-}
-.roster-seg-btn:last-child {
-  border-right: none;
-}
-.roster-seg-btn:hover {
-  color: var(--text-dim);
-}
-.roster-seg-btn.on {
-  color: var(--text);
-  background: color-mix(in srgb, #ffffff 4.5%, transparent);
-}
-.roster-seg-btn:disabled {
-  cursor: not-allowed;
-}
-
 .roster-statusbar {
   display: flex;
   align-items: center;

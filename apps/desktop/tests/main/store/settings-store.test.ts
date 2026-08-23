@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { tempDir } from '../../helpers/tmp.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SettingsStore, defaultSettings, migrate } from '../../../src/main/store/settings.js';
+import { REASONING_EFFORTS } from '../../../src/shared/reasoning-effort.js';
 import { DEFAULT_PR_AGENT } from '../../../src/shared/types.js';
 
 let dir: string;
@@ -140,8 +141,8 @@ describe('smithReasoningEffort', () => {
     ).toBe('medium');
   });
 
-  it('keeps every known level, including the two only some models offer', () => {
-    for (const effort of ['off', 'low', 'medium', 'high', 'xhigh', 'max'] as const) {
+  it('keeps every known level, including the ones only some models offer', () => {
+    for (const effort of REASONING_EFFORTS) {
       expect(
         migrate({ ...defaultSettings(), smithReasoningEffort: effort }).smithReasoningEffort,
       ).toBe(effort);

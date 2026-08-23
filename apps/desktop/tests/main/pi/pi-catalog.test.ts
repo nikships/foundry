@@ -67,14 +67,32 @@ describe('the agent model catalog', () => {
   });
 
   it('withholds the extended levels unless the map names them', () => {
-    // Omitted means unsupported for `xhigh` / `max` alone — the one place the
-    // tristate rule is not "absent implies available".
+    // Omitted means unsupported for `minimal` / `xhigh` / `max` — the one
+    // place the tristate rule is not "absent implies available".
     expect(reasoningEffortsFor(model())).toEqual(['off', 'low', 'medium', 'high']);
     expect(reasoningEffortsFor(model({ thinkingLevelMap: { low: null } }))).toEqual([
       'off',
       'medium',
       'high',
     ]);
+  });
+
+  it('offers minimal only when the map names it, which is how Gemini 3.7 Flash arrives', () => {
+    expect(
+      reasoningEffortsFor(
+        model({
+          thinkingLevelMap: {
+            off: null,
+            minimal: 'minimal',
+            low: 'low',
+            medium: 'medium',
+            high: 'high',
+            xhigh: null,
+            max: null,
+          },
+        }),
+      ),
+    ).toEqual(['minimal', 'low', 'medium', 'high']);
   });
 
   it('honours a model that cannot stop thinking, and one that never starts', () => {

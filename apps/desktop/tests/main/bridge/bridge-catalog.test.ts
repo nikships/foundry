@@ -139,4 +139,19 @@ describe('modelsForProvider', () => {
     });
     expect(antigravityClaude?.compat).toBeUndefined();
   });
+
+  it('projects Gemini thinking levels from the catalog, including minimal and without off', () => {
+    const flash = modelsForProvider(fixture, 'gemini').find(
+      (model) => model.id === 'gemini-3.7-flash-high',
+    );
+    expect(flash?.thinkingLevelMap).toEqual({
+      off: null,
+      minimal: 'minimal',
+      low: 'low',
+      medium: 'medium',
+      high: 'high',
+      xhigh: null,
+      max: null,
+    });
+  });
 });
