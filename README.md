@@ -18,9 +18,7 @@ Shape the delivery lifecycle to the way your team actually ships,<br>and run eve
 
 </div>
 
-
 https://github.com/user-attachments/assets/d8b27e8d-de15-4b0d-8d0d-964ab697e569
-
 
 ---
 
