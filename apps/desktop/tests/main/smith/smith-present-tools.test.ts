@@ -637,6 +637,20 @@ describe('smith_present', () => {
     ]);
   });
 
+  it('refuses to present an action receipt — receipts are main-minted evidence', async () => {
+    const { deps, emitted } = makeDeps();
+    const tool = smithPresentTool(deps);
+    expect(await answerOf(tool, { kind: 'action_receipt', spec: { operation: 'merge' } })).toEqual({
+      ok: false,
+      error: 'unknown artifact kind',
+    });
+    expect(emitted).toHaveLength(0);
+    // The receipt kind is also absent from the tool's own enum, so the model
+    // is never told it is an option.
+    const params = tool.parameters as { properties: { kind: { enum: string[] } } };
+    expect(params.properties.kind.enum).not.toContain('action_receipt');
+  });
+
   it('refuses an unknown kind and a missing spec', async () => {
     const { deps, emitted } = makeDeps();
     const tool = smithPresentTool(deps);

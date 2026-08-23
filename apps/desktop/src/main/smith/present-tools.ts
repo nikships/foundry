@@ -36,7 +36,7 @@ import {
   type ProjectDef,
   type PullRequest,
   type SmithArtifact,
-  type SmithArtifactKind,
+  type SmithPresentableArtifactKind,
   type ValidationIssue,
 } from '@shared/types.js';
 import { defineTool, type ToolDefinition } from '../pi/tool-definition.js';
@@ -49,6 +49,11 @@ import { field, json, resolveProjectId } from './tool-helpers.js';
 
 export const SMITH_PRESENT_TOOL_NAME = 'smith_present';
 
+/**
+ * The kinds the model may present. `action_receipt` is absent by construction:
+ * a receipt is evidence an action ran, minted by main from the executor result
+ * on the proposal answer path, so Smith cannot fabricate one here.
+ */
 const ARTIFACT_KINDS = [
   'pipeline_design',
   'agent_design',
@@ -58,7 +63,7 @@ const ARTIFACT_KINDS = [
   'change_receipt',
   'project_card',
   'pr_card',
-] as const;
+] as const satisfies readonly SmithPresentableArtifactKind[];
 
 const ENTITY_COMPARISON_KINDS = ['agent', 'pipeline', 'envelope'] as const;
 
@@ -101,9 +106,9 @@ export interface SmithPresentToolDeps {
   emit: (artifact: SmithArtifact) => void;
 }
 
-function parseArtifactKind(raw: unknown): SmithArtifactKind | null {
+function parseArtifactKind(raw: unknown): SmithPresentableArtifactKind | null {
   return typeof raw === 'string' && (ARTIFACT_KINDS as readonly string[]).includes(raw)
-    ? (raw as SmithArtifactKind)
+    ? (raw as SmithPresentableArtifactKind)
     : null;
 }
 
@@ -828,7 +833,7 @@ export function derivePrCard(params: {
 
 function validateSpec(
   stores: SmithEntityStores,
-  kind: SmithArtifactKind,
+  kind: SmithPresentableArtifactKind,
   spec: object,
   projectId?: string,
   comparisonKind?: EntityComparisonKind,
@@ -857,24 +862,12 @@ function validateSpec(
 }
 
 function buildArtifact(
-  kind: SmithArtifactKind,
+  kind: SmithPresentableArtifactKind,
   spec: object,
-  base: Omit<
-    SmithArtifact,
-    | 'kind'
-    | 'pipeline'
-    | 'agent'
-    | 'envelope'
-    | 'checklist'
-    | 'entityKind'
-    | 'name'
-    | 'before'
-    | 'after'
-    | 'targetProjectId'
-    | 'receipt'
-    | 'project'
-    | 'pr'
-  >,
+  // `keyof` a union is the intersection of its members' keys, so this is
+  // exactly the shared artifact base — every kind's own payload is supplied
+  // by the branch that builds it.
+  base: Omit<SmithArtifact, 'kind'>,
   extra?: {
     entityKind?: EntityComparisonKind;
     name?: string;

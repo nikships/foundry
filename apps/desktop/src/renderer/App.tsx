@@ -18,7 +18,7 @@ import UpdateBanner from './components/layout/UpdateBanner.js';
 import SmithScreen from './screens/SmithScreen.js';
 import SmithBubble from './components/smith/SmithBubble.js';
 import { type SmithNavTarget } from './components/smith/SmithProposalCard.js';
-import type { ProjectDef, UpdateStatus } from '@shared/types.js';
+import type { ProjectDef, SmithReceiptLink, UpdateStatus } from '@shared/types.js';
 import type { SmithScreenContext } from '@shared/ipc-contract.js';
 import {
   MENU_DESIGN_TABS,
@@ -41,7 +41,7 @@ function checkCompleteToast(message: string | undefined): string {
 }
 
 function AppInner(): React.JSX.Element {
-  const { ready, settings, interrupts, refreshAll, selectProject } = useApp();
+  const { ready, settings, interrupts, refreshAll, selectProject, projects } = useApp();
   const [view, setView] = useState<View>('runs');
   const [runRequest, setRunRequest] = useState('');
   const [creatingProject, setCreatingProject] = useState(false);
@@ -105,6 +105,32 @@ function AppInner(): React.JSX.Element {
       setView('design');
     },
     [refreshAll],
+  );
+
+  /**
+   * Follow an action receipt's link. Navigation only: the receipt is a
+   * snapshot of something that already happened, so this opens what the action
+   * affected and never re-runs it. A link naming a project that has since been
+   * removed lands nowhere rather than switching to the wrong one.
+   */
+  const openReceiptLink = useCallback(
+    (link: SmithReceiptLink): void => {
+      if (link.kind === 'url') {
+        void api.app.openExternal(link.url);
+        return;
+      }
+      if (link.kind === 'run') {
+        if (!projects.some((project) => project.id === link.projectId)) return;
+        selectProject(link.projectId);
+        setOpenRunId(link.runId);
+        setView('runs');
+        return;
+      }
+      setSmithNav({ kind: link.entity, name: link.name, nonce: Date.now() });
+      setDesignTab(designTabForEntity(link.entity));
+      setView('design');
+    },
+    [projects, selectProject],
   );
 
   const handleUpdateRetry = useCallback(async (): Promise<void> => {
@@ -269,6 +295,7 @@ function AppInner(): React.JSX.Element {
           <SmithScreen
             screenContext={smithContext}
             onCompleted={(target) => void onSmithCompleted(target)}
+            onOpenReceiptLink={openReceiptLink}
           />
         );
       case 'settings':
@@ -337,6 +364,7 @@ function AppInner(): React.JSX.Element {
           screenContext={liveScreenContext}
           onExpand={openSmith}
           onCompleted={(target) => void onSmithCompleted(target)}
+          onOpenReceiptLink={openReceiptLink}
         />
       )}
       {/*
