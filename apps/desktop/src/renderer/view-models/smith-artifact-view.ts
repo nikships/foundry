@@ -28,6 +28,7 @@ const SUPPORTED_ARTIFACT_KINDS: ReadonlyArray<SmithArtifact['kind']> = [
   'pipeline_design',
   'agent_design',
   'envelope_design',
+  'run_summary',
 ];
 
 export function isRenderableArtifact(artifact: SmithArtifact): boolean {
@@ -40,13 +41,37 @@ export const ARTIFACT_KIND_LABEL: Record<SmithArtifact['kind'], string> = {
   pipeline_design: 'pipeline design',
   agent_design: 'agent design',
   envelope_design: 'report design',
+  run_summary: 'run summary',
 };
 
 /** The identifying name the card's title shows. */
 export function artifactName(artifact: SmithArtifact): string {
   if (artifact.kind === 'pipeline_design') return artifact.pipeline.id;
   if (artifact.kind === 'agent_design') return artifact.agent.name;
-  return artifact.envelope.name;
+  if (artifact.kind === 'envelope_design') return artifact.envelope.name;
+  return artifact.pipelineName || artifact.pipelineId || artifact.runId;
+}
+
+export function runStatusLabel(status: string): string {
+  switch (status) {
+    case 'accepted':
+      return 'accepted';
+    case 'running':
+      return 'running';
+    case 'failed':
+      return 'failed';
+    case 'rejected':
+      return 'rejected';
+    case 'killed':
+      return 'killed';
+    default:
+      return status;
+  }
+}
+
+export function isolationLabel(isolation?: boolean, branch?: string | null): string {
+  if (isolation === false) return 'direct checkout';
+  return branch ? `isolated worktree (${branch})` : 'isolated worktree';
 }
 
 // ── Display labels ───────────────────────────────────────────────────────────

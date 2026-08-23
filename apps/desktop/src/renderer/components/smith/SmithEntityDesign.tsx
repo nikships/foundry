@@ -11,18 +11,22 @@
  */
 
 import { useState } from 'react';
-import type { AgentDef, EnvelopeDef, PipelineDef } from '@shared/types.js';
+import type { AgentDef, EnvelopeDef, PipelineDef, SmithRunSummaryArtifact } from '@shared/types.js';
 import { useApp } from '../../stores/app.js';
+import { duration, statusColor, tokens } from '../../utils/format.js';
 import { phaseKindColor } from '../../utils/derive.js';
 import {
   acceptanceLabel,
   commandLabel,
   gateLabel,
+  isolationLabel,
   phaseWorkLabel,
   writesLabel,
 } from '../../view-models/smith-artifact-view.js';
 import AgentAvatar from '../media/AgentAvatar.js';
+import StatusBadge from '../common/StatusBadge.js';
 import { EnvelopeGlyph, PhaseGlyph } from '../pipeline/PhaseGlyphs.js';
+import { Button } from '../ui/Button.js';
 import { cx } from '../ui/cx.js';
 import styles from './SmithEntityDesign.module.css';
 
@@ -260,6 +264,148 @@ export function EnvelopeDesign({
       <p className={styles.baseNote}>
         Plus the base fields every envelope carries: {ENVELOPE_BASE_FIELDS.join(', ')}.
       </p>
+    </div>
+  );
+}
+
+export function RunSummaryDesign({
+  artifact,
+  compact,
+  onOpenInspector,
+}: {
+  artifact: SmithRunSummaryArtifact;
+  compact?: boolean;
+  onOpenInspector?: (runId: string) => void;
+}): React.JSX.Element {
+  const { agentColor } = useApp();
+  const [openPhase, setOpenPhase] = useState<string | null>(null);
+
+  const durationStr = artifact.durationMs ? duration(artifact.durationMs) : null;
+  const tokenStr = artifact.totalTokens ? tokens(artifact.totalTokens) : null;
+
+  return (
+    <div className={cx(styles.design, compact && styles.compact)}>
+      <div className={styles.runMetaHeader}>
+        <div className={styles.statusRow}>
+          <StatusBadge status={artifact.status} />
+          {artifact.live && <span className={styles.liveChip}>live</span>}
+          <span className={styles.runIdChip}>{artifact.runId}</span>
+        </div>
+        {durationStr && <span className={styles.durationChip}>{durationStr}</span>}
+      </div>
+
+      {artifact.request && <p className={styles.requestText}>&ldquo;{artifact.request}&rdquo;</p>}
+
+      {artifact.outcomeDetail && (
+        <div className={styles.outcomeCallout}>
+          <span className={styles.outcomeLabel}>Outcome</span>
+          <p className={styles.outcomeText}>{artifact.outcomeDetail}</p>
+        </div>
+      )}
+
+      {artifact.phases && artifact.phases.length > 0 && (
+        <div className={styles.waterfallSection}>
+          <span className={styles.sectionLabel}>Phases</span>
+          <ol className={styles.miniWaterfall} aria-label="Run phases">
+            {artifact.phases.map((phase, index) => {
+              const color = phaseKindColor(phase.kind, agentColor(phase.owner ?? null));
+              const isOpen = openPhase === phase.name;
+              const statusCol = statusColor(phase.status);
+              const phaseDur = phase.durationMs ? duration(phase.durationMs) : null;
+
+              return (
+                <li
+                  key={`${phase.name}-${index}`}
+                  className={cx(styles.miniPhase)}
+                  style={{ borderLeftColor: statusCol }}
+                >
+                  <button
+                    type="button"
+                    className={styles.miniPhaseHead}
+                    onClick={() => setOpenPhase(isOpen ? null : phase.name)}
+                    aria-expanded={isOpen}
+                    data-testid={`smith-summary-phase-${phase.name}`}
+                  >
+                    <span className={styles.phaseIndex}>{index + 1}</span>
+                    <span className={styles.phaseGlyph} style={{ color }} aria-hidden>
+                      <PhaseGlyph kind={phase.kind} />
+                    </span>
+                    {phase.kind === 'agent' && phase.owner && !compact && (
+                      <AgentAvatar name={phase.owner} size={16} />
+                    )}
+                    <span className={styles.phaseName}>{phase.name}</span>
+                    <span className={styles.phaseKind}>{phase.kind}</span>
+                    <span
+                      className={styles.phaseStatusDot}
+                      style={{ color: statusCol }}
+                      title={phase.status}
+                    >
+                      ● {phase.status}
+                    </span>
+                    {phaseDur && <span className={styles.phaseDur}>{phaseDur}</span>}
+                    <span className={styles.disclosure} aria-hidden>
+                      {isOpen ? '−' : '+'}
+                    </span>
+                  </button>
+                  {isOpen && (
+                    <dl className={styles.phaseDetails}>
+                      {phase.owner && <Detail label="Agent" value={phase.owner} />}
+                      <Detail label="Status" value={phase.status} />
+                      {phaseDur && <Detail label="Duration" value={phaseDur} />}
+                      {phase.error && (
+                        <Detail
+                          label="Error"
+                          value={<span className={styles.phaseError}>{phase.error}</span>}
+                        />
+                      )}
+                      {phase.envelopeSummary && (
+                        <Detail label="Report summary" value={phase.envelopeSummary} />
+                      )}
+                    </dl>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      )}
+
+      <dl className={styles.footRow}>
+        <Detail label="Isolation" value={isolationLabel(artifact.isolation, artifact.branch)} />
+        {tokenStr && <Detail label="Tokens" value={tokenStr} />}
+        {artifact.prNumber && artifact.prUrl && (
+          <Detail
+            label="Pull request"
+            value={
+              <a href={artifact.prUrl} target="_blank" rel="noreferrer" className={styles.link}>
+                #{artifact.prNumber}
+              </a>
+            }
+          />
+        )}
+        {artifact.issueNumber && artifact.issueUrl && (
+          <Detail
+            label="Issue"
+            value={
+              <a href={artifact.issueUrl} target="_blank" rel="noreferrer" className={styles.link}>
+                #{artifact.issueNumber}
+              </a>
+            }
+          />
+        )}
+      </dl>
+
+      {onOpenInspector && (
+        <div className={styles.actionRow}>
+          <Button
+            size="sm"
+            onClick={() => onOpenInspector(artifact.runId)}
+            data-testid="smith-open-inspector"
+          >
+            Open in Inspector
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

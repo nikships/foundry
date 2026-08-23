@@ -13,6 +13,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import type { RunDetail } from '@shared/ipc-contract.js';
 import {
   SMITH_ARTIFACT_VERSION,
   type AgentDef,
@@ -20,6 +21,8 @@ import {
   type PipelineDef,
   type SmithArtifact,
   type SmithArtifactKind,
+  type SmithRunSummaryArtifact,
+  type SmithRunSummaryPhase,
   type ValidationIssue,
 } from '@shared/types.js';
 import { defineTool, type ToolDefinition } from '../pi/tool-definition.js';
@@ -27,11 +30,16 @@ import { validate as validateAgent } from '../store/roster.js';
 import { validate as validatePipeline } from '../store/pipelines.js';
 import { validate as validateEnvelope } from '../store/envelopes.js';
 import type { SmithEntityStores } from './entity-tools.js';
-import { field, json, resolveProjectId } from './tool-helpers.js';
+import { field, json, resolveProjectId, stringField } from './tool-helpers.js';
 
 export const SMITH_PRESENT_TOOL_NAME = 'smith_present';
 
-const ARTIFACT_KINDS = ['pipeline_design', 'agent_design', 'envelope_design'] as const;
+const ARTIFACT_KINDS = [
+  'pipeline_design',
+  'agent_design',
+  'envelope_design',
+  'run_summary',
+] as const;
 
 /**
  * Ceiling on the serialized entity payload. Generous for any real design —
@@ -55,6 +63,8 @@ export interface SmithPresentToolDeps {
   projectId: () => string | undefined;
   /** Hands the finished artifact to the chat session's transcript. */
   emit: (artifact: SmithArtifact) => void;
+  /** Authoritative run detail lookup from trace, used to derive run_summary snapshots. */
+  runLookup?: (projectId: string, runId: string) => RunDetail | null;
 }
 
 function parseArtifactKind(raw: unknown): SmithArtifactKind | null {
@@ -106,7 +116,103 @@ function buildArtifact(
 ): SmithArtifact {
   if (kind === 'agent_design') return { ...base, kind, agent: spec as AgentDef };
   if (kind === 'envelope_design') return { ...base, kind, envelope: spec as EnvelopeDef };
-  return { ...base, kind, pipeline: spec as PipelineDef };
+  return { ...base, kind: 'pipeline_design', pipeline: spec as PipelineDef };
+}
+
+function buildRunSummaryArtifact(
+  detail: RunDetail,
+  base: Omit<
+    SmithRunSummaryArtifact,
+    | 'kind'
+    | 'runId'
+    | 'pipelineId'
+    | 'pipelineName'
+    | 'request'
+    | 'status'
+    | 'startedAt'
+    | 'endedAt'
+    | 'durationMs'
+    | 'totalTokens'
+    | 'isolation'
+    | 'worktreePath'
+    | 'branch'
+    | 'baseRef'
+    | 'outcomeDetail'
+    | 'activePhase'
+    | 'failedPhase'
+    | 'phases'
+    | 'prNumber'
+    | 'prUrl'
+    | 'issueNumber'
+    | 'issueUrl'
+    | 'live'
+  >,
+): SmithRunSummaryArtifact {
+  const run = detail.run!;
+  const startedTime = run.startedAt ? new Date(run.startedAt).getTime() : 0;
+  const endedTime = run.endedAt ? new Date(run.endedAt).getTime() : 0;
+  const durationMs =
+    startedTime > 0 && endedTime > 0
+      ? Math.max(0, endedTime - startedTime)
+      : startedTime > 0
+        ? Math.max(0, Date.now() - startedTime)
+        : undefined;
+
+  const phases: SmithRunSummaryPhase[] = detail.phases.map((p) => {
+    const pStart = p.startedAt ? new Date(p.startedAt).getTime() : 0;
+    const pEnd = p.endedAt ? new Date(p.endedAt).getTime() : 0;
+    const pDuration =
+      pStart > 0 && pEnd > 0
+        ? Math.max(0, pEnd - pStart)
+        : pStart > 0
+          ? Math.max(0, Date.now() - pStart)
+          : undefined;
+    const env = detail.envelopes.find((e) => e.phaseId === p.phaseId);
+    const envSummary = typeof env?.payload?.summary === 'string' ? env.payload.summary : null;
+
+    return {
+      phaseId: p.phaseId,
+      name: p.name,
+      kind: p.kind,
+      status: p.status,
+      owner: p.owner || undefined,
+      startedAt: p.startedAt,
+      endedAt: p.endedAt,
+      durationMs: pDuration,
+      error: p.error,
+      envelopeSummary: envSummary,
+    };
+  });
+
+  const activePhase = phases.find((p) => p.status === 'running')?.name ?? null;
+  const failedPhase = phases.find((p) => p.status === 'fail')?.name ?? null;
+
+  return {
+    ...base,
+    kind: 'run_summary',
+    runId: run.runId,
+    pipelineId: run.pipelineId,
+    pipelineName: run.pipelineName,
+    request: run.request,
+    status: run.status,
+    startedAt: run.startedAt,
+    endedAt: run.endedAt,
+    durationMs,
+    totalTokens: run.totalTokens,
+    isolation: run.worktreePath !== null,
+    worktreePath: run.worktreePath,
+    branch: run.branch,
+    baseRef: run.baseRef,
+    outcomeDetail: run.outcomeDetail,
+    activePhase,
+    failedPhase,
+    phases,
+    prNumber: run.prNumber,
+    prUrl: run.prUrl,
+    issueNumber: run.issueNumber,
+    issueUrl: run.issueUrl,
+    live: detail.live,
+  };
 }
 
 export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
@@ -114,53 +220,108 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
     name: SMITH_PRESENT_TOOL_NAME,
     label: 'Smith present',
     description:
-      'Show the operator a rich inline design card in the chat. Use it before proposing a ' +
-      'non-trivial pipeline, agent, or envelope, and whenever the operator asks for a design: ' +
-      'the card renders the structured definition far better than prose or JSON. It is ' +
-      'presentation only — it saves nothing, needs no approval, and is not evidence any action ' +
-      'succeeded. Do not repeat the card content in prose; add only rationale, uncertainty, or ' +
-      'a recommendation.',
+      'Show the operator a rich inline card in the chat. Use it for designs (pipeline, agent, ' +
+      'envelope) before proposing changes, and for run summaries (run_summary) when reporting ' +
+      'on run status, progress, or outcomes. It is presentation only — it saves nothing, needs ' +
+      'no approval, and is not evidence any action succeeded. Do not repeat the card content ' +
+      'in prose; add only rationale, uncertainty, or a recommendation.',
     parameters: {
       type: 'object',
       properties: {
         kind: {
           type: 'string',
           enum: [...ARTIFACT_KINDS],
-          description: 'Which design card to show.',
+          description:
+            'Which card to show: pipeline_design, agent_design, envelope_design, or run_summary.',
         },
         spec: {
           type: 'object',
           description:
-            'The full entity JSON, exactly as the store would save it — the same shape ' +
-            'smith_propose takes.',
+            'The full entity JSON for design cards (pipeline, agent, envelope), or an object containing runId for run_summary.',
+        },
+        runId: {
+          type: 'string',
+          description: 'The run ID to summarize (for run_summary artifacts).',
         },
         rationale: {
           type: 'string',
-          description: 'Optional short design rationale or tradeoffs, shown on the card.',
+          description: 'Optional short design rationale, context, or notes, shown on the card.',
         },
         projectId: {
           type: 'string',
-          description: 'Optional project whose roster/commands the design is validated against.',
+          description: 'Optional project scope.',
         },
       },
-      required: ['kind', 'spec'],
+      required: ['kind'],
       additionalProperties: false,
     },
     execute: (_id, params) => {
       const kind = parseArtifactKind(field(params, 'kind'));
       if (!kind) return Promise.resolve(json({ ok: false, error: 'unknown artifact kind' }));
-      const spec = field(params, 'spec');
-      if (spec == null || typeof spec !== 'object' || Array.isArray(spec)) {
-        return Promise.resolve(json({ ok: false, error: 'present needs a spec object' }));
-      }
-      const scope = resolveProjectId(field(params, 'projectId'), deps.projectId());
-      if (!scope.ok) return Promise.resolve(json(scope));
 
-      const secretPath = findSecretKey(spec);
+      const secretPath = findSecretKey(params);
       if (secretPath) {
         return Promise.resolve(
           json({ ok: false, error: `spec must not carry a credential field (${secretPath})` }),
         );
+      }
+
+      const rawRationale = field(params, 'rationale');
+      const rationale =
+        typeof rawRationale === 'string' && rawRationale.trim()
+          ? rawRationale.slice(0, MAX_RATIONALE)
+          : undefined;
+
+      const scope = resolveProjectId(field(params, 'projectId'), deps.projectId());
+      if (!scope.ok) return Promise.resolve(json(scope));
+
+      if (kind === 'run_summary') {
+        const spec = field(params, 'spec');
+        const runId =
+          stringField(params, 'runId') ||
+          (spec && typeof spec === 'object' && !Array.isArray(spec)
+            ? stringField(spec, 'runId')
+            : null);
+        if (!runId) return Promise.resolve(json({ ok: false, error: 'run_summary needs a runId' }));
+
+        let detail: RunDetail | null = null;
+        let targetProjectId = scope.projectId;
+
+        if (scope.projectId && deps.runLookup) {
+          detail = deps.runLookup(scope.projectId, runId);
+        } else if (!scope.projectId && deps.runLookup) {
+          for (const project of deps.stores.projects.list()) {
+            const d = deps.runLookup(project.id, runId);
+            if (d && d.run) {
+              detail = d;
+              targetProjectId = project.id;
+              break;
+            }
+          }
+        }
+
+        if (!detail || !detail.run) {
+          return Promise.resolve(json({ ok: false, error: `run not found: ${runId}` }));
+        }
+
+        const sessionProject = deps.projectId();
+        const artifact = buildRunSummaryArtifact(detail, {
+          id: randomUUID(),
+          version: SMITH_ARTIFACT_VERSION,
+          createdAt: Date.now(),
+          ...(targetProjectId || sessionProject
+            ? { projectId: targetProjectId ?? sessionProject }
+            : {}),
+          ...(rationale ? { rationale } : {}),
+          warnings: [],
+        });
+        deps.emit(artifact);
+        return Promise.resolve(json({ ok: true, artifactId: artifact.id }));
+      }
+
+      const spec = field(params, 'spec');
+      if (spec == null || typeof spec !== 'object' || Array.isArray(spec)) {
+        return Promise.resolve(json({ ok: false, error: 'present needs a spec object' }));
       }
 
       let serialized: string;
@@ -183,12 +344,6 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
       const issues = validateSpec(deps.stores, kind, spec, scope.projectId);
       const errors = issues.filter((issue) => issue.level === 'error');
       if (errors.length) return Promise.resolve(json({ ok: false, validation: errors }));
-
-      const rawRationale = field(params, 'rationale');
-      const rationale =
-        typeof rawRationale === 'string' && rawRationale.trim()
-          ? rawRationale.slice(0, MAX_RATIONALE)
-          : undefined;
 
       const sessionProject = deps.projectId();
       const artifact = buildArtifact(kind, JSON.parse(serialized) as object, {

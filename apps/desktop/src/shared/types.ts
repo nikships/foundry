@@ -844,7 +844,8 @@ export interface ValidationIssue {
  * `main/smith/present-tools.ts`, a renderer registration in
  * `renderer/view-models/smith-artifact-view.ts`, and tests for both.
  */
-export type SmithArtifactKind = 'pipeline_design' | 'agent_design' | 'envelope_design';
+export type SmithArtifactKind =
+  'pipeline_design' | 'agent_design' | 'envelope_design' | 'run_summary';
 
 /** The protocol version this build reads. Unknown versions fail soft in the UI. */
 export const SMITH_ARTIFACT_VERSION = 1;
@@ -880,6 +881,47 @@ export interface SmithEnvelopeDesignArtifact extends SmithArtifactBase {
   envelope: EnvelopeDef;
 }
 
+/** A lightweight snapshot of one phase in a run's mini waterfall. */
+export interface SmithRunSummaryPhase {
+  phaseId?: string;
+  name: string;
+  kind: PhaseKind;
+  status: PhaseStatus;
+  owner?: string;
+  startedAt?: string | null;
+  endedAt?: string | null;
+  durationMs?: number;
+  error?: string | null;
+  envelopeSummary?: string | null;
+}
+
+/** A read-only snapshot of run progress and outcome: pipeline, phases, duration, outcome. */
+export interface SmithRunSummaryArtifact extends SmithArtifactBase {
+  kind: 'run_summary';
+  runId: string;
+  pipelineId: string;
+  pipelineName: string;
+  request: string;
+  status: RunStatus;
+  startedAt: string;
+  endedAt?: string | null;
+  durationMs?: number;
+  totalTokens?: number;
+  isolation?: boolean;
+  worktreePath?: string | null;
+  branch?: string | null;
+  baseRef?: string | null;
+  outcomeDetail?: string | null;
+  activePhase?: string | null;
+  failedPhase?: string | null;
+  phases: SmithRunSummaryPhase[];
+  prNumber?: number | null;
+  prUrl?: string | null;
+  issueNumber?: number | null;
+  issueUrl?: string | null;
+  live?: boolean;
+}
+
 /**
  * One rich inline card in the Smith transcript. Artifacts are presentation
  * only: they perform no writes, never occupy the one-slot proposal queue, and
@@ -887,7 +929,10 @@ export interface SmithEnvelopeDesignArtifact extends SmithArtifactBase {
  * the main boundary before they reach the renderer or persisted chat state.
  */
 export type SmithArtifact =
-  SmithPipelineDesignArtifact | SmithAgentDesignArtifact | SmithEnvelopeDesignArtifact;
+  | SmithPipelineDesignArtifact
+  | SmithAgentDesignArtifact
+  | SmithEnvelopeDesignArtifact
+  | SmithRunSummaryArtifact;
 
 // ── Smith (the entity-smith's approval gate) ─────────────────────────────────
 

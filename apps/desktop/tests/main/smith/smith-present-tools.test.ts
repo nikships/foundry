@@ -9,10 +9,12 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import type { RunDetail } from '../../../src/shared/ipc-contract.js';
 import type {
   AgentDef,
   EnvelopeDef,
   PipelineDef,
+  ProjectDef,
   SmithArtifact,
 } from '../../../src/shared/types.js';
 import { SMITH_ARTIFACT_VERSION } from '../../../src/shared/types.js';
@@ -58,12 +60,99 @@ const validEnvelope: EnvelopeDef = {
   fields: [{ name: 'severity', type: 'string', required: true }],
 };
 
+const mockProject: ProjectDef = {
+  id: 'proj_1',
+  name: 'Test Project',
+  path: '/tmp/test-project',
+  baseRef: 'main',
+  isolation: true,
+  mergePolicy: 'auto',
+  commands: [],
+  protectedPaths: [],
+  ownRoster: false,
+  ownPipelines: false,
+  addedAt: '2026-08-23T00:00:00.000Z',
+};
+
+const mockRunDetail: RunDetail = {
+  run: {
+    runId: 'run_abc123',
+    projectId: 'proj_1',
+    pipelineId: 'ship-it',
+    pipelineName: 'Ship it',
+    request: 'Refactor the smith tools',
+    status: 'accepted',
+    engineer: 'Nik',
+    worktreePath: '/tmp/.foundry-worktrees/run_abc123',
+    branch: 'foundry/run_abc123',
+    baseRef: 'main',
+    branchPointSha: 'sha123',
+    outcomeDetail: 'All 2 phases passed acceptance gates',
+    prNumber: 42,
+    prUrl: 'https://github.com/nikships/foundry/pull/42',
+    issueNumber: null,
+    issueUrl: null,
+    merged: false,
+    archived: false,
+    mode: 'pi',
+    startedAt: '2026-08-23T10:00:00.000Z',
+    endedAt: '2026-08-23T10:02:30.000Z',
+    totalTokens: 15400,
+  },
+  phases: [
+    {
+      phaseId: 'ph_1',
+      runId: 'run_abc123',
+      seq: 0,
+      name: 'plan',
+      kind: 'agent',
+      owner: 'planner',
+      description: 'Plan the change',
+      status: 'success',
+      attempt: 1,
+      error: null,
+      startedAt: '2026-08-23T10:00:00.000Z',
+      endedAt: '2026-08-23T10:01:00.000Z',
+    },
+    {
+      phaseId: 'ph_2',
+      runId: 'run_abc123',
+      seq: 1,
+      name: 'build',
+      kind: 'agent',
+      owner: 'builder',
+      description: 'Implement the plan',
+      status: 'success',
+      attempt: 1,
+      error: null,
+      startedAt: '2026-08-23T10:01:00.000Z',
+      endedAt: '2026-08-23T10:02:30.000Z',
+    },
+  ],
+  envelopes: [
+    {
+      envelopeId: 'env_1',
+      runId: 'run_abc123',
+      phaseId: 'ph_1',
+      agent: 'planner',
+      schemaKind: 'plan',
+      payload: { summary: 'Plan created successfully' },
+      valid: true,
+      attempt: 1,
+      createdAt: '2026-08-23T10:01:00.000Z',
+    },
+  ],
+  gates: [],
+  sessions: [],
+  live: false,
+};
+
 function makeStores(agents: AgentDef[] = [validAgent]): SmithEntityStores {
   return {
     roster: { get: (name: string) => agents.find((a) => a.name === name) ?? null },
     pipelines: { get: () => null },
     envelopes: { list: () => [], get: () => null },
-    projects: { list: () => [] },
+    projects: { list: () => [mockProject] },
     rosterScope: () => ({}),
     pipelineScope: () => ({}),
     rosterFor: () => agents,
@@ -81,6 +170,10 @@ function makeDeps(over: Partial<SmithPresentToolDeps> = {}): {
     stores: makeStores(),
     projectId: () => undefined,
     emit: (artifact) => emitted.push(artifact),
+    runLookup: (_projectId: string, runId: string) => {
+      if (runId === 'run_abc123') return mockRunDetail;
+      return null;
+    },
     ...over,
   };
   return { deps, emitted };
@@ -140,6 +233,92 @@ describe('smith_present', () => {
     expect(emitted.map((artifact) => artifact.kind)).toEqual(['agent_design', 'envelope_design']);
   });
 
+  it('emits a run_summary artifact derived authoritatively from trace', async () => {
+    const { deps, emitted } = makeDeps({ projectId: () => 'proj_1' });
+    const res = (await answerOf(smithPresentTool(deps), {
+      kind: 'run_summary',
+      runId: 'run_abc123',
+      rationale: 'Run completed cleanly with all phases green.',
+    })) as { ok: boolean; artifactId: string };
+
+    expect(res.ok).toBe(true);
+    expect(emitted).toHaveLength(1);
+    const artifact = emitted[0]!;
+    expect(res.artifactId).toBe(artifact.id);
+    expect(artifact).toMatchObject({
+      kind: 'run_summary',
+      version: SMITH_ARTIFACT_VERSION,
+      runId: 'run_abc123',
+      pipelineId: 'ship-it',
+      pipelineName: 'Ship it',
+      request: 'Refactor the smith tools',
+      status: 'accepted',
+      outcomeDetail: 'All 2 phases passed acceptance gates',
+      prNumber: 42,
+      prUrl: 'https://github.com/nikships/foundry/pull/42',
+      rationale: 'Run completed cleanly with all phases green.',
+      isolation: true,
+      live: false,
+    });
+    if (artifact.kind !== 'run_summary') throw new Error('expected run_summary artifact');
+    expect(artifact.phases).toHaveLength(2);
+    expect(artifact.phases[0]).toMatchObject({
+      name: 'plan',
+      kind: 'agent',
+      status: 'success',
+      owner: 'planner',
+      envelopeSummary: 'Plan created successfully',
+    });
+    expect(artifact.durationMs).toBe(150_000);
+    expect(() => structuredClone(artifact)).not.toThrow();
+  });
+
+  it('derives run_summary from trace, ignoring forged spec properties', async () => {
+    const { deps, emitted } = makeDeps({ projectId: () => 'proj_1' });
+    const res = (await answerOf(smithPresentTool(deps), {
+      kind: 'run_summary',
+      runId: 'run_abc123',
+      spec: {
+        status: 'failed',
+        pipelineName: 'Forged Pipeline',
+        request: 'Forged request from model',
+      },
+    })) as { ok: boolean };
+
+    expect(res.ok).toBe(true);
+    const artifact = emitted[0]!;
+    if (artifact.kind !== 'run_summary') throw new Error('expected run_summary artifact');
+    expect(artifact.status).toBe('accepted');
+    expect(artifact.pipelineName).toBe('Ship it');
+    expect(artifact.request).toBe('Refactor the smith tools');
+  });
+
+  it('refuses run_summary when runId is missing or not found', async () => {
+    const { deps, emitted } = makeDeps();
+    const tool = smithPresentTool(deps);
+    expect(await answerOf(tool, { kind: 'run_summary' })).toEqual({
+      ok: false,
+      error: 'run_summary needs a runId',
+    });
+    expect(await answerOf(tool, { kind: 'run_summary', runId: 'run_missing' })).toEqual({
+      ok: false,
+      error: 'run not found: run_missing',
+    });
+    expect(emitted).toHaveLength(0);
+  });
+
+  it('discovers run across projects when in global scope', async () => {
+    const { deps, emitted } = makeDeps({ projectId: () => undefined });
+    const res = (await answerOf(smithPresentTool(deps), {
+      kind: 'run_summary',
+      runId: 'run_abc123',
+    })) as { ok: boolean };
+
+    expect(res.ok).toBe(true);
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]!.projectId).toBe('proj_1');
+  });
+
   it('refuses validation errors as data, emitting nothing', async () => {
     const { deps, emitted } = makeDeps();
     const res = (await answerOf(smithPresentTool(deps), {
@@ -166,7 +345,7 @@ describe('smith_present', () => {
   it('refuses an unknown kind and a missing spec', async () => {
     const { deps, emitted } = makeDeps();
     const tool = smithPresentTool(deps);
-    expect(await answerOf(tool, { kind: 'run_summary', spec: {} })).toEqual({
+    expect(await answerOf(tool, { kind: 'unknown_kind', spec: {} })).toEqual({
       ok: false,
       error: 'unknown artifact kind',
     });

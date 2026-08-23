@@ -62,6 +62,7 @@ export default function SmithBubble({
   screenContext,
   onExpand,
   onCompleted,
+  onOpenInspector,
 }: {
   /** What the operator is looking at right now, sent with each message. */
   screenContext: SmithScreenContext;
@@ -69,6 +70,7 @@ export default function SmithBubble({
   onExpand: () => void;
   /** Navigates to the saved entity's editor after an approved proposal saves. */
   onCompleted: (target?: SmithNavTarget) => void | Promise<void>;
+  onOpenInspector?: (runId: string) => void;
 }): React.JSX.Element {
   const { projects, smithProjectId } = useApp();
   const smithProject = projects.find((project) => project.id === smithProjectId) ?? null;
@@ -207,6 +209,7 @@ export default function SmithBubble({
             entries={transcript}
             running={running}
             compact
+            onOpenInspector={onOpenInspector}
             emptyState={
               <div className={styles.empty}>
                 {smithProject ? (

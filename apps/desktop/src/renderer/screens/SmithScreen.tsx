@@ -30,11 +30,13 @@ import styles from './SmithScreen.module.css';
 export default function SmithScreen({
   screenContext,
   onCompleted,
+  onOpenInspector,
 }: {
   /** What the operator was looking at before opening Smith, sent with each message. */
   screenContext: SmithScreenContext;
   /** Navigates to the saved entity's editor after an approved proposal saves. */
   onCompleted: (target?: SmithNavTarget) => void | Promise<void>;
+  onOpenInspector?: (runId: string) => void;
 }): React.JSX.Element {
   const { projects, smithProjectId } = useApp();
   const smithProject = projects.find((project) => project.id === smithProjectId) ?? null;
@@ -149,6 +151,7 @@ export default function SmithScreen({
       <SmithTranscript
         entries={transcript}
         running={running}
+        onOpenInspector={onOpenInspector}
         emptyState={
           <div className={styles.emptyState}>
             <h2 className={styles.emptyTitle}>Smith</h2>

@@ -6,7 +6,13 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { AgentDef, EnvelopeDef, PipelineDef, SmithArtifact } from '@shared/types.js';
+import type {
+  AgentDef,
+  EnvelopeDef,
+  PipelineDef,
+  SmithArtifact,
+  SmithRunSummaryArtifact,
+} from '@shared/types.js';
 import { SMITH_ARTIFACT_VERSION } from '@shared/types.js';
 import {
   ARTIFACT_KIND_LABEL,
@@ -16,7 +22,9 @@ import {
   compareEntities,
   gateLabel,
   isRenderableArtifact,
+  isolationLabel,
   phaseWorkLabel,
+  runStatusLabel,
   writesLabel,
 } from '@renderer/view-models/smith-artifact-view.js';
 
@@ -48,11 +56,35 @@ const envelope: EnvelopeDef = {
   fields: [{ name: 'severity', type: 'string', required: true }],
 };
 
+const runSummary: SmithRunSummaryArtifact = {
+  id: 'a1',
+  kind: 'run_summary',
+  version: SMITH_ARTIFACT_VERSION,
+  createdAt: 0,
+  warnings: [],
+  runId: 'run_123',
+  pipelineId: 'ship-it',
+  pipelineName: 'Ship it',
+  request: 'Build feature',
+  status: 'accepted',
+  startedAt: '2026-08-23T00:00:00.000Z',
+  phases: [
+    {
+      name: 'plan',
+      kind: 'agent',
+      status: 'success',
+      owner: 'planner',
+      durationMs: 1200,
+    },
+  ],
+};
+
 function artifactOf(kind: SmithArtifact['kind'], version = SMITH_ARTIFACT_VERSION): SmithArtifact {
   const base = { id: 'a1', version, createdAt: 0, warnings: [] };
   if (kind === 'pipeline_design') return { ...base, kind, pipeline };
   if (kind === 'agent_design') return { ...base, kind, agent };
-  return { ...base, kind, envelope };
+  if (kind === 'envelope_design') return { ...base, kind, envelope };
+  return { ...runSummary, ...base, kind: 'run_summary' };
 }
 
 describe('the artifact registry', () => {
@@ -64,13 +96,14 @@ describe('the artifact registry', () => {
 
   it('fails soft on a future version or an unknown kind', () => {
     expect(isRenderableArtifact(artifactOf('pipeline_design', 99))).toBe(false);
-    expect(isRenderableArtifact({ kind: 'run_summary' } as unknown as SmithArtifact)).toBe(false);
+    expect(isRenderableArtifact({ kind: 'unknown_kind' } as unknown as SmithArtifact)).toBe(false);
   });
 
   it('names each artifact by its identifying field', () => {
     expect(artifactName(artifactOf('pipeline_design'))).toBe('ship-it');
     expect(artifactName(artifactOf('agent_design'))).toBe('planner');
     expect(artifactName(artifactOf('envelope_design'))).toBe('severity_report');
+    expect(artifactName(artifactOf('run_summary'))).toBe('Ship it');
   });
 });
 
@@ -102,6 +135,15 @@ describe('display labels', () => {
     expect(
       phaseWorkLabel({ name: 'ask', kind: 'engineer', description: '', question: 'Ship it?' }),
     ).toBe('Ship it?');
+  });
+
+  it('labels run statuses and isolation', () => {
+    expect(runStatusLabel('accepted')).toBe('accepted');
+    expect(runStatusLabel('running')).toBe('running');
+    expect(runStatusLabel('failed')).toBe('failed');
+    expect(isolationLabel(true, 'foundry/run_1')).toBe('isolated worktree (foundry/run_1)');
+    expect(isolationLabel(true)).toBe('isolated worktree');
+    expect(isolationLabel(false)).toBe('direct checkout');
   });
 });
 

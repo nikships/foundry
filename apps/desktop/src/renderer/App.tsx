@@ -269,6 +269,7 @@ function AppInner(): React.JSX.Element {
           <SmithScreen
             screenContext={smithContext}
             onCompleted={(target) => void onSmithCompleted(target)}
+            onOpenInspector={openInspector}
           />
         );
       case 'settings':
@@ -337,6 +338,7 @@ function AppInner(): React.JSX.Element {
           screenContext={liveScreenContext}
           onExpand={openSmith}
           onCompleted={(target) => void onSmithCompleted(target)}
+          onOpenInspector={openInspector}
         />
       )}
       {/*
