@@ -17,6 +17,7 @@ import {
   SMITH_ARTIFACT_VERSION,
   type AgentDef,
   type ChecklistDef,
+  type EntityComparisonKind,
   type EnvelopeDef,
   type PipelineDef,
   type SmithArtifact,
@@ -32,7 +33,15 @@ import { field, json, resolveProjectId } from './tool-helpers.js';
 
 export const SMITH_PRESENT_TOOL_NAME = 'smith_present';
 
-const ARTIFACT_KINDS = ['pipeline_design', 'agent_design', 'envelope_design', 'checklist'] as const;
+const ARTIFACT_KINDS = [
+  'pipeline_design',
+  'agent_design',
+  'envelope_design',
+  'checklist',
+  'entity_comparison',
+] as const;
+
+const ENTITY_COMPARISON_KINDS = ['agent', 'pipeline', 'envelope'] as const;
 
 /**
  * Ceiling on the serialized entity payload. Generous for any real design —
@@ -64,6 +73,20 @@ function parseArtifactKind(raw: unknown): SmithArtifactKind | null {
   return typeof raw === 'string' && (ARTIFACT_KINDS as readonly string[]).includes(raw)
     ? (raw as SmithArtifactKind)
     : null;
+}
+
+function parseEntityComparisonKind(raw: unknown): EntityComparisonKind | null {
+  return typeof raw === 'string' && (ENTITY_COMPARISON_KINDS as readonly string[]).includes(raw)
+    ? (raw as EntityComparisonKind)
+    : null;
+}
+
+function inferEntityComparisonKind(spec: Record<string, unknown>): EntityComparisonKind | null {
+  if ('phases' in spec || 'acceptance' in spec) return 'pipeline';
+  if ('systemPrompt' in spec || 'writes' in spec || 'userPrompt' in spec || 'purpose' in spec)
+    return 'agent';
+  if ('fields' in spec) return 'envelope';
+  return null;
 }
 
 /** Depth-first scan for credential-shaped keys anywhere in the payload. */
@@ -224,11 +247,20 @@ function validateSpec(
   kind: SmithArtifactKind,
   spec: object,
   projectId?: string,
+  comparisonKind?: EntityComparisonKind,
 ): ValidationIssue[] {
   if (kind === 'checklist') return validateChecklist(spec);
+  const targetKind =
+    kind === 'entity_comparison'
+      ? comparisonKind === 'agent'
+        ? 'agent_design'
+        : comparisonKind === 'pipeline'
+          ? 'pipeline_design'
+          : 'envelope_design'
+      : kind;
   const envelopeNames = stores.envelopes.list().map((envelope) => envelope.name);
-  if (kind === 'agent_design') return validateAgent(spec as AgentDef, envelopeNames);
-  if (kind === 'envelope_design') return validateEnvelope(spec as EnvelopeDef);
+  if (targetKind === 'agent_design') return validateAgent(spec as AgentDef, envelopeNames);
+  if (targetKind === 'envelope_design') return validateEnvelope(spec as EnvelopeDef);
   return validatePipeline(
     spec as PipelineDef,
     stores.rosterFor(projectId),
@@ -240,11 +272,40 @@ function validateSpec(
 function buildArtifact(
   kind: SmithArtifactKind,
   spec: object,
-  base: Omit<SmithArtifact, 'kind' | 'pipeline' | 'agent' | 'envelope' | 'checklist'>,
+  base: Omit<
+    SmithArtifact,
+    | 'kind'
+    | 'pipeline'
+    | 'agent'
+    | 'envelope'
+    | 'checklist'
+    | 'entityKind'
+    | 'name'
+    | 'before'
+    | 'after'
+    | 'targetProjectId'
+  >,
+  extra?: {
+    entityKind?: EntityComparisonKind;
+    name?: string;
+    before?: unknown;
+    targetProjectId?: string;
+  },
 ): SmithArtifact {
   if (kind === 'agent_design') return { ...base, kind, agent: spec as AgentDef };
   if (kind === 'envelope_design') return { ...base, kind, envelope: spec as EnvelopeDef };
   if (kind === 'checklist') return { ...base, kind, checklist: spec as ChecklistDef };
+  if (kind === 'entity_comparison') {
+    return {
+      ...base,
+      kind,
+      entityKind: extra!.entityKind!,
+      name: extra!.name!,
+      before: extra!.before as AgentDef | PipelineDef | EnvelopeDef,
+      after: spec as AgentDef | PipelineDef | EnvelopeDef,
+      ...(extra?.targetProjectId ? { targetProjectId: extra.targetProjectId } : {}),
+    };
+  }
   return { ...base, kind, pipeline: spec as PipelineDef };
 }
 
@@ -253,9 +314,9 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
     name: SMITH_PRESENT_TOOL_NAME,
     label: 'Smith present',
     description:
-      'Show the operator a rich inline design or checklist report card in the chat. Use it before ' +
-      'proposing a non-trivial pipeline, agent, or envelope, or to present a checklist/doctor/readiness/' +
-      'validation report, and whenever the operator asks for a design or report: ' +
+      'Show the operator a rich inline design, checklist report, or entity comparison card in the chat. Use it before ' +
+      'proposing a non-trivial pipeline, agent, or envelope, to compare a proposed edit against the stored definition, ' +
+      'or to present a checklist/doctor/readiness/validation report, and whenever the operator asks for a design or comparison: ' +
       'the card renders structured definitions far better than prose or JSON. It is ' +
       'presentation only — it saves nothing, needs no approval, and is not evidence any action ' +
       'succeeded. Do not repeat the card content in prose; add only rationale, uncertainty, or ' +
@@ -266,12 +327,23 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
         kind: {
           type: 'string',
           enum: [...ARTIFACT_KINDS],
-          description: 'Which design or checklist card to show.',
+          description: 'Which design, checklist, or entity comparison card to show.',
+        },
+        entityKind: {
+          type: 'string',
+          enum: [...ENTITY_COMPARISON_KINDS],
+          description:
+            'When kind is entity_comparison, which entity kind is being compared (agent, pipeline, or envelope).',
+        },
+        name: {
+          type: 'string',
+          description:
+            'When kind is entity_comparison, the name or id of the existing entity being compared.',
         },
         spec: {
           type: 'object',
           description:
-            'The full entity JSON (pipeline/agent/envelope) or checklist definition (title, items, optional summary).',
+            'The full entity JSON (pipeline/agent/envelope), checklist definition, or proposed edit for entity_comparison.',
         },
         rationale: {
           type: 'string',
@@ -317,9 +389,68 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
         );
       }
 
+      let entityKind: EntityComparisonKind | undefined;
+      let entityName: string | undefined;
+      let beforeEntity: unknown;
+
+      if (kind === 'entity_comparison') {
+        const specRecord = spec as Record<string, unknown>;
+        entityKind =
+          parseEntityComparisonKind(field(params, 'entityKind')) ??
+          inferEntityComparisonKind(specRecord) ??
+          undefined;
+        if (!entityKind) {
+          return Promise.resolve(
+            json({
+              ok: false,
+              error: 'entity_comparison requires entityKind ("agent", "pipeline", or "envelope")',
+            }),
+          );
+        }
+
+        const rawName = field(params, 'name');
+        entityName =
+          typeof rawName === 'string' && rawName.trim()
+            ? rawName.trim()
+            : typeof specRecord.name === 'string' && specRecord.name.trim()
+              ? specRecord.name.trim()
+              : typeof specRecord.id === 'string' && specRecord.id.trim()
+                ? specRecord.id.trim()
+                : undefined;
+
+        if (!entityName) {
+          return Promise.resolve(
+            json({ ok: false, error: 'entity_comparison requires an entity name or id' }),
+          );
+        }
+
+        if (entityKind === 'agent') {
+          beforeEntity = deps.stores.roster.get(
+            entityName,
+            deps.stores.rosterScope(scope.projectId),
+          );
+        } else if (entityKind === 'pipeline') {
+          beforeEntity = deps.stores.pipelines.get(
+            entityName,
+            deps.stores.pipelineScope(scope.projectId),
+          );
+        } else if (entityKind === 'envelope') {
+          beforeEntity = deps.stores.envelopes.get(entityName);
+        }
+
+        if (beforeEntity == null) {
+          return Promise.resolve(
+            json({
+              ok: false,
+              error: `cannot compare "${entityName}": ${entityKind} does not exist in the store`,
+            }),
+          );
+        }
+      }
+
       // Same gate as smith_propose: errors are the model's to fix and never
       // reach the operator; warnings become part of the card.
-      const issues = validateSpec(deps.stores, kind, spec, scope.projectId);
+      const issues = validateSpec(deps.stores, kind, spec, scope.projectId, entityKind);
       const errors = issues.filter((issue) => issue.level === 'error');
       if (errors.length) return Promise.resolve(json({ ok: false, validation: errors }));
 
@@ -330,14 +461,29 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
           : undefined;
 
       const sessionProject = deps.projectId();
-      const artifact = buildArtifact(kind, JSON.parse(serialized) as object, {
-        id: randomUUID(),
-        version: SMITH_ARTIFACT_VERSION,
-        createdAt: Date.now(),
-        ...(sessionProject ? { projectId: sessionProject } : {}),
-        ...(rationale ? { rationale } : {}),
-        warnings: issues.filter((issue) => issue.level === 'warning').slice(0, MAX_WARNINGS),
-      });
+      const targetProject = scope.projectId;
+      const artifact = buildArtifact(
+        kind,
+        JSON.parse(serialized) as object,
+        {
+          id: randomUUID(),
+          version: SMITH_ARTIFACT_VERSION,
+          createdAt: Date.now(),
+          ...(sessionProject ? { projectId: sessionProject } : {}),
+          ...(rationale ? { rationale } : {}),
+          warnings: issues.filter((issue) => issue.level === 'warning').slice(0, MAX_WARNINGS),
+        },
+        kind === 'entity_comparison'
+          ? {
+              entityKind,
+              name: entityName,
+              before: JSON.parse(JSON.stringify(beforeEntity)),
+              ...(targetProject && targetProject !== sessionProject
+                ? { targetProjectId: targetProject }
+                : {}),
+            }
+          : undefined,
+      );
       deps.emit(artifact);
       return Promise.resolve(json({ ok: true, artifactId: artifact.id }));
     },

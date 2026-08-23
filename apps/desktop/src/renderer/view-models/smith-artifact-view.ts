@@ -32,6 +32,7 @@ const SUPPORTED_ARTIFACT_KINDS: ReadonlyArray<SmithArtifact['kind']> = [
   'agent_design',
   'envelope_design',
   'checklist',
+  'entity_comparison',
 ];
 
 export function isRenderableArtifact(artifact: SmithArtifact): boolean {
@@ -45,6 +46,7 @@ export const ARTIFACT_KIND_LABEL: Record<SmithArtifact['kind'], string> = {
   agent_design: 'agent design',
   envelope_design: 'report design',
   checklist: 'checklist',
+  entity_comparison: 'entity comparison',
 };
 
 /** The identifying name the card's title shows. */
@@ -52,7 +54,8 @@ export function artifactName(artifact: SmithArtifact): string {
   if (artifact.kind === 'pipeline_design') return artifact.pipeline.id;
   if (artifact.kind === 'agent_design') return artifact.agent.name;
   if (artifact.kind === 'envelope_design') return artifact.envelope.name;
-  return artifact.checklist.title;
+  if (artifact.kind === 'checklist') return artifact.checklist.title;
+  return artifact.name;
 }
 
 // ── Checklist helpers ────────────────────────────────────────────────────────

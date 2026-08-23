@@ -845,7 +845,7 @@ export interface ValidationIssue {
  * `renderer/view-models/smith-artifact-view.ts`, and tests for both.
  */
 export type SmithArtifactKind =
-  'pipeline_design' | 'agent_design' | 'envelope_design' | 'checklist';
+  'pipeline_design' | 'agent_design' | 'envelope_design' | 'checklist' | 'entity_comparison';
 
 /** The protocol version this build reads. Unknown versions fail soft in the UI. */
 export const SMITH_ARTIFACT_VERSION = 1;
@@ -906,6 +906,21 @@ export interface SmithChecklistArtifact extends SmithArtifactBase {
   checklist: ChecklistDef;
 }
 
+export type EntityComparisonKind = 'agent' | 'pipeline' | 'envelope';
+
+/** A read-only semantic comparison between a stored entity and a proposed edit. */
+export interface SmithEntityComparisonArtifact extends SmithArtifactBase {
+  kind: 'entity_comparison';
+  entityKind: EntityComparisonKind;
+  name: string;
+  /** The current stored definition captured from main at present time. */
+  before: AgentDef | PipelineDef | EnvelopeDef;
+  /** The proposed definition validated against store rails. */
+  after: AgentDef | PipelineDef | EnvelopeDef;
+  /** Entity store target when it differs from the presenting conversation scope. */
+  targetProjectId?: string;
+}
+
 /**
  * One rich inline card in the Smith transcript. Artifacts are presentation
  * only: they perform no writes, never occupy the one-slot proposal queue, and
@@ -916,7 +931,8 @@ export type SmithArtifact =
   | SmithPipelineDesignArtifact
   | SmithAgentDesignArtifact
   | SmithEnvelopeDesignArtifact
-  | SmithChecklistArtifact;
+  | SmithChecklistArtifact
+  | SmithEntityComparisonArtifact;
 
 // ── Smith (the entity-smith's approval gate) ─────────────────────────────────
 
