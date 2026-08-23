@@ -75,7 +75,15 @@ function artifactOf(kind: SmithArtifact['kind'], version = SMITH_ARTIFACT_VERSIO
   if (kind === 'pipeline_design') return { ...base, kind, pipeline };
   if (kind === 'agent_design') return { ...base, kind, agent };
   if (kind === 'envelope_design') return { ...base, kind, envelope };
-  return { ...base, kind, checklist };
+  if (kind === 'checklist') return { ...base, kind, checklist };
+  return {
+    ...base,
+    kind,
+    entityKind: 'agent',
+    name: 'planner',
+    before: agent,
+    after: { ...agent, purpose: 'Plan faster.' },
+  };
 }
 
 describe('the artifact registry', () => {
@@ -88,6 +96,7 @@ describe('the artifact registry', () => {
   it('fails soft on a future version or an unknown kind', () => {
     expect(isRenderableArtifact(artifactOf('pipeline_design', 99))).toBe(false);
     expect(isRenderableArtifact(artifactOf('checklist', 99))).toBe(false);
+    expect(isRenderableArtifact(artifactOf('entity_comparison', 99))).toBe(false);
     expect(isRenderableArtifact({ kind: 'run_summary' } as unknown as SmithArtifact)).toBe(false);
   });
 
@@ -96,6 +105,7 @@ describe('the artifact registry', () => {
     expect(artifactName(artifactOf('agent_design'))).toBe('planner');
     expect(artifactName(artifactOf('envelope_design'))).toBe('severity_report');
     expect(artifactName(artifactOf('checklist'))).toBe('Project Health');
+    expect(artifactName(artifactOf('entity_comparison'))).toBe('planner');
   });
 });
 

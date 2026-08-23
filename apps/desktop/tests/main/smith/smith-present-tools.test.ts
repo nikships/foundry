@@ -89,16 +89,23 @@ const validChecklist: ChecklistDef = {
   ],
 };
 
-function makeStores(agents: AgentDef[] = [validAgent]): SmithEntityStores {
+function makeStores(
+  agents: AgentDef[] = [validAgent],
+  pipelines: PipelineDef[] = [validPipeline],
+  envelopes: EnvelopeDef[] = [validEnvelope],
+): SmithEntityStores {
   return {
     roster: { get: (name: string) => agents.find((a) => a.name === name) ?? null },
-    pipelines: { get: () => null },
-    envelopes: { list: () => [], get: () => null },
+    pipelines: { get: (id: string) => pipelines.find((p) => p.id === id) ?? null },
+    envelopes: {
+      list: () => envelopes,
+      get: (name: string) => envelopes.find((e) => e.name === name) ?? null,
+    },
     projects: { list: () => [] },
     rosterScope: () => ({}),
     pipelineScope: () => ({}),
     rosterFor: () => agents,
-    pipelinesFor: () => [],
+    pipelinesFor: () => pipelines,
     commandNames: () => [],
   } as unknown as SmithEntityStores;
 }
@@ -159,7 +166,7 @@ describe('smith_present', () => {
     expect(artifact.pipeline).not.toBe(validPipeline);
   });
 
-  it('emits agent, envelope, and checklist artifacts through the same registry', async () => {
+  it('emits agent, envelope, checklist, and entity_comparison artifacts through the same registry', async () => {
     const { deps, emitted } = makeDeps();
     const tool = smithPresentTool(deps);
     expect(await answerOf(tool, { kind: 'agent_design', spec: validAgent })).toMatchObject({
@@ -171,11 +178,80 @@ describe('smith_present', () => {
     expect(await answerOf(tool, { kind: 'checklist', spec: validChecklist })).toMatchObject({
       ok: true,
     });
+    expect(
+      await answerOf(tool, {
+        kind: 'entity_comparison',
+        entityKind: 'agent',
+        spec: { ...validAgent, purpose: 'Plan faster.' },
+      }),
+    ).toMatchObject({
+      ok: true,
+    });
     expect(emitted.map((artifact) => artifact.kind)).toEqual([
       'agent_design',
       'envelope_design',
       'checklist',
+      'entity_comparison',
     ]);
+  });
+
+  it('emits a versioned entity_comparison artifact with before fetched from the store and after validated', async () => {
+    const { deps, emitted } = makeDeps();
+    const tool = smithPresentTool(deps);
+    const editedAgent = { ...validAgent, purpose: 'Plan faster.', writes: ['docs/**'] };
+
+    const res = (await answerOf(tool, {
+      kind: 'entity_comparison',
+      entityKind: 'agent',
+      name: 'planner',
+      spec: editedAgent,
+      rationale: 'Allow docs updates.',
+    })) as { ok: boolean; artifactId: string };
+
+    expect(res.ok).toBe(true);
+    expect(emitted).toHaveLength(1);
+    const artifact = emitted[0]!;
+    expect(res.artifactId).toBe(artifact.id);
+    expect(artifact).toMatchObject({
+      kind: 'entity_comparison',
+      entityKind: 'agent',
+      name: 'planner',
+      version: SMITH_ARTIFACT_VERSION,
+      rationale: 'Allow docs updates.',
+      warnings: [],
+    });
+    if (artifact.kind !== 'entity_comparison') throw new Error('expected comparison artifact');
+    expect(artifact.before).toEqual(validAgent);
+    expect(artifact.after).toEqual(editedAgent);
+    expect(() => structuredClone(artifact)).not.toThrow();
+  });
+
+  it('refuses entity_comparison if the entity does not exist in the store', async () => {
+    const { deps, emitted } = makeDeps();
+    const tool = smithPresentTool(deps);
+    const res = (await answerOf(tool, {
+      kind: 'entity_comparison',
+      entityKind: 'agent',
+      spec: { ...validAgent, name: 'nonexistent_agent' },
+    })) as { ok: boolean; error: string };
+
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/does not exist in the store/);
+    expect(emitted).toHaveLength(0);
+  });
+
+  it('refuses entity_comparison if after spec fails validation', async () => {
+    const { deps, emitted } = makeDeps();
+    const tool = smithPresentTool(deps);
+    const res = (await answerOf(tool, {
+      kind: 'entity_comparison',
+      entityKind: 'agent',
+      spec: { ...validAgent, color: 'not_a_valid_hex' },
+    })) as { ok: boolean; validation?: unknown[] };
+
+    expect(res.ok).toBe(false);
+    expect(res.validation?.length).toBeTruthy();
+    expect(emitted).toHaveLength(0);
   });
 
   it('emits a versioned checklist artifact with items and acknowledges with its id', async () => {
