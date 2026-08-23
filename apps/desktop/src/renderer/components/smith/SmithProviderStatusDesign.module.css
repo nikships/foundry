@@ -1,0 +1,312 @@
+/**
+ * Provider / Companion status design body for Smith artifact cards.
+ * Compact mode tightens spacing for the titlebar bubble.
+ */
+
+.status {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  min-width: 0;
+}
+
+.status.compact {
+  gap: var(--s2);
+  font-size: var(--text-xs);
+}
+
+/* ── Summary ── */
+
+.summaryBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+}
+
+.compact .summaryBar {
+  padding: var(--s1) var(--s2);
+}
+
+.summaryText {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text);
+  line-height: var(--leading);
+  overflow-wrap: break-word;
+}
+
+.compact .summaryText {
+  font-size: var(--text-xs);
+}
+
+/* ── Sections ── */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+}
+
+.compact .section {
+  padding: var(--s2);
+  gap: var(--s1);
+}
+
+.sectionHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.sectionTitle {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.sectionLine {
+  font-size: var(--text-xs);
+  line-height: var(--leading);
+  color: var(--text-dim);
+  overflow-wrap: break-all;
+}
+
+.stateBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px var(--s2);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+
+.stateBadgeOn {
+  background: color-mix(in srgb, var(--green-dim) 40%, var(--bg-raised));
+  border-color: color-mix(in srgb, var(--green) 35%, var(--line-strong));
+  color: var(--green);
+}
+
+.stateBadgeOff {
+  background: var(--bg-raised);
+  border-color: var(--line);
+  color: var(--text-dim);
+}
+
+.protocolBadge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+/* ── Provider rows ── */
+
+.providerList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.providerRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  padding: var(--s2) 0;
+  border-bottom: 1px solid var(--line-faint);
+}
+
+.providerRow:last-child {
+  border-bottom: none;
+}
+
+.providerHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.compact .providerHead {
+  gap: var(--s1);
+}
+
+.providerLabel {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: break-word;
+}
+
+.connectionBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px var(--s2);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+  flex: none;
+}
+
+.connectionBadge_connected {
+  background: color-mix(in srgb, var(--green-dim) 40%, var(--bg-raised));
+  border-color: color-mix(in srgb, var(--green) 35%, var(--line-strong));
+  color: var(--green);
+}
+
+.connectionBadge_authenticating {
+  background: color-mix(in srgb, var(--accent-dim) 40%, var(--bg-raised));
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--line-strong));
+  color: var(--accent);
+}
+
+.connectionBadge_disconnected {
+  background: var(--bg-raised);
+  border-color: var(--line);
+  color: var(--text-dim);
+}
+
+.connectionBadge_error {
+  background: color-mix(in srgb, var(--red-dim) 40%, var(--bg-raised));
+  border-color: color-mix(in srgb, var(--red) 35%, var(--line-strong));
+  color: var(--red);
+}
+
+.inFlight {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--accent);
+  flex: none;
+}
+
+.keyBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px var(--s2);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  color: var(--text-faint);
+  flex: none;
+}
+
+.keyBadgePresent {
+  color: var(--text-dim);
+  border-color: var(--line-strong);
+}
+
+.providerError {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--red);
+  overflow-wrap: break-word;
+}
+
+/* ── Accounts ── */
+
+.accountList {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 var(--s3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.account {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.accountLabel {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow-wrap: break-all;
+}
+
+.accountFlag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--amber);
+  flex: none;
+}
+
+.accountMeta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  flex: none;
+}
+
+/* ── Companion devices ── */
+
+.deviceList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.device {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.deviceName {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: break-word;
+}
+
+.deviceMeta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  flex: none;
+}
+
+.privacyNote {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-faint);
+  overflow-wrap: break-word;
+}

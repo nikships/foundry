@@ -13,6 +13,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import type { RunDetail } from '@shared/ipc-contract.js';
 import {
   SMITH_ARTIFACT_VERSION,
   type AgentDef,
@@ -21,6 +22,7 @@ import {
   type ChangeReceiptDef,
   type ChangeReceiptStatus,
   type ChangeReceiptTarget,
+  type CheckpointDef,
   type ChecklistDef,
   type DataTableDef,
   type DiagnosticsDef,
@@ -38,10 +40,15 @@ import {
   type ProjectCardGithub,
   type ProjectCardHealth,
   type ProjectDef,
+  type ProviderStatusDef,
   type PullRequest,
+  type ReadinessJourneyDef,
+  type ReadinessPhase,
   type SettingsDiffDef,
   type SmithArtifact,
-  type SmithArtifactKind,
+  type SmithPresentableArtifactKind,
+  type SmithRunSummaryArtifact,
+  type SmithRunSummaryPhase,
   type ValidationIssue,
 } from '@shared/types.js';
 import { defineTool, type ToolDefinition } from '../pi/tool-definition.js';
@@ -50,15 +57,21 @@ import { validate as validatePipeline } from '../store/pipelines.js';
 import { validate as validateEnvelope } from '../store/envelopes.js';
 import { changedPaths, diffStat } from '../engine/git.js';
 import type { SmithEntityStores } from './entity-tools.js';
-import { field, json, resolveProjectId } from './tool-helpers.js';
+import { field, json, resolveProjectId, stringField } from './tool-helpers.js';
 
 export const SMITH_PRESENT_TOOL_NAME = 'smith_present';
 
+/**
+ * The kinds the model may present. `action_receipt` is absent by construction:
+ * a receipt is evidence an action ran, minted by main from the executor result
+ * on the proposal answer path, so Smith cannot fabricate one here.
+ */
 const ARTIFACT_KINDS = [
   'pipeline_design',
   'agent_design',
   'envelope_design',
   'checklist',
+  'run_summary',
   'entity_comparison',
   'change_receipt',
   'project_card',
@@ -67,7 +80,10 @@ const ARTIFACT_KINDS = [
   'diagnostics',
   'data_table',
   'evidence_disclosure',
-] as const;
+  'engineer_checkpoint',
+  'readiness_journey',
+  'provider_status',
+] as const satisfies readonly SmithPresentableArtifactKind[];
 
 const ENTITY_COMPARISON_KINDS = ['agent', 'pipeline', 'envelope'] as const;
 
@@ -94,6 +110,38 @@ const VALID_BASE_SYNC_STATES = new Set([
 const VALID_PR_CHECKS = new Set(['passing', 'failing', 'pending', 'none']);
 const VALID_PR_MERGEABLE = new Set(['mergeable', 'conflicting', 'unknown']);
 const VALID_PR_ACTIONS = new Set(['create', 'merge', 'fix_conflicts']);
+const VALID_CHECKPOINT_ACTION_KINDS = new Set(['approve', 'reject', 'edit']);
+const VALID_CHECKPOINT_DECISIONS = new Set(['approve', 'reject']);
+const VALID_READINESS_PHASES: ReadonlySet<string> = new Set<ReadinessPhase>([
+  'idle',
+  'inspecting',
+  'confirming',
+  'evaluating',
+  'not_ready',
+  'remediating',
+  'verifying',
+  'needs_continue',
+  'pr_ready',
+  'awaiting_merge',
+  'confirming_merge',
+  'finalizing',
+  'complete',
+  'skipped',
+  'failed',
+]);
+const VALID_CRITERION_STATUSES = new Set(['pass', 'fail', 'n/a']);
+const VALID_WORK_KINDS = new Set(['text', 'tool', 'note', 'error']);
+const VALID_PROVIDER_CONNECTIONS = new Set([
+  'connected',
+  'authenticating',
+  'disconnected',
+  'error',
+]);
+const MAX_CHECKPOINT_ANSWER = 8_000;
+const MAX_JOURNEY_CRITERIA = 60;
+const MAX_JOURNEY_WORK = 200;
+const MAX_STATUS_PROVIDERS = 40;
+const MAX_STATUS_DEVICES = 40;
 
 /**
  * Field names that read as credentials. An artifact is persisted with the
@@ -108,11 +156,13 @@ export interface SmithPresentToolDeps {
   projectId: () => string | undefined;
   /** Hands the finished artifact to the chat session's transcript. */
   emit: (artifact: SmithArtifact) => void;
+  /** Authoritative run detail lookup from trace, used to derive run_summary snapshots. */
+  runLookup?: (projectId: string, runId: string) => RunDetail | null;
 }
 
-function parseArtifactKind(raw: unknown): SmithArtifactKind | null {
+function parseArtifactKind(raw: unknown): SmithPresentableArtifactKind | null {
   return typeof raw === 'string' && (ARTIFACT_KINDS as readonly string[]).includes(raw)
-    ? (raw as SmithArtifactKind)
+    ? (raw as SmithPresentableArtifactKind)
     : null;
 }
 
@@ -147,6 +197,385 @@ export function findSecretKey(value: unknown, path = ''): string | null {
     if (found) return found;
   }
   return null;
+}
+
+/**
+ * Anything credential-shaped on a provider/Companion payload, beyond the
+ * `keyPresent` boolean the card is allowed to know. A masked prefix or a
+ * pairing payload is as unwelcome here as the value itself: this artifact is
+ * echoed to every window and persisted with the chat, while a key belongs only
+ * in the approval card and a QR payload only in a renderer-local display.
+ */
+const PROVIDER_FORBIDDEN_FIELD = /(key|token|secret|credential|password|pairing|qr)/i;
+const PROVIDER_ALLOWED_FIELD = /^keyPresent$/;
+
+/** Depth-first scan naming the first forbidden provider/Companion field. */
+export function findProviderSecretField(value: unknown, path = ''): string | null {
+  if (value == null || typeof value !== 'object') return null;
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i += 1) {
+      const found = findProviderSecretField(value[i], `${path}[${i}]`);
+      if (found) return found;
+    }
+    return null;
+  }
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    const here = path ? `${path}.${key}` : key;
+    if (PROVIDER_FORBIDDEN_FIELD.test(key) && !PROVIDER_ALLOWED_FIELD.test(key)) return here;
+    const found = findProviderSecretField(child, here);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** A required non-empty string. Narrows so callers can keep reading. */
+function requireString(
+  issues: ValidationIssue[],
+  value: unknown,
+  where: string,
+  what: string,
+): value is string {
+  if (typeof value !== 'string' || !value.trim()) {
+    issues.push({ level: 'error', where, message: `${what} is required` });
+    return false;
+  }
+  return true;
+}
+
+/** An optional string: a wrong type is an error, an over-long one a warning. */
+function optionalString(
+  issues: ValidationIssue[],
+  value: unknown,
+  where: string,
+  max: number,
+): void {
+  if (value === undefined || value === null) return;
+  if (typeof value !== 'string') {
+    issues.push({ level: 'error', where, message: `${where} must be a string` });
+    return;
+  }
+  if (value.length > max) {
+    issues.push({ level: 'warning', where, message: `${where} exceeds ${max} characters` });
+  }
+}
+
+function optionalBoolean(issues: ValidationIssue[], value: unknown, where: string): void {
+  if (value !== undefined && typeof value !== 'boolean') {
+    issues.push({ level: 'error', where, message: `${where} must be a boolean` });
+  }
+}
+
+function optionalNumber(issues: ValidationIssue[], value: unknown, where: string): void {
+  if (value !== undefined && typeof value !== 'number') {
+    issues.push({ level: 'error', where, message: `${where} must be a number` });
+  }
+}
+
+function requireEnum(
+  issues: ValidationIssue[],
+  value: unknown,
+  where: string,
+  allowed: ReadonlySet<string>,
+): void {
+  if (typeof value !== 'string' || !allowed.has(value)) {
+    issues.push({
+      level: 'error',
+      where,
+      message: `invalid ${where} "${String(value)}" (must be ${[...allowed].join(', ')})`,
+    });
+  }
+}
+
+function optionalEnum(
+  issues: ValidationIssue[],
+  value: unknown,
+  where: string,
+  allowed: ReadonlySet<string>,
+): void {
+  if (value === undefined) return;
+  requireEnum(issues, value, where, allowed);
+}
+
+/** The value as a plain object, or null with the error already recorded. */
+function objectAt(
+  issues: ValidationIssue[],
+  value: unknown,
+  where: string,
+): Record<string, unknown> | null {
+  if (value == null || typeof value !== 'object' || Array.isArray(value)) {
+    issues.push({ level: 'error', where, message: `${where} must be an object` });
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+/** An optional array, capped so an oversized card never reaches the renderer. */
+function arrayAt(
+  issues: ValidationIssue[],
+  value: unknown,
+  where: string,
+  max: number,
+): unknown[] | null {
+  if (value === undefined) return null;
+  if (!Array.isArray(value)) {
+    issues.push({ level: 'error', where, message: `${where} must be an array` });
+    return null;
+  }
+  if (value.length > max) {
+    issues.push({
+      level: 'error',
+      where,
+      message: `${where} cannot exceed ${max} entries (${value.length} supplied)`,
+    });
+    return null;
+  }
+  return value;
+}
+
+export function validateCheckpoint(spec: unknown): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const raw = objectAt(issues, spec, 'spec');
+  if (!raw) return issues;
+
+  requireString(issues, raw.interruptId, 'interruptId', 'checkpoint interruptId');
+  requireString(issues, raw.title, 'title', 'checkpoint title');
+  requireString(issues, raw.question, 'question', 'checkpoint question');
+  optionalString(issues, raw.title, 'title', 200);
+  optionalString(issues, raw.question, 'question', 4_000);
+  optionalString(issues, raw.runId, 'runId', 200);
+  optionalString(issues, raw.phaseId, 'phaseId', 200);
+  optionalString(issues, raw.pipelineId, 'pipelineId', 200);
+  optionalString(issues, raw.raisedAt, 'raisedAt', 100);
+  optionalString(issues, raw.draftAnswer, 'draftAnswer', MAX_CHECKPOINT_ANSWER);
+  optionalBoolean(issues, raw.answered, 'answered');
+  optionalEnum(issues, raw.decision, 'decision', VALID_CHECKPOINT_DECISIONS);
+
+  const actions = arrayAt(issues, raw.actions, 'actions', 10);
+  for (const [index, entry] of (actions ?? []).entries()) {
+    const where = `actions[${index}]`;
+    const action = objectAt(issues, entry, where);
+    if (!action) continue;
+    requireString(issues, action.id, `${where}.id`, 'action id');
+    requireString(issues, action.label, `${where}.label`, 'action label');
+    optionalString(issues, action.label, `${where}.label`, 100);
+    requireEnum(issues, action.kind, `${where}.kind`, VALID_CHECKPOINT_ACTION_KINDS);
+  }
+
+  return issues;
+}
+
+export function validateReadinessJourney(spec: unknown): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const raw = objectAt(issues, spec, 'spec');
+  if (!raw) return issues;
+
+  requireEnum(issues, raw.phase, 'phase', VALID_READINESS_PHASES);
+  optionalString(issues, raw.projectId, 'projectId', 200);
+  optionalString(issues, raw.projectName, 'projectName', 200);
+  optionalString(issues, raw.detail, 'detail', 500);
+  optionalString(issues, raw.checklistSummary, 'checklistSummary', 500);
+
+  const marker = objectAt(issues, raw.marker, 'marker');
+  if (marker) {
+    if (typeof marker.valid !== 'boolean') {
+      issues.push({
+        level: 'error',
+        where: 'marker.valid',
+        message: 'marker validity is required and must be a boolean',
+      });
+    }
+    requireString(issues, marker.detail, 'marker.detail', 'marker detail');
+    optionalString(issues, marker.detail, 'marker.detail', 500);
+    optionalString(issues, marker.summary, 'marker.summary', 500);
+    optionalString(issues, marker.ref, 'marker.ref', 200);
+    optionalString(issues, marker.commit, 'marker.commit', 200);
+    optionalString(issues, marker.generatedAt, 'marker.generatedAt', 100);
+    optionalEnum(issues, marker.source, 'marker.source', new Set(['base-ref', 'worktree']));
+  }
+
+  if (!Array.isArray(raw.criteria)) {
+    issues.push({ level: 'error', where: 'criteria', message: 'criteria must be an array' });
+  } else {
+    const criteria = arrayAt(issues, raw.criteria, 'criteria', MAX_JOURNEY_CRITERIA);
+    for (const [index, entry] of (criteria ?? []).entries()) {
+      const where = `criteria[${index}]`;
+      const criterion = objectAt(issues, entry, where);
+      if (!criterion) continue;
+      requireString(issues, criterion.id, `${where}.id`, 'criterion id');
+      requireEnum(issues, criterion.status, `${where}.status`, VALID_CRITERION_STATUSES);
+      optionalString(issues, criterion.notes, `${where}.notes`, 500);
+    }
+  }
+
+  if (raw.stack !== undefined) {
+    const stack = objectAt(issues, raw.stack, 'stack');
+    if (stack) {
+      optionalBoolean(issues, stack.monorepo, 'stack.monorepo');
+      for (const key of ['languages', 'packages'] as const) {
+        if (stack[key] === undefined) continue;
+        const list = arrayAt(issues, stack[key], `stack.${key}`, 60);
+        for (const [index, value] of (list ?? []).entries()) {
+          if (typeof value !== 'string') {
+            issues.push({
+              level: 'error',
+              where: `stack.${key}[${index}]`,
+              message: `stack.${key} entries must be strings`,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  const work = arrayAt(issues, raw.work, 'work', MAX_JOURNEY_WORK);
+  for (const [index, entry] of (work ?? []).entries()) {
+    const where = `work[${index}]`;
+    const row = objectAt(issues, entry, where);
+    if (!row) continue;
+    requireString(issues, row.id, `${where}.id`, 'work entry id');
+    requireEnum(issues, row.kind, `${where}.kind`, VALID_WORK_KINDS);
+    requireString(issues, row.text, `${where}.text`, 'work entry text');
+    optionalString(issues, row.text, `${where}.text`, 2_000);
+    optionalEnum(
+      issues,
+      row.toolKind,
+      `${where}.toolKind`,
+      new Set(['command', 'read', 'edit', 'search', 'other']),
+    );
+    optionalBoolean(issues, row.done, `${where}.done`);
+    optionalBoolean(issues, row.failed, `${where}.failed`);
+  }
+
+  if (raw.pr !== undefined) {
+    const pr = objectAt(issues, raw.pr, 'pr');
+    if (pr) {
+      if (typeof pr.number !== 'number') {
+        issues.push({ level: 'error', where: 'pr.number', message: 'pr number must be a number' });
+      }
+      requireString(issues, pr.url, 'pr.url', 'pr url');
+      if (typeof pr.merged !== 'boolean') {
+        issues.push({
+          level: 'error',
+          where: 'pr.merged',
+          message: 'pr merged must be a boolean',
+        });
+      }
+      optionalString(issues, pr.mergeDetail, 'pr.mergeDetail', 500);
+    }
+  }
+
+  const actions = arrayAt(issues, raw.actions, 'actions', 8);
+  for (const [index, action] of (actions ?? []).entries()) {
+    if (typeof action !== 'string' || !action.trim()) {
+      issues.push({
+        level: 'error',
+        where: `actions[${index}]`,
+        message: 'action label must be a non-empty string',
+      });
+    } else {
+      optionalString(issues, action, `actions[${index}]`, 60);
+    }
+  }
+
+  return issues;
+}
+
+export function validateProviderStatus(spec: unknown): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const raw = objectAt(issues, spec, 'spec');
+  if (!raw) return issues;
+
+  optionalString(issues, raw.title, 'title', 200);
+  optionalString(issues, raw.summary, 'summary', 500);
+
+  const providers = arrayAt(issues, raw.providers, 'providers', MAX_STATUS_PROVIDERS);
+  for (const [index, entry] of (providers ?? []).entries()) {
+    const where = `providers[${index}]`;
+    const provider = objectAt(issues, entry, where);
+    if (!provider) continue;
+    requireString(issues, provider.id, `${where}.id`, 'provider id');
+    requireString(issues, provider.label, `${where}.label`, 'provider label');
+    requireEnum(issues, provider.connection, `${where}.connection`, VALID_PROVIDER_CONNECTIONS);
+    if (typeof provider.authenticated !== 'boolean') {
+      issues.push({
+        level: 'error',
+        where: `${where}.authenticated`,
+        message: 'provider authenticated is required and must be a boolean',
+      });
+    }
+    optionalBoolean(issues, provider.keyPresent, `${where}.keyPresent`);
+    optionalBoolean(issues, provider.loginInFlight, `${where}.loginInFlight`);
+    optionalString(issues, provider.error, `${where}.error`, 500);
+
+    const accounts = arrayAt(issues, provider.accounts, `${where}.accounts`, 20);
+    for (const [accountIndex, accountEntry] of (accounts ?? []).entries()) {
+      const accountWhere = `${where}.accounts[${accountIndex}]`;
+      const account = objectAt(issues, accountEntry, accountWhere);
+      if (!account) continue;
+      requireString(issues, account.label, `${accountWhere}.label`, 'account label');
+      optionalString(issues, account.label, `${accountWhere}.label`, 200);
+      optionalBoolean(issues, account.expired, `${accountWhere}.expired`);
+      optionalBoolean(issues, account.disabled, `${accountWhere}.disabled`);
+      optionalString(issues, account.expiresAt, `${accountWhere}.expiresAt`, 100);
+    }
+  }
+
+  if (raw.bridge !== undefined) {
+    const bridge = objectAt(issues, raw.bridge, 'bridge');
+    if (bridge) {
+      if (typeof bridge.running !== 'boolean') {
+        issues.push({
+          level: 'error',
+          where: 'bridge.running',
+          message: 'bridge running is required and must be a boolean',
+        });
+      }
+      optionalNumber(issues, bridge.port, 'bridge.port');
+      optionalString(issues, bridge.baseUrl, 'bridge.baseUrl', 500);
+      optionalString(issues, bridge.reason, 'bridge.reason', 200);
+      optionalString(issues, bridge.detail, 'bridge.detail', 500);
+    }
+  }
+
+  if (raw.companion !== undefined) {
+    const companion = objectAt(issues, raw.companion, 'companion');
+    if (companion) {
+      if (typeof companion.running !== 'boolean') {
+        issues.push({
+          level: 'error',
+          where: 'companion.running',
+          message: 'companion running is required and must be a boolean',
+        });
+      }
+      optionalString(issues, companion.origin, 'companion.origin', 500);
+      optionalNumber(issues, companion.protocolVersion, 'companion.protocolVersion');
+      optionalString(issues, companion.detail, 'companion.detail', 500);
+
+      const devices = arrayAt(issues, companion.devices, 'companion.devices', MAX_STATUS_DEVICES);
+      for (const [index, entry] of (devices ?? []).entries()) {
+        const where = `companion.devices[${index}]`;
+        const device = objectAt(issues, entry, where);
+        if (!device) continue;
+        requireString(issues, device.deviceId, `${where}.deviceId`, 'device id');
+        requireString(issues, device.name, `${where}.name`, 'device name');
+        optionalString(issues, device.pairedAt, `${where}.pairedAt`, 100);
+        optionalString(issues, device.lastSeenAt, `${where}.lastSeenAt`, 100);
+      }
+    }
+  }
+
+  const forbidden = findProviderSecretField(raw);
+  if (forbidden) {
+    issues.push({
+      level: 'error',
+      where: forbidden,
+      message:
+        'provider status must not carry a key, token, or pairing field — a key belongs only in ' +
+        'the masked approval card and a pairing payload only in the renderer-local display',
+    });
+  }
+
+  return issues;
 }
 
 export function validateChecklist(spec: unknown): ValidationIssue[] {
@@ -1508,7 +1937,7 @@ export function derivePrCard(params: {
 
 function validateSpec(
   stores: SmithEntityStores,
-  kind: SmithArtifactKind,
+  kind: SmithPresentableArtifactKind,
   spec: object,
   projectId?: string,
   comparisonKind?: EntityComparisonKind,
@@ -1521,7 +1950,9 @@ function validateSpec(
   if (kind === 'diagnostics') return validateDiagnostics(spec);
   if (kind === 'data_table') return validateDataTable(spec);
   if (kind === 'evidence_disclosure') return validateEvidenceDisclosure(spec);
-
+  if (kind === 'engineer_checkpoint') return validateCheckpoint(spec);
+  if (kind === 'readiness_journey') return validateReadinessJourney(spec);
+  if (kind === 'provider_status') return validateProviderStatus(spec);
   const targetKind =
     kind === 'entity_comparison'
       ? comparisonKind === 'agent'
@@ -1561,30 +1992,12 @@ function validateSpec(
 }
 
 function buildArtifact(
-  kind: SmithArtifactKind,
+  kind: SmithPresentableArtifactKind,
   spec: object,
-  base: Omit<
-    SmithArtifact,
-    | 'kind'
-    | 'pipeline'
-    | 'agent'
-    | 'envelope'
-    | 'checklist'
-    | 'entityKind'
-    | 'name'
-    | 'before'
-    | 'after'
-    | 'targetProjectId'
-    | 'receipt'
-    | 'project'
-    | 'pr'
-    | 'diff'
-    | 'diagnostics'
-    | 'table'
-    | 'evidence'
-    | 'usage'
-    | 'sampleOutput'
-  >,
+  // `keyof` a union is the intersection of its members' keys, so this is
+  // exactly the shared artifact base — every kind's own payload is supplied
+  // by the branch that builds it.
+  base: Omit<SmithArtifact, 'kind'>,
   extra?: {
     entityKind?: EntityComparisonKind;
     name?: string;
@@ -1620,6 +2033,13 @@ function buildArtifact(
   if (kind === 'evidence_disclosure') {
     return { ...base, kind, evidence: spec as EvidenceDisclosureDef };
   }
+  if (kind === 'engineer_checkpoint') {
+    return { ...base, kind, checkpoint: spec as CheckpointDef };
+  }
+  if (kind === 'readiness_journey') {
+    return { ...base, kind, journey: spec as ReadinessJourneyDef };
+  }
+  if (kind === 'provider_status') return { ...base, kind, status: spec as ProviderStatusDef };
   if (kind === 'entity_comparison') {
     return {
       ...base,
@@ -1631,7 +2051,103 @@ function buildArtifact(
       ...(extra?.targetProjectId ? { targetProjectId: extra.targetProjectId } : {}),
     };
   }
-  return { ...base, kind, pipeline: spec as PipelineDef };
+  return { ...base, kind: 'pipeline_design', pipeline: spec as PipelineDef };
+}
+
+function buildRunSummaryArtifact(
+  detail: RunDetail,
+  base: Omit<
+    SmithRunSummaryArtifact,
+    | 'kind'
+    | 'runId'
+    | 'pipelineId'
+    | 'pipelineName'
+    | 'request'
+    | 'status'
+    | 'startedAt'
+    | 'endedAt'
+    | 'durationMs'
+    | 'totalTokens'
+    | 'isolation'
+    | 'worktreePath'
+    | 'branch'
+    | 'baseRef'
+    | 'outcomeDetail'
+    | 'activePhase'
+    | 'failedPhase'
+    | 'phases'
+    | 'prNumber'
+    | 'prUrl'
+    | 'issueNumber'
+    | 'issueUrl'
+    | 'live'
+  >,
+): SmithRunSummaryArtifact {
+  const run = detail.run!;
+  const startedTime = run.startedAt ? new Date(run.startedAt).getTime() : 0;
+  const endedTime = run.endedAt ? new Date(run.endedAt).getTime() : 0;
+  const durationMs =
+    startedTime > 0 && endedTime > 0
+      ? Math.max(0, endedTime - startedTime)
+      : startedTime > 0
+        ? Math.max(0, Date.now() - startedTime)
+        : undefined;
+
+  const phases: SmithRunSummaryPhase[] = detail.phases.map((p) => {
+    const pStart = p.startedAt ? new Date(p.startedAt).getTime() : 0;
+    const pEnd = p.endedAt ? new Date(p.endedAt).getTime() : 0;
+    const pDuration =
+      pStart > 0 && pEnd > 0
+        ? Math.max(0, pEnd - pStart)
+        : pStart > 0
+          ? Math.max(0, Date.now() - pStart)
+          : undefined;
+    const env = detail.envelopes.find((e) => e.phaseId === p.phaseId);
+    const envSummary = typeof env?.payload?.summary === 'string' ? env.payload.summary : null;
+
+    return {
+      phaseId: p.phaseId,
+      name: p.name,
+      kind: p.kind,
+      status: p.status,
+      owner: p.owner || undefined,
+      startedAt: p.startedAt,
+      endedAt: p.endedAt,
+      durationMs: pDuration,
+      error: p.error,
+      envelopeSummary: envSummary,
+    };
+  });
+
+  const activePhase = phases.find((p) => p.status === 'running')?.name ?? null;
+  const failedPhase = phases.find((p) => p.status === 'fail')?.name ?? null;
+
+  return {
+    ...base,
+    kind: 'run_summary',
+    runId: run.runId,
+    pipelineId: run.pipelineId,
+    pipelineName: run.pipelineName,
+    request: run.request,
+    status: run.status,
+    startedAt: run.startedAt,
+    endedAt: run.endedAt,
+    durationMs,
+    totalTokens: run.totalTokens,
+    isolation: run.worktreePath !== null,
+    worktreePath: run.worktreePath,
+    branch: run.branch,
+    baseRef: run.baseRef,
+    outcomeDetail: run.outcomeDetail,
+    activePhase,
+    failedPhase,
+    phases,
+    prNumber: run.prNumber,
+    prUrl: run.prUrl,
+    issueNumber: run.issueNumber,
+    issueUrl: run.issueUrl,
+    live: detail.live,
+  };
 }
 
 export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
@@ -1639,17 +2155,25 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
     name: SMITH_PRESENT_TOOL_NAME,
     label: 'Smith present',
     description:
-      'Show the operator a rich inline design, checklist report, entity comparison, change receipt, project card, pull request card, ' +
-      'settings diff, diagnostics report, data catalog table, or context/evidence disclosure card in the chat. Use it before ' +
-      'proposing a non-trivial pipeline, agent, or envelope, to compare a proposed edit against the stored definition, ' +
-      'to record a change/command receipt after direct checkout work, to show project state/divergence/health, to present a PR preview/result, ' +
-      'to display settings changes with human labels and old/new values, ' +
-      'to present doctor/orphan/update diagnostics, to present bounded catalogs of entities/runs/projects, ' +
-      'or to disclose context occupancy and capped evidence: ' +
-      'the card renders structured definitions and receipts far better than prose or JSON. It is ' +
-      'presentation only — it saves nothing, needs no approval, and is not evidence any action ' +
-      'succeeded. Do not repeat the card content in prose; add only rationale, uncertainty, or ' +
-      'a recommendation.',
+      'Show the operator a rich inline card in the chat: an entity design, a checklist report, ' +
+      'a run summary, an entity comparison, a change receipt, a project card, a pull request ' +
+      'card, a settings diff, a diagnostics report, a data catalog table, a context/evidence ' +
+      'disclosure, an engineer checkpoint, the readiness journey, or provider/Companion status. ' +
+      'Use it before proposing a non-trivial pipeline, agent, or envelope, to compare a proposed ' +
+      'edit against the stored definition, to record a change/command receipt after direct ' +
+      'checkout work, to present a checklist/doctor/readiness/validation report, for run ' +
+      'summaries (run_summary) when reporting on run status, progress, or outcomes, to show ' +
+      'project state/divergence/health, to present a PR preview/result, to display settings ' +
+      'changes with human labels and old/new values, to present doctor/orphan/update ' +
+      'diagnostics, to present bounded catalogs of entities/runs/projects, to disclose context ' +
+      'occupancy and capped evidence, to surface a pending engineer checkpoint with its run ' +
+      'context, to show the whole readiness journey (marker, criteria, remediation, PR), or to ' +
+      'report provider connection and paired Companion devices. It is presentation only — it ' +
+      'saves nothing, needs no approval, answers no checkpoint, and is not evidence any action ' +
+      'succeeded: approving a checkpoint or changing readiness still goes through the approval ' +
+      'card. Never put an API key, token, masked key prefix, or Companion pairing payload in a ' +
+      'spec. Do not repeat the card content in prose; add only rationale, uncertainty, or a ' +
+      'recommendation.',
     parameters: {
       type: 'object',
       properties: {
@@ -1657,7 +2181,9 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
           type: 'string',
           enum: [...ARTIFACT_KINDS],
           description:
-            'Which design, checklist, comparison, change receipt, project card, PR card, settings diff, diagnostics, data table, or evidence disclosure card to show.',
+            'Which card to show: a design, checklist, run summary, comparison, change receipt, ' +
+            'project card, PR card, settings diff, diagnostics, data table, evidence ' +
+            'disclosure, engineer checkpoint, readiness journey, or provider/Companion status.',
         },
         entityKind: {
           type: 'string',
@@ -1673,7 +2199,15 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
         spec: {
           type: 'object',
           description:
-            'The full entity JSON, checklist definition, comparison edit, change receipt, project card, PR card definition, settings diff, diagnostics report, data table definition, or context/evidence disclosure definition.',
+            'The card payload. Entity JSON for a design or comparison edit; a checklist ' +
+            'definition; a run_summary spec object; a change receipt (target, status, ' +
+            'filesChanged, diffstat, command, outputExcerpt); a project card or PR card ' +
+            'definition; a settings diff, diagnostics report, data table definition, or ' +
+            'context/evidence disclosure definition; an engineer checkpoint (interruptId, ' +
+            'title, question, runId, phaseId, draftAnswer, actions); a readiness journey ' +
+            '(phase, marker, criteria, work, pr, actions); or provider status (providers with ' +
+            'connection/authenticated/keyPresent, bridge, companion with paired devices). Never ' +
+            'a key, token, or pairing payload.',
         },
         usage: {
           type: 'object',
@@ -1685,56 +2219,94 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
           description:
             'When kind is envelope_design, optional sample JSON output for the envelope.',
         },
+        runId: {
+          type: 'string',
+          description: 'The run ID to summarize (for run_summary artifacts).',
+        },
         rationale: {
           type: 'string',
-          description: 'Optional short design rationale or tradeoffs, shown on the card.',
+          description: 'Optional short design rationale, context, or notes, shown on the card.',
         },
         projectId: {
           type: 'string',
-          description: 'Optional project whose roster/commands the design is validated against.',
+          description: 'Optional project scope.',
         },
       },
-      required: ['kind', 'spec'],
+      required: ['kind'],
       additionalProperties: false,
     },
     execute: (_id, params) => {
       const kind = parseArtifactKind(field(params, 'kind'));
       if (!kind) return Promise.resolve(json({ ok: false, error: 'unknown artifact kind' }));
-      const spec = field(params, 'spec');
-      if (spec == null || typeof spec !== 'object' || Array.isArray(spec)) {
-        return Promise.resolve(json({ ok: false, error: 'present needs a spec object' }));
-      }
-      const scope = resolveProjectId(field(params, 'projectId'), deps.projectId());
-      if (!scope.ok) return Promise.resolve(json(scope));
 
-      const secretPath = findSecretKey(spec);
+      const secretPath = findSecretKey(params);
       if (secretPath) {
         return Promise.resolve(
           json({ ok: false, error: `spec must not carry a credential field (${secretPath})` }),
         );
       }
 
+      // `params` is scanned whole above, so a credential hidden in `usage` or
+      // `sampleOutput` is already refused before either is read here.
       const paramUsage = field(params, 'usage');
-      if (paramUsage !== undefined) {
-        const usageSecret = findSecretKey(paramUsage, 'usage');
-        if (usageSecret) {
-          return Promise.resolve(
-            json({ ok: false, error: `usage must not carry a credential field (${usageSecret})` }),
-          );
+      const paramSampleOutput = field(params, 'sampleOutput');
+
+      const rawRationale = field(params, 'rationale');
+      const rationale =
+        typeof rawRationale === 'string' && rawRationale.trim()
+          ? rawRationale.slice(0, MAX_RATIONALE)
+          : undefined;
+
+      const scope = resolveProjectId(field(params, 'projectId'), deps.projectId());
+      if (!scope.ok) return Promise.resolve(json(scope));
+
+      if (kind === 'run_summary') {
+        const spec = field(params, 'spec');
+        const runId =
+          stringField(params, 'runId') ||
+          (spec && typeof spec === 'object' && !Array.isArray(spec)
+            ? stringField(spec, 'runId')
+            : null);
+        if (!runId) return Promise.resolve(json({ ok: false, error: 'run_summary needs a runId' }));
+
+        let detail: RunDetail | null = null;
+        let targetProjectId = scope.projectId;
+
+        if (scope.projectId && deps.runLookup) {
+          detail = deps.runLookup(scope.projectId, runId);
+        } else if (!scope.projectId && deps.runLookup) {
+          for (const project of deps.stores.projects.list()) {
+            const d = deps.runLookup(project.id, runId);
+            if (d && d.run) {
+              detail = d;
+              targetProjectId = project.id;
+              break;
+            }
+          }
         }
+
+        if (!detail || !detail.run) {
+          return Promise.resolve(json({ ok: false, error: `run not found: ${runId}` }));
+        }
+
+        const sessionProject = deps.projectId();
+        const artifact = buildRunSummaryArtifact(detail, {
+          id: randomUUID(),
+          version: SMITH_ARTIFACT_VERSION,
+          createdAt: Date.now(),
+          ...(targetProjectId || sessionProject
+            ? { projectId: targetProjectId ?? sessionProject }
+            : {}),
+          ...(rationale ? { rationale } : {}),
+          warnings: [],
+        });
+        deps.emit(artifact);
+        return Promise.resolve(json({ ok: true, artifactId: artifact.id }));
       }
 
-      const paramSampleOutput = field(params, 'sampleOutput');
-      if (paramSampleOutput !== undefined) {
-        const sampleSecret = findSecretKey(paramSampleOutput, 'sampleOutput');
-        if (sampleSecret) {
-          return Promise.resolve(
-            json({
-              ok: false,
-              error: `sampleOutput must not carry a credential field (${sampleSecret})`,
-            }),
-          );
-        }
+      const spec = field(params, 'spec');
+      if (spec == null || typeof spec !== 'object' || Array.isArray(spec)) {
+        return Promise.resolve(json({ ok: false, error: 'present needs a spec object' }));
       }
 
       let serialized: string;
@@ -1834,12 +2406,6 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
 
       const errors = issues.filter((issue) => issue.level === 'error');
       if (errors.length) return Promise.resolve(json({ ok: false, validation: errors }));
-
-      const rawRationale = field(params, 'rationale');
-      const rationale =
-        typeof rawRationale === 'string' && rawRationale.trim()
-          ? rawRationale.slice(0, MAX_RATIONALE)
-          : undefined;
 
       const sessionProject = deps.projectId();
       const targetProject = scope.projectId;

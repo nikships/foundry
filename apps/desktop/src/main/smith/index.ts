@@ -7,10 +7,11 @@
  * holds every write behind a human's Approve.
  */
 
-import type { SmithEntityProposal } from '@shared/types.js';
+import type { SmithActionProposal, SmithEntityProposal } from '@shared/types.js';
 import type { MainInvoker } from '../ipc/shared.js';
 import type { SmithChatSession } from './chat-session.js';
 import { ProposalQueue, type ProposalInput } from './proposals.js';
+import { buildActionReceipt, type ActionExecutionRecord } from './receipts.js';
 
 /**
  * Optional JSON `ProposalInput` the Electron UI smoke harness sets so a
@@ -103,6 +104,7 @@ export class SmithService {
       // card up. The store call itself is synchronous; wrap it in a resolved
       // promise to satisfy the async handler contract.
       (proposal) => Promise.resolve(deps.save(proposal)),
+      (proposal, execution) => this.recordReceipt(proposal, execution),
     );
     const seed = deps.seedProposal ?? readSmithProposalSeed();
     if (seed) {
@@ -125,6 +127,20 @@ export class SmithService {
     if (!this.invoker) return Promise.reject(new Error('Smith main invoker is not attached'));
     return this.invoker(channel, ...args);
   };
+
+  /**
+   * Record what an approved action actually did, in the conversation that
+   * proposed it. Trusted main code: the receipt is built from the executor's
+   * result, so a failure lands as a failed receipt rather than disappearing.
+   *
+   * Only an already-open chat receives one. Opening a session to file a
+   * receipt would start an agent for a conversation nobody is having.
+   */
+  private recordReceipt(proposal: SmithActionProposal, execution: ActionExecutionRecord): void {
+    const chat = this.chats.get(proposal.projectId ?? GLOBAL_SCOPE_KEY);
+    if (!chat) return;
+    chat.absorbArtifact(buildActionReceipt(proposal, execution));
+  }
 
   /** One persistent native conversation per project/global scope, opened lazily. */
   chat(projectId?: string): SmithChatSession | null {
