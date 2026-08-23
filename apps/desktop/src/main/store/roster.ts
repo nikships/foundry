@@ -10,6 +10,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
+import { REASONING_EFFORTS } from '@shared/reasoning-effort.js';
 import { BUILTIN_ENVELOPE_KINDS, type AgentDef, type ValidationIssue } from '@shared/types.js';
 import { JsonStore } from './json-store.js';
 import { BUILTIN_AGENTS } from './builtin-agents.js';
@@ -24,7 +25,7 @@ export const agentSchema = z.object({
     ),
   purpose: z.string().min(1, 'one line on what this agent is for'),
   model: z.string().min(1),
-  reasoningEffort: z.enum(['off', 'low', 'medium', 'high', 'xhigh', 'max']),
+  reasoningEffort: z.enum(REASONING_EFFORTS),
   inheritDefaults: z.boolean().optional(),
   systemPrompt: z.string().min(1),
   userPrompt: z.string().min(1),

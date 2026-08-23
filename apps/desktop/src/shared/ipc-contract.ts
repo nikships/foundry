@@ -203,6 +203,10 @@ export interface SmithChatState {
   projectId?: string;
   model: string;
   activeModel: string;
+  /** What the next session would ask for: this chat's choice, or the setting. */
+  reasoningEffort: ReasoningEffort;
+  /** What is actually running, clamped to what the resolved model offers. */
+  activeReasoningEffort: ReasoningEffort;
   running: boolean;
   error: string | null;
   transcript: SmithTranscriptEntry[];
@@ -581,6 +585,11 @@ export interface FoundryApi {
     newChat(projectId: string | undefined): Promise<SmithChatState | null>;
     state(projectId: string | undefined): Promise<SmithChatState | null>;
     setModel(projectId: string | undefined, model: string): Promise<SmithChatState | null>;
+    /** Applies to the next turn's session, like a model switch. */
+    setReasoningEffort(
+      projectId: string | undefined,
+      effort: ReasoningEffort,
+    ): Promise<SmithChatState | null>;
     /** The one pending proposal, or an empty list. Only ever one at a time. */
     proposalsList(): Promise<SmithProposal[]>;
     /** Approve or reject the pending proposal, unblocking Smith's tool call. */
@@ -753,6 +762,7 @@ export const IPC = {
   smithNewChat: 'smith:newChat',
   smithState: 'smith:state',
   smithSetModel: 'smith:setModel',
+  smithSetReasoningEffort: 'smith:setReasoningEffort',
   smithProposalsList: 'smith:proposalsList',
   smithAnswerProposal: 'smith:answerProposal',
   companionState: 'companion:state',

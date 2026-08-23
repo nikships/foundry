@@ -61,7 +61,19 @@ test.describe('smith / chat', () => {
       await expect(card).toBeHidden();
       await window.getByTestId('smith-scope').selectOption('__all__');
       await expect(window.getByTestId('smith-scope')).toHaveValue('__all__');
-      await expect(window.getByTestId('smith-input')).toBeEnabled();
+
+      // Smith refuses to send on a model the operator did not choose, and the
+      // catalog here is whatever the machine's credentials expose — a CI runner
+      // has none, a developer's install has its own set. So assert the
+      // invariant that holds in both: the composer is open exactly when no
+      // notice is explaining why it is shut, and a shut composer always says
+      // why. A disabled input with nothing next to it is the failure worth
+      // catching, and pinning a model id would only hide which case ran.
+      const notice = window.getByTestId('smith-model-blocked');
+      const input = window.getByTestId('smith-input');
+      const blocked = await input.isDisabled();
+      await expect(notice).toBeVisible({ visible: blocked });
+      if (blocked) await expect(notice).not.toBeEmpty();
     } finally {
       await app?.close();
     }

@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { tempDir } from '../../helpers/tmp.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SettingsStore, defaultSettings, migrate } from '../../../src/main/store/settings.js';
+import { REASONING_EFFORTS } from '../../../src/shared/reasoning-effort.js';
 import { DEFAULT_PR_AGENT } from '../../../src/shared/types.js';
 
 let dir: string;
@@ -115,6 +116,45 @@ describe('smithModel', () => {
     const store = seed(defaultSettings() as unknown as Record<string, unknown>);
     expect(store.patch({ smithModel: '' }).ok).toBe(false);
     expect(store.get().smithModel).toBe('inherit');
+  });
+});
+
+describe('smithReasoningEffort', () => {
+  it('defaults to medium on a fresh install', () => {
+    expect(defaultSettings().smithReasoningEffort).toBe('medium');
+  });
+
+  it('reads medium when the field is missing — an install predating the setting', () => {
+    const stored = { ...defaultSettings() } as Record<string, unknown>;
+    delete stored.smithReasoningEffort;
+    expect(migrate(stored).smithReasoningEffort).toBe('medium');
+    expect(seed(stored).get().smithReasoningEffort).toBe('medium');
+  });
+
+  it('repairs a stored value outside the known levels', () => {
+    expect(
+      migrate({ ...defaultSettings(), smithReasoningEffort: 'ludicrous' as never })
+        .smithReasoningEffort,
+    ).toBe('medium');
+    expect(
+      migrate({ ...defaultSettings(), smithReasoningEffort: 3 as never }).smithReasoningEffort,
+    ).toBe('medium');
+  });
+
+  it('keeps every known level, including the ones only some models offer', () => {
+    for (const effort of REASONING_EFFORTS) {
+      expect(
+        migrate({ ...defaultSettings(), smithReasoningEffort: effort }).smithReasoningEffort,
+      ).toBe(effort);
+    }
+  });
+
+  it('persists a level via patch and refuses one it does not know', () => {
+    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
+    expect(store.patch({ smithReasoningEffort: 'max' })).toMatchObject({ ok: true });
+    expect(store.get().smithReasoningEffort).toBe('max');
+    expect(store.patch({ smithReasoningEffort: 'turbo' as never }).ok).toBe(false);
+    expect(store.get().smithReasoningEffort).toBe('max');
   });
 });
 

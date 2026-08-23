@@ -163,6 +163,7 @@ const api: FoundryApi = {
     newChat: (projectId) => call(IPC.smithNewChat, projectId),
     state: (projectId) => call(IPC.smithState, projectId),
     setModel: (projectId, model) => call(IPC.smithSetModel, projectId, model),
+    setReasoningEffort: (projectId, effort) => call(IPC.smithSetReasoningEffort, projectId, effort),
     proposalsList: () => call(IPC.smithProposalsList),
     answerProposal: (id, answer) => call(IPC.smithAnswerProposal, id, answer),
   },

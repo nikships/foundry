@@ -14,12 +14,15 @@ import {
   type StoredProviderKey,
 } from '@shared/ipc-contract.js';
 import type { CompanionHostState, CompanionPairingPayload } from '@shared/companion.js';
+import { MODEL_UNSET, MODEL_UNSET_MESSAGE } from '@shared/model-choice.js';
 import { modelLabel } from '@shared/model-label.js';
+import { modelForEffortPicker } from '@shared/reasoning-effort.js';
 import { api, plain } from '../api.js';
 import { isKnownPrWriter, prWriterOptions } from '../view-models/pr-draft.js';
 import { useApp } from '../stores/app.js';
 import { useAgentModels } from '../hooks/useAgentModels.js';
 import ModelPicker from '../components/common/ModelPicker.js';
+import ReasoningEffortPicker from '../components/common/ReasoningEffortPicker.js';
 import { ProviderIcon } from '../components/media/BrandIcon.js';
 import DoctorList from '../components/readiness/DoctorList.js';
 import ProjectCommands from '../components/project/ProjectCommands.js';
@@ -43,6 +46,7 @@ import {
   type SettingsPaneId,
   type SettingsToggleDef,
 } from '../view-models/settings-search.js';
+import { SMITH_MODEL_UNSET_LABEL } from '../view-models/smith-chat-view.js';
 import { SMITH_NO_PROVIDER_COPY } from '../view-models/smith-copy.js';
 import styles from './SettingsScreen.module.css';
 
@@ -636,6 +640,21 @@ export default function SettingsScreen({
         m.provider.toLowerCase().includes(q),
     );
   }, [models, modelFilter]);
+
+  // Null for `inherit` or a model the catalog no longer offers, where the
+  // effort picker has no capability list to filter by and shows every level.
+  const defaultModelInfo = useMemo(
+    () => modelForEffortPicker(settings?.defaultModel, models),
+    [models, settings?.defaultModel],
+  );
+  const helperModelInfo = useMemo(
+    () => modelForEffortPicker(settings?.helperModel, models, settings?.defaultModel),
+    [models, settings?.helperModel, settings?.defaultModel],
+  );
+  const smithModelInfo = useMemo(
+    () => modelForEffortPicker(settings?.smithModel, models),
+    [models, settings?.smithModel],
+  );
 
   const visibleGroups = useMemo(() => {
     const map = new Map<string, ModelInfo[]>();
@@ -1464,18 +1483,15 @@ export default function SettingsScreen({
                           onChange={(v) => void set({ defaultModel: v })}
                         />
                       </Field>
-                      <Field label="Default reasoning effort">
-                        <Dropdown
+                      <Field
+                        label="Default reasoning effort"
+                        hint="Only the levels the chosen model offers."
+                      >
+                        <ReasoningEffortPicker
                           value={settings.defaultReasoningEffort}
-                          options={[
-                            { value: 'off', label: 'Off' },
-                            { value: 'low', label: 'Low' },
-                            { value: 'medium', label: 'Medium' },
-                            { value: 'high', label: 'High' },
-                            { value: 'xhigh', label: 'X-High' },
-                            { value: 'max', label: 'Max' },
-                          ]}
-                          onChange={(next) => void set({ defaultReasoningEffort: next as never })}
+                          model={defaultModelInfo}
+                          onChange={(effort) => void set({ defaultReasoningEffort: effort })}
+                          data-testid="settings-default-effort"
                         />
                       </Field>
                     </div>
@@ -1495,18 +1511,15 @@ export default function SettingsScreen({
                           onChange={(v) => void set({ helperModel: v })}
                         />
                       </Field>
-                      <Field label="Helper reasoning effort">
-                        <Dropdown
+                      <Field
+                        label="Helper reasoning effort"
+                        hint="Only the levels the helper model offers."
+                      >
+                        <ReasoningEffortPicker
                           value={settings.helperReasoningEffort}
-                          options={[
-                            { value: 'off', label: 'Off' },
-                            { value: 'low', label: 'Low' },
-                            { value: 'medium', label: 'Medium' },
-                            { value: 'high', label: 'High' },
-                            { value: 'xhigh', label: 'X-High' },
-                            { value: 'max', label: 'Max' },
-                          ]}
-                          onChange={(next) => void set({ helperReasoningEffort: next as never })}
+                          model={helperModelInfo}
+                          onChange={(effort) => void set({ helperReasoningEffort: effort })}
+                          data-testid="settings-helper-effort"
                         />
                       </Field>
                     </div>
@@ -1514,16 +1527,30 @@ export default function SettingsScreen({
                   <Section label="Smith" note="The model the in-app chat runs on.">
                     <div className={styles.settingsFields}>
                       <Field
-                        label="Default model"
-                        hint="Used when a new Smith chat opens. The header picker can still switch mid-conversation."
+                        label="Model"
+                        hint="What a new Smith chat opens on. The header picker can still switch mid-conversation. Smith does not pick for you: until this is set, it will not send."
+                        error={
+                          settings.smithModel === MODEL_UNSET ? MODEL_UNSET_MESSAGE : undefined
+                        }
                       >
                         <ModelPicker
                           value={settings.smithModel}
                           models={models}
                           allowInherit
-                          inheritLabel="First reachable model"
+                          inheritLabel={SMITH_MODEL_UNSET_LABEL}
                           emptyHint={SMITH_NO_PROVIDER_COPY}
                           onChange={(v) => void set({ smithModel: v })}
+                        />
+                      </Field>
+                      <Field
+                        label="Default reasoning effort"
+                        hint="Only the levels the chosen model offers. A stored level it drops falls back to that model's default."
+                      >
+                        <ReasoningEffortPicker
+                          value={settings.smithReasoningEffort}
+                          model={smithModelInfo}
+                          onChange={(effort) => void set({ smithReasoningEffort: effort })}
+                          data-testid="settings-smith-effort"
                         />
                       </Field>
                     </div>

@@ -12,6 +12,7 @@ export default function ModelPicker({
   inheritLabel = 'Inherit from Agent defaults',
   disabled,
   emptyHint,
+  showNotes = true,
   onChange,
   onRefresh,
 }: {
@@ -26,6 +27,13 @@ export default function ModelPicker({
   disabled?: boolean;
   /** Shown when the catalog is empty (CLI missing or unauthenticated). */
   emptyHint?: string;
+  /**
+   * Whether to render the empty-catalog and stale-selection notes under the
+   * control. A caller in a fixed-height row (the Smith header) turns them off
+   * and says the same thing somewhere the growth cannot shove the row's other
+   * controls out of alignment.
+   */
+  showNotes?: boolean;
   onChange: (value: string) => void;
   onRefresh?: () => void;
 }): React.JSX.Element {
@@ -89,7 +97,7 @@ export default function ModelPicker({
         />
         {current && <ProviderIcon provider={current.provider} size={18} />}
       </div>
-      {catalogEmpty && (
+      {showNotes && catalogEmpty && (
         <p className={styles.pickerEmpty}>
           {emptyHint ??
             'No models in the catalog. Install and sign in to this CLI, then refresh the list.'}
@@ -103,7 +111,7 @@ export default function ModelPicker({
           )}
         </p>
       )}
-      {unknownSelected && !catalogEmpty && (
+      {showNotes && unknownSelected && !catalogEmpty && (
         <p className={styles.pickerEmpty}>
           This selection is no longer in the catalog. Pick another model.
         </p>

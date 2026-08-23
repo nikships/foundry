@@ -60,8 +60,8 @@ describe('the IPC surface', () => {
     expect(registered.filter((channel) => channel === IPC.settingsGet)).toHaveLength(1);
   });
 
-  it('registers 120 channels, so a deleted handler is not a silent capability loss', () => {
-    expect(registered).toHaveLength(120);
+  it('registers 121 channels, so a deleted handler is not a silent capability loss', () => {
+    expect(registered).toHaveLength(121);
   });
 
   it('registers the Smith chat lifecycle without turning a long send into a push invoke', () => {
@@ -70,6 +70,7 @@ describe('the IPC surface', () => {
     expect(registered).toContain(IPC.smithNewChat);
     expect(registered).toContain(IPC.smithState);
     expect(registered).toContain(IPC.smithSetModel);
+    expect(registered).toContain(IPC.smithSetReasoningEffort);
     expect(registered).toContain(IPC.smithAnswerProposal);
   });
 

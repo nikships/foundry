@@ -7,7 +7,12 @@
 
 import { describe, expect, it } from 'vitest';
 import type { SmithTranscriptEntry } from '@shared/ipc-contract.js';
-import { describeScreen, groupTranscript } from '@renderer/view-models/smith-chat-view.js';
+import type { ModelInfo } from '@shared/types.js';
+import {
+  describeScreen,
+  groupTranscript,
+  smithModelLabel,
+} from '@renderer/view-models/smith-chat-view.js';
 
 function entry(
   id: string,
@@ -38,6 +43,36 @@ describe('groupTranscript', () => {
   it('keys each group by its first entry so React keys stay stable as a turn grows', () => {
     const groups = groupTranscript([entry('a', 'smith'), entry('b', 'smith')]);
     expect(groups[0]!.id).toBe('a');
+  });
+});
+
+describe('smithModelLabel', () => {
+  const models: ModelInfo[] = [
+    {
+      id: 'anthropic/claude-sonnet-4',
+      displayName: 'Claude Sonnet 4',
+      provider: 'anthropic',
+      supportedReasoningEfforts: ['off', 'low', 'medium', 'high'],
+      defaultReasoningEffort: 'medium',
+      isCustom: false,
+      deprecated: false,
+    },
+  ];
+
+  it('names the chosen model', () => {
+    expect(smithModelLabel('anthropic/claude-sonnet-4', models)).toBe('Claude Sonnet 4');
+  });
+
+  it('falls back to the bare id for a model the catalog does not describe', () => {
+    expect(smithModelLabel('openai/gpt-5', models)).toBe('gpt-5');
+  });
+
+  it('asks for a choice instead of naming a fallback when nothing is chosen', () => {
+    // The old copy here named "the first reachable model", which described a
+    // model neither the operator nor the app could identify in advance.
+    expect(smithModelLabel('inherit', models)).toBe('Select a model…');
+    expect(smithModelLabel(null, models)).toBe('Select a model…');
+    expect(smithModelLabel(undefined, models)).toBe('Select a model…');
   });
 });
 

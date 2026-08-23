@@ -8,6 +8,7 @@ import {
   type ValidationIssue,
 } from '@shared/types.js';
 import { modelLabel } from '@shared/model-label.js';
+import { modelForEffortPicker } from '@shared/reasoning-effort.js';
 import { api, plain } from '../api.js';
 import type { DesignTab } from '../utils/navigation.js';
 import { useApp } from '../stores/app.js';
@@ -20,6 +21,7 @@ import AgentAvatar from '../components/media/AgentAvatar.js';
 import AgentIconPicker from '../components/media/AgentIconPicker.js';
 import { ProviderIcon } from '../components/media/BrandIcon.js';
 import ModelPicker from '../components/common/ModelPicker.js';
+import ReasoningEffortPicker from '../components/common/ReasoningEffortPicker.js';
 import BoundaryEditor from '../components/pipeline/BoundaryEditor.js';
 import CustomFieldsEditor from '../components/project/CustomFieldsEditor.js';
 import { Button } from '../components/ui/Button.js';
@@ -103,6 +105,11 @@ export default function RosterScreen({
     () => agents.find((a) => a.name === selectedName) ?? null,
     [agents, selectedName],
   );
+  const rosterModelInfo = useMemo(() => {
+    if (!draft) return null;
+    const chosen = draft.inheritDefaults ? settings?.defaultModel : draft.model;
+    return modelForEffortPicker(chosen, models, settings?.defaultModel);
+  }, [draft, models, settings?.defaultModel]);
   /**
    * `agentSchema` rejects a malformed field name but accepts a duplicate or a
    * name that shadows a base field, both of which the engine would silently
@@ -708,40 +715,21 @@ export default function RosterScreen({
                     </span>
                   </Field>
                   <Field label="Reasoning effort">
-                    <div
-                      className={`${styles.rosterSeg} ${draft.inheritDefaults ? styles.disabled : ''}`}
-                      role="radiogroup"
-                      aria-label="Reasoning effort"
-                      aria-disabled={draft.inheritDefaults || undefined}
-                    >
-                      {(['off', 'low', 'medium', 'high', 'xhigh', 'max'] as const).map((level) => {
-                        const selected = draft.inheritDefaults
-                          ? (settings?.defaultReasoningEffort ?? 'medium') === level
-                          : draft.reasoningEffort === level;
-                        return (
-                          <button
-                            key={level}
-                            type="button"
-                            role="radio"
-                            aria-checked={selected}
-                            disabled={!!draft.inheritDefaults}
-                            className={`${styles.rosterSegBtn} ${selected ? styles.on : ''}`}
-                            onClick={() =>
-                              setDraft({
-                                ...draft,
-                                reasoningEffort: level as AgentDef['reasoningEffort'],
-                              })
-                            }
-                          >
-                            {level}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <ReasoningEffortPicker
+                      value={
+                        draft.inheritDefaults
+                          ? (settings?.defaultReasoningEffort ?? 'medium')
+                          : draft.reasoningEffort
+                      }
+                      model={rosterModelInfo}
+                      disabled={!!draft.inheritDefaults}
+                      onChange={(effort) => setDraft({ ...draft, reasoningEffort: effort })}
+                      data-testid="roster-effort"
+                    />
                     <span className={styles.hint}>
                       {draft.inheritDefaults
                         ? 'Following Settings → Agent defaults.'
-                        : 'Higher effort costs more thinking tokens and takes longer.'}
+                        : 'Only the levels the chosen model offers.'}
                     </span>
                   </Field>
                   <Field label="Report kind">

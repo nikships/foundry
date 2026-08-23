@@ -126,6 +126,24 @@ export type TransportEvent =
   | { type: 'usage'; usage: TurnUsage };
 
 /**
+ * A transport was asked to open without a usable model choice.
+ *
+ * Lives on the neutral seam so a caller can recognise the refusal without
+ * importing a vendor-bound transport module. Thrown by `start()`; a transport
+ * that is free to substitute a model does not throw it at all.
+ */
+export class ModelNotChosen extends Error {
+  constructor(
+    /** `unset`: nothing picked yet. `unavailable`: the pick is not reachable. */
+    readonly reason: 'unset' | 'unavailable',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ModelNotChosen';
+  }
+}
+
+/**
  * The lifecycle `AgentSession` drives. Every method is allowed to answer `null`
  * for "this transport cannot tell you" — a diagnostic is never worth a failed
  * run, and the engine's guards are post-hoc and code-owned either way.
@@ -157,6 +175,14 @@ export interface AgentTransport {
   readonly lastUserMessageId: string | null;
   readonly availableModels: TransportModel[];
   readonly activeModel: string;
+  /**
+   * The reasoning effort this session opened with — what a caller displaying
+   * "what is running" should read rather than what it asked for. A transport
+   * that clamps the requested level to its resolved model reports the clamped
+   * value; one that passes the caller's level through reports that. It is
+   * fixed at open either way: pi states the thinking level at create.
+   */
+  readonly activeReasoningEffort: ReasoningEffort;
 }
 
 export interface RewindFile {

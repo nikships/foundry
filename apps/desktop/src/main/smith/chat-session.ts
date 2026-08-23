@@ -17,14 +17,16 @@
  * pointer needed to resume plus a renderer-ready transcript cache, so both the
  * model context and the visible chat survive an app relaunch.
  *
- * A mid-conversation model switch opens a **successor session**: the model is
- * stated once at create and never drifts (see `references/sdk.md`), so the
- * current transport is closed and the next turn reopens the persisted session
- * file under the new model, carrying the transcript context forward.
+ * A mid-conversation model or reasoning-effort switch opens a **successor
+ * session**: both are stated once at create and never drift (see
+ * `references/sdk.md`), so the current transport is closed and the next turn
+ * reopens the persisted session file under the new choice, carrying the
+ * transcript context forward.
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { isReasoningEffort } from '@shared/reasoning-effort.js';
 import type { ReasoningEffort } from '@shared/types.js';
 import type {
   SmithChatState,
@@ -34,6 +36,7 @@ import type {
 import { evaluate } from '../pi/policy.js';
 import type { ToolDefinition } from '../pi/tool-definition.js';
 import { foldTranscript } from '../pi/transcript.js';
+import { ModelNotChosen } from '../pi/transport.js';
 import type {
   AgentTransport,
   PermissionAsk,
@@ -97,8 +100,11 @@ export interface SmithChatSessionDeps {
    * applies to the next session rather than requiring a restart.
    */
   smithModel: () => string;
-  /** Defaults to `medium`; Smith has no per-turn effort knob. */
-  reasoningEffort?: ReasoningEffort;
+  /**
+   * The global `smithReasoningEffort` setting, read at every open for the same
+   * reason as the model. The header's per-conversation choice overrides it.
+   */
+  smithReasoningEffort?: () => ReasoningEffort;
   /** Entity / readiness tool modules, registered at construction. */
   toolFactories?: SmithToolFactory[];
   /** Builds the transport this session drives. Injected, never constructed here. */
@@ -127,6 +133,8 @@ interface PersistedChatState {
   sessionId: string | null;
   /** A header model switch, which outlives the session it was made in. */
   modelOverride: string | null;
+  /** A header effort switch, persisted for the same reason as the model. */
+  reasoningEffortOverride: ReasoningEffort | null;
   /** Renderer-ready cache; pi's session file remains the model's history. */
   transcript: SmithTranscriptEntry[];
 }
@@ -142,6 +150,7 @@ export class SmithChatSession {
   private transport: AgentTransport | null = null;
   private sessionId: string | null = null;
   private modelOverride: string | null = null;
+  private reasoningEffortOverride: ReasoningEffort | null = null;
   private turnActive = false;
   private cancelRequested = false;
   private lastError: string | null = null;
@@ -184,6 +193,19 @@ export class SmithChatSession {
     return this.transport?.activeModel ?? this.model;
   }
 
+  /** The effort the next open would ask for: the header switch, or the setting. */
+  get reasoningEffort(): ReasoningEffort {
+    return this.reasoningEffortOverride ?? this.deps.smithReasoningEffort?.() ?? 'medium';
+  }
+
+  /**
+   * What is actually running: the live session's clamped effort, so a level
+   * the resolved model does not offer reads as the level it fell back to.
+   */
+  get activeReasoningEffort(): ReasoningEffort {
+    return this.transport?.activeReasoningEffort ?? this.reasoningEffort;
+  }
+
   get currentSessionId(): string | null {
     return this.sessionId;
   }
@@ -198,6 +220,8 @@ export class SmithChatSession {
       ...(this.deps.scope.kind === 'project' ? { projectId: this.deps.scope.projectId } : {}),
       model: this.model,
       activeModel: this.activeModel,
+      reasoningEffort: this.reasoningEffort,
+      activeReasoningEffort: this.activeReasoningEffort,
       running: this.turnActive,
       error: this.lastError,
       transcript: this.transcript.map((entry) => ({ ...entry })),
@@ -211,9 +235,11 @@ export class SmithChatSession {
     this.cancelRequested = false;
     this.lastError = null;
     this.push({ kind: 'text', text, source: 'operator' });
+    let started: AgentTransport | null = null;
     try {
       await this.ensureStarted();
       const transport = this.transport;
+      started = transport;
       if (!transport) throw new Error('smith chat session is not open');
       // Cancel can arrive while the lazy session is still opening, before
       // there is a transport to interrupt. Do not start a paid turn after it.
@@ -235,8 +261,13 @@ export class SmithChatSession {
       throw e;
     } finally {
       this.turnActive = false;
+      // A model or effort switch made during this turn dropped the session
+      // without closing it, so the answer could finish. Dispose it here, or
+      // the successor opens alongside a live one that nothing holds.
+      const orphaned = this.transport !== started ? started : null;
       this.persistState();
       this.emit();
+      if (orphaned) await orphaned.close().catch(() => undefined);
     }
   }
 
@@ -250,6 +281,10 @@ export class SmithChatSession {
   /**
    * Wipe the conversation and start fresh: the live session is disposed and
    * the pointer cleared, so the next message opens a brand-new session file.
+   *
+   * The effort override goes with it. It belongs to the conversation being
+   * wiped, so a new chat opens at the install default — which is what
+   * Settings → Smith calls itself.
    */
   async newChat(): Promise<void> {
     const transport = this.transport;
@@ -257,6 +292,7 @@ export class SmithChatSession {
     this.sessionId = null;
     this.transcript = [];
     this.lastError = null;
+    this.reasoningEffortOverride = null;
     this.persistState();
     this.emit();
     if (transport) await transport.close();
@@ -271,12 +307,23 @@ export class SmithChatSession {
   async setModel(model: string): Promise<void> {
     if (model === this.model) return;
     this.modelOverride = model;
-    this.lastError = null;
-    this.persistState();
-    const transport = this.transport;
-    this.transport = null;
-    this.emit();
-    if (transport) await transport.close();
+    await this.reopenOnNextTurn();
+  }
+
+  /**
+   * Switch reasoning effort mid-conversation. Same shape as a model switch,
+   * and for the same reason: the thinking level is stated at create, so it
+   * takes effect on a successor session over the same history rather than
+   * part-way through the turn in flight.
+   *
+   * The choice is this conversation's, not the install's — it is persisted
+   * beside the model override and never written back to Settings → Smith,
+   * which stays the default a *new* chat opens at.
+   */
+  async setReasoningEffort(effort: ReasoningEffort): Promise<void> {
+    if (effort === this.reasoningEffort) return;
+    this.reasoningEffortOverride = effort;
+    await this.reopenOnNextTurn();
   }
 
   /** Closes the live session. The pointer survives, so a relaunch resumes. */
@@ -304,6 +351,25 @@ export class SmithChatSession {
     this.push({ kind: 'note', text: event.detail, source: 'readiness' });
   }
 
+  /**
+   * Drop the live transport but keep the session id, so the next message
+   * reopens a successor session over the same persisted history under the new
+   * model or thinking level.
+   *
+   * A turn in flight is left running: closing the transport under it would
+   * abort the answer the operator is waiting for, and `ensureStarted` reopens
+   * on the next message anyway because the dropped transport is no longer
+   * `alive` to it. Only an idle session is torn down eagerly.
+   */
+  private async reopenOnNextTurn(): Promise<void> {
+    this.lastError = null;
+    this.persistState();
+    const transport = this.transport;
+    this.transport = null;
+    this.emit();
+    if (transport && !this.turnActive) await transport.close();
+  }
+
   /** Started lazily: a project whose Smith is never opened costs nothing. */
   private async ensureStarted(): Promise<void> {
     if (this.transport?.alive) return;
@@ -314,7 +380,7 @@ export class SmithChatSession {
           ? this.deps.scope.projectPath
           : this.deps.scope.workspace,
       model: this.model,
-      reasoningEffort: this.deps.reasoningEffort ?? 'medium',
+      reasoningEffort: this.reasoningEffort,
       harness: `${SMITH_CHAT_HARNESS}\n\n${scopeContextBlock(this.deps.scope)}`,
       customTools: this.customTools,
       onPermission: (ask) => this.decide(ask),
@@ -331,6 +397,10 @@ export class SmithChatSession {
       await transport.start(this.sessionId);
     } catch (e) {
       await transport.close().catch(() => undefined);
+      // The "pick a model" gate is an instruction to the operator, not a
+      // failure to report. Wrapping it in session-start noise would bury the
+      // one sentence that says what to do about it.
+      if (e instanceof ModelNotChosen) throw e;
       throw new Error(`smith chat session start failed: ${errorMessage(e)}`);
     }
     this.transport = transport;
@@ -362,6 +432,9 @@ export class SmithChatSession {
       const raw = JSON.parse(readFileSync(this.stateFile, 'utf8')) as Partial<PersistedChatState>;
       this.sessionId = typeof raw.sessionId === 'string' ? raw.sessionId : null;
       this.modelOverride = typeof raw.modelOverride === 'string' ? raw.modelOverride : null;
+      this.reasoningEffortOverride = isReasoningEffort(raw.reasoningEffortOverride)
+        ? raw.reasoningEffortOverride
+        : null;
       if (Array.isArray(raw.transcript)) {
         this.transcript = raw.transcript
           .slice(-MAX_TRANSCRIPT_ENTRIES)
@@ -395,6 +468,7 @@ export class SmithChatSession {
     const state: PersistedChatState = {
       sessionId: this.sessionId,
       modelOverride: this.modelOverride,
+      reasoningEffortOverride: this.reasoningEffortOverride,
       transcript: this.transcript.map((entry) => ({ ...entry })),
     };
     try {

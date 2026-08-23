@@ -19,6 +19,7 @@
 
 import type { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import type { ModelInfo } from '@shared/types.js';
+import { effortsFor } from './model.js';
 import { modelRuntime } from './runtime.js';
 
 /** pi's own model shape, derived from the runtime rather than imported. */
@@ -71,19 +72,11 @@ export function providerOf(id: string, displayName = ''): string {
 /**
  * The thinking levels a model actually offers.
  *
- * `thinkingLevelMap` is authoritative when present — a null entry means the
- * level exists in pi but not on this model, and offering it would send a value
- * the provider rejects. Without a map, a reasoning model gets the conservative
- * four every provider supports and a non-reasoning one gets `off` alone.
+ * One derivation, shared with the transports through `model.ts`: the picker and
+ * the value sent to a provider must agree, and `thinkingLevelMap`'s tristate
+ * reading is subtle enough that a second copy would eventually disagree.
  */
-export function reasoningEffortsFor(model: PiModel): string[] {
-  if (model.thinkingLevelMap) {
-    return Object.entries(model.thinkingLevelMap)
-      .filter(([, value]) => value !== null)
-      .map(([level]) => level);
-  }
-  return model.reasoning ? ['off', 'low', 'medium', 'high'] : ['off'];
-}
+export const reasoningEffortsFor = effortsFor;
 
 export function toModelInfo(model: PiModel): ModelInfo {
   const efforts = reasoningEffortsFor(model);
