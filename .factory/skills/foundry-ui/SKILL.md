@@ -299,7 +299,7 @@ Design:
 | `envelope-item-{name}`                            | Custom report in the library rail               |
 | `envelope-builtin-{kind}`                         | Built-in report inspector entry (e.g. `review`) |
 
-Smith (chat screen + floating bubble):
+Smith (chat screen + titlebar launcher):
 
 | `data-testid`                                 | Element                              |
 | --------------------------------------------- | ------------------------------------ |
@@ -310,7 +310,7 @@ Smith (chat screen + floating bubble):
 | `smith-proposal-card`                         | Inline entity-approval card          |
 | `smith-proposal-approve`                      | Approve + save the proposed entity   |
 | `smith-proposal-reject`                       | Reject (unblocks Smith to revise)    |
-| `smith-bubble`                                | Floating launcher on other screens   |
+| `smith-bubble`                                | Titlebar launcher on other screens   |
 | `smith-bubble-input` / `-send` / `-cancel`    | Bubble composer                      |
 | `smith-bubble-expand`                         | Bubble → full Smith screen           |
 | `smith-bubble-close`                          | Dismiss the bubble                   |
@@ -541,16 +541,18 @@ working). Edits autosave after ~350 ms when valid; errors block the save.
 ### Smith
 
 Native chat with Foundry's entity-smith, on a dedicated screen
-(`nav-smith` → `data-view="smith"`) plus a floating bubble on every other
-screen (`smith-bubble`; hidden while the screen is open). One persistent
-conversation per project.
+(`nav-smith` → `data-view="smith"`) plus a launcher docked at the right end of
+the titlebar band on every other screen (`smith-bubble`; hidden while the
+screen is open), whose popover hangs below it. One persistent conversation per
+project.
 
 - Screen: composer `smith-input` (Enter sends, Shift+Enter newline),
   `smith-send` / `smith-cancel` while running, `smith-model` picker,
   `smith-new-chat` (wipes the conversation), transcript in
   `smith-transcript`.
-- Bubble: `smith-bubble-input/-send/-cancel`, `smith-bubble-expand` opens
-  the full screen (carrying context about where you were), `smith-bubble-close`.
+- Launcher popover: `smith-bubble-input/-send/-cancel`, `smith-bubble-expand`
+  opens the full screen (carrying context about where you were),
+  `smith-bubble-close`.
 - Entity writes arrive as an inline `smith-proposal-card` at the transcript
   tail showing create/overwrite plus the full definition; answer with
   `smith-proposal-approve` / `smith-proposal-reject`. Approving saves the

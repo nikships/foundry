@@ -19,7 +19,8 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
-import type { ContextBreakdown } from '@shared/types.js';
+import { normalizeReasoningEffort } from '@shared/reasoning-effort.js';
+import type { ContextBreakdown, ReasoningEffort } from '@shared/types.js';
 import type {
   AgentTransport,
   ContextStats,
@@ -121,6 +122,7 @@ export class ScriptedAgent {
   private turn = 0;
   private compactions = 0;
   private seq = 0;
+  private stalled: { transport: ScriptedTransport; turn: number } | null = null;
 
   constructor(
     private readonly turns: string[],
@@ -137,6 +139,19 @@ export class ScriptedAgent {
   /** The transport factory the executor's seam takes. */
   transport(req: TransportRequest): AgentTransport {
     return new ScriptedTransport(this, req);
+  }
+
+  /**
+   * Let a parked turn answer the way a slow-but-successful turn does, rather
+   * than the way an interrupt does. `interrupt()` and `close()` already end a
+   * stall as `cancelled`, so without this a test cannot tell "the turn
+   * finished" from "something tore the session down under it".
+   */
+  finishStall(): void {
+    const parked = this.stalled;
+    if (!parked) throw new Error('no scripted turn is parked');
+    this.stalled = null;
+    parked.transport.completeStall(this.finish(parked.transport, parked.turn));
   }
 
   nextSessionId(): string {
@@ -249,8 +264,12 @@ export class ScriptedAgent {
       transport.kill();
       throw new Error('agent session died mid-turn');
     }
-    // A stalled turn hangs until the operator interrupts or kills the session.
-    if (this.options.stallOnTurns?.includes(n)) return transport.stall();
+    // A stalled turn hangs until the operator interrupts or kills the session,
+    // or a test lets it answer normally via `finishStall()`.
+    if (this.options.stallOnTurns?.includes(n)) {
+      this.stalled = { transport, turn: n };
+      return transport.stall();
+    }
 
     const doomed = this.options.deleteEffects?.[n];
     if (doomed) deleteFrom(transport.cwd, doomed);
@@ -367,6 +386,15 @@ class ScriptedTransport implements AgentTransport {
     return 'scripted';
   }
 
+  /**
+   * Clamped the way a real transport clamps: the scripted model offers only
+   * `off`–`high`, so a caller asking for `xhigh` or `max` gets the model's
+   * default back rather than a level no provider would accept.
+   */
+  get activeReasoningEffort(): ReasoningEffort {
+    return normalizeReasoningEffort(this.req.agent.reasoningEffort, this.availableModels[0]);
+  }
+
   ask(ask: PermissionAsk): PermissionDecision | Promise<PermissionDecision> {
     return this.req.onPermission(ask);
   }
@@ -440,6 +468,13 @@ class ScriptedTransport implements AgentTransport {
     return new Promise<TurnResult>((resolve) => {
       this.endStall = resolve;
     });
+  }
+
+  /** Answer a parked turn normally, as `ScriptedAgent.finishStall()` does. */
+  completeStall(result: TurnResult): void {
+    const end = this.endStall;
+    this.endStall = null;
+    end?.(result);
   }
 
   private releaseStall(): void {

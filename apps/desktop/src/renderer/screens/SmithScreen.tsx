@@ -12,11 +12,15 @@
 
 import { useMemo, useRef, useState } from 'react';
 import type { SmithScreenContext } from '@shared/ipc-contract.js';
+import { modelChoiceBlock } from '@shared/model-choice.js';
+import { modelForEffortPicker } from '@shared/reasoning-effort.js';
+import { SMITH_MODEL_UNSET_LABEL } from '../view-models/smith-chat-view.js';
 import { useApp } from '../stores/app.js';
 import { useAgentModels } from '../hooks/useAgentModels.js';
 import { useSmithChat } from '../hooks/useSmithChat.js';
 import { SMITH_NO_PROVIDER_COPY } from '../view-models/smith-copy.js';
 import ModelPicker from '../components/common/ModelPicker.js';
+import ReasoningEffortPicker from '../components/common/ReasoningEffortPicker.js';
 import SmithProposalCard, { type SmithNavTarget } from '../components/smith/SmithProposalCard.js';
 import SmithScopePicker from '../components/smith/SmithScopePicker.js';
 import SmithTranscript from '../components/smith/SmithTranscript.js';
@@ -35,17 +39,42 @@ export default function SmithScreen({
   const { projects, smithProjectId } = useApp();
   const smithProject = projects.find((project) => project.id === smithProjectId) ?? null;
   const scopeId = smithProjectId ?? undefined;
-  const { state, send, cancel, newChat, setModel } = useSmithChat(scopeId);
+  const { state, send, cancel, newChat, setModel, setReasoningEffort } = useSmithChat(scopeId);
   const { models, refresh: refreshModels } = useAgentModels();
   const [draft, setDraft] = useState('');
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const running = state?.running ?? false;
   const transcript = useMemo(() => state?.transcript ?? [], [state?.transcript]);
+  // The effort options belong to the model the header is set to, falling back
+  // to the running session if inherit is still selected there.
+  const activeModelInfo = useMemo(
+    () => modelForEffortPicker(state?.model, models, state?.activeModel),
+    [models, state?.model, state?.activeModel],
+  );
+  /**
+   * Why the composer is closed, or null when it is open.
+   *
+   * Gated on the same rule main enforces at session open rather than on a
+   * second guess. Whenever it blocks it must also explain: a disabled input
+   * with no reason next to it is the worst version of this feature.
+   *
+   * With no catalog at all, "select a model" would be advice the operator
+   * cannot take, so the provider copy stands in — connecting one is the step
+   * that actually unblocks them.
+   */
+  const modelBlocked = useMemo(() => {
+    const block = modelChoiceBlock(
+      state?.model,
+      models.map((model) => model.id),
+    );
+    if (!block) return null;
+    return models.length === 0 ? SMITH_NO_PROVIDER_COPY : block;
+  }, [models, state?.model]);
 
   const submit = (): void => {
     const text = draft.trim();
-    if (!text || running) return;
+    if (!text || running || modelBlocked) return;
     setDraft('');
     void send(text, screenContext);
     inputRef.current?.focus();
@@ -60,6 +89,12 @@ export default function SmithScreen({
 
   return (
     <div className={styles.smith}>
+      {modelBlocked && (
+        <div className={styles.modelNotice} role="status" data-testid="smith-model-blocked">
+          {modelBlocked}
+        </div>
+      )}
+
       <header className={styles.head}>
         <p className="eyebrow">
           <span className="index">07</span>Smith
@@ -71,10 +106,22 @@ export default function SmithScreen({
               value={state?.model ?? 'inherit'}
               models={models}
               allowInherit
-              inheritLabel="Default (Settings → Smith)"
+              inheritLabel={SMITH_MODEL_UNSET_LABEL}
               emptyHint={SMITH_NO_PROVIDER_COPY}
+              // The header is one fixed row. Its notices render above it, so a
+              // wrapped sentence cannot grow the row and drag the effort picker
+              // and New chat out of alignment with the title.
+              showNotes={false}
               onChange={(v) => void setModel(v)}
               onRefresh={() => void refreshModels()}
+            />
+          </div>
+          <div className={styles.effortPicker}>
+            <ReasoningEffortPicker
+              value={state?.reasoningEffort ?? 'medium'}
+              model={activeModelInfo}
+              onChange={(effort) => void setReasoningEffort(effort)}
+              data-testid="smith-effort"
             />
           </div>
           <Button
@@ -131,12 +178,15 @@ export default function SmithScreen({
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
           placeholder={
-            smithProject
-              ? `Ask Smith anything about ${smithProject.name}…`
-              : 'Ask Smith to manage Foundry across all projects…'
+            modelBlocked
+              ? 'Select a model to start the conversation…'
+              : smithProject
+                ? `Ask Smith anything about ${smithProject.name}…`
+                : 'Ask Smith to manage Foundry across all projects…'
           }
           rows={2}
           aria-label="Message Smith"
+          disabled={!!modelBlocked}
           data-testid="smith-input"
         />
         <div className={styles.composerActions}>
@@ -147,7 +197,8 @@ export default function SmithScreen({
           ) : (
             <Button
               variant="primary"
-              disabled={!draft.trim()}
+              disabled={!draft.trim() || !!modelBlocked}
+              title={modelBlocked ?? undefined}
               onClick={submit}
               data-testid="smith-send"
             >

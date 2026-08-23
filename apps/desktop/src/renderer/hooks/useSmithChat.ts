@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { SmithChatState, SmithScreenContext } from '@shared/ipc-contract.js';
+import type { ReasoningEffort } from '@shared/types.js';
 import { api } from '../api.js';
 
 /**
@@ -13,6 +14,7 @@ export function useSmithChat(projectId: string | undefined): {
   cancel: () => Promise<void>;
   newChat: () => Promise<void>;
   setModel: (model: string) => Promise<void>;
+  setReasoningEffort: (effort: ReasoningEffort) => Promise<void>;
 } {
   const [state, setState] = useState<SmithChatState | null>(null);
 
@@ -62,5 +64,13 @@ export function useSmithChat(projectId: string | undefined): {
     [projectId],
   );
 
-  return { state, send, cancel, newChat, setModel };
+  const setReasoningEffort = useCallback(
+    async (effort: ReasoningEffort): Promise<void> => {
+      const next = await api.smith.setReasoningEffort(projectId, effort);
+      if (next) setState(next);
+    },
+    [projectId],
+  );
+
+  return { state, send, cancel, newChat, setModel, setReasoningEffort };
 }

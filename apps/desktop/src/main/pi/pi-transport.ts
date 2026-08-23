@@ -18,7 +18,7 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import type { ContextBreakdown } from '@shared/types.js';
+import type { ContextBreakdown, ReasoningEffort } from '@shared/types.js';
 import { pickModel, thinkingLevelFor, toTransportModel, type PiModel } from './model.js';
 import { continueWithModelFailover } from './model-failover.js';
 import { foundryResourceLoader, foundrySettings, openFoundrySession } from './open-session.js';
@@ -100,6 +100,16 @@ export class PiTransport implements AgentTransport {
   get activeModel(): string {
     const model = this.session?.model ?? this.resolvedModel;
     return model ? `${model.provider}/${model.id}` : this.opts.model;
+  }
+
+  /**
+   * The roster's level, verbatim. A run agent's effort is not clamped here:
+   * the roster is the operator's stated intent, pi maps an unsupported level
+   * down itself, and a mid-turn model failover would make any clamp computed
+   * at open stale anyway.
+   */
+  get activeReasoningEffort(): ReasoningEffort {
+    return this.opts.reasoningEffort;
   }
 
   async start(existingSessionId?: string | null): Promise<void> {

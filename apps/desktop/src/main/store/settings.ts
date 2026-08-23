@@ -5,6 +5,7 @@
 
 import { join } from 'node:path';
 import { z } from 'zod';
+import { REASONING_EFFORTS, isReasoningEffort } from '@shared/reasoning-effort.js';
 import { DEFAULT_PR_AGENT, type AppSettings } from '@shared/types.js';
 import { JsonStore } from './json-store.js';
 
@@ -17,7 +18,7 @@ const COMPACTION_BAND = [0.5, 0.95] as const;
 
 export const appSettingsSchema = z.object({
   helperModel: z.string().min(1),
-  helperReasoningEffort: z.enum(['off', 'low', 'medium', 'high', 'xhigh', 'max']),
+  helperReasoningEffort: z.enum(REASONING_EFFORTS),
   engineerName: z.string().min(1).max(80),
   prAgent: z
     .string()
@@ -27,8 +28,9 @@ export const appSettingsSchema = z.object({
       'lowercase letters, digits, dash, underscore; must start with a letter',
     ),
   defaultModel: z.string().min(1),
-  defaultReasoningEffort: z.enum(['off', 'low', 'medium', 'high', 'xhigh', 'max']),
+  defaultReasoningEffort: z.enum(REASONING_EFFORTS),
   smithModel: z.string().min(1),
+  smithReasoningEffort: z.enum(REASONING_EFFORTS),
   compactionThreshold: z.number().min(COMPACTION_BAND[0]).max(COMPACTION_BAND[1]),
   notifications: z.object({
     accepted: z.boolean(),
@@ -51,6 +53,7 @@ export function defaultSettings(): AppSettings {
     defaultModel: 'inherit',
     defaultReasoningEffort: 'medium',
     smithModel: 'inherit',
+    smithReasoningEffort: 'medium',
     compactionThreshold: 0.8,
     notifications: { accepted: true, rejected: true, failed: true, needsInput: true },
     dockBadge: true,
@@ -96,15 +99,15 @@ export function migrate(raw: unknown): AppSettings {
   if (typeof merged.prAgent !== 'string' || !/^[a-z][a-z0-9_-]*$/.test(merged.prAgent)) {
     merged.prAgent = DEFAULT_PR_AGENT;
   }
-  if (
-    merged.helperReasoningEffort !== 'off' &&
-    merged.helperReasoningEffort !== 'low' &&
-    merged.helperReasoningEffort !== 'medium' &&
-    merged.helperReasoningEffort !== 'high' &&
-    merged.helperReasoningEffort !== 'xhigh' &&
-    merged.helperReasoningEffort !== 'max'
-  ) {
-    merged.helperReasoningEffort = base.helperReasoningEffort;
+  // A stored effort outside the known set is repaired to the shipped default.
+  // Whether the chosen model actually offers the level is a separate question,
+  // answered against the live catalog rather than against a stored file.
+  for (const key of [
+    'helperReasoningEffort',
+    'defaultReasoningEffort',
+    'smithReasoningEffort',
+  ] as const) {
+    if (!isReasoningEffort(merged[key])) merged[key] = base[key];
   }
   // A read is not a save, so an out-of-band value is clamped rather than
   // rejected: refusing it here would leave the app with no threshold at all.

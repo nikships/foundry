@@ -10,7 +10,7 @@ export type PhaseStatus = 'queued' | 'running' | 'success' | 'fail' | 'skipped';
 export type RunStatus = 'running' | 'accepted' | 'rejected' | 'failed' | 'killed';
 /** Which agent transport answered for a run. Agent phases run in-process on pi. */
 export type RunMode = 'pi';
-export type ReasoningEffort = 'off' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export type ReasoningEffort = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export type EnvelopeKind =
   'generic' | 'brief' | 'plan' | 'build' | 'scout' | 'review' | 'document' | 'pr' | 'issue';
 
@@ -271,6 +271,12 @@ export interface AppSettings {
    * follows this install's default.
    */
   smithModel: string;
+  /**
+   * Reasoning effort a new Smith chat opens at. A level the chosen model does
+   * not support is normalized to that model's default before it reaches a
+   * provider; the chat header can still override this per conversation.
+   */
+  smithReasoningEffort: ReasoningEffort;
   /**
    * How full an agent's context may get before the engine compacts it between
    * phases, as a fraction of the model's window.

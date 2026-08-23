@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { join } from 'node:path';
 import { tempDir } from '../../helpers/tmp.js';
 import type { ToolDefinition } from '../../../src/main/pi/tool-definition.js';
+import type { ReasoningEffort } from '../../../src/shared/types.js';
 
 interface CreateCall {
   cwd: string;
@@ -47,7 +48,15 @@ const spy = {
   registeredTools: [] as string[],
   listed: [] as { id: string; path: string }[],
   session: null as ScriptedPiSession | null,
-  models: [] as { provider: string; id: string; name: string; contextWindow: number }[],
+  models: [] as {
+    provider: string;
+    id: string;
+    name: string;
+    contextWindow: number;
+    reasoning?: boolean;
+    /** pi's own map; a null entry is a level this model does not have. */
+    thinkingLevelMap?: Record<string, unknown>;
+  }[],
 };
 
 class ScriptedPiSession {
@@ -169,7 +178,13 @@ const entityTool = {
     Promise.resolve({ content: [{ type: 'text' as const, text: '[]' }], details: undefined }),
 } as unknown as ToolDefinition;
 
-function harness(opts: { model?: string; customTools?: ToolDefinition[] } = {}) {
+function harness(
+  opts: {
+    model?: string;
+    customTools?: ToolDefinition[];
+    reasoningEffort?: ReasoningEffort;
+  } = {},
+) {
   const supportDir = tempDir('smith-tx-support-');
   const cwd = tempDir('smith-tx-cwd-');
   const warnings: string[] = [];
@@ -180,7 +195,7 @@ function harness(opts: { model?: string; customTools?: ToolDefinition[] } = {}) 
     supportDir,
     sessionDir: join(supportDir, 'pi', 'smith', 'proj_1'),
     model: opts.model ?? 'anthropic/claude-sonnet-4',
-    reasoningEffort: 'medium',
+    reasoningEffort: opts.reasoningEffort ?? 'medium',
     harness: SMITH_CHAT_HARNESS,
     customTools: opts.customTools ?? [entityTool],
     onPermission: () => ({ outcome: 'allow' }),
@@ -201,6 +216,9 @@ beforeEach(() => {
       id: 'claude-sonnet-4',
       name: 'Claude Sonnet 4',
       contextWindow: 200_000,
+      // No thinkingLevelMap: a reasoning model without one gets the
+      // conservative off–high set every provider supports.
+      reasoning: true,
     },
   ];
 });
@@ -268,11 +286,109 @@ describe('opening the chat session', () => {
     expect(spy.sessionManagers[0]!.kind).toBe('create');
   });
 
-  it('falls back with a warning when the model is not available here', async () => {
+  it('refuses rather than substituting when the chosen model is unreachable', async () => {
+    // A run may fall back and record it in the trace. A chat may not: the
+    // operator is talking to a model they named, and quietly answering as a
+    // different one makes the header label a lie.
     const h = harness({ model: 'provider/unreachable' });
+    await expect(h.transport.start()).rejects.toThrow(/not available to this install/i);
+    expect(spy.creates).toHaveLength(0);
+  });
+
+  it('refuses to open at all when no model has been chosen', async () => {
+    const h = harness({ model: 'inherit' });
+    await expect(h.transport.start()).rejects.toThrow(/no model is selected/i);
+    expect(spy.creates).toHaveLength(0);
+  });
+
+  it('reports which of the two refusals it was, so the UI can react', async () => {
+    const unset = harness({ model: 'inherit' });
+    await expect(unset.transport.start()).rejects.toMatchObject({
+      name: 'ModelNotChosen',
+      reason: 'unset',
+    });
+    const gone = harness({ model: 'provider/unreachable' });
+    await expect(gone.transport.start()).rejects.toMatchObject({
+      name: 'ModelNotChosen',
+      reason: 'unavailable',
+    });
+  });
+});
+
+describe('reasoning effort', () => {
+  it('states the requested level when the model offers it', async () => {
+    const h = harness({ reasoningEffort: 'high' });
     await h.transport.start();
-    expect(h.warnings[0]).toMatch(/unreachable is not available/i);
-    expect(spy.creates[0]!.model).toMatchObject({ id: 'claude-sonnet-4' });
+    expect(spy.creates[0]!.thinkingLevel).toBe('high');
+    expect(h.transport.activeReasoningEffort).toBe('high');
+  });
+
+  it('clamps a level the model does not offer to that model’s default', async () => {
+    spy.models = [
+      {
+        provider: 'anthropic',
+        id: 'claude-sonnet-4',
+        name: 'Claude Sonnet 4',
+        contextWindow: 200_000,
+        reasoning: true,
+        thinkingLevelMap: { xhigh: null, max: null },
+      },
+    ];
+    const h = harness({ reasoningEffort: 'max' });
+    await h.transport.start();
+    // `max` is null in this model's map: sending it would be rejected upstream.
+    expect(spy.creates[0]!.thinkingLevel).toBe('medium');
+    expect(h.transport.activeReasoningEffort).toBe('medium');
+  });
+
+  it('does not clamp a level a partial map adds rather than withholds', async () => {
+    spy.models = [
+      {
+        provider: 'anthropic',
+        id: 'claude-sonnet-4',
+        name: 'Claude Sonnet 4',
+        contextWindow: 200_000,
+        reasoning: true,
+        // The common shape: `max` on top of the standard four, nothing withheld.
+        thinkingLevelMap: { max: 'max' },
+      },
+    ];
+    const h = harness({ reasoningEffort: 'medium' });
+    await h.transport.start();
+    // Reading the map as an allowlist would have raised this to `max`.
+    expect(spy.creates[0]!.thinkingLevel).toBe('medium');
+  });
+
+  it('keeps thinking on for a model that cannot turn it off', async () => {
+    spy.models = [
+      {
+        provider: 'google',
+        id: 'always-thinking',
+        name: 'Always Thinking',
+        contextWindow: 1_000_000,
+        reasoning: true,
+        thinkingLevelMap: { off: null },
+      },
+    ];
+    const h = harness({ model: 'google/always-thinking', reasoningEffort: 'off' });
+    await h.transport.start();
+    // `off` is the one level this model does not have; it must not be sent.
+    expect(spy.creates[0]!.thinkingLevel).toBe('medium');
+  });
+
+  it('clamps to off for a model with no reasoning at all', async () => {
+    spy.models = [
+      {
+        provider: 'openai',
+        id: 'plain-model',
+        name: 'Plain',
+        contextWindow: 128_000,
+        reasoning: false,
+      },
+    ];
+    const h = harness({ model: 'openai/plain-model', reasoningEffort: 'high' });
+    await h.transport.start();
+    expect(spy.creates[0]!.thinkingLevel).toBe('off');
   });
 });
 

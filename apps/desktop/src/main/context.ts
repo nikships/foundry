@@ -226,6 +226,7 @@ export class AppContext {
             : { kind: 'global', workspace: globalWorkspace },
           stateDir: chatRoot,
           smithModel: () => this.settings.get().smithModel,
+          smithReasoningEffort: () => this.settings.get().smithReasoningEffort,
           toolFactories,
           transport: (request) =>
             new SmithPiTransport({

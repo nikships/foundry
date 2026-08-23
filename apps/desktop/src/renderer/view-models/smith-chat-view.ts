@@ -10,6 +10,9 @@
  */
 
 import type { SmithScreenContext, SmithTranscriptEntry } from '@shared/ipc-contract.js';
+import { MODEL_UNSET } from '@shared/model-choice.js';
+import { modelLabel } from '@shared/model-label.js';
+import type { ModelInfo } from '@shared/types.js';
 import type { DesignTab, View } from '../utils/navigation.js';
 
 /** One run of consecutive same-source entries, keyed by its first entry. */
@@ -43,6 +46,29 @@ export const SMITH_TOOL_ICON: Record<string, string> = {
   search: '⌕',
   other: '·',
 };
+
+/**
+ * Closed-face copy for the Smith header's model picker when nothing is chosen.
+ *
+ * Deliberately an instruction rather than a value. The old copy named a
+ * fallback ("first reachable model"), which reads like a setting but is really
+ * an unanswered question — the operator could not tell you which model it
+ * meant, and neither could the app until a session opened. Smith now refuses
+ * to run on an unchosen model, so this option is a prompt, not a choice.
+ */
+export const SMITH_MODEL_UNSET_LABEL = 'Select a model…';
+
+/**
+ * How the header names the model, given what the chat resolved.
+ *
+ * Prefers the catalog's display name, falls back to the bare id so an unknown
+ * model still reads as itself rather than as a fallback.
+ */
+export function smithModelLabel(chosen: string | null | undefined, models: ModelInfo[]): string {
+  if (!chosen || chosen === MODEL_UNSET) return SMITH_MODEL_UNSET_LABEL;
+  const info = models.find((model) => model.id === chosen);
+  return info?.displayName || modelLabel(chosen);
+}
 
 /** What the app shell knows about the operator's position, for `describeScreen`. */
 export interface ScreenPosition {

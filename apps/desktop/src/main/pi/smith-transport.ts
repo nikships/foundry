@@ -23,12 +23,20 @@ import {
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ContextBreakdown, ReasoningEffort } from '@shared/types.js';
-import { pickModel, thinkingLevelFor, toTransportModel, type PiModel } from './model.js';
+import {
+  clampEffortToModel,
+  pickModel,
+  requireModel,
+  thinkingLevelFor,
+  toTransportModel,
+  type PiModel,
+} from './model.js';
 import { foundryResourceLoader, foundrySettings, openFoundrySession } from './open-session.js';
 import { smithExtension } from './policy-extension.js';
 import { modelRuntime } from './runtime.js';
 import { BUILTIN_TOOLS } from './tools.js';
 import { lastAssistantStop, VendorEventReader } from './vendor-events.js';
+import { ModelNotChosen } from './transport.js';
 import type {
   AgentTransport,
   ContextStats,
@@ -67,10 +75,12 @@ export class SmithPiTransport implements AgentTransport {
   private readonly extension: ReturnType<typeof smithExtension>;
   private models: TransportModel[] = [];
   private resolvedModel: PiModel | null = null;
+  private effort: ReasoningEffort;
   private closed = false;
   private readonly events = new VendorEventReader();
 
   constructor(private readonly opts: SmithTransportOptions) {
+    this.effort = opts.reasoningEffort;
     this.extension = smithExtension({
       tools: opts.customTools,
       decide: (ask) => opts.onPermission(ask),
@@ -110,15 +120,31 @@ export class SmithPiTransport implements AgentTransport {
     return model ? `${model.provider}/${model.id}` : this.opts.model;
   }
 
+  get activeReasoningEffort(): ReasoningEffort {
+    return this.effort;
+  }
+
   async start(existingSessionId?: string | null): Promise<void> {
     this.closed = false;
     const runtime = await modelRuntime(this.opts.supportDir);
     const available = await runtime.getAvailable();
     this.models = available.map(toTransportModel);
 
+    // Smith refuses rather than substitutes. A run can fall back to another
+    // model and say so in the trace, but a chat is a conversation the operator
+    // is having with a model they named: answering as a different one, or as
+    // whichever the runtime happened to reach first, is not a lesser version
+    // of the request. Refusing keeps the picker's label honest.
+    const required = requireModel(available, this.opts.model);
+    if (!required.ok) throw new ModelNotChosen(required.reason, required.message);
+
     const picked = pickModel(available, this.opts.model);
     this.resolvedModel = picked.model;
     if (picked.warning) this.opts.onModelWarning?.(picked.warning);
+    // The chat may hold an effort the newly resolved model does not offer —
+    // a model switch, or a setting stored before a catalog change. Clamping
+    // here is what keeps an unsupported level from reaching the provider.
+    this.effort = clampEffortToModel(this.opts.reasoningEffort, picked.model);
 
     mkdirSync(this.opts.sessionDir, { recursive: true });
     const sessionManager = await this.openSessionManager(existingSessionId);
@@ -136,7 +162,7 @@ export class SmithPiTransport implements AgentTransport {
       agentDir,
       modelRuntime: runtime,
       model: picked.model,
-      thinkingLevel: thinkingLevelFor(this.opts.reasoningEffort),
+      thinkingLevel: thinkingLevelFor(this.effort),
       // Full builtins plus Smith's own tools: the list is the allowlist, and
       // Smith is a full coding agent in the operator's checkout on purpose.
       tools: [...BUILTIN_TOOLS, ...this.opts.customTools.map((tool) => tool.name)],
