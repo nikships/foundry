@@ -855,7 +855,15 @@ export type SmithArtifactKind =
   | 'pr_card'
   | 'engineer_checkpoint'
   | 'readiness_journey'
-  | 'provider_status';
+  | 'provider_status'
+  | 'action_receipt';
+
+/**
+ * The kinds `smith_present` may emit. `action_receipt` is deliberately absent:
+ * a receipt is evidence an action ran, so it is minted by main from the real
+ * executor result and never by the model.
+ */
+export type SmithPresentableArtifactKind = Exclude<SmithArtifactKind, 'action_receipt'>;
 
 /** The protocol version this build reads. Unknown versions fail soft in the UI. */
 export const SMITH_ARTIFACT_VERSION = 1;
@@ -1225,6 +1233,55 @@ export interface SmithProviderStatusArtifact extends SmithArtifactBase {
 }
 
 /**
+ * Where the thing an action affected can be found afterwards. Identifiers and
+ * a URL only: a receipt outlives the session that produced it, so it must not
+ * carry a closure, a handle, or anything that goes stale in a way a click
+ * could act on. The renderer decides what, if anything, is clickable.
+ */
+export type SmithReceiptLink =
+  | { kind: 'url'; label: string; url: string }
+  | { kind: 'run'; label: string; projectId: string; runId: string }
+  | { kind: 'entity'; label: string; entity: 'agent' | 'pipeline' | 'envelope'; name: string };
+
+/**
+ * What an approved action actually did, recorded by main from the executor's
+ * own result. Approval is not success: a refused or failed execution produces
+ * a receipt too, carrying the executor's words in `failure`.
+ */
+export interface SmithActionReceipt {
+  /** The fixed operation enum the proposal named, e.g. `pr_create`. */
+  operation: string;
+  /** The proposal's human title, restated so the card reads without the chat. */
+  title: string;
+  /** What the action ran against, derived from the approved (redacted) args. */
+  target: string;
+  /** What approving it was stated to do — the summary the operator read. */
+  consequences: string;
+  /** The risk class the operator approved, kept as the consequence badge. */
+  risk: SmithActionRisk;
+  outcome: 'succeeded' | 'failed';
+  /** How long the executor ran, in ms. Not the time the card waited for a human. */
+  durationMs: number;
+  /** The executor's own words. Present only when `outcome` is `failed`. */
+  failure?: string;
+  /** Where the affected object now lives, as identifiers rather than a handle. */
+  link?: SmithReceiptLink;
+  /** The redacted args the operator approved, restated as the audit trail. */
+  args: Record<string, unknown>;
+}
+
+/**
+ * Durable evidence that an approved action ran. Unlike the design artifacts it
+ * is never model-callable: main mints it from the real executor result on the
+ * proposal answer path, so the transcript cannot claim an action Foundry did
+ * not perform. `createdAt` is the moment execution settled.
+ */
+export interface SmithActionReceiptArtifact extends SmithArtifactBase {
+  kind: 'action_receipt';
+  receipt: SmithActionReceipt;
+}
+
+/**
  * One rich inline card in the Smith transcript. Artifacts are presentation
  * only: they perform no writes, never occupy the one-slot proposal queue, and
  * carry no executor, secret, or private payload — validated and size-capped at
@@ -1241,7 +1298,8 @@ export type SmithArtifact =
   | SmithPrCardArtifact
   | SmithEngineerCheckpointArtifact
   | SmithReadinessJourneyArtifact
-  | SmithProviderStatusArtifact;
+  | SmithProviderStatusArtifact
+  | SmithActionReceiptArtifact;
 
 // ── Smith (the entity-smith's approval gate) ─────────────────────────────────
 

@@ -14,6 +14,7 @@ import type {
   SmithProposalAnswerResult,
   SmithProposalExecutionResult,
 } from '@shared/types.js';
+import type { ActionExecutionRecord } from './receipts.js';
 
 export type EntityProposalInput = Omit<SmithEntityProposal, 'id' | 'createdAt'>;
 export type ActionProposalInput = Omit<SmithActionProposal, 'id' | 'createdAt'>;
@@ -33,6 +34,16 @@ export type SaveHandler = (
   proposal: SmithEntityProposal,
 ) => Promise<{ ok: true; entity: unknown } | { ok: false; error: string }>;
 
+/**
+ * Called once per settled action, with what the executor actually did. This is
+ * the receipt seam: approval alone never reaches it, and a failure reaches it
+ * exactly as a success does.
+ */
+export type ActionSettledHandler = (
+  proposal: SmithActionProposal,
+  execution: ActionExecutionRecord,
+) => void;
+
 interface PendingEntry {
   proposal: SmithProposal;
   executor: ProposalExecutor;
@@ -46,6 +57,8 @@ export class ProposalQueue {
   constructor(
     private readonly onChanged: () => void,
     private readonly save: SaveHandler,
+    /** Receives every settled action so main can record a receipt. */
+    private readonly onActionSettled?: ActionSettledHandler,
   ) {}
 
   list(): SmithProposal[] {
@@ -91,6 +104,7 @@ export class ProposalQueue {
     }
 
     entry.executing = true;
+    const startedAt = Date.now();
     let executed: SmithProposalExecutionResult;
     try {
       executed = await entry.executor(answer);
@@ -101,22 +115,48 @@ export class ProposalQueue {
         retryable: entry.proposal.type === 'entity',
       };
     }
+    const durationMs = Date.now() - startedAt;
 
     if (!executed.ok) {
       if (executed.retryable) {
         entry.executing = false;
         return { ok: false, error: executed.error };
       }
+      this.settled(entry.proposal, {
+        outcome: 'failed',
+        durationMs,
+        error: executed.error,
+      });
       this.clear(entry);
       entry.resolve({ approved: true, result: { ok: false, error: executed.error } });
       return { ok: false, error: executed.error };
     }
 
+    this.settled(entry.proposal, {
+      outcome: 'succeeded',
+      durationMs,
+      result: executed.modelResult,
+    });
     this.clear(entry);
     entry.resolve({ approved: true, result: executed.modelResult });
     return executed.privateDisplay
       ? { ok: true, privateDisplay: executed.privateDisplay }
       : { ok: true };
+  }
+
+  /**
+   * Report a settled action. Entity saves are excluded: their evidence is the
+   * stored definition, and the card already routes the operator to it.
+   * A receipt must never take the answer down with it, so a throwing handler
+   * is swallowed — the action itself already happened.
+   */
+  private settled(proposal: SmithProposal, execution: ActionExecutionRecord): void {
+    if (proposal.type !== 'action' || !this.onActionSettled) return;
+    try {
+      this.onActionSettled(proposal, execution);
+    } catch {
+      // Losing a receipt is a lost record, never a lost action.
+    }
   }
 
   cancelAll(): void {

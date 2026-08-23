@@ -26,7 +26,10 @@ const seed: ProposalInput = {
 };
 
 function fakeChat(): SmithChatSession {
-  return { dispose: vi.fn(async () => undefined) } as unknown as SmithChatSession;
+  return {
+    dispose: vi.fn(async () => undefined),
+    absorbArtifact: vi.fn(),
+  } as unknown as SmithChatSession;
 }
 
 function service(over: Partial<SmithServiceDeps> = {}): SmithService {
@@ -94,6 +97,86 @@ describe('SmithService', () => {
     const smith = service({ seedProposal: seed });
     await vi.waitFor(() => expect(smith.proposals.list()).toHaveLength(1));
     expect(smith.proposals.list()[0]).toMatchObject({ name: 'e2e_planner', kind: 'agent' });
+  });
+
+  it('files a receipt into the conversation that proposed the action', async () => {
+    const chat = fakeChat();
+    const smith = service({ createChat: () => chat });
+    smith.chat('proj_1');
+
+    const pending = smith.proposals.propose(
+      {
+        type: 'action',
+        operation: 'merge',
+        title: 'merge run',
+        summary: 'merge the selected run.',
+        args: { projectId: 'proj_1', runId: 'run_7' },
+        risk: 'git',
+        projectId: 'proj_1',
+      },
+      () => ({ ok: true, modelResult: { ok: true } }),
+    );
+    await smith.proposals.answer(smith.proposals.list()[0]!.id, { approved: true });
+    await pending;
+
+    expect(chat.absorbArtifact).toHaveBeenCalledOnce();
+    const artifact = vi.mocked(chat.absorbArtifact).mock.calls[0]![0];
+    expect(artifact).toMatchObject({
+      kind: 'action_receipt',
+      projectId: 'proj_1',
+      receipt: { operation: 'merge', outcome: 'succeeded', target: 'run_7' },
+    });
+  });
+
+  it('files a failed action as a failed receipt rather than dropping it', async () => {
+    const chat = fakeChat();
+    const smith = service({ createChat: () => chat });
+    smith.chat();
+
+    const pending = smith.proposals.propose(
+      {
+        type: 'action',
+        operation: 'update_check',
+        title: 'Check for updates',
+        summary: 'Contact the update service.',
+        args: {},
+        risk: 'network',
+      },
+      () => ({ ok: false, error: 'offline' }),
+    );
+    await smith.proposals.answer(smith.proposals.list()[0]!.id, { approved: true });
+    await pending;
+
+    expect(vi.mocked(chat.absorbArtifact).mock.calls[0]![0]).toMatchObject({
+      kind: 'action_receipt',
+      receipt: { outcome: 'failed', failure: 'offline' },
+    });
+  });
+
+  it('does not open a chat just to file a receipt', async () => {
+    const created: string[] = [];
+    const smith = service({
+      createChat: (projectId) => {
+        created.push(projectId ?? 'global');
+        return fakeChat();
+      },
+    });
+
+    const pending = smith.proposals.propose(
+      {
+        type: 'action',
+        operation: 'merge',
+        title: 'merge run',
+        summary: 'merge the selected run.',
+        args: { runId: 'run_7' },
+        risk: 'git',
+        projectId: 'proj_never_opened',
+      },
+      () => ({ ok: true, modelResult: { ok: true } }),
+    );
+    await smith.proposals.answer(smith.proposals.list()[0]!.id, { approved: true });
+    await expect(pending).resolves.toMatchObject({ approved: true });
+    expect(created).toEqual([]);
   });
 
   it('dispose closes live chats and unblocks a pending proposal', async () => {

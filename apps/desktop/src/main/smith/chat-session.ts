@@ -154,6 +154,10 @@ function errorMessage(e: unknown): string {
  * One persisted row, restored fail-soft. An artifact from a newer build (or a
  * corrupt one) becomes a readable note rather than a render error or a lost
  * chat: the surrounding conversation always survives.
+ *
+ * Every artifact kind restores the same way, receipts included: an artifact is
+ * a data snapshot with no executor behind it, so a restored one can be read
+ * but never re-run.
  */
 function restoreEntry(entry: SmithTranscriptEntry): SmithTranscriptEntry {
   if (entry.kind !== 'artifact') return { ...entry };
@@ -169,7 +173,7 @@ function restoreEntry(entry: SmithTranscriptEntry): SmithTranscriptEntry {
   return {
     id: entry.id,
     kind: 'note',
-    text: 'An earlier design card could not be restored by this version of Foundry.',
+    text: 'An earlier card could not be restored by this version of Foundry.',
     source: 'smith',
     at: entry.at,
   };
@@ -374,7 +378,8 @@ export class SmithChatSession {
   }
 
   /**
-   * Adds a `smith_present` artifact card to the transcript, mid-turn.
+   * Adds an artifact card to the transcript: a `smith_present` design mid-turn,
+   * or an action receipt main minted when an approved action settled.
    * Persisted immediately: the card must survive a relaunch even when the
    * turn that produced it never settles (a cancel, a crash).
    */
