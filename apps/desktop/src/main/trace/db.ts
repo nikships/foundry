@@ -136,6 +136,19 @@ const ADDED_COLUMNS: { table: string; column: string; ddl: string }[] = [
     ddl: 'ALTER TABLE runs ADD COLUMN issue_number INTEGER',
   },
   { table: 'runs', column: 'issue_url', ddl: 'ALTER TABLE runs ADD COLUMN issue_url TEXT' },
+  // Orchestrated runs: the generated plan travels with the run so retroactive
+  // export and the Inspector's pipeline view never depend on the pipeline store.
+  { table: 'runs', column: 'plan_json', ddl: 'ALTER TABLE runs ADD COLUMN plan_json TEXT' },
+  {
+    table: 'runs',
+    column: 'orchestrated',
+    ddl: 'ALTER TABLE runs ADD COLUMN orchestrated INTEGER DEFAULT 0',
+  },
+  {
+    table: 'runs',
+    column: 'amendments',
+    ddl: 'ALTER TABLE runs ADD COLUMN amendments INTEGER DEFAULT 0',
+  },
 ];
 
 function addMissingColumns(db: Db): void {

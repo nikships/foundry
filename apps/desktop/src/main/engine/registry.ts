@@ -14,6 +14,7 @@ import type {
   AgentDef,
   AppSettings,
   EnvelopeDef,
+  GeneratedRunPlan,
   InterruptAnswer,
   PendingInterrupt,
   PipelineDef,
@@ -63,6 +64,8 @@ interface ExecutorInput {
   agents: AgentDef[];
   envelopeDefs: EnvelopeDef[];
   request: string;
+  /** Present when the run starts from an Orchestrator-generated plan. */
+  plan?: GeneratedRunPlan | null;
 }
 
 interface PendingEntry {
@@ -225,6 +228,7 @@ export class RunRegistry extends EventEmitter {
       project: input.project,
       pipeline: input.pipeline,
       request: input.request,
+      plan: input.plan ?? null,
       runId,
       engineer: this.deps.engineerName,
       askHuman: (req) => this.raiseInterrupt(req),

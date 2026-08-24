@@ -11,6 +11,7 @@ import type {
   AgentDef,
   AppSettings,
   EnvelopeDef,
+  GeneratedRunPlan,
   PipelineDef,
   ProjectDef,
   StartRunInput,
@@ -47,6 +48,7 @@ export interface StartRunDeps {
       agents: AgentDef[];
       envelopeDefs: EnvelopeDef[];
       request: string;
+      plan?: GeneratedRunPlan | null;
     }): string;
   };
 }
@@ -60,10 +62,21 @@ function startError(where: string, message: string): StartRunOutcome {
 export async function startRun(deps: StartRunDeps, input: StartRunInput): Promise<StartRunOutcome> {
   let project = deps.projectById(input.projectId);
   if (!project) return startError('project', 'project not found');
-  const pipeline = deps.pipelineFor(input.projectId, input.pipelineId);
+
+  // An inline plan carries its own pipeline and brief; `pipelineId` is
+  // ignored. The plan's raw prompt is recorded on the run by the tracer.
+  const plan = input.plan ?? null;
+  if (plan && plan.projectId !== input.projectId) {
+    return startError('plan', 'this plan was generated for a different project');
+  }
+  const pipeline = plan ? plan.pipeline : deps.pipelineFor(input.projectId, input.pipelineId);
   if (!pipeline) return startError('pipeline', 'pipeline not found');
-  if (!input.request.trim()) return startError('request', 'a run needs a request');
-  const agents = deps.rosterFor(input.projectId);
+  const request = plan ? plan.refinedRequest : input.request;
+  if (!request.trim()) return startError('request', 'a run needs a request');
+  const roster = deps.rosterFor(input.projectId);
+  // Synthesized agents shadow nothing: a name collision was a validation
+  // error at plan time, so the union here can never be ambiguous.
+  const agents = plan ? [...roster, ...plan.agents] : roster;
 
   // Missing project commands are a deterministic fail mid-run. Fill them from
   // manifests (free), then the default CLI, before refusing to start.
@@ -119,7 +132,8 @@ export async function startRun(deps: StartRunDeps, input: StartRunInput): Promis
     pipeline,
     agents,
     envelopeDefs: deps.envelopeDefs(),
-    request: input.request,
+    request,
+    plan,
   });
   return { ok: true, runId, issues: noIssues };
 }

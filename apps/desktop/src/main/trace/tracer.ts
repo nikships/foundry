@@ -19,6 +19,7 @@ import type {
   EventType,
   GateCheck,
   GateResultRow,
+  GeneratedRunPlan,
   PhaseKind,
   PhaseRow,
   PhaseStatus,
@@ -114,11 +115,14 @@ export class Tracer {
     baseRef: string | null;
     branchPointSha?: string | null;
     mode: RunMode;
+    /** The Orchestrator's confirmed plan, when this run was generated from one. */
+    plan?: GeneratedRunPlan | null;
   }): void {
     this.exec(
       `INSERT INTO runs (run_id, project_id, pipeline_id, pipeline_name, pipeline_snapshot_json,
-         request, status, engineer, worktree_path, branch, base_ref, branch_point_sha, mode, started_at)
-       VALUES (?,?,?,?,?,?,'running',?,?,?,?,?,?,?)`,
+         request, status, engineer, worktree_path, branch, base_ref, branch_point_sha, mode,
+         plan_json, orchestrated, started_at)
+       VALUES (?,?,?,?,?,?,'running',?,?,?,?,?,?,?,?,?)`,
       input.runId,
       input.projectId,
       input.pipeline.id,
@@ -131,11 +135,34 @@ export class Tracer {
       input.baseRef,
       input.branchPointSha ?? null,
       input.mode,
+      input.plan ? JSON.stringify(input.plan) : null,
+      input.plan ? 1 : 0,
       nowIso(),
     );
     mkdirSync(this.runDir(input.runId), { recursive: true });
     this.writeRunFile(input.runId, 'request.md', input.request);
     this.writeRunFile(input.runId, 'pipeline.json', JSON.stringify(input.pipeline, null, 2));
+    if (input.plan) {
+      this.writeRunFile(input.runId, 'plan.json', JSON.stringify(input.plan, null, 2));
+    }
+  }
+
+  /**
+   * The generated plan an orchestrated run started from, or null for a manual
+   * run (and for a stored plan that no longer parses — the raw file under the
+   * run dir remains the record).
+   */
+  runPlan(runId: string): GeneratedRunPlan | null {
+    const row = this.one<{ plan_json: string | null }>(
+      'SELECT plan_json FROM runs WHERE run_id = ?',
+      runId,
+    );
+    if (!row?.plan_json) return null;
+    try {
+      return JSON.parse(row.plan_json) as GeneratedRunPlan;
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -800,6 +827,8 @@ interface RawRun {
   mode: string | null;
   merged: number;
   archived: number;
+  orchestrated: number | null;
+  amendments: number | null;
   started_at: string;
   ended_at: string | null;
   total_tokens: number;
@@ -928,6 +957,8 @@ function mapRun(r: RawRun): RunRow {
     merged: !!r.merged,
     archived: !!r.archived,
     mode: (r.mode as RunMode) ?? 'pi',
+    orchestrated: !!r.orchestrated,
+    amendments: r.amendments ?? 0,
     startedAt: r.started_at,
     endedAt: r.ended_at,
     totalTokens: r.total_tokens,

@@ -11,7 +11,12 @@ import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { AGENT_MARKS_DIR } from './store/agent-marks.js';
 import type { AgentDef, AppTheme, PipelineDef, ReadinessState, RunRow } from '@shared/types.js';
-import { IPC, type DetectionState, type SetupState } from '@shared/ipc-contract.js';
+import {
+  IPC,
+  type DetectionState,
+  type OrchestratorState,
+  type SetupState,
+} from '@shared/ipc-contract.js';
 import { SettingsStore } from './store/settings.js';
 import { ProjectStore } from './store/projects.js';
 import { RosterStore } from './store/roster.js';
@@ -20,6 +25,7 @@ import { EnvelopeStore } from './store/envelopes.js';
 import { RunRegistry } from './engine/registry.js';
 import { createDetections, type DetectStart } from './engine/detect-session.js';
 import { createSetups, type SetupStart } from './engine/setup-session.js';
+import { createPlans, type PlanStart } from './orchestrator/plan-session.js';
 import { runDetail } from './engine/operations.js';
 import { ReadinessSessions } from './readiness/sessions.js';
 import type { PanelRegistry } from './session/index.js';
@@ -67,6 +73,7 @@ export class AppContext {
   readonly registry: RunRegistry;
   readonly detections: PanelRegistry<DetectStart, DetectionState>;
   readonly setups: PanelRegistry<SetupStart, SetupState>;
+  readonly plans: PanelRegistry<PlanStart, OrchestratorState>;
   readonly readiness: ReadinessSessions;
   readonly updater: UpdaterService;
   readonly smith: SmithService;
@@ -121,6 +128,9 @@ export class AppContext {
     );
     this.setups = createSetups(this.oneShot, (state) =>
       this.broadcast(IPC.eventSetupProgress, state),
+    );
+    this.plans = createPlans(this.oneShot, (state) =>
+      this.broadcast(IPC.eventOrchestratorProgress, state),
     );
     const smithReadinessObservers = new Map<string, (state: ReadinessState) => void>();
     this.readiness = new ReadinessSessions(this.oneShot, (state) => {
@@ -367,6 +377,7 @@ export class AppContext {
     this.registry.closeAll();
     this.detections.cancelAll();
     this.setups.cancelAll();
+    this.plans.cancelAll();
     this.readiness.cancelAll();
     this.smith.dispose();
     // Fire-and-forget: close() only unbinds a socket, and dispose stays sync.

@@ -17,6 +17,7 @@ import type {
   CommandResult,
   ContextBreakdown,
   EnvelopeDef,
+  GeneratedRunPlan,
   PhaseDef,
   PhaseKind,
   PipelineDef,
@@ -77,6 +78,11 @@ export interface ExecutorDeps {
   project: ProjectDef;
   pipeline: PipelineDef;
   request: string;
+  /**
+   * The Orchestrator plan an orchestrated run started from. The executor only
+   * hands it to the tracer: execution cannot tell generated from stored.
+   */
+  plan?: GeneratedRunPlan | null;
   runId: string;
   engineer: string;
   /** Raises an engineer phase's checkpoint and resolves with what was chosen. */
@@ -228,6 +234,7 @@ export class Executor {
           branch: null,
           baseRef: project.baseRef,
           mode: this.mode,
+          plan: this.deps.plan ?? null,
         });
         tracer.event({
           runId,
@@ -250,6 +257,7 @@ export class Executor {
       baseRef: project.baseRef,
       branchPointSha: this.handle?.branchPointSha ?? null,
       mode: this.mode,
+      plan: this.deps.plan ?? null,
     });
 
     // Per-project bootstrap: install deps in a fresh worktree so agents

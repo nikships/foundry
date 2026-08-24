@@ -176,6 +176,13 @@ export function register(ctx: Ctx, handle: Handle): void {
     if (run?.worktreePath && existsSync(run.worktreePath)) shell.openPath(run.worktreePath);
   });
 
+  // The plan is the trace's property: read from the run row, never the
+  // pipeline store, so retroactive export survives app restarts.
+  handle(IPC.runsPlan, (projectId: string, runId: string) => {
+    const scoped = tracerOf(projectId);
+    return scoped ? scoped.tracer.runPlan(runId) : null;
+  });
+
   handle(IPC.runsRevealFiles, (projectId: string, runId: string) => {
     const scoped = tracerOf(projectId);
     if (!scoped) return;
