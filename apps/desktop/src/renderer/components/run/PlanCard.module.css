@@ -1,0 +1,211 @@
+.card {
+  padding: var(--s5);
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  animation: fade-in var(--normal) var(--ease);
+}
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+.head-text {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+.title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text);
+}
+.summary {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+}
+.description {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--text-sm);
+  line-height: var(--leading);
+}
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+.label {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.brief {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading);
+  color: var(--text);
+  white-space: pre-wrap;
+}
+.phases {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+.phase {
+  display: flex;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--line-faint);
+  border-radius: var(--r-sm);
+  background: var(--bg-raised);
+}
+.phase-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  padding-top: 2px;
+}
+.phase-body {
+  flex: 1;
+  min-width: 0;
+}
+.phase-top {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+.phase-name {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+.phase-agent {
+  font-size: var(--text-xs);
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--s2);
+}
+.synth-badge {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--purple);
+  border: 1px solid color-mix(in srgb, var(--purple) 40%, transparent);
+  border-radius: var(--r-sm);
+  padding: 0 var(--s1);
+}
+.decides {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--green);
+  border: 1px solid color-mix(in srgb, var(--green) 40%, transparent);
+  border-radius: var(--r-sm);
+  padding: 0 var(--s1);
+}
+.phase-desc {
+  margin: var(--s1) 0 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading);
+  color: var(--text-dim);
+}
+.phase-note {
+  margin: var(--s1) 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+.agents {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+.agent {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  font-size: var(--text-sm);
+  flex-wrap: wrap;
+}
+.agent-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-full);
+  align-self: center;
+}
+.agent-name {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text);
+}
+.agent-purpose {
+  color: var(--text-dim);
+}
+.agent-meta {
+  font-size: var(--text-xs);
+}
+.acceptance,
+.rationale {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading);
+  color: var(--text-dim);
+}
+.warnings {
+  padding: var(--s3);
+  border-radius: var(--r-sm);
+  background: var(--amber-dim);
+  color: var(--amber);
+  font-size: var(--text-sm);
+  border: 1px solid color-mix(in srgb, var(--amber) 18%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+.warning-group ul {
+  margin: var(--s1) 0 0;
+  padding-left: var(--s4);
+}
+.issues {
+  margin: 0;
+  padding: var(--s3);
+  border-radius: var(--r-sm);
+  background: var(--red-dim);
+  color: var(--red);
+  font-size: var(--text-sm);
+  list-style: none;
+  border: 1px solid color-mix(in srgb, var(--red) 18%, transparent);
+}
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  padding-top: var(--s3);
+  border-top: 1px solid var(--line-faint);
+}
+.blocked {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+}

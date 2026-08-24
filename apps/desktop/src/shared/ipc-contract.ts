@@ -17,6 +17,7 @@ import type {
   EnvelopeRow,
   EventRow,
   GateResultRow,
+  GeneratedRunPlan,
   GhStatus,
   GithubAccount,
   InterruptAnswer,
@@ -169,6 +170,24 @@ export interface DetectionState extends PanelStateCore {
 /** One line of the setup-script generation transcript. Reuses the same union. */
 export type SetupEntry = PanelEntry;
 
+/**
+ * The live state of one Orchestrator planning session. Like detection it is
+ * not a run: no worktree, no trace rows, progress pushed over
+ * `orchestrator-progress`. `plan` is set exactly when `status` is `done`.
+ */
+export interface OrchestratorState extends PanelStateCore {
+  planId: string;
+  projectId: string;
+  status: 'running' | 'done' | 'cancelled' | 'failed';
+  reasoningEffort: ReasoningEffort;
+  /** The operator's raw prompt, echoed so a reopened panel can show it. */
+  prompt: string;
+  /** The validated plan, only ever a plan that passed the store rails. */
+  plan: GeneratedRunPlan | null;
+  /** The last reply verbatim, so an unusable answer stays diagnosable. */
+  rawReply: string;
+}
+
 export interface SetupState extends PanelStateCore {
   setupId: string;
   projectId: string;
@@ -238,6 +257,18 @@ export interface SetupSniffResult {
 export interface WorktreeAction {
   ok: boolean;
   detail: string;
+}
+
+/** Which ephemeral entities from an orchestrated run should become ordinary stores. */
+export interface RunPlanExportSelection {
+  pipeline: boolean;
+  /** Synthesized agent names from the persisted plan. */
+  agents: string[];
+}
+
+export interface RunPlanExportResult {
+  ok: boolean;
+  issues: ValidationIssue[];
 }
 
 /**
@@ -567,6 +598,31 @@ export interface FoundryApi {
     openWorktree(projectId: string, runId: string): Promise<void>;
     /** Opens the run's folder of raw records (prompts, stream.jsonl, logs). */
     revealFiles(projectId: string, runId: string): Promise<void>;
+    /**
+     * The generated plan an orchestrated run started from, read from the
+     * trace so it survives app restarts. Null for a classic manual run.
+     */
+    plan(projectId: string, runId: string): Promise<GeneratedRunPlan | null>;
+    /** Saves selected ephemeral plan entities as ordinary editable definitions. */
+    exportPlan(
+      projectId: string,
+      runId: string,
+      selection: RunPlanExportSelection,
+    ): Promise<RunPlanExportResult>;
+  };
+  orchestrator: {
+    /**
+     * Opens a planning session on the operator-chosen model. Returns as soon
+     * as the session exists; progress and the finished plan arrive on
+     * `orchestrator-progress`.
+     */
+    plan(
+      projectId: string,
+      prompt: string,
+      model: string,
+      reasoningEffort: ReasoningEffort,
+    ): Promise<{ planId: string } | { error: string }>;
+    cancel(planId: string): Promise<boolean>;
   };
   prs: {
     /** Cheap enough to gate the UI on: gh presence, auth, and remote resolve. */
@@ -665,6 +721,9 @@ export interface FoundryApi {
       | 'updater-status'
       | 'detection-progress'
       | 'setup-progress'
+      // Planning is not a run: no trace rows, no change_id cursor to walk, so
+      // the Orchestrator's progress is pushed the way detection's is.
+      | 'orchestrator-progress'
       | 'smith-proposals-changed'
       | 'smith-progress'
       // A login completes in a browser, minutes after the call that started it
@@ -767,6 +826,10 @@ export const IPC = {
   runsDiscardWorktree: 'runs:discardWorktree',
   runsOpenWorktree: 'runs:openWorktree',
   runsRevealFiles: 'runs:revealFiles',
+  runsPlan: 'runs:plan',
+  runsExportPlan: 'runs:exportPlan',
+  orchestratorPlan: 'orchestrator:plan',
+  orchestratorCancel: 'orchestrator:cancel',
   prsStatus: 'prs:status',
   prsList: 'prs:list',
   prsCreate: 'prs:create',
@@ -807,6 +870,7 @@ export const IPC = {
   eventUpdaterStatus: 'event:updater-status',
   eventDetectionProgress: 'event:detection-progress',
   eventSetupProgress: 'event:setup-progress',
+  eventOrchestratorProgress: 'event:orchestrator-progress',
   eventSmithProposalsChanged: 'event:smith-proposals-changed',
   eventSmithProgress: 'event:smith-progress',
   eventBridgeChanged: 'event:bridge-changed',

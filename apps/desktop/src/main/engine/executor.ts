@@ -17,12 +17,16 @@ import type {
   CommandResult,
   ContextBreakdown,
   EnvelopeDef,
+  GeneratedRunPlan,
+  PipelineAmendment,
   PhaseDef,
   PhaseKind,
+  PhaseRow,
   PipelineDef,
   ProjectDef,
   ReasoningEffort,
   RunStatus,
+  ValidationIssue,
 } from '@shared/types.js';
 import type { Tracer } from '../trace/tracer.js';
 import {
@@ -50,6 +54,11 @@ import { createIssue, openPr, type GhOptions } from '../system/gh.js';
 import type { IssueAction, PrAction } from '@shared/ipc-contract.js';
 import { effectivePhaseEnvelope, resolveAgentExecution } from '@shared/types.js';
 import type { SetupExecution } from './agent-context.js';
+import type { Replanner } from '../orchestrator/replan.js';
+import { validate as validatePipeline } from '../store/pipelines.js';
+import { preflightForRun } from './preflight.js';
+import { FIXED_ENGINE_DEFAULTS } from '@shared/types.js';
+import { activeRowsForPipeline } from './phase-history.js';
 
 export interface ExecutorDeps {
   tracer: Tracer;
@@ -69,6 +78,8 @@ export interface ExecutorDeps {
    * healing: a red command escalates through `feedbackTo` or fails the run.
    */
   healing?: HealingSupport | null;
+  /** Present only for an orchestrated run. Manual runs never amend themselves. */
+  replanner?: Replanner | null;
   /** Foundry's Application Support directory; the agent runtime's state lives under it. */
   supportDir: string;
   agents: AgentDef[];
@@ -77,6 +88,8 @@ export interface ExecutorDeps {
   project: ProjectDef;
   pipeline: PipelineDef;
   request: string;
+  /** The active Orchestrator plan; absent for a manual run. */
+  plan?: GeneratedRunPlan | null;
   runId: string;
   engineer: string;
   /** Raises an engineer phase's checkpoint and resolves with what was chosen. */
@@ -131,6 +144,10 @@ export class Executor {
    * compaction, close, and replacement in `sessionFor`.
    */
   private readonly prompts = new PromptLedger();
+  private readonly agents: AgentDef[];
+  private pipeline: PipelineDef;
+  private plan: GeneratedRunPlan | null;
+  private replanAttempts = 0;
   private setupExecution: SetupExecution | null = null;
   private cancelled = false;
   private handle: worktreeLib.WorktreeHandle | null = null;
@@ -140,9 +157,12 @@ export class Executor {
 
   constructor(private readonly deps: ExecutorDeps) {
     this.cwd = deps.project.path;
+    this.agents = [...deps.agents];
+    this.pipeline = deps.pipeline;
+    this.plan = deps.plan ?? null;
     this.runners = {
       agent: new AgentPhaseRunner({
-        agents: deps.agents,
+        agents: this.agents,
         envelopeDefs: deps.envelopeDefs,
         envelopeRetries: deps.envelopeRetries,
         rewindAfterCorrections: deps.rewindAfterCorrections,
@@ -206,7 +226,8 @@ export class Executor {
   }
 
   async run(): Promise<RunOutcome> {
-    const { tracer, pipeline, project, runId } = this.deps;
+    const { tracer, project, runId } = this.deps;
+    const pipeline = this.pipeline;
     const isolate = pipeline.isolation !== false && project.isolation;
 
     if (isolate) {
@@ -228,6 +249,7 @@ export class Executor {
           branch: null,
           baseRef: project.baseRef,
           mode: this.mode,
+          plan: this.plan,
         });
         tracer.event({
           runId,
@@ -250,6 +272,7 @@ export class Executor {
       baseRef: project.baseRef,
       branchPointSha: this.handle?.branchPointSha ?? null,
       mode: this.mode,
+      plan: this.plan,
     });
 
     // Per-project bootstrap: install deps in a fresh worktree so agents
@@ -324,22 +347,20 @@ export class Executor {
 
   /** Continue a terminal run from its first failed phase in the existing worktree. */
   async resume(): Promise<RunOutcome> {
-    const { tracer, pipeline, project, runId } = this.deps;
+    const { tracer, project, runId } = this.deps;
+    const pipeline = this.pipeline;
     const run = tracer.run(runId);
     if (!run || (run.status !== 'rejected' && run.status !== 'failed')) {
       throw new Error('only a rejected or failed run can be continued');
     }
     if (run.merged) throw new Error('a merged run cannot be continued');
 
-    const phases = tracer.phases(runId);
-    const startIndex = phases.findIndex((phase) => phase.status === 'fail');
-    if (startIndex < 0) throw new Error('this run has no failed phase to continue');
-    if (
-      phases.length !== pipeline.phases.length ||
-      phases.some((phase, index) => phase.name !== pipeline.phases[index]?.name)
-    ) {
+    const active = activeRowsForPipeline(pipeline, tracer.phases(runId));
+    if (!active) {
       throw new Error('the saved pipeline no longer matches this run’s phase history');
     }
+    const startIndex = active.findIndex((phase) => phase.status === 'fail');
+    if (startIndex < 0) throw new Error('this run has no failed phase to continue');
 
     const isolate = pipeline.isolation !== false && project.isolation;
     if (isolate) {
@@ -355,14 +376,15 @@ export class Executor {
       this.cwd = run.worktreePath;
     }
 
-    for (const phase of phases) this.phaseIds.set(phase.name, phase.phaseId);
-    const phaseNames = new Map(phases.map((phase) => [phase.phaseId, phase]));
+    for (const phase of active) this.phaseIds.set(phase.name, phase.phaseId);
+    const phaseNames = new Map(active.map((phase) => [phase.phaseId, phase]));
     for (const envelope of tracer.envelopes(runId)) {
       const phase = phaseNames.get(envelope.phaseId);
       if (phase?.status === 'success' && envelope.valid) {
         this.envelopes.set(phase.name, envelope.payload as Envelope);
       }
     }
+    this.replanAttempts = tracer.replanAttempts(runId);
 
     mkdirSync(join(this.cwd, HANDOFF_DIR), { recursive: true });
     tracer.reopenRun(runId);
@@ -376,16 +398,15 @@ export class Executor {
   }
 
   private async runFrom(startIndex: number): Promise<RunOutcome> {
-    const { tracer, pipeline, runId } = this.deps;
+    const { tracer, runId } = this.deps;
 
     let index = startIndex;
     let guard = 0;
-    const maxSteps = pipeline.phases.length + 32;
     let detail = '';
 
-    while (index < pipeline.phases.length) {
+    while (index < this.pipeline.phases.length) {
       if (this.cancelled) return this.settleKilled();
-      if (guard++ > maxSteps) {
+      if (guard++ > this.pipeline.phases.length + 32 + this.replanAttempts * 32) {
         detail = 'the pipeline exceeded its step budget: a feedback loop is not converging';
         tracer.event({ runId, type: 'error', name: 'loop guard', payload: { detail } });
         break;
@@ -398,9 +419,15 @@ export class Executor {
       // sessions yet, which is what makes this the space *between* phases.
       await this.compactFullSessions();
 
-      const phase = pipeline.phases[index]!;
+      const phase = this.pipeline.phases[index]!;
       const jump = await this.runPhase(phase);
       if (jump.kind === 'abort') {
+        if (await this.tryReplan(index, phase, jump.detail)) {
+          // The failed definition was removed from the active pipeline. The
+          // first replacement occupies the same logical index.
+          continue;
+        }
+        if (this.cancelled) return this.settleKilled();
         // FOU-15: a PR (or issue) phase that could not create its artifact is
         // a hard fail with the exact error. Do not let a prior acceptance flag
         // (e.g. production_check.approved) mark the run accepted.
@@ -413,7 +440,7 @@ export class Executor {
         break;
       }
       if (jump.kind === 'goto') {
-        index = pipeline.phases.findIndex((p) => p.name === jump.phase);
+        index = this.pipeline.phases.findIndex((p) => p.name === jump.phase);
         if (index < 0) {
           detail = `feedback target "${jump.phase}" vanished`;
           break;
@@ -430,8 +457,8 @@ export class Executor {
 
     await this.closeSessions();
     const verdict = decideAcceptance({
-      acceptance: pipeline.acceptance,
-      phases: tracer.phases(runId),
+      acceptance: this.pipeline.acceptance,
+      phases: this.activePhaseRows(),
       envelopes: this.envelopes,
       commandResults: this.commandResults,
     });
@@ -441,6 +468,212 @@ export class Executor {
       verdict.accepted ? 'accepted' : 'rejected',
       detail ? `${detail} (${verdict.reason})` : verdict.reason,
     );
+  }
+
+  /** The current logical pipeline rows, excluding superseded amendment history. */
+  private activePhaseRows(): PhaseRow[] {
+    const active = activeRowsForPipeline(
+      this.pipeline,
+      this.pipeline.phases.map((phase) => {
+        const row = this.deps.tracer.phase(this.phaseId(phase.name));
+        if (!row) throw new Error(`active phase "${phase.name}" has no trace row`);
+        return row;
+      }),
+    );
+    if (!active) throw new Error('the active pipeline no longer matches its phase rows');
+    return active;
+  }
+
+  /**
+   * The final recovery layer. Invalid and empty proposals spend the fixed
+   * budget but do not mutate the active pipeline; only a proposal that passes
+   * both ordinary rails reaches the Tracer's atomic queue replacement.
+   */
+  private async tryReplan(
+    failedIndex: number,
+    failedPhase: PhaseDef,
+    detail: string,
+  ): Promise<boolean> {
+    const replanner = this.deps.replanner;
+    if (!replanner || !this.plan) return false;
+
+    const completed = this.pipeline.phases.slice(0, failedIndex).map((phase) => {
+      const envelope = this.envelopes.get(phase.name);
+      return envelope ? { phase, envelope } : { phase };
+    });
+    const remaining = this.pipeline.phases.slice(failedIndex + 1);
+    const evidence = this.replanEvidence(failedPhase, detail);
+
+    while (!this.cancelled && this.replanAttempts < FIXED_ENGINE_DEFAULTS.replanAttempts) {
+      const attempt = ++this.replanAttempts;
+      let amendment: PipelineAmendment | null = null;
+      const release = this.onCancel(() => replanner.abort?.());
+      try {
+        amendment = await replanner.propose({
+          plan: this.plan,
+          failedPhase,
+          completed,
+          remaining,
+          evidence,
+          attempt,
+        });
+      } catch (error) {
+        this.deps.tracer.event({
+          runId: this.deps.runId,
+          phaseId: this.phaseId(failedPhase.name),
+          type: 'error',
+          name: 'replan proposal failed',
+          payload: { attempt, message: (error as Error).message },
+        });
+      } finally {
+        release();
+      }
+      if (this.cancelled) return false;
+      if (!amendment) {
+        this.traceRejectedAmendment(failedPhase, attempt, ['no valid amendment was proposed']);
+        continue;
+      }
+
+      const checked = this.checkAmendment(failedIndex, amendment);
+      if (!checked.ok) {
+        this.traceRejectedAmendment(
+          failedPhase,
+          attempt,
+          checked.issues.map((issue) => `${issue.where}: ${issue.message}`),
+        );
+        continue;
+      }
+
+      this.applyAmendment(
+        failedIndex,
+        failedPhase,
+        amendment,
+        attempt,
+        checked.pipeline,
+        checked.warnings,
+        evidence,
+      );
+      return true;
+    }
+    return false;
+  }
+
+  private replanEvidence(failedPhase: PhaseDef, detail: string): string {
+    const parts = [detail];
+    const command = this.commandResults.get(failedPhase.name);
+    if (command) {
+      parts.push(
+        `Command: ${command.command}\nExit: ${String(command.exitCode)}\n${command.outputTail}`,
+      );
+    }
+    const envelope = this.envelopes.get(failedPhase.name);
+    if (envelope) parts.push(`Envelope: ${JSON.stringify(envelope)}`);
+    const phaseId = this.phaseId(failedPhase.name);
+    const gates = this.deps.tracer
+      .gateResults(this.deps.runId)
+      .filter((gate) => gate.phaseId === phaseId);
+    if (gates.length) parts.push(`Gates: ${JSON.stringify(gates)}`);
+    return parts.filter(Boolean).join('\n\n').slice(-6000);
+  }
+
+  private checkAmendment(
+    failedIndex: number,
+    amendment: PipelineAmendment,
+  ):
+    | { ok: true; pipeline: PipelineDef; warnings: ValidationIssue[] }
+    | { ok: false; issues: ValidationIssue[] } {
+    const issues: ValidationIssue[] = [];
+    const agentNames = new Set(this.agents.map((agent) => agent.name));
+    for (const agent of amendment.agents) {
+      if (agentNames.has(agent.name)) {
+        issues.push({
+          level: 'error',
+          where: `agents.${agent.name}`,
+          message: `an active agent is already named "${agent.name}"`,
+        });
+      }
+      agentNames.add(agent.name);
+    }
+
+    const prefix = this.pipeline.phases.slice(0, failedIndex);
+    const immutableNames = new Set(prefix.map((phase) => phase.name));
+    for (const phase of amendment.phases) {
+      if (phase.feedbackTo && immutableNames.has(phase.feedbackTo)) {
+        issues.push({
+          level: 'error',
+          where: phase.name,
+          message: `feedbackTo cannot re-enter completed phase "${phase.feedbackTo}"`,
+        });
+      }
+    }
+
+    const pipeline = { ...this.pipeline, phases: [...prefix, ...amendment.phases] };
+    const agents = [...this.agents, ...amendment.agents];
+    const commandNames = this.deps.project.commands.map((command) => command.name);
+    const knownEnvelopes = this.deps.envelopeDefs.map((envelope) => envelope.name);
+    issues.push(
+      ...validatePipeline(pipeline, agents, commandNames, knownEnvelopes),
+      ...preflightForRun(pipeline, agents, commandNames, knownEnvelopes, {
+        scaffold: this.deps.project.scaffold === true,
+      }),
+    );
+    const errors = issues.filter((issue) => issue.level === 'error');
+    if (errors.length) return { ok: false, issues: errors };
+    return { ok: true, pipeline, warnings: uniqueIssues(issues) };
+  }
+
+  private applyAmendment(
+    failedIndex: number,
+    failedPhase: PhaseDef,
+    amendment: PipelineAmendment,
+    attempt: number,
+    pipeline: PipelineDef,
+    warnings: ValidationIssue[],
+    evidence: string,
+  ): void {
+    const previousTail = this.pipeline.phases.slice(failedIndex);
+    const queuedIds = previousTail.slice(1).map((phase) => this.phaseId(phase.name));
+    const plan: GeneratedRunPlan = {
+      ...this.plan!,
+      pipeline,
+      agents: [...this.plan!.agents, ...amendment.agents],
+      warnings: uniqueIssues([...this.plan!.warnings, ...warnings]),
+    };
+    const ids = this.deps.tracer.amendRun({
+      runId: this.deps.runId,
+      failedPhaseId: this.phaseId(failedPhase.name),
+      removeQueuedPhaseIds: queuedIds,
+      pipeline,
+      plan,
+      reason: amendment.reason,
+      attempt,
+      evidence,
+      before: previousTail.slice(1).map((phase) => phase.name),
+      after: amendment.phases.map((phase) => phase.name),
+      newPhases: amendment.phases,
+      engineer: this.deps.engineer,
+    });
+
+    for (const phase of previousTail) {
+      this.phaseIds.delete(phase.name);
+      this.envelopes.delete(phase.name);
+      this.commandResults.delete(phase.name);
+      this.feedback.delete(phase.name);
+    }
+    for (const [name, id] of ids) this.phaseIds.set(name, id);
+    this.agents.push(...amendment.agents);
+    this.pipeline = pipeline;
+    this.plan = plan;
+  }
+
+  private traceRejectedAmendment(phase: PhaseDef, attempt: number, issues: string[]): void {
+    this.deps.tracer.event({
+      runId: this.deps.runId,
+      phaseId: this.phaseId(phase.name),
+      type: 'log',
+      name: 'replan proposal rejected',
+      payload: { attempt, issues },
+    });
   }
 
   private async runPhase(phase: PhaseDef): Promise<PhaseJump> {
@@ -456,7 +689,7 @@ export class Executor {
       tracer: this.deps.tracer,
       runId: this.deps.runId,
       project: this.deps.project,
-      pipeline: this.deps.pipeline,
+      pipeline: this.pipeline,
       request: this.deps.request,
       cwd: this.cwd,
       handoffDir: HANDOFF_DIR,
@@ -478,7 +711,7 @@ export class Executor {
   }
 
   private phaseEnvelope(phase: PhaseDef): string | undefined {
-    return effectivePhaseEnvelope(phase, this.deps.agents);
+    return effectivePhaseEnvelope(phase, this.agents);
   }
 
   /**
@@ -702,4 +935,14 @@ export class Executor {
       detail: settleDetail,
     };
   }
+}
+
+function uniqueIssues(issues: ValidationIssue[]): ValidationIssue[] {
+  const seen = new Set<string>();
+  return issues.filter((issue) => {
+    const key = `${issue.level}|${issue.where}|${issue.message}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }

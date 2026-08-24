@@ -120,6 +120,8 @@ const mockRunDetail: RunDetail = {
     merged: false,
     archived: false,
     mode: 'pi',
+    orchestrated: false,
+    amendments: 0,
     startedAt: '2026-08-23T10:00:00.000Z',
     endedAt: '2026-08-23T10:02:30.000Z',
     totalTokens: 15400,

@@ -32,6 +32,8 @@ interface SeededRun {
   run_id: string;
   status: string;
   request: string;
+  orchestrated: number;
+  amendments: number;
 }
 
 describe('e2e fixture seed', () => {
@@ -55,16 +57,25 @@ describe('e2e fixture seed', () => {
     const db = openDb(projectDbPath(fixture.supportDir, fixture.projectPath));
     try {
       const run = db
-        .prepare('SELECT run_id, status, request FROM runs WHERE run_id = ?')
+        .prepare(
+          'SELECT run_id, status, request, orchestrated, amendments FROM runs WHERE run_id = ?',
+        )
         .get(E2E_RUN_ID) as SeededRun | undefined;
       expect(run).toBeDefined();
       expect(run!.status).toBe('accepted');
       expect(run!.request).toBe(E2E_REQUEST);
+      expect(run!.orchestrated).toBe(1);
+      expect(run!.amendments).toBe(1);
 
       const texts = db
         .prepare(`SELECT payload_json FROM events WHERE run_id = ? AND type = 'assistant_text'`)
         .all(E2E_RUN_ID) as { payload_json: string }[];
       expect(texts.some((row) => row.payload_json.includes(E2E_TRANSCRIPT))).toBe(true);
+      const replans = db
+        .prepare(`SELECT payload_json FROM events WHERE run_id = ? AND type = 'replan'`)
+        .all(E2E_RUN_ID) as { payload_json: string }[];
+      expect(replans).toHaveLength(1);
+      expect(replans[0]!.payload_json).toContain('seeded verifier failure');
     } finally {
       db.close();
     }

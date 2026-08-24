@@ -77,6 +77,8 @@ const MOCK_RUNS: RunRow[] = [
     merged: false,
     archived: false,
     mode: 'pi',
+    orchestrated: false,
+    amendments: 0,
     startedAt: nowIso(-3_600_000),
     endedAt: nowIso(-300_000),
     totalTokens: 41280,
@@ -108,6 +110,8 @@ const MOCK_RUNS: RunRow[] = [
     merged: false,
     archived: false,
     mode: 'pi',
+    orchestrated: false,
+    amendments: 0,
     startedAt: nowIso(-120_000),
     endedAt: null,
     totalTokens: 1800,
@@ -612,6 +616,15 @@ export function createMockFoundryApi(): FoundryApi {
       discardWorktree: async () => ({ ok: false, detail: UNAVAILABLE }),
       openWorktree: async () => {},
       revealFiles: async () => {},
+      plan: async () => null,
+      exportPlan: async () => ({
+        ok: false,
+        issues: [{ level: 'error', where: 'web-preview', message: UNAVAILABLE }],
+      }),
+    },
+    orchestrator: {
+      plan: async () => ({ error: NO_AGENT_CLI }),
+      cancel: async () => false,
     },
     prs: {
       status: async () => ({

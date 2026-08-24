@@ -357,6 +357,8 @@ export const FIXED_ENGINE_DEFAULTS = {
    * than per pipeline: an unbounded healer is a run that never ends.
    */
   healingAttempts: 2,
+  /** Mid-run pipeline amendments an orchestrated run may request. */
+  replanAttempts: 2,
 } as const;
 
 export type MergePolicy = 'auto' | 'ask' | 'never';
@@ -663,6 +665,10 @@ export interface RunRow {
   merged: boolean;
   archived: boolean;
   mode: RunMode;
+  /** True when the run started from an Orchestrator-generated plan. */
+  orchestrated: boolean;
+  /** How many mid-run amendments the pipeline received, for the list badge. */
+  amendments: number;
   startedAt: string;
   endedAt: string | null;
   totalTokens: number;
@@ -699,6 +705,7 @@ export type EventType =
   | 'correction'
   | 'interrupt'
   | 'compaction'
+  | 'replan'
   | 'log'
   | 'error';
 
@@ -865,6 +872,42 @@ export interface StartRunInput {
   projectId: string;
   pipelineId: string;
   request: string;
+  /** An orchestrated run's confirmed plan. When present, `pipelineId` is ignored. */
+  plan?: GeneratedRunPlan;
+}
+
+// ── Orchestrator (generated run plans) ───────────────────────────────────────
+
+/** What the Orchestrator hands back for confirmation. */
+export interface GeneratedRunPlan {
+  planId: string;
+  projectId: string;
+  /** The operator's raw prompt, kept verbatim for the trace. */
+  prompt: string;
+  /** The Orchestrator's rewritten full brief; becomes the run `request`. */
+  refinedRequest: string;
+  /** Why the pipeline has this shape, operator-facing. */
+  rationale: string;
+  /** `id: generated-<planId>`, never builtin. */
+  pipeline: PipelineDef;
+  /** Synthesized agents referenced by the pipeline but absent from the roster. */
+  agents: AgentDef[];
+  /** Non-blocking warnings from validation/preflight, shown on the card. */
+  warnings: ValidationIssue[];
+  model: string;
+  reasoningEffort: ReasoningEffort;
+}
+
+/** One mid-run amendment: replaces the not-yet-run tail of the pipeline. */
+export interface PipelineAmendment {
+  reason: string;
+  /**
+   * Phases replacing everything after the failed phase. May insert repair
+   * phases, re-order, or extend; completed phases are immutable history.
+   */
+  phases: PhaseDef[];
+  /** Additional synthesized agents the new phases need. */
+  agents: AgentDef[];
 }
 
 export interface DryRunPrompt {

@@ -20,6 +20,7 @@ import * as pipelines from './pipelines.js';
 import * as catalog from './catalog.js';
 import * as bridge from './bridge.js';
 import * as runs from './runs.js';
+import * as orchestrator from './orchestrator.js';
 import * as prs from './prs.js';
 import * as smith from './smith.js';
 import * as companion from './companion.js';
@@ -39,6 +40,7 @@ export function registerIpc(ctx: AppContext): MainInvoker {
   catalog.register(ctx, registry.handle);
   bridge.register(ctx, registry.handle);
   runs.register(ctx, registry.handle);
+  orchestrator.register(ctx, registry.handle);
   prs.register(ctx, registry.handle);
   smith.register(ctx, registry.handle);
   companion.register(ctx, registry.handle);

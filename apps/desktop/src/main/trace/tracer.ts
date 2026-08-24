@@ -19,6 +19,8 @@ import type {
   EventType,
   GateCheck,
   GateResultRow,
+  GeneratedRunPlan,
+  PhaseDef,
   PhaseKind,
   PhaseRow,
   PhaseStatus,
@@ -114,11 +116,14 @@ export class Tracer {
     baseRef: string | null;
     branchPointSha?: string | null;
     mode: RunMode;
+    /** The Orchestrator's confirmed plan, when this run was generated from one. */
+    plan?: GeneratedRunPlan | null;
   }): void {
     this.exec(
       `INSERT INTO runs (run_id, project_id, pipeline_id, pipeline_name, pipeline_snapshot_json,
-         request, status, engineer, worktree_path, branch, base_ref, branch_point_sha, mode, started_at)
-       VALUES (?,?,?,?,?,?,'running',?,?,?,?,?,?,?)`,
+         request, status, engineer, worktree_path, branch, base_ref, branch_point_sha, mode,
+         plan_json, orchestrated, started_at)
+       VALUES (?,?,?,?,?,?,'running',?,?,?,?,?,?,?,?,?)`,
       input.runId,
       input.projectId,
       input.pipeline.id,
@@ -131,11 +136,34 @@ export class Tracer {
       input.baseRef,
       input.branchPointSha ?? null,
       input.mode,
+      input.plan ? JSON.stringify(input.plan) : null,
+      input.plan ? 1 : 0,
       nowIso(),
     );
     mkdirSync(this.runDir(input.runId), { recursive: true });
     this.writeRunFile(input.runId, 'request.md', input.request);
     this.writeRunFile(input.runId, 'pipeline.json', JSON.stringify(input.pipeline, null, 2));
+    if (input.plan) {
+      this.writeRunFile(input.runId, 'plan.json', JSON.stringify(input.plan, null, 2));
+    }
+  }
+
+  /**
+   * The generated plan an orchestrated run started from, or null for a manual
+   * run (and for a stored plan that no longer parses — the raw file under the
+   * run dir remains the record).
+   */
+  runPlan(runId: string): GeneratedRunPlan | null {
+    const row = this.one<{ plan_json: string | null }>(
+      'SELECT plan_json FROM runs WHERE run_id = ?',
+      runId,
+    );
+    if (!row?.plan_json) return null;
+    try {
+      return JSON.parse(row.plan_json) as GeneratedRunPlan;
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -297,6 +325,96 @@ export class Tracer {
     return row ? mapPhase(row) : null;
   }
 
+  /**
+   * Atomically replaces an orchestrated run's queued tail. The failed and
+   * completed rows are history; only still-queued rows may be removed, and
+   * every replacement receives a fresh identity after the historical rows.
+   */
+  amendRun(input: {
+    runId: string;
+    failedPhaseId: string;
+    removeQueuedPhaseIds: string[];
+    pipeline: PipelineDef;
+    plan: GeneratedRunPlan;
+    reason: string;
+    attempt: number;
+    evidence: string;
+    before: string[];
+    after: string[];
+    newPhases: PhaseDef[];
+    engineer: string;
+  }): Map<string, string> {
+    const apply = this.db.transaction(() => {
+      for (const phaseId of input.removeQueuedPhaseIds) {
+        const removed = this.exec(
+          "DELETE FROM phases WHERE phase_id = ? AND run_id = ? AND status = 'queued'",
+          phaseId,
+          input.runId,
+        );
+        if (removed.changes !== 1) {
+          throw new Error(`cannot replace phase ${phaseId}: it is no longer queued`);
+        }
+      }
+
+      this.exec(
+        `UPDATE runs SET pipeline_id = ?, pipeline_name = ?, pipeline_snapshot_json = ?,
+           plan_json = ?, amendments = COALESCE(amendments, 0) + 1 WHERE run_id = ?`,
+        input.pipeline.id,
+        input.pipeline.name,
+        JSON.stringify(input.pipeline),
+        JSON.stringify(input.plan),
+        input.runId,
+      );
+      const maxSeq =
+        this.one<{ max_seq: number }>(
+          'SELECT COALESCE(MAX(seq), -1) AS max_seq FROM phases WHERE run_id = ?',
+          input.runId,
+        )?.max_seq ?? -1;
+      const ids = new Map<string, string>();
+      input.newPhases.forEach((phase, index) => {
+        ids.set(
+          phase.name,
+          this.insertPhase(
+            {
+              runId: input.runId,
+              seq: maxSeq + index + 1,
+              name: phase.name,
+              kind: phase.kind,
+              owner:
+                phase.kind === 'agent'
+                  ? (phase.agent ?? 'agent')
+                  : phase.kind === 'code'
+                    ? 'code'
+                    : input.engineer,
+              description: phase.description,
+            },
+            'queued',
+            null,
+          ),
+        );
+      });
+      this.event({
+        runId: input.runId,
+        phaseId: input.failedPhaseId,
+        type: 'replan',
+        name: 'pipeline amended',
+        payload: {
+          attempt: input.attempt,
+          reason: input.reason,
+          evidence: input.evidence,
+          before: input.before,
+          after: input.after,
+        },
+      });
+      return ids;
+    });
+
+    const ids = apply();
+    this.writeRunFile(input.runId, 'pipeline.json', JSON.stringify(input.pipeline, null, 2));
+    this.writeRunFile(input.runId, 'plan.json', JSON.stringify(input.plan, null, 2));
+    return ids;
+  }
+
   private rawPhase(phaseId: string): RawPhase | undefined {
     return this.one<RawPhase>('SELECT * FROM phases WHERE phase_id = ?', phaseId);
   }
@@ -445,6 +563,19 @@ export class Tracer {
       afterChangeId,
       limit,
     ).map(mapEvent);
+  }
+
+  /** Highest proposal attempt already spent, so a resume cannot reset the run budget. */
+  replanAttempts(runId: string): number {
+    const rows = this.many<{ payload_json: string }>(
+      `SELECT payload_json FROM events
+       WHERE run_id = ? AND (type = 'replan' OR name LIKE 'replan proposal%')`,
+      runId,
+    );
+    return rows.reduce((highest, row) => {
+      const attempt = safeJson(row.payload_json).attempt;
+      return typeof attempt === 'number' ? Math.max(highest, attempt) : highest;
+    }, 0);
   }
 
   // ── envelopes ─────────────────────────────────────────────────────────────
@@ -800,6 +931,8 @@ interface RawRun {
   mode: string | null;
   merged: number;
   archived: number;
+  orchestrated: number | null;
+  amendments: number | null;
   started_at: string;
   ended_at: string | null;
   total_tokens: number;
@@ -928,6 +1061,8 @@ function mapRun(r: RawRun): RunRow {
     merged: !!r.merged,
     archived: !!r.archived,
     mode: (r.mode as RunMode) ?? 'pi',
+    orchestrated: !!r.orchestrated,
+    amendments: r.amendments ?? 0,
     startedAt: r.started_at,
     endedAt: r.ended_at,
     totalTokens: r.total_tokens,

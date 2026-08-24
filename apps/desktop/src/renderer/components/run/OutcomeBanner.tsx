@@ -88,6 +88,7 @@ export default function OutcomeBanner({
   onDiscard,
   onCreatePr,
   onOpenUrl,
+  onExport,
 }: {
   run: RunRow;
   phases: PhaseRow[];
@@ -108,6 +109,8 @@ export default function OutcomeBanner({
   onDiscard: () => void;
   onCreatePr: (title: string, body: string) => void;
   onOpenUrl: (url: string) => void;
+  /** Present only for an orchestrated run whose persisted plan loaded. */
+  onExport?: () => void;
 }): React.JSX.Element {
   const art = useBrandedAsset(artFor(run.status));
   const color = colorFor(run.status);
@@ -159,6 +162,11 @@ export default function OutcomeBanner({
       </div>
       {hasWorktree ? (
         <div className={styles.actions}>
+          {onExport && (
+            <Button variant="ghost" size="sm" onClick={onExport}>
+              Export…
+            </Button>
+          )}
           {canResume && onResume && (
             <Button
               variant="primary"
@@ -227,6 +235,11 @@ export default function OutcomeBanner({
         </div>
       ) : run.merged ? (
         <div className={styles.actions}>
+          {onExport && (
+            <Button variant="ghost" size="sm" onClick={onExport}>
+              Export…
+            </Button>
+          )}
           <IssueLink run={run} onOpenUrl={onOpenUrl} />
           {run.prUrl && (
             <Button
@@ -239,6 +252,12 @@ export default function OutcomeBanner({
             </Button>
           )}
           <span className={`badge ${styles.merged}`}>merged</span>
+        </div>
+      ) : onExport ? (
+        <div className={styles.actions}>
+          <Button variant="ghost" size="sm" onClick={onExport}>
+            Export…
+          </Button>
         </div>
       ) : null}
       {prFormOpen && hasWorktree && !run.prUrl && (

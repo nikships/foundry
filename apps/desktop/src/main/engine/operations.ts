@@ -11,6 +11,7 @@ import type {
   AgentDef,
   AppSettings,
   EnvelopeDef,
+  GeneratedRunPlan,
   PipelineDef,
   ProjectDef,
   StartRunInput,
@@ -24,6 +25,7 @@ import { buildDetectPrompt, DETECT_PROMPT, parseDetectReply } from './detect.js'
 import { ensureMissingCommands, missingCommandRefs, preflightForRun } from './preflight.js';
 import * as ghLib from '../system/gh.js';
 import type { GhOptions } from '../system/gh.js';
+import { checkPlanRails } from '../orchestrator/plan.js';
 
 export interface StartRunOutcome {
   ok: boolean;
@@ -47,6 +49,7 @@ export interface StartRunDeps {
       agents: AgentDef[];
       envelopeDefs: EnvelopeDef[];
       request: string;
+      plan?: GeneratedRunPlan | null;
     }): string;
   };
 }
@@ -60,10 +63,21 @@ function startError(where: string, message: string): StartRunOutcome {
 export async function startRun(deps: StartRunDeps, input: StartRunInput): Promise<StartRunOutcome> {
   let project = deps.projectById(input.projectId);
   if (!project) return startError('project', 'project not found');
-  const pipeline = deps.pipelineFor(input.projectId, input.pipelineId);
+
+  // An inline plan carries its own pipeline and brief; `pipelineId` is
+  // ignored. The plan's raw prompt is recorded on the run by the tracer.
+  const plan = input.plan ?? null;
+  if (plan && plan.projectId !== input.projectId) {
+    return startError('plan', 'this plan was generated for a different project');
+  }
+  const pipeline = plan ? plan.pipeline : deps.pipelineFor(input.projectId, input.pipelineId);
   if (!pipeline) return startError('pipeline', 'pipeline not found');
-  if (!input.request.trim()) return startError('request', 'a run needs a request');
-  const agents = deps.rosterFor(input.projectId);
+  const request = plan ? plan.refinedRequest : input.request;
+  if (!request.trim()) return startError('request', 'a run needs a request');
+  const roster = deps.rosterFor(input.projectId);
+  // Synthesized agents shadow nothing: a name collision was a validation
+  // error at plan time, so the union here can never be ambiguous.
+  const agents = plan ? [...roster, ...plan.agents] : roster;
 
   // Missing project commands are a deterministic fail mid-run. Fill them from
   // manifests (free), then the default CLI, before refusing to start.
@@ -106,20 +120,33 @@ export async function startRun(deps: StartRunDeps, input: StartRunInput): Promis
   }
 
   const knownEnvelopes = deps.envelopeDefs().map((e) => e.name);
-  const issues = preflightForRun(
-    pipeline,
-    agents,
-    project.commands.map((c) => c.name),
-    knownEnvelopes,
-    { scaffold: project.scaffold === true },
-  );
+  const commandNames = project.commands.map((c) => c.name);
+  // The validated plan crosses renderer IPC before confirmation. Dispose of
+  // that round-tripped value again at the privileged start boundary rather
+  // than trusting that nothing changed after the planning session checked it.
+  const checkedPlan = plan
+    ? checkPlanRails(plan, {
+        roster,
+        commandNames,
+        knownEnvelopes,
+        scaffold: project.scaffold === true,
+      })
+    : null;
+  const issues = checkedPlan
+    ? checkedPlan.ok
+      ? checkedPlan.warnings
+      : checkedPlan.issues
+    : preflightForRun(pipeline, agents, commandNames, knownEnvelopes, {
+        scaffold: project.scaffold === true,
+      });
   if (issues.some((i) => i.level === 'error')) return { ok: false, issues };
   const runId = deps.registry.start({
     project,
     pipeline,
     agents,
     envelopeDefs: deps.envelopeDefs(),
-    request: input.request,
+    request,
+    plan,
   });
   return { ok: true, runId, issues: noIssues };
 }

@@ -6,6 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { AgentDef, PipelineDef } from '../../../src/shared/types.js';
+import type { RunPlanExportSelection } from '../../../src/shared/ipc-contract.js';
 
 /** Duplicated from renderer `api.ts` (that module touches `window.foundry`). */
 function plain<T>(value: T): T {
@@ -79,5 +80,14 @@ describe('payloads crossing IPC', () => {
     expect(plain('project-1')).toBe('project-1');
     expect(plain(null)).toBeNull();
     expect(plain(7)).toBe(7);
+  });
+
+  it('round trips an orchestrated-plan export selection', () => {
+    const selection: RunPlanExportSelection = {
+      pipeline: true,
+      agents: ['search_specialist', 'reviewer'],
+    };
+
+    expect(structuredClone(plain(selection))).toEqual(selection);
   });
 });

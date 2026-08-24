@@ -10,6 +10,7 @@ import {
   parseOperation,
   proposeAction,
   requireProjectId,
+  stringArrayField,
   stringField,
   type SmithActionToolDeps,
 } from './tool-helpers.js';
@@ -21,6 +22,7 @@ export const SMITH_RUN_OPERATIONS = [
   'live_tail',
   'context',
   'prompt',
+  'plan',
   'start',
   'resume',
   'kill',
@@ -30,10 +32,11 @@ export const SMITH_RUN_OPERATIONS = [
   'discard',
   'open_worktree',
   'reveal_files',
+  'export_plan',
 ] as const;
 
 type RunOperation = (typeof SMITH_RUN_OPERATIONS)[number];
-type RunReadOperation = 'detail' | 'events' | 'context' | 'prompt';
+type RunReadOperation = 'detail' | 'events' | 'context' | 'prompt' | 'plan';
 type RunActionOperation = Exclude<RunOperation, 'list' | 'live_tail' | RunReadOperation>;
 
 /** Project-scoped reads keyed by the id they take. */
@@ -42,6 +45,7 @@ const READS: Record<RunReadOperation, { channel: string; idField: 'runId' | 'pha
   events: { channel: IPC.runsEvents, idField: 'runId' },
   context: { channel: IPC.runsContextBreakdown, idField: 'runId' },
   prompt: { channel: IPC.runsPrompt, idField: 'phaseId' },
+  plan: { channel: IPC.runsPlan, idField: 'runId' },
 };
 
 const ACTION_CHANNELS: Record<RunActionOperation, string> = {
@@ -54,6 +58,7 @@ const ACTION_CHANNELS: Record<RunActionOperation, string> = {
   discard: IPC.runsDiscardWorktree,
   open_worktree: IPC.runsOpenWorktree,
   reveal_files: IPC.runsRevealFiles,
+  export_plan: IPC.runsExportPlan,
 };
 
 const RISKS: Partial<Record<RunOperation, SmithActionRisk>> = {
@@ -70,7 +75,7 @@ export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
     name: 'smith_runs',
     label: 'Smith runs',
     description:
-      'Inspect and operate Foundry runs. Operations: list(projectId?,includeArchived?), detail/events/context(projectId?,runId,...), live_tail(phaseId), prompt(projectId?,phaseId), start(projectId?,pipelineId,request), resume/kill/merge/fix_merge/discard/open_worktree/reveal_files(projectId?,runId), archive(projectId?,runId,archived).',
+      'Inspect and operate Foundry runs. Operations: list(projectId?,includeArchived?), detail/events/context/plan(projectId?,runId,...), live_tail(phaseId), prompt(projectId?,phaseId), start(projectId?,pipelineId,request), resume/kill/merge/fix_merge/discard/open_worktree/reveal_files(projectId?,runId), archive(projectId?,runId,archived), export_plan(projectId?,runId,pipeline?,agents?).',
     parameters: {
       type: 'object',
       properties: {
@@ -84,6 +89,8 @@ export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
         pipelineId: { type: 'string' },
         request: { type: 'string' },
         archived: { type: 'boolean' },
+        pipeline: { type: 'boolean' },
+        agents: { type: 'array', items: { type: 'string' } },
       },
       required: ['operation'],
       additionalProperties: false,
@@ -163,6 +170,20 @@ function resolveGatedArgs(op: RunActionOperation, params: unknown, projectId: st
       ok: true,
       args: [projectId, runId, archived],
       shownArgs: { projectId, runId, archived },
+    };
+  }
+  if (op === 'export_plan') {
+    const pipeline = booleanField(params, 'pipeline') ?? false;
+    const agents = field(params, 'agents') === undefined ? [] : stringArrayField(params, 'agents');
+    if (!agents) return { ok: false, error: 'agents must be an array of strings' };
+    if (!pipeline && agents.length === 0) {
+      return { ok: false, error: 'pipeline or at least one agent is required' };
+    }
+    const selection = { pipeline, agents };
+    return {
+      ok: true,
+      args: [projectId, runId, selection],
+      shownArgs: { projectId, runId, ...selection },
     };
   }
   return { ok: true, args: [projectId, runId], shownArgs: { projectId, runId } };

@@ -18,6 +18,7 @@ const EVENT_CHANNELS = {
   'updater-status': IPC.eventUpdaterStatus,
   'detection-progress': IPC.eventDetectionProgress,
   'setup-progress': IPC.eventSetupProgress,
+  'orchestrator-progress': IPC.eventOrchestratorProgress,
   'smith-proposals-changed': IPC.eventSmithProposalsChanged,
   'smith-progress': IPC.eventSmithProgress,
   'bridge-changed': IPC.eventBridgeChanged,
@@ -146,6 +147,14 @@ const api: FoundryApi = {
     discardWorktree: (projectId, runId) => call(IPC.runsDiscardWorktree, projectId, runId),
     openWorktree: (projectId, runId) => call(IPC.runsOpenWorktree, projectId, runId),
     revealFiles: (projectId, runId) => call(IPC.runsRevealFiles, projectId, runId),
+    plan: (projectId, runId) => call(IPC.runsPlan, projectId, runId),
+    exportPlan: (projectId, runId, selection) =>
+      call(IPC.runsExportPlan, projectId, runId, selection),
+  },
+  orchestrator: {
+    plan: (projectId, prompt, model, reasoningEffort) =>
+      call(IPC.orchestratorPlan, projectId, prompt, model, reasoningEffort),
+    cancel: (planId) => call(IPC.orchestratorCancel, planId),
   },
   prs: {
     status: (projectId) => call(IPC.prsStatus, projectId),

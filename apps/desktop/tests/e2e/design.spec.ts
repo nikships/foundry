@@ -11,9 +11,9 @@ test.describe('design / Pipelines', () => {
       app = launched.app;
       const { window } = launched;
 
-      await expect(window.getByPlaceholder(/What should the factory build/)).toBeVisible({
-        timeout: 20_000,
-      });
+      await expect(
+        window.getByRole('heading', { name: 'What should the factory build?' }),
+      ).toBeVisible({ timeout: 20_000 });
       await window.getByTestId('nav-design').click();
       await window.getByTestId('tab-pipelines').click();
       await expect(window.getByTestId('pipeline-selector')).toBeVisible();
