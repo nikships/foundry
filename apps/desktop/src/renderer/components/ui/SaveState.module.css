@@ -15,10 +15,13 @@
   height: 6px;
   border-radius: var(--r-sm);
   background: var(--green);
+  /* Saved ⇄ saving eases; the saving state also reads as in flight. */
+  transition: background-color var(--normal) var(--ease);
 }
 
 .dotSaving {
   background: var(--accent);
+  animation: pulse 1.4s var(--ease) infinite;
 }
 
 .clock {

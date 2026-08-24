@@ -43,6 +43,8 @@
   font-size: var(--text-xs);
   line-height: var(--leading);
   color: var(--text);
+  /* Validation lines surface as they are produced, live while typing. */
+  animation: fade-in var(--fast) var(--ease);
 }
 
 .lineWarn {

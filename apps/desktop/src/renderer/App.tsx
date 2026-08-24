@@ -28,6 +28,7 @@ import {
   type View,
 } from './utils/navigation.js';
 import { describeScreen } from './view-models/smith-chat-view.js';
+import { cx } from './components/ui/cx.js';
 import styles from './App.module.css';
 
 /**
@@ -63,7 +64,10 @@ function AppInner(): React.JSX.Element {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ stage: 'idle' });
   const [updateDismissedKey, setUpdateDismissedKey] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** True during the toast's exit animation, before it unmounts. */
+  const [toastLeaving, setToastLeaving] = useState(false);
+  const toastHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastGoneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevStageRef = useRef<UpdateStatus['stage']>('idle');
 
   const needsOnboarding = ready && settings != null && !settings.onboarded;
@@ -71,12 +75,30 @@ function AppInner(): React.JSX.Element {
   const bannerKey = `${updateStatus.stage}:${updateStatus.version ?? ''}`;
   const showBanner = updateStatus.stage !== 'idle' && updateDismissedKey !== bannerKey;
 
-  /** One transient status line, replacing whatever it was showing. */
+  /**
+   * One transient status line, replacing whatever it was showing. It leaves
+   * through a short exit animation (faster than its entrance) before the
+   * element unmounts at the full timeout.
+   */
   const showToast = useCallback((message: string): void => {
     setToast(message);
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = setTimeout(() => setToast(null), 4000);
+    setToastLeaving(false);
+    if (toastHideTimerRef.current) clearTimeout(toastHideTimerRef.current);
+    if (toastGoneTimerRef.current) clearTimeout(toastGoneTimerRef.current);
+    toastHideTimerRef.current = setTimeout(() => setToastLeaving(true), 3600);
+    toastGoneTimerRef.current = setTimeout(() => {
+      setToast(null);
+      setToastLeaving(false);
+    }, 4000);
   }, []);
+
+  useEffect(
+    () => () => {
+      if (toastHideTimerRef.current) clearTimeout(toastHideTimerRef.current);
+      if (toastGoneTimerRef.current) clearTimeout(toastGoneTimerRef.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     void api.updater.getStatus().then((s) => {
@@ -347,7 +369,9 @@ function AppInner(): React.JSX.Element {
             data-design-tab={view === 'design' ? designTab : undefined}
             data-settings-pane={view === 'settings' ? settingsPane : undefined}
           >
-            {renderMain()}
+            <div key={`${view}:${openRunId}`} className={styles.screenHost}>
+              {renderMain()}
+            </div>
           </main>
         </>
       ) : (
@@ -389,7 +413,11 @@ function AppInner(): React.JSX.Element {
         />
       )}
       {toast && (
-        <div className={styles.toast} role="status" aria-live="polite">
+        <div
+          className={cx(styles.toast, toastLeaving && styles.toastLeaving)}
+          role="status"
+          aria-live="polite"
+        >
           {toast}
         </div>
       )}

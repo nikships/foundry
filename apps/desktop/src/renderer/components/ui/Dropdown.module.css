@@ -65,6 +65,10 @@
   border-radius: var(--r-sm);
   color: var(--text);
   cursor: default;
+  /* Hover and arrow-key highlight glide instead of flashing. */
+  transition:
+    background var(--fast) var(--ease),
+    color var(--fast) var(--ease);
 }
 
 .option.rich {

@@ -11,6 +11,9 @@
   border-radius: var(--r-lg);
   background: var(--bg-raised);
   border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  /* The one entry in the conversation waiting on the human arrives with the
+     same quick rise as the turns around it. */
+  animation: fade-in var(--fast) var(--ease);
 }
 
 .header {
@@ -241,6 +244,8 @@
   color: var(--red);
   font-size: var(--text-sm);
   line-height: var(--leading);
+  /* Errors surface, they don't flash. */
+  animation: fade-in var(--fast) var(--ease);
 }
 
 .footer {

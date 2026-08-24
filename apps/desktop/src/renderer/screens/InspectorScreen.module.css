@@ -42,6 +42,8 @@
   background: var(--accent-dim);
   color: var(--accent);
   border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+  /* "Live" breathes so the chip reads as streaming, not as a static label. */
+  animation: pulse 2s var(--ease) infinite;
 }
 
 .inspectorControls {

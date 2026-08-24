@@ -44,6 +44,19 @@
   background: var(--bg-panel);
   box-shadow: var(--shadow-lg);
   text-align: left;
+  /* Opens with the same quick drop as every other popover. */
+  animation: ctx-pop-in var(--fast) var(--ease);
+}
+
+@keyframes ctx-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .panelHead {
@@ -130,6 +143,8 @@
   display: block;
   height: 100%;
   background: var(--accent);
+  /* Live context usage grows the bar smoothly between polls. */
+  transition: width var(--normal) var(--ease);
 }
 
 .rowTokens {

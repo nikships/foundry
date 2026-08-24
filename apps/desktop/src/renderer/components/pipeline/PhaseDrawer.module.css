@@ -5,6 +5,9 @@
   min-height: 0;
   background: var(--bg-panel);
   border-left: 1px solid var(--line-faint);
+  /* Arrives with a quick rise instead of replacing the pane's contents
+     mid-blink. */
+  animation: fade-in var(--fast) var(--ease);
 }
 .inline-error {
   margin: 0 var(--s5) var(--s3);

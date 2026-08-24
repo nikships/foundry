@@ -70,6 +70,20 @@
   border-radius: var(--r-md, 8px);
   background: var(--bg-raised);
   box-shadow: var(--shadow-lg);
+  /* Opens with the same quick drop as every other menu. */
+  transform-origin: top right;
+  animation: scope-pop-in var(--fast) var(--ease);
+}
+
+@keyframes scope-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .pop-now {

@@ -306,6 +306,20 @@
   background: var(--bg-raised);
   border: 1px solid var(--line-strong);
   border-radius: var(--r);
+  /* Opens with the same quick drop as every other menu. */
+  transform-origin: top right;
+  animation: more-menu-in var(--fast) var(--ease);
+}
+
+@keyframes more-menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .moreActions button {

@@ -13,6 +13,17 @@
   opacity: 0.55;
 }
 
+/* Hover hints the switch before the click; focus-visible keeps keyboard
+   operation legible on a control whose hit area is mostly text. */
+.toggle:hover:not(.toggleDisabled) .track {
+  border-color: var(--accent);
+}
+
+.toggle:focus-visible .track {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .track {
   display: flex;
   flex-shrink: 0;

@@ -175,13 +175,19 @@
   transition:
     border-color var(--fast) var(--ease),
     background var(--fast) var(--ease),
-    color var(--fast) var(--ease);
+    color var(--fast) var(--ease),
+    transform var(--fast) var(--ease);
 }
 
 .cell:hover {
   border-color: var(--line-strong);
   background: var(--bg-hover);
   color: var(--text);
+}
+
+/* A quick settle on press gives the pick physical weight. */
+.cell:active {
+  transform: scale(0.93);
 }
 
 .cell.on {

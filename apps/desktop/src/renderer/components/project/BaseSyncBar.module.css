@@ -9,6 +9,11 @@
   border: 1px solid var(--line);
   background: var(--bg-panel);
   color: var(--text-dim);
+  /* Sync status tones (quiet → ready → warn) ease in place, like the badges. */
+  transition:
+    background-color var(--normal) var(--ease),
+    color var(--normal) var(--ease),
+    border-color var(--fast) var(--ease);
 }
 
 .bar p {
@@ -18,6 +23,7 @@
 
 .banner {
   margin: 0 var(--s6) var(--s3);
+  animation: fade-in var(--fast) var(--ease);
 }
 
 .settings {

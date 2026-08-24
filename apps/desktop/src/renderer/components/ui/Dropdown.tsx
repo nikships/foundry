@@ -61,6 +61,34 @@ const MENU_GAP = 4;
 const VIEWPORT_PAD = 8;
 const MIN_MENU_WIDTH = 320;
 
+function samePos(a: MenuPos, b: MenuPos): boolean {
+  return (
+    a.top === b.top &&
+    a.left === b.left &&
+    a.width === b.width &&
+    a.maxHeight === b.maxHeight &&
+    a.openUp === b.openUp
+  );
+}
+
+/**
+ * Whether the trigger still paints anywhere. A portaled menu is positioned
+ * against the viewport, so an anchor scrolled under a clipping ancestor is
+ * gone from the operator's view even while its rect sits inside the window.
+ */
+function anchorVisible(trigger: HTMLElement): boolean {
+  const rect = trigger.getBoundingClientRect();
+  let top = 0;
+  let bottom = window.innerHeight;
+  for (let node = trigger.parentElement; node; node = node.parentElement) {
+    if (getComputedStyle(node).overflowY === 'visible') continue;
+    const clip = node.getBoundingClientRect();
+    top = Math.max(top, clip.top);
+    bottom = Math.min(bottom, clip.bottom);
+  }
+  return rect.bottom > top && rect.top < bottom;
+}
+
 /**
  * Themed listbox that replaces native `<select>`. The closed face reuses the
  * global `.select` chrome so existing layouts keep their look; the open menu is
@@ -100,9 +128,10 @@ export function Dropdown({
     setActiveIndex(-1);
   }, []);
 
-  const measure = useCallback((): void => {
+  /** Re-anchors the menu to the trigger. False once the trigger is out of sight. */
+  const measure = useCallback((): boolean => {
     const trigger = triggerRef.current;
-    if (!trigger) return;
+    if (!trigger) return false;
     const rect = trigger.getBoundingClientRect();
     const viewportH = window.innerHeight;
     const viewportW = window.innerWidth;
@@ -118,13 +147,16 @@ export function Dropdown({
     if (left + width > viewportW - VIEWPORT_PAD) {
       left = Math.max(VIEWPORT_PAD, viewportW - VIEWPORT_PAD - width);
     }
-    setPos({
+    const next: MenuPos = {
       top: openUp ? rect.top - MENU_GAP : rect.bottom + MENU_GAP,
       left,
       width,
       maxHeight,
       openUp,
-    });
+    };
+    // Re-anchoring now runs per scroll frame, so skip the render when nothing moved.
+    setPos((prev) => (prev && samePos(prev, next) ? prev : next));
+    return anchorVisible(trigger);
   }, []);
 
   const openMenu = useCallback((): void => {
@@ -187,11 +219,15 @@ export function Dropdown({
       close();
     };
     const onScroll = (e: Event): void => {
-      // Keep the menu open for scrolls inside it; close (and re-anchor) otherwise.
+      // Scrolls inside the menu move its own list, not the trigger.
       if (menuRef.current && e.target instanceof Node && menuRef.current.contains(e.target)) {
         return;
       }
-      close();
+      // An ancestor scrolled, so the anchor moved. Follow the trigger rather
+      // than closing: the browser scrolls a focused control into view when the
+      // menu opens, and closing on that would dismiss the menu the click just
+      // opened. Only a trigger scrolled clear out of view dismisses it.
+      if (!measure()) close();
     };
     const onResize = (): void => close();
     document.addEventListener('mousedown', onPointer);
@@ -202,7 +238,7 @@ export function Dropdown({
       window.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('resize', onResize);
     };
-  }, [open, close]);
+  }, [open, close, measure]);
 
   useEffect(() => {
     if (!open || activeIndex < 0) return;

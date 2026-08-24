@@ -197,7 +197,8 @@ textarea,
   transition:
     color var(--fast) var(--ease),
     background var(--fast) var(--ease),
-    border-color var(--fast) var(--ease);
+    border-color var(--fast) var(--ease),
+    transform var(--fast) var(--ease);
 }
 .btn:hover:not(:disabled) {
   color: var(--accent-bright);
@@ -205,6 +206,8 @@ textarea,
 }
 .btn:active:not(:disabled) {
   background: var(--bg-active);
+  /* A 1px press: tactile acknowledgment that costs nothing at this duration. */
+  transform: translateY(1px);
 }
 .btn:disabled {
   opacity: 0.4;
@@ -312,6 +315,12 @@ textarea,
   letter-spacing: var(--label-tracking);
   text-transform: uppercase;
   white-space: nowrap;
+  /* Status chips recolor in place (inline styles set their palette), so a
+     phase flipping run → success eases instead of snapping. */
+  transition:
+    background-color var(--normal) var(--ease),
+    color var(--normal) var(--ease),
+    border-color var(--fast) var(--ease);
 }
 
 .card {

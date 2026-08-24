@@ -16,6 +16,8 @@ interface ModalShellProps {
   tabIndex?: number;
   /** Sets z-index to 100 and heavier blur (for interrupt dialogs). Defaults to false (z-index 90). */
   highPriority?: boolean;
+  /** Plays the exit animation instead of the entrance. Surfaces that delay their unmount until the exit finishes set this for those frames. */
+  leaving?: boolean;
 }
 
 const noop = (): void => {};
@@ -30,10 +32,11 @@ export function ModalShell({
   sheetRef,
   tabIndex,
   highPriority = false,
+  leaving = false,
 }: ModalShellProps): React.JSX.Element {
   const resolvedRef = modalRef ?? sheetRef;
   const closeOnBackdrop = dismissible && Boolean(onClose);
-  useEscapeToClose(onClose ?? noop, closeOnBackdrop);
+  useEscapeToClose(onClose ?? noop, closeOnBackdrop && !leaving);
 
   const handleBackdrop = (e: MouseEvent<HTMLDivElement>): void => {
     if (e.target !== e.currentTarget) return;
@@ -43,7 +46,11 @@ export function ModalShell({
 
   return (
     <div
-      className={cx(styles.overlayBackdrop, highPriority && styles.highPriority)}
+      className={cx(
+        styles.overlayBackdrop,
+        highPriority && styles.highPriority,
+        leaving && styles.overlayBackdropLeaving,
+      )}
       role="presentation"
       onClick={dismissible ? handleBackdrop : undefined}
       onMouseDown={dismissible ? undefined : handleBackdrop}

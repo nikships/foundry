@@ -60,6 +60,18 @@
   text-align: left;
   cursor: pointer;
   min-width: 0;
+  transition:
+    background var(--fast) var(--ease),
+    color var(--fast) var(--ease),
+    transform var(--fast) var(--ease);
+}
+
+.phaseHead:hover {
+  background: var(--bg-hover);
+}
+
+.phaseHead:active {
+  transform: translateY(1px);
 }
 
 .compact .phaseHead {
@@ -509,6 +521,18 @@
   text-align: left;
   cursor: pointer;
   min-width: 0;
+  transition:
+    background var(--fast) var(--ease),
+    color var(--fast) var(--ease),
+    transform var(--fast) var(--ease);
+}
+
+.miniPhaseHead:hover {
+  background: var(--bg-hover);
+}
+
+.miniPhaseHead:active {
+  transform: translateY(1px);
 }
 
 .compact .miniPhaseHead {

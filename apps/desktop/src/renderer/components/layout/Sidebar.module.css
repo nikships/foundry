@@ -147,11 +147,16 @@
   transition:
     background var(--fast) var(--ease),
     border-color var(--fast) var(--ease),
-    color var(--fast) var(--ease);
+    color var(--fast) var(--ease),
+    transform var(--fast) var(--ease);
 }
 .nav-item:hover {
   background: var(--bg-hover);
   color: var(--text);
+}
+.nav-item:active {
+  /* Same tactile 1px press the shared .btn uses. */
+  transform: translateY(1px);
 }
 .nav-item.active {
   background: var(--bg-active);
@@ -167,6 +172,8 @@
   letter-spacing: 0;
   text-transform: none;
   color: var(--text-ghost);
+  /* Shortcut hint recolors with the item's active state instead of snapping. */
+  transition: color var(--fast) var(--ease);
 }
 .nav-label {
   overflow: hidden;
@@ -231,7 +238,9 @@
   cursor: default;
   transition:
     background var(--fast) var(--ease),
-    color var(--fast) var(--ease);
+    border-color var(--fast) var(--ease),
+    color var(--fast) var(--ease),
+    transform var(--fast) var(--ease);
 }
 .run-item:hover {
   background: var(--bg-hover);
@@ -241,6 +250,9 @@
   background: var(--bg-active);
   border-color: var(--line);
   color: var(--text);
+}
+.run-item:active {
+  transform: translateY(1px);
 }
 .run-dot {
   flex: none;

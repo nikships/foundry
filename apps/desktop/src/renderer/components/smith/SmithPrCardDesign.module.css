@@ -76,7 +76,11 @@
   background: var(--bg-raised);
   border: 1px solid var(--line);
   text-decoration: none;
-  transition: all 0.15s ease;
+  transition:
+    color var(--fast) var(--ease),
+    background var(--fast) var(--ease),
+    border-color var(--fast) var(--ease),
+    transform var(--fast) var(--ease);
   flex: none;
 }
 
@@ -84,6 +88,10 @@
   background: var(--bg-hover);
   color: var(--text);
   border-color: var(--line-strong);
+}
+
+.linkBtn:active {
+  transform: translateY(1px);
 }
 
 .linkBtn:focus-visible {
@@ -263,6 +271,15 @@
   color: var(--text-dim);
   cursor: pointer;
   user-select: none;
+  transition: color var(--fast) var(--ease);
+}
+
+.disclosureSummary:hover {
+  color: var(--accent-bright);
+}
+
+.disclosureSummary:hover {
+  color: var(--accent-bright);
 }
 
 .disclosureSummary:focus-visible {

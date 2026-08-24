@@ -10,6 +10,8 @@
   border: 1px solid var(--line-strong);
   z-index: 80;
   animation: fade-in var(--fast) var(--ease);
+  /* Updater stages recolor the tone border in place; ease it like a badge. */
+  transition: border-color var(--normal) var(--ease);
 }
 
 .head {
@@ -51,12 +53,17 @@
   cursor: default;
   transition:
     background var(--fast) var(--ease),
-    color var(--fast) var(--ease);
+    color var(--fast) var(--ease),
+    transform var(--fast) var(--ease);
 }
 
 .dismiss:hover {
   background: var(--bg-hover);
   color: var(--text);
+}
+
+.dismiss:active {
+  transform: translateY(1px);
 }
 
 .detail {

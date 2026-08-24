@@ -7,6 +7,8 @@
   gap: var(--s3);
   padding: var(--s12) var(--s6);
   text-align: center;
+  /* Arrives with the same quick rise as the screens and dialogs around it. */
+  animation: fade-in var(--normal) var(--ease);
 }
 .empty img {
   width: 220px;

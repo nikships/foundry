@@ -53,7 +53,9 @@
   overflow-wrap: anywhere;
 }
 .pulse {
-  opacity: 0.6;
+  /* The global pulse keyframes from tokens-base.css: a live trailing
+     indicator breathes instead of sitting at fixed reduced opacity. */
+  animation: pulse 1.4s var(--ease) infinite;
 }
 .actions {
   margin-top: var(--s2);
@@ -89,6 +91,12 @@
 .mark.wait {
   color: var(--amber);
 }
+/* A verification currently executing reads as active, not stalled. */
+.mark.markRunning {
+  display: inline-block;
+  color: var(--amber);
+  animation: spin 1.2s linear infinite;
+}
 .rejected {
   margin-top: var(--s2);
   font-size: var(--text-xs);
@@ -104,6 +112,11 @@
   color: var(--accent);
   text-decoration: underline;
   cursor: default;
+  transition: color var(--fast) var(--ease);
+}
+
+.raw-toggle:hover {
+  color: var(--accent-bright);
 }
 .output {
   margin-top: var(--s2);

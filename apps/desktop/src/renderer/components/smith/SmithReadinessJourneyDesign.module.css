@@ -319,6 +319,11 @@
   color: var(--text-dim);
   cursor: pointer;
   user-select: none;
+  transition: color var(--fast) var(--ease);
+}
+
+.workSummary:hover {
+  color: var(--accent-bright);
 }
 
 .workSummary:focus-visible {

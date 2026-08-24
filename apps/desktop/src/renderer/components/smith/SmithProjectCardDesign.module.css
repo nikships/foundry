@@ -218,6 +218,11 @@
   color: var(--text-dim);
   cursor: pointer;
   user-select: none;
+  transition: color var(--fast) var(--ease);
+}
+
+.disclosureSummary:hover {
+  color: var(--accent-bright);
 }
 
 .disclosureSummary:focus-visible {

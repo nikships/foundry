@@ -17,7 +17,7 @@ const STATUS_LABEL: Record<DetectionState['status'], string> = {
 
 const VERIFY_MARK: Record<DetectionProposal['verify'], { glyph: string; tone: string }> = {
   pending: { glyph: '·', tone: styles.wait },
-  running: { glyph: '◌', tone: styles.wait },
+  running: { glyph: '◌', tone: styles.markRunning },
   pass: { glyph: '✓', tone: styles.ok },
   fail: { glyph: '✕', tone: styles.failed },
 };

@@ -111,6 +111,20 @@
   bottom: -1px;
   height: 2px;
   background: var(--accent);
+  /* Grows from the middle when a tab is selected instead of hard-swapping. */
+  transform-origin: center;
+  animation: tab-underline-in var(--fast) var(--ease);
+}
+
+@keyframes tab-underline-in {
+  from {
+    opacity: 0;
+    transform: scaleX(0.5);
+  }
+  to {
+    opacity: 1;
+    transform: scaleX(1);
+  }
 }
 
 /* The tab owns its own scrolling; the shell only bounds it. */
