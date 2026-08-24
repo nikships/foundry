@@ -1,5 +1,19 @@
 # The marketing site is a standalone app: it is not part of the desktop build,
 # `npm run check`, or CI. Keeping it out of language stats and collapsing it in
 # diffs stops it from dominating review of the actual application.
-website/** linguist-vendored=true
-website/public/media/** binary
+apps/website/** linguist-vendored=true
+
+# Media is stored as binary Git blobs: never attempt text conversion or a
+# line-oriented diff. Introducing Git LFS is an explicit repository migration;
+# the size gate below prevents accidental large blobs in the meantime.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.icns binary
+*.pdf binary
+*.mp4 binary
+*.mov binary
+*.zip binary

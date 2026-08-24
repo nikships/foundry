@@ -866,6 +866,7 @@ const PHASE_FIELDS: ReadonlyArray<{ key: keyof PhaseDef; label: string }> = [
   { key: 'feedbackRetries', label: 'feedback retries' },
   { key: 'question', label: 'question' },
   { key: 'optional', label: 'optional' },
+  { key: 'heal', label: 'healing' },
 ];
 
 function comparePipelines(before: PipelineDef, after: PipelineDef): SemanticChange[] {

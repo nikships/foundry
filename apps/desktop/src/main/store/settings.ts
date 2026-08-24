@@ -30,6 +30,8 @@ export const appSettingsSchema = z.object({
     .regex(PR_AGENT_NAME, 'lowercase letters, digits, dash, underscore; must start with a letter'),
   defaultModel: z.string().min(1),
   defaultReasoningEffort: z.enum(REASONING_EFFORTS),
+  healingModel: z.string().min(1),
+  healingReasoningEffort: z.enum(REASONING_EFFORTS),
   smithModel: z.string().min(1),
   smithReasoningEffort: z.enum(REASONING_EFFORTS),
   compactionThreshold: z.number().min(COMPACTION_BAND[0]).max(COMPACTION_BAND[1]),
@@ -54,6 +56,8 @@ export function defaultSettings(): AppSettings {
     prAgent: DEFAULT_PR_AGENT,
     defaultModel: 'inherit',
     defaultReasoningEffort: 'medium',
+    healingModel: 'inherit',
+    healingReasoningEffort: 'medium',
     smithModel: 'inherit',
     smithReasoningEffort: 'medium',
     compactionThreshold: 0.8,
@@ -94,6 +98,7 @@ export function migrate(raw: unknown): AppSettings {
       legacy.readinessReasoningEffort as AppSettings['helperReasoningEffort'];
   }
   if (!isNonEmptyString(merged.smithModel)) merged.smithModel = base.smithModel;
+  if (!isNonEmptyString(merged.healingModel)) merged.healingModel = base.healingModel;
   if (!isNonEmptyString(merged.prAgent) || !PR_AGENT_NAME.test(merged.prAgent)) {
     merged.prAgent = DEFAULT_PR_AGENT;
   }
@@ -104,6 +109,7 @@ export function migrate(raw: unknown): AppSettings {
   for (const key of [
     'helperReasoningEffort',
     'defaultReasoningEffort',
+    'healingReasoningEffort',
     'smithReasoningEffort',
   ] as const) {
     if (!isReasoningEffort(merged[key])) merged[key] = base[key];

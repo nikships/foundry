@@ -32,7 +32,9 @@
     "package": "npm run build && npm run icons && npm run fetch:bridge && electron-builder --mac --arm64",
     "check:css": "node scripts/check-css-collisions.mjs",
     "check:docs": "node scripts/check-docs-commands.mjs",
-    "check": "npm run typecheck && npm run lint && npm run format:check && npm run knip && npm run test:coverage && npm run build && npm run check:css && npm run check:docs && npm run audit:deps"
+    "check:files": "node scripts/check-file-sizes.mjs",
+    "check:duplicate": "jscpd apps/desktop/src --config .jscpd.json",
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm run knip && npm run test:coverage && npm run build && npm run check:css && npm run check:docs && npm run check:files && npm run check:duplicate && npm run audit:deps"
   },
   "config": {
     "bridge": {
@@ -69,9 +71,12 @@
     "electron-vite": "^6.0.0-beta.1",
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^10.1.8",
+    "eslint-import-resolver-typescript": "^4.4.5",
+    "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.9.0",
+    "jscpd": "^5.0.16",
     "knip": "^6.32.1",
     "prettier": "^3.9.6",
     "tsx": "^4.23.12",

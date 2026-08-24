@@ -1,11 +1,11 @@
 /**
- * Two picker galleries: the concept-art loops, and the app screenshots.
- * Both are a hairline list on the left driving a single stage on the right.
- * Only the selected art loop decodes; the rest stay on their poster frame.
+ * Three picker galleries: the concept-art loops, the desktop screenshots, and
+ * the phone. Each is a hairline list on the left driving a single stage on the
+ * right. Only the selected art loop decodes; the rest stay on their poster.
  */
 
 import { useState } from 'react';
-import { ART, APP_SHOTS } from '../../data/foundry';
+import { ART, APP_SHOTS, PHONE_SHOTS } from '../../data/foundry';
 import { useInView } from '../../hooks';
 import { LoopVideo } from '../ui';
 
@@ -48,7 +48,10 @@ export function ArtGallery() {
   const current = ART[selected];
 
   return (
-    <div ref={ref} className="grid grid-cols-1 items-start gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+    <div
+      ref={ref}
+      className="grid grid-cols-1 items-start gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]"
+    >
       <div className="flex flex-col overflow-hidden rounded border border-line">
         {ART.map((a, i) => (
           <PickerItem
@@ -86,7 +89,7 @@ export function ArtGallery() {
   );
 }
 
-/* ── app screenshots ─────────────────────────────────────────────────────── */
+/* ── desktop screenshots ─────────────────────────────────────────────────── */
 
 export function AppGallery() {
   const [selected, setSelected] = useState(0);
@@ -107,16 +110,16 @@ export function AppGallery() {
         ))}
       </div>
 
-      <div className="relative overflow-hidden rounded border border-line bg-[#020202] [aspect-ratio:1400/923]">
+      <div className="relative overflow-hidden rounded border border-line bg-[#020202] [aspect-ratio:1440/940]">
         {APP_SHOTS.map((s, i) => (
           <img
             key={s.file}
             src={`/media/ui/${s.file}.webp`}
             alt={`Foundry — ${s.name}`}
-            width={1400}
-            height={923}
+            width={1440}
+            height={940}
             loading={i === 0 ? 'eager' : 'lazy'}
-            className={`absolute inset-0 h-full w-full object-cover object-top transition-opacity duration-slow ease-mech ${
+            className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-slow ease-mech ${
               i === selected ? 'opacity-100' : 'opacity-0'
             }`}
           />
@@ -124,6 +127,53 @@ export function AppGallery() {
         <div className="absolute inset-x-0 bottom-0 z-[2] bg-gradient-to-t from-[rgba(2,2,2,0.9)] to-transparent px-[18px] py-4 font-mono text-[10px] uppercase tracking-label text-text-faint">
           {current.name}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── the phone ───────────────────────────────────────────────────────────── */
+
+export function PhoneGallery() {
+  const [selected, setSelected] = useState(0);
+
+  return (
+    <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]">
+      <div className="flex flex-col overflow-hidden rounded border border-line">
+        {PHONE_SHOTS.map((s, i) => (
+          <PickerItem
+            key={s.file}
+            index={i}
+            name={s.name}
+            desc={s.desc}
+            selected={i === selected}
+            onSelect={() => setSelected(i)}
+          />
+        ))}
+      </div>
+
+      {/* a phone-shaped stage: the shots are cropped to 1080x1000 */}
+      <div className="mx-auto w-full max-w-[300px] md:sticky md:top-[84px]">
+        <div className="relative overflow-hidden rounded-[26px] border border-line-strong bg-[#020202] p-[7px] [aspect-ratio:1080/1000]">
+          <div className="relative h-full w-full overflow-hidden rounded-[20px] bg-[#020202]">
+            {PHONE_SHOTS.map((s, i) => (
+              <img
+                key={s.file}
+                src={`/media/phone/${s.file}.webp`}
+                alt={`Foundry companion — ${s.name}`}
+                width={540}
+                height={500}
+                loading={i === 0 ? 'eager' : 'lazy'}
+                className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-slow ease-mech ${
+                  i === selected ? 'opacity-100' : 'opacity-0'
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+        <p className="mt-3 text-center font-mono text-[10px] uppercase tracking-label text-text-ghost">
+          Android · paired over your LAN
+        </p>
       </div>
     </div>
   );

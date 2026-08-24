@@ -42,6 +42,69 @@ function companionPill(companion: CompanionHostState): {
   };
 }
 
+function startAvailability(input: {
+  hasProject: boolean;
+  hasPipeline: boolean;
+  requestOk: boolean;
+  blockingErrors: number;
+  baseSyncing: boolean;
+  baseRef: string;
+}): { canStart: boolean; reason: string } {
+  if (!input.hasProject) return { canStart: false, reason: 'Add a project first' };
+  if (!input.hasPipeline) return { canStart: false, reason: 'No pipeline available' };
+  if (!input.requestOk) return { canStart: false, reason: 'Describe what to build' };
+  if (input.blockingErrors) return { canStart: false, reason: 'Fix pipeline errors first' };
+  if (input.baseSyncing) {
+    return { canStart: false, reason: `Updating ${input.baseRef} first` };
+  }
+  return { canStart: true, reason: '' };
+}
+
+function RunsHeader({
+  companion,
+  includeArchived,
+  onIncludeArchived,
+  onOpenSettings,
+}: {
+  companion: CompanionHostState | null;
+  includeArchived: boolean;
+  onIncludeArchived: (include: boolean) => void;
+  onOpenSettings?: (pane: string) => void;
+}): React.JSX.Element {
+  const pill = companion ? companionPill(companion) : null;
+  return (
+    <header className={styles.head}>
+      <p className="eyebrow">
+        <span className="index">01</span>Runs
+      </p>
+      <div className={styles.headActions}>
+        {companion && pill && (
+          <button
+            type="button"
+            className={styles.phonePill}
+            onClick={() => onOpenSettings?.('general')}
+            data-testid="companion-pill"
+            data-running={companion.running ? 'true' : 'false'}
+            title={pill.title}
+          >
+            <span className={`${styles.phoneDot} ${pill.dot}`} />
+            <span className="mono">{pill.label}</span>
+          </button>
+        )}
+        <label className={styles.archived}>
+          <input
+            type="checkbox"
+            checked={includeArchived}
+            onChange={(event) => onIncludeArchived(event.target.checked)}
+            data-testid="runs-archived"
+          />
+          Show archived
+        </label>
+      </div>
+    </header>
+  );
+}
+
 export default function RunsScreen({
   request,
   onRequestChange,
@@ -146,19 +209,14 @@ export default function RunsScreen({
   const banner = useMemo(() => (readiness ? readinessBanner(readiness) : null), [readiness]);
 
   const requestOk = request.trim().length > 0;
-  const canStart =
-    !!project && !!pipeline && requestOk && blockingPreflight.length === 0 && !baseSyncing;
-  const startDisabledReason = !project
-    ? 'Add a project first'
-    : !pipeline
-      ? 'No pipeline available'
-      : !requestOk
-        ? 'Describe what to build'
-        : blockingPreflight.length
-          ? 'Fix pipeline errors first'
-          : baseSyncing
-            ? `Updating ${project.baseRef} first`
-            : '';
+  const { canStart, reason: startDisabledReason } = startAvailability({
+    hasProject: Boolean(project),
+    hasPipeline: Boolean(pipeline),
+    requestOk,
+    blockingErrors: blockingPreflight.length,
+    baseSyncing,
+    baseRef: project?.baseRef ?? 'base branch',
+  });
 
   const start = async (): Promise<void> => {
     if (!canStart || starting) return;
@@ -202,39 +260,15 @@ export default function RunsScreen({
   };
 
   const openProjectCommands = (): void => onOpenSettings?.('project');
-  const pill = companion ? companionPill(companion) : null;
 
   return (
     <div className={styles.screen}>
-      <header className={styles.head}>
-        <p className="eyebrow">
-          <span className="index">01</span>Runs
-        </p>
-        <div className={styles.headActions}>
-          {companion && pill && (
-            <button
-              type="button"
-              className={styles.phonePill}
-              onClick={() => onOpenSettings?.('general')}
-              data-testid="companion-pill"
-              data-running={companion.running ? 'true' : 'false'}
-              title={pill.title}
-            >
-              <span className={`${styles.phoneDot} ${pill.dot}`} />
-              <span className="mono">{pill.label}</span>
-            </button>
-          )}
-          <label className={styles.archived}>
-            <input
-              type="checkbox"
-              checked={includeArchived}
-              onChange={(e) => setIncludeArchived(e.target.checked)}
-              data-testid="runs-archived"
-            />
-            Show archived
-          </label>
-        </div>
-      </header>
+      <RunsHeader
+        companion={companion}
+        includeArchived={includeArchived}
+        onIncludeArchived={setIncludeArchived}
+        onOpenSettings={onOpenSettings}
+      />
       {project && banner && (
         <div
           className={banner.tone === 'ready' ? styles.readinessReady : styles.readinessBanner}

@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
-# Regenerates website/media/ from the source art in ../../assets.
+# Regenerates apps/website/public/media from the source art in ../../assets.
 #
 # The site is committed with its media already built, so you only need this
-# when the source art changes. Requires ffmpeg with libwebp and libx264.
+# when the source art changes. Requires ffmpeg (libx264) and cwebp.
 #
 # Targets: stills become WebP at web widths, the 8s 1080p loops become
-# muted, faststart H.264 at 1280x720. Nothing here is wired into npm scripts
-# or CI on purpose — see website/README.md.
+# muted, faststart H.264 at 1280x720. Nothing here is wired into the repo gate
+# or CI on purpose — see apps/website/README.md.
+#
+# `media-src/ui/*.png` are retina captures of the running app (2880x1880),
+# taken through the repo's foundry-ui skill; `media-src/phone/*.png` are the
+# Android captures from ../../screenshots cropped to 1080x1000. Recapture
+# either when a screen changes rather than hand-editing the WebP.
 #
 # Written for bash 3.2 (macOS system bash): no mapfile, no process
 # substitution, no bare mktemp.
@@ -16,16 +21,25 @@ set -eo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 site=$(cd "$here/.." && pwd)
 src=$(cd "$site/../../assets" && pwd)
+# Site-only captures live under the site rather than in the app's assets/,
+# which electron-builder ships wholesale as extraResources — marketing
+# screenshots have no business inside the signed DMG.
+mine=$(cd "$site/media-src" && pwd)
 out="$site/public/media"
 
-mkdir -p "$out/art" "$out/loop" "$out/ui" "$out/agents" "$out/sigil"
+mkdir -p "$out/art" "$out/loop" "$out/ui" "$out/agents" "$out/sigil" "$out/phone"
 
 echo "source : $src"
 echo "output : $out"
 
-# still <in> <out> <width> <quality>
+# WebP comes from cwebp rather than ffmpeg: Homebrew's ffmpeg is not always
+# built with libwebp, and cwebp is a hard dependency of libwebp itself, so this
+# is the encoder that is actually present. ffmpeg still owns H.264 and frame
+# extraction.
+
+# still <in> <out> <width> <quality>   — PNG in, WebP out
 still() {
-  ffmpeg -v error -y -i "$1" -vf "scale=$3:-2:flags=lanczos" -c:v libwebp -quality "$4" -compression_level 6 "$2"
+  cwebp -quiet -resize "$3" 0 -q "$4" -m 6 "$1" -o "$2"
   printf '  %-46s %s\n' "$(basename "$2")" "$(du -h "$2" | cut -f1)"
 }
 
@@ -36,8 +50,10 @@ loop() {
     -c:v libx264 -profile:v high -pix_fmt yuv420p \
     -crf 31 -preset slower -g 48 -movflags +faststart \
     "$out/loop/$2.mp4"
-  ffmpeg -v error -y -i "$1" -vframes 1 -vf "scale=1280:-2:flags=lanczos" \
-    -c:v libwebp -quality 72 "$out/loop/$2.webp"
+  frame="$out/loop/$2.frame.png"
+  ffmpeg -v error -y -i "$1" -vframes 1 -vf "scale=1280:-2:flags=lanczos" "$frame"
+  cwebp -quiet -q 72 -m 6 "$frame" -o "$out/loop/$2.webp"
+  rm -f "$frame"
   printf '  %-46s %s\n' "$2.mp4" "$(du -h "$out/loop/$2.mp4" | cut -f1)"
 }
 
@@ -62,9 +78,17 @@ for f in "$src"/agents/*.png; do
   still "$f" "$out/agents/$(basename "$f" .png).webp" 320 80
 done
 
-echo "── app screenshots (1400w → 1400w)"
-for f in "$src"/readme/*.png; do
-  still "$f" "$out/ui/$(basename "$f" .png).webp" 1400 82
+echo "── desktop screenshots (2880x1880 retina → 1440w)"
+for f in "$mine"/ui/*.png; do
+  still "$f" "$out/ui/$(basename "$f" .png).webp" 1440 82
+done
+
+# Cropped to 1080x1000: the raw captures are 1080x2400 and several screens fill
+# only the top third, so the full canvas would render as a phone frame that is
+# mostly empty background.
+echo "── phone screenshots (1080x1000 → 540w)"
+for f in "$mine"/phone/*.png; do
+  still "$f" "$out/phone/$(basename "$f" .png).webp" 540 84
 done
 
 echo "── loops (1920x1080x8s → 1280x720)"

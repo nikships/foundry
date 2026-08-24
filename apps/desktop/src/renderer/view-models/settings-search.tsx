@@ -152,6 +152,12 @@ export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
   },
   {
     pane: 'defaults',
+    label: 'Healing',
+    note: 'Repairs a failed check before the failure escalates.',
+    keywords: 'healing heal repair fix failed test lint format command model reasoning effort',
+  },
+  {
+    pane: 'defaults',
     label: 'Smith',
     note: 'The model the in-app chat runs on.',
     keywords: 'smith chat default model picker provider',

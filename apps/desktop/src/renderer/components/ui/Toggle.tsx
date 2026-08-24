@@ -7,18 +7,22 @@ export function Toggle({
   onChange,
   label,
   hint,
+  disabled,
 }: {
   checked: boolean;
   onChange: (next: boolean) => void;
   label: string;
   hint?: string;
+  /** For a switch another setting has already decided. The hint says why. */
+  disabled?: boolean;
 }): React.JSX.Element {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
-      className={styles.toggle}
+      disabled={disabled}
+      className={cx(styles.toggle, disabled && styles.toggleDisabled)}
       onClick={() => onChange(!checked)}
     >
       <span className={cx(styles.track, checked && styles.trackOn)} aria-hidden="true">

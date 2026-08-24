@@ -57,7 +57,7 @@ import { validate as validatePipeline } from '../store/pipelines.js';
 import { validate as validateEnvelope } from '../store/envelopes.js';
 import { changedPaths, diffStat } from '../engine/git.js';
 import type { SmithEntityStores } from './entity-tools.js';
-import { field, json, resolveProjectId, stringField } from './tool-helpers.js';
+import { field, json, resolveProjectId, stringField, type JsonToolResult } from './tool-helpers.js';
 
 export const SMITH_PRESENT_TOOL_NAME = 'smith_present';
 
@@ -1013,6 +1013,83 @@ export function validateSettingsDiff(spec: unknown): ValidationIssue[] {
   return issues;
 }
 
+function validateDoctorChecks(issues: ValidationIssue[], value: unknown): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    issues.push({ level: 'error', where: 'doctor', message: 'doctor checks must be an array' });
+    return;
+  }
+  for (const [index, check] of value.entries()) {
+    const where = `doctor[${index}]`;
+    if (check == null || typeof check !== 'object' || Array.isArray(check)) {
+      issues.push({ level: 'error', where, message: 'doctor check must be an object' });
+      continue;
+    }
+    const checkObject = check as Record<string, unknown>;
+    if (typeof checkObject.id !== 'string' || !checkObject.id.trim()) {
+      issues.push({ level: 'error', where: `${where}.id`, message: 'check id is required' });
+    }
+    if (typeof checkObject.label !== 'string' || !checkObject.label.trim()) {
+      issues.push({
+        level: 'error',
+        where: `${where}.label`,
+        message: 'check label is required',
+      });
+    }
+    if (typeof checkObject.ok !== 'boolean') {
+      issues.push({
+        level: 'error',
+        where: `${where}.ok`,
+        message: 'check ok must be a boolean',
+      });
+    }
+    if (typeof checkObject.detail !== 'string') {
+      issues.push({
+        level: 'error',
+        where: `${where}.detail`,
+        message: 'check detail must be a string',
+      });
+    }
+  }
+}
+
+function validateOrphanWorktrees(issues: ValidationIssue[], value: unknown): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    issues.push({ level: 'error', where: 'orphans', message: 'orphans must be an array' });
+    return;
+  }
+  for (const [index, orphan] of value.entries()) {
+    const where = `orphans[${index}]`;
+    if (orphan == null || typeof orphan !== 'object' || Array.isArray(orphan)) {
+      issues.push({ level: 'error', where, message: 'orphan must be an object' });
+      continue;
+    }
+    const orphanObject = orphan as Record<string, unknown>;
+    if (typeof orphanObject.path !== 'string' || !orphanObject.path.trim()) {
+      issues.push({
+        level: 'error',
+        where: `${where}.path`,
+        message: 'orphan path is required',
+      });
+    }
+    if (typeof orphanObject.branch !== 'string' || !orphanObject.branch.trim()) {
+      issues.push({
+        level: 'error',
+        where: `${where}.branch`,
+        message: 'orphan branch is required',
+      });
+    }
+    if (typeof orphanObject.projectId !== 'string') {
+      issues.push({
+        level: 'error',
+        where: `${where}.projectId`,
+        message: 'orphan projectId is required',
+      });
+    }
+  }
+}
+
 export function validateDiagnostics(spec: unknown): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   if (spec == null || typeof spec !== 'object' || Array.isArray(spec)) {
@@ -1076,82 +1153,8 @@ export function validateDiagnostics(spec: unknown): ValidationIssue[] {
     });
   }
 
-  if (raw.doctor !== undefined) {
-    if (!Array.isArray(raw.doctor)) {
-      issues.push({ level: 'error', where: 'doctor', message: 'doctor checks must be an array' });
-    } else {
-      for (let i = 0; i < raw.doctor.length; i += 1) {
-        const check = raw.doctor[i];
-        const where = `doctor[${i}]`;
-        if (check == null || typeof check !== 'object' || Array.isArray(check)) {
-          issues.push({ level: 'error', where, message: 'doctor check must be an object' });
-          continue;
-        }
-        const cObj = check as Record<string, unknown>;
-        if (typeof cObj.id !== 'string' || !cObj.id.trim()) {
-          issues.push({ level: 'error', where: `${where}.id`, message: 'check id is required' });
-        }
-        if (typeof cObj.label !== 'string' || !cObj.label.trim()) {
-          issues.push({
-            level: 'error',
-            where: `${where}.label`,
-            message: 'check label is required',
-          });
-        }
-        if (typeof cObj.ok !== 'boolean') {
-          issues.push({
-            level: 'error',
-            where: `${where}.ok`,
-            message: 'check ok must be a boolean',
-          });
-        }
-        if (typeof cObj.detail !== 'string') {
-          issues.push({
-            level: 'error',
-            where: `${where}.detail`,
-            message: 'check detail must be a string',
-          });
-        }
-      }
-    }
-  }
-
-  if (raw.orphans !== undefined) {
-    if (!Array.isArray(raw.orphans)) {
-      issues.push({ level: 'error', where: 'orphans', message: 'orphans must be an array' });
-    } else {
-      for (let i = 0; i < raw.orphans.length; i += 1) {
-        const orphan = raw.orphans[i];
-        const where = `orphans[${i}]`;
-        if (orphan == null || typeof orphan !== 'object' || Array.isArray(orphan)) {
-          issues.push({ level: 'error', where, message: 'orphan must be an object' });
-          continue;
-        }
-        const oObj = orphan as Record<string, unknown>;
-        if (typeof oObj.path !== 'string' || !oObj.path.trim()) {
-          issues.push({
-            level: 'error',
-            where: `${where}.path`,
-            message: 'orphan path is required',
-          });
-        }
-        if (typeof oObj.branch !== 'string' || !oObj.branch.trim()) {
-          issues.push({
-            level: 'error',
-            where: `${where}.branch`,
-            message: 'orphan branch is required',
-          });
-        }
-        if (typeof oObj.projectId !== 'string') {
-          issues.push({
-            level: 'error',
-            where: `${where}.projectId`,
-            message: 'orphan projectId is required',
-          });
-        }
-      }
-    }
-  }
+  validateDoctorChecks(issues, raw.doctor);
+  validateOrphanWorktrees(issues, raw.orphans);
 
   if (raw.maintenance !== undefined) {
     if (
@@ -1564,6 +1567,104 @@ export async function deriveChangeReceiptFromGit(
   };
 }
 
+function validateProjectGithub(issues: ValidationIssue[], value: unknown): void {
+  if (value === undefined) return;
+  const github = objectAt(issues, value, 'github');
+  if (!github) return;
+  if (typeof github.available !== 'boolean') {
+    issues.push({
+      level: 'error',
+      where: 'github.available',
+      message: 'github.available must be a boolean',
+    });
+  }
+  if (github.repo !== undefined && typeof github.repo !== 'string') {
+    issues.push({ level: 'error', where: 'github.repo', message: 'github.repo must be a string' });
+  }
+}
+
+function validateProjectCommands(issues: ValidationIssue[], value: unknown): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    issues.push({ level: 'error', where: 'commands', message: 'commands must be an array' });
+    return;
+  }
+  for (const [index, entry] of value.entries()) {
+    const where = `commands[${index}]`;
+    if (entry == null || typeof entry !== 'object' || Array.isArray(entry)) {
+      issues.push({ level: 'error', where, message: 'command must be an object' });
+      continue;
+    }
+    const command = entry as Record<string, unknown>;
+    requireString(issues, command.name, `${where}.name`, 'command name');
+    if (!Array.isArray(command.argv) || command.argv.some((arg) => typeof arg !== 'string')) {
+      issues.push({
+        level: 'error',
+        where: `${where}.argv`,
+        message: 'command argv must be a string array',
+      });
+    }
+  }
+}
+
+function validateProjectDivergence(issues: ValidationIssue[], value: unknown): void {
+  if (value === undefined) return;
+  const divergence = objectAt(issues, value, 'divergence');
+  if (!divergence) return;
+  if (typeof divergence.ahead !== 'number' || typeof divergence.behind !== 'number') {
+    issues.push({
+      level: 'error',
+      where: 'divergence',
+      message: 'divergence ahead and behind must be numbers',
+    });
+  }
+  if (typeof divergence.state !== 'string' || !VALID_BASE_SYNC_STATES.has(divergence.state)) {
+    issues.push({
+      level: 'error',
+      where: 'divergence.state',
+      message: `invalid divergence state "${String(divergence.state)}"`,
+    });
+  }
+}
+
+function validateProjectScopes(issues: ValidationIssue[], value: unknown): void {
+  if (value === undefined) return;
+  const scopes = objectAt(issues, value, 'scopes');
+  if (!scopes) return;
+  if (typeof scopes.roster !== 'boolean' || typeof scopes.pipelines !== 'boolean') {
+    issues.push({
+      level: 'error',
+      where: 'scopes',
+      message: 'scopes roster and pipelines must be booleans',
+    });
+  }
+}
+
+function validateProjectHealth(issues: ValidationIssue[], value: unknown): void {
+  if (value === undefined) return;
+  const health = objectAt(issues, value, 'health');
+  if (health && typeof health.ok !== 'boolean') {
+    issues.push({ level: 'error', where: 'health.ok', message: 'health.ok must be a boolean' });
+  }
+}
+
+function validateProjectStrings(issues: ValidationIssue[], raw: Record<string, unknown>): void {
+  const fields = [
+    ['name', raw.name, 200],
+    ['title', raw.title, 200],
+    ['summary', raw.summary, 500],
+    ['setupScript', raw.setupScript, 8_000],
+    ['contextSummary', raw.contextSummary, 4_000],
+  ] as const;
+  for (const [where, value, max] of fields) {
+    if (value === null) {
+      issues.push({ level: 'error', where, message: `${where} must be a string` });
+    } else {
+      optionalString(issues, value, where, max);
+    }
+  }
+}
+
 export function validateProjectCard(spec: unknown): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   if (spec == null || typeof spec !== 'object' || Array.isArray(spec)) {
@@ -1588,172 +1689,12 @@ export function validateProjectCard(spec: unknown): ValidationIssue[] {
     });
   }
 
-  if (raw.name !== undefined) {
-    if (typeof raw.name !== 'string') {
-      issues.push({ level: 'error', where: 'name', message: 'name must be a string' });
-    } else if (raw.name.length > 200) {
-      issues.push({ level: 'warning', where: 'name', message: 'name exceeds 200 characters' });
-    }
-  }
-
-  if (raw.title !== undefined) {
-    if (typeof raw.title !== 'string') {
-      issues.push({ level: 'error', where: 'title', message: 'title must be a string' });
-    } else if (raw.title.length > 200) {
-      issues.push({ level: 'warning', where: 'title', message: 'title exceeds 200 characters' });
-    }
-  }
-
-  if (raw.summary !== undefined) {
-    if (typeof raw.summary !== 'string') {
-      issues.push({ level: 'error', where: 'summary', message: 'summary must be a string' });
-    } else if (raw.summary.length > 500) {
-      issues.push({
-        level: 'warning',
-        where: 'summary',
-        message: 'summary exceeds 500 characters',
-      });
-    }
-  }
-
-  if (raw.github !== undefined) {
-    if (typeof raw.github !== 'object' || raw.github == null || Array.isArray(raw.github)) {
-      issues.push({ level: 'error', where: 'github', message: 'github must be an object' });
-    } else {
-      const gh = raw.github as Record<string, unknown>;
-      if (typeof gh.available !== 'boolean') {
-        issues.push({
-          level: 'error',
-          where: 'github.available',
-          message: 'github.available must be a boolean',
-        });
-      }
-      if (gh.repo !== undefined && typeof gh.repo !== 'string') {
-        issues.push({
-          level: 'error',
-          where: 'github.repo',
-          message: 'github.repo must be a string',
-        });
-      }
-    }
-  }
-
-  if (raw.commands !== undefined) {
-    if (!Array.isArray(raw.commands)) {
-      issues.push({ level: 'error', where: 'commands', message: 'commands must be an array' });
-    } else {
-      for (let i = 0; i < raw.commands.length; i += 1) {
-        const cmd = raw.commands[i];
-        if (typeof cmd !== 'object' || cmd == null || Array.isArray(cmd)) {
-          issues.push({
-            level: 'error',
-            where: `commands[${i}]`,
-            message: 'command must be an object',
-          });
-        } else {
-          const c = cmd as Record<string, unknown>;
-          if (typeof c.name !== 'string' || !c.name.trim()) {
-            issues.push({
-              level: 'error',
-              where: `commands[${i}].name`,
-              message: 'command name is required',
-            });
-          }
-          if (!Array.isArray(c.argv) || c.argv.some((a) => typeof a !== 'string')) {
-            issues.push({
-              level: 'error',
-              where: `commands[${i}].argv`,
-              message: 'command argv must be a string array',
-            });
-          }
-        }
-      }
-    }
-  }
-
-  if (raw.setupScript !== undefined) {
-    if (typeof raw.setupScript !== 'string') {
-      issues.push({
-        level: 'error',
-        where: 'setupScript',
-        message: 'setupScript must be a string',
-      });
-    } else if (raw.setupScript.length > 8000) {
-      issues.push({
-        level: 'warning',
-        where: 'setupScript',
-        message: 'setupScript exceeds 8000 characters',
-      });
-    }
-  }
-
-  if (raw.divergence !== undefined) {
-    if (
-      typeof raw.divergence !== 'object' ||
-      raw.divergence == null ||
-      Array.isArray(raw.divergence)
-    ) {
-      issues.push({ level: 'error', where: 'divergence', message: 'divergence must be an object' });
-    } else {
-      const div = raw.divergence as Record<string, unknown>;
-      if (typeof div.ahead !== 'number' || typeof div.behind !== 'number') {
-        issues.push({
-          level: 'error',
-          where: 'divergence',
-          message: 'divergence ahead and behind must be numbers',
-        });
-      }
-      if (typeof div.state !== 'string' || !VALID_BASE_SYNC_STATES.has(div.state)) {
-        issues.push({
-          level: 'error',
-          where: 'divergence.state',
-          message: `invalid divergence state "${String(div.state)}"`,
-        });
-      }
-    }
-  }
-
-  if (raw.scopes !== undefined) {
-    if (typeof raw.scopes !== 'object' || raw.scopes == null || Array.isArray(raw.scopes)) {
-      issues.push({ level: 'error', where: 'scopes', message: 'scopes must be an object' });
-    } else {
-      const sc = raw.scopes as Record<string, unknown>;
-      if (typeof sc.roster !== 'boolean' || typeof sc.pipelines !== 'boolean') {
-        issues.push({
-          level: 'error',
-          where: 'scopes',
-          message: 'scopes roster and pipelines must be booleans',
-        });
-      }
-    }
-  }
-
-  if (raw.health !== undefined) {
-    if (typeof raw.health !== 'object' || raw.health == null || Array.isArray(raw.health)) {
-      issues.push({ level: 'error', where: 'health', message: 'health must be an object' });
-    } else {
-      const h = raw.health as Record<string, unknown>;
-      if (typeof h.ok !== 'boolean') {
-        issues.push({ level: 'error', where: 'health.ok', message: 'health.ok must be a boolean' });
-      }
-    }
-  }
-
-  if (raw.contextSummary !== undefined) {
-    if (typeof raw.contextSummary !== 'string') {
-      issues.push({
-        level: 'error',
-        where: 'contextSummary',
-        message: 'contextSummary must be a string',
-      });
-    } else if (raw.contextSummary.length > 4000) {
-      issues.push({
-        level: 'warning',
-        where: 'contextSummary',
-        message: 'contextSummary exceeds 4000 characters',
-      });
-    }
-  }
+  validateProjectStrings(issues, raw);
+  validateProjectGithub(issues, raw.github);
+  validateProjectCommands(issues, raw.commands);
+  validateProjectDivergence(issues, raw.divergence);
+  validateProjectScopes(issues, raw.scopes);
+  validateProjectHealth(issues, raw.health);
 
   return issues;
 }
@@ -2150,6 +2091,91 @@ function buildRunSummaryArtifact(
   };
 }
 
+function presentRunSummary(
+  deps: SmithPresentToolDeps,
+  params: unknown,
+  scopeProjectId: string | undefined,
+  rationale: string | undefined,
+): JsonToolResult {
+  const spec = field(params, 'spec');
+  const runId =
+    stringField(params, 'runId') ||
+    (spec && typeof spec === 'object' && !Array.isArray(spec) ? stringField(spec, 'runId') : null);
+  if (!runId) return json({ ok: false, error: 'run_summary needs a runId' });
+
+  let detail: RunDetail | null = null;
+  let targetProjectId = scopeProjectId;
+  if (scopeProjectId && deps.runLookup) {
+    detail = deps.runLookup(scopeProjectId, runId);
+  } else if (deps.runLookup) {
+    for (const project of deps.stores.projects.list()) {
+      const candidate = deps.runLookup(project.id, runId);
+      if (!candidate?.run) continue;
+      detail = candidate;
+      targetProjectId = project.id;
+      break;
+    }
+  }
+  if (!detail?.run) return json({ ok: false, error: `run not found: ${runId}` });
+
+  const sessionProject = deps.projectId();
+  const artifact = buildRunSummaryArtifact(detail, {
+    id: randomUUID(),
+    version: SMITH_ARTIFACT_VERSION,
+    createdAt: Date.now(),
+    ...(targetProjectId || sessionProject ? { projectId: targetProjectId ?? sessionProject } : {}),
+    ...(rationale ? { rationale } : {}),
+    warnings: [],
+  });
+  deps.emit(artifact);
+  return json({ ok: true, artifactId: artifact.id });
+}
+
+type ComparisonResolution =
+  | {
+      ok: true;
+      entityKind: EntityComparisonKind;
+      entityName: string;
+      beforeEntity: unknown;
+    }
+  | { ok: false; error: string };
+
+function resolveComparison(
+  deps: SmithPresentToolDeps,
+  params: unknown,
+  spec: Record<string, unknown>,
+  projectId: string | undefined,
+): ComparisonResolution {
+  const entityKind =
+    parseEntityComparisonKind(field(params, 'entityKind')) ?? inferEntityComparisonKind(spec);
+  if (!entityKind) {
+    return {
+      ok: false,
+      error: 'entity_comparison requires entityKind ("agent", "pipeline", or "envelope")',
+    };
+  }
+  const rawName = field(params, 'name');
+  const entityName = [rawName, spec.name, spec.id]
+    .find((candidate): candidate is string => typeof candidate === 'string' && !!candidate.trim())
+    ?.trim();
+  if (!entityName) return { ok: false, error: 'entity_comparison requires an entity name or id' };
+
+  let beforeEntity: unknown;
+  if (entityKind === 'agent') {
+    beforeEntity = deps.stores.roster.get(entityName, deps.stores.rosterScope(projectId));
+  } else if (entityKind === 'pipeline') {
+    beforeEntity = deps.stores.pipelines.get(entityName, deps.stores.pipelineScope(projectId));
+  } else {
+    beforeEntity = deps.stores.envelopes.get(entityName);
+  }
+  return beforeEntity == null
+    ? {
+        ok: false,
+        error: `cannot compare "${entityName}": ${entityKind} does not exist in the store`,
+      }
+    : { ok: true, entityKind, entityName, beforeEntity };
+}
+
 export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
   return defineTool({
     name: SMITH_PRESENT_TOOL_NAME,
@@ -2261,47 +2287,7 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
       if (!scope.ok) return Promise.resolve(json(scope));
 
       if (kind === 'run_summary') {
-        const spec = field(params, 'spec');
-        const runId =
-          stringField(params, 'runId') ||
-          (spec && typeof spec === 'object' && !Array.isArray(spec)
-            ? stringField(spec, 'runId')
-            : null);
-        if (!runId) return Promise.resolve(json({ ok: false, error: 'run_summary needs a runId' }));
-
-        let detail: RunDetail | null = null;
-        let targetProjectId = scope.projectId;
-
-        if (scope.projectId && deps.runLookup) {
-          detail = deps.runLookup(scope.projectId, runId);
-        } else if (!scope.projectId && deps.runLookup) {
-          for (const project of deps.stores.projects.list()) {
-            const d = deps.runLookup(project.id, runId);
-            if (d && d.run) {
-              detail = d;
-              targetProjectId = project.id;
-              break;
-            }
-          }
-        }
-
-        if (!detail || !detail.run) {
-          return Promise.resolve(json({ ok: false, error: `run not found: ${runId}` }));
-        }
-
-        const sessionProject = deps.projectId();
-        const artifact = buildRunSummaryArtifact(detail, {
-          id: randomUUID(),
-          version: SMITH_ARTIFACT_VERSION,
-          createdAt: Date.now(),
-          ...(targetProjectId || sessionProject
-            ? { projectId: targetProjectId ?? sessionProject }
-            : {}),
-          ...(rationale ? { rationale } : {}),
-          warnings: [],
-        });
-        deps.emit(artifact);
-        return Promise.resolve(json({ ok: true, artifactId: artifact.id }));
+        return Promise.resolve(presentRunSummary(deps, params, scope.projectId, rationale));
       }
 
       const spec = field(params, 'spec');
@@ -2329,58 +2315,14 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
       let beforeEntity: unknown;
 
       if (kind === 'entity_comparison') {
-        const specRecord = spec as Record<string, unknown>;
-        entityKind =
-          parseEntityComparisonKind(field(params, 'entityKind')) ??
-          inferEntityComparisonKind(specRecord) ??
-          undefined;
-        if (!entityKind) {
-          return Promise.resolve(
-            json({
-              ok: false,
-              error: 'entity_comparison requires entityKind ("agent", "pipeline", or "envelope")',
-            }),
-          );
-        }
-
-        const rawName = field(params, 'name');
-        entityName =
-          typeof rawName === 'string' && rawName.trim()
-            ? rawName.trim()
-            : typeof specRecord.name === 'string' && specRecord.name.trim()
-              ? specRecord.name.trim()
-              : typeof specRecord.id === 'string' && specRecord.id.trim()
-                ? specRecord.id.trim()
-                : undefined;
-
-        if (!entityName) {
-          return Promise.resolve(
-            json({ ok: false, error: 'entity_comparison requires an entity name or id' }),
-          );
-        }
-
-        if (entityKind === 'agent') {
-          beforeEntity = deps.stores.roster.get(
-            entityName,
-            deps.stores.rosterScope(scope.projectId),
-          );
-        } else if (entityKind === 'pipeline') {
-          beforeEntity = deps.stores.pipelines.get(
-            entityName,
-            deps.stores.pipelineScope(scope.projectId),
-          );
-        } else if (entityKind === 'envelope') {
-          beforeEntity = deps.stores.envelopes.get(entityName);
-        }
-
-        if (beforeEntity == null) {
-          return Promise.resolve(
-            json({
-              ok: false,
-              error: `cannot compare "${entityName}": ${entityKind} does not exist in the store`,
-            }),
-          );
-        }
+        const comparison = resolveComparison(
+          deps,
+          params,
+          spec as Record<string, unknown>,
+          scope.projectId,
+        );
+        if (!comparison.ok) return Promise.resolve(json(comparison));
+        ({ entityKind, entityName, beforeEntity } = comparison);
       }
 
       // Same gate as smith_propose: errors are the model's to fix and never

@@ -21,7 +21,7 @@ import { tempDir } from '../../helpers/tmp.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DetectSession, type DetectionState } from '../../../src/main/engine/detect-session.js';
 import { defaultSettings } from '../../../src/main/store/settings.js';
-import { __setResolvedEnvForTest } from '../../../src/main/system/env.js';
+import { setResolvedEnvForTest } from '../../../src/main/system/env.js';
 import {
   say,
   scriptedOneShots,
@@ -86,9 +86,9 @@ function commandsReply(
 beforeEach(() => {
   // The commands the fixtures propose are shell builtins, so a minimal PATH is
   // enough to verify them and keeps the test hermetic.
-  __setResolvedEnvForTest({ path: '/usr/bin:/bin', via: 'login-shell' });
+  setResolvedEnvForTest({ path: '/usr/bin:/bin', via: 'login-shell' });
 });
-afterEach(() => __setResolvedEnvForTest(null));
+afterEach(() => setResolvedEnvForTest(null));
 
 describe('DetectSession', () => {
   it('asks the agent even when the manifests already answered', async () => {
@@ -212,7 +212,7 @@ describe('DetectSession', () => {
     const running = session.run();
     // The turn is held open, so the cancel has something to interrupt: a
     // cancel that only lands after the answer proves nothing.
-    await vi_waitFor(() => oneShots.calls.length === 1);
+    await viWaitFor(() => oneShots.calls.length === 1);
     session.cancel();
     await running;
 
@@ -223,7 +223,7 @@ describe('DetectSession', () => {
   });
 });
 
-async function vi_waitFor(check: () => boolean, timeoutMs = 2_000): Promise<void> {
+async function viWaitFor(check: () => boolean, timeoutMs = 2_000): Promise<void> {
   const start = Date.now();
   while (!check()) {
     if (Date.now() - start > timeoutMs) throw new Error('timed out waiting for the session');

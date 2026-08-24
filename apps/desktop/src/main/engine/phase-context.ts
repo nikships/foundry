@@ -10,6 +10,7 @@ import type { Envelope } from './envelopes.js';
 import type { InterruptRequest } from '../pi/session.js';
 import type { IssueAction, PrAction } from '@shared/ipc-contract.js';
 import type { CommandDriftRecord } from './detect.js';
+import type { HealingSupport } from './healing.js';
 
 export interface RunContext {
   readonly tracer: Tracer;
@@ -39,8 +40,26 @@ export interface RunContext {
    */
   readonly commandDrift: Map<string, CommandDriftRecord>;
 
+  /**
+   * How a failing code phase opens a healing turn, or `null` when this install
+   * has no healing model. Absent means a red command escalates exactly as it
+   * did before healing existed.
+   */
+  readonly healing: HealingSupport | null;
+
   /** True once cancel() ran; runners must bail at their next await point. */
   cancelled(): boolean;
+  /**
+   * Registers something a run-level cancel must interrupt, and returns the
+   * function that unregisters it.
+   *
+   * Polling `cancelled()` is only honest between awaits: a turn already in
+   * flight has no next await point until it answers, which for a model turn is
+   * minutes away. An agent phase escapes that because its session is killable
+   * through the executor's own map; anything else that blocks a phase on a
+   * model has to hand over its own interrupt or Stop silently does nothing.
+   */
+  onCancel(abort: () => void): () => void;
   /** The trace phase id queued up front for this phase name. */
   phaseId(name: string): string;
   /** Raises the interrupt sheet. Only engineer phases reach it. */

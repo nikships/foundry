@@ -15,7 +15,7 @@ import { openDb, projectDbPath, projectRunsDir } from '../apps/desktop/src/main/
 import { Tracer } from '../apps/desktop/src/main/trace/tracer.js';
 import { Executor } from '../apps/desktop/src/main/engine/executor.js';
 import { RunRegistry } from '../apps/desktop/src/main/engine/registry.js';
-import { BUILTIN_AGENTS } from '../apps/desktop/src/main/store/builtin-agents.js';
+import { BUILTIN_AGENTS } from '../apps/desktop/src/shared/builtin-agents.js';
 import { defaultProject } from '../apps/desktop/src/main/store/projects.js';
 import { defaultSettings } from '../apps/desktop/src/main/store/settings.js';
 import { FIXED_ENGINE_DEFAULTS } from '../apps/desktop/src/shared/types.js';

@@ -17,7 +17,7 @@ import {
   type ValidationIssue,
 } from '@shared/types.js';
 import { JsonStore } from './json-store.js';
-import { BUILTIN_PIPELINES } from './builtin-pipelines.js';
+import { BUILTIN_PIPELINES } from '@shared/builtin-pipelines.js';
 import { uniqueCopyName, upsertBy } from './collections.js';
 import { GATES } from '../engine/gates.js';
 
@@ -54,6 +54,7 @@ const phaseSchema = z.object({
   feedbackRetries: z.number().int().min(0).max(5).optional(),
   question: z.string().optional(),
   optional: z.boolean().optional(),
+  heal: z.boolean().optional(),
 });
 
 const canvasPointSchema = z.object({

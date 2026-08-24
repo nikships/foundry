@@ -6,6 +6,7 @@ Pure types and constants imported by both processes. No `fs`, `child_process`, `
 
 - `types.ts` — source of truth for pipelines, phases, agents, envelopes, gates, boundaries, runs, events, projects, and settings.
 - `ipc-contract.ts` — `FoundryApi` interface + `IPC.*` channel constants. Both processes import the constants so a rename cannot silently break a call.
+- `builtin-agents.ts` / `builtin-pipelines.ts` — pure shipped seed definitions shared by main-process stores and the browser preview; no store behavior lives here.
 - Boundary values: `null` (unrestricted except protected paths), `[]` (read-only), or an allowlist with `*` (single segment) / `**` (recursive).
 - Model ids are opaque `provider/model` strings from pi's catalog; shared code never validates them against a vendor list.
 - Smith chat scope is optional: absent means the global “All projects” session.

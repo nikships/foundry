@@ -1,19 +1,37 @@
 /**
- * The crew. The eight agents Foundry ships with, their real envelopes,
- * reasoning budgets and write boundaries, and a line from each system prompt.
+ * The crew. The nine agents Foundry ships with, their real reports, reasoning
+ * budgets, tool surfaces and write boundaries, and a line from each system
+ * prompt.
  *
  * Mirrors apps/desktop/src/renderer/screens/RosterScreen.tsx.
  */
 
 import { useState } from 'react';
-import { AGENTS, ENVELOPE_BLURBS } from '../../data/foundry';
+import { AGENTS, REPORT_BLURBS } from '../../data/foundry';
 import type { Agent } from '../../data/foundry';
+
+/** Two of the nine ship no portrait; they fall back to a tinted monogram. */
+const PORTRAITS = new Set([
+  'refiner',
+  'planner',
+  'builder',
+  'scout',
+  'reviewer',
+  'finisher',
+  'documenter',
+]);
+
+function initialFor(name: string): string {
+  if (name === 'pr_writer') return 'PR';
+  if (name === 'issue_writer') return 'IS';
+  return name.slice(0, 1).toUpperCase();
+}
 
 function AgentAvatar({ agent, size }: { agent: Agent; size: number }) {
   const [imgError, setImgError] = useState(false);
-  const initial = agent.name === 'pr_writer' ? 'PR' : agent.name.slice(0, 1).toUpperCase();
+  const initial = initialFor(agent.name);
 
-  if (imgError) {
+  if (imgError || !PORTRAITS.has(agent.name)) {
     return (
       <div
         className="flex flex-none items-center justify-center rounded border font-mono font-semibold"
@@ -77,9 +95,13 @@ export function Roster() {
             <AgentAvatar agent={a} size={34} />
             <span className="min-w-0">
               <span className="block text-[14.5px] font-medium text-text">{a.name}</span>
-              <span className="mt-[2px] block text-[12.5px] leading-[1.45] text-text-dim">{a.tagline}</span>
+              <span className="mt-[2px] block text-[12.5px] leading-[1.45] text-text-dim">
+                {a.tagline}
+              </span>
             </span>
-            <span className="font-mono text-[9.5px] uppercase tracking-label text-text-ghost">{a.envelope}</span>
+            <span className="font-mono text-[9.5px] uppercase tracking-label text-text-ghost">
+              {a.report}
+            </span>
           </button>
         ))}
       </div>
@@ -91,14 +113,17 @@ export function Roster() {
             <div className="text-[24px] font-semibold tracking-tight" style={{ color: agent.color }}>
               {agent.name}
             </div>
-            <p className="mt-[6px] max-w-[46ch] text-[14.5px] leading-[1.55] text-text-dim">{agent.purpose}</p>
+            <p className="mt-[6px] max-w-[46ch] text-[14.5px] leading-[1.55] text-text-dim">
+              {agent.purpose}
+            </p>
           </div>
         </div>
 
         <div className="mt-6 grid gap-px overflow-hidden rounded-sm border border-line-faint bg-line-faint [grid-template-columns:repeat(auto-fit,minmax(128px,1fr))]">
           <Fact k="model" v="inherit" />
           <Fact k="reasoning" v={agent.effort} />
-          <Fact k="envelope" v={agent.envelope} />
+          <Fact k="report" v={agent.report} />
+          <Fact k="tools" v={agent.toolProfile} />
           <Fact k="writes" v={boundary} />
         </div>
 
@@ -108,8 +133,10 @@ export function Roster() {
         </div>
 
         <div className="mt-[18px]">
-          <span className="label-sm mb-[6px] block text-text-faint">{agent.envelope} envelope</span>
-          <p className="text-[13px] leading-[1.6] text-text-faint">{ENVELOPE_BLURBS[agent.envelope]}</p>
+          <span className="label-sm mb-[6px] block text-text-faint">{agent.report} report</span>
+          <p className="text-[13px] leading-[1.6] text-text-faint">
+            {REPORT_BLURBS[agent.report]}
+          </p>
         </div>
       </div>
     </div>

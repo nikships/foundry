@@ -14,11 +14,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { tempDir } from '../../helpers/tmp.js';
 import { afterEach, describe, expect, it } from 'vitest';
-import { __setResolvedEnvForTest, resolvedEnv, spawnEnv } from '../../../src/main/system/env.js';
+import { resolvedEnv, setResolvedEnvForTest, spawnEnv } from '../../../src/main/system/env.js';
 import { runCommand } from '../../../src/main/engine/commands.js';
 
 afterEach(() => {
-  __setResolvedEnvForTest(null);
+  setResolvedEnvForTest(null);
 });
 
 /** A directory holding one executable that exists nowhere on the real PATH. */
@@ -32,14 +32,14 @@ function binDir(name: string): string {
 
 describe('spawnEnv', () => {
   it('replaces PATH with the resolved one, and leaves everything else alone', () => {
-    __setResolvedEnvForTest({ path: '/custom/bin', via: 'login-shell' });
+    setResolvedEnvForTest({ path: '/custom/bin', via: 'login-shell' });
     const env = spawnEnv();
     expect(env.PATH).toBe('/custom/bin');
     expect(env.HOME).toBe(process.env.HOME);
   });
 
   it('lets a caller override any variable, including PATH', () => {
-    __setResolvedEnvForTest({ path: '/custom/bin', via: 'login-shell' });
+    setResolvedEnvForTest({ path: '/custom/bin', via: 'login-shell' });
     expect(spawnEnv({ PATH: '/override' }).PATH).toBe('/override');
     expect(spawnEnv({ FOUNDRY_TEST: 'yes' }).FOUNDRY_TEST).toBe('yes');
   });
@@ -48,12 +48,12 @@ describe('spawnEnv', () => {
     // Provider credentials live in pi's own store and the Bridge's auth
     // directory. A spawn overlay would put one in the environment of every
     // child the app starts.
-    __setResolvedEnvForTest({ path: '/custom/bin', via: 'login-shell' });
+    setResolvedEnvForTest({ path: '/custom/bin', via: 'login-shell' });
     expect(spawnEnv().FACTORY_API_KEY).toBe(process.env.FACTORY_API_KEY);
   });
 
   it('falls back to the inherited PATH before resolution finishes, rather than throwing', () => {
-    __setResolvedEnvForTest(null);
+    setResolvedEnvForTest(null);
     expect(resolvedEnv().path).toBe(process.env.PATH ?? '');
     expect(() => spawnEnv()).not.toThrow();
   });
@@ -62,7 +62,7 @@ describe('spawnEnv', () => {
 describe('runCommand under the resolved PATH', () => {
   it('finds a binary that is only on the resolved PATH', async () => {
     const dir = binDir('foundry-probe-tool');
-    __setResolvedEnvForTest({ path: `${dir}:/usr/bin:/bin`, via: 'login-shell' });
+    setResolvedEnvForTest({ path: `${dir}:/usr/bin:/bin`, via: 'login-shell' });
 
     const result = await runCommand({
       argv: ['foundry-probe-tool'],
@@ -77,7 +77,7 @@ describe('runCommand under the resolved PATH', () => {
     // The regression this guards: with the GUI's PATH the command is correct
     // and still cannot run, which the UI must not report as a failing test.
     binDir('foundry-probe-tool');
-    __setResolvedEnvForTest({ path: '/usr/bin:/bin:/usr/sbin:/sbin', via: 'fallback' });
+    setResolvedEnvForTest({ path: '/usr/bin:/bin:/usr/sbin:/sbin', via: 'fallback' });
 
     const result = await runCommand({
       argv: ['foundry-probe-tool'],

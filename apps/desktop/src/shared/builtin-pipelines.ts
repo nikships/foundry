@@ -1,5 +1,5 @@
 /**
- * The pipelines Foundry ships with. Every one is an editable copy in the
+ * The pipelines Foundry ships with. These pure shared seeds become editable copies in the
  * Designer, not a locked recipe: `builtin` only marks where it came from.
  *
  * Every shipped chain ends by opening a pull request, and every one holds two

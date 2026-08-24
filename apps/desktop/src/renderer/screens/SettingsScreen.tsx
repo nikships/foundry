@@ -157,6 +157,11 @@ function Section({
   );
 }
 
+/** Keeps each settings pane's conditional rendering isolated from the screen shell. */
+function PaneBody({ children }: { children: () => React.ReactNode }): React.JSX.Element {
+  return <>{children()}</>;
+}
+
 /** QR + copy/refresh block shared by the first-pairing and pair-another states. */
 function PairingQr({
   payload,
@@ -706,6 +711,10 @@ export default function SettingsScreen({
     () => modelForEffortPicker(settings?.helperModel, models, settings?.defaultModel),
     [models, settings?.helperModel, settings?.defaultModel],
   );
+  const healingModelInfo = useMemo(
+    () => modelForEffortPicker(settings?.healingModel, models, settings?.defaultModel),
+    [models, settings?.healingModel, settings?.defaultModel],
+  );
   const smithModelInfo = useMemo(
     () => modelForEffortPicker(settings?.smithModel, models),
     [models, settings?.smithModel],
@@ -889,238 +898,176 @@ export default function SettingsScreen({
           <div className={styles.settingsScroll}>
             <div className={styles.settingsPage}>
               {pane === 'app' && (
-                <>
-                  <Section label="Checks" note="What Foundry found on this machine at launch.">
-                    <DoctorList
-                      checks={checks}
-                      title="Environment checks"
-                      onRecheck={() => void api.doctor.run().then(setChecks)}
-                      onOpenSettings={(next) => setPaneLive(next as Pane)}
-                    />
-                  </Section>
+                <PaneBody>
+                  {() => (
+                    <>
+                      <Section label="Checks" note="What Foundry found on this machine at launch.">
+                        <DoctorList
+                          checks={checks}
+                          title="Environment checks"
+                          onRecheck={() => void api.doctor.run().then(setChecks)}
+                          onOpenSettings={(next) => setPaneLive(next as Pane)}
+                        />
+                      </Section>
 
-                  <Section
-                    label="Appearance"
-                    note="Choose the palette Foundry uses across the desktop."
-                  >
-                    <Field
-                      label="Theme"
-                      className={styles.settingsNarrow}
-                      hint="Saved automatically and applied immediately."
-                    >
-                      <Dropdown
-                        value={settings.theme}
-                        options={[
-                          { value: 'dark', label: 'Dark' },
-                          { value: 'light', label: 'Light' },
-                        ]}
-                        aria-label="Theme"
-                        data-testid="settings-theme"
-                        onChange={(next) => void set({ theme: next as AppTheme })}
-                      />
-                    </Field>
-                  </Section>
-
-                  <Section label="Notifications" note="Only the moments that need you.">
-                    <div className={styles.settingsToggles}>
-                      {(Object.keys(NOTIFY_LABELS) as Array<keyof typeof NOTIFY_LABELS>).map(
-                        (key) => (
-                          <Toggle
-                            key={key}
-                            label={NOTIFY_LABELS[key]}
-                            checked={settings.notifications[key]}
-                            onChange={(value) =>
-                              void set({
-                                notifications: { ...settings.notifications, [key]: value },
-                              })
-                            }
+                      <Section
+                        label="Appearance"
+                        note="Choose the palette Foundry uses across the desktop."
+                      >
+                        <Field
+                          label="Theme"
+                          className={styles.settingsNarrow}
+                          hint="Saved automatically and applied immediately."
+                        >
+                          <Dropdown
+                            value={settings.theme}
+                            options={[
+                              { value: 'dark', label: 'Dark' },
+                              { value: 'light', label: 'Light' },
+                            ]}
+                            aria-label="Theme"
+                            data-testid="settings-theme"
+                            onChange={(next) => void set({ theme: next as AppTheme })}
                           />
-                        ),
-                      )}
-                      <Toggle
-                        label="Show the number of live runs on the dock icon"
-                        checked={settings.dockBadge}
-                        onChange={(value) => void set({ dockBadge: value })}
-                      />
-                    </div>
-                  </Section>
+                        </Field>
+                      </Section>
 
-                  <Section label="Software updates" note="Foundry checks only when you ask it to.">
-                    <div className={styles.settingsSpread}>
-                      <Field>
-                        <strong className={styles.settingsStrong}>
-                          Foundry {version ? `v${version}` : ''}
-                        </strong>
-                        {updateStatus.message && (
-                          <span className={styles.hint}>{updateStatus.message}</span>
-                        )}
-                        {updateStatus.stage === 'available' && updateStatus.version && (
-                          <span className={styles.hint}>
-                            Foundry v{updateStatus.version} is available, download it when ready.
+                      <Section label="Notifications" note="Only the moments that need you.">
+                        <div className={styles.settingsToggles}>
+                          {(Object.keys(NOTIFY_LABELS) as Array<keyof typeof NOTIFY_LABELS>).map(
+                            (key) => (
+                              <Toggle
+                                key={key}
+                                label={NOTIFY_LABELS[key]}
+                                checked={settings.notifications[key]}
+                                onChange={(value) =>
+                                  void set({
+                                    notifications: { ...settings.notifications, [key]: value },
+                                  })
+                                }
+                              />
+                            ),
+                          )}
+                          <Toggle
+                            label="Show the number of live runs on the dock icon"
+                            checked={settings.dockBadge}
+                            onChange={(value) => void set({ dockBadge: value })}
+                          />
+                        </div>
+                      </Section>
+
+                      <Section
+                        label="Software updates"
+                        note="Foundry checks only when you ask it to."
+                      >
+                        <div className={styles.settingsSpread}>
+                          <Field>
+                            <strong className={styles.settingsStrong}>
+                              Foundry {version ? `v${version}` : ''}
+                            </strong>
+                            {updateStatus.message && (
+                              <span className={styles.hint}>{updateStatus.message}</span>
+                            )}
+                            {updateStatus.stage === 'available' && updateStatus.version && (
+                              <span className={styles.hint}>
+                                Foundry v{updateStatus.version} is available, download it when
+                                ready.
+                              </span>
+                            )}
+                          </Field>
+                          <span
+                            className={`${styles.settingsPill} ${updateTone === 'ok' ? styles.ok : updateTone === 'bad' ? styles.bad : styles.info}`}
+                          >
+                            {updateText}
                           </span>
-                        )}
-                      </Field>
-                      <span
-                        className={`${styles.settingsPill} ${updateTone === 'ok' ? styles.ok : updateTone === 'bad' ? styles.bad : styles.info}`}
-                      >
-                        {updateText}
-                      </span>
-                    </div>
-                    {(updateStatus.stage === 'downloading' || updateStatus.stage === 'ready') && (
-                      <div
-                        className={styles.settingsProgress}
-                        aria-label={
-                          updateStatus.stage === 'downloading'
-                            ? `Downloading ${Math.round(updateStatus.percent ?? 0)} percent`
-                            : 'Update ready to install'
-                        }
-                      >
-                        <div className={styles.settingsTrack}>
+                        </div>
+                        {(updateStatus.stage === 'downloading' ||
+                          updateStatus.stage === 'ready') && (
                           <div
-                            className={`${styles.settingsFill} ${updateStatus.stage === 'ready' ? styles.ready : ''}`}
-                            style={{
-                              width: `${updateStatus.stage === 'ready' ? 100 : Math.max(0, Math.min(100, updateStatus.percent ?? 0))}%`,
+                            className={styles.settingsProgress}
+                            aria-label={
+                              updateStatus.stage === 'downloading'
+                                ? `Downloading ${Math.round(updateStatus.percent ?? 0)} percent`
+                                : 'Update ready to install'
+                            }
+                          >
+                            <div className={styles.settingsTrack}>
+                              <div
+                                className={`${styles.settingsFill} ${updateStatus.stage === 'ready' ? styles.ready : ''}`}
+                                style={{
+                                  width: `${updateStatus.stage === 'ready' ? 100 : Math.max(0, Math.min(100, updateStatus.percent ?? 0))}%`,
+                                }}
+                              />
+                            </div>
+                            <span className={`mono faint ${styles.settingsPct}`}>
+                              {updateStatus.stage === 'ready'
+                                ? 'ready'
+                                : `${Math.round(updateStatus.percent ?? 0)}%`}
+                            </span>
+                          </div>
+                        )}
+                        <div className={styles.settingsSubrow}>
+                          {updateStatus.stage === 'ready' ? (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={() => void installUpdate()}
+                            >
+                              Restart to install
+                            </Button>
+                          ) : updateStatus.stage === 'available' ? (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={() => void downloadUpdate()}
+                            >
+                              Download update
+                            </Button>
+                          ) : updateStatus.stage === 'downloading' ? (
+                            <span className={styles.hint}>
+                              Installing after the download finishes, you will be asked to restart.
+                            </span>
+                          ) : (
+                            <Button
+                              size="sm"
+                              disabled={updateStatus.stage === 'checking'}
+                              onClick={() => void checkForUpdates()}
+                            >
+                              {updateStatus.stage === 'checking'
+                                ? 'Checking for updates…'
+                                : updateStatus.stage === 'error'
+                                  ? 'Try again'
+                                  : 'Check for updates'}
+                            </Button>
+                          )}
+                        </div>
+                      </Section>
+
+                      <Section
+                        label="Phone"
+                        note="A paired phone can watch runs, start one, and open the PR."
+                      >
+                        <div className={styles.settingsToggles}>
+                          <Toggle
+                            label="Serve the companion host on this network"
+                            hint={
+                              companion?.running && companion.origin
+                                ? `Serving on ${companion.origin} · Protocol v${companion.protocolVersion} — pairing is QR-only.${
+                                    companion.detail ? ` Note: ${companion.detail}.` : ''
+                                  }`
+                                : (companion?.detail ??
+                                  'Off. Nothing listens until you turn this on, and pairing is QR-only.')
+                            }
+                            checked={!!companion?.running}
+                            onChange={(value) => {
+                              if (!companionBusy) void toggleCompanion(value);
                             }}
                           />
                         </div>
-                        <span className={`mono faint ${styles.settingsPct}`}>
-                          {updateStatus.stage === 'ready'
-                            ? 'ready'
-                            : `${Math.round(updateStatus.percent ?? 0)}%`}
-                        </span>
-                      </div>
-                    )}
-                    <div className={styles.settingsSubrow}>
-                      {updateStatus.stage === 'ready' ? (
-                        <Button variant="primary" size="sm" onClick={() => void installUpdate()}>
-                          Restart to install
-                        </Button>
-                      ) : updateStatus.stage === 'available' ? (
-                        <Button variant="primary" size="sm" onClick={() => void downloadUpdate()}>
-                          Download update
-                        </Button>
-                      ) : updateStatus.stage === 'downloading' ? (
-                        <span className={styles.hint}>
-                          Installing after the download finishes, you will be asked to restart.
-                        </span>
-                      ) : (
-                        <Button
-                          size="sm"
-                          disabled={updateStatus.stage === 'checking'}
-                          onClick={() => void checkForUpdates()}
-                        >
-                          {updateStatus.stage === 'checking'
-                            ? 'Checking for updates…'
-                            : updateStatus.stage === 'error'
-                              ? 'Try again'
-                              : 'Check for updates'}
-                        </Button>
-                      )}
-                    </div>
-                  </Section>
 
-                  <Section
-                    label="Phone"
-                    note="A paired phone can watch runs, start one, and open the PR."
-                  >
-                    <div className={styles.settingsToggles}>
-                      <Toggle
-                        label="Serve the companion host on this network"
-                        hint={
-                          companion?.running && companion.origin
-                            ? `Serving on ${companion.origin} · Protocol v${companion.protocolVersion} — pairing is QR-only.${
-                                companion.detail ? ` Note: ${companion.detail}.` : ''
-                              }`
-                            : (companion?.detail ??
-                              'Off. Nothing listens until you turn this on, and pairing is QR-only.')
-                        }
-                        checked={!!companion?.running}
-                        onChange={(value) => {
-                          if (!companionBusy) void toggleCompanion(value);
-                        }}
-                      />
-                    </div>
-
-                    {companion?.running && (
-                      <>
-                        {companion.devices.length === 0 ? (
-                          <PairingQr
-                            payload={pairingPayload}
-                            copied={copiedPayload}
-                            onCopy={copyPairingPayload}
-                            onRefresh={() => void loadPairingPayload(true)}
-                            lead={
-                              <>
-                                <span className={`${styles.settingsPill} ${styles.info}`}>
-                                  Waiting for a phone…
-                                </span>
-                                <strong style={{ marginTop: '6px' }}>
-                                  Pair your Android phone
-                                </strong>
-                                <p className={styles.hint}>
-                                  Open Foundry on your Android phone and scan this code, or copy the
-                                  pairing payload to paste.
-                                </p>
-                              </>
-                            }
-                          />
-                        ) : (
-                          <div className={styles.settingsFields}>
-                            <div className={styles.pairedDevicesHeader}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <strong className={styles.settingsStrong}>
-                                  Paired devices ({companion.devices.length})
-                                </strong>
-                                <span className={`${styles.settingsPill} ${styles.ok}`}>
-                                  Paired
-                                </span>
-                              </div>
-                              <span className={styles.hint}>
-                                Connected phones can watch runs, start new runs, and answer
-                                interrupts.
-                              </span>
-                            </div>
-                            {companion.devices.map((device) => (
-                              <div key={device.deviceId} className={styles.settingsSpread}>
-                                <Field>
-                                  <strong className={styles.settingsStrong}>{device.name}</strong>
-                                  <span className={styles.hint}>
-                                    Paired {new Date(device.pairedAt).toLocaleDateString()}
-                                    {device.lastSeenAt
-                                      ? ` · last seen ${new Date(device.lastSeenAt).toLocaleString()}`
-                                      : ' · never connected'}
-                                  </span>
-                                </Field>
-                                <Button
-                                  size="sm"
-                                  onClick={() =>
-                                    void api.companion
-                                      .unpair(device.deviceId)
-                                      .then(() => api.companion.state())
-                                      .then((st) => {
-                                        setCompanion(st);
-                                        if (st.devices.length === 0) void loadPairingPayload();
-                                      })
-                                  }
-                                >
-                                  Unpair
-                                </Button>
-                              </div>
-                            ))}
-
-                            <div style={{ marginTop: '8px' }}>
-                              <Button
-                                size="sm"
-                                onClick={() => {
-                                  setShowPairMore((prev) => !prev);
-                                  if (!showPairMore && !pairingPayload) void loadPairingPayload();
-                                }}
-                              >
-                                {showPairMore ? 'Hide pairing QR code' : 'Pair another phone…'}
-                              </Button>
-                            </div>
-
-                            {showPairMore && (
+                        {companion?.running && (
+                          <>
+                            {companion.devices.length === 0 ? (
                               <PairingQr
                                 payload={pairingPayload}
                                 copied={copiedPayload}
@@ -1128,852 +1075,999 @@ export default function SettingsScreen({
                                 onRefresh={() => void loadPairingPayload(true)}
                                 lead={
                                   <>
-                                    <strong>Pair an additional phone</strong>
+                                    <span className={`${styles.settingsPill} ${styles.info}`}>
+                                      Waiting for a phone…
+                                    </span>
+                                    <strong style={{ marginTop: '6px' }}>
+                                      Pair your Android phone
+                                    </strong>
                                     <p className={styles.hint}>
-                                      Scan this QR code in Foundry on another phone.
+                                      Open Foundry on your Android phone and scan this code, or copy
+                                      the pairing payload to paste.
                                     </p>
                                   </>
                                 }
                               />
-                            )}
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </Section>
-
-                  <Section label="Application" note="Quit or relaunch the desktop app.">
-                    <p className={styles.hint}>
-                      Theme and other preferences save automatically; relaunch only when you need a
-                      fresh app process or have installed an update.
-                    </p>
-                    <div className={styles.settingsBtnrow}>
-                      <Button size="sm" onClick={() => void relaunchApp()}>
-                        Relaunch Foundry
-                      </Button>
-                      <Button size="sm" onClick={() => void quitApp()}>
-                        Quit Foundry
-                      </Button>
-                    </div>
-                  </Section>
-                </>
-              )}
-              {pane === 'models' && (
-                <>
-                  <Section
-                    label="Providers"
-                    note="Where the models an agent phase runs on come from."
-                  >
-                    <p className={styles.settingsLead}>
-                      Foundry runs every agent phase in-process on pi, and a model reaches the
-                      pickers only once pi can reach its provider. Connect a subscription through
-                      the Bridge, or store a direct API key. Keys live in pi&rsquo;s own credential
-                      store on this Mac, never in Foundry&rsquo;s settings file.
-                    </p>
-                    <div className={styles.settingsSubrow}>
-                      <span
-                        className={`${styles.settingsPill} ${
-                          bridge ? (bridge.running ? styles.ok : styles.bad) : styles.plain
-                        }`}
-                        data-testid="bridge-status"
-                      >
-                        {bridge
-                          ? bridge.running
-                            ? `Bridge active · serving on ${bridge.port}`
-                            : 'Bridge unavailable'
-                          : 'Bridge starting…'}
-                      </span>
-                    </div>
-                    {bridge && !bridge.running && (bridge.reason || bridge.detail) && (
-                      <p className={styles.settingsWarn}>
-                        {/* `detail` states only the remedy; the reason is prefixed
-                          here rather than duplicated into it. */}
-                        {bridge.reason
-                          ? BRIDGE_UNAVAILABLE_COPY[bridge.reason]
-                          : 'the Bridge is not serving'}
-                        {bridge.detail ? `: ${bridge.detail}` : ''}
-                      </p>
-                    )}
-                  </Section>
-
-                  <Section
-                    label="Subscriptions"
-                    note="Sign in with a plan you already pay for. The Bridge holds the account; Foundry never sees a token."
-                  >
-                    <div className={styles.providerList}>
-                      {(bridge?.providers ?? []).map((provider) => {
-                        const busyKey = `provider:${provider.id}`;
-                        const expired = provider.accounts.some((account) => account.expired);
-                        const allDisabled =
-                          provider.accounts.length > 0 &&
-                          provider.accounts.every((account) => account.disabled);
-                        const status = provider.loginInFlight
-                          ? 'connecting'
-                          : expired
-                            ? 'expired'
-                            : allDisabled
-                              ? 'disabled'
-                              : provider.authenticated
-                                ? 'connected'
-                                : 'not connected';
-                        const tone = provider.loginInFlight
-                          ? styles.info
-                          : expired || allDisabled
-                            ? styles.bad
-                            : provider.authenticated
-                              ? styles.ok
-                              : styles.plain;
-                        return (
-                          <div
-                            key={provider.id}
-                            className={styles.providerCard}
-                            data-testid={`provider-card-${provider.id}`}
-                          >
-                            <div className={styles.providerHead}>
-                              <ProviderIcon provider={provider.icon} size={18} />
-                              <h3>{provider.label}</h3>
-                              <span className={`${styles.settingsPill} ${tone}`}>{status}</span>
-                            </div>
-                            {provider.accounts.length > 0 ? (
-                              <ul className={styles.providerAccounts}>
-                                {provider.accounts.map((account) => (
-                                  <li key={account.id}>
-                                    <span className="mono">{account.label}</span>
-                                    <span className="faint">
-                                      {account.expired
-                                        ? 'the sign-in expired'
-                                        : account.expiresAt
-                                          ? `valid until ${account.expiresAt}`
-                                          : 'no expiry reported'}
-                                      {account.disabled ? ' · disabled' : ''}
-                                    </span>
-                                  </li>
-                                ))}
-                              </ul>
                             ) : (
-                              <p className={styles.hint}>
-                                Connecting opens {provider.label} in your browser. The account lands
-                                here on its own once you finish signing in.
-                              </p>
-                            )}
-                            <div className={styles.settingsBtnrow}>
-                              {provider.loginInFlight ? (
-                                <Button
-                                  size="sm"
-                                  onClick={() => void cancelProviderLogin(provider.id)}
-                                >
-                                  Cancel sign-in
-                                </Button>
-                              ) : (
-                                <Button
-                                  size="sm"
-                                  variant={provider.authenticated ? undefined : 'primary'}
-                                  disabled={!!providerBusy || !bridge?.running}
-                                  title={
-                                    bridge?.running
-                                      ? undefined
-                                      : 'The Bridge did not start with Foundry. Relaunch to retry.'
-                                  }
-                                  onClick={() =>
-                                    void runProviderAction(busyKey, () =>
-                                      api.bridge.connect(provider.id),
-                                    )
-                                  }
-                                >
-                                  {providerBusy === busyKey
-                                    ? 'Opening…'
-                                    : expired
-                                      ? 'Reconnect'
-                                      : provider.authenticated
-                                        ? 'Add another account'
-                                        : 'Connect'}
-                                </Button>
-                              )}
-                              {provider.accounts.length > 0 && (
-                                <Button
-                                  size="sm"
-                                  variant="danger"
-                                  disabled={!!providerBusy}
-                                  onClick={() =>
-                                    void disconnectProvider(provider.id, provider.label)
-                                  }
-                                >
-                                  Disconnect
-                                </Button>
-                              )}
-                            </div>
-                            {providerNotes[busyKey] && (
-                              <p className={styles.hint}>{providerNotes[busyKey]}</p>
-                            )}
-                          </div>
-                        );
-                      })}
-                      {!bridge?.providers.length && (
-                        <p className="faint">
-                          No subscription providers are available in this build. Direct API keys
-                          still work.
-                        </p>
-                      )}
-                    </div>
-                  </Section>
-
-                  <Section
-                    label="API keys"
-                    note="For a provider you hold a key for rather than a subscription."
-                  >
-                    <div className={styles.providerList}>
-                      {keyRows.map((row) => {
-                        const busyKey = `key:${row.id}`;
-                        const stored = storedKeys.some((key) => key.providerId === row.id);
-                        const draft = keyDrafts[row.id] ?? '';
-                        return (
-                          <div
-                            key={row.id}
-                            className={styles.providerCard}
-                            data-testid={`provider-key-${row.id}`}
-                          >
-                            <div className={styles.providerHead}>
-                              <ProviderIcon provider={row.icon} size={18} />
-                              <h3>{row.label}</h3>
-                              <span
-                                className={`${styles.settingsPill} ${stored ? styles.ok : styles.plain}`}
-                              >
-                                {stored ? 'key set' : 'no key'}
-                              </span>
-                            </div>
-                            <Field
-                              label="API key"
-                              htmlFor={`provider-key-input-${row.id}`}
-                              hint={
-                                stored
-                                  ? 'A key is stored. Typing a new one replaces it; the stored value is never shown.'
-                                  : 'Stored by pi on this Mac. Foundry keeps no copy.'
-                              }
-                            >
-                              <TextInput
-                                id={`provider-key-input-${row.id}`}
-                                aria-label={`${row.label} API key`}
-                                type="password"
-                                autoComplete="off"
-                                spellCheck={false}
-                                mono
-                                value={draft}
-                                placeholder={stored ? '••••••••' : 'paste a key'}
-                                onChange={(e) =>
-                                  setKeyDrafts((drafts) => ({
-                                    ...drafts,
-                                    [row.id]: e.target.value,
-                                  }))
-                                }
-                              />
-                            </Field>
-                            <div className={styles.settingsBtnrow}>
-                              <Button
-                                size="sm"
-                                variant="primary"
-                                disabled={!!providerBusy || !draft.trim()}
-                                onClick={() => void saveProviderKey(row.id)}
-                              >
-                                {providerBusy === busyKey ? 'Saving…' : stored ? 'Replace' : 'Save'}
-                              </Button>
-                              {stored && (
-                                <Button
-                                  size="sm"
-                                  variant="danger"
-                                  disabled={!!providerBusy}
-                                  onClick={() => void clearProviderKey(row.id, row.label)}
-                                >
-                                  Clear
-                                </Button>
-                              )}
-                            </div>
-                            {providerNotes[busyKey] && (
-                              <p className={styles.hint}>{providerNotes[busyKey]}</p>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </Section>
-
-                  <Section label="Models" note="What every picker in the app will offer.">
-                    <p className={styles.settingsLead}>
-                      Hide a model to remove it from every picker. Hidden models are gone until you
-                      reset.
-                    </p>
-                    <div className={styles.settingsSubrow}>
-                      <p className={styles.settingsStatic} data-testid="providers-model-count">
-                        {models.length
-                          ? `${models.length} model${models.length === 1 ? '' : 's'} reachable${
-                              hiddenCount > 0 ? ` · ${hiddenCount} hidden` : ''
-                            }`
-                          : hiddenCount > 0
-                            ? 'All models are hidden. Reset to show them again.'
-                            : 'No models reachable yet — connect a provider or store a key above.'}
-                      </p>
-                      <div className={styles.settingsBtnrow}>
-                        <Button
-                          size="sm"
-                          disabled={hiddenCount === 0}
-                          data-testid="reset-hidden-models"
-                          onClick={() => void resetHiddenModels()}
-                        >
-                          Reset hidden models
-                        </Button>
-                        <Button size="sm" onClick={() => void refreshModels()}>
-                          Refresh models
-                        </Button>
-                      </div>
-                    </div>
-                    {models.length > 0 && (
-                      <>
-                        <TextInput
-                          value={modelFilter}
-                          placeholder="Filter models…"
-                          onChange={(e) => setModelFilter(e.target.value)}
-                        />
-                        {filteredModels.length === 0 ? (
-                          <p className={styles.hint}>No reachable models match that filter.</p>
-                        ) : (
-                          <div className={styles.modelHideList}>
-                            {visibleGroups.map(([provider, groupModels]) => (
-                              <div key={provider} className={styles.modelHideGroup}>
-                                <div className={styles.modelHideGroupHeader}>
-                                  <ProviderIcon provider={provider} size={14} />
-                                  <span>{provider}</span>
+                              <div className={styles.settingsFields}>
+                                <div className={styles.pairedDevicesHeader}>
+                                  <div
+                                    style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                                  >
+                                    <strong className={styles.settingsStrong}>
+                                      Paired devices ({companion.devices.length})
+                                    </strong>
+                                    <span className={`${styles.settingsPill} ${styles.ok}`}>
+                                      Paired
+                                    </span>
+                                  </div>
+                                  <span className={styles.hint}>
+                                    Connected phones can watch runs, start new runs, and answer
+                                    interrupts.
+                                  </span>
                                 </div>
-                                <div className={styles.modelHideRows}>
-                                  {groupModels.map((m) => (
-                                    <div key={m.id} className={styles.modelHideRow}>
-                                      <div className={styles.modelHideInfo}>
-                                        <ProviderIcon provider={m.provider} size={16} />
-                                        <span className={styles.modelHideName}>
-                                          {m.displayName || modelLabel(m.id)}
-                                        </span>
-                                        {m.contextWindow ? (
-                                          <span className={styles.modelHideContext}>
-                                            {Math.round(m.contextWindow / 1000)}k context
-                                          </span>
-                                        ) : null}
-                                      </div>
-                                      <Button
-                                        size="sm"
-                                        data-testid={`hide-model-${m.id}`}
-                                        onClick={() => void hideModel(m.id)}
-                                      >
-                                        Hide
-                                      </Button>
-                                    </div>
-                                  ))}
+                                {companion.devices.map((device) => (
+                                  <div key={device.deviceId} className={styles.settingsSpread}>
+                                    <Field>
+                                      <strong className={styles.settingsStrong}>
+                                        {device.name}
+                                      </strong>
+                                      <span className={styles.hint}>
+                                        Paired {new Date(device.pairedAt).toLocaleDateString()}
+                                        {device.lastSeenAt
+                                          ? ` · last seen ${new Date(device.lastSeenAt).toLocaleString()}`
+                                          : ' · never connected'}
+                                      </span>
+                                    </Field>
+                                    <Button
+                                      size="sm"
+                                      onClick={() =>
+                                        void api.companion
+                                          .unpair(device.deviceId)
+                                          .then(() => api.companion.state())
+                                          .then((st) => {
+                                            setCompanion(st);
+                                            if (st.devices.length === 0) void loadPairingPayload();
+                                          })
+                                      }
+                                    >
+                                      Unpair
+                                    </Button>
+                                  </div>
+                                ))}
+
+                                <div style={{ marginTop: '8px' }}>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => {
+                                      setShowPairMore((prev) => !prev);
+                                      if (!showPairMore && !pairingPayload)
+                                        void loadPairingPayload();
+                                    }}
+                                  >
+                                    {showPairMore ? 'Hide pairing QR code' : 'Pair another phone…'}
+                                  </Button>
                                 </div>
+
+                                {showPairMore && (
+                                  <PairingQr
+                                    payload={pairingPayload}
+                                    copied={copiedPayload}
+                                    onCopy={copyPairingPayload}
+                                    onRefresh={() => void loadPairingPayload(true)}
+                                    lead={
+                                      <>
+                                        <strong>Pair an additional phone</strong>
+                                        <p className={styles.hint}>
+                                          Scan this QR code in Foundry on another phone.
+                                        </p>
+                                      </>
+                                    }
+                                  />
+                                )}
                               </div>
-                            ))}
-                          </div>
+                            )}
+                          </>
                         )}
-                      </>
-                    )}
-                  </Section>
-                  <Section label="Agent defaults" note="What an agent set to inherit gets.">
-                    <p className={styles.settingsLead}>
-                      Used by any agent that inherits model or reasoning. A per-agent choice always
-                      wins.
-                    </p>
-                  </Section>
-                  <Section label="Model" note="Every model a connected provider offers.">
-                    <div className={styles.settingsFields}>
-                      <Field
-                        label="Default model"
-                        hint="The first model a connected provider offers, until you pin one."
-                      >
-                        <ModelPicker
-                          value={settings.defaultModel}
-                          models={models}
-                          allowInherit
-                          inheritLabel="First reachable model"
-                          emptyHint="No models are reachable. Connect a provider or store an API key under Providers, then refresh."
-                          onChange={(v) => void set({ defaultModel: v })}
-                        />
-                      </Field>
-                      <Field
-                        label="Default reasoning effort"
-                        hint="Only the levels the chosen model offers."
-                      >
-                        <ReasoningEffortPicker
-                          value={settings.defaultReasoningEffort}
-                          model={defaultModelInfo}
-                          onChange={(effort) => void set({ defaultReasoningEffort: effort })}
-                          data-testid="settings-default-effort"
-                        />
-                      </Field>
-                    </div>
-                  </Section>
-                  <Section
-                    label="Helper tasks"
-                    note="Used for project detection and Agent Readiness."
-                  >
-                    <div className={styles.settingsFields}>
-                      <Field label="Helper model">
-                        <ModelPicker
-                          value={settings.helperModel}
-                          models={models}
-                          allowInherit
-                          inheritLabel="Same as default model"
-                          emptyHint="No models are reachable. Connect a provider under Providers."
-                          onChange={(v) => void set({ helperModel: v })}
-                        />
-                      </Field>
-                      <Field
-                        label="Helper reasoning effort"
-                        hint="Only the levels the helper model offers."
-                      >
-                        <ReasoningEffortPicker
-                          value={settings.helperReasoningEffort}
-                          model={helperModelInfo}
-                          onChange={(effort) => void set({ helperReasoningEffort: effort })}
-                          data-testid="settings-helper-effort"
-                        />
-                      </Field>
-                    </div>
-                  </Section>
-                  <Section label="Smith" note="The model the in-app chat runs on.">
-                    <div className={styles.settingsFields}>
-                      <Field
-                        label="Model"
-                        hint="What a new Smith chat opens on. The header picker can still switch mid-conversation. Smith does not pick for you: until this is set, it will not send."
-                        error={
-                          settings.smithModel === MODEL_UNSET ? MODEL_UNSET_MESSAGE : undefined
-                        }
-                      >
-                        <ModelPicker
-                          value={settings.smithModel}
-                          models={models}
-                          allowInherit
-                          inheritLabel={SMITH_MODEL_UNSET_LABEL}
-                          emptyHint={SMITH_NO_PROVIDER_COPY}
-                          onChange={(v) => void set({ smithModel: v })}
-                        />
-                      </Field>
-                      <Field
-                        label="Default reasoning effort"
-                        hint="Only the levels the chosen model offers. A stored level it drops falls back to that model's default."
-                      >
-                        <ReasoningEffortPicker
-                          value={settings.smithReasoningEffort}
-                          model={smithModelInfo}
-                          onChange={(effort) => void set({ smithReasoningEffort: effort })}
-                          data-testid="settings-smith-effort"
-                        />
-                      </Field>
-                    </div>
-                  </Section>
-                  <Section
-                    label="Pull requests"
-                    note="Who drafts a PR when a pipeline asks for one."
-                  >
-                    <div className={styles.settingsFields}>
-                      <Field
-                        label="PR writer"
-                        hint="Roster agent used when adding a PR phase. A pipeline that names an agent still wins."
-                        error={
-                          isKnownPrWriter(settings.prAgent, agents)
-                            ? undefined
-                            : "Not in this project's roster. Settings still load; pick a writer that exists."
-                        }
-                      >
-                        <Dropdown
-                          value={settings.prAgent}
-                          options={prWriterOptions(agents, settings.prAgent)}
-                          aria-label="PR writer"
-                          onChange={(next) => void set({ prAgent: next })}
-                        />
-                      </Field>
-                    </div>
-                  </Section>
-                  <Section label="Advanced" note="Stable engine policy and context limits.">
-                    <div className={styles.settingsFields}>
-                      <Field
-                        label="Report retries"
-                        hint="Correction messages sent when a report will not parse."
-                      >
-                        <TextInput
-                          type="number"
-                          min={0}
-                          max={5}
-                          value={FIXED_ENGINE_DEFAULTS.envelopeRetries}
-                          disabled
-                        />
-                      </Field>
-                      <Field
-                        label="Check retries"
-                        hint="Attempts to fix a check violation before the phase fails."
-                      >
-                        <TextInput
-                          type="number"
-                          min={0}
-                          max={5}
-                          value={FIXED_ENGINE_DEFAULTS.gateRetries}
-                          disabled
-                        />
-                      </Field>
-                      <Field
-                        label="Compact context at (%)"
-                        hint="Between phases, an agent this full of context is compacted so the next phase has room."
-                      >
-                        <TextInput
-                          type="number"
-                          min={COMPACTION_PERCENT.min}
-                          max={COMPACTION_PERCENT.max}
-                          value={Math.round(settings.compactionThreshold * 100)}
-                          onChange={(e) =>
-                            void setInt(e.target.value, COMPACTION_PERCENT, (percent) => ({
-                              compactionThreshold: percent / 100,
-                            }))
-                          }
-                        />
-                      </Field>
-                      <Field
-                        label="Rewind after (corrections)"
-                        hint="Fixed engine policy: rewind the session to its phase-start state after this many failed corrections."
-                      >
-                        <TextInput
-                          type="number"
-                          value={FIXED_ENGINE_DEFAULTS.rewindAfterCorrections}
-                          disabled
-                        />
-                      </Field>
-                      <Field
-                        label="Run resilience"
-                        hint="Pipeline work has no deadline. Transient model errors retry five times with exponential backoff, then continue on the next reachable model."
-                      >
-                        <TextInput value="No execution deadline" disabled />
-                      </Field>
-                    </div>
-                  </Section>
-                </>
-              )}
+                      </Section>
 
-              {pane === 'project' && (
-                <>
-                  {projectDraft ? (
-                    <>
-                      <Section label="Project" note="Where Foundry runs, and what it may touch.">
-                        <Field
-                          label="Project name"
-                          hint="Just for you — rename freely. The path is where Foundry runs."
-                        >
-                          <TextInput
-                            value={projectDraft.name}
-                            onChange={(e) =>
-                              setProjectDraft({ ...projectDraft, name: e.target.value })
-                            }
-                            placeholder="My project"
-                          />
-                        </Field>
-                        <div className={styles.settingsSubrow}>
-                          <span className={`mono faint ${styles.settingsPath}`}>
-                            {projectDraft.path}
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => void api.projects.reveal(projectDraft.path)}
-                          >
-                            Reveal in Finder
+                      <Section label="Application" note="Quit or relaunch the desktop app.">
+                        <p className={styles.hint}>
+                          Theme and other preferences save automatically; relaunch only when you
+                          need a fresh app process or have installed an update.
+                        </p>
+                        <div className={styles.settingsBtnrow}>
+                          <Button size="sm" onClick={() => void relaunchApp()}>
+                            Relaunch Foundry
+                          </Button>
+                          <Button size="sm" onClick={() => void quitApp()}>
+                            Quit Foundry
                           </Button>
                         </div>
                       </Section>
+                    </>
+                  )}
+                </PaneBody>
+              )}
+              {pane === 'models' && (
+                <PaneBody>
+                  {() => (
+                    <>
                       <Section
-                        label="Readiness"
-                        note="The marker file is truth. Cached app state never overrides it."
+                        label="Providers"
+                        note="Where the models an agent phase runs on come from."
                       >
-                        <p className={styles.hint}>
-                          {readiness?.ready
-                            ? readiness.marker?.summary ||
-                              'This repository has a valid .agents/agent-ready.json.'
-                            : readiness?.skipped
-                              ? 'Readiness was skipped. The Agent Readiness process can be run again anytime from here.'
-                              : readiness?.markerDetail ||
-                                'No valid .agents/agent-ready.json yet. Pipeline runs may fail until the repo is ready.'}
+                        <p className={styles.settingsLead}>
+                          Foundry runs every agent phase in-process on pi, and a model reaches the
+                          pickers only once pi can reach its provider. Connect a subscription
+                          through the Bridge, or store a direct API key. Keys live in pi&rsquo;s own
+                          credential store on this Mac, never in Foundry&rsquo;s settings file.
+                        </p>
+                        <div className={styles.settingsSubrow}>
+                          <span
+                            className={`${styles.settingsPill} ${
+                              bridge ? (bridge.running ? styles.ok : styles.bad) : styles.plain
+                            }`}
+                            data-testid="bridge-status"
+                          >
+                            {bridge
+                              ? bridge.running
+                                ? `Bridge active · serving on ${bridge.port}`
+                                : 'Bridge unavailable'
+                              : 'Bridge starting…'}
+                          </span>
+                        </div>
+                        {bridge && !bridge.running && (bridge.reason || bridge.detail) && (
+                          <p className={styles.settingsWarn}>
+                            {/* `detail` states only the remedy; the reason is prefixed
+                          here rather than duplicated into it. */}
+                            {bridge.reason
+                              ? BRIDGE_UNAVAILABLE_COPY[bridge.reason]
+                              : 'the Bridge is not serving'}
+                            {bridge.detail ? `: ${bridge.detail}` : ''}
+                          </p>
+                        )}
+                      </Section>
+
+                      <Section
+                        label="Subscriptions"
+                        note="Sign in with a plan you already pay for. The Bridge holds the account; Foundry never sees a token."
+                      >
+                        <div className={styles.providerList}>
+                          {(bridge?.providers ?? []).map((provider) => {
+                            const busyKey = `provider:${provider.id}`;
+                            const expired = provider.accounts.some((account) => account.expired);
+                            const allDisabled =
+                              provider.accounts.length > 0 &&
+                              provider.accounts.every((account) => account.disabled);
+                            const status = provider.loginInFlight
+                              ? 'connecting'
+                              : expired
+                                ? 'expired'
+                                : allDisabled
+                                  ? 'disabled'
+                                  : provider.authenticated
+                                    ? 'connected'
+                                    : 'not connected';
+                            const tone = provider.loginInFlight
+                              ? styles.info
+                              : expired || allDisabled
+                                ? styles.bad
+                                : provider.authenticated
+                                  ? styles.ok
+                                  : styles.plain;
+                            return (
+                              <div
+                                key={provider.id}
+                                className={styles.providerCard}
+                                data-testid={`provider-card-${provider.id}`}
+                              >
+                                <div className={styles.providerHead}>
+                                  <ProviderIcon provider={provider.icon} size={18} />
+                                  <h3>{provider.label}</h3>
+                                  <span className={`${styles.settingsPill} ${tone}`}>{status}</span>
+                                </div>
+                                {provider.accounts.length > 0 ? (
+                                  <ul className={styles.providerAccounts}>
+                                    {provider.accounts.map((account) => (
+                                      <li key={account.id}>
+                                        <span className="mono">{account.label}</span>
+                                        <span className="faint">
+                                          {account.expired
+                                            ? 'the sign-in expired'
+                                            : account.expiresAt
+                                              ? `valid until ${account.expiresAt}`
+                                              : 'no expiry reported'}
+                                          {account.disabled ? ' · disabled' : ''}
+                                        </span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                ) : (
+                                  <p className={styles.hint}>
+                                    Connecting opens {provider.label} in your browser. The account
+                                    lands here on its own once you finish signing in.
+                                  </p>
+                                )}
+                                <div className={styles.settingsBtnrow}>
+                                  {provider.loginInFlight ? (
+                                    <Button
+                                      size="sm"
+                                      onClick={() => void cancelProviderLogin(provider.id)}
+                                    >
+                                      Cancel sign-in
+                                    </Button>
+                                  ) : (
+                                    <Button
+                                      size="sm"
+                                      variant={provider.authenticated ? undefined : 'primary'}
+                                      disabled={!!providerBusy || !bridge?.running}
+                                      title={
+                                        bridge?.running
+                                          ? undefined
+                                          : 'The Bridge did not start with Foundry. Relaunch to retry.'
+                                      }
+                                      onClick={() =>
+                                        void runProviderAction(busyKey, () =>
+                                          api.bridge.connect(provider.id),
+                                        )
+                                      }
+                                    >
+                                      {providerBusy === busyKey
+                                        ? 'Opening…'
+                                        : expired
+                                          ? 'Reconnect'
+                                          : provider.authenticated
+                                            ? 'Add another account'
+                                            : 'Connect'}
+                                    </Button>
+                                  )}
+                                  {provider.accounts.length > 0 && (
+                                    <Button
+                                      size="sm"
+                                      variant="danger"
+                                      disabled={!!providerBusy}
+                                      onClick={() =>
+                                        void disconnectProvider(provider.id, provider.label)
+                                      }
+                                    >
+                                      Disconnect
+                                    </Button>
+                                  )}
+                                </div>
+                                {providerNotes[busyKey] && (
+                                  <p className={styles.hint}>{providerNotes[busyKey]}</p>
+                                )}
+                              </div>
+                            );
+                          })}
+                          {!bridge?.providers.length && (
+                            <p className="faint">
+                              No subscription providers are available in this build. Direct API keys
+                              still work.
+                            </p>
+                          )}
+                        </div>
+                      </Section>
+
+                      <Section
+                        label="API keys"
+                        note="For a provider you hold a key for rather than a subscription."
+                      >
+                        <div className={styles.providerList}>
+                          {keyRows.map((row) => {
+                            const busyKey = `key:${row.id}`;
+                            const stored = storedKeys.some((key) => key.providerId === row.id);
+                            const draft = keyDrafts[row.id] ?? '';
+                            return (
+                              <div
+                                key={row.id}
+                                className={styles.providerCard}
+                                data-testid={`provider-key-${row.id}`}
+                              >
+                                <div className={styles.providerHead}>
+                                  <ProviderIcon provider={row.icon} size={18} />
+                                  <h3>{row.label}</h3>
+                                  <span
+                                    className={`${styles.settingsPill} ${stored ? styles.ok : styles.plain}`}
+                                  >
+                                    {stored ? 'key set' : 'no key'}
+                                  </span>
+                                </div>
+                                <Field
+                                  label="API key"
+                                  htmlFor={`provider-key-input-${row.id}`}
+                                  hint={
+                                    stored
+                                      ? 'A key is stored. Typing a new one replaces it; the stored value is never shown.'
+                                      : 'Stored by pi on this Mac. Foundry keeps no copy.'
+                                  }
+                                >
+                                  <TextInput
+                                    id={`provider-key-input-${row.id}`}
+                                    aria-label={`${row.label} API key`}
+                                    type="password"
+                                    autoComplete="off"
+                                    spellCheck={false}
+                                    mono
+                                    value={draft}
+                                    placeholder={stored ? '••••••••' : 'paste a key'}
+                                    onChange={(e) =>
+                                      setKeyDrafts((drafts) => ({
+                                        ...drafts,
+                                        [row.id]: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                </Field>
+                                <div className={styles.settingsBtnrow}>
+                                  <Button
+                                    size="sm"
+                                    variant="primary"
+                                    disabled={!!providerBusy || !draft.trim()}
+                                    onClick={() => void saveProviderKey(row.id)}
+                                  >
+                                    {providerBusy === busyKey
+                                      ? 'Saving…'
+                                      : stored
+                                        ? 'Replace'
+                                        : 'Save'}
+                                  </Button>
+                                  {stored && (
+                                    <Button
+                                      size="sm"
+                                      variant="danger"
+                                      disabled={!!providerBusy}
+                                      onClick={() => void clearProviderKey(row.id, row.label)}
+                                    >
+                                      Clear
+                                    </Button>
+                                  )}
+                                </div>
+                                {providerNotes[busyKey] && (
+                                  <p className={styles.hint}>{providerNotes[busyKey]}</p>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </Section>
+
+                      <Section label="Models" note="What every picker in the app will offer.">
+                        <p className={styles.settingsLead}>
+                          Hide a model to remove it from every picker. Hidden models are gone until
+                          you reset.
+                        </p>
+                        <div className={styles.settingsSubrow}>
+                          <p className={styles.settingsStatic} data-testid="providers-model-count">
+                            {models.length
+                              ? `${models.length} model${models.length === 1 ? '' : 's'} reachable${
+                                  hiddenCount > 0 ? ` · ${hiddenCount} hidden` : ''
+                                }`
+                              : hiddenCount > 0
+                                ? 'All models are hidden. Reset to show them again.'
+                                : 'No models reachable yet — connect a provider or store a key above.'}
+                          </p>
+                          <div className={styles.settingsBtnrow}>
+                            <Button
+                              size="sm"
+                              disabled={hiddenCount === 0}
+                              data-testid="reset-hidden-models"
+                              onClick={() => void resetHiddenModels()}
+                            >
+                              Reset hidden models
+                            </Button>
+                            <Button size="sm" onClick={() => void refreshModels()}>
+                              Refresh models
+                            </Button>
+                          </div>
+                        </div>
+                        {models.length > 0 && (
+                          <>
+                            <TextInput
+                              value={modelFilter}
+                              placeholder="Filter models…"
+                              onChange={(e) => setModelFilter(e.target.value)}
+                            />
+                            {filteredModels.length === 0 ? (
+                              <p className={styles.hint}>No reachable models match that filter.</p>
+                            ) : (
+                              <div className={styles.modelHideList}>
+                                {visibleGroups.map(([provider, groupModels]) => (
+                                  <div key={provider} className={styles.modelHideGroup}>
+                                    <div className={styles.modelHideGroupHeader}>
+                                      <ProviderIcon provider={provider} size={14} />
+                                      <span>{provider}</span>
+                                    </div>
+                                    <div className={styles.modelHideRows}>
+                                      {groupModels.map((m) => (
+                                        <div key={m.id} className={styles.modelHideRow}>
+                                          <div className={styles.modelHideInfo}>
+                                            <ProviderIcon provider={m.provider} size={16} />
+                                            <span className={styles.modelHideName}>
+                                              {m.displayName || modelLabel(m.id)}
+                                            </span>
+                                            {m.contextWindow ? (
+                                              <span className={styles.modelHideContext}>
+                                                {Math.round(m.contextWindow / 1000)}k context
+                                              </span>
+                                            ) : null}
+                                          </div>
+                                          <Button
+                                            size="sm"
+                                            data-testid={`hide-model-${m.id}`}
+                                            onClick={() => void hideModel(m.id)}
+                                          >
+                                            Hide
+                                          </Button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </Section>
+                      <Section label="Agent defaults" note="What an agent set to inherit gets.">
+                        <p className={styles.settingsLead}>
+                          Used by any agent that inherits model or reasoning. A per-agent choice
+                          always wins.
                         </p>
                       </Section>
-                      <Section label="Checks" note="Run against this repository.">
-                        <DoctorList
-                          checks={projectChecks}
-                          title="Repository checks"
-                          onRecheck={() =>
-                            void api.projects.check(projectDraft.id).then(setProjectChecks)
-                          }
-                          onOpenSettings={(next) => setPaneLive(next as Pane)}
-                        />
-                      </Section>
-                      <Section
-                        label="Git"
-                        note="Every run branches from the base ref. Update it from the remote here."
-                      >
+                      <Section label="Model" note="Every model a connected provider offers.">
                         <div className={styles.settingsFields}>
-                          <Field label="Base ref" hint="Every run branches from here.">
-                            <TextInput
-                              mono
-                              value={projectDraft.baseRef}
-                              onChange={(e) =>
-                                setProjectDraft({ ...projectDraft, baseRef: e.target.value })
-                              }
+                          <Field
+                            label="Default model"
+                            hint="The first model a connected provider offers, until you pin one."
+                          >
+                            <ModelPicker
+                              value={settings.defaultModel}
+                              models={models}
+                              allowInherit
+                              inheritLabel="First reachable model"
+                              emptyHint="No models are reachable. Connect a provider or store an API key under Providers, then refresh."
+                              onChange={(v) => void set({ defaultModel: v })}
                             />
                           </Field>
-                          <Field label="Merge policy">
-                            <Dropdown
-                              value={projectDraft.mergePolicy}
-                              options={[
-                                { value: 'never', label: 'Never merge automatically' },
-                                { value: 'on_accept', label: 'Merge when a run is accepted' },
-                                { value: 'ask', label: 'Ask me each time' },
-                              ]}
-                              onChange={(next) =>
-                                setProjectDraft({
-                                  ...projectDraft,
-                                  mergePolicy: next as ProjectDef['mergePolicy'],
-                                })
-                              }
+                          <Field
+                            label="Default reasoning effort"
+                            hint="Only the levels the chosen model offers."
+                          >
+                            <ReasoningEffortPicker
+                              value={settings.defaultReasoningEffort}
+                              model={defaultModelInfo}
+                              onChange={(effort) => void set({ defaultReasoningEffort: effort })}
+                              data-testid="settings-default-effort"
                             />
                           </Field>
                         </div>
-                        <BaseSyncBar
-                          projectId={projectDraft.id}
-                          baseRef={project?.baseRef ?? projectDraft.baseRef}
-                          variant="settings"
-                        />
-                      </Section>
-                      <Section label="Commands" note="What a pipeline can run, and who detects it.">
-                        <ProjectCommands
-                          project={projectDraft}
-                          onChange={(commands) => setProjectDraft({ ...projectDraft, commands })}
-                        />
                       </Section>
                       <Section
-                        label="Setup"
-                        note="Script that installs deps in every new worktree, so agents find their binaries."
+                        label="Helper tasks"
+                        note="Used for project detection and Agent Readiness."
                       >
-                        <ProjectSetup
-                          project={projectDraft}
-                          onChange={(setupScript) =>
-                            setProjectDraft({ ...projectDraft, setupScript })
-                          }
-                        />
+                        <div className={styles.settingsFields}>
+                          <Field label="Helper model">
+                            <ModelPicker
+                              value={settings.helperModel}
+                              models={models}
+                              allowInherit
+                              inheritLabel="Same as default model"
+                              emptyHint="No models are reachable. Connect a provider under Providers."
+                              onChange={(v) => void set({ helperModel: v })}
+                            />
+                          </Field>
+                          <Field
+                            label="Helper reasoning effort"
+                            hint="Only the levels the helper model offers."
+                          >
+                            <ReasoningEffortPicker
+                              value={settings.helperReasoningEffort}
+                              model={helperModelInfo}
+                              onChange={(effort) => void set({ helperReasoningEffort: effort })}
+                              data-testid="settings-helper-effort"
+                            />
+                          </Field>
+                        </div>
                       </Section>
                       <Section
-                        label="Boundaries"
-                        note="Hard limits, whatever an agent's own boundary says."
+                        label="Healing"
+                        note="Repairs a failed check before the failure escalates."
                       >
-                        <Field
-                          label="Protected paths"
-                          htmlFor="project-protected-paths"
-                          hint={
-                            <>
-                              One pattern per line. No agent may write these, whatever its own
-                              boundary says. <code>.git/</code>, CI config, and lockfiles are always
-                              protected.
-                            </>
-                          }
-                        >
-                          <Textarea
-                            id="project-protected-paths"
-                            aria-label="Protected paths"
-                            rows={3}
-                            placeholder="e.g. src/**/*.secret&#10;.env*"
-                            value={projectDraft.protectedPaths.join('\n')}
-                            onChange={(e) =>
-                              setProjectDraft({
-                                ...projectDraft,
-                                protectedPaths: e.target.value.split('\n').filter(Boolean),
-                              })
+                        <p className={styles.settingsLead}>
+                          When a command phase fails, this model gets a bounded turn in the
+                          run&rsquo;s worktree to make the smallest fix. The exact command is re-run
+                          after every attempt, and only exit 0 counts. If it cannot be fixed, the
+                          failure escalates the way it always has.
+                        </p>
+                        <div className={styles.settingsFields}>
+                          <Field label="Healing model">
+                            <ModelPicker
+                              value={settings.healingModel}
+                              models={models}
+                              allowInherit
+                              inheritLabel="Same as default model"
+                              emptyHint="No models are reachable. Connect a provider under Providers."
+                              onChange={(v) => void set({ healingModel: v })}
+                            />
+                          </Field>
+                          <Field
+                            label="Healing reasoning effort"
+                            hint="Only the levels the healing model offers."
+                          >
+                            <ReasoningEffortPicker
+                              value={settings.healingReasoningEffort}
+                              model={healingModelInfo}
+                              onChange={(effort) => void set({ healingReasoningEffort: effort })}
+                              data-testid="settings-healing-effort"
+                            />
+                          </Field>
+                        </div>
+                      </Section>
+                      <Section label="Smith" note="The model the in-app chat runs on.">
+                        <div className={styles.settingsFields}>
+                          <Field
+                            label="Model"
+                            hint="What a new Smith chat opens on. The header picker can still switch mid-conversation. Smith does not pick for you: until this is set, it will not send."
+                            error={
+                              settings.smithModel === MODEL_UNSET ? MODEL_UNSET_MESSAGE : undefined
                             }
-                          />
-                        </Field>
+                          >
+                            <ModelPicker
+                              value={settings.smithModel}
+                              models={models}
+                              allowInherit
+                              inheritLabel={SMITH_MODEL_UNSET_LABEL}
+                              emptyHint={SMITH_NO_PROVIDER_COPY}
+                              onChange={(v) => void set({ smithModel: v })}
+                            />
+                          </Field>
+                          <Field
+                            label="Default reasoning effort"
+                            hint="Only the levels the chosen model offers. A stored level it drops falls back to that model's default."
+                          >
+                            <ReasoningEffortPicker
+                              value={settings.smithReasoningEffort}
+                              model={smithModelInfo}
+                              onChange={(effort) => void set({ smithReasoningEffort: effort })}
+                              data-testid="settings-smith-effort"
+                            />
+                          </Field>
+                        </div>
                       </Section>
-                      {/*
+                      <Section
+                        label="Pull requests"
+                        note="Who drafts a PR when a pipeline asks for one."
+                      >
+                        <div className={styles.settingsFields}>
+                          <Field
+                            label="PR writer"
+                            hint="Roster agent used when adding a PR phase. A pipeline that names an agent still wins."
+                            error={
+                              isKnownPrWriter(settings.prAgent, agents)
+                                ? undefined
+                                : "Not in this project's roster. Settings still load; pick a writer that exists."
+                            }
+                          >
+                            <Dropdown
+                              value={settings.prAgent}
+                              options={prWriterOptions(agents, settings.prAgent)}
+                              aria-label="PR writer"
+                              onChange={(next) => void set({ prAgent: next })}
+                            />
+                          </Field>
+                        </div>
+                      </Section>
+                      <Section label="Advanced" note="Stable engine policy and context limits.">
+                        <div className={styles.settingsFields}>
+                          <Field
+                            label="Report retries"
+                            hint="Correction messages sent when a report will not parse."
+                          >
+                            <TextInput
+                              type="number"
+                              min={0}
+                              max={5}
+                              value={FIXED_ENGINE_DEFAULTS.envelopeRetries}
+                              disabled
+                            />
+                          </Field>
+                          <Field
+                            label="Check retries"
+                            hint="Attempts to fix a check violation before the phase fails."
+                          >
+                            <TextInput
+                              type="number"
+                              min={0}
+                              max={5}
+                              value={FIXED_ENGINE_DEFAULTS.gateRetries}
+                              disabled
+                            />
+                          </Field>
+                          <Field
+                            label="Compact context at (%)"
+                            hint="Between phases, an agent this full of context is compacted so the next phase has room."
+                          >
+                            <TextInput
+                              type="number"
+                              min={COMPACTION_PERCENT.min}
+                              max={COMPACTION_PERCENT.max}
+                              value={Math.round(settings.compactionThreshold * 100)}
+                              onChange={(e) =>
+                                void setInt(e.target.value, COMPACTION_PERCENT, (percent) => ({
+                                  compactionThreshold: percent / 100,
+                                }))
+                              }
+                            />
+                          </Field>
+                          <Field
+                            label="Rewind after (corrections)"
+                            hint="Fixed engine policy: rewind the session to its phase-start state after this many failed corrections."
+                          >
+                            <TextInput
+                              type="number"
+                              value={FIXED_ENGINE_DEFAULTS.rewindAfterCorrections}
+                              disabled
+                            />
+                          </Field>
+                          <Field
+                            label="Run resilience"
+                            hint="Pipeline work has no deadline. Transient model errors retry five times with exponential backoff, then continue on the next reachable model."
+                          >
+                            <TextInput value="No execution deadline" disabled />
+                          </Field>
+                        </div>
+                      </Section>
+                    </>
+                  )}
+                </PaneBody>
+              )}
+
+              {pane === 'project' && (
+                <PaneBody>
+                  {() => (
+                    <>
+                      {projectDraft ? (
+                        <>
+                          <Section
+                            label="Project"
+                            note="Where Foundry runs, and what it may touch."
+                          >
+                            <Field
+                              label="Project name"
+                              hint="Just for you — rename freely. The path is where Foundry runs."
+                            >
+                              <TextInput
+                                value={projectDraft.name}
+                                onChange={(e) =>
+                                  setProjectDraft({ ...projectDraft, name: e.target.value })
+                                }
+                                placeholder="My project"
+                              />
+                            </Field>
+                            <div className={styles.settingsSubrow}>
+                              <span className={`mono faint ${styles.settingsPath}`}>
+                                {projectDraft.path}
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => void api.projects.reveal(projectDraft.path)}
+                              >
+                                Reveal in Finder
+                              </Button>
+                            </div>
+                          </Section>
+                          <Section
+                            label="Readiness"
+                            note="The marker file is truth. Cached app state never overrides it."
+                          >
+                            <p className={styles.hint}>
+                              {readiness?.ready
+                                ? readiness.marker?.summary ||
+                                  'This repository has a valid .agents/agent-ready.json.'
+                                : readiness?.skipped
+                                  ? 'Readiness was skipped. The Agent Readiness process can be run again anytime from here.'
+                                  : readiness?.markerDetail ||
+                                    'No valid .agents/agent-ready.json yet. Pipeline runs may fail until the repo is ready.'}
+                            </p>
+                          </Section>
+                          <Section label="Checks" note="Run against this repository.">
+                            <DoctorList
+                              checks={projectChecks}
+                              title="Repository checks"
+                              onRecheck={() =>
+                                void api.projects.check(projectDraft.id).then(setProjectChecks)
+                              }
+                              onOpenSettings={(next) => setPaneLive(next as Pane)}
+                            />
+                          </Section>
+                          <Section
+                            label="Git"
+                            note="Every run branches from the base ref. Update it from the remote here."
+                          >
+                            <div className={styles.settingsFields}>
+                              <Field label="Base ref" hint="Every run branches from here.">
+                                <TextInput
+                                  mono
+                                  value={projectDraft.baseRef}
+                                  onChange={(e) =>
+                                    setProjectDraft({ ...projectDraft, baseRef: e.target.value })
+                                  }
+                                />
+                              </Field>
+                              <Field label="Merge policy">
+                                <Dropdown
+                                  value={projectDraft.mergePolicy}
+                                  options={[
+                                    { value: 'never', label: 'Never merge automatically' },
+                                    { value: 'on_accept', label: 'Merge when a run is accepted' },
+                                    { value: 'ask', label: 'Ask me each time' },
+                                  ]}
+                                  onChange={(next) =>
+                                    setProjectDraft({
+                                      ...projectDraft,
+                                      mergePolicy: next as ProjectDef['mergePolicy'],
+                                    })
+                                  }
+                                />
+                              </Field>
+                            </div>
+                            <BaseSyncBar
+                              projectId={projectDraft.id}
+                              baseRef={project?.baseRef ?? projectDraft.baseRef}
+                              variant="settings"
+                            />
+                          </Section>
+                          <Section
+                            label="Commands"
+                            note="What a pipeline can run, and who detects it."
+                          >
+                            <ProjectCommands
+                              project={projectDraft}
+                              onChange={(commands) =>
+                                setProjectDraft({ ...projectDraft, commands })
+                              }
+                            />
+                          </Section>
+                          <Section
+                            label="Setup"
+                            note="Script that installs deps in every new worktree, so agents find their binaries."
+                          >
+                            <ProjectSetup
+                              project={projectDraft}
+                              onChange={(setupScript) =>
+                                setProjectDraft({ ...projectDraft, setupScript })
+                              }
+                            />
+                          </Section>
+                          <Section
+                            label="Boundaries"
+                            note="Hard limits, whatever an agent's own boundary says."
+                          >
+                            <Field
+                              label="Protected paths"
+                              htmlFor="project-protected-paths"
+                              hint={
+                                <>
+                                  One pattern per line. No agent may write these, whatever its own
+                                  boundary says. <code>.git/</code>, CI config, and lockfiles are
+                                  always protected.
+                                </>
+                              }
+                            >
+                              <Textarea
+                                id="project-protected-paths"
+                                aria-label="Protected paths"
+                                rows={3}
+                                placeholder="e.g. src/**/*.secret&#10;.env*"
+                                value={projectDraft.protectedPaths.join('\n')}
+                                onChange={(e) =>
+                                  setProjectDraft({
+                                    ...projectDraft,
+                                    protectedPaths: e.target.value.split('\n').filter(Boolean),
+                                  })
+                                }
+                              />
+                            </Field>
+                          </Section>
+                          {/*
                       Read-only on purpose. Scope decides where an edit lands, so
                       it belongs where the editing happens; the control moved to
                       the Design header and this is the status it reports.
                     */}
-                      <Section
-                        label="Scope"
-                        note="Where this project's agents and pipelines are saved."
-                      >
-                        <div className={styles.settingsFields}>
-                          <Field label="Agents">
-                            <p className={styles.settingsStatic}>
-                              {projectDraft.ownRoster ? 'This project only' : 'Global'}
-                            </p>
-                            <span className="hint">
-                              {projectDraft.ownRoster
-                                ? 'A copy belonging to this project. Later changes to the global agents do not reach it.'
-                                : 'Shared by every project.'}
+                          <Section
+                            label="Scope"
+                            note="Where this project's agents and pipelines are saved."
+                          >
+                            <div className={styles.settingsFields}>
+                              <Field label="Agents">
+                                <p className={styles.settingsStatic}>
+                                  {projectDraft.ownRoster ? 'This project only' : 'Global'}
+                                </p>
+                                <span className="hint">
+                                  {projectDraft.ownRoster
+                                    ? 'A copy belonging to this project. Later changes to the global agents do not reach it.'
+                                    : 'Shared by every project.'}
+                                </span>
+                              </Field>
+                              <Field label="Pipelines">
+                                <p className={styles.settingsStatic}>
+                                  {projectDraft.ownPipelines ? 'This project only' : 'Global'}
+                                </p>
+                                <span className="hint">
+                                  {projectDraft.ownPipelines
+                                    ? 'A copy belonging to this project. Later changes to the global pipelines do not reach it.'
+                                    : 'Shared by every project.'}
+                                </span>
+                              </Field>
+                              <Field label="Change it" className={styles.span2}>
+                                <span className="hint">
+                                  Change scope in <strong>Design</strong> (<kbd>⌘3</kbd>), on the
+                                  Agents or Pipelines tab — the badge beside the heading. It is set
+                                  there because that is where the edits it affects are made.
+                                </span>
+                              </Field>
+                            </div>
+                          </Section>
+                          <div className={styles.settingsFoot}>
+                            <Button variant="danger" onClick={() => void removeProject()}>
+                              Remove project
+                            </Button>
+                            <span className={styles.settingsAutosave}>
+                              Changes save automatically
                             </span>
-                          </Field>
-                          <Field label="Pipelines">
-                            <p className={styles.settingsStatic}>
-                              {projectDraft.ownPipelines ? 'This project only' : 'Global'}
-                            </p>
-                            <span className="hint">
-                              {projectDraft.ownPipelines
-                                ? 'A copy belonging to this project. Later changes to the global pipelines do not reach it.'
-                                : 'Shared by every project.'}
-                            </span>
-                          </Field>
-                          <Field label="Change it" className={styles.span2}>
-                            <span className="hint">
-                              Change scope in <strong>Design</strong> (<kbd>⌘3</kbd>), on the Agents
-                              or Pipelines tab — the badge beside the heading. It is set there
-                              because that is where the edits it affects are made.
-                            </span>
-                          </Field>
+                          </div>
+                        </>
+                      ) : (
+                        <div className={styles.settingsEmpty}>
+                          <p className="faint">
+                            No project selected. Add a git repository you already have, or create a
+                            new one on GitHub.
+                          </p>
+                          <Button variant="primary" onClick={() => void addProject()}>
+                            Add a project…
+                          </Button>
+                          {onNewProject && (
+                            <Button onClick={onNewProject}>Create a new project…</Button>
+                          )}
                         </div>
-                      </Section>
-                      <div className={styles.settingsFoot}>
-                        <Button variant="danger" onClick={() => void removeProject()}>
-                          Remove project
-                        </Button>
-                        <span className={styles.settingsAutosave}>Changes save automatically</span>
-                      </div>
-                    </>
-                  ) : (
-                    <div className={styles.settingsEmpty}>
-                      <p className="faint">
-                        No project selected. Add a git repository you already have, or create a new
-                        one on GitHub.
-                      </p>
-                      <Button variant="primary" onClick={() => void addProject()}>
-                        Add a project…
-                      </Button>
-                      {onNewProject && (
-                        <Button onClick={onNewProject}>Create a new project…</Button>
                       )}
-                    </div>
+                    </>
                   )}
-                </>
+                </PaneBody>
               )}
               {pane === 'app' && (
-                <>
-                  <Section label="Retention" note="Nothing is deleted behind your back.">
-                    <Field
-                      label="Keep run history for"
-                      className={styles.settingsNarrow}
-                      hint="Applies when you press the button below. Nothing is deleted behind your back."
-                    >
-                      <Dropdown
-                        value={String(settings.retentionDays ?? '')}
-                        options={[
-                          { value: '', label: 'Forever' },
-                          { value: '7', label: '7 days' },
-                          { value: '30', label: '30 days' },
-                          { value: '90', label: '90 days' },
-                          { value: '365', label: 'A year' },
-                        ]}
-                        onChange={(next) =>
-                          void set({
-                            retentionDays: next ? Number(next) : null,
-                          })
-                        }
-                      />
-                    </Field>
-                    <div className={styles.settingsSubrow}>
-                      <div className={styles.settingsBtnrow}>
-                        <Button disabled={maintenanceBusy} onClick={() => void applyRetention()}>
-                          {maintenanceBusy ? 'Working…' : 'Apply retention now'}
-                        </Button>
-                        <Button disabled={maintenanceBusy} onClick={() => void compact()}>
-                          {maintenanceBusy ? 'Working…' : 'Compact trace databases'}
-                        </Button>
-                      </div>
-                    </div>
-                  </Section>
-                  <Section
-                    label="Leftover worktrees"
-                    note="Left behind by a crashed or killed run."
-                  >
-                    <p className={styles.hint}>
-                      A worktree left behind by a crashed or killed run. Removing one deletes its
-                      branch and any uncommitted work in it.
-                    </p>
-                    {orphans.length ? (
-                      <ul className={styles.settingsOrphans}>
-                        {orphans.map((orphan) => (
-                          <li key={orphan.path}>
-                            <span className={`mono ${styles.path}`}>{orphan.path}</span>
-                            <span className="mono faint">{orphan.branch}</span>
-                            <Button
-                              variant="danger"
-                              size="sm"
-                              onClick={() => void removeOrphan(orphan)}
-                            >
-                              Remove
-                            </Button>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="faint">None found.</p>
-                    )}
-                    {maintenanceNote && (
-                      <p className={styles.settingsNote}>
-                        <svg
-                          width="12"
-                          height="12"
-                          viewBox="0 0 14 14"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.6"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          aria-hidden
+                <PaneBody>
+                  {() => (
+                    <>
+                      <Section label="Retention" note="Nothing is deleted behind your back.">
+                        <Field
+                          label="Keep run history for"
+                          className={styles.settingsNarrow}
+                          hint="Applies when you press the button below. Nothing is deleted behind your back."
                         >
-                          <path d="M2.5 7.5 5.5 10.5 11.5 3.5" />
-                        </svg>
-                        {maintenanceNote}
-                      </p>
-                    )}
-                  </Section>
-                  <Section label="Foundry" note="A software factory you can watch.">
-                    <p className={styles.settingsLead}>
-                      A software factory you can watch. Pipelines are data, agents are
-                      configuration, and every phase leaves evidence you can read.
-                    </p>
-                  </Section>
-                  <Section label="Build" note="What this copy of Foundry is running.">
-                    <dl className={styles.settingsFacts}>
-                      <div className={styles.settingsFact}>
-                        <dt>Version</dt>
-                        <dd className="mono">{version}</dd>
-                      </div>
-                      <div className={styles.settingsFact}>
-                        <dt>Agent harness</dt>
-                        <dd className="mono">pi, in this process</dd>
-                      </div>
-                      <div className={styles.settingsFact}>
-                        <dt>Reachable models</dt>
-                        <dd className="mono">{models.length}</dd>
-                      </div>
-                      <div className={styles.settingsFact}>
-                        <dt>Projects</dt>
-                        <dd className="mono">{projects.length}</dd>
-                      </div>
-                    </dl>
-                  </Section>
-                  <Section label="Elsewhere" note="Providers and the cinematic intro.">
-                    <div className={styles.settingsBtnrow}>
-                      <Button size="sm" onClick={() => setPaneLive('models')}>
-                        Manage providers
-                      </Button>
-                      <Button size="sm" onClick={() => void replayIntro()}>
-                        Replay intro
-                      </Button>
-                    </div>
-                    <p className={styles.hint}>
-                      Replay intro walks the cinematic onboarding again: agents, providers,
-                      environment checks, and your first project.
-                    </p>
-                  </Section>
-                </>
+                          <Dropdown
+                            value={String(settings.retentionDays ?? '')}
+                            options={[
+                              { value: '', label: 'Forever' },
+                              { value: '7', label: '7 days' },
+                              { value: '30', label: '30 days' },
+                              { value: '90', label: '90 days' },
+                              { value: '365', label: 'A year' },
+                            ]}
+                            onChange={(next) =>
+                              void set({
+                                retentionDays: next ? Number(next) : null,
+                              })
+                            }
+                          />
+                        </Field>
+                        <div className={styles.settingsSubrow}>
+                          <div className={styles.settingsBtnrow}>
+                            <Button
+                              disabled={maintenanceBusy}
+                              onClick={() => void applyRetention()}
+                            >
+                              {maintenanceBusy ? 'Working…' : 'Apply retention now'}
+                            </Button>
+                            <Button disabled={maintenanceBusy} onClick={() => void compact()}>
+                              {maintenanceBusy ? 'Working…' : 'Compact trace databases'}
+                            </Button>
+                          </div>
+                        </div>
+                      </Section>
+                      <Section
+                        label="Leftover worktrees"
+                        note="Left behind by a crashed or killed run."
+                      >
+                        <p className={styles.hint}>
+                          A worktree left behind by a crashed or killed run. Removing one deletes
+                          its branch and any uncommitted work in it.
+                        </p>
+                        {orphans.length ? (
+                          <ul className={styles.settingsOrphans}>
+                            {orphans.map((orphan) => (
+                              <li key={orphan.path}>
+                                <span className={`mono ${styles.path}`}>{orphan.path}</span>
+                                <span className="mono faint">{orphan.branch}</span>
+                                <Button
+                                  variant="danger"
+                                  size="sm"
+                                  onClick={() => void removeOrphan(orphan)}
+                                >
+                                  Remove
+                                </Button>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="faint">None found.</p>
+                        )}
+                        {maintenanceNote && (
+                          <p className={styles.settingsNote}>
+                            <svg
+                              width="12"
+                              height="12"
+                              viewBox="0 0 14 14"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.6"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden
+                            >
+                              <path d="M2.5 7.5 5.5 10.5 11.5 3.5" />
+                            </svg>
+                            {maintenanceNote}
+                          </p>
+                        )}
+                      </Section>
+                      <Section label="Foundry" note="A software factory you can watch.">
+                        <p className={styles.settingsLead}>
+                          A software factory you can watch. Pipelines are data, agents are
+                          configuration, and every phase leaves evidence you can read.
+                        </p>
+                      </Section>
+                      <Section label="Build" note="What this copy of Foundry is running.">
+                        <dl className={styles.settingsFacts}>
+                          <div className={styles.settingsFact}>
+                            <dt>Version</dt>
+                            <dd className="mono">{version}</dd>
+                          </div>
+                          <div className={styles.settingsFact}>
+                            <dt>Agent harness</dt>
+                            <dd className="mono">pi, in this process</dd>
+                          </div>
+                          <div className={styles.settingsFact}>
+                            <dt>Reachable models</dt>
+                            <dd className="mono">{models.length}</dd>
+                          </div>
+                          <div className={styles.settingsFact}>
+                            <dt>Projects</dt>
+                            <dd className="mono">{projects.length}</dd>
+                          </div>
+                        </dl>
+                      </Section>
+                      <Section label="Elsewhere" note="Providers and the cinematic intro.">
+                        <div className={styles.settingsBtnrow}>
+                          <Button size="sm" onClick={() => setPaneLive('models')}>
+                            Manage providers
+                          </Button>
+                          <Button size="sm" onClick={() => void replayIntro()}>
+                            Replay intro
+                          </Button>
+                        </div>
+                        <p className={styles.hint}>
+                          Replay intro walks the cinematic onboarding again: agents, providers,
+                          environment checks, and your first project.
+                        </p>
+                      </Section>
+                    </>
+                  )}
+                </PaneBody>
               )}
               {errors.length > 0 && (
                 <ul className={styles.settingsErrors} role="alert">

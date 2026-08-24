@@ -116,6 +116,67 @@ describe('helper defaults', () => {
   });
 });
 
+describe('the healing model pair', () => {
+  it('inherits the default model on a fresh install', () => {
+    expect(defaultSettings().healingModel).toBe('inherit');
+    expect(defaultSettings().healingReasoningEffort).toBe('medium');
+  });
+
+  it('reads the shipped defaults on an install predating the setting', () => {
+    const stored = { ...defaultSettings() } as Record<string, unknown>;
+    delete stored.healingModel;
+    delete stored.healingReasoningEffort;
+    expect(migrate(stored).healingModel).toBe('inherit');
+    expect(migrate(stored).healingReasoningEffort).toBe('medium');
+    expect(seed(stored).get().healingModel).toBe('inherit');
+    expect(seed(stored).get().healingReasoningEffort).toBe('medium');
+  });
+
+  it('repairs a stored garbage model back to inherit', () => {
+    expect(migrate({ ...defaultSettings(), healingModel: '' }).healingModel).toBe('inherit');
+    expect(migrate({ ...defaultSettings(), healingModel: 7 as never }).healingModel).toBe(
+      'inherit',
+    );
+  });
+
+  it('repairs a stored effort outside the known levels', () => {
+    expect(
+      migrate({ ...defaultSettings(), healingReasoningEffort: 'ludicrous' as never })
+        .healingReasoningEffort,
+    ).toBe('medium');
+  });
+
+  it('keeps every known level', () => {
+    for (const effort of REASONING_EFFORTS) {
+      expect(
+        migrate({ ...defaultSettings(), healingReasoningEffort: effort }).healingReasoningEffort,
+      ).toBe(effort);
+    }
+  });
+
+  it('persists an opaque provider/model id and a level via patch', () => {
+    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
+    expect(
+      store.patch({ healingModel: 'bridge-claude/claude-opus-5', healingReasoningEffort: 'high' }),
+    ).toMatchObject({ ok: true });
+    expect(store.get().healingModel).toBe('bridge-claude/claude-opus-5');
+    expect(store.get().healingReasoningEffort).toBe('high');
+    const onDisk = JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf8')) as Record<
+      string,
+      unknown
+    >;
+    expect(onDisk.healingModel).toBe('bridge-claude/claude-opus-5');
+  });
+
+  it('refuses an empty model or an unknown level rather than storing it', () => {
+    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
+    expect(store.patch({ healingModel: '' }).ok).toBe(false);
+    expect(store.patch({ healingReasoningEffort: 'turbo' as never }).ok).toBe(false);
+    expect(store.get().healingModel).toBe('inherit');
+    expect(store.get().healingReasoningEffort).toBe('medium');
+  });
+});
+
 describe('smithModel', () => {
   it('defaults to inherit on a fresh install', () => {
     expect(defaultSettings().smithModel).toBe('inherit');

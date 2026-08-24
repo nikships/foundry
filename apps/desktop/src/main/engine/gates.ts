@@ -45,7 +45,7 @@ function nothingToVerify(item: string): GateCheck[] {
   return [{ item, ok: true, note: 'nothing to verify' }];
 }
 
-const artifacts_exist: GateFn = async (envelope, ctx) => {
+const artifactsExist: GateFn = async (envelope, ctx) => {
   const list = envelope.artifacts ?? [];
   if (!list.length) return nothingToVerify('(no artifacts declared)');
   return list.map((a) => {
@@ -59,7 +59,7 @@ const artifacts_exist: GateFn = async (envelope, ctx) => {
   });
 };
 
-const files_non_empty: GateFn = async (envelope, ctx) => {
+const filesNonEmpty: GateFn = async (envelope, ctx) => {
   const list = envelope.artifacts ?? [];
   const checks: GateCheck[] = [];
   for (const a of list) {
@@ -80,7 +80,7 @@ const files_non_empty: GateFn = async (envelope, ctx) => {
   return checks.length ? checks : nothingToVerify('(no files to size)');
 };
 
-const json_parses: GateFn = async (envelope, ctx) => {
+const jsonParses: GateFn = async (envelope, ctx) => {
   const checks: GateCheck[] = [];
   for (const a of envelope.artifacts ?? []) {
     if (!a.endsWith('.json')) continue;
@@ -104,7 +104,7 @@ const json_parses: GateFn = async (envelope, ctx) => {
   return checks.length ? checks : nothingToVerify('(no JSON artifacts)');
 };
 
-const verdict_consistent: GateFn = async (envelope) => {
+const verdictConsistent: GateFn = async (envelope) => {
   const approved = Boolean(envelope.approved);
   const blocking = (envelope.blocking as string[] | undefined) ?? [];
   const findings = (envelope.findings as { requirement: string; met: boolean }[] | undefined) ?? [];
@@ -151,7 +151,7 @@ const verdict_consistent: GateFn = async (envelope) => {
  * been approved. Approvals and honest failures both pass; only the
  * keeps-going disapproval is rejected.
  */
-const disapproval_halts: GateFn = async (envelope) => {
+const disapprovalHalts: GateFn = async (envelope) => {
   const approved = Boolean(envelope.approved);
   const failed = envelope.status === 'fail';
   const ok = approved || failed;
@@ -165,7 +165,7 @@ const disapproval_halts: GateFn = async (envelope) => {
 };
 
 /** The generalisation of SSSF's tests_pass: argv comes from the designer. */
-const command_passes: GateFn = async (_envelope, ctx, config) => {
+const commandPasses: GateFn = async (_envelope, ctx, config) => {
   const argv = (config?.argv as string[] | undefined) ?? [];
   if (!argv.length) {
     return [{ item: 'command_passes', ok: false, note: 'gate is configured with no command' }];
@@ -184,12 +184,12 @@ const command_passes: GateFn = async (_envelope, ctx, config) => {
 };
 
 export const GATES: Record<string, GateFn> = {
-  artifacts_exist,
-  files_non_empty,
-  json_parses,
-  verdict_consistent,
-  disapproval_halts,
-  command_passes,
+  artifacts_exist: artifactsExist,
+  files_non_empty: filesNonEmpty,
+  json_parses: jsonParses,
+  verdict_consistent: verdictConsistent,
+  disapproval_halts: disapprovalHalts,
+  command_passes: commandPasses,
 };
 
 export const GATE_DESCRIPTIONS: Record<string, string> = {

@@ -15,6 +15,9 @@ on:
       - 'electron.vite.config.ts'
       - 'electron-builder.yml'
       - '*.config.*'
+      - '.gitattributes'
+      - '.githooks/**'
+      - '.jscpd.json'
       - '.github/workflows/**'
   # No paths filter here, on purpose. verify, android, and actionlint are required checks
   # on main, and a required check that never starts is never satisfied: a PR
@@ -57,6 +60,12 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      - name: File size guardrails
+        run: npm run check:files
+
+      - name: Duplicate code
+        run: npm run check:duplicate
 
       - name: Format
         run: npm run format:check

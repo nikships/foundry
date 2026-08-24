@@ -173,6 +173,6 @@ export function whichBinary(binary: string): string | null {
 }
 
 /** Test seam: lets a test pin a PATH without spawning the user's shell. */
-export function __setResolvedEnvForTest(value: ResolvedEnv | null): void {
+export function setResolvedEnvForTest(value: ResolvedEnv | null): void {
   resolved = value;
 }
