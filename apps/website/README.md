@@ -88,8 +88,8 @@ screenshots:
 
 | Site | Source of truth |
 | --- | --- |
-| `AGENTS` | `apps/desktop/src/main/store/builtin-agents.ts` |
-| `PIPELINES` | `apps/desktop/src/main/store/builtin-pipelines.ts` |
+| `AGENTS` | `apps/desktop/src/shared/builtin-agents.ts` |
+| `PIPELINES` | `apps/desktop/src/shared/builtin-pipelines.ts` |
 | `CHECK_DESCRIPTIONS` | `apps/desktop/src/main/engine/gates.ts` (`GATE_DESCRIPTIONS`) |
 | `REPORT_BLURBS` | `apps/desktop/src/shared/types.ts` (`BUILTIN_ENVELOPE_BLURBS`) |
 | `ACCEPTANCE_KINDS` | `apps/desktop/src/shared/types.ts` (`Acceptance`) |

@@ -74,7 +74,7 @@
     --status-success: var(--green);
     --status-fail: var(--red);
 
-    /* ── per-agent accents, from src/main/store/builtin-agents.ts ────── */
+    /* ── per-agent accents, from src/shared/builtin-agents.ts ────── */
     --accents-refiner: #e879b9;
     --accents-planner: #c89bff;
     --accents-builder: #5ad2dd;

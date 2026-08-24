@@ -2,8 +2,8 @@
  * Real Foundry data, mirrored from the app tree so everything on this page is
  * showing the actual product rather than a plausible-looking mock.
  *
- *   AGENTS      ← apps/desktop/src/main/store/builtin-agents.ts
- *   PIPELINES   ← apps/desktop/src/main/store/builtin-pipelines.ts
+ *   AGENTS      ← apps/desktop/src/shared/builtin-agents.ts
+ *   PIPELINES   ← apps/desktop/src/shared/builtin-pipelines.ts
  *   CHECKS      ← apps/desktop/src/main/engine/gates.ts (GATE_DESCRIPTIONS)
  *   REPORTS     ← apps/desktop/src/shared/types.ts (BUILTIN_ENVELOPE_BLURBS)
  *   ACCEPTANCE  ← apps/desktop/src/shared/types.ts (Acceptance)
