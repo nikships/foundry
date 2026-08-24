@@ -531,4 +531,42 @@ class CompanionRepositoryTest {
         assertEquals("/v1/smith/proposals", server.takeRequest().path)
         assertEquals("/v1/smith/proposals/answer", server.takeRequest().path)
     }
+
+    @Test
+    fun testHttpSmithModelsAndSetters() = runBlocking {
+        val hostOrigin = server.url("").toString().removeSuffix("/")
+        httpRepository.injectFakeSession(
+            PairedSession(
+                token = "test_token",
+                desktopId = "desk_01",
+                desktopName = "Mac",
+                hostOrigin = hostOrigin,
+                pairedAt = "2026-08-19T00:00:00Z"
+            )
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """[{"id":"scripted/alpha","displayName":"Alpha","provider":"scripted","supportedReasoningEfforts":["low","medium","high"],"defaultReasoningEffort":"medium"}]"""
+            )
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"model":"scripted/alpha","activeModel":"scripted/alpha","reasoningEffort":"medium","activeReasoningEffort":"medium","running":false,"transcript":[]}"""
+            )
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"model":"scripted/alpha","activeModel":"scripted/alpha","reasoningEffort":"high","activeReasoningEffort":"high","running":false,"transcript":[]}"""
+            )
+        )
+
+        val models = httpRepository.getSmithModels().getOrThrow()
+        assertEquals("scripted/alpha", models.single().id)
+        assertEquals("scripted/alpha", httpRepository.setSmithModel("proj_1", "scripted/alpha").getOrThrow().model)
+        assertEquals("high", httpRepository.setSmithEffort("proj_1", "high").getOrThrow().reasoningEffort)
+
+        assertEquals("/v1/smith/models", server.takeRequest().path)
+        assertEquals("/v1/smith/model", server.takeRequest().path)
+        assertEquals("/v1/smith/effort", server.takeRequest().path)
+    }
 }

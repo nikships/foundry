@@ -129,6 +129,14 @@ class OfflineCompanionRepository(
     override suspend fun answerSmithProposal(id: String, answer: SmithProposalAnswer) =
         this.answer(SmithProposalAnswerResult(ok = false))
 
+    override suspend fun getSmithModels() = answer(emptyList<SmithModelInfo>())
+
+    override suspend fun setSmithModel(projectId: String?, model: String) =
+        answer(SmithChatState(projectId = projectId, model = model))
+
+    override suspend fun setSmithEffort(projectId: String?, effort: String) =
+        answer(SmithChatState(projectId = projectId, reasoningEffort = effort))
+
     override suspend fun retryConnection() {
         if (reachable) {
             _connectionStatus.value = ConnectionStatus.Connected(session.desktopName, session.hostOrigin)

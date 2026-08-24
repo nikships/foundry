@@ -192,6 +192,23 @@ class CompanionViewModelTest {
     }
 
     @Test
+    fun testSmithModelAndEffortSwitch() {
+        viewModel.loadSmith()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals("scripted/alpha", viewModel.uiState.value.smithModels.first().id)
+
+        viewModel.setSmithModel("scripted/beta")
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals("proj_foundry_core" to "scripted/beta", repository.lastSmithModel)
+        assertEquals("scripted/beta", viewModel.uiState.value.smithChat?.model)
+
+        viewModel.setSmithEffort("high")
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals("proj_foundry_core" to "high", repository.lastSmithEffort)
+        assertEquals("high", viewModel.uiState.value.smithChat?.reasoningEffort)
+    }
+
+    @Test
     fun testSmithProposalApproveClearsTheCard() {
         repository.enqueueSmithProposal(
             com.foundry.companion.data.model.SmithProposal(

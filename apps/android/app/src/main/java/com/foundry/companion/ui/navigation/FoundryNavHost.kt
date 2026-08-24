@@ -211,7 +211,10 @@ fun FoundryNavHost(
                 onSend = { viewModel.sendSmith(it) },
                 onCancel = { viewModel.cancelSmith() },
                 onNewChat = { viewModel.newSmithChat() },
-                onAnswerProposal = { approved, secret -> viewModel.answerSmithProposal(approved, secret) }
+                onAnswerProposal = { approved, secret -> viewModel.answerSmithProposal(approved, secret) },
+                models = uiState.smithModels,
+                onSelectModel = { viewModel.setSmithModel(it) },
+                onSelectEffort = { viewModel.setSmithEffort(it) }
             )
         }
 

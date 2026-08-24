@@ -32,5 +32,8 @@ interface CompanionRepository {
     suspend fun newSmithChat(projectId: String?): Result<SmithChatState>
     suspend fun getSmithProposals(): Result<List<SmithProposal>>
     suspend fun answerSmithProposal(id: String, answer: SmithProposalAnswer): Result<SmithProposalAnswerResult>
+    suspend fun getSmithModels(): Result<List<SmithModelInfo>>
+    suspend fun setSmithModel(projectId: String?, model: String): Result<SmithChatState>
+    suspend fun setSmithEffort(projectId: String?, effort: String): Result<SmithChatState>
     suspend fun retryConnection()
 }

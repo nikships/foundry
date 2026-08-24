@@ -173,6 +173,16 @@ export class AppContext {
         chat: (projectId) => this.smith.chat(projectId),
         listProposals: () => this.smith.proposals.list(),
         answerProposal: (id, answer) => this.smith.proposals.answer(id, answer),
+        models: async () => {
+          try {
+            const { availableModels } = await import('./pi/catalog.js');
+            const { withoutHiddenModels } = await import('@shared/model-visibility.js');
+            const models = await availableModels(this.supportDir);
+            return withoutHiddenModels(models, this.settings.get().hiddenModelIds);
+          } catch {
+            return [];
+          }
+        },
       },
     });
 

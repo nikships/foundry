@@ -678,14 +678,39 @@ class FakeCompanionRepository(
 
     private fun smithKey(projectId: String?): String = projectId?.takeIf { it.isNotBlank() } ?: "global"
 
+    private val smithModels = listOf(
+        SmithModelInfo(
+            id = "scripted/alpha",
+            displayName = "Alpha",
+            provider = "scripted",
+            supportedReasoningEfforts = listOf("low", "medium", "high"),
+            defaultReasoningEffort = "medium"
+        ),
+        SmithModelInfo(
+            id = "scripted/beta",
+            displayName = "Beta",
+            provider = "scripted",
+            supportedReasoningEfforts = listOf("off", "medium"),
+            defaultReasoningEffort = "medium"
+        )
+    )
+    private val smithModelsByScope = mutableMapOf<String, String>()
+    private val smithEffortByScope = mutableMapOf<String, String>()
+    var lastSmithModel: Pair<String?, String>? = null
+        private set
+    var lastSmithEffort: Pair<String?, String>? = null
+        private set
+
     private fun smithState(projectId: String?): SmithChatState {
         val key = smithKey(projectId)
+        val model = smithModelsByScope[key] ?: "inherit"
+        val effort = smithEffortByScope[key] ?: "medium"
         return SmithChatState(
             projectId = key.takeIf { it != "global" },
-            model = "scripted",
-            activeModel = "scripted",
-            reasoningEffort = "medium",
-            activeReasoningEffort = "medium",
+            model = model,
+            activeModel = if (model == "inherit") "scripted/alpha" else model,
+            reasoningEffort = effort,
+            activeReasoningEffort = effort,
             running = false,
             error = null,
             transcript = smithChats[key].orEmpty().toList()
@@ -746,6 +771,22 @@ class FakeCompanionRepository(
         smithAnswered = id to answer.approved
         smithProposals.removeAll { it.id == id }
         return Result.success(SmithProposalAnswerResult(ok = true))
+    }
+
+    override suspend fun getSmithModels(): Result<List<SmithModelInfo>> {
+        return Result.success(smithModels)
+    }
+
+    override suspend fun setSmithModel(projectId: String?, model: String): Result<SmithChatState> {
+        lastSmithModel = projectId to model
+        smithModelsByScope[smithKey(projectId)] = model
+        return Result.success(smithState(projectId))
+    }
+
+    override suspend fun setSmithEffort(projectId: String?, effort: String): Result<SmithChatState> {
+        lastSmithEffort = projectId to effort
+        smithEffortByScope[smithKey(projectId)] = effort
+        return Result.success(smithState(projectId))
     }
 
     fun enqueueSmithProposal(proposal: SmithProposal) {

@@ -20,6 +20,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -41,6 +43,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.foundry.companion.data.model.ConnectionStatus
 import com.foundry.companion.data.model.SmithChatState
+import com.foundry.companion.data.model.SmithModelInfo
 import com.foundry.companion.data.model.SmithProposal
 import com.foundry.companion.data.model.SmithTranscriptEntry
 import com.foundry.companion.ui.components.FoundryDangerButton
@@ -64,13 +67,29 @@ fun SmithScreen(
     onNewChat: () -> Unit,
     onAnswerProposal: (approved: Boolean, secret: String?) -> Unit,
     modifier: Modifier = Modifier,
-    actionError: String? = null
+    actionError: String? = null,
+    models: List<SmithModelInfo> = emptyList(),
+    onSelectModel: (String) -> Unit = {},
+    onSelectEffort: (String) -> Unit = {}
 ) {
     val colors = FoundryTheme.colors
     val typography = FoundryTheme.typography
     val shapes = FoundryTheme.shapes
     val isConnected = connectionStatus is ConnectionStatus.Connected
     val running = chat?.running == true || isSending
+    val chosenModel = chat?.model.orEmpty().ifBlank { "inherit" }
+    val selectedModel = models.firstOrNull { it.id == chosenModel }
+        ?: models.firstOrNull { it.id == chat?.activeModel }
+    val effortOptions = selectedModel?.supportedReasoningEfforts
+        ?.ifEmpty { listOf("off", "minimal", "low", "medium", "high", "xhigh", "max") }
+        ?: listOf("off", "minimal", "low", "medium", "high", "xhigh", "max")
+    val modelBlocked = when {
+        models.isEmpty() -> "Connect a provider on the Mac to choose a model."
+        chosenModel.isBlank() || chosenModel == "inherit" -> "No model is selected. Choose one to start the conversation."
+        selectedModel == null && models.none { it.id == chosenModel } ->
+            "$chosenModel is not available to this install. Choose a model that is."
+        else -> null
+    }
     var draft by rememberSaveable { mutableStateOf("") }
     var secret by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -112,6 +131,24 @@ fun SmithScreen(
                     status = connectionStatus,
                     onRetryClick = onRetryConnection
                 )
+                SmithPickerRow(
+                    models = models,
+                    chosenModel = chosenModel,
+                    selectedModel = selectedModel,
+                    effort = chat?.reasoningEffort.orEmpty().ifBlank { "medium" },
+                    effortOptions = effortOptions,
+                    enabled = isConnected && !running,
+                    onSelectModel = onSelectModel,
+                    onSelectEffort = onSelectEffort
+                )
+                if (modelBlocked != null) {
+                    Text(
+                        text = modelBlocked,
+                        style = typography.metaMono,
+                        color = colors.statusWarning,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
             }
         },
         bottomBar = {
@@ -174,13 +211,13 @@ fun SmithScreen(
                                 color = colors.textFaint
                             )
                         },
-                        enabled = isConnected && !running,
+                        enabled = isConnected && !running && modelBlocked == null,
                         minLines = 1,
                         maxLines = 5,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                         keyboardActions = KeyboardActions(
                             onSend = {
-                                if (draft.isNotBlank() && isConnected && !running) {
+                                if (draft.isNotBlank() && isConnected && !running && modelBlocked == null) {
                                     onSend(draft)
                                     draft = ""
                                 }
@@ -207,12 +244,12 @@ fun SmithScreen(
                     } else {
                         IconButton(
                             onClick = {
-                                if (draft.isNotBlank() && isConnected) {
+                                if (draft.isNotBlank() && isConnected && modelBlocked == null) {
                                     onSend(draft)
                                     draft = ""
                                 }
                             },
-                            enabled = isConnected && draft.isNotBlank(),
+                            enabled = isConnected && draft.isNotBlank() && modelBlocked == null,
                             modifier = Modifier.semantics { contentDescription = "Send" }
                         ) {
                             Icon(
@@ -289,6 +326,111 @@ fun SmithScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SmithPickerRow(
+    models: List<SmithModelInfo>,
+    chosenModel: String,
+    selectedModel: SmithModelInfo?,
+    effort: String,
+    effortOptions: List<String>,
+    enabled: Boolean,
+    onSelectModel: (String) -> Unit,
+    onSelectEffort: (String) -> Unit
+) {
+    val colors = FoundryTheme.colors
+    val typography = FoundryTheme.typography
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SmithChoiceMenu(
+            label = selectedModel?.label ?: if (chosenModel == "inherit" || chosenModel.isBlank()) "Select a model…" else chosenModel,
+            contentDescription = "Smith model",
+            enabled = enabled && models.isNotEmpty(),
+            modifier = Modifier.weight(1f)
+        ) { dismiss ->
+            models.forEach { model ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = model.label,
+                            style = typography.body,
+                            color = if (model.id == chosenModel) colors.accent else colors.textPrimary
+                        )
+                    },
+                    onClick = {
+                        onSelectModel(model.id)
+                        dismiss()
+                    }
+                )
+            }
+        }
+        SmithChoiceMenu(
+            label = effort.uppercase(),
+            contentDescription = "Smith reasoning",
+            enabled = enabled && effortOptions.isNotEmpty(),
+            modifier = Modifier.weight(0.7f)
+        ) { dismiss ->
+            effortOptions.forEach { option ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = option.uppercase(),
+                            style = typography.labelMono,
+                            color = if (option == effort) colors.accent else colors.textPrimary
+                        )
+                    },
+                    onClick = {
+                        onSelectEffort(option)
+                        dismiss()
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SmithChoiceMenu(
+    label: String,
+    contentDescription: String,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable (dismiss: () -> Unit) -> Unit
+) {
+    val colors = FoundryTheme.colors
+    val typography = FoundryTheme.typography
+    val shapes = FoundryTheme.shapes
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    Box(modifier = modifier) {
+        TextButton(
+            onClick = { expanded = true },
+            enabled = enabled,
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(colors.bgRaised, shapes.chip)
+                .border(1.dp, colors.line, shapes.chip)
+                .semantics { this.contentDescription = contentDescription }
+        ) {
+            Text(
+                text = label,
+                style = typography.labelMono,
+                color = if (enabled) colors.textPrimary else colors.textFaint,
+                maxLines = 1
+            )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            content { expanded = false }
         }
     }
 }
