@@ -214,8 +214,8 @@
   min-height: 0;
   overflow-y: auto;
   padding: var(--s3) var(--s3) var(--s4);
-  /* Opt the whole transcript out of the app-wide body { user-select:none }
-   * so agent output feels like a document, not a chrome surface. */
+  /* Keep the transcript explicitly document-like if surrounding chrome
+   * adopts more restrictive selection behavior. */
   user-select: text;
   -webkit-user-select: text;
   cursor: auto;

@@ -875,9 +875,8 @@ function useCollapsible(
 
 export function transcriptStyles(): string {
   return `
-    /* Agent output is for reading and copying — opt out of the app-wide
-     * body { user-select: none } so click-and-drag feels native. Inline
-     * chrome (tags, times, toggles) stays non-selectable so a copy is clean. */
+    /* Agent output is for reading and copying. Keep its content explicitly
+     * selectable even when embedded beside interactive transcript chrome. */
     .te-text-body, .te-thinking-body, .te-output, .te-diff-body, .te-todo-list, .te-task-body, .te-ask-body, .te-envelope-summary, .te-envelope-notes, .te-envelope-files, .te-ask-q, .te-ask-a, .te-banner-detail, .te-log-detail { user-select: text; -webkit-user-select: text; cursor: text; }
     .te { margin: 4px 0; }
     .te-head, .te-row-head, .te-cmd-head { display: flex; align-items: center; gap: var(--s2); width: 100%; border: none; background: none; padding: 4px 6px; font: inherit; color: inherit; text-align: left; cursor: default; border-radius: var(--r-sm); transition: background var(--fast) var(--ease); }
