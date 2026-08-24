@@ -178,4 +178,83 @@ class SmithScreenTest {
         composeTestRule.onNodeWithText("CHECKLIST").assertIsDisplayed()
         composeTestRule.onNodeWithText("Ready?").assertIsDisplayed()
     }
+
+    @Test
+    fun testAgentDesignRendersPromptMarkdown() {
+        composeTestRule.setContent {
+            FoundryTheme {
+                com.foundry.companion.ui.screens.smith.SmithArtifactCard(
+                    artifact = buildJsonObject {
+                        put("id", "art_agent")
+                        put("kind", "agent_design")
+                        put("version", 1)
+                        put("createdAt", 1)
+                        putJsonObject("agent") {
+                            put("name", "Verifier")
+                            put("model", "inherit")
+                            put("envelope", "review")
+                            put("systemPrompt", "**Role:** You are a reviewer.\n\n1. Read the diff.")
+                            put("userPrompt", "Review **this** change.")
+                        }
+                    }
+                )
+            }
+        }
+        composeTestRule.onNodeWithText("SYSTEM PROMPT").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Role:", substring = true).assertIsDisplayed()
+        composeTestRule.onNodeWithText("**Role:** You are a reviewer.").assertDoesNotExist()
+        composeTestRule.onNodeWithText("Review this change.").assertIsDisplayed()
+    }
+
+    @Test
+    fun testHidesVendorFunctionCallTextRows() {
+        composeTestRule.setContent {
+            FoundryTheme {
+                SmithScreen(
+                    chat = SmithChatState(
+                        model = "scripted/alpha",
+                        activeModel = "scripted/alpha",
+                        transcript = listOf(
+                            SmithTranscriptEntry(
+                                id = "t1",
+                                kind = "text",
+                                text = "Got it.",
+                                source = "smith",
+                                at = 1
+                            ),
+                            SmithTranscriptEntry(
+                                id = "t2",
+                                kind = "text",
+                                text = """{"functionCall":{"name":"smith_readiness"}}""",
+                                source = "smith",
+                                at = 2
+                            ),
+                            SmithTranscriptEntry(
+                                id = "t3",
+                                kind = "tool",
+                                text = "smith_readiness",
+                                toolKind = "other",
+                                source = "smith",
+                                at = 3
+                            )
+                        )
+                    ),
+                    proposal = null,
+                    projectName = "foundry",
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    isSending = false,
+                    onBackClick = {},
+                    onRetryConnection = {},
+                    onSend = {},
+                    onCancel = {},
+                    onNewChat = {},
+                    onAnswerProposal = { _, _ -> },
+                    models = sampleModels
+                )
+            }
+        }
+        composeTestRule.onNodeWithText("Got it.").assertIsDisplayed()
+        composeTestRule.onNodeWithText("functionCall", substring = true).assertDoesNotExist()
+        composeTestRule.onNodeWithText("smith_readiness").assertIsDisplayed()
+    }
 }

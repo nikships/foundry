@@ -58,9 +58,11 @@ function TranscriptRows({
               </span>
             )}
             {entry.kind === 'text' ? (
-              <MarkdownText text={entry.text} />
+              <div className="selectable">
+                <MarkdownText text={entry.text} />
+              </div>
             ) : (
-              <span className={styles.lineText}>{entry.text}</span>
+              <span className={cx(styles.lineText, 'selectable')}>{entry.text}</span>
             )}
           </div>
         ),
@@ -110,7 +112,7 @@ export default function SmithTranscript({
           <div key={group.id} className={styles.operatorTurn}>
             {group.entries.map((entry) =>
               entry.kind === 'artifact' ? null : (
-                <div key={entry.id} className={styles.operatorBubble}>
+                <div key={entry.id} className={cx(styles.operatorBubble, 'selectable')}>
                   {entry.text}
                 </div>
               ),

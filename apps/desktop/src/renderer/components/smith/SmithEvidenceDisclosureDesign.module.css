@@ -161,17 +161,14 @@
   letter-spacing: 0.05em;
 }
 
-.promptPre {
+.promptMarkdown {
   margin: 0;
   padding: var(--s2);
   background: var(--bg-canvas);
   border-radius: var(--r-sm);
   border: 1px solid var(--line);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   color: var(--text);
-  white-space: pre-wrap;
-  word-break: break-all;
   max-height: 200px;
   overflow-y: auto;
 }

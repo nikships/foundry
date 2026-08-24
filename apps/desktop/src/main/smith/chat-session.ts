@@ -28,6 +28,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { isReasoningEffort } from '@shared/reasoning-effort.js';
 import { SMITH_ARTIFACT_VERSION } from '@shared/types.js';
+import { isHiddenVendorText, stripVendorToolEcho } from '@shared/vendor-text.js';
 import type { ReasoningEffort, SmithArtifact } from '@shared/types.js';
 import type {
   SmithChatEntry,
@@ -150,6 +151,19 @@ function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+function visibleTranscript(entries: SmithTranscriptEntry[]): SmithTranscriptEntry[] {
+  return entries.flatMap((entry) => {
+    if (entry.kind !== 'text') return [{ ...entry }];
+    const text = stripVendorToolEcho(entry.text);
+    if (isHiddenVendorText(text) || isHiddenVendorText(entry.text)) return [];
+    return [{ ...entry, text }];
+  });
+}
+
+function isHiddenRestoredText(entry: SmithTranscriptEntry): boolean {
+  return entry.kind === 'text' && isHiddenVendorText(entry.text);
+}
+
 /**
  * One persisted row, restored fail-soft. An artifact from a newer build (or a
  * corrupt one) becomes a readable note rather than a render error or a lost
@@ -268,7 +282,7 @@ export class SmithChatSession {
       activeReasoningEffort: this.activeReasoningEffort,
       running: this.turnActive,
       error: this.lastError,
-      transcript: this.transcript.map((entry) => ({ ...entry })),
+      transcript: visibleTranscript(this.transcript),
     };
   }
 
@@ -495,7 +509,8 @@ export class SmithChatSession {
       if (Array.isArray(raw.transcript)) {
         this.transcript = raw.transcript
           .slice(-MAX_TRANSCRIPT_ENTRIES)
-          .map((entry) => restoreEntry(entry));
+          .map((entry) => restoreEntry(entry))
+          .filter((entry) => !isHiddenRestoredText(entry));
       }
     } catch {
       // A missing or unreadable pointer is a fresh chat, not a failure.

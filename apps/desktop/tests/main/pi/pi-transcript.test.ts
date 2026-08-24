@@ -39,4 +39,35 @@ describe('foldTranscript', () => {
     fold({ type: 'text_delta', messageId: '1', blockIndex: 0, delta: 'Hi' });
     expect(rows[0]!.text).toBe('Hi');
   });
+
+  it('does not open a row for a complete vendor functionCall payload', () => {
+    const { rows, fold } = target();
+    fold({
+      type: 'text_delta',
+      messageId: '1',
+      blockIndex: 0,
+      delta: '{"functionCall":{"name":"smith_readiness"}}',
+    });
+    expect(rows).toHaveLength(0);
+  });
+
+  it('collapses a streamed functionCall payload once the object closes', () => {
+    const { rows, fold } = target();
+    fold({ type: 'text_delta', messageId: '1', blockIndex: 0, delta: 'Got it.\n' });
+    fold({ type: 'text_delta', messageId: '1', blockIndex: 0, delta: '{"functionCall":' });
+    expect(rows[0]!.text).toContain('functionCall');
+    fold({
+      type: 'text_delta',
+      messageId: '1',
+      blockIndex: 0,
+      delta: '{"name":"smith_readiness"}}',
+    });
+    expect(rows[0]!.text).toBe('Got it.');
+  });
+
+  it('strips a Ran-tool narration line from a text row', () => {
+    const { rows, fold } = target();
+    fold({ type: 'text_delta', messageId: '1', blockIndex: 0, delta: 'Ran `smith_readiness`.' });
+    expect(rows).toHaveLength(0);
+  });
 });

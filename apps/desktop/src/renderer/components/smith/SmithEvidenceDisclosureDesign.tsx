@@ -5,6 +5,7 @@
 
 import type { EvidenceDisclosureDef, EvidenceItemDef } from '@shared/types.js';
 import { evidenceSummary, occupancyStatus } from '../../view-models/smith-artifact-view.js';
+import MarkdownText from '../common/MarkdownText.js';
 import { cx } from '../ui/cx.js';
 import styles from './SmithEvidenceDisclosureDesign.module.css';
 
@@ -83,17 +84,17 @@ export function EvidenceDisclosureDesign({
             {evidence.phasePrompt.systemPrompt && (
               <div className={styles.promptField}>
                 <span className={styles.promptLabel}>System Prompt</span>
-                <pre className={cx(styles.promptPre, 'selectable')}>
-                  {evidence.phasePrompt.systemPrompt}
-                </pre>
+                <div className={cx(styles.promptMarkdown, 'selectable')}>
+                  <MarkdownText text={evidence.phasePrompt.systemPrompt} />
+                </div>
               </div>
             )}
             {evidence.phasePrompt.userPrompt && (
               <div className={styles.promptField}>
                 <span className={styles.promptLabel}>User Prompt</span>
-                <pre className={cx(styles.promptPre, 'selectable')}>
-                  {evidence.phasePrompt.userPrompt}
-                </pre>
+                <div className={cx(styles.promptMarkdown, 'selectable')}>
+                  <MarkdownText text={evidence.phasePrompt.userPrompt} />
+                </div>
               </div>
             )}
           </div>

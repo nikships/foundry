@@ -457,6 +457,30 @@ describe('renderer snapshots', () => {
     expect(() => structuredClone(h.session.snapshot())).not.toThrow();
   });
 
+  it('drops a persisted vendor functionCall echo on restore', async () => {
+    const h = harness({ turns: ['Here is the answer.'] });
+    await h.session.send('What happened?');
+    await h.session.dispose();
+    const statePath = join(h.stateDir, 'chat-state.json');
+    const raw = JSON.parse(readFileSync(statePath, 'utf8')) as {
+      transcript: Array<{ id: string; kind: string; text?: string; source: string; at: number }>;
+    };
+    raw.transcript.push({
+      id: 'echo',
+      kind: 'text',
+      text: '{"functionCall":{"name":"smith_readiness"}}',
+      source: 'smith',
+      at: Date.now(),
+    });
+    writeFileSync(statePath, `${JSON.stringify(raw, null, 2)}\n`);
+    const relaunched = h.remake();
+    expect(relaunched.snapshot().transcript.map((row) => row.id)).not.toContain('echo');
+    expect(relaunched.snapshot().transcript.map((row) => rowText(row))).toEqual([
+      'What happened?',
+      'Here is the answer.',
+    ]);
+  });
+
   it('reports a running turn immediately and persists transcript snapshots', async () => {
     const h = harness({ turns: ['', 'after'], stallOnTurns: [0] });
     const parked = h.session.send('Long task');
