@@ -71,6 +71,9 @@ function SplitProjectOption({
     label: string,
   ): React.JSX.Element => (
     <div
+      role="button"
+      tabIndex={action ? 0 : -1}
+      aria-disabled={!action || undefined}
       className={cx(
         styles.splitOptionHalf,
         hoverSide === side && styles.splitOptionHalfActive,
@@ -79,6 +82,13 @@ function SplitProjectOption({
       onMouseEnter={() => setHoverSide(side)}
       onMouseLeave={() => setHoverSide(null)}
       onClick={run(action)}
+      onKeyDown={(e) => {
+        if (!action || (e.key !== 'Enter' && e.key !== ' ')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        close();
+        action();
+      }}
       title={title}
     >
       <PlusIcon />

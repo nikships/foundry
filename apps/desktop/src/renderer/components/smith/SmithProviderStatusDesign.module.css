@@ -95,6 +95,11 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   border: 1px solid transparent;
+  /* Provider state flips ease in place, like the shared .badge. */
+  transition:
+    background-color var(--normal) var(--ease),
+    color var(--normal) var(--ease),
+    border-color var(--fast) var(--ease);
 }
 
 .stateBadgeOn {
@@ -170,6 +175,11 @@
   text-transform: uppercase;
   border: 1px solid transparent;
   flex: none;
+  /* Connection state changes ease in place, like the shared .badge. */
+  transition:
+    background-color var(--normal) var(--ease),
+    color var(--normal) var(--ease),
+    border-color var(--fast) var(--ease);
 }
 
 .connectionBadge_connected {
@@ -201,6 +211,8 @@
   font-size: 10px;
   color: var(--accent);
   flex: none;
+  /* An OAuth round-trip in flight reads as active, not stalled. */
+  animation: pulse 1.4s var(--ease) infinite;
 }
 
 .keyBadge {

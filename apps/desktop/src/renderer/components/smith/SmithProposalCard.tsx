@@ -1,6 +1,6 @@
 /** Inline approval card for entity saves and fixed privileged Smith actions. */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   AgentDef,
   EnvelopeDef,
@@ -185,6 +185,25 @@ function PrivateDisplayCard({
   onChange: (next: SmithPrivateDisplay | null) => void;
 }): React.JSX.Element {
   const encoded = JSON.stringify(display.payload);
+  /** Transient acknowledgment that the pairing payload reached the clipboard. */
+  const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    },
+    [],
+  );
+
+  const copyPayload = (): void => {
+    void navigator.clipboard.writeText(encoded).then(() => {
+      setCopied(true);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopied(false), 1600);
+    });
+  };
+
   return (
     <section className={styles.card} data-testid="smith-private-display">
       <header className={styles.header}>
@@ -196,9 +215,7 @@ function PrivateDisplayCard({
         <QrCode value={encoded} size={200} title="Companion pairing QR code" />
       </div>
       <footer className={styles.footer}>
-        <Button onClick={() => void navigator.clipboard.writeText(encoded)}>
-          Copy pairing code
-        </Button>
+        <Button onClick={copyPayload}>{copied ? 'Copied ✓' : 'Copy pairing code'}</Button>
         <Button
           onClick={() => {
             void api.companion.pairingPayload({ refresh: true }).then((payload) => {

@@ -225,11 +225,19 @@
   border: 1px solid var(--line);
   color: var(--text);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition:
+    color var(--fast) var(--ease),
+    background var(--fast) var(--ease),
+    border-color var(--fast) var(--ease),
+    transform var(--fast) var(--ease);
 }
 
 .openSettingsBtn:hover {
   background: var(--bg-raised);
   border-color: var(--line-strong);
   color: var(--text-bright);
+}
+
+.openSettingsBtn:active {
+  transform: translateY(1px);
 }

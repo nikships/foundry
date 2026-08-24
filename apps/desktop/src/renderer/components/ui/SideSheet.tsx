@@ -1,13 +1,21 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { useEscapeToClose } from '../../hooks/useEscapeToClose.js';
+import { cx } from './cx.js';
 import styles from './SideSheet.module.css';
+
+/** One frame past --fast (120ms): how long the exit animation runs before the
+ * sheet actually unmounts. */
+const LEAVE_MS = 140;
 
 /**
  * The one slide-over surface on a workbench screen: deep editing opens here so
  * the board behind it stays whole. Escape and a backdrop click both dismiss;
  * focus lands on the close control so keyboard users are not stranded behind
  * the panel.
+ *
+ * The slide is symmetric: when `open` flips false the sheet plays its exit and
+ * only then unmounts, so every dismissal path animates identically.
  */
 export function SideSheet({
   open,
@@ -27,6 +35,24 @@ export function SideSheet({
   children: ReactNode;
 }): React.JSX.Element | null {
   const closeRef = useRef<HTMLButtonElement>(null);
+  /** False once the exit animation has finished and nothing should render. */
+  const [mounted, setMounted] = useState(open);
+  /** True while the exit animation runs. */
+  const [leaving, setLeaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      setLeaving(false);
+      return;
+    }
+    setLeaving(true);
+    const t = setTimeout(() => {
+      setLeaving(false);
+      setMounted(false);
+    }, LEAVE_MS);
+    return () => clearTimeout(t);
+  }, [open]);
 
   useEscapeToClose(onClose, open);
 
@@ -37,16 +63,23 @@ export function SideSheet({
     if (open) closeRef.current?.focus({ preventScroll: true });
   }, [open]);
 
-  if (!open) return null;
+  if (!mounted) return null;
+
+  const stop = (e: MouseEvent): void => e.stopPropagation();
 
   return (
-    <div className={styles.overlay} role="presentation" onClick={onClose}>
+    <div
+      className={cx(styles.overlay, leaving && styles.overlayLeaving)}
+      role="presentation"
+      onClick={onClose}
+    >
       <aside
-        className={styles.panel}
+        className={cx(styles.panel, leaving && styles.panelLeaving)}
         role="dialog"
         aria-modal="true"
         aria-label={label}
-        onClick={(e) => e.stopPropagation()}
+        aria-hidden={leaving || undefined}
+        onClick={stop}
       >
         <header className={styles.header}>
           <div className={styles.titleGroup}>

@@ -10,7 +10,23 @@
   color: var(--text);
   font-size: var(--text-sm);
   z-index: 80;
-  animation: fade-in 140ms var(--ease);
+  animation: fade-in var(--fast) var(--ease);
+}
+/* Second half of the toast's life: it hides before it unmounts, and exit is
+   faster than entrance. `forwards` holds the hidden frame until React drops it. */
+.toastLeaving {
+  animation: toast-out var(--fast) var(--ease) forwards;
+}
+
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: translateX(-50%);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-50%) translateY(4px);
+  }
 }
 .shell {
   position: relative;
@@ -56,6 +72,27 @@
   display: flex;
   flex-direction: column;
   background: var(--bg-base);
+}
+/* Hosts one screen at a time and re-keys on navigation so each view arrives
+   with the same quick entrance instead of hard-swapping. Opacity only: a
+   transform here would make this box the containing block for the screens'
+   fixed-positioned palettes and overlays while the animation runs. */
+.screenHost {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  animation: screen-in var(--fast) var(--ease);
+}
+
+@keyframes screen-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 .loading {
   flex: 1;

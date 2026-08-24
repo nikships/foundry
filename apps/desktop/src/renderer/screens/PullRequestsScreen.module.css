@@ -68,6 +68,8 @@
   background: var(--bg-panel);
   border: 1px solid var(--line);
   border-radius: var(--r);
+  /* Settles into the list like the runs on the Runs screen. */
+  animation: fade-in var(--normal) var(--ease);
   transition:
     background var(--fast) var(--ease),
     border-color var(--fast) var(--ease);

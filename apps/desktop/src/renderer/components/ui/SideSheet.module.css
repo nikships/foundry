@@ -11,6 +11,22 @@
   background: var(--overlay);
   animation: fade var(--fast) var(--ease);
 }
+/* Exit half of the overlay's life: fade out faster than the entrance, hold
+   the last frame until React drops the sheet, and stop eating clicks while
+   the exit plays. */
+.overlayLeaving {
+  pointer-events: none;
+  animation: fade-out var(--fast) var(--ease) forwards;
+}
+
+@keyframes fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
 
 @keyframes fade {
   from {
@@ -44,6 +60,21 @@
   }
   to {
     transform: translateX(0);
+  }
+}
+
+/* Mirror of slideIn, quicker than the entrance per the motion tokens' rule
+   that exits outrun arrivals. */
+.panelLeaving {
+  animation: slideOut var(--fast) var(--ease) forwards;
+}
+
+@keyframes slideOut {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
   }
 }
 

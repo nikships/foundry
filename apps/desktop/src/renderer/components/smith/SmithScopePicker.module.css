@@ -21,4 +21,9 @@
   color: var(--text);
   font: inherit;
   font-size: var(--text-xs);
+  transition: border-color var(--fast) var(--ease);
+}
+
+.select:hover:not(:disabled) {
+  border-color: var(--line-strong);
 }

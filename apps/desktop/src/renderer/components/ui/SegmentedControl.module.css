@@ -22,7 +22,9 @@
   white-space: nowrap;
   transition:
     color var(--fast) var(--ease),
-    background var(--fast) var(--ease);
+    background var(--fast) var(--ease),
+    border-color var(--fast) var(--ease),
+    transform var(--fast) var(--ease);
 }
 .mode:hover {
   color: var(--text);
@@ -31,4 +33,7 @@
   background: var(--bg-active);
   border-color: var(--line);
   color: var(--text);
+}
+.mode:active:not(.on) {
+  transform: translateY(1px);
 }

@@ -102,7 +102,9 @@
 .meterFill {
   height: 100%;
   border-radius: 3px;
-  transition: width 0.2s ease;
+  transition:
+    width var(--normal) var(--ease),
+    background-color var(--normal) var(--ease);
 }
 
 .meterFill_ok {
@@ -131,6 +133,11 @@
   font-size: var(--text-xs);
   font-weight: 600;
   color: var(--text);
+  transition: color var(--fast) var(--ease);
+}
+
+.promptSummary:hover {
+  color: var(--accent-bright);
 }
 
 .promptBody {
@@ -193,6 +200,11 @@
   font-size: var(--text-xs);
   font-weight: 600;
   color: var(--text);
+  transition: color var(--fast) var(--ease);
+}
+
+.itemSummary:hover {
+  color: var(--accent-bright);
 }
 
 .itemMeta {

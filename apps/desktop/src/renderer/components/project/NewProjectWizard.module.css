@@ -63,6 +63,11 @@
   font-size: 10px;
   font-family: var(--font-mono);
   flex: none;
+  /* The active step's fill eases in with the rail label's recolor. */
+  transition:
+    background-color var(--fast) var(--ease),
+    border-color var(--fast) var(--ease),
+    color var(--fast) var(--ease);
 }
 
 .railStep.on .railNum {
@@ -196,6 +201,8 @@
   color: var(--red);
   font-size: var(--text-sm);
   line-height: var(--leading);
+  /* Errors surface, they don't flash. */
+  animation: fade-in var(--fast) var(--ease);
 }
 
 .foot {

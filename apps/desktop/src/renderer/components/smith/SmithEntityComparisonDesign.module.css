@@ -54,7 +54,8 @@
   cursor: pointer;
   transition:
     background var(--fast) var(--ease),
-    color var(--fast) var(--ease);
+    color var(--fast) var(--ease),
+    transform var(--fast) var(--ease);
 }
 
 .compact .toggleButton {
@@ -64,6 +65,10 @@
 
 .toggleButton:hover {
   color: var(--text);
+}
+
+.toggleButton:active {
+  transform: translateY(1px);
 }
 
 .toggleButton:focus-visible {

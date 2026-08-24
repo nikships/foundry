@@ -226,6 +226,8 @@
   font: inherit;
   text-align: left;
   cursor: default;
+  /* A newly finished run settles into the list instead of appearing. */
+  animation: fade-in var(--normal) var(--ease);
   transition:
     background var(--fast) var(--ease),
     border-color var(--fast) var(--ease);

@@ -151,8 +151,30 @@
   overscroll-behavior: contain;
   padding: clamp(20px, 3.4vh, 40px) clamp(28px, 3.2vw, 56px) var(--nav-clear, 76px);
 }
+
+/* Same entrance choreography as the other onboarding steps: head first, then
+   each section a beat later. `both` holds the hidden frame during its delay. */
 .ob-project-head {
   padding-bottom: var(--s2);
+  animation: ob-project-rise var(--slow) var(--ease) both;
+}
+.ob-project-section {
+  margin-top: var(--s5);
+  padding-top: var(--s5);
+  border-top: 1px solid var(--line);
+  animation: ob-project-rise var(--slow) var(--ease) both;
+  animation-delay: calc(80ms + var(--section, 0) * 60ms);
+}
+
+@keyframes ob-project-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 .ob-project-eyebrow {
   display: flex;

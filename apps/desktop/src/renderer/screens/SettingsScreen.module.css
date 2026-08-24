@@ -77,6 +77,19 @@
   background: var(--bg-panel);
   border: 1px solid var(--line-strong);
   border-radius: var(--r);
+  /* Appears with the same quick drop as every other menu. */
+  animation: searchpop-in var(--fast) var(--ease);
+}
+
+@keyframes searchpop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 .searchItem {
   width: 100%;
@@ -92,6 +105,9 @@
   font: inherit;
   text-align: left;
   cursor: default;
+  transition:
+    background var(--fast) var(--ease),
+    color var(--fast) var(--ease);
 }
 .searchItem:hover {
   background: var(--bg-hover);
@@ -219,7 +235,7 @@
   padding-top: 14vh;
   background: var(--overlay);
   backdrop-filter: blur(3px);
-  animation: fade-in 140ms var(--ease);
+  animation: fade-in var(--fast) var(--ease);
 }
 @keyframes pal-in {
   from {
@@ -239,7 +255,7 @@
   border: 1px solid var(--line-strong);
   border-radius: var(--r-xl);
   overflow: hidden;
-  animation: pal-in 160ms var(--ease);
+  animation: pal-in var(--normal) var(--ease);
 }
 .palRow {
   display: flex;

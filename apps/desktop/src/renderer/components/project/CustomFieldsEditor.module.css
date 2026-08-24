@@ -116,12 +116,20 @@
   color: var(--accent);
 }
 
+/* Keyboard focus on the role="switch" control stays visible. */
+.switch:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .switch-knob {
   width: 16px;
   height: 16px;
   border-radius: var(--r-full);
   background: var(--text-faint);
-  transition: background var(--fast) var(--ease);
+  transition:
+    background var(--fast) var(--ease),
+    transform var(--fast) var(--ease);
 }
 
 .switch.on .switch-knob {

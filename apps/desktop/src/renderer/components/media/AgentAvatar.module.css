@@ -7,6 +7,12 @@
   overflow: hidden;
   flex: none;
   font-weight: 600;
+  /* Avatar palette (border, tint, monogram) is set inline per agent, so a
+     roster switch or picker selection eases instead of snapping. */
+  transition:
+    border-color var(--fast) var(--ease),
+    background-color var(--fast) var(--ease),
+    color var(--fast) var(--ease);
 }
 .avatar.portrait {
   box-shadow:

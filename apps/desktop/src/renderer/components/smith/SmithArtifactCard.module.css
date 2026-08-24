@@ -13,6 +13,8 @@
   background: var(--bg-raised);
   border: 1px solid var(--line);
   min-width: 0;
+  /* Arrives with the turns around it, quieter than the pending proposal. */
+  animation: fade-in var(--fast) var(--ease);
 }
 
 .header {

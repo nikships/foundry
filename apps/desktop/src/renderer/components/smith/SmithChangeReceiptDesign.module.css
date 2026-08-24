@@ -79,6 +79,11 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   border: 1px solid transparent;
+  /* Status flips ease in place, like the shared .badge. */
+  transition:
+    background-color var(--normal) var(--ease),
+    color var(--normal) var(--ease),
+    border-color var(--fast) var(--ease);
 }
 
 .statusBadge_success {
@@ -236,6 +241,11 @@
   color: var(--text-dim);
   cursor: pointer;
   user-select: none;
+  transition: color var(--fast) var(--ease);
+}
+
+.outputSummary:hover {
+  color: var(--accent-bright);
 }
 
 .outputSummary:focus-visible {

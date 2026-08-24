@@ -183,7 +183,10 @@ export default function ProjectScreen(): React.JSX.Element {
         </header>
 
         {/* engineer */}
-        <section className={styles.obProjectSection}>
+        <section
+          className={styles.obProjectSection}
+          style={{ '--section': 0 } as React.CSSProperties}
+        >
           <div className={styles.obProjectSectionHead}>
             <h2 className={styles.obProjectSectionTitle}>Your name</h2>
             <span className={styles.obProjectSectionMeta}>recorded on every run</span>
@@ -202,7 +205,10 @@ export default function ProjectScreen(): React.JSX.Element {
         </section>
 
         {/* projects */}
-        <section className={styles.obProjectSection}>
+        <section
+          className={styles.obProjectSection}
+          style={{ '--section': 1 } as React.CSSProperties}
+        >
           <div className={styles.obProjectSectionHead}>
             <h2 className={styles.obProjectSectionTitle}>Repository</h2>
             <span className={styles.obProjectSectionMeta}>

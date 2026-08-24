@@ -31,6 +31,8 @@
   line-height: var(--leading);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  /* A sent message lands instead of appearing. */
+  animation: fade-in var(--fast) var(--ease);
 }
 
 .compact .operatorBubble {
@@ -42,6 +44,8 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  /* Each arriving turn eases in; rows below stream in individually. */
+  animation: fade-in var(--fast) var(--ease);
 }
 
 /* The readiness sub-agent's turns: a bordered block with its own label, so it
@@ -55,6 +59,8 @@
   background: var(--bg-raised);
   border: 1px solid var(--line);
   border-left: 2px solid var(--accent);
+  /* Arrives like any other turn; its rows stream in below. */
+  animation: fade-in var(--fast) var(--ease);
 }
 
 .compact .readinessBlock {
@@ -90,6 +96,9 @@
   line-height: var(--leading);
   color: var(--text);
   min-width: 0;
+  /* Streamed rows arrive individually; a stable key per entry means this only
+     plays once per row, not on every token. */
+  animation: fade-in var(--fast) var(--ease);
 }
 
 .compact .line {
@@ -144,15 +153,7 @@
 }
 
 .pulse {
-  animation: smith-transcript-pulse 1.4s var(--ease) infinite;
-}
-
-@keyframes smith-transcript-pulse {
-  0%,
-  100% {
-    opacity: 0.35;
-  }
-  50% {
-    opacity: 1;
-  }
+  /* The global pulse keyframes from tokens-base.css; overrides .line's entrance
+     animation on the running indicator. */
+  animation: pulse 1.4s var(--ease) infinite;
 }
