@@ -25,7 +25,12 @@ import type {
   CompanionPairResult,
 } from '../../../src/shared/companion.js';
 import type { EventPage, RunDetail, SmithChatState } from '../../../src/shared/ipc-contract.js';
-import type { SmithProposal, SmithProposalAnswerResult } from '../../../src/shared/types.js';
+import type {
+  ModelInfo,
+  ReasoningEffort,
+  SmithProposal,
+  SmithProposalAnswerResult,
+} from '../../../src/shared/types.js';
 import type {
   AgentDef,
   AppSettings,
@@ -195,6 +200,17 @@ class TestSmith {
   cancelled: Array<string | undefined> = [];
   wiped: Array<string | undefined> = [];
   answered: Array<{ id: string; approved: boolean }> = [];
+  models: ModelInfo[] = [
+    {
+      id: 'scripted/alpha',
+      displayName: 'Alpha',
+      provider: 'scripted',
+      supportedReasoningEfforts: ['low', 'medium', 'high'],
+      defaultReasoningEffort: 'medium',
+      isCustom: true,
+      deprecated: false,
+    },
+  ];
   private readonly chats = new Map<string, TestSmithChat>();
   proposals: SmithProposal[] = [];
 
@@ -210,6 +226,8 @@ class TestSmith {
 
 class TestSmithChat {
   running = false;
+  model = 'inherit';
+  reasoningEffort: ReasoningEffort = 'medium';
   transcript: SmithChatState['transcript'] = [];
 
   constructor(
@@ -220,10 +238,10 @@ class TestSmithChat {
   snapshot(): SmithChatState {
     return {
       ...(this.projectId ? { projectId: this.projectId } : {}),
-      model: 'scripted',
-      activeModel: 'scripted',
-      reasoningEffort: 'medium',
-      activeReasoningEffort: 'medium',
+      model: this.model,
+      activeModel: this.model === 'inherit' ? 'scripted' : this.model,
+      reasoningEffort: this.reasoningEffort,
+      activeReasoningEffort: this.reasoningEffort,
       running: this.running,
       error: null,
       transcript: this.transcript.map((entry) => ({ ...entry })),
@@ -263,6 +281,15 @@ class TestSmithChat {
     this.owner.wiped.push(this.projectId);
     this.transcript = [];
     this.running = false;
+    this.reasoningEffort = 'medium';
+  }
+
+  async setModel(model: string): Promise<void> {
+    this.model = model;
+  }
+
+  async setReasoningEffort(effort: ReasoningEffort): Promise<void> {
+    this.reasoningEffort = effort;
   }
 }
 
@@ -320,6 +347,7 @@ beforeEach(async () => {
           smith.answered.push({ id, approved: answer.approved });
           return { ok: true };
         },
+        models: async () => smith.models,
       },
       bindHost: '127.0.0.1',
       gh: { bin: gh.bin },
@@ -503,6 +531,9 @@ describe('token auth, fail closed', () => {
     ['POST', '/v1/smith/new'],
     ['GET', '/v1/smith/proposals'],
     ['POST', '/v1/smith/proposals/answer'],
+    ['GET', '/v1/smith/models'],
+    ['POST', '/v1/smith/model'],
+    ['POST', '/v1/smith/effort'],
   ])('rejects a missing token on %s %s', async (method, path) => {
     const res = await fetch(`${h.origin()}${path}`, { method });
     expect(res.status).toBe(401);
@@ -949,6 +980,41 @@ describe('smith chat', () => {
     expect(answered.status).toBe(200);
     expect(((await answered.json()) as SmithProposalAnswerResult).ok).toBe(true);
     expect(h.smith.answered).toEqual([{ id: 'prop_1', approved: true }]);
+  });
+
+  it('lists models and switches model and effort on the same chat', async () => {
+    const paired = await pairPhone();
+    const listed = await authed(paired.token, '/v1/smith/models');
+    expect(listed.status).toBe(200);
+    const models = (await listed.json()) as ModelInfo[];
+    expect(models.map((model) => model.id)).toEqual(['scripted/alpha']);
+
+    const setModel = await authed(paired.token, '/v1/smith/model', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'scripted/alpha' }),
+    });
+    expect(setModel.status).toBe(200);
+    expect(((await setModel.json()) as SmithChatState).model).toBe('scripted/alpha');
+
+    const setEffort = await authed(paired.token, '/v1/smith/effort', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ effort: 'high' }),
+    });
+    expect(setEffort.status).toBe(200);
+    expect(((await setEffort.json()) as SmithChatState).reasoningEffort).toBe('high');
+  });
+
+  it('refuses an unknown reasoning effort', async () => {
+    const paired = await pairPhone();
+    const res = await authed(paired.token, '/v1/smith/effort', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ effort: 'ludicrous' }),
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as CompanionError).error.code).toBe('bad_request');
   });
 
   it('refuses a send without text', async () => {

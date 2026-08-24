@@ -23,14 +23,17 @@ import type {
   AppSettings,
   EnvelopeDef,
   InterruptAnswer,
+  ModelInfo,
   PendingInterrupt,
   PipelineDef,
   ProjectDef,
+  ReasoningEffort,
   SmithProposal,
   SmithProposalAnswer,
   SmithProposalAnswerResult,
   StartRunInput,
 } from '@shared/types.js';
+import { isReasoningEffort } from '@shared/reasoning-effort.js';
 import type { SmithChatState, SmithScreenContext } from '@shared/ipc-contract.js';
 import type {
   CompanionDevice,
@@ -112,6 +115,8 @@ export interface CompanionSmithDeps {
   chat(projectId?: string): CompanionSmithChat | null;
   listProposals(): SmithProposal[];
   answerProposal(id: string, answer: SmithProposalAnswer): Promise<SmithProposalAnswerResult>;
+  /** Same catalog the desktop picker reads. Empty when no provider is connected. */
+  models(): Promise<ModelInfo[]>;
 }
 
 /** The chat verbs a phone needs; matches `SmithChatSession` without importing it. */
@@ -120,6 +125,8 @@ export interface CompanionSmithChat {
   send(text: string, ctx?: { screen?: SmithScreenContext }): Promise<unknown>;
   cancel(): Promise<void>;
   newChat(): Promise<void>;
+  setModel(model: string): Promise<void>;
+  setReasoningEffort(effort: ReasoningEffort): Promise<void>;
 }
 
 const MAX_BODY_BYTES = 256 * 1024;
@@ -543,6 +550,9 @@ export class CompanionHost {
     if (method === 'GET' && rest[0] === 'proposals' && rest.length === 1) {
       return smith.listProposals();
     }
+    if (method === 'GET' && rest[0] === 'models' && rest.length === 1) {
+      return smith.models();
+    }
     if (method === 'POST' && rest[0] === 'send' && rest.length === 1) {
       return this.smithSend(smith, await readJson(req));
     }
@@ -558,6 +568,12 @@ export class CompanionHost {
     }
     if (method === 'POST' && rest[0] === 'proposals' && rest[1] === 'answer' && rest.length === 2) {
       return this.smithAnswer(smith, await readJson(req));
+    }
+    if (method === 'POST' && rest[0] === 'model' && rest.length === 1) {
+      return this.smithSetModel(smith, await readJson(req));
+    }
+    if (method === 'POST' && rest[0] === 'effort' && rest.length === 1) {
+      return this.smithSetEffort(smith, await readJson(req));
     }
 
     throw new RouteError(404, 'not_found', 'no such route');
@@ -591,6 +607,26 @@ export class CompanionHost {
     if (typeof body.answer.note === 'string') answer.note = body.answer.note;
     if (typeof body.answer.secret === 'string') answer.secret = body.answer.secret;
     return smith.answerProposal(body.id, answer);
+  }
+
+  private async smithSetModel(smith: CompanionSmithDeps, raw: unknown): Promise<SmithChatState> {
+    const body = raw as Partial<{ projectId?: string; model: string }>;
+    if (typeof body.model !== 'string' || !body.model.trim()) {
+      throw new RouteError(400, 'bad_request', 'model is required');
+    }
+    const chat = this.smithChat(smith, optionalProjectId(body.projectId));
+    await chat.setModel(body.model.trim());
+    return chat.snapshot();
+  }
+
+  private async smithSetEffort(smith: CompanionSmithDeps, raw: unknown): Promise<SmithChatState> {
+    const body = raw as Partial<{ projectId?: string; effort: string }>;
+    if (!isReasoningEffort(body.effort)) {
+      throw new RouteError(400, 'bad_request', 'a known reasoning effort is required');
+    }
+    const chat = this.smithChat(smith, optionalProjectId(body.projectId));
+    await chat.setReasoningEffort(body.effort);
+    return chat.snapshot();
   }
 
   private smithChat(smith: CompanionSmithDeps, projectId: string | undefined): CompanionSmithChat {

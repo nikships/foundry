@@ -10,7 +10,9 @@
 import type {
   GhStatus,
   InterruptAnswer,
+  ModelInfo,
   PendingInterrupt,
+  ReasoningEffort,
   RunRow,
   SmithProposal,
   SmithProposalAnswer,
@@ -31,7 +33,7 @@ import type {
  * it so a phone knows before pairing, and the pair exchange enforces it so a
  * stale client gets a readable refusal instead of a half-working session.
  */
-export const COMPANION_PROTOCOL_VERSION = 3;
+export const COMPANION_PROTOCOL_VERSION = 4;
 
 /**
  * What the desktop encodes in the pairing QR (FOU-85 renders it). Everything a
@@ -169,6 +171,18 @@ export interface CompanionSmithProposalAnswerRequest {
   answer: SmithProposalAnswer;
 }
 
+/** Body of `POST /v1/smith/model`. `inherit` means “not chosen”. */
+export interface CompanionSmithModelRequest {
+  projectId?: string;
+  model: string;
+}
+
+/** Body of `POST /v1/smith/effort`. */
+export interface CompanionSmithEffortRequest {
+  projectId?: string;
+  effort: ReasoningEffort;
+}
+
 /**
  * What `createRunPr` would send to GitHub if title/body were left empty.
  * Same formula as the desktop "Open PR…" form (`manualPrDraft`).
@@ -219,6 +233,10 @@ export interface CompanionRoutes {
     request: CompanionSmithProposalAnswerRequest;
     response: SmithProposalAnswerResult;
   };
+  /** Same catalog the desktop Smith picker reads, minus hidden models. */
+  'GET /v1/smith/models': { response: ModelInfo[] };
+  'POST /v1/smith/model': { request: CompanionSmithModelRequest; response: SmithChatState };
+  'POST /v1/smith/effort': { request: CompanionSmithEffortRequest; response: SmithChatState };
   'POST /v1/unpair': { response: { ok: boolean } };
 }
 

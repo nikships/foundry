@@ -48,6 +48,7 @@ data class CompanionUiState(
     val prDraftRunId: String? = null,
     val smithChat: SmithChatState? = null,
     val smithProposal: SmithProposal? = null,
+    val smithModels: List<SmithModelInfo> = emptyList(),
     val smithSending: Boolean = false,
     val isNotifyOnSettleEnabled: Boolean = true,
     val isPairing: Boolean = false,
@@ -362,6 +363,7 @@ class CompanionViewModel(
                     prDraftRunId = null,
                     smithChat = null,
                     smithProposal = null,
+                    smithModels = emptyList(),
                     smithSending = false,
                     errorMessage = null
                 )
@@ -543,6 +545,37 @@ class CompanionViewModel(
                 _uiState.update { current ->
                     current.copy(smithProposal = proposals.firstOrNull { it.projectId == scope || it.projectId.isNullOrBlank() })
                 }
+            }
+            if (_uiState.value.smithModels.isEmpty()) {
+                repository.getSmithModels().onSuccess { models ->
+                    _uiState.update { it.copy(smithModels = models) }
+                }
+            }
+        }
+    }
+
+    fun setSmithModel(model: String) {
+        val trimmed = model.trim()
+        if (trimmed.isBlank()) return
+        val projectId = _uiState.value.selectedProjectId.takeIf { it.isNotBlank() }
+        viewModelScope.launch {
+            repository.setSmithModel(projectId, trimmed).onSuccess { chat ->
+                _uiState.update { it.copy(smithChat = chat) }
+            }.onFailure { err ->
+                _uiState.update { it.copy(errorMessage = err.message ?: "Could not switch model") }
+            }
+        }
+    }
+
+    fun setSmithEffort(effort: String) {
+        val trimmed = effort.trim()
+        if (trimmed.isBlank()) return
+        val projectId = _uiState.value.selectedProjectId.takeIf { it.isNotBlank() }
+        viewModelScope.launch {
+            repository.setSmithEffort(projectId, trimmed).onSuccess { chat ->
+                _uiState.update { it.copy(smithChat = chat) }
+            }.onFailure { err ->
+                _uiState.update { it.copy(errorMessage = err.message ?: "Could not switch reasoning") }
             }
         }
     }

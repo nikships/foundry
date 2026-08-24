@@ -3,7 +3,7 @@ package com.foundry.companion.data.model
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 
-const val COMPANION_PROTOCOL_VERSION = 3
+const val COMPANION_PROTOCOL_VERSION = 4
 
 @Serializable
 data class CompanionPairingPayload(
@@ -454,6 +454,32 @@ data class SmithTranscriptEntry(
             ?: artifact?.stringOrNull("summary")
             ?: artifact?.stringOrNull("detail").orEmpty()
 }
+
+@Serializable
+data class SmithModelInfo(
+    val id: String,
+    val displayName: String = "",
+    val provider: String = "",
+    val supportedReasoningEfforts: List<String> = emptyList(),
+    val defaultReasoningEffort: String = "medium",
+    val isCustom: Boolean = false,
+    val deprecated: Boolean = false,
+    val contextWindow: Long? = null
+) {
+    val label: String get() = displayName.ifBlank { id.substringAfterLast('/') }
+}
+
+@Serializable
+data class SmithModelRequest(
+    val projectId: String? = null,
+    val model: String
+)
+
+@Serializable
+data class SmithEffortRequest(
+    val projectId: String? = null,
+    val effort: String
+)
 
 @Serializable
 data class SmithSendRequest(

@@ -550,6 +550,63 @@ class HttpCompanionRepository(
         }
     }
 
+    override suspend fun getSmithModels(): Result<List<SmithModelInfo>> = withContext(Dispatchers.IO) {
+        try {
+            val request = authenticatedRequestBuilder("/v1/smith/models").get().build()
+            val response = client.newCall(request).execute()
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
+            consecutiveFailures = 0
+            Result.success(
+                json.decodeFromString(
+                    kotlinx.serialization.builtins.ListSerializer(SmithModelInfo.serializer()),
+                    body
+                )
+            )
+        } catch (e: Exception) {
+            handleNetworkError(e)
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun setSmithModel(projectId: String?, model: String): Result<SmithChatState> =
+        withContext(Dispatchers.IO) {
+            try {
+                val reqBody = json.encodeToString(
+                    SmithModelRequest.serializer(),
+                    SmithModelRequest(projectId = projectId?.takeIf { it.isNotBlank() }, model = model)
+                ).toRequestBody(jsonMediaType)
+                val request = authenticatedRequestBuilder("/v1/smith/model").post(reqBody).build()
+                val response = client.newCall(request).execute()
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
+                consecutiveFailures = 0
+                Result.success(json.decodeFromString(SmithChatState.serializer(), body))
+            } catch (e: Exception) {
+                handleNetworkError(e)
+                Result.failure(e)
+            }
+        }
+
+    override suspend fun setSmithEffort(projectId: String?, effort: String): Result<SmithChatState> =
+        withContext(Dispatchers.IO) {
+            try {
+                val reqBody = json.encodeToString(
+                    SmithEffortRequest.serializer(),
+                    SmithEffortRequest(projectId = projectId?.takeIf { it.isNotBlank() }, effort = effort)
+                ).toRequestBody(jsonMediaType)
+                val request = authenticatedRequestBuilder("/v1/smith/effort").post(reqBody).build()
+                val response = client.newCall(request).execute()
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
+                consecutiveFailures = 0
+                Result.success(json.decodeFromString(SmithChatState.serializer(), body))
+            } catch (e: Exception) {
+                handleNetworkError(e)
+                Result.failure(e)
+            }
+        }
+
     override suspend fun retryConnection() {
         val session = _activeSession.value ?: return
         _connectionStatus.value = ConnectionStatus.Reconnecting(session.desktopName, session.hostOrigin)
