@@ -134,7 +134,7 @@ export function planCorrection(issues: ValidationIssue[]): string {
   ].join('\n');
 }
 
-const synthesizedAgentSchema = z.object({
+export const synthesizedAgentSchema = z.object({
   name: z
     .string()
     .min(1)
@@ -148,6 +148,25 @@ const synthesizedAgentSchema = z.object({
   reasoningEffort: z.enum(REASONING_EFFORTS).optional(),
   toolProfile: z.enum(['full', 'read-only']).optional(),
 });
+
+/** Adds the engine-owned fields the Orchestrator never chooses. */
+export function hydrateSynthesizedAgents(
+  agents: z.infer<typeof synthesizedAgentSchema>[],
+  colorOffset = 0,
+): AgentDef[] {
+  return agents.map((agent, index) => ({
+    name: agent.name,
+    purpose: agent.purpose,
+    model: agent.model ?? 'inherit',
+    reasoningEffort: agent.reasoningEffort ?? 'medium',
+    systemPrompt: agent.systemPrompt,
+    userPrompt: agent.userPrompt,
+    writes: agent.writes,
+    envelope: agent.envelope,
+    ...(agent.toolProfile ? { toolProfile: agent.toolProfile } : {}),
+    color: SYNTH_COLORS[(colorOffset + index) % SYNTH_COLORS.length]!,
+  }));
+}
 
 const planReplySchema = z.object({
   refinedRequest: z.string().min(1, 'the plan must rewrite the request into a full brief'),
@@ -213,18 +232,7 @@ export function parsePlanReply(text: string, planId: string): PlanParseResult {
     };
   }
 
-  const agents: AgentDef[] = parsed.data.agents.map((a, index) => ({
-    name: a.name,
-    purpose: a.purpose,
-    model: a.model ?? 'inherit',
-    reasoningEffort: a.reasoningEffort ?? 'medium',
-    systemPrompt: a.systemPrompt,
-    userPrompt: a.userPrompt,
-    writes: a.writes,
-    envelope: a.envelope,
-    ...(a.toolProfile ? { toolProfile: a.toolProfile } : {}),
-    color: SYNTH_COLORS[index % SYNTH_COLORS.length]!,
-  }));
+  const agents = hydrateSynthesizedAgents(parsed.data.agents);
 
   return {
     ok: true,

@@ -28,6 +28,7 @@ import { appDbPath, appRunsDir, openDb, projectDbPath, projectRunsDir } from '..
 import { Tracer } from '../trace/tracer.js';
 import { Executor } from './executor.js';
 import { healingSupport } from './healing.js';
+import { replanningSupport } from '../orchestrator/replan.js';
 import { commandMatches, isAlive, killRun, terminate } from '../system/procs.js';
 import type { BridgeTrace } from '../bridge/service.js';
 import type { OneShotFactory } from '../pi/oneshot.js';
@@ -195,7 +196,9 @@ export class RunRegistry extends EventEmitter {
       return { ok: false, detail: 'only a rejected or failed run can be continued' };
     }
     if (run.merged) return { ok: false, detail: 'a merged run cannot be continued' };
-    const failed = tracer.phases(input.runId).find((phase) => phase.status === 'fail');
+    const failed = [...tracer.phases(input.runId)]
+      .reverse()
+      .find((phase) => phase.status === 'fail');
     if (!failed) return { ok: false, detail: 'this run has no failed phase to continue' };
     if (run.worktreePath && !existsSync(run.worktreePath)) {
       return { ok: false, detail: 'this run’s worktree is no longer available' };
@@ -204,8 +207,19 @@ export class RunRegistry extends EventEmitter {
     if (!pipeline?.phases?.length || pipeline.id !== run.pipelineId) {
       return { ok: false, detail: 'this run’s saved pipeline is no longer available' };
     }
+    const plan = tracer.runPlan(input.runId);
+    const agents = plan
+      ? [
+          ...input.agents,
+          ...plan.agents.filter((agent) => !input.agents.some((a) => a.name === agent.name)),
+        ]
+      : input.agents;
     const request = tracer.readRunFile(input.runId, 'request.md') ?? run.request;
-    const executor = this.executorFor({ ...input, pipeline, request }, input.runId, tracer);
+    const executor = this.executorFor(
+      { ...input, pipeline, request, agents, plan },
+      input.runId,
+      tracer,
+    );
 
     this.launch(input.project, input.runId, tracer, executor, 'resume');
     return { ok: true, detail: `Continuing from “${failed.name}”…` };
@@ -222,6 +236,14 @@ export class RunRegistry extends EventEmitter {
       compactionThreshold: settings.compactionThreshold,
       rewindAfterCorrections: FIXED_ENGINE_DEFAULTS.rewindAfterCorrections,
       healing: this.deps.oneShot ? healingSupport(this.deps.oneShot, settings) : null,
+      replanner:
+        input.plan && this.deps.oneShot
+          ? replanningSupport(
+              this.deps.oneShot,
+              input.plan,
+              () => tracer.run(runId)?.worktreePath ?? input.project.path,
+            )
+          : null,
       supportDir: this.deps.appSupportDir,
       agents: input.agents,
       envelopeDefs: input.envelopeDefs,

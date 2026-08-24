@@ -696,6 +696,7 @@ const BANNER_KIND: Record<string, string> = {
   error: 'fail',
   handoff: 'info',
   compaction: 'info',
+  replan: 'warn',
 };
 
 /**
@@ -704,6 +705,7 @@ const BANNER_KIND: Record<string, string> = {
  */
 const BANNER_NAME: Record<string, string> = {
   compaction: 'context compacted',
+  replan: 'pipeline amended',
 };
 
 function num(value: unknown): number | null {
@@ -736,20 +738,34 @@ function compactionDetail(payload: Record<string, unknown>): string {
   return parts.join(' · ');
 }
 
+function replanDetail(payload: Record<string, unknown>): string {
+  const before = Array.isArray(payload.before) ? payload.before.join(', ') : '';
+  const after = Array.isArray(payload.after) ? payload.after.join(', ') : '';
+  return [
+    str(payload.reason),
+    before || after ? `${before || '(end)'} → ${after || '(end)'}` : '',
+    str(payload.evidence),
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 function Banner({ event }: { event: EventRow }): React.JSX.Element {
   const kind = BANNER_KIND[event.type] ?? 'info';
   const p = event.payload;
   const detail =
     event.type === 'compaction'
       ? compactionDetail(p)
-      : str(p.detail) ||
-        str(p.question) ||
-        str(p.reason) ||
-        (event.type === 'correction'
-          ? `retry ${String(p.attempt ?? '')} of ${String(p.budget ?? '')}`
-          : '') ||
-        str(p.to) ||
-        str(p.gate);
+      : event.type === 'replan'
+        ? replanDetail(p)
+        : str(p.detail) ||
+          str(p.question) ||
+          str(p.reason) ||
+          (event.type === 'correction'
+            ? `retry ${String(p.attempt ?? '')} of ${String(p.budget ?? '')}`
+            : '') ||
+          str(p.to) ||
+          str(p.gate);
   return (
     <div className={`te banner ${kind}`}>
       <span className="te-banner-name">{BANNER_NAME[event.type] ?? event.name}</span>
@@ -819,6 +835,7 @@ export function TranscriptEntry({ event }: { event: EventRow }): React.JSX.Eleme
     case 'error':
     case 'handoff':
     case 'compaction':
+    case 'replan':
       return <Banner event={event} />;
     case 'agent_end':
       return <UsageRow event={event} />;

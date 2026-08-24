@@ -20,6 +20,7 @@ import type {
   GateCheck,
   GateResultRow,
   GeneratedRunPlan,
+  PhaseDef,
   PhaseKind,
   PhaseRow,
   PhaseStatus,
@@ -324,6 +325,96 @@ export class Tracer {
     return row ? mapPhase(row) : null;
   }
 
+  /**
+   * Atomically replaces an orchestrated run's queued tail. The failed and
+   * completed rows are history; only still-queued rows may be removed, and
+   * every replacement receives a fresh identity after the historical rows.
+   */
+  amendRun(input: {
+    runId: string;
+    failedPhaseId: string;
+    removeQueuedPhaseIds: string[];
+    pipeline: PipelineDef;
+    plan: GeneratedRunPlan;
+    reason: string;
+    attempt: number;
+    evidence: string;
+    before: string[];
+    after: string[];
+    newPhases: PhaseDef[];
+    engineer: string;
+  }): Map<string, string> {
+    const apply = this.db.transaction(() => {
+      for (const phaseId of input.removeQueuedPhaseIds) {
+        const removed = this.exec(
+          "DELETE FROM phases WHERE phase_id = ? AND run_id = ? AND status = 'queued'",
+          phaseId,
+          input.runId,
+        );
+        if (removed.changes !== 1) {
+          throw new Error(`cannot replace phase ${phaseId}: it is no longer queued`);
+        }
+      }
+
+      this.exec(
+        `UPDATE runs SET pipeline_id = ?, pipeline_name = ?, pipeline_snapshot_json = ?,
+           plan_json = ?, amendments = COALESCE(amendments, 0) + 1 WHERE run_id = ?`,
+        input.pipeline.id,
+        input.pipeline.name,
+        JSON.stringify(input.pipeline),
+        JSON.stringify(input.plan),
+        input.runId,
+      );
+      const maxSeq =
+        this.one<{ max_seq: number }>(
+          'SELECT COALESCE(MAX(seq), -1) AS max_seq FROM phases WHERE run_id = ?',
+          input.runId,
+        )?.max_seq ?? -1;
+      const ids = new Map<string, string>();
+      input.newPhases.forEach((phase, index) => {
+        ids.set(
+          phase.name,
+          this.insertPhase(
+            {
+              runId: input.runId,
+              seq: maxSeq + index + 1,
+              name: phase.name,
+              kind: phase.kind,
+              owner:
+                phase.kind === 'agent'
+                  ? (phase.agent ?? 'agent')
+                  : phase.kind === 'code'
+                    ? 'code'
+                    : input.engineer,
+              description: phase.description,
+            },
+            'queued',
+            null,
+          ),
+        );
+      });
+      this.event({
+        runId: input.runId,
+        phaseId: input.failedPhaseId,
+        type: 'replan',
+        name: 'pipeline amended',
+        payload: {
+          attempt: input.attempt,
+          reason: input.reason,
+          evidence: input.evidence,
+          before: input.before,
+          after: input.after,
+        },
+      });
+      return ids;
+    });
+
+    const ids = apply();
+    this.writeRunFile(input.runId, 'pipeline.json', JSON.stringify(input.pipeline, null, 2));
+    this.writeRunFile(input.runId, 'plan.json', JSON.stringify(input.plan, null, 2));
+    return ids;
+  }
+
   private rawPhase(phaseId: string): RawPhase | undefined {
     return this.one<RawPhase>('SELECT * FROM phases WHERE phase_id = ?', phaseId);
   }
@@ -472,6 +563,19 @@ export class Tracer {
       afterChangeId,
       limit,
     ).map(mapEvent);
+  }
+
+  /** Highest proposal attempt already spent, so a resume cannot reset the run budget. */
+  replanAttempts(runId: string): number {
+    const rows = this.many<{ payload_json: string }>(
+      `SELECT payload_json FROM events
+       WHERE run_id = ? AND (type = 'replan' OR name LIKE 'replan proposal%')`,
+      runId,
+    );
+    return rows.reduce((highest, row) => {
+      const attempt = safeJson(row.payload_json).attempt;
+      return typeof attempt === 'number' ? Math.max(highest, attempt) : highest;
+    }, 0);
   }
 
   // ── envelopes ─────────────────────────────────────────────────────────────

@@ -357,6 +357,8 @@ export const FIXED_ENGINE_DEFAULTS = {
    * than per pipeline: an unbounded healer is a run that never ends.
    */
   healingAttempts: 2,
+  /** Mid-run pipeline amendments an orchestrated run may request. */
+  replanAttempts: 2,
 } as const;
 
 export type MergePolicy = 'auto' | 'ask' | 'never';

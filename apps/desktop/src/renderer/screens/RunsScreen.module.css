@@ -389,6 +389,10 @@
   color: var(--purple);
   border: 1px solid color-mix(in srgb, var(--purple) 40%, transparent);
 }
+.meta-badge-amended {
+  color: var(--amber);
+  border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent);
+}
 
 @media (max-width: 900px) {
   .heroControls {

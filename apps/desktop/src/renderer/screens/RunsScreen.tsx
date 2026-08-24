@@ -153,6 +153,11 @@ function RunList({
             <p className={styles.req}>{truncate(run.request, 160)}</p>
           </div>
           <div className={styles.runMeta}>
+            {run.amendments > 0 && (
+              <span className={`${styles.metaBadge} ${styles.metaBadgeAmended}`}>
+                amended ×{run.amendments}
+              </span>
+            )}
             {run.branch && (
               <span className={styles.branch} title={run.branch}>
                 {run.branch.replace('foundry/', '')}

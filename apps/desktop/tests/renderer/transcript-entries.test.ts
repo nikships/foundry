@@ -83,6 +83,23 @@ describe('a compaction event in the timeline', () => {
   });
 });
 
+describe('a pipeline amendment in the timeline', () => {
+  it('shows the reason, replaced tail, inserted tail, and failure evidence', () => {
+    const html = render(
+      event('replan', {
+        reason: 'Add a focused repair before verifying again.',
+        before: ['verify', 'commit'],
+        after: ['repair', 'verify', 'commit'],
+        evidence: 'typecheck exited 2',
+      }),
+    );
+    expect(html).toContain('pipeline amended');
+    expect(html).toContain('Add a focused repair');
+    expect(html).toContain('verify, commit → repair, verify, commit');
+    expect(html).toContain('typecheck exited 2');
+  });
+});
+
 describe('a pi tool call in the timeline', () => {
   /** A `tool_call` row as the tracer writes one: `<tool>: <summary>`. */
   const toolCall = (name: string, payload: Record<string, unknown> = {}): string => {
@@ -207,6 +224,7 @@ describe('the entry switch', () => {
       'correction',
       'interrupt',
       'compaction',
+      'replan',
       'log',
       'error',
     ];
