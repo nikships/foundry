@@ -16,29 +16,40 @@ function modelId(session: PiAgentSession): string | null {
  * message is removed exactly as Pi removes intermediate retry failures, then a
  * hidden custom message starts a normal turn on the next model. That keeps the
  * conversation and tools intact and gives every fallback its own retry budget.
+ *
+ * Hidden picker models are skipped, not tried. The current model may itself be
+ * hidden — the operator or roster named it — but failover will not spend a
+ * retry budget on anything else the operator hid.
  */
 export async function continueWithModelFailover(input: {
   session: PiAgentSession;
   events: VendorEventReader;
   availableModelCount: number;
+  hiddenModelIds?: readonly string[];
   onWarning?: (warning: string) => void;
 }): Promise<void> {
   const attempted = new Set<string>();
+  const hidden = new Set(input.hiddenModelIds ?? []);
   const initial = modelId(input.session);
   if (initial) attempted.add(initial);
+  // The last model that actually ran a turn. cycleModel() steps onto hidden
+  // ids we skip, and those must not appear as the failure we are recovering from.
+  let lastTried = initial ?? 'the current model';
 
   while (
     input.events.retryExhausted &&
     lastAssistantStop(input.session)?.stopReason === 'error' &&
     attempted.size < input.availableModelCount
   ) {
-    const previous = modelId(input.session) ?? 'the current model';
     const next = await input.session.cycleModel();
     if (!next) return;
 
     const nextId = `${next.model.provider}/${next.model.id}`;
     if (attempted.has(nextId)) return;
     attempted.add(nextId);
+    // cycleModel() has already stepped onto this id. Do not start a turn on
+    // a model the operator hid; keep walking until a visible one or a wrap.
+    if (hidden.has(nextId)) continue;
 
     const messages = input.session.agent.state.messages;
     const last = messages[messages.length - 1];
@@ -46,7 +57,8 @@ export async function continueWithModelFailover(input: {
       messages.pop();
     }
 
-    input.onWarning?.(`${previous} failed after 5 retries; continuing this turn on ${nextId}`);
+    input.onWarning?.(`${lastTried} failed after 5 retries; continuing this turn on ${nextId}`);
+    lastTried = nextId;
     input.events.startModelAttempt();
     await input.session.sendCustomMessage(
       {

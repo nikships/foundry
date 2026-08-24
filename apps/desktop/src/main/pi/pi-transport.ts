@@ -47,6 +47,11 @@ export interface PiTransportOptions extends AgentTransportOptions {
   sessionDir: string;
   /** What Foundry's own tools close over. */
   tools: FoundryToolContext;
+  /**
+   * Models the operator hid in Settings. Failover skips them. Read live at
+   * send time so a hide mid-run takes effect on the next exhausted retry.
+   */
+  hiddenModelIds?: () => readonly string[];
 }
 
 export class PiTransport implements AgentTransport {
@@ -176,6 +181,7 @@ export class PiTransport implements AgentTransport {
       session,
       events: this.events,
       availableModelCount: this.models.length,
+      hiddenModelIds: this.opts.hiddenModelIds?.() ?? [],
       onWarning: (warning) => this.opts.onModelWarning?.(warning),
     });
 

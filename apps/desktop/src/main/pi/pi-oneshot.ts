@@ -34,6 +34,8 @@ import type { PermissionAsk, PermissionDecision } from './transport.js';
 export interface PiOneShotOptions extends OneShotOptions {
   /** Foundry's Application Support directory; pi state lives under it. */
   supportDir: string;
+  /** Models the operator hid in Settings. Failover skips them. */
+  hiddenModelIds?: () => readonly string[];
 }
 
 class PiOneShot implements OneShotSession {
@@ -63,6 +65,7 @@ class PiOneShot implements OneShotSession {
         session,
         events: this.events,
         availableModelCount: this.availableModelCount,
+        hiddenModelIds: this.opts.hiddenModelIds?.() ?? [],
         onWarning: (warning) => this.opts.onWarning?.(warning),
       });
 
@@ -160,6 +163,9 @@ class PiOneShot implements OneShotSession {
 }
 
 /** The production factory, bound to the directory Foundry keeps pi state in. */
-export function piOneShots(supportDir: string): OneShotFactory {
-  return (opts) => new PiOneShot({ ...opts, supportDir });
+export function piOneShots(
+  supportDir: string,
+  hiddenModelIds?: () => readonly string[],
+): OneShotFactory {
+  return (opts) => new PiOneShot({ ...opts, supportDir, hiddenModelIds });
 }

@@ -122,7 +122,7 @@ export class AppContext {
       trace: () => this.registry.bridgeTrace(),
     });
     this.updater = new UpdaterService((channel, payload) => this.broadcast(channel, payload));
-    this.oneShot = piOneShots(supportDir);
+    this.oneShot = piOneShots(supportDir, () => this.settings.get().hiddenModelIds);
     this.detections = createDetections(this.oneShot, (state) =>
       this.broadcast(IPC.eventDetectionProgress, state),
     );

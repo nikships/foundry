@@ -217,14 +217,14 @@ interface Harness {
   open: (access?: 'read' | 'write') => ReturnType<ReturnType<typeof piOneShots>>;
 }
 
-function harness(opts: { model?: string } = {}): Harness {
+function harness(opts: { model?: string; hiddenModelIds?: () => readonly string[] } = {}): Harness {
   const supportDir = tempDir('foundry-oneshot-support-');
   const cwd = tempDir('foundry-oneshot-cwd-');
   const events: TransportEvent[] = [];
   const warnings: string[] = [];
   const scripted = new ScriptedPiSession();
   spy.session = scripted;
-  const factory = piOneShots(supportDir);
+  const factory = piOneShots(supportDir, opts.hiddenModelIds);
   return {
     session: scripted,
     scripted,
@@ -414,7 +414,45 @@ describe('running one turn', () => {
     expect(h.session.prompts).toEqual(['go']);
     expect(h.session.customMessages).toHaveLength(1);
     expect(h.session.cycles).toBe(1);
-    expect(h.warnings.at(-1)).toMatch(/continuing this turn on openai\/gpt-5/);
+    expect(h.warnings.at(-1)).toContain('continuing this turn on openai/gpt-5');
+  });
+
+  it('skips a hidden fallback and continues on the next visible model', async () => {
+    spy.models.push(
+      { provider: 'openai', id: 'gpt-5', name: 'GPT-5', contextWindow: 400_000 },
+      {
+        provider: 'google',
+        id: 'gemini-2.5-pro',
+        name: 'Gemini 2.5 Pro',
+        contextWindow: 1_000_000,
+      },
+    );
+    const h = harness({ hiddenModelIds: () => ['openai/gpt-5'] });
+    let attempt = 0;
+    h.session.turn = (s) => {
+      if (attempt++ === 0) {
+        s.emit({
+          type: 'auto_retry_start',
+          attempt: 5,
+          maxAttempts: 5,
+          delayMs: 32_000,
+          errorMessage: 'rate limited',
+        });
+        s.emit({
+          type: 'auto_retry_end',
+          success: false,
+          attempt: 5,
+          finalError: 'rate limited',
+        });
+        s.say('', { stopReason: 'error', errorMessage: 'rate limited' });
+        return;
+      }
+      s.say('recovered on visible');
+    };
+
+    expect((await h.open().send('go')).text).toBe('recovered on visible');
+    expect(h.session.customMessages).toHaveLength(1);
+    expect(h.warnings.at(-1)).toContain('continuing this turn on google/gemini-2.5-pro');
   });
 
   it('keeps a turn alive until explicit cancellation, then reports it as interrupted', async () => {

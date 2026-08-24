@@ -316,7 +316,12 @@ interface Harness {
 }
 
 function harness(
-  opts: { model?: string; reasoningEffort?: string; toolProfile?: 'full' | 'read-only' } = {},
+  opts: {
+    model?: string;
+    reasoningEffort?: string;
+    toolProfile?: 'full' | 'read-only';
+    hiddenModelIds?: () => readonly string[];
+  } = {},
 ): Harness {
   const supportDir = tempDir('foundry-pi-support-');
   const cwd = tempDir('foundry-pi-cwd-');
@@ -333,6 +338,7 @@ function harness(
     supportDir,
     sessionDir: join(supportDir, 'runs', 'run_tx', 'sessions'),
     tools: toolContext(),
+    hiddenModelIds: opts.hiddenModelIds,
     onPermission: () => ({ outcome: 'allow' }),
     onEvent: (e) => events.push(e),
     onModelWarning: (w) => warnings.push(w),
@@ -780,6 +786,70 @@ describe('running a turn', () => {
       'anthropic/claude-sonnet-4 failed after 5 retries; continuing this turn on openai/gpt-5',
       'openai/gpt-5 failed after 5 retries; continuing this turn on google/gemini-2.5-pro',
     ]);
+  });
+
+  it('skips hidden models when failing over', async () => {
+    spy.models.push({
+      provider: 'google',
+      id: 'gemini-2.5-pro',
+      name: 'Gemini 2.5 Pro',
+      contextWindow: 1_000_000,
+    });
+    const h = harness({ hiddenModelIds: () => ['openai/gpt-5'] });
+    await h.transport.start();
+    let attempt = 0;
+    h.session.turn = (s) => {
+      if (attempt++ === 0) {
+        s.emit({
+          type: 'auto_retry_start',
+          attempt: 5,
+          maxAttempts: 5,
+          delayMs: 32_000,
+          errorMessage: 'request timed out',
+        });
+        s.emit({
+          type: 'auto_retry_end',
+          success: false,
+          attempt: 5,
+          finalError: 'request timed out',
+        });
+        s.say('', { stopReason: 'error', errorMessage: 'request timed out' });
+        return;
+      }
+      s.say('finished on the visible fallback');
+    };
+
+    expect((await h.transport.send('keep going')).text).toBe('finished on the visible fallback');
+    expect(h.session.customMessages).toHaveLength(1);
+    expect(h.transport.activeModel).toBe('google/gemini-2.5-pro');
+    expect(h.warnings).toEqual([
+      'anthropic/claude-sonnet-4 failed after 5 retries; continuing this turn on google/gemini-2.5-pro',
+    ]);
+  });
+
+  it('returns the terminal error when every remaining model is hidden', async () => {
+    const h = harness({ hiddenModelIds: () => ['openai/gpt-5'] });
+    await h.transport.start();
+    h.session.turn = (s) => {
+      s.emit({
+        type: 'auto_retry_start',
+        attempt: 5,
+        maxAttempts: 5,
+        delayMs: 32_000,
+        errorMessage: 'request timed out',
+      });
+      s.emit({
+        type: 'auto_retry_end',
+        success: false,
+        attempt: 5,
+        finalError: 'request timed out',
+      });
+      s.say('', { stopReason: 'error', errorMessage: 'request timed out' });
+    };
+
+    await expect(h.transport.send('go')).rejects.toThrow(/request timed out/);
+    expect(h.session.customMessages).toHaveLength(0);
+    expect(h.warnings).toEqual([]);
   });
 
   it('returns the terminal error when no fallback model is available', async () => {

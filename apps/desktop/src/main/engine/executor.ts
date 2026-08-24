@@ -82,6 +82,11 @@ export interface ExecutorDeps {
   replanner?: Replanner | null;
   /** Foundry's Application Support directory; the agent runtime's state lives under it. */
   supportDir: string;
+  /**
+   * Models the operator hid in Settings. Failover skips them. Read live so a
+   * hide mid-run applies to the next exhausted retry, not only to a new run.
+   */
+  hiddenModelIds?: () => readonly string[];
   agents: AgentDef[];
   /** Shared custom envelope library snapshotted at run start. */
   envelopeDefs: EnvelopeDef[];
@@ -832,6 +837,7 @@ export class Executor {
       ...(req.agent.toolProfile ? { toolProfile: req.agent.toolProfile } : {}),
       supportDir: this.deps.supportDir,
       sessionDir: join(this.deps.tracer.runDir(req.runId), 'sessions'),
+      hiddenModelIds: this.deps.hiddenModelIds,
       onPermission: req.onPermission,
       onEvent: req.onEvent,
       onModelWarning: req.onModelWarning,

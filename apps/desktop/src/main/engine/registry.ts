@@ -248,6 +248,7 @@ export class RunRegistry extends EventEmitter {
             )
           : null,
       supportDir: this.deps.appSupportDir,
+      hiddenModelIds: () => this.deps.settings().hiddenModelIds,
       agents: input.agents,
       envelopeDefs: input.envelopeDefs,
       project: input.project,
