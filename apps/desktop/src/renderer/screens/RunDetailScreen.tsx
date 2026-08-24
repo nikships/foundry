@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { EventRow, GhStatus } from '@shared/types.js';
+import type { EventRow, GeneratedRunPlan, GhStatus } from '@shared/types.js';
 import { api } from '../api.js';
 import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useApp } from '../stores/app.js';
@@ -10,6 +10,7 @@ import Waterfall from '../components/run/Waterfall.js';
 import PhaseDrawer from '../components/pipeline/PhaseDrawer.js';
 import StatusBadge from '../components/common/StatusBadge.js';
 import OutcomeBanner from '../components/run/OutcomeBanner.js';
+import ExportPlanSheet from '../components/run/ExportPlanSheet.js';
 import { Button } from '../components/ui/Button.js';
 import styles from './RunDetailScreen.module.css';
 
@@ -32,6 +33,8 @@ export default function RunDetailScreen({
   const [actionError, setActionError] = useState('');
   const [now, setNow] = useState(Date.now());
   const [gh, setGh] = useState<GhStatus | null>(null);
+  const [plan, setPlan] = useState<GeneratedRunPlan | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
   /** A refused local merge is what the agent repair path exists for. */
   const [mergeRefused, setMergeRefused] = useState(false);
 
@@ -49,6 +52,24 @@ export default function RunDetailScreen({
       cancelled = true;
     };
   }, [wantsGh, gh, projectId]);
+
+  useEffect(() => {
+    setPlan(null);
+    setExportOpen(false);
+    if (!view.run?.orchestrated || view.run.status === 'running') return;
+    let cancelled = false;
+    void api.runs
+      .plan(projectId, runId)
+      .then((loaded) => {
+        if (!cancelled) setPlan(loaded);
+      })
+      .catch(() => {
+        if (!cancelled) setPlan(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, runId, view.run?.orchestrated, view.run?.status]);
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -225,6 +246,16 @@ export default function RunDetailScreen({
             ↗
           </span>
         </Button>
+        {plan && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setExportOpen(true)}
+            data-testid="run-export-plan"
+          >
+            Export…
+          </Button>
+        )}
         <div className={styles.grow} />
         {view.live && <span className={styles.actionSep} aria-hidden />}
         {view.live && (
@@ -285,6 +316,7 @@ export default function RunDetailScreen({
           onDiscard={() => void discardWorktree()}
           onCreatePr={(title, body) => void createPr(title, body)}
           onOpenUrl={openUrl}
+          onExport={plan ? () => setExportOpen(true) : undefined}
         />
       )}
       <div className={styles.split}>
@@ -314,6 +346,15 @@ export default function RunDetailScreen({
           )}
         </div>
       </div>
+      {plan && (
+        <ExportPlanSheet
+          open={exportOpen}
+          projectId={projectId}
+          runId={runId}
+          plan={plan}
+          onClose={() => setExportOpen(false)}
+        />
+      )}
     </div>
   );
 }

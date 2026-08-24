@@ -12,7 +12,9 @@ import type {
   ValidationIssue,
   WriteBoundary,
 } from '@shared/types.js';
+import type { RunPlanExportSelection } from '@shared/ipc-contract.js';
 import { modelLabel } from '@shared/model-label.js';
+import { exportedPipelineId } from '@shared/plan-export.js';
 import { acceptanceSummary, outcomeMarks } from './pipeline-view.js';
 
 function plural(count: number, noun: string): string {
@@ -65,6 +67,20 @@ export interface PlanCardView {
   warnings: PlanWarningGroup[];
   /** The mind that composed it, as the card credits it. */
   orchestratorModel: string;
+}
+
+export type PlanExportItem = 'pipeline' | `agent:${string}`;
+
+export interface PlanExportView {
+  pipeline: {
+    name: string;
+    id: string;
+    description: string;
+  };
+  agents: {
+    name: string;
+    purpose: string;
+  }[];
 }
 
 /** The operator-facing reading of a `writes` boundary. */
@@ -148,4 +164,48 @@ export function planCardView(plan: GeneratedRunPlan): PlanCardView {
     warnings: groupPlanWarnings(plan.warnings),
     orchestratorModel: plan.model === 'inherit' ? 'the default model' : modelLabel(plan.model),
   };
+}
+
+/** The ordinary identities the sheet asks the operator to confirm. */
+export function planExportView(plan: GeneratedRunPlan): PlanExportView {
+  return {
+    pipeline: {
+      name: plan.pipeline.name,
+      id: exportedPipelineId(plan.pipeline.name),
+      description: plan.pipeline.description,
+    },
+    agents: plan.agents.map((agent) => ({ name: agent.name, purpose: agent.purpose })),
+  };
+}
+
+export function allPlanExportSelection(plan: GeneratedRunPlan): RunPlanExportSelection {
+  return { pipeline: true, agents: plan.agents.map((agent) => agent.name) };
+}
+
+/** One checkbox transition, preserving the plan's agent order. */
+export function togglePlanExportSelection(
+  selection: RunPlanExportSelection,
+  item: PlanExportItem,
+  checked: boolean,
+): RunPlanExportSelection {
+  if (item === 'pipeline') return { ...selection, pipeline: checked };
+  const name = item.slice('agent:'.length);
+  const agents = checked
+    ? selection.agents.includes(name)
+      ? selection.agents
+      : [...selection.agents, name]
+    : selection.agents.filter((agent) => agent !== name);
+  return { ...selection, agents };
+}
+
+export function planExportSelectionCount(selection: RunPlanExportSelection): number {
+  return Number(selection.pipeline) + selection.agents.length;
+}
+
+/** Issues scoped by main to an exported entity, including nested validation fields. */
+export function planExportItemIssues(
+  issues: ValidationIssue[],
+  item: PlanExportItem,
+): ValidationIssue[] {
+  return issues.filter((issue) => issue.where === item || issue.where.startsWith(`${item}.`));
 }

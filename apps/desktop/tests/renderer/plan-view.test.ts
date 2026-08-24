@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { GeneratedRunPlan } from '@shared/types.js';
 import {
+  allPlanExportSelection,
   boundaryLabel,
   groupPlanWarnings,
+  planExportItemIssues,
+  planExportSelectionCount,
+  planExportView,
   phaseNote,
   planCardView,
+  togglePlanExportSelection,
 } from '@renderer/view-models/plan-view.js';
 
 function generatedPlan(): GeneratedRunPlan {
@@ -164,5 +169,46 @@ describe('plan-view', () => {
         command: { argv: ['npm', 'test', '--', 'search'] },
       }),
     ).toBe('npm test -- search');
+  });
+
+  it('shapes ordinary export identities without preserving the generated plan id', () => {
+    const view = planExportView(generatedPlan());
+
+    expect(view.pipeline).toMatchObject({
+      name: 'Stabilize search results',
+      id: 'stabilize-search-results',
+    });
+    expect(view.pipeline.id).not.toContain('plan-123');
+    expect(view.agents.map((agent) => agent.name)).toEqual(['search_specialist', 'reviewer']);
+  });
+
+  it('builds and updates export checkbox selections', () => {
+    const all = allPlanExportSelection(generatedPlan());
+    expect(all).toEqual({ pipeline: true, agents: ['search_specialist', 'reviewer'] });
+    expect(planExportSelectionCount(all)).toBe(3);
+
+    const withoutPipeline = togglePlanExportSelection(all, 'pipeline', false);
+    const withoutReviewer = togglePlanExportSelection(withoutPipeline, 'agent:reviewer', false);
+    expect(withoutReviewer).toEqual({ pipeline: false, agents: ['search_specialist'] });
+    expect(planExportSelectionCount(withoutReviewer)).toBe(1);
+    expect(togglePlanExportSelection(withoutReviewer, 'agent:reviewer', true).agents).toEqual([
+      'search_specialist',
+      'reviewer',
+    ]);
+  });
+
+  it('maps collision and validation issues to their export row', () => {
+    const issues = [
+      { level: 'error' as const, where: 'pipeline', message: 'already exists' },
+      { level: 'error' as const, where: 'pipeline.phases[0]', message: 'missing agent' },
+      { level: 'error' as const, where: 'agent:reviewer.name', message: 'invalid name' },
+      { level: 'error' as const, where: 'selection', message: 'choose something' },
+    ];
+
+    expect(planExportItemIssues(issues, 'pipeline').map((issue) => issue.message)).toEqual([
+      'already exists',
+      'missing agent',
+    ]);
+    expect(planExportItemIssues(issues, 'agent:reviewer')).toEqual([issues[2]]);
   });
 });
