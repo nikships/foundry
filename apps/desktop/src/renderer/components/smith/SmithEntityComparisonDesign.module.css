@@ -75,7 +75,7 @@
   background: var(--bg-raised);
   color: var(--text);
   font-weight: 600;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-sm);
 }
 
 /* ── What changes summary ── */

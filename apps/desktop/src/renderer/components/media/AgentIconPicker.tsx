@@ -266,8 +266,8 @@ export default function AgentIconPicker({
                   onClick={() => onColorChange(c)}
                   className={styles.accentSwatch}
                   style={{
-                    borderColor: on ? c : 'rgba(255,255,255,0.09)',
-                    background: `color-mix(in srgb, ${c} ${on ? 30 : 16}%, #0a0a0a)`,
+                    borderColor: on ? c : 'var(--line)',
+                    background: `color-mix(in srgb, ${c} ${on ? 30 : 16}%, var(--bg-panel))`,
                   }}
                 >
                   {on ? (

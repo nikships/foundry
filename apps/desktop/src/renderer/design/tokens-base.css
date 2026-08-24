@@ -209,17 +209,17 @@ textarea,
 .btn:disabled {
   opacity: 0.4;
 }
-/* Primary inverts against the dark surface: light fill, black label. */
+/* Primary inverts against the active surface. */
 .btn.primary {
   background: var(--text);
   border-color: var(--text);
-  color: #020202;
+  color: var(--on-text);
   font-weight: 600;
 }
 .btn.primary:hover:not(:disabled) {
-  background: #ffffff;
-  border-color: #ffffff;
-  color: #020202;
+  background: var(--text-strong);
+  border-color: var(--text-strong);
+  color: var(--on-text);
 }
 .btn.primary kbd {
   color: inherit;

@@ -53,9 +53,9 @@ export const SETTINGS_PANES: SettingsPaneMeta[] = [
   {
     id: 'app',
     label: 'App',
-    hint: 'Notifications, updates, phone, and maintenance',
+    hint: 'Appearance, notifications, updates, phone, and maintenance',
     keywords:
-      'notify updates phone companion application quit relaunch retention history orphan version build replay intro',
+      'theme appearance dark light palette color notify updates phone companion application quit relaunch retention history orphan version build replay intro',
   },
 ];
 
@@ -78,6 +78,12 @@ export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
   },
   {
     pane: 'general',
+    label: 'Appearance',
+    note: 'Choose the palette Foundry uses across the desktop.',
+    keywords: 'theme appearance dark light light theme dark mode palette color mode',
+  },
+  {
+    pane: 'general',
     label: 'Notifications',
     note: 'Only the moments that need you.',
     keywords: 'notify accepted rejected failed waiting dock badge alerts',
@@ -97,7 +103,7 @@ export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
   {
     pane: 'general',
     label: 'Application',
-    note: 'Restart after changing settings or installing an update.',
+    note: 'Quit or relaunch the desktop app.',
     keywords: 'relaunch quit restart',
   },
   // Providers

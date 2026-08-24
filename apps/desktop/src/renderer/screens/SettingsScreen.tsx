@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
+  AppTheme,
   DoctorCheck,
   ModelInfo,
   OrphanWorktree,
@@ -464,7 +465,13 @@ export default function SettingsScreen({
   const palSel = Math.min(palIdx, Math.max(0, palEntries.length - 1));
   const set = async (patch: Parameters<typeof patchSettings>[0]): Promise<void> => {
     // Always replace the banner: a successful patch must clear a prior failure.
-    setErrors(await patchSettings(patch));
+    // An IPC failure rejects rather than returning validation issues; surface it
+    // instead of leaving a picker (including Theme) looking like it saved.
+    try {
+      setErrors(await patchSettings(patch));
+    } catch {
+      setErrors(['Could not save your settings. Please try again.']);
+    }
   };
   const setInt = async (
     raw: string,
@@ -903,6 +910,28 @@ export default function SettingsScreen({
                         />
                       </Section>
 
+                      <Section
+                        label="Appearance"
+                        note="Choose the palette Foundry uses across the desktop."
+                      >
+                        <Field
+                          label="Theme"
+                          className={styles.settingsNarrow}
+                          hint="Saved automatically and applied immediately."
+                        >
+                          <Dropdown
+                            value={settings.theme}
+                            options={[
+                              { value: 'dark', label: 'Dark' },
+                              { value: 'light', label: 'Light' },
+                            ]}
+                            aria-label="Theme"
+                            data-testid="settings-theme"
+                            onChange={(next) => void set({ theme: next as AppTheme })}
+                          />
+                        </Field>
+                      </Section>
+
                       <Section label="Notifications" note="Only the moments that need you.">
                         <div className={styles.settingsToggles}>
                           {(Object.keys(NOTIFY_LABELS) as Array<keyof typeof NOTIFY_LABELS>).map(
@@ -1142,12 +1171,10 @@ export default function SettingsScreen({
                         )}
                       </Section>
 
-                      <Section
-                        label="Application"
-                        note="Restart after changing settings or installing an update."
-                      >
+                      <Section label="Application" note="Quit or relaunch the desktop app.">
                         <p className={styles.hint}>
-                          Restart Foundry after changing settings or installing an update.
+                          Theme and other preferences save automatically; relaunch only when you
+                          need a fresh app process or have installed an update.
                         </p>
                         <div className={styles.settingsBtnrow}>
                           <Button size="sm" onClick={() => void relaunchApp()}>

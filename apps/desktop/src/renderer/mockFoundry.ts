@@ -166,6 +166,7 @@ const MOCK_PHASES: Record<string, PhaseRow[]> = {
 
 function defaultMockSettings(): AppSettings {
   return {
+    theme: 'dark',
     helperModel: 'inherit',
     helperReasoningEffort: 'high',
     engineerName: 'web-preview',

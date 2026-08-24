@@ -334,15 +334,15 @@
 }
 
 .dryRunBtn {
-  color: #020202;
+  color: var(--on-text);
   background: var(--text);
   border-color: var(--text);
 }
 
 .dryRunBtn:hover:not(:disabled) {
-  color: #020202;
-  background: #fff;
-  border-color: #fff;
+  color: var(--on-text);
+  background: var(--text-strong);
+  border-color: var(--text-strong);
 }
 
 .dryRunBtn:disabled {

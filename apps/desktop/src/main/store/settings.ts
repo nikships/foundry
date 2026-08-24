@@ -20,6 +20,7 @@ const COMPACTION_BAND = [0.5, 0.95] as const;
 const PR_AGENT_NAME = /^[a-z][a-z0-9_-]*$/;
 
 export const appSettingsSchema = z.object({
+  theme: z.enum(['dark', 'light']),
   helperModel: z.string().min(1),
   helperReasoningEffort: z.enum(REASONING_EFFORTS),
   engineerName: z.string().min(1).max(80),
@@ -48,6 +49,7 @@ export const appSettingsSchema = z.object({
 
 export function defaultSettings(): AppSettings {
   return {
+    theme: 'dark',
     helperModel: 'inherit',
     helperReasoningEffort: 'high',
     engineerName: process.env.USER || 'engineer',
@@ -84,6 +86,7 @@ export function migrate(raw: unknown): AppSettings {
     }
   }
 
+  if (merged.theme !== 'dark' && merged.theme !== 'light') merged.theme = base.theme;
   if (!isNonEmptyString(stored.helperModel)) {
     merged.helperModel = legacyHelperModel(legacy) || base.helperModel;
   }

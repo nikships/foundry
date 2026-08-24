@@ -90,6 +90,14 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
   });
   const [ready, setReady] = useState(false);
 
+  useEffect(() => {
+    if (!settings) return;
+    const root = document.documentElement;
+    root.dataset.theme = settings.theme;
+    root.style.colorScheme = settings.theme;
+    root.dataset.themeReady = 'true';
+  }, [settings]);
+
   const selectedProjectIdRef = useRef(selectedProjectId);
   useEffect(() => {
     selectedProjectIdRef.current = selectedProjectId;

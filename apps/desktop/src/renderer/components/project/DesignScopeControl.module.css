@@ -69,7 +69,7 @@
   border: 1px solid var(--line);
   border-radius: var(--r-md, 8px);
   background: var(--bg-raised);
-  box-shadow: var(--shadow-lg, 0 12px 32px rgb(0 0 0 / 45%));
+  box-shadow: var(--shadow-lg);
 }
 
 .pop-now {

@@ -291,7 +291,11 @@ export function resolveAgentExecution(
 
 // ── Settings ─────────────────────────────────────────────────────────────────
 
+export type AppTheme = 'dark' | 'light';
+
 export interface AppSettings {
+  /** Application-wide desktop palette. Existing installs default to dark. */
+  theme: AppTheme;
   /**
    * Model for project detection and readiness, as a `provider/model` id.
    * `inherit` follows `defaultModel`.

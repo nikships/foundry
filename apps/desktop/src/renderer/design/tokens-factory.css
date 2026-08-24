@@ -1,18 +1,8 @@
-/*
- * tokens-factory.css — Factory brand: dark industrial surfaces + one orange.
- * Loaded when brand === 'factory' (the default). Every semantic token keeps
- * its name so components never branch on brand.
- *
- * Palette verified against factory.ai's compiled CSS, 2026-08-09:
- * --dark-base-primary #020202, --dark-base-secondary #101010,
- * --light-base-primary #eee, --accent-100 #ef6f2e, --accent-200 #ee6018,
- * --accent-300 #d15010. Flat fills only: no gradients, no glows, no
- * shadows for depth. The single accent is Factory orange, used sparingly.
- */
+/* Factory semantic palette. Components consume these names and never branch on theme. */
 
 :root,
-:root[data-brand='factory'] {
-  /* ── surfaces — flat industrial blacks ─────────────────────────────── */
+:root[data-brand='factory'],
+:root[data-brand='factory'][data-theme='dark'] {
   --bg-void: #020202;
   --bg-base: #020202;
   --bg-panel: #0a0a0a;
@@ -23,24 +13,22 @@
   --bg-sidebar: #050505;
   --bg-titlebar: #020202;
 
-  /* ── lines — 1pt hairlines, stronger only when interactive ─────────── */
-  --line-faint: rgba(255, 255, 255, 0.05);
-  --line: rgba(255, 255, 255, 0.09);
-  --line-strong: rgba(255, 255, 255, 0.18);
+  --line-faint: rgb(255 255 255 / 5%);
+  --line: rgb(255 255 255 / 9%);
+  --line-strong: rgb(255 255 255 / 18%);
 
-  /* ── text ──────────────────────────────────────────────────────────── */
   --text: #eeeeee;
+  --text-strong: #ffffff;
   --text-dim: #8c8c8c;
-  --text-faint: rgba(255, 255, 255, 0.32);
-  --text-ghost: rgba(255, 255, 255, 0.2);
+  --text-faint: rgb(255 255 255 / 32%);
+  --text-ghost: rgb(255 255 255 / 20%);
+  --on-text: #020202;
 
-  /* ── the accent: Factory orange, and only this ─────────────────────── */
   --accent: #ee6018;
   --accent-bright: #ef6f2e;
   --accent-deep: #d15010;
   --accent-dim: #ee601822;
 
-  /* ── categorical hues — status and data only, never decoration ─────── */
   --purple: #a78bfa;
   --purple-dim: #a78bfa22;
   --amber: #f5a623;
@@ -52,7 +40,6 @@
   --blue: #60a5fa;
   --blue-dim: #60a5fa22;
 
-  /* ── status — running is the accent; the rest read as data ─────────── */
   --status-queued: var(--text-faint);
   --status-running: var(--accent);
   --status-success: var(--green);
@@ -63,8 +50,64 @@
   --status-failed: var(--red);
   --status-killed: var(--text-faint);
 
-  /* ── depth — none. Flat fills and hairlines do all the work. ───────── */
-  --shadow-sm: none;
-  --shadow: none;
-  --shadow-lg: none;
+  --overlay: rgb(2 2 2 / 72%);
+  --overlay-strong: rgb(2 2 2 / 80%);
+  --shadow-sm: 0 0 0 transparent;
+  --shadow: 0 0 0 transparent;
+  --shadow-lg: 0 0 0 transparent;
+}
+
+:root[data-brand='factory'][data-theme='light'] {
+  --bg-void: #efefec;
+  --bg-base: #f7f7f5;
+  --bg-panel: #ffffff;
+  --bg-raised: #f0f0ed;
+  --bg-hover: #e8e8e4;
+  --bg-active: #deded9;
+  --bg-input: #ffffff;
+  --bg-sidebar: #f0f0ed;
+  --bg-titlebar: #f7f7f5;
+
+  --line-faint: rgb(20 20 18 / 7%);
+  --line: rgb(20 20 18 / 13%);
+  --line-strong: rgb(20 20 18 / 25%);
+
+  --text: #1b1b19;
+  --text-strong: #000000;
+  --text-dim: #62625d;
+  --text-faint: rgb(27 27 25 / 52%);
+  --text-ghost: rgb(27 27 25 / 34%);
+  --on-text: #ffffff;
+
+  --accent: #b9470e;
+  --accent-bright: #983706;
+  --accent-deep: #7d2d04;
+  --accent-dim: rgb(185 71 14 / 13%);
+
+  --purple: #6941c6;
+  --purple-dim: rgb(105 65 198 / 12%);
+  --amber: #8a5700;
+  --amber-dim: rgb(138 87 0 / 13%);
+  --green: #087443;
+  --green-dim: rgb(8 116 67 / 12%);
+  --red: #c52727;
+  --red-dim: rgb(197 39 39 / 11%);
+  --blue: #1769aa;
+  --blue-dim: rgb(23 105 170 / 11%);
+
+  --status-queued: var(--text-faint);
+  --status-running: var(--accent);
+  --status-success: var(--green);
+  --status-fail: var(--red);
+  --status-skipped: var(--text-faint);
+  --status-accepted: var(--green);
+  --status-rejected: var(--amber);
+  --status-failed: var(--red);
+  --status-killed: var(--text-faint);
+
+  --overlay: rgb(35 35 31 / 32%);
+  --overlay-strong: rgb(35 35 31 / 45%);
+  --shadow-sm: 0 1px 2px rgb(20 20 18 / 10%);
+  --shadow: 0 8px 24px rgb(20 20 18 / 14%);
+  --shadow-lg: 0 18px 48px rgb(20 20 18 / 18%);
 }
