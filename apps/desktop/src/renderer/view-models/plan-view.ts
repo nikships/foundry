@@ -1,0 +1,151 @@
+/**
+ * Pure shaping for the Plan card: what a `GeneratedRunPlan` looks like as an
+ * operator-facing confirmation. No React, no IPC — the card renders exactly
+ * what these functions return, so the wording is testable without a DOM.
+ */
+
+import type {
+  CommandSpec,
+  GeneratedRunPlan,
+  PhaseDef,
+  PhaseKind,
+  ValidationIssue,
+  WriteBoundary,
+} from '@shared/types.js';
+import { modelLabel } from '@shared/model-label.js';
+import { acceptanceSummary, outcomeMarks } from './pipeline-view.js';
+
+function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+}
+
+/** One row in the card's ordered phase list. */
+export interface PlanPhaseView {
+  index: number;
+  name: string;
+  kind: PhaseKind;
+  description: string;
+  /** Agent phases only: who runs it. */
+  agent: string | null;
+  /** Whether that agent is synthesized for this run rather than on the roster. */
+  synthesized: boolean;
+  /** Compact machinery note: the command, the gates, or the checkpoint. */
+  note: string;
+  /** Whether the acceptance rule reads this phase's outcome. */
+  decides: boolean;
+}
+
+/** One synthesized agent as the card presents it. */
+export interface PlanAgentView {
+  name: string;
+  purpose: string;
+  model: string;
+  reasoningEffort: string;
+  boundary: string;
+  readOnly: boolean;
+  color: string;
+}
+
+/** Warnings folded by `where`, so five notes about one phase read as one block. */
+export interface PlanWarningGroup {
+  where: string;
+  messages: string[];
+}
+
+export interface PlanCardView {
+  title: string;
+  description: string;
+  /** e.g. "4 phases · 2 synthesized agents", the card's one-line inventory. */
+  summary: string;
+  refinedRequest: string;
+  rationale: string;
+  phases: PlanPhaseView[];
+  agents: PlanAgentView[];
+  acceptance: string;
+  warnings: PlanWarningGroup[];
+  /** The mind that composed it, as the card credits it. */
+  orchestratorModel: string;
+}
+
+/** The operator-facing reading of a `writes` boundary. */
+export function boundaryLabel(writes: WriteBoundary): string {
+  if (writes === null) return 'writes anywhere (minus protected paths)';
+  if (writes.length === 0) return 'read-only';
+  const shown = writes.slice(0, 3).join(', ');
+  const more = writes.length - 3;
+  return more > 0 ? `writes ${shown} +${more} more` : `writes ${shown}`;
+}
+
+function commandNote(command: CommandSpec | undefined): string {
+  if (!command) return 'command';
+  if ('ref' in command) return `runs "${command.ref}"`;
+  if ('builtin' in command) return command.builtin.replace(/_/g, ' ');
+  return command.argv.join(' ');
+}
+
+/** The compact machinery note under one phase row. */
+export function phaseNote(phase: PhaseDef): string {
+  const parts: string[] = [];
+  if (phase.kind === 'code') {
+    parts.push(commandNote(phase.command));
+  } else if (phase.kind === 'engineer') {
+    parts.push('waits for you');
+  }
+  if (phase.gates?.length) {
+    const names = phase.gates.map((g) => (typeof g === 'string' ? g : g.gate));
+    parts.push(`gates: ${names.join(', ')}`);
+  }
+  if (phase.feedbackTo) parts.push(`fails back to ${phase.feedbackTo}`);
+  return parts.join(' · ');
+}
+
+/** Folds warnings by `where`, keeping first-seen order on both axes. */
+export function groupPlanWarnings(warnings: ValidationIssue[]): PlanWarningGroup[] {
+  const groups = new Map<string, string[]>();
+  for (const warning of warnings) {
+    const list = groups.get(warning.where) ?? [];
+    if (!list.includes(warning.message)) list.push(warning.message);
+    groups.set(warning.where, list);
+  }
+  return [...groups.entries()].map(([where, messages]) => ({ where, messages }));
+}
+
+/** Everything the Plan card renders, shaped once. */
+export function planCardView(plan: GeneratedRunPlan): PlanCardView {
+  const synthesized = new Set(plan.agents.map((a) => a.name));
+  const marks = new Set(outcomeMarks(plan.pipeline.acceptance, plan.pipeline.phases));
+  const phases: PlanPhaseView[] = plan.pipeline.phases.map((phase, index) => ({
+    index,
+    name: phase.name,
+    kind: phase.kind,
+    description: phase.description,
+    agent: phase.agent ?? null,
+    synthesized: Boolean(phase.agent && synthesized.has(phase.agent)),
+    note: phaseNote(phase),
+    decides: marks.has(index),
+  }));
+
+  const inventory = [plural(plan.pipeline.phases.length, 'phase')];
+  if (plan.agents.length) inventory.push(plural(plan.agents.length, 'synthesized agent'));
+
+  return {
+    title: plan.pipeline.name,
+    description: plan.pipeline.description,
+    summary: inventory.join(' · '),
+    refinedRequest: plan.refinedRequest,
+    rationale: plan.rationale,
+    phases,
+    agents: plan.agents.map((agent) => ({
+      name: agent.name,
+      purpose: agent.purpose,
+      model: agent.model === 'inherit' ? 'inherits the default model' : modelLabel(agent.model),
+      reasoningEffort: agent.reasoningEffort,
+      boundary: boundaryLabel(agent.writes),
+      readOnly: agent.toolProfile === 'read-only' || agent.writes?.length === 0,
+      color: agent.color,
+    })),
+    acceptance: acceptanceSummary(plan.pipeline.acceptance, plan.pipeline.phases),
+    warnings: groupPlanWarnings(plan.warnings),
+    orchestratorModel: plan.model === 'inherit' ? 'the default model' : modelLabel(plan.model),
+  };
+}

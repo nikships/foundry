@@ -23,6 +23,9 @@
 
 .banner {
   margin: 0 var(--s6) var(--s3);
+  min-height: 32px;
+  padding: var(--s2) var(--s3);
+  font-size: var(--text-xs);
   animation: fade-in var(--fast) var(--ease);
 }
 

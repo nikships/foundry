@@ -1,0 +1,104 @@
+.composer {
+  margin: 0 var(--s6) var(--s5);
+  padding: var(--s4);
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+.request {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-family: var(--font);
+  font-size: var(--text-base);
+  line-height: var(--leading);
+  min-height: 72px;
+  width: 100%;
+  resize: vertical;
+  color: var(--text);
+}
+.request:focus {
+  outline: none;
+}
+.controls {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-top: var(--s3);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--line-faint);
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.pipeline {
+  width: auto;
+  max-width: 100%;
+  min-width: 110px;
+  flex: 0 0 auto;
+}
+.start-button {
+  flex: none;
+  flex-shrink: 0;
+}
+
+@media (max-width: 760px) {
+  .controls {
+    gap: var(--s2);
+  }
+}
+.controls kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0;
+  color: var(--text-faint);
+  margin-left: var(--s2);
+}
+.desc {
+  margin-top: var(--s3);
+  font-size: var(--text-sm);
+  line-height: var(--leading);
+  color: var(--text-dim);
+}
+.hint-line {
+  margin-top: var(--s2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.notice {
+  margin-top: var(--s3);
+  padding: var(--s3);
+  border-radius: var(--r-sm);
+  background: var(--amber-dim);
+  color: var(--amber);
+  font-size: var(--text-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  justify-content: space-between;
+  border: 1px solid color-mix(in srgb, var(--amber) 18%, transparent);
+}
+.notice p {
+  margin: 0;
+  line-height: var(--leading);
+}
+.issues {
+  margin-top: var(--s3);
+  padding: var(--s3);
+  border-radius: var(--r-sm);
+  background: var(--red-dim);
+  color: var(--red);
+  font-size: var(--text-sm);
+  list-style: none;
+  border: 1px solid color-mix(in srgb, var(--red) 18%, transparent);
+}
+.issues.warn {
+  background: var(--amber-dim);
+  color: var(--amber);
+  border-color: color-mix(in srgb, var(--amber) 18%, transparent);
+}
+.fix {
+  margin-top: var(--s2);
+}

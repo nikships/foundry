@@ -1,0 +1,170 @@
+import { useMemo } from 'react';
+import type { GeneratedRunPlan, ValidationIssue } from '@shared/types.js';
+import { useApp } from '../../stores/app.js';
+import { phaseKindColor } from '../../utils/derive.js';
+import { planCardView } from '../../view-models/plan-view.js';
+import PipelineRibbon from '../pipeline/PipelineRibbon.js';
+import { PhaseGlyph } from '../pipeline/PhaseGlyphs.js';
+import { Button } from '../ui/Button.js';
+import styles from './PlanCard.module.css';
+
+/**
+ * The Orchestrator's proposal, laid out for one-click confirmation: the
+ * refined brief, the ordered phases, the agents it synthesized, the
+ * acceptance rule, and why the pipeline has this shape. Nothing here starts
+ * anything — the operator disposes.
+ */
+export default function PlanCard({
+  plan,
+  starting,
+  startBlocked,
+  issues,
+  onStart,
+  onRegenerate,
+  onDiscard,
+}: {
+  plan: GeneratedRunPlan;
+  starting: boolean;
+  /** Why starting is refused right now, or null when it may proceed. */
+  startBlocked: string | null;
+  /** Start-time validation failures, shown on the card rather than lost. */
+  issues: ValidationIssue[];
+  onStart: () => void;
+  onRegenerate: () => void;
+  onDiscard: () => void;
+}): React.JSX.Element {
+  const { agentColor } = useApp();
+  const view = useMemo(() => planCardView(plan), [plan]);
+  const synthColor = (name: string | null): string => {
+    if (!name) return 'var(--text-faint)';
+    return plan.agents.find((a) => a.name === name)?.color ?? agentColor(name);
+  };
+
+  return (
+    <section className={`${styles.card} card`} data-testid="plan-card">
+      <header className={styles.head}>
+        <div className={styles.headText}>
+          <h2 className={styles.title}>{view.title}</h2>
+          <p className={`faint ${styles.summary}`}>
+            {view.summary} · composed by {view.orchestratorModel}
+          </p>
+        </div>
+        <p className={styles.description}>{view.description}</p>
+        <PipelineRibbon pipeline={plan.pipeline} />
+      </header>
+
+      <div className={styles.section}>
+        <p className={styles.label}>The brief</p>
+        <p className={styles.brief} data-testid="plan-refined-request">
+          {view.refinedRequest}
+        </p>
+      </div>
+
+      <div className={styles.section}>
+        <p className={styles.label}>Phases</p>
+        <ol className={styles.phases}>
+          {view.phases.map((phase) => {
+            const color = phaseKindColor(phase.kind, synthColor(phase.agent));
+            return (
+              <li key={phase.name} className={styles.phase}>
+                <span className={styles.phaseIcon} style={{ color }}>
+                  <PhaseGlyph kind={phase.kind} />
+                </span>
+                <div className={styles.phaseBody}>
+                  <div className={styles.phaseTop}>
+                    <span className={styles.phaseName} style={{ color }}>
+                      {phase.name}
+                    </span>
+                    {phase.agent && (
+                      <span className={`faint ${styles.phaseAgent}`}>
+                        {phase.agent}
+                        {phase.synthesized && (
+                          <span className={styles.synthBadge}>synthesized</span>
+                        )}
+                      </span>
+                    )}
+                    {phase.decides && <span className={styles.decides}>decides</span>}
+                  </div>
+                  <p className={styles.phaseDesc}>{phase.description}</p>
+                  {phase.note && <p className={`faint ${styles.phaseNote}`}>{phase.note}</p>}
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+
+      {view.agents.length > 0 && (
+        <div className={styles.section}>
+          <p className={styles.label}>Synthesized for this run</p>
+          <div className={styles.agents}>
+            {view.agents.map((agent) => (
+              <div key={agent.name} className={styles.agent}>
+                <span className={styles.agentDot} style={{ background: agent.color }} />
+                <span className={styles.agentName}>{agent.name}</span>
+                <span className={styles.agentPurpose}>{agent.purpose}</span>
+                <span className={`faint ${styles.agentMeta}`}>
+                  {agent.model} · {agent.reasoningEffort} · {agent.boundary}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className={styles.section}>
+        <p className={styles.label}>Acceptance</p>
+        <p className={styles.acceptance}>{view.acceptance}</p>
+      </div>
+
+      <div className={styles.section}>
+        <p className={styles.label}>Why this shape</p>
+        <p className={styles.rationale}>{view.rationale}</p>
+      </div>
+
+      {view.warnings.length > 0 && (
+        <div className={styles.warnings} data-testid="plan-warnings">
+          {view.warnings.map((group) => (
+            <div key={group.where} className={styles.warningGroup}>
+              <strong>{group.where}</strong>
+              <ul>
+                {group.messages.map((message, i) => (
+                  <li key={i}>{message}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {issues.length > 0 && (
+        <ul className={styles.issues}>
+          {issues.map((issue, i) => (
+            <li key={i}>
+              <strong>{issue.where}</strong> {issue.message}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className={styles.actions}>
+        <Button
+          variant="primary"
+          disabled={starting || Boolean(startBlocked)}
+          title={startBlocked ?? undefined}
+          onClick={onStart}
+          data-testid="plan-start"
+        >
+          {starting ? 'Starting…' : 'Start run'}
+        </Button>
+        <Button disabled={starting} onClick={onRegenerate} data-testid="plan-regenerate">
+          Regenerate
+        </Button>
+        <Button variant="ghost" disabled={starting} onClick={onDiscard} data-testid="plan-discard">
+          Discard
+        </Button>
+        {startBlocked && <span className={`faint ${styles.blocked}`}>{startBlocked}</span>}
+      </div>
+    </section>
+  );
+}
