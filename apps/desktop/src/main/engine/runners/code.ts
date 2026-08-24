@@ -201,8 +201,8 @@ export class CodePhaseRunner implements PhaseRunner {
     const phaseId = ctx.phaseId(phase.name);
     this.healVisits.set(phase.name, (this.healVisits.get(phase.name) ?? 0) + 1);
     const agent = support.open(ctx.cwd);
-    // A healing turn blocks the phase on a model for as long as its timeout
-    // allows, and it can write. Cancelling has to reach it directly, or Stop
+    // A healing turn blocks the phase on a model until it finishes or the
+    // operator cancels, and it can write. Cancellation has to reach it directly, or Stop
     // would leave an agent editing the worktree of a run the operator ended.
     const release = ctx.onCancel(() => agent.abort());
     tracer.event({

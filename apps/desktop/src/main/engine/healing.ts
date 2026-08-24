@@ -67,8 +67,6 @@ export interface HealOutcome {
   detail: string;
 }
 
-const HEALING_TIMEOUT_MS = 15 * 60_000;
-
 /**
  * The healer, write-capable inside the run's own worktree.
  *
@@ -90,7 +88,7 @@ export function healingAgent(
     systemPrompt: HEALING_SYSTEM,
   });
   return {
-    send: (text) => session.send(text, HEALING_TIMEOUT_MS),
+    send: (text) => session.send(text),
     abort: () => session.abort(),
   };
 }

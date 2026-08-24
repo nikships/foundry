@@ -5,8 +5,7 @@
  * repository context, command detection, setup-script generation, the run-start
  * command fill, rebase repair, and the readiness fix. None is a pipeline: there is no
  * worktree to merge, no phase to fail, no envelope, no trace row. What they
- * need is a turn, a live transcript, and a cancel. Interactive diagnostics may
- * add a timeout; run-owned repair deliberately does not.
+ * need is a turn, a live transcript, and explicit operator cancellation.
  *
  * This file is the contract for that, and it names no vendor. `pi-oneshot.ts`
  * is the implementation; a test implements `OneShotFactory` directly and drives
@@ -58,7 +57,7 @@ export interface OneShotResult {
  * flight, which is what a cancel button and a poll-kill both do.
  */
 export interface OneShotSession {
-  send(prompt: string, timeoutMs?: number): Promise<OneShotResult>;
+  send(prompt: string): Promise<OneShotResult>;
   /** Ends whatever is running. Safe before `send` and after it resolves. */
   abort(): void;
 }

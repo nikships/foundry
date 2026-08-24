@@ -78,9 +78,9 @@ async function run(opts: {
     const session = oneShots.factory(options);
     return {
       abort: () => session.abort(),
-      send: (prompt, timeoutMs) => {
+      send: (prompt) => {
         prompts.push(prompt);
-        return session.send(prompt, timeoutMs);
+        return session.send(prompt);
       },
     };
   };
@@ -144,9 +144,9 @@ describe('PlanSession', () => {
       const session = oneShots.factory(opts);
       return {
         abort: () => session.abort(),
-        send: (prompt, timeoutMs) => {
+        send: (prompt) => {
           prompts.push(prompt);
-          return session.send(prompt, timeoutMs);
+          return session.send(prompt);
         },
       };
     };

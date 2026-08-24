@@ -14,7 +14,6 @@ import {
   PanelSession,
   createPanelRegistry,
   shortId,
-  PANEL_TIMEOUT_MS,
   type PanelRegistry,
 } from '../session/index.js';
 import { SETUP_PROMPT, parseSetupReply, sniffSetupScript } from './setup.js';
@@ -113,7 +112,6 @@ export class SetupSession {
       reasoningEffort: settings.helperReasoningEffort,
       systemPrompt: SETUP_PROMPT,
       prompt,
-      timeoutMs: PANEL_TIMEOUT_MS,
     });
     if (!turn) return;
 

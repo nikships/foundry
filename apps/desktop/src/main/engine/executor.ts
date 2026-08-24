@@ -184,7 +184,7 @@ export class Executor {
     this.cancelled = true;
     for (const session of this.sessions.values()) session.kill();
     // A turn that is not an agent session has no entry in `sessions` to kill,
-    // so without this a cancel would wait out its timeout.
+    // so explicit cancellation has to reach it through its registered abort.
     for (const abort of this.aborts) {
       try {
         abort();

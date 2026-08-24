@@ -8,7 +8,6 @@
 import type { AppSettings, ProjectDef } from '@shared/types.js';
 import type { OneShotFactory } from './pi/oneshot.js';
 
-const CONTEXT_TIMEOUT_MS = 120_000;
 const MAX_CONTEXT_CHARS = 8_000;
 const inFlight = new Map<string, Promise<ProjectDef>>();
 const REQUIRED_HEADINGS = [
@@ -62,7 +61,7 @@ async function generateProjectContext(input: ProjectContextInput): Promise<Proje
       access: 'read',
       systemPrompt: SYSTEM_ROLE,
     });
-    const result = await session.send(PROMPT, CONTEXT_TIMEOUT_MS);
+    const result = await session.send(PROMPT);
     const contextSummary = result.interrupted ? '' : result.text.trim().slice(0, MAX_CONTEXT_CHARS);
     if (!contextSummary || REQUIRED_HEADINGS.some((heading) => !contextSummary.includes(heading))) {
       return input.project;

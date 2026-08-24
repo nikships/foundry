@@ -29,7 +29,7 @@ export interface ScriptedTurn {
   work?: (opts: OneShotOptions) => void;
   /** The final assistant text the caller parses. */
   text?: string;
-  /** Thrown instead of answering, for the timeout and failure paths. */
+  /** Thrown instead of answering, for failure paths. */
   throws?: string;
   /** Ends the turn as interrupted rather than complete. */
   interrupted?: boolean;
@@ -68,17 +68,13 @@ export function scriptedOneShots(turns: ScriptedTurn[]): ScriptedOneShots {
       abort(): void {
         aborted = true;
       },
-      async send(_prompt: string, timeoutMs?: number): Promise<OneShotResult> {
+      async send(_prompt: string): Promise<OneShotResult> {
         if (script.warning) opts.onWarning?.(script.warning);
         for (const event of script.events ?? []) opts.onEvent?.(event);
         script.work?.(opts);
 
         if (script.hangUntilAbort) {
-          const start = Date.now();
           while (!aborted) {
-            if (timeoutMs && Date.now() - start > timeoutMs) {
-              throw new Error(`one-shot turn timed out after ${timeoutMs}ms`);
-            }
             await new Promise((resolve) => setTimeout(resolve, 5));
           }
           return { text: '', usage: null, reason: 'aborted', interrupted: true };

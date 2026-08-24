@@ -15,7 +15,6 @@ import {
   PanelSession,
   createPanelRegistry,
   shortId,
-  PANEL_TIMEOUT_MS,
   type PanelRegistry,
 } from '../session/index.js';
 import { buildDetectPrompt, DETECT_PROMPT, parseDetectReply, sniffCommands } from './detect.js';
@@ -135,7 +134,6 @@ export class DetectSession {
       reasoningEffort: settings.helperReasoningEffort,
       systemPrompt: DETECT_PROMPT,
       prompt: buildDetectPrompt(sniffed, this.deps.existingCommands),
-      timeoutMs: PANEL_TIMEOUT_MS,
     });
     if (!turn) return;
 

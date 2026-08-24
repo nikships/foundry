@@ -4,7 +4,7 @@
  *
  * None of those is a run. There is no worktree to merge, no phase to fail, no
  * tracer row. What they need — and what a bare `await` does not give them — is
- * visible progress, a cancel button, and a reason when nothing comes back.
+ * visible progress and a cancel button while the turn runs.
  *
  * A session is therefore a small owned object rather than a promise: the click
  * starts it, the renderer subscribes by id, and cancelling kills the child.
@@ -24,8 +24,6 @@ import type { TransportEvent } from '../pi/transport.js';
 
 /** A long turn must not grow without bound; the tail is what the panel shows. */
 export const PANEL_MAX_ENTRIES = 300;
-/** Default patience for a one-shot ask. Detection and setup both use this. */
-export const PANEL_TIMEOUT_MS = 300_000;
 
 export function shortId(bytes = 6): string {
   return randomBytes(bytes).toString('hex');
@@ -53,7 +51,6 @@ export interface AskTurn {
   prompt: string;
   /** Standing rules, installed as the system prompt. */
   systemPrompt?: string;
-  timeoutMs?: number;
   textCap?: number;
 }
 
@@ -169,7 +166,7 @@ export class PanelSession<TState extends PanelStateCore> {
       ...(input.systemPrompt ? { systemPrompt: input.systemPrompt } : {}),
     });
     this.bind(session);
-    const turn = await session.send(input.prompt, input.timeoutMs ?? PANEL_TIMEOUT_MS);
+    const turn = await session.send(input.prompt);
     if (this._cancelled) return null;
     return turn;
   }

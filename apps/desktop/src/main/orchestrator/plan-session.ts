@@ -20,7 +20,6 @@ import {
   PanelSession,
   createPanelRegistry,
   shortId,
-  PANEL_TIMEOUT_MS,
   type PanelRegistry,
 } from '../session/index.js';
 import {
@@ -152,7 +151,6 @@ export class PlanSession {
         reasoningEffort: this.deps.reasoningEffort,
         systemPrompt: ORCHESTRATOR_PROMPT,
         prompt: ask,
-        timeoutMs: PANEL_TIMEOUT_MS,
       });
       if (!turn) return;
       state.rawReply = turn.text;

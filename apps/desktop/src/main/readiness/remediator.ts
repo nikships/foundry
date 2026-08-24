@@ -12,7 +12,6 @@ import type { ReadinessRemediator } from './session.js';
 
 export type { ReadinessRemediator };
 
-const REMEDIATE_TIMEOUT_MS = 20 * 60_000;
 const TEXT_CAP = 4_000;
 /** How often cancellation is noticed; a stale cancel is a run left burning. */
 const CANCEL_POLL_MS = 250;
@@ -64,7 +63,7 @@ export function createAgentRemediator(input: { oneShot: OneShotFactory }): Readi
         if (job.signal.cancelled) session.abort();
       }, CANCEL_POLL_MS);
       try {
-        const turn = await session.send(prompt, REMEDIATE_TIMEOUT_MS);
+        const turn = await session.send(prompt);
         if (job.signal.cancelled) return { ok: false, detail: 'cancelled' };
         if (turn.interrupted) return { ok: false, detail: turn.reason || 'agent interrupted' };
         return { ok: true, detail: turn.reason || 'agent finished' };

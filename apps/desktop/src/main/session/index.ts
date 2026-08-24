@@ -1,4 +1,4 @@
-export { PanelSession, shortId, PANEL_MAX_ENTRIES, PANEL_TIMEOUT_MS } from './panel-session.js';
+export { PanelSession, shortId, PANEL_MAX_ENTRIES } from './panel-session.js';
 export type { AskTurn, PanelSessionHooks } from './panel-session.js';
 export {
   SessionRegistry,

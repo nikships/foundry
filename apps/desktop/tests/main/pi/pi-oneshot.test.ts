@@ -71,7 +71,7 @@ class ScriptedPiSession {
   customMessages: string[] = [];
   cycles = 0;
   turn: (session: ScriptedPiSession) => void | Promise<void> = (s) => s.say('done');
-  /** Held open so a test can drive the timeout and the abort paths. */
+  /** Held open so a test can drive explicit cancellation. */
   hangUntilAbort = false;
 
   private subscriber: ((event: unknown) => void) | null = null;
@@ -263,7 +263,7 @@ beforeEach(() => {
 describe('what a one-shot session is allowed to do', () => {
   it('hands a read-only session the four read tools and nothing else', async () => {
     const h = harness();
-    await h.open('read').send('go', 1000);
+    await h.open('read').send('go');
     // Detection and the run-start fill run in the operator's own checkout.
     // There is no worktree to diff and nothing to revert a write, so the
     // absence of a write tool is the guarantee — not a policy that refuses.
@@ -272,7 +272,7 @@ describe('what a one-shot session is allowed to do', () => {
 
   it('gives a write-capable session the built-ins it needs to do the job', async () => {
     const h = harness();
-    await h.open('write').send('go', 1000);
+    await h.open('write').send('go');
     // Repair rebases and the readiness fix edits files; both run on an
     // isolated branch, which is what makes the wider list safe.
     expect(spy.creates[0]!.tools).toEqual(['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls']);
@@ -280,7 +280,7 @@ describe('what a one-shot session is allowed to do', () => {
 
   it('registers no Foundry tools, because a one-shot has no run to report to', async () => {
     const h = harness();
-    await h.open().send('go', 1000);
+    await h.open().send('go');
     // The phase tools (report_progress, submit_envelope) need a run id and a
     // tracer. A one-shot has neither; offering them would be an invitation to
     // call something that cannot work.
@@ -293,7 +293,7 @@ describe('what a one-shot session is allowed to do', () => {
 describe('where a one-shot session lives', () => {
   it('keeps every path inside Foundry’s own directory, never the user’s ~/.pi', async () => {
     const h = harness();
-    await h.open().send('go', 1000);
+    await h.open().send('go');
     expect(spy.creates[0]!.agentDir).toBe(join(h.supportDir, 'pi'));
     expect(spy.loaders[0]!.agentDir).toBe(join(h.supportDir, 'pi'));
     for (const call of [...spy.creates, ...spy.loaders]) {
@@ -303,14 +303,14 @@ describe('where a one-shot session lives', () => {
 
   it('runs in the directory it was asked about', async () => {
     const h = harness();
-    await h.open().send('go', 1000);
+    await h.open().send('go');
     expect(spy.creates[0]!.cwd).toBe(h.cwd);
     expect(spy.loaders[0]!.cwd).toBe(h.cwd);
   });
 
   it('writes no session file, because the answer is used and thrown away', async () => {
     const h = harness();
-    await h.open().send('go', 1000);
+    await h.open().send('go');
     // A detection click should not leave a transcript on disk next to the
     // trace directories that runs own.
     expect(spy.sessionManagers.map((s) => s.kind)).toEqual(['inMemory']);
@@ -318,7 +318,7 @@ describe('where a one-shot session lives', () => {
 
   it('turns off every form of resource discovery', async () => {
     const h = harness();
-    await h.open().send('go', 1000);
+    await h.open().send('go');
     const loader = spy.loaders[0]!;
     // Same rule as a run: whatever the operator installed for their own pi
     // must not change what this app does on their behalf.
@@ -333,7 +333,7 @@ describe('where a one-shot session lives', () => {
 
   it('leaves compaction off for a short-lived helper session', async () => {
     const h = harness();
-    await h.open().send('go', 1000);
+    await h.open().send('go');
     expect(spy.settings[0]).toMatchObject({
       compaction: { enabled: false },
       httpIdleTimeoutMs: 300_000,
@@ -348,7 +348,7 @@ describe('where a one-shot session lives', () => {
 
   it('binds extensions before anything can be prompted', async () => {
     const h = harness();
-    await h.open('write').send('go', 1000);
+    await h.open('write').send('go');
     // Unbound, the policy hook is registered but not live, and every tool call
     // in the turn would run unruled.
     expect(spy.order).toEqual(['create', 'bind', 'prompt']);
@@ -359,7 +359,7 @@ describe('running one turn', () => {
   it('returns the final text, trimmed', async () => {
     const h = harness();
     h.session.turn = (s) => s.say('  the answer  ');
-    const result = await h.open().send('go', 1000);
+    const result = await h.open().send('go');
     expect(result.text).toBe('the answer');
     expect(result.reason).toBe('stop');
     expect(result.interrupted).toBe(false);
@@ -367,7 +367,7 @@ describe('running one turn', () => {
 
   it('disposes the session as soon as the answer arrives', async () => {
     const h = harness();
-    await h.open().send('go', 1000);
+    await h.open().send('go');
     // Holding a session open would keep a model connection alive for a click
     // that has already been answered.
     expect(h.session.disposed).toBe(1);
@@ -376,7 +376,7 @@ describe('running one turn', () => {
   it('disposes even when the turn failed', async () => {
     const h = harness();
     h.session.turn = (s) => s.say('', { stopReason: 'error', errorMessage: 'provider said no' });
-    await expect(h.open().send('go', 1000)).rejects.toThrow(/provider said no/);
+    await expect(h.open().send('go')).rejects.toThrow(/provider said no/);
     expect(h.session.disposed).toBe(1);
   });
 
@@ -417,22 +417,13 @@ describe('running one turn', () => {
     expect(h.warnings.at(-1)).toMatch(/continuing this turn on openai\/gpt-5/);
   });
 
-  it('aborts and fails a turn that outlasts its timeout', async () => {
-    const h = harness();
-    h.session.hangUntilAbort = true;
-    await expect(h.open().send('go', 20)).rejects.toThrow(/timed out after 20ms/);
-    // Abort, not just reject: an orphaned agent loop would keep working in a
-    // directory nobody is watching any more.
-    expect(h.session.aborts).toBe(1);
-    expect(h.session.disposed).toBe(1);
-  });
-
-  it('reports a cancelled turn as interrupted rather than throwing', async () => {
+  it('keeps a turn alive until explicit cancellation, then reports it as interrupted', async () => {
     const h = harness();
     h.session.hangUntilAbort = true;
     const one = h.open();
-    const running = one.send('go', 5_000);
+    const running = one.send('go');
     await waitFor(() => h.session.prompts.length === 1);
+    expect(h.session.aborts).toBe(0);
     one.abort();
     const result = await running;
     // A cancel is an operator action, not a fault: the caller shows
@@ -445,7 +436,7 @@ describe('running one turn', () => {
     const h = harness();
     const one = h.open();
     one.abort();
-    const result = await one.send('go', 1000);
+    const result = await one.send('go');
     expect(result.interrupted).toBe(true);
     // The window between the click and the first token is where a cancel most
     // often lands, and a turn started there is one nobody is waiting for.
@@ -474,7 +465,7 @@ describe('running one turn', () => {
       });
       s.say('done');
     };
-    await h.open().send('go', 1000);
+    await h.open().send('go');
 
     // The same event shapes a phase produces, so the detection panel and the
     // run inspector fold identical rows.
@@ -487,7 +478,7 @@ describe('running one turn', () => {
 
   it('warns rather than failing when the requested model is not installed', async () => {
     const h = harness({ model: 'anthropic/opus-99' });
-    await h.open().send('go', 1000);
+    await h.open().send('go');
     // A one-shot is a button the operator pressed; substituting a model and
     // saying so beats refusing to answer.
     expect(spy.creates[0]!.model).toMatchObject({ id: 'claude-sonnet-4' });
@@ -496,7 +487,7 @@ describe('running one turn', () => {
 
   it('states no model when the caller inherits, letting the install decide', async () => {
     const h = harness({ model: 'inherit' });
-    await h.open().send('go', 1000);
+    await h.open().send('go');
     expect(spy.creates[0]!.model).toBeUndefined();
   });
 });

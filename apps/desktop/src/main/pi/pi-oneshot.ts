@@ -46,7 +46,7 @@ class PiOneShot implements OneShotSession {
 
   constructor(private readonly opts: PiOneShotOptions) {}
 
-  async send(prompt: string, timeoutMs?: number): Promise<OneShotResult> {
+  async send(prompt: string): Promise<OneShotResult> {
     const session = await this.open();
     try {
       // An abort that landed while the session was still opening must not be
@@ -56,27 +56,15 @@ class PiOneShot implements OneShotSession {
       this.extension.useSystemPrompt(this.opts.systemPrompt ?? null);
       this.events.startTurn();
 
-      let timedOut = false;
-      const timer = timeoutMs
-        ? setTimeout(() => {
-            timedOut = true;
-            void session.abort();
-          }, timeoutMs)
-        : null;
-      try {
-        await session.prompt(prompt, { expandPromptTemplates: false, source: 'extension' });
-        // prompt() already waits through retries. waitForIdle() is the settle API.
-        await session.waitForIdle();
-        await continueWithModelFailover({
-          session,
-          events: this.events,
-          availableModelCount: this.availableModelCount,
-          onWarning: (warning) => this.opts.onWarning?.(warning),
-        });
-      } finally {
-        if (timer) clearTimeout(timer);
-      }
-      if (timedOut) throw new Error(`one-shot turn timed out after ${timeoutMs}ms`);
+      await session.prompt(prompt, { expandPromptTemplates: false, source: 'extension' });
+      // prompt() already waits through retries. waitForIdle() is the settle API.
+      await session.waitForIdle();
+      await continueWithModelFailover({
+        session,
+        events: this.events,
+        availableModelCount: this.availableModelCount,
+        onWarning: (warning) => this.opts.onWarning?.(warning),
+      });
 
       const last = lastAssistantStop(session);
       if (last?.stopReason === 'error') {
