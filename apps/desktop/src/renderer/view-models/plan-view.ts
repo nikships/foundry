@@ -9,6 +9,7 @@ import type {
   GeneratedRunPlan,
   PhaseDef,
   PhaseKind,
+  PhaseRow,
   ValidationIssue,
   WriteBoundary,
 } from '@shared/types.js';
@@ -208,4 +209,11 @@ export function planExportItemIssues(
   item: PlanExportItem,
 ): ValidationIssue[] {
   return issues.filter((issue) => issue.where === item || issue.where.startsWith(`${item}.`));
+}
+
+/** Whether the final persisted plan still has a failed active phase to continue. */
+export function planHasActiveFailure(plan: GeneratedRunPlan, history: PhaseRow[]): boolean {
+  const latestByName = new Map<string, PhaseRow>();
+  for (const row of history) latestByName.set(row.name, row);
+  return plan.pipeline.phases.some((phase) => latestByName.get(phase.name)?.status === 'fail');
 }

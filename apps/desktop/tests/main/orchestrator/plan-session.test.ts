@@ -62,12 +62,28 @@ function validReply(over: Record<string, unknown> = {}): string {
   });
 }
 
-async function run(opts: { turns: ScriptedTurn[]; roster?: AgentDef[] }): Promise<{
+async function run(opts: {
+  turns: ScriptedTurn[];
+  roster?: AgentDef[];
+  ghAvailable?: () => Promise<boolean>;
+}): Promise<{
   session: PlanSession;
   state: OrchestratorState;
   oneShots: ReturnType<typeof scriptedOneShots>;
+  prompts: string[];
 }> {
   const oneShots = scriptedOneShots(opts.turns);
+  const prompts: string[] = [];
+  const oneShot: typeof oneShots.factory = (options) => {
+    const session = oneShots.factory(options);
+    return {
+      abort: () => session.abort(),
+      send: (prompt, timeoutMs) => {
+        prompts.push(prompt);
+        return session.send(prompt, timeoutMs);
+      },
+    };
+  };
   const states: OrchestratorState[] = [];
   const session = new PlanSession({
     projectId: 'p1',
@@ -79,12 +95,13 @@ async function run(opts: { turns: ScriptedTurn[]; roster?: AgentDef[] }): Promis
     commands,
     roster: opts.roster ?? [builder()],
     envelopeDefs: [],
-    oneShot: oneShots.factory,
+    ghAvailable: opts.ghAvailable,
+    oneShot,
     onChange: (state) => states.push(state),
   });
   await session.run();
   expect(states.length).toBeGreaterThan(0);
-  return { session, state: session.snapshot(), oneShots };
+  return { session, state: session.snapshot(), oneShots, prompts };
 }
 
 describe('PlanSession', () => {
@@ -159,15 +176,31 @@ describe('PlanSession', () => {
     expect(ask).toContain('## Builtin pipelines');
   });
 
+  it('checks GitHub in the background and rules out a PR phase when unavailable', async () => {
+    const { prompts } = await run({
+      turns: [{ text: validReply() }],
+      ghAvailable: async () => false,
+    });
+
+    expect(prompts[0]).toContain('GitHub is not available for this project');
+    expect(prompts[0]).toContain('do not compose a PR phase');
+  });
+
   it('sends parse errors back as a correction and accepts the fixed reply', async () => {
-    const { state, oneShots } = await run({
-      turns: [{ text: 'Here is my thinking, no JSON though.' }, { text: validReply() }],
+    const rejected = 'Here is my thinking, no JSON though.';
+    const { state, oneShots, prompts } = await run({
+      turns: [{ text: rejected }, { text: validReply() }],
     });
 
     expect(state.status).toBe('done');
     expect(state.plan).not.toBeNull();
     // One session per attempt: the correction opens a fresh one-shot.
     expect(oneShots.calls).toHaveLength(2);
+    // That fresh session still receives everything needed to understand and
+    // repair the previous attempt rather than seeing orphaned validation text.
+    expect(prompts[1]).toContain('add a changes file');
+    expect(prompts[1]).toContain(rejected);
+    expect(prompts[1]).toContain('the reply contained no JSON object');
     expect(state.entries.some((e) => e.text.includes('no JSON object'))).toBe(true);
   });
 
@@ -197,6 +230,23 @@ describe('PlanSession', () => {
 
     expect(state.status).toBe('done');
     expect(state.entries.some((e) => e.text.includes('shadow'))).toBe(true);
+  });
+
+  it('refuses two synthesized agents with the same name', async () => {
+    const duplicate = {
+      name: 'doc_writer',
+      purpose: 'write one document',
+      systemPrompt: 'You write docs.',
+      userPrompt: 'Write: {{request}}',
+      writes: ['docs/**'],
+      envelope: 'build',
+    };
+    const duplicated = validReply({ agents: [duplicate, duplicate] });
+    const { state } = await run({ turns: [{ text: duplicated }, { text: validReply() }] });
+
+    expect(state.status).toBe('done');
+    expect(state.entries.some((entry) => entry.text.includes('doc_writer'))).toBe(true);
+    expect(state.entries.some((entry) => entry.text.includes('shadow'))).toBe(true);
   });
 
   it('accepts a synthesized agent and fills the fields the model does not own', async () => {

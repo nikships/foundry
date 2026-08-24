@@ -142,6 +142,39 @@ describe('orchestrated plan export', () => {
     expect(roster.get(SYNTHESIZED_AGENT.name)).toBeNull();
   });
 
+  it('preflights a pipeline display-name collision before writing a selected agent', () => {
+    const { roster, pipelines, stores } = harness();
+    const source = plan();
+    const existing: PipelineDef = {
+      ...source.pipeline,
+      id: 'an-unrelated-id',
+      name: source.pipeline.name.toUpperCase(),
+      phases: [
+        {
+          name: 'inspect_search',
+          kind: 'agent',
+          description: 'Inspect search behavior before any changes are proposed.',
+          agent: roster.list()[0]!.name,
+          prompt: { inputs: ['request'] },
+        },
+      ],
+    };
+    expect(pipelines.save(existing, roster.list(), []).ok).toBe(true);
+
+    const result = exportRunPlan(
+      source,
+      { pipeline: true, agents: [SYNTHESIZED_AGENT.name] },
+      stores,
+    );
+
+    expect(result.issues).toContainEqual({
+      level: 'error',
+      where: 'pipeline',
+      message: `A pipeline named "${source.pipeline.name}" already exists.`,
+    });
+    expect(roster.get(SYNTHESIZED_AGENT.name)).toBeNull();
+  });
+
   it('saves one synthesized agent without exporting the pipeline', () => {
     const { roster, pipelines, stores } = harness();
 

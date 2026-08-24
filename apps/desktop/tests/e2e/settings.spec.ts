@@ -11,9 +11,9 @@ test.describe('settings theme', () => {
       app = launched.app;
       let { window } = launched;
 
-      await expect(window.getByPlaceholder(/What should the factory build/)).toBeVisible({
-        timeout: 20_000,
-      });
+      await expect(
+        window.getByRole('heading', { name: 'What should the factory build?' }),
+      ).toBeVisible({ timeout: 20_000 });
       await window.getByTestId('nav-settings').click();
       await window.getByTestId('settings-tab-app').click();
 

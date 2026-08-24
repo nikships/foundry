@@ -29,6 +29,7 @@ import { Tracer } from '../trace/tracer.js';
 import { Executor } from './executor.js';
 import { healingSupport } from './healing.js';
 import { replanningSupport } from '../orchestrator/replan.js';
+import { activeRowsForPipeline } from './phase-history.js';
 import { commandMatches, isAlive, killRun, terminate } from '../system/procs.js';
 import type { BridgeTrace } from '../bridge/service.js';
 import type { OneShotFactory } from '../pi/oneshot.js';
@@ -196,16 +197,18 @@ export class RunRegistry extends EventEmitter {
       return { ok: false, detail: 'only a rejected or failed run can be continued' };
     }
     if (run.merged) return { ok: false, detail: 'a merged run cannot be continued' };
-    const failed = [...tracer.phases(input.runId)]
-      .reverse()
-      .find((phase) => phase.status === 'fail');
-    if (!failed) return { ok: false, detail: 'this run has no failed phase to continue' };
-    if (run.worktreePath && !existsSync(run.worktreePath)) {
-      return { ok: false, detail: 'this run’s worktree is no longer available' };
-    }
     const pipeline = tracer.readRunJson<PipelineDef>(input.runId, 'pipeline.json');
     if (!pipeline?.phases?.length || pipeline.id !== run.pipelineId) {
       return { ok: false, detail: 'this run’s saved pipeline is no longer available' };
+    }
+    const active = activeRowsForPipeline(pipeline, tracer.phases(input.runId));
+    if (!active) {
+      return { ok: false, detail: 'the saved pipeline no longer matches this run’s phase history' };
+    }
+    const failed = active.find((phase) => phase.status === 'fail');
+    if (!failed) return { ok: false, detail: 'this run has no failed phase to continue' };
+    if (run.worktreePath && !existsSync(run.worktreePath)) {
+      return { ok: false, detail: 'this run’s worktree is no longer available' };
     }
     const plan = tracer.runPlan(input.runId);
     const agents = plan

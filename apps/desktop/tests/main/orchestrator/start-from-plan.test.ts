@@ -272,6 +272,24 @@ describe('starting a run from an inline plan', () => {
     expect(started).toHaveLength(0);
   });
 
+  it('rechecks a confirmed plan after its renderer IPC round trip', async () => {
+    const scripted = new ScriptedAgent([], []);
+    const { deps: d, started } = deps(scripted);
+    const tampered = plan(h.project.id);
+    tampered.agents[0] = { ...tampered.agents[0]!, name: 'builder' };
+
+    const outcome = await startRun(d, input({ plan: tampered }));
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.issues).toContainEqual(
+      expect.objectContaining({
+        where: 'agents.builder',
+        message: expect.stringContaining('shadow nothing'),
+      }),
+    );
+    expect(started).toHaveLength(0);
+  });
+
   it('leaves the classic manual path byte-for-byte unaffected', async () => {
     const scripted = new ScriptedAgent([buildEnvelope()], [null]);
     const { deps: d, settled } = deps(scripted);

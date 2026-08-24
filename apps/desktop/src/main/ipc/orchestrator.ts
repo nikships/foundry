@@ -1,6 +1,7 @@
 import type { ReasoningEffort } from '@shared/types.js';
 import { IPC } from '@shared/ipc-contract.js';
 import type { AppContext } from '../context.js';
+import { ghStatus } from '../system/gh.js';
 import type { Handle } from './shared.js';
 
 type Ctx = Pick<AppContext, 'projects' | 'plans' | 'rosterFor' | 'envelopes'>;
@@ -34,6 +35,7 @@ export function register(ctx: Ctx, handle: Handle): void {
         roster: ctx.rosterFor(projectId),
         envelopeDefs: ctx.envelopes.list(),
         scaffold: project.scaffold === true,
+        ghAvailable: async () => (await ghStatus(project.path)).available,
       });
       return { planId };
     },

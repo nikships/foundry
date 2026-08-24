@@ -67,8 +67,15 @@ export function exportRunPlan(
     );
   }
   if (selection.pipeline) {
-    if (stores.pipelines.get(pipeline.id, stores.pipelineScope)) {
+    const existingPipelines = stores.pipelines.list(stores.pipelineScope);
+    if (existingPipelines.some((candidate) => candidate.id === pipeline.id)) {
       issues.push(error('pipeline', `A pipeline with id "${pipeline.id}" already exists.`));
+    } else if (
+      existingPipelines.some(
+        (candidate) => candidate.name.trim().toLowerCase() === pipeline.name.trim().toLowerCase(),
+      )
+    ) {
+      issues.push(error('pipeline', `A pipeline named "${pipeline.name}" already exists.`));
     }
     issues.push(
       ...scopedIssues(

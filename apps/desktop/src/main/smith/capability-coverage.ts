@@ -121,6 +121,7 @@ export const SMITH_CAPABILITY_COVERAGE: Readonly<Record<string, SmithCapabilityC
   [IPC.runsOpenWorktree]: approve('smith_runs', 'open_worktree'),
   [IPC.runsRevealFiles]: approve('smith_runs', 'reveal_files'),
   [IPC.runsPlan]: read('smith_runs', 'plan'),
+  [IPC.runsExportPlan]: approve('smith_runs', 'export_plan'),
   // Planning spends an agent turn on the operator's model; that is a
   // privileged action even though the plan itself writes nothing.
   [IPC.orchestratorPlan]: approve('smith_runs', 'orchestrator_plan'),

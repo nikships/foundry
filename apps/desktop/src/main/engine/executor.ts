@@ -58,6 +58,7 @@ import type { Replanner } from '../orchestrator/replan.js';
 import { validate as validatePipeline } from '../store/pipelines.js';
 import { preflightForRun } from './preflight.js';
 import { FIXED_ENGINE_DEFAULTS } from '@shared/types.js';
+import { activeRowsForPipeline } from './phase-history.js';
 
 export interface ExecutorDeps {
   tracer: Tracer;
@@ -354,14 +355,10 @@ export class Executor {
     }
     if (run.merged) throw new Error('a merged run cannot be continued');
 
-    const phases = tracer.phases(runId);
-    const activePhases = pipeline.phases.map((phase) =>
-      [...phases].reverse().find((row) => row.name === phase.name),
-    );
-    if (activePhases.some((phase) => !phase)) {
+    const active = activeRowsForPipeline(pipeline, tracer.phases(runId));
+    if (!active) {
       throw new Error('the saved pipeline no longer matches this run’s phase history');
     }
-    const active = activePhases.filter((phase) => phase !== undefined);
     const startIndex = active.findIndex((phase) => phase.status === 'fail');
     if (startIndex < 0) throw new Error('this run has no failed phase to continue');
 
@@ -475,11 +472,16 @@ export class Executor {
 
   /** The current logical pipeline rows, excluding superseded amendment history. */
   private activePhaseRows(): PhaseRow[] {
-    return this.pipeline.phases.map((phase) => {
-      const row = this.deps.tracer.phase(this.phaseId(phase.name));
-      if (!row) throw new Error(`active phase "${phase.name}" has no trace row`);
-      return row;
-    });
+    const active = activeRowsForPipeline(
+      this.pipeline,
+      this.pipeline.phases.map((phase) => {
+        const row = this.deps.tracer.phase(this.phaseId(phase.name));
+        if (!row) throw new Error(`active phase "${phase.name}" has no trace row`);
+        return row;
+      }),
+    );
+    if (!active) throw new Error('the active pipeline no longer matches its phase rows');
+    return active;
   }
 
   /**

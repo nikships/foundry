@@ -96,6 +96,16 @@
   letter-spacing: -0.01em;
   color: var(--text);
 }
+.amendmentBadge {
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent);
+  border-radius: 999px;
+  color: var(--amber);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+}
 .when {
   font-family: var(--font-mono);
   font-size: 11px;

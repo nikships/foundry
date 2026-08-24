@@ -16,7 +16,7 @@ import { SettingsStore } from '../../src/main/store/settings.js';
 import { ProjectStore } from '../../src/main/store/projects.js';
 import { openDb, projectDbPath, projectRunsDir } from '../../src/main/trace/db.js';
 import { Tracer } from '../../src/main/trace/tracer.js';
-import type { PipelineDef } from '../../src/shared/types.js';
+import type { GeneratedRunPlan, PipelineDef } from '../../src/shared/types.js';
 import type { ProposalInput } from '../../src/main/smith/proposals.js';
 
 export const E2E_RUN_ID = 'run_e2e_inspector';
@@ -26,8 +26,8 @@ export const E2E_SMITH_MESSAGE = 'FOUNDRY_E2E_SMITH_TRANSCRIPT';
 export const E2E_SMITH_PROPOSAL_NAME = 'e2e_planner';
 export const E2E_SMITH_ARTIFACT_PIPELINE = 'e2e-designed-pipeline';
 
-const FIXTURE_PIPELINE: PipelineDef = {
-  id: 'prompt',
+const FINAL_FIXTURE_PIPELINE: PipelineDef = {
+  id: 'generated-plan-e2e-inspector',
   name: 'Prompt',
   description: 'One-shot fixture pipeline for Electron UI smoke.',
   acceptance: { kind: 'all_phases_pass' },
@@ -41,6 +41,34 @@ const FIXTURE_PIPELINE: PipelineDef = {
     },
   ],
 };
+
+const INITIAL_FIXTURE_PIPELINE: PipelineDef = {
+  ...FINAL_FIXTURE_PIPELINE,
+  phases: [
+    ...FINAL_FIXTURE_PIPELINE.phases,
+    {
+      name: 'obsolete_check',
+      kind: 'code',
+      description: 'Represent the queued tail replaced by the Orchestrator.',
+      command: { argv: ['true'] },
+    },
+  ],
+};
+
+function fixturePlan(projectId: string, pipeline: PipelineDef): GeneratedRunPlan {
+  return {
+    planId: 'plan-e2e-inspector',
+    projectId,
+    prompt: E2E_REQUEST,
+    refinedRequest: E2E_REQUEST,
+    rationale: 'Build once, then amend the failed tail and finish with fresh evidence.',
+    pipeline,
+    agents: [],
+    warnings: [],
+    model: 'inherit',
+    reasoningEffort: 'medium',
+  };
+}
 
 export interface SeededFixture {
   userDataDir: string;
@@ -94,15 +122,16 @@ export function seedOnboardedFixture(
     tracer.startRun({
       runId: E2E_RUN_ID,
       projectId: project.id,
-      pipeline: FIXTURE_PIPELINE,
+      pipeline: INITIAL_FIXTURE_PIPELINE,
       request: E2E_REQUEST,
       engineer: 'e2e',
       worktreePath: null,
       branch: null,
       baseRef: 'main',
       mode: 'pi',
+      plan: fixturePlan(project.id, INITIAL_FIXTURE_PIPELINE),
     });
-    const phaseId = tracer.openPhase({
+    const failedPhaseId = tracer.queuePhase({
       runId: E2E_RUN_ID,
       seq: 0,
       name: 'build',
@@ -110,6 +139,33 @@ export function seedOnboardedFixture(
       owner: 'builder',
       description: 'Fixture build phase',
     });
+    const obsoletePhaseId = tracer.queuePhase({
+      runId: E2E_RUN_ID,
+      seq: 1,
+      name: 'obsolete_check',
+      kind: 'code',
+      owner: 'code',
+      description: 'Queued tail replaced by the seeded amendment.',
+    });
+    tracer.beginQueuedPhase(failedPhaseId);
+    tracer.closePhase(failedPhaseId, 'fail', 'seeded verifier failure');
+    const amended = tracer.amendRun({
+      runId: E2E_RUN_ID,
+      failedPhaseId,
+      removeQueuedPhaseIds: [obsoletePhaseId],
+      pipeline: FINAL_FIXTURE_PIPELINE,
+      plan: fixturePlan(project.id, FINAL_FIXTURE_PIPELINE),
+      reason: 'Replace the exhausted build attempt with a focused retry.',
+      attempt: 1,
+      evidence: 'seeded verifier failure',
+      before: ['obsolete_check'],
+      after: ['build'],
+      newPhases: FINAL_FIXTURE_PIPELINE.phases,
+      engineer: 'e2e',
+    });
+    const phaseId = amended.get('build');
+    if (!phaseId) throw new Error('seeded amendment did not queue build');
+    tracer.beginQueuedPhase(phaseId);
     tracer.event({
       runId: E2E_RUN_ID,
       phaseId,

@@ -23,6 +23,7 @@ import {
 } from '@shared/types.js';
 import { BUILTIN_PIPELINES } from '@shared/builtin-pipelines.js';
 import { pipelineSchema, validate as validatePipeline } from '../store/pipelines.js';
+import { validate as validateAgent } from '../store/roster.js';
 import { GATE_DESCRIPTIONS } from '../engine/gates.js';
 import { preflightForRun } from '../engine/preflight.js';
 
@@ -263,15 +264,22 @@ export type PlanRailsResult =
  */
 export function checkPlanRails(reply: ParsedPlanReply, inputs: PlanRailsInputs): PlanRailsResult {
   const issues: ValidationIssue[] = [];
-  const rosterNames = new Set(inputs.roster.map((a) => a.name));
+  const activeNames = new Set(inputs.roster.map((a) => a.name));
   for (const agent of reply.agents) {
-    if (rosterNames.has(agent.name)) {
+    if (activeNames.has(agent.name)) {
       issues.push({
         level: 'error',
         where: `agents.${agent.name}`,
-        message: `a roster agent is already named "${agent.name}" — synthesized agents shadow nothing`,
+        message: `an agent is already named "${agent.name}" — synthesized agents shadow nothing`,
       });
     }
+    activeNames.add(agent.name);
+    issues.push(
+      ...validateAgent(agent, inputs.knownEnvelopes).map((issue) => ({
+        ...issue,
+        where: `agents.${agent.name}.${issue.where}`,
+      })),
+    );
   }
   const union = [...inputs.roster, ...reply.agents];
   issues.push(

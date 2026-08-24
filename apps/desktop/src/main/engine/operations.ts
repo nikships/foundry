@@ -25,6 +25,7 @@ import { buildDetectPrompt, DETECT_PROMPT, parseDetectReply } from './detect.js'
 import { ensureMissingCommands, missingCommandRefs, preflightForRun } from './preflight.js';
 import * as ghLib from '../system/gh.js';
 import type { GhOptions } from '../system/gh.js';
+import { checkPlanRails } from '../orchestrator/plan.js';
 
 export interface StartRunOutcome {
   ok: boolean;
@@ -119,13 +120,25 @@ export async function startRun(deps: StartRunDeps, input: StartRunInput): Promis
   }
 
   const knownEnvelopes = deps.envelopeDefs().map((e) => e.name);
-  const issues = preflightForRun(
-    pipeline,
-    agents,
-    project.commands.map((c) => c.name),
-    knownEnvelopes,
-    { scaffold: project.scaffold === true },
-  );
+  const commandNames = project.commands.map((c) => c.name);
+  // The validated plan crosses renderer IPC before confirmation. Dispose of
+  // that round-tripped value again at the privileged start boundary rather
+  // than trusting that nothing changed after the planning session checked it.
+  const checkedPlan = plan
+    ? checkPlanRails(plan, {
+        roster,
+        commandNames,
+        knownEnvelopes,
+        scaffold: project.scaffold === true,
+      })
+    : null;
+  const issues = checkedPlan
+    ? checkedPlan.ok
+      ? checkedPlan.warnings
+      : checkedPlan.issues
+    : preflightForRun(pipeline, agents, commandNames, knownEnvelopes, {
+        scaffold: project.scaffold === true,
+      });
   if (issues.some((i) => i.level === 'error')) return { ok: false, issues };
   const runId = deps.registry.start({
     project,

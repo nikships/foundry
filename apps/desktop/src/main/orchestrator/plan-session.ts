@@ -47,7 +47,8 @@ export interface PlanSessionDeps {
   roster: AgentDef[];
   envelopeDefs: EnvelopeDef[];
   scaffold?: boolean;
-  ghAvailable?: boolean;
+  /** Resolved in the background so opening the planning panel stays immediate. */
+  ghAvailable?: () => Promise<boolean>;
   /** How each turn is opened. Injected so a test drives one with no model. */
   oneShot: OneShotFactory;
   onChange: (state: OrchestratorState) => void;
@@ -113,13 +114,19 @@ export class PlanSession {
   private async ask(): Promise<void> {
     const { model } = this.deps;
     const state = this.panel.state;
+    let ghAvailable: boolean | undefined;
+    if (this.deps.ghAvailable) {
+      this.panel.push({ kind: 'note', text: 'Checking whether this run can finish on GitHub…' });
+      ghAvailable = await this.deps.ghAvailable();
+      if (this.panel.cancelled) return;
+    }
     const promptInputs: PlanPromptInputs = {
       request: this.deps.prompt,
       contextSummary: this.deps.contextSummary,
       commands: this.deps.commands,
       roster: this.deps.roster,
       envelopeDefs: this.deps.envelopeDefs,
-      ghAvailable: this.deps.ghAvailable,
+      ghAvailable,
     };
 
     // One parse-or-correct budget covers both the JSON shape and the rails,
@@ -181,7 +188,18 @@ export class PlanSession {
       for (const issue of issues) {
         this.panel.push({ kind: 'note', text: `Rejected: ${issue.where}: ${issue.message}` });
       }
-      ask = planCorrection(issues);
+      // A one-shot owns exactly one turn, so the correction opens a fresh
+      // session. Restate both the original context and the rejected reply;
+      // otherwise that fresh session would see only errors from a plan it had
+      // never seen and could not repair them coherently.
+      ask = [
+        buildPlanPrompt(promptInputs),
+        '',
+        '## Previous reply rejected by Foundry',
+        turn.text,
+        '',
+        planCorrection(issues),
+      ].join('\n');
     }
 
     this.panel.fail(`the Orchestrator could not produce a valid plan within ${attempts} attempts`);

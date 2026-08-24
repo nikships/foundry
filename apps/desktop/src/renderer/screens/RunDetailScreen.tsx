@@ -12,6 +12,7 @@ import StatusBadge from '../components/common/StatusBadge.js';
 import OutcomeBanner from '../components/run/OutcomeBanner.js';
 import ExportPlanSheet from '../components/run/ExportPlanSheet.js';
 import { Button } from '../components/ui/Button.js';
+import { planHasActiveFailure } from '../view-models/plan-view.js';
 import styles from './RunDetailScreen.module.css';
 
 export default function RunDetailScreen({
@@ -213,6 +214,9 @@ export default function RunDetailScreen({
 
   const pipelineLabel = view.run?.pipelineName?.trim() || '';
   const shortId = runId.slice(0, 7);
+  const hasActiveFailure = view.run?.orchestrated
+    ? Boolean(plan && planHasActiveFailure(plan, view.phases))
+    : view.phases.some((phase) => phase.status === 'fail');
 
   return (
     <div className={styles.screen}>
@@ -281,6 +285,9 @@ export default function RunDetailScreen({
           <div className="row">
             <StatusBadge status={view.run.status} />
             <h1>{view.run.pipelineName}</h1>
+            {view.run.amendments > 0 && (
+              <span className={styles.amendmentBadge}>amended ×{view.run.amendments}</span>
+            )}
             <span className={`faint mono ${styles.when}`}>{clockTime(view.run.startedAt)}</span>
           </div>
           <p className={`${styles.request} selectable`}>{view.run.request}</p>
@@ -307,7 +314,7 @@ export default function RunDetailScreen({
           canResume={
             (view.run.status === 'rejected' || view.run.status === 'failed') &&
             !!view.run.worktreePath &&
-            view.phases.some((phase) => phase.status === 'fail')
+            hasActiveFailure
           }
           canFix={mergeRefused}
           onResume={() => void resumeRun()}

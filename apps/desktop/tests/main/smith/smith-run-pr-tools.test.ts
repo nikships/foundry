@@ -61,6 +61,8 @@ describe('Smith run and PR tools', () => {
     expect(h.invoke).toHaveBeenCalledWith(IPC.runsEvents, 'session', 'r1', 7);
     await h.execute({ operation: 'live_tail', phaseId: 'ph1' });
     expect(h.invoke).toHaveBeenLastCalledWith(IPC.runsLiveTail, 'ph1');
+    await h.execute({ operation: 'plan', runId: 'r1' });
+    expect(h.invoke).toHaveBeenLastCalledWith(IPC.runsPlan, 'session', 'r1');
   });
 
   it.each([
@@ -69,6 +71,8 @@ describe('Smith run and PR tools', () => {
     ['context', { runId: 'r' }, 'agent'],
     ['start', {}, 'pipelineId and request'],
     ['archive', { runId: 'r' }, 'archived'],
+    ['export_plan', { runId: 'r' }, 'pipeline or at least one agent'],
+    ['export_plan', { runId: 'r', agents: 'builder' }, 'agents must be an array'],
   ])('validates run %s arguments', async (operation, args, error) => {
     expect(json(await setup('runs').execute({ operation, ...args }))).toMatchObject({
       ok: false,
@@ -85,6 +89,12 @@ describe('Smith run and PR tools', () => {
     ],
     ['archive', { runId: 'r', archived: false }, IPC.runsArchive, ['session', 'r', false]],
     ['merge', { runId: 'r' }, IPC.runsMergeWorktree, ['session', 'r']],
+    [
+      'export_plan',
+      { runId: 'r', pipeline: true, agents: ['builder'] },
+      IPC.runsExportPlan,
+      ['session', 'r', { pipeline: true, agents: ['builder'] }],
+    ],
   ])('gates run %s and invokes exact channel', async (operation, args, channel, expected) => {
     const h = setup('runs');
     expect(await approve(h, { operation, ...args })).toEqual({ ok: true, result: 'normalized' });

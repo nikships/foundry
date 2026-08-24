@@ -7,6 +7,7 @@ import {
   planExportItemIssues,
   planExportSelectionCount,
   planExportView,
+  planHasActiveFailure,
   phaseNote,
   planCardView,
   togglePlanExportSelection,
@@ -210,5 +211,35 @@ describe('plan-view', () => {
       'missing agent',
     ]);
     expect(planExportItemIssues(issues, 'agent:reviewer')).toEqual([issues[2]]);
+  });
+
+  it('ignores superseded and removed failures when deciding whether Continue applies', () => {
+    const plan = generatedPlan();
+    const phase = (phaseId: string, name: string, status: 'fail' | 'success', seq: number) => ({
+      phaseId,
+      runId: 'run-1',
+      seq,
+      name,
+      kind: 'agent' as const,
+      owner: 'builder',
+      description: name,
+      status,
+      attempt: 0,
+      error: null,
+      startedAt: null,
+      endedAt: null,
+    });
+    const history = [
+      phase('old-build', 'build', 'fail', 0),
+      phase('removed', 'obsolete', 'fail', 1),
+      phase('new-build', 'build', 'success', 2),
+      phase('test', 'test', 'success', 3),
+      phase('checkpoint', 'checkpoint', 'success', 4),
+      phase('review', 'review', 'success', 5),
+    ];
+
+    expect(planHasActiveFailure(plan, history)).toBe(false);
+    history[5] = phase('review', 'review', 'fail', 5);
+    expect(planHasActiveFailure(plan, history)).toBe(true);
   });
 });
