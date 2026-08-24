@@ -50,6 +50,7 @@ import com.foundry.companion.ui.components.FoundryDangerButton
 import com.foundry.companion.ui.components.FoundryPrimaryButton
 import com.foundry.companion.ui.components.FoundrySecondaryButton
 import com.foundry.companion.ui.components.FoundryTopBar
+import com.foundry.companion.ui.components.MarkdownText
 import com.foundry.companion.ui.components.ReconnectBanner
 import com.foundry.companion.ui.theme.FoundryTheme
 
@@ -464,24 +465,26 @@ private fun SmithTranscriptRow(entry: SmithTranscriptEntry) {
             color = if (entry.kind == "error" || entry.failed == true) colors.statusFailed else colors.textDim
         )
         if (entry.isArtifact) {
-            Text(
-                text = entry.artifactTitle.ifBlank { "Card" },
-                style = typography.bodyStrong,
-                color = colors.textPrimary
-            )
-            if (entry.artifactSummary.isNotBlank()) {
+            val artifact = entry.artifact
+            if (artifact != null) {
+                SmithArtifactCard(artifact = artifact)
+            } else {
                 Text(
-                    text = entry.artifactSummary,
-                    style = typography.body,
-                    color = colors.textDim
+                    text = entry.artifactTitle.ifBlank { "Card" },
+                    style = typography.bodyStrong,
+                    color = colors.textPrimary
                 )
             }
         } else if (entry.text.isNotBlank()) {
-            Text(
-                text = entry.text,
-                style = if (entry.kind == "tool") typography.transcriptMono else typography.body,
-                color = if (entry.kind == "error") colors.statusFailed else colors.textPrimary
-            )
+            if (entry.kind == "text" && !isOperator) {
+                MarkdownText(text = entry.text)
+            } else {
+                Text(
+                    text = entry.text,
+                    style = if (entry.kind == "tool") typography.transcriptMono else typography.body,
+                    color = if (entry.kind == "error") colors.statusFailed else colors.textPrimary
+                )
+            }
         }
     }
 }

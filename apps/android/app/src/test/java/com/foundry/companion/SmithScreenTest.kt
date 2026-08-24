@@ -14,6 +14,9 @@ import com.foundry.companion.data.model.SmithProposal
 import com.foundry.companion.data.model.SmithTranscriptEntry
 import com.foundry.companion.ui.screens.smith.SmithScreen
 import com.foundry.companion.ui.theme.FoundryTheme
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -147,5 +150,32 @@ class SmithScreenTest {
         composeTestRule.onNodeWithContentDescription("Message Smith").assertIsNotEnabled()
         composeTestRule.onNodeWithContentDescription("Send").assertIsNotEnabled()
         assertEquals(null, sent)
+    }
+
+    @Test
+    fun testSmithMarkdownAndArtifactCardsRender() {
+        composeTestRule.setContent {
+            FoundryTheme {
+                androidx.compose.foundation.layout.Column {
+                    com.foundry.companion.ui.components.MarkdownText(text = "## Plan\nUse **bold** and `code`.")
+                    com.foundry.companion.ui.screens.smith.SmithArtifactCard(
+                        artifact = buildJsonObject {
+                            put("id", "art_1")
+                            put("kind", "checklist")
+                            put("version", 1)
+                            put("createdAt", 1)
+                            putJsonObject("checklist") {
+                                put("title", "Ready?")
+                                put("summary", "One check.")
+                            }
+                        }
+                    )
+                }
+            }
+        }
+        composeTestRule.onNodeWithText("Plan").assertIsDisplayed()
+        composeTestRule.onNodeWithText("bold", substring = true).assertIsDisplayed()
+        composeTestRule.onNodeWithText("CHECKLIST").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Ready?").assertIsDisplayed()
     }
 }

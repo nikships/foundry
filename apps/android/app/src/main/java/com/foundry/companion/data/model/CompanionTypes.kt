@@ -576,6 +576,75 @@ sealed interface ConnectionStatus {
     data class Offline(val desktopName: String, val hostOrigin: String) : ConnectionStatus
 }
 
+internal fun JsonElement.asStringOrNull(): String? = when (this) {
+    is JsonPrimitive -> contentOrNull ?: booleanOrNull?.toString() ?: content
+    is JsonArray, is JsonObject -> toString()
+}
+
+internal fun JsonObject.stringOr(key: String, fallback: String = ""): String =
+    stringOrNull(key) ?: fallback
+
+internal fun JsonObject.longOrNull(key: String): Long? {
+    val el = this[key] as? JsonPrimitive ?: return null
+    return el.longOrNull ?: el.contentOrNull?.toLongOrNull()
+}
+
+internal fun JsonObject.intOrNull(key: String): Int? = longOrNull(key)?.toInt()
+
+internal fun JsonObject.doubleOrNull(key: String): Double? {
+    val el = this[key] as? JsonPrimitive ?: return null
+    return el.doubleOrNull ?: el.contentOrNull?.toDoubleOrNull()
+}
+
+internal fun JsonObject.arrayOrEmpty(key: String): List<JsonElement> =
+    (this[key] as? JsonArray)?.toList().orEmpty()
+
+internal fun JsonObject.objList(key: String): List<JsonObject> =
+    arrayOrEmpty(key).mapNotNull { it as? JsonObject }
+
+internal fun JsonObject.stringList(key: String): List<String> =
+    arrayOrEmpty(key).mapNotNull { it.asStringOrNull() }.filter { it.isNotBlank() }
+
+internal fun JsonElement.prettyJson(indent: String = "  "): String {
+    fun write(value: JsonElement, depth: Int, out: StringBuilder) {
+        val pad = indent.repeat(depth)
+        when (value) {
+            is JsonNull -> out.append("null")
+            is JsonPrimitive -> out.append(if (value.isString) "\"${value.content}\"" else value.content)
+            is JsonArray -> {
+                if (value.isEmpty()) {
+                    out.append("[]")
+                    return
+                }
+                out.append("[\n")
+                value.forEachIndexed { index, child ->
+                    out.append(indent.repeat(depth + 1))
+                    write(child, depth + 1, out)
+                    if (index < value.size - 1) out.append(',')
+                    out.append('\n')
+                }
+                out.append(pad).append(']')
+            }
+            is JsonObject -> {
+                if (value.isEmpty()) {
+                    out.append("{}")
+                    return
+                }
+                out.append("{\n")
+                val entries = value.entries.toList()
+                entries.forEachIndexed { index, (k, child) ->
+                    out.append(indent.repeat(depth + 1)).append('"').append(k).append("\": ")
+                    write(child, depth + 1, out)
+                    if (index < entries.size - 1) out.append(',')
+                    out.append('\n')
+                }
+                out.append(pad).append('}')
+            }
+        }
+    }
+    return buildString { write(this@prettyJson, 0, this) }
+}
+
 internal fun JsonObject.stringOrNull(key: String): String? {
     val el = this[key] ?: return null
     return when (el) {
