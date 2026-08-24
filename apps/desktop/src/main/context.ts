@@ -80,18 +80,17 @@ export class AppContext {
    * access level) and never where the runtime keeps its state.
    */
   readonly oneShot: OneShotFactory;
-  private themeWindow: BrowserWindow | null = null;
-
+  /** A later application window starts with the persisted native palette. */
   attachWindow(window: BrowserWindow): void {
-    this.themeWindow = window;
-    this.applyTheme(this.settings.get().theme);
-    window.once('closed', () => {
-      if (this.themeWindow === window) this.themeWindow = null;
-    });
+    if (!window.isDestroyed()) {
+      window.setBackgroundColor(themeBackgroundColor(this.settings.get().theme));
+    }
   }
 
   applyTheme(theme: AppTheme): void {
-    this.themeWindow?.setBackgroundColor(themeBackgroundColor(theme));
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) window.setBackgroundColor(themeBackgroundColor(theme));
+    }
   }
 
   constructor(
