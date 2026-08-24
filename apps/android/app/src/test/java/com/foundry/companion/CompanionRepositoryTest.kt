@@ -474,4 +474,61 @@ class CompanionRepositoryTest {
         assertEquals("/v1/projects/proj_1/runs/run_1/pr", req.path)
         assertEquals("POST", req.method)
     }
+
+    @Test
+    fun testHttpSmithStateSendAndProposalAnswer() = runBlocking {
+        val hostOrigin = server.url("").toString().removeSuffix("/")
+        httpRepository.injectFakeSession(
+            PairedSession(
+                token = "test_token",
+                desktopId = "desk_01",
+                desktopName = "Mac",
+                hostOrigin = hostOrigin,
+                pairedAt = "2026-08-19T00:00:00Z"
+            )
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"model":"scripted","activeModel":"scripted","reasoningEffort":"medium","activeReasoningEffort":"medium","running":false,"transcript":[]}"""
+            )
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"projectId":"proj_1","model":"scripted","activeModel":"scripted","reasoningEffort":"medium","activeReasoningEffort":"medium","running":false,"transcript":[{"id":"op_0","kind":"text","text":"hello","source":"operator","at":1}]}"""
+            )
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """[{"id":"prop_1","type":"action","title":"Change a setting","summary":"Flip","risk":"write"}]"""
+            )
+        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"ok":true}"""))
+
+        val empty = httpRepository.getSmithState("proj_1").getOrThrow()
+        assertTrue(empty.transcript.isEmpty())
+
+        val sent = httpRepository.sendSmith(
+            "proj_1",
+            "hello",
+            com.foundry.companion.data.model.SmithScreenContext(route = "smith")
+        ).getOrThrow()
+        assertEquals("hello", sent.transcript.first().text)
+
+        val proposals = httpRepository.getSmithProposals().getOrThrow()
+        assertEquals("prop_1", proposals.single().id)
+
+        val answered = httpRepository.answerSmithProposal(
+            "prop_1",
+            com.foundry.companion.data.model.SmithProposalAnswer(approved = true)
+        ).getOrThrow()
+        assertTrue(answered.ok)
+
+        assertEquals("/v1/smith?projectId=proj_1", server.takeRequest().path)
+        val sendReq = server.takeRequest()
+        assertEquals("/v1/smith/send", sendReq.path)
+        assertEquals("POST", sendReq.method)
+        assertTrue(sendReq.body.readUtf8().contains("hello"))
+        assertEquals("/v1/smith/proposals", server.takeRequest().path)
+        assertEquals("/v1/smith/proposals/answer", server.takeRequest().path)
+    }
 }

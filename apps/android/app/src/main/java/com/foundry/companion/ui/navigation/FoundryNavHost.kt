@@ -19,6 +19,7 @@ import com.foundry.companion.ui.screens.newrun.NewRunScreen
 import com.foundry.companion.ui.screens.pair.PairScreen
 import com.foundry.companion.ui.screens.run.RunDetailScreen
 import com.foundry.companion.ui.screens.runs.RunsScreen
+import com.foundry.companion.ui.screens.smith.SmithScreen
 import com.foundry.companion.util.CompanionHaptics
 import com.foundry.companion.util.CustomTabs
 import com.foundry.companion.viewmodel.CompanionViewModel
@@ -70,6 +71,7 @@ fun FoundryNavHost(
                 }
                 route == NavRoute.Pair.route -> "pair"
                 route == NavRoute.NewRun.route -> "new-run"
+                route == NavRoute.Smith.route -> "smith"
                 else -> "runs"
             }
             sessionManager?.setLastActiveRoute(formattedRoute)
@@ -187,7 +189,29 @@ fun FoundryNavHost(
                 onRetryConnection = {
                     viewModel.retryConnection()
                 },
-                onOpenPr = { url -> CustomTabs.open(context, url) }
+                onOpenPr = { url -> CustomTabs.open(context, url) },
+                onSmithClick = { navController.navigate(NavRoute.Smith.route) }
+            )
+        }
+
+        composable(NavRoute.Smith.route) {
+            val currentProject = uiState.projects.find { it.id == uiState.selectedProjectId }
+            LaunchedEffect(uiState.selectedProjectId) {
+                viewModel.loadSmith(uiState.selectedProjectId)
+            }
+            SmithScreen(
+                chat = uiState.smithChat,
+                proposal = uiState.smithProposal,
+                projectName = currentProject?.name ?: "All projects",
+                connectionStatus = uiState.connectionStatus,
+                isSending = uiState.smithSending,
+                actionError = uiState.errorMessage,
+                onBackClick = { navController.popBackStack() },
+                onRetryConnection = { viewModel.retryConnection() },
+                onSend = { viewModel.sendSmith(it) },
+                onCancel = { viewModel.cancelSmith() },
+                onNewChat = { viewModel.newSmithChat() },
+                onAnswerProposal = { approved, secret -> viewModel.answerSmithProposal(approved, secret) }
             )
         }
 

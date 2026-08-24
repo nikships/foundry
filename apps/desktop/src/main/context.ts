@@ -168,6 +168,12 @@ export class AppContext {
       appVersion: () => this.version,
       notifyRuns: () => this.broadcast(IPC.eventRunsChanged),
       onStateChanged: () => this.broadcast(IPC.eventCompanionChanged),
+      // Closed over `this` so the host can open after Smith is constructed.
+      smith: {
+        chat: (projectId) => this.smith.chat(projectId),
+        listProposals: () => this.smith.proposals.list(),
+        answerProposal: (id, answer) => this.smith.proposals.answer(id, answer),
+      },
     });
 
     // Native chats open lazily per project and share one proposal queue, so

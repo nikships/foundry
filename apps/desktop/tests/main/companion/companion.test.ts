@@ -24,7 +24,8 @@ import type {
   CompanionPairingPayload,
   CompanionPairResult,
 } from '../../../src/shared/companion.js';
-import type { EventPage, RunDetail } from '../../../src/shared/ipc-contract.js';
+import type { EventPage, RunDetail, SmithChatState } from '../../../src/shared/ipc-contract.js';
+import type { SmithProposal, SmithProposalAnswerResult } from '../../../src/shared/types.js';
 import type {
   AgentDef,
   AppSettings,
@@ -188,9 +189,87 @@ class TestRegistry {
   }
 }
 
+/** In-memory Smith so the host suite never opens a model. */
+class TestSmith {
+  sent: Array<{ projectId?: string; text: string; route?: string }> = [];
+  cancelled: Array<string | undefined> = [];
+  wiped: Array<string | undefined> = [];
+  answered: Array<{ id: string; approved: boolean }> = [];
+  private readonly chats = new Map<string, TestSmithChat>();
+  proposals: SmithProposal[] = [];
+
+  chat(projectId?: string): TestSmithChat {
+    const key = projectId ?? 'global';
+    const existing = this.chats.get(key);
+    if (existing) return existing;
+    const chat = new TestSmithChat(this, projectId);
+    this.chats.set(key, chat);
+    return chat;
+  }
+}
+
+class TestSmithChat {
+  running = false;
+  transcript: SmithChatState['transcript'] = [];
+
+  constructor(
+    private readonly owner: TestSmith,
+    private readonly projectId: string | undefined,
+  ) {}
+
+  snapshot(): SmithChatState {
+    return {
+      ...(this.projectId ? { projectId: this.projectId } : {}),
+      model: 'scripted',
+      activeModel: 'scripted',
+      reasoningEffort: 'medium',
+      activeReasoningEffort: 'medium',
+      running: this.running,
+      error: null,
+      transcript: this.transcript.map((entry) => ({ ...entry })),
+    };
+  }
+
+  async send(text: string, ctx?: { screen?: { route: string } }): Promise<void> {
+    this.owner.sent.push({
+      ...(this.projectId ? { projectId: this.projectId } : {}),
+      text,
+      ...(ctx?.screen?.route ? { route: ctx.screen.route } : {}),
+    });
+    this.transcript.push({
+      id: `op_${this.transcript.length}`,
+      kind: 'text',
+      text,
+      source: 'operator',
+      at: Date.now(),
+    });
+    this.running = true;
+    this.transcript.push({
+      id: `sm_${this.transcript.length}`,
+      kind: 'text',
+      text: `heard: ${text}`,
+      source: 'smith',
+      at: Date.now(),
+    });
+    this.running = false;
+  }
+
+  async cancel(): Promise<void> {
+    this.owner.cancelled.push(this.projectId);
+    this.running = false;
+  }
+
+  async newChat(): Promise<void> {
+    this.owner.wiped.push(this.projectId);
+    this.transcript = [];
+    this.running = false;
+  }
+}
+
 interface Harness {
   host: CompanionHost;
   registry: TestRegistry;
+  smith: TestSmith;
   tracer: Tracer;
   project: ProjectDef;
   repo: string;
@@ -216,6 +295,7 @@ beforeEach(async () => {
   });
   const gh = makeFakeGh({ createUrl: 'https://github.com/acme/widgets/pull/7' });
   const changes: string[] = [];
+  const smith = new TestSmith();
   const makeHost = (): CompanionHost =>
     new CompanionHost({
       supportDir: support,
@@ -233,6 +313,14 @@ beforeEach(async () => {
       appVersion: () => '0.0.0-test',
       notifyRuns: () => undefined,
       onStateChanged: () => changes.push('changed'),
+      smith: {
+        chat: (projectId) => smith.chat(projectId),
+        listProposals: () => smith.proposals,
+        answerProposal: async (id, answer) => {
+          smith.answered.push({ id, approved: answer.approved });
+          return { ok: true };
+        },
+      },
       bindHost: '127.0.0.1',
       gh: { bin: gh.bin },
     });
@@ -242,6 +330,7 @@ beforeEach(async () => {
   h = {
     host,
     registry,
+    smith,
     tracer,
     project,
     repo,
@@ -408,6 +497,12 @@ describe('token auth, fail closed', () => {
     ['GET', '/v1/projects/x/runs/y/pr-draft'],
     ['GET', '/v1/projects/x/pr-status'],
     ['POST', '/v1/interrupts/answer'],
+    ['GET', '/v1/smith'],
+    ['POST', '/v1/smith/send'],
+    ['POST', '/v1/smith/cancel'],
+    ['POST', '/v1/smith/new'],
+    ['GET', '/v1/smith/proposals'],
+    ['POST', '/v1/smith/proposals/answer'],
   ])('rejects a missing token on %s %s', async (method, path) => {
     const res = await fetch(`${h.origin()}${path}`, { method });
     expect(res.status).toBe(401);
@@ -761,6 +856,110 @@ describe('PR routes', () => {
     expect(res.status).toBe(200);
     const status = (await res.json()) as { available: boolean };
     expect(status.available).toBe(true);
+  });
+});
+
+describe('smith chat', () => {
+  it('reads the global snapshot and sends into that conversation', async () => {
+    const paired = await pairPhone();
+    const empty = await authed(paired.token, '/v1/smith');
+    expect(empty.status).toBe(200);
+    const before = (await empty.json()) as SmithChatState;
+    expect(before.projectId).toBeUndefined();
+    expect(before.transcript).toEqual([]);
+    expect(before.running).toBe(false);
+
+    const sent = await authed(paired.token, '/v1/smith/send', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'list projects', screen: { route: 'runs' } }),
+    });
+    expect(sent.status).toBe(200);
+    const after = (await sent.json()) as SmithChatState;
+    expect(after.transcript.map((row) => (row.kind === 'artifact' ? '' : row.text))).toEqual([
+      'list projects',
+      'heard: list projects',
+    ]);
+    expect(h.smith.sent).toEqual([{ text: 'list projects', route: 'runs' }]);
+  });
+
+  it('scopes send and state to a project id', async () => {
+    const paired = await pairPhone();
+    const sent = await authed(paired.token, '/v1/smith/send', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ projectId: h.project.id, text: 'show this project' }),
+    });
+    expect(sent.status).toBe(200);
+    const scoped = (await sent.json()) as SmithChatState;
+    expect(scoped.projectId).toBe(h.project.id);
+
+    const global = (await (await authed(paired.token, '/v1/smith')).json()) as SmithChatState;
+    expect(global.transcript).toEqual([]);
+
+    const again = (await (
+      await authed(paired.token, `/v1/smith?projectId=${h.project.id}`)
+    ).json()) as SmithChatState;
+    expect(again.transcript).toHaveLength(2);
+    expect(h.smith.sent[0]?.projectId).toBe(h.project.id);
+  });
+
+  it('wipes a conversation on POST /v1/smith/new', async () => {
+    const paired = await pairPhone();
+    await authed(paired.token, '/v1/smith/send', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'hello' }),
+    });
+    const wiped = await authed(paired.token, '/v1/smith/new', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(wiped.status).toBe(200);
+    expect(((await wiped.json()) as SmithChatState).transcript).toEqual([]);
+    expect(h.smith.wiped).toEqual([undefined]);
+  });
+
+  it('lists and answers the one pending proposal', async () => {
+    const paired = await pairPhone();
+    h.smith.proposals = [
+      {
+        type: 'action',
+        id: 'prop_1',
+        operation: 'settings.set',
+        title: 'Change a setting',
+        summary: 'Flip a toggle',
+        args: { key: 'theme' },
+        risk: 'write',
+        createdAt: '2026-08-24T00:00:00.000Z',
+      },
+    ];
+    const listed = await authed(paired.token, '/v1/smith/proposals');
+    expect(listed.status).toBe(200);
+    const proposals = (await listed.json()) as SmithProposal[];
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]?.id).toBe('prop_1');
+
+    const answered = await authed(paired.token, '/v1/smith/proposals/answer', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 'prop_1', answer: { approved: true } }),
+    });
+    expect(answered.status).toBe(200);
+    expect(((await answered.json()) as SmithProposalAnswerResult).ok).toBe(true);
+    expect(h.smith.answered).toEqual([{ id: 'prop_1', approved: true }]);
+  });
+
+  it('refuses a send without text', async () => {
+    const paired = await pairPhone();
+    const res = await authed(paired.token, '/v1/smith/send', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ projectId: h.project.id }),
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as CompanionError).error.code).toBe('bad_request');
   });
 });
 

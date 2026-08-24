@@ -30,7 +30,8 @@ fun RunsScreen(
     onRetryConnection: () -> Unit,
     modifier: Modifier = Modifier,
     onInspectorClick: (runId: String) -> Unit = {},
-    onOpenPr: ((String) -> Unit)? = null
+    onOpenPr: ((String) -> Unit)? = null,
+    onSmithClick: (() -> Unit)? = null
 ) {
     val colors = FoundryTheme.colors
     val typography = FoundryTheme.typography
@@ -56,6 +57,18 @@ fun RunsScreen(
                     subtitle = projectName,
                     eyebrowStyle = true,
                     actions = {
+                        if (onSmithClick != null) {
+                            TextButton(
+                                onClick = onSmithClick,
+                                modifier = Modifier.semantics { contentDescription = "Open Smith" }
+                            ) {
+                                Text(
+                                    text = "SMITH",
+                                    style = typography.labelMono,
+                                    color = colors.textPrimary
+                                )
+                            }
+                        }
                         ConnectionPill(
                             status = connectionStatus,
                             onClick = onConnectionPillClick

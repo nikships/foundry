@@ -13,7 +13,8 @@ Navigation matches `specs/companion-android-ui.md`:
 3. New run
 4. Run (operator)
 5. Inspector
-6. Connection sheet
+6. Smith
+7. Connection sheet
 
 There is no Settings graph.
 

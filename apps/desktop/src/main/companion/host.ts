@@ -1,9 +1,10 @@
 /**
  * The LAN companion host: an HTTP server inside the main process that a paired
  * phone calls. Every route is a projection of an operation the desktop already
- * has — the same `startRun`, tracer pages, kill, interrupts, and PR paths the
- * renderer reaches over IPC — so the phone can never do something the window
- * cannot, and main keeps sole ownership of git, the tracer, and spawns.
+ * has — the same `startRun`, tracer pages, kill, interrupts, PR, and Smith
+ * chat paths the renderer reaches over IPC — so the phone can never do
+ * something the window cannot, and main keeps sole ownership of git, the
+ * tracer, and spawns.
  *
  * Auth is fail-closed: apart from `POST /pair` (which spends a short-lived
  * single-use pairing secret) every route requires a bearer token that hashes
@@ -25,8 +26,12 @@ import type {
   PendingInterrupt,
   PipelineDef,
   ProjectDef,
+  SmithProposal,
+  SmithProposalAnswer,
+  SmithProposalAnswerResult,
   StartRunInput,
 } from '@shared/types.js';
+import type { SmithChatState, SmithScreenContext } from '@shared/ipc-contract.js';
 import type {
   CompanionDevice,
   CompanionError,
@@ -90,10 +95,31 @@ export interface CompanionHostDeps {
   notifyRuns(): void;
   /** Fires when host or device state changes, so Settings re-reads. */
   onStateChanged(): void;
+  /**
+   * The same Smith session the desktop window talks to. Optional so a test
+   * harness that never opens a chat still constructs a host; missing Smith
+   * answers 404 rather than inventing a second conversation.
+   */
+  smith?: CompanionSmithDeps;
   /** Test seams. Production leaves all three unset. */
   bindHost?: string;
   port?: number;
   gh?: GhOptions;
+}
+
+/** Projection of `SmithService` the LAN host may call — no queue internals. */
+export interface CompanionSmithDeps {
+  chat(projectId?: string): CompanionSmithChat | null;
+  listProposals(): SmithProposal[];
+  answerProposal(id: string, answer: SmithProposalAnswer): Promise<SmithProposalAnswerResult>;
+}
+
+/** The chat verbs a phone needs; matches `SmithChatSession` without importing it. */
+export interface CompanionSmithChat {
+  snapshot(): SmithChatState;
+  send(text: string, ctx?: { screen?: SmithScreenContext }): Promise<unknown>;
+  cancel(): Promise<void>;
+  newChat(): Promise<void>;
 }
 
 const MAX_BODY_BYTES = 256 * 1024;
@@ -431,6 +457,8 @@ export class CompanionHost {
       }
     }
 
+    if (head === 'smith') return this.smithRoute(method, rest, url, req);
+
     throw new RouteError(404, 'not_found', 'no such route');
   }
 
@@ -499,6 +527,78 @@ export class CompanionHost {
     throw new RouteError(404, 'not_found', 'no such route');
   }
 
+  /** Routes under `/v1/smith`. Same session the desktop window uses. */
+  private async smithRoute(
+    method: string,
+    rest: string[],
+    url: URL,
+    req: IncomingMessage,
+  ): Promise<unknown> {
+    const smith = this.deps.smith;
+    if (!smith) throw new RouteError(404, 'not_found', 'Smith is not available');
+
+    if (method === 'GET' && rest.length === 0) {
+      return this.smithSnapshot(smith, url.searchParams.get('projectId'));
+    }
+    if (method === 'GET' && rest[0] === 'proposals' && rest.length === 1) {
+      return smith.listProposals();
+    }
+    if (method === 'POST' && rest[0] === 'send' && rest.length === 1) {
+      return this.smithSend(smith, await readJson(req));
+    }
+    if (method === 'POST' && rest[0] === 'cancel' && rest.length === 1) {
+      const chat = this.smithChat(smith, scopeFromBody(await readJson(req)));
+      await chat.cancel();
+      return chat.snapshot();
+    }
+    if (method === 'POST' && rest[0] === 'new' && rest.length === 1) {
+      const chat = this.smithChat(smith, scopeFromBody(await readJson(req)));
+      await chat.newChat();
+      return chat.snapshot();
+    }
+    if (method === 'POST' && rest[0] === 'proposals' && rest[1] === 'answer' && rest.length === 2) {
+      return this.smithAnswer(smith, await readJson(req));
+    }
+
+    throw new RouteError(404, 'not_found', 'no such route');
+  }
+
+  private smithSnapshot(smith: CompanionSmithDeps, projectId: string | null): SmithChatState {
+    return this.smithChat(smith, optionalProjectId(projectId)).snapshot();
+  }
+
+  private smithSend(smith: CompanionSmithDeps, raw: unknown): SmithChatState {
+    const body = raw as Partial<{ projectId?: string; text: string; screen?: SmithScreenContext }>;
+    if (typeof body.text !== 'string') {
+      throw new RouteError(400, 'bad_request', 'send needs text');
+    }
+    const chat = this.smithChat(smith, optionalProjectId(body.projectId));
+    if (!body.text.trim()) return chat.snapshot();
+    const screen = parseScreen(body.screen);
+    void chat.send(body.text, screen ? { screen } : {}).catch(() => undefined);
+    return chat.snapshot();
+  }
+
+  private async smithAnswer(
+    smith: CompanionSmithDeps,
+    raw: unknown,
+  ): Promise<SmithProposalAnswerResult> {
+    const body = raw as Partial<{ id: string; answer: Partial<SmithProposalAnswer> }>;
+    if (typeof body.id !== 'string' || !body.id || typeof body.answer?.approved !== 'boolean') {
+      throw new RouteError(400, 'bad_request', 'answer needs id and approved');
+    }
+    const answer: SmithProposalAnswer = { approved: body.answer.approved };
+    if (typeof body.answer.note === 'string') answer.note = body.answer.note;
+    if (typeof body.answer.secret === 'string') answer.secret = body.answer.secret;
+    return smith.answerProposal(body.id, answer);
+  }
+
+  private smithChat(smith: CompanionSmithDeps, projectId: string | undefined): CompanionSmithChat {
+    const chat = smith.chat(projectId);
+    if (!chat) throw new RouteError(404, 'not_found', 'Smith chat is not available');
+    return chat;
+  }
+
   private startDeps(): StartRunDeps {
     return {
       projectById: (id) => this.deps.projectById(id),
@@ -560,6 +660,32 @@ function summarizePipeline(pipeline: PipelineDef): CompanionPipelineSummary {
       ...(phase.feedbackTo ? { feedbackTo: phase.feedbackTo } : {}),
     })),
   };
+}
+
+function optionalProjectId(value: string | null | undefined): string | undefined {
+  return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+function scopeFromBody(raw: unknown): string | undefined {
+  const body = raw as Partial<{ projectId?: string }>;
+  return optionalProjectId(body.projectId);
+}
+
+const SCREEN_KINDS = new Set(['run', 'pipeline', 'agent', 'envelope', 'project', 'settings']);
+
+function parseScreen(raw: SmithScreenContext | undefined): SmithScreenContext | undefined {
+  if (!raw || typeof raw !== 'object' || typeof raw.route !== 'string') return undefined;
+  const screen: SmithScreenContext = { route: raw.route };
+  const entity = raw.entity;
+  if (
+    entity &&
+    typeof entity === 'object' &&
+    typeof entity.id === 'string' &&
+    SCREEN_KINDS.has(entity.kind)
+  ) {
+    screen.entity = { kind: entity.kind, id: entity.id };
+  }
+  return screen;
 }
 
 function bearerToken(req: IncomingMessage): string {

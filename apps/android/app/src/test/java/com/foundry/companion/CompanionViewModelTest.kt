@@ -176,6 +176,43 @@ class CompanionViewModelTest {
     }
 
     @Test
+    fun testSmithSendAndNewChat() {
+        viewModel.sendSmith("list the pipelines")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val afterSend = viewModel.uiState.value
+        assertEquals("proj_foundry_core" to "list the pipelines", repository.lastSmithSend)
+        assertEquals(2, afterSend.smithChat?.transcript?.size)
+        assertEquals("list the pipelines", afterSend.smithChat?.transcript?.first()?.text)
+        assertFalse(afterSend.smithSending)
+
+        viewModel.newSmithChat()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.smithChat?.transcript.isNullOrEmpty())
+    }
+
+    @Test
+    fun testSmithProposalApproveClearsTheCard() {
+        repository.enqueueSmithProposal(
+            com.foundry.companion.data.model.SmithProposal(
+                id = "prop_1",
+                type = "action",
+                title = "Change a setting",
+                summary = "Flip a toggle",
+                risk = "write"
+            )
+        )
+        viewModel.loadSmith()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals("prop_1", viewModel.uiState.value.smithProposal?.id)
+
+        viewModel.answerSmithProposal(approved = true)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals("prop_1" to true, repository.smithAnswered)
+        assertNull(viewModel.uiState.value.smithProposal)
+    }
+
+    @Test
     fun testUnpairFlow() {
         viewModel.unpair()
         testDispatcher.scheduler.advanceUntilIdle()

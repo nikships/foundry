@@ -234,6 +234,27 @@ class RunsScreenTest {
     }
 
     @Test
+    fun testSmithOpensFromTheRunsTopBar() {
+        var smithOpened = false
+        composeTestRule.setContent {
+            FoundryTheme {
+                RunsScreen(
+                    runs = emptyList(),
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    projectName = "Foundry",
+                    onRunClick = {},
+                    onStartRunClick = {},
+                    onConnectionPillClick = {},
+                    onRetryConnection = {},
+                    onSmithClick = { smithOpened = true }
+                )
+            }
+        }
+        composeTestRule.onNodeWithContentDescription("Open Smith").assertIsDisplayed().performClick()
+        assertTrue(smithOpened)
+    }
+
+    @Test
     fun testSingleProjectNoSwitcher() {
         composeTestRule.setContent {
             FoundryTheme {

@@ -16,6 +16,7 @@ class NavRoutesTest {
         assertEquals("pair", NavRoute.Pair.route)
         assertEquals("runs", NavRoute.Runs.route)
         assertEquals("new-run", NavRoute.NewRun.route)
+        assertEquals("smith", NavRoute.Smith.route)
         assertEquals("run/{runId}?interrupt={interruptId}", NavRoute.RunDetail.route)
         assertEquals("run/{runId}/inspector?phase={phaseId}", NavRoute.Inspector.route)
     }

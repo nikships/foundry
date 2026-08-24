@@ -12,17 +12,26 @@ import type {
   InterruptAnswer,
   PendingInterrupt,
   RunRow,
+  SmithProposal,
+  SmithProposalAnswer,
+  SmithProposalAnswerResult,
   StartRunInput,
   ValidationIssue,
 } from './types.js';
-import type { EventPage, PrAction, RunDetail } from './ipc-contract.js';
+import type {
+  EventPage,
+  PrAction,
+  RunDetail,
+  SmithChatState,
+  SmithScreenContext,
+} from './ipc-contract.js';
 
 /**
  * Bumped whenever a route, payload, or auth rule changes shape. The QR carries
  * it so a phone knows before pairing, and the pair exchange enforces it so a
  * stale client gets a readable refusal instead of a half-working session.
  */
-export const COMPANION_PROTOCOL_VERSION = 2;
+export const COMPANION_PROTOCOL_VERSION = 3;
 
 /**
  * What the desktop encodes in the pairing QR (FOU-85 renders it). Everything a
@@ -140,6 +149,27 @@ export interface CompanionPrCreateRequest {
 }
 
 /**
+ * Body of `POST /v1/smith/send`. `projectId` omitted (or empty) is the global
+ * “All projects” conversation — the same optional scope the desktop IPC uses.
+ */
+export interface CompanionSmithSendRequest {
+  projectId?: string;
+  text: string;
+  screen?: SmithScreenContext;
+}
+
+/** Body of cancel / new-chat / state-scoped writes that only name a chat. */
+export interface CompanionSmithScopeRequest {
+  projectId?: string;
+}
+
+/** Body of `POST /v1/smith/proposals/answer`. */
+export interface CompanionSmithProposalAnswerRequest {
+  id: string;
+  answer: SmithProposalAnswer;
+}
+
+/**
  * What `createRunPr` would send to GitHub if title/body were left empty.
  * Same formula as the desktop "Open PR…" form (`manualPrDraft`).
  */
@@ -175,6 +205,19 @@ export interface CompanionRoutes {
   'POST /v1/projects/:projectId/runs/:runId/pr': {
     request: CompanionPrCreateRequest;
     response: PrAction;
+  };
+  /**
+   * Smith's persistent chat. Same snapshot the desktop window polls over IPC.
+   * `projectId` query omitted (or empty) is the global conversation.
+   */
+  'GET /v1/smith': { response: SmithChatState };
+  'POST /v1/smith/send': { request: CompanionSmithSendRequest; response: SmithChatState };
+  'POST /v1/smith/cancel': { request: CompanionSmithScopeRequest; response: SmithChatState };
+  'POST /v1/smith/new': { request: CompanionSmithScopeRequest; response: SmithChatState };
+  'GET /v1/smith/proposals': { response: SmithProposal[] };
+  'POST /v1/smith/proposals/answer': {
+    request: CompanionSmithProposalAnswerRequest;
+    response: SmithProposalAnswerResult;
   };
   'POST /v1/unpair': { response: { ok: boolean } };
 }

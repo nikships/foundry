@@ -4,6 +4,7 @@ sealed class NavRoute(val route: String) {
     data object Pair : NavRoute("pair")
     data object Runs : NavRoute("runs")
     data object NewRun : NavRoute("new-run")
+    data object Smith : NavRoute("smith")
 
     /**
      * `interrupt` is optional and only set by a notification tap: it names the

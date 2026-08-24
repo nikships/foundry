@@ -115,6 +115,20 @@ class OfflineCompanionRepository(
     override suspend fun createPr(projectId: String, runId: String, request: CompanionPrCreateRequest) =
         answer(PrAction(ok = false))
 
+    override suspend fun getSmithState(projectId: String?) = answer(SmithChatState(projectId = projectId))
+
+    override suspend fun sendSmith(projectId: String?, text: String, screen: SmithScreenContext) =
+        answer(SmithChatState(projectId = projectId))
+
+    override suspend fun cancelSmith(projectId: String?) = answer(SmithChatState(projectId = projectId))
+
+    override suspend fun newSmithChat(projectId: String?) = answer(SmithChatState(projectId = projectId))
+
+    override suspend fun getSmithProposals() = answer(emptyList<SmithProposal>())
+
+    override suspend fun answerSmithProposal(id: String, answer: SmithProposalAnswer) =
+        this.answer(SmithProposalAnswerResult(ok = false))
+
     override suspend fun retryConnection() {
         if (reachable) {
             _connectionStatus.value = ConnectionStatus.Connected(session.desktopName, session.hostOrigin)

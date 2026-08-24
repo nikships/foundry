@@ -26,5 +26,11 @@ interface CompanionRepository {
     suspend fun getPrStatus(projectId: String): Result<GhStatus>
     suspend fun getPrDraft(projectId: String, runId: String): Result<CompanionPrDraft>
     suspend fun createPr(projectId: String, runId: String, request: CompanionPrCreateRequest): Result<PrAction>
+    suspend fun getSmithState(projectId: String?): Result<SmithChatState>
+    suspend fun sendSmith(projectId: String?, text: String, screen: SmithScreenContext): Result<SmithChatState>
+    suspend fun cancelSmith(projectId: String?): Result<SmithChatState>
+    suspend fun newSmithChat(projectId: String?): Result<SmithChatState>
+    suspend fun getSmithProposals(): Result<List<SmithProposal>>
+    suspend fun answerSmithProposal(id: String, answer: SmithProposalAnswer): Result<SmithProposalAnswerResult>
     suspend fun retryConnection()
 }

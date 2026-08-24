@@ -3,7 +3,7 @@ package com.foundry.companion.data.model
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 
-const val COMPANION_PROTOCOL_VERSION = 2
+const val COMPANION_PROTOCOL_VERSION = 3
 
 @Serializable
 data class CompanionPairingPayload(
@@ -403,6 +403,122 @@ data class CompanionPrDraft(
     val title: String,
     val body: String,
     val source: String = "run"
+)
+
+@Serializable
+data class SmithScreenContext(
+    val route: String,
+    val entity: SmithScreenEntity? = null
+)
+
+@Serializable
+data class SmithScreenEntity(
+    val kind: String,
+    val id: String
+)
+
+@Serializable
+data class SmithChatState(
+    val projectId: String? = null,
+    val model: String = "",
+    val activeModel: String = "",
+    val reasoningEffort: String = "medium",
+    val activeReasoningEffort: String = "medium",
+    val running: Boolean = false,
+    val error: String? = null,
+    val transcript: List<SmithTranscriptEntry> = emptyList()
+)
+
+@Serializable
+data class SmithTranscriptEntry(
+    val id: String = "",
+    val kind: String = "text",
+    val text: String = "",
+    val source: String = "smith",
+    val toolKind: String? = null,
+    val done: Boolean? = null,
+    val failed: Boolean? = null,
+    val at: Long = 0L,
+    val artifact: JsonObject? = null
+) {
+    val isArtifact: Boolean get() = kind == "artifact"
+    val isOperator: Boolean get() = source == "operator"
+    val artifactKind: String
+        get() = artifact?.stringOrNull("kind").orEmpty()
+    val artifactTitle: String
+        get() = artifact?.stringOrNull("title")
+            ?: artifact?.stringOrNull("name")
+            ?: artifactKind.replace('_', ' ')
+    val artifactSummary: String
+        get() = artifact?.stringOrNull("rationale")
+            ?: artifact?.stringOrNull("summary")
+            ?: artifact?.stringOrNull("detail").orEmpty()
+}
+
+@Serializable
+data class SmithSendRequest(
+    val projectId: String? = null,
+    val text: String,
+    val screen: SmithScreenContext? = null
+)
+
+@Serializable
+data class SmithScopeRequest(
+    val projectId: String? = null
+)
+
+@Serializable
+data class SmithProposal(
+    val id: String,
+    val type: String,
+    val projectId: String? = null,
+    val createdAt: String = "",
+    val kind: String? = null,
+    val mode: String? = null,
+    val name: String? = null,
+    val operation: String? = null,
+    val title: String? = null,
+    val summary: String? = null,
+    val risk: String? = null,
+    val overwrites: Boolean = false,
+    val secretRequest: SmithSecretRequest? = null,
+    val args: JsonObject = JsonObject(emptyMap()),
+    val validation: List<ValidationIssue> = emptyList()
+) {
+    val headline: String
+        get() = title?.takeIf { it.isNotBlank() }
+            ?: name?.takeIf { it.isNotBlank() }
+            ?: operation.orEmpty()
+    val body: String
+        get() = summary?.takeIf { it.isNotBlank() }
+            ?: if (type == "entity") "${mode.orEmpty()} $kind".trim() else operation.orEmpty()
+    val needsSecret: Boolean get() = secretRequest != null
+}
+
+@Serializable
+data class SmithSecretRequest(
+    val kind: String = "api-key",
+    val label: String = "API key",
+    val placeholder: String? = null
+)
+
+@Serializable
+data class SmithProposalAnswer(
+    val approved: Boolean,
+    val note: String? = null,
+    val secret: String? = null
+)
+
+@Serializable
+data class SmithProposalAnswerRequest(
+    val id: String,
+    val answer: SmithProposalAnswer
+)
+
+@Serializable
+data class SmithProposalAnswerResult(
+    val ok: Boolean,
+    val error: String? = null
 )
 
 @Serializable

@@ -669,6 +669,90 @@ class FakeCompanionRepository(
         )
     }
 
+    private val smithChats = mutableMapOf<String, MutableList<SmithTranscriptEntry>>()
+    private val smithProposals = mutableListOf<SmithProposal>()
+    var lastSmithSend: Pair<String?, String>? = null
+        private set
+    var smithAnswered: Pair<String, Boolean>? = null
+        private set
+
+    private fun smithKey(projectId: String?): String = projectId?.takeIf { it.isNotBlank() } ?: "global"
+
+    private fun smithState(projectId: String?): SmithChatState {
+        val key = smithKey(projectId)
+        return SmithChatState(
+            projectId = key.takeIf { it != "global" },
+            model = "scripted",
+            activeModel = "scripted",
+            reasoningEffort = "medium",
+            activeReasoningEffort = "medium",
+            running = false,
+            error = null,
+            transcript = smithChats[key].orEmpty().toList()
+        )
+    }
+
+    override suspend fun getSmithState(projectId: String?): Result<SmithChatState> {
+        return Result.success(smithState(projectId))
+    }
+
+    override suspend fun sendSmith(
+        projectId: String?,
+        text: String,
+        screen: SmithScreenContext
+    ): Result<SmithChatState> {
+        lastSmithSend = projectId to text
+        val key = smithKey(projectId)
+        val rows = smithChats.getOrPut(key) { mutableListOf() }
+        val now = System.currentTimeMillis()
+        rows.add(
+            SmithTranscriptEntry(
+                id = "op_${rows.size}",
+                kind = "text",
+                text = text,
+                source = "operator",
+                at = now
+            )
+        )
+        rows.add(
+            SmithTranscriptEntry(
+                id = "sm_${rows.size}",
+                kind = "text",
+                text = "heard: $text",
+                source = "smith",
+                at = now + 1
+            )
+        )
+        return Result.success(smithState(projectId))
+    }
+
+    override suspend fun cancelSmith(projectId: String?): Result<SmithChatState> {
+        return Result.success(smithState(projectId))
+    }
+
+    override suspend fun newSmithChat(projectId: String?): Result<SmithChatState> {
+        smithChats[smithKey(projectId)] = mutableListOf()
+        return Result.success(smithState(projectId))
+    }
+
+    override suspend fun getSmithProposals(): Result<List<SmithProposal>> {
+        return Result.success(smithProposals.toList())
+    }
+
+    override suspend fun answerSmithProposal(
+        id: String,
+        answer: SmithProposalAnswer
+    ): Result<SmithProposalAnswerResult> {
+        smithAnswered = id to answer.approved
+        smithProposals.removeAll { it.id == id }
+        return Result.success(SmithProposalAnswerResult(ok = true))
+    }
+
+    fun enqueueSmithProposal(proposal: SmithProposal) {
+        smithProposals.clear()
+        smithProposals.add(proposal)
+    }
+
     fun setConnectionStatus(status: ConnectionStatus) {
         _connectionStatus.value = status
     }

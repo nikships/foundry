@@ -46,6 +46,9 @@ data class CompanionUiState(
     /** Host-drafted title/body for the Create PR confirm sheet. */
     val prDraft: CompanionPrDraft? = null,
     val prDraftRunId: String? = null,
+    val smithChat: SmithChatState? = null,
+    val smithProposal: SmithProposal? = null,
+    val smithSending: Boolean = false,
     val isNotifyOnSettleEnabled: Boolean = true,
     val isPairing: Boolean = false,
     val isStartingRun: Boolean = false,
@@ -179,6 +182,7 @@ class CompanionViewModel(
                 if (selected.isNotEmpty()) {
                     loadRuns(selected)
                     loadPrStatus(selected)
+                    loadSmith(selected)
                     if (enablePolling) {
                         startPolling(selected)
                     }
@@ -193,6 +197,7 @@ class CompanionViewModel(
         _uiState.update { it.copy(selectedProjectId = projectId) }
         loadRuns(projectId)
         loadPrStatus(projectId)
+        loadSmith(projectId)
         if (enablePolling) {
             startPolling(projectId)
         }
@@ -216,6 +221,7 @@ class CompanionViewModel(
                 if (_uiState.value.connectionStatus is ConnectionStatus.Connected) {
                     loadRuns(projectId)
                     loadPendingInterrupts()
+                    loadSmith(projectId)
                     val activeRun = _uiState.value.currentRunDetail?.run
                     if (activeRun != null && activeRun.isRunning && _uiState.value.missingRunId != activeRun.runId) {
                         loadRunDetail(activeRun.runId)
@@ -354,6 +360,9 @@ class CompanionViewModel(
                     sessionInfo = null,
                     prDraft = null,
                     prDraftRunId = null,
+                    smithChat = null,
+                    smithProposal = null,
+                    smithSending = false,
                     errorMessage = null
                 )
             }
@@ -520,6 +529,74 @@ class CompanionViewModel(
                 val msg = err.message ?: "Failed to create PR"
                 _uiState.update { it.copy(isCreatingPr = false, errorMessage = msg) }
                 onResult?.invoke(false, msg)
+            }
+        }
+    }
+
+    fun loadSmith(projectId: String = _uiState.value.selectedProjectId) {
+        viewModelScope.launch {
+            val scope = projectId.takeIf { it.isNotBlank() }
+            repository.getSmithState(scope).onSuccess { chat ->
+                _uiState.update { it.copy(smithChat = chat) }
+            }
+            repository.getSmithProposals().onSuccess { proposals ->
+                _uiState.update { current ->
+                    current.copy(smithProposal = proposals.firstOrNull { it.projectId == scope || it.projectId.isNullOrBlank() })
+                }
+            }
+        }
+    }
+
+    fun sendSmith(text: String, route: String = "smith") {
+        val trimmed = text.trim()
+        if (trimmed.isBlank() || _uiState.value.smithSending) return
+        val projectId = _uiState.value.selectedProjectId.takeIf { it.isNotBlank() }
+        _uiState.update { it.copy(smithSending = true, errorMessage = null) }
+        viewModelScope.launch {
+            val result = repository.sendSmith(projectId, trimmed, SmithScreenContext(route = route))
+            result.onSuccess { chat ->
+                _uiState.update { it.copy(smithChat = chat, smithSending = false) }
+                loadSmith(projectId.orEmpty())
+            }.onFailure { err ->
+                _uiState.update { it.copy(smithSending = false, errorMessage = err.message ?: "Smith could not send") }
+            }
+        }
+    }
+
+    fun cancelSmith() {
+        val projectId = _uiState.value.selectedProjectId.takeIf { it.isNotBlank() }
+        viewModelScope.launch {
+            repository.cancelSmith(projectId).onSuccess { chat ->
+                _uiState.update { it.copy(smithChat = chat, smithSending = false) }
+            }
+        }
+    }
+
+    fun newSmithChat() {
+        val projectId = _uiState.value.selectedProjectId.takeIf { it.isNotBlank() }
+        viewModelScope.launch {
+            repository.newSmithChat(projectId).onSuccess { chat ->
+                _uiState.update { it.copy(smithChat = chat, smithProposal = null, smithSending = false) }
+            }
+        }
+    }
+
+    fun answerSmithProposal(approved: Boolean, secret: String? = null) {
+        val proposal = _uiState.value.smithProposal ?: return
+        viewModelScope.launch {
+            val result = repository.answerSmithProposal(
+                proposal.id,
+                SmithProposalAnswer(approved = approved, secret = secret?.takeIf { it.isNotBlank() })
+            )
+            result.onSuccess { answer ->
+                if (answer.ok) {
+                    _uiState.update { it.copy(smithProposal = null) }
+                    loadSmith()
+                } else {
+                    _uiState.update { it.copy(errorMessage = answer.error ?: "Smith could not apply that answer") }
+                }
+            }.onFailure { err ->
+                _uiState.update { it.copy(errorMessage = err.message ?: "Smith could not apply that answer") }
             }
         }
     }
