@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.CircularProgressIndicator
@@ -53,6 +54,7 @@ import com.foundry.companion.ui.components.FoundryTopBar
 import com.foundry.companion.ui.components.MarkdownText
 import com.foundry.companion.ui.components.ReconnectBanner
 import com.foundry.companion.ui.theme.FoundryTheme
+import com.foundry.companion.util.isHiddenVendorText
 
 @Composable
 fun SmithScreen(
@@ -302,7 +304,7 @@ fun SmithScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(
-                    items = transcript,
+                    items = transcript.filterNot { it.kind == "text" && isHiddenVendorText(it.text) },
                     key = { it.id.ifBlank { "${it.source}_${it.at}_${it.text.hashCode()}" } }
                 ) { entry ->
                     SmithTranscriptRow(entry = entry)
@@ -476,14 +478,16 @@ private fun SmithTranscriptRow(entry: SmithTranscriptEntry) {
                 )
             }
         } else if (entry.text.isNotBlank()) {
-            if (entry.kind == "text" && !isOperator) {
-                MarkdownText(text = entry.text)
-            } else {
-                Text(
-                    text = entry.text,
-                    style = if (entry.kind == "tool") typography.transcriptMono else typography.body,
-                    color = if (entry.kind == "error") colors.statusFailed else colors.textPrimary
-                )
+            SelectionContainer {
+                if (entry.kind == "text" && !isOperator) {
+                    MarkdownText(text = entry.text)
+                } else {
+                    Text(
+                        text = entry.text,
+                        style = if (entry.kind == "tool") typography.transcriptMono else typography.body,
+                        color = if (entry.kind == "error") colors.statusFailed else colors.textPrimary
+                    )
+                }
             }
         }
     }

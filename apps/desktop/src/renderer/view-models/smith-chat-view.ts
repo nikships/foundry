@@ -13,6 +13,7 @@ import type { SmithScreenContext, SmithTranscriptEntry } from '@shared/ipc-contr
 import { MODEL_UNSET } from '@shared/model-choice.js';
 import { modelLabel } from '@shared/model-label.js';
 import type { ModelInfo } from '@shared/types.js';
+import { isHiddenVendorText } from '@shared/vendor-text.js';
 import type { DesignTab, View } from '../utils/navigation.js';
 
 /** One run of consecutive same-source entries, keyed by its first entry. */
@@ -22,9 +23,14 @@ export interface SmithTranscriptGroup {
   entries: SmithTranscriptEntry[];
 }
 
+function isHiddenSmithText(entry: SmithTranscriptEntry): boolean {
+  return entry.kind === 'text' && isHiddenVendorText(entry.text);
+}
+
 export function groupTranscript(entries: SmithTranscriptEntry[]): SmithTranscriptGroup[] {
   const groups: SmithTranscriptGroup[] = [];
   for (const entry of entries) {
+    if (isHiddenSmithText(entry)) continue;
     const last = groups[groups.length - 1];
     if (last && last.source === entry.source) {
       last.entries.push(entry);

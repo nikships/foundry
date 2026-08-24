@@ -242,10 +242,10 @@
   background: var(--bg-input);
 }
 
-.promptText {
-  white-space: pre-wrap;
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
+.promptMarkdown {
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--text);
 }
 
 /* ── Envelope fields ── */

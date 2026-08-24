@@ -17,6 +17,7 @@
  *   shows a call that never returned. Failures stay visible as failures.
  */
 
+import { isIncompleteFunctionCallJson, stripVendorToolEcho } from '@shared/vendor-text.js';
 import type { TranscriptToolKind } from '@shared/types.js';
 import { labelToolCall, toolKind } from './events.js';
 import type { TransportEvent } from './transport.js';
@@ -62,11 +63,11 @@ export function foldTranscript<Row extends TranscriptRow>(
         if (last?.kind === 'text') {
           // Keep spaces and newlines: token streams often emit them alone.
           const grown = `${last.text}${event.delta}`;
-          last.text = target.textCap ? grown.slice(0, target.textCap) : grown;
+          last.text = absorbTextDelta(grown, target.textCap);
           target.flush();
         } else if (event.delta.trim()) {
-          const first = target.textCap ? event.delta.slice(0, target.textCap) : event.delta;
-          target.push({ kind: 'text', text: first });
+          const first = absorbTextDelta(event.delta, target.textCap);
+          if (first) target.push({ kind: 'text', text: first });
         }
         return;
       }
@@ -117,4 +118,14 @@ export function foldTranscript<Row extends TranscriptRow>(
 function transcriptToolKind(tool: string): TranscriptToolKind {
   const kind = toolKind(tool);
   return kind === 'progress' || kind === 'envelope' ? 'other' : kind;
+}
+
+/**
+ * Cap first, then drop a finished vendor echo. Incomplete function-call JSON
+ * is kept so later tokens can finish the object and then be stripped.
+ */
+function absorbTextDelta(text: string, textCap?: number): string {
+  const capped = textCap ? text.slice(0, textCap) : text;
+  if (isIncompleteFunctionCallJson(capped)) return capped;
+  return stripVendorToolEcho(capped);
 }

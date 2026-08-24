@@ -30,6 +30,7 @@ import {
   writesLabel,
 } from '../../view-models/smith-artifact-view.js';
 import AgentAvatar from '../media/AgentAvatar.js';
+import MarkdownText from '../common/MarkdownText.js';
 import StatusBadge from '../common/StatusBadge.js';
 import { EnvelopeGlyph, PhaseGlyph } from '../pipeline/PhaseGlyphs.js';
 import { Button } from '../ui/Button.js';
@@ -225,11 +226,19 @@ export function AgentDesign({
         <dl className={styles.grid}>
           <Detail
             label="System prompt"
-            value={<span className={styles.promptText}>{agent.systemPrompt}</span>}
+            value={
+              <div className={styles.promptMarkdown}>
+                <MarkdownText text={agent.systemPrompt} />
+              </div>
+            }
           />
           <Detail
             label="User prompt"
-            value={<span className={styles.promptText}>{agent.userPrompt}</span>}
+            value={
+              <div className={styles.promptMarkdown}>
+                <MarkdownText text={agent.userPrompt} />
+              </div>
+            }
           />
         </dl>
       </details>

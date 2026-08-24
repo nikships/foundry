@@ -165,8 +165,8 @@ private fun AgentBody(agent: JsonObject?) {
     MetaRow("Model", agent.stringOr("model"))
     MetaRow("Envelope", agent.stringOr("envelope"))
     agent.stringOrNull("purpose")?.let { MarkdownText(text = it) }
-    agent.stringOrNull("systemPrompt")?.let { Disclosure("System prompt", it) }
-    agent.stringOrNull("userPrompt")?.let { Disclosure("User prompt", it) }
+    agent.stringOrNull("systemPrompt")?.let { LabeledMarkdown("System prompt", it) }
+    agent.stringOrNull("userPrompt")?.let { LabeledMarkdown("User prompt", it) }
 }
 
 @Composable
@@ -354,6 +354,10 @@ private fun EvidenceBody(evidence: JsonObject?) {
             MetaRow("Context", listOfNotNull(used?.toString(), max?.let { "/ $it" }).joinToString(" "))
         }
     }
+    evidence.objOrNull("phasePrompt")?.let { prompt ->
+        prompt.stringOrNull("systemPrompt")?.let { LabeledMarkdown("System prompt", it) }
+        prompt.stringOrNull("userPrompt")?.let { LabeledMarkdown("User prompt", it) }
+    }
     evidence.objList("items").forEach { item ->
         Disclosure(item.stringOr("label").ifBlank { item.stringOr("kind") }, item.stringOr("content"))
     }
@@ -468,6 +472,19 @@ private fun LinkRow(label: String, url: String, onOpenUrl: (String) -> Unit) {
             .clickable { onOpenUrl(url) }
             .semantics { contentDescription = label }
     )
+}
+
+@Composable
+private fun LabeledMarkdown(label: String, body: String) {
+    if (body.isBlank()) return
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = label.uppercase(),
+            style = FoundryTheme.typography.eyebrowMono,
+            color = FoundryTheme.colors.textFaint
+        )
+        MarkdownText(text = body)
+    }
 }
 
 @Composable

@@ -44,6 +44,22 @@ describe('groupTranscript', () => {
     const groups = groupTranscript([entry('a', 'smith'), entry('b', 'smith')]);
     expect(groups[0]!.id).toBe('a');
   });
+
+  it('drops vendor functionCall echoes so they never become a Smith bubble', () => {
+    const groups = groupTranscript([
+      { id: 'a', kind: 'text', text: 'Got it.', source: 'smith', at: 0 },
+      {
+        id: 'b',
+        kind: 'text',
+        text: '{"functionCall":{"name":"smith_readiness"}}',
+        source: 'smith',
+        at: 1,
+      },
+      { id: 'c', kind: 'tool', text: 'smith_readiness', source: 'smith', at: 2 },
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.entries.map((row) => row.id)).toEqual(['a', 'c']);
+  });
 });
 
 describe('smithModelLabel', () => {
