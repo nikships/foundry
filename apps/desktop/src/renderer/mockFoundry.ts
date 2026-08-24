@@ -617,6 +617,10 @@ export function createMockFoundryApi(): FoundryApi {
       openWorktree: async () => {},
       revealFiles: async () => {},
       plan: async () => null,
+      exportPlan: async () => ({
+        ok: false,
+        issues: [{ level: 'error', where: 'web-preview', message: UNAVAILABLE }],
+      }),
     },
     orchestrator: {
       plan: async () => ({ error: NO_AGENT_CLI }),

@@ -148,6 +148,8 @@ const api: FoundryApi = {
     openWorktree: (projectId, runId) => call(IPC.runsOpenWorktree, projectId, runId),
     revealFiles: (projectId, runId) => call(IPC.runsRevealFiles, projectId, runId),
     plan: (projectId, runId) => call(IPC.runsPlan, projectId, runId),
+    exportPlan: (projectId, runId, selection) =>
+      call(IPC.runsExportPlan, projectId, runId, selection),
   },
   orchestrator: {
     plan: (projectId, prompt, model, reasoningEffort) =>

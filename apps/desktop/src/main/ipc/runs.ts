@@ -6,11 +6,14 @@ import {
   type ContextBreakdownResult,
   type EventPage,
   type RunDetail,
+  type RunPlanExportResult,
+  type RunPlanExportSelection,
   type WorktreeAction,
 } from '@shared/ipc-contract.js';
 import { emptyRunDetail, eventPage, runDetail, startRun } from '../engine/operations.js';
 import { landRun } from '../engine/settle.js';
 import * as worktreeLib from '../engine/worktree.js';
+import { exportRunPlan } from '../store/export-plan.js';
 import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
 import { notifyRuns, notifySettings, settleHooks } from './shared.js';
@@ -18,9 +21,12 @@ import { notifyRuns, notifySettings, settleHooks } from './shared.js';
 type Ctx = Pick<
   AppContext,
   | 'projects'
+  | 'roster'
   | 'pipelines'
+  | 'rosterScope'
   | 'pipelineScope'
   | 'rosterFor'
+  | 'commandNames'
   | 'registry'
   | 'settings'
   | 'envelopes'
@@ -182,6 +188,43 @@ export function register(ctx: Ctx, handle: Handle): void {
     const scoped = tracerOf(projectId);
     return scoped ? scoped.tracer.runPlan(runId) : null;
   });
+
+  handle(
+    IPC.runsExportPlan,
+    (projectId: string, runId: string, selection: RunPlanExportSelection): RunPlanExportResult => {
+      const scoped = tracerOf(projectId);
+      if (!scoped) {
+        return {
+          ok: false,
+          issues: [{ level: 'error', where: 'plan', message: 'Project not found.' }],
+        };
+      }
+      const plan = scoped.tracer.runPlan(runId);
+      if (!plan) {
+        return {
+          ok: false,
+          issues: [
+            {
+              level: 'error',
+              where: 'plan',
+              message: 'This run has no generated plan to export.',
+            },
+          ],
+        };
+      }
+      const result = exportRunPlan(plan, selection, {
+        roster: ctx.roster,
+        pipelines: ctx.pipelines,
+        rosterScope: ctx.rosterScope(projectId),
+        pipelineScope: ctx.pipelineScope(projectId),
+        rosterAgents: ctx.rosterFor(projectId),
+        commandNames: ctx.commandNames(projectId),
+        knownEnvelopes: ctx.envelopes.list().map((envelope) => envelope.name),
+      });
+      if (result.ok) notifySettings(ctx);
+      return result;
+    },
+  );
 
   handle(IPC.runsRevealFiles, (projectId: string, runId: string) => {
     const scoped = tracerOf(projectId);

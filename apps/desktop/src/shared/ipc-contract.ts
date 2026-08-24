@@ -259,6 +259,18 @@ export interface WorktreeAction {
   detail: string;
 }
 
+/** Which ephemeral entities from an orchestrated run should become ordinary stores. */
+export interface RunPlanExportSelection {
+  pipeline: boolean;
+  /** Synthesized agent names from the persisted plan. */
+  agents: string[];
+}
+
+export interface RunPlanExportResult {
+  ok: boolean;
+  issues: ValidationIssue[];
+}
+
 /**
  * Everything creating a repository needs and nothing else. Owner is optional
  * because the signed-in login is the answer for most people, and a question
@@ -591,6 +603,12 @@ export interface FoundryApi {
      * trace so it survives app restarts. Null for a classic manual run.
      */
     plan(projectId: string, runId: string): Promise<GeneratedRunPlan | null>;
+    /** Saves selected ephemeral plan entities as ordinary editable definitions. */
+    exportPlan(
+      projectId: string,
+      runId: string,
+      selection: RunPlanExportSelection,
+    ): Promise<RunPlanExportResult>;
   };
   orchestrator: {
     /**
@@ -809,6 +827,7 @@ export const IPC = {
   runsOpenWorktree: 'runs:openWorktree',
   runsRevealFiles: 'runs:revealFiles',
   runsPlan: 'runs:plan',
+  runsExportPlan: 'runs:exportPlan',
   orchestratorPlan: 'orchestrator:plan',
   orchestratorCancel: 'orchestrator:cancel',
   prsStatus: 'prs:status',
