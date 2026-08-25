@@ -40,6 +40,7 @@ import {
 import { PiTransport } from '../pi/pi-transport.js';
 import type { AgentTransport } from '../pi/transport.js';
 import { decideAcceptance } from './acceptance.js';
+import { capturePhaseStart } from './checkpoint.js';
 import type { PhaseRunner, RunContext, PhaseJump } from './phase-context.js';
 import { AgentPhaseRunner } from './runners/agent.js';
 import { CodePhaseRunner } from './runners/code.js';
@@ -533,6 +534,10 @@ export class Executor {
       await this.compactFullSessions();
 
       const phase = this.pipeline.phases[index]!;
+      // Before the phase's work begins, and on every entry into it: a
+      // `feedbackTo` re-entry is a new attempt, so it earns its own generation
+      // rather than reusing where the first attempt started.
+      await this.checkpointPhaseStart(phase);
       const jump = await this.runPhase(phase);
       if (jump.kind === 'abort') {
         if (await this.tryReplan(index, phase, jump.detail)) {
@@ -801,6 +806,73 @@ export class Executor {
       name: 'replan proposal rejected',
       payload: { attempt, issues },
     });
+  }
+
+  /**
+   * Writes where this phase begins, durably, before it begins.
+   *
+   * Never fatal. A run that cannot record its checkpoint is still a run the
+   * operator asked for; failing it here would trade a working phase for a
+   * missing record. The failure is traced so the absence is explained rather
+   * than silent, and split-2 restore reads an absent checkpoint as absent.
+   */
+  private async checkpointPhaseStart(phase: PhaseDef): Promise<void> {
+    const { tracer, runId } = this.deps;
+    const phaseId = this.phaseId(phase.name);
+    try {
+      const capture = await capturePhaseStart({ cwd: this.cwd, handoffDir: HANDOFF_DIR });
+      const session = phase.agent ? this.sessions.get(phase.agent) : undefined;
+      tracer.recordPhaseCheckpoint({
+        runId,
+        phaseId,
+        phaseName: phase.name,
+        phaseKind: phase.kind,
+        headSha: capture.headSha,
+        branch: this.handle?.branch ?? null,
+        worktreePath: this.cwd,
+        model: this.appointedModel(phase),
+        agent: phase.agent ?? null,
+        // The session's own id when one is already open, otherwise whatever a
+        // previous attempt persisted — a phase that has not opened a session
+        // yet has no leaf, and inventing one would misdescribe the anchor.
+        agentSessionId: session?.sessionId ?? this.persistedSessionId(phase.agent),
+        leafMessageId: session?.lastUserMessageId ?? null,
+        handoffFiles: capture.handoffFiles,
+        envelopePhases: [...this.envelopes.keys()],
+        files: capture.files,
+        truncated: capture.truncated,
+        omittedPaths: capture.omittedPaths,
+        bytesStored: capture.bytesStored,
+      });
+    } catch (e) {
+      tracer.event({
+        runId,
+        phaseId,
+        type: 'error',
+        name: 'checkpoint',
+        payload: { phase: phase.name, message: (e as Error).message },
+      });
+    }
+  }
+
+  /** The model this phase's agent will actually run on, resolved as the runner resolves it. */
+  private appointedModel(phase: PhaseDef): string | null {
+    if (phase.kind !== 'agent') return null;
+    if (phase.model && phase.model !== 'inherit') return phase.model;
+    const agent = this.agents.find((a) => a.name === phase.agent);
+    if (!agent) return null;
+    return resolveAgentExecution(agent, {
+      model: this.deps.defaultModel,
+      reasoningEffort: this.deps.defaultReasoningEffort ?? 'medium',
+    }).model;
+  }
+
+  private persistedSessionId(agent: string | undefined): string | null {
+    if (!agent) return null;
+    const row = this.deps.tracer
+      .agentSessions(this.deps.runId)
+      .find((session) => session.agent === agent);
+    return row?.agentSessionId ?? null;
   }
 
   private async runPhase(phase: PhaseDef): Promise<PhaseJump> {

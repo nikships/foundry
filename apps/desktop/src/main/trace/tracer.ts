@@ -21,6 +21,9 @@ import type {
   GateCheck,
   GateResultRow,
   GeneratedRunPlan,
+  PhaseCheckpointFile,
+  PhaseCheckpointPayload,
+  PhaseCheckpointRow,
   PhaseDef,
   PhaseKind,
   PhaseRow,
@@ -62,8 +65,45 @@ export interface PhaseInput {
   description: string;
 }
 
+/**
+ * Everything a checkpoint needs except its identity: the id, generation, and
+ * timestamps are the Tracer's to assign, so a caller cannot mint a generation
+ * that collides with one already on disk.
+ */
+export interface PhaseCheckpointInput {
+  runId: string;
+  phaseId: string;
+  phaseName: string;
+  phaseKind: PhaseKind;
+  headSha: string;
+  branch: string | null;
+  worktreePath: string;
+  model: string | null;
+  agent: string | null;
+  agentSessionId: string | null;
+  leafMessageId: string | null;
+  handoffFiles: string[];
+  envelopePhases: string[];
+  files: PhaseCheckpointFile[];
+  truncated: boolean;
+  omittedPaths: string[];
+  bytesStored: number;
+}
+
 /** What a statement placeholder accepts; booleans are stored as 0/1 by callers. */
 type SqlValue = string | number | null;
+
+/**
+ * Payload location under the run dir. The phase id is in the name because two
+ * phases in one run may share a name after an amendment, and the generation
+ * because a later attempt must never overwrite an earlier one's record.
+ */
+function checkpointPayloadPath(phaseName: string, phaseId: string, generation: number): string {
+  // Dots are replaced along with everything else: a name like `../..` would
+  // otherwise survive separator stripping and still climb out of the run dir.
+  const safeName = phaseName.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64) || 'phase';
+  return join('checkpoints', `${safeName}-${phaseId}-${generation}.json`);
+}
 
 export class Tracer {
   /**
@@ -78,9 +118,16 @@ export class Tracer {
     /** Files stay the raw record: runs/{runId}/… under the project dir. */
     private readonly runsDir: string,
   ) {
+    // Every table that stamps a change_id draws from this one counter, so the
+    // seed is the max across all of them — seeding from `events` alone would
+    // re-issue ids a reopened database has already given to a checkpoint.
     this.changeCounter =
       this.one<{ max_change: number }>(
-        'SELECT COALESCE(MAX(change_id), 0) AS max_change FROM events',
+        `SELECT MAX(max_change) AS max_change FROM (
+           SELECT COALESCE(MAX(change_id), 0) AS max_change FROM events
+           UNION ALL
+           SELECT COALESCE(MAX(change_id), 0) AS max_change FROM phase_checkpoints
+         )`,
       )?.max_change ?? 0;
   }
 
@@ -681,6 +728,118 @@ export class Tracer {
     }));
   }
 
+  // ── phase checkpoints ─────────────────────────────────────────────────────
+
+  /**
+   * Records where a phase began, durably, before it begins.
+   *
+   * Two stores rather than one: the bulk (phase-start file contents, path
+   * lists) is JSON under the run directory, and SQLite keeps only the small
+   * index a reader queries. The file is written first so a row never points at
+   * a payload that is not there yet.
+   *
+   * A re-entry into the same phase is a new generation. Nothing here updates
+   * or deletes an earlier row — an attempt's checkpoint is history the moment
+   * it is written.
+   */
+  recordPhaseCheckpoint(input: PhaseCheckpointInput): PhaseCheckpointRow {
+    const generation =
+      (this.one<{ max_gen: number }>(
+        'SELECT COALESCE(MAX(generation), 0) AS max_gen FROM phase_checkpoints WHERE phase_id = ?',
+        input.phaseId,
+      )?.max_gen ?? 0) + 1;
+    const checkpointId = `cp_${newId()}`;
+    const createdAt = nowIso();
+    const payloadPath = checkpointPayloadPath(input.phaseName, input.phaseId, generation);
+
+    const payload: PhaseCheckpointPayload = {
+      checkpointId,
+      runId: input.runId,
+      phaseId: input.phaseId,
+      phaseName: input.phaseName,
+      generation,
+      createdAt,
+      headSha: input.headSha,
+      branch: input.branch,
+      worktreePath: input.worktreePath,
+      model: input.model,
+      agent: input.agent,
+      agentSessionId: input.agentSessionId,
+      leafMessageId: input.leafMessageId,
+      handoffFiles: input.handoffFiles,
+      envelopePhases: input.envelopePhases,
+      files: input.files,
+      truncated: input.truncated,
+      omittedPaths: input.omittedPaths,
+      bytesStored: input.bytesStored,
+    };
+    this.writeRunFile(input.runId, payloadPath, JSON.stringify(payload, null, 2));
+
+    const changeId = this.nextChangeId();
+    this.exec(
+      `INSERT INTO phase_checkpoints (checkpoint_id, run_id, phase_id, phase_name, phase_kind,
+         generation, head_sha, model, agent, agent_session_id, leaf_message_id, file_count,
+         untracked_count, bytes_stored, truncated, payload_path, change_id, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      checkpointId,
+      input.runId,
+      input.phaseId,
+      input.phaseName,
+      input.phaseKind,
+      generation,
+      input.headSha,
+      input.model,
+      input.agent,
+      input.agentSessionId,
+      input.leafMessageId,
+      input.files.length,
+      input.files.filter((file) => file.state === 'untracked').length,
+      input.bytesStored,
+      input.truncated ? 1 : 0,
+      payloadPath,
+      changeId,
+      createdAt,
+    );
+    const row = this.phaseCheckpointRow(checkpointId);
+    if (!row) throw new Error(`checkpoint ${checkpointId} did not persist`);
+    return row;
+  }
+
+  /**
+   * Every checkpoint this run recorded, oldest first. A run that predates
+   * checkpoints has none, which reads as an empty list rather than a fabricated
+   * entry.
+   */
+  phaseCheckpoints(runId: string): PhaseCheckpointRow[] {
+    return this.many<RawCheckpoint>(
+      'SELECT * FROM phase_checkpoints WHERE run_id = ? ORDER BY rowid',
+      runId,
+    ).map(mapCheckpoint);
+  }
+
+  /**
+   * One checkpoint's full phase-start record, or `null` when the id is unknown
+   * or its payload file is gone. A caller that cannot read the payload must
+   * not be handed the row alone and left to assume the contents are there.
+   */
+  phaseCheckpoint(
+    checkpointId: string,
+  ): { row: PhaseCheckpointRow; payload: PhaseCheckpointPayload } | null {
+    const row = this.phaseCheckpointRow(checkpointId);
+    if (!row) return null;
+    const payload = this.readRunJson<PhaseCheckpointPayload>(row.runId, row.payloadPath);
+    if (!payload) return null;
+    return { row, payload };
+  }
+
+  private phaseCheckpointRow(checkpointId: string): PhaseCheckpointRow | null {
+    const row = this.one<RawCheckpoint>(
+      'SELECT * FROM phase_checkpoints WHERE checkpoint_id = ?',
+      checkpointId,
+    );
+    return row ? mapCheckpoint(row) : null;
+  }
+
   // ── agent sessions ────────────────────────────────────────────────────────
 
   upsertAgentSession(input: {
@@ -904,6 +1063,7 @@ export class Tracer {
       'gate_results',
       'agent_sessions',
       'processes',
+      'phase_checkpoints',
       'phases',
       'runs',
     ];
@@ -1026,6 +1186,54 @@ interface RawProcess {
   name: string;
   pid: number;
   command: string;
+}
+
+interface RawCheckpoint {
+  checkpoint_id: string;
+  run_id: string;
+  phase_id: string;
+  phase_name: string;
+  phase_kind: string;
+  generation: number;
+  head_sha: string | null;
+  model: string | null;
+  agent: string | null;
+  agent_session_id: string | null;
+  leaf_message_id: string | null;
+  file_count: number;
+  untracked_count: number;
+  bytes_stored: number;
+  truncated: number;
+  payload_path: string;
+  change_id: number;
+  created_at: string;
+}
+
+function mapCheckpoint(r: RawCheckpoint): PhaseCheckpointRow {
+  const truncated = !!r.truncated;
+  return {
+    checkpointId: r.checkpoint_id,
+    runId: r.run_id,
+    phaseId: r.phase_id,
+    phaseName: r.phase_name,
+    phaseKind: r.phase_kind as PhaseKind,
+    generation: r.generation,
+    headSha: r.head_sha ?? '',
+    model: r.model,
+    agent: r.agent,
+    agentSessionId: r.agent_session_id,
+    leafMessageId: r.leaf_message_id,
+    fileCount: r.file_count ?? 0,
+    untrackedCount: r.untracked_count ?? 0,
+    bytesStored: r.bytes_stored ?? 0,
+    truncated,
+    // A missing HEAD means the capture could not name the commit the phase
+    // started from, so there is no baseline to restore the rest against.
+    exactRestorePossible: !truncated && !!r.head_sha,
+    payloadPath: r.payload_path,
+    changeId: r.change_id,
+    createdAt: r.created_at,
+  };
 }
 
 function safeJson(text: string | null): Record<string, unknown> {

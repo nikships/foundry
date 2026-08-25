@@ -101,6 +101,29 @@ CREATE TABLE IF NOT EXISTS agent_sessions (
   last_used_at     TEXT,
   PRIMARY KEY (run_id, agent)
 );
+-- Durable phase-start state, so a crash or kill still leaves a readable
+-- record of where a phase began. The bulk (file contents, path lists) lives
+-- as JSON under the run directory; this row is the small, queryable index.
+CREATE TABLE IF NOT EXISTS phase_checkpoints (
+  checkpoint_id    TEXT PRIMARY KEY,
+  run_id           TEXT NOT NULL REFERENCES runs(run_id),
+  phase_id         TEXT NOT NULL REFERENCES phases(phase_id),
+  phase_name       TEXT NOT NULL,
+  phase_kind       TEXT NOT NULL,
+  generation       INTEGER NOT NULL,
+  head_sha         TEXT,
+  model            TEXT,
+  agent            TEXT,
+  agent_session_id TEXT,
+  leaf_message_id  TEXT,
+  file_count       INTEGER DEFAULT 0,
+  untracked_count  INTEGER DEFAULT 0,
+  bytes_stored     INTEGER DEFAULT 0,
+  truncated        INTEGER DEFAULT 0,
+  payload_path     TEXT NOT NULL,
+  change_id        INTEGER NOT NULL,
+  created_at       TEXT
+);
 CREATE TABLE IF NOT EXISTS processes (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   run_id     TEXT REFERENCES runs(run_id),
@@ -118,6 +141,9 @@ CREATE INDEX IF NOT EXISTS idx_events_change ON events(run_id, change_id);
 CREATE INDEX IF NOT EXISTS idx_phases_run_seq ON phases(run_id, seq);
 CREATE INDEX IF NOT EXISTS idx_envelopes_phase ON envelopes(phase_id);
 CREATE INDEX IF NOT EXISTS idx_gates_phase ON gate_results(phase_id);
+CREATE INDEX IF NOT EXISTS idx_checkpoints_run ON phase_checkpoints(run_id, change_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_checkpoints_generation
+  ON phase_checkpoints(phase_id, generation);
 CREATE INDEX IF NOT EXISTS idx_runs_started ON runs(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_processes_open ON processes(ended_at) WHERE ended_at IS NULL;
 `;
