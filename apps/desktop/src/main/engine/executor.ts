@@ -55,6 +55,7 @@ import type { IssueAction, PrAction } from '@shared/ipc-contract.js';
 import { effectivePhaseEnvelope, resolveAgentExecution } from '@shared/types.js';
 import type { SetupExecution } from './agent-context.js';
 import type { Replanner } from '../orchestrator/replan.js';
+import { phaseModelIssues } from '../orchestrator/plan.js';
 import { validate as validatePipeline } from '../store/pipelines.js';
 import { preflightForRun } from './preflight.js';
 import { FIXED_ENGINE_DEFAULTS } from '@shared/types.js';
@@ -621,10 +622,24 @@ export class Executor {
       ...preflightForRun(pipeline, agents, commandNames, knownEnvelopes, {
         scaffold: this.deps.project.scaffold === true,
       }),
+      // An amendment inherits the confirmed plan's explicit appointments: it
+      // may re-cast a phase onto any model that plan already reaches, but the
+      // engine has no catalog here, so anything else is refused rather than
+      // silently falling back to the install default.
+      ...phaseModelIssues(amendment.phases, this.confirmedModelIds(), failedIndex),
     );
     const errors = issues.filter((issue) => issue.level === 'error');
     if (errors.length) return { ok: false, issues: errors };
     return { ok: true, pipeline, warnings: uniqueIssues(issues) };
+  }
+
+  /** The models the operator confirmed on the plan card, in plan order. */
+  private confirmedModelIds(): string[] {
+    const ids = new Set<string>();
+    for (const phase of this.plan?.pipeline.phases ?? []) {
+      if (phase.kind === 'agent' && phase.model && phase.model !== 'inherit') ids.add(phase.model);
+    }
+    return [...ids];
   }
 
   private applyAmendment(

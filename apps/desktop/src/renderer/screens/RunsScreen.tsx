@@ -20,6 +20,7 @@ import OrchestratorPicker, {
 import PlanCard from '../components/run/PlanCard.js';
 import { Button } from '../components/ui/Button.js';
 import { readinessBanner } from '../view-models/readiness-view.js';
+import { withPhaseModel } from '../view-models/plan-view.js';
 import styles from './RunsScreen.module.css';
 
 const MODE_KEY = 'foundry.runs.mode';
@@ -200,6 +201,10 @@ function OrchestratedComposer({
   const [planError, setPlanError] = useState('');
   const [starting, setStarting] = useState(false);
   const [startIssues, setStartIssues] = useState<ValidationIssue[]>([]);
+  // Phase-name → model the operator re-cast that phase onto. Held as an
+  // overlay rather than a mutated copy of the plan, so a progress push that
+  // replaces the session snapshot cannot silently drop the operator's choice.
+  const [modelOverrides, setModelOverrides] = useState<Record<string, string>>({});
   // A session can emit its first progress snapshot before the invoke that
   // returns its id settles. Cache those snapshots by id so the planning panel
   // starts with the real transcript rather than dropping its first line.
@@ -221,6 +226,7 @@ function OrchestratedComposer({
     setPlanning(null);
     setPlanError('');
     setStartIssues([]);
+    setModelOverrides({});
     return () => {
       const planId = planIdRef.current;
       planIdRef.current = '';
@@ -237,7 +243,17 @@ function OrchestratedComposer({
         ? `Updating ${project.baseRef} first`
         : null;
 
-  const plan = planning?.status === 'done' ? planning.plan : null;
+  const proposed = planning?.status === 'done' ? planning.plan : null;
+  const plan = useMemo(
+    () =>
+      proposed
+        ? Object.entries(modelOverrides).reduce(
+            (next, [phaseName, model]) => withPhaseModel(next, phaseName, model),
+            proposed,
+          )
+        : null,
+    [proposed, modelOverrides],
+  );
   const stage: 'compose' | 'planning' | 'ready' = plan
     ? 'ready'
     : requestingPlan || planning?.status === 'running' || planning?.status === 'failed'
@@ -251,6 +267,7 @@ function OrchestratedComposer({
     setRequestingPlan(true);
     setPlanError('');
     setStartIssues([]);
+    setModelOverrides({});
     setPlanning(null);
     try {
       const result = await api.orchestrator.plan(
@@ -291,12 +308,14 @@ function OrchestratedComposer({
     planIdRef.current = '';
     if (planId) void api.orchestrator.cancel(planId);
     setPlanning(null);
+    setModelOverrides({});
   };
 
   const discardPlan = (): void => {
     planIdRef.current = '';
     setPlanning(null);
     setStartIssues([]);
+    setModelOverrides({});
   };
 
   const startFromPlan = async (): Promise<void> => {
@@ -413,15 +432,20 @@ function OrchestratedComposer({
         </section>
       )}
 
-      {stage === 'ready' && plan && (
+      {stage === 'ready' && plan && proposed && (
         <div className={styles.planWrap}>
           <PlanCard
             plan={plan}
+            original={proposed}
             starting={starting}
             startBlocked={
               baseSyncing ? `Updating ${project?.baseRef ?? 'base branch'} first` : null
             }
             issues={startIssues}
+            onPhaseModelChange={(phaseName, model) =>
+              setModelOverrides((current) => ({ ...current, [phaseName]: model }))
+            }
+            onResetModels={() => setModelOverrides({})}
             onStart={() => void startFromPlan()}
             onRegenerate={() => void submitPlan()}
             onDiscard={discardPlan}

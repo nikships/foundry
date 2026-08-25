@@ -55,6 +55,9 @@ function preparePhase(): PhaseDef {
     name: 'prepare',
     kind: 'agent',
     agent: builder.name,
+    // A generated plan appoints every agent phase explicitly; the amendment
+    // rail reads these ids as the set an amendment may re-cast onto.
+    model: 'scripted',
     description: 'Prepare immutable evidence before the failing command.',
     envelope: 'build',
     prompt: { inputs: ['request'] },
@@ -123,6 +126,24 @@ function invalidAmendment(): string {
   return JSON.stringify({
     reason: 'This proposal is deliberately malformed.',
     phases: [{ name: 'repair', kind: 'code', description: 'Forget the required command.' }],
+    agents: [],
+  });
+}
+
+/** An amendment whose agent phase declines to name a model. */
+function inheritingAmendment(): string {
+  return JSON.stringify({
+    reason: 'Re-run preparation, but without appointing a model.',
+    phases: [
+      {
+        name: 'retry_prepare',
+        kind: 'agent',
+        agent: builder.name,
+        description: 'Prepare the run again after the command failed.',
+        envelope: 'build',
+        prompt: { inputs: ['request'] },
+      },
+    ],
     agents: [],
   });
 }
@@ -234,6 +255,24 @@ describe('mid-run replanning', () => {
         .eventsAfter(started.runId, 0, 1000)
         .filter((event) => event.name === 'replan proposal rejected'),
     ).toHaveLength(2);
+  });
+
+  it('rejects an amendment whose agent phase inherits a model instead of naming one', async () => {
+    const started = start([{ text: inheritingAmendment() }, { text: validAmendment() }]);
+    const outcome = await started.done;
+
+    // The first proposal spends a budget slot and is refused outright rather
+    // than quietly running that phase on the install default; the second is
+    // applied, so the run still recovers.
+    expect(outcome.status).toBe('accepted');
+    expect(started.tracer.run(started.runId)!.amendments).toBe(1);
+    const rejection = started.tracer
+      .eventsAfter(started.runId, 0, 1000)
+      .find((event) => event.name === 'replan proposal rejected');
+    expect(JSON.stringify(rejection?.payload)).toContain('must name its own model');
+    expect(started.tracer.phases(started.runId).map((phase) => phase.name)).not.toContain(
+      'retry_prepare',
+    );
   });
 
   it('falls through to the original failure after the proposal budget is exhausted', async () => {

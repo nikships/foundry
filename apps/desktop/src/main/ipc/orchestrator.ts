@@ -1,10 +1,14 @@
 import type { ReasoningEffort } from '@shared/types.js';
 import { IPC } from '@shared/ipc-contract.js';
 import type { AppContext } from '../context.js';
+import { enabledModels } from '../pi/enabled-models.js';
 import { ghStatus } from '../system/gh.js';
 import type { Handle } from './shared.js';
 
-type Ctx = Pick<AppContext, 'projects' | 'plans' | 'rosterFor' | 'envelopes'>;
+type Ctx = Pick<
+  AppContext,
+  'projects' | 'plans' | 'rosterFor' | 'envelopes' | 'supportDir' | 'settings'
+>;
 
 export function register(ctx: Ctx, handle: Handle): void {
   /**
@@ -35,6 +39,7 @@ export function register(ctx: Ctx, handle: Handle): void {
         roster: ctx.rosterFor(projectId),
         envelopeDefs: ctx.envelopes.list(),
         scaffold: project.scaffold === true,
+        enabledModels: () => enabledModels(ctx.supportDir, ctx.settings.get().hiddenModelIds),
         ghAvailable: async () => (await ghStatus(project.path)).available,
       });
       return { planId };

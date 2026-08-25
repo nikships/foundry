@@ -14,6 +14,7 @@ import { emptyRunDetail, eventPage, runDetail, startRun } from '../engine/operat
 import { landRun } from '../engine/settle.js';
 import * as worktreeLib from '../engine/worktree.js';
 import { exportRunPlan } from '../store/export-plan.js';
+import { enabledModelIds } from '../pi/enabled-models.js';
 import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
 import { notifyRuns, notifySettings, settleHooks } from './shared.js';
@@ -32,6 +33,7 @@ type Ctx = Pick<
   | 'envelopes'
   | 'broadcast'
   | 'oneShot'
+  | 'supportDir'
 >;
 
 export function register(ctx: Ctx, handle: Handle): void {
@@ -58,6 +60,7 @@ export function register(ctx: Ctx, handle: Handle): void {
           notifySettings(ctx);
           return ctx.projects.get(next.id) ?? next;
         },
+        enabledModelIds: () => enabledModelIds(ctx.supportDir, ctx.settings.get().hiddenModelIds),
         oneShot: ctx.oneShot,
         registry: ctx.registry,
       },

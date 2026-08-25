@@ -36,6 +36,8 @@ const FINAL_FIXTURE_PIPELINE: PipelineDef = {
       name: 'build',
       kind: 'agent',
       agent: 'builder',
+      // A generated plan appoints every agent phase explicitly.
+      model: 'fixture/model',
       description: 'Implement the request and leave a transcript.',
       envelope: 'build',
     },

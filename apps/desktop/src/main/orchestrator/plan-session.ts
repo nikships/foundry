@@ -11,7 +11,13 @@
  * and never reaches the card.
  */
 
-import type { AgentDef, EnvelopeDef, ProjectCommand, ReasoningEffort } from '@shared/types.js';
+import type {
+  AgentDef,
+  EnvelopeDef,
+  ModelInfo,
+  ProjectCommand,
+  ReasoningEffort,
+} from '@shared/types.js';
 import { FIXED_ENGINE_DEFAULTS } from '@shared/types.js';
 import type { OrchestratorState } from '@shared/ipc-contract.js';
 import { modelLabel } from '@shared/model-label.js';
@@ -46,6 +52,12 @@ export interface PlanSessionDeps {
   roster: AgentDef[];
   envelopeDefs: EnvelopeDef[];
   scaffold?: boolean;
+  /**
+   * The models this install can reach, minus the operator's hidden ones. Read
+   * in the background alongside gh, because building pi's runtime is the
+   * expensive part of answering it and a click must not wait on either.
+   */
+  enabledModels?: () => Promise<ModelInfo[]>;
   /** Resolved in the background so opening the planning panel stays immediate. */
   ghAvailable?: () => Promise<boolean>;
   /** How each turn is opened. Injected so a test drives one with no model. */
@@ -119,12 +131,20 @@ export class PlanSession {
       ghAvailable = await this.deps.ghAvailable();
       if (this.panel.cancelled) return;
     }
+    let models: ModelInfo[] = [];
+    if (this.deps.enabledModels) {
+      this.panel.push({ kind: 'note', text: 'Reading the models this install can reach…' });
+      models = await this.deps.enabledModels();
+      if (this.panel.cancelled) return;
+    }
+    const enabledModelIds = models.map((m) => m.id);
     const promptInputs: PlanPromptInputs = {
       request: this.deps.prompt,
       contextSummary: this.deps.contextSummary,
       commands: this.deps.commands,
       roster: this.deps.roster,
       envelopeDefs: this.deps.envelopeDefs,
+      models,
       ghAvailable,
     };
 
@@ -161,6 +181,7 @@ export class PlanSession {
             roster: this.deps.roster,
             commandNames: this.deps.commands.map((c) => c.name),
             knownEnvelopes: this.deps.envelopeDefs.map((e) => e.name),
+            enabledModelIds,
             scaffold: this.deps.scaffold,
           })
         : null;

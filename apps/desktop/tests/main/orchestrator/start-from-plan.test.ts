@@ -83,6 +83,7 @@ function generatedPipeline(planId: string): PipelineDef {
         name: 'build',
         kind: 'agent',
         agent: 'builder',
+        model: 'scripted/strong',
         description: 'Make the requested change inside the worktree.',
         envelope: 'build',
         prompt: { inputs: ['request'] },
@@ -91,6 +92,7 @@ function generatedPipeline(planId: string): PipelineDef {
         name: 'review',
         kind: 'agent',
         agent: 'plan_reviewer',
+        model: 'scripted/fast',
         description: 'Verify the change meets the refined request.',
         envelope: 'review',
         prompt: { inputs: ['request'] },
@@ -178,6 +180,7 @@ function deps(scripted: ScriptedAgent): {
       envelopeDefs: () => [],
       settings: () => defaultSettings(),
       saveProject: (next) => next,
+      enabledModelIds: async () => ['scripted/strong', 'scripted/fast'],
       oneShot: () => {
         throw new Error('an inline plan never opens a detection one-shot');
       },
@@ -286,6 +289,51 @@ describe('starting a run from an inline plan', () => {
         where: 'agents.builder',
         message: expect.stringContaining('shadow nothing'),
       }),
+    );
+    expect(started).toHaveLength(0);
+  });
+
+  it('accepts an operator override that re-casts a phase onto another enabled model', async () => {
+    const scripted = new ScriptedAgent([buildEnvelope(), reviewEnvelope()], ['USAGE.md', null]);
+    const { deps: d, started, settled } = deps(scripted);
+    const overridden = plan(h.project.id);
+    overridden.pipeline.phases[1] = {
+      ...overridden.pipeline.phases[1]!,
+      model: 'scripted/strong',
+    };
+
+    const outcome = await startRun(d, input({ plan: overridden }));
+    expect(outcome.ok).toBe(true);
+    expect(started[0]!.pipeline.phases[1]!.model).toBe('scripted/strong');
+    await expect(settled[0]!).resolves.toBe('accepted');
+  });
+
+  it('refuses an override naming a model this install does not enable', async () => {
+    const scripted = new ScriptedAgent([], []);
+    const { deps: d, started } = deps(scripted);
+    const tampered = plan(h.project.id);
+    tampered.pipeline.phases[0] = { ...tampered.pipeline.phases[0]!, model: 'someone/else' };
+
+    const outcome = await startRun(d, input({ plan: tampered }));
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.issues).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining('not one of this install') }),
+    );
+    expect(started).toHaveLength(0);
+  });
+
+  it('refuses a plan whose agent phase still inherits its model', async () => {
+    const scripted = new ScriptedAgent([], []);
+    const { deps: d, started } = deps(scripted);
+    const inheriting = plan(h.project.id);
+    delete inheriting.pipeline.phases[0]!.model;
+
+    const outcome = await startRun(d, input({ plan: inheriting }));
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.issues).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining('must name its own model') }),
     );
     expect(started).toHaveLength(0);
   });
