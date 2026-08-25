@@ -998,6 +998,152 @@ export interface PhaseCheckpointRow {
 }
 
 /**
+ * Why a restore was refused. One reason per cause: an operator told "restore
+ * failed" learns nothing, and a caller that cannot distinguish "the worktree
+ * is gone" from "the record is truncated" cannot offer the right next step.
+ */
+export type RestoreRefusal =
+  | 'run_not_found'
+  | 'run_running'
+  | 'run_not_terminal'
+  | 'run_merged'
+  | 'worktree_missing'
+  | 'no_checkpoints'
+  | 'checkpoint_not_found'
+  | 'checkpoint_payload_missing'
+  | 'checkpoint_head_missing'
+  | 'checkpoint_commit_missing'
+  | 'partial_not_accepted'
+  | 'branch_mismatch'
+  | 'reset_failed';
+
+/**
+ * The refusal in the operator's words, shared so every surface says the same
+ * thing. A caller may append specifics (which paths, which commits); it must
+ * not restate the reason in its own words.
+ */
+export const RESTORE_REFUSAL_COPY: Record<RestoreRefusal, string> = {
+  run_not_found: 'this run is no longer in the trace',
+  run_running: 'this run is still running — stop it before restoring a checkpoint',
+  run_not_terminal: 'only a killed, failed, or rejected run can be restored',
+  run_merged: 'a merged run cannot be restored',
+  worktree_missing: 'this run’s worktree is gone, so there is nowhere to restore into',
+  no_checkpoints: 'this run recorded no phase checkpoints, so there is nothing to restore to',
+  checkpoint_not_found: 'that checkpoint is not one this run recorded',
+  checkpoint_payload_missing: 'that checkpoint’s recorded contents are no longer on disk',
+  checkpoint_head_missing: 'that checkpoint never recorded the commit its phase started from',
+  checkpoint_commit_missing:
+    'the commit that checkpoint started from no longer exists in this worktree',
+  partial_not_accepted:
+    'that checkpoint is truncated, so an exact restore is impossible: a partial restore has to be accepted explicitly',
+  branch_mismatch:
+    'this run’s worktree is no longer on its own branch, so a reset would move another ref',
+  reset_failed: 'git refused to move the run branch back to the checkpoint’s commit',
+};
+
+/**
+ * One checkpoint as a restore target, labelled for a picker.
+ *
+ * `exactRestorePossible` and `restorable` are deliberately separate: a
+ * truncated record can still put most of the tree back, which is a choice for
+ * the operator to accept rather than one this layer makes for them.
+ */
+export interface RestorableCheckpoint {
+  checkpointId: string;
+  runId: string;
+  phaseId: string;
+  phaseName: string;
+  phaseKind: PhaseKind;
+  /** 1 for the first attempt at this phase; a re-entry is a later generation. */
+  generation: number;
+  createdAt: string;
+  headSha: string;
+  model: string | null;
+  agent: string | null;
+  fileCount: number;
+  untrackedCount: number;
+  bytesStored: number;
+  /** False when nothing can be put back at all, exactly or partially. */
+  restorable: boolean;
+  /** True when the record reproduces phase start byte for byte. */
+  exactRestorePossible: boolean;
+  /** Why an exact restore is impossible. Absent exactly when it is possible. */
+  blocker?: RestoreRefusal;
+  /** Paths whose phase-start content was never stored, so drift is only detectable. */
+  omittedPaths: string[];
+  /** Commits the run branch has taken since; a restore moves them off the branch. */
+  commitsSince: number;
+  /** Abbreviated shas a restore would move off, newest first, capped. */
+  commitsSinceShas: string[];
+}
+
+/**
+ * Every checkpoint a run recorded, plus whether the run itself may be
+ * restored. The two are separate answers: a merged run's checkpoints are still
+ * readable history, and saying so is more useful than an empty list.
+ */
+export interface RestorableCheckpointList {
+  runId: string;
+  /** Null when the run is eligible; otherwise why it is not. */
+  refusal: RestoreRefusal | null;
+  /** The refusal in the operator's words, or an empty string when eligible. */
+  detail: string;
+  checkpoints: RestorableCheckpoint[];
+}
+
+export interface RestoreRunInput {
+  runId: string;
+  checkpointId: string;
+  /**
+   * Explicit acceptance of a restore that cannot be exact. A truncated
+   * checkpoint is refused without it: a caller that did not ask for a partial
+   * restore must not be handed one.
+   */
+  acceptPartial?: boolean;
+}
+
+/** What a completed restore did, in terms an operator can verify against git. */
+export interface RestoreRecord {
+  checkpointId: string;
+  phaseId: string;
+  phaseName: string;
+  generation: number;
+  /** Where the run branch stood before the restore moved it. */
+  previousHeadSha: string;
+  /** The commit the phase started from, now the branch tip again. */
+  headSha: string;
+  /**
+   * Commits the restore moved off the branch, newest first. They stay
+   * reachable through the branch's reflog; nothing here deletes a commit.
+   */
+  droppedCommits: string[];
+  /** Files written back to their phase-start bytes. */
+  filesRestored: number;
+  /** Paths removed because phase start did not have them. */
+  filesRemoved: number;
+  /** Paths whose phase-start content was never recorded, so they were left as they are. */
+  omittedPaths: string[];
+  /** True when `omittedPaths` is non-empty: the tree is close, not identical. */
+  partial: boolean;
+  /** The agent whose next session is new because this restore dropped its pointer. */
+  freshSessionAgent: string | null;
+  /** The conversation the restore stepped away from. Kept as evidence, never deleted. */
+  previousSessionId: string | null;
+  /** The run status this restore was performed from. */
+  fromStatus: RunStatus;
+}
+
+export interface RestoreResult {
+  ok: boolean;
+  /** One sentence for the operator, refusal or confirmation alike. */
+  detail: string;
+  /** Present exactly when `ok` is false. */
+  refusal?: RestoreRefusal;
+  /** Present exactly when `ok` is true. */
+  restored?: RestoreRecord;
+}
+
+/**
  * What is occupying an agent's context window, as pi accounts for it.
  *
  * Pi reports one estimate for the whole conversation rather than a per-source

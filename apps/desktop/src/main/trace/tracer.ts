@@ -895,6 +895,31 @@ export class Tracer {
   }
 
   /**
+   * Drops the pointer to an agent's runtime session and returns what it was.
+   *
+   * The row itself stays, along with its model, colour, and context figures:
+   * the abandoned conversation is the evidence of what was interrupted, and a
+   * delete would take the lane it belongs to with it. Only the pointer goes,
+   * so the next session this agent opens is a new one rather than a reopen of
+   * a conversation the operator has just restored away from.
+   */
+  clearAgentSessionId(runId: string, agent: string): string | null {
+    const previous = this.one<{ agent_session_id: string | null }>(
+      'SELECT agent_session_id FROM agent_sessions WHERE run_id = ? AND agent = ?',
+      runId,
+      agent,
+    );
+    if (!previous) return null;
+    this.exec(
+      'UPDATE agent_sessions SET agent_session_id = NULL, last_used_at = ? WHERE run_id = ? AND agent = ?',
+      nowIso(),
+      runId,
+      agent,
+    );
+    return previous.agent_session_id;
+  }
+
+  /**
    * Context occupancy after the agent's last turn, not a running sum: this is
    * what the lane's context bar measures against the window.
    */

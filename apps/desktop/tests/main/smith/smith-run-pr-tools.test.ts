@@ -63,6 +63,9 @@ describe('Smith run and PR tools', () => {
     expect(h.invoke).toHaveBeenLastCalledWith(IPC.runsLiveTail, 'ph1');
     await h.execute({ operation: 'plan', runId: 'r1' });
     expect(h.invoke).toHaveBeenLastCalledWith(IPC.runsPlan, 'session', 'r1');
+    // Listing restore targets is a read; performing one is gated below.
+    await h.execute({ operation: 'checkpoints', runId: 'r1' });
+    expect(h.invoke).toHaveBeenLastCalledWith(IPC.runsRestorableCheckpoints, 'session', 'r1');
     await h.execute({ operation: 'linear_issues', query: 'FOU-190' });
     expect(h.invoke).toHaveBeenLastCalledWith(IPC.linearIssues, 'FOU-190');
     await h.execute({ operation: 'linear_workflow_states', teamId: 'team-1' });
@@ -79,6 +82,8 @@ describe('Smith run and PR tools', () => {
     ['archive', { runId: 'r' }, 'archived'],
     ['export_plan', { runId: 'r' }, 'pipeline or at least one agent'],
     ['export_plan', { runId: 'r', agents: 'builder' }, 'agents must be an array'],
+    ['restore_checkpoint', { runId: 'r' }, 'checkpointId is required'],
+    ['checkpoints', {}, 'runId'],
   ])('validates run %s arguments', async (operation, args, error) => {
     expect(json(await setup('runs').execute({ operation, ...args }))).toMatchObject({
       ok: false,
@@ -106,6 +111,20 @@ describe('Smith run and PR tools', () => {
       { runId: 'r', pipeline: true, agents: ['builder'] },
       IPC.runsExportPlan,
       ['session', 'r', { pipeline: true, agents: ['builder'] }],
+    ],
+    [
+      'restore_checkpoint',
+      { runId: 'r', checkpointId: 'cp_1' },
+      IPC.runsRestoreCheckpoint,
+      // A partial restore is never assumed: an unstated `acceptPartial` is
+      // false, so a truncated checkpoint still refuses.
+      ['session', { runId: 'r', checkpointId: 'cp_1', acceptPartial: false }],
+    ],
+    [
+      'restore_checkpoint',
+      { runId: 'r', checkpointId: 'cp_1', acceptPartial: true },
+      IPC.runsRestoreCheckpoint,
+      ['session', { runId: 'r', checkpointId: 'cp_1', acceptPartial: true }],
     ],
   ])('gates run %s and invokes exact channel', async (operation, args, channel, expected) => {
     const h = setup('runs');
