@@ -76,12 +76,6 @@
   font-size: var(--text-xs);
   border: 1px solid color-mix(in srgb, var(--amber) 18%, transparent);
 }
-.readinessReady {
-  composes: readinessBanner;
-  background: color-mix(in srgb, var(--green) 12%, var(--bg-panel));
-  color: var(--green);
-  border-color: color-mix(in srgb, var(--green) 18%, transparent);
-}
 .readinessBanner p {
   margin: 0;
   line-height: var(--leading);

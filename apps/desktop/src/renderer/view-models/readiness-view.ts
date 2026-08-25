@@ -112,3 +112,12 @@ export function readinessBanner(
     action: inspect.skipped ? 'Re-run readiness' : 'Check readiness',
   };
 }
+
+/**
+ * The Runs banner is exception-only. A green "this project is agent-ready"
+ * line states the normal case on every visit and pushes the composer down, so
+ * only a verdict the operator has to act on is worth the space.
+ */
+export function showReadinessOnRuns(banner: ReadinessBanner): boolean {
+  return banner.tone !== 'ready';
+}

@@ -57,13 +57,26 @@ describe('baseSyncBanner', () => {
 });
 
 describe('showBaseSyncOnRuns', () => {
-  it('hides a repo with no remote once the check is done', () => {
+  it('hides the verdicts that need nothing from the operator', () => {
+    expect(showBaseSyncOnRuns(status({ state: 'current' }), null)).toBe(false);
+    expect(showBaseSyncOnRuns(status({ state: 'ahead', ahead: 2 }), null)).toBe(false);
     expect(showBaseSyncOnRuns(status({ state: 'no_remote', remote: null }), null)).toBe(false);
   });
 
-  it('shows progress and every other verdict', () => {
-    expect(showBaseSyncOnRuns(status({ state: 'no_remote' }), 'checking')).toBe(true);
+  it('hides the in-flight check and the state before the first answer', () => {
+    expect(showBaseSyncOnRuns(null, 'checking')).toBe(false);
+    expect(showBaseSyncOnRuns(null, null)).toBe(false);
+    expect(showBaseSyncOnRuns(status({ state: 'current' }), 'checking')).toBe(false);
+  });
+
+  it('shows the verdicts that block or degrade a run', () => {
     expect(showBaseSyncOnRuns(status({ state: 'behind', behind: 1 }), null)).toBe(true);
-    expect(showBaseSyncOnRuns(null, null)).toBe(true);
+    expect(showBaseSyncOnRuns(status({ state: 'diverged', ahead: 1, behind: 2 }), null)).toBe(true);
+    expect(showBaseSyncOnRuns(status({ state: 'error' }), null)).toBe(true);
+  });
+
+  it('keeps an operator-started update visible while it runs', () => {
+    expect(showBaseSyncOnRuns(status({ state: 'behind', behind: 1 }), 'syncing')).toBe(true);
+    expect(showBaseSyncOnRuns(status({ state: 'current' }), 'syncing')).toBe(true);
   });
 });

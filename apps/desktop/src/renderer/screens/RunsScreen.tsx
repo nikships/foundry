@@ -19,7 +19,7 @@ import OrchestratorPicker, {
 } from '../components/run/OrchestratorPicker.js';
 import PlanCard from '../components/run/PlanCard.js';
 import { Button } from '../components/ui/Button.js';
-import { readinessBanner } from '../view-models/readiness-view.js';
+import { readinessBanner, showReadinessOnRuns } from '../view-models/readiness-view.js';
 import { withPhaseModel } from '../view-models/plan-view.js';
 import styles from './RunsScreen.module.css';
 
@@ -545,11 +545,11 @@ export default function RunsScreen({
         onIncludeArchived={setIncludeArchived}
         onOpenSettings={onOpenSettings}
       />
-      {project && banner && (
+      {project && banner && showReadinessOnRuns(banner) && (
         <div
-          className={banner.tone === 'ready' ? styles.readinessReady : styles.readinessBanner}
+          className={styles.readinessBanner}
           data-testid="readiness-banner"
-          data-ready={banner.tone === 'ready' ? 'yes' : 'no'}
+          data-ready="no"
           role="status"
           aria-live="polite"
         >

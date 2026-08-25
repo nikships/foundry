@@ -82,11 +82,20 @@ export function baseSyncBanner(
   }
 }
 
-/** The Runs banner hides "no remote" — there is nothing to sync. */
+/** States the operator has to act on before a run branches from the base ref. */
+const ACTIONABLE = new Set<BaseSyncStatus['state']>(['behind', 'diverged', 'error']);
+
+/**
+ * The Runs banner is exception-only: a base ref that is current, ahead, or has
+ * no remote needs nothing from the operator, and a plain "checking…" line is
+ * noise on a screen that is otherwise fine. An update stays visible while it
+ * runs because the operator started it from this bar.
+ */
 export function showBaseSyncOnRuns(
   status: BaseSyncStatus | null,
   busy: BaseSyncBusy | null,
 ): boolean {
-  if (busy || !status) return true;
-  return status.state !== 'no_remote';
+  if (!status) return false;
+  if (busy === 'syncing') return true;
+  return ACTIONABLE.has(status.state);
 }
