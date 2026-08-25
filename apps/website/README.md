@@ -142,10 +142,9 @@ hand-editing the WebP, and **check the frame for anything account-specific
 before committing** — the providers pane shows the signed-in account, so that
 capture was taken with the address replaced in the DOM first.
 
-`media-src/phone/*.png` are the Android captures from `../../screenshots`
-at the raw 1080×2400 (9:20). That is the Pixel 10 Pro XL panel (1344×2992,
-20:9); a 1080×1000 crop reads as a foldable inner display, so the site
-renders them inside a 76.6×162.8 mm chassis rather than squaring the stage.
+`media-src/phone/*.png` are `adb screencap` frames from a Pixel 10 Pro XL
+AVD (`hw.lcd.width=1344`, `hw.lcd.height=2992`, 480 dpi). Recapture on that
+device profile; a 1080×1000 crop reads as a foldable inner display.
 
 `pr_writer` and `issue_writer` ship no portrait; the roster falls back to a
 tinted monogram for those two, which is deliberate rather than a missing file.

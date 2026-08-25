@@ -135,9 +135,8 @@ export function AppGallery() {
 
 /* ── the phone ─────────────────────────────────────────────────────────────
  * Pixel 10 Pro XL front: 162.8 × 76.6 mm body, 6.8" 20:9 (1344 × 2992),
- * ~88% screen-to-body, even bezels, centred punch-hole. The previous stage
- * was 1080×1000 — a foldable inner display — which is why it read as a
- * folding phone. Captures are the raw 1080×2400 (9:20) Android screenshots.
+ * even ~2.7 mm bezels, centred punch-hole. Shots are adb screencaps from a
+ * Pixel_10_Pro_XL AVD (hw.lcd 1344×2992 @ 480 dpi), not a 1080×1000 crop.
  */
 
 export function PhoneGallery() {
@@ -165,8 +164,8 @@ export function PhoneGallery() {
               key={s.file}
               src={`/media/phone/${s.file}.webp`}
               alt={`Foundry companion — ${s.name}`}
-              width={540}
-              height={1200}
+              width={672}
+              height={1496}
               loading={i === 0 ? 'eager' : 'lazy'}
               className={`absolute inset-0 h-full w-full object-cover object-top transition-opacity duration-slow ease-mech ${
                 i === selected ? 'opacity-100' : 'opacity-0'
@@ -227,20 +226,18 @@ function Pixel10ProXL({ children }: { children: ReactNode }) {
         />
 
         <div
-          className="absolute flex flex-col overflow-hidden bg-black"
-          style={{ inset: '3.7%', borderRadius: '11.2% / 5.3%' }}
+          className="absolute overflow-hidden bg-black"
+          style={{ inset: '1.63% 3.72%', borderRadius: '11.2% / 5.3%' }}
         >
-          <div className="relative h-[3.8%] shrink-0">
-            <span
-              aria-hidden="true"
-              className="absolute left-1/2 top-[18%] aspect-square w-[5.4%] -translate-x-1/2 rounded-full"
-              style={{
-                background: 'radial-gradient(circle at 38% 32%, #2c3548 0%, #0b0d12 58%, #000 100%)',
-                boxShadow: '0 0 0 1.5px #070707, 0 0 0 2.5px #1a1a1a',
-              }}
-            />
-          </div>
-          <div className="relative min-h-0 flex-1">{children}</div>
+          <div className="absolute inset-0">{children}</div>
+          <span
+            aria-hidden="true"
+            className="absolute left-1/2 top-[1.15%] z-[3] aspect-square w-[5.2%] -translate-x-1/2 rounded-full"
+            style={{
+              background: 'radial-gradient(circle at 38% 32%, #2c3548 0%, #0b0d12 58%, #000 100%)',
+              boxShadow: '0 0 0 1.5px #070707, 0 0 0 2.5px #1a1a1a',
+            }}
+          />
         </div>
       </figure>
     </div>
