@@ -23,7 +23,7 @@ import type {
   PhaseCheckpointFileState,
   PhaseCheckpointOmission,
 } from '@shared/types.js';
-import { resolveRef, status, type StatusEntry } from './git.js';
+import { resolveRef, statusPorcelain, type PorcelainEntry } from './git.js';
 
 /**
  * Per-file and whole-checkpoint content budgets.
@@ -50,8 +50,12 @@ export interface PhaseStartCapture {
 }
 
 /**
- * Everything `git status --porcelain` reports as changed, with the phase-start
- * bytes of whatever fits, plus the handoff files in effect.
+ * Everything git reports as changed, with the phase-start bytes of whatever
+ * fits, plus the handoff files in effect.
+ *
+ * `truncated` covers both shortfalls a reader must not distinguish between: a
+ * path whose content did not fit, and a dirty set that could not be fully
+ * enumerated. Either one means the record cannot reproduce phase start.
  */
 export async function capturePhaseStart(input: {
   cwd: string;
@@ -61,29 +65,64 @@ export async function capturePhaseStart(input: {
   const fileMax = input.limits?.fileMaxBytes ?? CHECKPOINT_FILE_MAX_BYTES;
   const totalMax = input.limits?.totalMaxBytes ?? CHECKPOINT_TOTAL_MAX_BYTES;
 
-  const entries = await status(input.cwd);
+  const listing = await statusPorcelain(input.cwd);
   const files: PhaseCheckpointFile[] = [];
   const omittedPaths: string[] = [];
   let bytesStored = 0;
 
-  for (const entry of entries) {
+  for (const entry of expandRenames(listing.entries)) {
     const captured = captureFile(input.cwd, entry, {
       fileMaxBytes: fileMax,
       remainingBytes: totalMax - bytesStored,
     });
     files.push(captured);
     if (captured.omitted) omittedPaths.push(captured.path);
-    bytesStored += captured.content ? captured.size : 0;
+    // The encoded string is what the payload actually carries, so base64 is
+    // charged at its stored length rather than at the raw byte count.
+    bytesStored += captured.content?.length ?? 0;
   }
 
   return {
     headSha: await resolveRef(input.cwd, 'HEAD'),
     files,
     handoffFiles: handoffFilesIn(input.cwd, input.handoffDir),
-    truncated: omittedPaths.length > 0,
+    truncated: listing.truncated || omittedPaths.length > 0,
     omittedPaths,
     bytesStored,
   };
+}
+
+/**
+ * A rename is two facts, and git reports it as one record.
+ *
+ * `R  a.txt -> b.txt` says the destination exists and the source does not, but
+ * a record naming only `b.txt` loses the second half: a restore that puts the
+ * tree back from `headSha` resurrects `a.txt`, leaving both files where phase
+ * start had one. So the source is emitted as its own absent entry, and the
+ * destination points back at it.
+ */
+function expandRenames(entries: PorcelainEntry[]): CaptureEntry[] {
+  const out: CaptureEntry[] = [];
+  for (const entry of entries) {
+    if (!entry.origPath) {
+      out.push({ path: entry.path, code: entry.code });
+      continue;
+    }
+    // A copy leaves its source in place; only a rename removes it.
+    if (entry.code.includes('R')) {
+      out.push({ path: entry.origPath, code: entry.code, forceState: 'deleted' });
+    }
+    out.push({ path: entry.path, code: entry.code, renamedFrom: entry.origPath });
+  }
+  return out;
+}
+
+interface CaptureEntry {
+  path: string;
+  code: string;
+  /** Set for a rename source, whose state the destination's code does not describe. */
+  forceState?: PhaseCheckpointFileState;
+  renamedFrom?: string;
 }
 
 /**
@@ -99,38 +138,70 @@ export function fileStateFor(code: string): PhaseCheckpointFileState {
 
 function captureFile(
   cwd: string,
-  entry: StatusEntry,
+  entry: CaptureEntry,
   budget: { fileMaxBytes: number; remainingBytes: number },
 ): PhaseCheckpointFile {
-  const state = fileStateFor(entry.code);
-  const base = { path: entry.path, state } as const;
+  const state = entry.forceState ?? fileStateFor(entry.code);
+  const base = {
+    path: entry.path,
+    state,
+    ...(entry.renamedFrom ? { renamedFrom: entry.renamedFrom } : {}),
+  };
 
-  // A deleted path's content is not lost: git still carries it at headSha, and
-  // a restore checks it out from there. Nothing to keep, nothing to omit.
+  // `deleted` means the path was absent from disk when the phase began, so
+  // putting it back means ensuring it is absent again — there is no content to
+  // keep. Note this is *not* "git has it at headSha": `AD` and `RD` records
+  // name paths that HEAD does not carry at all.
   if (state === 'deleted') return { ...base, contentHash: '', size: 0 };
 
-  let buf: Buffer;
+  let size: number;
   try {
     const abs = join(cwd, entry.path);
+    const stat = statSync(abs);
     // A directory can appear as one untracked entry (git collapses an
     // untracked tree). Reading it would throw; naming it is still useful.
-    if (statSync(abs).isDirectory()) {
-      return { ...base, contentHash: '', size: 0, omitted: 'unreadable' };
-    }
-    buf = readFileSync(abs);
+    if (stat.isDirectory()) return { ...base, contentHash: '', size: 0, omitted: 'unreadable' };
+    size = stat.size;
   } catch {
     // Unreadable through permissions or a race. The path is still recorded so
     // a restore knows it was dirty, and the omission makes the gap explicit.
     return { ...base, contentHash: '', size: 0, omitted: 'unreadable' };
   }
 
-  const contentHash = createHash('sha256').update(buf).digest('hex');
-  const size = buf.byteLength;
+  // The size check precedes the read on purpose. This runs before every phase
+  // in the main process, synchronously: reading an 800 MB untracked artefact
+  // just to hash it and discard it as `too_large` would block the event loop,
+  // stalling IPC and the renderer's poll. An omitted file has no stored
+  // content, so it has no hash either.
   const omitted = omissionFor(size, budget);
-  if (omitted) return { ...base, contentHash, size, omitted };
+  if (omitted) return { ...base, contentHash: '', size, omitted };
+
+  let buf: Buffer;
+  try {
+    buf = readFileSync(join(cwd, entry.path));
+  } catch {
+    return { ...base, contentHash: '', size, omitted: 'unreadable' };
+  }
 
   const encoding = isUtf8(buf) ? 'utf8' : 'base64';
-  return { ...base, contentHash, size, content: buf.toString(encoding), encoding };
+  const content = buf.toString(encoding);
+  // Re-check against the encoded length: base64 is a third larger than the
+  // bytes it came from, and the payload carries the string.
+  if (content.length > budget.remainingBytes) {
+    return {
+      ...base,
+      contentHash: '',
+      size: buf.byteLength,
+      omitted: 'budget_exhausted',
+    };
+  }
+  return {
+    ...base,
+    contentHash: createHash('sha256').update(buf).digest('hex'),
+    size: buf.byteLength,
+    content,
+    encoding,
+  };
 }
 
 function omissionFor(

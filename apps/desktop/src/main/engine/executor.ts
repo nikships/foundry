@@ -818,8 +818,10 @@ export class Executor {
    */
   private async checkpointPhaseStart(phase: PhaseDef): Promise<void> {
     const { tracer, runId } = this.deps;
-    const phaseId = this.phaseId(phase.name);
     try {
+      // Inside the try: `phaseId` throws for a phase that was never queued,
+      // and this method promises never to be the thing that fails a run.
+      const phaseId = this.phaseId(phase.name);
       const capture = await capturePhaseStart({ cwd: this.cwd, handoffDir: HANDOFF_DIR });
       const session = phase.agent ? this.sessions.get(phase.agent) : undefined;
       tracer.recordPhaseCheckpoint({
@@ -830,6 +832,12 @@ export class Executor {
         headSha: capture.headSha,
         branch: this.handle?.branch ?? null,
         worktreePath: this.cwd,
+        // A non-isolated run has no worktree: `this.cwd` is the project
+        // checkout, so the capture holds the operator's own uncommitted work.
+        // Recorded rather than skipped — that run has no worktree to discard,
+        // which is precisely where a phase-start record is worth having — but
+        // marked, because restoring into a live checkout is a different act.
+        isolated: this.handle !== null,
         model: this.appointedModel(phase),
         agent: phase.agent ?? null,
         // The session's own id when one is already open, otherwise whatever a
@@ -839,6 +847,7 @@ export class Executor {
         leafMessageId: session?.lastUserMessageId ?? null,
         handoffFiles: capture.handoffFiles,
         envelopePhases: [...this.envelopes.keys()],
+        envelopeIds: this.envelopeIdsInEffect(),
         files: capture.files,
         truncated: capture.truncated,
         omittedPaths: capture.omittedPaths,
@@ -847,12 +856,37 @@ export class Executor {
     } catch (e) {
       tracer.event({
         runId,
-        phaseId,
+        // A phase with no queued row has no id to file the failure under; the
+        // run-level event still records that a checkpoint was missed.
+        phaseId: this.phaseIds.get(phase.name) ?? null,
         type: 'error',
         name: 'checkpoint',
         payload: { phase: phase.name, message: (e as Error).message },
       });
     }
+  }
+
+  /**
+   * The envelope *row* behind each in-effect envelope, by phase name.
+   *
+   * `this.envelopes` is keyed by phase name and holds one parsed envelope per
+   * completed phase, but `recordEnvelope` is a plain insert: a phase re-entered
+   * through `feedbackTo` leaves several rows on the same `phase_id`, only the
+   * last valid one of which is what the map holds. Naming that row is what lets
+   * a reader tell which envelope a given generation actually ran against.
+   */
+  private envelopeIdsInEffect(): Record<string, string> {
+    const byPhaseId = new Map<string, string>();
+    for (const envelope of this.deps.tracer.envelopes(this.deps.runId)) {
+      // Rows arrive in created_at order, so the last valid one wins.
+      if (envelope.valid) byPhaseId.set(envelope.phaseId, envelope.envelopeId);
+    }
+    const out: Record<string, string> = {};
+    for (const name of this.envelopes.keys()) {
+      const envelopeId = byPhaseId.get(this.phaseIds.get(name) ?? '');
+      if (envelopeId) out[name] = envelopeId;
+    }
+    return out;
   }
 
   /** The model this phase's agent will actually run on, resolved as the runner resolves it. */

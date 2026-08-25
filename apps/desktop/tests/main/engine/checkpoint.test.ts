@@ -8,11 +8,11 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openDb, projectDbPath, projectRunsDir, type Db } from '../../../src/main/trace/db.js';
-import { Tracer } from '../../../src/main/trace/tracer.js';
+import { Tracer, type PhaseCheckpointInput } from '../../../src/main/trace/tracer.js';
 import { Executor, type ExecutorDeps } from '../../../src/main/engine/executor.js';
 import { capturePhaseStart } from '../../../src/main/engine/checkpoint.js';
 import { defaultProject } from '../../../src/main/store/projects.js';
@@ -161,6 +161,35 @@ function reopenedTracer(): Tracer {
   return new Tracer(openDb(projectDbPath(h.support, h.repo)), projectRunsDir(h.support, h.repo));
 }
 
+/** A minimal well-formed checkpoint, for the paths that record one directly. */
+function checkpointInput(
+  runId: string,
+  phaseId: string,
+  over: Partial<PhaseCheckpointInput> = {},
+): PhaseCheckpointInput {
+  return {
+    runId,
+    phaseId,
+    phaseName: 'build',
+    phaseKind: 'agent',
+    headSha: 'a'.repeat(40),
+    branch: null,
+    worktreePath: h.repo,
+    isolated: true,
+    model: 'scripted/model',
+    agent: 'builder',
+    agentSessionId: null,
+    leafMessageId: null,
+    handoffFiles: [],
+    envelopePhases: [],
+    files: [],
+    truncated: false,
+    omittedPaths: [],
+    bytesStored: 0,
+    ...over,
+  };
+}
+
 describe('checkpoints a run writes', () => {
   it('records one before every phase starts, in phase order', async () => {
     const scripted = new ScriptedAgent([buildEnvelope(), buildEnvelope()]);
@@ -249,19 +278,74 @@ describe('a checkpoint after the process that wrote it is gone', () => {
     expect(loaded.payload.worktreePath).toBe(h.tracer.run(outcome.runId)!.worktreePath);
   });
 
-  it('keeps issuing change ids above what the reopened database already holds', async () => {
-    const outcome = await run({ pipeline: pipe([agentPhase('build')]) });
-    const highest = Math.max(
-      ...h.tracer.phaseCheckpoints(outcome.runId).map((c) => c.changeId),
-      ...h.tracer.eventsAfter(outcome.runId, 0, 1000).map((e) => e.changeId),
+  /**
+   * The seed has to be the max across `events` *and* `phase_checkpoints`. A
+   * completed run always emits its finish events after the last checkpoint, so
+   * asserting against a finished run would pass with an events-only seed too —
+   * the checkpoint has to be the last write for the case to bite.
+   */
+  it('reissues no id when a checkpoint, not an event, holds the highest', () => {
+    const dbPath = projectDbPath(h.support, h.repo);
+    const dir = projectRunsDir(h.support, h.repo);
+    const first = new Tracer(openDb(dbPath), dir);
+    first.startRun({
+      runId: 'run_cp_last',
+      projectId: 'proj',
+      pipeline: pipe([]),
+      request: 'x',
+      engineer: 'test',
+      worktreePath: h.repo,
+      branch: null,
+      baseRef: 'main',
+      mode: 'pi',
+    });
+    const phaseId = first.queuePhase({
+      runId: 'run_cp_last',
+      seq: 0,
+      name: 'build',
+      kind: 'agent',
+      owner: 'builder',
+      description: 'd',
+    });
+    // Nothing after this write, so MAX(events.change_id) is now behind
+    // MAX(phase_checkpoints.change_id).
+    const checkpoint = first.recordPhaseCheckpoint(checkpointInput('run_cp_last', phaseId));
+    const eventMax = Math.max(
+      0,
+      ...first.eventsAfter('run_cp_last', 0, 1000).map((e) => e.changeId),
     );
+    expect(checkpoint.changeId).toBeGreaterThan(eventMax);
 
-    const reopened = reopenedTracer();
-    const eventId = reopened.event({ runId: outcome.runId, type: 'log', name: 'after' });
+    const reopened = new Tracer(openDb(dbPath), dir);
+    const eventId = reopened.event({ runId: 'run_cp_last', type: 'log', name: 'after' });
     const after = reopened
-      .eventsAfter(outcome.runId, 0, 1000)
+      .eventsAfter('run_cp_last', 0, 1000)
       .find((e) => e.eventId === eventId)!.changeId;
-    expect(after).toBeGreaterThan(highest);
+    // An events-only seed would have handed this event the checkpoint's id,
+    // and the cursor would serve one of the two and never the other.
+    expect(after).toBeGreaterThan(checkpoint.changeId);
+  });
+
+  it('starts a fresh database at 1 rather than skipping ids', () => {
+    const support = tempDir('foundry-checkpoint-empty-');
+    const tracer = new Tracer(
+      openDb(projectDbPath(support, 'proj')),
+      projectRunsDir(support, 'proj'),
+    );
+    tracer.startRun({
+      runId: 'run_empty',
+      projectId: 'proj',
+      pipeline: pipe([]),
+      request: 'x',
+      engineer: 'test',
+      worktreePath: null,
+      branch: null,
+      baseRef: 'main',
+      mode: 'pi',
+    });
+    const eventId = tracer.event({ runId: 'run_empty', type: 'log', name: 'first' });
+    const first = tracer.eventsAfter('run_empty', 0, 1000).find((e) => e.eventId === eventId)!;
+    expect(first.changeId).toBe(1);
   });
 });
 
@@ -305,7 +389,7 @@ describe('what a checkpoint captured', () => {
     expect(review.untrackedCount).toBeGreaterThanOrEqual(1);
   });
 
-  it('names a tracked deletion without content, because git still carries it', async () => {
+  it('names a tracked deletion without content, since absence is what it restores', async () => {
     const outcome = await run({
       pipeline: pipe([
         codePhase('remove', { argv: ['sh', '-c', 'rm tracked.txt'] }),
@@ -400,9 +484,11 @@ describe('the size cap', () => {
     const big = capture.files.find((f) => f.path === 'tracked.txt')!;
     expect(big.content).toBeUndefined();
     expect(big.omitted).toBe('too_large');
-    // A hash without content can detect drift but cannot undo it, which is
-    // exactly why the row has to say so.
-    expect(big.contentHash).toMatch(/^[0-9a-f]{64}$/);
+    // No hash either: hashing requires reading the whole file into the main
+    // process, which is exactly what the size check exists to avoid. The size
+    // still comes off `statSync`, so the row can say how much was skipped.
+    expect(big.contentHash).toBe('');
+    expect(big.size).toBe(4096);
     expect(capture.files.find((f) => f.path === 'small.txt')!.content).toBe('ok\n');
 
     h.tracer.startRun({
@@ -424,25 +510,17 @@ describe('the size cap', () => {
       owner: 'builder',
       description: 'd',
     });
-    const row = h.tracer.recordPhaseCheckpoint({
-      runId: 'run_truncated',
-      phaseId,
-      phaseName: 'build',
-      phaseKind: 'agent',
-      headSha: capture.headSha,
-      branch: null,
-      worktreePath: cwd,
-      model: 'scripted/model',
-      agent: 'builder',
-      agentSessionId: null,
-      leafMessageId: null,
-      handoffFiles: capture.handoffFiles,
-      envelopePhases: [],
-      files: capture.files,
-      truncated: capture.truncated,
-      omittedPaths: capture.omittedPaths,
-      bytesStored: capture.bytesStored,
-    });
+    const row = h.tracer.recordPhaseCheckpoint(
+      checkpointInput('run_truncated', phaseId, {
+        headSha: capture.headSha,
+        worktreePath: cwd,
+        handoffFiles: capture.handoffFiles,
+        files: capture.files,
+        truncated: capture.truncated,
+        omittedPaths: capture.omittedPaths,
+        bytesStored: capture.bytesStored,
+      }),
+    );
 
     expect(row.truncated).toBe(true);
     expect(row.exactRestorePossible).toBe(false);
@@ -480,6 +558,145 @@ describe('the size cap', () => {
   });
 });
 
+/**
+ * The dirty set has to be enumerated in full. `runCommand` keeps only the last
+ * 4000 characters of output, and roughly 110 porcelain lines exceed that, so a
+ * capture built on it silently loses an arbitrary *prefix* of a busy worktree
+ * while the row still claims the record is exact.
+ */
+describe('a worktree with more changed paths than a 4 KB tail holds', () => {
+  it('captures every one of them', async () => {
+    const cwd = scratchRepo();
+    for (let i = 0; i < 200; i++) {
+      writeFileSync(join(cwd, `untracked-file-${i}.txt`), 'content\n');
+    }
+    // What git itself reports, as the independent count.
+    const listing = sh(cwd, ['git', 'status', '--porcelain', '--untracked-files=all']);
+    const reported = listing.split('\n').filter((line) => line.trim()).length;
+    expect(reported).toBe(200);
+    // Well past the old 4000-char tail, which is what makes this bite: only
+    // the last ~157 of these lines would have survived it.
+    expect(listing.length).toBeGreaterThan(4000);
+
+    const capture = await capturePhaseStart({ cwd, handoffDir: '.foundry-handoff' });
+    expect(capture.files).toHaveLength(reported);
+    expect(capture.truncated).toBe(false);
+    expect(capture.omittedPaths).toEqual([]);
+  });
+
+  it('refuses to claim exactness when the listing itself could not be read', async () => {
+    // Not a repository, so git cannot enumerate anything. An empty file list
+    // that reads as "nothing was dirty" is the one answer that must not be
+    // given, because it is indistinguishable from a clean worktree.
+    const cwd = tempDir('foundry-checkpoint-norepo-');
+    const capture = await capturePhaseStart({ cwd, handoffDir: '.foundry-handoff' });
+    expect(capture.files).toEqual([]);
+    expect(capture.truncated).toBe(true);
+  });
+});
+
+describe('a rename at phase start', () => {
+  it('records the source as absent beside the destination', async () => {
+    const outcome = await run({
+      pipeline: pipe([
+        codePhase('rename', { argv: ['git', 'mv', 'tracked.txt', 'renamed.txt'] }),
+        agentPhase('build'),
+      ]),
+    });
+
+    const build = h.tracer.phaseCheckpoints(outcome.runId).find((c) => c.phaseName === 'build')!;
+    const payload = h.tracer.phaseCheckpoint(build.checkpointId)!.payload;
+
+    // Both sides, or a restore from headSha resurrects the source and leaves
+    // two files where phase start had one.
+    const source = payload.files.find((f) => f.path === 'tracked.txt')!;
+    const destination = payload.files.find((f) => f.path === 'renamed.txt')!;
+    expect(source.state).toBe('deleted');
+    expect(destination.state).toBe('modified');
+    expect(destination.content).toBe('committed\n');
+    expect(destination.renamedFrom).toBe('tracked.txt');
+    expect(build.exactRestorePossible).toBe(true);
+  });
+
+  it('does not claim HEAD carries a renamed-away destination', async () => {
+    // `RD a -> b` names `b`, which HEAD does not carry at all — the earlier
+    // "git has the deleted path at headSha" premise was simply wrong.
+    const cwd = scratchRepo();
+    sh(cwd, ['git', 'mv', 'tracked.txt', 'gone.txt']);
+    sh(cwd, ['rm', 'gone.txt']);
+    expect(sh(cwd, ['git', 'status', '--porcelain'])).toContain('RD');
+
+    const capture = await capturePhaseStart({ cwd, handoffDir: '.foundry-handoff' });
+    const destination = capture.files.find((f) => f.path === 'gone.txt')!;
+    const source = capture.files.find((f) => f.path === 'tracked.txt')!;
+    expect(destination.state).toBe('deleted');
+    expect(source.state).toBe('deleted');
+    // The source is the one HEAD actually carries.
+    expect(sh(cwd, ['git', 'cat-file', '-e', 'HEAD:tracked.txt'])).toBe('');
+  });
+
+  it('keeps a copy’s source, which a copy does not remove', async () => {
+    const cwd = scratchRepo();
+    writeFileSync(join(cwd, 'copy.txt'), 'committed\n');
+    sh(cwd, ['git', 'add', '-A']);
+
+    const capture = await capturePhaseStart({ cwd, handoffDir: '.foundry-handoff' });
+    // Whether git reports `C` here depends on rename detection, so the
+    // assertion is the invariant either way: a path still on disk is never
+    // recorded as absent.
+    for (const file of capture.files) {
+      if (file.path === 'tracked.txt') expect(file.state).not.toBe('deleted');
+    }
+  });
+});
+
+describe('the truncated flag', () => {
+  it('is derived from the files, not taken on trust', async () => {
+    const cwd = scratchRepo();
+    writeFileSync(join(cwd, 'big.txt'), 'x'.repeat(4096));
+    const capture = await capturePhaseStart({
+      cwd,
+      handoffDir: '.foundry-handoff',
+      limits: { fileMaxBytes: 16, totalMaxBytes: 1024 },
+    });
+
+    h.tracer.startRun({
+      runId: 'run_derived',
+      projectId: 'proj',
+      pipeline: pipe([]),
+      request: 'x',
+      engineer: 'test',
+      worktreePath: cwd,
+      branch: null,
+      baseRef: 'main',
+      mode: 'pi',
+    });
+    const phaseId = h.tracer.queuePhase({
+      runId: 'run_derived',
+      seq: 0,
+      name: 'build',
+      kind: 'agent',
+      owner: 'builder',
+      description: 'd',
+    });
+    // A caller asserting exactness over files that carry `omitted` must not be
+    // believed: `exactRestorePossible` reads off this flag.
+    const row = h.tracer.recordPhaseCheckpoint(
+      checkpointInput('run_derived', phaseId, {
+        headSha: capture.headSha,
+        worktreePath: cwd,
+        files: capture.files,
+        truncated: false,
+        omittedPaths: [],
+      }),
+    );
+    expect(capture.files.some((f) => f.omitted)).toBe(true);
+    expect(row.truncated).toBe(true);
+    expect(row.exactRestorePossible).toBe(false);
+    expect(h.tracer.phaseCheckpoint(row.checkpointId)!.payload.truncated).toBe(true);
+  });
+});
+
 describe('a checkpoint payload that is no longer on disk', () => {
   it('reads as absent rather than handing back a row with no contents', async () => {
     const outcome = await run({ pipeline: pipe([agentPhase('build')]) });
@@ -489,6 +706,62 @@ describe('a checkpoint payload that is no longer on disk', () => {
     h.tracer.writeRunFile(outcome.runId, checkpoint!.payloadPath, 'not json');
     expect(h.tracer.phaseCheckpoint(checkpoint!.checkpointId)).toBeNull();
     expect(h.tracer.phaseCheckpoints(outcome.runId)).toHaveLength(1);
+  });
+
+  it('stops advertising exact restore once the payload has been pruned', async () => {
+    const outcome = await run({ pipeline: pipe([agentPhase('build')]) });
+    const before = h.tracer.phaseCheckpoints(outcome.runId)[0]!;
+    expect(before.exactRestorePossible).toBe(true);
+    expect(before.payloadPresent).toBe(true);
+
+    rmSync(join(h.tracer.runDir(outcome.runId), before.payloadPath));
+
+    // The list API is what split 2 enumerates from, so it is the one that must
+    // not advertise a restore whose contents are gone.
+    const after = h.tracer.phaseCheckpoints(outcome.runId)[0]!;
+    expect(after.payloadPresent).toBe(false);
+    expect(after.exactRestorePossible).toBe(false);
+    expect(h.tracer.phaseCheckpoint(before.checkpointId)).toBeNull();
+  });
+});
+
+describe('a run that is not isolated', () => {
+  it('marks the checkpoint so a restore knows it targets the real checkout', async () => {
+    const outcome = await run({
+      pipeline: pipe([agentPhase('build')]),
+      project: { isolation: false },
+    });
+    const [checkpoint] = h.tracer.phaseCheckpoints(outcome.runId);
+    const payload = h.tracer.phaseCheckpoint(checkpoint!.checkpointId)!.payload;
+    expect(payload.isolated).toBe(false);
+    expect(payload.worktreePath).toBe(h.repo);
+  });
+
+  it('marks an isolated run’s checkpoint as isolated', async () => {
+    const outcome = await run({ pipeline: pipe([agentPhase('build')]) });
+    const [checkpoint] = h.tracer.phaseCheckpoints(outcome.runId);
+    expect(h.tracer.phaseCheckpoint(checkpoint!.checkpointId)!.payload.isolated).toBe(true);
+  });
+});
+
+describe('the envelope in effect at phase start', () => {
+  it('names the envelope row, not just the phase that produced it', async () => {
+    const scripted = new ScriptedAgent([buildEnvelope(), buildEnvelope()]);
+    const outcome = await run({
+      scripted,
+      pipeline: pipe([agentPhase('plan'), agentPhase('build')]),
+    });
+
+    const build = h.tracer.phaseCheckpoints(outcome.runId).find((c) => c.phaseName === 'build')!;
+    const payload = h.tracer.phaseCheckpoint(build.checkpointId)!.payload;
+    const planEnvelope = h.tracer
+      .envelopes(outcome.runId)
+      .find(
+        (e) => e.phaseId === h.tracer.phases(outcome.runId).find((p) => p.name === 'plan')!.phaseId,
+      )!;
+
+    expect(payload.envelopePhases).toEqual(['plan']);
+    expect(payload.envelopeIds.plan).toBe(planEnvelope.envelopeId);
   });
 });
 
@@ -513,25 +786,16 @@ describe('a payload path a phase name cannot break out of', () => {
       owner: 'code',
       description: 'd',
     });
-    const row = h.tracer.recordPhaseCheckpoint({
-      runId: 'run_paths',
-      phaseId,
-      phaseName: '../../escape me',
-      phaseKind: 'code',
-      headSha: 'deadbeef',
-      branch: null,
-      worktreePath: '/tmp/nowhere',
-      model: null,
-      agent: null,
-      agentSessionId: null,
-      leafMessageId: null,
-      handoffFiles: [],
-      envelopePhases: [],
-      files: [],
-      truncated: false,
-      omittedPaths: [],
-      bytesStored: 0,
-    });
+    const row = h.tracer.recordPhaseCheckpoint(
+      checkpointInput('run_paths', phaseId, {
+        phaseName: '../../escape me',
+        phaseKind: 'code',
+        headSha: 'deadbeef',
+        worktreePath: '/tmp/nowhere',
+        model: null,
+        agent: null,
+      }),
+    );
     expect(row.payloadPath.startsWith('checkpoints/')).toBe(true);
     expect(row.payloadPath).not.toContain('..');
     const payload = h.tracer.readRunJson<PhaseCheckpointPayload>('run_paths', row.payloadPath);

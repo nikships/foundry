@@ -873,8 +873,10 @@ export interface AgentSessionRow {
  * How a checkpointed path stood at phase start.
  *
  * `modified` is tracked-and-dirty, `untracked` is not in the commit at all,
- * and `deleted` is tracked at `headSha` but absent from disk — the last of
- * which has no content to keep because git already carries it.
+ * and `deleted` was absent from disk. `deleted` does not imply `headSha`
+ * carries the path: an added-then-removed (`AD`) or renamed-away (`RD`) path
+ * is absent from HEAD too, so restoring one means ensuring it stays absent,
+ * not checking it out.
  */
 export type PhaseCheckpointFileState = 'modified' | 'untracked' | 'deleted';
 
@@ -897,6 +899,12 @@ export interface PhaseCheckpointFile {
   content?: string;
   encoding?: 'utf8' | 'base64';
   omitted?: PhaseCheckpointOmission;
+  /**
+   * For a rename destination, where it came from. The source is recorded
+   * separately as its own `deleted` entry, so a restore puts back one file
+   * rather than resurrecting both sides.
+   */
+  renamedFrom?: string;
 }
 
 /**
@@ -914,6 +922,13 @@ export interface PhaseCheckpointPayload {
   headSha: string;
   branch: string | null;
   worktreePath: string;
+  /**
+   * False when the run has no worktree, in which case `worktreePath` is the
+   * operator's own checkout and this payload carries their uncommitted work.
+   * A restore there writes to the checkout, not to a discardable worktree, so
+   * it is a materially different act and split 2 must not treat the two alike.
+   */
+  isolated: boolean;
   /** The model appointed to this phase, or null for a phase with no agent. */
   model: string | null;
   agent: string | null;
@@ -924,8 +939,19 @@ export interface PhaseCheckpointPayload {
   handoffFiles: string[];
   /** Phases whose envelope was already in effect when this phase began. */
   envelopePhases: string[];
+  /**
+   * The envelope row id behind each of those phases, keyed by phase name.
+   *
+   * A phase re-entered through `feedbackTo` leaves several envelope rows on one
+   * `phase_id`, so the phase name alone cannot say which envelope a generation
+   * ran against. Absent for a phase whose row could not be resolved.
+   */
+  envelopeIds: Record<string, string>;
   files: PhaseCheckpointFile[];
-  /** True when any path's content is missing, for any reason. */
+  /**
+   * True when the record cannot reproduce phase start: a path's content is
+   * missing, or the dirty set itself could not be fully enumerated.
+   */
   truncated: boolean;
   /** Paths whose content was not stored, in capture order. */
   omittedPaths: string[];
@@ -954,6 +980,8 @@ export interface PhaseCheckpointRow {
   untrackedCount: number;
   bytesStored: number;
   truncated: boolean;
+  /** False once the payload file is gone, e.g. the run directory was pruned. */
+  payloadPresent: boolean;
   /**
    * False when the payload cannot reproduce phase-start byte for byte, so a
    * restore has to refuse rather than claim an exactness it does not have.

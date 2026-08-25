@@ -109,6 +109,80 @@ export async function changedPaths(cwd: string): Promise<string[]> {
   return (await status(cwd)).map((s) => s.path);
 }
 
+/** One porcelain record, with the rename/copy source when git reports one. */
+export interface PorcelainEntry extends StatusEntry {
+  /** Where an `R`/`C` record's destination came from. */
+  origPath?: string;
+}
+
+export interface PorcelainStatus {
+  entries: PorcelainEntry[];
+  /**
+   * True when the listing is not known to be complete — the buffer was
+   * exceeded, or git refused. A caller that records "this was the whole dirty
+   * set" must degrade rather than believe a short list.
+   */
+  truncated: boolean;
+}
+
+/**
+ * The complete porcelain status, uncapped and rename-aware.
+ *
+ * Deliberately not `runCommand`: that keeps only the last 4 KB of output, so a
+ * worktree with more than roughly 110 changed paths silently loses an
+ * arbitrary *prefix* of them. A checkpoint built from that list would record a
+ * subset while claiming to be the whole dirty set.
+ *
+ * `-z` also removes two ambiguities `--porcelain` v1 leaves behind: paths are
+ * NUL-terminated so a filename containing a newline or ` -> ` cannot be
+ * misparsed, and a rename arrives as two fields (destination, then source)
+ * rather than one `old -> new` string whose source is unrecoverable.
+ */
+export async function statusPorcelain(
+  cwd: string,
+  maxBuffer = 16 * 1024 * 1024,
+): Promise<PorcelainStatus> {
+  try {
+    const { stdout } = await exec('git', ['status', '--porcelain', '-z', '--untracked-files=all'], {
+      cwd,
+      encoding: 'utf8',
+      env: spawnEnv(),
+      maxBuffer,
+    });
+    return { entries: parsePorcelainZ(stdout), truncated: false };
+  } catch {
+    // Either the output outgrew maxBuffer or git refused (not a repository).
+    // Both mean the dirty set could not be enumerated, and an empty list that
+    // reads as "nothing was dirty" is the one answer that must not be given.
+    return { entries: [], truncated: true };
+  }
+}
+
+/**
+ * `git status --porcelain -z` records: `XY<space><path>`, NUL-terminated, with
+ * an `R`/`C` record's source path following in its own field.
+ */
+export function parsePorcelainZ(text: string): PorcelainEntry[] {
+  const fields = text.split('\0');
+  const out: PorcelainEntry[] = [];
+  for (let i = 0; i < fields.length; i++) {
+    const field = fields[i] ?? '';
+    // `XY p` is the shortest possible record.
+    if (field.length < 4) continue;
+    const code = field.slice(0, 2);
+    if (!/^[ MADRCU?!]{2}$/.test(code)) continue;
+    const path = field.slice(3);
+    if (!path) continue;
+    if (code.includes('R') || code.includes('C')) {
+      const source = fields[++i];
+      out.push(source ? { path, code, origPath: source } : { path, code });
+      continue;
+    }
+    out.push({ path, code });
+  }
+  return out;
+}
+
 /** True when `ref` carries `path` as a blob. */
 export async function pathExistsAtRef(cwd: string, ref: string, path: string): Promise<boolean> {
   return (await git(cwd, ['cat-file', '-e', `${ref}:${path}`])).ok;

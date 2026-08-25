@@ -78,12 +78,14 @@ export interface PhaseCheckpointInput {
   headSha: string;
   branch: string | null;
   worktreePath: string;
+  isolated: boolean;
   model: string | null;
   agent: string | null;
   agentSessionId: string | null;
   leafMessageId: string | null;
   handoffFiles: string[];
   envelopePhases: string[];
+  envelopeIds?: Record<string, string>;
   files: PhaseCheckpointFile[];
   truncated: boolean;
   omittedPaths: string[];
@@ -751,6 +753,10 @@ export class Tracer {
     const checkpointId = `cp_${newId()}`;
     const createdAt = nowIso();
     const payloadPath = checkpointPayloadPath(input.phaseName, input.phaseId, generation);
+    // Derived, never trusted. `exactRestorePossible` reads off this flag, so a
+    // caller passing `truncated: false` beside a file carrying `omitted` would
+    // be asserting an exactness the payload cannot deliver.
+    const truncated = input.truncated || input.files.some((file) => file.omitted);
 
     const payload: PhaseCheckpointPayload = {
       checkpointId,
@@ -762,14 +768,16 @@ export class Tracer {
       headSha: input.headSha,
       branch: input.branch,
       worktreePath: input.worktreePath,
+      isolated: input.isolated,
       model: input.model,
       agent: input.agent,
       agentSessionId: input.agentSessionId,
       leafMessageId: input.leafMessageId,
       handoffFiles: input.handoffFiles,
       envelopePhases: input.envelopePhases,
+      envelopeIds: input.envelopeIds ?? {},
       files: input.files,
-      truncated: input.truncated,
+      truncated,
       omittedPaths: input.omittedPaths,
       bytesStored: input.bytesStored,
     };
@@ -795,7 +803,7 @@ export class Tracer {
       input.files.length,
       input.files.filter((file) => file.state === 'untracked').length,
       input.bytesStored,
-      input.truncated ? 1 : 0,
+      truncated ? 1 : 0,
       payloadPath,
       changeId,
       createdAt,
@@ -809,12 +817,18 @@ export class Tracer {
    * Every checkpoint this run recorded, oldest first. A run that predates
    * checkpoints has none, which reads as an empty list rather than a fabricated
    * entry.
+   *
+   * The payload is stat'd per row: the row is only an index, and a run whose
+   * `checkpoints/` directory was pruned would otherwise be enumerated as a
+   * list of restorable checkpoints whose contents are gone. One stat per row,
+   * and these lists are one entry per phase attempt.
    */
   phaseCheckpoints(runId: string): PhaseCheckpointRow[] {
+    const dir = this.runDir(runId);
     return this.many<RawCheckpoint>(
       'SELECT * FROM phase_checkpoints WHERE run_id = ? ORDER BY rowid',
       runId,
-    ).map(mapCheckpoint);
+    ).map((raw) => mapCheckpoint(raw, existsSync(join(dir, raw.payload_path))));
   }
 
   /**
@@ -837,7 +851,8 @@ export class Tracer {
       'SELECT * FROM phase_checkpoints WHERE checkpoint_id = ?',
       checkpointId,
     );
-    return row ? mapCheckpoint(row) : null;
+    if (!row) return null;
+    return mapCheckpoint(row, existsSync(join(this.runDir(row.run_id), row.payload_path)));
   }
 
   // ── agent sessions ────────────────────────────────────────────────────────
@@ -1209,7 +1224,7 @@ interface RawCheckpoint {
   created_at: string;
 }
 
-function mapCheckpoint(r: RawCheckpoint): PhaseCheckpointRow {
+function mapCheckpoint(r: RawCheckpoint, payloadPresent: boolean): PhaseCheckpointRow {
   const truncated = !!r.truncated;
   return {
     checkpointId: r.checkpoint_id,
@@ -1227,9 +1242,11 @@ function mapCheckpoint(r: RawCheckpoint): PhaseCheckpointRow {
     untrackedCount: r.untracked_count ?? 0,
     bytesStored: r.bytes_stored ?? 0,
     truncated,
+    payloadPresent,
     // A missing HEAD means the capture could not name the commit the phase
-    // started from, so there is no baseline to restore the rest against.
-    exactRestorePossible: !truncated && !!r.head_sha,
+    // started from, so there is no baseline to restore the rest against, and a
+    // pruned payload means the contents are not there to restore from at all.
+    exactRestorePossible: !truncated && !!r.head_sha && payloadPresent,
     payloadPath: r.payload_path,
     changeId: r.change_id,
     createdAt: r.created_at,
