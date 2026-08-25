@@ -10,7 +10,16 @@ import {
   READINESS_POINTS,
 } from './data/foundry';
 import { PROBLEM_POINTS, SAFE_POINTS, ISOLATION_POINTS, STEPS, REPO_URL } from './data/site';
-import { ArtPanel, Button, Dot, Reveal, Section, SectionHead, WindowFrame } from './components/ui';
+import {
+  ArtPanel,
+  Button,
+  Dot,
+  FilmPlayer,
+  Reveal,
+  Section,
+  SectionHead,
+  WindowFrame,
+} from './components/ui';
 import { Nav, Hero, ClosingCta, Footer } from './components/sections/Chrome';
 import { Roster } from './components/sections/Roster';
 import { ArtGallery, AppGallery, PhoneGallery } from './components/sections/Galleries';
@@ -27,11 +36,31 @@ export function App() {
       <main>
         <Hero />
 
-        {/* ══ 02 the problem ═══════════════════════════════════════════ */}
+        {/* ══ 02 the film ══════════════════════════════════════════════ */}
+        <Section id="film" tight>
+          <div className="wrap">
+            <SectionHead
+              index="02"
+              eyebrow="Three minutes, the whole idea"
+              title="Your A.I. kitchen has one cook doing every station."
+              lede="A head chef, a sous, a pastry chef and a dishwasher are four jobs, not one. The film runs the same argument Foundry is built on — a cast of models, a station each, and a pass nothing leaves without clearing."
+            />
+            <Reveal>
+              <FilmPlayer
+                src="/media/film/cast-of-models.mp4"
+                poster="/media/film/cast-of-models.webp"
+                label="Cast of models"
+                runtime="2:55"
+              />
+            </Reveal>
+          </div>
+        </Section>
+
+        {/* ══ 03 the problem ═══════════════════════════════════════════ */}
         <Section id="why" tight>
           <div className="wrap grid grid-cols-1 items-center gap-9 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:gap-16">
             <Reveal>
-              <Eyebrowed index="02" label="The problem" />
+              <Eyebrowed index="03" label="The problem" />
               <h2 className="mt-[18px] max-w-[22ch] text-[clamp(30px,4vw,46px)] font-semibold leading-[1.06] tracking-tight">
                 Two lock-ins are slowing you down.
               </h2>
@@ -57,11 +86,11 @@ export function App() {
           </div>
         </Section>
 
-        {/* ══ 03 the run ═══════════════════════════════════════════════ */}
+        {/* ══ 04 the run ═══════════════════════════════════════════════ */}
         <Section id="run">
           <div className="wrap">
             <SectionHead
-              index="03"
+              index="04"
               eyebrow="Watch every move"
               title="The Inspector is a live waterfall, not a spinner."
               lede="Tool calls stream mid-phase. Reports and check evidence are inspectable per phase. Context occupancy, tokens and the model that actually answered fill in as you go — the same view for a run happening now and a run from last Tuesday."
@@ -119,11 +148,11 @@ export function App() {
           </div>
         </Section>
 
-        {/* ══ 04 pipelines ═════════════════════════════════════════════ */}
+        {/* ══ 05 pipelines ═════════════════════════════════════════════ */}
         <Section id="pipelines">
           <div className="wrap">
             <SectionHead
-              index="04"
+              index="05"
               eyebrow="Structure the SDLC to your liking"
               title="A recipe you can edit — not a mega-prompt you re-type."
               lede="A pipeline is data: three kinds of phase, a write boundary each, checks that prove them, and an explicit definition of done. Drag to rearrange, swap who does what, drop in a checkpoint where a human should look. No YAML, no scripts."
@@ -245,11 +274,11 @@ export function App() {
           </div>
         </Section>
 
-        {/* ══ 05 models ════════════════════════════════════════════════ */}
+        {/* ══ 06 models ════════════════════════════════════════════════ */}
         <Section id="models">
           <div className="wrap">
             <SectionHead
-              index="05"
+              index="06"
               eyebrow="Never bet a run on one model"
               title="Cast every seat for what that model is actually good at."
               lede="Foundry keeps no model allowlist of its own. A model id is an opaque provider/model string, so anything your install can reach is selectable anywhere a model is chosen — per agent, overridable per phase."
@@ -321,11 +350,11 @@ export function App() {
           </div>
         </Section>
 
-        {/* ══ 06 the crew ══════════════════════════════════════════════ */}
+        {/* ══ 07 the crew ══════════════════════════════════════════════ */}
         <Section id="crew">
           <div className="wrap">
             <SectionHead
-              index="06"
+              index="07"
               eyebrow="A crew, not a chatbot"
               title="Nine specialists. Each one bounded."
               lede={
@@ -348,11 +377,11 @@ export function App() {
           </div>
         </Section>
 
-        {/* ══ 07 checks ════════════════════════════════════════════════ */}
+        {/* ══ 08 checks ════════════════════════════════════════════════ */}
         <Section id="checks">
           <div className="wrap">
             <SectionHead
-              index="07"
+              index="08"
               eyebrow="Agent proposes, code disposes"
               title="Green means it was actually checked."
               lede="A check is a function, not a judgement. It takes the report the agent produced and the state of the worktree, and returns checks with evidence attached. The agent does not get a vote on whether its own work passed."
@@ -406,11 +435,11 @@ export function App() {
           </div>
         </Section>
 
-        {/* ══ 08 isolation ═════════════════════════════════════════════ */}
+        {/* ══ 09 isolation ═════════════════════════════════════════════ */}
         <Section id="isolation">
           <div className="wrap grid grid-cols-1 items-center gap-9 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:gap-16">
             <Reveal>
-              <Eyebrowed index="08" label="Parallel by construction" />
+              <Eyebrowed index="09" label="Parallel by construction" />
               <h2 className="mt-[18px] max-w-[20ch] text-[clamp(30px,4vw,46px)] font-semibold leading-[1.06] tracking-tight">
                 Four runs, four worktrees, one repo.
               </h2>
@@ -435,11 +464,11 @@ export function App() {
           </div>
         </Section>
 
-        {/* ══ 09 the app ═══════════════════════════════════════════════ */}
+        {/* ══ 10 the app ═══════════════════════════════════════════════ */}
         <Section id="app">
           <div className="wrap">
             <SectionHead
-              index="09"
+              index="10"
               eyebrow="The app"
               title="A real macOS app. Not a CLI wrapper, not a chat skin."
               lede="Point it at any git repo and it reads the project — commands, harnesses, conventions — before you run anything. Everything below is one window: no browser tab, no terminal, no dashboard to log into."
@@ -450,11 +479,11 @@ export function App() {
           </div>
         </Section>
 
-        {/* ══ 10 smith ═════════════════════════════════════════════════ */}
+        {/* ══ 11 smith ═════════════════════════════════════════════════ */}
         <Section id="smith">
           <div className="wrap">
             <SectionHead
-              index="10"
+              index="11"
               eyebrow="Smith"
               title="An operator who can drive the factory — with your hand on every write."
               lede="Smith is a native chat inside the app, on the bundled runtime. Ask it to design a pipeline, retune an agent, check a provider, answer a checkpoint, or tell you why a run failed. Reads answer immediately; every privileged action stops at one inline card."
@@ -517,11 +546,11 @@ export function App() {
           </div>
         </Section>
 
-        {/* ══ 11 readiness ═════════════════════════════════════════════ */}
+        {/* ══ 12 readiness ═════════════════════════════════════════════ */}
         <Section id="readiness" tight>
           <div className="wrap grid grid-cols-1 items-center gap-9 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-16">
             <Reveal>
-              <Eyebrowed index="11" label="Agent readiness" />
+              <Eyebrowed index="12" label="Agent readiness" />
               <h2 className="mt-[18px] max-w-[22ch] text-[clamp(30px,4vw,46px)] font-semibold leading-[1.06] tracking-tight">
                 Most repos are not ready for agents. Foundry says so, then fixes it.
               </h2>
@@ -542,11 +571,11 @@ export function App() {
           </div>
         </Section>
 
-        {/* ══ 12 the phone ═════════════════════════════════════════════ */}
+        {/* ══ 13 the phone ═════════════════════════════════════════════ */}
         <Section id="phone">
           <div className="wrap">
             <SectionHead
-              index="12"
+              index="13"
               eyebrow="The companion"
               title="Start a run from the couch. Answer a checkpoint from the train."
               lede="A LAN host inside the main process, and an Android app that talks to it. Every route is a projection of an operation the desktop already has, so the phone can never do something the window cannot."
@@ -568,11 +597,11 @@ export function App() {
           </div>
         </Section>
 
-        {/* ══ 13 concept art ═══════════════════════════════════════════ */}
+        {/* ══ 14 concept art ═══════════════════════════════════════════ */}
         <Section id="art">
           <div className="wrap">
             <SectionHead
-              index="13"
+              index="14"
               eyebrow="The shape of the thing"
               title="A factory is a better metaphor than a chat."
               lede="Intake, routing, isolated cells, inspection, an evidence archive, and a night shift that keeps running. That is the model Foundry is built on — not a conversation that happens to write code."
@@ -587,7 +616,7 @@ export function App() {
         <Section id="start">
           <div className="wrap">
             <SectionHead
-              index="14"
+              index="15"
               eyebrow="Get started"
               title="Sixty seconds, and no setup script."
               lede={

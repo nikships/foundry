@@ -2,3 +2,8 @@ node_modules
 dist
 .vite
 *.local
+
+# Film masters are 1080p originals in the tens of MB — well past the repo's
+# 10 MiB per-file ceiling. Only the encoded 720p result under public/media/film
+# is committed; keep the master outside Git and drop it here to re-encode.
+media-src/film

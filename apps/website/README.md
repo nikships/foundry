@@ -55,8 +55,8 @@ src/data/site.ts         page copy
 src/components/ui/       Eyebrow, Button, Badge, Section, Reveal, WindowFrame, ArtPanel
 src/components/demos/    the five interactive demos
 src/components/sections/ nav, hero, roster, galleries, footer
-public/media/            optimised art (5.8 MB) — built, committed
-media-src/               site-only screenshot sources (kept out of the DMG)
+public/media/            optimised art + the campaign film — built, committed
+media-src/               site-only screenshot and film sources (kept out of the DMG)
 public/fonts/            the same vendored Geist faces the app ships
 tools/build-media.sh     regenerates public/media
 ```
@@ -128,6 +128,12 @@ Sources, all outside this folder:
 | `../../assets/agents/*.png` | `media/agents/*.webp` (portraits) |
 | `media-src/ui/*.png` | `media/ui/*.webp` (desktop screens) |
 | `media-src/phone/*.png` | `media/phone/*.webp` |
+| `media-src/film/*.mp4` | `media/film/*.mp4` + poster (keeps its audio) |
+
+`media-src/film/` is **gitignored**: those masters are 1080p originals in the
+tens of MB, past the repo's 10 MiB per-file ceiling (`npm run check:files`).
+Only the encoded 720p result under `public/media/film/` is committed. Drop the
+master back in and run `npm run media` to re-encode.
 
 `media-src/ui/*.png` are retina captures (2880×1880) of the running app, taken
 through the repo's `foundry-ui` skill against an isolated `--user-data-dir`

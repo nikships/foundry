@@ -151,7 +151,7 @@ export function ClosingCta() {
       </div>
 
       <div className="wrap relative z-[1] py-[116px] text-center">
-        <Eyebrow index="14">Stop prompting. Start shipping.</Eyebrow>
+        <Eyebrow index="15">Stop prompting. Start shipping.</Eyebrow>
         <h2 className="mx-auto mt-5 max-w-[17ch] text-[clamp(34px,5.2vw,60px)] font-semibold leading-[1.04] tracking-tight">
           Run a shop, not a chat.
         </h2>
