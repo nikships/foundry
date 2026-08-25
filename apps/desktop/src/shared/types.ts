@@ -741,11 +741,34 @@ export type ContinueStrategy = 'reopen_session' | 'fresh_session';
 /** Why a run of this status cannot be continued. */
 export const CONTINUE_STATUS_REFUSAL = 'only a rejected, failed, or killed run can be continued';
 
-/** How this settled run would be continued, or null when it cannot be. */
-export function continueStrategyFor(status: RunStatus): ContinueStrategy | null {
-  if (status === 'killed') return 'fresh_session';
-  if (status === 'rejected' || status === 'failed') return 'reopen_session';
-  return null;
+/** Whether a settled run of this status can be continued at all. */
+export function continuableStatus(status: RunStatus): boolean {
+  return status === 'killed' || status === 'rejected' || status === 'failed';
+}
+
+/**
+ * How this run would be continued, or null when it cannot be.
+ *
+ * The interrupted phase decides as much as the status does: only an agent
+ * phase has a conversation to abandon. A killed `code` or `engineer` phase is
+ * still continuable — a shell command simply re-runs — but nothing about it is
+ * a "fresh session", so claiming one would put a false statement in the trace
+ * and in front of the operator. Every surface (the executor, the registry's
+ * gate, the banner, the Companion card) reads this one rule.
+ *
+ * The kind is required rather than optional: a caller that has not yet found
+ * the interrupted phase is asking a different question, and
+ * {@link continuableStatus} is the one that answers it. An optional parameter
+ * would let that caller receive a strategy silently computed from a phase it
+ * never looked at.
+ */
+export function continueStrategyFor(
+  status: RunStatus,
+  interruptedKind: PhaseKind | undefined,
+): ContinueStrategy | null {
+  if (!continuableStatus(status)) return null;
+  if (status !== 'killed') return 'reopen_session';
+  return interruptedKind === 'agent' ? 'fresh_session' : 'reopen_session';
 }
 
 export interface PhaseRow {

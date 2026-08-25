@@ -10,7 +10,7 @@
 
 import { existsSync } from 'node:fs';
 import type { ContinueStrategy, PhaseRow, PipelineDef, RunRow } from '@shared/types.js';
-import { CONTINUE_STATUS_REFUSAL, continueStrategyFor } from '@shared/types.js';
+import { CONTINUE_STATUS_REFUSAL, continuableStatus, continueStrategyFor } from '@shared/types.js';
 import { activeRowsForPipeline } from './phase-history.js';
 
 export type ContinueEligibility =
@@ -23,7 +23,9 @@ export type ContinueEligibility =
  *
  * A killed run is continuable on the same terms as a rejected or failed one —
  * what differs is the strategy, which the executor reads to decide whether the
- * interrupted phase's agent reopens its conversation or starts a new one.
+ * interrupted phase's agent reopens its conversation or starts a new one. That
+ * needs the interrupted phase, so the status check that gates the search is
+ * `continuableStatus` and the strategy is only settled once the phase is known.
  */
 export function continueEligibility(input: {
   run: RunRow;
@@ -33,8 +35,7 @@ export function continueEligibility(input: {
   worktreeExists?: (path: string) => boolean;
 }): ContinueEligibility {
   const { run } = input;
-  const strategy = continueStrategyFor(run.status);
-  if (!strategy) return { ok: false, detail: CONTINUE_STATUS_REFUSAL };
+  if (!continuableStatus(run.status)) return { ok: false, detail: CONTINUE_STATUS_REFUSAL };
   if (run.merged) return { ok: false, detail: 'a merged run cannot be continued' };
 
   const pipeline = input.pipeline;
@@ -52,6 +53,10 @@ export function continueEligibility(input: {
   if (run.worktreePath && !exists(run.worktreePath)) {
     return { ok: false, detail: 'this run’s worktree is no longer available' };
   }
+  // Only now is the strategy answerable: a killed shell command has no
+  // conversation to abandon, so it is continued the ordinary way.
+  const strategy = continueStrategyFor(run.status, failedPhase.kind);
+  if (!strategy) return { ok: false, detail: CONTINUE_STATUS_REFUSAL };
   return { ok: true, strategy, failedPhase, pipeline };
 }
 

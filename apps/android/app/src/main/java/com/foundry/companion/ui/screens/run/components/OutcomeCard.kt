@@ -67,12 +67,21 @@ fun OutcomeCard(
         run.phases.any { it.status.equals("fail", ignoreCase = true) }
 
     val isKilled = run.status.equals("killed", ignoreCase = true)
+    // Only an agent phase has a conversation to abandon, so only it is
+    // described as restarting on a new session. A killed command phase is
+    // continued the ordinary way.
+    val interruptedIsAgent = run.phases
+        .firstOrNull { it.status.equals("fail", ignoreCase = true) }
+        ?.kind?.equals("agent", ignoreCase = true) == true
     val explanation = when {
         // A stopped run's own detail says only that it was killed; what the
         // operator needs here is what Continue would do with it.
-        isKilled && canContinue ->
+        isKilled && canContinue && interruptedIsAgent ->
             "You stopped this run. Continue restarts the interrupted phase in a new session, in this " +
                 "worktree — the agent picks up whatever that attempt had already written and reconciles it."
+        isKilled && canContinue ->
+            "You stopped this run. Continue re-runs the interrupted phase in this worktree, over the " +
+                "files that attempt left behind."
         !run.outcomeDetail.isNullOrBlank() -> run.outcomeDetail
         else -> when (run.status.lowercase()) {
             "accepted" -> "Every phase passed and the acceptance criterion was met."

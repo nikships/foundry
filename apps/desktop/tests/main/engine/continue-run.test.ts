@@ -99,6 +99,19 @@ describe('continueEligibility', () => {
     },
   );
 
+  it('continues a killed command phase without claiming a fresh session', () => {
+    // The kill landed on `prepare`, which is a shell command: there is no
+    // conversation to abandon, so this is an ordinary continuation.
+    const answer = eligible({}, [
+      phase({ phaseId: 'ph_1', seq: 0, name: 'prepare', kind: 'code', status: 'fail' }),
+      phase({ phaseId: 'ph_2', seq: 1, name: 'build', kind: 'agent', status: 'fail' }),
+    ]);
+    expect(answer.ok).toBe(true);
+    if (!answer.ok) return;
+    expect(answer.strategy).toBe('reopen_session');
+    expect(answer.failedPhase.name).toBe('prepare');
+  });
+
   it.each<RunStatus>(['accepted', 'running'])('refuses a %s run by status', (status) => {
     expect(eligible({ status })).toEqual({
       ok: false,

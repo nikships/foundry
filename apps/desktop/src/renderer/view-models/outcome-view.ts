@@ -9,7 +9,7 @@
  */
 
 import type { PhaseRow, RunRow } from '@shared/types.js';
-import { continueStrategyFor } from '@shared/types.js';
+import { continuableStatus, continueStrategyFor } from '@shared/types.js';
 
 /**
  * Whether the operator may continue this run.
@@ -19,13 +19,26 @@ import { continueStrategyFor } from '@shared/types.js';
  * must not be offered a retry of.
  */
 export function canResumeRun(run: RunRow, hasActiveFailure: boolean): boolean {
-  if (!continueStrategyFor(run.status)) return false;
+  if (!continuableStatus(run.status)) return false;
   return !!run.worktreePath && !run.merged && hasActiveFailure;
 }
 
-/** What the Continue button promises, which differs by how the run stopped. */
-export function resumeTitleFor(run: RunRow): string {
-  return continueStrategyFor(run.status) === 'fresh_session'
+/**
+ * The phase Continue would pick up, which is the first one still red.
+ *
+ * The engine picks the same row (`activeRowsForPipeline` order), so the copy
+ * here describes the phase that will actually re-run.
+ */
+function interruptedPhase(phases: PhaseRow[]): PhaseRow | undefined {
+  return phases.find((p) => p.status === 'fail');
+}
+
+/**
+ * What the Continue button promises, which differs by how the run stopped and
+ * by what it stopped in the middle of: only an agent phase gets a new session.
+ */
+export function resumeTitleFor(run: RunRow, phases: PhaseRow[]): string {
+  return continueStrategyFor(run.status, interruptedPhase(phases)?.kind) === 'fresh_session'
     ? 'Restart the interrupted phase in a new session, in the same worktree'
     : 'Retry the first failed phase and continue this pipeline in the same worktree';
 }
@@ -50,7 +63,8 @@ export function outcomeHeadline(status: RunRow['status']): string {
  * again: with a worktree and an interrupted phase, the honest description is
  * that the phase restarts on a new conversation over the files the kill left
  * behind — not that the phase replays from a clean start, and not that the work
- * is gone.
+ * is gone. A killed command phase is continued too, but there is no
+ * conversation involved, so it must not be described as one.
  */
 export function outcomeExplanation(
   run: RunRow,
@@ -69,10 +83,16 @@ export function outcomeExplanation(
       );
     }
     case 'killed': {
-      const stopped = failed[0]?.name;
-      const where = stopped ? ` during “${stopped}”` : '';
+      const stopped = failed[0];
+      const where = stopped ? ` during “${stopped.name}”` : '';
       if (!opts.canResume) {
         return `You stopped this run${where}. Anything it had already committed is still on its branch.`;
+      }
+      if (stopped?.kind !== 'agent') {
+        return (
+          `You stopped this run${where}. Continue re-runs that phase in this worktree, ` +
+          'over the files the interrupted attempt left behind.'
+        );
       }
       return (
         `You stopped this run${where}. Continue restarts that phase in a new session, in this worktree — ` +

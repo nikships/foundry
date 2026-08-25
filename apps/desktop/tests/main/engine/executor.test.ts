@@ -3069,25 +3069,35 @@ describe('continuing a killed run', () => {
     });
   });
 
-  it('keeps the abandoned session row and the transcript it produced', async () => {
+  it('keeps the abandoned session id on the record and the transcript it produced', async () => {
     const { runId } = await killedRun();
     const abandoned = h.tracer.agentSessions(runId)[0]!.agentSessionId;
-    const transcriptBefore = events(runId).filter((e) => e.phaseId).length;
+    // Identity, not a count: a comparison of lengths alone would still pass if
+    // the continue had deleted every killed-attempt event and written more.
+    const killedAttempt = events(runId)
+      .filter((e) => e.phaseId)
+      .map((e) => e.eventId);
+    expect(killedAttempt.length).toBeGreaterThan(0);
 
     const continued = scriptedAgent([buildEnvelope()], [], [], { sessionIdPrefix: 'k' });
     await continueRun(runId, continued);
 
-    // The row is evidence, not bookkeeping: it is updated to the live session,
-    // never deleted, and every event the killed attempt wrote is still there.
+    // The row is keyed on (run, agent), so the successor overwrites it in
+    // place. What survives the kill is the transcript and the recovery event
+    // that names the abandoned id.
     expect(h.tracer.agentSessions(runId)).toHaveLength(1);
-    expect(events(runId).filter((e) => e.phaseId).length).toBeGreaterThan(transcriptBefore);
+    const after = new Set(events(runId).map((e) => e.eventId));
+    for (const id of killedAttempt) expect(after.has(id)).toBe(true);
+    expect(events(runId).filter((e) => e.phaseId).length).toBeGreaterThan(killedAttempt.length);
     expect(recoveryEvent(runId).payload.previousSessionId).toBe(abandoned);
   });
 
   it('resolves the roster model rather than inheriting a failed-over one', async () => {
     const { runId } = await killedRun();
     // What a failover mid-kill leaves behind: the persisted row names a model
-    // the roster never asked for.
+    // the roster never asked for. The lookup `sessionFor` skips is keyed by
+    // model, so a row under the roster's own name has to be present too —
+    // otherwise this passes on a plain miss rather than on the ban.
     h.tracer.upsertAgentSession({
       runId,
       agent: 'builder',
@@ -3097,13 +3107,23 @@ describe('continuing a killed run', () => {
       mode: 'pi',
       color: '#5ad2dd',
     });
+    h.tracer.upsertAgentSession({
+      runId,
+      agent: 'builder',
+      model: 'scripted',
+      reasoningEffort: 'medium',
+      agentSessionId: 'abandoned-roster-session',
+      mode: 'pi',
+      color: '#5ad2dd',
+    });
 
     const continued = scriptedAgent([buildEnvelope()], [], [], { sessionIdPrefix: 'k' });
     await continueRun(runId, continued);
 
-    // The roster model is the one the restarted phase runs on, and no model
-    // counts as already attempted because of the killed turn.
-    expect(h.tracer.agentSessions(runId)[0]!.model).toBe('scripted');
+    // Neither persisted row is reopened, and the roster model is the one the
+    // restarted phase runs on.
+    expect(continued.reopened).toEqual([{ agent: 'builder', existingSessionId: null }]);
+    expect(turnRequests(continued)[0]!.sessionId).toBe('k1');
     const agentStart = events(runId)
       .filter((e) => e.type === 'agent_start')
       .at(-1);
@@ -3239,16 +3259,37 @@ describe('the registry gate on continuing a killed run', () => {
     envelopeDefs: [],
   });
 
-  it('accepts a killed run and says the phase restarts in a new session', async () => {
+  it('accepts a killed run and re-runs the command it stopped', async () => {
     const { runId, worktree } = await killedCodeRun();
     writeFileSync(join(worktree, 'go'), '');
 
     const runs = registry();
+    // A killed *command* is not a restart: there is no conversation to
+    // abandon, so the operator is told the ordinary thing.
     const answer = runs.resume(resumeInput(runId));
-    expect(answer).toEqual({ ok: true, detail: 'Restarting “gate” in a new session…' });
+    expect(answer).toEqual({ ok: true, detail: 'Continuing from “gate”…' });
 
     await until(() => !runs.isLive(runId), 'the continued run to settle');
     expect(runs.tracerFor(h.project).run(runId)!.status).toBe('accepted');
+  });
+
+  it('records no recovery for a killed command phase', async () => {
+    const { runId, worktree } = await killedCodeRun();
+    writeFileSync(join(worktree, 'go'), '');
+
+    const runs = registry();
+    expect(runs.resume(resumeInput(runId)).ok).toBe(true);
+    await until(() => !runs.isLive(runId), 'the continued run to settle');
+
+    // Nothing was moved off a session, so a `run recovered` row would claim a
+    // recovery that never happened — and could never be completed, because no
+    // session opens to supply the successor id.
+    expect(events(runId).filter((e) => e.name === 'run recovered')).toEqual([]);
+    expect(events(runId).find((e) => e.name === 'run continued')!.payload).toMatchObject({
+      phase: 'gate',
+      fromStatus: 'killed',
+      strategy: 'reopen_session',
+    });
   });
 
   it('still calls a failed run a continuation rather than a restart', async () => {

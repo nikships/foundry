@@ -47,14 +47,14 @@ function run(over: Partial<RunRow> = {}): RunRow {
   };
 }
 
-function phases(status: PhaseRow['status'] = 'fail'): PhaseRow[] {
+function phases(status: PhaseRow['status'] = 'fail', kind: PhaseRow['kind'] = 'agent'): PhaseRow[] {
   return [
     {
       phaseId: 'ph_1',
       runId: 'run_1',
       seq: 0,
       name: 'build',
-      kind: 'agent',
+      kind,
       owner: 'builder',
       description: 'build it',
       status,
@@ -87,14 +87,22 @@ describe('canResumeRun', () => {
 });
 
 describe('resumeTitleFor', () => {
-  it('describes a killed run as a restart in a new session', () => {
-    const title = resumeTitleFor(run());
+  it('describes a killed agent phase as a restart in a new session', () => {
+    const title = resumeTitleFor(run(), phases());
     expect(title).toBe('Restart the interrupted phase in a new session, in the same worktree');
     expect(title).not.toMatch(/[Rr]etry the first failed phase/);
   });
 
+  it('promises no new session for a killed command phase', () => {
+    // A `code` phase has no conversation, so the engine reopens nothing — the
+    // button must not claim otherwise.
+    expect(resumeTitleFor(run(), phases('fail', 'code'))).toBe(
+      'Retry the first failed phase and continue this pipeline in the same worktree',
+    );
+  });
+
   it('leaves the correction wording on a failed run', () => {
-    expect(resumeTitleFor(run({ status: 'failed' }))).toBe(
+    expect(resumeTitleFor(run({ status: 'failed' }), phases())).toBe(
       'Retry the first failed phase and continue this pipeline in the same worktree',
     );
   });
@@ -112,6 +120,16 @@ describe('outcomeExplanation', () => {
     expect(copy).not.toMatch(/replay/i);
     expect(copy).not.toMatch(/abandon/i);
     expect(copy).not.toMatch(/discard/i);
+  });
+
+  it('describes a killed command phase as a re-run, not a new session', () => {
+    const copy = outcomeExplanation(run(), phases('fail', 'code'), { canResume: true });
+    expect(copy).toContain('You stopped this run');
+    expect(copy).toContain('during “build”');
+    // Still continuable — the affordance stays, only the false promise goes.
+    expect(copy).toContain('Continue re-runs that phase');
+    expect(copy).not.toMatch(/new session/);
+    expect(copy).not.toMatch(/agent/i);
   });
 
   it('does not offer to continue a killed run that cannot be continued', () => {

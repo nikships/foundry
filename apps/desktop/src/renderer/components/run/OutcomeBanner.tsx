@@ -145,7 +145,7 @@ export default function OutcomeBanner({
               variant="primary"
               size="sm"
               disabled={worktreeBusy}
-              title={resumeTitleFor(run)}
+              title={resumeTitleFor(run, phases)}
               onClick={onResume}
               data-testid="outcome-resume"
             >
