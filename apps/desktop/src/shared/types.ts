@@ -723,6 +723,31 @@ export interface LinearRunSource {
 
 export type RunSource = LinearRunSource;
 
+/**
+ * How a continued run treats the interrupted phase's agent conversation.
+ *
+ * `reopen_session` is the correction workflow a rejected or failed run gets:
+ * the agent's persisted session is reopened, so the retry costs one message on
+ * a conversation that already holds the phase.
+ *
+ * `fresh_session` is what a killed run gets. The operator stopped that turn
+ * mid-flight, so its conversation ends on a truncated exchange no one asked
+ * for; reopening it would make the killed turn the context the retry reasons
+ * from. The interrupted phase's agent starts a new session instead, and the
+ * worktree — partial writes included — is what carries the work over.
+ */
+export type ContinueStrategy = 'reopen_session' | 'fresh_session';
+
+/** Why a run of this status cannot be continued. */
+export const CONTINUE_STATUS_REFUSAL = 'only a rejected, failed, or killed run can be continued';
+
+/** How this settled run would be continued, or null when it cannot be. */
+export function continueStrategyFor(status: RunStatus): ContinueStrategy | null {
+  if (status === 'killed') return 'fresh_session';
+  if (status === 'rejected' || status === 'failed') return 'reopen_session';
+  return null;
+}
+
 export interface PhaseRow {
   phaseId: string;
   runId: string;

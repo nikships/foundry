@@ -50,28 +50,37 @@ fun OutcomeCard(
         "accepted" -> "Run Accepted"
         "rejected" -> "Run Not Accepted"
         "failed" -> "Run Failed"
-        "killed" -> "Run Killed"
+        "killed" -> "Run Stopped"
         else -> "Run Settled"
-    }
-
-    val explanation = if (!run.outcomeDetail.isNullOrBlank()) {
-        run.outcomeDetail
-    } else {
-        when (run.status.lowercase()) {
-            "accepted" -> "Every phase passed and the acceptance criterion was met."
-            "rejected" -> "The pipeline ran to the end, but its acceptance criterion was not met."
-            "killed" -> "Stopped by hand. Anything the run had already committed is still on its branch."
-            else -> "The engine could not finish this run."
-        }
     }
 
     val hasPr = !run.prUrl.isNullOrBlank()
     val canCreatePr = !hasPr && !run.merged && !run.branch.isNullOrBlank() &&
         (run.status.equals("accepted", ignoreCase = true) || run.status.equals("rejected", ignoreCase = true))
     val isGhAvailable = ghStatus?.available ?: true
-    val canContinue = !run.worktreePath.isNullOrBlank() &&
-        (run.status.equals("rejected", ignoreCase = true) || run.status.equals("failed", ignoreCase = true)) &&
+    // A killed run continues too: the interrupted phase restarts on a new
+    // session in the same worktree, so eligibility is the desktop's rule.
+    val canContinue = !run.worktreePath.isNullOrBlank() && !run.merged &&
+        (run.status.equals("rejected", ignoreCase = true) ||
+            run.status.equals("failed", ignoreCase = true) ||
+            run.status.equals("killed", ignoreCase = true)) &&
         run.phases.any { it.status.equals("fail", ignoreCase = true) }
+
+    val isKilled = run.status.equals("killed", ignoreCase = true)
+    val explanation = when {
+        // A stopped run's own detail says only that it was killed; what the
+        // operator needs here is what Continue would do with it.
+        isKilled && canContinue ->
+            "You stopped this run. Continue restarts the interrupted phase in a new session, in this " +
+                "worktree — the agent picks up whatever that attempt had already written and reconciles it."
+        !run.outcomeDetail.isNullOrBlank() -> run.outcomeDetail
+        else -> when (run.status.lowercase()) {
+            "accepted" -> "Every phase passed and the acceptance criterion was met."
+            "rejected" -> "The pipeline ran to the end, but its acceptance criterion was not met."
+            "killed" -> "You stopped this run. Anything it had already committed is still on its branch."
+            else -> "The engine could not finish this run."
+        }
+    }
 
     Column(
         modifier = modifier

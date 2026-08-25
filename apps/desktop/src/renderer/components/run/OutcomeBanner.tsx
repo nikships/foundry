@@ -2,22 +2,14 @@ import { useState } from 'react';
 import type { EnvelopeRow, GhStatus, PhaseRow, RunRow } from '@shared/types.js';
 import { useBrandedAsset } from '../../hooks/useBrandedAsset.js';
 import { manualPrDraft } from '../../view-models/pr-draft.js';
+import {
+  outcomeExplanation,
+  outcomeHeadline,
+  resumeTitleFor,
+} from '../../view-models/outcome-view.js';
 import { Button } from '../ui/Button.js';
 import { cx } from '../ui/cx.js';
 import styles from './OutcomeBanner.module.css';
-
-function headlineFor(status: RunRow['status']): string {
-  switch (status) {
-    case 'accepted':
-      return 'Accepted';
-    case 'rejected':
-      return 'Not accepted';
-    case 'killed':
-      return 'Killed';
-    default:
-      return 'Failed';
-  }
-}
 
 function colorFor(status: RunRow['status']): string {
   if (status === 'accepted') return 'var(--green)';
@@ -51,25 +43,6 @@ function IssueLink({
       Issue #{run.issueNumber ?? '?'} ↗
     </Button>
   );
-}
-
-function explanationFor(run: RunRow, phases: PhaseRow[]): string {
-  const failed = phases.filter((p) => p.status === 'fail');
-  switch (run.status) {
-    case 'accepted':
-      return run.outcomeDetail || 'Every phase passed and the acceptance criterion was met.';
-    case 'rejected': {
-      const failNote = failed.length ? ` (${failed.map((p) => p.name).join(', ')} failed)` : '';
-      return (
-        run.outcomeDetail ||
-        `The pipeline ran to the end, but its acceptance criterion was not met${failNote}.`
-      );
-    }
-    case 'killed':
-      return 'Stopped by hand. Anything the run had already committed is still on its branch.';
-    default:
-      return run.outcomeDetail || 'The engine could not finish this run.';
-  }
 }
 
 export default function OutcomeBanner({
@@ -145,8 +118,8 @@ export default function OutcomeBanner({
     >
       {art && <img src={art} alt="" />}
       <div className={styles.text}>
-        <h2 style={{ color }}>{headlineFor(run.status)}</h2>
-        <p>{explanationFor(run, phases)}</p>
+        <h2 style={{ color }}>{outcomeHeadline(run.status)}</h2>
+        <p>{outcomeExplanation(run, phases, { canResume })}</p>
         {worktreeMessage && (
           <p
             className={cx(styles.note, 'mono', worktreeError ? styles.bad : 'faint')}
@@ -172,7 +145,7 @@ export default function OutcomeBanner({
               variant="primary"
               size="sm"
               disabled={worktreeBusy}
-              title="Retry the first failed phase and continue this pipeline in the same worktree"
+              title={resumeTitleFor(run)}
               onClick={onResume}
               data-testid="outcome-resume"
             >

@@ -13,6 +13,7 @@ import OutcomeBanner from '../components/run/OutcomeBanner.js';
 import ExportPlanSheet from '../components/run/ExportPlanSheet.js';
 import { Button } from '../components/ui/Button.js';
 import { planHasActiveFailure } from '../view-models/plan-view.js';
+import { canResumeRun } from '../view-models/outcome-view.js';
 import styles from './RunDetailScreen.module.css';
 
 export default function RunDetailScreen({
@@ -317,11 +318,7 @@ export default function RunDetailScreen({
           worktreeMessage={worktreeMessage}
           worktreeError={worktreeError}
           gh={gh}
-          canResume={
-            (view.run.status === 'rejected' || view.run.status === 'failed') &&
-            !!view.run.worktreePath &&
-            hasActiveFailure
-          }
+          canResume={canResumeRun(view.run, hasActiveFailure)}
           canFix={mergeRefused}
           onResume={() => void resumeRun()}
           onMerge={() => void mergeWorktree()}

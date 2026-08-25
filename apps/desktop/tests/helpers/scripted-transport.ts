@@ -80,6 +80,13 @@ export interface ScriptedAgentOptions {
   deleteEffects?: (string | null)[];
   /** Reason the session cannot be opened at all, so the run must fail to start one. */
   unavailable?: string;
+  /**
+   * Prefix for the session ids this agent hands out. A resumed run drives a
+   * second scripted agent, and the default sequence would restart at the same
+   * id the first one issued — which would hide whether a session was reopened
+   * or newly opened.
+   */
+  sessionIdPrefix?: string;
 }
 
 const CONTEXT_LIMIT = 100_000;
@@ -118,6 +125,13 @@ export class ScriptedAgent {
   readonly turnMarkers: string[] = [];
   /** How many sessions have been opened, resumes included. */
   sessionOpens = 0;
+  /**
+   * The persisted session id each open was asked to reopen, per agent, in
+   * order. `null` means the engine asked for a new conversation — which is the
+   * whole difference between continuing a failed run and continuing a killed
+   * one, and is not observable from the resulting id alone.
+   */
+  readonly reopened: { agent: string; existingSessionId: string | null }[] = [];
 
   private turn = 0;
   private compactions = 0;
@@ -155,11 +169,12 @@ export class ScriptedAgent {
   }
 
   nextSessionId(): string {
-    return `s${++this.seq}`;
+    return `${this.options.sessionIdPrefix ?? 's'}${++this.seq}`;
   }
 
-  noteOpen(): void {
+  noteOpen(agent: string, existingSessionId: string | null): void {
     this.sessionOpens += 1;
+    this.reopened.push({ agent, existingSessionId });
     this.wire.push('start');
   }
 
@@ -410,7 +425,7 @@ class ScriptedTransport implements AgentTransport {
   async start(existingSessionId?: string | null): Promise<void> {
     if (this.agent.handshakeDelayMs) await sleep(this.agent.handshakeDelayMs);
     if (this.agent.unavailable) throw new Error(this.agent.unavailable);
-    this.agent.noteOpen();
+    this.agent.noteOpen(this.req.agent.name, existingSessionId ?? null);
     this.closed = false;
     this.sessionId = existingSessionId ?? this.agent.nextSessionId();
   }
