@@ -580,20 +580,20 @@ export function App() {
               title="Start a run from the couch. Answer a checkpoint from the train."
               lede="A LAN host inside the main process, and an Android app that talks to it. Every route is a projection of an operation the desktop already has, so the phone can never do something the window cannot."
             />
-            <div className="grid grid-cols-1 items-start gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:gap-16">
-              <Reveal>
+            <Reveal>
+              <div className="grid grid-cols-1 items-start gap-10 lg:grid-cols-2 lg:gap-16">
                 <Ticks items={COMPANION_POINTS.map(([t, b]) => [t, b])} />
-                <p className="mt-8 max-w-[58ch] border-t border-line pt-6 text-[13.5px] leading-[1.65] text-text-faint">
+                <p className="max-w-[58ch] border-t border-line pt-6 text-[13.5px] leading-[1.65] text-text-faint lg:mt-8 lg:border-t-0 lg:pt-0">
                   The host only exists while you turn it on. Apart from pairing, every route requires
                   a bearer token that hashes to a paired device — and everything else, unknown paths
                   included, answers 401 before it answers 404, so an unpaired caller cannot even map
                   the surface.
                 </p>
-              </Reveal>
-              <Reveal delay={80}>
-                <PhoneGallery />
-              </Reveal>
-            </div>
+              </div>
+            </Reveal>
+            <Reveal delay={80} className="mt-12">
+              <PhoneGallery />
+            </Reveal>
           </div>
         </Section>
 

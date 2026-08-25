@@ -5,6 +5,7 @@
  */
 
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { ART, APP_SHOTS, PHONE_SHOTS } from '../../data/foundry';
 import { useInView } from '../../hooks';
 import { LoopVideo } from '../ui';
@@ -132,13 +133,18 @@ export function AppGallery() {
   );
 }
 
-/* ── the phone ───────────────────────────────────────────────────────────── */
+/* ── the phone ─────────────────────────────────────────────────────────────
+ * Pixel 10 Pro XL front: 162.8 × 76.6 mm body, 6.8" 20:9 (1344 × 2992),
+ * ~88% screen-to-body, even bezels, centred punch-hole. The previous stage
+ * was 1080×1000 — a foldable inner display — which is why it read as a
+ * folding phone. Captures are the raw 1080×2400 (9:20) Android screenshots.
+ */
 
 export function PhoneGallery() {
   const [selected, setSelected] = useState(0);
 
   return (
-    <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]">
+    <div className="grid grid-cols-1 items-start gap-8 md:grid-cols-[minmax(0,22rem)_auto] md:justify-center md:gap-14">
       <div className="flex flex-col overflow-hidden rounded border border-line">
         {PHONE_SHOTS.map((s, i) => (
           <PickerItem
@@ -152,29 +158,91 @@ export function PhoneGallery() {
         ))}
       </div>
 
-      {/* a phone-shaped stage: the shots are cropped to 1080x1000 */}
-      <div className="mx-auto w-full max-w-[300px] md:sticky md:top-[84px]">
-        <div className="relative overflow-hidden rounded-[26px] border border-line-strong bg-[#020202] p-[7px] [aspect-ratio:1080/1000]">
-          <div className="relative h-full w-full overflow-hidden rounded-[20px] bg-[#020202]">
-            {PHONE_SHOTS.map((s, i) => (
-              <img
-                key={s.file}
-                src={`/media/phone/${s.file}.webp`}
-                alt={`Foundry companion — ${s.name}`}
-                width={540}
-                height={500}
-                loading={i === 0 ? 'eager' : 'lazy'}
-                className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-slow ease-mech ${
-                  i === selected ? 'opacity-100' : 'opacity-0'
-                }`}
-              />
-            ))}
-          </div>
-        </div>
+      <div className="mx-auto w-full max-w-[348px] md:sticky md:top-[84px]">
+        <Pixel10ProXL>
+          {PHONE_SHOTS.map((s, i) => (
+            <img
+              key={s.file}
+              src={`/media/phone/${s.file}.webp`}
+              alt={`Foundry companion — ${s.name}`}
+              width={540}
+              height={1200}
+              loading={i === 0 ? 'eager' : 'lazy'}
+              className={`absolute inset-0 h-full w-full object-cover object-top transition-opacity duration-slow ease-mech ${
+                i === selected ? 'opacity-100' : 'opacity-0'
+              }`}
+            />
+          ))}
+        </Pixel10ProXL>
         <p className="mt-3 text-center font-mono text-[10px] uppercase tracking-label text-text-ghost">
-          Android · paired over your LAN
+          Pixel 10 Pro XL · paired over your LAN
         </p>
       </div>
+    </div>
+  );
+}
+
+function Pixel10ProXL({ children }: { children: ReactNode }) {
+  return (
+    <div className="relative px-[5px]">
+      <span
+        aria-hidden="true"
+        className="absolute right-0 top-[21%] z-[2] h-[11%] w-[3px] rounded-r-[2px]"
+        style={{ background: 'linear-gradient(90deg, #6a6a6a, #2c2c2c)' }}
+      />
+      <span
+        aria-hidden="true"
+        className="absolute right-0 top-[34.5%] z-[2] h-[6%] w-[3px] rounded-r-[2px]"
+        style={{ background: 'linear-gradient(90deg, #6a6a6a, #2c2c2c)' }}
+      />
+      <span
+        aria-hidden="true"
+        className="absolute left-px top-[17%] z-[2] h-[8%] w-[2px] rounded-l-[1px] bg-[#2a2a2a]"
+      />
+
+      <figure
+        aria-label="Pixel 10 Pro XL"
+        className="relative"
+        style={{
+          aspectRatio: '76.6 / 162.8',
+          borderRadius: '14.6% / 6.87%',
+          background:
+            'linear-gradient(160deg, #4a4a4a 0%, #2a2a2a 22%, #1a1a1a 52%, #242424 86%, #3a3a3a 100%)',
+          boxShadow:
+            '0 0 0 1px rgba(255,255,255,0.08), inset 0 1px 0 rgba(255,255,255,0.16), inset 0 -1px 0 rgba(0,0,0,0.55)',
+        }}
+      >
+        <span aria-hidden="true" className="absolute left-0 top-[13%] h-px w-[3.7%] bg-black/55" />
+        <span aria-hidden="true" className="absolute right-0 top-[13%] h-px w-[3.7%] bg-black/55" />
+        <span aria-hidden="true" className="absolute bottom-[13%] left-0 h-px w-[3.7%] bg-black/55" />
+        <span aria-hidden="true" className="absolute bottom-[13%] right-0 h-px w-[3.7%] bg-black/55" />
+
+        <span
+          aria-hidden="true"
+          className="absolute left-1/2 top-[0.6%] z-[3] h-[0.35%] w-[12%] -translate-x-1/2 rounded-full bg-[#111]"
+        />
+        <span
+          aria-hidden="true"
+          className="absolute bottom-[0.55%] left-1/2 z-[3] h-[0.7%] w-[4.4%] -translate-x-1/2 rounded-full bg-black"
+        />
+
+        <div
+          className="absolute flex flex-col overflow-hidden bg-black"
+          style={{ inset: '3.7%', borderRadius: '11.2% / 5.3%' }}
+        >
+          <div className="relative h-[3.8%] shrink-0">
+            <span
+              aria-hidden="true"
+              className="absolute left-1/2 top-[18%] aspect-square w-[5.4%] -translate-x-1/2 rounded-full"
+              style={{
+                background: 'radial-gradient(circle at 38% 32%, #2c3548 0%, #0b0d12 58%, #000 100%)',
+                boxShadow: '0 0 0 1.5px #070707, 0 0 0 2.5px #1a1a1a',
+              }}
+            />
+          </div>
+          <div className="relative min-h-0 flex-1">{children}</div>
+        </div>
+      </figure>
     </div>
   );
 }

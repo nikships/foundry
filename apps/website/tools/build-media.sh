@@ -14,8 +14,9 @@
 #
 # `media-src/ui/*.png` are retina captures of the running app (2880x1880),
 # taken through the repo's foundry-ui skill; `media-src/phone/*.png` are the
-# Android captures from ../../screenshots cropped to 1080x1000. Recapture
-# either when a screen changes rather than hand-editing the WebP.
+# Android captures from ../../screenshots at 1080×2400 (9:20, the Pixel 10
+# Pro XL panel). Recapture either when a screen changes rather than
+# hand-editing the WebP.
 #
 # Written for bash 3.2 (macOS system bash): no mapfile, no process
 # substitution, no bare mktemp.
@@ -103,10 +104,9 @@ for f in "$mine"/ui/*.png; do
   still "$f" "$out/ui/$(basename "$f" .png).webp" 1440 82
 done
 
-# Cropped to 1080x1000: the raw captures are 1080x2400 and several screens fill
-# only the top third, so the full canvas would render as a phone frame that is
-# mostly empty background.
-echo "── phone screenshots (1080x1000 → 540w)"
+# Full 1080×2400 (9:20) — same ratio as the Pixel 10 Pro XL 1344×2992 panel.
+# A 1080×1000 crop reads as a foldable inner display; do not recrop.
+echo "── phone screenshots (1080x2400 → 540w)"
 for f in "$mine"/phone/*.png; do
   still "$f" "$out/phone/$(basename "$f" .png).webp" 540 84
 done
