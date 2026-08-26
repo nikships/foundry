@@ -50,6 +50,15 @@ class EventRowPresentationTest {
         )
         assertEquals("", unknown.durationLabel)
         assertFalse(unknown.durationLabel.contains("—") || unknown.durationLabel.contains("–"))
+
+        val offset = EventRow(
+            type = "tool_call",
+            name = "edit: spec.md",
+            startedAt = "2026-08-18T10:00:00-04:00",
+            endedAt = "2026-08-18T10:00:03-04:00"
+        )
+        assertEquals(3000L, offset.durationMs)
+        assertEquals("3s", offset.durationLabel)
     }
 
     @Test
@@ -89,5 +98,20 @@ class EventRowPresentationTest {
         assertTrue(diff.lines.any { it.type == DiffType.ADD && it.text == "+new line" })
         assertTrue(diff.lines.any { it.type == DiffType.DEL && it.text == "-old line" })
         assertNull(parseUnifiedDiff("just a sentence with no marks"))
+        assertNull(parseUnifiedDiff("+not a diff\n-still not"))
+    }
+
+    @Test
+    fun unescapeDoesNotRewriteWindowsPaths() {
+        val event = EventRow(
+            type = "tool_call",
+            name = "read: file",
+            payload = buildJsonObject {
+                put("result", """C:\new\test.txt and C:\tools\run.exe""")
+            },
+            startedAt = "2026-08-18T23:30:00Z",
+            endedAt = "2026-08-18T23:30:01Z"
+        )
+        assertEquals("""C:\new\test.txt and C:\tools\run.exe""", event.resultText)
     }
 }

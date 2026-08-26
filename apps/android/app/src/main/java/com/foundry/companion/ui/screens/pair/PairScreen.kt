@@ -25,6 +25,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -88,7 +89,9 @@ fun PairScreen(
     var isPasteMode by remember { mutableStateOf(initialPasteMode) }
     var pastedJson by remember { mutableStateOf("") }
     var localValidationIssue by remember { mutableStateOf<String?>(null) }
-    var hasAskedCamera by remember { mutableStateOf(cameraPromptOverride == CameraPermissionPrompt.Settings) }
+    var hasAskedCamera by rememberSaveable {
+        mutableStateOf(cameraPromptOverride == CameraPermissionPrompt.Settings)
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()

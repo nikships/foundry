@@ -339,38 +339,37 @@ fun parseUnifiedDiff(text: String): DiffResult? {
     val parsed = ArrayList<DiffLine>(lines.size)
     var adds = 0
     var dels = 0
-    var sawMark = false
+    var sawHeader = false
     for (line in lines) {
         when {
             line.startsWith("+++") || line.startsWith("---") ||
                 line.startsWith("diff ") || line.startsWith("index ") -> {
                 parsed.add(DiffLine(DiffType.CTX, line))
-                sawMark = true
+                sawHeader = true
             }
             line.startsWith("@@") -> {
                 parsed.add(DiffLine(DiffType.HUNK, line))
-                sawMark = true
+                sawHeader = true
             }
             line.startsWith("+") -> {
                 parsed.add(DiffLine(DiffType.ADD, line))
                 adds++
-                sawMark = true
             }
             line.startsWith("-") -> {
                 parsed.add(DiffLine(DiffType.DEL, line))
                 dels++
-                sawMark = true
             }
             else -> parsed.add(DiffLine(DiffType.CTX, line))
         }
     }
-    if (!sawMark || (adds == 0 && dels == 0)) return null
+    if (!sawHeader || (adds == 0 && dels == 0)) return null
     return DiffResult(parsed, adds, dels)
 }
 
 internal fun unescapeToolNewlines(text: String): String {
-    if (!text.contains('\\')) return text
-    return text.replace("\\n", "\n").replace("\\t", "\t")
+    if ('\n' in text || "\\n" !in text) return text
+    if ("@@" !in text && !text.startsWith("diff ")) return text
+    return text.replace("\\n", "\n")
 }
 
 internal fun parseIsoMillis(iso: String?): Long? {
@@ -379,13 +378,17 @@ internal fun parseIsoMillis(iso: String?): Long? {
         java.time.Instant.parse(iso).toEpochMilli()
     } catch (_: Exception) {
         try {
-            if (!iso.endsWith("Z") && '+' !in iso) {
-                java.time.Instant.parse("${iso}Z").toEpochMilli()
-            } else {
+            java.time.OffsetDateTime.parse(iso).toInstant().toEpochMilli()
+        } catch (_: Exception) {
+            try {
+                if (iso.endsWith("Z") || iso.contains(Regex("[+-]\\d{2}:\\d{2}$"))) {
+                    null
+                } else {
+                    java.time.Instant.parse("${iso}Z").toEpochMilli()
+                }
+            } catch (_: Exception) {
                 null
             }
-        } catch (_: Exception) {
-            null
         }
     }
 }

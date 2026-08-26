@@ -32,12 +32,14 @@ class MainActivity : ComponentActivity() {
      * emission would be dropped and the tap would land on Home.
      */
     private val pendingDeepLinkRoute = MutableStateFlow<String?>(null)
+    private var notificationPromptInFlight = false
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { _ ->
         // Asked once, recorded whatever the answer was: a denied prompt must not
         // come back on every launch.
+        notificationPromptInFlight = false
         app.sessionManager.setPromptedNotificationPermission(true)
         app.startWatchIfAllowed()
     }
@@ -86,6 +88,7 @@ class MainActivity : ComponentActivity() {
      * the viewfinder and can drop the camera prompt.
      */
     fun requestNotificationPermissionIfNeeded() {
+        if (notificationPromptInFlight) return
         if (app.sessionManager.getSession() == null) return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             app.startWatchIfAllowed()
@@ -102,6 +105,7 @@ class MainActivity : ComponentActivity() {
             app.startWatchIfAllowed()
             return
         }
+        notificationPromptInFlight = true
         notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
