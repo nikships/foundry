@@ -118,7 +118,7 @@ jobs:
 
       - name: Create pull request
         if: steps.check.outputs.skip == 'false'
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.AUTO_UPDATE_TOKEN }}
           commit-message: 'chore(deps): bump CLIProxyAPI to ${{ steps.upstream.outputs.version }}'
