@@ -224,8 +224,8 @@ class BackgroundWatcherTest {
         notificationManager.permissionGranted = true
         advanceTimeBy(pollMs * 2)
         runCurrent()
-        assertEquals(1, notificationManager.postedSettledRuns.size)
         watcher.stop()
+        assertEquals(1, notificationManager.postedSettledRuns.size)
     }
 
     @Test

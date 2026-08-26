@@ -36,17 +36,25 @@ class CompanionNotifier(
                 knownRunProjects[run.runId] = run.projectId
             }
             val status = run.status.lowercase()
-            val previous = knownRunStatuses.put(run.runId, status)
+            val previous = knownRunStatuses[run.runId]
             val settled = status in SETTLED_STATUSES
 
             if (previous == null) {
+                knownRunStatuses[run.runId] = status
                 if (settled) sessionManager?.addNotifiedSettledRunId(run.runId)
                 continue
             }
-            if (!settled || previous in SETTLED_STATUSES) continue
-            if (run.runId in notified) continue
-            if (!settleEnabled || !canPost) continue
+            if (!settled || previous in SETTLED_STATUSES) {
+                knownRunStatuses[run.runId] = status
+                continue
+            }
+            if (run.runId in notified || !settleEnabled) {
+                knownRunStatuses[run.runId] = status
+                continue
+            }
+            if (!canPost) continue
 
+            knownRunStatuses[run.runId] = status
             sessionManager?.addNotifiedSettledRunId(run.runId)
             notificationManager?.postRunSettledNotification(run)
         }
