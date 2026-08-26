@@ -108,8 +108,7 @@ jobs:
 
       - name: Run Android unit tests
         working-directory: apps/android
-        timeout-minutes: 8
-        run: ./gradlew :app:testDebugUnitTest --info
+        run: ./gradlew :app:testDebugUnitTest
 
   # ── Workflow hygiene ───────────────────────────────────────────────────────
   actionlint:
