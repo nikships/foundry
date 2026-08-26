@@ -111,77 +111,57 @@ fun RunHistoryRow(
             overflow = TextOverflow.Ellipsis
         )
 
-        // Bottom meta row: duration · tokens · branch tail · source badges · PR / Issue glyph
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            val badges = buildList {
-                if (run.orchestrated) add("ORCH")
-                run.source?.snapshot?.let { add(it.identifier) }
-            }
-            val sourceText = badges.takeIf { it.isNotEmpty() }?.joinToString(" · ")
-            Text(
-                text = listOfNotNull(sourceText, durationText, tokensText, branchTail)
-                    .joinToString(" · "),
-                style = typography.metaMono,
-                color = if (sourceText != null) colors.textDim else colors.textFaint,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false)
-            )
+        // Meta stays on its own line so a GitHub chip cannot clip the run id.
+        val badges = buildList {
+            if (run.orchestrated) add("ORCH")
+            run.source?.snapshot?.let { add(it.identifier) }
+        }
+        val sourceText = badges.takeIf { it.isNotEmpty() }?.joinToString(" · ")
+        Text(
+            text = listOfNotNull(sourceText, durationText, tokensText, branchTail)
+                .joinToString(" · "),
+            style = typography.metaMono,
+            color = if (sourceText != null) colors.textDim else colors.textFaint,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
 
-            // PR or Issue glyph
-            if (!run.prUrl.isNullOrBlank()) {
-                val prLabel = if (run.prNumber != null) "PR #${run.prNumber} ↗" else "PR ↗"
-                val prModifier = if (onOpenPr != null) {
-                    Modifier
-                        .padding(start = 6.dp)
-                        .background(colors.statusAccepted.copy(alpha = 0.12f), RoundedCornerShape(3.dp))
-                        .clickable { onOpenPr(run.prUrl) }
-                        .padding(horizontal = 5.dp, vertical = 1.dp)
-                } else {
-                    Modifier
-                        .padding(start = 6.dp)
-                        .background(colors.statusAccepted.copy(alpha = 0.12f), RoundedCornerShape(3.dp))
-                        .padding(horizontal = 5.dp, vertical = 1.dp)
-                }
-                Row(
-                    modifier = prModifier,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = prLabel,
-                        style = typography.metaMono,
-                        color = colors.statusAccepted
-                    )
-                }
-            } else if (!run.issueUrl.isNullOrBlank()) {
-                val issueLabel = if (run.issueNumber != null) "Issue #${run.issueNumber} ↗" else "Issue ↗"
-                val issueModifier = if (onOpenIssue != null) {
-                    Modifier
-                        .padding(start = 6.dp)
-                        .background(colors.bgRaised, RoundedCornerShape(3.dp))
-                        .clickable { onOpenIssue(run.issueUrl) }
-                        .padding(horizontal = 5.dp, vertical = 1.dp)
-                } else {
-                    Modifier
-                        .padding(start = 6.dp)
-                        .background(colors.bgRaised, RoundedCornerShape(3.dp))
-                        .padding(horizontal = 5.dp, vertical = 1.dp)
-                }
-                Row(
-                    modifier = issueModifier,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = issueLabel,
-                        style = typography.metaMono,
-                        color = colors.textDim
-                    )
-                }
+        if (!run.prUrl.isNullOrBlank()) {
+            val prLabel = if (run.prNumber != null) "PR #${run.prNumber} ↗" else "PR ↗"
+            val prModifier = if (onOpenPr != null) {
+                Modifier
+                    .background(colors.statusAccepted.copy(alpha = 0.12f), RoundedCornerShape(3.dp))
+                    .clickable { onOpenPr(run.prUrl) }
+                    .padding(horizontal = 5.dp, vertical = 1.dp)
+            } else {
+                Modifier
+                    .background(colors.statusAccepted.copy(alpha = 0.12f), RoundedCornerShape(3.dp))
+                    .padding(horizontal = 5.dp, vertical = 1.dp)
             }
+            Text(
+                text = prLabel,
+                style = typography.metaMono,
+                color = colors.statusAccepted,
+                modifier = prModifier
+            )
+        } else if (!run.issueUrl.isNullOrBlank()) {
+            val issueLabel = if (run.issueNumber != null) "Issue #${run.issueNumber} ↗" else "Issue ↗"
+            val issueModifier = if (onOpenIssue != null) {
+                Modifier
+                    .background(colors.bgRaised, RoundedCornerShape(3.dp))
+                    .clickable { onOpenIssue(run.issueUrl) }
+                    .padding(horizontal = 5.dp, vertical = 1.dp)
+            } else {
+                Modifier
+                    .background(colors.bgRaised, RoundedCornerShape(3.dp))
+                    .padding(horizontal = 5.dp, vertical = 1.dp)
+            }
+            Text(
+                text = issueLabel,
+                style = typography.metaMono,
+                color = colors.textDim,
+                modifier = issueModifier
+            )
         }
     }
 }

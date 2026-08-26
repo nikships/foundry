@@ -11,6 +11,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
@@ -28,6 +29,7 @@ import com.foundry.companion.ui.theme.FoundryTheme
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -112,6 +114,12 @@ class InspectorScreenTest {
 
         composeTestRule.onNodeWithTag("inspector-tool-toggle-ev_tool").performClick()
         composeTestRule.onNodeWithTag("inspector-tool-body-ev_tool").assertExists()
+        composeTestRule.onNodeWithText("read · 1s").assertExists()
+        composeTestRule.onNodeWithText("ARGS").assertExists()
+        composeTestRule.onNodeWithText("\"path\": ", substring = true).assertExists()
+        composeTestRule.onNodeWithText("OUTPUT").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithText("+added").assertExists()
+        composeTestRule.onNodeWithText("-removed").assertExists()
         composeTestRule.onNodeWithTag("inspector-collapse-all").performClick()
         composeTestRule.onNodeWithTag("inspector-tool-body-ev_tool").assertDoesNotExist()
     }
@@ -340,16 +348,28 @@ class InspectorScreenTest {
         type: String,
         text: String,
         name: String = type,
-        startedAt: String = "23:30:00Z"
+        startedAt: String = "2026-08-18T23:30:00Z"
     ): EventRow {
+        val payload = if (id == "ev_tool") {
+            buildJsonObject {
+                put("text", text)
+                putJsonObject("args") {
+                    put("path", "spec.md")
+                }
+                put("result", "@@ -1 +1 @@\n-removed\n+added")
+                put("durationMs", 1000)
+            }
+        } else {
+            buildJsonObject { put("text", text) }
+        }
         return EventRow(
             eventId = id,
             phaseId = phaseId,
             type = type,
             name = name,
-            payload = buildJsonObject { put("text", text) },
+            payload = payload,
             startedAt = startedAt,
-            endedAt = if (type == "tool_call" && id == "ev_tool") "23:30:01Z" else "23:30:01Z"
+            endedAt = "2026-08-18T23:30:01Z"
         )
     }
 }

@@ -77,7 +77,7 @@ fun CreatePrConfirmContent(
                     .height(48.dp)
                     .testTag("create-pr-cancel")
             ) {
-                Text(text = "CANCEL", style = typography.labelMono, color = colors.textDim)
+                Text(text = "CANCEL", style = typography.labelMono, color = colors.textPrimary)
             }
 
             Button(
@@ -118,6 +118,7 @@ fun CreatePrConfirmSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = colors.bgRaised,
+        scrimColor = colors.scrim,
         shape = shapes.sheet,
         dragHandle = {
             BottomSheetDefaults.DragHandle(color = colors.lineStrong)

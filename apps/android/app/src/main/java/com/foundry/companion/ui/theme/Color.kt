@@ -14,7 +14,8 @@ data class FoundryColors(
     val lineStrong: Color = Color(0x2EFFFFFF),    // 18% white
     val textPrimary: Color = Color(0xFFEEEEEE),
     val textDim: Color = Color(0xFF8C8C8C),
-    val textFaint: Color = Color(0x52FFFFFF),      // 32% white
+    val textFaint: Color = Color(0x99FFFFFF),      // 60% white — readable on bgBase
+    val scrim: Color = Color(0x9E000000),          // 62% black, visible on the dark canvas
     val accent: Color = Color(0xFFEE6018),         // Factory Orange
 
     // Status Tokens

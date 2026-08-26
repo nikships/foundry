@@ -3,6 +3,7 @@ package com.foundry.companion.ui.navigation
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import com.foundry.companion.MainActivity
 import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -141,6 +142,9 @@ fun FoundryNavHost(
             navController.navigate(NavRoute.Runs.route) {
                 popUpTo(NavRoute.Pair.route) { inclusive = true }
             }
+        }
+        if (isPaired) {
+            (context as? MainActivity)?.requestNotificationPermissionIfNeeded()
         }
     }
 
@@ -384,7 +388,12 @@ fun FoundryNavHost(
             selectedProjectId = uiState.selectedProjectId,
             onSelectProject = { viewModel.selectProject(it) },
             isNotifyOnSettleEnabled = uiState.isNotifyOnSettleEnabled,
-            onToggleNotifyOnSettle = { viewModel.toggleNotifyOnSettle(it) },
+            onToggleNotifyOnSettle = { enabled ->
+                viewModel.toggleNotifyOnSettle(enabled)
+                if (enabled) {
+                    (context as? MainActivity)?.requestNotificationPermissionIfNeeded()
+                }
+            },
             onUnpair = { viewModel.unpair() },
             onDismiss = { showConnectionSheet = false }
         )

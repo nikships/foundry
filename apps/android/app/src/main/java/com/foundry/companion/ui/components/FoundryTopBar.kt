@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -68,13 +69,15 @@ fun FoundryTopBar(
                     overflow = TextOverflow.Ellipsis
                 )
                 if (!subtitle.isNullOrBlank()) {
-                    Text(
-                        text = subtitle,
-                        style = typography.metaMono,
-                        color = colors.textFaint,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    SelectionContainer {
+                        Text(
+                            text = subtitle,
+                            style = typography.metaMono,
+                            color = colors.textFaint,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
 

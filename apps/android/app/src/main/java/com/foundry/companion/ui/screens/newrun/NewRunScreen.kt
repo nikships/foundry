@@ -36,6 +36,8 @@ import com.foundry.companion.ui.components.FoundrySecondaryButton
 import com.foundry.companion.ui.components.FoundryTopBar
 import com.foundry.companion.ui.components.PhaseRibbon
 import com.foundry.companion.ui.components.ReconnectBanner
+import com.foundry.companion.ui.components.foundryBottomChromePadding
+import com.foundry.companion.ui.components.foundryBottomChromePadding
 import com.foundry.companion.ui.theme.FoundryTheme
 import kotlinx.coroutines.delay
 
@@ -148,9 +150,7 @@ fun NewRunScreen(
     val isFormValid = isConnected && requestText.isNotBlank() && selectedPipelineId.isNotBlank() && !hasBlockingErrors && !isStarting
 
     Scaffold(
-        modifier = modifier
-            .fillMaxSize()
-            .imePadding(),
+        modifier = modifier.fillMaxSize(),
         containerColor = colors.bgBase,
         topBar = {
             Column {
@@ -175,6 +175,7 @@ fun NewRunScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(colors.bgBase)
+                    .foundryBottomChromePadding()
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {

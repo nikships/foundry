@@ -165,8 +165,9 @@ class RunDetailScreenTest {
             }
         }
 
-        // Top bar title with pipeline name and short id
-        composeTestRule.onNodeWithText("Run · Feature Pipeline · run_260", substring = true).assertIsDisplayed()
+        // Top bar title keeps the pipeline name; the full run id sits on its own line
+        composeTestRule.onNodeWithText("Run · Feature Pipeline").assertIsDisplayed()
+        composeTestRule.onNodeWithText("run_260818_live99").assertIsDisplayed()
 
         // Status badge and pipeline name in header
         composeTestRule.onAllNodesWithText("RUNNING")[0].assertIsDisplayed()

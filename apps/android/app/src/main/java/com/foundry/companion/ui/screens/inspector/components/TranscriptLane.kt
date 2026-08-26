@@ -15,8 +15,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import com.foundry.companion.data.model.DiffType
 import com.foundry.companion.data.model.EventRow
 import com.foundry.companion.data.model.TranscriptEvents
+import com.foundry.companion.data.model.parseUnifiedDiff
 import com.foundry.companion.ui.theme.FoundryTheme
 
 @Composable
@@ -172,8 +174,10 @@ private fun TranscriptEntry(
                         modifier = Modifier.weight(1f)
                     ) {
                         Text(text = "⚙", style = typography.transcriptMono, color = colors.accent)
+                        val toolTitle = event.toolName.ifBlank { "tool" }
+                        val duration = event.durationLabel
                         Text(
-                            text = "${event.toolName.ifBlank { "tool" }} · ${event.durationLabel}",
+                            text = if (duration.isBlank()) toolTitle else "$toolTitle · $duration",
                             style = typography.metaMono,
                             color = colors.textPrimary
                         )
@@ -205,17 +209,45 @@ private fun TranscriptEntry(
                     ) {
                         if (event.argsText.isNotBlank()) {
                             Text(
-                                text = "ARGS: ${event.argsText}",
+                                text = "ARGS",
+                                style = typography.labelMono,
+                                color = colors.textDim
+                            )
+                            Text(
+                                text = event.argsText,
                                 style = typography.transcriptMono,
                                 color = colors.textDim
                             )
                         }
                         if (event.resultText.isNotBlank()) {
                             Text(
-                                text = "OUTPUT: ${event.resultText}",
-                                style = typography.transcriptMono,
-                                color = colors.textPrimary
+                                text = "OUTPUT",
+                                style = typography.labelMono,
+                                color = colors.textDim
                             )
+                            val diff = parseUnifiedDiff(event.resultText)
+                            if (diff != null) {
+                                Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                    diff.lines.forEach { line ->
+                                        Text(
+                                            text = line.text,
+                                            style = typography.transcriptMono,
+                                            color = when (line.type) {
+                                                DiffType.ADD -> colors.statusAccepted
+                                                DiffType.DEL -> colors.statusFailed
+                                                DiffType.HUNK -> colors.accent
+                                                DiffType.CTX -> colors.textDim
+                                            }
+                                        )
+                                    }
+                                }
+                            } else {
+                                Text(
+                                    text = event.resultText,
+                                    style = typography.transcriptMono,
+                                    color = colors.textPrimary
+                                )
+                            }
                         }
                     }
                 }

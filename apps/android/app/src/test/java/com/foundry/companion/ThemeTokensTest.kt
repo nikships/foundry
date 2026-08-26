@@ -23,6 +23,8 @@ class ThemeTokensTest {
         assertEquals(Color(0xFFEE6018), colors.accent)
         assertEquals(Color(0xFFEEEEEE), colors.textPrimary)
         assertEquals(Color(0xFF8C8C8C), colors.textDim)
+        assertEquals(Color(0x99FFFFFF), colors.textFaint)
+        assertEquals(Color(0x9E000000), colors.scrim)
     }
 
     @Test

@@ -10,8 +10,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -20,6 +20,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -38,6 +39,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
@@ -53,6 +56,7 @@ import com.foundry.companion.ui.components.FoundrySecondaryButton
 import com.foundry.companion.ui.components.FoundryTopBar
 import com.foundry.companion.ui.components.MarkdownText
 import com.foundry.companion.ui.components.ReconnectBanner
+import com.foundry.companion.ui.components.foundryBottomChromePadding
 import com.foundry.companion.ui.theme.FoundryTheme
 import com.foundry.companion.util.isHiddenVendorText
 
@@ -80,16 +84,16 @@ fun SmithScreen(
     val shapes = FoundryTheme.shapes
     val isConnected = connectionStatus is ConnectionStatus.Connected
     val running = chat?.running == true || isSending
-    val chosenModel = chat?.model.orEmpty().ifBlank { "inherit" }
+    val chosenModel = chat?.model.orEmpty()
     val selectedModel = models.firstOrNull { it.id == chosenModel }
-        ?: models.firstOrNull { it.id == chat?.activeModel }
-    val effortOptions = selectedModel?.supportedReasoningEfforts
+    val effortModel = selectedModel ?: models.firstOrNull { it.id == chat?.activeModel }
+    val effortOptions = effortModel?.supportedReasoningEfforts
         ?.ifEmpty { listOf("off", "minimal", "low", "medium", "high", "xhigh", "max") }
         ?: listOf("off", "minimal", "low", "medium", "high", "xhigh", "max")
     val modelBlocked = when {
         models.isEmpty() -> "Connect a provider on the Mac to choose a model."
         chosenModel.isBlank() || chosenModel == "inherit" -> "No model is selected. Choose one to start the conversation."
-        selectedModel == null && models.none { it.id == chosenModel } ->
+        selectedModel == null ->
             "$chosenModel is not available to this install. Choose a model that is."
         else -> null
     }
@@ -105,9 +109,7 @@ fun SmithScreen(
     }
 
     Scaffold(
-        modifier = modifier
-            .fillMaxSize()
-            .imePadding(),
+        modifier = modifier.fillMaxSize(),
         containerColor = colors.bgBase,
         topBar = {
             Column {
@@ -144,7 +146,7 @@ fun SmithScreen(
                     onSelectModel = onSelectModel,
                     onSelectEffort = onSelectEffort
                 )
-                if (modelBlocked != null) {
+                if (modelBlocked != null && transcript.isNotEmpty()) {
                     Text(
                         text = modelBlocked,
                         style = typography.metaMono,
@@ -159,6 +161,7 @@ fun SmithScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(colors.bgBase)
+                    .foundryBottomChromePadding()
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -292,6 +295,13 @@ fun SmithScreen(
                         style = typography.body,
                         color = colors.textDim
                     )
+                    if (modelBlocked != null) {
+                        Text(
+                            text = modelBlocked,
+                            style = typography.metaMono,
+                            color = colors.statusWarning
+                        )
+                    }
                 }
             }
         } else {
@@ -354,19 +364,32 @@ private fun SmithPickerRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         SmithChoiceMenu(
-            label = selectedModel?.label ?: if (chosenModel == "inherit" || chosenModel.isBlank()) "Select a model…" else chosenModel,
+            label = selectedModel?.label
+                ?: if (chosenModel == "inherit" || chosenModel.isBlank()) "Choose model" else chosenModel,
             contentDescription = "Smith model",
             enabled = enabled && models.isNotEmpty(),
             modifier = Modifier.weight(1f)
         ) { dismiss ->
             models.forEach { model ->
+                val selected = model.id == chosenModel
                 DropdownMenuItem(
                     text = {
                         Text(
                             text = model.label,
                             style = typography.body,
-                            color = if (model.id == chosenModel) colors.accent else colors.textPrimary
+                            color = if (selected) colors.accent else colors.textPrimary
                         )
+                    },
+                    trailingIcon = if (selected) {
+                        {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = "Selected",
+                                tint = colors.accent
+                            )
+                        }
+                    } else {
+                        null
                     },
                     onClick = {
                         onSelectModel(model.id)
@@ -412,7 +435,11 @@ private fun SmithChoiceMenu(
     val typography = FoundryTheme.typography
     val shapes = FoundryTheme.shapes
     var expanded by rememberSaveable { mutableStateOf(false) }
-    Box(modifier = modifier) {
+    var menuWidth by rememberSaveable { mutableStateOf(0) }
+    val density = LocalDensity.current
+    Box(
+        modifier = modifier.onSizeChanged { menuWidth = it.width }
+    ) {
         TextButton(
             onClick = { expanded = true },
             enabled = enabled,
@@ -431,7 +458,12 @@ private fun SmithChoiceMenu(
         }
         DropdownMenu(
             expanded = expanded,
-            onDismissRequest = { expanded = false }
+            onDismissRequest = { expanded = false },
+            modifier = if (menuWidth > 0) {
+                Modifier.width(with(density) { menuWidth.toDp() })
+            } else {
+                Modifier
+            }
         ) {
             content { expanded = false }
         }

@@ -145,6 +145,8 @@ class SmithScreenTest {
             }
         }
         composeTestRule.onNodeWithText("No model is selected. Choose one to start the conversation.").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Choose model").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Alpha").assertDoesNotExist()
         composeTestRule.onNodeWithContentDescription("Smith model").assertIsDisplayed()
         composeTestRule.onNodeWithContentDescription("Smith reasoning").assertIsDisplayed()
         composeTestRule.onNodeWithContentDescription("Message Smith").assertIsNotEnabled()

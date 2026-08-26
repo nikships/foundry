@@ -32,12 +32,14 @@ class MainActivity : ComponentActivity() {
      * emission would be dropped and the tap would land on Home.
      */
     private val pendingDeepLinkRoute = MutableStateFlow<String?>(null)
+    private var notificationPromptInFlight = false
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { _ ->
         // Asked once, recorded whatever the answer was: a denied prompt must not
         // come back on every launch.
+        notificationPromptInFlight = false
         app.sessionManager.setPromptedNotificationPermission(true)
         app.startWatchIfAllowed()
     }
@@ -45,14 +47,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !app.sessionManager.hasPromptedNotificationPermission()) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            } else {
-                app.sessionManager.setPromptedNotificationPermission(true)
-            }
-        }
 
         if (intent?.getBooleanExtra("inject_fake_session", false) == true) {
             val fake = PairedSession(
@@ -85,7 +79,34 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         // A foreground start is always allowed, so this is the reliable moment to
         // (re)claim the watcher after a permission grant or a system-killed service.
+        requestNotificationPermissionIfNeeded()
         app.startWatchIfAllowed()
+    }
+
+    /**
+     * Notifications are an after-pair concern. Asking on a fresh launch covers
+     * the viewfinder and can drop the camera prompt.
+     */
+    fun requestNotificationPermissionIfNeeded() {
+        if (notificationPromptInFlight) return
+        if (app.sessionManager.getSession() == null) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            app.startWatchIfAllowed()
+            return
+        }
+        if (app.sessionManager.hasPromptedNotificationPermission()) {
+            app.startWatchIfAllowed()
+            return
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            app.sessionManager.setPromptedNotificationPermission(true)
+            app.startWatchIfAllowed()
+            return
+        }
+        notificationPromptInFlight = true
+        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
     override fun onNewIntent(intent: Intent) {
