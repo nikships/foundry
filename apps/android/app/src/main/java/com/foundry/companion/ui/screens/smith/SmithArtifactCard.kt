@@ -53,7 +53,6 @@ private val ARTIFACT_KIND_LABEL = mapOf(
     "diagnostics" to "diagnostics",
     "data_table" to "data catalog",
     "evidence_disclosure" to "context & evidence",
-    "engineer_checkpoint" to "engineer checkpoint",
     "readiness_journey" to "readiness journey",
     "provider_status" to "provider status",
     "action_receipt" to "action receipt"
@@ -133,7 +132,6 @@ private fun ArtifactBody(kind: String, artifact: JsonObject, onOpenUrl: (String)
         "diagnostics" -> DiagnosticsBody(artifact.objOrNull("diagnostics"))
         "data_table" -> DataTableBody(artifact.objOrNull("table"))
         "evidence_disclosure" -> EvidenceBody(artifact.objOrNull("evidence"))
-        "engineer_checkpoint" -> CheckpointBody(artifact.objOrNull("checkpoint"))
         "readiness_journey" -> ReadinessBody(artifact.objOrNull("journey"), onOpenUrl)
         "provider_status" -> ProviderBody(artifact.objOrNull("status"))
         "action_receipt" -> ActionReceiptBody(artifact.objOrNull("receipt"), onOpenUrl)
@@ -364,17 +362,6 @@ private fun EvidenceBody(evidence: JsonObject?) {
 }
 
 @Composable
-private fun CheckpointBody(checkpoint: JsonObject?) {
-    if (checkpoint == null) return
-    MarkdownText(text = checkpoint.stringOr("question"))
-    MetaRow("Run", checkpoint.stringOr("runId"))
-    checkpoint.stringOrNull("draftAnswer")?.let { Disclosure("Draft answer", it) }
-    if (checkpoint.booleanOrNull("answered") == true) {
-        StatusBadge(status = checkpoint.stringOr("decision", "info"))
-    }
-}
-
-@Composable
 private fun ReadinessBody(journey: JsonObject?, onOpenUrl: (String) -> Unit) {
     if (journey == null) return
     MetaRow("Phase", journey.stringOr("phase"))
@@ -537,7 +524,6 @@ private fun artifactTitle(artifact: JsonObject): String {
         "diagnostics" -> artifact.objOrNull("diagnostics")?.stringOr("title").orEmpty().ifBlank { "Diagnostics" }
         "data_table" -> artifact.objOrNull("table")?.stringOr("title").orEmpty()
         "evidence_disclosure" -> artifact.objOrNull("evidence")?.stringOr("title").orEmpty()
-        "engineer_checkpoint" -> artifact.objOrNull("checkpoint")?.stringOr("title").orEmpty()
         "readiness_journey" -> artifact.objOrNull("journey")?.stringOr("projectName").orEmpty()
             .ifBlank { "Agent readiness" }
         "provider_status" -> artifact.objOrNull("status")?.stringOr("title").orEmpty()

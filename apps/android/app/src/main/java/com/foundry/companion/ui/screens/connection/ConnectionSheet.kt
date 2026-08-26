@@ -172,7 +172,7 @@ fun ConnectionBottomSheet(
                         color = colors.textPrimary
                     )
                     Text(
-                        text = "Alerts on accepted, rejected, failed, or engineer waiting",
+                        text = "Alerts on accepted, rejected, or failed runs",
                         style = typography.metaMono,
                         color = colors.textFaint
                     )

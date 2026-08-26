@@ -327,8 +327,6 @@ function processRows(runId: string): ProcessRow[] {
     .all(runId) as ProcessRow[];
 }
 
-type AskHuman = ConstructorParameters<typeof Executor>[0]['askHuman'];
-
 interface RunInput {
   pipeline: PipelineDef;
   agents?: AgentDef[];
@@ -340,7 +338,6 @@ interface RunInput {
   project?: Partial<ProjectDef>;
   /** The install default an `inherit` roster model resolves against. */
   defaultModel?: string;
-  askHuman?: AskHuman;
   envelopeRetries?: number;
   gateRetries?: number;
   compactionThreshold?: number;
@@ -404,7 +401,6 @@ function start(input: RunInput): {
     sourceLifecycle: input.sourceLifecycle,
     runId,
     engineer: 'test',
-    askHuman: input.askHuman ?? (async () => ({ approve: true })),
     gh: input.gh,
     landing: input.landing,
   });
@@ -1780,58 +1776,6 @@ describe('acceptance criteria', () => {
   });
 });
 
-describe('engineer phases', () => {
-  it('records what the human decided and carries their notes forward', async () => {
-    const outcome = await run({
-      agents: [],
-      request: 'ask me',
-      envelopeRetries: 1,
-      gateRetries: 1,
-      pipeline: pipe(
-        [
-          {
-            name: 'approve',
-            kind: 'engineer',
-            description: 'Pause so a human can confirm before anything else runs.',
-            question: 'Ship it?',
-          },
-        ],
-        { description: 'pause for a human' },
-      ),
-      askHuman: async (req) => {
-        expect(req.body).toBe('Ship it?');
-        return { approve: true, text: 'go ahead, but watch the migration' };
-      },
-    });
-    expect(outcome.status).toBe('accepted');
-    const interrupt = events(outcome.runId).find((e) => e.type === 'interrupt');
-    expect(interrupt!.payload.decision).toBe('approve');
-    expect(interrupt!.payload.text).toContain('migration');
-  });
-
-  it('fails the run when the human rejects', async () => {
-    const outcome = await run({
-      agents: [],
-      request: 'ask me',
-      envelopeRetries: 1,
-      gateRetries: 1,
-      pipeline: pipe(
-        [
-          {
-            name: 'approve',
-            kind: 'engineer',
-            description: 'Pause so a human can stop the run here.',
-            question: 'Ship it?',
-          },
-        ],
-        { description: 'pause for a human who says no' },
-      ),
-      askHuman: async () => ({ approve: false }),
-    });
-    expect(outcome.status).toBe('rejected');
-  });
-});
-
 describe('zero-interrupt runs', () => {
   /**
    * Every kind of ask a run can raise, in one phase: a command, a write outside
@@ -1848,8 +1792,6 @@ describe('zero-interrupt runs', () => {
   it('settles with no human prompt and traces only the denials', async () => {
     const outside = join(tempDir('foundry-outside-'), 'escaped.txt');
     const scripted = scriptedAgent([buildEnvelope()], [], [everyAsk(outside)]);
-    let humanAsked = 0;
-
     const outcome = await run({
       scripted,
       pipeline: pipe(
@@ -1859,14 +1801,9 @@ describe('zero-interrupt runs', () => {
           acceptance: { kind: 'envelope_status', phase: 'build' },
         },
       ),
-      askHuman: async () => {
-        humanAsked++;
-        return { approve: true };
-      },
     });
 
     expect(outcome.status).toBe('accepted');
-    expect(humanAsked).toBe(0);
 
     const interrupts = events(outcome.runId).filter((e) => e.type === 'interrupt');
     // Allows pair 1:1 with the tool_call already in the transcript; only a
@@ -2307,7 +2244,6 @@ describe('the agent transport under the executor', () => {
       request: 'do the thing',
       runId: first.runId,
       engineer: 'test',
-      askHuman: async () => ({ approve: true }),
     });
     const outcome = await executor.resume();
 
@@ -2544,16 +2480,10 @@ describe('structured-output envelopes', () => {
       pipeline: pipe(
         [
           agentPhase('build', { description: 'Carry the envelope schema on the wire.' }),
-          {
-            name: 'approve',
-            kind: 'engineer',
-            description: 'A human checkpoint, which is not an agent turn.',
-            question: 'Ship it?',
-          },
           codePhase('check', { argv: ['true'] }, { description: 'A command, not an agent turn.' }),
         ],
         {
-          description: 'agent, engineer, and code phases side by side',
+          description: 'agent and code phases side by side',
           acceptance: { kind: 'envelope_status', phase: 'build' },
         },
       ),
@@ -3023,7 +2953,6 @@ describe('continuing a killed run', () => {
       request: 'do the thing',
       runId,
       engineer: 'test',
-      askHuman: async () => ({ approve: true }),
       ...over,
     });
     return executor.resume();
@@ -3229,7 +3158,6 @@ describe('the registry gate on continuing a killed run', () => {
       settings: () => ({ compactionThreshold: 0.8 }) as AppSettings,
       engineerName: 'test',
       onRunFinished: () => undefined,
-      onInterruptsChanged: () => undefined,
       onRunsChanged: () => undefined,
     });
   }
@@ -3353,7 +3281,6 @@ describe('the context breakdown an agent leaves behind', () => {
       settings: () => ({}) as AppSettings,
       engineerName: 'test',
       onRunFinished: () => undefined,
-      onInterruptsChanged: () => undefined,
       onRunsChanged: () => undefined,
     });
   }

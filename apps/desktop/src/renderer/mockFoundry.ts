@@ -17,7 +17,6 @@ import type {
   EventRow,
   PhaseRow,
   UpdateStatus,
-  PendingInterrupt,
   ReadinessInspectResult,
   ReadinessState,
   BaseSyncStatus,
@@ -188,7 +187,7 @@ function defaultMockSettings(): AppSettings {
     smithModel: 'inherit',
     smithReasoningEffort: 'medium',
     compactionThreshold: 0.8,
-    notifications: { accepted: true, rejected: true, failed: true, needsInput: true },
+    notifications: { accepted: true, rejected: true, failed: true },
     dockBadge: true,
     retentionDays: null,
     onboarded: true,
@@ -831,10 +830,6 @@ export function createMockFoundryApi(): FoundryApi {
       create: async () => ({ ok: false, detail: UNAVAILABLE }),
       merge: async () => ({ ok: false, detail: UNAVAILABLE }),
       fixConflicts: async () => ({ ok: false, detail: UNAVAILABLE }),
-    },
-    interrupts: {
-      list: async (): Promise<PendingInterrupt[]> => [],
-      answer: async () => true,
     },
     smith: {
       send: async (projectId, text) => {

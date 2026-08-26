@@ -46,12 +46,6 @@ function generatedPlan(): GeneratedRunPlan {
           feedbackTo: 'build',
         },
         {
-          name: 'checkpoint',
-          kind: 'engineer',
-          description: 'Confirm the behavior before review.',
-          question: 'Continue to review?',
-        },
-        {
           name: 'review',
           kind: 'agent',
           description: 'Review the implementation and evidence.',
@@ -103,30 +97,22 @@ describe('plan-view', () => {
 
     expect(view.title).toBe('Stabilize search results');
     expect(view.description).toContain('independently review');
-    expect(view.summary).toBe('4 phases · 2 synthesized agents');
+    expect(view.summary).toBe('3 phases · 2 synthesized agents');
     expect(view.refinedRequest).toContain('deterministic');
     expect(view.rationale).toContain('bounded implementation');
     expect(view.orchestratorModel).toBe('claude-opus-4');
     expect(view.acceptance).toBe('Accepted when the report returned by "review" reports success.');
 
-    expect(view.phases.map((phase) => phase.name)).toEqual([
-      'build',
-      'test',
-      'checkpoint',
-      'review',
-    ]);
+    expect(view.phases.map((phase) => phase.name)).toEqual(['build', 'test', 'review']);
     expect(view.phases[0]).toMatchObject({
       synthesized: true,
       decides: false,
       model: 'anthropic/claude-opus-4',
     });
     expect(view.phases[1]?.note).toBe('runs "test" · fails back to build');
-    // Only agent phases carry an appointment; a command and a checkpoint have
-    // no model to override.
+    // Only agent phases carry an appointment; a command has no model to override.
     expect(view.phases[1]?.model).toBeNull();
-    expect(view.phases[2]?.model).toBeNull();
-    expect(view.phases[2]?.note).toBe('waits for you');
-    expect(view.phases[3]).toMatchObject({
+    expect(view.phases[2]).toMatchObject({
       synthesized: true,
       decides: true,
       note: 'gates: verdict_consistent, disapproval_halts',
@@ -150,12 +136,12 @@ describe('plan-view', () => {
 
     // The override travels as a real edit to the pipeline, because that is the
     // value `startRun` re-validates at the privileged boundary.
-    expect(overridden.pipeline.phases[3]?.model).toBe('openai/gpt-5');
+    expect(overridden.pipeline.phases[2]?.model).toBe('openai/gpt-5');
     expect(overridden.pipeline.phases[0]?.model).toBe('anthropic/claude-opus-4');
     expect(overridden.refinedRequest).toBe(proposed.refinedRequest);
     expect(overridden.agents).toEqual(proposed.agents);
     // The proposal itself is untouched, so "restore proposed models" can undo.
-    expect(proposed.pipeline.phases[3]?.model).toBe('anthropic/claude-haiku-4');
+    expect(proposed.pipeline.phases[2]?.model).toBe('anthropic/claude-haiku-4');
   });
 
   it('leaves a code phase alone when its name is handed to withPhaseModel', () => {

@@ -142,8 +142,6 @@ export const SMITH_CAPABILITY_COVERAGE: Readonly<Record<string, SmithCapabilityC
   [IPC.prsCreate]: approve('smith_prs', 'create'),
   [IPC.prsMerge]: approve('smith_prs', 'merge'),
   [IPC.prsFixConflicts]: approve('smith_prs', 'fix_conflicts'),
-  [IPC.interruptsList]: read('smith_interrupts', 'list'),
-  [IPC.interruptsAnswer]: approve('smith_interrupts', 'answer'),
   [IPC.companionState]: read('smith_companion', 'state'),
   [IPC.companionStart]: approve('smith_companion', 'start'),
   [IPC.companionStop]: approve('smith_companion', 'stop'),

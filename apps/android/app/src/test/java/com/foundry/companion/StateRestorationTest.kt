@@ -82,9 +82,5 @@ class StateRestorationTest {
         assertTrue(sessionManager.getNotifiedSettledRunIds().isEmpty())
         sessionManager.addNotifiedSettledRunId("run_01")
         assertTrue(sessionManager.getNotifiedSettledRunIds().contains("run_01"))
-
-        assertTrue(sessionManager.getNotifiedInterruptIds().isEmpty())
-        sessionManager.addNotifiedInterruptId("int_01")
-        assertTrue(sessionManager.getNotifiedInterruptIds().contains("int_01"))
     }
 }

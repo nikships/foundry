@@ -100,9 +100,7 @@ class MainActivity : ComponentActivity() {
         val data = intent.data?.takeIf { it.scheme == "foundry" && it.host == "run" }
         val target = resolveDeepLink(
             uriRunId = data?.pathSegments?.firstOrNull(),
-            uriInterruptId = data?.getQueryParameter("interrupt"),
             extraRunId = intent.getStringExtra("runId"),
-            extraInterruptId = intent.getStringExtra("interruptId"),
             uriProjectId = data?.getQueryParameter("project"),
             extraProjectId = intent.getStringExtra("projectId")
         ) ?: return

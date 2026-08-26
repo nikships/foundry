@@ -22,7 +22,6 @@ import androidx.compose.ui.unit.dp
 import com.foundry.companion.data.model.ConnectionStatus
 import com.foundry.companion.data.model.EventRow
 import com.foundry.companion.data.model.GhStatus
-import com.foundry.companion.data.model.PendingInterrupt
 import com.foundry.companion.data.model.RunDetail
 import com.foundry.companion.ui.components.*
 import com.foundry.companion.ui.screens.run.components.CreatePrConfirmSheet
@@ -47,16 +46,8 @@ fun RunDetailScreen(
     onCreatePr: (runId: String) -> Unit,
     onOpenIssue: (issueUrl: String) -> Unit,
     modifier: Modifier = Modifier,
-    pendingInterrupt: PendingInterrupt? = null,
-    /**
-     * Set only by a notification / deep-link tap naming a specific interrupt:
-     * the sheet opens once on arrival. Nothing else raises it — the strip's
-     * `Answer…` is the in-app entry point.
-     */
-    initialInterruptId: String? = null,
     actionError: String? = null,
     onDismissActionError: (() -> Unit)? = null,
-    onAnswerInterrupt: ((interruptId: String, approved: Boolean, notes: String?) -> Unit)? = null,
     onRetryConnection: (() -> Unit)? = null,
     isCreatingPr: Boolean = false,
     isContinuingRun: Boolean = false,
@@ -73,24 +64,8 @@ fun RunDetailScreen(
     val shapes = FoundryTheme.shapes
 
     var showKillDialog by remember { mutableStateOf(false) }
-    var showInterruptSheet by rememberSaveable { mutableStateOf(false) }
     var showCreatePrSheet by rememberSaveable { mutableStateOf(false) }
     var isRequestExpanded by remember { mutableStateOf(false) }
-
-    // The deep link consumes once: re-opening the sheet after the operator
-    // dismissed it would be the global modal again, only slower. Saveable so
-    // a rotate does not resurrect the sheet.
-    var consumedInterruptId by rememberSaveable { mutableStateOf<String?>(null) }
-    LaunchedEffect(initialInterruptId, pendingInterrupt?.interruptId) {
-        val target = initialInterruptId
-        if (!target.isNullOrBlank() &&
-            target != consumedInterruptId &&
-            pendingInterrupt?.interruptId == target
-        ) {
-            consumedInterruptId = target
-            showInterruptSheet = true
-        }
-    }
 
     if (runDetail == null) {
         Scaffold(
@@ -203,15 +178,6 @@ fun RunDetailScreen(
                     status = connectionStatus,
                     onRetryClick = { onRetryConnection?.invoke() }
                 )
-
-                // Engineer interrupt strip, pinned above the header (spec §3.7)
-                if (pendingInterrupt != null) {
-                    InterruptStrip(
-                        onAnswerClick = { showInterruptSheet = true },
-                        isConnected = isConnected,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
-                }
             }
         }
     ) { innerPadding ->
@@ -398,25 +364,6 @@ fun RunDetailScreen(
                 onCreatePr(run.runId)
             },
             onDismiss = { showCreatePrSheet = false }
-        )
-    }
-
-    // Engineer interrupt bottom sheet
-    if (showInterruptSheet && pendingInterrupt != null) {
-        InterruptBottomSheet(
-            interrupt = pendingInterrupt,
-            onApprove = { notes ->
-                showInterruptSheet = false
-                onAnswerInterrupt?.invoke(pendingInterrupt.interruptId, true, notes)
-            },
-            onReject = { notes ->
-                showInterruptSheet = false
-                onAnswerInterrupt?.invoke(pendingInterrupt.interruptId, false, notes)
-            },
-            // Swiping the sheet away closes it and nothing more. On the desktop
-            // Escape rejects; a phone swipe is too cheap a gesture to mean that,
-            // so the strip persists and the run stays blocked.
-            onDismiss = { showInterruptSheet = false }
         )
     }
 }

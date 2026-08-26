@@ -68,12 +68,6 @@ fun RunHistoryRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (run.waitingInterrupt) {
-                    StatusBadge(
-                        status = "rejected",
-                        customLabel = "WAITING"
-                    )
-                }
                 if (run.merged) {
                     StatusBadge(
                         status = "accepted",

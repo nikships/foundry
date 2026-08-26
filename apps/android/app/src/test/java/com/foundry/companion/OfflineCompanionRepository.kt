@@ -32,9 +32,6 @@ class OfflineCompanionRepository(
     )
     override val connectionStatus: StateFlow<ConnectionStatus> = _connectionStatus.asStateFlow()
 
-    private val _pendingInterrupts = MutableStateFlow<List<PendingInterrupt>>(emptyList())
-    override val pendingInterrupts: StateFlow<List<PendingInterrupt>> = _pendingInterrupts.asStateFlow()
-
     private val runs = mutableListOf<RunRow>()
 
     /**
@@ -48,10 +45,6 @@ class OfflineCompanionRepository(
     fun setRun(run: RunRow) {
         val index = runs.indexOfFirst { it.runId == run.runId }
         if (index >= 0) runs[index] = run else runs.add(run)
-    }
-
-    fun setInterrupts(interrupts: List<PendingInterrupt>) {
-        _pendingInterrupts.value = interrupts
     }
 
     private fun <T> answer(value: T): Result<T> =
@@ -95,17 +88,12 @@ class OfflineCompanionRepository(
     override suspend fun getEventPage(projectId: String, runId: String, after: Long) =
         answer(EventPage())
 
-    override suspend fun getInterrupts(): Result<List<PendingInterrupt>> = answer(_pendingInterrupts.value)
-
     override suspend fun startRun(input: StartRunInput) = answer(CompanionStartResult(ok = false))
 
     override suspend fun killRun(projectId: String, runId: String) = answer(CompanionKillResult(ok = false))
 
     override suspend fun continueRun(projectId: String, runId: String) =
         answer(CompanionContinueResult(ok = false, detail = "unreachable"))
-
-    override suspend fun answerInterrupt(answer: InterruptAnswer): Result<CompanionAnswerResult> =
-        this.answer(CompanionAnswerResult(ok = false))
 
     override suspend fun getPrStatus(projectId: String) = answer(GhStatus())
 

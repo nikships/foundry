@@ -35,8 +35,6 @@ import type {
 import type {
   AgentDef,
   AppSettings,
-  InterruptAnswer,
-  PendingInterrupt,
   PipelineDef,
   ProjectDef,
   RunRow,
@@ -119,8 +117,6 @@ class TestRegistry {
   private readonly live = new Map<string, Executor>();
   readonly settled = new Map<string, Promise<string>>();
   private seq = 0;
-  pendingInterrupts: PendingInterrupt[] = [];
-  answered: InterruptAnswer[] = [];
   continued: string[] = [];
 
   constructor(
@@ -147,7 +143,6 @@ class TestRegistry {
       request: input.request,
       runId,
       engineer: 'test',
-      askHuman: async () => ({ approve: true }),
     });
     this.live.set(runId, executor);
     this.settled.set(
@@ -192,20 +187,6 @@ class TestRegistry {
     });
     if (!eligible.ok) return { ok: false, detail: eligible.detail };
     return { ok: true, detail: continueDetail(eligible.strategy, eligible.failedPhase.name) };
-  }
-
-  interrupts(): PendingInterrupt[] {
-    return this.pendingInterrupts;
-  }
-
-  answer(answer: InterruptAnswer): boolean {
-    this.answered.push(answer);
-    const idx = this.pendingInterrupts.findIndex((i) => i.interruptId === answer.interruptId);
-    if (idx !== -1) {
-      this.pendingInterrupts.splice(idx, 1);
-      return true;
-    }
-    return false;
   }
 }
 
@@ -529,7 +510,6 @@ describe('token auth, fail closed', () => {
   it.each([
     ['GET', '/v1/session'],
     ['GET', '/v1/projects'],
-    ['GET', '/v1/interrupts'],
     ['POST', '/v1/runs'],
     ['GET', '/v1/projects/x/runs'],
     ['GET', '/v1/projects/x/runs/y'],
@@ -539,7 +519,6 @@ describe('token auth, fail closed', () => {
     ['POST', '/v1/projects/x/runs/y/pr'],
     ['GET', '/v1/projects/x/runs/y/pr-draft'],
     ['GET', '/v1/projects/x/pr-status'],
-    ['POST', '/v1/interrupts/answer'],
     ['GET', '/v1/smith'],
     ['POST', '/v1/smith/send'],
     ['POST', '/v1/smith/cancel'],
@@ -825,54 +804,6 @@ describe('run routes', () => {
     const paired = await pairPhone();
     const res = await authed(paired.token, '/v1/projects/unknown/runs');
     expect(res.status).toBe(404);
-  });
-});
-
-describe('interrupt routes', () => {
-  it('lists pending interrupts and answers one through the host', async () => {
-    const paired = await pairPhone();
-    h.registry.pendingInterrupts = [
-      {
-        interruptId: 'int_1',
-        runId: 'run_1',
-        phaseId: 'ph_1',
-        kind: 'engineer',
-        title: 'Review required',
-        body: 'Please approve the plan',
-        options: [
-          { id: 'approve', label: 'Approve', kind: 'approve' },
-          { id: 'reject', label: 'Reject', kind: 'reject' },
-        ],
-        createdAt: new Date().toISOString(),
-      },
-    ];
-
-    const listRes = await authed(paired.token, '/v1/interrupts');
-    expect(listRes.status).toBe(200);
-    const list = (await listRes.json()) as PendingInterrupt[];
-    expect(list).toHaveLength(1);
-    expect(list[0]!.interruptId).toBe('int_1');
-
-    const answerRes = await authed(paired.token, '/v1/interrupts/answer', {
-      method: 'POST',
-      body: JSON.stringify({ interruptId: 'int_1', decision: 'approve', text: 'looks good' }),
-    });
-    expect(answerRes.status).toBe(200);
-    const answerResult = (await answerRes.json()) as { ok: boolean };
-    expect(answerResult.ok).toBe(true);
-    expect(h.registry.answered).toEqual([
-      { interruptId: 'int_1', decision: 'approve', text: 'looks good' },
-    ]);
-    expect(h.registry.pendingInterrupts).toEqual([]);
-  });
-
-  it('rejects an invalid answer payload as a bad request', async () => {
-    const paired = await pairPhone();
-    const res = await authed(paired.token, '/v1/interrupts/answer', {
-      method: 'POST',
-      body: JSON.stringify({ interruptId: 'int_1' }),
-    });
-    expect(res.status).toBe(400);
   });
 });
 

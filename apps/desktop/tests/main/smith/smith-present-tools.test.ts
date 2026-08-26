@@ -13,7 +13,6 @@ import type { RunDetail } from '../../../src/shared/ipc-contract.js';
 import type {
   AgentDef,
   ChangeReceiptDef,
-  CheckpointDef,
   ChecklistDef,
   DataTableDef,
   DiagnosticsDef,
@@ -39,7 +38,6 @@ import {
   smithPresentTool,
   validateChangeReceipt,
   validateChecklist,
-  validateCheckpoint,
   validateDataTable,
   validateDiagnostics,
   validateEvidenceDisclosure,
@@ -364,22 +362,6 @@ const validEvidence: EvidenceDisclosureDef = {
   ],
 };
 
-const validCheckpoint: CheckpointDef = {
-  interruptId: 'int_7',
-  title: 'Drop the legacy column?',
-  question: 'The migration drops `users.legacy_id`. Proceed?',
-  runId: 'run_9f2c1a',
-  phaseId: 'review',
-  pipelineId: 'ship-it',
-  raisedAt: '2026-08-23T10:00:00Z',
-  draftAnswer: 'Yes — nothing reads that column.',
-  actions: [
-    { id: 'approve', label: 'Approve', kind: 'approve' },
-    { id: 'reject', label: 'Reject', kind: 'reject' },
-    { id: 'edit', label: 'Edit answer', kind: 'edit' },
-  ],
-};
-
 const validJourney: ReadinessJourneyDef = {
   projectId: 'proj_1',
   projectName: 'foundry',
@@ -603,9 +585,6 @@ describe('smith_present', () => {
     ).toMatchObject({
       ok: true,
     });
-    expect(
-      await answerOf(tool, { kind: 'engineer_checkpoint', spec: validCheckpoint }),
-    ).toMatchObject({ ok: true });
     expect(await answerOf(tool, { kind: 'readiness_journey', spec: validJourney })).toMatchObject({
       ok: true,
     });
@@ -624,7 +603,6 @@ describe('smith_present', () => {
       'diagnostics',
       'data_table',
       'evidence_disclosure',
-      'engineer_checkpoint',
       'readiness_journey',
       'provider_status',
     ]);
@@ -848,31 +826,6 @@ describe('smith_present', () => {
     expect(emitted).toHaveLength(0);
   });
 
-  it('emits an engineer_checkpoint artifact carrying no executor and no approval', async () => {
-    const { deps, emitted } = makeDeps();
-    const res = (await answerOf(smithPresentTool(deps), {
-      kind: 'engineer_checkpoint',
-      spec: validCheckpoint,
-      rationale: 'The column is unreferenced.',
-    })) as { ok: boolean; artifactId: string };
-
-    expect(res.ok).toBe(true);
-    expect(emitted).toHaveLength(1);
-    const artifact = emitted[0]!;
-    expect(res.artifactId).toBe(artifact.id);
-    expect(artifact).toMatchObject({
-      kind: 'engineer_checkpoint',
-      version: SMITH_ARTIFACT_VERSION,
-      rationale: 'The column is unreferenced.',
-      warnings: [],
-    });
-    if (artifact.kind !== 'engineer_checkpoint') throw new Error('expected checkpoint artifact');
-    expect(artifact.checkpoint).toEqual(validCheckpoint);
-    // Presentation only: nothing on the artifact can answer the interrupt.
-    expect(Object.keys(artifact)).not.toContain('execute');
-    expect(() => structuredClone(artifact)).not.toThrow();
-  });
-
   it('emits a readiness_journey artifact with marker, criteria, work, and PR', async () => {
     const { deps, emitted } = makeDeps();
     const res = (await answerOf(smithPresentTool(deps), {
@@ -964,18 +917,9 @@ describe('smith_present', () => {
     expect(emitted).toHaveLength(0);
   });
 
-  it('refuses invalid checkpoint, journey, and provider specs', async () => {
+  it('refuses invalid journey and provider specs', async () => {
     const { deps, emitted } = makeDeps();
     const tool = smithPresentTool(deps);
-
-    const noQuestion = (await answerOf(tool, {
-      kind: 'engineer_checkpoint',
-      spec: { ...validCheckpoint, question: '' },
-    })) as { ok: boolean; validation?: unknown[] };
-    expect(noQuestion.ok).toBe(false);
-    expect(noQuestion.validation).toContainEqual(
-      expect.objectContaining({ where: 'question', level: 'error' }),
-    );
 
     const badPhase = (await answerOf(tool, {
       kind: 'readiness_journey',
@@ -1367,51 +1311,6 @@ describe('findSecretKey', () => {
     expect(findSecretKey({ a: { token: 'x' } })).toBe('a.token');
     expect(findSecretKey({ a: [{ password: 'x' }] })).toBe('a[0].password');
     expect(findSecretKey({ name: 'fine', writes: null })).toBeNull();
-  });
-});
-
-describe('validateCheckpoint', () => {
-  it('accepts a valid checkpoint without errors', () => {
-    expect(validateCheckpoint(validCheckpoint)).toEqual([]);
-  });
-
-  it('requires the identity a checkpoint card cannot be drawn without', () => {
-    const issues = validateCheckpoint({});
-    for (const where of ['interruptId', 'title', 'question']) {
-      expect(issues).toContainEqual(expect.objectContaining({ level: 'error', where }));
-    }
-  });
-
-  it('flags a non-object spec and a bad action kind', () => {
-    expect(validateCheckpoint(null)).toContainEqual(
-      expect.objectContaining({ level: 'error', where: 'spec' }),
-    );
-    expect(
-      validateCheckpoint({
-        ...validCheckpoint,
-        actions: [{ id: 'x', label: 'Maybe', kind: 'defer' }],
-      }),
-    ).toContainEqual(expect.objectContaining({ level: 'error', where: 'actions[0].kind' }));
-  });
-
-  it('accepts only approve or reject as a recorded decision', () => {
-    expect(validateCheckpoint({ ...validCheckpoint, decision: 'approve' })).toEqual([]);
-    expect(validateCheckpoint({ ...validCheckpoint, decision: 'defer' })).toContainEqual(
-      expect.objectContaining({ level: 'error', where: 'decision' }),
-    );
-  });
-
-  it('warns rather than fails on an over-long question or draft answer', () => {
-    const issues = validateCheckpoint({
-      ...validCheckpoint,
-      question: 'q'.repeat(5_000),
-      draftAnswer: 'a'.repeat(9_000),
-    });
-    expect(issues.filter((issue) => issue.level === 'error')).toEqual([]);
-    expect(issues).toContainEqual(expect.objectContaining({ level: 'warning', where: 'question' }));
-    expect(issues).toContainEqual(
-      expect.objectContaining({ level: 'warning', where: 'draftAnswer' }),
-    );
   });
 });
 

@@ -50,11 +50,6 @@ test.describe('design / Pipelines', () => {
       await expect(commandSheet).toBeVisible();
       await expect(commandSheet.getByRole('alert')).toHaveCount(0);
       await commandSheet.getByRole('button', { name: 'Close Edit new_command' }).click();
-
-      await window.getByTestId('pipeline-add-checkpoint').click();
-      const checkpointSheet = window.getByRole('dialog', { name: 'Edit new_checkpoint' });
-      await expect(checkpointSheet).toBeVisible();
-      await expect(checkpointSheet.getByRole('alert')).toHaveCount(0);
     } finally {
       await app?.close();
     }

@@ -39,25 +39,6 @@ export function CommandGlyph(): React.JSX.Element {
   );
 }
 
-export function CheckpointGlyph(): React.JSX.Element {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 14 14"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.3"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M3 12.5v-11" />
-      <path d="M3 2.2c1.6-1 3.2 1 4.8 0s3-0.6 3.4-0.2v5.6c-0.4-0.4-1.8-0.8-3.4 0.2s-3.2 1-4.8 0" />
-    </svg>
-  );
-}
-
 export function EnvelopeGlyph(): React.JSX.Element {
   return (
     <svg
@@ -79,6 +60,5 @@ export function EnvelopeGlyph(): React.JSX.Element {
 
 export function PhaseGlyph({ kind }: { kind: PhaseKind }): React.JSX.Element {
   if (kind === 'agent') return <AgentGlyph />;
-  if (kind === 'code') return <CommandGlyph />;
-  return <CheckpointGlyph />;
+  return <CommandGlyph />;
 }

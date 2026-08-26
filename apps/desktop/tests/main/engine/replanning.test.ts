@@ -187,7 +187,6 @@ function start(turns: ScriptedTurn[], orchestrated = true): StartedRun {
     plan: orchestrated ? generated : null,
     runId,
     engineer: 'test',
-    askHuman: async () => ({ approve: true }),
     transport: (request) => scripted.transport(request),
   });
   return { tracer, runId, oneShots, executor, done: executor.run() };

@@ -165,48 +165,7 @@ class RunsScreenTest {
         assertEquals(null, clickedRunId)
     }
 
-    @Test
-    fun testWaitingChipOnLiveCardAndHistoryRow() {
-        // waitingInterrupt is derived upstream from a pending interrupt's runId;
-        // both Home surfaces have to render the amber chip from it.
-        val waitingLive = sampleLiveRun.copy(waitingInterrupt = true)
-        val waitingHistory = sampleHistoryRuns[1].copy(waitingInterrupt = true)
 
-        composeTestRule.setContent {
-            FoundryTheme {
-                RunsScreen(
-                    runs = listOf(waitingLive, waitingHistory),
-                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
-                    projectName = "Foundry",
-                    onRunClick = {},
-                    onStartRunClick = {},
-                    onConnectionPillClick = {},
-                    onRetryConnection = {}
-                )
-            }
-        }
-
-        composeTestRule.onAllNodesWithText("WAITING").assertCountEquals(2)
-    }
-
-    @Test
-    fun testNoWaitingChipWithoutAPendingInterrupt() {
-        composeTestRule.setContent {
-            FoundryTheme {
-                RunsScreen(
-                    runs = listOf(sampleLiveRun) + sampleHistoryRuns,
-                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
-                    projectName = "Foundry",
-                    onRunClick = {},
-                    onStartRunClick = {},
-                    onConnectionPillClick = {},
-                    onRetryConnection = {}
-                )
-            }
-        }
-
-        composeTestRule.onNodeWithText("WAITING").assertDoesNotExist()
-    }
 
     @Test
     fun testEmptyStateDisplay() {

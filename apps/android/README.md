@@ -37,7 +37,7 @@ To talk to a real Foundry desktop:
 
 For offline demos or unit tests without a Mac, set `FoundryApplication.USE_FAKE_REPOSITORY = true` to use `FakeCompanionRepository`.
 
-The HTTP client talks to the FOU-83 routes (`/pair`, `/v1/session`, `/v1/projects`, `/v1/runs`, `/v1/interrupts`, etc.). Do not invent a second engine.
+The HTTP client talks to the FOU-83 routes (`/pair`, `/v1/session`, `/v1/projects`, `/v1/runs`, etc.). Do not invent a second engine.
 
 ## Fake paired session (acceptance)
 

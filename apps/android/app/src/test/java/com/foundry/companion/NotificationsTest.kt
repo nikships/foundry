@@ -2,7 +2,6 @@ package com.foundry.companion
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import com.foundry.companion.data.model.PendingInterrupt
 import com.foundry.companion.data.model.PhaseRunSummary
 import com.foundry.companion.data.model.RunRow
 import com.foundry.companion.data.repository.FakeCompanionRepository
@@ -26,8 +25,6 @@ import org.robolectric.annotation.Config
 
 class TestNotificationManager : CompanionNotificationManager {
     val postedSettledRuns = mutableListOf<RunRow>()
-    val postedInterrupts = mutableListOf<PendingInterrupt>()
-    val interruptProjectIds = mutableListOf<String>()
     var permissionGranted = true
 
     override fun hasNotificationPermission(): Boolean = permissionGranted
@@ -36,15 +33,8 @@ class TestNotificationManager : CompanionNotificationManager {
         postedSettledRuns.add(run)
     }
 
-    override fun postInterruptNotification(interrupt: PendingInterrupt, projectId: String) {
-        postedInterrupts.add(interrupt)
-        interruptProjectIds.add(projectId)
-    }
-
     fun clear() {
         postedSettledRuns.clear()
-        postedInterrupts.clear()
-        interruptProjectIds.clear()
     }
 }
 
@@ -94,14 +84,6 @@ class NotificationsTest {
             outcomeDetail = "All 5 phases passed."
         )
         realManager.postRunSettledNotification(run)
-
-        val interrupt = PendingInterrupt(
-            interruptId = "int_01",
-            runId = "run_settle_01",
-            pipelineName = "Feature Pipeline",
-            question = "Approve deployment?"
-        )
-        realManager.postInterruptNotification(interrupt)
     }
 
     @Test
@@ -116,7 +98,6 @@ class NotificationsTest {
 
         // Existing historical runs should not post notifications on first launch
         assertTrue(testNotificationManager.postedSettledRuns.isEmpty())
-        assertTrue(testNotificationManager.postedInterrupts.isEmpty())
     }
 
     @Test
@@ -177,35 +158,6 @@ class NotificationsTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertTrue(testNotificationManager.postedSettledRuns.isEmpty())
-    }
-
-    @Test
-    fun testEngineerInterruptNotifiesEvenWhenSettleToggleDisabled() {
-        val vm = CompanionViewModel(
-            repository = repository,
-            sessionManager = sessionManager,
-            notifier = notifier,
-            enablePolling = false
-        )
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        vm.toggleNotifyOnSettle(false)
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        val interrupt = PendingInterrupt(
-            interruptId = "int_new_urgent",
-            runId = "run_260818_live99",
-            pipelineName = "Security Pipeline",
-            question = "Authorize privileged key rotation?"
-        )
-        repository.setPendingInterrupts(listOf(interrupt))
-
-        vm.loadPendingInterrupts()
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        assertEquals(1, testNotificationManager.postedInterrupts.size)
-        assertEquals("int_new_urgent", testNotificationManager.postedInterrupts.first().interruptId)
-        assertEquals("Security Pipeline", testNotificationManager.postedInterrupts.first().pipelineName)
     }
 
     @Test

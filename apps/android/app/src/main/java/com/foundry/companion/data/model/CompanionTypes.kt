@@ -3,7 +3,7 @@ package com.foundry.companion.data.model
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 
-const val COMPANION_PROTOCOL_VERSION = 4
+const val COMPANION_PROTOCOL_VERSION = 5
 
 @Serializable
 data class CompanionPairingPayload(
@@ -58,7 +58,7 @@ data class PipelineSummary(
 data class PhaseTemplateSummary(
     val id: String = "",
     val name: String,
-    val kind: String = "agent", // "agent" | "code" | "review" | "engineer"
+    val kind: String = "agent", // "agent" | "code" | "review"
     val isFeedbackTarget: Boolean = false,
     val feedbackTo: String? = null
 )
@@ -94,7 +94,6 @@ data class RunRow(
     val merged: Boolean = false,
     val archived: Boolean = false,
     val engineer: String = "",
-    val waitingInterrupt: Boolean = false,
     val phases: List<PhaseRunSummary> = emptyList(),
     val phaseSummary: List<PhaseSummaryItem> = emptyList()
 ) {
@@ -317,39 +316,6 @@ data class TranscriptEvent(
 )
 
 @Serializable
-data class InterruptOption(
-    val id: String = "",
-    val label: String = "",
-    val kind: String = "approve" // "approve" | "reject" | "edit"
-)
-
-@Serializable
-data class PendingInterrupt(
-    val interruptId: String,
-    val runId: String,
-    val phaseId: String? = null,
-    val kind: String = "engineer",
-    val title: String = "",
-    val body: String = "",
-    val options: List<InterruptOption> = emptyList(),
-    val createdAt: String = "",
-    val pipelineName: String = "",
-    val phaseName: String = "",
-    val question: String = "",
-    val notes: String? = null
-) {
-    val displayQuestion: String get() = body.ifBlank { question.ifBlank { title } }
-    val displayPipeline: String get() = pipelineName.ifBlank { "Engineer Phase" }
-}
-
-@Serializable
-data class InterruptAnswer(
-    val interruptId: String,
-    val decision: String, // "approve" | "reject"
-    val text: String? = null
-)
-
-@Serializable
 data class StartRunInput(
     val projectId: String,
     val pipelineId: String,
@@ -378,11 +344,6 @@ data class CompanionKillResult(
 data class CompanionContinueResult(
     val ok: Boolean,
     val detail: String = ""
-)
-
-@Serializable
-data class CompanionAnswerResult(
-    val ok: Boolean
 )
 
 @Serializable

@@ -84,12 +84,6 @@
   border-color: var(--amber);
 }
 
-.checkpointNode {
-  height: 236px;
-  background: var(--bg-panel);
-  border-color: color-mix(in srgb, var(--amber) 54%, var(--line-strong));
-}
-
 .inputPort,
 .outputPort {
   position: absolute;
@@ -109,11 +103,6 @@
 
 .outputPort {
   right: -6px;
-}
-
-.checkpointNode .inputPort,
-.checkpointNode .outputPort {
-  background: var(--amber);
 }
 
 .nodeBody {
@@ -147,8 +136,7 @@
 .kindLabel,
 .stepNumber,
 .actionHint,
-.issueLabel,
-.checkpointQuestion > span {
+.issueLabel {
   font-family: var(--font-mono);
   font-size: 12.5px;
   font-weight: 600;
@@ -245,30 +233,6 @@
   font-weight: 700;
   letter-spacing: 0.08em;
   color: var(--amber);
-}
-
-.checkpointQuestion {
-  min-height: 70px;
-  margin-top: 12px;
-  padding: 9px 10px;
-  overflow: hidden;
-  background: var(--amber-dim);
-  border-left: 2px solid var(--amber);
-}
-
-.checkpointQuestion > span {
-  color: var(--amber);
-}
-
-.checkpointQuestion > p {
-  display: -webkit-box;
-  margin-top: 4px;
-  overflow: hidden;
-  font-size: 15px;
-  line-height: var(--leading);
-  color: var(--text);
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
 }
 
 .nodeActions {

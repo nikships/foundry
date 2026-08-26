@@ -9,9 +9,7 @@
 
 import type {
   GhStatus,
-  InterruptAnswer,
   ModelInfo,
-  PendingInterrupt,
   ReasoningEffort,
   RunRow,
   SmithProposal,
@@ -33,7 +31,7 @@ import type {
  * it so a phone knows before pairing, and the pair exchange enforces it so a
  * stale client gets a readable refusal instead of a half-working session.
  */
-export const COMPANION_PROTOCOL_VERSION = 4;
+export const COMPANION_PROTOCOL_VERSION = 5;
 
 /**
  * What the desktop encodes in the pairing QR (FOU-85 renders it). Everything a
@@ -140,10 +138,6 @@ export interface CompanionContinueResult {
   detail: string;
 }
 
-export interface CompanionAnswerResult {
-  ok: boolean;
-}
-
 /** The body of the PR-create route; the desktop drafts when either is empty. */
 export interface CompanionPrCreateRequest {
   title: string;
@@ -212,8 +206,6 @@ export interface CompanionRoutes {
   'POST /v1/runs': { request: StartRunInput; response: CompanionStartResult };
   'POST /v1/projects/:projectId/runs/:runId/kill': { response: CompanionKillResult };
   'POST /v1/projects/:projectId/runs/:runId/continue': { response: CompanionContinueResult };
-  'GET /v1/interrupts': { response: PendingInterrupt[] };
-  'POST /v1/interrupts/answer': { request: InterruptAnswer; response: CompanionAnswerResult };
   'GET /v1/projects/:projectId/pr-status': { response: GhStatus };
   'GET /v1/projects/:projectId/runs/:runId/pr-draft': { response: CompanionPrDraft };
   'POST /v1/projects/:projectId/runs/:runId/pr': {

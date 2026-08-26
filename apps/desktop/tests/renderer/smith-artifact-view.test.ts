@@ -9,7 +9,6 @@ import { describe, expect, it } from 'vitest';
 import type {
   AgentDef,
   ChangeReceiptDef,
-  CheckpointDef,
   ChecklistDef,
   DataTableDef,
   DiagnosticsDef,
@@ -38,10 +37,6 @@ import {
   checklistStatusGlyph,
   checklistStatusLabel,
   checklistSummary,
-  checkpointActions,
-  checkpointAnswerEditable,
-  checkpointContext,
-  checkpointStatusLabel,
   commandLabel,
   compareEntities,
   criterionLabel,
@@ -250,16 +245,6 @@ const evidence: EvidenceDisclosureDef = {
   ],
 };
 
-const checkpoint: CheckpointDef = {
-  interruptId: 'int_1',
-  title: 'Ship the migration?',
-  question: 'The migration drops a column. Proceed?',
-  runId: 'run_abcdef123456',
-  phaseId: 'review',
-  pipelineId: 'ship-it',
-  draftAnswer: 'Yes, the column is unused.',
-};
-
 const journey: ReadinessJourneyDef = {
   projectId: 'proj_1',
   projectName: 'foundry',
@@ -307,7 +292,6 @@ function artifactOf(kind: SmithArtifact['kind'], version = SMITH_ARTIFACT_VERSIO
   if (kind === 'diagnostics') return { ...base, kind, diagnostics };
   if (kind === 'data_table') return { ...base, kind, table };
   if (kind === 'evidence_disclosure') return { ...base, kind, evidence };
-  if (kind === 'engineer_checkpoint') return { ...base, kind, checkpoint };
   if (kind === 'readiness_journey') return { ...base, kind, journey };
   if (kind === 'provider_status') return { ...base, kind, status: providerStatus };
   return {
@@ -339,7 +323,6 @@ describe('the artifact registry', () => {
     expect(isRenderableArtifact(artifactOf('diagnostics', 99))).toBe(false);
     expect(isRenderableArtifact(artifactOf('data_table', 99))).toBe(false);
     expect(isRenderableArtifact(artifactOf('evidence_disclosure', 99))).toBe(false);
-    expect(isRenderableArtifact(artifactOf('engineer_checkpoint', 99))).toBe(false);
     expect(isRenderableArtifact(artifactOf('readiness_journey', 99))).toBe(false);
     expect(isRenderableArtifact(artifactOf('provider_status', 99))).toBe(false);
     expect(isRenderableArtifact(artifactOf('action_receipt', 99))).toBe(false);
@@ -361,52 +344,8 @@ describe('the artifact registry', () => {
     expect(artifactName(artifactOf('data_table'))).toBe('Active Runs');
     expect(artifactName(artifactOf('evidence_disclosure'))).toBe('Phase Execution Context');
     expect(artifactName(artifactOf('action_receipt'))).toBe('create pull request');
-    expect(artifactName(artifactOf('engineer_checkpoint'))).toBe('Ship the migration?');
     expect(artifactName(artifactOf('readiness_journey'))).toBe('foundry');
     expect(artifactName(artifactOf('provider_status'))).toBe('Providers and Companion');
-  });
-});
-
-describe('engineer checkpoint helpers', () => {
-  it('joins run, phase, and pipeline context the way InterruptSheet does', () => {
-    expect(checkpointContext(checkpoint)).toBe('run run_abcd · phase review · pipeline ship-it');
-    expect(checkpointContext({ interruptId: 'i', title: 't', question: 'q' })).toBe('');
-  });
-
-  it('defaults to approve/reject/edit when the spec named no actions', () => {
-    expect(checkpointActions(checkpoint).map((action) => action.kind)).toEqual([
-      'approve',
-      'reject',
-      'edit',
-    ]);
-    expect(
-      checkpointActions({
-        ...checkpoint,
-        actions: [{ id: 'ok', label: 'Ship it', kind: 'approve' }],
-      }).map((action) => action.label),
-    ).toEqual(['Ship it']);
-  });
-
-  it('stops offering an editable answer once the checkpoint is answered', () => {
-    expect(checkpointAnswerEditable(checkpoint)).toBe(true);
-    expect(checkpointAnswerEditable({ ...checkpoint, answered: true })).toBe(false);
-    expect(
-      checkpointAnswerEditable({
-        ...checkpoint,
-        actions: [{ id: 'ok', label: 'Approve', kind: 'approve' }],
-      }),
-    ).toBe(false);
-  });
-
-  it('reads as pending or as settled history, never both', () => {
-    expect(checkpointStatusLabel(checkpoint)).toBe('Awaiting decision');
-    expect(checkpointStatusLabel({ ...checkpoint, answered: true, decision: 'approve' })).toBe(
-      'Approved',
-    );
-    expect(checkpointStatusLabel({ ...checkpoint, answered: true, decision: 'reject' })).toBe(
-      'Rejected',
-    );
-    expect(checkpointStatusLabel({ ...checkpoint, answered: true })).toBe('Answered');
   });
 });
 
@@ -725,9 +664,6 @@ describe('display labels', () => {
     expect(writesLabel(['src/**'])).toBe('src/**');
     expect(phaseWorkLabel(pipeline.phases[0]!)).toBe('planner');
     expect(phaseWorkLabel(pipeline.phases[1]!)).toBe('test');
-    expect(
-      phaseWorkLabel({ name: 'ask', kind: 'engineer', description: '', question: 'Ship it?' }),
-    ).toBe('Ship it?');
   });
 
   it('labels run statuses and isolation', () => {

@@ -17,52 +17,39 @@ class NavRoutesTest {
         assertEquals("runs", NavRoute.Runs.route)
         assertEquals("new-run", NavRoute.NewRun.route)
         assertEquals("smith", NavRoute.Smith.route)
-        assertEquals("run/{runId}?interrupt={interruptId}", NavRoute.RunDetail.route)
+        assertEquals("run/{runId}", NavRoute.RunDetail.route)
         assertEquals("run/{runId}/inspector?phase={phaseId}", NavRoute.Inspector.route)
     }
 
     @Test
     fun testRouteBuilders() {
         assertEquals("run/run_123", NavRoute.RunDetail.createRoute("run_123"))
-        assertEquals("run/run_123", NavRoute.RunDetail.createRoute("run_123", ""))
-        assertEquals("run/run_123?interrupt=int_9", NavRoute.RunDetail.createRoute("run_123", "int_9"))
         assertEquals("run/run_123/inspector", NavRoute.Inspector.createRoute("run_123"))
         assertEquals("run/run_123/inspector?phase=phase_code", NavRoute.Inspector.createRoute("run_123", "phase_code"))
     }
 
     @Test
-    fun testInterruptNotificationExtrasResolveToTheInterruptRoute() {
-        // The interrupt notification sets both extras; the extra was previously
-        // dropped and the tap landed on the run with no sheet.
+    fun testNotificationExtrasResolveToTheRunRoute() {
         val fromExtras = resolveDeepLink(
             uriRunId = null,
-            uriInterruptId = null,
-            extraRunId = "run_123",
-            extraInterruptId = "int_9"
+            extraRunId = "run_123"
         )
         assertEquals("run_123", fromExtras?.runId)
-        assertEquals("int_9", fromExtras?.interruptId)
-        assertEquals("run/run_123?interrupt=int_9", fromExtras?.route)
+        assertEquals("run/run_123", fromExtras?.route)
     }
 
     @Test
-    fun testDeepLinkUriCarriesInterruptQueryAndSettledRunHasNone() {
+    fun testDeepLinkUriResolvesToTheRunRoute() {
         val fromUri = resolveDeepLink(
             uriRunId = "run_123",
-            uriInterruptId = "int_9",
-            extraRunId = null,
-            extraInterruptId = null
+            extraRunId = null
         )
-        assertEquals("run/run_123?interrupt=int_9", fromUri?.route)
+        assertEquals("run/run_123", fromUri?.route)
 
-        // A settled-run notification names no interrupt, so no sheet is asked for.
         val settled = resolveDeepLink(
             uriRunId = "run_123",
-            uriInterruptId = null,
-            extraRunId = "run_123",
-            extraInterruptId = null
+            extraRunId = "run_123"
         )
-        assertNull(settled?.interruptId)
         assertEquals("run/run_123", settled?.route)
     }
 
@@ -70,53 +57,41 @@ class NavRoutesTest {
     fun testNotificationExtrasWinOverUriRunId() {
         val mixed = resolveDeepLink(
             uriRunId = "run_stale",
-            uriInterruptId = null,
-            extraRunId = "run_123",
-            extraInterruptId = "int_9"
+            extraRunId = "run_123"
         )
         assertEquals("run_123", mixed?.runId)
-        assertEquals("int_9", mixed?.interruptId)
     }
 
     @Test
     fun testDeepLinkWithoutARunIsIgnored() {
-        assertNull(resolveDeepLink(null, "int_9", null, "int_9"))
-        assertNull(resolveDeepLink("", null, "", null))
+        assertNull(resolveDeepLink(null, null))
+        assertNull(resolveDeepLink("", ""))
     }
 
     @Test
     fun testDeepLinkCarriesTheProjectSoAColdStartDoesNotGuess() {
         val fromExtras = resolveDeepLink(
             uriRunId = "run_123",
-            uriInterruptId = null,
             extraRunId = "run_123",
-            extraInterruptId = null,
             extraProjectId = "proj_foundry_core"
         )
         assertEquals("proj_foundry_core", fromExtras?.projectId)
 
         val fromUri = resolveDeepLink(
             uriRunId = "run_123",
-            uriInterruptId = null,
             extraRunId = null,
-            extraInterruptId = null,
             uriProjectId = "proj_from_uri"
         )
         assertEquals("proj_from_uri", fromUri?.projectId)
 
-        // A background notifier that never saw the run's project simply omits it.
-        val none = resolveDeepLink("run_123", null, "run_123", null)
+        val none = resolveDeepLink("run_123", "run_123")
         assertNull(none?.projectId)
     }
 
     @Test
     fun testKilledProcessDeepLinkGetsHomeSynthesizedUnderTheRun() {
-        // Cold start from a notification: nothing on the stack, so Back off the
-        // run would leave the app unless Home is pushed first.
         assertTrue(needsSynthesizedHome(emptyList()))
         assertTrue(needsSynthesizedHome(listOf(NavRoute.Pair.route)))
-
-        // Warm app already showing Home (or a run above it) needs no synthesis.
         assertFalse(needsSynthesizedHome(listOf(NavRoute.Runs.route)))
         assertFalse(needsSynthesizedHome(listOf(NavRoute.Runs.route, NavRoute.RunDetail.route)))
     }
