@@ -228,6 +228,7 @@ function rerecord(
     headSha: checkpoint.headSha,
     branch: payload.branch,
     worktreePath: payload.worktreePath,
+    isolated: payload.isolated,
     model: checkpoint.model,
     agent: checkpoint.agent,
     agentSessionId: checkpoint.agentSessionId,
@@ -634,19 +635,39 @@ describe('what a restore refuses, and why', () => {
     expect(result.detail).toBe('that checkpoint is not one this run recorded');
   });
 
-  it('refuses a checkpoint whose recorded contents are no longer on disk', async () => {
+  it('refuses a checkpoint whose payload file has been pruned away', async () => {
+    const { runId } = await rejectedRunWithDirtyCheckpoint();
+    const checkpoint = checkpointFor(runId, 'build');
+    rmSync(join(h.tracer.runDir(runId), checkpoint.payloadPath));
+
+    const result = await restoreRun(scope(), { runId, checkpointId: checkpoint.checkpointId });
+    expect(result.refusal).toBe('checkpoint_payload_missing');
+    expect(result.detail).toBe('that checkpoint’s recorded contents are no longer on disk');
+
+    // The row carries presence, so the picker says so without opening it.
+    const listed = await listRestorableCheckpoints(scope(), runId);
+    const listedBuild = listed.checkpoints.find((c) => c.phaseName === 'build')!;
+    expect(listedBuild.restorable).toBe(false);
+    expect(listedBuild.blocker).toBe('checkpoint_payload_missing');
+  });
+
+  it('refuses a payload that is present but no longer parses, at restore time', async () => {
     const { runId } = await rejectedRunWithDirtyCheckpoint();
     const checkpoint = checkpointFor(runId, 'build');
     h.tracer.writeRunFile(runId, checkpoint.payloadPath, 'not json');
 
     const result = await restoreRun(scope(), { runId, checkpointId: checkpoint.checkpointId });
     expect(result.refusal).toBe('checkpoint_payload_missing');
-    expect(result.detail).toBe('that checkpoint’s recorded contents are no longer on disk');
 
+    // The list reads the index and does not open payloads: a checkpoint now
+    // holds the dirty set uncapped, so proving every row parses would mean
+    // reading a phase's entire worktree drift per row just to draw a picker.
+    // Presence is what the row can answer cheaply; a corrupt payload is caught
+    // where it matters, on the restore itself, with the same reason.
     const listed = await listRestorableCheckpoints(scope(), runId);
     const listedBuild = listed.checkpoints.find((c) => c.phaseName === 'build')!;
-    expect(listedBuild.restorable).toBe(false);
-    expect(listedBuild.blocker).toBe('checkpoint_payload_missing');
+    expect(listedBuild.restorable).toBe(true);
+    expect(listedBuild.blocker).toBeUndefined();
   });
 
   it('refuses when the commit the phase started from is not in this worktree', async () => {
@@ -673,8 +694,8 @@ describe('what a restore refuses, and why', () => {
 describe('a truncated checkpoint', () => {
   /**
    * Records the run's `build` checkpoint again with one path's content
-   * withheld, exactly as the size cap does, so the row is truncated and its
-   * payload names what cannot be reproduced.
+   * withheld, exactly as a path the capture could not read leaves it, so the
+   * row is truncated and its payload names what cannot be reproduced.
    */
   function truncate(runId: string): string {
     const payload = h.tracer.phaseCheckpoint(checkpointFor(runId, 'build').checkpointId)!.payload;
@@ -683,7 +704,7 @@ describe('a truncated checkpoint', () => {
       'build',
       payload.files.map((file) =>
         file.path === 'tracked.txt'
-          ? { ...file, content: undefined, encoding: undefined, omitted: 'too_large' as const }
+          ? { ...file, content: undefined, encoding: undefined, omitted: 'unreadable' as const }
           : file,
       ),
       { truncated: true, omittedPaths: ['tracked.txt'] },
@@ -812,6 +833,33 @@ describe('the branch a restore is willing to move', () => {
     expect(headOf(worktree)).toBe(before);
     expect(h.tracer.eventsAfter(runId, 0, 1000).some((e) => e.name === 'restore')).toBe(false);
     rmSync(join(gitDir, 'index.lock'));
+  });
+
+  it('refuses a run that never had a worktree, so a restore cannot reach a live checkout', async () => {
+    // A non-isolated run's checkpoint records the operator's own checkout and
+    // its uncommitted work (`isolated: false`), which is a materially
+    // different thing to put back. Two independent guards already refuse it —
+    // the run row carries no worktree and no branch — and this pins that,
+    // because the checkpoint payload alone would happily name a path to write.
+    const outcome = await run({
+      project: { isolation: false },
+      pipeline: pipe([codePhase('touch', { argv: ['sh', '-c', 'printf x > only.txt && false'] })]),
+    });
+    expect(outcome.status).toBe('rejected');
+    const row = h.tracer.run(outcome.runId)!;
+    expect(row.worktreePath).toBeNull();
+
+    const checkpoint = checkpointFor(outcome.runId, 'touch');
+    expect(h.tracer.phaseCheckpoint(checkpoint.checkpointId)!.payload.isolated).toBe(false);
+
+    const result = await restoreRun(scope(), {
+      runId: outcome.runId,
+      checkpointId: checkpoint.checkpointId,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.refusal).toBe('worktree_missing');
+    // The operator's checkout keeps the work the phase left in it.
+    expect(readFileSync(join(h.repo, 'only.txt'), 'utf8')).toBe('x');
   });
 
   it('refuses a checkpoint that never recorded the commit its phase started from', async () => {
@@ -973,6 +1021,56 @@ describe('a payload that cannot be applied as recorded', () => {
     expect(headOf(worktree)).toBe(checkpoint.headSha);
     const restore = h.tracer.eventsAfter(runId, 0, 1000).find((e) => e.name === 'restore')!;
     expect(restore.payload.accepted).toBe(false);
+  });
+
+  /**
+   * Makes `git status` alone fail, which is the "git refused" half of what
+   * `statusPorcelain` reports as un-enumerable. Every other git command the
+   * restore runs — branch, rev-parse, reset — is unaffected, so this isolates
+   * the listing rather than breaking the repository.
+   */
+  function breakStatusListing(worktree: string): void {
+    sh(worktree, ['git', 'config', 'status.showUntrackedFiles', 'not-a-mode']);
+  }
+
+  it('is partial when the drift to revert could not be listed in full', async () => {
+    const { runId, worktree } = await rejectedRunWithDirtyCheckpoint();
+    const checkpoint = checkpointFor(runId, 'build');
+    // The capture side already refuses to call a short list the whole dirty
+    // set; the revert pass has to be just as honest, because reverting a
+    // subset and reporting a whole restore is the answer it must not give.
+    breakStatusListing(worktree);
+
+    const result = await restoreRun(scope(), {
+      runId,
+      checkpointId: checkpoint.checkpointId,
+      acceptPartial: true,
+    });
+
+    expect(result.ok).toBe(true);
+    // Nothing is named — that is the point: the paths that were missed cannot
+    // be listed, so `partial` carries the warning on its own.
+    expect(result.restored!.omittedPaths).toEqual([]);
+    expect(result.restored!.driftEnumerated).toBe(false);
+    expect(result.restored!.partial).toBe(true);
+    expect(result.detail).toContain('could not be listed in full');
+    // The reset still happened and is still recorded.
+    expect(headOf(worktree)).toBe(checkpoint.headSha);
+  });
+
+  it('refuses the un-enumerated case too when a partial restore was not accepted', async () => {
+    const { runId, worktree } = await rejectedRunWithDirtyCheckpoint();
+    const checkpoint = checkpointFor(runId, 'build');
+    breakStatusListing(worktree);
+
+    const result = await restoreRun(scope(), { runId, checkpointId: checkpoint.checkpointId });
+
+    expect(result.ok).toBe(false);
+    expect(result.refusal).toBe('partial_not_accepted');
+    expect(result.detail).toContain('could not be listed in full');
+    expect(result.detail).toContain('the worktree was already reset');
+    const restore = h.tracer.eventsAfter(runId, 0, 1000).find((e) => e.name === 'restore')!;
+    expect(restore.payload.driftEnumerated).toBe(false);
   });
 });
 

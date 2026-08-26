@@ -1143,8 +1143,13 @@ export interface RestoreRecord {
   filesRemoved: number;
   /** Paths whose phase-start content was never recorded or could not be written. */
   omittedPaths: string[];
-  /** True when `omittedPaths` is non-empty: the tree is close, not identical. */
+  /** True when the tree is close rather than identical, whether or not a path is named. */
   partial: boolean;
+  /**
+   * False when the drift to revert could not be listed in full, so paths phase
+   * start did not have may still stand and cannot be named.
+   */
+  driftEnumerated: boolean;
   /**
    * Every agent whose session pointer this restore dropped, so the next
    * Continue opens a new conversation for each rather than reopening one the

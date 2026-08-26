@@ -50,7 +50,7 @@ import {
   resetHardTo,
   resolveRef,
   revertPath,
-  status,
+  statusPorcelain,
 } from './git.js';
 
 /** The Tracer surface a restore needs, so a test can drive it without one. */
@@ -168,7 +168,11 @@ export async function restoreRun(
     filesRestored: applied.filesRestored,
     filesRemoved: applied.filesRemoved,
     omittedPaths: applied.omittedPaths,
-    partial: applied.omittedPaths.length > 0,
+    // A drift list that could not be enumerated is a partial restore even with
+    // nothing to name: paths that should have been reverted may still stand,
+    // and there is no way to say which.
+    partial: applied.omittedPaths.length > 0 || !applied.driftEnumerated,
+    driftEnumerated: applied.driftEnumerated,
     freshSessions,
     fromStatus: run.status,
   };
@@ -191,13 +195,17 @@ export async function restoreRun(
   scope.notifyRuns?.();
 
   // The truncation pre-check is not the whole answer: a path can be refused or
-  // fail to write during the apply on a record that was never truncated. A
-  // caller that did not ask for a partial restore is told it got one.
+  // fail to write during the apply, and the drift list can come back short, on
+  // a record that was never truncated. A caller that did not ask for a partial
+  // restore is told it got one.
   if (restored.partial && !input.acceptPartial) {
+    const why = restored.omittedPaths.length
+      ? omittedSuffix(restored.omittedPaths)
+      : ' — this worktree’s changed paths could not be listed in full';
     return {
       ok: false,
       refusal: 'partial_not_accepted',
-      detail: `${RESTORE_REFUSAL_COPY.partial_not_accepted}${omittedSuffix(restored.omittedPaths)} — the worktree was already reset to ${row.headSha.slice(0, 8)} from ${previousHeadSha.slice(0, 8)}`,
+      detail: `${RESTORE_REFUSAL_COPY.partial_not_accepted}${why} — the worktree was already reset to ${row.headSha.slice(0, 8)} from ${previousHeadSha.slice(0, 8)}`,
       restored,
     };
   }
@@ -257,8 +265,12 @@ async function describeCheckpoint(
   cwd: string | null,
   head: string,
 ): Promise<RestorableCheckpoint> {
-  const loaded = tracer.phaseCheckpoint(row.checkpointId);
-  const blocker = checkpointBlocker(row, !!loaded);
+  // Presence and exactness are answered off the row. The payload is opened
+  // only for a truncated record, which is the only kind that can name an
+  // omitted path — a checkpoint now holds the dirty set in full, with no size
+  // cap, so reading every payload to populate a picker would mean loading a
+  // phase's whole worktree drift per row.
+  const blocker = checkpointBlocker(row);
   const base: RestorableCheckpoint = {
     checkpointId: row.checkpointId,
     runId: row.runId,
@@ -275,10 +287,12 @@ async function describeCheckpoint(
     bytesStored: row.bytesStored,
     // A truncated record can still put most of the tree back; only a missing
     // payload or a missing HEAD leaves nothing to restore from at all.
-    restorable: !!loaded && !!row.headSha,
-    exactRestorePossible: row.exactRestorePossible && !!loaded,
+    restorable: row.payloadPresent && !!row.headSha,
+    exactRestorePossible: row.exactRestorePossible,
     ...(blocker ? { blocker } : {}),
-    omittedPaths: loaded?.payload.omittedPaths ?? [],
+    omittedPaths: row.truncated
+      ? (tracer.phaseCheckpoint(row.checkpointId)?.payload.omittedPaths ?? [])
+      : [],
     commitsSince: 0,
     commitsSinceShas: [],
   };
@@ -288,11 +302,8 @@ async function describeCheckpoint(
   return { ...base, commitsSince: shas.length, commitsSinceShas: shas };
 }
 
-function checkpointBlocker(
-  row: PhaseCheckpointRow,
-  payloadPresent: boolean,
-): RestoreRefusal | null {
-  if (!payloadPresent) return 'checkpoint_payload_missing';
+function checkpointBlocker(row: PhaseCheckpointRow): RestoreRefusal | null {
+  if (!row.payloadPresent) return 'checkpoint_payload_missing';
   if (!row.headSha) return 'checkpoint_head_missing';
   if (row.truncated) return 'partial_not_accepted';
   return null;
@@ -304,6 +315,8 @@ interface Applied {
   filesRestored: number;
   filesRemoved: number;
   omittedPaths: string[];
+  /** False when the drift to revert could not be fully listed, so a pass was partial. */
+  driftEnumerated: boolean;
 }
 
 /**
@@ -319,11 +332,19 @@ interface Applied {
  * rather than thrown, because the reset has already happened and a throw here
  * would leave a half-restored worktree whose pre-restore HEAD was never
  * recorded anywhere.
+ *
+ * The drift list comes from `statusPorcelain` for the same reason the capture
+ * does: `status()` runs through `runCommand`, which keeps only the tail of its
+ * output, so a worktree with more than roughly a hundred changed paths loses
+ * an arbitrary prefix of them. Reverting a subset while reporting a whole
+ * restore is the one answer this pass must not give, so a listing that could
+ * not be enumerated makes the restore partial rather than silently short.
  */
 async function applyPayload(cwd: string, payload: PhaseCheckpointPayload): Promise<Applied> {
   const recorded = new Set(payload.files.map((file) => file.path));
+  const drift = await statusPorcelain(cwd);
   let filesRemoved = 0;
-  for (const entry of await status(cwd)) {
+  for (const entry of drift.entries) {
     if (recorded.has(entry.path)) continue;
     if (await revertPath(cwd, entry.path)) filesRemoved += 1;
   }
@@ -334,7 +355,7 @@ async function applyPayload(cwd: string, payload: PhaseCheckpointPayload): Promi
     if (applyFileSafely(cwd, file) === 'restored') filesRestored += 1;
     else omittedPaths.push(file.path);
   }
-  return { filesRestored, filesRemoved, omittedPaths };
+  return { filesRestored, filesRemoved, omittedPaths, driftEnumerated: !drift.truncated };
 }
 
 type FileOutcome = 'restored' | 'omitted';
@@ -477,10 +498,13 @@ function confirmation(record: RestoreRecord): string {
   }
   parts.push(`${plural(record.filesRestored, 'file')} put back`);
   if (record.filesRemoved) parts.push(`${record.filesRemoved} removed`);
-  if (record.partial) {
+  if (record.omittedPaths.length) {
     parts.push(
       `${plural(record.omittedPaths.length, 'path')} left as they are: ${record.omittedPaths.join(', ')}`,
     );
+  }
+  if (!record.driftEnumerated) {
+    parts.push('this worktree’s changed paths could not be listed in full, so some may remain');
   }
   if (record.freshSessions.length) {
     const agents = record.freshSessions.map((session) => session.agent).join(', ');
