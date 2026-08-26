@@ -20,7 +20,7 @@ inline human approval.
 - `smith_list`, `smith_show`, `smith_propose`: full entity reads and validated
   entity create/edit proposals.
 - `smith_entities`, `smith_settings`, `smith_projects`, `smith_runs`,
-  `smith_prs`, `smith_interrupts`, `smith_providers`, `smith_companion`, and
+  `smith_prs`, `smith_providers`, `smith_companion`, and
   `smith_system`: fixed operation enums over existing handlers.
 - `smith_present` (`present-tools.ts`): agent-callable rich UI artifacts. Smith
   picks a registered kind and supplies typed entity data; the renderer owns the
@@ -34,10 +34,8 @@ inline human approval.
   `renderer/components/smith/`, a persistence/restore decision in
   `chat-session.ts`, and tests in `smith-present-tools.test.ts` +
   `smith-artifact-view.test.ts`. Never infer cards from Smith's Markdown.
-  Three kinds report live app state and keep the gates that own it:
-  `engineer_checkpoint` shows a checkpoint's question, run/phase context, and
-  editable answer but answers nothing — the write is `smith_interrupts answer`
-  on the approval queue; `readiness_journey` reports the marker committed on
+  Two kinds report live app state and keep the gates that own it:
+  `readiness_journey` reports the marker committed on
   the base ref as the only verdict, with criteria, remediation work, and PR as
   explanation; `provider_status` carries connection/auth/error metadata plus a
   `keyPresent` boolean and paired devices, and `validateProviderStatus`

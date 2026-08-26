@@ -42,14 +42,13 @@ import { smithSettingsTool } from './smith/settings-tools.js';
 import { smithProjectsTool } from './smith/project-tools.js';
 import { smithRunsTool } from './smith/run-tools.js';
 import { smithPrsTool } from './smith/pr-tools.js';
-import { smithInterruptsTool } from './smith/interrupt-tools.js';
 import { smithProvidersTool } from './smith/provider-tools.js';
 import { smithCompanionTool } from './smith/companion-tools.js';
 import { smithSystemTool } from './smith/system-tools.js';
 import { readinessManageTool, readinessToolsFor } from './smith/readiness-tools.js';
 import { CompanionHost } from './companion/host.js';
 import { saveProposal } from './ipc/smith.js';
-import { notifyNeedsInput, notifyOutcome, setDockBadge } from './system/notify.js';
+import { notifyOutcome, setDockBadge } from './system/notify.js';
 import { getBridgeService, shutdownBridgeService, type BridgeService } from './bridge/service.js';
 import { DEFAULT_BRIDGE_PORT } from './bridge/manager.js';
 import { linearCredentials } from './linear/credentials.js';
@@ -146,7 +145,6 @@ export class AppContext {
       settings: () => this.settings.get(),
       engineerName: this.settings.get().engineerName,
       onRunFinished: (run: RunRow) => this.onRunFinished(run),
-      onInterruptsChanged: () => this.broadcast(IPC.eventInterruptsChanged),
       onRunsChanged: () => {
         setDockBadge(this.registry.liveRunCount(), this.settings.get());
         this.broadcast(IPC.eventRunsChanged);
@@ -163,10 +161,6 @@ export class AppContext {
               runId,
             })
           : null,
-    });
-
-    this.registry.on('needs-input', (interrupt: { title: string; body: string }) => {
-      notifyNeedsInput(interrupt.title, interrupt.body, this.settings.get());
     });
 
     // Constructed here; main restores it only when the operator previously
@@ -263,7 +257,6 @@ export class AppContext {
               smithProjectsTool(deps),
               smithRunsTool(deps),
               smithPrsTool(deps),
-              smithInterruptsTool(deps),
               smithProvidersTool(deps),
               smithCompanionTool(deps),
               smithSystemTool(deps),

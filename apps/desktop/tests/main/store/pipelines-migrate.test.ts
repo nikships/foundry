@@ -132,6 +132,33 @@ describe('loading a pipelines file', () => {
     expect(phase).not.toHaveProperty('timeoutMs');
   });
 
+  it('drops leftover engineer checkpoint phases and their canvas nodes', () => {
+    const stored = userPipeline();
+    stored.phases = [
+      stored.phases[0]!,
+      {
+        name: 'approve',
+        kind: 'engineer',
+        description: 'Pause so an operator can review the work so far.',
+        question: 'Should the run continue?',
+      } as unknown as (typeof stored.phases)[number],
+    ];
+    stored.canvas = {
+      nodes: {
+        build: { x: 0, y: 0 },
+        approve: { x: 320, y: 0 },
+      },
+    };
+    writeStored([stored]);
+
+    const loaded = new PipelineStore(dir).get('my-chain');
+    expect(loaded?.phases.map((phase) => phase.name)).toEqual(['build']);
+    expect(loaded?.phases.some((phase) => (phase as { kind?: string }).kind === 'engineer')).toBe(
+      false,
+    );
+    expect(loaded?.canvas?.nodes).toEqual({ build: { x: 0, y: 0 } });
+  });
+
   it('does not report a shipped chain as edited just because the file was normalized', () => {
     const shipped = BUILTIN_PIPELINES[0]!;
     writeStored([

@@ -1,7 +1,6 @@
 import { existsSync } from 'node:fs';
 import { shell } from 'electron';
 import type {
-  InterruptAnswer,
   RestorableCheckpointList,
   RestoreResult,
   RestoreRunInput,
@@ -306,7 +305,4 @@ export function register(ctx: Ctx, handle: Handle): void {
     const dir = scoped.tracer.runDir(runId);
     if (existsSync(dir)) shell.openPath(dir);
   });
-
-  handle(IPC.interruptsList, () => ctx.registry.interrupts());
-  handle(IPC.interruptsAnswer, (answer: InterruptAnswer) => ctx.registry.answer(answer));
 }

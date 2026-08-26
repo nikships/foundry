@@ -24,7 +24,6 @@ import kotlinx.coroutines.launch
 /** One-shot operator haptics. Collected once; never fired from a recomposing effect. */
 enum class CompanionHapticEvent {
     PairSuccess,
-    InterruptArrival,
     RunSettle
 }
 
@@ -41,7 +40,6 @@ data class CompanionUiState(
     val transcriptEvents: List<TranscriptEvent> = emptyList(),
     val eventRows: List<EventRow> = emptyList(),
     val eventsCursor: Long = 0L,
-    val pendingInterrupts: List<PendingInterrupt> = emptyList(),
     val ghStatus: GhStatus? = null,
     /** Host-drafted title/body for the Create PR confirm sheet. */
     val prDraft: CompanionPrDraft? = null,
@@ -57,30 +55,7 @@ data class CompanionUiState(
     val isCreatingPr: Boolean = false,
     val validationIssues: List<ValidationIssue> = emptyList(),
     val errorMessage: String? = null
-) {
-    /** The interrupt a run is blocked on, if any. `runId` is the only join key. */
-    fun interruptForRun(runId: String): PendingInterrupt? =
-        pendingInterrupts.firstOrNull { it.runId == runId }
 }
-
-/**
- * The host serves runs and interrupts as two independent lists and never stamps
- * `waitingInterrupt` on a row, so the chip is derived here by joining them on
- * `runId` rather than trusting a field only the fake repository ever set.
- */
-private fun markWaiting(runs: List<RunRow>, interrupts: List<PendingInterrupt>): List<RunRow> {
-    val waitingRunIds = interrupts.map { it.runId }.filter { it.isNotBlank() }.toSet()
-    return runs.map { run ->
-        val waiting = run.runId in waitingRunIds
-        if (run.waitingInterrupt == waiting) run else run.copy(waitingInterrupt = waiting)
-    }
-}
-
-private fun CompanionUiState.withInterrupts(interrupts: List<PendingInterrupt>): CompanionUiState =
-    copy(pendingInterrupts = interrupts, runs = markWaiting(runs, interrupts))
-
-private fun CompanionUiState.withRuns(nextRuns: List<RunRow>): CompanionUiState =
-    copy(runs = markWaiting(nextRuns, pendingInterrupts))
 
 class CompanionViewModel(
     private val repository: CompanionRepository,
@@ -108,8 +83,6 @@ class CompanionViewModel(
     val hapticEvents: SharedFlow<CompanionHapticEvent> = _hapticEvents.asSharedFlow()
 
     private val hapticRunStatuses = mutableMapOf<String, String>()
-    private val hapticInterruptIds = mutableSetOf<String>()
-    private var hapticInterruptsPrimed = false
 
     private var pollingJob: Job? = null
     private var isManualUnpair = false
@@ -146,13 +119,6 @@ class CompanionViewModel(
             }
         }
 
-        viewModelScope.launch {
-            repository.pendingInterrupts.collect { interrupts ->
-                noteInterruptHaptics(interrupts)
-                _uiState.update { it.withInterrupts(interrupts) }
-            }
-        }
-
         if (_uiState.value.activeSession != null && _uiState.value.connectionStatus is ConnectionStatus.Connected) {
             loadInitialData()
         }
@@ -163,8 +129,6 @@ class CompanionViewModel(
             repository.getSessionInfo().onSuccess { info ->
                 _uiState.update { it.copy(sessionInfo = info) }
             }
-
-            loadPendingInterrupts()
 
             repository.getProjects().onSuccess { projects ->
                 val selected = resolveSelectedProjectId(
@@ -221,7 +185,6 @@ class CompanionViewModel(
                 delay(2000L)
                 if (_uiState.value.connectionStatus is ConnectionStatus.Connected) {
                     loadRuns(projectId)
-                    loadPendingInterrupts()
                     loadSmith(projectId)
                     val activeRun = _uiState.value.currentRunDetail?.run
                     if (activeRun != null && activeRun.isRunning && _uiState.value.missingRunId != activeRun.runId) {
@@ -253,16 +216,6 @@ class CompanionViewModel(
         pollingJob = null
     }
 
-    fun loadPendingInterrupts() {
-        viewModelScope.launch {
-            repository.getInterrupts().onSuccess { interrupts ->
-                noteInterruptHaptics(interrupts)
-                _uiState.update { it.withInterrupts(interrupts) }
-                notifier?.onInterrupts(interrupts)
-            }
-        }
-    }
-
     fun loadRuns(projectId: String = _uiState.value.selectedProjectId) {
         if (projectId.isBlank()) return
         viewModelScope.launch {
@@ -270,7 +223,7 @@ class CompanionViewModel(
                 val unarchived = runs.filterNot { it.archived }
                     .map { if (it.projectId.isBlank()) it.copy(projectId = projectId) else it }
                 noteRunHaptics(unarchived)
-                _uiState.update { it.withRuns(unarchived) }
+                _uiState.update { it.copy(runs = unarchived) }
                 notifier?.onRuns(unarchived)
             }
         }
@@ -469,19 +422,6 @@ class CompanionViewModel(
         }
     }
 
-    fun answerInterrupt(interruptId: String, approved: Boolean, notes: String?) {
-        val decision = if (approved) "approve" else "reject"
-        viewModelScope.launch {
-            repository.answerInterrupt(InterruptAnswer(interruptId = interruptId, decision = decision, text = notes)).onSuccess {
-                loadPendingInterrupts()
-                val currentRun = _uiState.value.currentRunDetail?.run
-                if (currentRun != null) {
-                    loadRunDetail(currentRun.runId)
-                }
-            }
-        }
-    }
-
     fun clearActionError() {
         _uiState.update { it.copy(errorMessage = null) }
     }
@@ -665,8 +605,6 @@ class CompanionViewModel(
 
     private fun resetHapticWatch() {
         hapticRunStatuses.clear()
-        hapticInterruptIds.clear()
-        hapticInterruptsPrimed = false
     }
 
     /**
@@ -679,24 +617,6 @@ class CompanionViewModel(
             val previous = hapticRunStatuses.put(run.runId, status)
             if (previous == "running" && status in SETTLED_HAPTIC_STATUSES) {
                 emitHaptic(CompanionHapticEvent.RunSettle)
-            }
-        }
-    }
-
-    /**
-     * The first interrupt snapshot (including an empty one) only primes. A
-     * later unseen id is an arrival. Reloading the same id does not retrigger.
-     */
-    private fun noteInterruptHaptics(interrupts: List<PendingInterrupt>) {
-        val incoming = interrupts.map { it.interruptId }.filter { it.isNotBlank() }
-        if (!hapticInterruptsPrimed) {
-            hapticInterruptIds.addAll(incoming)
-            hapticInterruptsPrimed = true
-            return
-        }
-        for (id in incoming) {
-            if (hapticInterruptIds.add(id)) {
-                emitHaptic(CompanionHapticEvent.InterruptArrival)
             }
         }
     }

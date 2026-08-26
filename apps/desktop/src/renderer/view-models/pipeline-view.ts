@@ -12,12 +12,11 @@ function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`;
 }
 
-/** Composition line: "3 agents · 1 command · 1 checkpoint". */
+/** Composition line: "3 agents · 1 command". */
 export function phaseComposition(phases: PhaseDef[]): string {
   const counts: [PhaseKind, string][] = [
     ['agent', 'agent'],
     ['code', 'command'],
-    ['engineer', 'checkpoint'],
   ];
   const parts = counts
     .map(([kind, noun]) => [phases.filter((p) => p.kind === kind).length, noun] as const)
@@ -86,10 +85,12 @@ export function blankPhase(
     };
   }
   return {
-    name: uniqueName('new_checkpoint', taken, '_'),
-    kind: 'engineer',
-    description: 'Pause the run so an operator can review the work so far.',
-    question: 'Should the run continue?',
+    name: uniqueName('new_agent', taken, '_'),
+    kind: 'agent',
+    description: 'Do the implementation work for this run.',
+    agent: defaults.preferredAgent || 'builder',
+    prompt: { inputs: ['request'] },
+    gates: [],
   };
 }
 

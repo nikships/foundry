@@ -4,7 +4,7 @@ Deterministic runner that owns phase sequencing, retries, write boundaries, gate
 
 ## Project Overview
 
-- Phases: `agent` (LLM through the `pi/` agent transport), `code` (shell `CommandSpec`), `engineer` (code + gates). Registry owns phase/gate definitions; `executor.ts` + `runners/*` drive execution. `rewinder.ts` (`PhaseRewinder`) owns correction rollback for an agent phase.
+- Phases: `agent` (LLM through the `pi/` agent transport), `code` (shell `CommandSpec`). Registry owns phase/gate definitions; `executor.ts` + `runners/*` drive execution. `rewinder.ts` (`PhaseRewinder`) owns correction rollback for an agent phase.
 - Worktree: `.foundry-worktrees/<runId>` on `foundry/<runId>`; `.foundry-handoff/` JSON files pass envelopes between phases. `worktree.ts` owns create/merge/discard. `settle.ts` owns landing a finished run (`landRun` / `repairBranch`) so the IPC routers stay logic-free. `base-sync.ts` inspects and fast-forwards the project's local base ref against the preferred remote so a run does not start from a stale `main`; inspect never moves a local branch, and sync is ff-only.
 - Envelopes: Zod schemas in `envelopes.ts`; `jsonSchemaFor()` exposes defaults as required and emits no `$schema` dialect (pi compiles the schema itself and does not want a dialect declared). Example, output constraint, and parser come from the same definition.
 - Gates: return evidence (`GateCheck`), not a verdict; unknown gate → fail (`gates.ts`).

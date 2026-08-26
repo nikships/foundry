@@ -20,13 +20,11 @@ import type {
   GeneratedRunPlan,
   GhStatus,
   GithubAccount,
-  InterruptAnswer,
   LinearIssueSnapshot,
   LinearWorkflowState,
   MaintenanceReport,
   ModelInfo,
   OrphanWorktree,
-  PendingInterrupt,
   PhaseRow,
   PipelineDef,
   PrMergeMethod,
@@ -694,10 +692,6 @@ export interface FoundryApi {
      */
     fixConflicts(projectId: string, prNumber: number): Promise<PrAction>;
   };
-  interrupts: {
-    list(): Promise<PendingInterrupt[]>;
-    answer(answer: InterruptAnswer): Promise<boolean>;
-  };
   smith: {
     /** Starts one turn and returns immediately; progress arrives on `smith-progress`. */
     send(
@@ -767,7 +761,6 @@ export interface FoundryApi {
   on(
     channel:
       | 'runs-changed'
-      | 'interrupts-changed'
       | 'settings-changed'
       | 'updater-status'
       | 'detection-progress'
@@ -895,8 +888,6 @@ export const IPC = {
   prsCreate: 'prs:create',
   prsMerge: 'prs:merge',
   prsFixConflicts: 'prs:fixConflicts',
-  interruptsList: 'interrupts:list',
-  interruptsAnswer: 'interrupts:answer',
   smithSend: 'smith:send',
   smithCancel: 'smith:cancel',
   smithNewChat: 'smith:newChat',
@@ -925,7 +916,6 @@ export const IPC = {
   updaterQuitAndInstall: 'updater:quitAndInstall',
   updaterGetStatus: 'updater:getStatus',
   eventRunsChanged: 'event:runs-changed',
-  eventInterruptsChanged: 'event:interrupts-changed',
   eventSettingsChanged: 'event:settings-changed',
   eventUpdaterStatus: 'event:updater-status',
   eventDetectionProgress: 'event:detection-progress',

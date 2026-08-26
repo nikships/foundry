@@ -37,9 +37,6 @@ class HttpCompanionRepository(
     private val _connectionStatus = MutableStateFlow<ConnectionStatus>(ConnectionStatus.Unpaired)
     override val connectionStatus: StateFlow<ConnectionStatus> = _connectionStatus.asStateFlow()
 
-    private val _pendingInterrupts = MutableStateFlow<List<PendingInterrupt>>(emptyList())
-    override val pendingInterrupts: StateFlow<List<PendingInterrupt>> = _pendingInterrupts.asStateFlow()
-
     private var consecutiveFailures = 0
     private var reconnectJob: Job? = null
 
@@ -115,7 +112,6 @@ class HttpCompanionRepository(
         }
         _activeSession.value = null
         _connectionStatus.value = ConnectionStatus.Unpaired
-        _pendingInterrupts.value = emptyList()
     }
 
     override fun injectFakeSession(session: PairedSession) {
@@ -146,7 +142,6 @@ class HttpCompanionRepository(
         consecutiveFailures = 0
         _activeSession.value = null
         _connectionStatus.value = ConnectionStatus.Unpaired
-        _pendingInterrupts.value = emptyList()
     }
 
     private fun handleNetworkError(e: Throwable) {
@@ -316,22 +311,6 @@ class HttpCompanionRepository(
         }
     }
 
-    override suspend fun getInterrupts(): Result<List<PendingInterrupt>> = withContext(Dispatchers.IO) {
-        try {
-            val request = authenticatedRequestBuilder("/v1/interrupts").get().build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
-            consecutiveFailures = 0
-            val interrupts = json.decodeFromString<List<PendingInterrupt>>(body)
-            _pendingInterrupts.value = interrupts
-            Result.success(interrupts)
-        } catch (e: Exception) {
-            handleNetworkError(e)
-            Result.failure(e)
-        }
-    }
-
     override suspend fun startRun(input: StartRunInput): Result<CompanionStartResult> = withContext(Dispatchers.IO) {
         try {
             val reqBody = json.encodeToString(StartRunInput.serializer(), input).toRequestBody(jsonMediaType)
@@ -375,23 +354,6 @@ class HttpCompanionRepository(
             if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
             consecutiveFailures = 0
             Result.success(json.decodeFromString(CompanionContinueResult.serializer(), body))
-        } catch (e: Exception) {
-            handleNetworkError(e)
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun answerInterrupt(answer: InterruptAnswer): Result<CompanionAnswerResult> = withContext(Dispatchers.IO) {
-        try {
-            val reqBody = json.encodeToString(InterruptAnswer.serializer(), answer).toRequestBody(jsonMediaType)
-            val request = authenticatedRequestBuilder("/v1/interrupts/answer").post(reqBody).build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
-            consecutiveFailures = 0
-            val res = json.decodeFromString(CompanionAnswerResult.serializer(), body)
-            _pendingInterrupts.value = _pendingInterrupts.value.filterNot { it.interruptId == answer.interruptId }
-            Result.success(res)
         } catch (e: Exception) {
             handleNetworkError(e)
             Result.failure(e)

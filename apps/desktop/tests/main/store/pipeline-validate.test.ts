@@ -173,17 +173,14 @@ describe('workbench constructors against validate()', () => {
     const agent = blankPhase('agent', new Set(), { preferredAgent: 'builder' });
     const command = blankPhase('code', new Set(), { commandNames: ['npm_test'] });
     const builtinCommand = blankPhase('code', new Set(['new_command']));
-    const checkpoint = blankPhase('engineer', new Set());
     const draft = pipeline({
       acceptance: { kind: 'last_phase_pass' },
-      phases: [agent, command, builtinCommand, checkpoint],
+      phases: [agent, command, builtinCommand],
     });
     const issues = validate(draft, [builder], ['npm_test']);
     expect(issues).toEqual([]);
     expect(issues.some((issue) => /not configured/i.test(issue.message))).toBe(false);
-    expect(issues.some((issue) => /no question/i.test(issue.message))).toBe(false);
     expect(builtinCommand.command).toEqual({ builtin: 'git_status' });
-    expect(checkpoint.question?.trim().length).toBeGreaterThan(0);
   });
 
   it('still reports genuinely malformed user edits', () => {

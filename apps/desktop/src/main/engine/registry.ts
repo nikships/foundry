@@ -1,6 +1,6 @@
 /**
- * Owns the live runs: one tracer per project, the kill path, the interrupt
- * queue, and the relaunch sweep.
+ * Owns the live runs: one tracer per project, the kill path, and the relaunch
+ * sweep.
  *
  * The sweep is what keeps a crashed app from leaving runs reading `running`
  * forever: any `processes` row still open whose pid is gone (or whose pid was
@@ -8,14 +8,11 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { EventEmitter } from 'node:events';
 import type {
   AgentDef,
   AppSettings,
   EnvelopeDef,
   GeneratedRunPlan,
-  InterruptAnswer,
-  PendingInterrupt,
   PipelineDef,
   ProjectDef,
   RunRow,
@@ -34,14 +31,13 @@ import { commandMatches, isAlive, killRun, terminate } from '../system/procs.js'
 import type { BridgeTrace } from '../bridge/service.js';
 import type { RunSourceLifecycle } from './source-lifecycle.js';
 import type { OneShotFactory } from '../pi/oneshot.js';
-import { breakdownFile, type CapturedBreakdown, type InterruptRequest } from '../pi/session.js';
+import { breakdownFile, type CapturedBreakdown } from '../pi/session.js';
 
 export interface RegistryDeps {
   appSupportDir: string;
   settings: () => AppSettings;
   engineerName: string;
   onRunFinished: (run: RunRow) => void;
-  onInterruptsChanged: () => void;
   onRunsChanged: () => void;
   /**
    * How a failing code phase opens its healing turn. Omitted means no healing:
@@ -75,34 +71,20 @@ interface ExecutorInput {
   source?: RunSource | null;
 }
 
-interface PendingEntry {
-  interrupt: PendingInterrupt;
-  resolve: (answer: { approve: boolean; text?: string }) => void;
-}
-
 const LIVE_TAIL_LINES = 40;
-
-const ENGINEER_OPTIONS: PendingInterrupt['options'] = [
-  { id: 'approve', label: 'Approve', kind: 'approve' },
-  { id: 'edit', label: 'Approve with notes', kind: 'edit' },
-  { id: 'reject', label: 'Reject', kind: 'reject' },
-];
 
 function processStillAlive(pid: number, command: string): boolean {
   return isAlive(pid) && commandMatches(pid, command);
 }
 
-export class RunRegistry extends EventEmitter {
+export class RunRegistry {
   private readonly tracers = new Map<string, Tracer>();
   private appTracerInstance: Tracer | null = null;
   private readonly live = new Map<string, LiveRun>();
-  private readonly pending = new Map<string, PendingEntry>();
   /** Live agent text per phase: a ring buffer, deliberately not persisted. */
   private readonly liveText = new Map<string, string[]>();
 
-  constructor(private readonly deps: RegistryDeps) {
-    super();
-  }
+  constructor(private readonly deps: RegistryDeps) {}
 
   tracerFor(project: ProjectDef): Tracer {
     let tracer = this.tracers.get(project.id);
@@ -256,7 +238,6 @@ export class RunRegistry extends EventEmitter {
         : null,
       runId,
       engineer: this.deps.engineerName,
-      askHuman: (req) => this.raiseInterrupt(req),
       onLiveText: (phaseId, text) => this.appendLiveText(phaseId, text),
       landing: (() => {
         const { saveProject, notifySettings, projectById } = this.deps;
@@ -296,15 +277,8 @@ export class RunRegistry extends EventEmitter {
     // finishRun already settled a terminal status; only a crash path needs this.
     const run = current && current.status === 'running' ? tracer.finishRun(runId, status) : current;
 
-    for (const [id, entry] of this.pending) {
-      if (entry.interrupt.runId !== runId) continue;
-      entry.resolve({ approve: false });
-      this.pending.delete(id);
-    }
-
     for (const phase of tracer.phases(runId)) this.liveText.delete(phase.phaseId);
 
-    this.deps.onInterruptsChanged();
     this.deps.onRunsChanged();
     if (run) this.deps.onRunFinished(run);
   }
@@ -327,38 +301,6 @@ export class RunRegistry extends EventEmitter {
       return true;
     }
     return false;
-  }
-
-  private raiseInterrupt(req: InterruptRequest): Promise<{ approve: boolean; text?: string }> {
-    const interruptId = `int_${randomBytes(5).toString('hex')}`;
-    const interrupt: PendingInterrupt = {
-      interruptId,
-      runId: req.runId,
-      phaseId: req.phaseId,
-      kind: req.kind,
-      title: req.title,
-      body: req.body,
-      options: ENGINEER_OPTIONS,
-      createdAt: new Date().toISOString(),
-    };
-    return new Promise((resolve) => {
-      this.pending.set(interruptId, { interrupt, resolve });
-      this.deps.onInterruptsChanged();
-      this.emit('needs-input', interrupt);
-    });
-  }
-
-  interrupts(): PendingInterrupt[] {
-    return [...this.pending.values()].map((e) => e.interrupt);
-  }
-
-  answer(answer: InterruptAnswer): boolean {
-    const entry = this.pending.get(answer.interruptId);
-    if (!entry) return false;
-    this.pending.delete(answer.interruptId);
-    entry.resolve({ approve: answer.decision === 'approve', text: answer.text });
-    this.deps.onInterruptsChanged();
-    return true;
   }
 
   private appendLiveText(phaseId: string, text: string): void {

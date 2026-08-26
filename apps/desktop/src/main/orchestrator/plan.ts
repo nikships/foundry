@@ -53,7 +53,7 @@ Reply with a single JSON object and nothing else:
 }
 
 Each synthesized agent: {"name","purpose","systemPrompt","userPrompt","writes","envelope"} plus optional "reasoningEffort" and "toolProfile" ("read-only" for reviewers). Omit "model" on an agent — the phase it runs in is what names the model.
-Each phase follows the pipeline schema you were shown in the examples: {"name","kind","description"} plus "agent"/"model"/"prompt"/"envelope"/"gates" for agent phases, "command"/"feedbackTo"/"heal" for code phases, "question" for engineer phases.`;
+Each phase follows the pipeline schema you were shown in the examples: {"name","kind","description"} plus "agent"/"model"/"prompt"/"envelope"/"gates" for agent phases, "command"/"feedbackTo"/"heal" for code phases. Never emit an engineer/checkpoint phase.`;
 
 export interface PlanPromptInputs {
   request: string;

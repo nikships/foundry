@@ -104,24 +104,12 @@ class SessionManager(context: Context) {
         prefs.edit().putStringSet(KEY_NOTIFIED_RUNS, current).apply()
     }
 
-    fun getNotifiedInterruptIds(): Set<String> {
-        return prefs.getStringSet(KEY_NOTIFIED_INTERRUPTS, emptySet()) ?: emptySet()
-    }
-
-    fun addNotifiedInterruptId(interruptId: String) {
-        if (interruptId.isBlank()) return
-        val current = getNotifiedInterruptIds().toMutableSet()
-        current.add(interruptId)
-        prefs.edit().putStringSet(KEY_NOTIFIED_INTERRUPTS, current).apply()
-    }
-
     companion object {
         private const val KEY_SESSION = "paired_session"
         private const val KEY_NOTIFY_SETTLE = "notify_settle"
         private const val KEY_NOTIFY_PROMPTED = "notify_prompted"
         private const val KEY_LAST_ROUTE = "last_active_route"
         private const val KEY_NOTIFIED_RUNS = "notified_runs"
-        private const val KEY_NOTIFIED_INTERRUPTS = "notified_interrupts"
         private const val KEY_LAST_PIPELINE_PREFIX = "last_pipeline"
         private const val KEY_NEW_RUN_DRAFT = "new_run_draft"
         private const val KEY_SELECTED_PROJECT = "selected_project_id"

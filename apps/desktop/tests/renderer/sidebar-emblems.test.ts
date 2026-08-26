@@ -41,7 +41,6 @@ const REQUIRED_SLOTS: SidebarEmblemSlot[] = [
   'smith',
   'project',
   'settings',
-  'pending',
   'expand',
   'collapse',
 ];
@@ -60,7 +59,6 @@ describe('collapsed-rail emblem catalog', () => {
     expect(Object.keys(CHROME_EMBLEMS).sort()).toEqual([
       'collapse',
       'expand',
-      'pending',
       'project',
       'settings',
       'smith',

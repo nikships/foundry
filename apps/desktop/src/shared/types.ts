@@ -5,7 +5,7 @@
 
 // ── Pipelines (data, not scripts) ────────────────────────────────────────────
 
-export type PhaseKind = 'agent' | 'code' | 'engineer';
+export type PhaseKind = 'agent' | 'code';
 export type PhaseStatus = 'queued' | 'running' | 'success' | 'fail' | 'skipped';
 export type RunStatus = 'running' | 'accepted' | 'rejected' | 'failed' | 'killed';
 /** Which agent transport answered for a run. Agent phases run in-process on pi. */
@@ -104,8 +104,6 @@ export interface PhaseDef {
   /** On failure, hand the evidence back to this earlier agent phase. */
   feedbackTo?: string;
   feedbackRetries?: number;
-  /** Engineer phases: what the sheet asks the human. */
-  question?: string;
   /** Code phases: a non-zero exit is recorded but does not fail the run. */
   optional?: boolean;
   /**
@@ -335,7 +333,7 @@ export interface AppSettings {
    * phases, as a fraction of the model's window.
    */
   compactionThreshold: number;
-  notifications: { accepted: boolean; rejected: boolean; failed: boolean; needsInput: boolean };
+  notifications: { accepted: boolean; rejected: boolean; failed: boolean };
   dockBadge: boolean;
   retentionDays: number | null;
   onboarded: boolean;
@@ -750,9 +748,9 @@ export function continuableStatus(status: RunStatus): boolean {
  * How this run would be continued, or null when it cannot be.
  *
  * The interrupted phase decides as much as the status does: only an agent
- * phase has a conversation to abandon. A killed `code` or `engineer` phase is
- * still continuable — a shell command simply re-runs — but nothing about it is
- * a "fresh session", so claiming one would put a false statement in the trace
+ * phase has a conversation to abandon. A killed `code` phase is still
+ * continuable — a shell command simply re-runs — but nothing about it is a
+ * "fresh session", so claiming one would put a false statement in the trace
  * and in front of the operator. Every surface (the executor, the registry's
  * gate, the banner, the Companion card) reads this one rule.
  *
@@ -1246,29 +1244,6 @@ export interface DoctorCheck {
   fix?: { kind: 'open-url' | 'open-settings' | 'run'; value: string };
 }
 
-/**
- * A deliberate checkpoint an engineer phase in the pipeline asked for. Runs
- * never stop for permission: those are settled by the engine policy and only
- * appear in the trace.
- */
-export interface PendingInterrupt {
-  interruptId: string;
-  runId: string;
-  phaseId: string | null;
-  kind: 'engineer';
-  title: string;
-  body: string;
-  /** Engineer phases accept edited text alongside approve/reject. */
-  options: { id: string; label: string; kind: 'approve' | 'reject' | 'edit' }[];
-  createdAt: string;
-}
-
-export interface InterruptAnswer {
-  interruptId: string;
-  decision: 'approve' | 'reject';
-  text?: string;
-}
-
 export interface StartRunInput {
   projectId: string;
   pipelineId: string;
@@ -1361,7 +1336,6 @@ export type SmithArtifactKind =
   | 'diagnostics'
   | 'data_table'
   | 'evidence_disclosure'
-  | 'engineer_checkpoint'
   | 'readiness_journey'
   | 'provider_status'
   | 'action_receipt';
@@ -1778,54 +1752,6 @@ export interface SmithEvidenceDisclosureArtifact extends SmithArtifactBase {
 }
 
 /**
- * What the operator may do with an engineer checkpoint from inside the chat.
- * `edit` means the answer text is editable before approving; it is not a third
- * decision. The engine still accepts only approve/reject.
- */
-export type CheckpointActionKind = 'approve' | 'reject' | 'edit';
-
-export interface CheckpointAction {
-  id: string;
-  label: string;
-  kind: CheckpointActionKind;
-}
-
-/**
- * A live engineer checkpoint presented as a card: the question, where in the
- * run it came from, and the answer the operator may edit before deciding.
- *
- * Presentation only, like every artifact. Answering an interrupt is a
- * privileged write, so the card's approve/reject routes through
- * `smith_interrupts answer` and its queue approval card — the artifact never
- * carries an executor and never bypasses that gate.
- */
-export interface CheckpointDef {
-  interruptId: string;
-  title: string;
-  question: string;
-  runId?: string;
-  phaseId?: string;
-  /** The pipeline the run is executing, for context the run id cannot give. */
-  pipelineId?: string;
-  /** ISO timestamp the engine raised the checkpoint. */
-  raisedAt?: string;
-  /** Prefilled answer text the operator edits before approving. */
-  draftAnswer?: string;
-  /** Approve/reject/edit affordances, mirroring `PendingInterrupt.options`. */
-  actions?: CheckpointAction[];
-  /** True once this interrupt has been settled, so the card reads as history. */
-  answered?: boolean;
-  /** The decision recorded, when the checkpoint has already been answered. */
-  decision?: 'approve' | 'reject';
-}
-
-/** A read-only engineer-checkpoint card: question, run context, draft answer. */
-export interface SmithEngineerCheckpointArtifact extends SmithArtifactBase {
-  kind: 'engineer_checkpoint';
-  checkpoint: CheckpointDef;
-}
-
-/**
  * The marker as committed on the base ref — the only readiness truth. A marker
  * in the working tree, or a merged PR on its own, proves nothing.
  */
@@ -2027,7 +1953,6 @@ export type SmithArtifact =
   | SmithDiagnosticsArtifact
   | SmithDataTableArtifact
   | SmithEvidenceDisclosureArtifact
-  | SmithEngineerCheckpointArtifact
   | SmithReadinessJourneyArtifact
   | SmithProviderStatusArtifact
   | SmithActionReceiptArtifact;

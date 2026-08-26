@@ -11,7 +11,6 @@ import DesignScreen from './screens/DesignScreen.js';
 import PullRequestsScreen from './screens/PullRequestsScreen.js';
 import SettingsScreen from './screens/SettingsScreen.js';
 import OnboardingShell from './screens/onboarding/OnboardingShell.js';
-import InterruptSheet from './components/run/InterruptSheet.js';
 import NewProjectWizard from './components/project/NewProjectWizard.js';
 import ConfirmModal from './components/common/ConfirmModal.js';
 import UpdateBanner from './components/layout/UpdateBanner.js';
@@ -42,7 +41,7 @@ function checkCompleteToast(message: string | undefined): string {
 }
 
 function AppInner(): React.JSX.Element {
-  const { ready, settings, interrupts, refreshAll, selectProject, projects } = useApp();
+  const { ready, settings, refreshAll, selectProject, projects } = useApp();
   const [view, setView] = useState<View>('runs');
   const [runRequest, setRunRequest] = useState('');
   const [creatingProject, setCreatingProject] = useState(false);
@@ -71,7 +70,6 @@ function AppInner(): React.JSX.Element {
   const prevStageRef = useRef<UpdateStatus['stage']>('idle');
 
   const needsOnboarding = ready && settings != null && !settings.onboarded;
-  const activeInterrupt = interrupts[0] ?? null;
   const bannerKey = `${updateStatus.stage}:${updateStatus.version ?? ''}`;
   const showBanner = updateStatus.stage !== 'idle' && updateDismissedKey !== bannerKey;
 
@@ -355,7 +353,6 @@ function AppInner(): React.JSX.Element {
             onAddProject={addProject}
             onNewProject={newProject}
             onOpenSettings={openSettingsPane}
-            onOpenInterruptRun={openRun}
             onOpenInspector={openInspector}
             onOpenSmith={openSmith}
             inspectorRunId={inspectorRunId}
@@ -393,12 +390,6 @@ function AppInner(): React.JSX.Element {
           onOpenReceiptLink={openReceiptLink}
         />
       )}
-      {/*
-       * The Smith proposal card renders inline in the chat transcript, on the
-       * Smith screen and in the bubble; only an engineer interrupt still
-       * overlays the app here.
-       */}
-      {activeInterrupt && <InterruptSheet interrupt={activeInterrupt} />}
       {creatingProject && (
         <NewProjectWizard onClose={() => setCreatingProject(false)} onCreated={projectCreated} />
       )}

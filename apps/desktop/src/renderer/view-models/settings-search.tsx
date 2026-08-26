@@ -274,7 +274,7 @@ export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
 /** The boolean settings the palette can flip in place without opening a pane. */
 export interface SettingsToggleDef {
   /** 'dockBadge' lives on the settings root; the rest under `notifications`. */
-  id: 'accepted' | 'rejected' | 'failed' | 'needsInput' | 'dockBadge';
+  id: 'accepted' | 'rejected' | 'failed' | 'dockBadge';
   /** Mirrors the row labels in the General → Notifications section. */
   title: string;
   keywords: string;
@@ -284,11 +284,6 @@ export const SETTINGS_TOGGLES: SettingsToggleDef[] = [
   { id: 'accepted', title: 'A run was accepted', keywords: 'notify notification success' },
   { id: 'rejected', title: 'A run was not accepted', keywords: 'notify notification decline' },
   { id: 'failed', title: 'A run failed', keywords: 'notify notification error' },
-  {
-    id: 'needsInput',
-    title: 'A run is waiting on me',
-    keywords: 'notify notification interrupt question',
-  },
   {
     id: 'dockBadge',
     title: 'Show the number of live runs on the dock icon',

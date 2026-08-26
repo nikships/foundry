@@ -31,7 +31,6 @@ fun PhaseRibbon(
             val kindColor = when (phase.kind.lowercase()) {
                 "code" -> colors.accent
                 "review" -> colors.statusAccepted
-                "engineer" -> colors.statusRejected
                 else -> colors.textDim
             }
 

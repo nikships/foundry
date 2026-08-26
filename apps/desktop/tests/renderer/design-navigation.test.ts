@@ -37,7 +37,7 @@ const phaseDrawerSrc = read('src/renderer/components/pipeline/PhaseDrawer.tsx');
 const sidebarSrc = read('src/renderer/components/layout/Sidebar.tsx');
 const waterfallSrc = read('src/renderer/components/run/Waterfall.tsx');
 const outcomeBannerSrc = read('src/renderer/components/run/OutcomeBanner.tsx');
-const interruptSheetSrc = read('src/renderer/components/run/InterruptSheet.tsx');
+
 const proposalCardSrc = read('src/renderer/components/smith/SmithProposalCard.tsx');
 const confirmModalSrc = read('src/renderer/components/common/ConfirmModal.tsx');
 const onboardingSharedSrc = read('src/renderer/screens/onboarding/shared.tsx');
@@ -241,10 +241,6 @@ describe('CDP automation hooks', () => {
   });
 
   it('stamps the decision surfaces an agent driver must be able to answer', () => {
-    // Run checkpoint + Smith entity approval: the two gates that block a run
-    // or a chat turn until someone clicks.
-    expect(interruptSheetSrc).toContain('data-testid="interrupt-approve"');
-    expect(interruptSheetSrc).toContain('data-testid="interrupt-reject"');
     expect(proposalCardSrc).toContain('data-testid="smith-proposal-approve"');
     expect(proposalCardSrc).toContain('data-testid="smith-proposal-reject"');
     // In-app confirm (kill/merge/discard/delete flows); window.confirm is native.
@@ -264,7 +260,6 @@ describe('CDP automation hooks', () => {
 
   it('exposes sidebar activity rows and per-PR actions by id', () => {
     expect(sidebarSrc).toContain('data-testid={`sidebar-run-${run.runId}`}');
-    expect(sidebarSrc).toContain('data-testid="sidebar-pending"');
     expect(prsSrc).toContain('data-testid={`prs-merge-${pr.number}`}');
     expect(prsSrc).toContain('data-testid={`prs-fix-${pr.number}`}');
     expect(prsSrc).toContain('data-testid={`prs-method-${pr.number}`}');
@@ -326,10 +321,11 @@ describe('user-facing wording', () => {
     expect(rosterSrc).toContain('api.roster.');
   });
 
-  it('never says "engineer phase" while the wire value stays `engineer`', () => {
+  it('no longer offers an engineer/checkpoint phase in Design', () => {
     const derive = read('src/renderer/utils/derive.ts');
-    expect(derive).toContain("engineer: 'checkpoint'");
-    expect(read('src/renderer/components/pipeline/PipelineCanvas.tsx')).toContain("'engineer'");
+    expect(derive).not.toContain("engineer: 'checkpoint'");
+    expect(read('src/renderer/components/pipeline/PipelineCanvas.tsx')).not.toContain("'engineer'");
+    expect(phaseEditorSrc).not.toContain("'engineer'");
     for (const src of [phaseEditorSrc, designSrc, rosterSrc]) {
       expect(src.toLowerCase()).not.toContain('engineer phase');
     }

@@ -1,6 +1,5 @@
 package com.foundry.companion.notification
 
-import com.foundry.companion.data.model.PendingInterrupt
 import com.foundry.companion.data.model.RunRow
 import com.foundry.companion.data.session.SessionManager
 
@@ -9,7 +8,7 @@ import com.foundry.companion.data.session.SessionManager
  *
  * Both the foreground watcher and the UI ViewModel feed the same instance, so a
  * transition is announced exactly once no matter which observer saw it first,
- * and neither path needs its own copy of the settle/interrupt rules.
+ * and neither path needs its own copy of the settle rules.
  *
  * A run is only announced when this process watched it leave a non-settled
  * status. A run first observed already settled finished before anyone was
@@ -23,7 +22,6 @@ class CompanionNotifier(
 
     private val knownRunStatuses = mutableMapOf<String, String>()
     private val knownRunProjects = mutableMapOf<String, String>()
-    private val knownInterruptIds = mutableSetOf<String>()
 
     @Synchronized
     fun onRuns(runs: List<RunRow>) {
@@ -54,36 +52,11 @@ class CompanionNotifier(
         }
     }
 
-    @Synchronized
-    fun onInterrupts(interrupts: List<PendingInterrupt>) {
-        val notified = sessionManager?.getNotifiedInterruptIds().orEmpty()
-        val canPost = notificationManager?.hasNotificationPermission() ?: false
-
-        if (!canPost) return
-
-        for (interrupt in interrupts) {
-            if (interrupt.interruptId.isBlank()) continue
-            // Marked seen only when it can actually be posted, so a denied
-            // permission does not silently swallow the retry after a grant.
-            if (!knownInterruptIds.add(interrupt.interruptId)) continue
-            if (interrupt.interruptId in notified) continue
-
-            sessionManager?.addNotifiedInterruptId(interrupt.interruptId)
-            // An interrupt blocks a run, so it notifies regardless of the settle
-            // toggle (spec §3.7).
-            notificationManager?.postInterruptNotification(
-                interrupt,
-                knownRunProjects[interrupt.runId].orEmpty()
-            )
-        }
-    }
-
     /** Drops watch state so a re-pair starts from a clean slate. */
     @Synchronized
     fun reset() {
         knownRunStatuses.clear()
         knownRunProjects.clear()
-        knownInterruptIds.clear()
     }
 
     companion object {

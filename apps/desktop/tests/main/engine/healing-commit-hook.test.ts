@@ -154,7 +154,6 @@ function run(input: {
     request: 'add persistent light and dark desktop themes',
     runId,
     engineer: 'test',
-    askHuman: async () => ({ approve: true }),
   });
   return executor.run().then((o) => ({ status: o.status, runId }));
 }

@@ -17,8 +17,6 @@ import type {
   ChangeReceiptDef,
   ChangeReceiptStatus,
   ChangeReceiptTarget,
-  CheckpointActionKind,
-  CheckpointDef,
   ChecklistDef,
   ChecklistItem,
   ChecklistItemStatus,
@@ -66,7 +64,6 @@ const SUPPORTED_ARTIFACT_KINDS: ReadonlyArray<SmithArtifact['kind']> = [
   'diagnostics',
   'data_table',
   'evidence_disclosure',
-  'engineer_checkpoint',
   'readiness_journey',
   'provider_status',
   'action_receipt',
@@ -92,7 +89,6 @@ export const ARTIFACT_KIND_LABEL: Record<SmithArtifact['kind'], string> = {
   diagnostics: 'diagnostics',
   data_table: 'data catalog',
   evidence_disclosure: 'context & evidence',
-  engineer_checkpoint: 'engineer checkpoint',
   readiness_journey: 'readiness journey',
   provider_status: 'provider status',
   action_receipt: 'action receipt',
@@ -107,7 +103,6 @@ export function artifactName(artifact: SmithArtifact): string {
   if (artifact.kind === 'run_summary') {
     return artifact.pipelineName || artifact.pipelineId || artifact.runId;
   }
-  if (artifact.kind === 'engineer_checkpoint') return artifact.checkpoint.title;
   if (artifact.kind === 'readiness_journey') {
     return artifact.journey.projectName ?? artifact.journey.projectId ?? 'Agent readiness';
   }
@@ -306,61 +301,6 @@ export function changeReceiptSummary(receipt: ChangeReceiptDef): string {
   return (
     parts.join(' · ') || (receipt.status === 'success' ? 'Changes applied' : 'Operation failed')
   );
-}
-
-// ── Engineer checkpoint helpers ──────────────────────────────────────────────
-
-/**
- * The default approve/reject/edit affordances, used when the spec named none.
- * `edit` is the editable answer, not a third decision: the engine takes only
- * approve or reject, and either way the answer is written through the
- * interrupt-answer approval card.
- */
-const DEFAULT_CHECKPOINT_ACTIONS: ReadonlyArray<{
-  id: string;
-  label: string;
-  kind: CheckpointActionKind;
-}> = [
-  { id: 'approve', label: 'Approve', kind: 'approve' },
-  { id: 'reject', label: 'Reject', kind: 'reject' },
-  { id: 'edit', label: 'Edit answer', kind: 'edit' },
-];
-
-export function checkpointActions(
-  checkpoint: CheckpointDef,
-): ReadonlyArray<{ id: string; label: string; kind: CheckpointActionKind }> {
-  return checkpoint.actions && checkpoint.actions.length > 0
-    ? checkpoint.actions
-    : DEFAULT_CHECKPOINT_ACTIONS;
-}
-
-/** True when the operator may still edit the answer text on this card. */
-export function checkpointAnswerEditable(checkpoint: CheckpointDef): boolean {
-  if (checkpoint.answered) return false;
-  return checkpointActions(checkpoint).some((action) => action.kind === 'edit');
-}
-
-/** Run/phase/pipeline context in the same `·`-joined form InterruptSheet uses. */
-export function checkpointContext(checkpoint: CheckpointDef): string {
-  return [
-    checkpoint.runId && `run ${checkpoint.runId.slice(0, 8)}`,
-    checkpoint.phaseId && `phase ${checkpoint.phaseId}`,
-    checkpoint.pipelineId && `pipeline ${checkpoint.pipelineId}`,
-  ]
-    .filter(Boolean)
-    .join(' · ');
-}
-
-/**
- * What the card says about where this checkpoint stands. An artifact is
- * history as often as it is live, so an answered checkpoint must read as
- * settled rather than as something still waiting on the operator.
- */
-export function checkpointStatusLabel(checkpoint: CheckpointDef): string {
-  if (!checkpoint.answered) return 'Awaiting decision';
-  if (checkpoint.decision === 'approve') return 'Approved';
-  if (checkpoint.decision === 'reject') return 'Rejected';
-  return 'Answered';
 }
 
 // ── Readiness journey helpers ────────────────────────────────────────────────
@@ -794,11 +734,10 @@ export function writesLabel(writes: WriteBoundary): string {
   return writes.join(', ');
 }
 
-/** How a phase names what does the work: an agent, a command, or the human. */
+/** How a phase names what does the work: an agent or a command. */
 export function phaseWorkLabel(phase: PhaseDef): string {
   if (phase.kind === 'agent') return phase.agent ?? '';
-  if (phase.kind === 'code') return commandLabel(phase.command);
-  return phase.question ?? '';
+  return commandLabel(phase.command);
 }
 
 // ── Semantic before/after comparison ─────────────────────────────────────────
@@ -864,7 +803,6 @@ const PHASE_FIELDS: ReadonlyArray<{ key: keyof PhaseDef; label: string }> = [
   { key: 'retries', label: 'retries' },
   { key: 'feedbackTo', label: 'feedback target' },
   { key: 'feedbackRetries', label: 'feedback retries' },
-  { key: 'question', label: 'question' },
   { key: 'optional', label: 'optional' },
   { key: 'heal', label: 'healing' },
 ];

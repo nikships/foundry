@@ -119,9 +119,6 @@ function PhaseCard({
           {phase.kind === 'code' && (
             <Detail label="Command" value={<code>{commandLabel(phase.command)}</code>} />
           )}
-          {phase.kind === 'engineer' && phase.question && (
-            <Detail label="Checkpoint question" value={phase.question} />
-          )}
           {gates.length > 0 && (
             <Detail label="Gates" value={gates.map((gate) => gateLabel(gate)).join(', ')} />
           )}
@@ -337,7 +334,6 @@ export { EntityComparisonDesign } from './SmithEntityComparisonDesign.js';
 export { ChangeReceiptDesign } from './SmithChangeReceiptDesign.js';
 export { ProjectCardDesign } from './SmithProjectCardDesign.js';
 export { PrCardDesign } from './SmithPrCardDesign.js';
-export { CheckpointDesign } from './SmithCheckpointDesign.js';
 export { ReadinessJourneyDesign } from './SmithReadinessJourneyDesign.js';
 export { ProviderStatusDesign } from './SmithProviderStatusDesign.js';
 

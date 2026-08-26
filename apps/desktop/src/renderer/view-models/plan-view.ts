@@ -144,8 +144,6 @@ export function phaseNote(phase: PhaseDef): string {
   const parts: string[] = [];
   if (phase.kind === 'code') {
     parts.push(commandNote(phase.command));
-  } else if (phase.kind === 'engineer') {
-    parts.push('waits for you');
   }
   if (phase.gates?.length) {
     const names = phase.gates.map((g) => (typeof g === 'string' ? g : g.gate));

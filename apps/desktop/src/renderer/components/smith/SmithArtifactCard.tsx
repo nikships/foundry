@@ -18,7 +18,6 @@ import {
 } from '../../view-models/smith-artifact-view.js';
 import SmithActionReceiptBody from './SmithActionReceipt.js';
 import { ChangeReceiptDesign } from './SmithChangeReceiptDesign.js';
-import { CheckpointDesign } from './SmithCheckpointDesign.js';
 import { ChecklistDesign } from './SmithChecklistDesign.js';
 import { DataTableDesign } from './SmithDataTableDesign.js';
 import { DiagnosticsDesign } from './SmithDiagnosticsDesign.js';
@@ -94,9 +93,6 @@ function ArtifactBody({
   if (artifact.kind === 'evidence_disclosure') {
     return <EvidenceDisclosureDesign evidence={artifact.evidence} compact={compact} />;
   }
-  if (artifact.kind === 'engineer_checkpoint') {
-    return <CheckpointDesign checkpoint={artifact.checkpoint} compact={compact} />;
-  }
   if (artifact.kind === 'readiness_journey') {
     return <ReadinessJourneyDesign journey={artifact.journey} compact={compact} />;
   }
@@ -133,7 +129,6 @@ function auditValue(artifact: SmithArtifact): unknown {
   }
   if (artifact.kind === 'project_card') return artifact.project;
   if (artifact.kind === 'pr_card') return artifact.pr;
-  if (artifact.kind === 'engineer_checkpoint') return artifact.checkpoint;
   if (artifact.kind === 'readiness_journey') return artifact.journey;
   if (artifact.kind === 'provider_status') return artifact.status;
   if (artifact.kind === 'settings_diff') return artifact.diff;

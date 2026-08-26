@@ -8,7 +8,6 @@ import {
   CollapseEmblem,
   ExpandEmblem,
   NAV_EMBLEMS,
-  PendingEmblem,
   ProjectEmblem,
   SettingsEmblem,
   SmithEmblem,
@@ -112,7 +111,6 @@ export default function Sidebar({
   onAddProject,
   onNewProject,
   onOpenSettings,
-  onOpenInterruptRun,
   onOpenInspector,
   onOpenSmith,
   inspectorRunId = '',
@@ -124,8 +122,6 @@ export default function Sidebar({
   /** Create a repository on GitHub instead of pointing at an existing checkout. */
   onNewProject?: () => void;
   onOpenSettings: (pane: string) => void;
-  /** Jump to the run that is waiting so the interrupt sheet has context behind it. */
-  onOpenInterruptRun?: (runId: string) => void;
   /** Pin the Inspector to a run; the run may live in any project. */
   onOpenInspector?: (runId: string) => void;
   /** Opens the Smith chat screen. Not a numbered nav item, so it takes its own handler. */
@@ -133,10 +129,8 @@ export default function Sidebar({
   /** The run the Inspector is pinned to, so its activity row reads as selected. */
   inspectorRunId?: string;
 }): React.JSX.Element {
-  const { projects, project, interrupts, selectProject } = useApp();
+  const { projects, project, selectProject } = useApp();
   const { runs: pipelineRuns } = useAllProjectRuns();
-  const pendingCount = interrupts.length;
-  const firstWaiting = interrupts[0] ?? null;
 
   const [collapsed, setCollapsed] = useState<boolean>(
     () => safeGetItem(SIDEBAR_COLLAPSED_KEY) === '1',
@@ -177,7 +171,6 @@ export default function Sidebar({
   };
   const navItemClass = (active: boolean, extra?: string): string =>
     cx(styles.navItem, active && styles.active, collapsed && styles.navItemCollapsed, extra);
-  const pendingLabel = `${pendingCount} ${pendingCount === 1 ? 'run needs' : 'runs need'} you`;
 
   return (
     <aside className={cx(styles.sidebar, collapsed && styles.collapsed)}>
@@ -291,33 +284,6 @@ export default function Sidebar({
         </div>
       )}
       <div className={styles.spacer} />
-      {pendingCount > 0 &&
-        firstWaiting &&
-        (collapsed ? (
-          <button
-            type="button"
-            className={styles.pendingCollapsed}
-            title={`${pendingLabel} — open`}
-            aria-label={pendingLabel}
-            data-testid="sidebar-pending"
-            onClick={() => onOpenInterruptRun?.(firstWaiting.runId)}
-          >
-            <PendingEmblem className={styles.navEmblem} />
-            <span className={styles.pendingBadge} aria-hidden>
-              {pendingCount > 9 ? '9+' : String(pendingCount)}
-            </span>
-          </button>
-        ) : (
-          <button
-            type="button"
-            className={styles.pending}
-            title="Open the run waiting for you"
-            data-testid="sidebar-pending"
-            onClick={() => onOpenInterruptRun?.(firstWaiting.runId)}
-          >
-            {pendingLabel}
-          </button>
-        ))}
       <button
         type="button"
         className={cx(styles.collapseToggle, collapsed && styles.collapseToggleCollapsed)}

@@ -88,8 +88,7 @@ post-hoc rationalization.
    - Is model casting economical — strong models on design/review/hard
      implementation, cheap fast ones on mechanical work?
    - Are synthesized agents' write boundaries tight?
-   - Any `plan-warnings`? A plan containing an engineer checkpoint is an
-     automatic rejection (the feature is being removed, FOU-191).
+   - Any `plan-warnings`? Pipelines have no engineer/checkpoint phases.
 5. **Bad plan** → click `plan-discard`, write the report with verdict
    `plan-rejected` and your reasons, **stop**. Do not regenerate to fish for
    a passing plan — a rejected first proposal is itself the finding.
@@ -124,8 +123,7 @@ Exit codes:
   (`run-kill` → `confirm-accept`) and record it as a defect finding with
   verdict `killed-stalled`.
 
-There are no engineer checkpoints mid-run (Stage 1 rejects plans that
-contain one).
+There are no engineer checkpoints mid-run.
 
 ### Grading
 

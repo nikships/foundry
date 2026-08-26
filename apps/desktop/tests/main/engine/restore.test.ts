@@ -176,7 +176,6 @@ function executorFor(input: RunInput, runId: string, scripted: ScriptedAgent): E
     request: 'do the thing',
     runId,
     engineer: 'test',
-    askHuman: async () => ({ approve: true }),
   };
   return new Executor(deps);
 }

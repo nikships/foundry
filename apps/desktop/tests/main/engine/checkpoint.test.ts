@@ -158,7 +158,6 @@ async function run(input: RunInput): Promise<{ status: string; runId: string }> 
     request: 'do the thing',
     runId,
     engineer: 'test',
-    askHuman: async () => ({ approve: true }),
     landing: input.landing,
   });
   const outcome = await executor.run();

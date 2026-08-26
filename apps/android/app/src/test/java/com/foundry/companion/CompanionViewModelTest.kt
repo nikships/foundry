@@ -417,81 +417,6 @@ class CompanionViewModelTest {
     }
 
     @Test
-    fun testAnswerInterruptFlow() {
-        val interrupt = com.foundry.companion.data.model.PendingInterrupt(
-            interruptId = "int_99",
-            runId = "run_260818_live99",
-            question = "Approve schema change?"
-        )
-        repository.setPendingInterrupts(listOf(interrupt))
-        viewModel.loadPendingInterrupts()
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        assertEquals(1, viewModel.uiState.value.pendingInterrupts.size)
-        assertEquals("int_99", viewModel.uiState.value.pendingInterrupts.first().interruptId)
-
-        viewModel.answerInterrupt("int_99", approved = true, notes = "Approved from phone")
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        assertTrue(viewModel.uiState.value.pendingInterrupts.isEmpty())
-    }
-
-    @Test
-    fun testWaitingChipIsDerivedFromPendingInterruptRunId() {
-        // The host never stamps waitingInterrupt on a run row; only the runId
-        // join with GET /v1/interrupts can light the chip against a real Mac.
-        assertTrue(viewModel.uiState.value.runs.none { it.waitingInterrupt })
-
-        repository.setPendingInterrupts(
-            listOf(
-                com.foundry.companion.data.model.PendingInterrupt(
-                    interruptId = "int_waiting",
-                    runId = "run_260818_live99",
-                    question = "Approve schema change?"
-                )
-            )
-        )
-        viewModel.loadPendingInterrupts()
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        val runs = viewModel.uiState.value.runs
-        assertTrue(runs.isNotEmpty())
-        assertTrue(runs.first { it.runId == "run_260818_live99" }.waitingInterrupt)
-        assertTrue(runs.filter { it.runId != "run_260818_live99" }.none { it.waitingInterrupt })
-
-        // A reload of the run list must not drop the derived flag.
-        viewModel.loadRuns("proj_foundry_core")
-        testDispatcher.scheduler.advanceUntilIdle()
-        assertTrue(viewModel.uiState.value.runs.first { it.runId == "run_260818_live99" }.waitingInterrupt)
-
-        // Answering clears it.
-        viewModel.answerInterrupt("int_waiting", approved = true, notes = null)
-        testDispatcher.scheduler.advanceUntilIdle()
-        assertTrue(viewModel.uiState.value.runs.none { it.waitingInterrupt })
-    }
-
-    @Test
-    fun testInterruptForRunOnlyMatchesItsOwnRun() {
-        // The Run screen used to fall back to any interrupt with a blank runId,
-        // which pinned another run's strip onto whatever run was open.
-        repository.setPendingInterrupts(
-            listOf(
-                com.foundry.companion.data.model.PendingInterrupt(
-                    interruptId = "int_lookup",
-                    runId = "run_260818_live99",
-                    question = "Approve?"
-                )
-            )
-        )
-        viewModel.loadPendingInterrupts()
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        val state = viewModel.uiState.value
-        assertEquals("int_lookup", state.interruptForRun("run_260818_live99")?.interruptId)
-        assertNull(state.interruptForRun("run_some_other"))
-    }
-
-    @Test
     fun testLoadPrStatus() {
         viewModel.loadPrStatus("proj_foundry_core")
         testDispatcher.scheduler.advanceUntilIdle()
@@ -593,30 +518,6 @@ class CompanionViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals(listOf(CompanionHapticEvent.PairSuccess), events)
-    }
-
-    @Test
-    fun testNewInterruptEmitsOneHapticAndDoesNotRetrigger() {
-        val events = collectHaptics(viewModel)
-        assertTrue(events.isEmpty())
-
-        repository.setPendingInterrupts(
-            listOf(
-                com.foundry.companion.data.model.PendingInterrupt(
-                    interruptId = "int_haptic",
-                    runId = "run_260818_live99",
-                    question = "Approve schema change?"
-                )
-            )
-        )
-        viewModel.loadPendingInterrupts()
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        assertEquals(listOf(CompanionHapticEvent.InterruptArrival), events)
-
-        viewModel.loadPendingInterrupts()
-        testDispatcher.scheduler.advanceUntilIdle()
-        assertEquals(1, events.size)
     }
 
     @Test
