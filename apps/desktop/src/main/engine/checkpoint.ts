@@ -10,35 +10,22 @@
  * Contents, not only hashes. A hash can prove a dirty tracked file drifted but
  * cannot put it back, and git only carries the committed version — so the
  * phase-start bytes of anything dirty or untracked exist nowhere else once the
- * phase has overwritten them. What does not fit the budget is recorded as
- * omitted and flags the checkpoint truncated, so a later restore refuses to
- * claim an exactness it cannot deliver.
+ * phase has overwritten them. Size is not a reason to drop any of it: the
+ * capture is scoped to what git already reports as changed, never a tree walk,
+ * and a checkpoint that silently skipped the one large file a phase was about
+ * to overwrite would be worth less than the bytes it saved. Only a path that
+ * genuinely cannot be read is recorded as omitted, and that flags the
+ * checkpoint truncated so a later restore refuses to claim an exactness it
+ * cannot deliver.
  */
 
+import { isUtf8 } from 'node:buffer';
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readdirSync, statSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type {
-  PhaseCheckpointFile,
-  PhaseCheckpointFileState,
-  PhaseCheckpointOmission,
-} from '@shared/types.js';
+import type { PhaseCheckpointFile, PhaseCheckpointFileState } from '@shared/types.js';
 import { resolveRef, statusPorcelain, type PorcelainEntry } from './git.js';
-
-/**
- * Per-file and whole-checkpoint content budgets.
- *
- * This runs before every phase, so the capture is scoped to what git already
- * reports as changed — never a tree walk — and bounded so one large artefact
- * in a dirty worktree cannot turn a checkpoint into a copy of the build output.
- */
-export const CHECKPOINT_FILE_MAX_BYTES = 1024 * 1024;
-export const CHECKPOINT_TOTAL_MAX_BYTES = 16 * 1024 * 1024;
-
-export interface CaptureLimits {
-  fileMaxBytes?: number;
-  totalMaxBytes?: number;
-}
 
 export interface PhaseStartCapture {
   headSha: string;
@@ -50,31 +37,24 @@ export interface PhaseStartCapture {
 }
 
 /**
- * Everything git reports as changed, with the phase-start bytes of whatever
- * fits, plus the handoff files in effect.
+ * Everything git reports as changed, with its phase-start bytes, plus the
+ * handoff files in effect.
  *
  * `truncated` covers both shortfalls a reader must not distinguish between: a
- * path whose content did not fit, and a dirty set that could not be fully
- * enumerated. Either one means the record cannot reproduce phase start.
+ * path whose content could not be read, and a dirty set that could not be
+ * fully enumerated. Either one means the record cannot reproduce phase start.
  */
 export async function capturePhaseStart(input: {
   cwd: string;
   handoffDir: string;
-  limits?: CaptureLimits;
 }): Promise<PhaseStartCapture> {
-  const fileMax = input.limits?.fileMaxBytes ?? CHECKPOINT_FILE_MAX_BYTES;
-  const totalMax = input.limits?.totalMaxBytes ?? CHECKPOINT_TOTAL_MAX_BYTES;
-
   const listing = await statusPorcelain(input.cwd);
   const files: PhaseCheckpointFile[] = [];
   const omittedPaths: string[] = [];
   let bytesStored = 0;
 
   for (const entry of expandRenames(listing.entries)) {
-    const captured = captureFile(input.cwd, entry, {
-      fileMaxBytes: fileMax,
-      remainingBytes: totalMax - bytesStored,
-    });
+    const captured = await captureFile(input.cwd, entry);
     files.push(captured);
     if (captured.omitted) omittedPaths.push(captured.path);
     // The encoded string is what the payload actually carries, so base64 is
@@ -136,11 +116,7 @@ export function fileStateFor(code: string): PhaseCheckpointFileState {
   return 'modified';
 }
 
-function captureFile(
-  cwd: string,
-  entry: CaptureEntry,
-  budget: { fileMaxBytes: number; remainingBytes: number },
-): PhaseCheckpointFile {
+async function captureFile(cwd: string, entry: CaptureEntry): Promise<PhaseCheckpointFile> {
   const state = entry.forceState ?? fileStateFor(entry.code);
   const base = {
     path: entry.path,
@@ -154,9 +130,13 @@ function captureFile(
   // name paths that HEAD does not carry at all.
   if (state === 'deleted') return { ...base, contentHash: '', size: 0 };
 
+  const abs = join(cwd, entry.path);
+
+  // The stat still precedes the read, and not only to skip directories: it is
+  // the only thing that can name a size for a path the read then fails on, so
+  // an `unreadable` row still says how much is missing.
   let size: number;
   try {
-    const abs = join(cwd, entry.path);
     const stat = statSync(abs);
     // A directory can appear as one untracked entry (git collapses an
     // untracked tree). Reading it would throw; naming it is still useful.
@@ -168,58 +148,30 @@ function captureFile(
     return { ...base, contentHash: '', size: 0, omitted: 'unreadable' };
   }
 
-  // The size check precedes the read on purpose. This runs before every phase
-  // in the main process, synchronously: reading an 800 MB untracked artefact
-  // just to hash it and discard it as `too_large` would block the event loop,
-  // stalling IPC and the renderer's poll. An omitted file has no stored
-  // content, so it has no hash either.
-  const omitted = omissionFor(size, budget);
-  if (omitted) return { ...base, contentHash: '', size, omitted };
-
+  // Read off the threadpool rather than with `readFileSync`. Nothing is
+  // skipped for size any more, so a dirty 800 MB build artefact is now
+  // something this reads in full — synchronously that would park the main
+  // process for as long as the disk took, stalling IPC and the renderer's
+  // poll, before every phase. The caller still awaits the whole capture before
+  // the phase starts, so the record is complete when the phase begins.
   let buf: Buffer;
   try {
-    buf = readFileSync(join(cwd, entry.path));
+    buf = await readFile(abs);
   } catch {
     return { ...base, contentHash: '', size, omitted: 'unreadable' };
   }
 
+  // Node's validator rather than a utf8 round trip: the round trip allocated a
+  // whole string and a second buffer to answer a question about bytes, which
+  // on an unbounded capture is three copies of a large file in memory at once.
   const encoding = isUtf8(buf) ? 'utf8' : 'base64';
-  const content = buf.toString(encoding);
-  // Re-check against the encoded length: base64 is a third larger than the
-  // bytes it came from, and the payload carries the string.
-  if (content.length > budget.remainingBytes) {
-    return {
-      ...base,
-      contentHash: '',
-      size: buf.byteLength,
-      omitted: 'budget_exhausted',
-    };
-  }
   return {
     ...base,
     contentHash: createHash('sha256').update(buf).digest('hex'),
     size: buf.byteLength,
-    content,
+    content: buf.toString(encoding),
     encoding,
   };
-}
-
-function omissionFor(
-  size: number,
-  budget: { fileMaxBytes: number; remainingBytes: number },
-): PhaseCheckpointOmission | null {
-  if (size > budget.fileMaxBytes) return 'too_large';
-  if (size > budget.remainingBytes) return 'budget_exhausted';
-  return null;
-}
-
-/**
- * Whether the bytes survive a utf8 round trip. Storing a binary file as utf8
- * would replace every invalid sequence with U+FFFD and hand a later restore a
- * corrupted file that still matches its recorded length.
- */
-function isUtf8(buf: Buffer): boolean {
-  return Buffer.from(buf.toString('utf8'), 'utf8').equals(buf);
 }
 
 /** Handoff JSON present at phase start, worktree-relative and sorted. */

@@ -8,7 +8,16 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { chmodSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openDb, projectDbPath, projectRunsDir, type Db } from '../../../src/main/trace/db.js';
@@ -467,28 +476,25 @@ describe('a run that has no checkpoints', () => {
   });
 });
 
-describe('the size cap', () => {
-  it('flags the row when a file’s content did not fit', async () => {
+describe('a file the capture could not read', () => {
+  it('flags the row rather than passing the gap off as captured content', async () => {
     const cwd = scratchRepo();
-    writeFileSync(join(cwd, 'tracked.txt'), 'x'.repeat(4096));
+    // A dangling symlink is the deterministic unreadable case: git reports it
+    // as an untracked path, and both the stat and the read resolve through it
+    // to a target that is not there.
+    symlinkSync('/nonexistent/target', join(cwd, 'dangling'));
     writeFileSync(join(cwd, 'small.txt'), 'ok\n');
 
-    const capture = await capturePhaseStart({
-      cwd,
-      handoffDir: '.foundry-handoff',
-      limits: { fileMaxBytes: 16, totalMaxBytes: 1024 },
-    });
+    const capture = await capturePhaseStart({ cwd, handoffDir: '.foundry-handoff' });
     expect(capture.truncated).toBe(true);
-    expect(capture.omittedPaths).toEqual(['tracked.txt']);
+    expect(capture.omittedPaths).toEqual(['dangling']);
 
-    const big = capture.files.find((f) => f.path === 'tracked.txt')!;
-    expect(big.content).toBeUndefined();
-    expect(big.omitted).toBe('too_large');
-    // No hash either: hashing requires reading the whole file into the main
-    // process, which is exactly what the size check exists to avoid. The size
-    // still comes off `statSync`, so the row can say how much was skipped.
-    expect(big.contentHash).toBe('');
-    expect(big.size).toBe(4096);
+    const gap = capture.files.find((f) => f.path === 'dangling')!;
+    expect(gap.content).toBeUndefined();
+    expect(gap.omitted).toBe('unreadable');
+    // No hash either: there are no bytes to hash, and a hash of nothing would
+    // read as a hash of an empty file.
+    expect(gap.contentHash).toBe('');
     expect(capture.files.find((f) => f.path === 'small.txt')!.content).toBe('ok\n');
 
     h.tracer.startRun({
@@ -524,26 +530,46 @@ describe('the size cap', () => {
 
     expect(row.truncated).toBe(true);
     expect(row.exactRestorePossible).toBe(false);
-    expect(h.tracer.phaseCheckpoint(row.checkpointId)!.payload.omittedPaths).toEqual([
-      'tracked.txt',
-    ]);
+    expect(h.tracer.phaseCheckpoint(row.checkpointId)!.payload.omittedPaths).toEqual(['dangling']);
   });
 
-  it('stops storing content once the whole-checkpoint budget is spent', async () => {
+  it('records a directory git collapsed into one entry without trying to read it', async () => {
     const cwd = scratchRepo();
-    writeFileSync(join(cwd, 'a.txt'), 'a'.repeat(64));
-    writeFileSync(join(cwd, 'b.txt'), 'b'.repeat(64));
+    // A submodule-like directory git reports as a single untracked entry:
+    // reading it would throw, and naming it is still the useful answer.
+    mkdirSync(join(cwd, 'nested'));
+    sh(cwd, ['git', 'init', '-q', join(cwd, 'nested')]);
+    writeFileSync(join(cwd, 'nested', 'inner.txt'), 'inner\n');
 
-    const capture = await capturePhaseStart({
-      cwd,
-      handoffDir: '.foundry-handoff',
-      limits: { fileMaxBytes: 1024, totalMaxBytes: 100 },
-    });
-    const stored = capture.files.filter((f) => f.content !== undefined);
-    expect(stored).toHaveLength(1);
-    expect(capture.bytesStored).toBe(64);
-    expect(capture.files.find((f) => f.content === undefined)!.omitted).toBe('budget_exhausted');
+    const capture = await capturePhaseStart({ cwd, handoffDir: '.foundry-handoff' });
+    const dir = capture.files.find((f) => f.path.startsWith('nested'))!;
+    expect(dir.omitted).toBe('unreadable');
+    expect(dir.content).toBeUndefined();
     expect(capture.truncated).toBe(true);
+  });
+});
+
+describe('a file bigger than the caps that used to exist', () => {
+  it('is captured in full rather than omitted for its size', async () => {
+    const cwd = scratchRepo();
+    // Past the retired 1 MiB per-file bound, and the pair past nothing at all:
+    // the capture is no longer allowed to trade a path's only surviving copy
+    // for the bytes it would have saved.
+    const big = 'x'.repeat(4 * 1024 * 1024);
+    writeFileSync(join(cwd, 'tracked.txt'), big);
+    writeFileSync(join(cwd, 'also-big.txt'), big);
+
+    const capture = await capturePhaseStart({ cwd, handoffDir: '.foundry-handoff' });
+    expect(capture.truncated).toBe(false);
+    expect(capture.omittedPaths).toEqual([]);
+    for (const path of ['tracked.txt', 'also-big.txt']) {
+      const file = capture.files.find((f) => f.path === path)!;
+      expect(file.omitted).toBeUndefined();
+      expect(file.content).toBe(big);
+      expect(file.size).toBe(big.length);
+      expect(file.contentHash).toMatch(/^[0-9a-f]{64}$/);
+    }
+    expect(capture.bytesStored).toBe(big.length * 2);
   });
 
   it('keeps a binary file base64 rather than mangling it through utf8', async () => {
@@ -653,12 +679,8 @@ describe('a rename at phase start', () => {
 describe('the truncated flag', () => {
   it('is derived from the files, not taken on trust', async () => {
     const cwd = scratchRepo();
-    writeFileSync(join(cwd, 'big.txt'), 'x'.repeat(4096));
-    const capture = await capturePhaseStart({
-      cwd,
-      handoffDir: '.foundry-handoff',
-      limits: { fileMaxBytes: 16, totalMaxBytes: 1024 },
-    });
+    symlinkSync('/nonexistent/target', join(cwd, 'dangling'));
+    const capture = await capturePhaseStart({ cwd, handoffDir: '.foundry-handoff' });
 
     h.tracer.startRun({
       runId: 'run_derived',
@@ -722,6 +744,62 @@ describe('a checkpoint payload that is no longer on disk', () => {
     expect(after.payloadPresent).toBe(false);
     expect(after.exactRestorePossible).toBe(false);
     expect(h.tracer.phaseCheckpoint(before.checkpointId)).toBeNull();
+  });
+});
+
+describe('retention against a deleted run’s payloads', () => {
+  it('takes the payloads with the rows and reports the bytes it freed', async () => {
+    const scripted = new ScriptedAgent([buildEnvelope()], ['fresh.txt']);
+    const outcome = await run({ pipeline: pipe([agentPhase('build')]), scripted });
+    const before = h.tracer.phaseCheckpoints(outcome.runId);
+    expect(before.length).toBeGreaterThan(0);
+    const paths = before.map((c) => join(h.tracer.runDir(outcome.runId), c.payloadPath));
+    const onDisk = paths.reduce((sum, p) => sum + statSync(p).size, 0);
+    expect(onDisk).toBeGreaterThan(0);
+
+    // A negative retention puts the cutoff in the future, so every finished
+    // run is old enough.
+    const swept = h.tracer.deleteRunsOlderThan(-1);
+    expect(swept.runIds).toContain(outcome.runId);
+    // Deleting the rows without the payloads would leave these unreachable on
+    // disk while the report claimed nothing was freed.
+    expect(swept.bytesReclaimed).toBe(onDisk);
+    for (const path of paths) expect(existsSync(path)).toBe(false);
+    expect(h.tracer.phaseCheckpoints(outcome.runId)).toEqual([]);
+  });
+
+  it('leaves a live run’s payloads and the rest of a deleted run’s directory alone', async () => {
+    const finished = await run({ pipeline: pipe([agentPhase('build')]) });
+    // Never finished, so retention must not touch it however old it is.
+    h.tracer.startRun({
+      runId: 'run_live',
+      projectId: 'proj',
+      pipeline: pipe([]),
+      request: 'x',
+      engineer: 'test',
+      worktreePath: h.repo,
+      branch: null,
+      baseRef: 'main',
+      mode: 'pi',
+    });
+    const livePhase = h.tracer.queuePhase({
+      runId: 'run_live',
+      seq: 0,
+      name: 'build',
+      kind: 'agent',
+      owner: 'builder',
+      description: 'd',
+    });
+    const liveRow = h.tracer.recordPhaseCheckpoint(checkpointInput('run_live', livePhase));
+    const livePayload = join(h.tracer.runDir('run_live'), liveRow.payloadPath);
+
+    const swept = h.tracer.deleteRunsOlderThan(-1);
+
+    expect(swept.runIds).toEqual([finished.runId]);
+    expect(existsSync(livePayload)).toBe(true);
+    expect(h.tracer.phaseCheckpoints('run_live')).toHaveLength(1);
+    // Retention prunes checkpoint payloads, not the raw record beside them.
+    expect(existsSync(join(h.tracer.runDir(finished.runId), 'request.md'))).toBe(true);
   });
 });
 

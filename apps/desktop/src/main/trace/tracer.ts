@@ -8,7 +8,15 @@
  * the same query — and a row patched in place reflows instead of going stale.
  */
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
@@ -1065,7 +1073,19 @@ export class Tracer {
 
   // ── maintenance ───────────────────────────────────────────────────────────
 
-  deleteRunsOlderThan(days: number): string[] {
+  /**
+   * Retention, and what it actually freed.
+   *
+   * Deleting the rows is not the whole deletion: a checkpoint is an index row
+   * plus a JSON payload under the run directory, so dropping `phase_checkpoints`
+   * alone leaves payloads nothing can reach — and those payloads carry the
+   * phase-start file contents, which is where the bytes are.
+   *
+   * The payloads go first, and only the payloads: the rest of a run directory
+   * (`request.md`, `events.jsonl`, prompts) is the raw record this method has
+   * never claimed to prune.
+   */
+  deleteRunsOlderThan(days: number): { runIds: string[]; bytesReclaimed: number } {
     const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
     const ids = this.many<{ run_id: string }>(
       "SELECT run_id FROM runs WHERE status != 'running' AND started_at < ?",
@@ -1082,12 +1102,43 @@ export class Tracer {
       'phases',
       'runs',
     ];
+    // Ahead of the transaction: the rows name the payload paths, so reading
+    // them has to happen while they still exist.
+    let bytesReclaimed = 0;
+    for (const id of ids) bytesReclaimed += this.removeCheckpointPayloads(id);
     this.db.transaction(() => {
       for (const id of ids) {
         for (const table of tables) this.exec(`DELETE FROM ${table} WHERE run_id = ?`, id);
       }
     })();
-    return ids;
+    return { runIds: ids, bytesReclaimed };
+  }
+
+  /**
+   * Deletes one run's checkpoint payloads and reports the bytes freed.
+   *
+   * Scoped by construction: every path comes from that run's own rows, and
+   * `payload_path` is minted by `checkpointPayloadPath`, which sanitises the
+   * phase name so a stored path cannot climb out of `runs/<runId>/`. A payload
+   * that is already gone contributes nothing rather than failing the pass.
+   */
+  private removeCheckpointPayloads(runId: string): number {
+    const dir = this.runDir(runId);
+    let bytes = 0;
+    for (const row of this.many<{ payload_path: string }>(
+      'SELECT payload_path FROM phase_checkpoints WHERE run_id = ?',
+      runId,
+    )) {
+      const full = join(dir, row.payload_path);
+      try {
+        bytes += statSync(full).size;
+        rmSync(full);
+      } catch {
+        // Never written, already pruned, or unreadable — either way there is
+        // nothing to reclaim and retention is not the place to fail over it.
+      }
+    }
+    return bytes;
   }
 
   compact(): void {

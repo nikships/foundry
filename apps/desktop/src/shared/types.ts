@@ -880,16 +880,20 @@ export interface AgentSessionRow {
  */
 export type PhaseCheckpointFileState = 'modified' | 'untracked' | 'deleted';
 
-/** Why a file's phase-start content is missing from the checkpoint payload. */
-export type PhaseCheckpointOmission = 'too_large' | 'budget_exhausted' | 'unreadable';
+/**
+ * Why a file's phase-start content is missing from the checkpoint payload.
+ *
+ * Size is not a reason: a checkpoint captures the dirty set in full. The only
+ * shortfall left is a path that genuinely could not be read.
+ */
+export type PhaseCheckpointOmission = 'unreadable';
 
 /**
  * One path as it stood when the phase began.
  *
- * Content, not just a hash, for everything that fits the budget: a hash can
- * only detect that a file drifted, and restoring a dirty tracked file to its
- * phase-start state needs the bytes. `omitted` is what makes the shortfall
- * legible instead of silent.
+ * Content, not just a hash: a hash can only detect that a file drifted, and
+ * restoring a dirty tracked file to its phase-start state needs the bytes.
+ * `omitted` is what makes a gap legible instead of silent.
  */
 export interface PhaseCheckpointFile {
   path: string;
