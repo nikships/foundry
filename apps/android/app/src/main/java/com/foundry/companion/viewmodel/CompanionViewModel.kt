@@ -55,7 +55,7 @@ data class CompanionUiState(
     val isCreatingPr: Boolean = false,
     val validationIssues: List<ValidationIssue> = emptyList(),
     val errorMessage: String? = null
-}
+)
 
 class CompanionViewModel(
     private val repository: CompanionRepository,
