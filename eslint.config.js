@@ -35,6 +35,9 @@ export default tseslint.config(
       // Plain Node ESM helpers without a TS project service.
       'scripts/**/*.mjs',
       '.factory/skills/**/*.mjs',
+      // Amp plugins/agent modes synced verbatim from ampcode.com — upstream's
+      // code, outside the app build and this repo's TS project service.
+      '.amp/**',
     ],
   },
   js.configs.recommended,
