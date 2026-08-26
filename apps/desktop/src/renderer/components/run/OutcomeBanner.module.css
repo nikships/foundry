@@ -48,6 +48,15 @@
   flex: none;
   flex-wrap: wrap;
 }
+/* Why Restore is unusable, next to the disabled control rather than in a
+   tooltip: a reason an operator has to hover for is a reason they never read. */
+.restore-reason {
+  max-width: 22ch;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: var(--leading);
+}
 .merged {
   background: color-mix(in srgb, var(--green) 14%, transparent);
   color: var(--green);

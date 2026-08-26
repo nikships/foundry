@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { EventRow, GeneratedRunPlan, GhStatus } from '@shared/types.js';
+import type {
+  EventRow,
+  GeneratedRunPlan,
+  GhStatus,
+  RestorableCheckpointList,
+} from '@shared/types.js';
 import { api } from '../api.js';
 import { useConfirmAction } from '../hooks/useConfirmAction.js';
 import { useApp } from '../stores/app.js';
@@ -11,9 +16,11 @@ import PhaseDrawer from '../components/pipeline/PhaseDrawer.js';
 import StatusBadge from '../components/common/StatusBadge.js';
 import OutcomeBanner from '../components/run/OutcomeBanner.js';
 import ExportPlanSheet from '../components/run/ExportPlanSheet.js';
+import RestoreSheet from '../components/run/RestoreSheet.js';
 import { Button } from '../components/ui/Button.js';
 import { planHasActiveFailure } from '../view-models/plan-view.js';
 import { canResumeRun } from '../view-models/outcome-view.js';
+import { restoreAvailability } from '../view-models/restore-view.js';
 import styles from './RunDetailScreen.module.css';
 
 export default function RunDetailScreen({
@@ -37,6 +44,11 @@ export default function RunDetailScreen({
   const [gh, setGh] = useState<GhStatus | null>(null);
   const [plan, setPlan] = useState<GeneratedRunPlan | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [checkpoints, setCheckpoints] = useState<RestorableCheckpointList | null>(null);
+  const [checkpointsError, setCheckpointsError] = useState('');
+  /** Bumped after a restore, because it moved the branch the list is measured against. */
+  const [checkpointsNonce, setCheckpointsNonce] = useState(0);
+  const [restoreOpen, setRestoreOpen] = useState(false);
   /** A refused local merge is what the agent repair path exists for. */
   const [mergeRefused, setMergeRefused] = useState(false);
 
@@ -73,6 +85,31 @@ export default function RunDetailScreen({
     };
   }, [projectId, runId, view.run?.orchestrated, view.run?.status]);
 
+  // Asked only for a finished run: the query walks git in the run's worktree,
+  // and a live run cannot be restored anyway.
+  const wantsCheckpoints = !!view.run && view.run.status !== 'running';
+  useEffect(() => {
+    if (!wantsCheckpoints) {
+      setCheckpoints(null);
+      return;
+    }
+    let cancelled = false;
+    setCheckpointsError('');
+    void api.runs
+      .restorableCheckpoints(projectId, runId)
+      .then((list) => {
+        if (!cancelled) setCheckpoints(list);
+      })
+      .catch((error: Error) => {
+        if (cancelled) return;
+        setCheckpoints(null);
+        setCheckpointsError(error.message || 'Could not read this run’s checkpoints.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [wantsCheckpoints, projectId, runId, checkpointsNonce]);
+
   useEffect(() => {
     const id = window.setInterval(() => {
       if (view.live) setNow(Date.now());
@@ -96,6 +133,9 @@ export default function RunDetailScreen({
     setWorktreeBusy(false);
     setGh(null);
     setMergeRefused(false);
+    setCheckpoints(null);
+    setCheckpointsError('');
+    setRestoreOpen(false);
   }, [runId]);
 
   const selectedPhase = useMemo(
@@ -219,6 +259,13 @@ export default function RunDetailScreen({
   const hasActiveFailure = view.run?.orchestrated
     ? Boolean(plan && planHasActiveFailure(plan, view.phases))
     : view.phases.some((phase) => phase.status === 'fail');
+  const restore = restoreAvailability({
+    run: view.run,
+    list: checkpoints,
+    loading: wantsCheckpoints && !checkpoints && !checkpointsError,
+    error: checkpointsError,
+    busy: worktreeBusy,
+  });
 
   return (
     <div className={styles.screen}>
@@ -320,6 +367,8 @@ export default function RunDetailScreen({
           gh={gh}
           canResume={canResumeRun(view.run, hasActiveFailure)}
           canFix={mergeRefused}
+          restore={restore}
+          onRestore={() => setRestoreOpen(true)}
           onResume={() => void resumeRun()}
           onMerge={() => void mergeWorktree()}
           onFixMerge={() => void fixMerge()}
@@ -356,6 +405,13 @@ export default function RunDetailScreen({
           )}
         </div>
       </div>
+      <RestoreSheet
+        open={restoreOpen}
+        projectId={projectId}
+        list={checkpoints}
+        onClose={() => setRestoreOpen(false)}
+        onRestored={() => setCheckpointsNonce((n) => n + 1)}
+      />
       {plan && (
         <ExportPlanSheet
           open={exportOpen}
