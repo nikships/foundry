@@ -10,7 +10,16 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openDb, projectDbPath, projectRunsDir, type Db } from '../../../src/main/trace/db.js';
@@ -25,6 +34,7 @@ import { defaultProject } from '../../../src/main/store/projects.js';
 import type {
   AgentDef,
   CommandSpec,
+  PhaseCheckpointFile,
   PhaseDef,
   PipelineDef,
   ProjectDef,
@@ -197,6 +207,59 @@ function checkpointFor(runId: string, phaseName: string, generation = 1) {
 }
 
 /**
+ * Records a fresh generation of an existing checkpoint with a different file
+ * list, which is how a test builds a payload the capture code would not
+ * produce on this machine (invalid UTF-8, a path that is now a directory).
+ * Nothing is rewritten: the original generation stays readable beside it.
+ */
+function rerecord(
+  runId: string,
+  phaseName: string,
+  files: PhaseCheckpointFile[],
+  over: { truncated?: boolean; omittedPaths?: string[] } = {},
+): string {
+  const checkpoint = checkpointFor(runId, phaseName);
+  const payload = h.tracer.phaseCheckpoint(checkpoint.checkpointId)!.payload;
+  return h.tracer.recordPhaseCheckpoint({
+    runId,
+    phaseId: checkpoint.phaseId,
+    phaseName: checkpoint.phaseName,
+    phaseKind: checkpoint.phaseKind,
+    headSha: checkpoint.headSha,
+    branch: payload.branch,
+    worktreePath: payload.worktreePath,
+    model: checkpoint.model,
+    agent: checkpoint.agent,
+    agentSessionId: checkpoint.agentSessionId,
+    leafMessageId: checkpoint.leafMessageId,
+    handoffFiles: payload.handoffFiles,
+    envelopePhases: payload.envelopePhases,
+    files,
+    truncated: over.truncated ?? false,
+    omittedPaths: over.omittedPaths ?? [],
+    bytesStored: 0,
+  }).checkpointId;
+}
+
+function recordedFile(
+  path: string,
+  content: Buffer,
+  state: PhaseCheckpointFile['state'] = 'untracked',
+): PhaseCheckpointFile {
+  const encoding = Buffer.from(content.toString('utf8'), 'utf8').equals(content)
+    ? ('utf8' as const)
+    : ('base64' as const);
+  return {
+    path,
+    state,
+    contentHash: createHash('sha256').update(content).digest('hex'),
+    size: content.byteLength,
+    content: content.toString(encoding),
+    encoding,
+  };
+}
+
+/**
  * A rejected run whose `build` checkpoint holds a dirty tracked file and an
  * untracked one, so a restore has something only the checkpoint can put back.
  */
@@ -334,8 +397,7 @@ describe('the session a restore leaves behind', () => {
       checkpointId: checkpointFor(first.runId, 'build').checkpointId,
     });
 
-    expect(result.restored!.freshSessionAgent).toBe('builder');
-    expect(result.restored!.previousSessionId).toBe('s1');
+    expect(result.restored!.freshSessions).toEqual([{ agent: 'builder', previousSessionId: 's1' }]);
     // The row survives — it is the evidence of what was abandoned — and only
     // the pointer to the runtime conversation is gone.
     const cleared = h.tracer.agentSessions(first.runId)[0]!;
@@ -362,16 +424,38 @@ describe('the session a restore leaves behind', () => {
     expect(restore.payload.leafMessageId).toBeNull();
   });
 
-  it('leaves sessions alone for a code phase, which has no agent', async () => {
+  it('drops the pointer of a later phase’s agent, not only the restored phase’s', async () => {
+    // `dirty` is a code phase and precedes `build`. Restoring to it must still
+    // clear `builder`: the tree has moved out from under that conversation,
+    // and a Continue resumes from `build`, which would otherwise reopen the
+    // session the restore was performed to escape.
     const { runId } = await rejectedRunWithDirtyCheckpoint();
+    expect(h.tracer.agentSessions(runId)[0]!.agentSessionId).toBe('s1');
+
     const result = await restoreRun(scope(), {
       runId,
       checkpointId: checkpointFor(runId, 'dirty').checkpointId,
     });
 
     expect(result.ok).toBe(true);
-    expect(result.restored!.freshSessionAgent).toBeNull();
-    expect(h.tracer.agentSessions(runId)[0]!.agentSessionId).toBe('s1');
+    expect(result.restored!.freshSessions).toEqual([{ agent: 'builder', previousSessionId: 's1' }]);
+    expect(h.tracer.agentSessions(runId)[0]!.agentSessionId).toBeNull();
+  });
+
+  it('reports no fresh sessions for a run that never opened one', async () => {
+    const outcome = await run({
+      pipeline: pipe([codePhase('touch', { argv: ['sh', '-c', 'printf x > only.txt && false'] })]),
+    });
+    expect(outcome.status).toBe('rejected');
+
+    const result = await restoreRun(scope(), {
+      runId: outcome.runId,
+      checkpointId: checkpointFor(outcome.runId, 'touch').checkpointId,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.restored!.freshSessions).toEqual([]);
+    expect(result.detail).not.toContain('new session');
   });
 });
 
@@ -593,32 +677,17 @@ describe('a truncated checkpoint', () => {
    * payload names what cannot be reproduced.
    */
   function truncate(runId: string): string {
-    const checkpoint = checkpointFor(runId, 'build');
-    const payload = h.tracer.phaseCheckpoint(checkpoint.checkpointId)!.payload;
-    const row = h.tracer.recordPhaseCheckpoint({
+    const payload = h.tracer.phaseCheckpoint(checkpointFor(runId, 'build').checkpointId)!.payload;
+    return rerecord(
       runId,
-      phaseId: checkpoint.phaseId,
-      phaseName: checkpoint.phaseName,
-      phaseKind: checkpoint.phaseKind,
-      headSha: checkpoint.headSha,
-      branch: payload.branch,
-      worktreePath: payload.worktreePath,
-      model: checkpoint.model,
-      agent: checkpoint.agent,
-      agentSessionId: checkpoint.agentSessionId,
-      leafMessageId: checkpoint.leafMessageId,
-      handoffFiles: payload.handoffFiles,
-      envelopePhases: payload.envelopePhases,
-      files: payload.files.map((file) =>
+      'build',
+      payload.files.map((file) =>
         file.path === 'tracked.txt'
           ? { ...file, content: undefined, encoding: undefined, omitted: 'too_large' as const }
           : file,
       ),
-      truncated: true,
-      omittedPaths: ['tracked.txt'],
-      bytesStored: 0,
-    });
-    return row.checkpointId;
+      { truncated: true, omittedPaths: ['tracked.txt'] },
+    );
   }
 
   it('refuses an exact restore rather than silently partially restoring', async () => {
@@ -667,5 +736,264 @@ describe('a truncated checkpoint', () => {
     // reset to the checkpoint commit left, never a fabricated version.
     expect(readFileSync(join(worktree, 'extra.txt'), 'utf8')).toBe('kept\n');
     expect(readFileSync(join(worktree, 'tracked.txt'), 'utf8')).toBe('committed\n');
+  });
+});
+
+describe('the branch a restore is willing to move', () => {
+  it('refuses when the worktree stands on another branch, and moves nothing', async () => {
+    const { runId, worktree } = await rejectedRunWithDirtyCheckpoint();
+    const checkpoint = checkpointFor(runId, 'build');
+    // A later commit means a reset would be observable if the guard failed.
+    writeFileSync(join(worktree, 'after.txt'), 'after\n');
+    sh(worktree, ['git', 'add', '-A']);
+    sh(worktree, ['git', 'commit', '-qm', 'after the checkpoint']);
+    const before = headOf(worktree);
+    sh(worktree, ['git', 'checkout', '-qb', 'someone-elses-branch']);
+
+    const result = await restoreRun(scope(), { runId, checkpointId: checkpoint.checkpointId });
+
+    expect(result.ok).toBe(false);
+    expect(result.refusal).toBe('branch_mismatch');
+    expect(result.detail).toBe(
+      'this run’s worktree is no longer on its own branch, so a reset would move another ref',
+    );
+    expect(headOf(worktree)).toBe(before);
+    expect(sh(worktree, ['git', 'branch', '--show-current']).trim()).toBe('someone-elses-branch');
+    // A refusal before the reset writes nothing.
+    expect(h.tracer.eventsAfter(runId, 0, 1000).some((e) => e.name === 'restore')).toBe(false);
+  });
+
+  it('refuses a detached HEAD, where no branch would move at all', async () => {
+    const { runId, worktree } = await rejectedRunWithDirtyCheckpoint();
+    const checkpoint = checkpointFor(runId, 'build');
+    writeFileSync(join(worktree, 'after.txt'), 'after\n');
+    sh(worktree, ['git', 'add', '-A']);
+    sh(worktree, ['git', 'commit', '-qm', 'after the checkpoint']);
+    const before = headOf(worktree);
+    sh(worktree, ['git', 'checkout', '-q', '--detach', 'HEAD']);
+
+    const result = await restoreRun(scope(), { runId, checkpointId: checkpoint.checkpointId });
+
+    expect(result.refusal).toBe('branch_mismatch');
+    expect(headOf(worktree)).toBe(before);
+  });
+
+  it('refuses a run row that records no branch, where the target ref is unknown', async () => {
+    const { runId, worktree } = await rejectedRunWithDirtyCheckpoint();
+    const checkpoint = checkpointFor(runId, 'build');
+    const before = headOf(worktree);
+    h.db.prepare('UPDATE runs SET branch = NULL WHERE run_id = ?').run(runId);
+
+    const result = await restoreRun(scope(), { runId, checkpointId: checkpoint.checkpointId });
+
+    expect(result.refusal).toBe('branch_mismatch');
+    expect(headOf(worktree)).toBe(before);
+  });
+
+  it('refuses when git will not move the branch, and says so', async () => {
+    const { runId, worktree } = await rejectedRunWithDirtyCheckpoint();
+    const checkpoint = checkpointFor(runId, 'build');
+    writeFileSync(join(worktree, 'after.txt'), 'after\n');
+    sh(worktree, ['git', 'add', '-A']);
+    sh(worktree, ['git', 'commit', '-qm', 'after the checkpoint']);
+    const before = headOf(worktree);
+    // A stale lock is exactly what a crashed git leaves behind, and it makes
+    // `reset --hard` fail for a reason nothing in this module controls.
+    const gitDir = sh(worktree, ['git', 'rev-parse', '--absolute-git-dir']).trim();
+    writeFileSync(join(gitDir, 'index.lock'), '');
+
+    const result = await restoreRun(scope(), { runId, checkpointId: checkpoint.checkpointId });
+
+    expect(result.ok).toBe(false);
+    expect(result.refusal).toBe('reset_failed');
+    expect(result.detail).toBe(
+      'git refused to move the run branch back to the checkpoint’s commit',
+    );
+    expect(headOf(worktree)).toBe(before);
+    expect(h.tracer.eventsAfter(runId, 0, 1000).some((e) => e.name === 'restore')).toBe(false);
+    rmSync(join(gitDir, 'index.lock'));
+  });
+
+  it('refuses a checkpoint that never recorded the commit its phase started from', async () => {
+    const { runId, worktree } = await rejectedRunWithDirtyCheckpoint();
+    const checkpoint = checkpointFor(runId, 'build');
+    const before = headOf(worktree);
+    h.db
+      .prepare('UPDATE phase_checkpoints SET head_sha = ? WHERE checkpoint_id = ?')
+      .run('', checkpoint.checkpointId);
+
+    const result = await restoreRun(scope(), { runId, checkpointId: checkpoint.checkpointId });
+
+    expect(result.refusal).toBe('checkpoint_head_missing');
+    expect(result.detail).toBe('that checkpoint never recorded the commit its phase started from');
+    expect(headOf(worktree)).toBe(before);
+
+    const listed = await listRestorableCheckpoints(scope(), runId);
+    const build = listed.checkpoints.find((c) => c.checkpointId === checkpoint.checkpointId)!;
+    expect(build.restorable).toBe(false);
+    expect(build.blocker).toBe('checkpoint_head_missing');
+  });
+});
+
+describe('a checkpoint holding bytes that are not text', () => {
+  it('puts a binary file back byte for byte', async () => {
+    const { runId, worktree } = await rejectedRunWithDirtyCheckpoint();
+    // Invalid UTF-8 on purpose: a utf8 round trip would replace 0x80–0xFF
+    // with U+FFFD and hand back a file that still matches its recorded length.
+    const bytes = Buffer.from([0x00, 0xff, 0xfe, 0x80, 0x01, 0x7f, 0xc3, 0x28]);
+    const checkpointId = rerecord(runId, 'build', [recordedFile('logo.bin', bytes)]);
+
+    writeFileSync(join(worktree, 'logo.bin'), 'clobbered by the dead attempt\n');
+    const result = await restoreRun(scope(), { runId, checkpointId });
+
+    expect(result.ok).toBe(true);
+    expect(result.restored!.omittedPaths).toEqual([]);
+    expect(readFileSync(join(worktree, 'logo.bin')).equals(bytes)).toBe(true);
+  });
+});
+
+describe('a payload that cannot be applied as recorded', () => {
+  it('never writes through a symlink, so the base checkout stays untouched', async () => {
+    const { runId, worktree } = await rejectedRunWithDirtyCheckpoint();
+    // The escape a capture records honestly: an untracked symlink pointing at
+    // a file in the base checkout. Capture stores the *target's* bytes under
+    // the link's path, and `reset --hard` does not remove an untracked link,
+    // so a writer that trusts the path writes straight into the base repo.
+    const target = join(h.repo, 'precious.txt');
+    writeFileSync(target, 'PRECIOUS\n');
+    const link = join(worktree, 'escape.txt');
+    symlinkSync('../../precious.txt', link);
+    expect(readFileSync(link, 'utf8')).toBe('PRECIOUS\n');
+    expect(lstatSync(link).isSymbolicLink()).toBe(true);
+
+    const checkpointId = rerecord(
+      runId,
+      'build',
+      [recordedFile('escape.txt', Buffer.from('CLOBBERED\n'))],
+      {},
+    );
+
+    const result = await restoreRun(scope(), { runId, checkpointId, acceptPartial: true });
+
+    expect(result.ok).toBe(true);
+    // The link survives the reset, so the guard is the only thing between the
+    // restore and the base file.
+    expect(lstatSync(link).isSymbolicLink()).toBe(true);
+    expect(readFileSync(target, 'utf8')).toBe('PRECIOUS\n');
+    expect(result.restored!.omittedPaths).toEqual(['escape.txt']);
+    expect(result.restored!.filesRestored).toBe(0);
+  });
+
+  it('does not delete through a symlink either', async () => {
+    const { runId, worktree } = await rejectedRunWithDirtyCheckpoint();
+    const target = join(h.repo, 'precious.txt');
+    writeFileSync(target, 'PRECIOUS\n');
+    symlinkSync('../../precious.txt', join(worktree, 'escape.txt'));
+
+    // `deleted` means "phase start did not have this path", so a restore
+    // removes it. Through a link that would remove the base file.
+    const checkpointId = rerecord(runId, 'build', [
+      { path: 'escape.txt', state: 'deleted', contentHash: '', size: 0 },
+    ]);
+
+    const result = await restoreRun(scope(), { runId, checkpointId, acceptPartial: true });
+
+    expect(result.ok).toBe(true);
+    expect(existsSync(target)).toBe(true);
+    expect(readFileSync(target, 'utf8')).toBe('PRECIOUS\n');
+    expect(result.restored!.omittedPaths).toEqual(['escape.txt']);
+  });
+
+  it('writes a file back over a directory the dead attempt left standing', async () => {
+    const { runId, worktree } = await rejectedRunWithDirtyCheckpoint();
+    const checkpointId = rerecord(runId, 'build', [
+      recordedFile('foo', Buffer.from('phase-start file\n')),
+    ]);
+    // `git clean -fd -- foo/bar` removes the file and leaves `foo` a directory,
+    // so the write that follows would fail with EISDIR.
+    mkdirSync(join(worktree, 'foo'), { recursive: true });
+    writeFileSync(join(worktree, 'foo', 'bar'), 'the phase replaced a file with a tree\n');
+
+    const result = await restoreRun(scope(), { runId, checkpointId });
+
+    expect(result.ok).toBe(true);
+    expect(result.restored!.omittedPaths).toEqual([]);
+    expect(readFileSync(join(worktree, 'foo'), 'utf8')).toBe('phase-start file\n');
+  });
+
+  /**
+   * A payload that cannot be applied whole: it records `a` as a file and
+   * `a/b` beneath it, so whichever order the passes run in, one of the two
+   * cannot exist. Recording `a` is what keeps the first pass from simply
+   * cleaning the obstruction away.
+   */
+  function selfContradictingPayload(runId: string): string {
+    return rerecord(runId, 'build', [
+      recordedFile('a', Buffer.from('a is a file\n')),
+      recordedFile('a/b', Buffer.from('nested\n')),
+      recordedFile('fine.txt', Buffer.from('written anyway\n')),
+    ]);
+  }
+
+  it('counts a path it cannot write as omitted, and still records the restore', async () => {
+    const { runId, worktree } = await rejectedRunWithDirtyCheckpoint();
+    const checkpointId = selfContradictingPayload(runId);
+
+    const result = await restoreRun(scope(), { runId, checkpointId, acceptPartial: true });
+
+    expect(result.ok).toBe(true);
+    expect(result.restored!.omittedPaths).toEqual(['a/b']);
+    expect(result.restored!.filesRestored).toBe(2);
+    // The pass kept going after the throw rather than abandoning the tree.
+    expect(readFileSync(join(worktree, 'a'), 'utf8')).toBe('a is a file\n');
+    expect(readFileSync(join(worktree, 'fine.txt'), 'utf8')).toBe('written anyway\n');
+    // The event is the operator's only record of the pre-restore HEAD, so a
+    // partial apply must not cost them it.
+    const restore = h.tracer.eventsAfter(runId, 0, 1000).find((e) => e.name === 'restore')!;
+    expect(restore.payload.previousHeadSha).toBe(result.restored!.previousHeadSha);
+    expect(restore.payload.omittedPaths).toEqual(['a/b']);
+  });
+
+  it('reports a partial apply as a refusal when the caller did not accept one', async () => {
+    const { runId, worktree } = await rejectedRunWithDirtyCheckpoint();
+    // The row is not truncated, so the pre-check at the top passes; the
+    // omission only appears while applying.
+    const checkpointId = selfContradictingPayload(runId);
+    const checkpoint = h.tracer.phaseCheckpoint(checkpointId)!.row;
+
+    const result = await restoreRun(scope(), { runId, checkpointId });
+
+    expect(result.ok).toBe(false);
+    expect(result.refusal).toBe('partial_not_accepted');
+    expect(result.detail).toContain('a/b');
+    // The reset happened, so the refusal reports it rather than pretending it
+    // did not, and the record travels with the answer.
+    expect(result.detail).toContain('the worktree was already reset');
+    expect(result.restored!.omittedPaths).toEqual(['a/b']);
+    expect(headOf(worktree)).toBe(checkpoint.headSha);
+    const restore = h.tracer.eventsAfter(runId, 0, 1000).find((e) => e.name === 'restore')!;
+    expect(restore.payload.accepted).toBe(false);
+  });
+});
+
+describe('the commits a restore moves off', () => {
+  it('counts every one of them, even past the cap it quotes', async () => {
+    const { runId, worktree } = await rejectedRunWithDirtyCheckpoint();
+    const checkpoint = checkpointFor(runId, 'build');
+    // One past the 20-sha listing cap: the confirmation must say 21, not 20.
+    for (let i = 0; i < 21; i++) {
+      writeFileSync(join(worktree, `c${i}.txt`), `${i}\n`);
+      sh(worktree, ['git', 'add', '-A']);
+      sh(worktree, ['git', 'commit', '-qm', `commit ${i}`]);
+    }
+
+    const result = await restoreRun(scope(), { runId, checkpointId: checkpoint.checkpointId });
+
+    expect(result.ok).toBe(true);
+    expect(result.restored!.droppedCommitCount).toBe(21);
+    expect(result.restored!.droppedCommits).toHaveLength(20);
+    expect(result.detail).toContain('21 commits moved off');
+    // The quoted list is visibly incomplete rather than passing as the whole.
+    expect(result.detail).toContain(', …)');
   });
 });

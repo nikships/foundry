@@ -1035,7 +1035,7 @@ export const RESTORE_REFUSAL_COPY: Record<RestoreRefusal, string> = {
   checkpoint_commit_missing:
     'the commit that checkpoint started from no longer exists in this worktree',
   partial_not_accepted:
-    'that checkpoint is truncated, so an exact restore is impossible: a partial restore has to be accepted explicitly',
+    'an exact restore is impossible here, so a partial restore has to be accepted explicitly',
   branch_mismatch:
     'this run’s worktree is no longer on its own branch, so a reset would move another ref',
   reset_failed: 'git refused to move the run branch back to the checkpoint’s commit',
@@ -1102,6 +1102,21 @@ export interface RestoreRunInput {
   acceptPartial?: boolean;
 }
 
+/**
+ * An agent whose runtime session pointer a restore dropped, and the
+ * conversation it stepped away from.
+ *
+ * A restore moves the tree out from under every session the run holds, so it
+ * is never only the restored phase's own agent: a later phase's hung
+ * conversation would otherwise be reopened by the next Continue, which is the
+ * exact thing the operator restored to escape.
+ */
+export interface RestoredAgentSession {
+  agent: string;
+  /** The abandoned conversation. Kept as evidence, never deleted. */
+  previousSessionId: string | null;
+}
+
 /** What a completed restore did, in terms an operator can verify against git. */
 export interface RestoreRecord {
   checkpointId: string;
@@ -1115,20 +1130,27 @@ export interface RestoreRecord {
   /**
    * Commits the restore moved off the branch, newest first. They stay
    * reachable through the branch's reflog; nothing here deletes a commit.
+   *
+   * Capped, so it can be shorter than `droppedCommitCount`. A confirmation
+   * counts with the number and quotes with the list.
    */
   droppedCommits: string[];
+  /** How many commits the restore moved off, uncapped. */
+  droppedCommitCount: number;
   /** Files written back to their phase-start bytes. */
   filesRestored: number;
   /** Paths removed because phase start did not have them. */
   filesRemoved: number;
-  /** Paths whose phase-start content was never recorded, so they were left as they are. */
+  /** Paths whose phase-start content was never recorded or could not be written. */
   omittedPaths: string[];
   /** True when `omittedPaths` is non-empty: the tree is close, not identical. */
   partial: boolean;
-  /** The agent whose next session is new because this restore dropped its pointer. */
-  freshSessionAgent: string | null;
-  /** The conversation the restore stepped away from. Kept as evidence, never deleted. */
-  previousSessionId: string | null;
+  /**
+   * Every agent whose session pointer this restore dropped, so the next
+   * Continue opens a new conversation for each rather than reopening one the
+   * restored tree no longer matches.
+   */
+  freshSessions: RestoredAgentSession[];
   /** The run status this restore was performed from. */
   fromStatus: RunStatus;
 }
@@ -1139,7 +1161,12 @@ export interface RestoreResult {
   detail: string;
   /** Present exactly when `ok` is false. */
   refusal?: RestoreRefusal;
-  /** Present exactly when `ok` is true. */
+  /**
+   * Present whenever the worktree was moved: always on success, and also on
+   * the one refusal that can happen after the reset — a partial apply the
+   * caller did not accept. A refusal that carries a record is a report of what
+   * did happen, not a claim that it succeeded.
+   */
   restored?: RestoreRecord;
 }
 

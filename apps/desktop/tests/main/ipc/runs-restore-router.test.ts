@@ -88,6 +88,7 @@ function harness(opts: { projectFound?: boolean; run?: RunRow | null } = {}) {
     phaseCheckpoints: vi.fn((): PhaseCheckpointRow[] => [checkpointRow()]),
     phaseCheckpoint: vi.fn(() => null),
     event: vi.fn(() => 'evt_1'),
+    agentSessions: vi.fn(() => []),
     clearAgentSessionId: vi.fn(() => null),
   };
   const handlers = new Map<string, Handler>();

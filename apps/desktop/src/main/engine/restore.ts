@@ -23,14 +23,16 @@
  *     a restore either refuses or names what it left alone.
  */
 
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import type {
+  AgentSessionRow,
   PhaseCheckpointFile,
   PhaseCheckpointPayload,
   PhaseCheckpointRow,
   RestorableCheckpoint,
   RestorableCheckpointList,
+  RestoredAgentSession,
   RestoreRecord,
   RestoreRefusal,
   RestoreResult,
@@ -41,6 +43,7 @@ import type {
 import { RESTORE_REFUSAL_COPY } from '@shared/types.js';
 import type { EventInput } from '../trace/tracer.js';
 import {
+  commitCount,
   commitsAhead,
   currentBranch,
   refExists,
@@ -58,6 +61,7 @@ export interface RestoreTracer {
     checkpointId: string,
   ): { row: PhaseCheckpointRow; payload: PhaseCheckpointPayload } | null;
   event(input: EventInput): string;
+  agentSessions(runId: string): AgentSessionRow[];
   clearAgentSessionId(runId: string, agent: string): string | null;
 }
 
@@ -131,18 +135,26 @@ export async function restoreRun(
   if (row.truncated && !input.acceptPartial) {
     return refuse('partial_not_accepted', omittedSuffix(payload.omittedPaths));
   }
-  if (run.branch && (await currentBranch(cwd)) !== run.branch) {
+  // Not `run.branch && …`: a row with a worktree and no branch is the case
+  // where a reset is least understood, so it refuses rather than proceeding.
+  // A detached HEAD or a mid-rebase worktree answers `HEAD`, which mismatches.
+  if (!run.branch || (await currentBranch(cwd)) !== run.branch) {
     return refuse('branch_mismatch');
   }
 
   const previousHeadSha = await resolveRef(cwd, 'HEAD');
   const droppedCommits = await commitsAhead(cwd, row.headSha, 'HEAD', DROPPED_COMMIT_CAP);
+  // The list is capped so it can be quoted; the count is not, because a
+  // confirmation that says "20 commits moved off" when 500 did is the sentence
+  // the operator decides on.
+  const droppedCommitCount = (await commitCount(cwd, row.headSha, 'HEAD')) ?? droppedCommits.length;
   if (!(await resetHardTo(cwd, row.headSha)).ok) return refuse('reset_failed');
 
+  // Past this line the branch has already moved, so every remaining path has
+  // to end in a traced event: a half-restored worktree whose pre-restore HEAD
+  // was never recorded is the one shape from which nothing can be recovered.
   const applied = await applyPayload(cwd, payload);
-  const previousSessionId = payload.agent
-    ? tracer.clearAgentSessionId(input.runId, payload.agent)
-    : null;
+  const freshSessions = clearRunSessions(tracer, input.runId);
 
   const restored: RestoreRecord = {
     checkpointId: row.checkpointId,
@@ -152,12 +164,12 @@ export async function restoreRun(
     previousHeadSha,
     headSha: row.headSha,
     droppedCommits,
+    droppedCommitCount,
     filesRestored: applied.filesRestored,
     filesRemoved: applied.filesRemoved,
     omittedPaths: applied.omittedPaths,
     partial: applied.omittedPaths.length > 0,
-    freshSessionAgent: payload.agent,
-    previousSessionId,
+    freshSessions,
     fromStatus: run.status,
   };
 
@@ -173,11 +185,43 @@ export async function restoreRun(
       // fresh session regardless, because the pointer above is now clear.
       leafMessageId: payload.leafMessageId,
       acceptedPartial: !!input.acceptPartial,
+      accepted: !restored.partial || !!input.acceptPartial,
     },
   });
   scope.notifyRuns?.();
 
+  // The truncation pre-check is not the whole answer: a path can be refused or
+  // fail to write during the apply on a record that was never truncated. A
+  // caller that did not ask for a partial restore is told it got one.
+  if (restored.partial && !input.acceptPartial) {
+    return {
+      ok: false,
+      refusal: 'partial_not_accepted',
+      detail: `${RESTORE_REFUSAL_COPY.partial_not_accepted}${omittedSuffix(restored.omittedPaths)} — the worktree was already reset to ${row.headSha.slice(0, 8)} from ${previousHeadSha.slice(0, 8)}`,
+      restored,
+    };
+  }
+
   return { ok: true, detail: confirmation(restored), restored };
+}
+
+/**
+ * Drops every agent session pointer this run holds, and reports what they were.
+ *
+ * Not only the restored phase's own agent: restoring to an earlier checkpoint
+ * would otherwise leave a later phase's hung conversation intact, and the next
+ * Continue would resume from that phase and reopen the exact session the
+ * restore was performed to escape. The tree has moved under all of them, so
+ * all of them start fresh. Every row, its model, and its transcript survive.
+ */
+function clearRunSessions(tracer: RestoreTracer, runId: string): RestoredAgentSession[] {
+  return tracer
+    .agentSessions(runId)
+    .map((session) => ({
+      agent: session.agent,
+      previousSessionId: tracer.clearAgentSessionId(runId, session.agent),
+    }))
+    .sort((a, b) => a.agent.localeCompare(b.agent));
 }
 
 // ── eligibility ─────────────────────────────────────────────────────────────
@@ -263,13 +307,18 @@ interface Applied {
 }
 
 /**
- * Puts the worktree back to what the checkpoint recorded, in three passes.
+ * Puts the worktree back to what the checkpoint recorded, in two passes.
  *
  * The reset has already returned the tracked tree to the phase-start commit,
  * which leaves exactly two kinds of drift: paths that exist now and did not
  * then, and paths whose phase-start bytes differed from the commit. The first
  * pass removes the former, the second writes the latter, and anything the
  * record could not hold is named rather than guessed at.
+ *
+ * Total by construction: a path that cannot be written is counted as omitted
+ * rather than thrown, because the reset has already happened and a throw here
+ * would leave a half-restored worktree whose pre-restore HEAD was never
+ * recorded anywhere.
  */
 async function applyPayload(cwd: string, payload: PhaseCheckpointPayload): Promise<Applied> {
   const recorded = new Set(payload.files.map((file) => file.path));
@@ -282,30 +331,52 @@ async function applyPayload(cwd: string, payload: PhaseCheckpointPayload): Promi
   let filesRestored = 0;
   const omittedPaths: string[] = [];
   for (const file of payload.files) {
-    const outcome = applyFile(cwd, file);
-    if (outcome === 'restored') filesRestored += 1;
-    if (outcome === 'omitted') omittedPaths.push(file.path);
+    if (applyFileSafely(cwd, file) === 'restored') filesRestored += 1;
+    else omittedPaths.push(file.path);
   }
   return { filesRestored, filesRemoved, omittedPaths };
 }
 
 type FileOutcome = 'restored' | 'omitted';
 
+/**
+ * `applyFile` for a path that may fight back: a directory standing where a
+ * file belongs, an ancestor that is now a file, a permission error. Each of
+ * those is one path the operator is told about, not a failed restore.
+ */
+function applyFileSafely(cwd: string, file: PhaseCheckpointFile): FileOutcome {
+  try {
+    return applyFile(cwd, file);
+  } catch {
+    return 'omitted';
+  }
+}
+
 function applyFile(cwd: string, file: PhaseCheckpointFile): FileOutcome {
   const abs = insideWorktree(cwd, file.path);
   // Paths come from this worktree's own `git status`, so an escaping one means
   // the payload was edited. Restoring it would write outside the run.
   if (!abs) return 'omitted';
+  // String math validates the path; only the filesystem validates the target.
+  if (!targetInsideWorktree(cwd, abs)) return 'omitted';
 
   // A path deleted at phase start is carried by the commit, so the reset put
-  // it back; matching the record means taking it away again.
+  // it back; matching the record means taking it away again. Recursive because
+  // the path may be a directory now, and `rmSync` refuses one otherwise.
   if (file.state === 'deleted') {
-    rmSync(abs, { force: true });
+    rmSync(abs, { force: true, recursive: true });
     return 'restored';
   }
   // Recorded without its bytes: the hash proves it had drifted and cannot
   // reproduce it. Whatever the reset left is kept, and the path is named.
   if (file.content === undefined) return 'omitted';
+
+  // A phase that replaced this file with a directory leaves the directory
+  // standing after `git clean` takes its contents, and writing into it would
+  // fail with EISDIR. Nothing recorded can live under a path recorded as a
+  // file, so what is left is empty scaffolding.
+  const standing = lstatOrNull(abs);
+  if (standing?.isDirectory()) rmSync(abs, { force: true, recursive: true });
 
   mkdirSync(dirname(abs), { recursive: true });
   writeFileSync(abs, Buffer.from(file.content, file.encoding ?? 'utf8'));
@@ -319,6 +390,53 @@ function insideWorktree(cwd: string, relPath: string): string | null {
   const rel = relative(cwd, abs);
   if (!rel || rel.startsWith('..')) return null;
   return join(cwd, rel);
+}
+
+/**
+ * Whether writing to or removing `abs` really lands inside the worktree.
+ *
+ * `insideWorktree` is string math, so it cannot see a symlink: a checkpoint
+ * legitimately records a dirty untracked `link.txt -> ../../src/main.ts`
+ * (capture reads through the link, and `reset --hard` does not remove an
+ * untracked one), and writing that path would write straight through it into
+ * the base checkout the run is isolated from. So the leaf must not be a link
+ * and the nearest directory that actually exists above it must resolve back
+ * inside the worktree.
+ */
+function targetInsideWorktree(cwd: string, abs: string): boolean {
+  if (lstatOrNull(abs)?.isSymbolicLink()) return false;
+  const root = realOrNull(cwd);
+  const parent = realOrNull(nearestExisting(dirname(abs)));
+  if (!root || !parent) return false;
+  const rel = relative(root, parent);
+  return !rel.startsWith('..') && !isAbsolute(rel);
+}
+
+/** The closest ancestor of `dir` that exists, so its links can be resolved. */
+function nearestExisting(dir: string): string {
+  let current = dir;
+  while (!existsSync(current)) {
+    const parent = dirname(current);
+    if (parent === current) return current;
+    current = parent;
+  }
+  return current;
+}
+
+function lstatOrNull(path: string): ReturnType<typeof lstatSync> | null {
+  try {
+    return lstatSync(path);
+  } catch {
+    return null;
+  }
+}
+
+function realOrNull(path: string): string | null {
+  try {
+    return realpathSync(path);
+  } catch {
+    return null;
+  }
 }
 
 // ── operator-facing copy ────────────────────────────────────────────────────
@@ -345,10 +463,16 @@ function confirmation(record: RestoreRecord): string {
   const parts = [
     `Restored “${record.phaseName}” (attempt ${record.generation}) to ${record.headSha.slice(0, 8)}`,
   ];
-  if (record.droppedCommits.length) {
-    const moved = plural(record.droppedCommits.length, 'commit');
+  if (record.droppedCommitCount) {
+    // Counted uncapped, quoted capped: the number is what the operator judges
+    // the restore by, and a truncated list must not be read as the whole of it.
+    const moved = plural(record.droppedCommitCount, 'commit');
+    const named =
+      record.droppedCommits.length < record.droppedCommitCount
+        ? `${record.droppedCommits.join(', ')}, …`
+        : record.droppedCommits.join(', ');
     parts.push(
-      `${moved} moved off ${record.previousHeadSha.slice(0, 8)} (still reachable via git reflog: ${record.droppedCommits.join(', ')})`,
+      `${moved} moved off ${record.previousHeadSha.slice(0, 8)} (still reachable via git reflog: ${named})`,
     );
   }
   parts.push(`${plural(record.filesRestored, 'file')} put back`);
@@ -358,8 +482,10 @@ function confirmation(record: RestoreRecord): string {
       `${plural(record.omittedPaths.length, 'path')} left as they are: ${record.omittedPaths.join(', ')}`,
     );
   }
-  if (record.freshSessionAgent) {
-    parts.push(`${record.freshSessionAgent} continues in a new session`);
+  if (record.freshSessions.length) {
+    const agents = record.freshSessions.map((session) => session.agent).join(', ');
+    const verb = record.freshSessions.length === 1 ? 'continues' : 'continue';
+    parts.push(`${agents} ${verb} in a new session`);
   }
   return `${parts.join('; ')}.`;
 }
