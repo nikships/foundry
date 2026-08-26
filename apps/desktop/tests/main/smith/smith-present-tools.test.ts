@@ -117,6 +117,8 @@ const mockRunDetail: RunDetail = {
     prUrl: 'https://github.com/nikships/foundry/pull/42',
     issueNumber: null,
     issueUrl: null,
+    source: null,
+    sourceSyncError: null,
     merged: false,
     archived: false,
     mode: 'pi',

@@ -203,7 +203,12 @@
 .manualToggleRow {
   display: flex;
   justify-content: flex-end;
+  gap: var(--s4);
   margin: 0 var(--s6) var(--s2);
+}
+.modeChoices {
+  display: flex;
+  gap: var(--s4);
 }
 .planning,
 .planWrap {

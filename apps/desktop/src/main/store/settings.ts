@@ -6,7 +6,7 @@
 import { join } from 'node:path';
 import { z } from 'zod';
 import { REASONING_EFFORTS, isReasoningEffort } from '@shared/reasoning-effort.js';
-import { DEFAULT_PR_AGENT, type AppSettings } from '@shared/types.js';
+import { DEFAULT_PR_AGENT, type AppSettings, type LinearStatusMapping } from '@shared/types.js';
 import { JsonStore } from './json-store.js';
 
 /**
@@ -45,6 +45,11 @@ export const appSettingsSchema = z.object({
   retentionDays: z.number().int().min(1).max(3650).nullable(),
   onboarded: z.boolean(),
   hiddenModelIds: z.array(z.string().min(1)),
+  linearStatusMapping: z.object({
+    started: z.string().min(1).max(128).nullable(),
+    completed: z.string().min(1).max(128).nullable(),
+    failed: z.string().min(1).max(128).nullable(),
+  }),
 });
 
 export function defaultSettings(): AppSettings {
@@ -66,6 +71,7 @@ export function defaultSettings(): AppSettings {
     retentionDays: null,
     onboarded: false,
     hiddenModelIds: [],
+    linearStatusMapping: { started: null, completed: null, failed: null },
   };
 }
 
@@ -125,7 +131,22 @@ export function migrate(raw: unknown): AppSettings {
   merged.hiddenModelIds = Array.isArray(merged.hiddenModelIds)
     ? [...new Set(merged.hiddenModelIds.filter(isNonEmptyString))]
     : [];
+  merged.linearStatusMapping = linearStatusMapping(merged.linearStatusMapping);
   return merged;
+}
+
+function linearStatusMapping(
+  value: AppSettings['linearStatusMapping'] | undefined,
+): LinearStatusMapping {
+  const stateId = (candidate: unknown): string | null =>
+    typeof candidate === 'string' && candidate.length <= 128 && candidate.length > 0
+      ? candidate
+      : null;
+  return {
+    started: stateId(value?.started),
+    completed: stateId(value?.completed),
+    failed: stateId(value?.failed),
+  };
 }
 
 /**

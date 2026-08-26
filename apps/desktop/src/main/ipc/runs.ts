@@ -10,7 +10,13 @@ import {
   type RunPlanExportSelection,
   type WorktreeAction,
 } from '@shared/ipc-contract.js';
-import { emptyRunDetail, eventPage, runDetail, startRun } from '../engine/operations.js';
+import {
+  emptyRunDetail,
+  eventPage,
+  runDetail,
+  startRun,
+  type StartRunDeps,
+} from '../engine/operations.js';
 import { landRun } from '../engine/settle.js';
 import * as worktreeLib from '../engine/worktree.js';
 import { exportRunPlan } from '../store/export-plan.js';
@@ -36,6 +42,40 @@ type Ctx = Pick<
   | 'supportDir'
 >;
 
+export type RunStartContext = Pick<
+  Ctx,
+  | 'projects'
+  | 'pipelines'
+  | 'pipelineScope'
+  | 'rosterFor'
+  | 'envelopes'
+  | 'settings'
+  | 'broadcast'
+  | 'supportDir'
+  | 'oneShot'
+  | 'registry'
+>;
+
+export function runStartDeps(ctx: RunStartContext): StartRunDeps {
+  return {
+    projectById: (id) => ctx.projects.get(id),
+    pipelineFor: (projectId, pipelineId) =>
+      ctx.pipelines.get(pipelineId, ctx.pipelineScope(projectId)),
+    rosterFor: (projectId) => ctx.rosterFor(projectId),
+    envelopeDefs: () => ctx.envelopes.list(),
+    settings: () => ctx.settings.get(),
+    saveProject: (next) => {
+      const result = ctx.projects.save(next);
+      if (!result.ok) return next;
+      notifySettings(ctx);
+      return ctx.projects.get(next.id) ?? next;
+    },
+    enabledModelIds: () => enabledModelIds(ctx.supportDir, ctx.settings.get().hiddenModelIds),
+    oneShot: ctx.oneShot,
+    registry: ctx.registry,
+  };
+}
+
 export function register(ctx: Ctx, handle: Handle): void {
   const projectOf = (projectId: string) => ctx.projects.get(projectId);
   const tracerOf = (projectId: string) => {
@@ -45,28 +85,7 @@ export function register(ctx: Ctx, handle: Handle): void {
 
   // The start path lives in `engine/operations.ts`, shared verbatim with the
   // companion host so a phone-started run is the same run in every respect.
-  handle(IPC.runsStart, (input: StartRunInput) =>
-    startRun(
-      {
-        projectById: (id) => ctx.projects.get(id),
-        pipelineFor: (projectId, pipelineId) =>
-          ctx.pipelines.get(pipelineId, ctx.pipelineScope(projectId)),
-        rosterFor: (projectId) => ctx.rosterFor(projectId),
-        envelopeDefs: () => ctx.envelopes.list(),
-        settings: () => ctx.settings.get(),
-        saveProject: (next) => {
-          const result = ctx.projects.save(next);
-          if (!result.ok) return next;
-          notifySettings(ctx);
-          return ctx.projects.get(next.id) ?? next;
-        },
-        enabledModelIds: () => enabledModelIds(ctx.supportDir, ctx.settings.get().hiddenModelIds),
-        oneShot: ctx.oneShot,
-        registry: ctx.registry,
-      },
-      input,
-    ),
-  );
+  handle(IPC.runsStart, (input: StartRunInput) => startRun(runStartDeps(ctx), input));
 
   handle(IPC.runsResume, (projectId: string, runId: string): WorktreeAction => {
     const project = projectOf(projectId);

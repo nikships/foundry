@@ -344,6 +344,18 @@ export interface AppSettings {
    * catalog reads.
    */
   hiddenModelIds: string[];
+  /**
+   * Linear workflow-state IDs for the three run lifecycle stages. IDs, rather
+   * than names, are stored because each Linear team owns its own workflow.
+   * The selected issue's team states are re-fetched before a run starts.
+   */
+  linearStatusMapping: LinearStatusMapping;
+}
+
+export interface LinearStatusMapping {
+  started: string | null;
+  completed: string | null;
+  failed: string | null;
 }
 
 /** Engine retry policy is intentionally fixed rather than operator configuration. */
@@ -662,6 +674,10 @@ export interface RunRow {
   /** Set once a GitHub issue has been filed by this run. */
   issueNumber: number | null;
   issueUrl: string | null;
+  /** Immutable external source captured before the run entered preflight. */
+  source: RunSource | null;
+  /** Latest external status-sync failure, also recorded as an error event. */
+  sourceSyncError: string | null;
   merged: boolean;
   archived: boolean;
   mode: RunMode;
@@ -675,6 +691,37 @@ export interface RunRow {
   /** Denormalised for the run list; cheap because phases are few. */
   phaseSummary?: { name: string; status: PhaseStatus; kind: PhaseKind }[];
 }
+
+export interface LinearWorkflowState {
+  id: string;
+  name: string;
+  type: string;
+}
+
+export interface LinearIssueSnapshot {
+  id: string;
+  identifier: string;
+  title: string;
+  description: string;
+  url: string;
+  updatedAt: string;
+  team: { id: string; name: string };
+  state: LinearWorkflowState;
+}
+
+export interface LinearRunSource {
+  kind: 'linear';
+  trigger: 'manual';
+  issueId: string;
+  url: string;
+  /** Linear's `updatedAt` value from the fetch that supplied the run brief. */
+  revision: string;
+  /** Validated team workflow mapping frozen for this run's full lifecycle. */
+  statusMapping: LinearStatusMapping;
+  snapshot: LinearIssueSnapshot;
+}
+
+export type RunSource = LinearRunSource;
 
 export interface PhaseRow {
   phaseId: string;

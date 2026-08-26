@@ -42,22 +42,23 @@ describe('Smith provider and Companion tools', () => {
     });
   });
 
-  it.each(['apiKey', 'api_key', 'key', 'token', 'secret'])(
-    'rejects API secret argument field %s',
-    async (field) => {
-      const h = setup('provider');
-      expect(
-        json(
-          await h.execute({
-            operation: 'set_api_key',
-            providerId: 'openai',
-            [field]: 'TOP-SECRET',
-          }),
-        ),
-      ).toMatchObject({ ok: false, error: expect.stringContaining('masked approval card') });
-      expect(h.queue.list()).toHaveLength(0);
-    },
-  );
+  it.each(
+    ['set_api_key', 'linear_set_api_key'].flatMap((operation) =>
+      ['apiKey', 'api_key', 'key', 'token', 'secret'].map((field) => [operation, field]),
+    ),
+  )('rejects %s secret argument field %s', async (operation, field) => {
+    const h = setup('provider');
+    expect(
+      json(
+        await h.execute({
+          operation,
+          providerId: 'openai',
+          [field]: 'TOP-SECRET',
+        }),
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining('masked approval card') });
+    expect(h.queue.list()).toHaveLength(0);
+  });
 
   it('keeps an API key out of proposal/model serialization and passes it only after approval', async () => {
     const h = setup('provider');
@@ -83,6 +84,34 @@ describe('Smith provider and Companion tools', () => {
     await h.queue.answer(h.queue.list()[0]!.id, { approved: false, secret: 'TOP-SECRET' });
     expect(json(await promise)).toEqual({ ok: false, rejected: true });
     expect(h.invoke).not.toHaveBeenCalled();
+  });
+
+  it('keeps a Linear key in the masked approval path and invokes the fixed Linear channel', async () => {
+    const h = setup('provider');
+    const promise = h.execute({ operation: 'linear_set_api_key' });
+    await vi.waitFor(() => expect(h.queue.list()).toHaveLength(1));
+    const proposal = h.queue.list()[0]!;
+    expect(proposal).toMatchObject({
+      operation: 'linear_set_api_key',
+      args: {},
+      risk: 'credential',
+      secretRequest: { kind: 'api-key', label: 'Linear personal API key' },
+    });
+    await h.queue.answer(proposal.id, { approved: true, secret: 'LINEAR-SECRET' });
+    expect(h.invoke).toHaveBeenCalledWith(IPC.linearSetApiKey, 'LINEAR-SECRET');
+    expect(JSON.stringify(json(await promise))).not.toContain('LINEAR-SECRET');
+  });
+
+  it('reads Linear state immediately and gates connection tests', async () => {
+    const h = setup('provider');
+    await h.execute({ operation: 'linear_state' });
+    expect(h.invoke).toHaveBeenCalledWith(IPC.linearState);
+
+    const promise = h.execute({ operation: 'linear_test' });
+    await vi.waitFor(() => expect(h.queue.list()).toHaveLength(1));
+    await h.queue.answer(h.queue.list()[0]!.id, { approved: true });
+    expect(h.invoke).toHaveBeenLastCalledWith(IPC.linearTest);
+    expect(json(await promise)).toEqual({ ok: true, result: 'ok' });
   });
 
   it.each([

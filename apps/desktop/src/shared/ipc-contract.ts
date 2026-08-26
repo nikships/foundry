@@ -21,6 +21,8 @@ import type {
   GhStatus,
   GithubAccount,
   InterruptAnswer,
+  LinearIssueSnapshot,
+  LinearWorkflowState,
   MaintenanceReport,
   ModelInfo,
   OrphanWorktree,
@@ -390,6 +392,22 @@ export interface StoredProviderKey {
   type: string;
 }
 
+export interface LinearConnectionState {
+  keySet: boolean;
+  detail: string;
+}
+
+export interface LinearActionResult {
+  ok: boolean;
+  detail: string;
+}
+
+export interface LinearStartRunInput {
+  projectId: string;
+  pipelineId: string;
+  issueId: string;
+}
+
 export interface FoundryApi {
   settings: {
     get(): Promise<AppSettings>;
@@ -562,6 +580,19 @@ export interface FoundryApi {
      * ever having held one.
      */
     storedKeys(): Promise<StoredProviderKey[]>;
+  };
+  linear: {
+    state(): Promise<LinearConnectionState>;
+    /** Validates the candidate against Linear before replacing the saved key. */
+    setApiKey(apiKey: string): Promise<LinearActionResult>;
+    test(): Promise<LinearActionResult>;
+    clearApiKey(): Promise<LinearActionResult>;
+    /** Empty query browses recent accessible issues; text filters key/title. */
+    issues(query: string): Promise<LinearIssueSnapshot[]>;
+    workflowStates(teamId: string): Promise<LinearWorkflowState[]>;
+    startRun(
+      input: LinearStartRunInput,
+    ): Promise<{ ok: boolean; runId?: string; issues: ValidationIssue[] }>;
   };
   runs: {
     start(
@@ -811,6 +842,13 @@ export const IPC = {
   bridgeSetApiKey: 'bridge:setApiKey',
   bridgeClearApiKey: 'bridge:clearApiKey',
   bridgeStoredKeys: 'bridge:storedKeys',
+  linearState: 'linear:state',
+  linearSetApiKey: 'linear:setApiKey',
+  linearTest: 'linear:test',
+  linearClearApiKey: 'linear:clearApiKey',
+  linearIssues: 'linear:issues',
+  linearWorkflowStates: 'linear:workflowStates',
+  linearStartRun: 'linear:startRun',
   runsStart: 'runs:start',
   runsResume: 'runs:resume',
   runsList: 'runs:list',

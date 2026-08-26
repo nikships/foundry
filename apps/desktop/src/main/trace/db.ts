@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS runs (
   pr_url                 TEXT,
   issue_number           INTEGER,
   issue_url              TEXT,
+  source_json            TEXT,
+  source_sync_error      TEXT,
   started_at             TEXT,
   ended_at               TEXT,
   total_tokens           INTEGER DEFAULT 0
@@ -148,6 +150,12 @@ const ADDED_COLUMNS: { table: string; column: string; ddl: string }[] = [
     table: 'runs',
     column: 'amendments',
     ddl: 'ALTER TABLE runs ADD COLUMN amendments INTEGER DEFAULT 0',
+  },
+  { table: 'runs', column: 'source_json', ddl: 'ALTER TABLE runs ADD COLUMN source_json TEXT' },
+  {
+    table: 'runs',
+    column: 'source_sync_error',
+    ddl: 'ALTER TABLE runs ADD COLUMN source_sync_error TEXT',
   },
 ];
 

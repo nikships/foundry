@@ -11,6 +11,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { z } from 'zod';
 import type { Db } from './db.js';
 import type {
   AgentSessionRow,
@@ -27,6 +28,7 @@ import type {
   PipelineDef,
   RunMode,
   RunRow,
+  RunSource,
   RunStatus,
   UsageBreakdown,
 } from '@shared/types.js';
@@ -118,12 +120,14 @@ export class Tracer {
     mode: RunMode;
     /** The Orchestrator's confirmed plan, when this run was generated from one. */
     plan?: GeneratedRunPlan | null;
+    /** Immutable external issue snapshot, when one triggered this run. */
+    source?: RunSource | null;
   }): void {
     this.exec(
       `INSERT INTO runs (run_id, project_id, pipeline_id, pipeline_name, pipeline_snapshot_json,
          request, status, engineer, worktree_path, branch, base_ref, branch_point_sha, mode,
-         plan_json, orchestrated, started_at)
-       VALUES (?,?,?,?,?,?,'running',?,?,?,?,?,?,?,?,?)`,
+         plan_json, orchestrated, source_json, started_at)
+       VALUES (?,?,?,?,?,?,'running',?,?,?,?,?,?,?,?,?,?)`,
       input.runId,
       input.projectId,
       input.pipeline.id,
@@ -138,6 +142,7 @@ export class Tracer {
       input.mode,
       input.plan ? JSON.stringify(input.plan) : null,
       input.plan ? 1 : 0,
+      input.source ? JSON.stringify(input.source) : null,
       nowIso(),
     );
     mkdirSync(this.runDir(input.runId), { recursive: true });
@@ -145,6 +150,9 @@ export class Tracer {
     this.writeRunFile(input.runId, 'pipeline.json', JSON.stringify(input.pipeline, null, 2));
     if (input.plan) {
       this.writeRunFile(input.runId, 'plan.json', JSON.stringify(input.plan, null, 2));
+    }
+    if (input.source) {
+      this.writeRunFile(input.runId, 'source.json', JSON.stringify(input.source, null, 2));
     }
   }
 
@@ -228,6 +236,10 @@ export class Tracer {
       issueUrl,
       runId,
     );
+  }
+
+  setSourceSyncError(runId: string, message: string | null): void {
+    this.exec('UPDATE runs SET source_sync_error = ? WHERE run_id = ?', message, runId);
   }
 
   setArchived(runId: string, archived: boolean): void {
@@ -928,6 +940,8 @@ interface RawRun {
   pr_url: string | null;
   issue_number: number | null;
   issue_url: string | null;
+  source_json: string | null;
+  source_sync_error: string | null;
   mode: string | null;
   merged: number;
   archived: number;
@@ -1058,6 +1072,8 @@ function mapRun(r: RawRun): RunRow {
     prUrl: r.pr_url ?? null,
     issueNumber: r.issue_number ?? null,
     issueUrl: r.issue_url ?? null,
+    source: safeRunSource(r.source_json),
+    sourceSyncError: r.source_sync_error,
     merged: !!r.merged,
     archived: !!r.archived,
     mode: (r.mode as RunMode) ?? 'pi',
@@ -1067,6 +1083,44 @@ function mapRun(r: RawRun): RunRow {
     endedAt: r.ended_at,
     totalTokens: r.total_tokens,
   };
+}
+
+const runSourceSchema = z.object({
+  kind: z.literal('linear'),
+  trigger: z.literal('manual'),
+  issueId: z.string().min(1),
+  url: z.string().min(1),
+  revision: z.string().min(1),
+  statusMapping: z.object({
+    started: z.string().min(1),
+    completed: z.string().min(1),
+    failed: z.string().min(1),
+  }),
+  snapshot: z.object({
+    id: z.string().min(1),
+    identifier: z.string().min(1),
+    title: z.string(),
+    description: z.string(),
+    url: z.string().min(1),
+    updatedAt: z.string().min(1),
+    team: z.object({ id: z.string().min(1), name: z.string().min(1) }),
+    state: z.object({
+      id: z.string().min(1),
+      name: z.string().min(1),
+      type: z.string().min(1),
+    }),
+  }),
+});
+
+function safeRunSource(text: string | null): RunSource | null {
+  if (!text) return null;
+  try {
+    const source: unknown = JSON.parse(text);
+    const parsed = runSourceSchema.safeParse(source);
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
 }
 
 function mapPhase(r: RawPhase): PhaseRow {

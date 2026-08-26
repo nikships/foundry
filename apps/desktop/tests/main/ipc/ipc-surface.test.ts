@@ -60,8 +60,8 @@ describe('the IPC surface', () => {
     expect(registered.filter((channel) => channel === IPC.settingsGet)).toHaveLength(1);
   });
 
-  it('registers 125 channels, so a deleted handler is not a silent capability loss', () => {
-    expect(registered).toHaveLength(125);
+  it('registers 132 channels, so a deleted handler is not a silent capability loss', () => {
+    expect(registered).toHaveLength(132);
   });
 
   it('registers the Smith chat lifecycle without turning a long send into a push invoke', () => {
@@ -90,6 +90,16 @@ describe('the IPC surface', () => {
     // The Providers pane shows which keys are set without ever reading one, so
     // the list channel is as load-bearing as the write.
     expect(registered).toContain(IPC.bridgeStoredKeys);
+  });
+
+  it('registers the Linear credential, browse, workflow, and start boundary', () => {
+    expect(registered).toContain(IPC.linearState);
+    expect(registered).toContain(IPC.linearSetApiKey);
+    expect(registered).toContain(IPC.linearTest);
+    expect(registered).toContain(IPC.linearClearApiKey);
+    expect(registered).toContain(IPC.linearIssues);
+    expect(registered).toContain(IPC.linearWorkflowStates);
+    expect(registered).toContain(IPC.linearStartRun);
   });
 
   it('no longer offers the CLI channels the picker used to read', () => {

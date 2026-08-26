@@ -14,6 +14,7 @@ import type {
   GeneratedRunPlan,
   PipelineDef,
   ProjectDef,
+  RunSource,
   StartRunInput,
   ValidationIssue,
 } from '@shared/types.js';
@@ -57,6 +58,7 @@ export interface StartRunDeps {
       envelopeDefs: EnvelopeDef[];
       request: string;
       plan?: GeneratedRunPlan | null;
+      source?: RunSource | null;
     }): string;
   };
 }
@@ -67,7 +69,11 @@ function startError(where: string, message: string): StartRunOutcome {
   return { ok: false, issues: [{ level: 'error', where, message }] };
 }
 
-export async function startRun(deps: StartRunDeps, input: StartRunInput): Promise<StartRunOutcome> {
+export async function startRun(
+  deps: StartRunDeps,
+  input: StartRunInput,
+  source: RunSource | null = null,
+): Promise<StartRunOutcome> {
   let project = deps.projectById(input.projectId);
   if (!project) return startError('project', 'project not found');
 
@@ -155,6 +161,7 @@ export async function startRun(deps: StartRunDeps, input: StartRunInput): Promis
     envelopeDefs: deps.envelopeDefs(),
     request,
     plan,
+    source,
   });
   return { ok: true, runId, issues: noIssues };
 }
