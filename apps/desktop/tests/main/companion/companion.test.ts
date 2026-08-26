@@ -19,13 +19,19 @@ import { CompanionHost, lanAddress, lanInterface } from '../../../src/main/compa
 import { PairingSecrets, PAIRING_SECRET_TTL_MS } from '../../../src/main/companion/pairing.js';
 import { DeviceStore, LAST_SEEN_DEBOUNCE_MS } from '../../../src/main/companion/devices.js';
 import { defaultProject } from '../../../src/main/store/projects.js';
+import { defaultSettings } from '../../../src/main/store/settings.js';
 import { COMPANION_PROTOCOL_VERSION } from '../../../src/shared/companion.js';
 import type {
   CompanionError,
   CompanionPairingPayload,
   CompanionPairResult,
 } from '../../../src/shared/companion.js';
-import type { EventPage, RunDetail, SmithChatState } from '../../../src/shared/ipc-contract.js';
+import type {
+  EventPage,
+  OrchestratorState,
+  RunDetail,
+  SmithChatState,
+} from '../../../src/shared/ipc-contract.js';
 import type {
   ModelInfo,
   ReasoningEffort,
@@ -35,8 +41,15 @@ import type {
 import type {
   AgentDef,
   AppSettings,
+  EnvelopeDef,
+  GeneratedRunPlan,
+  LinearIssueSnapshot,
+  LinearWorkflowState,
   PipelineDef,
   ProjectDef,
+  RestorableCheckpointList,
+  RestoreResult,
+  RunSource,
   RunRow,
 } from '../../../src/shared/types.js';
 import { makeFakeGh, type FakeGh } from '../../helpers/fake-gh.js';
@@ -99,6 +112,27 @@ const pipeline = (): PipelineDef => ({
   ],
 });
 
+const generatedPlan = (
+  projectId: string,
+  prompt = 'Build the requested companion change',
+): GeneratedRunPlan => ({
+  planId: 'plan_companion_1',
+  projectId,
+  prompt,
+  refinedRequest: `${prompt}, with focused tests.`,
+  rationale: 'The generated pipeline keeps implementation and verification together.',
+  pipeline: {
+    ...pipeline(),
+    id: 'generated-plan-companion-1',
+    name: 'Generated companion plan',
+    phases: pipeline().phases.map((phase) => ({ ...phase, model: 'scripted/alpha' })),
+  },
+  agents: [],
+  warnings: [],
+  model: 'scripted/alpha',
+  reasoningEffort: 'high',
+});
+
 const buildEnvelope = (): string =>
   JSON.stringify({
     status: 'success',
@@ -125,7 +159,15 @@ class TestRegistry {
     private readonly scripted: () => ScriptedAgent,
   ) {}
 
-  start(input: { project: ProjectDef; pipeline: PipelineDef; request: string }): string {
+  start(input: {
+    project: ProjectDef;
+    pipeline: PipelineDef;
+    agents: AgentDef[];
+    envelopeDefs: EnvelopeDef[];
+    request: string;
+    plan?: GeneratedRunPlan | null;
+    source?: RunSource | null;
+  }): string {
     const runId = `run_companion_${++this.seq}`;
     const agent = this.scripted();
     const executor = new Executor({
@@ -136,11 +178,13 @@ class TestRegistry {
       rewindAfterCorrections: 2,
       supportDir: this.support,
       transport: (req) => agent.transport(req),
-      agents: [buildAgent()],
-      envelopeDefs: [],
+      agents: input.agents,
+      envelopeDefs: input.envelopeDefs,
       project: input.project,
       pipeline: input.pipeline,
       request: input.request,
+      plan: input.plan,
+      source: input.source,
       runId,
       engineer: 'test',
     });
@@ -300,6 +344,7 @@ interface Harness {
   gh: FakeGh;
   origin: () => string;
   changes: string[];
+  settings: () => AppSettings;
   /** A second host over the same support dir: what a relaunch looks like. */
   relaunch: () => CompanionHost;
 }
@@ -319,6 +364,24 @@ beforeEach(async () => {
   const gh = makeFakeGh({ createUrl: 'https://github.com/acme/widgets/pull/7' });
   const changes: string[] = [];
   const smith = new TestSmith();
+  let settings = defaultSettings();
+  const planStates = new Map<string, OrchestratorState>();
+  let planSequence = 0;
+  const linearStates: LinearWorkflowState[] = [
+    { id: 'started', name: 'In Progress', type: 'started' },
+    { id: 'completed', name: 'Done', type: 'completed' },
+    { id: 'failed', name: 'Cancelled', type: 'canceled' },
+  ];
+  const linearIssue: LinearIssueSnapshot = {
+    id: 'issue-204',
+    identifier: 'FOU-204',
+    title: 'Android parity',
+    description: 'Bring the companion up to date.',
+    url: 'https://linear.app/foundry/issue/FOU-204',
+    updatedAt: '2026-08-26T18:00:00.000Z',
+    team: { id: 'team-foundry', name: 'Foundry' },
+    state: { id: 'backlog', name: 'Backlog', type: 'backlog' },
+  };
   const makeHost = (): CompanionHost =>
     new CompanionHost({
       supportDir: support,
@@ -327,7 +390,7 @@ beforeEach(async () => {
       pipelinesFor: () => [pipeline()],
       rosterFor: () => [buildAgent()],
       envelopeDefs: () => [],
-      settings: () => ({}) as AppSettings,
+      settings: () => settings,
       saveProject: (next) => next,
       oneShot: () => {
         throw new Error('the companion suite never opens a one-shot');
@@ -335,7 +398,61 @@ beforeEach(async () => {
       registry,
       appVersion: () => '0.0.0-test',
       notifyRuns: () => undefined,
+      enabledModelIds: async () => ['scripted/alpha'],
       onStateChanged: () => changes.push('changed'),
+      orchestrator: {
+        options: async () => ({
+          models: smith.models,
+          model: settings.defaultModel,
+          reasoningEffort: settings.defaultReasoningEffort,
+        }),
+        start: (input) => {
+          const planId = `plan_http_${++planSequence}`;
+          planStates.set(planId, {
+            planId,
+            projectId: input.projectId,
+            status: 'done',
+            model: input.model,
+            reasoningEffort: input.reasoningEffort,
+            prompt: input.prompt,
+            entries: [],
+            plan: { ...generatedPlan(input.projectId, input.prompt), planId },
+            rawReply: '{"pipeline": "generated"}',
+            detail: 'Plan ready.',
+            startedAt: 1,
+            endedAt: 2,
+          });
+          return { planId };
+        },
+        state: (planId) => planStates.get(planId) ?? null,
+        cancel: (planId) => {
+          const state = planStates.get(planId);
+          if (!state) return false;
+          planStates.set(planId, {
+            ...state,
+            status: 'cancelled',
+            plan: null,
+            detail: 'Planning cancelled.',
+          });
+          return true;
+        },
+      },
+      linear: {
+        state: () => ({ keySet: true, detail: 'Connected to Linear.' }),
+        issues: async (query) =>
+          !query || linearIssue.identifier.toLowerCase().includes(query.toLowerCase())
+            ? [linearIssue]
+            : [],
+        issue: async (issueId) => {
+          if (issueId !== linearIssue.id) throw new Error('Linear issue not found');
+          return linearIssue;
+        },
+        workflowStates: async (teamId) => (teamId === linearIssue.team.id ? linearStates : []),
+        saveStatusMapping: (mapping) => {
+          settings = { ...settings, linearStatusMapping: mapping };
+          return [];
+        },
+      },
       smith: {
         chat: (projectId) => smith.chat(projectId),
         listProposals: () => smith.proposals,
@@ -362,6 +479,7 @@ beforeEach(async () => {
     gh,
     origin: () => host.state().origin!,
     changes,
+    settings: () => settings,
     relaunch: makeHost,
   };
 });
@@ -514,8 +632,18 @@ describe('token auth, fail closed', () => {
     ['GET', '/v1/projects/x/runs'],
     ['GET', '/v1/projects/x/runs/y'],
     ['GET', '/v1/projects/x/runs/y/events'],
+    ['GET', '/v1/projects/x/runs/y/checkpoints'],
+    ['POST', '/v1/projects/x/runs/y/restore'],
     ['POST', '/v1/projects/x/runs/y/kill'],
     ['POST', '/v1/projects/x/runs/y/continue'],
+    ['GET', '/v1/orchestrator/options'],
+    ['POST', '/v1/orchestrator/plans'],
+    ['GET', '/v1/orchestrator/plans/plan'],
+    ['POST', '/v1/orchestrator/plans/plan/cancel'],
+    ['GET', '/v1/linear'],
+    ['GET', '/v1/linear/issues'],
+    ['GET', '/v1/linear/teams/team/workflow-states'],
+    ['POST', '/v1/linear/runs'],
     ['POST', '/v1/projects/x/runs/y/pr'],
     ['GET', '/v1/projects/x/runs/y/pr-draft'],
     ['GET', '/v1/projects/x/pr-status'],
@@ -804,6 +932,237 @@ describe('run routes', () => {
     const paired = await pairPhone();
     const res = await authed(paired.token, '/v1/projects/unknown/runs');
     expect(res.status).toBe(404);
+  });
+});
+
+describe('Orchestrator routes', () => {
+  it('returns planning options and round-trips a confirmed generated plan into a run', async () => {
+    const paired = await pairPhone();
+    const options = await authed(paired.token, '/v1/orchestrator/options');
+    expect(options.status).toBe(200);
+    expect(await options.json()).toMatchObject({
+      model: 'inherit',
+      reasoningEffort: 'medium',
+      models: [{ id: 'scripted/alpha' }],
+    });
+
+    const startedPlan = await authed(paired.token, '/v1/orchestrator/plans', {
+      method: 'POST',
+      body: JSON.stringify({
+        projectId: h.project.id,
+        prompt: 'Bring Android up to parity',
+        model: 'scripted/alpha',
+        reasoningEffort: 'high',
+      }),
+    });
+    expect(startedPlan.status).toBe(200);
+    const { planId } = (await startedPlan.json()) as { planId: string };
+
+    const polled = await authed(paired.token, `/v1/orchestrator/plans/${planId}`);
+    const state = (await polled.json()) as OrchestratorState;
+    expect(state.status).toBe('done');
+    expect(state.plan?.pipeline.phases[0]?.model).toBe('scripted/alpha');
+
+    const startedRun = await authed(paired.token, '/v1/runs', {
+      method: 'POST',
+      body: JSON.stringify({
+        projectId: h.project.id,
+        pipelineId: '',
+        request: state.prompt,
+        plan: state.plan,
+      }),
+    });
+    const outcome = (await startedRun.json()) as { ok: boolean; runId: string };
+    expect(outcome.ok).toBe(true);
+    expect(await h.registry.settled.get(outcome.runId)).toBe('accepted');
+    expect(h.tracer.run(outcome.runId)).toMatchObject({
+      orchestrated: true,
+      request: state.plan?.refinedRequest,
+    });
+  });
+
+  it('cancels a known plan and rejects malformed plan requests', async () => {
+    const paired = await pairPhone();
+    const malformed = await authed(paired.token, '/v1/orchestrator/plans', {
+      method: 'POST',
+      body: JSON.stringify({ projectId: h.project.id, prompt: 'x' }),
+    });
+    expect(malformed.status).toBe(400);
+
+    const started = await authed(paired.token, '/v1/orchestrator/plans', {
+      method: 'POST',
+      body: JSON.stringify({
+        projectId: h.project.id,
+        prompt: 'Plan this',
+        model: 'scripted/alpha',
+        reasoningEffort: 'medium',
+      }),
+    });
+    const { planId } = (await started.json()) as { planId: string };
+    const cancelled = await authed(paired.token, `/v1/orchestrator/plans/${planId}/cancel`, {
+      method: 'POST',
+    });
+    expect(await cancelled.json()).toEqual({ ok: true });
+    const state = await authed(paired.token, `/v1/orchestrator/plans/${planId}`);
+    expect((await state.json()) as OrchestratorState).toMatchObject({ status: 'cancelled' });
+  });
+});
+
+describe('Linear routes', () => {
+  it('searches issues, loads workflow states, saves mapping, and starts a sourced run', async () => {
+    const paired = await pairPhone();
+    const state = await authed(paired.token, '/v1/linear');
+    expect(await state.json()).toMatchObject({
+      keySet: true,
+      statusMapping: { started: null, completed: null, failed: null },
+    });
+
+    const issues = await authed(paired.token, '/v1/linear/issues?query=FOU-204');
+    expect(await issues.json()).toMatchObject([{ id: 'issue-204', identifier: 'FOU-204' }]);
+    const workflow = await authed(paired.token, '/v1/linear/teams/team-foundry/workflow-states');
+    expect(await workflow.json()).toMatchObject([
+      { id: 'started' },
+      { id: 'completed' },
+      { id: 'failed' },
+    ]);
+
+    const mapping = { started: 'started', completed: 'completed', failed: 'failed' };
+    const started = await authed(paired.token, '/v1/linear/runs', {
+      method: 'POST',
+      body: JSON.stringify({
+        projectId: h.project.id,
+        pipelineId: 'p',
+        issueId: 'issue-204',
+        statusMapping: mapping,
+      }),
+    });
+    const outcome = (await started.json()) as { ok: boolean; runId: string };
+    expect(outcome.ok).toBe(true);
+    expect(await h.registry.settled.get(outcome.runId)).toBe('accepted');
+    expect(h.settings().linearStatusMapping).toEqual(mapping);
+    expect(h.tracer.run(outcome.runId)).toMatchObject({
+      source: {
+        kind: 'linear',
+        issueId: 'issue-204',
+        snapshot: { identifier: 'FOU-204' },
+      },
+    });
+  });
+
+  it('accepts an explicit null plan on run starts (the phone encodes null blobs)', async () => {
+    const paired = await pairPhone();
+    const started = await authed(paired.token, '/v1/runs', {
+      method: 'POST',
+      body: JSON.stringify({
+        projectId: h.project.id,
+        pipelineId: 'p',
+        request: 'a plain manual run',
+        plan: null,
+      }),
+    });
+    expect(started.status).toBe(200);
+    const outcome = (await started.json()) as { ok: boolean };
+    expect(outcome.ok).toBe(true);
+
+    const mapping = { started: 'started', completed: 'completed', failed: 'failed' };
+    const sourced = await authed(paired.token, '/v1/linear/runs', {
+      method: 'POST',
+      body: JSON.stringify({
+        projectId: h.project.id,
+        pipelineId: 'p',
+        issueId: 'issue-204',
+        statusMapping: mapping,
+        plan: null,
+      }),
+    });
+    expect(sourced.status).toBe(200);
+    expect(((await sourced.json()) as { ok: boolean }).ok).toBe(true);
+  });
+
+  it('surfaces a missing Linear issue as a readable outcome, not a 500', async () => {
+    const paired = await pairPhone();
+    const response = await authed(paired.token, '/v1/linear/runs', {
+      method: 'POST',
+      body: JSON.stringify({
+        projectId: h.project.id,
+        pipelineId: 'p',
+        issueId: 'issue-not-there',
+        statusMapping: { started: 'started', completed: 'completed', failed: 'failed' },
+      }),
+    });
+    expect(response.status).toBe(200);
+    const outcome = (await response.json()) as { ok: boolean; issues: { where: string }[] };
+    expect(outcome.ok).toBe(false);
+    expect(outcome.issues.some((issue) => issue.where === 'linear.issue')).toBe(true);
+  });
+
+  it('rejects a malformed lifecycle mapping before starting', async () => {
+    const paired = await pairPhone();
+    const response = await authed(paired.token, '/v1/linear/runs', {
+      method: 'POST',
+      body: JSON.stringify({
+        projectId: h.project.id,
+        pipelineId: 'p',
+        issueId: 'issue-204',
+        statusMapping: { started: 'started' },
+      }),
+    });
+    expect(response.status).toBe(400);
+  });
+});
+
+describe('checkpoint routes', () => {
+  it('lists and restores a killed run without continuing it', async () => {
+    scriptedOptions = { stallOnTurns: [0] };
+    const paired = await pairPhone();
+    const started = await authed(paired.token, '/v1/runs', {
+      method: 'POST',
+      body: JSON.stringify({
+        projectId: h.project.id,
+        pipelineId: 'p',
+        request: 'stop after checkpoint',
+      }),
+    });
+    const { runId } = (await started.json()) as { runId: string };
+    await until(() => h.registry.isLive(runId), 'the checkpoint run to go live');
+    await until(() => h.tracer.phaseCheckpoints(runId).length > 0, 'the phase checkpoint');
+    await authed(paired.token, `/v1/projects/${h.project.id}/runs/${runId}/kill`, {
+      method: 'POST',
+    });
+    expect(await h.registry.settled.get(runId)).toBe('killed');
+
+    const listResponse = await authed(
+      paired.token,
+      `/v1/projects/${h.project.id}/runs/${runId}/checkpoints`,
+    );
+    const list = (await listResponse.json()) as RestorableCheckpointList;
+    expect(list.refusal).toBeNull();
+    expect(list.checkpoints).toHaveLength(1);
+    expect(list.checkpoints[0]).toMatchObject({ phaseName: 'build', restorable: true });
+
+    const restoreResponse = await authed(
+      paired.token,
+      `/v1/projects/${h.project.id}/runs/${runId}/restore`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ checkpointId: list.checkpoints[0]!.checkpointId }),
+      },
+    );
+    const restored = (await restoreResponse.json()) as RestoreResult;
+    expect(restored.ok).toBe(true);
+    expect(restored.restored).toMatchObject({ phaseName: 'build', partial: false });
+    expect(h.tracer.run(runId)?.status).toBe('killed');
+    expect(h.registry.continued).not.toContain(runId);
+  });
+
+  it('rejects a restore body without a checkpoint id', async () => {
+    const paired = await pairPhone();
+    const response = await authed(
+      paired.token,
+      `/v1/projects/${h.project.id}/runs/run_restore_body/restore`,
+      { method: 'POST', body: '{}' },
+    );
+    expect(response.status).toBe(400);
   });
 });
 

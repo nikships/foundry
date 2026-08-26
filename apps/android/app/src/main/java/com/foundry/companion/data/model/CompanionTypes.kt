@@ -3,7 +3,7 @@ package com.foundry.companion.data.model
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 
-const val COMPANION_PROTOCOL_VERSION = 5
+const val COMPANION_PROTOCOL_VERSION = 6
 
 @Serializable
 data class CompanionPairingPayload(
@@ -90,9 +90,14 @@ data class RunRow(
     val prUrl: String? = null,
     val issueNumber: Int? = null,
     val issueUrl: String? = null,
+    val source: LinearRunSource? = null,
+    val sourceSyncError: String? = null,
     val outcomeDetail: String? = null,
     val merged: Boolean = false,
     val archived: Boolean = false,
+    val mode: String = "pi",
+    val orchestrated: Boolean = false,
+    val amendments: Int = 0,
     val engineer: String = "",
     val phases: List<PhaseRunSummary> = emptyList(),
     val phaseSummary: List<PhaseSummaryItem> = emptyList()
@@ -319,13 +324,256 @@ data class TranscriptEvent(
 data class StartRunInput(
     val projectId: String,
     val pipelineId: String,
-    val request: String
+    val request: String,
+    val plan: GeneratedRunPlan? = null
 )
 
 @Serializable
 data class ValidationIssue(
     val level: String, // "error" | "warning"
-    val message: String
+    val message: String,
+    val where: String = ""
+)
+
+@Serializable
+data class GeneratedRunPlan(
+    val planId: String,
+    val projectId: String,
+    val prompt: String,
+    val refinedRequest: String,
+    val rationale: String,
+    /**
+     * Kept as JSON so Android can return every pipeline field to the desktop,
+     * including fields added by a newer Orchestrator that this UI does not render.
+     */
+    val pipeline: JsonObject,
+    val agents: List<JsonObject> = emptyList(),
+    val warnings: List<ValidationIssue> = emptyList(),
+    val model: String,
+    val reasoningEffort: String
+) {
+    val pipelineId: String get() = pipeline.stringOr("id")
+    val pipelineName: String get() = pipeline.stringOr("name", "Generated plan")
+    val pipelineDescription: String get() = pipeline.stringOr("description")
+    val phases: List<GeneratedPlanPhase>
+        get() = pipeline.objList("phases").map { phase ->
+            GeneratedPlanPhase(
+                name = phase.stringOr("name"),
+                kind = phase.stringOr("kind", "agent"),
+                description = phase.stringOr("description"),
+                agent = phase.stringOrNull("agent"),
+                model = phase.stringOrNull("model"),
+                raw = phase
+            )
+        }
+
+    /** Re-casts one phase while preserving the rest of the generated payload. */
+    fun withPhaseModel(phaseName: String, modelId: String): GeneratedRunPlan {
+        val nextPhases = pipeline.objList("phases").map { phase ->
+            if (phase.stringOr("name") != phaseName || phase.stringOr("kind", "agent") != "agent") {
+                phase
+            } else {
+                JsonObject(phase.toMutableMap().apply { put("model", JsonPrimitive(modelId)) })
+            }
+        }
+        val nextPipeline = JsonObject(
+            pipeline.toMutableMap().apply { put("phases", JsonArray(nextPhases)) }
+        )
+        return copy(pipeline = nextPipeline)
+    }
+}
+
+data class GeneratedPlanPhase(
+    val name: String,
+    val kind: String,
+    val description: String,
+    val agent: String?,
+    val model: String?,
+    val raw: JsonObject
+)
+
+@Serializable
+data class OrchestratorOptions(
+    val models: List<SmithModelInfo> = emptyList(),
+    val model: String = "inherit",
+    val reasoningEffort: String = "medium"
+)
+
+@Serializable
+data class OrchestratorStartRequest(
+    val projectId: String,
+    val prompt: String,
+    val model: String,
+    val reasoningEffort: String
+)
+
+@Serializable
+data class OrchestratorStartResult(
+    val planId: String? = null,
+    val error: String? = null
+)
+
+@Serializable
+data class OrchestratorState(
+    val planId: String,
+    val projectId: String,
+    val status: String = "running",
+    val model: String = "inherit",
+    val reasoningEffort: String = "medium",
+    val prompt: String = "",
+    val entries: List<JsonObject> = emptyList(),
+    val plan: GeneratedRunPlan? = null,
+    val rawReply: String = "",
+    val detail: String = "",
+    val startedAt: Long = 0L,
+    val endedAt: Long? = null
+)
+
+@Serializable
+data class LinearWorkflowState(
+    val id: String,
+    val name: String,
+    val type: String
+)
+
+@Serializable
+data class LinearIssueSnapshot(
+    val id: String,
+    val identifier: String,
+    val title: String,
+    val description: String = "",
+    val url: String,
+    val updatedAt: String,
+    val team: LinearTeam,
+    val state: LinearWorkflowState
+)
+
+@Serializable
+data class LinearTeam(
+    val id: String,
+    val name: String
+)
+
+@Serializable
+data class LinearStatusMapping(
+    val started: String? = null,
+    val completed: String? = null,
+    val failed: String? = null
+) {
+    val isComplete: Boolean
+        get() = !started.isNullOrBlank() && !completed.isNullOrBlank() && !failed.isNullOrBlank()
+}
+
+@Serializable
+data class LinearConnectionState(
+    val keySet: Boolean = false,
+    val detail: String = "",
+    val statusMapping: LinearStatusMapping = LinearStatusMapping()
+)
+
+@Serializable
+data class LinearStartRunInput(
+    val projectId: String,
+    val pipelineId: String,
+    val issueId: String,
+    val statusMapping: LinearStatusMapping,
+    val plan: GeneratedRunPlan? = null
+)
+
+@Serializable
+data class LinearRunSource(
+    val kind: String = "linear",
+    val trigger: String = "manual",
+    val issueId: String,
+    val url: String,
+    val revision: String,
+    val statusMapping: LinearStatusMapping,
+    val snapshot: LinearIssueSnapshot
+)
+
+fun linearIssueBrief(issue: LinearIssueSnapshot): String {
+    val maxDescriptionChars = 32_000
+    val description = if (issue.description.length > maxDescriptionChars) {
+        issue.description.take(maxDescriptionChars) +
+            "\n\n[Linear description truncated for the run brief]"
+    } else {
+        issue.description
+    }
+    return listOf(
+        "Implement ${issue.identifier}: ${issue.title}",
+        description,
+        "Source: ${issue.url}"
+    ).filter { it.isNotBlank() }.joinToString("\n\n")
+}
+
+@Serializable
+data class RestorableCheckpointList(
+    val runId: String,
+    val refusal: String? = null,
+    val detail: String = "",
+    val checkpoints: List<RestorableCheckpoint> = emptyList()
+)
+
+@Serializable
+data class RestorableCheckpoint(
+    val checkpointId: String,
+    val runId: String,
+    val phaseId: String,
+    val phaseName: String,
+    val phaseKind: String,
+    val generation: Int,
+    val createdAt: String,
+    val headSha: String,
+    val model: String? = null,
+    val agent: String? = null,
+    val fileCount: Int = 0,
+    val untrackedCount: Int = 0,
+    val bytesStored: Long = 0L,
+    val restorable: Boolean = false,
+    val exactRestorePossible: Boolean = false,
+    val blocker: String? = null,
+    val omittedPaths: List<String> = emptyList(),
+    val commitsSince: Int = 0,
+    val commitsSinceShas: List<String> = emptyList()
+)
+
+@Serializable
+data class RestoreCheckpointRequest(
+    val checkpointId: String,
+    val acceptPartial: Boolean = false
+)
+
+@Serializable
+data class RestoreResult(
+    val ok: Boolean,
+    val detail: String = "",
+    val refusal: String? = null,
+    val restored: RestoreRecord? = null
+)
+
+@Serializable
+data class RestoreRecord(
+    val checkpointId: String,
+    val phaseId: String,
+    val phaseName: String,
+    val generation: Int,
+    val previousHeadSha: String,
+    val headSha: String,
+    val droppedCommits: List<String> = emptyList(),
+    val droppedCommitCount: Int = 0,
+    val filesRestored: Int = 0,
+    val filesRemoved: Int = 0,
+    val omittedPaths: List<String> = emptyList(),
+    val partial: Boolean = false,
+    val driftEnumerated: Boolean = true,
+    val freshSessions: List<RestoredAgentSession> = emptyList(),
+    val fromStatus: String = ""
+)
+
+@Serializable
+data class RestoredAgentSession(
+    val agent: String,
+    val previousSessionId: String? = null
 )
 
 @Serializable

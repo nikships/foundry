@@ -220,6 +220,9 @@ fun FoundryNavHost(
 
         // 3. New Run Screen
         composable(NavRoute.NewRun.route) {
+            LaunchedEffect(Unit) {
+                viewModel.loadNewRunCapabilities()
+            }
             NewRunScreen(
                 projects = uiState.projects,
                 selectedProjectId = uiState.selectedProjectId,
@@ -229,6 +232,7 @@ fun FoundryNavHost(
                     viewModel.setLastUsedPipeline(projId, pipeId)
                 },
                 onDismiss = {
+                    viewModel.resetNewRunComposer()
                     viewModel.clearNewRunDraft()
                     viewModel.clearValidationIssues()
                     navController.popBackStack()
@@ -246,7 +250,46 @@ fun FoundryNavHost(
                 isStarting = uiState.isStartingRun,
                 validationIssues = uiState.validationIssues,
                 initialRequestText = viewModel.getNewRunDraft(),
-                onRequestChange = { viewModel.setNewRunDraft(it) }
+                onRequestChange = { viewModel.setNewRunDraft(it) },
+                orchestratorOptions = uiState.orchestratorOptions,
+                orchestratorState = uiState.orchestratorState,
+                isPlanning = uiState.isPlanning,
+                onGeneratePlan = { projectId, prompt, model, effort ->
+                    viewModel.generateOrchestratorPlan(projectId, prompt, model, effort)
+                },
+                onCancelPlan = { viewModel.cancelOrchestratorPlan() },
+                onDiscardPlan = { viewModel.discardOrchestratorPlan() },
+                onSetPlanPhaseModel = { phaseName, model ->
+                    viewModel.setPlanPhaseModel(phaseName, model)
+                },
+                onStartOrchestratedRun = { projectId ->
+                    viewModel.startOrchestratedRun(projectId) { newRunId ->
+                        viewModel.loadRunDetail(newRunId)
+                        navController.navigate(NavRoute.RunDetail.createRoute(newRunId)) {
+                            popUpTo(NavRoute.Runs.route)
+                        }
+                    }
+                },
+                linearConnection = uiState.linearConnection,
+                linearIssues = uiState.linearIssues,
+                selectedLinearIssue = uiState.selectedLinearIssue,
+                linearWorkflowStates = uiState.linearWorkflowStates,
+                linearStatusMapping = uiState.linearStatusMapping,
+                isSearchingLinear = uiState.isSearchingLinear,
+                isLoadingLinearWorkflow = uiState.isLoadingLinearWorkflow,
+                onSearchLinearIssues = { viewModel.searchLinearIssues(it) },
+                onSelectLinearIssue = { viewModel.selectLinearIssue(it) },
+                onSetLinearStatus = { stage, stateId ->
+                    viewModel.setLinearStatus(stage, stateId)
+                },
+                onStartLinearRun = { projectId, pipelineId, plan ->
+                    viewModel.startLinearRun(projectId, pipelineId, plan) { newRunId ->
+                        viewModel.loadRunDetail(newRunId)
+                        navController.navigate(NavRoute.RunDetail.createRoute(newRunId)) {
+                            popUpTo(NavRoute.Runs.route)
+                        }
+                    }
+                }
             )
         }
 
@@ -284,7 +327,15 @@ fun FoundryNavHost(
                 onOpenIssue = { url -> CustomTabs.open(context, url) },
                 prDraftTitle = uiState.prDraft
                     ?.takeIf { uiState.prDraftRunId == runId }
-                    ?.title
+                    ?.title,
+                restorableCheckpoints = uiState.restorableCheckpoints,
+                isLoadingCheckpoints = uiState.isLoadingCheckpoints,
+                isRestoringCheckpoint = uiState.isRestoringCheckpoint,
+                restoreMessage = uiState.restoreMessage,
+                onDismissRestoreMessage = { viewModel.clearRestoreMessage() },
+                onRestoreCheckpoint = { restoreRunId, checkpointId, acceptPartial ->
+                    viewModel.restoreCheckpoint(restoreRunId, checkpointId, acceptPartial)
+                }
             )
         }
 

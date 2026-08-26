@@ -22,22 +22,37 @@ import type {
   AgentDef,
   AppSettings,
   EnvelopeDef,
+  GeneratedRunPlan,
+  LinearIssueSnapshot,
+  LinearStatusMapping,
+  LinearWorkflowState,
   ModelInfo,
   PipelineDef,
   ProjectDef,
   ReasoningEffort,
+  RunSource,
   SmithProposal,
   SmithProposalAnswer,
   SmithProposalAnswerResult,
   StartRunInput,
+  ValidationIssue,
 } from '@shared/types.js';
 import { isReasoningEffort } from '@shared/reasoning-effort.js';
-import type { SmithChatState, SmithScreenContext } from '@shared/ipc-contract.js';
+import type {
+  LinearConnectionState,
+  OrchestratorState,
+  SmithChatState,
+  SmithScreenContext,
+} from '@shared/ipc-contract.js';
 import type {
   CompanionDevice,
   CompanionError,
   CompanionErrorCode,
   CompanionHostState,
+  CompanionLinearStartRequest,
+  CompanionOrchestratorOptions,
+  CompanionOrchestratorStartRequest,
+  CompanionOrchestratorStartResult,
   CompanionPairingPayload,
   CompanionPairRequest,
   CompanionPairResult,
@@ -57,7 +72,10 @@ import {
   runPrDraft,
   startRun,
   type StartRunDeps,
+  type StartRunOutcome,
 } from '../engine/operations.js';
+import { listRestorableCheckpoints, restoreRun } from '../engine/restore.js';
+import { startLinearIssueRun } from '../linear/orchestration.js';
 import { DeviceStore } from './devices.js';
 import { PairingSecrets } from './pairing.js';
 
@@ -79,6 +97,8 @@ export interface CompanionHostDeps {
       agents: AgentDef[];
       envelopeDefs: EnvelopeDef[];
       request: string;
+      plan?: GeneratedRunPlan | null;
+      source?: RunSource | null;
     }): string;
     tracerFor(project: ProjectDef): Tracer;
     isLive(runId: string): boolean;
@@ -92,8 +112,12 @@ export interface CompanionHostDeps {
   };
   appVersion(): string;
   notifyRuns(): void;
+  /** Models the privileged start boundary may accept on a round-tripped plan. */
+  enabledModelIds?(): Promise<string[]>;
   /** Fires when host or device state changes, so Settings re-reads. */
   onStateChanged(): void;
+  orchestrator?: CompanionOrchestratorDeps;
+  linear?: CompanionLinearDeps;
   /**
    * The same Smith session the desktop window talks to. Optional so a test
    * harness that never opens a chat still constructs a host; missing Smith
@@ -104,6 +128,23 @@ export interface CompanionHostDeps {
   bindHost?: string;
   port?: number;
   gh?: GhOptions;
+}
+
+/** The existing desktop plan registry projected onto companion HTTP. */
+export interface CompanionOrchestratorDeps {
+  options(): Promise<CompanionOrchestratorOptions>;
+  start(input: CompanionOrchestratorStartRequest): CompanionOrchestratorStartResult;
+  state(planId: string): OrchestratorState | null;
+  cancel(planId: string): boolean;
+}
+
+/** Linear reads plus the one setting write a Linear-backed start performs. */
+export interface CompanionLinearDeps {
+  state(): LinearConnectionState;
+  issues(query: string): Promise<LinearIssueSnapshot[]>;
+  issue(issueId: string): Promise<LinearIssueSnapshot>;
+  workflowStates(teamId: string): Promise<LinearWorkflowState[]>;
+  saveStatusMapping(mapping: LinearStatusMapping): ValidationIssue[];
 }
 
 /** Projection of `SmithService` the LAN host may call — no queue internals. */
@@ -425,6 +466,10 @@ export class CompanionHost {
       }));
     }
 
+    if (head === 'orchestrator') return this.orchestratorRoute(method, rest, req);
+
+    if (head === 'linear') return this.linearRoute(method, rest, url, req);
+
     if (head === 'projects' && rest.length >= 2) return this.projectRoute(method, rest, url, req);
 
     if (method === 'POST' && head === 'runs' && rest.length === 0) {
@@ -436,16 +481,149 @@ export class CompanionHost {
       ) {
         throw new RouteError(400, 'bad_request', 'start needs projectId, pipelineId, and request');
       }
+      const plan = parseGeneratedPlan(input.plan);
+      if (input.plan != null && !plan) {
+        throw new RouteError(400, 'bad_request', 'plan is not a generated run plan');
+      }
       return startRun(this.startDeps(), {
         projectId: input.projectId,
         pipelineId: input.pipelineId,
         request: input.request,
+        ...(plan ? { plan } : {}),
       });
     }
 
     if (head === 'smith') return this.smithRoute(method, rest, url, req);
 
     throw new RouteError(404, 'not_found', 'no such route');
+  }
+
+  /** Routes under `/v1/orchestrator`. */
+  private async orchestratorRoute(
+    method: string,
+    rest: string[],
+    req: IncomingMessage,
+  ): Promise<unknown> {
+    const orchestrator = this.deps.orchestrator;
+    if (!orchestrator) throw new RouteError(404, 'not_found', 'Orchestrator is not available');
+
+    if (method === 'GET' && rest[0] === 'options' && rest.length === 1) {
+      return orchestrator.options();
+    }
+    if (method === 'POST' && rest[0] === 'plans' && rest.length === 1) {
+      const body = (await readJson(req)) as Partial<CompanionOrchestratorStartRequest>;
+      if (
+        typeof body.projectId !== 'string' ||
+        typeof body.prompt !== 'string' ||
+        typeof body.model !== 'string' ||
+        !isReasoningEffort(body.reasoningEffort)
+      ) {
+        throw new RouteError(
+          400,
+          'bad_request',
+          'plan needs projectId, prompt, model, and a known reasoning effort',
+        );
+      }
+      return orchestrator.start({
+        projectId: body.projectId,
+        prompt: body.prompt,
+        model: body.model,
+        reasoningEffort: body.reasoningEffort,
+      });
+    }
+    const planId = rest[0] === 'plans' ? rest[1] : undefined;
+    if (method === 'GET' && planId && rest.length === 2) {
+      const state = orchestrator.state(planId);
+      if (!state) throw new RouteError(404, 'not_found', 'plan not found');
+      return state;
+    }
+    if (method === 'POST' && planId && rest[2] === 'cancel' && rest.length === 3) {
+      return { ok: orchestrator.cancel(planId) };
+    }
+    throw new RouteError(404, 'not_found', 'no such route');
+  }
+
+  /** Routes under `/v1/linear`. */
+  private async linearRoute(
+    method: string,
+    rest: string[],
+    url: URL,
+    req: IncomingMessage,
+  ): Promise<unknown> {
+    const linear = this.deps.linear;
+    if (!linear) throw new RouteError(404, 'not_found', 'Linear is not available');
+
+    if (method === 'GET' && rest.length === 0) {
+      return {
+        ...linear.state(),
+        statusMapping: this.deps.settings().linearStatusMapping,
+      };
+    }
+    if (method === 'GET' && rest[0] === 'issues' && rest.length === 1) {
+      return linear.issues(url.searchParams.get('query') ?? '');
+    }
+    if (
+      method === 'GET' &&
+      rest[0] === 'teams' &&
+      rest[1] &&
+      rest[2] === 'workflow-states' &&
+      rest.length === 3
+    ) {
+      return linear.workflowStates(rest[1]);
+    }
+    if (method === 'POST' && rest[0] === 'runs' && rest.length === 1) {
+      return this.startLinearRun(linear, await readJson(req));
+    }
+    throw new RouteError(404, 'not_found', 'no such route');
+  }
+
+  private async startLinearRun(
+    linear: CompanionLinearDeps,
+    raw: unknown,
+  ): Promise<StartRunOutcome> {
+    const body = raw as Partial<CompanionLinearStartRequest>;
+    if (
+      typeof body.projectId !== 'string' ||
+      typeof body.pipelineId !== 'string' ||
+      typeof body.issueId !== 'string'
+    ) {
+      throw new RouteError(400, 'bad_request', 'start needs projectId, pipelineId, and issueId');
+    }
+    const statusMapping = parseStatusMapping(body.statusMapping);
+    if (!statusMapping) {
+      throw new RouteError(
+        400,
+        'bad_request',
+        'statusMapping needs started, completed, and failed',
+      );
+    }
+    const plan = parseGeneratedPlan(body.plan);
+    if (body.plan != null && !plan) {
+      throw new RouteError(400, 'bad_request', 'plan is not a generated run plan');
+    }
+    const issues = linear.saveStatusMapping(statusMapping);
+    if (issues.length) return { ok: false, issues };
+    try {
+      return await startLinearIssueRun(this.startDeps(), linear, statusMapping, {
+        projectId: body.projectId,
+        pipelineId: body.pipelineId,
+        issueId: body.issueId,
+        ...(plan ? { plan } : {}),
+      });
+    } catch (error) {
+      // The desktop IPC path surfaces Linear lookups as a readable outcome;
+      // the companion route must not turn them into a bare 500.
+      return {
+        ok: false,
+        issues: [
+          {
+            level: 'error',
+            where: 'linear.issue',
+            message: error instanceof Error ? error.message : 'Could not read the Linear issue',
+          },
+        ],
+      };
+    }
   }
 
   /** Routes under `/v1/projects/:projectId/...`. */
@@ -478,6 +656,36 @@ export class CompanionHost {
     if (method === 'GET' && tail === 'events' && rest.length === 4) {
       const after = Number(url.searchParams.get('after') ?? '0');
       return eventPage(tracer, runId, Number.isFinite(after) && after > 0 ? after : 0);
+    }
+    if (method === 'GET' && tail === 'checkpoints' && rest.length === 4) {
+      return listRestorableCheckpoints(
+        {
+          tracer,
+          isLive: (id) => this.deps.registry.isLive(id),
+        },
+        runId,
+      );
+    }
+    if (method === 'POST' && tail === 'restore' && rest.length === 4) {
+      const body = (await readJson(req)) as Partial<{
+        checkpointId: string;
+        acceptPartial: boolean;
+      }>;
+      if (typeof body.checkpointId !== 'string' || !body.checkpointId) {
+        throw new RouteError(400, 'bad_request', 'restore needs checkpointId');
+      }
+      return restoreRun(
+        {
+          tracer,
+          isLive: (id) => this.deps.registry.isLive(id),
+          notifyRuns: () => this.deps.notifyRuns(),
+        },
+        {
+          runId,
+          checkpointId: body.checkpointId,
+          ...(body.acceptPartial === true ? { acceptPartial: true } : {}),
+        },
+      );
     }
     if (method === 'GET' && tail === 'pr-draft' && rest.length === 4) {
       const draft = runPrDraft(tracer, runId);
@@ -623,6 +831,7 @@ export class CompanionHost {
       envelopeDefs: () => this.deps.envelopeDefs(),
       settings: () => this.deps.settings(),
       saveProject: (next) => this.deps.saveProject(next),
+      ...(this.deps.enabledModelIds ? { enabledModelIds: this.deps.enabledModelIds } : {}),
       oneShot: this.deps.oneShot,
       registry: this.deps.registry,
     };
@@ -684,6 +893,46 @@ function optionalProjectId(value: string | null | undefined): string | undefined
 function scopeFromBody(raw: unknown): string | undefined {
   const body = raw as Partial<{ projectId?: string }>;
   return optionalProjectId(body.projectId);
+}
+
+function parseStatusMapping(raw: unknown): LinearStatusMapping | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const value = raw as Record<string, unknown>;
+  const valid = (candidate: unknown): candidate is string | null =>
+    candidate === null || typeof candidate === 'string';
+  if (!valid(value.started) || !valid(value.completed) || !valid(value.failed)) return null;
+  return {
+    started: value.started,
+    completed: value.completed,
+    failed: value.failed,
+  };
+}
+
+/**
+ * Companion plans originate on this host and are only round-tripped by the
+ * phone, but the transport is still untrusted. Check the fields the start
+ * boundary dereferences before handing the value to its full validators.
+ */
+function parseGeneratedPlan(raw: unknown): GeneratedRunPlan | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const value = raw as Partial<GeneratedRunPlan>;
+  if (
+    typeof value.planId !== 'string' ||
+    typeof value.projectId !== 'string' ||
+    typeof value.prompt !== 'string' ||
+    typeof value.refinedRequest !== 'string' ||
+    typeof value.rationale !== 'string' ||
+    typeof value.model !== 'string' ||
+    !isReasoningEffort(value.reasoningEffort) ||
+    !value.pipeline ||
+    typeof value.pipeline !== 'object' ||
+    !Array.isArray(value.pipeline.phases) ||
+    !Array.isArray(value.agents) ||
+    !Array.isArray(value.warnings)
+  ) {
+    return null;
+  }
+  return value as GeneratedRunPlan;
 }
 
 const SCREEN_KINDS = new Set(['run', 'pipeline', 'agent', 'envelope', 'project', 'settings']);

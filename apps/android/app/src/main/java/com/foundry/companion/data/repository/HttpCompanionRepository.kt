@@ -13,6 +13,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
 
 class HttpCompanionRepository(
@@ -25,6 +27,8 @@ class HttpCompanionRepository(
         ignoreUnknownKeys = true
         isLenient = true
         encodeDefaults = true
+        // A null plan must mean "no plan", not a malformed `"plan":null` body.
+        explicitNulls = false
     },
     private val coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 ) : CompanionRepository {
@@ -327,6 +331,167 @@ class HttpCompanionRepository(
         }
     }
 
+    override suspend fun getOrchestratorOptions(): Result<OrchestratorOptions> =
+        withContext(Dispatchers.IO) {
+            try {
+                val request = authenticatedRequestBuilder("/v1/orchestrator/options").get().build()
+                val response = client.newCall(request).execute()
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(handleResponseError(response.code, body))
+                }
+                consecutiveFailures = 0
+                Result.success(json.decodeFromString(OrchestratorOptions.serializer(), body))
+            } catch (e: Exception) {
+                handleNetworkError(e)
+                Result.failure(e)
+            }
+        }
+
+    override suspend fun startOrchestratorPlan(
+        request: OrchestratorStartRequest
+    ): Result<OrchestratorStartResult> = withContext(Dispatchers.IO) {
+        try {
+            val requestBody = json.encodeToString(
+                OrchestratorStartRequest.serializer(),
+                request
+            ).toRequestBody(jsonMediaType)
+            val httpRequest = authenticatedRequestBuilder("/v1/orchestrator/plans")
+                .post(requestBody)
+                .build()
+            val response = client.newCall(httpRequest).execute()
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                return@withContext Result.failure(handleResponseError(response.code, body))
+            }
+            consecutiveFailures = 0
+            Result.success(json.decodeFromString(OrchestratorStartResult.serializer(), body))
+        } catch (e: Exception) {
+            handleNetworkError(e)
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun getOrchestratorPlan(planId: String): Result<OrchestratorState> =
+        withContext(Dispatchers.IO) {
+            try {
+                val request = authenticatedRequestBuilder("/v1/orchestrator/plans/$planId")
+                    .get()
+                    .build()
+                val response = client.newCall(request).execute()
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(handleResponseError(response.code, body))
+                }
+                consecutiveFailures = 0
+                Result.success(json.decodeFromString(OrchestratorState.serializer(), body))
+            } catch (e: Exception) {
+                handleNetworkError(e)
+                Result.failure(e)
+            }
+        }
+
+    override suspend fun cancelOrchestratorPlan(planId: String): Result<Boolean> =
+        withContext(Dispatchers.IO) {
+            try {
+                val request = authenticatedRequestBuilder(
+                    "/v1/orchestrator/plans/$planId/cancel"
+                ).post("{}".toRequestBody(jsonMediaType)).build()
+                val response = client.newCall(request).execute()
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(handleResponseError(response.code, body))
+                }
+                consecutiveFailures = 0
+                Result.success(json.decodeFromString(CompanionKillResult.serializer(), body).ok)
+            } catch (e: Exception) {
+                handleNetworkError(e)
+                Result.failure(e)
+            }
+        }
+
+    override suspend fun getLinearState(): Result<LinearConnectionState> =
+        withContext(Dispatchers.IO) {
+            try {
+                val request = authenticatedRequestBuilder("/v1/linear").get().build()
+                val response = client.newCall(request).execute()
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(handleResponseError(response.code, body))
+                }
+                consecutiveFailures = 0
+                Result.success(json.decodeFromString(LinearConnectionState.serializer(), body))
+            } catch (e: Exception) {
+                handleNetworkError(e)
+                Result.failure(e)
+            }
+        }
+
+    override suspend fun searchLinearIssues(
+        query: String
+    ): Result<List<LinearIssueSnapshot>> = withContext(Dispatchers.IO) {
+        try {
+            val encoded = URLEncoder.encode(query, StandardCharsets.UTF_8.name())
+            val request = authenticatedRequestBuilder("/v1/linear/issues?query=$encoded")
+                .get()
+                .build()
+            val response = client.newCall(request).execute()
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                return@withContext Result.failure(handleResponseError(response.code, body))
+            }
+            consecutiveFailures = 0
+            Result.success(json.decodeFromString<List<LinearIssueSnapshot>>(body))
+        } catch (e: Exception) {
+            handleNetworkError(e)
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun getLinearWorkflowStates(
+        teamId: String
+    ): Result<List<LinearWorkflowState>> = withContext(Dispatchers.IO) {
+        try {
+            val request = authenticatedRequestBuilder(
+                "/v1/linear/teams/$teamId/workflow-states"
+            ).get().build()
+            val response = client.newCall(request).execute()
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                return@withContext Result.failure(handleResponseError(response.code, body))
+            }
+            consecutiveFailures = 0
+            Result.success(json.decodeFromString<List<LinearWorkflowState>>(body))
+        } catch (e: Exception) {
+            handleNetworkError(e)
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun startLinearRun(
+        input: LinearStartRunInput
+    ): Result<CompanionStartResult> = withContext(Dispatchers.IO) {
+        try {
+            val requestBody = json.encodeToString(
+                LinearStartRunInput.serializer(),
+                input
+            ).toRequestBody(jsonMediaType)
+            val request = authenticatedRequestBuilder("/v1/linear/runs")
+                .post(requestBody)
+                .build()
+            val response = client.newCall(request).execute()
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                return@withContext Result.failure(handleResponseError(response.code, body))
+            }
+            consecutiveFailures = 0
+            Result.success(json.decodeFromString(CompanionStartResult.serializer(), body))
+        } catch (e: Exception) {
+            handleNetworkError(e)
+            Result.failure(e)
+        }
+    }
+
     override suspend fun killRun(projectId: String, runId: String): Result<CompanionKillResult> = withContext(Dispatchers.IO) {
         try {
             val request = authenticatedRequestBuilder("/v1/projects/$projectId/runs/$runId/kill")
@@ -354,6 +519,53 @@ class HttpCompanionRepository(
             if (!response.isSuccessful) return@withContext Result.failure(handleResponseError(response.code, body))
             consecutiveFailures = 0
             Result.success(json.decodeFromString(CompanionContinueResult.serializer(), body))
+        } catch (e: Exception) {
+            handleNetworkError(e)
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun getRestorableCheckpoints(
+        projectId: String,
+        runId: String
+    ): Result<RestorableCheckpointList> = withContext(Dispatchers.IO) {
+        try {
+            val request = authenticatedRequestBuilder(
+                "/v1/projects/$projectId/runs/$runId/checkpoints"
+            ).get().build()
+            val response = client.newCall(request).execute()
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                return@withContext Result.failure(handleResponseError(response.code, body))
+            }
+            consecutiveFailures = 0
+            Result.success(json.decodeFromString(RestorableCheckpointList.serializer(), body))
+        } catch (e: Exception) {
+            handleNetworkError(e)
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun restoreCheckpoint(
+        projectId: String,
+        runId: String,
+        request: RestoreCheckpointRequest
+    ): Result<RestoreResult> = withContext(Dispatchers.IO) {
+        try {
+            val requestBody = json.encodeToString(
+                RestoreCheckpointRequest.serializer(),
+                request
+            ).toRequestBody(jsonMediaType)
+            val httpRequest = authenticatedRequestBuilder(
+                "/v1/projects/$projectId/runs/$runId/restore"
+            ).post(requestBody).build()
+            val response = client.newCall(httpRequest).execute()
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                return@withContext Result.failure(handleResponseError(response.code, body))
+            }
+            consecutiveFailures = 0
+            Result.success(json.decodeFromString(RestoreResult.serializer(), body))
         } catch (e: Exception) {
             handleNetworkError(e)
             Result.failure(e)

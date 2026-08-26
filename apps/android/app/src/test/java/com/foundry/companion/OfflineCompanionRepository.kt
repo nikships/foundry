@@ -90,6 +90,35 @@ class OfflineCompanionRepository(
 
     override suspend fun startRun(input: StartRunInput) = answer(CompanionStartResult(ok = false))
 
+    override suspend fun getOrchestratorOptions() = answer(OrchestratorOptions())
+
+    override suspend fun startOrchestratorPlan(request: OrchestratorStartRequest) =
+        answer(OrchestratorStartResult(error = "unreachable"))
+
+    override suspend fun getOrchestratorPlan(planId: String): Result<OrchestratorState> =
+        Result.failure(IOException("unreachable"))
+
+    override suspend fun cancelOrchestratorPlan(planId: String) = answer(false)
+
+    override suspend fun getLinearState() = answer(LinearConnectionState())
+
+    override suspend fun searchLinearIssues(query: String) = answer(emptyList<LinearIssueSnapshot>())
+
+    override suspend fun getLinearWorkflowStates(teamId: String) =
+        answer(emptyList<LinearWorkflowState>())
+
+    override suspend fun startLinearRun(input: LinearStartRunInput) =
+        answer(CompanionStartResult(ok = false))
+
+    override suspend fun getRestorableCheckpoints(projectId: String, runId: String) =
+        answer(RestorableCheckpointList(runId = runId))
+
+    override suspend fun restoreCheckpoint(
+        projectId: String,
+        runId: String,
+        request: RestoreCheckpointRequest
+    ) = answer(RestoreResult(ok = false, detail = "unreachable"))
+
     override suspend fun killRun(projectId: String, runId: String) = answer(CompanionKillResult(ok = false))
 
     override suspend fun continueRun(projectId: String, runId: String) =

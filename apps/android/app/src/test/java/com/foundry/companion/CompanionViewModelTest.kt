@@ -547,6 +547,222 @@ class CompanionViewModelTest {
         assertTrue(events.isEmpty())
     }
 
+    @Test
+    fun testNewRunCapabilitiesLoadOrchestratorAndLinear() {
+        viewModel.loadNewRunCapabilities()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertNotNull(state.orchestratorOptions)
+        assertTrue(state.orchestratorOptions!!.models.isNotEmpty())
+        assertTrue(state.linearConnection?.keySet == true)
+        assertTrue(state.linearIssues.isNotEmpty())
+        assertTrue(state.linearIssues.any { it.identifier == "FOU-204" })
+    }
+
+    @Test
+    fun testOrchestratorPlanGenerationAndStartCreatesAdaptiveRun() {
+        viewModel.loadNewRunCapabilities()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val options = viewModel.uiState.value.orchestratorOptions!!
+
+        viewModel.generateOrchestratorPlan(
+            projectId = "proj_foundry_core",
+            prompt = "Bring Android run creation to desktop parity",
+            model = options.model,
+            reasoningEffort = "high"
+        )
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val planning = viewModel.uiState.value
+        assertFalse(planning.isPlanning)
+        assertNull(planning.errorMessage)
+        val state = planning.orchestratorState!!
+        assertEquals("done", state.status)
+        val plan = state.plan!!
+        assertTrue(plan.phases.isNotEmpty())
+        assertEquals("Investigate", plan.phases.first().name)
+
+        // Phase re-cast keeps the rest of the generated payload.
+        viewModel.setPlanPhaseModel("Investigate", "openai/gpt-5.4")
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals("openai/gpt-5.4", viewModel.uiState.value.orchestratorState?.plan?.phases?.first()?.model)
+
+        var startedRunId: String? = null
+        viewModel.startOrchestratedRun("proj_foundry_core") { startedRunId = it }
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertNotNull(startedRunId)
+        val started = viewModel.uiState.value.runs.first { it.runId == startedRunId }
+        assertEquals(plan.pipelineId, started.pipelineId)
+        assertEquals("adaptive", started.mode)
+        assertTrue(started.orchestrated)
+    }
+
+    @Test
+    fun testCancelAndDiscardOrchestratorPlan() {
+        viewModel.loadNewRunCapabilities()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val options = viewModel.uiState.value.orchestratorOptions!!
+
+        viewModel.generateOrchestratorPlan(
+            projectId = "proj_foundry_core",
+            prompt = "Plan then cancel",
+            model = options.model,
+            reasoningEffort = "high"
+        )
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertNotNull(viewModel.uiState.value.orchestratorState?.plan)
+
+        // Cancel clears the plan immediately and asks the desktop to stop planning.
+        viewModel.cancelOrchestratorPlan()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertNull(viewModel.uiState.value.orchestratorState)
+        assertFalse(viewModel.uiState.value.isPlanning)
+
+        viewModel.generateOrchestratorPlan(
+            projectId = "proj_foundry_core",
+            prompt = "Plan then discard",
+            model = options.model,
+            reasoningEffort = "high"
+        )
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertNotNull(viewModel.uiState.value.orchestratorState?.plan)
+
+        viewModel.discardOrchestratorPlan()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertNull(viewModel.uiState.value.orchestratorState)
+    }
+
+    @Test
+    fun testLinearSearchSelectMappingAndSourcedStart() {
+        viewModel.loadNewRunCapabilities()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.searchLinearIssues("FOU-204")
+        testDispatcher.scheduler.advanceUntilIdle()
+        val issues = viewModel.uiState.value.linearIssues
+        assertTrue(issues.any { it.identifier == "FOU-204" })
+
+        viewModel.selectLinearIssue(issues.first { it.identifier == "FOU-204" })
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val selected = viewModel.uiState.value
+        assertEquals("FOU-204", selected.selectedLinearIssue?.identifier)
+        assertTrue(selected.linearWorkflowStates.isNotEmpty())
+
+        // The saved mapping is complete, so a run can start right away.
+        assertTrue(selected.linearStatusMapping.isComplete)
+
+        var sourcedRunId: String? = null
+        viewModel.startLinearRun(
+            projectId = "proj_foundry_core",
+            pipelineId = "pipe_default"
+        ) { sourcedRunId = it }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertNotNull(sourcedRunId)
+        val run = viewModel.uiState.value.runs.first { it.runId == sourcedRunId }
+        assertEquals("linear-fou-204", run.source?.issueId)
+        assertEquals("pi", run.mode)
+        assertNotNull(run.source)
+    }
+
+    @Test
+    fun testLinearStartWithoutIssueIsNoOp() {
+        viewModel.loadNewRunCapabilities()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        var startAttempted = false
+        val runsBefore = viewModel.uiState.value.runs.size
+        viewModel.startLinearRun(
+            projectId = "proj_foundry_core",
+            pipelineId = "pipe_default"
+        ) { startAttempted = true }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertFalse(startAttempted)
+        assertEquals(runsBefore, viewModel.uiState.value.runs.size)
+    }
+
+    @Test
+    fun testCheckpointListAndRestoreForTerminalRun() {
+        viewModel.loadRunDetail("run_260818_kill04")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.loadRestorableCheckpoints("run_260818_kill04")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val curated = viewModel.uiState.value
+        assertFalse(curated.isLoadingCheckpoints)
+        assertNull(curated.restorableCheckpoints?.refusal)
+        val checkpoint = curated.restorableCheckpoints?.checkpoints?.firstOrNull()
+        assertNotNull(checkpoint)
+
+        var restoredOk: Boolean? = null
+        viewModel.restoreCheckpoint(
+            runId = "run_260818_kill04",
+            checkpointId = checkpoint!!.checkpointId,
+            acceptPartial = true
+        ) { restoredOk = it }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(restoredOk == true)
+        assertTrue(viewModel.uiState.value.restoreMessage.isNullOrBlank().not())
+        assertEquals(checkpoint.checkpointId, repository.lastRestoreRequest?.checkpointId)
+
+        // The banner belongs to the restored run only: opening another terminal
+        // run must not leak it into that run's restore section.
+        viewModel.loadRunDetail("run_260818_fail03")
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertNull(viewModel.uiState.value.restoreMessage)
+
+        viewModel.clearRestoreMessage()
+        assertNull(viewModel.uiState.value.restoreMessage)
+
+        // A live run refuses checkpoint listing.
+        viewModel.loadRestorableCheckpoints("run_260818_live99")
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertNotNull(viewModel.uiState.value.restorableCheckpoints?.refusal)
+    }
+
+    @Test
+    fun testOrchestratorPollFailureClearsPlanAndStopsPlanning() {
+        viewModel.loadNewRunCapabilities()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val options = viewModel.uiState.value.orchestratorOptions!!
+
+        repository.failGetOrchestratorPlan = true
+        viewModel.generateOrchestratorPlan(
+            projectId = "proj_foundry_core",
+            prompt = "Plan that dies",
+            model = options.model,
+            reasoningEffort = "high"
+        )
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertFalse(state.isPlanning)
+        // A dead poll must not leave a "running" snapshot behind (spinner forever).
+        assertNull(state.orchestratorState)
+        assertTrue(state.validationIssues.any { it.where == "orchestrator" })
+
+        viewModel.clearValidationIssues()
+        assertTrue(viewModel.uiState.value.validationIssues.isEmpty())
+    }
+
+    @Test
+    fun testProtocolMismatchSurfacesErrorAndStopsLoad() {
+        val mismatchedRepo = FakeCompanionRepository(initialPaired = true)
+        mismatchedRepo.overrideProtocolVersion = COMPANION_PROTOCOL_VERSION - 1
+        val vm = CompanionViewModel(mismatchedRepo, sessionManager, enablePolling = false)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertNotNull(state.errorMessage)
+        assertTrue(state.errorMessage!!.contains("Protocol mismatch"))
+        assertTrue(state.projects.isEmpty())
+    }
+
     private fun collectHaptics(vm: CompanionViewModel): MutableList<CompanionHapticEvent> {
         val events = mutableListOf<CompanionHapticEvent>()
         CoroutineScope(testDispatcher + Job()).launch {

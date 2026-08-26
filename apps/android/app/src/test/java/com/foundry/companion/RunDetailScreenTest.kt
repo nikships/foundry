@@ -643,4 +643,215 @@ class RunDetailScreenTest {
         // Empty state message when no phase has started
         composeTestRule.onNodeWithText("Waiting for the first phase…").assertIsDisplayed()
     }
+
+    @Test
+    fun testCheckpointRestoreSectionAndConfirmationDialog() {
+        val killedRun = settledRun.copy(status = "killed")
+        val checkpoints = RestorableCheckpointList(
+            runId = killedRun.runId,
+            checkpoints = listOf(
+                RestorableCheckpoint(
+                    checkpointId = "cp_1",
+                    runId = killedRun.runId,
+                    phaseId = "ph_3",
+                    phaseName = "Code",
+                    phaseKind = "agent",
+                    generation = 1,
+                    createdAt = "2026-08-26T18:00:00Z",
+                    headSha = "abc123",
+                    model = "scripted/alpha",
+                    agent = "builder",
+                    fileCount = 4,
+                    untrackedCount = 1,
+                    bytesStored = 9001,
+                    restorable = true,
+                    exactRestorePossible = true,
+                    commitsSince = 2
+                )
+            )
+        )
+        var requestedRunId: String? = null
+        var requestedCheckpointId: String? = null
+        var requestedAcceptPartial: Boolean? = null
+
+        composeTestRule.setContent {
+            FoundryTheme {
+                RunDetailScreen(
+                    runDetail = RunDetail(run = killedRun, phases = settledPhases, live = false),
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    restorableCheckpoints = checkpoints,
+                    onBackClick = {},
+                    onOpenInspector = {},
+                    onKillRun = {},
+                    onOpenPr = {},
+                    onCreatePr = {},
+                    onOpenIssue = {},
+                    onRestoreCheckpoint = { runId, checkpointId, acceptPartial ->
+                        requestedRunId = runId
+                        requestedCheckpointId = checkpointId
+                        requestedAcceptPartial = acceptPartial
+                    }
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithContentDescription("Restore checkpoint")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeTestRule.onNodeWithText("RESTORE PHASE CHECKPOINT").assertIsDisplayed()
+        composeTestRule.onNodeWithText("moves 2 commits off the branch", substring = true).assertIsDisplayed()
+        composeTestRule.onNodeWithContentDescription("Restore Code").performClick()
+
+        composeTestRule.onNodeWithText("RESTORE CHECKPOINT · CODE").assertIsDisplayed()
+        composeTestRule.onNode(hasAnyAncestor(isDialog()) and hasText("RESTORE")).performClick()
+
+        assertEquals(killedRun.runId, requestedRunId)
+        assertEquals("cp_1", requestedCheckpointId)
+        assertEquals(false, requestedAcceptPartial)
+    }
+
+    @Test
+    fun testPartialRestoreRequiresExplicitAcceptance() {
+        val failedRun = settledRun.copy(status = "failed")
+        val checkpoints = RestorableCheckpointList(
+            runId = failedRun.runId,
+            checkpoints = listOf(
+                RestorableCheckpoint(
+                    checkpointId = "cp_partial",
+                    runId = failedRun.runId,
+                    phaseId = "ph_3",
+                    phaseName = "Code",
+                    phaseKind = "agent",
+                    generation = 1,
+                    createdAt = "2026-08-26T18:00:00Z",
+                    headSha = "abc123",
+                    model = "scripted/alpha",
+                    agent = "builder",
+                    fileCount = 3,
+                    untrackedCount = 0,
+                    bytesStored = 7000,
+                    restorable = true,
+                    exactRestorePossible = false,
+                    omittedPaths = listOf("apps/android/build.gradle.kts"),
+                    commitsSince = 1
+                )
+            )
+        )
+        var capturedAcceptPartial: Boolean? = null
+
+        composeTestRule.setContent {
+            FoundryTheme {
+                RunDetailScreen(
+                    runDetail = RunDetail(run = failedRun, phases = settledPhases, live = false),
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    restorableCheckpoints = checkpoints,
+                    onBackClick = {},
+                    onOpenInspector = {},
+                    onKillRun = {},
+                    onOpenPr = {},
+                    onCreatePr = {},
+                    onOpenIssue = {},
+                    onRestoreCheckpoint = { _, _, acceptPartial ->
+                        capturedAcceptPartial = acceptPartial
+                    }
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithContentDescription("Restore Code").performScrollTo().performClick()
+
+        // The dialog copy may run past the test window; existence proves the dialog.
+        composeTestRule.onNode(hasAnyAncestor(isDialog()) and hasText("An exact restore is impossible", substring = true))
+            .assertExists()
+        // Confirm stays disabled until the partial restore is accepted.
+        composeTestRule.onNode(hasAnyAncestor(isDialog()) and hasText("RESTORE")).assertIsNotEnabled()
+
+        composeTestRule.onNode(isToggleable()).performClick()
+        composeTestRule.onNode(hasAnyAncestor(isDialog()) and hasText("RESTORE")).assertIsEnabled()
+        composeTestRule.onNode(hasAnyAncestor(isDialog()) and hasText("RESTORE")).performClick()
+
+        assertEquals(true, capturedAcceptPartial)
+    }
+
+    @Test
+    fun testCheckpointRestoreRefusalShowsDetail() {
+        val refused = RestorableCheckpointList(
+            runId = settledRun.runId,
+            refusal = "run_not_terminal",
+            detail = "only a killed, failed, or rejected run can be restored"
+        )
+
+        composeTestRule.setContent {
+            FoundryTheme {
+                RunDetailScreen(
+                    runDetail = RunDetail(run = settledRun, phases = settledPhases, live = false),
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    restorableCheckpoints = refused,
+                    onBackClick = {},
+                    onOpenInspector = {},
+                    onKillRun = {},
+                    onOpenPr = {},
+                    onCreatePr = {},
+                    onOpenIssue = {}
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("RESTORE PHASE CHECKPOINT").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithText("only a killed, failed, or rejected run can be restored")
+            .performScrollTo()
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun testRestoreResultMessageRendersAndDismisses() {
+        val checkpoints = RestorableCheckpointList(
+            runId = settledRun.runId,
+            checkpoints = listOf(
+                RestorableCheckpoint(
+                    checkpointId = "cp_1",
+                    runId = settledRun.runId,
+                    phaseId = "ph_3",
+                    phaseName = "Code",
+                    phaseKind = "agent",
+                    generation = 1,
+                    createdAt = "2026-08-26T18:00:00Z",
+                    headSha = "abc123",
+                    model = "scripted/alpha",
+                    agent = "builder",
+                    fileCount = 4,
+                    untrackedCount = 1,
+                    bytesStored = 9001,
+                    restorable = true,
+                    exactRestorePossible = true,
+                    commitsSince = 2
+                )
+            )
+        )
+        var dismissed = false
+
+        composeTestRule.setContent {
+            FoundryTheme {
+                RunDetailScreen(
+                    runDetail = RunDetail(run = settledRun, phases = settledPhases, live = false),
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    restorableCheckpoints = checkpoints,
+                    restoreMessage = "Restored Code; the run remains stopped.",
+                    onDismissRestoreMessage = { dismissed = true },
+                    onBackClick = {},
+                    onOpenInspector = {},
+                    onKillRun = {},
+                    onOpenPr = {},
+                    onCreatePr = {},
+                    onOpenIssue = {}
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("Restored Code; the run remains stopped.")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeTestRule.onNodeWithText("✕").performClick()
+        assertTrue(dismissed)
+    }
 }

@@ -10,6 +10,7 @@ import com.foundry.companion.data.repository.CompanionRepository
 import com.foundry.companion.data.session.SessionManager
 import com.foundry.companion.notification.CompanionNotifier
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -48,6 +49,22 @@ data class CompanionUiState(
     val smithProposal: SmithProposal? = null,
     val smithModels: List<SmithModelInfo> = emptyList(),
     val smithSending: Boolean = false,
+    val orchestratorOptions: OrchestratorOptions? = null,
+    val orchestratorState: OrchestratorState? = null,
+    val isPlanning: Boolean = false,
+    val linearConnection: LinearConnectionState? = null,
+    val linearIssues: List<LinearIssueSnapshot> = emptyList(),
+    val selectedLinearIssue: LinearIssueSnapshot? = null,
+    val linearWorkflowStates: List<LinearWorkflowState> = emptyList(),
+    val linearStatusMapping: LinearStatusMapping = LinearStatusMapping(),
+    val isSearchingLinear: Boolean = false,
+    val isLoadingLinearWorkflow: Boolean = false,
+    val restorableCheckpoints: RestorableCheckpointList? = null,
+    val isLoadingCheckpoints: Boolean = false,
+    val isRestoringCheckpoint: Boolean = false,
+    val restoreMessage: String? = null,
+    /** Which run the restore banner belongs to, so switching runs cannot leak it. */
+    val restoreMessageRunId: String? = null,
     val isNotifyOnSettleEnabled: Boolean = true,
     val isPairing: Boolean = false,
     val isStartingRun: Boolean = false,
@@ -85,6 +102,7 @@ class CompanionViewModel(
     private val hapticRunStatuses = mutableMapOf<String, String>()
 
     private var pollingJob: Job? = null
+    private var orchestratorPollingJob: Job? = null
     private var isManualUnpair = false
 
     init {
@@ -126,9 +144,23 @@ class CompanionViewModel(
 
     fun loadInitialData() {
         viewModelScope.launch {
-            repository.getSessionInfo().onSuccess { info ->
-                _uiState.update { it.copy(sessionInfo = info) }
+            val sessionInfo = repository.getSessionInfo().getOrElse { error ->
+                _uiState.update {
+                    it.copy(errorMessage = error.message ?: "Could not read desktop session")
+                }
+                return@launch
             }
+            if (sessionInfo.protocolVersion != COMPANION_PROTOCOL_VERSION) {
+                _uiState.update {
+                    it.copy(
+                        sessionInfo = sessionInfo,
+                        errorMessage = "Protocol mismatch: desktop is v${sessionInfo.protocolVersion}, " +
+                            "phone is v$COMPANION_PROTOCOL_VERSION. Update the older app."
+                    )
+                }
+                return@launch
+            }
+            _uiState.update { it.copy(sessionInfo = sessionInfo) }
 
             repository.getProjects().onSuccess { projects ->
                 val selected = resolveSelectedProjectId(
@@ -236,6 +268,7 @@ class CompanionViewModel(
                 loadPrStatus(projectId)
             }
             repository.getRunDetail(projectId, runId).onSuccess { detail ->
+                val canRestore = detail.run.status.lowercase() in RESTORABLE_RUN_STATUSES
                 _uiState.update {
                     it.copy(
                         currentRunDetail = detail,
@@ -243,7 +276,22 @@ class CompanionViewModel(
                         errorMessage = null,
                         prDraft = if (it.prDraftRunId == runId) it.prDraft else null,
                         prDraftRunId = if (it.prDraftRunId == runId) it.prDraftRunId else null,
+                        restorableCheckpoints = if (canRestore &&
+                            it.restorableCheckpoints?.runId == runId
+                        ) {
+                            it.restorableCheckpoints
+                        } else {
+                            null
+                        },
+                        restoreMessage = if (it.restoreMessageRunId == runId) {
+                            it.restoreMessage
+                        } else {
+                            null
+                        },
                     )
+                }
+                if (canRestore) {
+                    loadRestorableCheckpoints(runId)
                 }
                 if (canDraftPr(detail.run)) {
                     loadPrDraft(projectId, runId)
@@ -260,6 +308,8 @@ class CompanionViewModel(
                             missingRunId = runId,
                             prDraft = null,
                             prDraftRunId = null,
+                            restorableCheckpoints = null,
+                            restoreMessage = null,
                         )
                     }
                 }
@@ -299,6 +349,7 @@ class CompanionViewModel(
 
     fun unpair() {
         isManualUnpair = true
+        orchestratorPollingJob?.cancel()
         notifier?.reset()
         resetHapticWatch()
         viewModelScope.launch {
@@ -318,6 +369,21 @@ class CompanionViewModel(
                     smithProposal = null,
                     smithModels = emptyList(),
                     smithSending = false,
+                    orchestratorOptions = null,
+                    orchestratorState = null,
+                    isPlanning = false,
+                    linearConnection = null,
+                    linearIssues = emptyList(),
+                    selectedLinearIssue = null,
+                    linearWorkflowStates = emptyList(),
+                    linearStatusMapping = LinearStatusMapping(),
+                    isSearchingLinear = false,
+                    isLoadingLinearWorkflow = false,
+                    restorableCheckpoints = null,
+                    isLoadingCheckpoints = false,
+                    isRestoringCheckpoint = false,
+                    restoreMessage = null,
+                    restoreMessageRunId = null,
                     errorMessage = null
                 )
             }
@@ -349,6 +415,288 @@ class CompanionViewModel(
         _uiState.update { it.copy(validationIssues = emptyList()) }
     }
 
+    fun loadNewRunCapabilities() {
+        viewModelScope.launch {
+            // Independent host reads run concurrently; the issue search below
+            // additionally depends on Linear being connected (keySet).
+            val options = async { repository.getOrchestratorOptions() }
+            val linear = async { repository.getLinearState() }
+            options.await().onSuccess { fetched ->
+                _uiState.update { it.copy(orchestratorOptions = fetched) }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(errorMessage = error.message ?: "Could not load Orchestrator options")
+                }
+            }
+
+            linear.await().onSuccess { state ->
+                _uiState.update {
+                    it.copy(
+                        linearConnection = state,
+                        linearStatusMapping = state.statusMapping
+                    )
+                }
+                // Single owner of the initial seed: the composer's debounced
+                // effect skips blank queries, so this fires exactly once.
+                if (state.keySet) searchLinearIssues("")
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(errorMessage = error.message ?: "Could not read Linear connection")
+                }
+            }
+        }
+    }
+
+    fun generateOrchestratorPlan(
+        projectId: String,
+        prompt: String,
+        model: String,
+        reasoningEffort: String
+    ) {
+        val request = prompt.trim()
+        if (projectId.isBlank() || request.isBlank() || _uiState.value.isPlanning) return
+        orchestratorPollingJob?.cancel()
+        _uiState.update {
+            it.copy(
+                orchestratorState = null,
+                isPlanning = true,
+                validationIssues = emptyList(),
+                errorMessage = null
+            )
+        }
+        viewModelScope.launch {
+            repository.startOrchestratorPlan(
+                OrchestratorStartRequest(
+                    projectId = projectId,
+                    prompt = request,
+                    model = model.ifBlank { "inherit" },
+                    reasoningEffort = reasoningEffort
+                )
+            ).onSuccess { started ->
+                val planId = started.planId
+                if (planId.isNullOrBlank()) {
+                    _uiState.update {
+                        it.copy(
+                            isPlanning = false,
+                            validationIssues = listOf(
+                                ValidationIssue(
+                                    "error",
+                                    started.error ?: "Could not open the planning session",
+                                    "orchestrator"
+                                )
+                            )
+                        )
+                    }
+                    return@onSuccess
+                }
+                pollOrchestratorPlan(
+                    planId = planId,
+                    projectId = projectId,
+                    prompt = request,
+                    model = model,
+                    reasoningEffort = reasoningEffort
+                )
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        isPlanning = false,
+                        validationIssues = listOf(
+                            ValidationIssue(
+                                "error",
+                                error.message ?: "Could not open the planning session",
+                                "orchestrator"
+                            )
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    private fun pollOrchestratorPlan(
+        planId: String,
+        projectId: String,
+        prompt: String,
+        model: String,
+        reasoningEffort: String
+    ) {
+        _uiState.update {
+            it.copy(
+                orchestratorState = OrchestratorState(
+                    planId = planId,
+                    projectId = projectId,
+                    status = "running",
+                    model = model,
+                    reasoningEffort = reasoningEffort,
+                    prompt = prompt,
+                    detail = "Opening the planning session…",
+                    startedAt = System.currentTimeMillis()
+                )
+            )
+        }
+        orchestratorPollingJob?.cancel()
+        orchestratorPollingJob = viewModelScope.launch {
+            while (isActive) {
+                val result = repository.getOrchestratorPlan(planId)
+                result.onSuccess { state ->
+                    val live = state.status == "running"
+                    _uiState.update {
+                        it.copy(
+                            orchestratorState = state,
+                            isPlanning = live,
+                            validationIssues = if (state.status == "failed") {
+                                listOf(
+                                    ValidationIssue(
+                                        "error",
+                                        state.detail.ifBlank { "Planning failed" },
+                                        "orchestrator"
+                                    )
+                                )
+                            } else {
+                                it.validationIssues
+                            }
+                        )
+                    }
+                    if (!live) return@launch
+                }.onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            // A dead poll must not leave a "running" snapshot behind:
+                            // the composer would keep its planning spinner forever.
+                            orchestratorState = null,
+                            isPlanning = false,
+                            validationIssues = listOf(
+                                ValidationIssue(
+                                    "error",
+                                    error.message ?: "Could not read the generated plan",
+                                    "orchestrator"
+                                )
+                            )
+                        )
+                    }
+                    return@launch
+                }
+                delay(500L)
+            }
+        }
+    }
+
+    fun cancelOrchestratorPlan() {
+        val planId = _uiState.value.orchestratorState?.planId
+        orchestratorPollingJob?.cancel()
+        orchestratorPollingJob = null
+        _uiState.update {
+            it.copy(orchestratorState = null, isPlanning = false, validationIssues = emptyList())
+        }
+        if (!planId.isNullOrBlank()) {
+            viewModelScope.launch { repository.cancelOrchestratorPlan(planId) }
+        }
+    }
+
+    fun discardOrchestratorPlan() {
+        if (_uiState.value.isPlanning) {
+            cancelOrchestratorPlan()
+        } else {
+            _uiState.update {
+                it.copy(orchestratorState = null, validationIssues = emptyList())
+            }
+        }
+    }
+
+    fun setPlanPhaseModel(phaseName: String, model: String) {
+        _uiState.update { current ->
+            val plan = current.orchestratorState?.plan ?: return@update current
+            current.copy(
+                orchestratorState = current.orchestratorState.copy(
+                    plan = plan.withPhaseModel(phaseName, model)
+                )
+            )
+        }
+    }
+
+    fun searchLinearIssues(query: String) {
+        if (_uiState.value.linearConnection?.keySet != true) return
+        _uiState.update { it.copy(isSearchingLinear = true) }
+        viewModelScope.launch {
+            repository.searchLinearIssues(query).onSuccess { issues ->
+                _uiState.update {
+                    it.copy(linearIssues = issues, isSearchingLinear = false)
+                }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        linearIssues = emptyList(),
+                        isSearchingLinear = false,
+                        errorMessage = error.message ?: "Could not search Linear issues"
+                    )
+                }
+            }
+        }
+    }
+
+    fun selectLinearIssue(issue: LinearIssueSnapshot?) {
+        discardOrchestratorPlan()
+        if (issue == null) {
+            _uiState.update {
+                it.copy(
+                    selectedLinearIssue = null,
+                    linearWorkflowStates = emptyList(),
+                    linearStatusMapping = it.linearConnection?.statusMapping ?: LinearStatusMapping(),
+                    isLoadingLinearWorkflow = false,
+                    validationIssues = emptyList()
+                )
+            }
+            return
+        }
+        _uiState.update {
+            it.copy(
+                selectedLinearIssue = issue,
+                linearWorkflowStates = emptyList(),
+                isLoadingLinearWorkflow = true,
+                validationIssues = emptyList()
+            )
+        }
+        viewModelScope.launch {
+            repository.getLinearWorkflowStates(issue.team.id).onSuccess { states ->
+                _uiState.update { current ->
+                    current.copy(
+                        linearWorkflowStates = states,
+                        linearStatusMapping = suggestedLinearMapping(
+                            current.linearConnection?.statusMapping ?: LinearStatusMapping(),
+                            states
+                        ),
+                        isLoadingLinearWorkflow = false
+                    )
+                }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        isLoadingLinearWorkflow = false,
+                        validationIssues = listOf(
+                            ValidationIssue(
+                                "error",
+                                error.message ?: "Could not load the Linear workflow",
+                                "linear"
+                            )
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    fun setLinearStatus(stage: String, stateId: String) {
+        _uiState.update { current ->
+            val mapping = when (stage) {
+                "started" -> current.linearStatusMapping.copy(started = stateId)
+                "completed" -> current.linearStatusMapping.copy(completed = stateId)
+                "failed" -> current.linearStatusMapping.copy(failed = stateId)
+                else -> current.linearStatusMapping
+            }
+            current.copy(linearStatusMapping = mapping, validationIssues = emptyList())
+        }
+    }
+
     fun startRun(
         projectId: String,
         pipelineId: String,
@@ -359,22 +707,119 @@ class CompanionViewModel(
         _uiState.update { it.copy(isStartingRun = true, validationIssues = emptyList()) }
         viewModelScope.launch {
             val result = repository.startRun(StartRunInput(projectId, pipelineId, request))
-            _uiState.update { it.copy(isStartingRun = false) }
-            result.onSuccess { startResult ->
-                if (startResult.ok && startResult.runId != null) {
-                    clearNewRunDraft()
-                    loadRuns(projectId)
-                    onSuccess(startResult.runId)
-                } else {
-                    _uiState.update { it.copy(validationIssues = startResult.issues) }
-                }
-            }.onFailure { err ->
+            handleStartResult(projectId, result, onSuccess)
+        }
+    }
+
+    fun startOrchestratedRun(
+        projectId: String,
+        onSuccess: (runId: String) -> Unit
+    ) {
+        val plan = _uiState.value.orchestratorState?.plan ?: return
+        _uiState.update { it.copy(isStartingRun = true, validationIssues = emptyList()) }
+        viewModelScope.launch {
+            val result = repository.startRun(
+                StartRunInput(
+                    projectId = projectId,
+                    pipelineId = plan.pipelineId,
+                    request = plan.prompt,
+                    plan = plan
+                )
+            )
+            handleStartResult(projectId, result, onSuccess)
+        }
+    }
+
+    fun startLinearRun(
+        projectId: String,
+        pipelineId: String,
+        plan: GeneratedRunPlan? = null,
+        onSuccess: (runId: String) -> Unit
+    ) {
+        val issue = _uiState.value.selectedLinearIssue ?: return
+        val mapping = _uiState.value.linearStatusMapping
+        if (!mapping.isComplete) {
+            _uiState.update {
+                it.copy(
+                    validationIssues = listOf(
+                        ValidationIssue(
+                            "error",
+                            "Map all three Linear lifecycle statuses before starting.",
+                            "linear"
+                        )
+                    )
+                )
+            }
+            return
+        }
+        if (plan == null) setLastUsedPipeline(projectId, pipelineId)
+        _uiState.update { it.copy(isStartingRun = true, validationIssues = emptyList()) }
+        viewModelScope.launch {
+            val result = repository.startLinearRun(
+                LinearStartRunInput(
+                    projectId = projectId,
+                    pipelineId = plan?.pipelineId ?: pipelineId,
+                    issueId = issue.id,
+                    statusMapping = mapping,
+                    plan = plan
+                )
+            )
+            handleStartResult(projectId, result, onSuccess)
+        }
+    }
+
+    private fun handleStartResult(
+        projectId: String,
+        result: Result<CompanionStartResult>,
+        onSuccess: (runId: String) -> Unit
+    ) {
+        _uiState.update { it.copy(isStartingRun = false) }
+        result.onSuccess { startResult ->
+            if (startResult.ok && startResult.runId != null) {
+                clearNewRunDraft()
+                orchestratorPollingJob?.cancel()
                 _uiState.update {
                     it.copy(
-                        validationIssues = listOf(ValidationIssue("error", err.message ?: "Failed to start run"))
+                        orchestratorState = null,
+                        isPlanning = false,
+                        selectedLinearIssue = null,
+                        linearWorkflowStates = emptyList(),
+                        validationIssues = emptyList()
                     )
                 }
+                loadRuns(projectId)
+                onSuccess(startResult.runId)
+            } else {
+                _uiState.update { it.copy(validationIssues = startResult.issues) }
             }
+        }.onFailure { error ->
+            _uiState.update {
+                it.copy(
+                    validationIssues = listOf(
+                        ValidationIssue(
+                            "error",
+                            error.message ?: "Failed to start run",
+                            "start"
+                        )
+                    )
+                )
+            }
+        }
+    }
+
+    fun resetNewRunComposer() {
+        if (_uiState.value.isPlanning) {
+            cancelOrchestratorPlan()
+        }
+        _uiState.update {
+            it.copy(
+                orchestratorState = null,
+                isPlanning = false,
+                selectedLinearIssue = null,
+                linearWorkflowStates = emptyList(),
+                linearStatusMapping = it.linearConnection?.statusMapping ?: LinearStatusMapping(),
+                validationIssues = emptyList()
+            )
         }
     }
 
@@ -406,6 +851,9 @@ class CompanionViewModel(
                     )
                 }
                 if (res.ok) {
+                    _uiState.update {
+                        it.copy(restorableCheckpoints = null, restoreMessage = null)
+                    }
                     loadRunDetail(runId)
                     loadRuns(projectId)
                 }
@@ -422,8 +870,85 @@ class CompanionViewModel(
         }
     }
 
+    fun loadRestorableCheckpoints(runId: String) {
+        val projectId = _uiState.value.selectedProjectId
+        if (projectId.isBlank() || runId.isBlank()) return
+        _uiState.update { it.copy(isLoadingCheckpoints = true) }
+        viewModelScope.launch {
+            repository.getRestorableCheckpoints(projectId, runId).onSuccess { checkpoints ->
+                _uiState.update {
+                    it.copy(
+                        restorableCheckpoints = checkpoints,
+                        isLoadingCheckpoints = false
+                    )
+                }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        isLoadingCheckpoints = false,
+                        errorMessage = error.message ?: "Could not load phase checkpoints"
+                    )
+                }
+            }
+        }
+    }
+
+    fun restoreCheckpoint(
+        runId: String,
+        checkpointId: String,
+        acceptPartial: Boolean,
+        onResult: ((Boolean) -> Unit)? = null
+    ) {
+        val projectId = _uiState.value.selectedProjectId
+        if (projectId.isBlank() || runId.isBlank() || checkpointId.isBlank()) return
+        _uiState.update {
+            it.copy(
+                isRestoringCheckpoint = true,
+                restoreMessage = null,
+                restoreMessageRunId = null,
+                errorMessage = null
+            )
+        }
+        viewModelScope.launch {
+            repository.restoreCheckpoint(
+                projectId,
+                runId,
+                RestoreCheckpointRequest(
+                    checkpointId = checkpointId,
+                    acceptPartial = acceptPartial
+                )
+            ).onSuccess { result ->
+                _uiState.update {
+                    it.copy(
+                        isRestoringCheckpoint = false,
+                        restoreMessage = result.detail.takeIf { result.ok },
+                        restoreMessageRunId = result.detail.takeIf { result.ok }?.let { runId },
+                        errorMessage = result.detail.takeUnless { result.ok }
+                    )
+                }
+                if (result.ok) {
+                    loadRunDetail(runId)
+                    loadRuns(projectId)
+                }
+                onResult?.invoke(result.ok)
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        isRestoringCheckpoint = false,
+                        errorMessage = error.message ?: "Could not restore checkpoint"
+                    )
+                }
+                onResult?.invoke(false)
+            }
+        }
+    }
+
     fun clearActionError() {
         _uiState.update { it.copy(errorMessage = null) }
+    }
+
+    fun clearRestoreMessage() {
+        _uiState.update { it.copy(restoreMessage = null, restoreMessageRunId = null) }
     }
 
     fun loadPrDraft(projectId: String = _uiState.value.selectedProjectId, runId: String) {
@@ -632,6 +1157,7 @@ class CompanionViewModel(
 
     companion object {
         val SETTLED_HAPTIC_STATUSES = setOf("accepted", "rejected", "failed", "killed")
+        val RESTORABLE_RUN_STATUSES = setOf("rejected", "failed", "killed")
 
         fun provideFactory(
             repository: CompanionRepository,
@@ -645,6 +1171,23 @@ class CompanionViewModel(
             }
         }
     }
+}
+
+internal fun suggestedLinearMapping(
+    saved: LinearStatusMapping,
+    states: List<LinearWorkflowState>
+): LinearStatusMapping {
+    val known = states.mapTo(mutableSetOf()) { it.id }
+    fun savedOrType(savedId: String?, type: String): String? {
+        return savedId?.takeIf { it in known }
+            ?: states.firstOrNull { it.type == type }?.id
+    }
+    return LinearStatusMapping(
+        started = savedOrType(saved.started, "started"),
+        completed = savedOrType(saved.completed, "completed"),
+        failed = saved.failed?.takeIf { it in known }
+            ?: states.firstOrNull { it.type == "canceled" || it.type == "cancelled" }?.id
+    )
 }
 
 /** The name Settings → Phone lists. Blank MODEL is the only fallback. */
