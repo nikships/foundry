@@ -7,6 +7,7 @@ import {
   outcomeHeadline,
   resumeTitleFor,
 } from '../../view-models/outcome-view.js';
+import type { RestoreAvailability } from '../../view-models/restore-view.js';
 import { Button } from '../ui/Button.js';
 import { cx } from '../ui/cx.js';
 import styles from './OutcomeBanner.module.css';
@@ -45,6 +46,49 @@ function IssueLink({
   );
 }
 
+/**
+ * Restore, kept visible and disabled rather than hidden when it cannot be
+ * used: a run with no recorded checkpoints is the common case for a while
+ * yet, and an absent button teaches an operator nothing about why.
+ *
+ * Exported for the renderer suite: the reason has to be *rendered*, not only
+ * carried in a `title`, and only markup can tell those two apart.
+ */
+export function RestoreAction({
+  restore,
+  busy,
+  onRestore,
+}: {
+  restore?: RestoreAvailability;
+  busy: boolean;
+  onRestore?: () => void;
+}): React.JSX.Element | null {
+  if (!restore?.offered || !onRestore) return null;
+  const reason = restore.enabled ? '' : restore.reason;
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={busy || !restore.enabled}
+        title={
+          reason ||
+          'Put this run’s worktree back to the start of a recorded phase, without resuming it'
+        }
+        onClick={onRestore}
+        data-testid="outcome-restore"
+      >
+        Restore…
+      </Button>
+      {reason && (
+        <span className={styles.restoreReason} data-testid="outcome-restore-reason">
+          {reason}
+        </span>
+      )}
+    </>
+  );
+}
+
 export default function OutcomeBanner({
   run,
   phases,
@@ -55,6 +99,8 @@ export default function OutcomeBanner({
   gh,
   canResume = false,
   canFix = false,
+  restore,
+  onRestore,
   onResume,
   onMerge,
   onFixMerge,
@@ -76,6 +122,9 @@ export default function OutcomeBanner({
   canResume?: boolean;
   /** True after a refused merge, which is when the agent repair applies. */
   canFix?: boolean;
+  /** Whether restoring is offered, and why it is not usable. */
+  restore?: RestoreAvailability;
+  onRestore?: () => void;
   onResume?: () => void;
   onMerge: () => void;
   onFixMerge?: () => void;
@@ -164,6 +213,7 @@ export default function OutcomeBanner({
               {worktreeBusy ? 'Working…' : 'Fix & merge with agent'}
             </Button>
           )}
+          <RestoreAction restore={restore} busy={worktreeBusy} onRestore={onRestore} />
           <IssueLink run={run} onOpenUrl={onOpenUrl} />
           {run.prUrl ? (
             <Button
