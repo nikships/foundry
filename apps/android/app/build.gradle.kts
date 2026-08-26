@@ -1,5 +1,3 @@
-import java.time.Duration
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -90,11 +88,6 @@ android {
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
-            all {
-                // A hung Robolectric/Compose test otherwise sits on the CI
-                // runner until the job is cancelled by hand.
-                it.timeout = Duration.ofSeconds(60)
-            }
         }
     }
 }
