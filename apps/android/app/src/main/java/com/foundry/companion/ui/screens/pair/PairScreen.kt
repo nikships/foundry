@@ -1,12 +1,14 @@
 package com.foundry.companion.ui.screens.pair
 
 import android.Manifest
+import android.app.Activity
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.Lifecycle
@@ -33,6 +35,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.foundry.companion.data.model.COMPANION_PROTOCOL_VERSION
 import com.foundry.companion.data.model.CompanionPairingPayload
@@ -46,6 +49,18 @@ import com.google.mlkit.vision.common.InputImage
 import kotlinx.serialization.json.Json
 import java.util.concurrent.Executors
 
+enum class CameraPermissionPrompt { Granted, Request, Settings }
+
+internal fun cameraPermissionPrompt(
+    granted: Boolean,
+    asked: Boolean,
+    shouldShowRationale: Boolean
+): CameraPermissionPrompt = when {
+    granted -> CameraPermissionPrompt.Granted
+    !asked || shouldShowRationale -> CameraPermissionPrompt.Request
+    else -> CameraPermissionPrompt.Settings
+}
+
 @Composable
 fun PairScreen(
     onPairSuccess: () -> Unit,
@@ -53,7 +68,8 @@ fun PairScreen(
     errorMessage: String? = null,
     isPairing: Boolean = false,
     initialPasteMode: Boolean = false,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    cameraPromptOverride: CameraPermissionPrompt? = null
 ) {
     val context = LocalContext.current
     val colors = FoundryTheme.colors
@@ -72,14 +88,29 @@ fun PairScreen(
     var isPasteMode by remember { mutableStateOf(initialPasteMode) }
     var pastedJson by remember { mutableStateOf("") }
     var localValidationIssue by remember { mutableStateOf<String?>(null) }
+    var hasAskedCamera by remember { mutableStateOf(cameraPromptOverride == CameraPermissionPrompt.Settings) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
+        hasAskedCamera = true
         hasCameraPermission = granted
         if (granted) {
             isPasteMode = false
         }
+    }
+
+    val activity = context as? Activity
+    val shouldShowRationale = activity != null &&
+        ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.CAMERA)
+    val cameraPrompt = cameraPromptOverride ?: cameraPermissionPrompt(
+        granted = hasCameraPermission,
+        asked = hasAskedCamera,
+        shouldShowRationale = shouldShowRationale
+    )
+
+    BackHandler(enabled = isPasteMode) {
+        isPasteMode = false
     }
 
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
@@ -99,8 +130,9 @@ fun PairScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    LaunchedEffect(initialPasteMode) {
-        if (!hasCameraPermission && !initialPasteMode) {
+    LaunchedEffect(initialPasteMode, cameraPromptOverride) {
+        if (cameraPromptOverride != null) return@LaunchedEffect
+        if (!hasCameraPermission && !initialPasteMode && !hasAskedCamera) {
             permissionLauncher.launch(Manifest.permission.CAMERA)
         }
     }
@@ -188,7 +220,11 @@ fun PairScreen(
                     color = colors.textPrimary
                 )
                 Text(
-                    text = "Scan the QR code in Foundry → Settings → Companion on your Mac",
+                    text = if (isPasteMode) {
+                        "Paste the pairing code from Foundry → Settings → Companion on your Mac"
+                    } else {
+                        "Scan the QR code in Foundry → Settings → Companion on your Mac"
+                    },
                     style = typography.body,
                     color = colors.textDim,
                     textAlign = TextAlign.Center
@@ -198,7 +234,7 @@ fun PairScreen(
             Spacer(modifier = Modifier.height(20.dp))
 
             // Scanner, camera-denied card, or paste escape hatch
-            if (hasCameraPermission && !isPasteMode) {
+            if (cameraPrompt == CameraPermissionPrompt.Granted && !isPasteMode) {
                 Box(
                     modifier = Modifier
                         .size(280.dp)
@@ -215,7 +251,7 @@ fun PairScreen(
                     )
                     ReticleOverlay(isPairing = isPairing)
                 }
-            } else if (!hasCameraPermission && !isPasteMode) {
+            } else if (cameraPrompt != CameraPermissionPrompt.Granted && !isPasteMode) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -234,11 +270,19 @@ fun PairScreen(
                         style = typography.body,
                         color = colors.textDim
                     )
-                    FoundryPrimaryButton(
-                        text = "Open app settings",
-                        onClick = { openAppSettings(context) },
-                        contentDescription = "Open app settings"
-                    )
+                    if (cameraPrompt == CameraPermissionPrompt.Settings) {
+                        FoundryPrimaryButton(
+                            text = "Open app settings",
+                            onClick = { openAppSettings(context) },
+                            contentDescription = "Open app settings"
+                        )
+                    } else {
+                        FoundryPrimaryButton(
+                            text = "Allow camera",
+                            onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) },
+                            contentDescription = "Allow camera"
+                        )
+                    }
                 }
             } else {
                 Column(
@@ -345,7 +389,7 @@ fun PairScreen(
                         Text(
                             text = "PASTE PAIRING CODE INSTEAD",
                             style = typography.labelMono,
-                            color = colors.textDim
+                            color = colors.textPrimary
                         )
                     }
                 } else {
@@ -359,23 +403,24 @@ fun PairScreen(
                         contentDescription = "Pair with desktop"
                     )
 
-                    if (hasCameraPermission) {
-                        TextButton(
-                            onClick = { isPasteMode = false }
-                        ) {
-                            Text(
-                                text = "USE CAMERA SCANNER",
-                                style = typography.labelMono,
-                                color = colors.textDim
-                            )
-                        }
+                    TextButton(
+                        onClick = { isPasteMode = false },
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .semantics { contentDescription = "Scan QR code instead" }
+                    ) {
+                        Text(
+                            text = "SCAN QR CODE INSTEAD",
+                            style = typography.labelMono,
+                            color = colors.textPrimary
+                        )
                     }
                 }
 
                 Text(
                     text = "LAN ONLY · NO ACCOUNT REQUIRED",
                     style = typography.eyebrowMono,
-                    color = colors.textFaint
+                    color = colors.textDim
                 )
             }
         }

@@ -82,7 +82,10 @@ fun RunsScreen(
             }
         },
         floatingActionButton = {
-            Column(horizontalAlignment = Alignment.End) {
+            Column(
+                modifier = Modifier.navigationBarsPadding(),
+                horizontalAlignment = Alignment.End
+            ) {
                 if (!isConnected) {
                     Text(
                         text = "Reconnect to start a run",
@@ -125,7 +128,8 @@ fun RunsScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
-                    .padding(24.dp),
+                    .padding(24.dp)
+                    .padding(bottom = RunsFabClearance),
                 contentAlignment = Alignment.Center
             ) {
                 Column(
@@ -158,7 +162,12 @@ fun RunsScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding),
-                contentPadding = PaddingValues(16.dp),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 16.dp,
+                    bottom = 16.dp + RunsFabClearance
+                ),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 if (liveRuns.isNotEmpty()) {
@@ -207,3 +216,5 @@ fun RunsScreen(
         }
     }
 }
+
+private val RunsFabClearance = 80.dp

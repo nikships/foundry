@@ -16,6 +16,7 @@ import com.foundry.companion.data.model.CompanionProjectSummary
 import com.foundry.companion.data.model.CompanionSessionInfo
 import com.foundry.companion.data.model.ConnectionStatus
 import com.foundry.companion.data.model.PairedSession
+import com.foundry.companion.ui.components.ApplyFoundryDialogScrim
 import com.foundry.companion.ui.theme.FoundryTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -52,6 +53,7 @@ fun ConnectionBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = colors.bgRaised,
+        scrimColor = colors.scrim,
         shape = shapes.sheet,
         dragHandle = {
             BottomSheetDefaults.DragHandle(color = colors.lineStrong)
@@ -228,11 +230,14 @@ fun ConnectionBottomSheet(
             containerColor = colors.bgRaised,
             shape = shapes.card,
             title = {
-                Text(
-                    text = "UNPAIR DESKTOP",
-                    style = typography.eyebrowMono,
-                    color = colors.statusFailed
-                )
+                Column {
+                    ApplyFoundryDialogScrim()
+                    Text(
+                        text = "UNPAIR DESKTOP",
+                        style = typography.eyebrowMono,
+                        color = colors.statusFailed
+                    )
+                }
             },
             text = {
                 Text(
@@ -259,7 +264,7 @@ fun ConnectionBottomSheet(
             },
             dismissButton = {
                 TextButton(onClick = { showUnpairConfirm = false }) {
-                    Text(text = "CANCEL", style = typography.labelMono, color = colors.textDim)
+                    Text(text = "CANCEL", style = typography.labelMono, color = colors.textPrimary)
                 }
             }
         )

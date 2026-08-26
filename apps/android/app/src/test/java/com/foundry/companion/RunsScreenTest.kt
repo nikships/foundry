@@ -138,6 +138,26 @@ class RunsScreenTest {
     }
 
     @Test
+    fun historyIssueChipDoesNotClipRunId() {
+        composeTestRule.setContent {
+            FoundryTheme {
+                RunsScreen(
+                    runs = listOf(sampleHistoryRuns[2]),
+                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                    projectName = "Foundry",
+                    onRunClick = {},
+                    onStartRunClick = {},
+                    onConnectionPillClick = {},
+                    onRetryConnection = {}
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("run_hist_3", substring = true).assertIsDisplayed()
+        composeTestRule.onNodeWithText("Issue #140 ↗").assertIsDisplayed()
+    }
+
+    @Test
     fun testPrMarkTappingDirectlyOpensPrWithoutOpeningRun() {
         var clickedRunId: String? = null
         var openedPrUrl: String? = null

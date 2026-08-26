@@ -226,10 +226,33 @@ data class EventRow(
     }
 
     val resultText: String
-        get() = payload.stringOrNull("result").orEmpty()
+        get() = unescapeToolNewlines(payload.stringOrNull("result").orEmpty())
 
     val argsText: String
-        get() = payload.objOrNull("args")?.toString() ?: payload.stringOrNull("args").orEmpty()
+        get() {
+            val obj = payload.objOrNull("args")
+            if (obj != null) return obj.prettyJson()
+            val raw = payload.stringOrNull("args").orEmpty()
+            if (raw.isBlank()) return ""
+            return try {
+                kotlinx.serialization.json.Json.parseToJsonElement(raw).prettyJson()
+            } catch (_: Exception) {
+                unescapeToolNewlines(raw)
+            }
+        }
+
+    val payloadDurationMs: Long?
+        get() = payload.longOrNull("durationMs") ?: payload.longOrNull("duration_ms")
+
+    val timestampDurationMs: Long?
+        get() {
+            val start = parseIsoMillis(startedAt) ?: return null
+            val end = parseIsoMillis(endedAt) ?: return null
+            return (end - start).coerceAtLeast(0L)
+        }
+
+    val durationMs: Long?
+        get() = payloadDurationMs?.takeIf { it > 0 } ?: timestampDurationMs
 
     val textContent: String
         get() = (
@@ -240,7 +263,11 @@ data class EventRow(
             ).orEmpty()
 
     val durationLabel: String
-        get() = if (isOpen) "…" else "—"
+        get() {
+            if (isOpen) return "…"
+            val ms = durationMs ?: return ""
+            return formatToolDuration(ms)
+        }
 
     val parsedEnvelope: EnvelopePayload? get() {
         val raw = textContent.trim()
@@ -305,6 +332,77 @@ data class DiffResult(
     val addCount: Int,
     val delCount: Int
 )
+
+fun parseUnifiedDiff(text: String): DiffResult? {
+    if (text.isBlank()) return null
+    val lines = unescapeToolNewlines(text).lines()
+    val parsed = ArrayList<DiffLine>(lines.size)
+    var adds = 0
+    var dels = 0
+    var sawMark = false
+    for (line in lines) {
+        when {
+            line.startsWith("+++") || line.startsWith("---") ||
+                line.startsWith("diff ") || line.startsWith("index ") -> {
+                parsed.add(DiffLine(DiffType.CTX, line))
+                sawMark = true
+            }
+            line.startsWith("@@") -> {
+                parsed.add(DiffLine(DiffType.HUNK, line))
+                sawMark = true
+            }
+            line.startsWith("+") -> {
+                parsed.add(DiffLine(DiffType.ADD, line))
+                adds++
+                sawMark = true
+            }
+            line.startsWith("-") -> {
+                parsed.add(DiffLine(DiffType.DEL, line))
+                dels++
+                sawMark = true
+            }
+            else -> parsed.add(DiffLine(DiffType.CTX, line))
+        }
+    }
+    if (!sawMark || (adds == 0 && dels == 0)) return null
+    return DiffResult(parsed, adds, dels)
+}
+
+internal fun unescapeToolNewlines(text: String): String {
+    if (!text.contains('\\')) return text
+    return text.replace("\\n", "\n").replace("\\t", "\t")
+}
+
+internal fun parseIsoMillis(iso: String?): Long? {
+    if (iso.isNullOrBlank()) return null
+    return try {
+        java.time.Instant.parse(iso).toEpochMilli()
+    } catch (_: Exception) {
+        try {
+            if (!iso.endsWith("Z") && '+' !in iso) {
+                java.time.Instant.parse("${iso}Z").toEpochMilli()
+            } else {
+                null
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+}
+
+internal fun formatToolDuration(durationMs: Long): String {
+    if (durationMs <= 0) return ""
+    val totalSec = durationMs / 1000
+    if (totalSec <= 0) return "${durationMs}ms"
+    val hrs = totalSec / 3600
+    val min = (totalSec % 3600) / 60
+    val sec = totalSec % 60
+    return when {
+        hrs > 0 -> "${hrs}h ${min}m"
+        min > 0 -> "${min}m ${sec}s"
+        else -> "${sec}s"
+    }
+}
 
 @Serializable
 data class TranscriptEvent(

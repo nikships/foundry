@@ -144,7 +144,6 @@ fun RunDetailScreen(
     var selectedPhaseId by remember(defaultPhaseId) { mutableStateOf(defaultPhaseId) }
     val selectedPhase = phases.find { it.resolvedId == selectedPhaseId } ?: phases.firstOrNull()
 
-    val shortRunId = if (run.runId.length >= 7) run.runId.substring(0, 7) else run.runId
     val whenTime = RunFormatters.formatRelativeTime(run.effectiveStartedAt, nowMs)
 
     Scaffold(
@@ -153,7 +152,8 @@ fun RunDetailScreen(
         topBar = {
             Column {
                 FoundryTopBar(
-                    title = "Run · ${run.pipelineName} · $shortRunId",
+                    title = "Run · ${run.pipelineName}",
+                    subtitle = run.runId,
                     onBackClick = onBackClick,
                     actions = {
                         if (isRunning) {
@@ -405,11 +405,14 @@ fun RunDetailScreen(
             containerColor = colors.bgRaised,
             shape = shapes.card,
             title = {
-                Text(
-                    text = "KILL RUN",
-                    style = typography.eyebrowMono,
-                    color = colors.statusFailed
-                )
+                Column {
+                    ApplyFoundryDialogScrim()
+                    Text(
+                        text = "KILL RUN",
+                        style = typography.eyebrowMono,
+                        color = colors.statusFailed
+                    )
+                }
             },
             text = {
                 Text(
@@ -435,7 +438,7 @@ fun RunDetailScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showKillDialog = false }) {
-                    Text(text = "CANCEL", style = typography.labelMono, color = colors.textDim)
+                    Text(text = "CANCEL", style = typography.labelMono, color = colors.textPrimary)
                 }
             }
         )
@@ -460,11 +463,14 @@ fun RunDetailScreen(
             containerColor = colors.bgRaised,
             shape = shapes.card,
             title = {
-                Text(
-                    text = "RESTORE CHECKPOINT · ${target.phaseName.uppercase()}",
-                    style = typography.eyebrowMono,
-                    color = colors.accent
-                )
+                Column {
+                    ApplyFoundryDialogScrim()
+                    Text(
+                        text = "RESTORE CHECKPOINT · ${target.phaseName.uppercase()}",
+                        style = typography.eyebrowMono,
+                        color = colors.accent
+                    )
+                }
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -543,7 +549,7 @@ fun RunDetailScreen(
             },
             dismissButton = {
                 TextButton(onClick = { restoreTarget = null }) {
-                    Text(text = "CANCEL", style = typography.labelMono, color = colors.textDim)
+                    Text(text = "CANCEL", style = typography.labelMono, color = colors.textPrimary)
                 }
             }
         )
