@@ -20,6 +20,8 @@ import type {
   ReadinessInspectResult,
   ReadinessState,
   BaseSyncStatus,
+  GeneratedRunPlan,
+  LinearIssueSnapshot,
 } from '@shared/types.js';
 import type {
   EventPage,
@@ -203,9 +205,75 @@ let onboardingDone = true;
 let mockAgents: AgentDef[] = BUILTIN_AGENTS.map((a) => ({ ...a }));
 let mockPipelines: PipelineDef[] = BUILTIN_PIPELINES.map((p) => ({ ...p }));
 
+const MOCK_LINEAR_ISSUES: LinearIssueSnapshot[] = [
+  {
+    id: 'linear-demo-1',
+    identifier: 'FOU-190',
+    title: 'Add Linear ticket orchestration integration',
+    description:
+      'Let operators choose a Linear issue on the Runs screen and ask the Orchestrator to compose the right pipeline from its title and description.',
+    url: 'https://linear.app/foundry/issue/FOU-190',
+    updatedAt: nowIso(-600_000),
+    team: { id: 'linear-team-demo', name: 'Foundry' },
+    state: { id: 'linear-state-progress', name: 'In Progress', type: 'started' },
+  },
+  {
+    id: 'linear-demo-2',
+    identifier: 'FOU-184',
+    title: 'Keep run drafts when navigating between screens',
+    description: 'Preserve unfinished run input while the operator checks another Foundry screen.',
+    url: 'https://linear.app/foundry/issue/FOU-184',
+    updatedAt: nowIso(-3_600_000),
+    team: { id: 'linear-team-demo', name: 'Foundry' },
+    state: { id: 'linear-state-todo', name: 'Todo', type: 'unstarted' },
+  },
+  {
+    id: 'linear-demo-3',
+    identifier: 'DES-91',
+    title: 'Tighten the run composer spacing',
+    description: 'Make the composer compact without losing its hierarchy or keyboard flow.',
+    url: 'https://linear.app/foundry/issue/DES-91',
+    updatedAt: nowIso(-7_200_000),
+    team: { id: 'linear-team-demo', name: 'Design systems' },
+    state: { id: 'linear-state-review', name: 'In Review', type: 'started' },
+  },
+  {
+    id: 'linear-demo-4',
+    identifier: 'FOU-176',
+    title: 'Show generated plan provenance in trace details',
+    description: 'Retain issue provenance when an orchestrated plan starts the run.',
+    url: 'https://linear.app/foundry/issue/FOU-176',
+    updatedAt: nowIso(-86_400_000),
+    team: { id: 'linear-team-demo', name: 'Foundry' },
+    state: { id: 'linear-state-done', name: 'Done', type: 'completed' },
+  },
+  {
+    id: 'linear-demo-5',
+    identifier: 'PLAT-44',
+    title: 'Improve stale response handling in remote pickers',
+    description: 'Prevent slower search responses from replacing newer results.',
+    url: 'https://linear.app/foundry/issue/PLAT-44',
+    updatedAt: nowIso(-172_800_000),
+    team: { id: 'linear-team-demo', name: 'Platform' },
+    state: { id: 'linear-state-progress', name: 'In Progress', type: 'started' },
+  },
+  {
+    id: 'linear-demo-6',
+    identifier: 'FOU-163',
+    title: 'Document run lifecycle status mapping',
+    description: 'Explain how Foundry updates linked issues when runs start, complete, or fail.',
+    url: 'https://linear.app/foundry/issue/FOU-163',
+    updatedAt: nowIso(-432_000_000),
+    team: { id: 'linear-team-demo', name: 'Foundry' },
+    state: { id: 'linear-state-failed', name: 'Canceled', type: 'canceled' },
+  },
+];
+
 export function createMockFoundryApi(): FoundryApi {
   const listeners = new Map<string, Set<(data?: unknown) => void>>();
   const smithStates = new Map<string, SmithChatState>();
+  const orchestratorTimers = new Map<string, number[]>();
+  let orchestratorSequence = 0;
 
   function on(channel: string, handler: (data?: unknown) => void): () => void {
     const set = listeners.get(channel) ?? new Set();
@@ -574,18 +642,15 @@ export function createMockFoundryApi(): FoundryApi {
       setApiKey: async () => ({ ok: false, detail: 'Web preview' }),
       test: async () => ({ ok: true, detail: 'Connected to Linear (fixture).' }),
       clearApiKey: async () => ({ ok: false, detail: 'Web preview' }),
-      issues: async () => [
-        {
-          id: 'linear-demo-1',
-          identifier: 'FOU-190',
-          title: 'Add Linear ticket orchestration integration',
-          description: 'Connect a Linear issue to an existing Foundry pipeline.',
-          url: 'https://linear.app/foundry/issue/FOU-190',
-          updatedAt: nowIso(-600_000),
-          team: { id: 'linear-team-demo', name: 'Foundry' },
-          state: { id: 'linear-state-todo', name: 'Todo', type: 'unstarted' },
-        },
-      ],
+      issues: async (query) => {
+        const needle = query.trim().toLowerCase();
+        if (!needle) return [...MOCK_LINEAR_ISSUES];
+        return MOCK_LINEAR_ISSUES.filter((issue) =>
+          [issue.identifier, issue.title, issue.team.name, issue.state.name].some((value) =>
+            value.toLowerCase().includes(needle),
+          ),
+        );
+      },
       workflowStates: async () => [
         { id: 'linear-state-todo', name: 'Todo', type: 'unstarted' },
         { id: 'linear-state-progress', name: 'In Progress', type: 'started' },
@@ -670,8 +735,55 @@ export function createMockFoundryApi(): FoundryApi {
       }),
     },
     orchestrator: {
-      plan: async () => ({ error: NO_AGENT_CLI }),
-      cancel: async () => false,
+      plan: async (projectId, prompt, model, reasoningEffort) => {
+        const planId = `web-plan-${++orchestratorSequence}`;
+        const pipeline = mockPipelines[0]!;
+        const plan: GeneratedRunPlan = {
+          planId,
+          projectId,
+          prompt,
+          refinedRequest: `${prompt}\n\nPreserve the linked Linear issue context and include focused verification evidence.`,
+          rationale:
+            'The issue spans implementation and verification, so the Orchestrator selected the standard build pipeline.',
+          pipeline,
+          agents: [],
+          warnings: [],
+          model,
+          reasoningEffort,
+        };
+        const startedAt = Date.now();
+        const emit = (status: 'running' | 'done', detail: string): void => {
+          listeners.get('orchestrator-progress')?.forEach((handler) =>
+            handler({
+              planId,
+              projectId,
+              status,
+              model,
+              reasoningEffort,
+              prompt,
+              entries: [],
+              plan: status === 'done' ? plan : null,
+              rawReply: '',
+              detail,
+              startedAt,
+              ...(status === 'done' ? { endedAt: Date.now() } : {}),
+            }),
+          );
+        };
+        const timers = [
+          window.setTimeout(() => emit('running', 'Reading the issue and choosing phases…'), 40),
+          window.setTimeout(() => emit('done', 'Plan ready.'), 500),
+        ];
+        orchestratorTimers.set(planId, timers);
+        return { planId };
+      },
+      cancel: async (planId) => {
+        const timers = orchestratorTimers.get(planId);
+        if (!timers) return false;
+        timers.forEach((timer) => window.clearTimeout(timer));
+        orchestratorTimers.delete(planId);
+        return true;
+      },
     },
     prs: {
       status: async () => ({

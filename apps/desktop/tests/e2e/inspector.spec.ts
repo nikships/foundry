@@ -11,18 +11,10 @@ test.describe('run / Inspector', () => {
       app = launched.app;
       const { window } = launched;
 
-      await expect(
-        window.getByRole('heading', { name: 'What should the factory build?' }),
-      ).toBeVisible({ timeout: 20_000 });
-      await window.getByRole('button', { name: /Accepted\s+Prompt/ }).click();
+      await expect(window.getByTestId('run-composer')).toBeVisible({ timeout: 20_000 });
+      await window.getByTestId(`sidebar-run-${fixture.runId}`).click();
 
-      await expect(window.getByRole('button', { name: '← Runs' })).toBeVisible();
-      await expect(window.getByText('amended ×1', { exact: true })).toBeVisible();
-      await window.getByTestId('run-export-plan').click();
-      await expect(window.getByText('Save to the Designer', { exact: true })).toBeVisible();
-      await window.keyboard.press('Escape');
-      await window.getByTitle('Open live transcript in Inspector').click();
-
+      await expect(window.getByTestId('app-view')).toHaveAttribute('data-view', 'inspector');
       await expect(window.getByRole('button', { name: 'Run', exact: true })).toBeVisible();
       await expect(window.getByText(E2E_TRANSCRIPT).first()).toBeVisible();
       await expect(window.getByText('pipeline amended').first()).toBeVisible();

@@ -225,9 +225,10 @@ describe('CDP automation hooks', () => {
     expect(settingsSrc).toContain('onPaneChange?.(next)');
   });
 
-  it('lets a run row be clicked by id instead of concatenated snapshot text', () => {
-    expect(runsSrc).toContain('data-testid={`run-row-${run.runId}`}');
-    expect(runsSrc).toContain('data-run-id={run.runId}');
+  it('keeps run history in sidebar activity rather than below the composer', () => {
+    expect(sidebarSrc).toContain('data-testid={`sidebar-run-${run.runId}`}');
+    expect(runsSrc).not.toContain('run-row-');
+    expect(runsSrc).not.toContain('<RunList');
   });
 
   it('gives Inspector, PRs, and run-detail panes stable testids', () => {
@@ -267,7 +268,6 @@ describe('CDP automation hooks', () => {
   });
 
   it('covers the remaining editor and onboarding controls the skill documents', () => {
-    expect(runsSrc).toContain('data-testid="runs-archived"');
     expect(runsSrc).toContain('data-testid="companion-pill"');
     expect(rosterSrc).toContain('data-testid="agent-preview"');
     expect(rosterSrc).toContain('data-testid="agent-duplicate"');

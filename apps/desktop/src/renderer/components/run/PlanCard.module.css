@@ -31,6 +31,21 @@
   letter-spacing: var(--label-tracking);
   text-transform: uppercase;
 }
+.source-badge {
+  display: inline-flex;
+  height: 20px;
+  align-items: center;
+  padding: 0 var(--s2);
+  border: 1px solid color-mix(in srgb, var(--purple) 40%, transparent);
+  border-radius: var(--r-sm);
+  color: var(--purple);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
 .description {
   margin: 0;
   color: var(--text-dim);
@@ -250,6 +265,14 @@
   flex-wrap: wrap;
   padding-top: var(--s3);
   border-top: 1px solid var(--line-faint);
+}
+.source-detail {
+  min-width: 240px;
+  flex: 1;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  line-height: var(--leading);
+  text-align: right;
 }
 .blocked {
   font-family: var(--font-mono);

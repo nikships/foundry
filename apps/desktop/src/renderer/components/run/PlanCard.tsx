@@ -28,6 +28,8 @@ export default function PlanCard({
   onStart,
   onRegenerate,
   onDiscard,
+  sourceBadge,
+  sourceDetail,
 }: {
   plan: GeneratedRunPlan;
   /** The plan as the Orchestrator proposed it, before any operator override. */
@@ -42,6 +44,10 @@ export default function PlanCard({
   onStart: () => void;
   onRegenerate: () => void;
   onDiscard: () => void;
+  /** Optional immutable request-source linkage, such as a Linear issue. */
+  sourceBadge?: string;
+  /** Read-only lifecycle summary for that source. */
+  sourceDetail?: string;
 }): React.JSX.Element {
   const { agentColor } = useApp();
   const { models, refresh } = useAgentModels();
@@ -57,6 +63,7 @@ export default function PlanCard({
       <header className={styles.head}>
         <div className={styles.headText}>
           <h2 className={styles.title}>{view.title}</h2>
+          {sourceBadge && <span className={styles.sourceBadge}>{sourceBadge}</span>}
           <p className={`faint ${styles.summary}`}>
             {view.summary} · composed by {view.orchestratorModel}
           </p>
@@ -204,6 +211,7 @@ export default function PlanCard({
         <Button variant="ghost" disabled={starting} onClick={onDiscard} data-testid="plan-discard">
           Discard
         </Button>
+        {sourceDetail && <span className={styles.sourceDetail}>{sourceDetail}</span>}
         {startBlocked && <span className={`faint ${styles.blocked}`}>{startBlocked}</span>}
       </div>
     </section>

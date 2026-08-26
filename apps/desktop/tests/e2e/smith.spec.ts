@@ -16,9 +16,7 @@ test.describe('smith / chat', () => {
       app = launched.app;
       const { window } = launched;
 
-      await expect(
-        window.getByRole('heading', { name: 'What should the factory build?' }),
-      ).toBeVisible({ timeout: 20_000 });
+      await expect(window.getByTestId('run-composer')).toBeVisible({ timeout: 20_000 });
 
       const bubble = window.getByTestId('smith-bubble');
       await expect(bubble).toBeVisible();
@@ -181,11 +179,12 @@ test.describe('smith / chat', () => {
         await clear(`design/${tab}`);
       }
 
-      // Run detail is where the float overlapped scrolling transcript rows.
+      // A pinned Inspector run exercises the dense transcript controls closest
+      // to the launcher after activity moved into the sidebar.
       await window.getByTestId('nav-runs').click();
-      await window.getByTestId(`run-row-${fixture.runId}`).click();
-      await expect(window.getByTestId('app-view')).toHaveAttribute('data-view', 'run-detail');
-      await clear('run-detail');
+      await window.getByTestId(`sidebar-run-${fixture.runId}`).click();
+      await expect(window.getByTestId('app-view')).toHaveAttribute('data-view', 'inspector');
+      await clear('inspector/pinned-run');
 
       await window.getByTestId('nav-settings').click();
       for (const pane of ['models', 'project', 'app'] as const) {

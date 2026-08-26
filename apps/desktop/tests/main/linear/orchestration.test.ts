@@ -5,6 +5,7 @@ import { defaultProject } from '../../../src/main/store/projects.js';
 import { defaultSettings } from '../../../src/main/store/settings.js';
 import type { StartRunDeps } from '../../../src/main/engine/operations.js';
 import type {
+  GeneratedRunPlan,
   LinearIssueSnapshot,
   LinearStatusMapping,
   LinearWorkflowState,
@@ -46,6 +47,25 @@ const pipeline: PipelineDef = {
   ],
   acceptance: { kind: 'all_phases_pass' },
 };
+
+function generatedPlan(projectId: string): GeneratedRunPlan {
+  return {
+    planId: 'plan-linear',
+    projectId,
+    prompt: 'the raw Linear issue brief',
+    refinedRequest: 'Implement the Linear issue with a focused regression test.',
+    rationale: 'A generated verification pipeline fits this issue.',
+    pipeline: {
+      ...pipeline,
+      id: 'generated-plan-linear',
+      name: 'Generated Linear plan',
+    },
+    agents: [],
+    warnings: [],
+    model: 'inherit',
+    reasoningEffort: 'medium',
+  };
+}
 
 function harness(snapshot: LinearIssueSnapshot = issue): {
   deps: StartRunDeps;
@@ -143,6 +163,29 @@ describe('startLinearIssueRun', () => {
       'linear.status.completed',
     ]);
     expect(h.started).toHaveLength(0);
+  });
+
+  it('starts an orchestrated Linear run with the plan pipeline and refined request', async () => {
+    const h = harness();
+    const plan = generatedPlan(h.projectId);
+
+    const result = await startLinearIssueRun(h.deps, h.linear, statusMapping, {
+      projectId: h.projectId,
+      pipelineId: plan.pipeline.id,
+      issueId: issue.id,
+      plan,
+    });
+
+    expect(result).toEqual({ ok: true, runId: 'run-linear', issues: [] });
+    const startInput = h.started[0]!;
+    expect(startInput.pipeline).toBe(plan.pipeline);
+    expect(startInput.request).toBe(plan.refinedRequest);
+    expect(startInput.plan).toBe(plan);
+    expect(startInput.source).toMatchObject({
+      kind: 'linear',
+      issueId: issue.id,
+      snapshot: issue,
+    });
   });
 
   it('bounds a large issue description in the run brief while preserving the source snapshot', async () => {

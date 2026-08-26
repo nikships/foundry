@@ -150,7 +150,7 @@ export default function ManualComposer({
   const openProjectCommands = (): void => onOpenSettings?.('project');
 
   return (
-    <section className={`${styles.composer} card`}>
+    <div className={styles.composer}>
       <textarea
         className={`textarea ${styles.request}`}
         value={request}
@@ -230,6 +230,6 @@ export default function ManualComposer({
           Open project commands
         </Button>
       )}
-    </section>
+    </div>
   );
 }
