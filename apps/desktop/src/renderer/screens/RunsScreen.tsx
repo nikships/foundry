@@ -13,6 +13,7 @@ import EmptyState from '../components/common/EmptyState.js';
 import BaseSyncBar from '../components/project/BaseSyncBar.js';
 import PanelTranscript from '../components/readiness/PanelTranscript.js';
 import ManualComposer from '../components/run/ManualComposer.js';
+import LinearComposer from '../components/run/LinearComposer.js';
 import OrchestratorPicker, {
   loadOrchestratorChoice,
   type OrchestratorChoice,
@@ -24,10 +25,11 @@ import { withPhaseModel } from '../view-models/plan-view.js';
 import styles from './RunsScreen.module.css';
 
 const MODE_KEY = 'foundry.runs.mode';
-type RunsMode = 'orchestrated' | 'manual';
+type RunsMode = 'orchestrated' | 'manual' | 'linear';
 
 function loadMode(): RunsMode {
-  return safeGetItem(MODE_KEY) === 'manual' ? 'manual' : 'orchestrated';
+  const saved = safeGetItem(MODE_KEY);
+  return saved === 'manual' || saved === 'linear' ? saved : 'orchestrated';
 }
 
 function companionPill(companion: CompanionHostState): {
@@ -154,6 +156,11 @@ function RunList({
             <p className={styles.req}>{truncate(run.request, 160)}</p>
           </div>
           <div className={styles.runMeta}>
+            {run.source?.kind === 'linear' && (
+              <span className={`${styles.metaBadge} ${styles.metaBadgeAmended}`}>
+                Linear · {run.source.snapshot.identifier}
+              </span>
+            )}
             {run.amendments > 0 && (
               <span className={`${styles.metaBadge} ${styles.metaBadgeAmended}`}>
                 amended ×{run.amendments}
@@ -184,6 +191,7 @@ function OrchestratedComposer({
   onRequestChange,
   onOpen,
   onManual,
+  onLinear,
   includeArchived,
   baseSyncing,
 }: {
@@ -191,6 +199,7 @@ function OrchestratedComposer({
   onRequestChange: (request: string) => void;
   onOpen: (runId: string) => void;
   onManual: () => void;
+  onLinear: () => void;
   includeArchived: boolean;
   baseSyncing: boolean;
 }): React.JSX.Element {
@@ -396,14 +405,24 @@ function OrchestratedComposer({
             )}
           </div>
           {!heroCollapsed && (
-            <button
-              type="button"
-              className={styles.modeToggle}
-              onClick={onManual}
-              data-testid="runs-mode-manual"
-            >
-              Manual pipeline…
-            </button>
+            <div className={styles.modeChoices}>
+              <button
+                type="button"
+                className={styles.modeToggle}
+                onClick={onManual}
+                data-testid="runs-mode-manual"
+              >
+                Manual pipeline…
+              </button>
+              <button
+                type="button"
+                className={styles.modeToggle}
+                onClick={onLinear}
+                data-testid="runs-mode-linear"
+              >
+                Linear issue…
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -525,6 +544,14 @@ export default function RunsScreen({
         >
           Back to the Orchestrator
         </button>
+        <button
+          type="button"
+          className={styles.modeToggle}
+          onClick={() => switchMode('linear')}
+          data-testid="runs-mode-linear"
+        >
+          Linear issue…
+        </button>
       </div>
       <ManualComposer
         request={request}
@@ -533,6 +560,31 @@ export default function RunsScreen({
         onOpenSettings={onOpenSettings}
         baseSyncing={baseSyncing}
       />
+      <RunList onOpen={onOpen} projectId={projectId} includeArchived={includeArchived} />
+    </>
+  );
+
+  const linear = (
+    <>
+      <div className={styles.manualToggleRow}>
+        <button
+          type="button"
+          className={styles.modeToggle}
+          onClick={() => switchMode('orchestrated')}
+          data-testid="runs-mode-orchestrated"
+        >
+          Back to the Orchestrator
+        </button>
+        <button
+          type="button"
+          className={styles.modeToggle}
+          onClick={() => switchMode('manual')}
+          data-testid="runs-mode-manual"
+        >
+          Manual pipeline…
+        </button>
+      </div>
+      <LinearComposer onOpen={onOpen} onOpenSettings={onOpenSettings} baseSyncing={baseSyncing} />
       <RunList onOpen={onOpen} projectId={projectId} includeArchived={includeArchived} />
     </>
   );
@@ -577,12 +629,15 @@ export default function RunsScreen({
         </EmptyState>
       ) : mode === 'manual' ? (
         manual
+      ) : mode === 'linear' ? (
+        linear
       ) : (
         <OrchestratedComposer
           request={request}
           onRequestChange={onRequestChange}
           onOpen={onOpen}
           onManual={() => switchMode('manual')}
+          onLinear={() => switchMode('linear')}
           includeArchived={includeArchived}
           baseSyncing={baseSyncing}
         />

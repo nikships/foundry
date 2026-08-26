@@ -21,10 +21,12 @@ import type {
   AppSettings,
   CommandSpec,
   EnvelopeDef,
+  LinearRunSource,
   PhaseDef,
   PipelineDef,
   ProjectDef,
 } from '../../../src/shared/types.js';
+import type { RunSourceLifecycle } from '../../../src/main/engine/source-lifecycle.js';
 import type { GhOptions } from '../../../src/main/system/gh.js';
 import { makeFakeGh } from '../../helpers/fake-gh.js';
 import {
@@ -169,6 +171,25 @@ function pipe(phases: PhaseDef[], over: Partial<PipelineDef> = {}): PipelineDef 
     ...over,
   };
 }
+
+const linearSource: LinearRunSource = {
+  kind: 'linear',
+  trigger: 'manual',
+  issueId: 'issue-uuid',
+  url: 'https://linear.app/foundry/issue/FOU-190',
+  revision: '2026-08-25T19:09:16.054Z',
+  statusMapping: { started: 'started', completed: 'completed', failed: 'failed' },
+  snapshot: {
+    id: 'issue-uuid',
+    identifier: 'FOU-190',
+    title: 'Add Linear integration',
+    description: 'Start this pipeline from Linear.',
+    url: 'https://linear.app/foundry/issue/FOU-190',
+    updatedAt: '2026-08-25T19:09:16.054Z',
+    team: { id: 'team-uuid', name: 'Foundry' },
+    state: { id: 'todo', name: 'Todo', type: 'unstarted' },
+  },
+};
 
 function buildEnvelope(over: Record<string, unknown> = {}): string {
   return JSON.stringify({
@@ -328,6 +349,8 @@ interface RunInput {
   healing?: ExecutorDeps['healing'];
   gh?: GhOptions;
   landing?: ExecutorDeps['landing'];
+  source?: ExecutorDeps['source'];
+  sourceLifecycle?: RunSourceLifecycle;
 }
 
 function run(input: RunInput): Promise<{ status: string; runId: string }> {
@@ -377,6 +400,8 @@ function start(input: RunInput): {
     project: { ...h.project, ...input.project },
     pipeline: input.pipeline,
     request: input.request ?? 'do the thing',
+    source: input.source,
+    sourceLifecycle: input.sourceLifecycle,
     runId,
     engineer: 'test',
     askHuman: input.askHuman ?? (async () => ({ approve: true })),
@@ -415,6 +440,34 @@ describe('code phases', () => {
     });
     expect(outcome.status).toBe('accepted');
     expect(h.tracer.phases(outcome.runId).map((p) => p.status)).toEqual(['success', 'success']);
+  });
+
+  it('maps accepted and rejected executor outcomes onto the source lifecycle', async () => {
+    const acceptedStages: string[] = [];
+    const accepted = await run({
+      pipeline: pipe([codePhase('pass', { argv: ['true'] })]),
+      source: linearSource,
+      sourceLifecycle: {
+        advance: async (stage) => {
+          acceptedStages.push(stage);
+        },
+      },
+    });
+    expect(accepted.status).toBe('accepted');
+    expect(acceptedStages).toEqual(['started', 'completed']);
+
+    const rejectedStages: string[] = [];
+    const rejected = await run({
+      pipeline: pipe([codePhase('reject', { argv: ['false'] })]),
+      source: linearSource,
+      sourceLifecycle: {
+        advance: async (stage) => {
+          rejectedStages.push(stage);
+        },
+      },
+    });
+    expect(rejected.status).toBe('rejected');
+    expect(rejectedStages).toEqual(['started', 'failed']);
   });
 
   it('rejects a run when a command fails, and keeps the output as evidence', async () => {

@@ -25,6 +25,7 @@ import type {
   PipelineDef,
   ProjectDef,
   ReasoningEffort,
+  RunSource,
   RunStatus,
   ValidationIssue,
 } from '@shared/types.js';
@@ -60,6 +61,7 @@ import { validate as validatePipeline } from '../store/pipelines.js';
 import { preflightForRun } from './preflight.js';
 import { FIXED_ENGINE_DEFAULTS } from '@shared/types.js';
 import { activeRowsForPipeline } from './phase-history.js';
+import type { RunSourceLifecycle, RunSourceStage } from './source-lifecycle.js';
 
 export interface ExecutorDeps {
   tracer: Tracer;
@@ -96,6 +98,10 @@ export interface ExecutorDeps {
   request: string;
   /** The active Orchestrator plan; absent for a manual run. */
   plan?: GeneratedRunPlan | null;
+  /** Immutable external issue snapshot, absent for an ordinary prompt run. */
+  source?: RunSource | null;
+  /** External status adapter; failures are evidence and never change the run verdict. */
+  sourceLifecycle?: RunSourceLifecycle | null;
   runId: string;
   engineer: string;
   /** Raises an engineer phase's checkpoint and resolves with what was chosen. */
@@ -256,7 +262,9 @@ export class Executor {
           baseRef: project.baseRef,
           mode: this.mode,
           plan: this.plan,
+          source: this.deps.source ?? null,
         });
+        await this.advanceSource('started');
         tracer.event({
           runId,
           type: 'error',
@@ -279,7 +287,9 @@ export class Executor {
       branchPointSha: this.handle?.branchPointSha ?? null,
       mode: this.mode,
       plan: this.plan,
+      source: this.deps.source ?? null,
     });
+    await this.advanceSource('started');
 
     // Per-project bootstrap: install deps in a fresh worktree so agents
     // find their binaries. Fail-fast with evidence; the worktree is kept
@@ -400,6 +410,7 @@ export class Executor {
       name: 'run continued',
       payload: { phase: pipeline.phases[startIndex]!.name },
     });
+    await this.advanceSource('started');
     return this.runFrom(startIndex);
   }
 
@@ -911,9 +922,10 @@ export class Executor {
    * Status, notification, and the exit banner settle here together, so they
    * cannot disagree about what happened.
    */
-  private finish(status: RunStatus, detail: string): RunOutcome {
+  private async finish(status: RunStatus, detail: string): Promise<RunOutcome> {
     const { tracer, runId, project } = this.deps;
     tracer.finishRun(runId, status, detail);
+    await this.advanceSource(status === 'accepted' ? 'completed' : 'failed');
 
     let settleDetail = detail;
     const handle = this.handle;
@@ -955,6 +967,10 @@ export class Executor {
       merged: false,
       detail: settleDetail,
     };
+  }
+
+  private async advanceSource(stage: RunSourceStage): Promise<void> {
+    await this.deps.sourceLifecycle?.advance(stage);
   }
 }
 

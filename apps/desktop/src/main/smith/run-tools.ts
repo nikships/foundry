@@ -33,11 +33,18 @@ export const SMITH_RUN_OPERATIONS = [
   'open_worktree',
   'reveal_files',
   'export_plan',
+  'linear_issues',
+  'linear_workflow_states',
+  'linear_start',
 ] as const;
 
 type RunOperation = (typeof SMITH_RUN_OPERATIONS)[number];
 type RunReadOperation = 'detail' | 'events' | 'context' | 'prompt' | 'plan';
-type RunActionOperation = Exclude<RunOperation, 'list' | 'live_tail' | RunReadOperation>;
+type LinearRunReadOperation = 'linear_issues' | 'linear_workflow_states';
+type RunActionOperation = Exclude<
+  RunOperation,
+  'list' | 'live_tail' | RunReadOperation | LinearRunReadOperation
+>;
 
 /** Project-scoped reads keyed by the id they take. */
 const READS: Record<RunReadOperation, { channel: string; idField: 'runId' | 'phaseId' }> = {
@@ -59,6 +66,7 @@ const ACTION_CHANNELS: Record<RunActionOperation, string> = {
   open_worktree: IPC.runsOpenWorktree,
   reveal_files: IPC.runsRevealFiles,
   export_plan: IPC.runsExportPlan,
+  linear_start: IPC.linearStartRun,
 };
 
 const RISKS: Partial<Record<RunOperation, SmithActionRisk>> = {
@@ -75,7 +83,7 @@ export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
     name: 'smith_runs',
     label: 'Smith runs',
     description:
-      'Inspect and operate Foundry runs. Operations: list(projectId?,includeArchived?), detail/events/context/plan(projectId?,runId,...), live_tail(phaseId), prompt(projectId?,phaseId), start(projectId?,pipelineId,request), resume/kill/merge/fix_merge/discard/open_worktree/reveal_files(projectId?,runId), archive(projectId?,runId,archived), export_plan(projectId?,runId,pipeline?,agents?).',
+      'Inspect and operate Foundry runs. Operations: list(projectId?,includeArchived?), detail/events/context/plan(projectId?,runId,...), live_tail(phaseId), prompt(projectId?,phaseId), start(projectId?,pipelineId,request), resume/kill/merge/fix_merge/discard/open_worktree/reveal_files(projectId?,runId), archive(projectId?,runId,archived), export_plan(projectId?,runId,pipeline?,agents?), linear_issues(query?), linear_workflow_states(teamId), linear_start(projectId?,pipelineId,issueId).',
     parameters: {
       type: 'object',
       properties: {
@@ -91,6 +99,9 @@ export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
         archived: { type: 'boolean' },
         pipeline: { type: 'boolean' },
         agents: { type: 'array', items: { type: 'string' } },
+        query: { type: 'string' },
+        teamId: { type: 'string' },
+        issueId: { type: 'string' },
       },
       required: ['operation'],
       additionalProperties: false,
@@ -98,6 +109,8 @@ export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
     execute: async (_id, params) => {
       const op = parseOperation(params, SMITH_RUN_OPERATIONS);
       if (!op) return json({ ok: false, error: 'unknown operation' });
+
+      if (isLinearRunReadOperation(op)) return linearRunRead(deps, op, params);
 
       // A live tail is keyed by phase alone; it needs no project scope.
       if (op === 'live_tail') {
@@ -152,6 +165,15 @@ type GatedArgs =
 
 /** `start` names a pipeline; everything else names an existing run. */
 function resolveGatedArgs(op: RunActionOperation, params: unknown, projectId: string): GatedArgs {
+  if (op === 'linear_start') {
+    const pipelineId = stringField(params, 'pipelineId');
+    const issueId = stringField(params, 'issueId');
+    if (!pipelineId || !issueId) {
+      return { ok: false, error: 'pipelineId and issueId are required' };
+    }
+    const input = { projectId, pipelineId, issueId };
+    return { ok: true, args: [input], shownArgs: input };
+  }
   if (op === 'start') {
     const pipelineId = stringField(params, 'pipelineId');
     const request = stringField(params, 'request');
@@ -187,4 +209,26 @@ function resolveGatedArgs(op: RunActionOperation, params: unknown, projectId: st
     };
   }
   return { ok: true, args: [projectId, runId], shownArgs: { projectId, runId } };
+}
+
+function isLinearRunReadOperation(op: RunOperation): op is LinearRunReadOperation {
+  return op === 'linear_issues' || op === 'linear_workflow_states';
+}
+
+function linearRunRead(
+  deps: SmithActionToolDeps,
+  op: LinearRunReadOperation,
+  params: unknown,
+): ReturnType<typeof immediate> {
+  if (op === 'linear_issues') {
+    const query = field(params, 'query');
+    if (query !== undefined && typeof query !== 'string') {
+      return Promise.resolve(json({ ok: false, error: 'query must be a string' }));
+    }
+    return immediate(deps, IPC.linearIssues, query ?? '');
+  }
+  const teamId = stringField(params, 'teamId');
+  return teamId
+    ? immediate(deps, IPC.linearWorkflowStates, teamId)
+    : Promise.resolve(json({ ok: false, error: 'teamId is required' }));
 }

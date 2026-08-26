@@ -15,8 +15,8 @@ import {
 } from '@renderer/view-models/settings-search.js';
 
 describe('settings search registry', () => {
-  it('covers exactly the three panes the screen renders', () => {
-    expect(SETTINGS_PANES.map((p) => p.id)).toEqual(['models', 'project', 'app']);
+  it('covers exactly the four panes the screen renders', () => {
+    expect(SETTINGS_PANES.map((p) => p.id)).toEqual(['models', 'integrations', 'project', 'app']);
   });
 
   it('derives stable dom ids from labels', () => {
@@ -74,6 +74,11 @@ describe('searchSettings', () => {
   it('reaches the Smith default-model section under Models & Providers', () => {
     const hits = searchSettings('smith');
     expect(hits.some((h) => h.pane === 'models' && h.sectionId === 'smith')).toBe(true);
+  });
+
+  it('reaches the Linear integration by issue and workflow keywords', () => {
+    const hits = searchSettings('linear');
+    expect(hits.some((h) => h.pane === 'integrations' && h.sectionId === 'linear')).toBe(true);
   });
 
   it('matches section notes, so phrases in prose still surface the section', () => {

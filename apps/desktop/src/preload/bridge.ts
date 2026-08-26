@@ -129,6 +129,15 @@ const api: FoundryApi = {
     clearApiKey: (providerId) => call(IPC.bridgeClearApiKey, providerId),
     storedKeys: () => call(IPC.bridgeStoredKeys),
   },
+  linear: {
+    state: () => call(IPC.linearState),
+    setApiKey: (apiKey) => call(IPC.linearSetApiKey, apiKey),
+    test: () => call(IPC.linearTest),
+    clearApiKey: () => call(IPC.linearClearApiKey),
+    issues: (query) => call(IPC.linearIssues, query),
+    workflowStates: (teamId) => call(IPC.linearWorkflowStates, teamId),
+    startRun: (input) => call(IPC.linearStartRun, input),
+  },
   runs: {
     start: (input) => call(IPC.runsStart, input),
     resume: (projectId, runId) => call(IPC.runsResume, projectId, runId),

@@ -91,7 +91,7 @@ describe('Settings', () => {
   });
 
   it('keeps the remaining preference panes', () => {
-    for (const pane of ['models', 'project', 'app']) {
+    for (const pane of ['models', 'integrations', 'project', 'app']) {
       expect(settingsSrc).toContain(`id: '${pane}'`);
     }
   });

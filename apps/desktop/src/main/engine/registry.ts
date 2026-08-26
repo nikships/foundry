@@ -20,6 +20,7 @@ import type {
   PipelineDef,
   ProjectDef,
   RunRow,
+  RunSource,
   RunStatus,
 } from '@shared/types.js';
 import { FIXED_ENGINE_DEFAULTS } from '@shared/types.js';
@@ -32,6 +33,7 @@ import { replanningSupport } from '../orchestrator/replan.js';
 import { activeRowsForPipeline } from './phase-history.js';
 import { commandMatches, isAlive, killRun, terminate } from '../system/procs.js';
 import type { BridgeTrace } from '../bridge/service.js';
+import type { RunSourceLifecycle } from './source-lifecycle.js';
 import type { OneShotFactory } from '../pi/oneshot.js';
 import { breakdownFile, type CapturedBreakdown, type InterruptRequest } from '../pi/session.js';
 
@@ -52,6 +54,8 @@ export interface RegistryDeps {
   projectById?: (id: string) => ProjectDef | null;
   saveProject?: (next: ProjectDef) => { ok: boolean };
   notifySettings?: () => void;
+  /** Builds the external lifecycle adapter for a source-backed run. */
+  sourceLifecycle?: (source: RunSource, tracer: Tracer, runId: string) => RunSourceLifecycle | null;
 }
 
 interface LiveRun {
@@ -68,6 +72,8 @@ interface ExecutorInput {
   request: string;
   /** Present when the run starts from an Orchestrator-generated plan. */
   plan?: GeneratedRunPlan | null;
+  /** Immutable external source captured before preflight. */
+  source?: RunSource | null;
 }
 
 interface PendingEntry {
@@ -219,7 +225,7 @@ export class RunRegistry extends EventEmitter {
       : input.agents;
     const request = tracer.readRunFile(input.runId, 'request.md') ?? run.request;
     const executor = this.executorFor(
-      { ...input, pipeline, request, agents, plan },
+      { ...input, pipeline, request, agents, plan, source: run.source },
       input.runId,
       tracer,
     );
@@ -255,6 +261,10 @@ export class RunRegistry extends EventEmitter {
       pipeline: input.pipeline,
       request: input.request,
       plan: input.plan ?? null,
+      source: input.source ?? null,
+      sourceLifecycle: input.source
+        ? (this.deps.sourceLifecycle?.(input.source, tracer, runId) ?? null)
+        : null,
       runId,
       engineer: this.deps.engineerName,
       askHuman: (req) => this.raiseInterrupt(req),

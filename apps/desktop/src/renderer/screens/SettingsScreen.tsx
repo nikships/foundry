@@ -12,6 +12,7 @@ import { FIXED_ENGINE_DEFAULTS } from '@shared/types.js';
 import {
   BRIDGE_UNAVAILABLE_COPY,
   type BridgeState,
+  type LinearConnectionState,
   type StoredProviderKey,
 } from '@shared/ipc-contract.js';
 import type { CompanionHostState, CompanionPairingPayload } from '@shared/companion.js';
@@ -58,6 +59,7 @@ type Pane = SettingsPaneId;
 /** Old pane ids from saved navigation state still land somewhere sensible. */
 function normalizePane(value: string): Pane {
   if (value === 'project') return 'project';
+  if (value === 'integrations') return 'integrations';
   if (value === 'general' || value === 'maintenance' || value === 'about' || value === 'app') {
     return 'app';
   }
@@ -71,6 +73,7 @@ function normalizePane(value: string): Pane {
  */
 const PANES: { id: Pane; label: string }[] = [
   { id: 'models', label: 'Models & Providers' },
+  { id: 'integrations', label: 'Integrations' },
   { id: 'project', label: 'Project' },
   { id: 'app', label: 'App' },
 ];
@@ -81,7 +84,7 @@ const PANES: { id: Pane; label: string }[] = [
  * search is narrowing the list.
  */
 const RAIL_GROUPS: { label: string; items: Pane[] }[] = [
-  { label: 'Settings', items: ['models', 'project', 'app'] },
+  { label: 'Settings', items: ['models', 'integrations', 'project', 'app'] },
 ];
 
 /**
@@ -273,6 +276,10 @@ export default function SettingsScreen({
   const [providerBusy, setProviderBusy] = useState<string | null>(null);
   const [providerNotes, setProviderNotes] = useState<Record<string, string>>({});
   const [keyDrafts, setKeyDrafts] = useState<Record<string, string>>({});
+  const [linearConnection, setLinearConnection] = useState<LinearConnectionState | null>(null);
+  const [linearKeyDraft, setLinearKeyDraft] = useState('');
+  const [linearBusy, setLinearBusy] = useState(false);
+  const [linearNote, setLinearNote] = useState('');
   const [searchQ, setSearchQ] = useState('');
   const [palOpen, setPalOpen] = useState(false);
   const [palQ, setPalQ] = useState('');
@@ -310,6 +317,10 @@ export default function SettingsScreen({
     };
     reload();
     return api.on('bridge-changed', reload);
+  }, []);
+
+  useEffect(() => {
+    void api.linear.state().then(setLinearConnection);
   }, []);
 
   const loadPairingPayload = useCallback(async (refresh = false): Promise<void> => {
@@ -617,6 +628,33 @@ export default function SettingsScreen({
     async (providerId): Promise<void> => {
       setKeyDrafts((drafts) => ({ ...drafts, [providerId]: '' }));
       await runProviderAction(`key:${providerId}`, () => api.bridge.clearApiKey(providerId));
+    },
+  );
+
+  const runLinearAction = async (
+    action: () => Promise<{ ok: boolean; detail: string }>,
+  ): Promise<void> => {
+    if (linearBusy) return;
+    setLinearBusy(true);
+    try {
+      const result = await action();
+      setLinearNote(result.detail);
+      setErrors(result.ok ? [] : [result.detail]);
+      if (result.ok) setLinearKeyDraft('');
+    } catch (error) {
+      const message = (error as Error).message;
+      setLinearNote(message);
+      setErrors([message]);
+    } finally {
+      setLinearConnection(await api.linear.state());
+      setLinearBusy(false);
+    }
+  };
+
+  const clearLinearKey = useConfirmAction(
+    'Remove the stored Linear API key? New Linear-backed runs will be unavailable.',
+    async (): Promise<void> => {
+      await runLinearAction(() => api.linear.clearApiKey());
     },
   );
 
@@ -1721,6 +1759,97 @@ export default function SettingsScreen({
                         </div>
                       </Section>
                     </>
+                  )}
+                </PaneBody>
+              )}
+
+              {pane === 'integrations' && (
+                <PaneBody>
+                  {() => (
+                    <Section
+                      label="Linear"
+                      note="Use an issue as the immutable source for a manual pipeline run."
+                    >
+                      <div className={styles.providerCard} data-testid="linear-integration">
+                        <div className={styles.providerHead}>
+                          <h3>Linear issue orchestration</h3>
+                          <span
+                            className={`${styles.settingsPill} ${
+                              linearConnection?.keySet ? styles.ok : styles.plain
+                            }`}
+                          >
+                            {linearConnection?.keySet ? 'key set' : 'not connected'}
+                          </span>
+                        </div>
+                        <p className={styles.settingsLead}>
+                          Foundry validates the key before saving it. The encrypted value uses this
+                          Mac&rsquo;s credential storage and never enters settings.json or a run
+                          trace.
+                        </p>
+                        <Field
+                          label="Personal API key"
+                          htmlFor="linear-api-key"
+                          hint={
+                            linearConnection?.keySet
+                              ? 'A key is stored. Saving a new valid key replaces it; the old key remains if validation fails.'
+                              : 'Create a personal API key in Linear → Security & access.'
+                          }
+                        >
+                          <TextInput
+                            id="linear-api-key"
+                            type="password"
+                            autoComplete="off"
+                            spellCheck={false}
+                            mono
+                            value={linearKeyDraft}
+                            placeholder={linearConnection?.keySet ? '••••••••' : 'lin_api_…'}
+                            onChange={(event) => setLinearKeyDraft(event.target.value)}
+                          />
+                        </Field>
+                        <div className={styles.settingsBtnrow}>
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            disabled={linearBusy || !linearKeyDraft.trim()}
+                            onClick={() =>
+                              void runLinearAction(() => api.linear.setApiKey(linearKeyDraft))
+                            }
+                          >
+                            {linearBusy
+                              ? 'Checking…'
+                              : linearConnection?.keySet
+                                ? 'Validate & replace'
+                                : 'Validate & save'}
+                          </Button>
+                          {linearConnection?.keySet && (
+                            <>
+                              <Button
+                                size="sm"
+                                disabled={linearBusy}
+                                onClick={() => void runLinearAction(() => api.linear.test())}
+                              >
+                                Test connection
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                disabled={linearBusy}
+                                onClick={() => void clearLinearKey()}
+                              >
+                                Remove key
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                        {(linearNote || linearConnection?.detail) && (
+                          <p className={styles.hint}>{linearNote || linearConnection?.detail}</p>
+                        )}
+                        <p className={styles.hint}>
+                          Choose an issue and map its team workflow from Runs → Linear issue.
+                          Foundry revalidates those state IDs before every start.
+                        </p>
+                      </div>
+                    </Section>
                   )}
                 </PaneBody>
               )}

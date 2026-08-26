@@ -210,9 +210,10 @@ export default function RunDetailScreen({
     }
   };
 
-  const bannerError = actionError || view.error;
+  const bannerError = actionError || view.run?.sourceSyncError || view.error;
 
   const pipelineLabel = view.run?.pipelineName?.trim() || '';
+  const linearSource = view.run?.source?.kind === 'linear' ? view.run.source : null;
   const shortId = runId.slice(0, 7);
   const hasActiveFailure = view.run?.orchestrated
     ? Boolean(plan && planHasActiveFailure(plan, view.phases))
@@ -294,6 +295,11 @@ export default function RunDetailScreen({
           <div className={`${styles.facts} mono faint`}>
             <span>{duration(runDuration(view.run, now))}</span>
             {view.run.totalTokens ? <span>{tokens(view.run.totalTokens)} tokens</span> : null}
+            {linearSource && (
+              <button className={styles.link} onClick={() => openUrl(linearSource.url)}>
+                Linear · {linearSource.snapshot.identifier}
+              </button>
+            )}
             {view.run.branch && (
               <button className={styles.link} onClick={() => void openWorktree()}>
                 {view.run.branch}

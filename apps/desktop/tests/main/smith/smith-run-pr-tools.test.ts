@@ -63,6 +63,10 @@ describe('Smith run and PR tools', () => {
     expect(h.invoke).toHaveBeenLastCalledWith(IPC.runsLiveTail, 'ph1');
     await h.execute({ operation: 'plan', runId: 'r1' });
     expect(h.invoke).toHaveBeenLastCalledWith(IPC.runsPlan, 'session', 'r1');
+    await h.execute({ operation: 'linear_issues', query: 'FOU-190' });
+    expect(h.invoke).toHaveBeenLastCalledWith(IPC.linearIssues, 'FOU-190');
+    await h.execute({ operation: 'linear_workflow_states', teamId: 'team-1' });
+    expect(h.invoke).toHaveBeenLastCalledWith(IPC.linearWorkflowStates, 'team-1');
   });
 
   it.each([
@@ -70,6 +74,8 @@ describe('Smith run and PR tools', () => {
     ['events', { runId: 'r' }, 'afterChangeId'],
     ['context', { runId: 'r' }, 'agent'],
     ['start', {}, 'pipelineId and request'],
+    ['linear_start', {}, 'pipelineId and issueId'],
+    ['linear_workflow_states', {}, 'teamId'],
     ['archive', { runId: 'r' }, 'archived'],
     ['export_plan', { runId: 'r' }, 'pipeline or at least one agent'],
     ['export_plan', { runId: 'r', agents: 'builder' }, 'agents must be an array'],
@@ -86,6 +92,12 @@ describe('Smith run and PR tools', () => {
       { pipelineId: 'pipe', request: 'do it' },
       IPC.runsStart,
       [{ projectId: 'session', pipelineId: 'pipe', request: 'do it' }],
+    ],
+    [
+      'linear_start',
+      { pipelineId: 'pipe', issueId: 'issue-uuid' },
+      IPC.linearStartRun,
+      [{ projectId: 'session', pipelineId: 'pipe', issueId: 'issue-uuid' }],
     ],
     ['archive', { runId: 'r', archived: false }, IPC.runsArchive, ['session', 'r', false]],
     ['merge', { runId: 'r' }, IPC.runsMergeWorktree, ['session', 'r']],
