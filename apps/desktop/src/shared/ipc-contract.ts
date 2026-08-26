@@ -21,6 +21,8 @@ import type {
   GhStatus,
   GithubAccount,
   InterruptAnswer,
+  LinearIssueSnapshot,
+  LinearWorkflowState,
   MaintenanceReport,
   ModelInfo,
   OrphanWorktree,
@@ -33,6 +35,9 @@ import type {
   ReadinessInspectResult,
   ReadinessState,
   ReasoningEffort,
+  RestorableCheckpointList,
+  RestoreResult,
+  RestoreRunInput,
   RunRow,
   SmithArtifact,
   SmithProposal,
@@ -390,6 +395,22 @@ export interface StoredProviderKey {
   type: string;
 }
 
+export interface LinearConnectionState {
+  keySet: boolean;
+  detail: string;
+}
+
+export interface LinearActionResult {
+  ok: boolean;
+  detail: string;
+}
+
+export interface LinearStartRunInput {
+  projectId: string;
+  pipelineId: string;
+  issueId: string;
+}
+
 export interface FoundryApi {
   settings: {
     get(): Promise<AppSettings>;
@@ -563,6 +584,19 @@ export interface FoundryApi {
      */
     storedKeys(): Promise<StoredProviderKey[]>;
   };
+  linear: {
+    state(): Promise<LinearConnectionState>;
+    /** Validates the candidate against Linear before replacing the saved key. */
+    setApiKey(apiKey: string): Promise<LinearActionResult>;
+    test(): Promise<LinearActionResult>;
+    clearApiKey(): Promise<LinearActionResult>;
+    /** Empty query browses recent accessible issues; text filters key/title. */
+    issues(query: string): Promise<LinearIssueSnapshot[]>;
+    workflowStates(teamId: string): Promise<LinearWorkflowState[]>;
+    startRun(
+      input: LinearStartRunInput,
+    ): Promise<{ ok: boolean; runId?: string; issues: ValidationIssue[] }>;
+  };
   runs: {
     start(
       input: StartRunInput,
@@ -609,6 +643,23 @@ export interface FoundryApi {
       runId: string,
       selection: RunPlanExportSelection,
     ): Promise<RunPlanExportResult>;
+    /**
+     * Every durable phase checkpoint this run recorded, labelled for a picker:
+     * phase, attempt, when, whether an exact restore is still possible and why
+     * not, and how many commits a restore to it would move off the branch.
+     * Always answers — a run that predates checkpoints has an empty list and a
+     * refusal reason rather than an error.
+     */
+    restorableCheckpoints(projectId: string, runId: string): Promise<RestorableCheckpointList>;
+    /**
+     * Puts the run's own worktree back to one recorded checkpoint and stops
+     * there: the branch is reset to the checkpoint's commit, recorded contents
+     * are written back, and the phase's agent continues in a new session. The
+     * run is NOT started — Continue stays a separate act. A truncated
+     * checkpoint needs `acceptPartial`, and the refusal names the paths that
+     * cannot be put back.
+     */
+    restoreCheckpoint(projectId: string, input: RestoreRunInput): Promise<RestoreResult>;
   };
   orchestrator: {
     /**
@@ -811,6 +862,13 @@ export const IPC = {
   bridgeSetApiKey: 'bridge:setApiKey',
   bridgeClearApiKey: 'bridge:clearApiKey',
   bridgeStoredKeys: 'bridge:storedKeys',
+  linearState: 'linear:state',
+  linearSetApiKey: 'linear:setApiKey',
+  linearTest: 'linear:test',
+  linearClearApiKey: 'linear:clearApiKey',
+  linearIssues: 'linear:issues',
+  linearWorkflowStates: 'linear:workflowStates',
+  linearStartRun: 'linear:startRun',
   runsStart: 'runs:start',
   runsResume: 'runs:resume',
   runsList: 'runs:list',
@@ -828,6 +886,8 @@ export const IPC = {
   runsRevealFiles: 'runs:revealFiles',
   runsPlan: 'runs:plan',
   runsExportPlan: 'runs:exportPlan',
+  runsRestorableCheckpoints: 'runs:restorableCheckpoints',
+  runsRestoreCheckpoint: 'runs:restoreCheckpoint',
   orchestratorPlan: 'orchestrator:plan',
   orchestratorCancel: 'orchestrator:cancel',
   prsStatus: 'prs:status',

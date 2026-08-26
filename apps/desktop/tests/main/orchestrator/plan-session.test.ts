@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { FIXED_ENGINE_DEFAULTS } from '../../../src/shared/types.js';
-import type { AgentDef, ProjectCommand } from '../../../src/shared/types.js';
+import type { AgentDef, ModelInfo, ProjectCommand } from '../../../src/shared/types.js';
 import type { OrchestratorState } from '../../../src/shared/ipc-contract.js';
 import { PlanSession } from '../../../src/main/orchestrator/plan-session.js';
 import { scriptedOneShots, type ScriptedTurn } from '../../helpers/scripted-oneshot.js';
@@ -31,6 +31,23 @@ const builder = (over: Partial<AgentDef> = {}): AgentDef => ({
 
 const commands: ProjectCommand[] = [{ name: 'test', argv: ['npm', 'test'] }];
 
+const model = (id: string, displayName: string): ModelInfo => ({
+  id,
+  displayName,
+  provider: 'claude',
+  supportedReasoningEfforts: ['off', 'low', 'medium', 'high'],
+  defaultReasoningEffort: 'medium',
+  isCustom: false,
+  deprecated: false,
+  contextWindow: 200_000,
+});
+
+/** What the fixture install can reach; the Orchestrator must appoint from it. */
+const enabled: ModelInfo[] = [
+  model('anthropic/claude-opus-4', 'Claude Opus 4'),
+  model('anthropic/claude-haiku-4', 'Claude Haiku 4'),
+];
+
 /** A reply that passes the schema and both rails against the fixture roster. */
 function validReply(over: Record<string, unknown> = {}): string {
   return JSON.stringify({
@@ -45,6 +62,7 @@ function validReply(over: Record<string, unknown> = {}): string {
           name: 'build',
           kind: 'agent',
           agent: 'builder',
+          model: 'anthropic/claude-opus-4',
           description: 'Make the requested change inside the worktree.',
           envelope: 'build',
           prompt: { inputs: ['request'] },
@@ -65,6 +83,7 @@ function validReply(over: Record<string, unknown> = {}): string {
 async function run(opts: {
   turns: ScriptedTurn[];
   roster?: AgentDef[];
+  models?: ModelInfo[];
   ghAvailable?: () => Promise<boolean>;
 }): Promise<{
   session: PlanSession;
@@ -95,6 +114,7 @@ async function run(opts: {
     commands,
     roster: opts.roster ?? [builder()],
     envelopeDefs: [],
+    enabledModels: async () => opts.models ?? enabled,
     ghAvailable: opts.ghAvailable,
     oneShot,
     onChange: (state) => states.push(state),
@@ -160,6 +180,7 @@ describe('PlanSession', () => {
       commands,
       roster: [builder()],
       envelopeDefs: [{ name: 'audit', description: 'audit findings', fields: [] }],
+      enabledModels: async () => enabled,
       oneShot: factory,
       onChange: () => {},
     });
@@ -172,8 +193,39 @@ describe('PlanSession', () => {
     expect(ask).toContain('- builder: build things');
     expect(ask).toContain('- audit: audit findings');
     expect(ask).toContain('verdict_consistent');
+    // The Orchestrator appoints from the enabled catalog, so it is shown the
+    // exact ids it must copy rather than left to invent one.
+    expect(ask).toContain('## Enabled models');
+    expect(ask).toContain('- anthropic/claude-opus-4 — Claude Opus 4');
+    expect(ask).toContain('- anthropic/claude-haiku-4 — Claude Haiku 4');
     // Builtin pipelines ride along as few-shot examples of valid shapes.
     expect(ask).toContain('## Builtin pipelines');
+  });
+
+  it('refuses a plan whose agent phase inherits a model instead of naming one', async () => {
+    const inheriting = validReply().replace('"model":"anthropic/claude-opus-4",', '');
+    const { state } = await run({ turns: [{ text: inheriting }, { text: validReply() }] });
+
+    expect(state.status).toBe('done');
+    expect(state.entries.some((e) => e.text.includes('must name its own model'))).toBe(true);
+  });
+
+  it('refuses a phase model this install does not enable', async () => {
+    const unreachable = validReply().replace('anthropic/claude-opus-4', 'openai/gpt-9');
+    const { state } = await run({ turns: [{ text: unreachable }, { text: validReply() }] });
+
+    expect(state.status).toBe('done');
+    expect(state.entries.some((e) => e.text.includes('not one of this install'))).toBe(true);
+  });
+
+  it('stands down the per-phase rail when the catalog cannot be read at all', async () => {
+    const inheriting = validReply().replace('"model":"anthropic/claude-opus-4",', '');
+    const { state } = await run({ turns: [{ text: inheriting }], models: [] });
+
+    // An unreachable catalog is the install's problem, not the plan's: every
+    // plan would otherwise be refused with an error no operator could act on.
+    expect(state.status).toBe('done');
+    expect(state.plan).not.toBeNull();
   });
 
   it('checks GitHub in the background and rules out a PR phase when unavailable', async () => {
@@ -260,6 +312,7 @@ describe('PlanSession', () => {
             name: 'write_doc',
             kind: 'agent',
             agent: 'doc_writer',
+            model: 'anthropic/claude-haiku-4',
             description: 'Write the requested document into docs/.',
             envelope: 'build',
             prompt: { inputs: ['request'] },

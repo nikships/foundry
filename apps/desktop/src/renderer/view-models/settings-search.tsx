@@ -12,15 +12,15 @@
 
 import type React from 'react';
 
-export type SettingsPaneId = 'models' | 'project' | 'app';
+export type SettingsPaneId = 'models' | 'integrations' | 'project' | 'app';
 
 /**
  * The section groupings this registry is written in, which predate the
- * three-pane rail. `currentPane` folds them onto the panes that render today,
+ * current rail. `currentPane` folds them onto the panes that render today,
  * so a section can be re-homed without rewriting every entry below.
  */
 type LegacySettingsPaneId =
-  'general' | 'providers' | 'defaults' | 'project' | 'maintenance' | 'about';
+  'general' | 'providers' | 'defaults' | 'integrations' | 'project' | 'maintenance' | 'about';
 
 export interface SettingsPaneMeta {
   id: SettingsPaneId;
@@ -33,7 +33,7 @@ export interface SettingsPaneMeta {
 /**
  * The rail's grouping: whose stuff a pane configures. `SettingsScreen` keeps
  * its own literal PANES list (tests pin the literals there), so this list's
- * ids are pinned to the same six by tests/settings-search.test.ts.
+ * ids are pinned to the same four by tests/settings-search.test.ts.
  */
 export const SETTINGS_PANES: SettingsPaneMeta[] = [
   {
@@ -42,6 +42,12 @@ export const SETTINGS_PANES: SettingsPaneMeta[] = [
     hint: 'Providers, API keys, models, agent defaults, and Smith',
     keywords:
       'anthropic openai google openrouter xai api key subscription models bridge connect oauth reasoning helper pr writer smith chat',
+  },
+  {
+    id: 'integrations',
+    label: 'Integrations',
+    hint: 'Connect external issue trackers to orchestration',
+    keywords: 'linear issue ticket api key workflow status orchestration source',
   },
   {
     id: 'project',
@@ -174,6 +180,13 @@ export const SETTINGS_SECTIONS: SettingsSectionRef[] = [
     note: 'Stable engine policy and context limits.',
     keywords:
       'report retries check retries envelope gate compaction context rewind corrections run resilience no deadline model retry failover',
+  },
+  // Integrations
+  {
+    pane: 'integrations',
+    label: 'Linear',
+    note: 'Use an issue as the immutable source for a manual pipeline run.',
+    keywords: 'linear api key ticket workflow state status mapping connect remove test',
   },
   // Project
   {
@@ -309,6 +322,7 @@ function paneLabel(id: SettingsPaneId): string {
 }
 
 function currentPane(id: LegacySettingsPaneId): SettingsPaneId {
+  if (id === 'integrations') return 'integrations';
   if (id === 'project') return 'project';
   if (id === 'providers' || id === 'defaults') return 'models';
   return 'app';

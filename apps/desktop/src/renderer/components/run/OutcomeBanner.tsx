@@ -2,22 +2,15 @@ import { useState } from 'react';
 import type { EnvelopeRow, GhStatus, PhaseRow, RunRow } from '@shared/types.js';
 import { useBrandedAsset } from '../../hooks/useBrandedAsset.js';
 import { manualPrDraft } from '../../view-models/pr-draft.js';
+import {
+  outcomeExplanation,
+  outcomeHeadline,
+  resumeTitleFor,
+} from '../../view-models/outcome-view.js';
+import type { RestoreAvailability } from '../../view-models/restore-view.js';
 import { Button } from '../ui/Button.js';
 import { cx } from '../ui/cx.js';
 import styles from './OutcomeBanner.module.css';
-
-function headlineFor(status: RunRow['status']): string {
-  switch (status) {
-    case 'accepted':
-      return 'Accepted';
-    case 'rejected':
-      return 'Not accepted';
-    case 'killed':
-      return 'Killed';
-    default:
-      return 'Failed';
-  }
-}
 
 function colorFor(status: RunRow['status']): string {
   if (status === 'accepted') return 'var(--green)';
@@ -53,23 +46,47 @@ function IssueLink({
   );
 }
 
-function explanationFor(run: RunRow, phases: PhaseRow[]): string {
-  const failed = phases.filter((p) => p.status === 'fail');
-  switch (run.status) {
-    case 'accepted':
-      return run.outcomeDetail || 'Every phase passed and the acceptance criterion was met.';
-    case 'rejected': {
-      const failNote = failed.length ? ` (${failed.map((p) => p.name).join(', ')} failed)` : '';
-      return (
-        run.outcomeDetail ||
-        `The pipeline ran to the end, but its acceptance criterion was not met${failNote}.`
-      );
-    }
-    case 'killed':
-      return 'Stopped by hand. Anything the run had already committed is still on its branch.';
-    default:
-      return run.outcomeDetail || 'The engine could not finish this run.';
-  }
+/**
+ * Restore, kept visible and disabled rather than hidden when it cannot be
+ * used: a run with no recorded checkpoints is the common case for a while
+ * yet, and an absent button teaches an operator nothing about why.
+ *
+ * Exported for the renderer suite: the reason has to be *rendered*, not only
+ * carried in a `title`, and only markup can tell those two apart.
+ */
+export function RestoreAction({
+  restore,
+  busy,
+  onRestore,
+}: {
+  restore?: RestoreAvailability;
+  busy: boolean;
+  onRestore?: () => void;
+}): React.JSX.Element | null {
+  if (!restore?.offered || !onRestore) return null;
+  const reason = restore.enabled ? '' : restore.reason;
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={busy || !restore.enabled}
+        title={
+          reason ||
+          'Put this run’s worktree back to the start of a recorded phase, without resuming it'
+        }
+        onClick={onRestore}
+        data-testid="outcome-restore"
+      >
+        Restore…
+      </Button>
+      {reason && (
+        <span className={styles.restoreReason} data-testid="outcome-restore-reason">
+          {reason}
+        </span>
+      )}
+    </>
+  );
 }
 
 export default function OutcomeBanner({
@@ -82,6 +99,8 @@ export default function OutcomeBanner({
   gh,
   canResume = false,
   canFix = false,
+  restore,
+  onRestore,
   onResume,
   onMerge,
   onFixMerge,
@@ -103,6 +122,9 @@ export default function OutcomeBanner({
   canResume?: boolean;
   /** True after a refused merge, which is when the agent repair applies. */
   canFix?: boolean;
+  /** Whether restoring is offered, and why it is not usable. */
+  restore?: RestoreAvailability;
+  onRestore?: () => void;
   onResume?: () => void;
   onMerge: () => void;
   onFixMerge?: () => void;
@@ -145,8 +167,8 @@ export default function OutcomeBanner({
     >
       {art && <img src={art} alt="" />}
       <div className={styles.text}>
-        <h2 style={{ color }}>{headlineFor(run.status)}</h2>
-        <p>{explanationFor(run, phases)}</p>
+        <h2 style={{ color }}>{outcomeHeadline(run.status)}</h2>
+        <p>{outcomeExplanation(run, phases, { canResume })}</p>
         {worktreeMessage && (
           <p
             className={cx(styles.note, 'mono', worktreeError ? styles.bad : 'faint')}
@@ -172,7 +194,7 @@ export default function OutcomeBanner({
               variant="primary"
               size="sm"
               disabled={worktreeBusy}
-              title="Retry the first failed phase and continue this pipeline in the same worktree"
+              title={resumeTitleFor(run, phases)}
               onClick={onResume}
               data-testid="outcome-resume"
             >
@@ -191,6 +213,7 @@ export default function OutcomeBanner({
               {worktreeBusy ? 'Working…' : 'Fix & merge with agent'}
             </Button>
           )}
+          <RestoreAction restore={restore} busy={worktreeBusy} onRestore={onRestore} />
           <IssueLink run={run} onOpenUrl={onOpenUrl} />
           {run.prUrl ? (
             <Button

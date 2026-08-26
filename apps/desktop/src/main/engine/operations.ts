@@ -14,6 +14,7 @@ import type {
   GeneratedRunPlan,
   PipelineDef,
   ProjectDef,
+  RunSource,
   StartRunInput,
   ValidationIssue,
 } from '@shared/types.js';
@@ -41,6 +42,13 @@ export interface StartRunDeps {
   settings(): AppSettings;
   /** Persists the project and returns the row as it now reads. */
   saveProject(next: ProjectDef): ProjectDef;
+  /**
+   * Ids of the models this install can reach, minus the hidden ones. Only an
+   * inline plan uses it: the operator may re-cast a phase between the card and
+   * this call, and main re-checks that choice rather than trusting the
+   * round-tripped value. Omitted (or empty) stands the rail down.
+   */
+  enabledModelIds?(): Promise<string[]>;
   oneShot: OneShotFactory;
   registry: {
     start(input: {
@@ -50,6 +58,7 @@ export interface StartRunDeps {
       envelopeDefs: EnvelopeDef[];
       request: string;
       plan?: GeneratedRunPlan | null;
+      source?: RunSource | null;
     }): string;
   };
 }
@@ -60,7 +69,11 @@ function startError(where: string, message: string): StartRunOutcome {
   return { ok: false, issues: [{ level: 'error', where, message }] };
 }
 
-export async function startRun(deps: StartRunDeps, input: StartRunInput): Promise<StartRunOutcome> {
+export async function startRun(
+  deps: StartRunDeps,
+  input: StartRunInput,
+  source: RunSource | null = null,
+): Promise<StartRunOutcome> {
   let project = deps.projectById(input.projectId);
   if (!project) return startError('project', 'project not found');
 
@@ -129,6 +142,7 @@ export async function startRun(deps: StartRunDeps, input: StartRunInput): Promis
         roster,
         commandNames,
         knownEnvelopes,
+        enabledModelIds: (await deps.enabledModelIds?.()) ?? [],
         scaffold: project.scaffold === true,
       })
     : null;
@@ -147,6 +161,7 @@ export async function startRun(deps: StartRunDeps, input: StartRunInput): Promis
     envelopeDefs: deps.envelopeDefs(),
     request,
     plan,
+    source,
   });
   return { ok: true, runId, issues: noIssues };
 }

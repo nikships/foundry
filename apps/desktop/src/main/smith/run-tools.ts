@@ -23,6 +23,7 @@ export const SMITH_RUN_OPERATIONS = [
   'context',
   'prompt',
   'plan',
+  'checkpoints',
   'start',
   'resume',
   'kill',
@@ -33,11 +34,19 @@ export const SMITH_RUN_OPERATIONS = [
   'open_worktree',
   'reveal_files',
   'export_plan',
+  'restore_checkpoint',
+  'linear_issues',
+  'linear_workflow_states',
+  'linear_start',
 ] as const;
 
 type RunOperation = (typeof SMITH_RUN_OPERATIONS)[number];
-type RunReadOperation = 'detail' | 'events' | 'context' | 'prompt' | 'plan';
-type RunActionOperation = Exclude<RunOperation, 'list' | 'live_tail' | RunReadOperation>;
+type RunReadOperation = 'detail' | 'events' | 'context' | 'prompt' | 'plan' | 'checkpoints';
+type LinearRunReadOperation = 'linear_issues' | 'linear_workflow_states';
+type RunActionOperation = Exclude<
+  RunOperation,
+  'list' | 'live_tail' | RunReadOperation | LinearRunReadOperation
+>;
 
 /** Project-scoped reads keyed by the id they take. */
 const READS: Record<RunReadOperation, { channel: string; idField: 'runId' | 'phaseId' }> = {
@@ -46,6 +55,7 @@ const READS: Record<RunReadOperation, { channel: string; idField: 'runId' | 'pha
   context: { channel: IPC.runsContextBreakdown, idField: 'runId' },
   prompt: { channel: IPC.runsPrompt, idField: 'phaseId' },
   plan: { channel: IPC.runsPlan, idField: 'runId' },
+  checkpoints: { channel: IPC.runsRestorableCheckpoints, idField: 'runId' },
 };
 
 const ACTION_CHANNELS: Record<RunActionOperation, string> = {
@@ -59,6 +69,8 @@ const ACTION_CHANNELS: Record<RunActionOperation, string> = {
   open_worktree: IPC.runsOpenWorktree,
   reveal_files: IPC.runsRevealFiles,
   export_plan: IPC.runsExportPlan,
+  restore_checkpoint: IPC.runsRestoreCheckpoint,
+  linear_start: IPC.linearStartRun,
 };
 
 const RISKS: Partial<Record<RunOperation, SmithActionRisk>> = {
@@ -68,6 +80,9 @@ const RISKS: Partial<Record<RunOperation, SmithActionRisk>> = {
   fix_merge: 'git',
   open_worktree: 'external',
   reveal_files: 'external',
+  // A restore resets the run branch and overwrites the worktree. The commits
+  // stay in the reflog, but nothing about that is a plain write.
+  restore_checkpoint: 'git',
 };
 
 export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
@@ -75,7 +90,7 @@ export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
     name: 'smith_runs',
     label: 'Smith runs',
     description:
-      'Inspect and operate Foundry runs. Operations: list(projectId?,includeArchived?), detail/events/context/plan(projectId?,runId,...), live_tail(phaseId), prompt(projectId?,phaseId), start(projectId?,pipelineId,request), resume/kill/merge/fix_merge/discard/open_worktree/reveal_files(projectId?,runId), archive(projectId?,runId,archived), export_plan(projectId?,runId,pipeline?,agents?).',
+      'Inspect and operate Foundry runs. Operations: list(projectId?,includeArchived?), detail/events/context/plan/checkpoints(projectId?,runId,...), live_tail(phaseId), prompt(projectId?,phaseId), start(projectId?,pipelineId,request), resume/kill/merge/fix_merge/discard/open_worktree/reveal_files(projectId?,runId), archive(projectId?,runId,archived), export_plan(projectId?,runId,pipeline?,agents?), restore_checkpoint(projectId?,runId,checkpointId,acceptPartial?), linear_issues(query?), linear_workflow_states(teamId), linear_start(projectId?,pipelineId,issueId).',
     parameters: {
       type: 'object',
       properties: {
@@ -91,6 +106,11 @@ export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
         archived: { type: 'boolean' },
         pipeline: { type: 'boolean' },
         agents: { type: 'array', items: { type: 'string' } },
+        checkpointId: { type: 'string' },
+        acceptPartial: { type: 'boolean' },
+        query: { type: 'string' },
+        teamId: { type: 'string' },
+        issueId: { type: 'string' },
       },
       required: ['operation'],
       additionalProperties: false,
@@ -98,6 +118,8 @@ export function smithRunsTool(deps: SmithActionToolDeps): ToolDefinition {
     execute: async (_id, params) => {
       const op = parseOperation(params, SMITH_RUN_OPERATIONS);
       if (!op) return json({ ok: false, error: 'unknown operation' });
+
+      if (isLinearRunReadOperation(op)) return linearRunRead(deps, op, params);
 
       // A live tail is keyed by phase alone; it needs no project scope.
       if (op === 'live_tail') {
@@ -152,6 +174,15 @@ type GatedArgs =
 
 /** `start` names a pipeline; everything else names an existing run. */
 function resolveGatedArgs(op: RunActionOperation, params: unknown, projectId: string): GatedArgs {
+  if (op === 'linear_start') {
+    const pipelineId = stringField(params, 'pipelineId');
+    const issueId = stringField(params, 'issueId');
+    if (!pipelineId || !issueId) {
+      return { ok: false, error: 'pipelineId and issueId are required' };
+    }
+    const input = { projectId, pipelineId, issueId };
+    return { ok: true, args: [input], shownArgs: input };
+  }
   if (op === 'start') {
     const pipelineId = stringField(params, 'pipelineId');
     const request = stringField(params, 'request');
@@ -172,6 +203,15 @@ function resolveGatedArgs(op: RunActionOperation, params: unknown, projectId: st
       shownArgs: { projectId, runId, archived },
     };
   }
+  if (op === 'restore_checkpoint') {
+    const checkpointId = stringField(params, 'checkpointId');
+    if (!checkpointId) return { ok: false, error: 'checkpointId is required' };
+    // A truncated checkpoint refuses without this, so it has to be an explicit
+    // argument here too rather than a default the model never states.
+    const acceptPartial = booleanField(params, 'acceptPartial') ?? false;
+    const input = { runId, checkpointId, acceptPartial };
+    return { ok: true, args: [projectId, input], shownArgs: { projectId, ...input } };
+  }
   if (op === 'export_plan') {
     const pipeline = booleanField(params, 'pipeline') ?? false;
     const agents = field(params, 'agents') === undefined ? [] : stringArrayField(params, 'agents');
@@ -187,4 +227,26 @@ function resolveGatedArgs(op: RunActionOperation, params: unknown, projectId: st
     };
   }
   return { ok: true, args: [projectId, runId], shownArgs: { projectId, runId } };
+}
+
+function isLinearRunReadOperation(op: RunOperation): op is LinearRunReadOperation {
+  return op === 'linear_issues' || op === 'linear_workflow_states';
+}
+
+function linearRunRead(
+  deps: SmithActionToolDeps,
+  op: LinearRunReadOperation,
+  params: unknown,
+): ReturnType<typeof immediate> {
+  if (op === 'linear_issues') {
+    const query = field(params, 'query');
+    if (query !== undefined && typeof query !== 'string') {
+      return Promise.resolve(json({ ok: false, error: 'query must be a string' }));
+    }
+    return immediate(deps, IPC.linearIssues, query ?? '');
+  }
+  const teamId = stringField(params, 'teamId');
+  return teamId
+    ? immediate(deps, IPC.linearWorkflowStates, teamId)
+    : Promise.resolve(json({ ok: false, error: 'teamId is required' }));
 }

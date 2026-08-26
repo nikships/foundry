@@ -4,7 +4,7 @@
  * so the site has no dependency on the app's CSS modules.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode, CSSProperties } from 'react';
 import { useInView } from '../../hooks';
 
@@ -288,5 +288,75 @@ export function LoopVideo({
     >
       <source src={src} type="video/mp4" />
     </video>
+  );
+}
+
+/**
+ * The one video on the page with sound. It stays behind its poster until the
+ * visitor asks for it — `preload="none"` so a 7 MB film is never on the
+ * critical path, and native controls once it is running.
+ */
+export function FilmPlayer({
+  src,
+  poster,
+  label,
+  runtime,
+  className = '',
+}: {
+  src: string;
+  poster: string;
+  label: string;
+  runtime: string;
+  className?: string;
+}) {
+  const ref = useRef<HTMLVideoElement>(null);
+  const [started, setStarted] = useState(false);
+
+  function start() {
+    const v = ref.current;
+    if (!v) return;
+    setStarted(true);
+    void v.play().catch(() => undefined);
+  }
+
+  return (
+    <div
+      className={`relative overflow-hidden rounded border border-line bg-[#020202] [aspect-ratio:16/9] ${className}`}
+    >
+      <video
+        ref={ref}
+        className="h-full w-full"
+        poster={poster}
+        controls={started}
+        playsInline
+        preload="none"
+        onPlay={() => setStarted(true)}
+      >
+        <source src={src} type="video/mp4" />
+      </video>
+
+      {started ? null : (
+        <button
+          type="button"
+          onClick={start}
+          aria-label={`Play ${label}`}
+          className="group absolute inset-0 flex flex-col items-center justify-center gap-4 bg-[linear-gradient(180deg,rgba(2,2,2,0.28)_0%,rgba(2,2,2,0.62)_100%)] transition-colors duration-fast ease-mech hover:bg-[rgba(2,2,2,0.32)]"
+        >
+          <span className="flex h-[62px] w-[62px] items-center justify-center rounded-full border border-line-strong bg-[rgba(2,2,2,0.72)] backdrop-blur-sm transition-colors duration-fast ease-mech group-hover:border-accent group-hover:bg-[rgba(2,2,2,0.88)]">
+            <span
+              aria-hidden="true"
+              className="ml-[4px] h-0 w-0 border-y-[11px] border-l-[18px] border-y-transparent border-l-text transition-colors duration-fast ease-mech group-hover:border-l-accent-bright"
+            />
+          </span>
+          <span className="flex items-center gap-[10px] font-mono text-[10.5px] uppercase tracking-label text-text-faint">
+            <span className="text-text">{label}</span>
+            <span aria-hidden="true" className="h-px w-[14px] bg-line-strong" />
+            <span>{runtime}</span>
+            <span aria-hidden="true" className="h-px w-[14px] bg-line-strong" />
+            <span>sound on</span>
+          </span>
+        </button>
+      )}
+    </div>
   );
 }

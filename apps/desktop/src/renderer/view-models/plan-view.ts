@@ -36,6 +36,13 @@ export interface PlanPhaseView {
   note: string;
   /** Whether the acceptance rule reads this phase's outcome. */
   decides: boolean;
+  /**
+   * Agent phases only: the model this phase is appointed to run on, as the
+   * operator may still override it. `inherit` means the Orchestrator declined
+   * to appoint one, which its rails refuse — it can only appear on a plan
+   * generated before that rule existed.
+   */
+  model: string | null;
 }
 
 /** One synthesized agent as the card presents it. */
@@ -82,6 +89,38 @@ export interface PlanExportView {
     name: string;
     purpose: string;
   }[];
+}
+
+/**
+ * Re-cast one agent phase onto another model, leaving the rest of the plan
+ * identical.
+ *
+ * The plan is what `startRun` re-validates at the privileged boundary, so an
+ * override has to travel as a real edit to the pipeline rather than a
+ * side-channel the engine would have to be taught about separately.
+ */
+export function withPhaseModel(
+  plan: GeneratedRunPlan,
+  phaseName: string,
+  model: string,
+): GeneratedRunPlan {
+  const phases = plan.pipeline.phases.map((phase) =>
+    phase.name === phaseName && phase.kind === 'agent' ? { ...phase, model } : phase,
+  );
+  return { ...plan, pipeline: { ...plan.pipeline, phases } };
+}
+
+/** Which phases the operator re-cast, against the plan as it was generated. */
+export function overriddenPhases(
+  original: GeneratedRunPlan,
+  current: GeneratedRunPlan,
+): Set<string> {
+  const before = new Map(original.pipeline.phases.map((phase) => [phase.name, phase.model]));
+  const changed = new Set<string>();
+  for (const phase of current.pipeline.phases) {
+    if (before.has(phase.name) && before.get(phase.name) !== phase.model) changed.add(phase.name);
+  }
+  return changed;
 }
 
 /** The operator-facing reading of a `writes` boundary. */
@@ -140,6 +179,7 @@ export function planCardView(plan: GeneratedRunPlan): PlanCardView {
     synthesized: Boolean(phase.agent && synthesized.has(phase.agent)),
     note: phaseNote(phase),
     decides: marks.has(index),
+    model: phase.kind === 'agent' ? (phase.model ?? 'inherit') : null,
   }));
 
   const inventory = [plural(plan.pipeline.phases.length, 'phase')];
@@ -155,7 +195,9 @@ export function planCardView(plan: GeneratedRunPlan): PlanCardView {
     agents: plan.agents.map((agent) => ({
       name: agent.name,
       purpose: agent.purpose,
-      model: agent.model === 'inherit' ? 'inherits the default model' : modelLabel(agent.model),
+      // A synthesized agent no longer picks a model: the phase it runs in
+      // names one, and the card lets the operator re-cast that appointment.
+      model: agent.model === 'inherit' ? 'model set per phase' : modelLabel(agent.model),
       reasoningEffort: agent.reasoningEffort,
       boundary: boundaryLabel(agent.writes),
       readOnly: agent.toolProfile === 'read-only' || agent.writes?.length === 0,

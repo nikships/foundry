@@ -1,6 +1,13 @@
 import { existsSync } from 'node:fs';
 import { shell } from 'electron';
-import type { InterruptAnswer, StartRunInput } from '@shared/types.js';
+import type {
+  InterruptAnswer,
+  RestorableCheckpointList,
+  RestoreResult,
+  RestoreRunInput,
+  StartRunInput,
+} from '@shared/types.js';
+import { RESTORE_REFUSAL_COPY } from '@shared/types.js';
 import {
   IPC,
   type ContextBreakdownResult,
@@ -10,13 +17,21 @@ import {
   type RunPlanExportSelection,
   type WorktreeAction,
 } from '@shared/ipc-contract.js';
-import { emptyRunDetail, eventPage, runDetail, startRun } from '../engine/operations.js';
+import {
+  emptyRunDetail,
+  eventPage,
+  runDetail,
+  startRun,
+  type StartRunDeps,
+} from '../engine/operations.js';
+import { listRestorableCheckpoints, restoreRun } from '../engine/restore.js';
 import { landRun } from '../engine/settle.js';
 import * as worktreeLib from '../engine/worktree.js';
 import { exportRunPlan } from '../store/export-plan.js';
+import { enabledModelIds } from '../pi/enabled-models.js';
 import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
-import { notifyRuns, notifySettings, settleHooks } from './shared.js';
+import { notifyRuns, notifySettings, restoreScope, settleHooks } from './shared.js';
 
 type Ctx = Pick<
   AppContext,
@@ -32,7 +47,42 @@ type Ctx = Pick<
   | 'envelopes'
   | 'broadcast'
   | 'oneShot'
+  | 'supportDir'
 >;
+
+export type RunStartContext = Pick<
+  Ctx,
+  | 'projects'
+  | 'pipelines'
+  | 'pipelineScope'
+  | 'rosterFor'
+  | 'envelopes'
+  | 'settings'
+  | 'broadcast'
+  | 'supportDir'
+  | 'oneShot'
+  | 'registry'
+>;
+
+export function runStartDeps(ctx: RunStartContext): StartRunDeps {
+  return {
+    projectById: (id) => ctx.projects.get(id),
+    pipelineFor: (projectId, pipelineId) =>
+      ctx.pipelines.get(pipelineId, ctx.pipelineScope(projectId)),
+    rosterFor: (projectId) => ctx.rosterFor(projectId),
+    envelopeDefs: () => ctx.envelopes.list(),
+    settings: () => ctx.settings.get(),
+    saveProject: (next) => {
+      const result = ctx.projects.save(next);
+      if (!result.ok) return next;
+      notifySettings(ctx);
+      return ctx.projects.get(next.id) ?? next;
+    },
+    enabledModelIds: () => enabledModelIds(ctx.supportDir, ctx.settings.get().hiddenModelIds),
+    oneShot: ctx.oneShot,
+    registry: ctx.registry,
+  };
+}
 
 export function register(ctx: Ctx, handle: Handle): void {
   const projectOf = (projectId: string) => ctx.projects.get(projectId);
@@ -43,27 +93,7 @@ export function register(ctx: Ctx, handle: Handle): void {
 
   // The start path lives in `engine/operations.ts`, shared verbatim with the
   // companion host so a phone-started run is the same run in every respect.
-  handle(IPC.runsStart, (input: StartRunInput) =>
-    startRun(
-      {
-        projectById: (id) => ctx.projects.get(id),
-        pipelineFor: (projectId, pipelineId) =>
-          ctx.pipelines.get(pipelineId, ctx.pipelineScope(projectId)),
-        rosterFor: (projectId) => ctx.rosterFor(projectId),
-        envelopeDefs: () => ctx.envelopes.list(),
-        settings: () => ctx.settings.get(),
-        saveProject: (next) => {
-          const result = ctx.projects.save(next);
-          if (!result.ok) return next;
-          notifySettings(ctx);
-          return ctx.projects.get(next.id) ?? next;
-        },
-        oneShot: ctx.oneShot,
-        registry: ctx.registry,
-      },
-      input,
-    ),
-  );
+  handle(IPC.runsStart, (input: StartRunInput) => startRun(runStartDeps(ctx), input));
 
   handle(IPC.runsResume, (projectId: string, runId: string): WorktreeAction => {
     const project = projectOf(projectId);
@@ -223,6 +253,50 @@ export function register(ctx: Ctx, handle: Handle): void {
       });
       if (result.ok) notifySettings(ctx);
       return result;
+    },
+  );
+
+  /**
+   * Restoring is engine choreography (`engine/restore.ts`), so these two are
+   * arg-check and delegate. The list answers for a run it cannot restore too:
+   * the checkpoints are readable history either way, and the refusal reason
+   * travels with them so the picker says why rather than showing nothing.
+   */
+  handle(
+    IPC.runsRestorableCheckpoints,
+    async (projectId: string, runId: string): Promise<RestorableCheckpointList> => {
+      const scoped = tracerOf(projectId);
+      if (!scoped) {
+        return {
+          runId,
+          refusal: 'run_not_found',
+          detail: RESTORE_REFUSAL_COPY.run_not_found,
+          checkpoints: [],
+        };
+      }
+      return listRestorableCheckpoints(restoreScope(ctx, scoped.tracer), runId);
+    },
+  );
+
+  handle(
+    IPC.runsRestoreCheckpoint,
+    async (projectId: string, input: RestoreRunInput): Promise<RestoreResult> => {
+      const scoped = tracerOf(projectId);
+      if (!scoped) {
+        return {
+          ok: false,
+          refusal: 'run_not_found',
+          detail: RESTORE_REFUSAL_COPY.run_not_found,
+        };
+      }
+      if (!input?.runId || !input.checkpointId) {
+        return {
+          ok: false,
+          refusal: 'checkpoint_not_found',
+          detail: RESTORE_REFUSAL_COPY.checkpoint_not_found,
+        };
+      }
+      return restoreRun(restoreScope(ctx, scoped.tracer), input);
     },
   );
 

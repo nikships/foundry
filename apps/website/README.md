@@ -55,8 +55,8 @@ src/data/site.ts         page copy
 src/components/ui/       Eyebrow, Button, Badge, Section, Reveal, WindowFrame, ArtPanel
 src/components/demos/    the five interactive demos
 src/components/sections/ nav, hero, roster, galleries, footer
-public/media/            optimised art (5.8 MB) — built, committed
-media-src/               site-only screenshot sources (kept out of the DMG)
+public/media/            optimised art + the campaign film — built, committed
+media-src/               site-only screenshot and film sources (kept out of the DMG)
 public/fonts/            the same vendored Geist faces the app ships
 tools/build-media.sh     regenerates public/media
 ```
@@ -128,6 +128,12 @@ Sources, all outside this folder:
 | `../../assets/agents/*.png` | `media/agents/*.webp` (portraits) |
 | `media-src/ui/*.png` | `media/ui/*.webp` (desktop screens) |
 | `media-src/phone/*.png` | `media/phone/*.webp` |
+| `media-src/film/*.mp4` | `media/film/*.mp4` + poster (keeps its audio) |
+
+`media-src/film/` is **gitignored**: those masters are 1080p originals in the
+tens of MB, past the repo's 10 MiB per-file ceiling (`npm run check:files`).
+Only the encoded 720p result under `public/media/film/` is committed. Drop the
+master back in and run `npm run media` to re-encode.
 
 `media-src/ui/*.png` are retina captures (2880×1880) of the running app, taken
 through the repo's `foundry-ui` skill against an isolated `--user-data-dir`
@@ -136,9 +142,9 @@ hand-editing the WebP, and **check the frame for anything account-specific
 before committing** — the providers pane shows the signed-in account, so that
 capture was taken with the address replaced in the DOM first.
 
-`media-src/phone/*.png` are the Android captures from `../../screenshots`
-cropped to 1080×1000; the raw 1080×2400 frames leave several screens as mostly
-empty background inside a phone bezel.
+`media-src/phone/*.png` are `adb screencap` frames from a Pixel 10 Pro XL
+AVD (`hw.lcd.width=1344`, `hw.lcd.height=2992`, 480 dpi). Recapture on that
+device profile; a 1080×1000 crop reads as a foldable inner display.
 
 `pr_writer` and `issue_writer` ship no portrait; the roster falls back to a
 tinted monogram for those two, which is deliberate rather than a missing file.

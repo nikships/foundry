@@ -25,6 +25,7 @@ import type {
   PipelineDef,
   ProjectDef,
   ReasoningEffort,
+  RunSource,
   RunStatus,
   ValidationIssue,
 } from '@shared/types.js';
@@ -39,6 +40,7 @@ import {
 import { PiTransport } from '../pi/pi-transport.js';
 import type { AgentTransport } from '../pi/transport.js';
 import { decideAcceptance } from './acceptance.js';
+import { capturePhaseStart } from './checkpoint.js';
 import type { PhaseRunner, RunContext, PhaseJump } from './phase-context.js';
 import { AgentPhaseRunner } from './runners/agent.js';
 import { CodePhaseRunner } from './runners/code.js';
@@ -49,16 +51,25 @@ import type { Envelope } from './envelopes.js';
 import type { CommandDriftRecord } from './detect.js';
 import type { HealingSupport } from './healing.js';
 import { runCommand } from './commands.js';
+import { killedRecoveryNote } from './prompts.js';
 import { PromptLedger } from './prompt-ledger.js';
 import { createIssue, openPr, type GhOptions } from '../system/gh.js';
 import type { IssueAction, PrAction } from '@shared/ipc-contract.js';
-import { effectivePhaseEnvelope, resolveAgentExecution } from '@shared/types.js';
+import {
+  CONTINUE_STATUS_REFUSAL,
+  continuableStatus,
+  continueStrategyFor,
+  effectivePhaseEnvelope,
+  resolveAgentExecution,
+} from '@shared/types.js';
 import type { SetupExecution } from './agent-context.js';
 import type { Replanner } from '../orchestrator/replan.js';
+import { phaseModelIssues } from '../orchestrator/plan.js';
 import { validate as validatePipeline } from '../store/pipelines.js';
 import { preflightForRun } from './preflight.js';
 import { FIXED_ENGINE_DEFAULTS } from '@shared/types.js';
 import { activeRowsForPipeline } from './phase-history.js';
+import type { RunSourceLifecycle, RunSourceStage } from './source-lifecycle.js';
 
 export interface ExecutorDeps {
   tracer: Tracer;
@@ -95,6 +106,10 @@ export interface ExecutorDeps {
   request: string;
   /** The active Orchestrator plan; absent for a manual run. */
   plan?: GeneratedRunPlan | null;
+  /** Immutable external issue snapshot, absent for an ordinary prompt run. */
+  source?: RunSource | null;
+  /** External status adapter; failures are evidence and never change the run verdict. */
+  sourceLifecycle?: RunSourceLifecycle | null;
   runId: string;
   engineer: string;
   /** Raises an engineer phase's checkpoint and resolves with what was chosen. */
@@ -142,6 +157,36 @@ export class Executor {
   private readonly phaseIds = new Map<string, string>();
   private readonly feedback = new Map<string, string>();
   private readonly commandDrift = new Map<string, CommandDriftRecord>();
+  /** Recovery notes for a phase this run is restarting rather than entering. */
+  private readonly recoveryNotes = new Map<string, string>();
+  /**
+   * Agents whose persisted session must NOT be reopened by the next
+   * `sessionFor`, so they start a new conversation instead.
+   *
+   * Continuing a rejected or failed run is a correction: the agent's own
+   * session still describes the phase, and reopening it is what makes a retry
+   * cost one message. A kill is not a correction — the operator stopped a turn
+   * mid-flight, so that conversation ends on a truncated exchange the retry
+   * would otherwise reason from. The name is consumed on use rather than left
+   * standing, because only the interrupted phase's entry is affected: a later
+   * phase on the same agent goes back to the session this resume opened.
+   *
+   * Deliberately executor state rather than a delete of the `agent_sessions`
+   * row. That row is keyed on (run, agent) and the successor overwrites it, so
+   * what survives a delete-vs-skip choice is the transcript the killed attempt
+   * wrote and the recovery event naming the id it left — deleting the row
+   * would take the agent's roster entry out of the run for no gain.
+   */
+  private readonly freshSessionAgents = new Set<string>();
+  /**
+   * The recovery event still waiting for the id of the session it caused.
+   *
+   * A session opens lazily on its first turn, so the new id does not exist at
+   * resume time; the event is written with the abandoned id immediately and
+   * patched once the successor has one.
+   */
+  private recovery: { eventId: string; agent: string; previousSessionId: string | null } | null =
+    null;
   /**
    * Which phase prompts each live session still holds, so a feedback re-entry
    * can send a delta. Lives here rather than in the runner because only the
@@ -255,7 +300,9 @@ export class Executor {
           baseRef: project.baseRef,
           mode: this.mode,
           plan: this.plan,
+          source: this.deps.source ?? null,
         });
+        await this.advanceSource('started');
         tracer.event({
           runId,
           type: 'error',
@@ -278,7 +325,9 @@ export class Executor {
       branchPointSha: this.handle?.branchPointSha ?? null,
       mode: this.mode,
       plan: this.plan,
+      source: this.deps.source ?? null,
     });
+    await this.advanceSource('started');
 
     // Per-project bootstrap: install deps in a fresh worktree so agents
     // find their binaries. Fail-fast with evidence; the worktree is kept
@@ -350,14 +399,22 @@ export class Executor {
     return this.runFrom(0);
   }
 
-  /** Continue a terminal run from its first failed phase in the existing worktree. */
+  /**
+   * Continue a terminal run from its first failed phase in the existing
+   * worktree.
+   *
+   * How the interrupted phase's agent re-enters depends on how the run
+   * stopped: a rejected or failed run reopens the persisted conversation (the
+   * correction workflow), a killed agent phase starts a fresh session because
+   * the conversation it would reopen ends on the turn the operator cut off. A
+   * killed `code` or `engineer` phase has no conversation at all, so it is
+   * continued the ordinary way.
+   */
   async resume(): Promise<RunOutcome> {
     const { tracer, project, runId } = this.deps;
     const pipeline = this.pipeline;
     const run = tracer.run(runId);
-    if (!run || (run.status !== 'rejected' && run.status !== 'failed')) {
-      throw new Error('only a rejected or failed run can be continued');
-    }
+    if (!run || !continuableStatus(run.status)) throw new Error(CONTINUE_STATUS_REFUSAL);
     if (run.merged) throw new Error('a merged run cannot be continued');
 
     const active = activeRowsForPipeline(pipeline, tracer.phases(runId));
@@ -391,15 +448,67 @@ export class Executor {
     }
     this.replanAttempts = tracer.replanAttempts(runId);
 
+    const interrupted = pipeline.phases[startIndex]!;
+    // The interrupted phase is half the answer: a killed shell command has no
+    // conversation to abandon, so it is continued rather than restarted.
+    const strategy = continueStrategyFor(run.status, interrupted.kind);
+    if (!strategy) throw new Error(CONTINUE_STATUS_REFUSAL);
     mkdirSync(join(this.cwd, HANDOFF_DIR), { recursive: true });
+    // `reopenRun` overwrites the terminal status in place, so by the time the
+    // next verdict lands nothing in `runs` says how this run had stopped. The
+    // recovery event is what keeps that on the record.
     tracer.reopenRun(runId);
     tracer.event({
       runId,
       type: 'log',
       name: 'run continued',
-      payload: { phase: pipeline.phases[startIndex]!.name },
+      payload: { phase: interrupted.name, fromStatus: run.status, strategy },
     });
+    await this.advanceSource('started');
+    if (strategy === 'fresh_session') this.startFreshSession(interrupted, run.status);
     return this.runFrom(startIndex);
+  }
+
+  /**
+   * Arms the fresh-session path for the phase a kill interrupted, and records
+   * the recovery.
+   *
+   * Only that phase's agent is affected: another agent's session was not the
+   * one cut off mid-turn, so its conversation is still an honest record of
+   * what it did and is reopened normally.
+   *
+   * Nothing is recorded unless a named agent is actually being moved off a
+   * conversation. `strategy` already excludes a non-agent phase, so a phase
+   * that reaches here without an agent name is a malformed definition rather
+   * than a recovery, and an event claiming one would be a permanent false
+   * entry in the trace: it could never be patched, because there is no session
+   * whose open would complete it.
+   */
+  private startFreshSession(phase: PhaseDef, fromStatus: RunStatus): void {
+    const { tracer, runId } = this.deps;
+    const agent = phase.kind === 'agent' ? phase.agent : undefined;
+    if (!agent) return;
+    const previousSessionId =
+      tracer.agentSessions(runId).find((row) => row.agent === agent)?.agentSessionId ?? null;
+    const eventId = tracer.event({
+      runId,
+      phaseId: this.phaseIds.get(phase.name) ?? null,
+      type: 'log',
+      name: 'run recovered',
+      payload: {
+        fromStatus,
+        strategy: 'fresh_session',
+        phase: phase.name,
+        agent,
+        previousSessionId,
+        // Filled in once the successor session actually opens; a phase that
+        // never gets that far leaves the null, which is the honest answer.
+        newSessionId: null,
+      },
+    });
+    this.freshSessionAgents.add(agent);
+    this.recoveryNotes.set(phase.name, killedRecoveryNote(phase.name));
+    this.recovery = { eventId, agent, previousSessionId };
   }
 
   private async runFrom(startIndex: number): Promise<RunOutcome> {
@@ -425,6 +534,10 @@ export class Executor {
       await this.compactFullSessions();
 
       const phase = this.pipeline.phases[index]!;
+      // Before the phase's work begins, and on every entry into it: a
+      // `feedbackTo` re-entry is a new attempt, so it earns its own generation
+      // rather than reusing where the first attempt started.
+      await this.checkpointPhaseStart(phase);
       const jump = await this.runPhase(phase);
       if (jump.kind === 'abort') {
         if (await this.tryReplan(index, phase, jump.detail)) {
@@ -621,10 +734,24 @@ export class Executor {
       ...preflightForRun(pipeline, agents, commandNames, knownEnvelopes, {
         scaffold: this.deps.project.scaffold === true,
       }),
+      // An amendment inherits the confirmed plan's explicit appointments: it
+      // may re-cast a phase onto any model that plan already reaches, but the
+      // engine has no catalog here, so anything else is refused rather than
+      // silently falling back to the install default.
+      ...phaseModelIssues(amendment.phases, this.confirmedModelIds(), failedIndex),
     );
     const errors = issues.filter((issue) => issue.level === 'error');
     if (errors.length) return { ok: false, issues: errors };
     return { ok: true, pipeline, warnings: uniqueIssues(issues) };
+  }
+
+  /** The models the operator confirmed on the plan card, in plan order. */
+  private confirmedModelIds(): string[] {
+    const ids = new Set<string>();
+    for (const phase of this.plan?.pipeline.phases ?? []) {
+      if (phase.kind === 'agent' && phase.model && phase.model !== 'inherit') ids.add(phase.model);
+    }
+    return [...ids];
   }
 
   private applyAmendment(
@@ -681,12 +808,123 @@ export class Executor {
     });
   }
 
+  /**
+   * Writes where this phase begins, durably, before it begins.
+   *
+   * Never fatal. A run that cannot record its checkpoint is still a run the
+   * operator asked for; failing it here would trade a working phase for a
+   * missing record. The failure is traced so the absence is explained rather
+   * than silent, and split-2 restore reads an absent checkpoint as absent.
+   */
+  private async checkpointPhaseStart(phase: PhaseDef): Promise<void> {
+    const { tracer, runId } = this.deps;
+    try {
+      // Inside the try: `phaseId` throws for a phase that was never queued,
+      // and this method promises never to be the thing that fails a run.
+      const phaseId = this.phaseId(phase.name);
+      const capture = await capturePhaseStart({ cwd: this.cwd, handoffDir: HANDOFF_DIR });
+      const session = phase.agent ? this.sessions.get(phase.agent) : undefined;
+      tracer.recordPhaseCheckpoint({
+        runId,
+        phaseId,
+        phaseName: phase.name,
+        phaseKind: phase.kind,
+        headSha: capture.headSha,
+        branch: this.handle?.branch ?? null,
+        worktreePath: this.cwd,
+        // A non-isolated run has no worktree: `this.cwd` is the project
+        // checkout, so the capture holds the operator's own uncommitted work.
+        // Recorded rather than skipped — that run has no worktree to discard,
+        // which is precisely where a phase-start record is worth having — but
+        // marked, because restoring into a live checkout is a different act.
+        isolated: this.handle !== null,
+        model: this.appointedModel(phase),
+        agent: phase.agent ?? null,
+        // The session's own id when one is already open, otherwise whatever a
+        // previous attempt persisted — a phase that has not opened a session
+        // yet has no leaf, and inventing one would misdescribe the anchor.
+        agentSessionId: session?.sessionId ?? this.persistedSessionId(phase.agent),
+        leafMessageId: session?.lastUserMessageId ?? null,
+        handoffFiles: capture.handoffFiles,
+        envelopePhases: [...this.envelopes.keys()],
+        envelopeIds: this.envelopeIdsInEffect(),
+        files: capture.files,
+        truncated: capture.truncated,
+        omittedPaths: capture.omittedPaths,
+        bytesStored: capture.bytesStored,
+      });
+    } catch (e) {
+      tracer.event({
+        runId,
+        // A phase with no queued row has no id to file the failure under; the
+        // run-level event still records that a checkpoint was missed.
+        phaseId: this.phaseIds.get(phase.name) ?? null,
+        type: 'error',
+        name: 'checkpoint',
+        payload: { phase: phase.name, message: (e as Error).message },
+      });
+    }
+  }
+
+  /**
+   * The envelope *row* behind each in-effect envelope, by phase name.
+   *
+   * `this.envelopes` is keyed by phase name and holds one parsed envelope per
+   * completed phase, but `recordEnvelope` is a plain insert: a phase re-entered
+   * through `feedbackTo` leaves several rows on the same `phase_id`, only the
+   * last valid one of which is what the map holds. Naming that row is what lets
+   * a reader tell which envelope a given generation actually ran against.
+   */
+  private envelopeIdsInEffect(): Record<string, string> {
+    const byPhaseId = new Map<string, string>();
+    for (const envelope of this.deps.tracer.envelopes(this.deps.runId)) {
+      // Rows arrive in created_at order, so the last valid one wins.
+      if (envelope.valid) byPhaseId.set(envelope.phaseId, envelope.envelopeId);
+    }
+    const out: Record<string, string> = {};
+    for (const name of this.envelopes.keys()) {
+      const envelopeId = byPhaseId.get(this.phaseIds.get(name) ?? '');
+      if (envelopeId) out[name] = envelopeId;
+    }
+    return out;
+  }
+
+  /** The model this phase's agent will actually run on, resolved as the runner resolves it. */
+  private appointedModel(phase: PhaseDef): string | null {
+    if (phase.kind !== 'agent') return null;
+    if (phase.model && phase.model !== 'inherit') return phase.model;
+    const agent = this.agents.find((a) => a.name === phase.agent);
+    if (!agent) return null;
+    return resolveAgentExecution(agent, {
+      model: this.deps.defaultModel,
+      reasoningEffort: this.deps.defaultReasoningEffort ?? 'medium',
+    }).model;
+  }
+
+  private persistedSessionId(agent: string | undefined): string | null {
+    if (!agent) return null;
+    const row = this.deps.tracer
+      .agentSessions(this.deps.runId)
+      .find((session) => session.agent === agent);
+    return row?.agentSessionId ?? null;
+  }
+
   private async runPhase(phase: PhaseDef): Promise<PhaseJump> {
     const runner = (this.runners as Partial<Record<PhaseKind, PhaseRunner>>)[phase.kind];
     // PhaseKind is a closed union, so a missing runner means a pipeline stored a
     // kind this build does not have. Keep failing loudly rather than skipping.
     if (!runner) return { kind: 'abort', detail: `unknown phase kind for "${phase.name}"` };
-    return runner.run(phase, this.ctx());
+    try {
+      return await runner.run(phase, this.ctx());
+    } finally {
+      // The note describes the attempt the operator killed, so it belongs to
+      // this entry into the phase and no other. A later `feedbackTo` can send
+      // the pipeline back here, and telling the agent it is recovering from an
+      // interruption that it has meanwhile already redone would be false.
+      // Retries and corrections live inside the call above, so they still see
+      // it.
+      this.recoveryNotes.delete(phase.name);
+    }
   }
 
   private ctx(): RunContext {
@@ -704,6 +942,7 @@ export class Executor {
       envelopes: this.envelopes,
       commandResults: this.commandResults,
       feedback: this.feedback,
+      recoveryNotes: this.recoveryNotes,
       commandDrift: this.commandDrift,
       healing: this.deps.healing ?? null,
       cancelled: () => this.cancelled,
@@ -807,9 +1046,15 @@ export class Executor {
       model,
       reasoningEffort: resolved.reasoningEffort,
     };
-    const persistedSession = this.deps.tracer
-      .agentSessions(this.deps.runId)
-      .find((row) => row.agent === agent.name && row.model === model);
+    // A killed phase's agent starts a new conversation: the persisted row is
+    // kept as evidence, it is simply not reopened. Consumed here so the ban
+    // covers this one entry into the phase and nothing after it.
+    const fresh = this.freshSessionAgents.delete(agent.name);
+    const persistedSession = fresh
+      ? undefined
+      : this.deps.tracer
+          .agentSessions(this.deps.runId)
+          .find((row) => row.agent === agent.name && row.model === model);
     const session = new AgentSession(effectiveAgent, {
       runId: this.deps.runId,
       worktree: this.cwd,
@@ -817,9 +1062,37 @@ export class Executor {
       protectedPaths: this.deps.project.protectedPaths,
       existingSessionId: persistedSession?.agentSessionId,
       transport: (req) => this.transportFor(req),
+      ...(fresh ? { onOpened: (id) => this.noteRecoveredSession(agent.name, id) } : {}),
     });
     this.sessions.set(agent.name, session);
     return session;
+  }
+
+  /**
+   * Completes the recovery event once the fresh session has an id.
+   *
+   * A session opens lazily, so the successor id only exists after the phase's
+   * first turn. The event is patched rather than duplicated, so a reader sees
+   * one row naming both the abandoned conversation and the one that replaced
+   * it.
+   *
+   * Written up front and patched, rather than written once at open: `reopenRun`
+   * overwrites the terminal status in place, so between the resume and the
+   * first turn this event is the only record anywhere that the run had been
+   * killed. Deferring it would mean a run killed again — or a crash — before
+   * that turn leaves no trace of the first kill at all.
+   *
+   * The cost is that `events.jsonl` keeps the pre-patch line, since
+   * `patchEvent` updates only the queryable mirror. That is how every streamed
+   * row already behaves (assistant text, tool calls), so the JSONL is a
+   * first-frame log rather than a settled one; SQLite is the read path for
+   * both the renderer and Companion.
+   */
+  private noteRecoveredSession(agent: string, newSessionId: string | null): void {
+    const pending = this.recovery;
+    if (!pending || pending.agent !== agent) return;
+    this.recovery = null;
+    this.deps.tracer.patchEvent(pending.eventId, { newSessionId });
   }
 
   /**
@@ -896,9 +1169,10 @@ export class Executor {
    * Status, notification, and the exit banner settle here together, so they
    * cannot disagree about what happened.
    */
-  private finish(status: RunStatus, detail: string): RunOutcome {
+  private async finish(status: RunStatus, detail: string): Promise<RunOutcome> {
     const { tracer, runId, project } = this.deps;
     tracer.finishRun(runId, status, detail);
+    await this.advanceSource(status === 'accepted' ? 'completed' : 'failed');
 
     let settleDetail = detail;
     const handle = this.handle;
@@ -940,6 +1214,10 @@ export class Executor {
       merged: false,
       detail: settleDetail,
     };
+  }
+
+  private async advanceSource(stage: RunSourceStage): Promise<void> {
+    await this.deps.sourceLifecycle?.advance(stage);
   }
 }
 

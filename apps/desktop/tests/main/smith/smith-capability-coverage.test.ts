@@ -33,6 +33,7 @@ describe('Smith capability coverage', () => {
       mode: 'approval',
     });
     expect(SMITH_CAPABILITY_COVERAGE[IPC.bridgeSetApiKey]?.mode).toBe('secure');
+    expect(SMITH_CAPABILITY_COVERAGE[IPC.linearSetApiKey]?.mode).toBe('secure');
     expect(SMITH_CAPABILITY_COVERAGE[IPC.companionPairingPayload]?.mode).toBe('secure');
   });
 

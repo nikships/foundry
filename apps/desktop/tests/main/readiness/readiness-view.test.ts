@@ -14,6 +14,7 @@ import {
   readinessBanner,
   readinessExitAction,
   readinessFailureNote,
+  showReadinessOnRuns,
 } from '@renderer/view-models/readiness-view.js';
 
 function marker(summary: string): AgentReadyMarker {
@@ -261,5 +262,20 @@ describe('readinessBanner', () => {
 
   it('ignores a blank note', () => {
     expect(readinessBanner(inspect(), { note: '   ' }).message).toMatch(/not agent-ready/);
+  });
+});
+
+describe('showReadinessOnRuns', () => {
+  it('hides a ready project', () => {
+    expect(
+      showReadinessOnRuns(
+        readinessBanner(inspect({ ready: true, markerValid: true, marker: marker('Ready.') })),
+      ),
+    ).toBe(false);
+  });
+
+  it('shows a not-ready verdict and an in-flight check', () => {
+    expect(showReadinessOnRuns(readinessBanner(inspect()))).toBe(true);
+    expect(showReadinessOnRuns(readinessBanner(inspect(), { checking: true }))).toBe(true);
   });
 });

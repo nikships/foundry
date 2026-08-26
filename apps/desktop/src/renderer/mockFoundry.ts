@@ -74,6 +74,8 @@ const MOCK_RUNS: RunRow[] = [
     prUrl: 'https://github.com/foundry-demo/demo/pull/12',
     issueNumber: null,
     issueUrl: null,
+    source: null,
+    sourceSyncError: null,
     merged: false,
     archived: false,
     mode: 'pi',
@@ -107,6 +109,8 @@ const MOCK_RUNS: RunRow[] = [
     prUrl: null,
     issueNumber: null,
     issueUrl: null,
+    source: null,
+    sourceSyncError: null,
     merged: false,
     archived: false,
     mode: 'pi',
@@ -187,6 +191,11 @@ function defaultMockSettings(): AppSettings {
     retentionDays: null,
     onboarded: true,
     hiddenModelIds: [],
+    linearStatusMapping: {
+      started: 'linear-state-progress',
+      completed: 'linear-state-done',
+      failed: 'linear-state-failed',
+    },
   };
 }
 
@@ -561,6 +570,34 @@ export function createMockFoundryApi(): FoundryApi {
       clearApiKey: async () => ({ ok: false, detail: 'Web preview' }),
       storedKeys: async () => [{ providerId: 'anthropic', type: 'api_key' }],
     },
+    linear: {
+      state: async () => ({ keySet: true, detail: 'Web preview uses fixture Linear data.' }),
+      setApiKey: async () => ({ ok: false, detail: 'Web preview' }),
+      test: async () => ({ ok: true, detail: 'Connected to Linear (fixture).' }),
+      clearApiKey: async () => ({ ok: false, detail: 'Web preview' }),
+      issues: async () => [
+        {
+          id: 'linear-demo-1',
+          identifier: 'FOU-190',
+          title: 'Add Linear ticket orchestration integration',
+          description: 'Connect a Linear issue to an existing Foundry pipeline.',
+          url: 'https://linear.app/foundry/issue/FOU-190',
+          updatedAt: nowIso(-600_000),
+          team: { id: 'linear-team-demo', name: 'Foundry' },
+          state: { id: 'linear-state-todo', name: 'Todo', type: 'unstarted' },
+        },
+      ],
+      workflowStates: async () => [
+        { id: 'linear-state-todo', name: 'Todo', type: 'unstarted' },
+        { id: 'linear-state-progress', name: 'In Progress', type: 'started' },
+        { id: 'linear-state-done', name: 'Done', type: 'completed' },
+        { id: 'linear-state-failed', name: 'Canceled', type: 'canceled' },
+      ],
+      startRun: async () => ({
+        ok: false as const,
+        issues: [{ level: 'error' as const, where: 'web-preview', message: UNAVAILABLE }],
+      }),
+    },
     runs: {
       start: async () => ({
         ok: false as const,
@@ -620,6 +657,17 @@ export function createMockFoundryApi(): FoundryApi {
       exportPlan: async () => ({
         ok: false,
         issues: [{ level: 'error', where: 'web-preview', message: UNAVAILABLE }],
+      }),
+      restorableCheckpoints: async (_projectId, runId) => ({
+        runId,
+        refusal: 'no_checkpoints' as const,
+        detail: UNAVAILABLE,
+        checkpoints: [],
+      }),
+      restoreCheckpoint: async () => ({
+        ok: false,
+        refusal: 'worktree_missing' as const,
+        detail: UNAVAILABLE,
       }),
     },
     orchestrator: {

@@ -16,6 +16,8 @@ import {
   type AgentDef,
   type EnvelopeDef,
   type GeneratedRunPlan,
+  type ModelInfo,
+  type PhaseDef,
   type PipelineDef,
   type ProjectCommand,
   type ReasoningEffort,
@@ -36,6 +38,7 @@ Composition rules (enforced by code where possible; follow all of them):
 - Always rewrite the operator's prompt into a full brief first. That brief is "refinedRequest" and becomes the run request; keep every constraint the operator stated.
 - Every code-editing agent phase is followed by proof before any commit: code phases running {"ref": ...} commands that exist in the project commands (test, typecheck, lint).
 - Reviewer/verifier agent phases carry the "verdict_consistent" and "disapproval_halts" gates.
+- **Every agent phase names its own model.** Set "model" on the phase to one of the enabled model ids you are shown, chosen for that phase's work. Never omit it, never write "inherit", and never leave the choice to the agent, the roster, or the install default — a plan with an unnamed model is rejected. Weigh the phase: give design, review, and hard implementation the strongest reasoning you were given, and hand mechanical or narrowly scoped work a fast, cheap one.
 - A code phase's "feedbackTo" names the earlier agent phase that owns the fix.
 - Acceptance is {"kind":"envelope_status","phase":<final PR phase>} when the plan ends in a PR phase, otherwise {"kind":"all_phases_pass"}.
 - Prefer roster agents when one fits. A synthesized agent gets a one-line purpose, a tight "writes" boundary (only the paths its phase must touch), and never the name of a roster agent.
@@ -49,8 +52,8 @@ Reply with a single JSON object and nothing else:
   "agents": [ <synthesized agents only; empty when the roster covers every phase> ]
 }
 
-Each synthesized agent: {"name","purpose","systemPrompt","userPrompt","writes","envelope"} plus optional "model" (omit to inherit the install default), "reasoningEffort", "toolProfile" ("read-only" for reviewers).
-Each phase follows the pipeline schema you were shown in the examples: {"name","kind","description"} plus "agent"/"prompt"/"envelope"/"gates" for agent phases, "command"/"feedbackTo"/"heal" for code phases, "question" for engineer phases.`;
+Each synthesized agent: {"name","purpose","systemPrompt","userPrompt","writes","envelope"} plus optional "reasoningEffort" and "toolProfile" ("read-only" for reviewers). Omit "model" on an agent — the phase it runs in is what names the model.
+Each phase follows the pipeline schema you were shown in the examples: {"name","kind","description"} plus "agent"/"model"/"prompt"/"envelope"/"gates" for agent phases, "command"/"feedbackTo"/"heal" for code phases, "question" for engineer phases.`;
 
 export interface PlanPromptInputs {
   request: string;
@@ -58,6 +61,8 @@ export interface PlanPromptInputs {
   commands: ProjectCommand[];
   roster: AgentDef[];
   envelopeDefs: EnvelopeDef[];
+  /** The models this install can actually reach, minus the ones the operator hid. */
+  models: ModelInfo[];
   /** Whether gh can open PRs here, which decides the acceptance guidance. */
   ghAvailable?: boolean;
 }
@@ -71,6 +76,20 @@ function rosterLines(roster: AgentDef[]): string {
           a.writes === null ? 'unrestricted' : a.writes.length ? a.writes.join(', ') : 'read-only'
         })`,
     )
+    .join('\n');
+}
+
+/**
+ * The enabled catalog as the Orchestrator must copy it: the exact id, plus the
+ * facts that let it spend a strong model where the work is hard.
+ */
+function modelLines(models: ModelInfo[]): string {
+  return models
+    .map((model) => {
+      const facts = [`efforts ${model.supportedReasoningEfforts.join('/')}`];
+      if (model.contextWindow) facts.push(`${Math.round(model.contextWindow / 1000)}k context`);
+      return `- ${model.id} — ${model.displayName} (${facts.join('; ')})`;
+    })
     .join('\n');
 }
 
@@ -96,6 +115,11 @@ export function buildPlanPrompt(inputs: PlanPromptInputs): string {
     '',
     '## Roster agents (prefer these when one fits)',
     inputs.roster.length ? rosterLines(inputs.roster) : '(empty roster)',
+    '',
+    '## Enabled models (every agent phase must name one of these ids verbatim in "model")',
+    inputs.models.length
+      ? modelLines(inputs.models)
+      : '(this install reaches no model right now — name no "model" on any phase)',
     '',
     '## Envelopes',
     Object.entries(BUILTIN_ENVELOPE_BLURBS)
@@ -250,7 +274,59 @@ export interface PlanRailsInputs {
   roster: AgentDef[];
   commandNames: string[];
   knownEnvelopes: string[];
+  /**
+   * Ids of the models this install can reach, minus the ones the operator hid.
+   * An empty list means the catalog could not be read at all, which is not the
+   * plan's fault: the per-phase rail stands down rather than refusing every
+   * plan an unreachable catalog would produce.
+   */
+  enabledModelIds?: string[];
   scaffold?: boolean;
+}
+
+/** Whether a phase's model names something the install actually offers. */
+function modelIsEnabled(wanted: string, enabled: readonly string[]): boolean {
+  return enabled.some((id) => id === wanted || id.slice(id.indexOf('/') + 1) === wanted);
+}
+
+/**
+ * Every agent phase names its own model, and names one the operator enabled.
+ *
+ * Inheritance is the thing being prevented: a phase that declines to choose
+ * silently falls back to the install default, which is exactly the invisible
+ * appointment the Orchestrator is supposed to make explicitly. Checked here
+ * rather than in the pipeline store because a hand-built pipeline may still
+ * inherit — this rule belongs to generated plans.
+ *
+ * An empty `enabledModelIds` means the catalog could not be read at all, and
+ * the whole rail stands down: refusing every plan over an install-level
+ * failure would leave the operator an error they cannot act on from the card.
+ */
+export function phaseModelIssues(
+  phases: readonly PhaseDef[],
+  enabledModelIds: readonly string[],
+  indexOffset = 0,
+): ValidationIssue[] {
+  if (!enabledModelIds.length) return [];
+  const issues: ValidationIssue[] = [];
+  phases.forEach((phase, index) => {
+    if (phase.kind !== 'agent') return;
+    const where = `phases[${index + indexOffset}] ${phase.name}`;
+    if (!phase.model || phase.model === 'inherit') {
+      issues.push({
+        level: 'error',
+        where,
+        message: 'an agent phase must name its own model rather than inheriting one',
+      });
+    } else if (!modelIsEnabled(phase.model, enabledModelIds)) {
+      issues.push({
+        level: 'error',
+        where,
+        message: `model "${phase.model}" is not one of this install's enabled models`,
+      });
+    }
+  });
+  return issues;
 }
 
 export type PlanRailsResult =
@@ -287,6 +363,7 @@ export function checkPlanRails(reply: ParsedPlanReply, inputs: PlanRailsInputs):
     ...preflightForRun(reply.pipeline, union, inputs.commandNames, inputs.knownEnvelopes, {
       scaffold: inputs.scaffold,
     }),
+    ...phaseModelIssues(reply.pipeline.phases, inputs.enabledModelIds ?? []),
   );
   const errors = issues.filter((i) => i.level === 'error');
   if (errors.length) return { ok: false, issues: errors };

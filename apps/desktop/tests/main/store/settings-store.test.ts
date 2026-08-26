@@ -67,6 +67,31 @@ describe('unknown keys on disk', () => {
   });
 });
 
+describe('Linear workflow mapping', () => {
+  it('defaults legacy installs to an unconfigured mapping', () => {
+    const stored = { ...defaultSettings() } as Record<string, unknown>;
+    delete stored.linearStatusMapping;
+    expect(migrate(stored).linearStatusMapping).toEqual({
+      started: null,
+      completed: null,
+      failed: null,
+    });
+  });
+
+  it('persists workflow state IDs but repairs malformed values', () => {
+    const store = seed(defaultSettings() as unknown as Record<string, unknown>);
+    const mapping = { started: 'state-started', completed: 'state-done', failed: 'state-failed' };
+    expect(store.patch({ linearStatusMapping: mapping })).toMatchObject({ ok: true });
+    expect(store.get().linearStatusMapping).toEqual(mapping);
+    expect(
+      migrate({
+        ...defaultSettings(),
+        linearStatusMapping: { started: '', completed: 7, failed: 'state-failed' } as never,
+      }).linearStatusMapping,
+    ).toEqual({ started: null, completed: null, failed: 'state-failed' });
+  });
+});
+
 describe('theme', () => {
   it('defaults fresh and legacy installs to dark', () => {
     expect(defaultSettings().theme).toBe('dark');

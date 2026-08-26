@@ -52,6 +52,8 @@ import { saveProposal } from './ipc/smith.js';
 import { notifyNeedsInput, notifyOutcome, setDockBadge } from './system/notify.js';
 import { getBridgeService, shutdownBridgeService, type BridgeService } from './bridge/service.js';
 import { DEFAULT_BRIDGE_PORT } from './bridge/manager.js';
+import { linearCredentials } from './linear/credentials.js';
+import { LinearService } from './linear/service.js';
 
 export interface Scope {
   projectId?: string;
@@ -79,6 +81,7 @@ export class AppContext {
   readonly smith: SmithService;
   readonly companion: CompanionHost;
   readonly bridge: BridgeService;
+  readonly linear: LinearService;
   readonly version: string;
   /**
    * How every non-run agent turn is opened — repository context, detection,
@@ -109,6 +112,7 @@ export class AppContext {
     this.roster = new RosterStore(supportDir);
     this.pipelines = new PipelineStore(supportDir);
     this.envelopes = new EnvelopeStore(supportDir);
+    this.linear = new LinearService(linearCredentials(supportDir));
     this.version = app.getVersion();
     // Main starts this after reclaiming any crash-orphaned Bridge and before it
     // opens the first window. Construction stays side-effect free so startup
@@ -151,6 +155,14 @@ export class AppContext {
       projectById: (id) => this.projects.get(id),
       saveProject: (next) => this.projects.save(next),
       notifySettings: () => this.broadcast(IPC.eventSettingsChanged),
+      sourceLifecycle: (source, tracer, runId) =>
+        source.kind === 'linear'
+          ? this.linear.lifecycle({
+              source,
+              tracer,
+              runId,
+            })
+          : null,
     });
 
     this.registry.on('needs-input', (interrupt: { title: string; body: string }) => {

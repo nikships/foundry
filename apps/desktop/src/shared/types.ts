@@ -344,6 +344,18 @@ export interface AppSettings {
    * catalog reads.
    */
   hiddenModelIds: string[];
+  /**
+   * Linear workflow-state IDs for the three run lifecycle stages. IDs, rather
+   * than names, are stored because each Linear team owns its own workflow.
+   * The selected issue's team states are re-fetched before a run starts.
+   */
+  linearStatusMapping: LinearStatusMapping;
+}
+
+export interface LinearStatusMapping {
+  started: string | null;
+  completed: string | null;
+  failed: string | null;
 }
 
 /** Engine retry policy is intentionally fixed rather than operator configuration. */
@@ -662,6 +674,10 @@ export interface RunRow {
   /** Set once a GitHub issue has been filed by this run. */
   issueNumber: number | null;
   issueUrl: string | null;
+  /** Immutable external source captured before the run entered preflight. */
+  source: RunSource | null;
+  /** Latest external status-sync failure, also recorded as an error event. */
+  sourceSyncError: string | null;
   merged: boolean;
   archived: boolean;
   mode: RunMode;
@@ -674,6 +690,85 @@ export interface RunRow {
   totalTokens: number;
   /** Denormalised for the run list; cheap because phases are few. */
   phaseSummary?: { name: string; status: PhaseStatus; kind: PhaseKind }[];
+}
+
+export interface LinearWorkflowState {
+  id: string;
+  name: string;
+  type: string;
+}
+
+export interface LinearIssueSnapshot {
+  id: string;
+  identifier: string;
+  title: string;
+  description: string;
+  url: string;
+  updatedAt: string;
+  team: { id: string; name: string };
+  state: LinearWorkflowState;
+}
+
+export interface LinearRunSource {
+  kind: 'linear';
+  trigger: 'manual';
+  issueId: string;
+  url: string;
+  /** Linear's `updatedAt` value from the fetch that supplied the run brief. */
+  revision: string;
+  /** Validated team workflow mapping frozen for this run's full lifecycle. */
+  statusMapping: LinearStatusMapping;
+  snapshot: LinearIssueSnapshot;
+}
+
+export type RunSource = LinearRunSource;
+
+/**
+ * How a continued run treats the interrupted phase's agent conversation.
+ *
+ * `reopen_session` is the correction workflow a rejected or failed run gets:
+ * the agent's persisted session is reopened, so the retry costs one message on
+ * a conversation that already holds the phase.
+ *
+ * `fresh_session` is what a killed run gets. The operator stopped that turn
+ * mid-flight, so its conversation ends on a truncated exchange no one asked
+ * for; reopening it would make the killed turn the context the retry reasons
+ * from. The interrupted phase's agent starts a new session instead, and the
+ * worktree — partial writes included — is what carries the work over.
+ */
+export type ContinueStrategy = 'reopen_session' | 'fresh_session';
+
+/** Why a run of this status cannot be continued. */
+export const CONTINUE_STATUS_REFUSAL = 'only a rejected, failed, or killed run can be continued';
+
+/** Whether a settled run of this status can be continued at all. */
+export function continuableStatus(status: RunStatus): boolean {
+  return status === 'killed' || status === 'rejected' || status === 'failed';
+}
+
+/**
+ * How this run would be continued, or null when it cannot be.
+ *
+ * The interrupted phase decides as much as the status does: only an agent
+ * phase has a conversation to abandon. A killed `code` or `engineer` phase is
+ * still continuable — a shell command simply re-runs — but nothing about it is
+ * a "fresh session", so claiming one would put a false statement in the trace
+ * and in front of the operator. Every surface (the executor, the registry's
+ * gate, the banner, the Companion card) reads this one rule.
+ *
+ * The kind is required rather than optional: a caller that has not yet found
+ * the interrupted phase is asking a different question, and
+ * {@link continuableStatus} is the one that answers it. An optional parameter
+ * would let that caller receive a strategy silently computed from a phase it
+ * never looked at.
+ */
+export function continueStrategyFor(
+  status: RunStatus,
+  interruptedKind: PhaseKind | undefined,
+): ContinueStrategy | null {
+  if (!continuableStatus(status)) return null;
+  if (status !== 'killed') return 'reopen_session';
+  return interruptedKind === 'agent' ? 'fresh_session' : 'reopen_session';
 }
 
 export interface PhaseRow {
@@ -772,6 +867,312 @@ export interface AgentSessionRow {
   contextWindow: number;
   createdAt: string;
   lastUsedAt: string;
+}
+
+/**
+ * How a checkpointed path stood at phase start.
+ *
+ * `modified` is tracked-and-dirty, `untracked` is not in the commit at all,
+ * and `deleted` was absent from disk. `deleted` does not imply `headSha`
+ * carries the path: an added-then-removed (`AD`) or renamed-away (`RD`) path
+ * is absent from HEAD too, so restoring one means ensuring it stays absent,
+ * not checking it out.
+ */
+export type PhaseCheckpointFileState = 'modified' | 'untracked' | 'deleted';
+
+/**
+ * Why a file's phase-start content is missing from the checkpoint payload.
+ *
+ * Size is not a reason: a checkpoint captures the dirty set in full. The only
+ * shortfall left is a path that genuinely could not be read.
+ */
+export type PhaseCheckpointOmission = 'unreadable';
+
+/**
+ * One path as it stood when the phase began.
+ *
+ * Content, not just a hash: a hash can only detect that a file drifted, and
+ * restoring a dirty tracked file to its phase-start state needs the bytes.
+ * `omitted` is what makes a gap legible instead of silent.
+ */
+export interface PhaseCheckpointFile {
+  path: string;
+  state: PhaseCheckpointFileState;
+  contentHash: string;
+  size: number;
+  content?: string;
+  encoding?: 'utf8' | 'base64';
+  omitted?: PhaseCheckpointOmission;
+  /**
+   * For a rename destination, where it came from. The source is recorded
+   * separately as its own `deleted` entry, so a restore puts back one file
+   * rather than resurrecting both sides.
+   */
+  renamedFrom?: string;
+}
+
+/**
+ * The bulk half of a checkpoint, kept as JSON under the run directory so the
+ * SQLite row stays small. Written before the phase runs and never rewritten.
+ */
+export interface PhaseCheckpointPayload {
+  checkpointId: string;
+  runId: string;
+  phaseId: string;
+  phaseName: string;
+  generation: number;
+  createdAt: string;
+  /** Worktree HEAD when the phase began. */
+  headSha: string;
+  branch: string | null;
+  worktreePath: string;
+  /**
+   * False when the run has no worktree, in which case `worktreePath` is the
+   * operator's own checkout and this payload carries their uncommitted work.
+   * A restore there writes to the checkout, not to a discardable worktree, so
+   * it is a materially different act and split 2 must not treat the two alike.
+   */
+  isolated: boolean;
+  /** The model appointed to this phase, or null for a phase with no agent. */
+  model: string | null;
+  agent: string | null;
+  agentSessionId: string | null;
+  /** Session leaf: the agent's last user-message id before the phase began. */
+  leafMessageId: string | null;
+  /** Handoff files present in the worktree at phase start, worktree-relative. */
+  handoffFiles: string[];
+  /** Phases whose envelope was already in effect when this phase began. */
+  envelopePhases: string[];
+  /**
+   * The envelope row id behind each of those phases, keyed by phase name.
+   *
+   * A phase re-entered through `feedbackTo` leaves several envelope rows on one
+   * `phase_id`, so the phase name alone cannot say which envelope a generation
+   * ran against. Absent for a phase whose row could not be resolved.
+   */
+  envelopeIds: Record<string, string>;
+  files: PhaseCheckpointFile[];
+  /**
+   * True when the record cannot reproduce phase start: a path's content is
+   * missing, or the dirty set itself could not be fully enumerated.
+   */
+  truncated: boolean;
+  /** Paths whose content was not stored, in capture order. */
+  omittedPaths: string[];
+  /** Bytes of phase-start content actually kept. */
+  bytesStored: number;
+}
+
+/**
+ * A checkpoint's index row. One per phase attempt: a re-entry is a new
+ * generation and never overwrites or removes an earlier one.
+ */
+export interface PhaseCheckpointRow {
+  checkpointId: string;
+  runId: string;
+  phaseId: string;
+  phaseName: string;
+  phaseKind: PhaseKind;
+  /** 1 for the first attempt at this phase, incremented on every re-entry. */
+  generation: number;
+  headSha: string;
+  model: string | null;
+  agent: string | null;
+  agentSessionId: string | null;
+  leafMessageId: string | null;
+  fileCount: number;
+  untrackedCount: number;
+  bytesStored: number;
+  truncated: boolean;
+  /** False once the payload file is gone, e.g. the run directory was pruned. */
+  payloadPresent: boolean;
+  /**
+   * False when the payload cannot reproduce phase-start byte for byte, so a
+   * restore has to refuse rather than claim an exactness it does not have.
+   */
+  exactRestorePossible: boolean;
+  /** Payload location, relative to the run directory. */
+  payloadPath: string;
+  changeId: number;
+  createdAt: string;
+}
+
+/**
+ * Why a restore was refused. One reason per cause: an operator told "restore
+ * failed" learns nothing, and a caller that cannot distinguish "the worktree
+ * is gone" from "the record is truncated" cannot offer the right next step.
+ */
+export type RestoreRefusal =
+  | 'run_not_found'
+  | 'run_running'
+  | 'run_not_terminal'
+  | 'run_merged'
+  | 'worktree_missing'
+  | 'no_checkpoints'
+  | 'checkpoint_not_found'
+  | 'checkpoint_payload_missing'
+  | 'checkpoint_head_missing'
+  | 'checkpoint_commit_missing'
+  | 'partial_not_accepted'
+  | 'branch_mismatch'
+  | 'reset_failed';
+
+/**
+ * The refusal in the operator's words, shared so every surface says the same
+ * thing. A caller may append specifics (which paths, which commits); it must
+ * not restate the reason in its own words.
+ */
+export const RESTORE_REFUSAL_COPY: Record<RestoreRefusal, string> = {
+  run_not_found: 'this run is no longer in the trace',
+  run_running: 'this run is still running — stop it before restoring a checkpoint',
+  run_not_terminal: 'only a killed, failed, or rejected run can be restored',
+  run_merged: 'a merged run cannot be restored',
+  worktree_missing: 'this run’s worktree is gone, so there is nowhere to restore into',
+  no_checkpoints: 'this run recorded no phase checkpoints, so there is nothing to restore to',
+  checkpoint_not_found: 'that checkpoint is not one this run recorded',
+  checkpoint_payload_missing: 'that checkpoint’s recorded contents are no longer on disk',
+  checkpoint_head_missing: 'that checkpoint never recorded the commit its phase started from',
+  checkpoint_commit_missing:
+    'the commit that checkpoint started from no longer exists in this worktree',
+  partial_not_accepted:
+    'an exact restore is impossible here, so a partial restore has to be accepted explicitly',
+  branch_mismatch:
+    'this run’s worktree is no longer on its own branch, so a reset would move another ref',
+  reset_failed: 'git refused to move the run branch back to the checkpoint’s commit',
+};
+
+/**
+ * One checkpoint as a restore target, labelled for a picker.
+ *
+ * `exactRestorePossible` and `restorable` are deliberately separate: a
+ * truncated record can still put most of the tree back, which is a choice for
+ * the operator to accept rather than one this layer makes for them.
+ */
+export interface RestorableCheckpoint {
+  checkpointId: string;
+  runId: string;
+  phaseId: string;
+  phaseName: string;
+  phaseKind: PhaseKind;
+  /** 1 for the first attempt at this phase; a re-entry is a later generation. */
+  generation: number;
+  createdAt: string;
+  headSha: string;
+  model: string | null;
+  agent: string | null;
+  fileCount: number;
+  untrackedCount: number;
+  bytesStored: number;
+  /** False when nothing can be put back at all, exactly or partially. */
+  restorable: boolean;
+  /** True when the record reproduces phase start byte for byte. */
+  exactRestorePossible: boolean;
+  /** Why an exact restore is impossible. Absent exactly when it is possible. */
+  blocker?: RestoreRefusal;
+  /** Paths whose phase-start content was never stored, so drift is only detectable. */
+  omittedPaths: string[];
+  /** Commits the run branch has taken since; a restore moves them off the branch. */
+  commitsSince: number;
+  /** Abbreviated shas a restore would move off, newest first, capped. */
+  commitsSinceShas: string[];
+}
+
+/**
+ * Every checkpoint a run recorded, plus whether the run itself may be
+ * restored. The two are separate answers: a merged run's checkpoints are still
+ * readable history, and saying so is more useful than an empty list.
+ */
+export interface RestorableCheckpointList {
+  runId: string;
+  /** Null when the run is eligible; otherwise why it is not. */
+  refusal: RestoreRefusal | null;
+  /** The refusal in the operator's words, or an empty string when eligible. */
+  detail: string;
+  checkpoints: RestorableCheckpoint[];
+}
+
+export interface RestoreRunInput {
+  runId: string;
+  checkpointId: string;
+  /**
+   * Explicit acceptance of a restore that cannot be exact. A truncated
+   * checkpoint is refused without it: a caller that did not ask for a partial
+   * restore must not be handed one.
+   */
+  acceptPartial?: boolean;
+}
+
+/**
+ * An agent whose runtime session pointer a restore dropped, and the
+ * conversation it stepped away from.
+ *
+ * A restore moves the tree out from under every session the run holds, so it
+ * is never only the restored phase's own agent: a later phase's hung
+ * conversation would otherwise be reopened by the next Continue, which is the
+ * exact thing the operator restored to escape.
+ */
+export interface RestoredAgentSession {
+  agent: string;
+  /** The abandoned conversation. Kept as evidence, never deleted. */
+  previousSessionId: string | null;
+}
+
+/** What a completed restore did, in terms an operator can verify against git. */
+export interface RestoreRecord {
+  checkpointId: string;
+  phaseId: string;
+  phaseName: string;
+  generation: number;
+  /** Where the run branch stood before the restore moved it. */
+  previousHeadSha: string;
+  /** The commit the phase started from, now the branch tip again. */
+  headSha: string;
+  /**
+   * Commits the restore moved off the branch, newest first. They stay
+   * reachable through the branch's reflog; nothing here deletes a commit.
+   *
+   * Capped, so it can be shorter than `droppedCommitCount`. A confirmation
+   * counts with the number and quotes with the list.
+   */
+  droppedCommits: string[];
+  /** How many commits the restore moved off, uncapped. */
+  droppedCommitCount: number;
+  /** Files written back to their phase-start bytes. */
+  filesRestored: number;
+  /** Paths removed because phase start did not have them. */
+  filesRemoved: number;
+  /** Paths whose phase-start content was never recorded or could not be written. */
+  omittedPaths: string[];
+  /** True when the tree is close rather than identical, whether or not a path is named. */
+  partial: boolean;
+  /**
+   * False when the drift to revert could not be listed in full, so paths phase
+   * start did not have may still stand and cannot be named.
+   */
+  driftEnumerated: boolean;
+  /**
+   * Every agent whose session pointer this restore dropped, so the next
+   * Continue opens a new conversation for each rather than reopening one the
+   * restored tree no longer matches.
+   */
+  freshSessions: RestoredAgentSession[];
+  /** The run status this restore was performed from. */
+  fromStatus: RunStatus;
+}
+
+export interface RestoreResult {
+  ok: boolean;
+  /** One sentence for the operator, refusal or confirmation alike. */
+  detail: string;
+  /** Present exactly when `ok` is false. */
+  refusal?: RestoreRefusal;
+  /**
+   * Present whenever the worktree was moved: always on success, and also on
+   * the one refusal that can happen after the reset — a partial apply the
+   * caller did not accept. A refusal that carries a record is a report of what
+   * did happen, not a claim that it succeeded.
+   */
+  restored?: RestoreRecord;
 }
 
 /**

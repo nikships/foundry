@@ -45,6 +45,7 @@ npm run build && npm run test:e2e # Electron UI smoke (macOS GUI; not in npm run
 - **Tracer is the sole SQLite writer.** No other module writes SQLite directly. See `trace/AGENTS.md` for WAL, `change_id` cursor, and in-place patch rules.
 - **Worktree isolation.** Creation uses `.foundry-worktrees/<runId>` and `foundry/<runId>`; sweep on launch finalises orphaned `running` runs.
 - **GUI PATH.** `system/env.ts:resolveEnv()` must complete before the first CLI spawn; every spawn uses `spawnEnv()`. See `system/AGENTS.md`.
+- **A generated plan appoints every agent phase's model explicitly.** The Orchestrator is shown the enabled catalog (`pi/enabled-models.ts` — the reachable models minus `hiddenModelIds`, the same answer the picker gets) and must name one on each agent phase; `orchestrator/plan.ts:phaseModelIssues` rejects a phase that omits `model` or writes `inherit`, and rejects an id the install does not enable. That rail runs at plan time, again in `startRun` (the operator may re-cast a phase on the plan card before confirming), and again on a mid-run amendment, which may only re-cast onto a model the confirmed plan already names. An empty catalog stands the whole rail down rather than refusing every plan over an install-level failure.
 
 ## Code Style
 

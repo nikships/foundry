@@ -105,6 +105,13 @@ export const SMITH_CAPABILITY_COVERAGE: Readonly<Record<string, SmithCapabilityC
   [IPC.bridgeSetApiKey]: secure('smith_providers', 'set_api_key'),
   [IPC.bridgeClearApiKey]: approve('smith_providers', 'clear_api_key'),
   [IPC.bridgeStoredKeys]: read('smith_providers', 'stored_keys'),
+  [IPC.linearState]: read('smith_providers', 'linear_state'),
+  [IPC.linearSetApiKey]: secure('smith_providers', 'linear_set_api_key'),
+  [IPC.linearTest]: approve('smith_providers', 'linear_test'),
+  [IPC.linearClearApiKey]: approve('smith_providers', 'linear_clear_api_key'),
+  [IPC.linearIssues]: read('smith_runs', 'linear_issues'),
+  [IPC.linearWorkflowStates]: read('smith_runs', 'linear_workflow_states'),
+  [IPC.linearStartRun]: approve('smith_runs', 'linear_start'),
   [IPC.runsStart]: approve('smith_runs', 'start'),
   [IPC.runsResume]: approve('smith_runs', 'resume'),
   [IPC.runsList]: read('smith_runs', 'list'),
@@ -122,6 +129,10 @@ export const SMITH_CAPABILITY_COVERAGE: Readonly<Record<string, SmithCapabilityC
   [IPC.runsRevealFiles]: approve('smith_runs', 'reveal_files'),
   [IPC.runsPlan]: read('smith_runs', 'plan'),
   [IPC.runsExportPlan]: approve('smith_runs', 'export_plan'),
+  [IPC.runsRestorableCheckpoints]: read('smith_runs', 'checkpoints'),
+  // A restore resets the run branch and overwrites its worktree, so it is an
+  // approval like every other git action, never an immediate read.
+  [IPC.runsRestoreCheckpoint]: approve('smith_runs', 'restore_checkpoint'),
   // Planning spends an agent turn on the operator's model; that is a
   // privileged action even though the plan itself writes nothing.
   [IPC.orchestratorPlan]: approve('smith_runs', 'orchestrator_plan'),

@@ -1,40 +1,52 @@
 import { useMemo } from 'react';
 import type { GeneratedRunPlan, ValidationIssue } from '@shared/types.js';
 import { useApp } from '../../stores/app.js';
+import { useAgentModels } from '../../hooks/useAgentModels.js';
 import { phaseKindColor } from '../../utils/derive.js';
-import { planCardView } from '../../view-models/plan-view.js';
+import { overriddenPhases, planCardView } from '../../view-models/plan-view.js';
+import ModelPicker from '../common/ModelPicker.js';
 import PipelineRibbon from '../pipeline/PipelineRibbon.js';
 import { PhaseGlyph } from '../pipeline/PhaseGlyphs.js';
 import { Button } from '../ui/Button.js';
 import styles from './PlanCard.module.css';
 
 /**
- * The Orchestrator's proposal, laid out for one-click confirmation: the
- * refined brief, the ordered phases, the agents it synthesized, the
- * acceptance rule, and why the pipeline has this shape. Nothing here starts
- * anything — the operator disposes.
+ * The Orchestrator's proposal, laid out for confirmation: the refined brief,
+ * the ordered phases with the model each is appointed to, the agents it
+ * synthesized, the acceptance rule, and why the pipeline has this shape.
+ * Nothing here starts anything — the operator disposes, and may re-cast any
+ * agent phase onto a different model before doing so.
  */
 export default function PlanCard({
   plan,
+  original,
   starting,
   startBlocked,
   issues,
+  onPhaseModelChange,
+  onResetModels,
   onStart,
   onRegenerate,
   onDiscard,
 }: {
   plan: GeneratedRunPlan;
+  /** The plan as the Orchestrator proposed it, before any operator override. */
+  original: GeneratedRunPlan;
   starting: boolean;
   /** Why starting is refused right now, or null when it may proceed. */
   startBlocked: string | null;
   /** Start-time validation failures, shown on the card rather than lost. */
   issues: ValidationIssue[];
+  onPhaseModelChange: (phaseName: string, model: string) => void;
+  onResetModels: () => void;
   onStart: () => void;
   onRegenerate: () => void;
   onDiscard: () => void;
 }): React.JSX.Element {
   const { agentColor } = useApp();
+  const { models, refresh } = useAgentModels();
   const view = useMemo(() => planCardView(plan), [plan]);
+  const overridden = useMemo(() => overriddenPhases(original, plan), [original, plan]);
   const synthColor = (name: string | null): string => {
     if (!name) return 'var(--text-faint)';
     return plan.agents.find((a) => a.name === name)?.color ?? agentColor(name);
@@ -61,7 +73,20 @@ export default function PlanCard({
       </div>
 
       <div className={styles.section}>
-        <p className={styles.label}>Phases</p>
+        <div className={styles.sectionHead}>
+          <p className={styles.label}>Phases</p>
+          {overridden.size > 0 && (
+            <button
+              type="button"
+              className={styles.resetModels}
+              disabled={starting}
+              onClick={onResetModels}
+              data-testid="plan-reset-models"
+            >
+              Restore proposed models
+            </button>
+          )}
+        </div>
         <ol className={styles.phases}>
           {view.phases.map((phase) => {
             const color = phaseKindColor(phase.kind, synthColor(phase.agent));
@@ -87,6 +112,22 @@ export default function PlanCard({
                   </div>
                   <p className={styles.phaseDesc}>{phase.description}</p>
                   {phase.note && <p className={`faint ${styles.phaseNote}`}>{phase.note}</p>}
+                  {phase.model !== null && (
+                    <div className={styles.phaseModel} data-testid={`plan-model-${phase.name}`}>
+                      <span className={styles.phaseModelLabel}>Model</span>
+                      <ModelPicker
+                        value={phase.model}
+                        models={models}
+                        showNotes={false}
+                        disabled={starting}
+                        onChange={(model) => onPhaseModelChange(phase.name, model)}
+                        onRefresh={() => void refresh()}
+                      />
+                      {overridden.has(phase.name) && (
+                        <span className={styles.overridden}>overridden</span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </li>
             );

@@ -58,6 +58,12 @@ export interface AgentSessionDeps {
   protectedPaths: string[];
   /** Persisted runtime session to reopen when a terminal run is continued. */
   existingSessionId?: string | null;
+  /**
+   * Called with the runtime session id the first time this session opens one.
+   * The open is lazy, so a caller that has to record which conversation a
+   * phase actually ran on cannot read it off the constructor.
+   */
+  onOpened?: (sessionId: string | null) => void;
   /** Builds the transport this session drives. Injected, never constructed here. */
   transport: (input: TransportRequest) => AgentTransport;
 }
@@ -120,6 +126,7 @@ export class AgentSession {
   private currentFolder: EventFolder | null = null;
   private currentPhaseId: string | null = null;
   private killed = false;
+  private announcedOpen = false;
 
   constructor(
     private readonly agent: AgentDef,
@@ -189,6 +196,10 @@ export class AgentSession {
     this.transport = transport;
     this.agentSessionId = transport.id;
     this.persistSession();
+    if (!this.announcedOpen) {
+      this.announcedOpen = true;
+      this.deps.onOpened?.(this.agentSessionId);
+    }
     if (this.killed) {
       await this.close();
       throw new RunKilledError();

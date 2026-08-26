@@ -28,6 +28,13 @@
   color: var(--text-dim);
   line-height: var(--leading);
   margin: 0;
+  /* Callers compose multi-fact prompts with newlines (a restore names the
+     phase, the commits it resets off, and the paths it cannot put back;
+     a merge appends its command drift). Collapsing those into one block is
+     how a dialog someone has to decide on becomes unreadable. `pre-line`
+     keeps the breaks and still wraps and collapses runs of spaces, so a
+     single-line prompt is unaffected. */
+  white-space: pre-line;
 }
 
 .actions {

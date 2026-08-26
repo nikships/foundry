@@ -34,6 +34,7 @@ export default tseslint.config(
       'package-lock.json',
       // Plain Node ESM helpers without a TS project service.
       'scripts/**/*.mjs',
+      '.factory/skills/**/*.mjs',
     ],
   },
   js.configs.recommended,

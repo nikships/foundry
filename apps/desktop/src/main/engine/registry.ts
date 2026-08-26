@@ -9,7 +9,6 @@
 
 import { randomBytes } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { existsSync } from 'node:fs';
 import type {
   AgentDef,
   AppSettings,
@@ -20,6 +19,7 @@ import type {
   PipelineDef,
   ProjectDef,
   RunRow,
+  RunSource,
   RunStatus,
 } from '@shared/types.js';
 import { FIXED_ENGINE_DEFAULTS } from '@shared/types.js';
@@ -29,9 +29,10 @@ import { Tracer } from '../trace/tracer.js';
 import { Executor } from './executor.js';
 import { healingSupport } from './healing.js';
 import { replanningSupport } from '../orchestrator/replan.js';
-import { activeRowsForPipeline } from './phase-history.js';
+import { continueDetail, continueEligibility } from './continue-run.js';
 import { commandMatches, isAlive, killRun, terminate } from '../system/procs.js';
 import type { BridgeTrace } from '../bridge/service.js';
+import type { RunSourceLifecycle } from './source-lifecycle.js';
 import type { OneShotFactory } from '../pi/oneshot.js';
 import { breakdownFile, type CapturedBreakdown, type InterruptRequest } from '../pi/session.js';
 
@@ -52,6 +53,8 @@ export interface RegistryDeps {
   projectById?: (id: string) => ProjectDef | null;
   saveProject?: (next: ProjectDef) => { ok: boolean };
   notifySettings?: () => void;
+  /** Builds the external lifecycle adapter for a source-backed run. */
+  sourceLifecycle?: (source: RunSource, tracer: Tracer, runId: string) => RunSourceLifecycle | null;
 }
 
 interface LiveRun {
@@ -68,6 +71,8 @@ interface ExecutorInput {
   request: string;
   /** Present when the run starts from an Orchestrator-generated plan. */
   plan?: GeneratedRunPlan | null;
+  /** Immutable external source captured before preflight. */
+  source?: RunSource | null;
 }
 
 interface PendingEntry {
@@ -193,23 +198,13 @@ export class RunRegistry extends EventEmitter {
     if (this.live.has(input.runId) || run.status === 'running') {
       return { ok: false, detail: 'this run is already running' };
     }
-    if (run.status !== 'rejected' && run.status !== 'failed') {
-      return { ok: false, detail: 'only a rejected or failed run can be continued' };
-    }
-    if (run.merged) return { ok: false, detail: 'a merged run cannot be continued' };
     const pipeline = tracer.readRunJson<PipelineDef>(input.runId, 'pipeline.json');
-    if (!pipeline?.phases?.length || pipeline.id !== run.pipelineId) {
-      return { ok: false, detail: 'this run’s saved pipeline is no longer available' };
-    }
-    const active = activeRowsForPipeline(pipeline, tracer.phases(input.runId));
-    if (!active) {
-      return { ok: false, detail: 'the saved pipeline no longer matches this run’s phase history' };
-    }
-    const failed = active.find((phase) => phase.status === 'fail');
-    if (!failed) return { ok: false, detail: 'this run has no failed phase to continue' };
-    if (run.worktreePath && !existsSync(run.worktreePath)) {
-      return { ok: false, detail: 'this run’s worktree is no longer available' };
-    }
+    const eligible = continueEligibility({
+      run,
+      pipeline,
+      phases: tracer.phases(input.runId),
+    });
+    if (!eligible.ok) return { ok: false, detail: eligible.detail };
     const plan = tracer.runPlan(input.runId);
     const agents = plan
       ? [
@@ -219,13 +214,13 @@ export class RunRegistry extends EventEmitter {
       : input.agents;
     const request = tracer.readRunFile(input.runId, 'request.md') ?? run.request;
     const executor = this.executorFor(
-      { ...input, pipeline, request, agents, plan },
+      { ...input, pipeline: eligible.pipeline, request, agents, plan, source: run.source },
       input.runId,
       tracer,
     );
 
     this.launch(input.project, input.runId, tracer, executor, 'resume');
-    return { ok: true, detail: `Continuing from “${failed.name}”…` };
+    return { ok: true, detail: continueDetail(eligible.strategy, eligible.failedPhase.name) };
   }
 
   private executorFor(input: ExecutorInput, runId: string, tracer: Tracer): Executor {
@@ -255,6 +250,10 @@ export class RunRegistry extends EventEmitter {
       pipeline: input.pipeline,
       request: input.request,
       plan: input.plan ?? null,
+      source: input.source ?? null,
+      sourceLifecycle: input.source
+        ? (this.deps.sourceLifecycle?.(input.source, tracer, runId) ?? null)
+        : null,
       runId,
       engineer: this.deps.engineerName,
       askHuman: (req) => this.raiseInterrupt(req),
