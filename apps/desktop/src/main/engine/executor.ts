@@ -40,6 +40,7 @@ import {
 import { PiTransport } from '../pi/pi-transport.js';
 import type { AgentTransport } from '../pi/transport.js';
 import { decideAcceptance } from './acceptance.js';
+import { capturePhaseStart } from './checkpoint.js';
 import type { PhaseRunner, RunContext, PhaseJump } from './phase-context.js';
 import { AgentPhaseRunner } from './runners/agent.js';
 import { CodePhaseRunner } from './runners/code.js';
@@ -533,6 +534,10 @@ export class Executor {
       await this.compactFullSessions();
 
       const phase = this.pipeline.phases[index]!;
+      // Before the phase's work begins, and on every entry into it: a
+      // `feedbackTo` re-entry is a new attempt, so it earns its own generation
+      // rather than reusing where the first attempt started.
+      await this.checkpointPhaseStart(phase);
       const jump = await this.runPhase(phase);
       if (jump.kind === 'abort') {
         if (await this.tryReplan(index, phase, jump.detail)) {
@@ -801,6 +806,107 @@ export class Executor {
       name: 'replan proposal rejected',
       payload: { attempt, issues },
     });
+  }
+
+  /**
+   * Writes where this phase begins, durably, before it begins.
+   *
+   * Never fatal. A run that cannot record its checkpoint is still a run the
+   * operator asked for; failing it here would trade a working phase for a
+   * missing record. The failure is traced so the absence is explained rather
+   * than silent, and split-2 restore reads an absent checkpoint as absent.
+   */
+  private async checkpointPhaseStart(phase: PhaseDef): Promise<void> {
+    const { tracer, runId } = this.deps;
+    try {
+      // Inside the try: `phaseId` throws for a phase that was never queued,
+      // and this method promises never to be the thing that fails a run.
+      const phaseId = this.phaseId(phase.name);
+      const capture = await capturePhaseStart({ cwd: this.cwd, handoffDir: HANDOFF_DIR });
+      const session = phase.agent ? this.sessions.get(phase.agent) : undefined;
+      tracer.recordPhaseCheckpoint({
+        runId,
+        phaseId,
+        phaseName: phase.name,
+        phaseKind: phase.kind,
+        headSha: capture.headSha,
+        branch: this.handle?.branch ?? null,
+        worktreePath: this.cwd,
+        // A non-isolated run has no worktree: `this.cwd` is the project
+        // checkout, so the capture holds the operator's own uncommitted work.
+        // Recorded rather than skipped — that run has no worktree to discard,
+        // which is precisely where a phase-start record is worth having — but
+        // marked, because restoring into a live checkout is a different act.
+        isolated: this.handle !== null,
+        model: this.appointedModel(phase),
+        agent: phase.agent ?? null,
+        // The session's own id when one is already open, otherwise whatever a
+        // previous attempt persisted — a phase that has not opened a session
+        // yet has no leaf, and inventing one would misdescribe the anchor.
+        agentSessionId: session?.sessionId ?? this.persistedSessionId(phase.agent),
+        leafMessageId: session?.lastUserMessageId ?? null,
+        handoffFiles: capture.handoffFiles,
+        envelopePhases: [...this.envelopes.keys()],
+        envelopeIds: this.envelopeIdsInEffect(),
+        files: capture.files,
+        truncated: capture.truncated,
+        omittedPaths: capture.omittedPaths,
+        bytesStored: capture.bytesStored,
+      });
+    } catch (e) {
+      tracer.event({
+        runId,
+        // A phase with no queued row has no id to file the failure under; the
+        // run-level event still records that a checkpoint was missed.
+        phaseId: this.phaseIds.get(phase.name) ?? null,
+        type: 'error',
+        name: 'checkpoint',
+        payload: { phase: phase.name, message: (e as Error).message },
+      });
+    }
+  }
+
+  /**
+   * The envelope *row* behind each in-effect envelope, by phase name.
+   *
+   * `this.envelopes` is keyed by phase name and holds one parsed envelope per
+   * completed phase, but `recordEnvelope` is a plain insert: a phase re-entered
+   * through `feedbackTo` leaves several rows on the same `phase_id`, only the
+   * last valid one of which is what the map holds. Naming that row is what lets
+   * a reader tell which envelope a given generation actually ran against.
+   */
+  private envelopeIdsInEffect(): Record<string, string> {
+    const byPhaseId = new Map<string, string>();
+    for (const envelope of this.deps.tracer.envelopes(this.deps.runId)) {
+      // Rows arrive in created_at order, so the last valid one wins.
+      if (envelope.valid) byPhaseId.set(envelope.phaseId, envelope.envelopeId);
+    }
+    const out: Record<string, string> = {};
+    for (const name of this.envelopes.keys()) {
+      const envelopeId = byPhaseId.get(this.phaseIds.get(name) ?? '');
+      if (envelopeId) out[name] = envelopeId;
+    }
+    return out;
+  }
+
+  /** The model this phase's agent will actually run on, resolved as the runner resolves it. */
+  private appointedModel(phase: PhaseDef): string | null {
+    if (phase.kind !== 'agent') return null;
+    if (phase.model && phase.model !== 'inherit') return phase.model;
+    const agent = this.agents.find((a) => a.name === phase.agent);
+    if (!agent) return null;
+    return resolveAgentExecution(agent, {
+      model: this.deps.defaultModel,
+      reasoningEffort: this.deps.defaultReasoningEffort ?? 'medium',
+    }).model;
+  }
+
+  private persistedSessionId(agent: string | undefined): string | null {
+    if (!agent) return null;
+    const row = this.deps.tracer
+      .agentSessions(this.deps.runId)
+      .find((session) => session.agent === agent);
+    return row?.agentSessionId ?? null;
   }
 
   private async runPhase(phase: PhaseDef): Promise<PhaseJump> {

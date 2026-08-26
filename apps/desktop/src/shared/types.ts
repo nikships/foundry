@@ -870,6 +870,134 @@ export interface AgentSessionRow {
 }
 
 /**
+ * How a checkpointed path stood at phase start.
+ *
+ * `modified` is tracked-and-dirty, `untracked` is not in the commit at all,
+ * and `deleted` was absent from disk. `deleted` does not imply `headSha`
+ * carries the path: an added-then-removed (`AD`) or renamed-away (`RD`) path
+ * is absent from HEAD too, so restoring one means ensuring it stays absent,
+ * not checking it out.
+ */
+export type PhaseCheckpointFileState = 'modified' | 'untracked' | 'deleted';
+
+/**
+ * Why a file's phase-start content is missing from the checkpoint payload.
+ *
+ * Size is not a reason: a checkpoint captures the dirty set in full. The only
+ * shortfall left is a path that genuinely could not be read.
+ */
+export type PhaseCheckpointOmission = 'unreadable';
+
+/**
+ * One path as it stood when the phase began.
+ *
+ * Content, not just a hash: a hash can only detect that a file drifted, and
+ * restoring a dirty tracked file to its phase-start state needs the bytes.
+ * `omitted` is what makes a gap legible instead of silent.
+ */
+export interface PhaseCheckpointFile {
+  path: string;
+  state: PhaseCheckpointFileState;
+  contentHash: string;
+  size: number;
+  content?: string;
+  encoding?: 'utf8' | 'base64';
+  omitted?: PhaseCheckpointOmission;
+  /**
+   * For a rename destination, where it came from. The source is recorded
+   * separately as its own `deleted` entry, so a restore puts back one file
+   * rather than resurrecting both sides.
+   */
+  renamedFrom?: string;
+}
+
+/**
+ * The bulk half of a checkpoint, kept as JSON under the run directory so the
+ * SQLite row stays small. Written before the phase runs and never rewritten.
+ */
+export interface PhaseCheckpointPayload {
+  checkpointId: string;
+  runId: string;
+  phaseId: string;
+  phaseName: string;
+  generation: number;
+  createdAt: string;
+  /** Worktree HEAD when the phase began. */
+  headSha: string;
+  branch: string | null;
+  worktreePath: string;
+  /**
+   * False when the run has no worktree, in which case `worktreePath` is the
+   * operator's own checkout and this payload carries their uncommitted work.
+   * A restore there writes to the checkout, not to a discardable worktree, so
+   * it is a materially different act and split 2 must not treat the two alike.
+   */
+  isolated: boolean;
+  /** The model appointed to this phase, or null for a phase with no agent. */
+  model: string | null;
+  agent: string | null;
+  agentSessionId: string | null;
+  /** Session leaf: the agent's last user-message id before the phase began. */
+  leafMessageId: string | null;
+  /** Handoff files present in the worktree at phase start, worktree-relative. */
+  handoffFiles: string[];
+  /** Phases whose envelope was already in effect when this phase began. */
+  envelopePhases: string[];
+  /**
+   * The envelope row id behind each of those phases, keyed by phase name.
+   *
+   * A phase re-entered through `feedbackTo` leaves several envelope rows on one
+   * `phase_id`, so the phase name alone cannot say which envelope a generation
+   * ran against. Absent for a phase whose row could not be resolved.
+   */
+  envelopeIds: Record<string, string>;
+  files: PhaseCheckpointFile[];
+  /**
+   * True when the record cannot reproduce phase start: a path's content is
+   * missing, or the dirty set itself could not be fully enumerated.
+   */
+  truncated: boolean;
+  /** Paths whose content was not stored, in capture order. */
+  omittedPaths: string[];
+  /** Bytes of phase-start content actually kept. */
+  bytesStored: number;
+}
+
+/**
+ * A checkpoint's index row. One per phase attempt: a re-entry is a new
+ * generation and never overwrites or removes an earlier one.
+ */
+export interface PhaseCheckpointRow {
+  checkpointId: string;
+  runId: string;
+  phaseId: string;
+  phaseName: string;
+  phaseKind: PhaseKind;
+  /** 1 for the first attempt at this phase, incremented on every re-entry. */
+  generation: number;
+  headSha: string;
+  model: string | null;
+  agent: string | null;
+  agentSessionId: string | null;
+  leafMessageId: string | null;
+  fileCount: number;
+  untrackedCount: number;
+  bytesStored: number;
+  truncated: boolean;
+  /** False once the payload file is gone, e.g. the run directory was pruned. */
+  payloadPresent: boolean;
+  /**
+   * False when the payload cannot reproduce phase-start byte for byte, so a
+   * restore has to refuse rather than claim an exactness it does not have.
+   */
+  exactRestorePossible: boolean;
+  /** Payload location, relative to the run directory. */
+  payloadPath: string;
+  changeId: number;
+  createdAt: string;
+}
+
+/**
  * What is occupying an agent's context window, as pi accounts for it.
  *
  * Pi reports one estimate for the whole conversation rather than a per-source

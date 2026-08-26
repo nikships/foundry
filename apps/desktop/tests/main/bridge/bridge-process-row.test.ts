@@ -129,7 +129,7 @@ describe('the Bridge process row', () => {
 
     // A negative retention puts the cutoff in the future, so every finished run
     // and everything keyed to it goes.
-    expect(trace.deleteRunsOlderThan(-1)).toEqual([runId]);
+    expect(trace.deleteRunsOlderThan(-1).runIds).toEqual([runId]);
 
     const open = trace.openProcesses();
     expect(open).toHaveLength(1);

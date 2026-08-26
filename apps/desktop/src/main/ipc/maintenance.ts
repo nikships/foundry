@@ -67,13 +67,18 @@ export function register(ctx: Ctx, handle: Handle): void {
   handle(IPC.maintenanceRetention, (): MaintenanceReport => {
     const days = ctx.settings.get().retentionDays;
     let runsDeleted = 0;
+    let bytesReclaimed = 0;
     if (days) {
       for (const project of ctx.projects.list()) {
-        runsDeleted += ctx.registry.tracerFor(project).deleteRunsOlderThan(days).length;
+        const swept = ctx.registry.tracerFor(project).deleteRunsOlderThan(days);
+        runsDeleted += swept.runIds.length;
+        bytesReclaimed += swept.bytesReclaimed;
       }
     }
     notifyRuns(ctx);
-    return { runsDeleted, bytesReclaimed: 0, worktreesRemoved: 0 };
+    // Worktrees are removed through `maintenanceRemoveWorktree`, which is a
+    // separate operator action; retention has never touched one.
+    return { runsDeleted, bytesReclaimed, worktreesRemoved: 0 };
   });
 
   handle(IPC.maintenanceCompact, () => {
