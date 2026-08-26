@@ -564,6 +564,7 @@ export class AgentPhaseRunner implements PhaseRunner {
         stat === null ? undefined : { branchPointSha: ctx.branchPointSha, diffStat: stat },
       envelopes: ctx.envelopes,
       feedback: ctx.feedback.get(phase.name),
+      recoveryNote: ctx.recoveryNotes.get(phase.name),
       envelopeDefs: this.deps.envelopeDefs,
     };
   }

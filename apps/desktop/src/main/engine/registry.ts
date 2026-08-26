@@ -9,7 +9,6 @@
 
 import { randomBytes } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { existsSync } from 'node:fs';
 import type {
   AgentDef,
   AppSettings,
@@ -30,7 +29,7 @@ import { Tracer } from '../trace/tracer.js';
 import { Executor } from './executor.js';
 import { healingSupport } from './healing.js';
 import { replanningSupport } from '../orchestrator/replan.js';
-import { activeRowsForPipeline } from './phase-history.js';
+import { continueDetail, continueEligibility } from './continue-run.js';
 import { commandMatches, isAlive, killRun, terminate } from '../system/procs.js';
 import type { BridgeTrace } from '../bridge/service.js';
 import type { RunSourceLifecycle } from './source-lifecycle.js';
@@ -199,23 +198,13 @@ export class RunRegistry extends EventEmitter {
     if (this.live.has(input.runId) || run.status === 'running') {
       return { ok: false, detail: 'this run is already running' };
     }
-    if (run.status !== 'rejected' && run.status !== 'failed') {
-      return { ok: false, detail: 'only a rejected or failed run can be continued' };
-    }
-    if (run.merged) return { ok: false, detail: 'a merged run cannot be continued' };
     const pipeline = tracer.readRunJson<PipelineDef>(input.runId, 'pipeline.json');
-    if (!pipeline?.phases?.length || pipeline.id !== run.pipelineId) {
-      return { ok: false, detail: 'this run’s saved pipeline is no longer available' };
-    }
-    const active = activeRowsForPipeline(pipeline, tracer.phases(input.runId));
-    if (!active) {
-      return { ok: false, detail: 'the saved pipeline no longer matches this run’s phase history' };
-    }
-    const failed = active.find((phase) => phase.status === 'fail');
-    if (!failed) return { ok: false, detail: 'this run has no failed phase to continue' };
-    if (run.worktreePath && !existsSync(run.worktreePath)) {
-      return { ok: false, detail: 'this run’s worktree is no longer available' };
-    }
+    const eligible = continueEligibility({
+      run,
+      pipeline,
+      phases: tracer.phases(input.runId),
+    });
+    if (!eligible.ok) return { ok: false, detail: eligible.detail };
     const plan = tracer.runPlan(input.runId);
     const agents = plan
       ? [
@@ -225,13 +214,13 @@ export class RunRegistry extends EventEmitter {
       : input.agents;
     const request = tracer.readRunFile(input.runId, 'request.md') ?? run.request;
     const executor = this.executorFor(
-      { ...input, pipeline, request, agents, plan, source: run.source },
+      { ...input, pipeline: eligible.pipeline, request, agents, plan, source: run.source },
       input.runId,
       tracer,
     );
 
     this.launch(input.project, input.runId, tracer, executor, 'resume');
-    return { ok: true, detail: `Continuing from “${failed.name}”…` };
+    return { ok: true, detail: continueDetail(eligible.strategy, eligible.failedPhase.name) };
   }
 
   private executorFor(input: ExecutorInput, runId: string, tracer: Tracer): Executor {

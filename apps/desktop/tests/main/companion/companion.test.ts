@@ -14,6 +14,7 @@ import { tempDir } from '../../helpers/tmp.js';
 import { openDb, projectDbPath, projectRunsDir } from '../../../src/main/trace/db.js';
 import { Tracer } from '../../../src/main/trace/tracer.js';
 import { Executor } from '../../../src/main/engine/executor.js';
+import { continueDetail, continueEligibility } from '../../../src/main/engine/continue-run.js';
 import { CompanionHost, lanAddress, lanInterface } from '../../../src/main/companion/host.js';
 import { PairingSecrets, PAIRING_SECRET_TTL_MS } from '../../../src/main/companion/pairing.js';
 import { DeviceStore, LAST_SEEN_DEBOUNCE_MS } from '../../../src/main/companion/devices.js';
@@ -174,9 +175,23 @@ class TestRegistry {
     return true;
   }
 
-  resume(input: { runId: string }): { ok: boolean; detail: string } {
+  /**
+   * The real `RunRegistry.resume` decides through `continueEligibility`, so
+   * this stand-in does too: the host route's job is to reach that decision and
+   * hand its answer back verbatim, and a killed run has to reach it intact.
+   */
+  resume(input: { project: ProjectDef; runId: string }): { ok: boolean; detail: string } {
     this.continued.push(input.runId);
-    return { ok: true, detail: 'Continuing run' };
+    const run = this.tracer.run(input.runId);
+    if (!run) return { ok: false, detail: 'run not found' };
+    const eligible = continueEligibility({
+      run,
+      pipeline: this.tracer.readRunJson<PipelineDef>(input.runId, 'pipeline.json'),
+      phases: this.tracer.phases(input.runId),
+      worktreeExists: () => true,
+    });
+    if (!eligible.ok) return { ok: false, detail: eligible.detail };
+    return { ok: true, detail: continueDetail(eligible.strategy, eligible.failedPhase.name) };
   }
 
   interrupts(): PendingInterrupt[] {
@@ -668,7 +683,33 @@ describe('run routes', () => {
     expect(await h.registry.settled.get(runId)).toBe('killed');
   });
 
+  /** A settled run with one red phase, as the registry's gate reads it. */
+  function settledRun(runId: string, status: 'failed' | 'killed' | 'accepted'): void {
+    h.tracer.startRun({
+      runId,
+      projectId: h.project.id,
+      pipeline: pipeline(),
+      request: 'a run that stopped',
+      engineer: 'test',
+      worktreePath: join(h.repo, '.foundry-worktrees', runId),
+      branch: `foundry/${runId}`,
+      baseRef: 'main',
+      mode: 'pi',
+    });
+    const phaseId = h.tracer.queuePhase({
+      runId,
+      seq: 0,
+      name: 'build',
+      kind: 'agent',
+      owner: 'builder',
+      description: 'build it',
+    });
+    h.tracer.closePhase(phaseId, status === 'accepted' ? 'success' : 'fail');
+    h.tracer.finishRun(runId, status, `the run ${status}`);
+  }
+
   it('continues a failed run through the host', async () => {
+    settledRun('run_failed', 'failed');
     const paired = await pairPhone();
     const res = await authed(
       paired.token,
@@ -677,8 +718,44 @@ describe('run routes', () => {
     );
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, detail: 'Continuing run' });
+    expect(await res.json()).toEqual({ ok: true, detail: 'Continuing from “build”…' });
     expect(h.registry.continued).toEqual(['run_failed']);
+  });
+
+  it('continues a killed run through the host, on the same eligibility', async () => {
+    settledRun('run_killed', 'killed');
+    const paired = await pairPhone();
+    const res = await authed(
+      paired.token,
+      `/v1/projects/${h.project.id}/runs/run_killed/continue`,
+      { method: 'POST' },
+    );
+
+    expect(res.status).toBe(200);
+    // The phone gets the same verdict and the same words the desktop banner
+    // does: the interrupted phase restarts rather than resuming.
+    expect(await res.json()).toEqual({
+      ok: true,
+      detail: 'Restarting “build” in a new session…',
+    });
+    expect(h.registry.continued).toEqual(['run_killed']);
+  });
+
+  it('refuses to continue a merged killed run through the host', async () => {
+    settledRun('run_killed_merged', 'killed');
+    h.tracer.setMerged('run_killed_merged', true);
+    const paired = await pairPhone();
+    const res = await authed(
+      paired.token,
+      `/v1/projects/${h.project.id}/runs/run_killed_merged/continue`,
+      { method: 'POST' },
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      ok: false,
+      detail: 'a merged run cannot be continued',
+    });
   });
 
   it('lists historical runs across statuses and hides archived runs by default', async () => {

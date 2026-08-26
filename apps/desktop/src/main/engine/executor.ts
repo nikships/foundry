@@ -50,10 +50,17 @@ import type { Envelope } from './envelopes.js';
 import type { CommandDriftRecord } from './detect.js';
 import type { HealingSupport } from './healing.js';
 import { runCommand } from './commands.js';
+import { killedRecoveryNote } from './prompts.js';
 import { PromptLedger } from './prompt-ledger.js';
 import { createIssue, openPr, type GhOptions } from '../system/gh.js';
 import type { IssueAction, PrAction } from '@shared/ipc-contract.js';
-import { effectivePhaseEnvelope, resolveAgentExecution } from '@shared/types.js';
+import {
+  CONTINUE_STATUS_REFUSAL,
+  continuableStatus,
+  continueStrategyFor,
+  effectivePhaseEnvelope,
+  resolveAgentExecution,
+} from '@shared/types.js';
 import type { SetupExecution } from './agent-context.js';
 import type { Replanner } from '../orchestrator/replan.js';
 import { phaseModelIssues } from '../orchestrator/plan.js';
@@ -149,6 +156,36 @@ export class Executor {
   private readonly phaseIds = new Map<string, string>();
   private readonly feedback = new Map<string, string>();
   private readonly commandDrift = new Map<string, CommandDriftRecord>();
+  /** Recovery notes for a phase this run is restarting rather than entering. */
+  private readonly recoveryNotes = new Map<string, string>();
+  /**
+   * Agents whose persisted session must NOT be reopened by the next
+   * `sessionFor`, so they start a new conversation instead.
+   *
+   * Continuing a rejected or failed run is a correction: the agent's own
+   * session still describes the phase, and reopening it is what makes a retry
+   * cost one message. A kill is not a correction — the operator stopped a turn
+   * mid-flight, so that conversation ends on a truncated exchange the retry
+   * would otherwise reason from. The name is consumed on use rather than left
+   * standing, because only the interrupted phase's entry is affected: a later
+   * phase on the same agent goes back to the session this resume opened.
+   *
+   * Deliberately executor state rather than a delete of the `agent_sessions`
+   * row. That row is keyed on (run, agent) and the successor overwrites it, so
+   * what survives a delete-vs-skip choice is the transcript the killed attempt
+   * wrote and the recovery event naming the id it left — deleting the row
+   * would take the agent's roster entry out of the run for no gain.
+   */
+  private readonly freshSessionAgents = new Set<string>();
+  /**
+   * The recovery event still waiting for the id of the session it caused.
+   *
+   * A session opens lazily on its first turn, so the new id does not exist at
+   * resume time; the event is written with the abandoned id immediately and
+   * patched once the successor has one.
+   */
+  private recovery: { eventId: string; agent: string; previousSessionId: string | null } | null =
+    null;
   /**
    * Which phase prompts each live session still holds, so a feedback re-entry
    * can send a delta. Lives here rather than in the runner because only the
@@ -361,14 +398,22 @@ export class Executor {
     return this.runFrom(0);
   }
 
-  /** Continue a terminal run from its first failed phase in the existing worktree. */
+  /**
+   * Continue a terminal run from its first failed phase in the existing
+   * worktree.
+   *
+   * How the interrupted phase's agent re-enters depends on how the run
+   * stopped: a rejected or failed run reopens the persisted conversation (the
+   * correction workflow), a killed agent phase starts a fresh session because
+   * the conversation it would reopen ends on the turn the operator cut off. A
+   * killed `code` or `engineer` phase has no conversation at all, so it is
+   * continued the ordinary way.
+   */
   async resume(): Promise<RunOutcome> {
     const { tracer, project, runId } = this.deps;
     const pipeline = this.pipeline;
     const run = tracer.run(runId);
-    if (!run || (run.status !== 'rejected' && run.status !== 'failed')) {
-      throw new Error('only a rejected or failed run can be continued');
-    }
+    if (!run || !continuableStatus(run.status)) throw new Error(CONTINUE_STATUS_REFUSAL);
     if (run.merged) throw new Error('a merged run cannot be continued');
 
     const active = activeRowsForPipeline(pipeline, tracer.phases(runId));
@@ -402,16 +447,67 @@ export class Executor {
     }
     this.replanAttempts = tracer.replanAttempts(runId);
 
+    const interrupted = pipeline.phases[startIndex]!;
+    // The interrupted phase is half the answer: a killed shell command has no
+    // conversation to abandon, so it is continued rather than restarted.
+    const strategy = continueStrategyFor(run.status, interrupted.kind);
+    if (!strategy) throw new Error(CONTINUE_STATUS_REFUSAL);
     mkdirSync(join(this.cwd, HANDOFF_DIR), { recursive: true });
+    // `reopenRun` overwrites the terminal status in place, so by the time the
+    // next verdict lands nothing in `runs` says how this run had stopped. The
+    // recovery event is what keeps that on the record.
     tracer.reopenRun(runId);
     tracer.event({
       runId,
       type: 'log',
       name: 'run continued',
-      payload: { phase: pipeline.phases[startIndex]!.name },
+      payload: { phase: interrupted.name, fromStatus: run.status, strategy },
     });
     await this.advanceSource('started');
+    if (strategy === 'fresh_session') this.startFreshSession(interrupted, run.status);
     return this.runFrom(startIndex);
+  }
+
+  /**
+   * Arms the fresh-session path for the phase a kill interrupted, and records
+   * the recovery.
+   *
+   * Only that phase's agent is affected: another agent's session was not the
+   * one cut off mid-turn, so its conversation is still an honest record of
+   * what it did and is reopened normally.
+   *
+   * Nothing is recorded unless a named agent is actually being moved off a
+   * conversation. `strategy` already excludes a non-agent phase, so a phase
+   * that reaches here without an agent name is a malformed definition rather
+   * than a recovery, and an event claiming one would be a permanent false
+   * entry in the trace: it could never be patched, because there is no session
+   * whose open would complete it.
+   */
+  private startFreshSession(phase: PhaseDef, fromStatus: RunStatus): void {
+    const { tracer, runId } = this.deps;
+    const agent = phase.kind === 'agent' ? phase.agent : undefined;
+    if (!agent) return;
+    const previousSessionId =
+      tracer.agentSessions(runId).find((row) => row.agent === agent)?.agentSessionId ?? null;
+    const eventId = tracer.event({
+      runId,
+      phaseId: this.phaseIds.get(phase.name) ?? null,
+      type: 'log',
+      name: 'run recovered',
+      payload: {
+        fromStatus,
+        strategy: 'fresh_session',
+        phase: phase.name,
+        agent,
+        previousSessionId,
+        // Filled in once the successor session actually opens; a phase that
+        // never gets that far leaves the null, which is the honest answer.
+        newSessionId: null,
+      },
+    });
+    this.freshSessionAgents.add(agent);
+    this.recoveryNotes.set(phase.name, killedRecoveryNote(phase.name));
+    this.recovery = { eventId, agent, previousSessionId };
   }
 
   private async runFrom(startIndex: number): Promise<RunOutcome> {
@@ -712,7 +808,17 @@ export class Executor {
     // PhaseKind is a closed union, so a missing runner means a pipeline stored a
     // kind this build does not have. Keep failing loudly rather than skipping.
     if (!runner) return { kind: 'abort', detail: `unknown phase kind for "${phase.name}"` };
-    return runner.run(phase, this.ctx());
+    try {
+      return await runner.run(phase, this.ctx());
+    } finally {
+      // The note describes the attempt the operator killed, so it belongs to
+      // this entry into the phase and no other. A later `feedbackTo` can send
+      // the pipeline back here, and telling the agent it is recovering from an
+      // interruption that it has meanwhile already redone would be false.
+      // Retries and corrections live inside the call above, so they still see
+      // it.
+      this.recoveryNotes.delete(phase.name);
+    }
   }
 
   private ctx(): RunContext {
@@ -730,6 +836,7 @@ export class Executor {
       envelopes: this.envelopes,
       commandResults: this.commandResults,
       feedback: this.feedback,
+      recoveryNotes: this.recoveryNotes,
       commandDrift: this.commandDrift,
       healing: this.deps.healing ?? null,
       cancelled: () => this.cancelled,
@@ -833,9 +940,15 @@ export class Executor {
       model,
       reasoningEffort: resolved.reasoningEffort,
     };
-    const persistedSession = this.deps.tracer
-      .agentSessions(this.deps.runId)
-      .find((row) => row.agent === agent.name && row.model === model);
+    // A killed phase's agent starts a new conversation: the persisted row is
+    // kept as evidence, it is simply not reopened. Consumed here so the ban
+    // covers this one entry into the phase and nothing after it.
+    const fresh = this.freshSessionAgents.delete(agent.name);
+    const persistedSession = fresh
+      ? undefined
+      : this.deps.tracer
+          .agentSessions(this.deps.runId)
+          .find((row) => row.agent === agent.name && row.model === model);
     const session = new AgentSession(effectiveAgent, {
       runId: this.deps.runId,
       worktree: this.cwd,
@@ -843,9 +956,37 @@ export class Executor {
       protectedPaths: this.deps.project.protectedPaths,
       existingSessionId: persistedSession?.agentSessionId,
       transport: (req) => this.transportFor(req),
+      ...(fresh ? { onOpened: (id) => this.noteRecoveredSession(agent.name, id) } : {}),
     });
     this.sessions.set(agent.name, session);
     return session;
+  }
+
+  /**
+   * Completes the recovery event once the fresh session has an id.
+   *
+   * A session opens lazily, so the successor id only exists after the phase's
+   * first turn. The event is patched rather than duplicated, so a reader sees
+   * one row naming both the abandoned conversation and the one that replaced
+   * it.
+   *
+   * Written up front and patched, rather than written once at open: `reopenRun`
+   * overwrites the terminal status in place, so between the resume and the
+   * first turn this event is the only record anywhere that the run had been
+   * killed. Deferring it would mean a run killed again — or a crash — before
+   * that turn leaves no trace of the first kill at all.
+   *
+   * The cost is that `events.jsonl` keeps the pre-patch line, since
+   * `patchEvent` updates only the queryable mirror. That is how every streamed
+   * row already behaves (assistant text, tool calls), so the JSONL is a
+   * first-frame log rather than a settled one; SQLite is the read path for
+   * both the renderer and Companion.
+   */
+  private noteRecoveredSession(agent: string, newSessionId: string | null): void {
+    const pending = this.recovery;
+    if (!pending || pending.agent !== agent) return;
+    this.recovery = null;
+    this.deps.tracer.patchEvent(pending.eventId, { newSessionId });
   }
 
   /**

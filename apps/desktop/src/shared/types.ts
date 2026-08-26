@@ -723,6 +723,54 @@ export interface LinearRunSource {
 
 export type RunSource = LinearRunSource;
 
+/**
+ * How a continued run treats the interrupted phase's agent conversation.
+ *
+ * `reopen_session` is the correction workflow a rejected or failed run gets:
+ * the agent's persisted session is reopened, so the retry costs one message on
+ * a conversation that already holds the phase.
+ *
+ * `fresh_session` is what a killed run gets. The operator stopped that turn
+ * mid-flight, so its conversation ends on a truncated exchange no one asked
+ * for; reopening it would make the killed turn the context the retry reasons
+ * from. The interrupted phase's agent starts a new session instead, and the
+ * worktree — partial writes included — is what carries the work over.
+ */
+export type ContinueStrategy = 'reopen_session' | 'fresh_session';
+
+/** Why a run of this status cannot be continued. */
+export const CONTINUE_STATUS_REFUSAL = 'only a rejected, failed, or killed run can be continued';
+
+/** Whether a settled run of this status can be continued at all. */
+export function continuableStatus(status: RunStatus): boolean {
+  return status === 'killed' || status === 'rejected' || status === 'failed';
+}
+
+/**
+ * How this run would be continued, or null when it cannot be.
+ *
+ * The interrupted phase decides as much as the status does: only an agent
+ * phase has a conversation to abandon. A killed `code` or `engineer` phase is
+ * still continuable — a shell command simply re-runs — but nothing about it is
+ * a "fresh session", so claiming one would put a false statement in the trace
+ * and in front of the operator. Every surface (the executor, the registry's
+ * gate, the banner, the Companion card) reads this one rule.
+ *
+ * The kind is required rather than optional: a caller that has not yet found
+ * the interrupted phase is asking a different question, and
+ * {@link continuableStatus} is the one that answers it. An optional parameter
+ * would let that caller receive a strategy silently computed from a phase it
+ * never looked at.
+ */
+export function continueStrategyFor(
+  status: RunStatus,
+  interruptedKind: PhaseKind | undefined,
+): ContinueStrategy | null {
+  if (!continuableStatus(status)) return null;
+  if (status !== 'killed') return 'reopen_session';
+  return interruptedKind === 'agent' ? 'fresh_session' : 'reopen_session';
+}
+
 export interface PhaseRow {
   phaseId: string;
   runId: string;

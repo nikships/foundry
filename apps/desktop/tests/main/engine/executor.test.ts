@@ -2318,6 +2318,9 @@ describe('the agent transport under the executor', () => {
     expect(events(first.runId)).toContainEqual(
       expect.objectContaining({ type: 'log', name: 'run continued' }),
     );
+    // A correction is not a recovery: nothing was abandoned, so nothing is
+    // recorded as having been.
+    expect(events(first.runId).filter((e) => e.name === 'run recovered')).toEqual([]);
   });
 
   it('fails the phase when the session dies mid-turn', async () => {
@@ -2959,6 +2962,382 @@ describe('killing a run mid-turn', () => {
     // could still be settled on.
     expect(turnMarkers(scripted)).toHaveLength(1);
     expect(h.tracer.openProcesses(started.runId)).toHaveLength(0);
+  });
+});
+
+/**
+ * Continuing a killed run.
+ *
+ * A rejected or failed run is continued as a correction: the interrupted
+ * agent's own session is reopened, because it still describes the phase and
+ * ends on a turn that actually completed. A kill is different — the operator
+ * cut a turn off mid-flight, so reopening that conversation would make a
+ * truncated exchange the context the retry reasons from. The phase restarts on
+ * a new session over the worktree the kill left behind, and the abandoned
+ * conversation stays on the record rather than being deleted.
+ */
+describe('continuing a killed run', () => {
+  const killedPipeline = (): PipelineDef =>
+    pipe(
+      [
+        codePhase('prepare', { argv: ['sh', '-c', 'echo prepared >> prepare-count'] }),
+        agentPhase('build', { description: 'Restart this phase after the kill.' }),
+      ],
+      {
+        description: 'a run the operator stopped mid-phase',
+        acceptance: { kind: 'envelope_status', phase: 'build' },
+      },
+    );
+
+  /** Runs `killedPipeline` until the agent turn is in flight, then kills it. */
+  async function killedRun(): Promise<{ runId: string; scripted: ScriptedAgent }> {
+    const scripted = scriptedAgent([buildEnvelope(), buildEnvelope()], [], [], {
+      stallOnTurns: [0],
+    });
+    const started = start({ scripted, pipeline: killedPipeline() });
+    await until(() => turnStarted(scripted), 'the scripted agent to start its turn');
+    started.executor.cancel();
+    const outcome = await started.done;
+    expect(outcome.status).toBe('killed');
+    return { runId: outcome.runId, scripted };
+  }
+
+  /** A resume on its own executor, the way `RunRegistry.resume` builds one. */
+  function continueRun(
+    runId: string,
+    continued: ScriptedAgent,
+    over: Partial<ExecutorDeps> = {},
+  ): Promise<{ status: string }> {
+    const executor = new Executor({
+      tracer: h.tracer,
+      envelopeRetries: 2,
+      gateRetries: 2,
+      compactionThreshold: 0.8,
+      rewindAfterCorrections: 2,
+      supportDir: h.support,
+      transport: (req) => continued.transport(req),
+      agents: [buildAgent()],
+      envelopeDefs: [],
+      project: h.project,
+      pipeline: killedPipeline(),
+      request: 'do the thing',
+      runId,
+      engineer: 'test',
+      askHuman: async () => ({ approve: true }),
+      ...over,
+    });
+    return executor.resume();
+  }
+
+  function recoveryEvent(runId: string) {
+    const rows = events(runId).filter((e) => e.name === 'run recovered');
+    expect(rows).toHaveLength(1);
+    return rows[0]!;
+  }
+
+  it('restarts the interrupted phase on a new session', async () => {
+    const { runId } = await killedRun();
+    const abandoned = h.tracer.agentSessions(runId)[0]!.agentSessionId;
+    expect(abandoned).toBeTruthy();
+
+    const continued = scriptedAgent([buildEnvelope()], [], [], { sessionIdPrefix: 'k' });
+    const outcome = await continueRun(runId, continued);
+
+    expect(outcome.status).toBe('accepted');
+    // The engine asked for a new conversation rather than the persisted one.
+    expect(continued.reopened).toEqual([{ agent: 'builder', existingSessionId: null }]);
+    expect(turnRequests(continued)[0]!.sessionId).not.toBe(abandoned);
+    expect(turnRequests(continued)[0]!.sessionId).toBe('k1');
+  });
+
+  it('records the recovery with both session ids and how the run had stopped', async () => {
+    const { runId } = await killedRun();
+    const abandoned = h.tracer.agentSessions(runId)[0]!.agentSessionId;
+
+    const continued = scriptedAgent([buildEnvelope()], [], [], { sessionIdPrefix: 'k' });
+    await continueRun(runId, continued);
+
+    // `reopenRun` overwrote `killed` in place, so this event is the only
+    // remaining record that the run had been stopped by hand.
+    expect(recoveryEvent(runId).payload).toMatchObject({
+      fromStatus: 'killed',
+      strategy: 'fresh_session',
+      phase: 'build',
+      agent: 'builder',
+      previousSessionId: abandoned,
+      newSessionId: 'k1',
+    });
+  });
+
+  it('keeps the abandoned session id on the record and the transcript it produced', async () => {
+    const { runId } = await killedRun();
+    const abandoned = h.tracer.agentSessions(runId)[0]!.agentSessionId;
+    // Identity, not a count: a comparison of lengths alone would still pass if
+    // the continue had deleted every killed-attempt event and written more.
+    const killedAttempt = events(runId)
+      .filter((e) => e.phaseId)
+      .map((e) => e.eventId);
+    expect(killedAttempt.length).toBeGreaterThan(0);
+
+    const continued = scriptedAgent([buildEnvelope()], [], [], { sessionIdPrefix: 'k' });
+    await continueRun(runId, continued);
+
+    // The row is keyed on (run, agent), so the successor overwrites it in
+    // place. What survives the kill is the transcript and the recovery event
+    // that names the abandoned id.
+    expect(h.tracer.agentSessions(runId)).toHaveLength(1);
+    const after = new Set(events(runId).map((e) => e.eventId));
+    for (const id of killedAttempt) expect(after.has(id)).toBe(true);
+    expect(events(runId).filter((e) => e.phaseId).length).toBeGreaterThan(killedAttempt.length);
+    expect(recoveryEvent(runId).payload.previousSessionId).toBe(abandoned);
+  });
+
+  it('resolves the roster model rather than inheriting a failed-over one', async () => {
+    const { runId } = await killedRun();
+    // What a failover mid-kill leaves behind: the persisted row names a model
+    // the roster never asked for. The lookup `sessionFor` skips is keyed by
+    // model, so a row under the roster's own name has to be present too —
+    // otherwise this passes on a plain miss rather than on the ban.
+    h.tracer.upsertAgentSession({
+      runId,
+      agent: 'builder',
+      model: 'failed-over/model',
+      reasoningEffort: 'medium',
+      agentSessionId: 'abandoned-session',
+      mode: 'pi',
+      color: '#5ad2dd',
+    });
+    h.tracer.upsertAgentSession({
+      runId,
+      agent: 'builder',
+      model: 'scripted',
+      reasoningEffort: 'medium',
+      agentSessionId: 'abandoned-roster-session',
+      mode: 'pi',
+      color: '#5ad2dd',
+    });
+
+    const continued = scriptedAgent([buildEnvelope()], [], [], { sessionIdPrefix: 'k' });
+    await continueRun(runId, continued);
+
+    // Neither persisted row is reopened, and the roster model is the one the
+    // restarted phase runs on.
+    expect(continued.reopened).toEqual([{ agent: 'builder', existingSessionId: null }]);
+    expect(turnRequests(continued)[0]!.sessionId).toBe('k1');
+    const agentStart = events(runId)
+      .filter((e) => e.type === 'agent_start')
+      .at(-1);
+    expect(agentStart!.payload.model).toBe('scripted');
+  });
+
+  it('sends a full prompt with a recovery note instead of a delta', async () => {
+    const { runId } = await killedRun();
+    const continued = scriptedAgent([buildEnvelope()], [], [], { sessionIdPrefix: 'k' });
+    await continueRun(runId, continued);
+
+    const prompt = turnRequests(continued)[0]!.text;
+    // Full: the new session holds nothing, so the phase's own ask is re-sent.
+    expect(prompt).toContain('Build: do the thing');
+    expect(prompt).toContain('## Report');
+    expect(prompt).toContain('## Recovering an interrupted attempt');
+    expect(prompt).toContain('stopped by the operator while the "build" phase');
+    expect(prompt).toMatch(/may already contain partial/);
+    expect(events(runId)).toContainEqual(
+      expect.objectContaining({
+        type: 'log',
+        name: 'prompt',
+        payload: expect.objectContaining({ phase: 'build', kind: 'full' }),
+      }),
+    );
+  });
+
+  it('keeps earlier phases and the dirty worktree rather than replaying setup', async () => {
+    const { runId } = await killedRun();
+    const worktree = h.tracer.run(runId)!.worktreePath!;
+    // A partial write from the killed attempt, which the operator's Continue
+    // must not roll back: earlier phases wrote into the same tree.
+    writeFileSync(join(worktree, 'half-written.txt'), 'from the killed attempt\n');
+    const phaseIds = h.tracer.phases(runId).map((phase) => phase.phaseId);
+
+    const continued = scriptedAgent([buildEnvelope()], [], [], { sessionIdPrefix: 'k' });
+    const outcome = await continueRun(runId, continued);
+
+    expect(outcome.status).toBe('accepted');
+    expect(h.tracer.phases(runId).map((phase) => phase.phaseId)).toEqual(phaseIds);
+    // The code phase that already passed is not re-run, so its append-only
+    // marker still reads once.
+    expect(readFileSync(join(worktree, 'prepare-count'), 'utf8')).toBe('prepared\n');
+    expect(readFileSync(join(worktree, 'half-written.txt'), 'utf8')).toBe(
+      'from the killed attempt\n',
+    );
+  });
+
+  it('refuses a merged killed run', async () => {
+    const { runId } = await killedRun();
+    h.tracer.setMerged(runId, true);
+
+    await expect(continueRun(runId, scriptedAgent([buildEnvelope()]))).rejects.toThrow(
+      'a merged run cannot be continued',
+    );
+  });
+
+  it('refuses a killed run whose worktree is gone', async () => {
+    const { runId } = await killedRun();
+    const worktree = h.tracer.run(runId)!.worktreePath!;
+    sh(h.repo, ['git', 'worktree', 'remove', '--force', worktree]);
+
+    await expect(continueRun(runId, scriptedAgent([buildEnvelope()]))).rejects.toThrow(
+      'this run’s worktree is no longer available',
+    );
+  });
+
+  it('refuses a killed run with no failed phase left to continue', async () => {
+    const { runId } = await killedRun();
+    for (const phase of h.tracer.phases(runId)) {
+      if (phase.status === 'fail') h.tracer.closePhase(phase.phaseId, 'success');
+    }
+
+    await expect(continueRun(runId, scriptedAgent([buildEnvelope()]))).rejects.toThrow(
+      'this run has no failed phase to continue',
+    );
+  });
+
+  it('refuses a run that settled accepted, naming every continuable status', async () => {
+    const scripted = scriptedAgent([buildEnvelope(), buildEnvelope()]);
+    const accepted = await run({ scripted, pipeline: killedPipeline() });
+    expect(accepted.status).toBe('accepted');
+
+    await expect(continueRun(accepted.runId, scriptedAgent([buildEnvelope()]))).rejects.toThrow(
+      'only a rejected, failed, or killed run can be continued',
+    );
+  });
+});
+
+/**
+ * The registry's own gate on Continue — what the desktop banner, the Companion
+ * route, and Smith all reach through.
+ *
+ * The pipeline here is code-only on purpose: a registry-launched run builds its
+ * own transport, and there is no model in a unit test. What is under test is
+ * eligibility and the launch, not the agent path the executor suite above
+ * already covers.
+ */
+describe('the registry gate on continuing a killed run', () => {
+  function registry(): RunRegistry {
+    return new RunRegistry({
+      appSupportDir: h.support,
+      settings: () => ({ compactionThreshold: 0.8 }) as AppSettings,
+      engineerName: 'test',
+      onRunFinished: () => undefined,
+      onInterruptsChanged: () => undefined,
+      onRunsChanged: () => undefined,
+    });
+  }
+
+  /**
+   * A killed run whose interrupted phase is a command that fails until a
+   * sentinel exists — so continuing it can actually converge without a model.
+   */
+  async function killedCodeRun(): Promise<{ runId: string; worktree: string }> {
+    const pipeline = pipe(
+      [codePhase('gate', { argv: ['sh', '-c', 'test -f go'] }, { heal: false })],
+      { description: 'a command the operator stopped the run over' },
+    );
+    const outcome = await run({ pipeline });
+    expect(outcome.status).toBe('rejected');
+    // The trace a kill leaves: a terminal `killed` row over a red phase, with
+    // the worktree kept.
+    h.tracer.finishRun(outcome.runId, 'killed', 'the run was killed');
+    const worktree = h.tracer.run(outcome.runId)!.worktreePath!;
+    return { runId: outcome.runId, worktree };
+  }
+
+  const resumeInput = (runId: string) => ({
+    project: h.project,
+    runId,
+    agents: [buildAgent()],
+    envelopeDefs: [],
+  });
+
+  it('accepts a killed run and re-runs the command it stopped', async () => {
+    const { runId, worktree } = await killedCodeRun();
+    writeFileSync(join(worktree, 'go'), '');
+
+    const runs = registry();
+    // A killed *command* is not a restart: there is no conversation to
+    // abandon, so the operator is told the ordinary thing.
+    const answer = runs.resume(resumeInput(runId));
+    expect(answer).toEqual({ ok: true, detail: 'Continuing from “gate”…' });
+
+    await until(() => !runs.isLive(runId), 'the continued run to settle');
+    expect(runs.tracerFor(h.project).run(runId)!.status).toBe('accepted');
+  });
+
+  it('records no recovery for a killed command phase', async () => {
+    const { runId, worktree } = await killedCodeRun();
+    writeFileSync(join(worktree, 'go'), '');
+
+    const runs = registry();
+    expect(runs.resume(resumeInput(runId)).ok).toBe(true);
+    await until(() => !runs.isLive(runId), 'the continued run to settle');
+
+    // Nothing was moved off a session, so a `run recovered` row would claim a
+    // recovery that never happened — and could never be completed, because no
+    // session opens to supply the successor id.
+    expect(events(runId).filter((e) => e.name === 'run recovered')).toEqual([]);
+    expect(events(runId).find((e) => e.name === 'run continued')!.payload).toMatchObject({
+      phase: 'gate',
+      fromStatus: 'killed',
+      strategy: 'reopen_session',
+    });
+  });
+
+  it('still calls a failed run a continuation rather than a restart', async () => {
+    const pipeline = pipe(
+      [codePhase('gate', { argv: ['sh', '-c', 'test -f go'] }, { heal: false })],
+      { description: 'a command that simply failed' },
+    );
+    const outcome = await run({ pipeline });
+    expect(outcome.status).toBe('rejected');
+
+    expect(registry().resume(resumeInput(outcome.runId)).detail).toBe('Continuing from “gate”…');
+  });
+
+  it('refuses a merged killed run, a missing worktree, and a run with nothing red', async () => {
+    const merged = await killedCodeRun();
+    h.tracer.setMerged(merged.runId, true);
+    expect(registry().resume(resumeInput(merged.runId))).toEqual({
+      ok: false,
+      detail: 'a merged run cannot be continued',
+    });
+
+    const discarded = await killedCodeRun();
+    sh(h.repo, ['git', 'worktree', 'remove', '--force', discarded.worktree]);
+    expect(registry().resume(resumeInput(discarded.runId))).toEqual({
+      ok: false,
+      detail: 'this run’s worktree is no longer available',
+    });
+
+    const green = await killedCodeRun();
+    for (const phase of h.tracer.phases(green.runId)) {
+      h.tracer.closePhase(phase.phaseId, 'success');
+    }
+    expect(registry().resume(resumeInput(green.runId))).toEqual({
+      ok: false,
+      detail: 'this run has no failed phase to continue',
+    });
+  });
+
+  it('refuses an accepted run by naming every continuable status', async () => {
+    const outcome = await run({
+      pipeline: pipe([codePhase('gate', { argv: ['true'] })], { description: 'a green run' }),
+    });
+    expect(outcome.status).toBe('accepted');
+
+    expect(registry().resume(resumeInput(outcome.runId))).toEqual({
+      ok: false,
+      detail: 'only a rejected, failed, or killed run can be continued',
+    });
   });
 });
 

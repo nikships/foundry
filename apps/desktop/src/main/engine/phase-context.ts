@@ -35,6 +35,12 @@ export interface RunContext {
   /** Failure evidence a code phase routed back to an agent phase. */
   readonly feedback: Map<string, string>;
   /**
+   * Per-phase notes for a phase being restarted rather than entered for the
+   * first time — today, the phase a kill interrupted. Written by the executor
+   * at resume, read by the agent runner when it composes the prompt.
+   */
+  readonly recoveryNotes: Map<string, string>;
+  /**
    * `{ref}` commands whose worktree sniff disagreed with the frozen project
    * argv. Run-scoped: never written to project settings until merge.
    */

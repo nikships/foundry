@@ -24,6 +24,12 @@ export interface RenderContext {
   envelopes: Map<string, Envelope>;
   /** Set when a code phase sent failure evidence back to this agent. */
   feedback?: string;
+  /**
+   * Set when this phase is being restarted after the operator killed the run.
+   * The session is new, so the note is the only thing telling the agent the
+   * worktree may already hold half of its own previous attempt.
+   */
+  recoveryNote?: string;
   /** Shared custom envelope library; resolves non-built-in kind names. */
   envelopeDefs?: EnvelopeDef[];
 }
@@ -168,12 +174,35 @@ export function renderPrompt(agent: AgentDef, phase: PhaseDef, ctx: RenderContex
     ].join('\n');
   }
 
+  if (ctx.recoveryNote) {
+    user = [user, '', '## Recovering an interrupted attempt', '', ctx.recoveryNote].join('\n');
+  }
+
   const kind = phase.envelope ?? agent.envelope;
   user = [user, '', '## Report', '', exampleFor(kind, agent.customFields, ctx.envelopeDefs)].join(
     '\n',
   );
 
   return { system, user };
+}
+
+/**
+ * What a phase restarted after a kill is told, in place of the conversation it
+ * is not getting.
+ *
+ * A killed run keeps its worktree, so the agent inherits whatever its
+ * predecessor had written when the operator stopped it: half-applied edits,
+ * files created but never referenced, a build left mid-change. It has no
+ * transcript to reconstruct that from, so the prompt has to say plainly that
+ * the tree is not clean and that reading it is the first step.
+ */
+export function killedRecoveryNote(phase: string): string {
+  return [
+    `This run was stopped by the operator while the "${phase}" phase was still running, and is now being continued.`,
+    'You are working in a new session: nothing from the interrupted attempt is in this conversation.',
+    'The worktree was kept exactly as the kill left it, so it may already contain partial or inconsistent changes from that attempt, as well as finished work from earlier phases.',
+    'Inspect the working tree first and reconcile what you find with the task above — finish, correct, or replace those changes as appropriate. Do not assume this phase is starting from a clean tree, and do not discard work from earlier phases.',
+  ].join('\n');
 }
 
 /**
