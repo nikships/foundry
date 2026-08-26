@@ -140,10 +140,6 @@ async function main(): Promise<void> {
     request,
     runId,
     engineer: 'demo',
-    askHuman: async () => {
-      console.log('  [interrupt] auto-approved by the demo harness');
-      return { approve: true };
-    },
     onLiveText: () => undefined,
   });
 
@@ -227,7 +223,6 @@ async function sweepDemo(tracer: Tracer, appSupport: string, project: ProjectDef
     settings: () => defaultSettings(),
     engineerName: 'demo',
     onRunFinished: () => undefined,
-    onInterruptsChanged: () => undefined,
     onRunsChanged: () => undefined,
   });
   const result = registry.sweep([project]);

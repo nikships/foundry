@@ -213,7 +213,6 @@ Shell and sidebar:
 | `nav-smith`           | Sidebar → Smith chat (safe to open)          |
 | `nav-settings`        | Sidebar → Settings button                    |
 | `sidebar-run-{runId}` | Activity row → opens run pinned in Inspector |
-| `sidebar-pending`     | "`N` run(s) need you" interrupt jump         |
 | `project-selector`    | Project dropdown trigger                     |
 | `sidebar-collapse`    | Collapse/expand sidebar toggle               |
 | `companion-pill`      | Companion phone pill (`data-running`)        |
@@ -284,7 +283,7 @@ Design:
 | `pipeline-selector`                               | Pipeline picker trigger                         |
 | `pipeline-option-{id}`                            | Pipeline option in the picker dropdown          |
 | `pipeline-new`                                    | New pipeline button                             |
-| `pipeline-add-agent` / `-command` / `-checkpoint` | Ribbon add buttons                              |
+| `pipeline-add-agent` / `-command` | Ribbon add buttons                              |
 | `pipeline-phase-{name}`                           | Phase card on the canvas                        |
 | `pipeline-dry-run`                                | Dry run overlay opener (safe, Esc closes)       |
 | `pipeline-settings`                               | Pipeline acceptance/validation sheet opener     |
@@ -336,9 +335,6 @@ Overlays and decisions:
 
 | `data-testid`                         | Element                                        |
 | ------------------------------------- | ---------------------------------------------- |
-| `interrupt-notes`                     | Engineer-checkpoint notes textarea             |
-| `interrupt-approve`                   | Checkpoint Approve (Esc rejects!)              |
-| `interrupt-reject`                    | Checkpoint Reject                              |
 | `confirm-accept`                      | In-app ConfirmModal primary action             |
 | `confirm-cancel`                      | In-app ConfirmModal cancel                     |
 | `onboarding-step-{id}`                | Stepper pill: welcome/providers/doctor/project |
@@ -364,9 +360,8 @@ Overlays and decisions:
   `data-testid` or `press` for all interaction.
 - The UI is the dark Factory theme; screenshots are mostly black with
   light text. That is correct, not a rendering failure.
-- Escape ladder: an open dialog (⌘K palette / interrupt sheet / confirm /
-  Dry run / Prompt preview) closes or answers first — note the interrupt
-  sheet **rejects** on Escape rather than dismissing; otherwise a focused
+- Escape ladder: an open dialog (⌘K palette / confirm /
+  Dry run / Prompt preview) closes first; otherwise a focused
   field blurs; otherwise Run detail goes back to Runs.
 - Tab strips (Design / Agents / Settings) are roving-tabindex tablists:
   focus the selected tab and use ArrowLeft/ArrowRight (wrap), Home/End;
@@ -414,9 +409,7 @@ The sidebar also carries:
   the Create-New half opens the in-app `NewProjectWizard`, which _is_ drivable;
 - the Activity list while runs exist: one row per recent run across projects,
   `data-testid="sidebar-run-{runId}"`, each opening that run pinned in the
-  Inspector;
-- a pending-interrupt button (`data-testid="sidebar-pending"`,
-  "`N` run(s) need you") that jumps to the oldest waiting run.
+  Inspector.
 
 **Smith (`nav-smith`) is safe to open** — it is a native chat view
 (`data-view="smith"`), not a terminal handoff. What costs tokens is _sending_
@@ -469,14 +462,6 @@ Open via `run-row-{runId}`. `data-view` becomes `run-detail` and
   Timeline rows are expandable buttons: `⚙ read: path`, `· assistant`,
   `$ cmd`, `⛨ gate_name`, `∑ agent` (envelope), `▸/→/▪` phase markers.
 
-### Interrupts (engineer checkpoint)
-
-When a pipeline declares an engineer phase, a modal sheet blocks the app:
-notes textarea `interrupt-notes`, then `interrupt-reject` /
-`interrupt-approve`. **Escape rejects** — do not press it to "just close".
-The sidebar's `sidebar-pending` button jumps from any view to the run that is
-waiting.
-
 ### Inspector
 
 Live trace viewer, cards per phase in a two-column masonry. Top bar:
@@ -503,7 +488,7 @@ project-scoped.
 - Pipeline picker: `pipeline-selector` (current pipeline + phase count),
   `pipeline-option-{id}` per pipeline, `pipeline-new` to create one.
 - Canvas: one card per phase (`pipeline-phase-{name}`), add buttons
-  `pipeline-add-agent` / `-command` / `-checkpoint`; the phase editor opens
+  `pipeline-add-agent` / `-command`; the phase editor opens
   in a right-hand sheet.
 - `pipeline-dry-run` shows the exact SYSTEM/USER prompt each agent phase
   would receive. Nothing is sent; safe to click. Close with `Esc`.
@@ -632,9 +617,7 @@ footer buttons are `onboarding-back` / `onboarding-next` on every step.
   passthrough for the debug port is unreliable; prefer built launches).
 - **Buttons do nothing**: an overlay (⌘K palette, Dry run, Prompt preview,
   confirm modal) may be capturing input — `agent-browser press Escape`.
-  Exception: if it is an **interrupt sheet** (engineer checkpoint), Escape
-  _rejects_ the checkpoint rather than dismissing it — answer it with
-  `interrupt-approve` / `interrupt-reject` instead. A native dialog (PR-merge
-  confirm, folder picker) is open? CDP can neither see nor dismiss it.
+  A native dialog (PR-merge confirm, folder picker) is open? CDP can neither
+  see nor dismiss it.
 - **electron binary missing** (`electron/dist` not installed):
   `node node_modules/electron/install.js`.

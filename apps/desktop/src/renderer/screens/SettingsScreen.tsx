@@ -113,11 +113,10 @@ const KEY_PROVIDERS: { id: string; label: string; icon: string }[] = [
   { id: 'xai', label: 'xAI', icon: 'xai' },
 ];
 
-const NOTIFY_LABELS: Record<'accepted' | 'rejected' | 'failed' | 'needsInput', string> = {
+const NOTIFY_LABELS: Record<'accepted' | 'rejected' | 'failed', string> = {
   accepted: 'A run was accepted',
   rejected: 'A run was not accepted',
   failed: 'A run failed',
-  needsInput: 'A run is waiting on me',
 };
 
 /**
@@ -1140,8 +1139,7 @@ export default function SettingsScreen({
                                     </span>
                                   </div>
                                   <span className={styles.hint}>
-                                    Connected phones can watch runs, start new runs, and answer
-                                    interrupts.
+                                    Connected phones can watch runs and start new runs.
                                   </span>
                                 </div>
                                 {companion.devices.map((device) => (

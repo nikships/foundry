@@ -1,7 +1,7 @@
 /**
  * The LAN companion host: an HTTP server inside the main process that a paired
  * phone calls. Every route is a projection of an operation the desktop already
- * has — the same `startRun`, tracer pages, kill, interrupts, PR, and Smith
+ * has — the same `startRun`, tracer pages, kill, PR, and Smith
  * chat paths the renderer reaches over IPC — so the phone can never do
  * something the window cannot, and main keeps sole ownership of git, the
  * tracer, and spawns.
@@ -22,9 +22,7 @@ import type {
   AgentDef,
   AppSettings,
   EnvelopeDef,
-  InterruptAnswer,
   ModelInfo,
-  PendingInterrupt,
   PipelineDef,
   ProjectDef,
   ReasoningEffort,
@@ -91,8 +89,6 @@ export interface CompanionHostDeps {
       agents: AgentDef[];
       envelopeDefs: EnvelopeDef[];
     }): { ok: boolean; detail: string };
-    interrupts(): PendingInterrupt[];
-    answer(answer: InterruptAnswer): boolean;
   };
   appVersion(): string;
   notifyRuns(): void;
@@ -445,23 +441,6 @@ export class CompanionHost {
         pipelineId: input.pipelineId,
         request: input.request,
       });
-    }
-
-    if (head === 'interrupts') {
-      if (method === 'GET' && rest.length === 0) return this.deps.registry.interrupts();
-      if (method === 'POST' && rest[0] === 'answer' && rest.length === 1) {
-        const answer = (await readJson(req)) as Partial<InterruptAnswer>;
-        if (typeof answer.interruptId !== 'string' || typeof answer.decision !== 'string') {
-          throw new RouteError(400, 'bad_request', 'answer needs interruptId and decision');
-        }
-        return {
-          ok: this.deps.registry.answer({
-            interruptId: answer.interruptId,
-            decision: answer.decision === 'approve' ? 'approve' : 'reject',
-            ...(typeof answer.text === 'string' ? { text: answer.text } : {}),
-          }),
-        };
-      }
     }
 
     if (head === 'smith') return this.smithRoute(method, rest, url, req);

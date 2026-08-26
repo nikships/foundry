@@ -68,7 +68,6 @@ fun LiveRunCard(
     val cardDescription = buildString {
         append("Live run ${run.pipelineName}")
         if (run.request.isNotBlank()) append(": ${run.request}")
-        if (run.waitingInterrupt) append(". Waiting on engineer")
         if (phaseNames.isNotEmpty()) {
             append(". Phases: ")
             append(
@@ -109,12 +108,6 @@ fun LiveRunCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (run.waitingInterrupt) {
-                    StatusBadge(
-                        status = "rejected",
-                        customLabel = "WAITING"
-                    )
-                }
             }
 
             Text(

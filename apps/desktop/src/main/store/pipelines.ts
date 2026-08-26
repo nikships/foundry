@@ -32,7 +32,7 @@ const commandSchema = z.union([
 
 const phaseSchema = z.object({
   name: z.string().regex(/^[a-z][a-z0-9_]*$/, 'lowercase snake_case phase name'),
-  kind: z.enum(['agent', 'code', 'engineer']),
+  kind: z.enum(['agent', 'code']),
   description: z.string().min(1, 'one sentence on what this phase does and why'),
   agent: z.string().optional(),
   // Opaque provider/model id. Absence means inherit the selected agent's model.
@@ -52,7 +52,6 @@ const phaseSchema = z.object({
   retries: z.number().int().min(0).max(5).optional(),
   feedbackTo: z.string().optional(),
   feedbackRetries: z.number().int().min(0).max(5).optional(),
-  question: z.string().optional(),
   optional: z.boolean().optional(),
   heal: z.boolean().optional(),
 });
@@ -93,11 +92,28 @@ export const pipelineSchema = z.object({
  * shipped structurally, so leaving them on a builtin would report it as edited
  * forever.
  */
-const REMOVED_PHASE_FIELDS = ['toolProfile', 'tools', 'timeoutMs'] as const;
+const REMOVED_PHASE_FIELDS = ['toolProfile', 'tools', 'timeoutMs', 'question'] as const;
 
 function normalizePipeline(pipeline: PipelineDef): PipelineDef {
-  if (!pipeline.phases?.some(hasRemovedField)) return pipeline;
-  return { ...pipeline, phases: pipeline.phases.map(stripRemovedFields) };
+  const phases = pipeline.phases ?? [];
+  const nextPhases = phases
+    .filter((phase) => (phase as { kind?: string }).kind !== 'engineer')
+    .map(stripRemovedFields);
+  if (nextPhases.length === phases.length && nextPhases.every((phase, i) => phase === phases[i])) {
+    return pipeline;
+  }
+  if (nextPhases.length === 0) return pipeline;
+  const canvas = stripCanvasNodes(pipeline.canvas, new Set(nextPhases.map((phase) => phase.name)));
+  return canvas === pipeline.canvas
+    ? { ...pipeline, phases: nextPhases }
+    : { ...pipeline, phases: nextPhases, canvas };
+}
+
+function stripCanvasNodes(canvas: PipelineDef['canvas'], keep: Set<string>): PipelineDef['canvas'] {
+  if (!canvas?.nodes) return canvas;
+  const nodes = Object.fromEntries(Object.entries(canvas.nodes).filter(([name]) => keep.has(name)));
+  if (Object.keys(nodes).length === Object.keys(canvas.nodes).length) return canvas;
+  return { ...canvas, nodes };
 }
 
 function hasRemovedField(phase: PhaseDef): boolean {
@@ -312,9 +328,6 @@ export function validate(
 
     if (phase.kind === 'agent') validateAgentPhase(phase, ctx);
     if (phase.kind === 'code') validateCodePhase(phase, ctx);
-    if (phase.kind === 'engineer' && !phase.question) {
-      ctx.warn('an engineer phase with no question shows an empty sheet');
-    }
   });
 
   const acceptance = pipeline.acceptance;

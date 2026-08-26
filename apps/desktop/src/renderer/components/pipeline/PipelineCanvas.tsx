@@ -5,7 +5,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Layers,
-  Minus,
   Plus,
   RotateCcw,
   Settings2,
@@ -31,7 +30,6 @@ import styles from './PipelineCanvas.module.css';
 
 const NODE_WIDTH = 300;
 const WORK_NODE_HEIGHT = 210;
-const CHECKPOINT_NODE_HEIGHT = 236;
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 2.5;
 const DEFAULT_VIEWPORT = { x: 0, y: 0, zoom: 1 };
@@ -70,8 +68,8 @@ function canvasState(canvas: PipelineCanvasState | undefined): CanvasState {
   };
 }
 
-function nodeHeight(phase: PhaseDef): number {
-  return phase.kind === 'engineer' ? CHECKPOINT_NODE_HEIGHT : WORK_NODE_HEIGHT;
+function nodeHeight(_phase: PhaseDef): number {
+  return WORK_NODE_HEIGHT;
 }
 
 function clampZoom(zoom: number): number {
@@ -155,7 +153,6 @@ function NodeCard({
   const hasWarning = phaseIssues.some((issue) => issue.level === 'warning');
   const color = phaseKindColor(phase.kind, agentColor(phase.agent ?? null));
   const envelopeChip = phaseEnvelopeChip(phase, agentEnvelope(phase.agent ?? null));
-  const checkpoint = phase.kind === 'engineer';
   const checkCount = gateNames(phase).length;
 
   return (
@@ -164,7 +161,6 @@ function NodeCard({
       data-testid={`pipeline-phase-${phase.name}`}
       className={[
         styles.node,
-        checkpoint ? styles.checkpointNode : '',
         selected ? styles.nodeSelected : '',
         hasError ? styles.nodeError : '',
         hasWarning && !hasError ? styles.nodeWarning : '',
@@ -189,7 +185,7 @@ function NodeCard({
             <PhaseGlyph kind={phase.kind} />
           </span>
           <span className={styles.kindLabel} style={{ color }}>
-            {checkpoint ? 'Checkpoint' : KIND_LABEL[phase.kind]}
+            {KIND_LABEL[phase.kind]}
           </span>
           <span className={styles.stepNumber}>Step {String(index + 1).padStart(2, '0')}</span>
         </div>
@@ -201,40 +197,26 @@ function NodeCard({
           )}
         </p>
 
-        {checkpoint ? (
-          <div className={styles.checkpointQuestion}>
-            <span>Review question</span>
-            <p>{phase.question?.trim() ? `“${phase.question}”` : 'No question set yet.'}</p>
-          </div>
-        ) : (
-          <div className={styles.nodeChips}>
-            {phase.kind === 'agent' && (
-              <>
-                <Chip color={agentColor(phase.agent ?? null)}>{phase.agent ?? 'no agent'}</Chip>
-                <Chip title={envelopeChip.title}>
-                  <EnvelopeGlyph />
-                  {envelopeChip.label}
-                  {envelopeChip.overridden && <span className={styles.overrideMark}>ovr</span>}
+        <div className={styles.nodeChips}>
+          {phase.kind === 'agent' && (
+            <>
+              <Chip color={agentColor(phase.agent ?? null)}>{phase.agent ?? 'no agent'}</Chip>
+              <Chip title={envelopeChip.title}>
+                <EnvelopeGlyph />
+                {envelopeChip.label}
+                {envelopeChip.overridden && <span className={styles.overrideMark}>ovr</span>}
+              </Chip>
+              {checkCount > 0 && (
+                <Chip>
+                  {checkCount} {checkCount === 1 ? 'check' : 'checks'}
                 </Chip>
-                {checkCount > 0 && (
-                  <Chip>
-                    {checkCount} {checkCount === 1 ? 'check' : 'checks'}
-                  </Chip>
-                )}
-              </>
-            )}
-            {phase.kind === 'code' && (
-              <Chip color="var(--blue)">{commandText(phase) || 'no command'}</Chip>
-            )}
-          </div>
-        )}
-
-        {checkpoint && (
-          <div className={styles.nodeChips}>
-            <Chip color="var(--green)">approve</Chip>
-            <Chip color="var(--red)">reject</Chip>
-          </div>
-        )}
+              )}
+            </>
+          )}
+          {phase.kind === 'code' && (
+            <Chip color="var(--blue)">{commandText(phase) || 'no command'}</Chip>
+          )}
+        </div>
       </button>
 
       <div className={styles.nodeActions}>
@@ -547,9 +529,6 @@ export default function PipelineCanvas({
             <button type="button" onClick={() => onAddPhase('code')}>
               <PhaseGlyph kind="code" /> Add command
             </button>
-            <button type="button" onClick={() => onAddPhase('engineer')}>
-              <PhaseGlyph kind="engineer" /> Add checkpoint
-            </button>
           </div>
         </div>
       </div>
@@ -749,13 +728,6 @@ export default function PipelineCanvas({
             onClick={() => onAddPhase('code')}
           >
             <Settings2 size={13} strokeWidth={1.8} aria-hidden="true" /> Command
-          </button>
-          <button
-            type="button"
-            data-testid="pipeline-add-checkpoint"
-            onClick={() => onAddPhase('engineer')}
-          >
-            <Minus size={13} strokeWidth={1.8} aria-hidden="true" /> Checkpoint
           </button>
         </div>
       </div>

@@ -174,7 +174,6 @@ function registry(support: string): RunRegistry {
     settings: () => ({}) as AppSettings,
     engineerName: 'test',
     onRunFinished: () => undefined,
-    onInterruptsChanged: () => undefined,
     onRunsChanged: () => undefined,
   });
 }

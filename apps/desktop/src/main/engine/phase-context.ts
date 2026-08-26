@@ -7,7 +7,6 @@
 import type { CommandResult, PhaseDef, PhaseKind, PipelineDef, ProjectDef } from '@shared/types.js';
 import type { Tracer } from '../trace/tracer.js';
 import type { Envelope } from './envelopes.js';
-import type { InterruptRequest } from '../pi/session.js';
 import type { IssueAction, PrAction } from '@shared/ipc-contract.js';
 import type { CommandDriftRecord } from './detect.js';
 import type { HealingSupport } from './healing.js';
@@ -68,8 +67,6 @@ export interface RunContext {
   onCancel(abort: () => void): () => void;
   /** The trace phase id queued up front for this phase name. */
   phaseId(name: string): string;
-  /** Raises the interrupt sheet. Only engineer phases reach it. */
-  askHuman(req: InterruptRequest): Promise<{ approve: boolean; text?: string }>;
   /**
    * Push the run branch and open (or discover) the PR. Engine-owned: the
    * agent only drafts title/body. Failure is the exact gh/git error.

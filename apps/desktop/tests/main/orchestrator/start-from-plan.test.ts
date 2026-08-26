@@ -208,7 +208,6 @@ function deps(scripted: ScriptedAgent): {
             plan: input.plan ?? null,
             runId,
             engineer: 'test',
-            askHuman: async () => ({ approve: true }),
           });
           settled.push(executor.run().then((o) => o.status));
           return runId;

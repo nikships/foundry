@@ -152,17 +152,6 @@ export function SettingsEmblem(props: EmblemProps): React.JSX.Element {
   );
 }
 
-/** Pending / needs you — shop-floor call bell. */
-export function PendingEmblem(props: EmblemProps): React.JSX.Element {
-  return (
-    <EmblemSvg {...props}>
-      <path d="M7.4 16.4h9.2c0-1.1-.4-2.4-1.1-3.3-.6-.8-.9-1.7-.9-2.8 0-2.2-1.7-4-3.6-4s-3.6 1.8-3.6 4c0 1.1-.3 2-.9 2.8-.7.9-1.1 2.2-1.1 3.3z" />
-      <path d="M8.2 16.4c.9 1.5 2.4 2.3 3.8 2.3s2.9-.8 3.8-2.3" />
-      <path d="M12 5.1V4.2" />
-    </EmblemSvg>
-  );
-}
-
 /** Expand — rail spine with an opening chevron. */
 export function ExpandEmblem(props: EmblemProps): React.JSX.Element {
   return (
@@ -204,7 +193,6 @@ export const CHROME_EMBLEMS = {
   smith: SmithEmblem,
   project: ProjectEmblem,
   settings: SettingsEmblem,
-  pending: PendingEmblem,
   expand: ExpandEmblem,
   collapse: CollapseEmblem,
 } as const;

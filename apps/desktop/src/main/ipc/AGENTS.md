@@ -49,10 +49,9 @@ npx vitest run apps/desktop/tests/main/ipc/ipc-clone.test.ts
 
 ## Push Channels
 
-Exactly eleven push channels (from main → renderer):
+Exactly ten push channels (from main → renderer):
 
 - `runs-changed`
-- `interrupts-changed`
 - `settings-changed`
 - `updater-status`
 - `detection-progress`

@@ -30,13 +30,7 @@ import type {
   ValidationIssue,
 } from '@shared/types.js';
 import type { Tracer } from '../trace/tracer.js';
-import {
-  AgentSession,
-  KILLED_DETAIL,
-  type InterruptRequest,
-  type Mode,
-  type TransportRequest,
-} from '../pi/session.js';
+import { AgentSession, KILLED_DETAIL, type Mode, type TransportRequest } from '../pi/session.js';
 import { PiTransport } from '../pi/pi-transport.js';
 import type { AgentTransport } from '../pi/transport.js';
 import { decideAcceptance } from './acceptance.js';
@@ -44,7 +38,6 @@ import { capturePhaseStart } from './checkpoint.js';
 import type { PhaseRunner, RunContext, PhaseJump } from './phase-context.js';
 import { AgentPhaseRunner } from './runners/agent.js';
 import { CodePhaseRunner } from './runners/code.js';
-import { EngineerPhaseRunner } from './runners/engineer.js';
 import * as worktreeLib from './worktree.js';
 import { recordLanding } from './settle.js';
 import type { Envelope } from './envelopes.js';
@@ -112,8 +105,6 @@ export interface ExecutorDeps {
   sourceLifecycle?: RunSourceLifecycle | null;
   runId: string;
   engineer: string;
-  /** Raises an engineer phase's checkpoint and resolves with what was chosen. */
-  askHuman: (req: InterruptRequest) => Promise<{ approve: boolean; text?: string }>;
   onLiveText?: (phaseId: string, text: string) => void;
   onRunFinished?: (status: RunStatus) => void;
   /**
@@ -222,7 +213,6 @@ export class Executor {
         onLiveText: deps.onLiveText,
       }),
       code: new CodePhaseRunner(),
-      engineer: new EngineerPhaseRunner(),
     };
   }
 
@@ -948,7 +938,6 @@ export class Executor {
       cancelled: () => this.cancelled,
       onCancel: (abort) => this.onCancel(abort),
       phaseId: (name: string) => this.phaseId(name),
-      askHuman: (req) => this.deps.askHuman(req),
       recordPr: (input) => this.recordPr(input),
       recordIssue: (input) => this.recordIssue(input),
     };

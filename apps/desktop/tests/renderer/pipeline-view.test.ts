@@ -30,9 +30,8 @@ describe('pipeline-view', () => {
         { name: 'p1', kind: 'agent', description: '' },
         { name: 'p2', kind: 'agent', description: '' },
         { name: 'p3', kind: 'code', description: '' },
-        { name: 'p4', kind: 'engineer', description: '' },
       ];
-      expect(phaseComposition(phases)).toBe('2 agents · 1 command · 1 checkpoint');
+      expect(phaseComposition(phases)).toBe('2 agents · 1 command');
     });
 
     it('handles empty phases', () => {
@@ -198,13 +197,12 @@ describe('pipeline-view', () => {
     });
 
     it('creates unique snake-case names for every kind', () => {
-      const taken = new Set(['new_agent', 'new_command', 'new_checkpoint']);
+      const taken = new Set(['new_agent', 'new_command']);
       expect(blankPhase('agent', taken).name).toBe('new_agent_2');
       expect(blankPhase('code', taken).name).toBe('new_command_2');
-      expect(blankPhase('engineer', taken).name).toBe('new_checkpoint_2');
     });
 
-    it('gives agent, command, and checkpoint phases complete required data', () => {
+    it('gives agent and command phases complete required data', () => {
       const agent = blankPhase('agent', new Set(), { preferredAgent: 'reviewer' });
       expect(agent.description.trim().length).toBeGreaterThan(0);
       expect(agent.agent).toBe('reviewer');
@@ -218,10 +216,6 @@ describe('pipeline-view', () => {
       const fallback = blankPhase('code', new Set());
       expect(fallback.command).toEqual({ builtin: 'git_status' });
       expect(fallback.command).not.toEqual({ ref: 'test' });
-
-      const checkpoint = blankPhase('engineer', new Set());
-      expect(checkpoint.description.trim().length).toBeGreaterThan(0);
-      expect(checkpoint.question).toBe('Should the run continue?');
     });
 
     it('labels the inherit option with the selected agent envelope', () => {

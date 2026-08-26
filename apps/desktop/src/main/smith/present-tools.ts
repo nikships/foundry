@@ -22,7 +22,6 @@ import {
   type ChangeReceiptDef,
   type ChangeReceiptStatus,
   type ChangeReceiptTarget,
-  type CheckpointDef,
   type ChecklistDef,
   type DataTableDef,
   type DiagnosticsDef,
@@ -80,7 +79,6 @@ const ARTIFACT_KINDS = [
   'diagnostics',
   'data_table',
   'evidence_disclosure',
-  'engineer_checkpoint',
   'readiness_journey',
   'provider_status',
 ] as const satisfies readonly SmithPresentableArtifactKind[];
@@ -110,8 +108,6 @@ const VALID_BASE_SYNC_STATES = new Set([
 const VALID_PR_CHECKS = new Set(['passing', 'failing', 'pending', 'none']);
 const VALID_PR_MERGEABLE = new Set(['mergeable', 'conflicting', 'unknown']);
 const VALID_PR_ACTIONS = new Set(['create', 'merge', 'fix_conflicts']);
-const VALID_CHECKPOINT_ACTION_KINDS = new Set(['approve', 'reject', 'edit']);
-const VALID_CHECKPOINT_DECISIONS = new Set(['approve', 'reject']);
 const VALID_READINESS_PHASES: ReadonlySet<string> = new Set<ReadinessPhase>([
   'idle',
   'inspecting',
@@ -137,7 +133,6 @@ const VALID_PROVIDER_CONNECTIONS = new Set([
   'disconnected',
   'error',
 ]);
-const MAX_CHECKPOINT_ANSWER = 8_000;
 const MAX_JOURNEY_CRITERIA = 60;
 const MAX_JOURNEY_WORK = 200;
 const MAX_STATUS_PROVIDERS = 40;
@@ -330,38 +325,6 @@ function arrayAt(
     return null;
   }
   return value;
-}
-
-export function validateCheckpoint(spec: unknown): ValidationIssue[] {
-  const issues: ValidationIssue[] = [];
-  const raw = objectAt(issues, spec, 'spec');
-  if (!raw) return issues;
-
-  requireString(issues, raw.interruptId, 'interruptId', 'checkpoint interruptId');
-  requireString(issues, raw.title, 'title', 'checkpoint title');
-  requireString(issues, raw.question, 'question', 'checkpoint question');
-  optionalString(issues, raw.title, 'title', 200);
-  optionalString(issues, raw.question, 'question', 4_000);
-  optionalString(issues, raw.runId, 'runId', 200);
-  optionalString(issues, raw.phaseId, 'phaseId', 200);
-  optionalString(issues, raw.pipelineId, 'pipelineId', 200);
-  optionalString(issues, raw.raisedAt, 'raisedAt', 100);
-  optionalString(issues, raw.draftAnswer, 'draftAnswer', MAX_CHECKPOINT_ANSWER);
-  optionalBoolean(issues, raw.answered, 'answered');
-  optionalEnum(issues, raw.decision, 'decision', VALID_CHECKPOINT_DECISIONS);
-
-  const actions = arrayAt(issues, raw.actions, 'actions', 10);
-  for (const [index, entry] of (actions ?? []).entries()) {
-    const where = `actions[${index}]`;
-    const action = objectAt(issues, entry, where);
-    if (!action) continue;
-    requireString(issues, action.id, `${where}.id`, 'action id');
-    requireString(issues, action.label, `${where}.label`, 'action label');
-    optionalString(issues, action.label, `${where}.label`, 100);
-    requireEnum(issues, action.kind, `${where}.kind`, VALID_CHECKPOINT_ACTION_KINDS);
-  }
-
-  return issues;
 }
 
 export function validateReadinessJourney(spec: unknown): ValidationIssue[] {
@@ -1891,7 +1854,6 @@ function validateSpec(
   if (kind === 'diagnostics') return validateDiagnostics(spec);
   if (kind === 'data_table') return validateDataTable(spec);
   if (kind === 'evidence_disclosure') return validateEvidenceDisclosure(spec);
-  if (kind === 'engineer_checkpoint') return validateCheckpoint(spec);
   if (kind === 'readiness_journey') return validateReadinessJourney(spec);
   if (kind === 'provider_status') return validateProviderStatus(spec);
   const targetKind =
@@ -1973,9 +1935,6 @@ function buildArtifact(
   if (kind === 'data_table') return { ...base, kind, table: spec as DataTableDef };
   if (kind === 'evidence_disclosure') {
     return { ...base, kind, evidence: spec as EvidenceDisclosureDef };
-  }
-  if (kind === 'engineer_checkpoint') {
-    return { ...base, kind, checkpoint: spec as CheckpointDef };
   }
   if (kind === 'readiness_journey') {
     return { ...base, kind, journey: spec as ReadinessJourneyDef };
@@ -2184,7 +2143,7 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
       'Show the operator a rich inline card in the chat: an entity design, a checklist report, ' +
       'a run summary, an entity comparison, a change receipt, a project card, a pull request ' +
       'card, a settings diff, a diagnostics report, a data catalog table, a context/evidence ' +
-      'disclosure, an engineer checkpoint, the readiness journey, or provider/Companion status. ' +
+      'disclosure, the readiness journey, or provider/Companion status. ' +
       'Use it before proposing a non-trivial pipeline, agent, or envelope, to compare a proposed ' +
       'edit against the stored definition, to record a change/command receipt after direct ' +
       'checkout work, to present a checklist/doctor/readiness/validation report, for run ' +
@@ -2192,14 +2151,12 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
       'project state/divergence/health, to present a PR preview/result, to display settings ' +
       'changes with human labels and old/new values, to present doctor/orphan/update ' +
       'diagnostics, to present bounded catalogs of entities/runs/projects, to disclose context ' +
-      'occupancy and capped evidence, to surface a pending engineer checkpoint with its run ' +
-      'context, to show the whole readiness journey (marker, criteria, remediation, PR), or to ' +
-      'report provider connection and paired Companion devices. It is presentation only — it ' +
-      'saves nothing, needs no approval, answers no checkpoint, and is not evidence any action ' +
-      'succeeded: approving a checkpoint or changing readiness still goes through the approval ' +
-      'card. Never put an API key, token, masked key prefix, or Companion pairing payload in a ' +
-      'spec. Do not repeat the card content in prose; add only rationale, uncertainty, or a ' +
-      'recommendation.',
+      'occupancy and capped evidence, to show the whole readiness journey (marker, criteria, ' +
+      'remediation, PR), or to report provider connection and paired Companion devices. It is ' +
+      'presentation only — it saves nothing, needs no approval, and is not evidence any action ' +
+      'succeeded: changing readiness still goes through the approval card. Never put an API ' +
+      'key, token, masked key prefix, or Companion pairing payload in a spec. Do not repeat ' +
+      'the card content in prose; add only rationale, uncertainty, or a recommendation.',
     parameters: {
       type: 'object',
       properties: {
@@ -2209,7 +2166,7 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
           description:
             'Which card to show: a design, checklist, run summary, comparison, change receipt, ' +
             'project card, PR card, settings diff, diagnostics, data table, evidence ' +
-            'disclosure, engineer checkpoint, readiness journey, or provider/Companion status.',
+            'disclosure, readiness journey, or provider/Companion status.',
         },
         entityKind: {
           type: 'string',
@@ -2229,9 +2186,8 @@ export function smithPresentTool(deps: SmithPresentToolDeps): ToolDefinition {
             'definition; a run_summary spec object; a change receipt (target, status, ' +
             'filesChanged, diffstat, command, outputExcerpt); a project card or PR card ' +
             'definition; a settings diff, diagnostics report, data table definition, or ' +
-            'context/evidence disclosure definition; an engineer checkpoint (interruptId, ' +
-            'title, question, runId, phaseId, draftAnswer, actions); a readiness journey ' +
-            '(phase, marker, criteria, work, pr, actions); or provider status (providers with ' +
+            'context/evidence disclosure definition; a readiness journey (phase, marker, ' +
+            'criteria, work, pr, actions); or provider status (providers with ' +
             'connection/authenticated/keyPresent, bridge, companion with paired devices). Never ' +
             'a key, token, or pairing payload.',
         },

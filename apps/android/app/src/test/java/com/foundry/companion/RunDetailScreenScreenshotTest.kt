@@ -11,7 +11,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalInspectionMode
 import com.foundry.companion.data.model.*
-import com.foundry.companion.ui.components.InterruptBottomSheet
 import com.foundry.companion.ui.screens.run.RunDetailScreen
 import com.foundry.companion.ui.theme.FoundryTheme
 import org.junit.Test
@@ -171,15 +170,6 @@ class RunDetailScreenScreenshotTest {
         phases = settledPhases
     )
 
-    private val sampleInterrupt = PendingInterrupt(
-        interruptId = "int_live_01",
-        runId = "run_260818_live99",
-        pipelineName = "Feature Pipeline",
-        phaseName = "Engineer Checkpoint",
-        question = "Database schema migration detected. Approve automatic migration rollout to worktree?",
-        kind = "engineer"
-    )
-
     @Test
     fun captureLiveRunDetail() {
         val bitmap = renderToBitmap {
@@ -298,32 +288,6 @@ class RunDetailScreenScreenshotTest {
             )
         }
         saveScreenshot(bitmap, "android-run-detail-killed.png")
-    }
-
-    @Test
-    fun captureLiveRunWithInterruptSheet() {
-        val bitmap = renderToBitmap {
-            Box(modifier = Modifier.fillMaxSize()) {
-                RunDetailScreen(
-                    runDetail = RunDetail(run = liveRun, phases = livePhases, live = true),
-                    connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
-                    pendingInterrupt = sampleInterrupt,
-                    onBackClick = {},
-                    onOpenInspector = {},
-                    onKillRun = {},
-                    onOpenPr = {},
-                    onCreatePr = {},
-                    onOpenIssue = {}
-                )
-                InterruptBottomSheet(
-                    interrupt = sampleInterrupt,
-                    onApprove = {},
-                    onReject = {},
-                    onDismiss = {}
-                )
-            }
-        }
-        saveScreenshot(bitmap, "android-run-detail-interrupt.png")
     }
 
     private fun renderToBitmap(content: @androidx.compose.runtime.Composable () -> Unit): Bitmap {

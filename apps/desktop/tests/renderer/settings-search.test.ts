@@ -108,7 +108,6 @@ describe('SETTINGS_TOGGLES', () => {
       'accepted',
       'rejected',
       'failed',
-      'needsInput',
       'dockBadge',
     ]);
   });

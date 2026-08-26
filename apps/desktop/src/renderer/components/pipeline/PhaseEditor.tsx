@@ -113,14 +113,7 @@ export default function PhaseEditor({
         description: phase.description,
         command: commands[0] ? { ref: commands[0] } : { builtin: 'git_commit' },
       });
-      return;
     }
-    onChange({
-      name: phase.name,
-      kind: 'engineer',
-      description: phase.description,
-      question: '',
-    });
   };
 
   const handleSourceChange = (next: CommandSource): void => {
@@ -139,11 +132,6 @@ export default function PhaseEditor({
   const kindOptions = [
     { label: 'Agent', on: phase.kind === 'agent', onClick: () => handleKindChange('agent') },
     { label: 'Command', on: phase.kind === 'code', onClick: () => handleKindChange('code') },
-    {
-      label: 'Checkpoint',
-      on: phase.kind === 'engineer',
-      onClick: () => handleKindChange('engineer'),
-    },
   ];
 
   const sourceOptions = [
@@ -577,31 +565,6 @@ export default function PhaseEditor({
             />
           </div>
         </>
-      )}
-
-      {/* ── Checkpoint Specific ──────────────────────────────────────── */}
-      {phase.kind === 'engineer' && (
-        <div className={styles.fieldGroup}>
-          <div className={styles.fieldHeader}>
-            <label htmlFor={`phase-question-${index}`} className={styles.fieldLabel}>
-              Question
-            </label>
-            <span className={styles.fieldHint}>shown on interrupt sheet</span>
-          </div>
-          <textarea
-            id={`phase-question-${index}`}
-            rows={3}
-            className={styles.textarea}
-            placeholder="What this checkpoint asks the human operator."
-            value={phase.question ?? ''}
-            onChange={(e) => onChange({ ...phase, question: e.target.value })}
-          />
-          {!phase.question?.trim() && (
-            <p className={styles.warningText}>
-              No question set — the interrupt sheet opens with no question text.
-            </p>
-          )}
-        </div>
       )}
 
       {/* ── Danger Zone ──────────────────────────────────────────────── */}

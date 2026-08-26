@@ -6,7 +6,6 @@ import kotlinx.coroutines.flow.StateFlow
 interface CompanionRepository {
     val connectionStatus: StateFlow<ConnectionStatus>
     val activeSession: StateFlow<PairedSession?>
-    val pendingInterrupts: StateFlow<List<PendingInterrupt>>
 
     suspend fun pair(payload: CompanionPairingPayload, deviceName: String = "Android Device"): Result<CompanionPairResult>
     suspend fun unpair()
@@ -18,11 +17,9 @@ interface CompanionRepository {
     suspend fun getRunDetail(projectId: String, runId: String): Result<RunDetail>
     suspend fun getTranscriptEvents(projectId: String, runId: String, phaseId: String): Result<List<TranscriptEvent>>
     suspend fun getEventPage(projectId: String, runId: String, after: Long = 0L): Result<EventPage>
-    suspend fun getInterrupts(): Result<List<PendingInterrupt>>
     suspend fun startRun(input: StartRunInput): Result<CompanionStartResult>
     suspend fun killRun(projectId: String, runId: String): Result<CompanionKillResult>
     suspend fun continueRun(projectId: String, runId: String): Result<CompanionContinueResult>
-    suspend fun answerInterrupt(answer: InterruptAnswer): Result<CompanionAnswerResult>
     suspend fun getPrStatus(projectId: String): Result<GhStatus>
     suspend fun getPrDraft(projectId: String, runId: String): Result<CompanionPrDraft>
     suspend fun createPr(projectId: String, runId: String, request: CompanionPrCreateRequest): Result<PrAction>

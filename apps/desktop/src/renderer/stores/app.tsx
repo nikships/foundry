@@ -11,14 +11,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import type {
-  AgentDef,
-  AppSettings,
-  EnvelopeDef,
-  PendingInterrupt,
-  PipelineDef,
-  ProjectDef,
-} from '@shared/types.js';
+import type { AgentDef, AppSettings, EnvelopeDef, PipelineDef, ProjectDef } from '@shared/types.js';
 import { api } from '../api.js';
 import { safeGetItem, safeSetItem } from '../utils/local-store.js';
 import { resolveSmithProjectId } from '../view-models/smith-scope.js';
@@ -29,7 +22,6 @@ export interface AppState {
   agents: AgentDef[];
   pipelines: PipelineDef[];
   envelopes: EnvelopeDef[];
-  interrupts: PendingInterrupt[];
   selectedProjectId: string;
   /** Null selects Smith's global “All projects” conversation. */
   smithProjectId: string | null;
@@ -43,7 +35,6 @@ export interface AppContextValue extends AppState {
   selectSmithProject: (id: string | null) => void;
   refreshScoped: () => Promise<void>;
   refreshAll: () => Promise<void>;
-  refreshInterrupts: () => Promise<void>;
   patchSettings: (patch: Partial<AppSettings>) => Promise<string[]>;
   agentByName: (name: string) => AgentDef | null;
   pipelineById: (id: string) => PipelineDef | null;
@@ -78,7 +69,6 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
   const [agents, setAgents] = useState<AgentDef[]>([]);
   const [pipelines, setPipelines] = useState<PipelineDef[]>([]);
   const [envelopes, setEnvelopes] = useState<EnvelopeDef[]>([]);
-  const [interrupts, setInterrupts] = useState<PendingInterrupt[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>(
     () => safeGetItem(PROJECT_KEY) ?? '',
   );
@@ -153,10 +143,6 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
     setReady(true);
   }, [smithProjectId, rememberSmithScope]);
 
-  const refreshInterrupts = useCallback(async (): Promise<void> => {
-    setInterrupts(await api.interrupts.list());
-  }, []);
-
   const selectProject = useCallback(
     (id: string): void => {
       setSelectedProjectId(id);
@@ -203,14 +189,11 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
 
   useEffect(() => {
     void refreshAll();
-    void refreshInterrupts();
     const offSettings = api.on('settings-changed', () => void refreshAll());
-    const offInterrupts = api.on('interrupts-changed', () => void refreshInterrupts());
     return () => {
       offSettings();
-      offInterrupts();
     };
-  }, [refreshAll, refreshInterrupts]);
+  }, [refreshAll]);
 
   const value = useMemo<AppContextValue>(
     () => ({
@@ -219,7 +202,6 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
       agents,
       pipelines,
       envelopes,
-      interrupts,
       selectedProjectId,
       smithProjectId,
       ready,
@@ -229,7 +211,6 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
       selectSmithProject,
       refreshScoped,
       refreshAll,
-      refreshInterrupts,
       patchSettings,
       agentByName,
       pipelineById,
@@ -241,7 +222,6 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
       agents,
       pipelines,
       envelopes,
-      interrupts,
       selectedProjectId,
       smithProjectId,
       ready,
@@ -251,7 +231,6 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
       selectSmithProject,
       refreshScoped,
       refreshAll,
-      refreshInterrupts,
       patchSettings,
       agentByName,
       pipelineById,

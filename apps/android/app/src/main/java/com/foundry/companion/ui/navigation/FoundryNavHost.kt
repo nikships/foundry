@@ -255,28 +255,18 @@ fun FoundryNavHost(
             route = NavRoute.RunDetail.route,
             arguments = listOf(
                 navArgument("runId") { type = NavType.StringType },
-                navArgument("interruptId") {
-                    type = NavType.StringType
-                    nullable = true
-                    defaultValue = null
-                }
             )
         ) { backStackEntry ->
             val runId = backStackEntry.arguments?.getString("runId").orEmpty()
-            val requestedInterruptId = backStackEntry.arguments?.getString("interruptId")
             LaunchedEffect(runId) {
                 viewModel.loadRunDetail(runId)
             }
 
-            val matchingInterrupt = uiState.interruptForRun(runId)
-
             RunDetailScreen(
-                initialInterruptId = requestedInterruptId,
                 runDetail = uiState.currentRunDetail?.takeIf { it.run.runId == runId },
                 isRunMissing = uiState.missingRunId == runId,
                 events = uiState.eventRows,
                 connectionStatus = uiState.connectionStatus,
-                pendingInterrupt = matchingInterrupt,
                 actionError = uiState.errorMessage,
                 onDismissActionError = { viewModel.clearActionError() },
                 ghStatus = uiState.ghStatus,
@@ -288,9 +278,6 @@ fun FoundryNavHost(
                 },
                 onKillRun = { viewModel.killRun(it) },
                 onContinueRun = { viewModel.continueRun(it) },
-                onAnswerInterrupt = { interruptId, approved, notes ->
-                    viewModel.answerInterrupt(interruptId, approved, notes)
-                },
                 onRetryConnection = { viewModel.retryConnection() },
                 onOpenPr = { url -> CustomTabs.open(context, url) },
                 onCreatePr = { viewModel.createPr(it) },
@@ -351,7 +338,4 @@ fun FoundryNavHost(
             onDismiss = { showConnectionSheet = false }
         )
     }
-
-    // An interrupt never raises a sheet on its own: Home shows the run's amber
-    // `waiting` chip and the Run screen pins the strip with `Answer…` (spec §3.7).
 }

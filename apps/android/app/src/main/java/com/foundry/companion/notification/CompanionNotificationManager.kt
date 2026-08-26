@@ -14,19 +14,11 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.foundry.companion.MainActivity
 import com.foundry.companion.R
-import com.foundry.companion.data.model.PendingInterrupt
 import com.foundry.companion.data.model.RunRow
 
 interface CompanionNotificationManager {
     fun hasNotificationPermission(): Boolean
     fun postRunSettledNotification(run: RunRow)
-
-    /**
-     * [projectId] is the run's project when the caller knows it. The host serves
-     * interrupts without one, so it is joined in from the runs list and may be
-     * blank; a blank value simply leaves the tap on whatever project is selected.
-     */
-    fun postInterruptNotification(interrupt: PendingInterrupt, projectId: String = "")
 }
 
 class FoundryNotificationManager(
@@ -54,18 +46,7 @@ class FoundryNotificationManager(
                 enableVibration(true)
             }
 
-            val interruptChannel = NotificationChannel(
-                CHANNEL_INTERRUPTS,
-                "Engineer Interrupts",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "High-priority notifications when an engineer phase is waiting on your decision."
-                enableLights(true)
-                enableVibration(true)
-            }
-
             systemNotificationManager.createNotificationChannel(settledChannel)
-            systemNotificationManager.createNotificationChannel(interruptChannel)
         }
     }
 
@@ -145,53 +126,7 @@ class FoundryNotificationManager(
         }
     }
 
-    override fun postInterruptNotification(interrupt: PendingInterrupt, projectId: String) {
-        if (!hasNotificationPermission()) return
-
-        val pipelineName = interrupt.displayPipeline
-        val title = "$pipelineName is waiting on you"
-        val question = interrupt.displayQuestion
-        val contentText = if (question.isNotBlank()) question else "An engineer phase is waiting for your answer."
-
-        val intent = Intent(
-            Intent.ACTION_VIEW,
-            Uri.parse("foundry://run/${interrupt.runId}?interrupt=${interrupt.interruptId}"),
-            context,
-            MainActivity::class.java
-        ).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra("runId", interrupt.runId)
-            putExtra("interruptId", interrupt.interruptId)
-            if (projectId.isNotBlank()) putExtra("projectId", projectId)
-        }
-
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            interrupt.interruptId.hashCode(),
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val notification = NotificationCompat.Builder(context, CHANNEL_INTERRUPTS)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setColor(0xFFEE6018.toInt())
-            .setContentTitle(title)
-            .setContentText(contentText)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(contentText))
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .setContentIntent(pendingIntent)
-            .build()
-
-        try {
-            notificationManager.notify(interrupt.interruptId.hashCode(), notification)
-        } catch (_: SecurityException) {
-            // Permission not granted or revoked
-        }
-    }
-
     companion object {
         const val CHANNEL_SETTLED_RUNS = "foundry_settled_runs"
-        const val CHANNEL_INTERRUPTS = "foundry_interrupts"
     }
 }

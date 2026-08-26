@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.foundry.companion.background.CompanionWatcher
 import com.foundry.companion.data.model.ConnectionStatus
-import com.foundry.companion.data.model.PendingInterrupt
 import com.foundry.companion.data.model.RunRow
 import com.foundry.companion.data.repository.FakeCompanionRepository
 import com.foundry.companion.data.session.SessionManager
@@ -12,7 +11,6 @@ import com.foundry.companion.notification.CompanionNotifier
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
-import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
@@ -79,39 +77,6 @@ class BackgroundWatcherTest {
     }
 
     @Test
-    fun testWatcherPostsInterruptEvenWithSettleToggleOff() = runTest {
-        sessionManager.setNotifyOnSettleEnabled(false)
-        val repository = FakeCompanionRepository(initialPaired = true)
-        repository.updateRun(runningRun())
-        val watcher = CompanionWatcher(repository, notifier, TestScope(testScheduler))
-        watcher.start()
-        advanceTimeBy(pollMs / 2)
-        runCurrent()
-
-        repository.updateRun(runningRun().copy(status = "failed"))
-        repository.setPendingInterrupts(
-            listOf(
-                PendingInterrupt(
-                    interruptId = "int_bg_01",
-                    runId = "run_bg_01",
-                    pipelineName = "Security Pipeline",
-                    question = "Authorize key rotation?"
-                )
-            )
-        )
-        advanceTimeBy(pollMs * 2)
-        runCurrent()
-
-        assertTrue(notificationManager.postedSettledRuns.isEmpty())
-        assertEquals(1, notificationManager.postedInterrupts.size)
-        assertEquals("int_bg_01", notificationManager.postedInterrupts.first().interruptId)
-        // The project is joined in from the runs list so a cold-start tap can
-        // select it rather than guessing.
-        assertEquals("proj_foundry_core", notificationManager.interruptProjectIds.first())
-        watcher.stop()
-    }
-
-    @Test
     fun testUnpairStopsTheWatcher() = runTest {
         val repository = FakeCompanionRepository(initialPaired = true)
         val watcher = CompanionWatcher(repository, notifier, TestScope(testScheduler))
@@ -171,7 +136,9 @@ class BackgroundWatcherTest {
         val earlyAttempts = repository.attempts
         assertTrue("expected backoff to slow polling, got $earlyAttempts attempts", earlyAttempts in 1..2)
 
-        advanceUntilIdle()
+        // Finite cap: advanceUntilIdle never returns if the loop failed to give up.
+        advanceTimeBy(CompanionWatcher.MAX_BACKOFF_MS * (3 + 1))
+        runCurrent()
 
         assertEquals(CompanionWatcher.StopReason.UNREACHABLE, watcher.stopReason.value)
         assertFalse(watcher.isRunning)
@@ -247,24 +214,18 @@ class BackgroundWatcherTest {
         runCurrent()
 
         repository.updateRun(runningRun().copy(status = "accepted"))
-        repository.setPendingInterrupts(
-            listOf(PendingInterrupt(interruptId = "int_denied", runId = "run_bg_01"))
-        )
         advanceTimeBy(pollMs * 2)
         runCurrent()
 
         assertTrue(notificationManager.postedSettledRuns.isEmpty())
-        assertTrue(notificationManager.postedInterrupts.isEmpty())
         // Nothing was delivered, so nothing may be recorded as delivered.
         assertFalse(sessionManager.getNotifiedSettledRunIds().contains("run_bg_01"))
-        assertFalse(sessionManager.getNotifiedInterruptIds().contains("int_denied"))
 
-        // The interrupt is still pending, so a later grant still surfaces it.
         notificationManager.permissionGranted = true
         advanceTimeBy(pollMs * 2)
         runCurrent()
-        assertEquals(1, notificationManager.postedInterrupts.size)
         watcher.stop()
+        assertEquals(1, notificationManager.postedSettledRuns.size)
     }
 
     @Test

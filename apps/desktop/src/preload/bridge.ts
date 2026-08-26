@@ -13,7 +13,6 @@ const call = <T>(channel: string, ...args: unknown[]): Promise<T> =>
 /** Push events the renderer can subscribe to (everything else is polled). */
 const EVENT_CHANNELS = {
   'runs-changed': IPC.eventRunsChanged,
-  'interrupts-changed': IPC.eventInterruptsChanged,
   'settings-changed': IPC.eventSettingsChanged,
   'updater-status': IPC.eventUpdaterStatus,
   'detection-progress': IPC.eventDetectionProgress,
@@ -174,10 +173,6 @@ const api: FoundryApi = {
     create: (projectId, runId, title, body) => call(IPC.prsCreate, projectId, runId, title, body),
     merge: (projectId, prNumber, method) => call(IPC.prsMerge, projectId, prNumber, method),
     fixConflicts: (projectId, prNumber) => call(IPC.prsFixConflicts, projectId, prNumber),
-  },
-  interrupts: {
-    list: () => call(IPC.interruptsList),
-    answer: (answer) => call(IPC.interruptsAnswer, answer),
   },
   smith: {
     send: (projectId, text, screen) => call(IPC.smithSend, projectId, text, screen),

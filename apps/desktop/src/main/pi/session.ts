@@ -39,18 +39,6 @@ export interface AgentTurnContext {
   systemPrompt?: string;
 }
 
-/**
- * A deliberate human checkpoint an engineer phase raises. Permission asks are
- * never one of these: a started run settles without a person.
- */
-export interface InterruptRequest {
-  runId: string;
-  phaseId: string | null;
-  kind: 'engineer';
-  title: string;
-  body: string;
-}
-
 export interface AgentSessionDeps {
   runId: string;
   worktree: string;

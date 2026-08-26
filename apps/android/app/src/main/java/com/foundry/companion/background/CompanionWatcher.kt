@@ -14,7 +14,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
- * Polls `/v1/projects/:id/runs` and `/v1/interrupts` on the same LAN and feeds
+ * Polls `/v1/projects/:id/runs` on the same LAN and feeds
  * every result to the shared [CompanionNotifier]. This is the path that keeps
  * working when the activity is gone: the UI ViewModel's own poll dies with the
  * screen, this one lives in whatever holder keeps the process up.
@@ -108,7 +108,7 @@ class CompanionWatcher(
         _stopReason.value = reason
     }
 
-    /** One sweep of every paired project plus the interrupt queue. */
+    /** One sweep of every paired project. */
     private suspend fun pollOnce(): Boolean {
         val projectIds = resolveProjectIds() ?: return false
         var reachable = true
@@ -123,10 +123,6 @@ class CompanionWatcher(
                 }
                 .onFailure { reachable = false }
         }
-
-        repository.getInterrupts()
-            .onSuccess { notifier.onInterrupts(it) }
-            .onFailure { reachable = false }
 
         return reachable
     }

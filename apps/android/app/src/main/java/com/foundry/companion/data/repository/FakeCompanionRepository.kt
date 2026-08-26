@@ -30,9 +30,6 @@ class FakeCompanionRepository(
     )
     override val connectionStatus: StateFlow<ConnectionStatus> = _connectionStatus.asStateFlow()
 
-    private val _pendingInterrupts = MutableStateFlow<List<PendingInterrupt>>(emptyList())
-    override val pendingInterrupts: StateFlow<List<PendingInterrupt>> = _pendingInterrupts.asStateFlow()
-
     private val extraEvents = mutableListOf<EventRow>()
 
     private val samplePipelines = listOf(
@@ -270,7 +267,6 @@ class FakeCompanionRepository(
     override suspend fun unpair() {
         _activeSession.value = null
         _connectionStatus.value = ConnectionStatus.Unpaired
-        _pendingInterrupts.value = emptyList()
     }
 
     override fun injectFakeSession(session: PairedSession) {
@@ -536,14 +532,6 @@ class FakeCompanionRepository(
         return Result.success(events)
     }
 
-    override suspend fun getInterrupts(): Result<List<PendingInterrupt>> {
-        return Result.success(_pendingInterrupts.value)
-    }
-
-    fun setPendingInterrupts(interrupts: List<PendingInterrupt>) {
-        _pendingInterrupts.value = interrupts
-    }
-
     override suspend fun startRun(input: StartRunInput): Result<CompanionStartResult> {
         if (input.request.isBlank()) {
             return Result.success(
@@ -588,11 +576,6 @@ class FakeCompanionRepository(
         if (index == -1) return Result.success(CompanionContinueResult(false, "Run not found"))
         runsList[index] = runsList[index].copy(status = "running", outcomeDetail = null)
         return Result.success(CompanionContinueResult(true, "Continuing run"))
-    }
-
-    override suspend fun answerInterrupt(answer: InterruptAnswer): Result<CompanionAnswerResult> {
-        _pendingInterrupts.value = _pendingInterrupts.value.filterNot { it.interruptId == answer.interruptId }
-        return Result.success(CompanionAnswerResult(ok = true))
     }
 
     private var fakeGhStatus: GhStatus = GhStatus(
@@ -801,7 +784,6 @@ class FakeCompanionRepository(
     fun simulateRevokeToken() {
         _activeSession.value = null
         _connectionStatus.value = ConnectionStatus.Unpaired
-        _pendingInterrupts.value = emptyList()
     }
 
     fun addRun(run: RunRow) {
