@@ -21,8 +21,8 @@
 
 import { isUtf8 } from 'node:buffer';
 import { createHash } from 'node:crypto';
-import { readdirSync, statSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { readdirSync } from 'node:fs';
+import { open, type FileHandle } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { PhaseCheckpointFile, PhaseCheckpointFileState } from '@shared/types.js';
 import { resolveRef, statusPorcelain, type PorcelainEntry } from './git.js';
@@ -132,33 +132,42 @@ async function captureFile(cwd: string, entry: CaptureEntry): Promise<PhaseCheck
 
   const abs = join(cwd, entry.path);
 
-  // The stat still precedes the read, and not only to skip directories: it is
-  // the only thing that can name a size for a path the read then fails on, so
-  // an `unreadable` row still says how much is missing.
-  let size: number;
+  // One handle, stat-ed and read through that same handle, so the bytes hashed
+  // are the bytes measured: checking the path and then opening it separately
+  // describes two different files if anything moves in between. A directory
+  // can appear as one untracked entry (git collapses an untracked tree), and
+  // opening it succeeds on macOS while reading it does not, so the stat is
+  // still what rules it out. The size is kept before the read because it is
+  // the only thing that can say how much is missing on a path the read then
+  // fails on.
+  let handle: FileHandle;
   try {
-    const stat = statSync(abs);
-    // A directory can appear as one untracked entry (git collapses an
-    // untracked tree). Reading it would throw; naming it is still useful.
-    if (stat.isDirectory()) return { ...base, contentHash: '', size: 0, omitted: 'unreadable' };
-    size = stat.size;
+    handle = await open(abs, 'r');
   } catch {
     // Unreadable through permissions or a race. The path is still recorded so
     // a restore knows it was dirty, and the omission makes the gap explicit.
     return { ...base, contentHash: '', size: 0, omitted: 'unreadable' };
   }
 
-  // Read off the threadpool rather than with `readFileSync`. Nothing is
-  // skipped for size any more, so a dirty 800 MB build artefact is now
-  // something this reads in full — synchronously that would park the main
-  // process for as long as the disk took, stalling IPC and the renderer's
-  // poll, before every phase. The caller still awaits the whole capture before
-  // the phase starts, so the record is complete when the phase begins.
+  // Read off the threadpool rather than synchronously. Nothing is skipped for
+  // size any more, so a dirty 800 MB build artefact is now something this
+  // reads in full — synchronously that would park the main process for as long
+  // as the disk took, stalling IPC and the renderer's poll, before every
+  // phase. The caller still awaits the whole capture before the phase starts,
+  // so the record is complete when the phase begins.
+  let size = 0;
   let buf: Buffer;
   try {
-    buf = await readFile(abs);
+    const stat = await handle.stat();
+    if (stat.isDirectory()) return { ...base, contentHash: '', size: 0, omitted: 'unreadable' };
+    size = stat.size;
+    buf = await handle.readFile();
   } catch {
     return { ...base, contentHash: '', size, omitted: 'unreadable' };
+  } finally {
+    await handle.close().catch(() => {
+      // A handle that cannot be closed does not invalidate what was read.
+    });
   }
 
   // Node's validator rather than a utf8 round trip: the round trip allocated a
