@@ -50,8 +50,11 @@ function IssueLink({
  * Restore, kept visible and disabled rather than hidden when it cannot be
  * used: a run with no recorded checkpoints is the common case for a while
  * yet, and an absent button teaches an operator nothing about why.
+ *
+ * Exported for the renderer suite: the reason has to be *rendered*, not only
+ * carried in a `title`, and only markup can tell those two apart.
  */
-function RestoreAction({
+export function RestoreAction({
   restore,
   busy,
   onRestore,

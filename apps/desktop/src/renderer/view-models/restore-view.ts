@@ -130,8 +130,14 @@ function commitNoteOf(checkpoint: RestorableCheckpoint): string {
  * The partial sentence leads with what is impossible rather than with what
  * works: a truncated record puts most of the tree back, and describing that
  * as a phase-start replay would be the one lie this feature cannot afford.
+ *
+ * Silent when nothing can be restored at all. A missing payload clears
+ * `exactRestorePossible` as well as `restorable`, and "a restore would be
+ * partial" describes a restore that cannot happen; the blocker is the whole
+ * truth about that row and stands alone.
  */
 function exactnessDetailOf(checkpoint: RestorableCheckpoint): string {
+  if (!checkpoint.restorable) return '';
   if (checkpoint.exactRestorePossible) {
     return 'This record reproduces phase start byte for byte.';
   }
@@ -220,47 +226,184 @@ export function restoreRequest(
   return input;
 }
 
+/** The two effectful things a restore needs, injected so the order is testable. */
+export interface RestoreFlowDeps {
+  /** Puts the confirmation to the operator and resolves with their answer. */
+  confirm(confirmation: RestoreConfirmation): Promise<boolean>;
+  /** The IPC call. Reached only after `confirm` resolved true. */
+  call(input: RestoreRunInput): Promise<RestoreResult>;
+}
+
+/**
+ * Confirm, then call. Never the other way, and never without.
+ *
+ * The sequence is here rather than in the component because it is the one
+ * claim this feature rests on: a component could reorder these two awaits and
+ * no view-model test would notice. `confirm` is awaited to completion before
+ * `call` is named, and a false answer returns null having called nothing.
+ */
+export async function performRestore(
+  deps: RestoreFlowDeps,
+  checkpoint: RestorableCheckpoint,
+): Promise<RestoreResult | null> {
+  const accepted = await deps.confirm(restoreConfirmation(checkpoint));
+  const input = restoreRequest(checkpoint, accepted);
+  if (!input) return null;
+  return deps.call(input);
+}
+
+/** Whether the destructive footer button can be pressed, and what it says. */
+export interface RestoreActionState {
+  disabled: boolean;
+  label: string;
+}
+
+/**
+ * The footer button's state for the whole confirm-to-completion window.
+ *
+ * `busy` covers the confirmation as well as the call: a button left live
+ * behind an open modal lets the selection change under a pending confirmation,
+ * and `confirmManager` queues rather than replaces, so a second press would
+ * fire a second restore.
+ *
+ * `refreshing` is the re-read a freshly opened sheet performs. Confirming
+ * against a list read before the sheet opened is how a dialog ends up silent
+ * about commits a restore is going to move off.
+ */
+export function restoreActionState(input: {
+  busy: boolean;
+  refreshing: boolean;
+  hasSelection: boolean;
+}): RestoreActionState {
+  if (input.busy) return { disabled: true, label: 'Restoring…' };
+  if (input.refreshing) return { disabled: true, label: 'Checking the branch…' };
+  return { disabled: !input.hasSelection, label: 'Restore…' };
+}
+
+/**
+ * What the picker says when it has no rows.
+ *
+ * A failed read and a run that recorded nothing are different facts, and the
+ * UI cannot assert the second from the first: a refetch that throws leaves a
+ * null list, and claiming the run recorded no checkpoints on that evidence
+ * would be a fabrication.
+ */
+export function restoreEmptyCopy(list: RestorableCheckpointList | null): string {
+  if (!list) return 'Could not read this run’s checkpoints.';
+  return list.detail || RESTORE_REFUSAL_COPY.no_checkpoints;
+}
+
 /** What the operator is told after the call, refusal and success alike. */
 export interface RestoreOutcomeView {
   tone: 'ok' | 'bad';
   /** The engine's own sentence, quoted rather than rewritten. */
   detail: string;
-  /** Where the operator now stands. Empty on a refusal. */
+  /**
+   * What the worktree now is. Present whenever the branch actually moved,
+   * which includes the one refusal that happens after the reset.
+   */
   standing: string;
-  /** The next act, which is always theirs. Empty on a refusal. */
+  /** The next act, which is always theirs. Empty unless the restore succeeded. */
   nextStep: string;
+}
+
+/** The dropped commits, counted uncapped and quoted from the capped list. */
+function droppedNote(record: RestoreRecord): string {
+  if (!record.droppedCommitCount) return '';
+  const named =
+    record.droppedCommits.length < record.droppedCommitCount
+      ? `${record.droppedCommits.join(', ')}, …`
+      : record.droppedCommits.join(', ');
+  return `${plural(record.droppedCommitCount, 'commit')} moved off the branch and stay reachable through git reflog: ${named}.`;
+}
+
+function omittedNote(record: RestoreRecord): string {
+  return `${plural(record.omittedPaths.length, 'path')} could not be put back and were left as they were — ${record.omittedPaths.join(', ')}.`;
+}
+
+/**
+ * Why the tree is only close, in the operator's terms.
+ *
+ * `partial` covers two different failures and the named-paths one is not the
+ * worse of them: when the drift could not be listed in full, `omittedPaths` is
+ * empty precisely because the engine does not know what to name. Reporting
+ * that as "0 paths could not be put back" would read as a clean restore.
+ */
+function partialNote(record: RestoreRecord): string {
+  if (record.omittedPaths.length) return omittedNote(record);
+  return 'this worktree’s changed paths could not be listed in full, so some may still stand.';
 }
 
 function standingOf(record: RestoreRecord): string {
   const parts = [
     `The worktree is back at the start of “${record.phaseName}” (attempt ${record.generation}), on ${record.headSha.slice(0, 8)}.`,
   ];
-  if (record.partial) {
-    parts.push(
-      `This was a partial restore: ${plural(record.omittedPaths.length, 'path')} could not be put back and were left as they were — ${record.omittedPaths.join(', ')}.`,
-    );
-  }
-  if (record.droppedCommits.length) {
-    parts.push(
-      `${plural(record.droppedCommits.length, 'commit')} moved off the branch and stay reachable through git reflog: ${record.droppedCommits.join(', ')}.`,
-    );
-  }
+  if (record.partial) parts.push(`This was a partial restore: ${partialNote(record)}`);
+  const dropped = droppedNote(record);
+  if (dropped) parts.push(dropped);
   return parts.join(' ');
 }
 
+/**
+ * What a refusal that still moved the branch actually did.
+ *
+ * The post-apply refusal is the one case where `restored` accompanies
+ * `ok: false`, and the shas it carries exist nowhere else the operator can
+ * reach. Leading with the reset rather than with the phase keeps it from
+ * reading as the success sentence above.
+ */
+function refusedStandingOf(record: RestoreRecord): string {
+  const parts = [
+    `The branch was already reset to ${record.headSha.slice(0, 8)} from ${record.previousHeadSha.slice(0, 8)} before this was refused, so the worktree has moved.`,
+  ];
+  if (record.omittedPaths.length) parts.push(omittedNote(record));
+  const dropped = droppedNote(record);
+  if (dropped) parts.push(dropped);
+  return parts.join(' ');
+}
+
+/**
+ * What every agent on the run does next.
+ *
+ * A restore drops every session pointer, not just the restored phase's, so
+ * this names the set rather than one agent.
+ */
+function freshSessionNote(record: RestoreRecord): string {
+  if (!record.freshSessions.length) return '';
+  const agents = record.freshSessions.map((session) => session.agent).join(', ');
+  const verb = record.freshSessions.length === 1 ? 'starts' : 'start';
+  return ` ${agents} ${verb} a new session; the abandoned ones are kept as evidence.`;
+}
+
+/**
+ * The outcome, without inferring success from the presence of a record.
+ *
+ * `restored` is a report of what the worktree went through, not a verdict:
+ * split 2 attaches it to the refusal that happens after the reset. Only
+ * `ok` decides the tone and whether a next step is offered.
+ */
 export function restoreOutcome(result: RestoreResult | null): RestoreOutcomeView | null {
   if (!result) return null;
-  if (!result.ok || !result.restored) {
-    return { tone: 'bad', detail: result.detail, standing: '', nextStep: '' };
-  }
   const record = result.restored;
-  const agentNote = record.freshSessionAgent
-    ? ` ${record.freshSessionAgent} will start a new session; the abandoned one is kept as evidence.`
-    : '';
+  if (!result.ok) {
+    return {
+      tone: 'bad',
+      detail: result.detail,
+      standing: record ? refusedStandingOf(record) : '',
+      nextStep: '',
+    };
+  }
+  if (!record) return { tone: 'bad', detail: result.detail, standing: '', nextStep: '' };
   return {
     tone: 'ok',
     detail: result.detail,
     standing: standingOf(record),
-    nextStep: `The run is not running. Review the worktree, then press Continue run to resume from here.${agentNote}`,
+    // Not "from here": Continue resumes from the run's first *failed* phase
+    // (`executor.resume`), and a restore deliberately changes no phase status,
+    // so restoring to an earlier phase does not move where Continue starts.
+    // "When it is available" because Continue needs a worktree, an unmerged
+    // branch, and a still-failed phase (`canResumeRun`), none of which a
+    // restore establishes.
+    nextStep: `The run is not running. Review the worktree; Continue run, when it is available, still resumes from the run’s first failed phase, not from this checkpoint.${freshSessionNote(record)}`,
   };
 }

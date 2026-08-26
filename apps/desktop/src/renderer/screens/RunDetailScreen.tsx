@@ -46,7 +46,13 @@ export default function RunDetailScreen({
   const [exportOpen, setExportOpen] = useState(false);
   const [checkpoints, setCheckpoints] = useState<RestorableCheckpointList | null>(null);
   const [checkpointsError, setCheckpointsError] = useState('');
-  /** Bumped after a restore, because it moved the branch the list is measured against. */
+  /**
+   * Bumped whenever the branch may have moved under the list: after a restore,
+   * and on every open of the picker. `commitsSince` is measured against HEAD
+   * when the list is read, and a commit made in the worktree between mount and
+   * opening the sheet leaves the old answer 0 — a confirmation silent about
+   * commits it is about to reset off.
+   */
   const [checkpointsNonce, setCheckpointsNonce] = useState(0);
   const [restoreOpen, setRestoreOpen] = useState(false);
   /** A refused local merge is what the agent repair path exists for. */
@@ -95,6 +101,10 @@ export default function RunDetailScreen({
     }
     let cancelled = false;
     setCheckpointsError('');
+    // Cleared, not left standing: `commitsSince` is measured against HEAD at
+    // read time, so during a re-read the previous answer is exactly the stale
+    // number a confirmation must not be built from.
+    setCheckpoints(null);
     void api.runs
       .restorableCheckpoints(projectId, runId)
       .then((list) => {
@@ -259,13 +269,19 @@ export default function RunDetailScreen({
   const hasActiveFailure = view.run?.orchestrated
     ? Boolean(plan && planHasActiveFailure(plan, view.phases))
     : view.phases.some((phase) => phase.status === 'fail');
+  const checkpointsLoading = wantsCheckpoints && !checkpoints && !checkpointsError;
   const restore = restoreAvailability({
     run: view.run,
     list: checkpoints,
-    loading: wantsCheckpoints && !checkpoints && !checkpointsError,
+    loading: checkpointsLoading,
     error: checkpointsError,
     busy: worktreeBusy,
   });
+  /** Re-read the branch before the picker is trusted, then open it. */
+  const openRestore = (): void => {
+    setCheckpointsNonce((n) => n + 1);
+    setRestoreOpen(true);
+  };
 
   return (
     <div className={styles.screen}>
@@ -368,7 +384,7 @@ export default function RunDetailScreen({
           canResume={canResumeRun(view.run, hasActiveFailure)}
           canFix={mergeRefused}
           restore={restore}
-          onRestore={() => setRestoreOpen(true)}
+          onRestore={openRestore}
           onResume={() => void resumeRun()}
           onMerge={() => void mergeWorktree()}
           onFixMerge={() => void fixMerge()}
@@ -408,7 +424,9 @@ export default function RunDetailScreen({
       <RestoreSheet
         open={restoreOpen}
         projectId={projectId}
+        runId={runId}
         list={checkpoints}
+        refreshing={checkpointsLoading}
         onClose={() => setRestoreOpen(false)}
         onRestored={() => setCheckpointsNonce((n) => n + 1)}
       />

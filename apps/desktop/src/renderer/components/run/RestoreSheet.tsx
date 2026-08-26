@@ -8,10 +8,11 @@ import { api } from '../../api.js';
 import { confirmManager } from '../../hooks/useConfirmAction.js';
 import { clockTime } from '../../utils/format.js';
 import {
-  restoreConfirmation,
+  performRestore,
+  restoreActionState,
+  restoreEmptyCopy,
   restoreOptions,
   restoreOutcome,
-  restoreRequest,
   type RestoreOptionView,
 } from '../../view-models/restore-view.js';
 import { Button } from '../ui/Button.js';
@@ -73,19 +74,33 @@ function CheckpointRow({
 export default function RestoreSheet({
   open,
   projectId,
+  runId,
   list,
+  refreshing = false,
   onClose,
   onRestored,
 }: {
   open: boolean;
   projectId: string;
+  /**
+   * The run on display, and the reset key below.
+   *
+   * Deliberately not `list?.runId`: a restore asks for a re-read, and the
+   * re-read nulls the list while it is in flight, which would reset the sheet
+   * and wipe the report of the restore that asked for it. The run is what
+   * "this is a different subject now" actually means.
+   */
+  runId: string;
   list: RestorableCheckpointList | null;
+  /** A checkpoint re-read is in flight, so what is on screen may be stale. */
+  refreshing?: boolean;
   onClose: () => void;
   /** A completed restore changed the worktree, so the caller re-reads it. */
   onRestored: () => void;
 }): React.JSX.Element {
   const options = restoreOptions(list);
   const [selectedId, setSelectedId] = useState('');
+  /** True from the moment Restore is pressed until the call settles. */
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<RestoreResult | null>(null);
 
@@ -94,39 +109,56 @@ export default function RestoreSheet({
     setSelectedId('');
     setBusy(false);
     setResult(null);
-  }, [open, list?.runId]);
+  }, [open, runId]);
 
   const selected: RestorableCheckpoint | null =
     list?.checkpoints.find((checkpoint) => checkpoint.checkpointId === selectedId) ?? null;
   const outcome = restoreOutcome(result);
+  const action = restoreActionState({ busy, refreshing, hasSelection: !!selected });
+  // A restore in flight has already moved the branch by the time it returns,
+  // and its shas exist nowhere else in the UI. Closing over that would discard
+  // the only report of a destructive act, so every dismissal path waits.
+  const closeIfIdle = (): void => {
+    if (!busy) onClose();
+  };
 
   const restore = async (checkpoint: RestorableCheckpoint): Promise<void> => {
-    const confirmation = restoreConfirmation(checkpoint);
-    const accepted = await confirmManager.ask(confirmation.message, {
-      title: confirmation.title,
-      confirmLabel: confirmation.confirmLabel,
-      variant: 'danger',
-    });
-    // Only an accepted confirmation produces a request, and only a request
-    // whose confirmation named the unrecoverable paths carries acceptPartial.
-    const input = restoreRequest(checkpoint, accepted);
-    if (!input) return;
+    // Set before the confirmation is raised, not after it resolves: the
+    // footer button and every radio stay disabled for the whole window, so
+    // the selection cannot move under a pending confirmation and a second
+    // press cannot queue a second restore behind the first.
     setBusy(true);
     setResult(null);
     try {
-      setResult(await api.runs.restoreCheckpoint(projectId, input));
+      const outcome = await performRestore(
+        {
+          confirm: (confirmation) =>
+            confirmManager.ask(confirmation.message, {
+              title: confirmation.title,
+              confirmLabel: confirmation.confirmLabel,
+              variant: 'danger',
+            }),
+          call: (input) => api.runs.restoreCheckpoint(projectId, input),
+        },
+        checkpoint,
+      );
+      // Null is a declined confirmation: nothing was called, so there is
+      // nothing to report and no re-read to ask for.
+      if (!outcome) return;
+      setResult(outcome);
+      onRestored();
     } catch (error) {
       setResult({ ok: false, detail: (error as Error).message });
+      onRestored();
     } finally {
       setBusy(false);
-      onRestored();
     }
   };
 
   return (
     <SideSheet
       open={open}
-      onClose={onClose}
+      onClose={closeIfIdle}
       label="Restore a phase checkpoint"
       eyebrow="Run recovery"
       title="Restore to a phase checkpoint"
@@ -136,17 +168,24 @@ export default function RestoreSheet({
             {options.length === 1 ? '1 checkpoint' : `${options.length} checkpoints`}
           </span>
           <div className={styles.footerActions}>
-            <Button variant="ghost" size="sm" onClick={onClose}>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={busy}
+              title={busy ? 'A restore is in flight; its report is not on screen yet' : undefined}
+              onClick={closeIfIdle}
+              data-testid="restore-close"
+            >
               Close
             </Button>
             <Button
               variant="danger"
               size="sm"
-              disabled={busy || !selected}
+              disabled={action.disabled}
               onClick={() => selected && void restore(selected)}
               data-testid="restore-confirm"
             >
-              {busy ? 'Restoring…' : 'Restore…'}
+              {action.label}
             </Button>
           </div>
         </>
@@ -154,7 +193,7 @@ export default function RestoreSheet({
     >
       <p className={styles.intro}>
         Each phase recorded where it began. Restoring puts this run’s worktree back to one of them
-        and stops there — the run is not resumed, and Continue run stays your call.
+        and stops there — nothing is resumed, and Continue run stays a separate act of yours.
       </p>
       {outcome && (
         <div className={styles.outcome} data-tone={outcome.tone} role="status">
@@ -164,7 +203,7 @@ export default function RestoreSheet({
         </div>
       )}
       {options.length === 0 ? (
-        <p className={styles.empty}>{list?.detail || 'This run recorded no phase checkpoints.'}</p>
+        <p className={styles.empty}>{restoreEmptyCopy(list)}</p>
       ) : (
         <div className={styles.optionList}>
           {options.map((option) => (
@@ -172,7 +211,7 @@ export default function RestoreSheet({
               key={option.checkpointId}
               option={option}
               selected={option.checkpointId === selectedId}
-              disabled={busy}
+              disabled={busy || refreshing}
               onSelect={() => setSelectedId(option.checkpointId)}
             />
           ))}
