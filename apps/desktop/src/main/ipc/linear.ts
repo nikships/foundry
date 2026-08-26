@@ -5,7 +5,7 @@ import {
   type LinearConnectionState,
   type LinearStartRunInput,
 } from '@shared/ipc-contract.js';
-import type { LinearIssueSnapshot, LinearWorkflowState } from '@shared/types.js';
+import type { GeneratedRunPlan, LinearIssueSnapshot, LinearWorkflowState } from '@shared/types.js';
 import type { AppContext } from '../context.js';
 import { startLinearIssueRun } from '../linear/orchestration.js';
 import type { Handle } from './shared.js';
@@ -18,6 +18,9 @@ const startSchema = z.object({
   projectId: shortString,
   pipelineId: shortString,
   issueId: shortString,
+  plan: z
+    .custom<GeneratedRunPlan>((value) => Boolean(value && typeof value === 'object'))
+    .optional(),
 });
 
 export function register(ctx: Ctx, handle: Handle): void {

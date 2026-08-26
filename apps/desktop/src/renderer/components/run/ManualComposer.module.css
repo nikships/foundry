@@ -1,9 +1,5 @@
 .composer {
-  margin: 0 var(--s6) var(--s5);
-  padding: var(--s4);
-  background: var(--bg-panel);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
+  min-width: 0;
 }
 .request {
   border: none;

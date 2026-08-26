@@ -409,6 +409,8 @@ export interface LinearStartRunInput {
   projectId: string;
   pipelineId: string;
   issueId: string;
+  /** A confirmed Orchestrator plan whose request source remains this Linear issue. */
+  plan?: GeneratedRunPlan;
 }
 
 export interface FoundryApi {

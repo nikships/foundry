@@ -1,19 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { CircleDot, Sparkles, Workflow } from 'lucide-react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { ReadinessInspectResult, ValidationIssue } from '@shared/types.js';
-import type { OrchestratorState } from '@shared/ipc-contract.js';
 import type { CompanionHostState } from '@shared/companion.js';
+import type { LinearConnectionState } from '@shared/ipc-contract.js';
 import { api } from '../api.js';
+import { useOrchestratorPlan } from '../hooks/useOrchestratorPlan.js';
 import { useApp } from '../stores/app.js';
-import { useRunList } from '../stores/run.js';
-import { since, truncate, durationClock, tokensBadge } from '../utils/format.js';
-import { runDuration } from '../utils/derive.js';
 import { safeGetItem, safeSetItem } from '../utils/local-store.js';
-import StatusBadge from '../components/common/StatusBadge.js';
 import EmptyState from '../components/common/EmptyState.js';
 import BaseSyncBar from '../components/project/BaseSyncBar.js';
 import PanelTranscript from '../components/readiness/PanelTranscript.js';
-import ManualComposer from '../components/run/ManualComposer.js';
 import LinearComposer from '../components/run/LinearComposer.js';
+import ManualComposer from '../components/run/ManualComposer.js';
 import OrchestratorPicker, {
   loadOrchestratorChoice,
   type OrchestratorChoice,
@@ -21,15 +19,14 @@ import OrchestratorPicker, {
 import PlanCard from '../components/run/PlanCard.js';
 import { Button } from '../components/ui/Button.js';
 import { readinessBanner, showReadinessOnRuns } from '../view-models/readiness-view.js';
-import { withPhaseModel } from '../view-models/plan-view.js';
 import styles from './RunsScreen.module.css';
 
 const MODE_KEY = 'foundry.runs.mode';
-type RunsMode = 'orchestrated' | 'manual' | 'linear';
+type RunsMode = 'orchestrator' | 'manual' | 'linear';
 
 function loadMode(): RunsMode {
   const saved = safeGetItem(MODE_KEY);
-  return saved === 'manual' || saved === 'linear' ? saved : 'orchestrated';
+  return saved === 'manual' || saved === 'linear' ? saved : 'orchestrator';
 }
 
 function companionPill(companion: CompanionHostState): {
@@ -44,8 +41,7 @@ function companionPill(companion: CompanionHostState): {
       dot: styles.dotFaint,
     };
   }
-  const devices = companion.devices;
-  if (!devices.length) {
+  if (!companion.devices.length) {
     return {
       title: `Companion host active · Waiting for a phone to scan QR (${companion.origin})`,
       label: 'Pair phone',
@@ -53,21 +49,20 @@ function companionPill(companion: CompanionHostState): {
     };
   }
   return {
-    title: `Companion host active · Paired to ${devices.map((d) => d.name).join(', ')}`,
-    label: devices.length === 1 ? devices[0]!.name : `${devices.length} phones`,
+    title: `Companion host active · Paired to ${companion.devices.map((device) => device.name).join(', ')}`,
+    label:
+      companion.devices.length === 1
+        ? companion.devices[0]!.name
+        : `${companion.devices.length} phones`,
     dot: styles.dotGreen,
   };
 }
 
 function RunsHeader({
   companion,
-  includeArchived,
-  onIncludeArchived,
   onOpenSettings,
 }: {
   companion: CompanionHostState | null;
-  includeArchived: boolean;
-  onIncludeArchived: (include: boolean) => void;
   onOpenSettings?: (pane: string) => void;
 }): React.JSX.Element {
   const pill = companion ? companionPill(companion) : null;
@@ -76,276 +71,126 @@ function RunsHeader({
       <p className="eyebrow">
         <span className="index">01</span>Runs
       </p>
-      <div className={styles.headActions}>
-        {companion && pill && (
-          <button
-            type="button"
-            className={styles.phonePill}
-            onClick={() => onOpenSettings?.('general')}
-            data-testid="companion-pill"
-            data-running={companion.running ? 'true' : 'false'}
-            title={pill.title}
-          >
-            <span className={`${styles.phoneDot} ${pill.dot}`} />
-            <span className="mono">{pill.label}</span>
-          </button>
-        )}
-        <label className={styles.archived}>
-          <input
-            type="checkbox"
-            checked={includeArchived}
-            onChange={(event) => onIncludeArchived(event.target.checked)}
-            data-testid="runs-archived"
-          />
-          Show archived
-        </label>
-      </div>
+      {companion && pill && (
+        <button
+          type="button"
+          className={styles.phonePill}
+          onClick={() => onOpenSettings?.('general')}
+          data-testid="companion-pill"
+          data-running={companion.running ? 'true' : 'false'}
+          title={pill.title}
+        >
+          <span className={`${styles.phoneDot} ${pill.dot}`} />
+          <span className="mono">{pill.label}</span>
+        </button>
+      )}
     </header>
   );
 }
 
-function RunList({
-  onOpen,
-  projectId,
-  includeArchived,
+function SourceTabs({
+  mode,
+  linearConnection,
+  onChange,
 }: {
-  onOpen: (runId: string) => void;
-  projectId: string;
-  includeArchived: boolean;
+  mode: RunsMode;
+  linearConnection: LinearConnectionState | null;
+  onChange: (mode: RunsMode) => void;
 }): React.JSX.Element {
-  const {
-    runs,
-    loading,
-    error: listError,
-    refresh: refreshList,
-  } = useRunList(projectId, includeArchived);
-
+  const tabs: ReadonlyArray<{
+    id: RunsMode;
+    label: string;
+    icon: React.JSX.Element;
+  }> = [
+    { id: 'orchestrator', label: 'Orchestrator', icon: <Sparkles size={11} /> },
+    { id: 'manual', label: 'Manual pipeline', icon: <Workflow size={11} /> },
+    { id: 'linear', label: 'Linear issue', icon: <CircleDot size={11} /> },
+  ];
   return (
-    <div className={styles.list}>
-      {listError && (
-        <div className={styles.listErr} role="alert">
-          <span>Could not load runs: {listError}</span>
-          <Button size="sm" onClick={() => void refreshList()}>
-            Retry
-          </Button>
-        </div>
+    <div className={styles.composerHead}>
+      <div className={styles.sourceTabs} role="tablist" aria-label="Run source">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            className={mode === tab.id ? styles.sourceTabActive : undefined}
+            aria-selected={mode === tab.id}
+            onClick={() => onChange(tab.id)}
+            data-testid={`runs-source-${tab.id}`}
+          >
+            {tab.icon}
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      {mode === 'linear' && (
+        <span className={styles.linearConnection}>
+          <span
+            className={`${styles.linearDot} ${
+              linearConnection?.keySet ? styles.linearDotConnected : ''
+            }`}
+          />
+          {linearConnection?.keySet ? 'Linear connected' : 'Linear not connected'}
+        </span>
       )}
-      {loading && !runs.length && !listError && (
-        <p className={`${styles.listLoading} faint`}>Loading runs…</p>
-      )}
-      {!loading && !listError && runs.length === 0 && (
-        <EmptyState
-          title="Nothing has run yet"
-          body="Describe a change above. Every run is isolated in its own git worktree. Missing test commands are detected automatically when you start."
-        />
-      )}
-      {runs.map((run) => (
-        <button
-          key={run.runId}
-          className={styles.run}
-          onClick={() => onOpen(run.runId)}
-          data-testid={`run-row-${run.runId}`}
-          data-run-id={run.runId}
-        >
-          <div className={styles.runMain}>
-            <div className={styles.runTop}>
-              <StatusBadge status={run.status} />
-              <span className={styles.pipelineName}>{run.pipelineName}</span>
-              <span className={`faint ${styles.time}`}>{since(run.startedAt)}</span>
-            </div>
-            <p className={styles.req}>{truncate(run.request, 160)}</p>
-          </div>
-          <div className={styles.runMeta}>
-            {run.source?.kind === 'linear' && (
-              <span className={`${styles.metaBadge} ${styles.metaBadgeAmended}`}>
-                Linear · {run.source.snapshot.identifier}
-              </span>
-            )}
-            {run.amendments > 0 && (
-              <span className={`${styles.metaBadge} ${styles.metaBadgeAmended}`}>
-                amended ×{run.amendments}
-              </span>
-            )}
-            {run.branch && (
-              <span className={styles.branch} title={run.branch}>
-                {run.branch.replace('foundry/', '')}
-              </span>
-            )}
-            <span className={`${styles.metaBadge} ${styles.metaBadgeTime}`}>
-              {durationClock(runDuration(run))}
-            </span>
-            {run.totalTokens ? (
-              <span className={`${styles.metaBadge} ${styles.metaBadgeTokens}`}>
-                {tokensBadge(run.totalTokens)}
-              </span>
-            ) : null}
-          </div>
-        </button>
-      ))}
     </div>
   );
 }
 
 function OrchestratedComposer({
+  header,
   request,
+  choice,
+  onChoiceChange,
   onRequestChange,
   onOpen,
-  onManual,
-  onLinear,
-  includeArchived,
   baseSyncing,
 }: {
+  header: ReactNode;
   request: string;
+  choice: OrchestratorChoice;
+  onChoiceChange: (choice: OrchestratorChoice) => void;
   onRequestChange: (request: string) => void;
   onOpen: (runId: string) => void;
-  onManual: () => void;
-  onLinear: () => void;
-  includeArchived: boolean;
   baseSyncing: boolean;
 }): React.JSX.Element {
   const { project, projectId, refreshAll } = useApp();
-  const [choice, setChoice] = useState<OrchestratorChoice>(loadOrchestratorChoice);
-  const [planning, setPlanning] = useState<OrchestratorState | null>(null);
-  const [requestingPlan, setRequestingPlan] = useState(false);
-  const [planError, setPlanError] = useState('');
+  const orchestrator = useOrchestratorPlan(projectId, choice);
   const [starting, setStarting] = useState(false);
   const [startIssues, setStartIssues] = useState<ValidationIssue[]>([]);
-  // Phase-name → model the operator re-cast that phase onto. Held as an
-  // overlay rather than a mutated copy of the plan, so a progress push that
-  // replaces the session snapshot cannot silently drop the operator's choice.
-  const [modelOverrides, setModelOverrides] = useState<Record<string, string>>({});
-  // A session can emit its first progress snapshot before the invoke that
-  // returns its id settles. Cache those snapshots by id so the planning panel
-  // starts with the real transcript rather than dropping its first line.
-  const progressRef = useRef(new Map<string, OrchestratorState>());
-  const planIdRef = useRef('');
-
-  useEffect(
-    () =>
-      api.on('orchestrator-progress', (data) => {
-        const state = data as OrchestratorState | undefined;
-        if (!state) return;
-        progressRef.current.set(state.planId, state);
-        if (state.planId === planIdRef.current) setPlanning(state);
-      }),
-    [],
-  );
-
-  useEffect(() => {
-    setPlanning(null);
-    setPlanError('');
-    setStartIssues([]);
-    setModelOverrides({});
-    return () => {
-      const planId = planIdRef.current;
-      planIdRef.current = '';
-      if (planId) void api.orchestrator.cancel(planId);
-    };
-  }, [projectId]);
-
-  const requestOk = request.trim().length > 0;
   const composeBlocked = !project
     ? 'Add a project first'
-    : !requestOk
+    : !request.trim()
       ? 'Describe what to build'
       : baseSyncing
         ? `Updating ${project.baseRef} first`
         : null;
 
-  const proposed = planning?.status === 'done' ? planning.plan : null;
-  const plan = useMemo(
-    () =>
-      proposed
-        ? Object.entries(modelOverrides).reduce(
-            (next, [phaseName, model]) => withPhaseModel(next, phaseName, model),
-            proposed,
-          )
-        : null,
-    [proposed, modelOverrides],
-  );
-  const stage: 'compose' | 'planning' | 'ready' = plan
-    ? 'ready'
-    : requestingPlan || planning?.status === 'running' || planning?.status === 'failed'
-      ? 'planning'
-      : 'compose';
-
-  const submitPlan = useCallback(async (): Promise<void> => {
-    const prompt = request;
-    if (!prompt.trim() || !projectId || baseSyncing || requestingPlan) return;
-    planIdRef.current = '';
-    setRequestingPlan(true);
-    setPlanError('');
+  const submitPlan = (): void => {
+    if (composeBlocked || orchestrator.planningLive) return;
     setStartIssues([]);
-    setModelOverrides({});
-    setPlanning(null);
-    try {
-      const result = await api.orchestrator.plan(
-        projectId,
-        prompt,
-        choice.model,
-        choice.reasoningEffort,
-      );
-      if ('error' in result) {
-        setPlanError(result.error);
-        return;
-      }
-      planIdRef.current = result.planId;
-      setPlanning(
-        progressRef.current.get(result.planId) ?? {
-          planId: result.planId,
-          projectId,
-          status: 'running',
-          model: choice.model,
-          reasoningEffort: choice.reasoningEffort,
-          prompt,
-          entries: [],
-          plan: null,
-          rawReply: '',
-          detail: 'Opening the planning session…',
-          startedAt: Date.now(),
-        },
-      );
-    } catch (error) {
-      setPlanError((error as Error).message || 'Could not open the planning session.');
-    } finally {
-      setRequestingPlan(false);
-    }
-  }, [request, projectId, baseSyncing, requestingPlan, choice]);
-
-  const cancelPlanning = (): void => {
-    const planId = planIdRef.current;
-    planIdRef.current = '';
-    if (planId) void api.orchestrator.cancel(planId);
-    setPlanning(null);
-    setModelOverrides({});
-  };
-
-  const discardPlan = (): void => {
-    planIdRef.current = '';
-    setPlanning(null);
-    setStartIssues([]);
-    setModelOverrides({});
+    void orchestrator.submit(request);
   };
 
   const startFromPlan = async (): Promise<void> => {
-    if (!plan || starting || baseSyncing) return;
+    if (!orchestrator.plan || starting || baseSyncing) return;
     setStarting(true);
     setStartIssues([]);
     try {
       const result = await api.runs.start({
         projectId,
-        pipelineId: plan.pipeline.id,
-        request: plan.refinedRequest,
-        plan,
+        pipelineId: orchestrator.plan.pipeline.id,
+        request: orchestrator.plan.refinedRequest,
+        plan: orchestrator.plan,
       });
       if (!result.ok) {
         setStartIssues(result.issues);
-        // Project commands may have been partially filled; refresh so Settings matches.
         await refreshAll();
         return;
       }
       onRequestChange('');
-      discardPlan();
+      orchestrator.discard();
       await refreshAll();
       if (result.runId) onOpen(result.runId);
     } catch (error) {
@@ -355,129 +200,108 @@ function OrchestratedComposer({
     }
   };
 
-  const onHeroKeydown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
+  const onRequestKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
     if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
       event.preventDefault();
-      void submitPlan();
+      submitPlan();
     }
   };
 
-  const heroCollapsed = stage !== 'compose';
-  const planningLive = requestingPlan || planning?.status === 'running';
-
   return (
-    <div className={`${styles.stage} scroll`}>
-      <div className={heroCollapsed ? styles.heroCollapsed : styles.hero}>
-        <div className={styles.heroInner}>
-          {!heroCollapsed && <h1 className={styles.heroTitle}>What should the factory build?</h1>}
-          <div className={`${styles.heroBox} card`}>
-            <textarea
-              className={`textarea ${styles.heroRequest}`}
-              value={request}
-              onChange={(event) => onRequestChange(event.target.value)}
-              rows={heroCollapsed ? 2 : 4}
-              placeholder="Describe the change. The Orchestrator rewrites it into a full brief and composes the pipeline."
-              onKeyDown={onHeroKeydown}
-              aria-label="Run request"
-              data-testid="run-request"
-            />
-            <div className={styles.heroControls}>
-              <OrchestratorPicker choice={choice} disabled={planningLive} onChange={setChoice} />
-              <Button
-                variant="primary"
-                className={styles.planButton}
-                disabled={Boolean(composeBlocked) || planningLive}
-                title={composeBlocked ?? undefined}
-                onClick={() => void submitPlan()}
-                data-testid="run-plan"
-              >
-                {stage === 'ready' ? 'Regenerate plan' : planningLive ? 'Planning…' : 'Plan run'}
-                {!composeBlocked && !planningLive && <kbd>⌘↵</kbd>}
-              </Button>
-            </div>
-            {composeBlocked && stage === 'compose' && (
-              <p className={`${styles.hintLine} faint`}>{composeBlocked}</p>
-            )}
-            {planError && (
-              <p className={styles.planError} role="alert">
-                {planError}
-              </p>
-            )}
-          </div>
-          {!heroCollapsed && (
-            <div className={styles.modeChoices}>
-              <button
-                type="button"
-                className={styles.modeToggle}
-                onClick={onManual}
-                data-testid="runs-mode-manual"
-              >
-                Manual pipeline…
-              </button>
-              <button
-                type="button"
-                className={styles.modeToggle}
-                onClick={onLinear}
-                data-testid="runs-mode-linear"
-              >
-                Linear issue…
-              </button>
-            </div>
-          )}
+    <div className={styles.composerColumn}>
+      <section className={`${styles.composerCard} card`} data-testid="run-composer">
+        {header}
+        {orchestrator.stage === 'compose' && (
+          <h1 className={styles.composerTitle}>What should the factory build?</h1>
+        )}
+        <textarea
+          className={`textarea ${styles.request}`}
+          value={request}
+          onChange={(event) => onRequestChange(event.target.value)}
+          rows={orchestrator.stage === 'compose' ? 4 : 2}
+          placeholder="Describe the change. The Orchestrator rewrites it into a full brief and composes the pipeline."
+          onKeyDown={onRequestKeyDown}
+          aria-label="Run request"
+          data-testid="run-request"
+        />
+        <div className={styles.composerControls}>
+          <OrchestratorPicker
+            choice={choice}
+            disabled={orchestrator.planningLive}
+            onChange={onChoiceChange}
+          />
+          <Button
+            variant="primary"
+            className={styles.planButton}
+            disabled={Boolean(composeBlocked) || orchestrator.planningLive}
+            title={composeBlocked ?? undefined}
+            onClick={submitPlan}
+            data-testid="run-plan"
+          >
+            {orchestrator.stage === 'ready'
+              ? 'Regenerate plan'
+              : orchestrator.planningLive
+                ? 'Planning…'
+                : 'Plan run'}
+            {!composeBlocked && !orchestrator.planningLive && <kbd>⌘↵</kbd>}
+          </Button>
         </div>
-      </div>
+        {composeBlocked && orchestrator.stage === 'compose' && (
+          <p className={styles.hintLine}>{composeBlocked}</p>
+        )}
+        {orchestrator.planError && (
+          <p className={styles.planError} role="alert">
+            {orchestrator.planError}
+          </p>
+        )}
+      </section>
 
-      {stage === 'planning' && (
+      {orchestrator.stage === 'planning' && (
         <section className={`${styles.planning} card`} data-testid="planning-panel">
           <div className={styles.planningHead}>
             <span className={styles.planningTitle}>
-              {planning?.status === 'failed' ? 'Planning failed' : 'The Orchestrator is planning'}
+              {orchestrator.planning?.status === 'failed'
+                ? 'Planning failed'
+                : 'The Orchestrator is planning'}
             </span>
-            <span className={`faint ${styles.planningDetail}`}>
-              {planning?.detail ?? 'Opening the planning session…'}
+            <span className={styles.planningDetail}>
+              {orchestrator.planning?.detail ?? 'Opening the planning session…'}
             </span>
-            {planningLive && !requestingPlan && (
-              <Button size="sm" variant="ghost" onClick={cancelPlanning}>
+            {orchestrator.planningLive && !orchestrator.requestingPlan && (
+              <Button size="sm" variant="ghost" onClick={orchestrator.cancel}>
                 Cancel
               </Button>
             )}
-            {planning?.status === 'failed' && (
-              <Button size="sm" onClick={() => void submitPlan()}>
+            {orchestrator.planning?.status === 'failed' && (
+              <Button size="sm" onClick={submitPlan}>
                 Try again
               </Button>
             )}
           </div>
-          <PanelTranscript entries={planning?.entries ?? []} live={planningLive} />
+          <PanelTranscript
+            entries={orchestrator.planning?.entries ?? []}
+            live={orchestrator.planningLive}
+          />
         </section>
       )}
 
-      {stage === 'ready' && plan && proposed && (
-        <div className={styles.planWrap}>
-          <PlanCard
-            plan={plan}
-            original={proposed}
-            starting={starting}
-            startBlocked={
-              baseSyncing ? `Updating ${project?.baseRef ?? 'base branch'} first` : null
-            }
-            issues={startIssues}
-            onPhaseModelChange={(phaseName, model) =>
-              setModelOverrides((current) => ({ ...current, [phaseName]: model }))
-            }
-            onResetModels={() => setModelOverrides({})}
-            onStart={() => void startFromPlan()}
-            onRegenerate={() => void submitPlan()}
-            onDiscard={discardPlan}
-          />
-        </div>
+      {orchestrator.stage === 'ready' && orchestrator.plan && orchestrator.original && (
+        <PlanCard
+          plan={orchestrator.plan}
+          original={orchestrator.original}
+          starting={starting}
+          startBlocked={baseSyncing ? `Updating ${project?.baseRef ?? 'base branch'} first` : null}
+          issues={startIssues}
+          onPhaseModelChange={orchestrator.setPhaseModel}
+          onResetModels={orchestrator.resetModels}
+          onStart={() => void startFromPlan()}
+          onRegenerate={submitPlan}
+          onDiscard={() => {
+            orchestrator.discard();
+            setStartIssues([]);
+          }}
+        />
       )}
-
-      <section className={styles.history} aria-labelledby="run-history-title">
-        <p id="run-history-title" className={styles.historyLabel}>
-          Run history
-        </p>
-        <RunList onOpen={onOpen} projectId={projectId} includeArchived={includeArchived} />
-      </section>
     </div>
   );
 }
@@ -500,7 +324,8 @@ export default function RunsScreen({
 }): React.JSX.Element {
   const { project, projectId } = useApp();
   const [mode, setMode] = useState<RunsMode>(loadMode);
-  const [includeArchived, setIncludeArchived] = useState(false);
+  const [choice, setChoice] = useState<OrchestratorChoice>(loadOrchestratorChoice);
+  const [linearConnection, setLinearConnection] = useState<LinearConnectionState | null>(null);
   const [readiness, setReadiness] = useState<ReadinessInspectResult | null>(null);
   const [baseSyncing, setBaseSyncing] = useState(false);
   const [companion, setCompanion] = useState<CompanionHostState | null>(null);
@@ -527,76 +352,15 @@ export default function RunsScreen({
   }, [projectId, project?.path, project?.readinessValidated, project?.readinessSkipped]);
 
   const banner = useMemo(() => (readiness ? readinessBanner(readiness) : null), [readiness]);
-
   const switchMode = (next: RunsMode): void => {
     setMode(next);
     safeSetItem(MODE_KEY, next);
   };
-
-  const manual = (
-    <>
-      <div className={styles.manualToggleRow}>
-        <button
-          type="button"
-          className={styles.modeToggle}
-          onClick={() => switchMode('orchestrated')}
-          data-testid="runs-mode-orchestrated"
-        >
-          Back to the Orchestrator
-        </button>
-        <button
-          type="button"
-          className={styles.modeToggle}
-          onClick={() => switchMode('linear')}
-          data-testid="runs-mode-linear"
-        >
-          Linear issue…
-        </button>
-      </div>
-      <ManualComposer
-        request={request}
-        onRequestChange={onRequestChange}
-        onOpen={onOpen}
-        onOpenSettings={onOpenSettings}
-        baseSyncing={baseSyncing}
-      />
-      <RunList onOpen={onOpen} projectId={projectId} includeArchived={includeArchived} />
-    </>
-  );
-
-  const linear = (
-    <>
-      <div className={styles.manualToggleRow}>
-        <button
-          type="button"
-          className={styles.modeToggle}
-          onClick={() => switchMode('orchestrated')}
-          data-testid="runs-mode-orchestrated"
-        >
-          Back to the Orchestrator
-        </button>
-        <button
-          type="button"
-          className={styles.modeToggle}
-          onClick={() => switchMode('manual')}
-          data-testid="runs-mode-manual"
-        >
-          Manual pipeline…
-        </button>
-      </div>
-      <LinearComposer onOpen={onOpen} onOpenSettings={onOpenSettings} baseSyncing={baseSyncing} />
-      <RunList onOpen={onOpen} projectId={projectId} includeArchived={includeArchived} />
-    </>
-  );
+  const tabs = <SourceTabs mode={mode} linearConnection={linearConnection} onChange={switchMode} />;
 
   return (
     <div className={styles.screen}>
-      <RunsHeader
-        companion={companion}
-        includeArchived={includeArchived}
-        onIncludeArchived={setIncludeArchived}
-        onOpenSettings={onOpenSettings}
-      />
+      <RunsHeader companion={companion} onOpenSettings={onOpenSettings} />
       {project && banner && showReadinessOnRuns(banner) && (
         <div
           className={styles.readinessBanner}
@@ -627,20 +391,52 @@ export default function RunsScreen({
           )}
           {onNewProject && <Button onClick={onNewProject}>Create a new project…</Button>}
         </EmptyState>
-      ) : mode === 'manual' ? (
-        manual
-      ) : mode === 'linear' ? (
-        linear
       ) : (
-        <OrchestratedComposer
-          request={request}
-          onRequestChange={onRequestChange}
-          onOpen={onOpen}
-          onManual={() => switchMode('manual')}
-          onLinear={() => switchMode('linear')}
-          includeArchived={includeArchived}
-          baseSyncing={baseSyncing}
-        />
+        <div className={styles.composerRegion}>
+          {mode === 'orchestrator' && (
+            <div className={styles.modePanel}>
+              <OrchestratedComposer
+                header={tabs}
+                request={request}
+                choice={choice}
+                onChoiceChange={setChoice}
+                onRequestChange={onRequestChange}
+                onOpen={onOpen}
+                baseSyncing={baseSyncing}
+              />
+            </div>
+          )}
+
+          {mode === 'manual' && (
+            <div className={styles.modePanel}>
+              <div className={styles.composerColumn}>
+                <section className={`${styles.composerCard} card`} data-testid="run-composer">
+                  {tabs}
+                  <ManualComposer
+                    request={request}
+                    onRequestChange={onRequestChange}
+                    onOpen={onOpen}
+                    onOpenSettings={onOpenSettings}
+                    baseSyncing={baseSyncing}
+                  />
+                </section>
+              </div>
+            </div>
+          )}
+
+          <div className={styles.modePanel} hidden={mode !== 'linear'}>
+            <LinearComposer
+              active={mode === 'linear'}
+              header={mode === 'linear' ? tabs : null}
+              choice={choice}
+              onChoiceChange={setChoice}
+              onOpen={onOpen}
+              onOpenSettings={onOpenSettings}
+              onConnectionChange={setLinearConnection}
+              baseSyncing={baseSyncing}
+            />
+          </div>
+        </div>
       )}
     </div>
   );

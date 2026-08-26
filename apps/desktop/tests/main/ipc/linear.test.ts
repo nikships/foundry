@@ -82,5 +82,11 @@ describe('Linear IPC validation', () => {
         issues: [{ level: 'error', where: 'linear', message: 'Invalid run source.' }],
       },
     );
+    await expect(
+      start({ projectId: 'project', pipelineId: 'ship', issueId: 'FOU-190', plan: 'not-a-plan' }),
+    ).resolves.toMatchObject({
+      ok: false,
+      issues: [{ where: 'linear', message: 'Invalid run source.' }],
+    });
   });
 });

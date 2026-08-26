@@ -5,10 +5,9 @@ import type {
   StartRunInput,
 } from '@shared/types.js';
 import type { LinearStartRunInput } from '@shared/ipc-contract.js';
+import { linearIssueBrief } from '@shared/linear.js';
 import { startRun, type StartRunDeps, type StartRunOutcome } from '../engine/operations.js';
 import type { LinearService } from './service.js';
-
-const MAX_BRIEF_DESCRIPTION_CHARS = 32_000;
 
 export async function startLinearIssueRun(
   deps: StartRunDeps,
@@ -33,7 +32,8 @@ export async function startLinearIssueRun(
   const startInput: StartRunInput = {
     projectId: input.projectId,
     pipelineId: input.pipelineId,
-    request: issueBrief(issue),
+    request: linearIssueBrief(issue),
+    ...(input.plan ? { plan: input.plan } : {}),
   };
   return startRun(deps, startInput, source);
 }
@@ -67,14 +67,4 @@ function statusMappingIssues(
     }
   }
   return issues;
-}
-
-function issueBrief(issue: LinearRunSource['snapshot']): string {
-  const description =
-    issue.description.length > MAX_BRIEF_DESCRIPTION_CHARS
-      ? `${issue.description.slice(0, MAX_BRIEF_DESCRIPTION_CHARS)}\n\n[Linear description truncated for the run brief]`
-      : issue.description;
-  return [`Implement ${issue.identifier}: ${issue.title}`, description, `Source: ${issue.url}`]
-    .filter(Boolean)
-    .join('\n\n');
 }

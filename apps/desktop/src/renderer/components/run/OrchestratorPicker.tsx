@@ -15,6 +15,12 @@ export interface OrchestratorChoice {
   reasoningEffort: ReasoningEffort;
 }
 
+interface OrchestratorControlsProps {
+  choice: OrchestratorChoice;
+  disabled?: boolean;
+  onChange: (next: OrchestratorChoice) => void;
+}
+
 /**
  * The softly persisted appointment: localStorage, not `AppSettings`, because
  * which mind runs the planning is a preference of this machine's operator,
@@ -36,11 +42,24 @@ export default function OrchestratorPicker({
   choice,
   disabled,
   onChange,
-}: {
-  choice: OrchestratorChoice;
-  disabled?: boolean;
-  onChange: (next: OrchestratorChoice) => void;
-}): React.JSX.Element {
+}: OrchestratorControlsProps): React.JSX.Element {
+  return (
+    <div className={styles.picker} data-testid="orchestrator-picker">
+      <div className={styles.ceremony}>
+        <span className={styles.title}>The Orchestrator</span>
+        <span className={styles.motto}>every run answers to one mind</span>
+      </div>
+      <OrchestratorControls choice={choice} disabled={disabled} onChange={onChange} />
+    </div>
+  );
+}
+
+/** Model and effort controls without the hero ceremony, for compact request sources. */
+export function OrchestratorControls({
+  choice,
+  disabled,
+  onChange,
+}: OrchestratorControlsProps): React.JSX.Element {
   const { models, refresh } = useAgentModels();
   const effortModel = useMemo(
     () => modelForEffortPicker(choice.model, models),
@@ -54,38 +73,32 @@ export default function OrchestratorPicker({
   };
 
   return (
-    <div className={styles.picker} data-testid="orchestrator-picker">
-      <div className={styles.ceremony}>
-        <span className={styles.title}>The Orchestrator</span>
-        <span className={styles.motto}>every run answers to one mind</span>
+    <div className={styles.controls} data-testid="orchestrator-controls">
+      <div className={styles.model} data-testid="orchestrator-model">
+        <ModelPicker
+          value={choice.model}
+          models={models}
+          allowInherit
+          inheritLabel="The default model"
+          showNotes={false}
+          disabled={disabled}
+          onChange={(model) => {
+            change({ ...choice, model });
+          }}
+          onRefresh={() => void refresh()}
+        />
       </div>
-      <div className={styles.controls}>
-        <div className={styles.model} data-testid="orchestrator-model">
-          <ModelPicker
-            value={choice.model}
-            models={models}
-            allowInherit
-            inheritLabel="The default model"
-            showNotes={false}
-            disabled={disabled}
-            onChange={(model) => {
-              change({ ...choice, model });
-            }}
-            onRefresh={() => void refresh()}
-          />
-        </div>
-        <div className={styles.effort}>
-          <ReasoningEffortPicker
-            value={choice.reasoningEffort}
-            model={effortModel}
-            disabled={disabled}
-            ariaLabel="Orchestrator reasoning effort"
-            data-testid="orchestrator-effort"
-            onChange={(reasoningEffort) => {
-              change({ ...choice, reasoningEffort });
-            }}
-          />
-        </div>
+      <div className={styles.effort}>
+        <ReasoningEffortPicker
+          value={choice.reasoningEffort}
+          model={effortModel}
+          disabled={disabled}
+          ariaLabel="Orchestrator reasoning effort"
+          data-testid="orchestrator-effort"
+          onChange={(reasoningEffort) => {
+            change({ ...choice, reasoningEffort });
+          }}
+        />
       </div>
     </div>
   );
