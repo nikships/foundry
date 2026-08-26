@@ -29,6 +29,12 @@ website
 .factory
 specs
 
+# Amp plugins and agent modes. These files are pulled down verbatim from
+# ampcode.com and refreshed in place, so they carry upstream's formatting
+# (tabs, no semicolons) rather than this repo's. Reformatting them would be
+# undone by the next sync.
+.amp
+
 # Android application scaffold
 apps/android
 android
