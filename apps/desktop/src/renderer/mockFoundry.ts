@@ -658,6 +658,17 @@ export function createMockFoundryApi(): FoundryApi {
         ok: false,
         issues: [{ level: 'error', where: 'web-preview', message: UNAVAILABLE }],
       }),
+      restorableCheckpoints: async (_projectId, runId) => ({
+        runId,
+        refusal: 'no_checkpoints' as const,
+        detail: UNAVAILABLE,
+        checkpoints: [],
+      }),
+      restoreCheckpoint: async () => ({
+        ok: false,
+        refusal: 'worktree_missing' as const,
+        detail: UNAVAILABLE,
+      }),
     },
     orchestrator: {
       plan: async () => ({ error: NO_AGENT_CLI }),

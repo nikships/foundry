@@ -129,6 +129,10 @@ export const SMITH_CAPABILITY_COVERAGE: Readonly<Record<string, SmithCapabilityC
   [IPC.runsRevealFiles]: approve('smith_runs', 'reveal_files'),
   [IPC.runsPlan]: read('smith_runs', 'plan'),
   [IPC.runsExportPlan]: approve('smith_runs', 'export_plan'),
+  [IPC.runsRestorableCheckpoints]: read('smith_runs', 'checkpoints'),
+  // A restore resets the run branch and overwrites its worktree, so it is an
+  // approval like every other git action, never an immediate read.
+  [IPC.runsRestoreCheckpoint]: approve('smith_runs', 'restore_checkpoint'),
   // Planning spends an agent turn on the operator's model; that is a
   // privileged action even though the plan itself writes nothing.
   [IPC.orchestratorPlan]: approve('smith_runs', 'orchestrator_plan'),

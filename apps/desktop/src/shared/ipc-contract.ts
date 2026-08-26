@@ -35,6 +35,9 @@ import type {
   ReadinessInspectResult,
   ReadinessState,
   ReasoningEffort,
+  RestorableCheckpointList,
+  RestoreResult,
+  RestoreRunInput,
   RunRow,
   SmithArtifact,
   SmithProposal,
@@ -640,6 +643,23 @@ export interface FoundryApi {
       runId: string,
       selection: RunPlanExportSelection,
     ): Promise<RunPlanExportResult>;
+    /**
+     * Every durable phase checkpoint this run recorded, labelled for a picker:
+     * phase, attempt, when, whether an exact restore is still possible and why
+     * not, and how many commits a restore to it would move off the branch.
+     * Always answers — a run that predates checkpoints has an empty list and a
+     * refusal reason rather than an error.
+     */
+    restorableCheckpoints(projectId: string, runId: string): Promise<RestorableCheckpointList>;
+    /**
+     * Puts the run's own worktree back to one recorded checkpoint and stops
+     * there: the branch is reset to the checkpoint's commit, recorded contents
+     * are written back, and the phase's agent continues in a new session. The
+     * run is NOT started — Continue stays a separate act. A truncated
+     * checkpoint needs `acceptPartial`, and the refusal names the paths that
+     * cannot be put back.
+     */
+    restoreCheckpoint(projectId: string, input: RestoreRunInput): Promise<RestoreResult>;
   };
   orchestrator: {
     /**
@@ -866,6 +886,8 @@ export const IPC = {
   runsRevealFiles: 'runs:revealFiles',
   runsPlan: 'runs:plan',
   runsExportPlan: 'runs:exportPlan',
+  runsRestorableCheckpoints: 'runs:restorableCheckpoints',
+  runsRestoreCheckpoint: 'runs:restoreCheckpoint',
   orchestratorPlan: 'orchestrator:plan',
   orchestratorCancel: 'orchestrator:cancel',
   prsStatus: 'prs:status',

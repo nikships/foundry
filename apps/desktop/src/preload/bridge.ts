@@ -159,6 +159,9 @@ const api: FoundryApi = {
     plan: (projectId, runId) => call(IPC.runsPlan, projectId, runId),
     exportPlan: (projectId, runId, selection) =>
       call(IPC.runsExportPlan, projectId, runId, selection),
+    restorableCheckpoints: (projectId, runId) =>
+      call(IPC.runsRestorableCheckpoints, projectId, runId),
+    restoreCheckpoint: (projectId, input) => call(IPC.runsRestoreCheckpoint, projectId, input),
   },
   orchestrator: {
     plan: (projectId, prompt, model, reasoningEffort) =>

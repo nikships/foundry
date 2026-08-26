@@ -229,6 +229,51 @@ export async function commit(cwd: string, message: string): Promise<GitResult> {
   return git(cwd, ['commit', '-m', message]);
 }
 
+/**
+ * Moves the checked-out branch and the tracked tree back to `sha`.
+ *
+ * Destructive by design and only ever called against a run's own worktree: the
+ * commits it moves off stay reachable through the branch's reflog, which is
+ * what makes a restore recoverable rather than a deletion.
+ */
+export async function resetHardTo(cwd: string, sha: string): Promise<GitResult> {
+  return git(cwd, ['reset', '--hard', sha]);
+}
+
+/** How many commits `tip` carries that `base` does not. Null when either ref fails. */
+export async function commitCount(cwd: string, base: string, tip: string): Promise<number | null> {
+  const r = await git(cwd, ['rev-list', '--count', `${base}..${tip}`]);
+  if (!r.ok) return null;
+  const count = Number(r.stdout.trim());
+  return Number.isFinite(count) ? count : null;
+}
+
+/**
+ * Abbreviated shas `tip` carries that `base` does not, newest first.
+ *
+ * Capped rather than complete: this exists so an operator can find work a
+ * reset moved off, and `runCommand` keeps only the tail of its output, so an
+ * uncapped list would silently start mid-sha.
+ */
+export async function commitsAhead(
+  cwd: string,
+  base: string,
+  tip: string,
+  max = 20,
+): Promise<string[]> {
+  const r = await git(cwd, [
+    'rev-list',
+    `--max-count=${max}`,
+    '--abbrev-commit',
+    `${base}..${tip}`,
+  ]);
+  if (!r.ok) return [];
+  return r.stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => /^[0-9a-f]{4,40}$/.test(line));
+}
+
 export async function diffStat(cwd: string, base: string): Promise<string> {
   if (!base) return (await git(cwd, ['diff', '--stat', 'HEAD'])).stdout;
   return (await git(cwd, ['diff', '--stat', base])).stdout;

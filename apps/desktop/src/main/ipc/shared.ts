@@ -1,6 +1,7 @@
 import type { ValidationIssue } from '@shared/types.js';
 import { IPC } from '@shared/ipc-contract.js';
 import type { AppContext } from '../context.js';
+import type { RestoreScope, RestoreTracer } from '../engine/restore.js';
 import type { SettleHooks } from '../engine/settle.js';
 
 /**
@@ -44,6 +45,24 @@ export const notifySettings = (ctx: Pick<AppContext, 'broadcast'>): void =>
 
 export const notifyRuns = (ctx: Pick<AppContext, 'broadcast'>): void =>
   ctx.broadcast(IPC.eventRunsChanged);
+
+/**
+ * What `listRestorableCheckpoints` / `restoreRun` need from the app.
+ *
+ * `isLive` is threaded through rather than inferred from `runs.status`: a
+ * crash leaves a `running` row behind that nothing is executing, and a live
+ * executor can be mid-phase before its status settles.
+ */
+export function restoreScope(
+  ctx: Pick<AppContext, 'registry' | 'broadcast'>,
+  tracer: RestoreTracer,
+): RestoreScope {
+  return {
+    tracer,
+    isLive: (runId) => ctx.registry.isLive(runId),
+    notifyRuns: () => notifyRuns(ctx),
+  };
+}
 
 /**
  * The hooks `landRun` / `repairBranch` need from the app, so the engine never

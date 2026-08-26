@@ -1,6 +1,13 @@
 import { existsSync } from 'node:fs';
 import { shell } from 'electron';
-import type { InterruptAnswer, StartRunInput } from '@shared/types.js';
+import type {
+  InterruptAnswer,
+  RestorableCheckpointList,
+  RestoreResult,
+  RestoreRunInput,
+  StartRunInput,
+} from '@shared/types.js';
+import { RESTORE_REFUSAL_COPY } from '@shared/types.js';
 import {
   IPC,
   type ContextBreakdownResult,
@@ -17,13 +24,14 @@ import {
   startRun,
   type StartRunDeps,
 } from '../engine/operations.js';
+import { listRestorableCheckpoints, restoreRun } from '../engine/restore.js';
 import { landRun } from '../engine/settle.js';
 import * as worktreeLib from '../engine/worktree.js';
 import { exportRunPlan } from '../store/export-plan.js';
 import { enabledModelIds } from '../pi/enabled-models.js';
 import type { AppContext } from '../context.js';
 import type { Handle } from './shared.js';
-import { notifyRuns, notifySettings, settleHooks } from './shared.js';
+import { notifyRuns, notifySettings, restoreScope, settleHooks } from './shared.js';
 
 type Ctx = Pick<
   AppContext,
@@ -245,6 +253,50 @@ export function register(ctx: Ctx, handle: Handle): void {
       });
       if (result.ok) notifySettings(ctx);
       return result;
+    },
+  );
+
+  /**
+   * Restoring is engine choreography (`engine/restore.ts`), so these two are
+   * arg-check and delegate. The list answers for a run it cannot restore too:
+   * the checkpoints are readable history either way, and the refusal reason
+   * travels with them so the picker says why rather than showing nothing.
+   */
+  handle(
+    IPC.runsRestorableCheckpoints,
+    async (projectId: string, runId: string): Promise<RestorableCheckpointList> => {
+      const scoped = tracerOf(projectId);
+      if (!scoped) {
+        return {
+          runId,
+          refusal: 'run_not_found',
+          detail: RESTORE_REFUSAL_COPY.run_not_found,
+          checkpoints: [],
+        };
+      }
+      return listRestorableCheckpoints(restoreScope(ctx, scoped.tracer), runId);
+    },
+  );
+
+  handle(
+    IPC.runsRestoreCheckpoint,
+    async (projectId: string, input: RestoreRunInput): Promise<RestoreResult> => {
+      const scoped = tracerOf(projectId);
+      if (!scoped) {
+        return {
+          ok: false,
+          refusal: 'run_not_found',
+          detail: RESTORE_REFUSAL_COPY.run_not_found,
+        };
+      }
+      if (!input?.runId || !input.checkpointId) {
+        return {
+          ok: false,
+          refusal: 'checkpoint_not_found',
+          detail: RESTORE_REFUSAL_COPY.checkpoint_not_found,
+        };
+      }
+      return restoreRun(restoreScope(ctx, scoped.tracer), input);
     },
   );
 
