@@ -18,8 +18,22 @@ interface CompanionRepository {
     suspend fun getTranscriptEvents(projectId: String, runId: String, phaseId: String): Result<List<TranscriptEvent>>
     suspend fun getEventPage(projectId: String, runId: String, after: Long = 0L): Result<EventPage>
     suspend fun startRun(input: StartRunInput): Result<CompanionStartResult>
+    suspend fun getOrchestratorOptions(): Result<OrchestratorOptions>
+    suspend fun startOrchestratorPlan(request: OrchestratorStartRequest): Result<OrchestratorStartResult>
+    suspend fun getOrchestratorPlan(planId: String): Result<OrchestratorState>
+    suspend fun cancelOrchestratorPlan(planId: String): Result<Boolean>
+    suspend fun getLinearState(): Result<LinearConnectionState>
+    suspend fun searchLinearIssues(query: String): Result<List<LinearIssueSnapshot>>
+    suspend fun getLinearWorkflowStates(teamId: String): Result<List<LinearWorkflowState>>
+    suspend fun startLinearRun(input: LinearStartRunInput): Result<CompanionStartResult>
     suspend fun killRun(projectId: String, runId: String): Result<CompanionKillResult>
     suspend fun continueRun(projectId: String, runId: String): Result<CompanionContinueResult>
+    suspend fun getRestorableCheckpoints(projectId: String, runId: String): Result<RestorableCheckpointList>
+    suspend fun restoreCheckpoint(
+        projectId: String,
+        runId: String,
+        request: RestoreCheckpointRequest
+    ): Result<RestoreResult>
     suspend fun getPrStatus(projectId: String): Result<GhStatus>
     suspend fun getPrDraft(projectId: String, runId: String): Result<CompanionPrDraft>
     suspend fun createPr(projectId: String, runId: String, request: CompanionPrCreateRequest): Result<PrAction>

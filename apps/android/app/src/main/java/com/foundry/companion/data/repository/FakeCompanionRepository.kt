@@ -70,6 +70,58 @@ class FakeCompanionRepository(
         )
     )
 
+    private val linearWorkflowStates = listOf(
+        LinearWorkflowState("linear-started", "In Progress", "started"),
+        LinearWorkflowState("linear-done", "Done", "completed"),
+        LinearWorkflowState("linear-failed", "Cancelled", "canceled")
+    )
+
+    private val linearMapping = LinearStatusMapping(
+        started = "linear-started",
+        completed = "linear-done",
+        failed = "linear-failed"
+    )
+
+    private val linearIssues = listOf(
+        LinearIssueSnapshot(
+            id = "linear-fou-204",
+            identifier = "FOU-204",
+            title = "Bring Android run creation and recovery to desktop parity",
+            description = "Add Orchestrator plans, Linear-backed starts, and checkpoint restore.",
+            url = "https://linear.app/foundry-nik/issue/FOU-204",
+            updatedAt = "2026-08-26T18:28:53Z",
+            team = LinearTeam("team-foundry", "Foundry"),
+            state = LinearWorkflowState("linear-backlog", "Backlog", "backlog")
+        ),
+        LinearIssueSnapshot(
+            id = "linear-fou-203",
+            identifier = "FOU-203",
+            title = "Tune companion notification retries",
+            description = "Keep settle notifications pending until permission is available.",
+            url = "https://linear.app/foundry-nik/issue/FOU-203",
+            updatedAt = "2026-08-25T20:00:00Z",
+            team = LinearTeam("team-foundry", "Foundry"),
+            state = LinearWorkflowState("linear-started", "In Progress", "started")
+        )
+    )
+
+    private val orchestratorModels = listOf(
+        SmithModelInfo(
+            id = "anthropic/claude-sonnet-4-6",
+            displayName = "Claude Sonnet 4.6",
+            provider = "anthropic",
+            supportedReasoningEfforts = listOf("low", "medium", "high"),
+            defaultReasoningEffort = "high"
+        ),
+        SmithModelInfo(
+            id = "openai/gpt-5.4",
+            displayName = "GPT-5.4",
+            provider = "openai",
+            supportedReasoningEfforts = listOf("low", "medium", "high", "xhigh"),
+            defaultReasoningEffort = "medium"
+        )
+    )
+
     private val livePhaseSummaries = listOf(
         PhaseRunSummary(
             id = "p_1",
@@ -144,6 +196,9 @@ class FakeCompanionRepository(
             durationMs = 81700,
             totalTokens = 30770,
             branch = "foundry/run_260818_live99",
+            mode = "adaptive",
+            orchestrated = true,
+            amendments = 1,
             phases = livePhaseSummaries
         ),
         RunRow(
@@ -162,6 +217,14 @@ class FakeCompanionRepository(
             branch = "foundry/run_260818_acc01",
             prNumber = 132,
             prUrl = "https://github.com/foundry-app/foundry/pull/132",
+            source = LinearRunSource(
+                issueId = linearIssues[0].id,
+                url = linearIssues[0].url,
+                revision = linearIssues[0].updatedAt,
+                statusMapping = linearMapping,
+                snapshot = linearIssues[0]
+            ),
+            orchestrated = true,
             outcomeDetail = "All 5 phases passed. Authenticated companion routes verified with token auth.",
             phases = listOf(
                 PhaseRunSummary("acc_p1", "Plan", "agent", "success", 1, 14200, 3100, "anthropic/claude-3-7-sonnet"),
@@ -241,6 +304,13 @@ class FakeCompanionRepository(
     var lastPairedDeviceName: String? = null
         private set
 
+    /** Test seam: a desktop speaking a different protocol version than this phone. */
+    var overrideProtocolVersion: Int? = null
+        set(value) {
+            field = value
+            _activeSession.value = _activeSession.value?.copy(protocolVersion = value ?: COMPANION_PROTOCOL_VERSION)
+        }
+
     override suspend fun pair(payload: CompanionPairingPayload, deviceName: String): Result<CompanionPairResult> {
         lastPairedDeviceName = deviceName
         val session = PairedSession(
@@ -285,7 +355,6 @@ class FakeCompanionRepository(
             )
         )
     }
-
     override suspend fun getProjects(): Result<List<CompanionProjectSummary>> {
         return Result.success(sampleProjects)
     }
@@ -533,7 +602,7 @@ class FakeCompanionRepository(
     }
 
     override suspend fun startRun(input: StartRunInput): Result<CompanionStartResult> {
-        if (input.request.isBlank()) {
+        if (input.request.isBlank() && input.plan == null) {
             return Result.success(
                 CompanionStartResult(
                     ok = false,
@@ -545,18 +614,157 @@ class FakeCompanionRepository(
         val newRun = RunRow(
             runId = newRunId,
             projectId = input.projectId,
-            pipelineId = input.pipelineId,
-            pipelineName = samplePipelines.find { it.id == input.pipelineId }?.name ?: "Custom Pipeline",
-            request = input.request,
+            pipelineId = input.plan?.pipelineId ?: input.pipelineId,
+            pipelineName = input.plan?.pipelineName
+                ?: samplePipelines.find { it.id == input.pipelineId }?.name
+                ?: "Custom Pipeline",
+            request = input.plan?.refinedRequest ?: input.request,
             status = "running",
             createdAt = "2026-08-18T23:50:00Z",
             durationMs = 1000,
             totalTokens = 450,
             branch = "foundry/$newRunId",
+            mode = if (input.plan == null) "pi" else "adaptive",
+            orchestrated = input.plan != null,
             phases = livePhaseSummaries
         )
         runsList.add(0, newRun)
         return Result.success(CompanionStartResult(ok = true, runId = newRunId))
+    }
+
+    private val orchestratorStates = mutableMapOf<String, OrchestratorState>()
+
+    override suspend fun getOrchestratorOptions(): Result<OrchestratorOptions> {
+        return Result.success(
+            OrchestratorOptions(
+                models = orchestratorModels,
+                model = orchestratorModels.first().id,
+                reasoningEffort = "high"
+            )
+        )
+    }
+
+    override suspend fun startOrchestratorPlan(
+        request: OrchestratorStartRequest
+    ): Result<OrchestratorStartResult> {
+        if (request.prompt.isBlank()) {
+            return Result.success(OrchestratorStartResult(error = "a plan needs a request"))
+        }
+        val planId = "plan_android_${UUID.randomUUID().toString().take(6)}"
+        val plan = fakeGeneratedPlan(planId, request)
+        orchestratorStates[planId] = OrchestratorState(
+            planId = planId,
+            projectId = request.projectId,
+            status = "done",
+            model = request.model,
+            reasoningEffort = request.reasoningEffort,
+            prompt = request.prompt,
+            plan = plan,
+            rawReply = "{\"pipeline\":\"generated\"}",
+            detail = "Plan ready.",
+            startedAt = System.currentTimeMillis(),
+            endedAt = System.currentTimeMillis() + 450
+        )
+        return Result.success(OrchestratorStartResult(planId = planId))
+    }
+
+    override suspend fun getOrchestratorPlan(planId: String): Result<OrchestratorState> {
+        if (failGetOrchestratorPlan) {
+            return Result.failure(java.io.IOException("plan poll failed"))
+        }
+        return orchestratorStates[planId]?.let(Result.Companion::success)
+            ?: Result.failure(IllegalArgumentException("Plan not found"))
+    }
+
+    override suspend fun cancelOrchestratorPlan(planId: String): Result<Boolean> {
+        val state = orchestratorStates[planId] ?: return Result.success(false)
+        orchestratorStates[planId] = state.copy(
+            status = "cancelled",
+            plan = null,
+            detail = "Planning cancelled."
+        )
+        return Result.success(true)
+    }
+
+    override suspend fun getLinearState(): Result<LinearConnectionState> {
+        return Result.success(
+            LinearConnectionState(
+                keySet = true,
+                detail = "Connected to Linear as mntechsurvey.",
+                statusMapping = linearMapping
+            )
+        )
+    }
+
+    override suspend fun searchLinearIssues(query: String): Result<List<LinearIssueSnapshot>> {
+        val normalized = query.trim().lowercase()
+        val matches = if (normalized.isBlank()) {
+            linearIssues
+        } else {
+            linearIssues.filter {
+                it.identifier.lowercase().contains(normalized) ||
+                    it.title.lowercase().contains(normalized)
+            }
+        }
+        return Result.success(matches)
+    }
+
+    override suspend fun getLinearWorkflowStates(
+        teamId: String
+    ): Result<List<LinearWorkflowState>> {
+        return Result.success(
+            if (teamId == linearIssues.first().team.id) linearWorkflowStates else emptyList()
+        )
+    }
+
+    override suspend fun startLinearRun(
+        input: LinearStartRunInput
+    ): Result<CompanionStartResult> {
+        val issue = linearIssues.find { it.id == input.issueId }
+            ?: return Result.success(
+                CompanionStartResult(
+                    ok = false,
+                    issues = listOf(ValidationIssue("error", "Linear issue not found", "linear"))
+                )
+            )
+        if (!input.statusMapping.isComplete) {
+            return Result.success(
+                CompanionStartResult(
+                    ok = false,
+                    issues = listOf(
+                        ValidationIssue("error", "Map all three lifecycle statuses.", "linear")
+                    )
+                )
+            )
+        }
+        val runId = "run_linear_${UUID.randomUUID().toString().take(6)}"
+        val pipelineId = input.plan?.pipelineId ?: input.pipelineId
+        runsList.add(
+            0,
+            RunRow(
+                runId = runId,
+                projectId = input.projectId,
+                pipelineId = pipelineId,
+                pipelineName = input.plan?.pipelineName
+                    ?: samplePipelines.find { it.id == pipelineId }?.name
+                    ?: "Custom Pipeline",
+                request = input.plan?.refinedRequest ?: linearIssueBrief(issue),
+                status = "running",
+                createdAt = "2026-08-26T18:45:00Z",
+                branch = "foundry/$runId",
+                source = LinearRunSource(
+                    issueId = issue.id,
+                    url = issue.url,
+                    revision = issue.updatedAt,
+                    statusMapping = input.statusMapping,
+                    snapshot = issue
+                ),
+                mode = if (input.plan == null) "pi" else "adaptive",
+                orchestrated = input.plan != null,
+                phases = livePhaseSummaries
+            )
+        )
+        return Result.success(CompanionStartResult(ok = true, runId = runId))
     }
 
     override suspend fun killRun(projectId: String, runId: String): Result<CompanionKillResult> {
@@ -576,6 +784,156 @@ class FakeCompanionRepository(
         if (index == -1) return Result.success(CompanionContinueResult(false, "Run not found"))
         runsList[index] = runsList[index].copy(status = "running", outcomeDetail = null)
         return Result.success(CompanionContinueResult(true, "Continuing run"))
+    }
+
+    var lastRestoreRequest: RestoreCheckpointRequest? = null
+    /** Test seam: make plan polling fail after a start. */
+    var failGetOrchestratorPlan: Boolean = false
+
+    override suspend fun getRestorableCheckpoints(
+        projectId: String,
+        runId: String
+    ): Result<RestorableCheckpointList> {
+        val run = runsList.find { it.runId == runId }
+            ?: return Result.success(
+                RestorableCheckpointList(
+                    runId = runId,
+                    refusal = "run_not_found",
+                    detail = "this run is no longer in the trace"
+                )
+            )
+        if (run.status !in setOf("killed", "failed", "rejected")) {
+            return Result.success(
+                RestorableCheckpointList(
+                    runId = runId,
+                    refusal = "run_not_terminal",
+                    detail = "only a killed, failed, or rejected run can be restored"
+                )
+            )
+        }
+        return Result.success(
+            RestorableCheckpointList(
+                runId = runId,
+                checkpoints = listOf(
+                    RestorableCheckpoint(
+                        checkpointId = "checkpoint-$runId-code",
+                        runId = runId,
+                        phaseId = run.phases.firstOrNull { it.status == "fail" }?.resolvedId
+                            ?: run.phases.firstOrNull()?.resolvedId.orEmpty(),
+                        phaseName = run.phases.firstOrNull { it.status == "fail" }?.name
+                            ?: run.phases.firstOrNull()?.name.orEmpty(),
+                        phaseKind = "agent",
+                        generation = 1,
+                        createdAt = run.effectiveStartedAt,
+                        headSha = "b7e31a88dfb0",
+                        model = run.phases.firstOrNull()?.model,
+                        agent = run.phases.firstOrNull()?.owner,
+                        fileCount = 3,
+                        untrackedCount = 1,
+                        bytesStored = 4821,
+                        restorable = true,
+                        exactRestorePossible = true,
+                        commitsSince = 2,
+                        commitsSinceShas = listOf("bead123", "face456")
+                    )
+                )
+            )
+        )
+    }
+
+    override suspend fun restoreCheckpoint(
+        projectId: String,
+        runId: String,
+        request: RestoreCheckpointRequest
+    ): Result<RestoreResult> {
+        lastRestoreRequest = request
+        val checkpoint = getRestorableCheckpoints(projectId, runId)
+            .getOrNull()
+            ?.checkpoints
+            ?.find { it.checkpointId == request.checkpointId }
+            ?: return Result.success(
+                RestoreResult(
+                    ok = false,
+                    detail = "that checkpoint is not one this run recorded",
+                    refusal = "checkpoint_not_found"
+                )
+            )
+        return Result.success(
+            RestoreResult(
+                ok = true,
+                detail = "Restored ${checkpoint.phaseName}; the run remains stopped.",
+                restored = RestoreRecord(
+                    checkpointId = checkpoint.checkpointId,
+                    phaseId = checkpoint.phaseId,
+                    phaseName = checkpoint.phaseName,
+                    generation = checkpoint.generation,
+                    previousHeadSha = "deadcafe",
+                    headSha = checkpoint.headSha,
+                    droppedCommits = checkpoint.commitsSinceShas,
+                    droppedCommitCount = checkpoint.commitsSince,
+                    filesRestored = checkpoint.fileCount,
+                    filesRemoved = 0,
+                    fromStatus = runsList.find { it.runId == runId }?.status.orEmpty()
+                )
+            )
+        )
+    }
+
+    private fun fakeGeneratedPlan(
+        planId: String,
+        request: OrchestratorStartRequest
+    ): GeneratedRunPlan {
+        val phases = buildJsonArray {
+            add(
+                buildJsonObject {
+                    put("name", "Investigate")
+                    put("kind", "agent")
+                    put("agent", "planner")
+                    put("model", request.model)
+                    put("description", "Inspect the parity gap and define the implementation.")
+                    put("prompt", buildJsonObject { put("inputs", buildJsonArray { add("request") }) })
+                }
+            )
+            add(
+                buildJsonObject {
+                    put("name", "Implement")
+                    put("kind", "agent")
+                    put("agent", "builder")
+                    put("model", request.model)
+                    put("description", "Implement the Android and host changes.")
+                    put("prompt", buildJsonObject { put("inputs", buildJsonArray { add("request") }) })
+                }
+            )
+            add(
+                buildJsonObject {
+                    put("name", "Verify")
+                    put("kind", "agent")
+                    put("agent", "reviewer")
+                    put("model", request.model)
+                    put("description", "Run focused tests and review the result.")
+                    put("prompt", buildJsonObject { put("inputs", buildJsonArray { add("request") }) })
+                }
+            )
+        }
+        return GeneratedRunPlan(
+            planId = planId,
+            projectId = request.projectId,
+            prompt = request.prompt,
+            refinedRequest = request.prompt.trim() +
+                "\n\nDeliver Android parity with focused transport, state, and Compose tests.",
+            rationale = "This change crosses a typed host boundary and a mobile UI, so the plan separates investigation, implementation, and verification.",
+            pipeline = buildJsonObject {
+                put("id", "generated-$planId")
+                put("name", "Android parity plan")
+                put("description", "Generated implementation and verification plan")
+                put("phases", phases)
+                put("acceptance", buildJsonObject { put("kind", "all_phases_pass") })
+            },
+            agents = emptyList(),
+            warnings = emptyList(),
+            model = request.model,
+            reasoningEffort = request.reasoningEffort
+        )
     }
 
     private var fakeGhStatus: GhStatus = GhStatus(

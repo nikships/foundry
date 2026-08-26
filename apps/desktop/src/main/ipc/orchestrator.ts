@@ -2,6 +2,7 @@ import type { ReasoningEffort } from '@shared/types.js';
 import { IPC } from '@shared/ipc-contract.js';
 import type { AppContext } from '../context.js';
 import { enabledModels } from '../pi/enabled-models.js';
+import { startPlan } from '../orchestrator/start.js';
 import { ghStatus } from '../system/gh.js';
 import type { Handle } from './shared.js';
 
@@ -24,25 +25,17 @@ export function register(ctx: Ctx, handle: Handle): void {
       model: string,
       reasoningEffort: ReasoningEffort,
     ): { planId: string } | { error: string } => {
-      const project = ctx.projects.get(projectId);
-      if (!project) return { error: 'project not found' };
-      if (!prompt.trim()) return { error: 'a plan needs a request' };
-
-      const planId = ctx.plans.start({
-        projectId: project.id,
-        projectPath: project.path,
-        prompt,
-        model: model || 'inherit',
-        reasoningEffort,
-        contextSummary: project.contextSummary ?? '',
-        commands: project.commands,
-        roster: ctx.rosterFor(projectId),
-        envelopeDefs: ctx.envelopes.list(),
-        scaffold: project.scaffold === true,
-        enabledModels: () => enabledModels(ctx.supportDir, ctx.settings.get().hiddenModelIds),
-        ghAvailable: async () => (await ghStatus(project.path)).available,
-      });
-      return { planId };
+      return startPlan(
+        ctx.plans,
+        ctx.projects.get(projectId),
+        { prompt, model, reasoningEffort },
+        {
+          rosterFor: (id) => ctx.rosterFor(id),
+          envelopeDefs: ctx.envelopes.list(),
+          enabledModels: () => enabledModels(ctx.supportDir, ctx.settings.get().hiddenModelIds),
+          ghAvailable: (path) => ghStatus(path).then((status) => status.available),
+        },
+      );
     },
   );
 

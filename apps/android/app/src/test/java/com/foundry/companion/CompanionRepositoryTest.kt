@@ -527,4 +527,292 @@ class CompanionRepositoryTest {
         assertEquals("/v1/smith/model", server.takeRequest().path)
         assertEquals("/v1/smith/effort", server.takeRequest().path)
     }
+
+    @Test
+    fun testHttpOrchestratorPlanLifecycleAndLosslessRoundTrip() = runBlocking {
+        val hostOrigin = server.url("").toString().removeSuffix("/")
+        httpRepository.injectFakeSession(
+            PairedSession(
+                token = "test_token",
+                desktopId = "desk_01",
+                desktopName = "Mac",
+                hostOrigin = hostOrigin,
+                pairedAt = "2026-08-19T00:00:00Z"
+            )
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"models":[{"id":"scripted/alpha","displayName":"Alpha","provider":"scripted","supportedReasoningEfforts":["low","medium","high"],"defaultReasoningEffort":"medium"}],"model":"scripted/alpha","reasoningEffort":"high"}"""
+            )
+        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"planId":"plan_http_1"}"""))
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "planId": "plan_http_1",
+                  "projectId": "proj_1",
+                  "status": "done",
+                  "model": "scripted/alpha",
+                  "reasoningEffort": "high",
+                  "prompt": "Build the parity change",
+                  "entries": [],
+                  "plan": {
+                    "planId": "plan_http_1",
+                    "projectId": "proj_1",
+                    "prompt": "Build the parity change",
+                    "refinedRequest": "Build the parity change with focused tests.",
+                    "rationale": "Keep implementation and verification together.",
+                    "pipeline": {
+                      "id": "generated-plan-1",
+                      "name": "Generated plan",
+                      "description": "A plan",
+                      "phases": [
+                        {
+                          "name": "build",
+                          "kind": "agent",
+                          "agent": "builder",
+                          "model": "scripted/alpha",
+                          "prompt": {"inputs": ["request"]}
+                        }
+                      ],
+                      "acceptance": {"kind": "all_phases_pass"}
+                    },
+                    "agents": [],
+                    "warnings": [],
+                    "model": "scripted/alpha",
+                    "reasoningEffort": "high"
+                  },
+                  "rawReply": "{}",
+                  "detail": "Plan ready.",
+                  "startedAt": 1,
+                  "endedAt": 2
+                }
+                """.trimIndent()
+            )
+        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"ok":true}"""))
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"ok":true,"runId":"run_http_1","issues":[]}"""
+            )
+        )
+
+        val options = httpRepository.getOrchestratorOptions().getOrThrow()
+        assertEquals("scripted/alpha", options.model)
+
+        val started = httpRepository.startOrchestratorPlan(
+            com.foundry.companion.data.model.OrchestratorStartRequest(
+                projectId = "proj_1",
+                prompt = "Build the parity change",
+                model = "scripted/alpha",
+                reasoningEffort = "high"
+            )
+        ).getOrThrow()
+        assertEquals("plan_http_1", started.planId)
+
+        val state = httpRepository.getOrchestratorPlan("plan_http_1").getOrThrow()
+        assertEquals("done", state.status)
+        val plan = state.plan!!
+        assertEquals("generated-plan-1", plan.pipelineId)
+        assertEquals("Generated plan", plan.pipelineName)
+        assertEquals(1, plan.phases.size)
+        assertEquals("scripted/alpha", plan.phases.single().model)
+
+        // Re-cast one phase; the raw pipeline JSON must keep every other field.
+        val recast = plan.withPhaseModel("build", "scripted/beta")
+        assertEquals("scripted/beta", recast.phases.single().model)
+        assertEquals("generated-plan-1", recast.pipelineId)
+        assertEquals("Build the parity change", recast.prompt)
+        assertTrue(recast.pipeline.toString().contains("\"kind\":\"all_phases_pass\""))
+
+        assertTrue(httpRepository.cancelOrchestratorPlan("plan_http_1").getOrThrow())
+
+        val runResult = httpRepository.startRun(
+            com.foundry.companion.data.model.StartRunInput(
+                projectId = "proj_1",
+                pipelineId = recast.pipelineId,
+                request = recast.prompt,
+                plan = recast
+            )
+        ).getOrThrow()
+        assertTrue(runResult.ok)
+        assertEquals("run_http_1", runResult.runId)
+
+        assertEquals("/v1/orchestrator/options", server.takeRequest().path)
+        assertEquals("/v1/orchestrator/plans", server.takeRequest().path)
+        assertEquals("/v1/orchestrator/plans/plan_http_1", server.takeRequest().path)
+        assertEquals("/v1/orchestrator/plans/plan_http_1/cancel", server.takeRequest().path)
+        val startReq = server.takeRequest()
+        assertEquals("/v1/runs", startReq.path)
+        val body = startReq.body.readUtf8()
+        assertTrue(body.contains("generated-plan-1"))
+        assertTrue(body.contains("scripted/beta"))
+        assertTrue(body.contains("acceptance"))
+    }
+
+    @Test
+    fun testHttpLinearStateSearchWorkflowAndSourcedStart() = runBlocking {
+        val hostOrigin = server.url("").toString().removeSuffix("/")
+        httpRepository.injectFakeSession(
+            PairedSession(
+                token = "test_token",
+                desktopId = "desk_01",
+                desktopName = "Mac",
+                hostOrigin = hostOrigin,
+                pairedAt = "2026-08-19T00:00:00Z"
+            )
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"keySet":true,"detail":"Connected.","statusMapping":{"started":"s1","completed":"s2","failed":null}}"""
+            )
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """[{"id":"iss_1","identifier":"FOU-204","title":"Parity","description":"","url":"https://linear.app/foundry-nik/issue/FOU-204","updatedAt":"2026-08-26T18:00:00Z","team":{"id":"team_1","name":"Foundry"},"state":{"id":"s0","name":"Backlog","type":"backlog"}}]"""
+            )
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """[{"id":"s1","name":"In Progress","type":"started"},{"id":"s2","name":"Done","type":"completed"},{"id":"s3","name":"Cancelled","type":"canceled"}]"""
+            )
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"ok":true,"runId":"run_linear_1","issues":[]}"""
+            )
+        )
+
+        val state = httpRepository.getLinearState().getOrThrow()
+        assertTrue(state.keySet)
+        assertEquals("s1", state.statusMapping.started)
+        assertNull(state.statusMapping.failed)
+
+        val issues = httpRepository.searchLinearIssues("FOU-204").getOrThrow()
+        assertEquals("FOU-204", issues.single().identifier)
+
+        val states = httpRepository.getLinearWorkflowStates("team_1").getOrThrow()
+        assertEquals(listOf("s1", "s2", "s3"), states.map { it.id })
+
+        val started = httpRepository.startLinearRun(
+            com.foundry.companion.data.model.LinearStartRunInput(
+                projectId = "proj_1",
+                pipelineId = "pipe_1",
+                issueId = "iss_1",
+                statusMapping = com.foundry.companion.data.model.LinearStatusMapping(
+                    started = "s1",
+                    completed = "s2",
+                    failed = "s3"
+                )
+            )
+        ).getOrThrow()
+        assertTrue(started.ok)
+        assertEquals("run_linear_1", started.runId)
+
+        assertEquals("/v1/linear", server.takeRequest().path)
+        assertEquals("/v1/linear/issues?query=FOU-204", server.takeRequest().path)
+        assertEquals("/v1/linear/teams/team_1/workflow-states", server.takeRequest().path)
+        val startReq = server.takeRequest()
+        assertEquals("/v1/linear/runs", startReq.path)
+        val body = startReq.body.readUtf8()
+        assertTrue(body.contains("iss_1"))
+        assertTrue(body.contains("\"failed\":\"s3\""))
+    }
+
+    @Test
+    fun testHttpCheckpointListAndRestore() = runBlocking {
+        val hostOrigin = server.url("").toString().removeSuffix("/")
+        httpRepository.injectFakeSession(
+            PairedSession(
+                token = "test_token",
+                desktopId = "desk_01",
+                desktopName = "Mac",
+                hostOrigin = hostOrigin,
+                pairedAt = "2026-08-19T00:00:00Z"
+            )
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "runId": "run_1",
+                  "refusal": null,
+                  "detail": "",
+                  "checkpoints": [
+                    {
+                      "checkpointId": "cp_1",
+                      "runId": "run_1",
+                      "phaseId": "ph_3",
+                      "phaseName": "Code",
+                      "phaseKind": "agent",
+                      "generation": 1,
+                      "createdAt": "2026-08-26T18:00:00Z",
+                      "headSha": "abc123",
+                      "model": "scripted/alpha",
+                      "agent": "builder",
+                      "fileCount": 4,
+                      "untrackedCount": 1,
+                      "bytesStored": 9001,
+                      "restorable": true,
+                      "exactRestorePossible": true,
+                      "omittedPaths": [],
+                      "commitsSince": 2,
+                      "commitsSinceShas": ["bead123", "face456"]
+                    }
+                  ]
+                }
+                """.trimIndent()
+            )
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "ok": true,
+                  "detail": "Restored Code; the run remains stopped.",
+                  "restored": {
+                    "checkpointId": "cp_1",
+                    "phaseId": "ph_3",
+                    "phaseName": "Code",
+                    "generation": 1,
+                    "previousHeadSha": "deadcafe",
+                    "headSha": "abc123",
+                    "droppedCommits": ["bead123", "face456"],
+                    "droppedCommitCount": 2,
+                    "filesRestored": 4,
+                    "filesRemoved": 0,
+                    "omittedPaths": [],
+                    "partial": false,
+                    "driftEnumerated": true,
+                    "freshSessions": [{"agent": "builder", "previousSessionId": "s_old"}],
+                    "fromStatus": "killed"
+                  }
+                }
+                """.trimIndent()
+            )
+        )
+
+        val list = httpRepository.getRestorableCheckpoints("proj_1", "run_1").getOrThrow()
+        assertNull(list.refusal)
+        val checkpoint = list.checkpoints.single()
+        assertEquals("Code", checkpoint.phaseName)
+        assertTrue(checkpoint.exactRestorePossible)
+        assertEquals(2, checkpoint.commitsSince)
+
+        val restored = httpRepository.restoreCheckpoint(
+            "proj_1",
+            "run_1",
+            com.foundry.companion.data.model.RestoreCheckpointRequest(checkpointId = "cp_1")
+        ).getOrThrow()
+        assertTrue(restored.ok)
+        assertEquals("Code", restored.restored?.phaseName)
+        assertEquals("s_old", restored.restored?.freshSessions?.single()?.previousSessionId)
+
+        assertEquals("/v1/projects/proj_1/runs/run_1/checkpoints", server.takeRequest().path)
+        val restoreReq = server.takeRequest()
+        assertEquals("/v1/projects/proj_1/runs/run_1/restore", restoreReq.path)
+        assertEquals("POST", restoreReq.method)
+        assertTrue(restoreReq.body.readUtf8().contains("cp_1"))
+    }
 }

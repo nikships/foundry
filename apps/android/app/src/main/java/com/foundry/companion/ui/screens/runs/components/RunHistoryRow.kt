@@ -111,16 +111,22 @@ fun RunHistoryRow(
             overflow = TextOverflow.Ellipsis
         )
 
-        // Bottom meta row: duration · tokens · branch tail · PR / Issue glyph
+        // Bottom meta row: duration · tokens · branch tail · source badges · PR / Issue glyph
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
+            val badges = buildList {
+                if (run.orchestrated) add("ORCH")
+                run.source?.snapshot?.let { add(it.identifier) }
+            }
+            val sourceText = badges.takeIf { it.isNotEmpty() }?.joinToString(" · ")
             Text(
-                text = "$durationText · $tokensText · $branchTail",
+                text = listOfNotNull(sourceText, durationText, tokensText, branchTail)
+                    .joinToString(" · "),
                 style = typography.metaMono,
-                color = colors.textFaint,
+                color = if (sourceText != null) colors.textDim else colors.textFaint,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false)

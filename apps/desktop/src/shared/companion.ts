@@ -9,8 +9,13 @@
 
 import type {
   GhStatus,
+  LinearIssueSnapshot,
+  LinearStatusMapping,
+  LinearWorkflowState,
   ModelInfo,
   ReasoningEffort,
+  RestorableCheckpointList,
+  RestoreResult,
   RunRow,
   SmithProposal,
   SmithProposalAnswer,
@@ -20,6 +25,9 @@ import type {
 } from './types.js';
 import type {
   EventPage,
+  LinearConnectionState,
+  LinearStartRunInput,
+  OrchestratorState,
   PrAction,
   RunDetail,
   SmithChatState,
@@ -31,7 +39,7 @@ import type {
  * it so a phone knows before pairing, and the pair exchange enforces it so a
  * stale client gets a readable refusal instead of a half-working session.
  */
-export const COMPANION_PROTOCOL_VERSION = 5;
+export const COMPANION_PROTOCOL_VERSION = 6;
 
 /**
  * What the desktop encodes in the pairing QR (FOU-85 renders it). Everything a
@@ -138,6 +146,43 @@ export interface CompanionContinueResult {
   detail: string;
 }
 
+/** The planning defaults and live catalog behind the Orchestrator picker. */
+export interface CompanionOrchestratorOptions {
+  models: ModelInfo[];
+  model: string;
+  reasoningEffort: ReasoningEffort;
+}
+
+/** Body of `POST /v1/orchestrator/plans`. */
+export interface CompanionOrchestratorStartRequest {
+  projectId: string;
+  prompt: string;
+  model: string;
+  reasoningEffort: ReasoningEffort;
+}
+
+/** Planning starts asynchronously; the phone polls the returned id. */
+export type CompanionOrchestratorStartResult = { planId: string } | { error: string };
+
+/** Linear connection plus the lifecycle mapping currently saved on the Mac. */
+export interface CompanionLinearState extends LinearConnectionState {
+  statusMapping: LinearStatusMapping;
+}
+
+/**
+ * A Linear-backed start saves this mapping before it enters the shared
+ * `startLinearIssueRun` boundary, matching the desktop composer's behavior.
+ */
+export interface CompanionLinearStartRequest extends LinearStartRunInput {
+  statusMapping: LinearStatusMapping;
+}
+
+/** Body of a restore route; the run id is already unambiguous in its path. */
+export interface CompanionRestoreRequest {
+  checkpointId: string;
+  acceptPartial?: boolean;
+}
+
 /** The body of the PR-create route; the desktop drafts when either is empty. */
 export interface CompanionPrCreateRequest {
   title: string;
@@ -204,8 +249,29 @@ export interface CompanionRoutes {
   'GET /v1/projects/:projectId/runs/:runId': { response: RunDetail };
   'GET /v1/projects/:projectId/runs/:runId/events': { response: EventPage };
   'POST /v1/runs': { request: StartRunInput; response: CompanionStartResult };
+  'GET /v1/orchestrator/options': { response: CompanionOrchestratorOptions };
+  'POST /v1/orchestrator/plans': {
+    request: CompanionOrchestratorStartRequest;
+    response: CompanionOrchestratorStartResult;
+  };
+  'GET /v1/orchestrator/plans/:planId': { response: OrchestratorState };
+  'POST /v1/orchestrator/plans/:planId/cancel': { response: { ok: boolean } };
+  'GET /v1/linear': { response: CompanionLinearState };
+  'GET /v1/linear/issues': { response: LinearIssueSnapshot[] };
+  'GET /v1/linear/teams/:teamId/workflow-states': { response: LinearWorkflowState[] };
+  'POST /v1/linear/runs': {
+    request: CompanionLinearStartRequest;
+    response: CompanionStartResult;
+  };
   'POST /v1/projects/:projectId/runs/:runId/kill': { response: CompanionKillResult };
   'POST /v1/projects/:projectId/runs/:runId/continue': { response: CompanionContinueResult };
+  'GET /v1/projects/:projectId/runs/:runId/checkpoints': {
+    response: RestorableCheckpointList;
+  };
+  'POST /v1/projects/:projectId/runs/:runId/restore': {
+    request: CompanionRestoreRequest;
+    response: RestoreResult;
+  };
   'GET /v1/projects/:projectId/pr-status': { response: GhStatus };
   'GET /v1/projects/:projectId/runs/:runId/pr-draft': { response: CompanionPrDraft };
   'POST /v1/projects/:projectId/runs/:runId/pr': {

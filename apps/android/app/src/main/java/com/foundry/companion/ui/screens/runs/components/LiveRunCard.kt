@@ -146,14 +146,18 @@ fun LiveRunCard(
             }
         }
 
-        // Bottom meta: branch tail · tokens
+        // Bottom meta: source badges · branch tail · tokens
         val branchTail = RunFormatters.branchTail(run.branch)
         val tokensText = RunFormatters.formatTokens(run.totalTokens)
-        val metaString = if (tokensText != null) {
-            "$branchTail · $tokensText"
-        } else {
-            branchTail
+        val badges = buildList {
+            if (run.orchestrated) add("ORCH")
+            run.source?.snapshot?.let { add(it.identifier) }
         }
+        val metaString = listOfNotNull(
+            badges.takeIf { it.isNotEmpty() }?.joinToString(" · "),
+            branchTail,
+            tokensText
+        ).joinToString(" · ")
 
         Text(
             text = metaString,

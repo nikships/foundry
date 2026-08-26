@@ -10,7 +10,14 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { AGENT_MARKS_DIR } from './store/agent-marks.js';
-import type { AgentDef, AppTheme, PipelineDef, ReadinessState, RunRow } from '@shared/types.js';
+import type {
+  AgentDef,
+  AppTheme,
+  ModelInfo,
+  PipelineDef,
+  ReadinessState,
+  RunRow,
+} from '@shared/types.js';
 import {
   IPC,
   type DetectionState,
@@ -53,6 +60,9 @@ import { getBridgeService, shutdownBridgeService, type BridgeService } from './b
 import { DEFAULT_BRIDGE_PORT } from './bridge/manager.js';
 import { linearCredentials } from './linear/credentials.js';
 import { LinearService } from './linear/service.js';
+import { startPlan } from './orchestrator/start.js';
+import { enabledModelIds, enabledModels } from './pi/enabled-models.js';
+import { ghStatus } from './system/gh.js';
 
 export interface Scope {
   projectId?: string;
@@ -183,22 +193,61 @@ export class AppContext {
       registry: this.registry,
       appVersion: () => this.version,
       notifyRuns: () => this.broadcast(IPC.eventRunsChanged),
+      enabledModelIds: () => enabledModelIds(this.supportDir, this.settings.get().hiddenModelIds),
       onStateChanged: () => this.broadcast(IPC.eventCompanionChanged),
+      orchestrator: {
+        options: async () => {
+          const settings = this.settings.get();
+          return {
+            models: await this.availableModels(),
+            model: settings.defaultModel,
+            reasoningEffort: settings.defaultReasoningEffort,
+          };
+        },
+        start: (input) =>
+          startPlan(
+            this.plans,
+            this.projects.get(input.projectId),
+            {
+              prompt: input.prompt,
+              model: input.model,
+              reasoningEffort: input.reasoningEffort,
+            },
+            {
+              rosterFor: (id) => this.rosterFor(id),
+              envelopeDefs: this.envelopes.list(),
+              enabledModels: () =>
+                enabledModels(this.supportDir, this.settings.get().hiddenModelIds),
+              ghAvailable: (path) => ghStatus(path).then((status) => status.available),
+            },
+          ),
+        state: (planId) => this.plans.get(planId),
+        cancel: (planId) => this.plans.cancel(planId),
+      },
+      linear: {
+        state: () => this.linear.state(),
+        issues: (query) => this.linear.issues(query),
+        issue: (issueId) => this.linear.issue(issueId),
+        workflowStates: (teamId) => this.linear.workflowStates(teamId),
+        saveStatusMapping: (mapping) => {
+          const result = this.settings.patch({ linearStatusMapping: mapping });
+          if (result.ok) {
+            this.broadcast(IPC.eventSettingsChanged);
+            return [];
+          }
+          return result.issues.map((message) => ({
+            level: 'error' as const,
+            where: 'linear',
+            message,
+          }));
+        },
+      },
       // Closed over `this` so the host can open after Smith is constructed.
       smith: {
         chat: (projectId) => this.smith.chat(projectId),
         listProposals: () => this.smith.proposals.list(),
         answerProposal: (id, answer) => this.smith.proposals.answer(id, answer),
-        models: async () => {
-          try {
-            const { availableModels } = await import('./pi/catalog.js');
-            const { withoutHiddenModels } = await import('@shared/model-visibility.js');
-            const models = await availableModels(this.supportDir);
-            return withoutHiddenModels(models, this.settings.get().hiddenModelIds);
-          } catch {
-            return [];
-          }
-        },
+        models: () => this.availableModels(),
       },
     });
 
@@ -320,6 +369,17 @@ export class AppContext {
     notifyOutcome(run, this.settings.get());
     setDockBadge(this.registry.liveRunCount(), this.settings.get());
     this.broadcast(IPC.eventRunsChanged);
+  }
+
+  private async availableModels(): Promise<ModelInfo[]> {
+    try {
+      const { availableModels } = await import('./pi/catalog.js');
+      const { withoutHiddenModels } = await import('@shared/model-visibility.js');
+      const models = await availableModels(this.supportDir);
+      return withoutHiddenModels(models, this.settings.get().hiddenModelIds);
+    } catch {
+      return [];
+    }
   }
 
   window(): BrowserWindow | null {

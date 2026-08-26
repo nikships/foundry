@@ -290,6 +290,146 @@ class RunDetailScreenScreenshotTest {
         saveScreenshot(bitmap, "android-run-detail-killed.png")
     }
 
+    @Test
+    fun captureCheckpointRestoreSection() {
+        val killedPhases = listOf(
+            PhaseRunSummary("k1", "Plan", "agent", "success", 1, 14000, 3100),
+            PhaseRunSummary("k2", "Spec", "agent", "success", 1, 22000, 5600),
+            PhaseRunSummary("k3", "Code", "code", "skipped", 1, errorMessage = "Run terminated by operator.")
+        )
+        val killedRun = RunRow(
+            runId = "run_260818_kill04",
+            projectId = "proj_foundry_core",
+            pipelineId = "pipe_default",
+            pipelineName = "Feature Pipeline",
+            request = "Implement experimental web-based renderer backend prototype.",
+            status = "killed",
+            startedAt = "2026-08-18T18:00:00Z",
+            endedAt = "2026-08-18T18:02:10Z",
+            durationMs = 130000,
+            totalTokens = 15200,
+            branch = "foundry/run_260818_kill04",
+            outcomeDetail = "Operator killed run. In-flight agent turns stopped; worktree branch preserved.",
+            phases = killedPhases
+        )
+        val checkpoints = RestorableCheckpointList(
+            runId = killedRun.runId,
+            checkpoints = listOf(
+                RestorableCheckpoint(
+                    checkpointId = "cp_3",
+                    runId = killedRun.runId,
+                    phaseId = "k3",
+                    phaseName = "Code",
+                    phaseKind = "agent",
+                    generation = 1,
+                    createdAt = "2026-08-18T18:01:40Z",
+                    headSha = "a1b2c3d",
+                    model = "anthropic/claude-sonnet-4-6",
+                    agent = "builder",
+                    fileCount = 6,
+                    untrackedCount = 2,
+                    bytesStored = 48210,
+                    restorable = true,
+                    exactRestorePossible = true,
+                    commitsSince = 3,
+                    commitsSinceShas = listOf("bead123", "face456", "c0ffee1")
+                ),
+                RestorableCheckpoint(
+                    checkpointId = "cp_2",
+                    runId = killedRun.runId,
+                    phaseId = "k2",
+                    phaseName = "Spec",
+                    phaseKind = "agent",
+                    generation = 1,
+                    createdAt = "2026-08-18T18:00:50Z",
+                    headSha = "00feed0",
+                    model = "anthropic/claude-sonnet-4-6",
+                    agent = "planner",
+                    fileCount = 2,
+                    untrackedCount = 0,
+                    bytesStored = 9210,
+                    restorable = true,
+                    exactRestorePossible = false,
+                    omittedPaths = listOf("apps/android/local.properties"),
+                    commitsSince = 1
+                )
+            )
+        )
+        val bitmap = renderToBitmap {
+            RunDetailScreen(
+                runDetail = RunDetail(run = killedRun, phases = killedPhases, live = false),
+                connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                restorableCheckpoints = checkpoints,
+                restoreMessage = "Restored Spec; the run remains stopped.",
+                onBackClick = {},
+                onOpenInspector = {},
+                onKillRun = {},
+                onOpenPr = {},
+                onCreatePr = {},
+                onOpenIssue = {}
+            )
+        }
+        saveScreenshot(bitmap, "android-run-detail-checkpoint-restore.png")
+    }
+
+    @Test
+    fun captureRunDetailSourceMetadata() {
+        val runPhases = listOf(
+            PhaseRunSummary("p1", "Plan", "agent", "success", 1, 12400, 4120),
+            PhaseRunSummary("p2", "Spec", "agent", "success", 1, 24100, 8200),
+            PhaseRunSummary("p3", "Code", "code", "running", 2, 45200, 18450)
+        )
+        val sourcedRun = RunRow(
+            runId = "run_260818_live99",
+            projectId = "proj_foundry_core",
+            pipelineId = "pipe_default",
+            pipelineName = "Feature Pipeline",
+            request = "Bring Android run creation and recovery to desktop parity",
+            status = "running",
+            startedAt = "2026-08-18T23:30:00Z",
+            createdAt = "2026-08-18T23:30:00Z",
+            durationMs = 81700,
+            totalTokens = 30770,
+            branch = "foundry/run_260818_live99",
+            phases = runPhases,
+            mode = "adaptive",
+            orchestrated = true,
+            source = LinearRunSource(
+                issueId = "linear-fou-204",
+                url = "https://linear.app/foundry-nik/issue/FOU-204",
+                revision = "2026-08-25T20:00:00Z",
+                statusMapping = LinearStatusMapping(
+                    started = "linear-started",
+                    completed = "linear-done",
+                    failed = "linear-failed"
+                ),
+                snapshot = LinearIssueSnapshot(
+                    id = "linear-fou-204",
+                    identifier = "FOU-204",
+                    title = "Bring Android run creation and recovery to desktop parity",
+                    description = "Add Orchestrator plans, Linear-backed starts, and checkpoint restore.",
+                    url = "https://linear.app/foundry-nik/issue/FOU-204",
+                    updatedAt = "2026-08-25T20:00:00Z",
+                    team = LinearTeam("team-foundry", "Foundry"),
+                    state = LinearWorkflowState("linear-started", "In Progress", "started")
+                )
+            )
+        )
+        val bitmap = renderToBitmap {
+            RunDetailScreen(
+                runDetail = RunDetail(run = sourcedRun, phases = runPhases, live = true),
+                connectionStatus = ConnectionStatus.Connected("Nik's Mac", "http://192.168.1.100"),
+                onBackClick = {},
+                onOpenInspector = {},
+                onKillRun = {},
+                onOpenPr = {},
+                onCreatePr = {},
+                onOpenIssue = {}
+            )
+        }
+        saveScreenshot(bitmap, "android-run-detail-source-metadata.png")
+    }
+
     private fun renderToBitmap(content: @androidx.compose.runtime.Composable () -> Unit): Bitmap {
         val activityController = Robolectric.buildActivity(ComponentActivity::class.java).setup()
         val activity = activityController.get()
