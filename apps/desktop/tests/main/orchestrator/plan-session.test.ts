@@ -84,6 +84,8 @@ async function run(opts: {
   turns: ScriptedTurn[];
   roster?: AgentDef[];
   models?: ModelInfo[];
+  defaultModel?: string;
+  orchestratorModel?: string;
   ghAvailable?: () => Promise<boolean>;
 }): Promise<{
   session: PlanSession;
@@ -108,7 +110,8 @@ async function run(opts: {
     projectId: 'p1',
     projectPath: '/tmp/somewhere',
     prompt: 'add a changes file',
-    model: 'inherit',
+    model: opts.orchestratorModel ?? 'inherit',
+    defaultModel: opts.defaultModel ?? 'inherit',
     reasoningEffort: 'high',
     contextSummary: 'A small demo repository.',
     commands,
@@ -175,6 +178,7 @@ describe('PlanSession', () => {
       projectPath: '/tmp/somewhere',
       prompt: 'add a changes file',
       model: 'inherit',
+      defaultModel: 'inherit',
       reasoningEffort: 'medium',
       contextSummary: 'A small demo repository.',
       commands,
@@ -193,13 +197,56 @@ describe('PlanSession', () => {
     expect(ask).toContain('- builder: build things');
     expect(ask).toContain('- audit: audit findings');
     expect(ask).toContain('verdict_consistent');
-    // The Orchestrator appoints from the enabled catalog, so it is shown the
-    // exact ids it must copy rather than left to invent one.
-    expect(ask).toContain('## Enabled models');
+    // With both pins inherited, the cast pool remains the full enabled
+    // catalog, shown as exact ids rather than names the model could invent.
+    expect(ask).toContain('## Phase model cast pool');
     expect(ask).toContain('- anthropic/claude-opus-4 — Claude Opus 4');
     expect(ask).toContain('- anthropic/claude-haiku-4 — Claude Haiku 4');
     // Builtin pipelines ride along as few-shot examples of valid shapes.
     expect(ask).toContain('## Builtin pipelines');
+  });
+
+  it('uses the Agent Defaults pin as the cast pool when the Orchestrator inherits', async () => {
+    const extra = model('openai/gpt-5', 'GPT 5');
+    const { state, prompts } = await run({
+      turns: [{ text: validReply() }],
+      models: [...enabled, extra],
+      defaultModel: 'anthropic/claude-opus-4',
+    });
+
+    expect(state.status).toBe('done');
+    expect(prompts[0]).toContain('- anthropic/claude-opus-4 — Claude Opus 4');
+    expect(prompts[0]).not.toContain('anthropic/claude-haiku-4');
+    expect(prompts[0]).not.toContain('openai/gpt-5');
+  });
+
+  it('unions distinct default and Orchestrator pins and rejects an off-pool cast', async () => {
+    const offPolicy = validReply().replace('anthropic/claude-opus-4', 'openai/gpt-5');
+    const { state, oneShots, prompts } = await run({
+      turns: [{ text: offPolicy }, { text: validReply() }],
+      models: [...enabled, model('openai/gpt-5', 'GPT 5')],
+      defaultModel: 'anthropic/claude-opus-4',
+      orchestratorModel: 'anthropic/claude-haiku-4',
+    });
+
+    expect(state.status).toBe('done');
+    expect(oneShots.calls[0]!.model).toBe('anthropic/claude-haiku-4');
+    expect(prompts[0]).toContain('anthropic/claude-opus-4');
+    expect(prompts[0]).toContain('anthropic/claude-haiku-4');
+    expect(prompts[0]).not.toContain('openai/gpt-5');
+    expect(state.entries.some((entry) => entry.text.includes('not allowed'))).toBe(true);
+  });
+
+  it('fails closed when a configured cast pin is unavailable or hidden', async () => {
+    const { state, oneShots } = await run({
+      turns: [],
+      defaultModel: 'openai/gpt-9',
+    });
+
+    expect(state.status).toBe('failed');
+    expect(state.detail).toContain('openai/gpt-9');
+    expect(state.detail).toContain('unavailable or hidden');
+    expect(oneShots.calls).toHaveLength(0);
   });
 
   it('refuses a plan whose agent phase inherits a model instead of naming one', async () => {
@@ -215,7 +262,7 @@ describe('PlanSession', () => {
     const { state } = await run({ turns: [{ text: unreachable }, { text: validReply() }] });
 
     expect(state.status).toBe('done');
-    expect(state.entries.some((e) => e.text.includes('not one of this install'))).toBe(true);
+    expect(state.entries.some((e) => e.text.includes('not allowed'))).toBe(true);
   });
 
   it('stands down the per-phase rail when the catalog cannot be read at all', async () => {
@@ -379,6 +426,7 @@ describe('PlanSession', () => {
       projectPath: '/tmp/somewhere',
       prompt: 'add a changes file',
       model: 'inherit',
+      defaultModel: 'inherit',
       reasoningEffort: 'medium',
       contextSummary: '',
       commands,

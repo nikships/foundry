@@ -246,6 +246,10 @@ describe('starting a run from an inline plan', () => {
       ['build', 'success'],
       ['review', 'success'],
     ]);
+    expect(h.tracer.agentSessions(outcome.runId!).map((session) => session.model)).toEqual([
+      'scripted/strong',
+      'scripted/fast',
+    ]);
   });
 
   it('records the run as orchestrated with the raw prompt preserved on the plan', async () => {
@@ -292,7 +296,7 @@ describe('starting a run from an inline plan', () => {
     expect(started).toHaveLength(0);
   });
 
-  it('accepts an operator override that re-casts a phase onto another enabled model', async () => {
+  it('accepts an explicit operator re-cast onto another enabled model at confirmation', async () => {
     const scripted = new ScriptedAgent([buildEnvelope(), reviewEnvelope()], ['USAGE.md', null]);
     const { deps: d, started, settled } = deps(scripted);
     const overridden = plan(h.project.id);
@@ -317,7 +321,21 @@ describe('starting a run from an inline plan', () => {
 
     expect(outcome.ok).toBe(false);
     expect(outcome.issues).toContainEqual(
-      expect.objectContaining({ message: expect.stringContaining('not one of this install') }),
+      expect.objectContaining({ message: expect.stringContaining('not allowed') }),
+    );
+    expect(started).toHaveLength(0);
+  });
+
+  it('fails closed when the live enabled-model catalog is unavailable at confirmation', async () => {
+    const scripted = new ScriptedAgent([], []);
+    const { deps: d, started } = deps(scripted);
+    d.enabledModelIds = async () => [];
+
+    const outcome = await startRun(d, input());
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.issues).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining('catalog is unavailable') }),
     );
     expect(started).toHaveLength(0);
   });

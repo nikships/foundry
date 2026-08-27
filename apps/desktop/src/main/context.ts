@@ -216,6 +216,7 @@ export class AppContext {
             {
               rosterFor: (id) => this.rosterFor(id),
               envelopeDefs: this.envelopes.list(),
+              defaultModel: this.settings.get().defaultModel,
               enabledModels: () =>
                 enabledModels(this.supportDir, this.settings.get().hiddenModelIds),
               ghAvailable: (path) => ghStatus(path).then((status) => status.available),

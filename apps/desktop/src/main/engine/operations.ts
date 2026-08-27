@@ -46,7 +46,8 @@ export interface StartRunDeps {
    * Ids of the models this install can reach, minus the hidden ones. Only an
    * inline plan uses it: the operator may re-cast a phase between the card and
    * this call, and main re-checks that choice rather than trusting the
-   * round-tripped value. Omitted (or empty) stands the rail down.
+   * round-tripped value. Omitted stands the rail down; an authoritative empty
+   * result fails closed because no final appointment can be verified.
    */
   enabledModelIds?(): Promise<string[]>;
   oneShot: OneShotFactory;
@@ -67,6 +68,15 @@ const noIssues: ValidationIssue[] = [];
 
 function startError(where: string, message: string): StartRunOutcome {
   return { ok: false, issues: [{ level: 'error', where, message }] };
+}
+
+async function modelIdsForPlan(
+  deps: StartRunDeps,
+  plan: GeneratedRunPlan | null,
+): Promise<string[] | null> {
+  if (!plan || !deps.enabledModelIds) return [];
+  const ids = await deps.enabledModelIds();
+  return ids.length ? ids : null;
 }
 
 export async function startRun(
@@ -134,6 +144,13 @@ export async function startRun(
 
   const knownEnvelopes = deps.envelopeDefs().map((e) => e.name);
   const commandNames = project.commands.map((c) => c.name);
+  const allowedModelIds = await modelIdsForPlan(deps, plan);
+  if (allowedModelIds === null) {
+    return startError(
+      'plan',
+      'the enabled model catalog is unavailable; refresh providers before starting this plan',
+    );
+  }
   // The validated plan crosses renderer IPC before confirmation. Dispose of
   // that round-tripped value again at the privileged start boundary rather
   // than trusting that nothing changed after the planning session checked it.
@@ -142,7 +159,7 @@ export async function startRun(
         roster,
         commandNames,
         knownEnvelopes,
-        enabledModelIds: (await deps.enabledModelIds?.()) ?? [],
+        allowedModelIds,
         scaffold: project.scaffold === true,
       })
     : null;
