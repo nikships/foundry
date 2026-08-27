@@ -32,6 +32,7 @@ export function register(ctx: Ctx, handle: Handle): void {
         {
           rosterFor: (id) => ctx.rosterFor(id),
           envelopeDefs: ctx.envelopes.list(),
+          defaultModel: ctx.settings.get().defaultModel,
           enabledModels: () => enabledModels(ctx.supportDir, ctx.settings.get().hiddenModelIds),
           ghAvailable: (path) => ghStatus(path).then((status) => status.available),
         },

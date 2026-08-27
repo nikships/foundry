@@ -1,7 +1,7 @@
 /**
  * Shared "open a planning session" step for the two surfaces that start
  * plans: the desktop composer's IPC router and the companion host. Both used
- * to re-implement the same guards and the same 11-field `plans.start()` call;
+ * to re-implement the same guards and the same `plans.start()` call;
  * a change to what starting a plan means would drift them apart again.
  */
 
@@ -34,6 +34,8 @@ export interface PlanStartServices {
   /** The agents this project runs planning with. */
   rosterFor(projectId: string): AgentDef[];
   envelopeDefs: EnvelopeDef[];
+  /** Settings → Agent Defaults model, captured for this planning session. */
+  defaultModel: string;
   /** The models this install can reach, minus the operator's hidden ones. */
   enabledModels: () => Promise<ModelInfo[]>;
   /** Resolved in the background so opening the planning panel stays immediate. */
@@ -54,6 +56,7 @@ export function startPlan(
     projectPath,
     prompt: input.prompt,
     model: input.model || 'inherit',
+    defaultModel: services.defaultModel || 'inherit',
     reasoningEffort: input.reasoningEffort,
     contextSummary: project.contextSummary ?? '',
     commands: project.commands,

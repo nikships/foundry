@@ -32,6 +32,7 @@ import {
   ORCHESTRATOR_PROMPT,
   buildPlanPrompt,
   checkPlanRails,
+  configuredCastModels,
   parsePlanReply,
   planCorrection,
   toGeneratedPlan,
@@ -40,12 +41,30 @@ import {
 
 export type { OrchestratorState };
 
+function castModelsForPlanning(
+  enabledModels: readonly ModelInfo[],
+  defaultModel: string,
+  orchestratorModel: string,
+): ModelInfo[] {
+  const castPool = configuredCastModels(enabledModels, { defaultModel, orchestratorModel });
+  if (!castPool.unavailableModelIds.length) return castPool.models;
+
+  const pins = castPool.unavailableModelIds.map((id) => `"${id}"`).join(', ');
+  const subject = castPool.unavailableModelIds.length === 1 ? 'model' : 'models';
+  const verb = castPool.unavailableModelIds.length === 1 ? 'is' : 'are';
+  throw new Error(
+    `configured phase ${subject} ${pins} ${verb} unavailable or hidden; choose a reachable Agent Defaults or Orchestrator model`,
+  );
+}
+
 export interface PlanSessionDeps {
   projectId: string;
   projectPath: string;
   prompt: string;
   /** Model id, or `inherit` to let this install choose. */
   model: string;
+  /** Settings → Agent Defaults model, snapshotted when planning starts. */
+  defaultModel: string;
   reasoningEffort: ReasoningEffort;
   contextSummary: string;
   commands: ProjectCommand[];
@@ -131,20 +150,21 @@ export class PlanSession {
       ghAvailable = await this.deps.ghAvailable();
       if (this.panel.cancelled) return;
     }
-    let models: ModelInfo[] = [];
+    let enabledModels: ModelInfo[] = [];
     if (this.deps.enabledModels) {
       this.panel.push({ kind: 'note', text: 'Reading the models this install can reach…' });
-      models = await this.deps.enabledModels();
+      enabledModels = await this.deps.enabledModels();
       if (this.panel.cancelled) return;
     }
-    const enabledModelIds = models.map((m) => m.id);
+    const castModels = castModelsForPlanning(enabledModels, this.deps.defaultModel, model);
+    const allowedModelIds = castModels.map((candidate) => candidate.id);
     const promptInputs: PlanPromptInputs = {
       request: this.deps.prompt,
       contextSummary: this.deps.contextSummary,
       commands: this.deps.commands,
       roster: this.deps.roster,
       envelopeDefs: this.deps.envelopeDefs,
-      models,
+      models: castModels,
       ghAvailable,
     };
 
@@ -181,7 +201,7 @@ export class PlanSession {
             roster: this.deps.roster,
             commandNames: this.deps.commands.map((c) => c.name),
             knownEnvelopes: this.deps.envelopeDefs.map((e) => e.name),
-            enabledModelIds,
+            allowedModelIds,
             scaffold: this.deps.scaffold,
           })
         : null;

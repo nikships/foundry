@@ -38,7 +38,7 @@ Composition rules (enforced by code where possible; follow all of them):
 - Always rewrite the operator's prompt into a full brief first. That brief is "refinedRequest" and becomes the run request; keep every constraint the operator stated.
 - Every code-editing agent phase is followed by proof before any commit: code phases running {"ref": ...} commands that exist in the project commands (test, typecheck, lint).
 - Reviewer/verifier agent phases carry the "verdict_consistent" and "disapproval_halts" gates.
-- **Every agent phase names its own model.** Set "model" on the phase to one of the enabled model ids you are shown, chosen for that phase's work. Never omit it, never write "inherit", and never leave the choice to the agent, the roster, or the install default — a plan with an unnamed model is rejected. Weigh the phase: give design, review, and hard implementation the strongest reasoning you were given, and hand mechanical or narrowly scoped work a fast, cheap one.
+- **Every agent phase names its own model.** Set "model" on the phase to one of the configured cast-pool ids you are shown, chosen for that phase's work. Never omit it, never write "inherit", and never leave the choice to the agent, the roster, or the install default — a plan with an unnamed model is rejected. Weigh the phase within that pool: give design, review, and hard implementation the strongest reasoning you were given, and hand mechanical or narrowly scoped work a fast, cheap one.
 - A code phase's "feedbackTo" names the earlier agent phase that owns the fix.
 - Acceptance is {"kind":"envelope_status","phase":<final PR phase>} when the plan ends in a PR phase, otherwise {"kind":"all_phases_pass"}.
 - Prefer roster agents when one fits. A synthesized agent gets a one-line purpose, a tight "writes" boundary (only the paths its phase must touch), and never the name of a roster agent.
@@ -61,7 +61,7 @@ export interface PlanPromptInputs {
   commands: ProjectCommand[];
   roster: AgentDef[];
   envelopeDefs: EnvelopeDef[];
-  /** The models this install can actually reach, minus the ones the operator hid. */
+  /** The configuration-governed pool this plan may cast its agent phases from. */
   models: ModelInfo[];
   /** Whether gh can open PRs here, which decides the acceptance guidance. */
   ghAvailable?: boolean;
@@ -116,7 +116,7 @@ export function buildPlanPrompt(inputs: PlanPromptInputs): string {
     '## Roster agents (prefer these when one fits)',
     inputs.roster.length ? rosterLines(inputs.roster) : '(empty roster)',
     '',
-    '## Enabled models (every agent phase must name one of these ids verbatim in "model")',
+    '## Phase model cast pool (every agent phase must name one of these ids verbatim in "model")',
     inputs.models.length
       ? modelLines(inputs.models)
       : '(this install reaches no model right now — name no "model" on any phase)',
@@ -275,22 +275,47 @@ export interface PlanRailsInputs {
   commandNames: string[];
   knownEnvelopes: string[];
   /**
-   * Ids of the models this install can reach, minus the ones the operator hid.
+   * Ids this boundary permits the plan to appoint. Planning passes the
+   * configured cast pool; confirmation passes the live enabled catalog so an
+   * explicit operator re-cast remains a deliberate override of that default.
    * An empty list means the catalog could not be read at all, which is not the
    * plan's fault: the per-phase rail stands down rather than refusing every
    * plan an unreachable catalog would produce.
    */
-  enabledModelIds?: string[];
+  allowedModelIds?: string[];
   scaffold?: boolean;
 }
 
-/** Whether a phase's model names something the install actually offers. */
+/** Whether a phase's model names something the current boundary allows. */
 function modelIsEnabled(wanted: string, enabled: readonly string[]): boolean {
   return enabled.some((id) => id === wanted || id.slice(id.indexOf('/') + 1) === wanted);
 }
 
 /**
- * Every agent phase names its own model, and names one the operator enabled.
+ * Automatic casting follows the two established phase-relevant pins: the
+ * Agent Defaults model and the model appointed to plan this run. With neither
+ * pinned, the existing all-enabled catalog remains the pool. An explicit pin
+ * that is hidden or no longer reachable is reported instead of silently
+ * broadening the pool around it.
+ */
+export function configuredCastModels(
+  models: readonly ModelInfo[],
+  pins: { defaultModel: string; orchestratorModel: string },
+): { models: ModelInfo[]; unavailableModelIds: string[] } {
+  const explicit = [...new Set([pins.defaultModel, pins.orchestratorModel])].filter(
+    (id) => id && id !== 'inherit',
+  );
+  if (!explicit.length) return { models: [...models], unavailableModelIds: [] };
+
+  const enabledIds = models.map((model) => model.id);
+  return {
+    models: models.filter((model) => explicit.some((id) => modelIsEnabled(id, [model.id]))),
+    unavailableModelIds: explicit.filter((id) => !modelIsEnabled(id, enabledIds)),
+  };
+}
+
+/**
+ * Every agent phase names its own model, and names one this boundary permits.
  *
  * Inheritance is the thing being prevented: a phase that declines to choose
  * silently falls back to the install default, which is exactly the invisible
@@ -298,16 +323,16 @@ function modelIsEnabled(wanted: string, enabled: readonly string[]): boolean {
  * rather than in the pipeline store because a hand-built pipeline may still
  * inherit — this rule belongs to generated plans.
  *
- * An empty `enabledModelIds` means the catalog could not be read at all, and
+ * An empty `allowedModelIds` means the catalog could not be read at all, and
  * the whole rail stands down: refusing every plan over an install-level
  * failure would leave the operator an error they cannot act on from the card.
  */
 export function phaseModelIssues(
   phases: readonly PhaseDef[],
-  enabledModelIds: readonly string[],
+  allowedModelIds: readonly string[],
   indexOffset = 0,
 ): ValidationIssue[] {
-  if (!enabledModelIds.length) return [];
+  if (!allowedModelIds.length) return [];
   const issues: ValidationIssue[] = [];
   phases.forEach((phase, index) => {
     if (phase.kind !== 'agent') return;
@@ -318,11 +343,11 @@ export function phaseModelIssues(
         where,
         message: 'an agent phase must name its own model rather than inheriting one',
       });
-    } else if (!modelIsEnabled(phase.model, enabledModelIds)) {
+    } else if (!modelIsEnabled(phase.model, allowedModelIds)) {
       issues.push({
         level: 'error',
         where,
-        message: `model "${phase.model}" is not one of this install's enabled models`,
+        message: `model "${phase.model}" is not allowed at this plan boundary`,
       });
     }
   });
@@ -363,7 +388,7 @@ export function checkPlanRails(reply: ParsedPlanReply, inputs: PlanRailsInputs):
     ...preflightForRun(reply.pipeline, union, inputs.commandNames, inputs.knownEnvelopes, {
       scaffold: inputs.scaffold,
     }),
-    ...phaseModelIssues(reply.pipeline.phases, inputs.enabledModelIds ?? []),
+    ...phaseModelIssues(reply.pipeline.phases, inputs.allowedModelIds ?? []),
   );
   const errors = issues.filter((i) => i.level === 'error');
   if (errors.length) return { ok: false, issues: errors };
