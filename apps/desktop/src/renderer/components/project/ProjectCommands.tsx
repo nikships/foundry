@@ -189,7 +189,7 @@ export default function ProjectCommands({
                     mono
                     className={styles.args}
                     value={argvText(i)}
-                    placeholder="npm test"
+                    placeholder="command and arguments"
                     onChange={(e) => setArgv(i, e.target.value)}
                   />
                   <div className={styles.commandActions}>
@@ -198,7 +198,7 @@ export default function ProjectCommands({
                       disabled={!command.argv.length || result?.running}
                       title={
                         !command.argv.length
-                          ? 'Enter an argv first (e.g. npm test)'
+                          ? 'Enter an executable and any arguments first'
                           : result?.running
                             ? 'Running…'
                             : undefined

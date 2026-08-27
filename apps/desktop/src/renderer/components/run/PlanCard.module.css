@@ -248,6 +248,12 @@
   margin: var(--s1) 0 0;
   padding-left: var(--s4);
 }
+.warning-message {
+  max-width: 72ch;
+  margin: var(--s1) 0 var(--s3);
+  color: var(--text-dim);
+  line-height: var(--leading);
+}
 .issues {
   margin: 0;
   padding: var(--s3);
