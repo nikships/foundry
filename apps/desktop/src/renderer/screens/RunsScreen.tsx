@@ -4,7 +4,7 @@ import type { ReadinessInspectResult, ValidationIssue } from '@shared/types.js';
 import type { CompanionHostState } from '@shared/companion.js';
 import type { LinearConnectionState } from '@shared/ipc-contract.js';
 import { api } from '../api.js';
-import { useOrchestratorPlan } from '../hooks/useOrchestratorPlan.js';
+import type { OrchestratorPlanController } from '../hooks/useOrchestratorPlan.js';
 import { useApp } from '../stores/app.js';
 import { safeGetItem, safeSetItem } from '../utils/local-store.js';
 import EmptyState from '../components/common/EmptyState.js';
@@ -13,7 +13,6 @@ import PanelTranscript from '../components/readiness/PanelTranscript.js';
 import LinearComposer from '../components/run/LinearComposer.js';
 import ManualComposer from '../components/run/ManualComposer.js';
 import OrchestratorPicker, {
-  loadOrchestratorChoice,
   type OrchestratorChoice,
 } from '../components/run/OrchestratorPicker.js';
 import PlanCard from '../components/run/PlanCard.js';
@@ -142,6 +141,7 @@ function OrchestratedComposer({
   header,
   request,
   choice,
+  orchestrator,
   onChoiceChange,
   onRequestChange,
   onOpen,
@@ -150,13 +150,13 @@ function OrchestratedComposer({
   header: ReactNode;
   request: string;
   choice: OrchestratorChoice;
+  orchestrator: OrchestratorPlanController;
   onChoiceChange: (choice: OrchestratorChoice) => void;
   onRequestChange: (request: string) => void;
   onOpen: (runId: string) => void;
   baseSyncing: boolean;
 }): React.JSX.Element {
   const { project, projectId, refreshAll } = useApp();
-  const orchestrator = useOrchestratorPlan(projectId, choice);
   const [starting, setStarting] = useState(false);
   const [startIssues, setStartIssues] = useState<ValidationIssue[]>([]);
   const composeBlocked = !project
@@ -309,6 +309,9 @@ function OrchestratedComposer({
 export default function RunsScreen({
   request,
   onRequestChange,
+  orchestratorChoice,
+  onOrchestratorChoiceChange,
+  orchestrator,
   onOpen,
   onAddProject,
   onNewProject,
@@ -316,6 +319,9 @@ export default function RunsScreen({
 }: {
   request: string;
   onRequestChange: (request: string) => void;
+  orchestratorChoice: OrchestratorChoice;
+  onOrchestratorChoiceChange: (choice: OrchestratorChoice) => void;
+  orchestrator: OrchestratorPlanController;
   onOpen: (runId: string) => void;
   onAddProject?: () => void;
   /** Create a repository on GitHub instead of pointing at an existing checkout. */
@@ -324,7 +330,6 @@ export default function RunsScreen({
 }): React.JSX.Element {
   const { project, projectId } = useApp();
   const [mode, setMode] = useState<RunsMode>(loadMode);
-  const [choice, setChoice] = useState<OrchestratorChoice>(loadOrchestratorChoice);
   const [linearConnection, setLinearConnection] = useState<LinearConnectionState | null>(null);
   const [readiness, setReadiness] = useState<ReadinessInspectResult | null>(null);
   const [baseSyncing, setBaseSyncing] = useState(false);
@@ -398,8 +403,9 @@ export default function RunsScreen({
               <OrchestratedComposer
                 header={tabs}
                 request={request}
-                choice={choice}
-                onChoiceChange={setChoice}
+                choice={orchestratorChoice}
+                orchestrator={orchestrator}
+                onChoiceChange={onOrchestratorChoiceChange}
                 onRequestChange={onRequestChange}
                 onOpen={onOpen}
                 baseSyncing={baseSyncing}
@@ -428,8 +434,8 @@ export default function RunsScreen({
             <LinearComposer
               active={mode === 'linear'}
               header={mode === 'linear' ? tabs : null}
-              choice={choice}
-              onChoiceChange={setChoice}
+              choice={orchestratorChoice}
+              onChoiceChange={onOrchestratorChoiceChange}
               onOpen={onOpen}
               onOpenSettings={onOpenSettings}
               onConnectionChange={setLinearConnection}

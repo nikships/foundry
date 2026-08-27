@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, menu } from './api.js';
 import { useGlobalShortcuts } from './hooks/useGlobalShortcuts.js';
+import { useOrchestratorPlan } from './hooks/useOrchestratorPlan.js';
 import { AppProvider, useApp } from './stores/app.js';
 import Sidebar from './components/layout/Sidebar.js';
 import { FoundryGlyph } from './components/media/BrandIcon.js';
+import { loadOrchestratorChoice } from './components/run/OrchestratorPicker.js';
 import RunsScreen from './screens/RunsScreen.js';
 import RunDetailScreen from './screens/RunDetailScreen.js';
 import InspectorScreen from './screens/InspectorScreen.js';
@@ -41,9 +43,14 @@ function checkCompleteToast(message: string | undefined): string {
 }
 
 function AppInner(): React.JSX.Element {
-  const { ready, settings, refreshAll, selectProject, projects } = useApp();
+  const { ready, settings, refreshAll, selectProject, projects, projectId } = useApp();
   const [view, setView] = useState<View>('runs');
   const [runRequest, setRunRequest] = useState('');
+  const [orchestratorChoice, setOrchestratorChoice] = useState(loadOrchestratorChoice);
+  // A planning turn can take minutes and its proposal awaits an explicit
+  // operator decision. Keep it at the same view-independent lifetime as the
+  // composer text instead of cancelling it when Runs briefly unmounts.
+  const orchestrator = useOrchestratorPlan(projectId, orchestratorChoice);
   const [creatingProject, setCreatingProject] = useState(false);
   const [openRunId, setOpenRunId] = useState('');
   const [inspectorRunId, setInspectorRunId] = useState('');
@@ -291,6 +298,9 @@ function AppInner(): React.JSX.Element {
           <RunsScreen
             request={runRequest}
             onRequestChange={setRunRequest}
+            orchestratorChoice={orchestratorChoice}
+            onOrchestratorChoiceChange={setOrchestratorChoice}
+            orchestrator={orchestrator}
             onOpen={openRun}
             onAddProject={() => void addProject()}
             onNewProject={newProject}
