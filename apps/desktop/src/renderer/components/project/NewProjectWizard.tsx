@@ -18,6 +18,7 @@ import { Dropdown } from '../ui/Dropdown.js';
 import { Field, TextInput, Textarea } from '../ui/Field.js';
 import { ModalShell } from '../ui/ModalShell.js';
 import { SegmentedControl } from '../ui/SegmentedControl.js';
+import ProjectCommandsModal from './ProjectCommandsModal.js';
 import styles from './NewProjectWizard.module.css';
 
 type Visibility = 'private' | 'public';
@@ -62,6 +63,7 @@ export default function NewProjectWizard({
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const [created, setCreated] = useState<NewRepoResult | null>(null);
+  const [configuringCommands, setConfiguringCommands] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -159,6 +161,20 @@ export default function NewProjectWizard({
     );
   }
 
+  if (created?.project && configuringCommands) {
+    return (
+      <ProjectCommandsModal
+        project={created.project}
+        commandNames={['test']}
+        onClose={() => setConfiguringCommands(false)}
+        onSaved={async (project) => {
+          setCreated((current) => (current ? { ...current, project } : current));
+          await onCreated(project);
+        }}
+      />
+    );
+  }
+
   if (created) {
     return (
       <ModalShell onClose={onClose} ariaLabelledBy="new-project-title" className={styles.modal}>
@@ -184,9 +200,9 @@ export default function NewProjectWizard({
           </div>
         </dl>
         <p className={`faint ${styles.note}`}>
-          The repo starts with a README and nothing else, so it has no test command yet. Runs still
-          work: a phase that needs one is skipped and recorded as skipped, and it starts running for
-          real as soon as the project has a test command.
+          The repo starts with a README and nothing else, so Foundry cannot detect a test command
+          yet. Set the command for your stack now, or detect it after the project has manifests.
+          Until then, a phase that needs it is recorded as skipped.
         </p>
         <footer className={styles.foot}>
           {created.url && (
@@ -195,6 +211,14 @@ export default function NewProjectWizard({
           {created.path && (
             <Button onClick={() => void api.projects.reveal(created.path!)}>
               Reveal in Finder
+            </Button>
+          )}
+          {created.project && (
+            <Button
+              onClick={() => setConfiguringCommands(true)}
+              data-testid="new-project-configure-commands"
+            >
+              Set up test command
             </Button>
           )}
           <div className={styles.spacer} />

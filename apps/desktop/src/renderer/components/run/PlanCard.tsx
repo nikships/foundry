@@ -1,12 +1,17 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { GeneratedRunPlan, ValidationIssue } from '@shared/types.js';
 import { useApp } from '../../stores/app.js';
 import { useAgentModels } from '../../hooks/useAgentModels.js';
 import { phaseKindColor } from '../../utils/derive.js';
 import { overriddenPhases, planCardView } from '../../view-models/plan-view.js';
+import {
+  isMissingProjectCommandWarning,
+  missingProjectCommandRefs,
+} from '../../view-models/project-commands-view.js';
 import ModelPicker from '../common/ModelPicker.js';
 import PipelineRibbon from '../pipeline/PipelineRibbon.js';
 import { PhaseGlyph } from '../pipeline/PhaseGlyphs.js';
+import ProjectCommandsModal from '../project/ProjectCommandsModal.js';
 import { Button } from '../ui/Button.js';
 import styles from './PlanCard.module.css';
 
@@ -49,9 +54,24 @@ export default function PlanCard({
   /** Read-only lifecycle summary for that source. */
   sourceDetail?: string;
 }): React.JSX.Element {
-  const { agentColor } = useApp();
+  const { agentColor, project, refreshAll } = useApp();
   const { models, refresh } = useAgentModels();
-  const view = useMemo(() => planCardView(plan), [plan]);
+  const [configuringCommands, setConfiguringCommands] = useState(false);
+  const planProject = project?.id === plan.projectId ? project : null;
+  const missingCommandRefs = useMemo(
+    () => (planProject ? missingProjectCommandRefs(plan.pipeline, planProject.commands) : []),
+    [plan.pipeline, planProject],
+  );
+  const visiblePlan = useMemo(
+    () => ({
+      ...plan,
+      warnings: planProject
+        ? plan.warnings.filter((warning) => !isMissingProjectCommandWarning(warning))
+        : plan.warnings,
+    }),
+    [plan, planProject],
+  );
+  const view = useMemo(() => planCardView(visiblePlan), [visiblePlan]);
   const overridden = useMemo(() => overriddenPhases(original, plan), [original, plan]);
   const synthColor = (name: string | null): string => {
     if (!name) return 'var(--text-faint)';
@@ -170,7 +190,7 @@ export default function PlanCard({
         <p className={styles.rationale}>{view.rationale}</p>
       </div>
 
-      {view.warnings.length > 0 && (
+      {(view.warnings.length > 0 || missingCommandRefs.length > 0) && (
         <div className={styles.warnings} data-testid="plan-warnings">
           {view.warnings.map((group) => (
             <div key={group.where} className={styles.warningGroup}>
@@ -182,6 +202,24 @@ export default function PlanCard({
               </ul>
             </div>
           ))}
+          {missingCommandRefs.length > 0 && (
+            <div className={styles.warningGroup}>
+              <strong>Project commands</strong>
+              <p className={styles.warningMessage}>
+                This plan needs {missingCommandRefs.map((ref) => `“${ref}”`).join(', ')}, but the
+                selected project does not provide {missingCommandRefs.length === 1 ? 'it' : 'them'}
+                yet. Configure {missingCommandRefs.length === 1 ? 'it' : 'them'} here without
+                leaving or losing this plan.
+              </p>
+              <Button
+                size="sm"
+                onClick={() => setConfiguringCommands(true)}
+                data-testid="plan-configure-commands"
+              >
+                Configure commands
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -214,6 +252,14 @@ export default function PlanCard({
         {sourceDetail && <span className={styles.sourceDetail}>{sourceDetail}</span>}
         {startBlocked && <span className={`faint ${styles.blocked}`}>{startBlocked}</span>}
       </div>
+      {planProject && configuringCommands && (
+        <ProjectCommandsModal
+          project={planProject}
+          commandNames={missingCommandRefs}
+          onClose={() => setConfiguringCommands(false)}
+          onSaved={async () => refreshAll()}
+        />
+      )}
     </section>
   );
 }
