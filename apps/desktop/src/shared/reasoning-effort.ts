@@ -92,3 +92,17 @@ export function normalizeReasoningEffort(
   if (isReasoningEffort(fallback) && supported.includes(fallback)) return fallback;
   return supported[0] ?? 'off';
 }
+
+/** Normalize an effort as the operator changes the model it belongs to. */
+export function normalizeReasoningEffortForModelChoice<
+  T extends ReasoningCapableModel & {
+    id: string;
+  },
+>(
+  wanted: ReasoningEffort,
+  chosen: string,
+  models: readonly T[],
+  fallback?: string | null,
+): ReasoningEffort {
+  return normalizeReasoningEffort(wanted, modelForEffortPicker(chosen, models, fallback));
+}

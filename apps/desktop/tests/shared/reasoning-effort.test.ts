@@ -10,6 +10,7 @@ import {
   isReasoningEffort,
   modelForEffortPicker,
   normalizeReasoningEffort,
+  normalizeReasoningEffortForModelChoice,
   supportedReasoningEfforts,
 } from '../../src/shared/reasoning-effort.js';
 
@@ -106,5 +107,27 @@ describe('modelForEffortPicker', () => {
     expect(modelForEffortPicker('inherit', models, gemini.id)).toBe(gemini);
     expect(modelForEffortPicker('gone', models, luna.id)).toBeNull();
     expect(modelForEffortPicker(undefined, models, 'inherit')).toBeNull();
+  });
+});
+
+describe('normalizeReasoningEffortForModelChoice', () => {
+  const gpt = { id: 'bridge-codex/gpt-5.6', ...deep };
+  const grok = { id: 'bridge-grok/grok-4.6', ...conservative };
+  const models = [gpt, grok];
+
+  it('clamps a persisted max effort when switching from GPT-5.6 to Grok 4.6', () => {
+    expect(normalizeReasoningEffortForModelChoice('max', grok.id, models)).toBe('medium');
+  });
+
+  it('normalizes an inherited slot against the default model', () => {
+    expect(normalizeReasoningEffortForModelChoice('max', 'inherit', models, grok.id)).toBe(
+      'medium',
+    );
+  });
+
+  it('preserves the effort while the chosen model is absent from the catalog', () => {
+    expect(normalizeReasoningEffortForModelChoice('max', 'bridge-grok/grok-4.7', models)).toBe(
+      'max',
+    );
   });
 });

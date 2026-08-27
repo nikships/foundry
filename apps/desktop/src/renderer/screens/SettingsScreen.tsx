@@ -18,7 +18,10 @@ import {
 import type { CompanionHostState, CompanionPairingPayload } from '@shared/companion.js';
 import { MODEL_UNSET, MODEL_UNSET_MESSAGE } from '@shared/model-choice.js';
 import { modelLabel } from '@shared/model-label.js';
-import { modelForEffortPicker } from '@shared/reasoning-effort.js';
+import {
+  modelForEffortPicker,
+  normalizeReasoningEffortForModelChoice,
+} from '@shared/reasoning-effort.js';
 import { api, plain } from '../api.js';
 import { isKnownPrWriter, prWriterOptions } from '../view-models/pr-draft.js';
 import { useApp } from '../stores/app.js';
@@ -1549,7 +1552,8 @@ export default function SettingsScreen({
                       <Section label="Agent defaults" note="What an agent set to inherit gets.">
                         <p className={styles.settingsLead}>
                           Used by any agent that inherits model or reasoning. A per-agent choice
-                          always wins.
+                          always wins. Changing a model resets an unsupported reasoning effort to
+                          that model&rsquo;s default.
                         </p>
                       </Section>
                       <Section label="Model" note="Every model a connected provider offers.">
@@ -1564,7 +1568,32 @@ export default function SettingsScreen({
                               allowInherit
                               inheritLabel="First reachable model"
                               emptyHint="No models are reachable. Connect a provider or store an API key under Providers, then refresh."
-                              onChange={(v) => void set({ defaultModel: v })}
+                              onChange={(v) =>
+                                void set({
+                                  defaultModel: v,
+                                  defaultReasoningEffort: normalizeReasoningEffortForModelChoice(
+                                    settings.defaultReasoningEffort,
+                                    v,
+                                    models,
+                                  ),
+                                  ...(settings.helperModel === 'inherit' && {
+                                    helperReasoningEffort: normalizeReasoningEffortForModelChoice(
+                                      settings.helperReasoningEffort,
+                                      'inherit',
+                                      models,
+                                      v,
+                                    ),
+                                  }),
+                                  ...(settings.healingModel === 'inherit' && {
+                                    healingReasoningEffort: normalizeReasoningEffortForModelChoice(
+                                      settings.healingReasoningEffort,
+                                      'inherit',
+                                      models,
+                                      v,
+                                    ),
+                                  }),
+                                })
+                              }
                             />
                           </Field>
                           <Field
@@ -1592,7 +1621,17 @@ export default function SettingsScreen({
                               allowInherit
                               inheritLabel="Same as default model"
                               emptyHint="No models are reachable. Connect a provider under Providers."
-                              onChange={(v) => void set({ helperModel: v })}
+                              onChange={(v) =>
+                                void set({
+                                  helperModel: v,
+                                  helperReasoningEffort: normalizeReasoningEffortForModelChoice(
+                                    settings.helperReasoningEffort,
+                                    v,
+                                    models,
+                                    settings.defaultModel,
+                                  ),
+                                })
+                              }
                             />
                           </Field>
                           <Field
@@ -1626,7 +1665,17 @@ export default function SettingsScreen({
                               allowInherit
                               inheritLabel="Same as default model"
                               emptyHint="No models are reachable. Connect a provider under Providers."
-                              onChange={(v) => void set({ healingModel: v })}
+                              onChange={(v) =>
+                                void set({
+                                  healingModel: v,
+                                  healingReasoningEffort: normalizeReasoningEffortForModelChoice(
+                                    settings.healingReasoningEffort,
+                                    v,
+                                    models,
+                                    settings.defaultModel,
+                                  ),
+                                })
+                              }
                             />
                           </Field>
                           <Field
@@ -1657,7 +1706,16 @@ export default function SettingsScreen({
                               allowInherit
                               inheritLabel={SMITH_MODEL_UNSET_LABEL}
                               emptyHint={SMITH_NO_PROVIDER_COPY}
-                              onChange={(v) => void set({ smithModel: v })}
+                              onChange={(v) =>
+                                void set({
+                                  smithModel: v,
+                                  smithReasoningEffort: normalizeReasoningEffortForModelChoice(
+                                    settings.smithReasoningEffort,
+                                    v,
+                                    models,
+                                  ),
+                                })
+                              }
                             />
                           </Field>
                           <Field
