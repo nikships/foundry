@@ -4,7 +4,9 @@
  * see the mirror table in apps/website/README.md.
  */
 
-export const DOWNLOAD_URL = 'https://github.com/nikships/foundry/releases/latest';
+export const RELEASES_URL = 'https://github.com/nikships/foundry/releases/latest';
+export const MAC_DOWNLOAD_URL = `${RELEASES_URL}/download/Foundry.dmg`;
+export const ANDROID_DOWNLOAD_URL = `${RELEASES_URL}/download/Foundry-Android.apk`;
 export const REPO_URL = 'https://github.com/nikships/foundry';
 export const ISSUES_URL = 'https://github.com/nikships/foundry/issues';
 export const AGENTS_MD_URL = 'https://github.com/nikships/foundry/blob/main/AGENTS.md';
@@ -113,7 +115,7 @@ export const STEPS: Step[] = [
   {
     index: '01',
     title: 'Download and drag',
-    body: 'Grab Foundry.dmg from the releases page and drop it into Applications. No npm ci, no setup script.',
+    body: 'Download Foundry.dmg and drop it into Applications. No npm ci, no setup script.',
   },
   {
     index: '02',

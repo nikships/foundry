@@ -2,7 +2,9 @@
 
 import { RUN } from '../../data/foundry';
 import {
-  DOWNLOAD_URL as RELEASES,
+  MAC_DOWNLOAD_URL,
+  ANDROID_DOWNLOAD_URL,
+  RELEASES_URL,
   REPO_URL as REPO,
   ISSUES_URL,
   AGENTS_MD_URL,
@@ -41,7 +43,7 @@ export function Nav() {
           ))}
         </nav>
         <div className="ml-auto xl:ml-0">
-          <Button href={RELEASES} variant="primary">
+          <Button href={MAC_DOWNLOAD_URL} variant="primary">
             Download
           </Button>
         </div>
@@ -98,9 +100,10 @@ export function Hero() {
           </p>
 
           <div className="mt-9 flex flex-wrap gap-3">
-            <Button href={RELEASES} variant="primary">
+            <Button href={MAC_DOWNLOAD_URL} variant="primary">
               Download for Mac
             </Button>
+            <Button href={ANDROID_DOWNLOAD_URL}>Download for Android</Button>
             <Button href={REPO}>Read the source</Button>
           </div>
 
@@ -160,9 +163,10 @@ export function ClosingCta() {
           keys, and your own repos.
         </p>
         <div className="mt-[34px] flex flex-wrap justify-center gap-3">
-          <Button href={RELEASES} variant="primary">
+          <Button href={MAC_DOWNLOAD_URL} variant="primary">
             Download for Mac
           </Button>
+          <Button href={ANDROID_DOWNLOAD_URL}>Download for Android</Button>
           <Button href={REPO}>Star on GitHub</Button>
         </div>
         <div className="mt-[26px] flex flex-wrap justify-center gap-x-5 gap-y-2 font-mono text-[11px] uppercase tracking-[0.06em] text-text-faint">
@@ -179,7 +183,7 @@ export function ClosingCta() {
 
 const FOOTER_LINKS: Array<[string, string]> = [
   [REPO, 'Source'],
-  [RELEASES, 'Releases'],
+  [RELEASES_URL, 'Releases'],
   [ISSUES_URL, 'Issues'],
   [AGENTS_MD_URL, 'AGENTS.md'],
 ];

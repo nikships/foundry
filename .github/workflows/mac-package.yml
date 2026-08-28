@@ -349,7 +349,9 @@ jobs:
           TAG="v${PKG_VERSION}"
           TITLE="Foundry ${TAG}"
           NOTES="Continuous build from \`${GITHUB_REF_NAME}\` @ \`${SHORT_SHA}\` (run ${RUN}). The signed, notarized Apple Silicon app and latest signed Android companion APK are attached when available."
-          STABLE_DMG="dist/Foundry-${TAG}-arm64.dmg"
+          # The rolling release keeps a stable DMG name so the website can use
+          # GitHub's /releases/latest/download/Foundry.dmg direct link.
+          STABLE_DMG="dist/Foundry.dmg"
           STABLE_ZIP="dist/Foundry-${TAG}-arm64-mac.zip"
           YML="dist/latest-mac.yml"
 
@@ -411,7 +413,9 @@ jobs:
           # attached to the release that was just promoted to Latest.
           gh release view "$TAG" --json isDraft,isPrerelease,assets \
             --jq 'select(.isDraft == false and .isPrerelease == false) | .assets[].name' \
-            | grep -Fxq 'latest-mac.yml'
+            | tee "$RUNNER_TEMP/latest-assets.txt"
+          grep -Fxq 'Foundry.dmg' "$RUNNER_TEMP/latest-assets.txt"
+          grep -Fxq 'latest-mac.yml' "$RUNNER_TEMP/latest-assets.txt"
           test "$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.tag_name')" = "$TAG"
           echo "Published ${TAG} and promoted it to Latest (run ${RUN})"
 
