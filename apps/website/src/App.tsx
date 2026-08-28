@@ -9,7 +9,14 @@ import {
   COMPANION_POINTS,
   READINESS_POINTS,
 } from './data/foundry';
-import { PROBLEM_POINTS, SAFE_POINTS, ISOLATION_POINTS, STEPS, REPO_URL } from './data/site';
+import {
+  ANDROID_DOWNLOAD_URL,
+  PROBLEM_POINTS,
+  SAFE_POINTS,
+  ISOLATION_POINTS,
+  STEPS,
+  REPO_URL,
+} from './data/site';
 import {
   ArtPanel,
   Button,
@@ -584,11 +591,14 @@ export function App() {
               <div className="grid grid-cols-1 items-start gap-10 lg:grid-cols-2 lg:gap-16">
                 <Ticks items={COMPANION_POINTS.map(([t, b]) => [t, b])} />
                 <p className="max-w-[58ch] border-t border-line pt-6 text-[13.5px] leading-[1.65] text-text-faint lg:mt-8 lg:border-t-0 lg:pt-0">
-                  The host only exists while you turn it on. Apart from pairing, every route requires
-                  a bearer token that hashes to a paired device — and everything else, unknown paths
-                  included, answers 401 before it answers 404, so an unpaired caller cannot even map
-                  the surface.
+                  The host only exists while you turn it on. Apart from pairing, every route
+                  requires a bearer token that hashes to a paired device — and everything else,
+                  unknown paths included, answers 401 before it answers 404, so an unpaired caller
+                  cannot even map the surface.
                 </p>
+              </div>
+              <div className="mt-8">
+                <Button href={ANDROID_DOWNLOAD_URL}>Download the Android companion</Button>
               </div>
             </Reveal>
             <Reveal delay={80} className="mt-12">
@@ -645,7 +655,16 @@ export function App() {
               </ol>
             </Reveal>
             <p className="mt-6 text-[14.5px] leading-[1.65] text-text-dim">
-              An Android APK ships alongside every release. The source for all of it is{' '}
+              The Android APK ships alongside every release and is available as a{' '}
+              <a
+                href={ANDROID_DOWNLOAD_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-accent underline decoration-accent/40 underline-offset-2 hover:text-accent-bright"
+              >
+                direct download
+              </a>
+              . The source for all of it is{' '}
               <a
                 href={REPO_URL}
                 target="_blank"
