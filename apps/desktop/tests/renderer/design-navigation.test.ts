@@ -231,6 +231,16 @@ describe('CDP automation hooks', () => {
     expect(runsSrc).not.toContain('<RunList');
   });
 
+  it('scopes sidebar Activity to the selected project', () => {
+    expect(sidebarSrc).not.toContain('useAllProjectRuns');
+    expect(sidebarSrc).toContain('useActivityRuns(projectId)');
+    expect(sidebarSrc).not.toContain('selectProject(run.projectId)');
+    expect(sidebarSrc).toContain('onOpenInspector?.(run.runId)');
+    expect(sidebarSrc).toContain('{run.pipelineName} ·');
+    expect(sidebarSrc).not.toContain('projects.find((p) => p.id === run.projectId)');
+    expect(sidebarSrc).toContain('data-testid={`sidebar-run-${run.runId}`}');
+  });
+
   it('gives Inspector, PRs, and run-detail panes stable testids', () => {
     expect(inspectorSrc).toContain('data-testid="inspector-run"');
     expect(inspectorSrc).toContain('data-testid={`inspector-filter-${f.id}`}');

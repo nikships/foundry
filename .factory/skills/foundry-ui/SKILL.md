@@ -407,9 +407,10 @@ The sidebar also carries:
   automation**: it opens a native folder picker CDP cannot drive (if stuck,
   `press Escape` won't help; you must dismiss it manually or kill the app);
   the Create-New half opens the in-app `NewProjectWizard`, which _is_ drivable;
-- the Activity list while runs exist: one row per recent run across projects,
-  `data-testid="sidebar-run-{runId}"`, each opening that run pinned in the
-  Inspector.
+- the Activity list while runs exist: one row per live + recent run of the
+  currently selected project (hidden when the rail is collapsed or there are
+  no rows), `data-testid="sidebar-run-{runId}"`. Click pins Inspector and does
+  not change the project picker.
 
 **Smith (`nav-smith`) is safe to open** — it is a native chat view
 (`data-view="smith"`), not a terminal handoff. What costs tokens is _sending_
