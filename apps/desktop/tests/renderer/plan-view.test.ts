@@ -13,6 +13,7 @@ import {
   planCardView,
   togglePlanExportSelection,
   withPhaseModel,
+  withPhaseReasoningEffort,
 } from '@renderer/view-models/plan-view.js';
 
 function generatedPlan(): GeneratedRunPlan {
@@ -36,6 +37,7 @@ function generatedPlan(): GeneratedRunPlan {
           description: 'Implement deterministic search ordering.',
           agent: 'search_specialist',
           model: 'anthropic/claude-opus-4',
+          reasoningEffort: 'high',
           gates: ['boundary_respected'],
         },
         {
@@ -51,6 +53,7 @@ function generatedPlan(): GeneratedRunPlan {
           description: 'Review the implementation and evidence.',
           agent: 'reviewer',
           model: 'anthropic/claude-haiku-4',
+          reasoningEffort: 'low',
           gates: ['verdict_consistent', { gate: 'disapproval_halts' }],
         },
       ],
@@ -108,6 +111,7 @@ describe('plan-view', () => {
       synthesized: true,
       decides: false,
       model: 'anthropic/claude-opus-4',
+      reasoningEffort: 'high',
     });
     expect(view.phases[1]?.note).toBe('runs "test" · fails back to build');
     // Only agent phases carry an appointment; a command has no model to override.
@@ -115,6 +119,7 @@ describe('plan-view', () => {
     expect(view.phases[2]).toMatchObject({
       synthesized: true,
       decides: true,
+      reasoningEffort: 'low',
       note: 'gates: verdict_consistent, disapproval_halts',
     });
 
@@ -142,6 +147,16 @@ describe('plan-view', () => {
     expect(overridden.agents).toEqual(proposed.agents);
     // The proposal itself is untouched, so "restore proposed models" can undo.
     expect(proposed.pipeline.phases[2]?.model).toBe('anthropic/claude-haiku-4');
+  });
+
+  it('overrides one phase reasoning level and reports it as an operator change', () => {
+    const proposed = generatedPlan();
+    const overridden = withPhaseReasoningEffort(proposed, 'review', 'high');
+
+    expect(overridden.pipeline.phases[2]?.reasoningEffort).toBe('high');
+    expect(overridden.pipeline.phases[2]?.model).toBe('anthropic/claude-haiku-4');
+    expect([...overriddenPhases(proposed, overridden)]).toEqual(['review']);
+    expect(proposed.pipeline.phases[2]?.reasoningEffort).toBe('low');
   });
 
   it('leaves a code phase alone when its name is handed to withPhaseModel', () => {

@@ -1,5 +1,9 @@
 import { useMemo, useState } from 'react';
-import type { GeneratedRunPlan, ValidationIssue } from '@shared/types.js';
+import type { GeneratedRunPlan, ReasoningEffort, ValidationIssue } from '@shared/types.js';
+import {
+  modelForEffortPicker,
+  normalizeReasoningEffortForModelChoice,
+} from '@shared/reasoning-effort.js';
 import { useApp } from '../../stores/app.js';
 import { useAgentModels } from '../../hooks/useAgentModels.js';
 import { phaseKindColor } from '../../utils/derive.js';
@@ -9,6 +13,7 @@ import {
   missingProjectCommandRefs,
 } from '../../view-models/project-commands-view.js';
 import ModelPicker from '../common/ModelPicker.js';
+import ReasoningEffortPicker from '../common/ReasoningEffortPicker.js';
 import PipelineRibbon from '../pipeline/PipelineRibbon.js';
 import { PhaseGlyph } from '../pipeline/PhaseGlyphs.js';
 import ProjectCommandsModal from '../project/ProjectCommandsModal.js';
@@ -29,7 +34,8 @@ export default function PlanCard({
   startBlocked,
   issues,
   onPhaseModelChange,
-  onResetModels,
+  onPhaseReasoningEffortChange,
+  onResetPhaseOverrides,
   onStart,
   onRegenerate,
   onDiscard,
@@ -45,7 +51,8 @@ export default function PlanCard({
   /** Start-time validation failures, shown on the card rather than lost. */
   issues: ValidationIssue[];
   onPhaseModelChange: (phaseName: string, model: string) => void;
-  onResetModels: () => void;
+  onPhaseReasoningEffortChange: (phaseName: string, effort: ReasoningEffort) => void;
+  onResetPhaseOverrides: () => void;
   onStart: () => void;
   onRegenerate: () => void;
   onDiscard: () => void;
@@ -107,10 +114,10 @@ export default function PlanCard({
               type="button"
               className={styles.resetModels}
               disabled={starting}
-              onClick={onResetModels}
-              data-testid="plan-reset-models"
+              onClick={onResetPhaseOverrides}
+              data-testid="plan-reset-phase-overrides"
             >
-              Restore proposed models
+              Restore proposed settings
             </button>
           )}
         </div>
@@ -147,8 +154,27 @@ export default function PlanCard({
                         models={models}
                         showNotes={false}
                         disabled={starting}
-                        onChange={(model) => onPhaseModelChange(phase.name, model)}
+                        onChange={(model) => {
+                          onPhaseModelChange(phase.name, model);
+                          const normalized = normalizeReasoningEffortForModelChoice(
+                            phase.reasoningEffort ?? 'medium',
+                            model,
+                            models,
+                          );
+                          if (normalized !== phase.reasoningEffort) {
+                            onPhaseReasoningEffortChange(phase.name, normalized);
+                          }
+                        }}
                         onRefresh={() => void refresh()}
+                      />
+                      <span className={styles.phaseModelLabel}>Reasoning</span>
+                      <ReasoningEffortPicker
+                        value={phase.reasoningEffort ?? 'medium'}
+                        model={modelForEffortPicker(phase.model, models)}
+                        disabled={starting}
+                        ariaLabel={`Reasoning effort for ${phase.name}`}
+                        data-testid={`plan-reasoning-${phase.name}`}
+                        onChange={(effort) => onPhaseReasoningEffortChange(phase.name, effort)}
                       />
                       {overridden.has(phase.name) && (
                         <span className={styles.overridden}>overridden</span>
@@ -172,7 +198,7 @@ export default function PlanCard({
                 <span className={styles.agentName}>{agent.name}</span>
                 <span className={styles.agentPurpose}>{agent.purpose}</span>
                 <span className={`faint ${styles.agentMeta}`}>
-                  {agent.model} · {agent.reasoningEffort} · {agent.boundary}
+                  {agent.model} · {agent.boundary}
                 </span>
               </div>
             ))}

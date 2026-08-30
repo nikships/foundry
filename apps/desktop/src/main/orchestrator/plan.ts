@@ -38,7 +38,7 @@ Composition rules (enforced by code where possible; follow all of them):
 - Always rewrite the operator's prompt into a full brief first. That brief is "refinedRequest" and becomes the run request; keep every constraint the operator stated.
 - Every code-editing agent phase is followed by proof before any commit: code phases running {"ref": ...} commands that exist in the project commands (test, typecheck, lint).
 - Reviewer/verifier agent phases carry the "verdict_consistent" and "disapproval_halts" gates.
-- **Every agent phase names its own model.** Set "model" on the phase to one of the configured cast-pool ids you are shown, chosen for that phase's work. Never omit it, never write "inherit", and never leave the choice to the agent, the roster, or the install default — a plan with an unnamed model is rejected. Weigh the phase within that pool: give design, review, and hard implementation the strongest reasoning you were given, and hand mechanical or narrowly scoped work a fast, cheap one.
+- **Every agent phase names its own model and reasoning level.** Set "model" to one of the configured cast-pool ids you are shown and set "reasoningEffort" to one of that model's listed efforts. Choose both for that phase's work: give design, review, and hard implementation strong reasoning, and hand mechanical or narrowly scoped work a fast, cheap model and lower effort. Never omit "model", write "inherit", or leave the model choice to the agent, roster, or install default — a plan with an unnamed model is rejected.
 - A code phase's "feedbackTo" names the earlier agent phase that owns the fix.
 - Acceptance is {"kind":"envelope_status","phase":<final PR phase>} when the plan ends in a PR phase, otherwise {"kind":"all_phases_pass"}.
 - Prefer roster agents when one fits. A synthesized agent gets a one-line purpose, a tight "writes" boundary (only the paths its phase must touch), and never the name of a roster agent.
@@ -53,7 +53,7 @@ Reply with a single JSON object and nothing else:
 }
 
 Each synthesized agent: {"name","purpose","systemPrompt","userPrompt","writes","envelope"} plus optional "reasoningEffort" and "toolProfile" ("read-only" for reviewers). Omit "model" on an agent — the phase it runs in is what names the model.
-Each phase follows the pipeline schema you were shown in the examples: {"name","kind","description"} plus "agent"/"model"/"prompt"/"envelope"/"gates" for agent phases, "command"/"feedbackTo"/"heal" for code phases. Never emit an engineer/checkpoint phase.`;
+Each phase follows the pipeline schema you were shown in the examples: {"name","kind","description"} plus "agent"/"model"/"reasoningEffort"/"prompt"/"envelope"/"gates" for agent phases, "command"/"feedbackTo"/"heal" for code phases. Never emit an engineer/checkpoint phase.`;
 
 export interface PlanPromptInputs {
   request: string;
@@ -283,6 +283,8 @@ export interface PlanRailsInputs {
    * plan an unreachable catalog would produce.
    */
   allowedModelIds?: string[];
+  /** Capability details are available while planning, before the card renders. */
+  allowedModels?: ModelInfo[];
   scaffold?: boolean;
 }
 
@@ -315,7 +317,8 @@ export function configuredCastModels(
 }
 
 /**
- * Every agent phase names its own model, and names one this boundary permits.
+ * Every agent phase names its own model and reasoning effort, and names a model
+ * this boundary permits.
  *
  * Inheritance is the thing being prevented: a phase that declines to choose
  * silently falls back to the install default, which is exactly the invisible
@@ -331,6 +334,7 @@ export function phaseModelIssues(
   phases: readonly PhaseDef[],
   allowedModelIds: readonly string[],
   indexOffset = 0,
+  allowedModels: readonly ModelInfo[] = [],
 ): ValidationIssue[] {
   if (!allowedModelIds.length) return [];
   const issues: ValidationIssue[] = [];
@@ -349,6 +353,24 @@ export function phaseModelIssues(
         where,
         message: `model "${phase.model}" is not allowed at this plan boundary`,
       });
+    }
+    if (!phase.reasoningEffort) {
+      issues.push({
+        level: 'error',
+        where,
+        message: 'an agent phase must name its own reasoning effort',
+      });
+    } else {
+      const model = allowedModels.find((candidate) =>
+        modelIsEnabled(phase.model ?? '', [candidate.id]),
+      );
+      if (model && !model.supportedReasoningEfforts.includes(phase.reasoningEffort)) {
+        issues.push({
+          level: 'error',
+          where,
+          message: `model "${phase.model}" does not support reasoning effort "${phase.reasoningEffort}"`,
+        });
+      }
     }
   });
   return issues;
@@ -388,7 +410,12 @@ export function checkPlanRails(reply: ParsedPlanReply, inputs: PlanRailsInputs):
     ...preflightForRun(reply.pipeline, union, inputs.commandNames, inputs.knownEnvelopes, {
       scaffold: inputs.scaffold,
     }),
-    ...phaseModelIssues(reply.pipeline.phases, inputs.allowedModelIds ?? []),
+    ...phaseModelIssues(
+      reply.pipeline.phases,
+      inputs.allowedModelIds ?? [],
+      0,
+      inputs.allowedModels,
+    ),
   );
   const errors = issues.filter((i) => i.level === 'error');
   if (errors.length) return { ok: false, issues: errors };

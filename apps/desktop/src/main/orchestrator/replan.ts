@@ -32,7 +32,7 @@ const REPLAN_SYSTEM_PROMPT = `You are the Orchestrator revising an orchestrated 
 
 Propose the smallest valid replacement for the not-yet-completed pipeline tail. Completed phases are immutable. You may re-include the failed phase, insert a repair phase, reorder the remaining work, or extend it. Prefer existing agents; synthesize an agent only when the current roster cannot own a required phase. A code phase's feedbackTo may target only an earlier phase in your replacement tail, never a completed phase.
 
-Every agent phase in your replacement tail names its own "model", copied verbatim from a model id that already appears on a phase of the confirmed plan. Never omit it, never write "inherit", and never leave the choice to the agent or the install default — an amendment with an unnamed model is rejected. A phase that failed on a weak model is a reason to name a stronger one from that same list.
+Every agent phase in your replacement tail names its own "model", copied verbatim from a model id that already appears on a phase of the confirmed plan, and its own "reasoningEffort". Use a reasoning level that model uses in the confirmed plan. Never omit the model, write "inherit", or leave the model choice to the agent or install default — an amendment with an unnamed model is rejected. A phase that failed on a weak appointment is a reason to choose a stronger model and reasoning level from those confirmed choices.
 
 Reply with one JSON object and nothing else:
 {"reason":"why this amendment should recover the run","phases":[<replacement phases>],"agents":[<new synthesized agents only>]}
