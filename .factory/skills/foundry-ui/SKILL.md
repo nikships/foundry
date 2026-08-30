@@ -237,6 +237,7 @@ Run detail:
 | ---------------------- | ------------------------------------------- |
 | `run-back`             | ← Runs button                               |
 | `run-open-inspector`   | Deep-link this run into the Inspector       |
+| `run-prompt-resize`    | Drag/keyboard handle for prompt height      |
 | `run-kill`             | Kill run (live runs only; in-app confirm)   |
 | `phase-lane-{phaseId}` | Waterfall phase lane (`data-phase-name`)    |
 | `outcome-resume`       | Outcome banner → Continue run               |
@@ -256,6 +257,7 @@ Inspector:
 | `data-testid`              | Element                                    |
 | -------------------------- | ------------------------------------------ |
 | `inspector-run`            | Run picker (bare nav follows what is live) |
+| `inspector-open-run`       | Open selected run’s detail view            |
 | `inspector-filter-all`     | Filter: All                                |
 | `inspector-filter-running` | Filter: Running                            |
 | `inspector-filter-failed`  | Filter: Failed                             |
@@ -448,7 +450,8 @@ Open via `run-row-{runId}`. `data-view` becomes `run-detail` and
 `data-open-run` is the full id. Contains:
 
 - `data-testid="run-back"` (← Runs), `run-open-inspector` (deep-link this run
-  into the Inspector), and `run-kill` on live runs only.
+  into the Inspector), `run-prompt-resize` (drag or use ArrowUp/ArrowDown to
+  resize the prompt), and `run-kill` on live runs only.
 - Outcome banner for finished runs: status headline, and when the worktree
   still exists, action buttons — `outcome-resume`, `outcome-fix-merge`,
   `outcome-open-pr` (opens an inline form: `pr-title`, `pr-body`,
@@ -468,6 +471,8 @@ Live trace viewer, cards per phase in a two-column masonry. Top bar:
 
 - `data-testid="inspector-run"` — bare navigation follows whatever is live;
   options list past runs (`Full SDLC · accepted · 04:51:20 · 12h ago`).
+- `inspector-open-run` opens the selected run’s waterfall and phase detail;
+  `run-open-inspector` returns to this Inspector view with that run pinned.
 - Filters `inspector-filter-all` / `running` / `failed`, toggle
   `inspector-raw-files` (shows a flat chronological list of every file
   READ/EDIT/CREATE/SEARCH and `$` command across the run; toggle again to

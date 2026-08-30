@@ -233,11 +233,13 @@ describe('CDP automation hooks', () => {
 
   it('gives Inspector, PRs, and run-detail panes stable testids', () => {
     expect(inspectorSrc).toContain('data-testid="inspector-run"');
+    expect(inspectorSrc).toContain('data-testid="inspector-open-run"');
     expect(inspectorSrc).toContain('data-testid={`inspector-filter-${f.id}`}');
     expect(inspectorSrc).toContain('data-testid="inspector-raw-files"');
     expect(prsSrc).toContain('data-testid="prs-refresh"');
     expect(runDetailSrc).toContain('data-testid="run-back"');
     expect(runDetailSrc).toContain('data-testid="run-open-inspector"');
+    expect(runDetailSrc).toContain('<ResizableRunRequest');
     expect(phaseDrawerSrc).toContain('data-testid={`phase-tab-${t.id}`}');
   });
 
