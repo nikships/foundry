@@ -25,7 +25,8 @@ import { foundryResourceLoader, foundrySettings, openFoundrySession } from './op
 import { foundryExtension } from './policy-extension.js';
 import { modelRuntime } from './runtime.js';
 import { FOUNDRY_RUN_HARNESS } from './system-prompt.js';
-import { runToolsFor, submitEnvelopeTool, type EnvelopeTool } from './tools.js';
+import { runToolsFor } from './tool-names.js';
+import { submitEnvelopeTool, type EnvelopeTool } from './tools.js';
 import { lastAssistantStop, VendorEventReader } from './vendor-events.js';
 import type {
   AgentTransport,

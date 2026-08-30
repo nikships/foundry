@@ -31,7 +31,7 @@ import type {
 } from '@shared/types.js';
 import type { Tracer } from '../trace/tracer.js';
 import { AgentSession, KILLED_DETAIL, type Mode, type TransportRequest } from '../pi/session.js';
-import { PiTransport } from '../pi/pi-transport.js';
+import { lazyTransport } from '../pi/lazy-transport.js';
 import type { AgentTransport } from '../pi/transport.js';
 import { decideAcceptance } from './acceptance.js';
 import { capturePhaseStart } from './checkpoint.js';
@@ -122,8 +122,8 @@ export interface ExecutorDeps {
   gh?: GhOptions;
   /**
    * Test seam: supply the transport each agent session drives. Production
-   * leaves this unset and gets `PiTransport` — a real run has no other
-   * transport, so there is nothing here to fall back to.
+   * leaves this unset and loads `PiTransport` on the first turn — a real run
+   * has no other transport, so there is nothing here to fall back to.
    */
   transport?: (input: TransportRequest) => AgentTransport;
 }
@@ -1091,30 +1091,33 @@ export class Executor {
    */
   private transportFor(req: TransportRequest): AgentTransport {
     if (this.deps.transport) return this.deps.transport(req);
-    return new PiTransport({
-      cwd: req.cwd,
-      runId: req.runId,
-      model: req.agent.model,
-      reasoningEffort: req.agent.reasoningEffort,
-      ...(req.agent.toolProfile ? { toolProfile: req.agent.toolProfile } : {}),
-      supportDir: this.deps.supportDir,
-      sessionDir: join(this.deps.tracer.runDir(req.runId), 'sessions'),
-      hiddenModelIds: this.deps.hiddenModelIds,
-      onPermission: req.onPermission,
-      onEvent: req.onEvent,
-      onModelWarning: req.onModelWarning,
-      tools: {
+    return lazyTransport(async () => {
+      const { PiTransport } = await import('../pi/pi-transport.js');
+      return new PiTransport({
+        cwd: req.cwd,
         runId: req.runId,
-        agentName: req.agent.name,
-        phaseId: req.phaseId,
-        envelopes: () => this.envelopes,
-        tracer: this.deps.tracer,
-        // Resolved here, not by the agent: `git_diff` answers within the run's
-        // own worktree and branch point, and a model-supplied ref would be a
-        // way to read outside it. Read per call because a repair can move the
-        // branch point under a session that is already open.
-        diff: () => ({ cwd: this.cwd, branchPointSha: this.handle?.branchPointSha ?? '' }),
-      },
+        model: req.agent.model,
+        reasoningEffort: req.agent.reasoningEffort,
+        ...(req.agent.toolProfile ? { toolProfile: req.agent.toolProfile } : {}),
+        supportDir: this.deps.supportDir,
+        sessionDir: join(this.deps.tracer.runDir(req.runId), 'sessions'),
+        hiddenModelIds: this.deps.hiddenModelIds,
+        onPermission: req.onPermission,
+        onEvent: req.onEvent,
+        onModelWarning: req.onModelWarning,
+        tools: {
+          runId: req.runId,
+          agentName: req.agent.name,
+          phaseId: req.phaseId,
+          envelopes: () => this.envelopes,
+          tracer: this.deps.tracer,
+          // Resolved here, not by the agent: `git_diff` answers within the run's
+          // own worktree and branch point, and a model-supplied ref would be a
+          // way to read outside it. Read per call because a repair can move the
+          // branch point under a session that is already open.
+          diff: () => ({ cwd: this.cwd, branchPointSha: this.handle?.branchPointSha ?? '' }),
+        },
+      });
     });
   }
 

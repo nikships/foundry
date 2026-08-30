@@ -207,22 +207,23 @@ if (!app.requestSingleInstanceLock()) {
       console.warn(`reclaimed ${bridges.reclaimed.length} Bridge(s) orphaned by a previous launch`);
     }
 
-    // The Bridge is core app infrastructure, not an operator preference. Start
-    // it before the first window so subscription providers are ready as soon
-    // as their UI appears. Availability failures remain visible in Providers;
-    // they do not prevent direct-key users from opening the app.
-    const bridge = await ctx.bridge.ensure();
-    if (!bridge.ok) {
-      console.warn(`[bridge] unavailable at launch: ${bridge.reason}: ${bridge.detail}`);
-    }
-
-    // A normal quit (including an auto-update restart) closes the socket but
-    // preserves this choice. Restore it before opening the UI so paired phones
-    // remain reachable without the operator toggling the server again.
-    await ctx.companion.restore();
-
     const window = createWindow(ctx.settings.get().theme);
     ctx.attachWindow(window);
+
+    // The Bridge is core app infrastructure, not an operator preference. Start
+    // it after the first window so spawn + TCP health never sit on the path
+    // to first paint. Availability failures remain visible in Providers; they
+    // do not prevent direct-key users from opening the app.
+    void ctx.bridge.ensure().then((bridge) => {
+      if (!bridge.ok) {
+        console.warn(`[bridge] unavailable at launch: ${bridge.reason}: ${bridge.detail}`);
+      }
+    });
+
+    // A normal quit (including an auto-update restart) closes the socket but
+    // preserves this choice. Restore in the background so paired phones remain
+    // reachable without holding the window closed.
+    void ctx.companion.restore();
 
     // A packaged app should discover updates without requiring the user to
     // find the menu item first. The service is a no-op in development builds.

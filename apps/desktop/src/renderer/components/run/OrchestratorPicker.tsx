@@ -1,37 +1,22 @@
 import { useMemo } from 'react';
-import type { ReasoningEffort } from '@shared/types.js';
-import { isReasoningEffort, modelForEffortPicker } from '@shared/reasoning-effort.js';
+import { modelForEffortPicker } from '@shared/reasoning-effort.js';
 import { useAgentModels } from '../../hooks/useAgentModels.js';
-import { safeGetItem, safeSetItem } from '../../utils/local-store.js';
+import {
+  loadOrchestratorChoice,
+  persistOrchestratorChoice,
+  type OrchestratorChoice,
+} from '../../utils/orchestrator-choice.js';
 import ModelPicker from '../common/ModelPicker.js';
 import ReasoningEffortPicker from '../common/ReasoningEffortPicker.js';
 import styles from './OrchestratorPicker.module.css';
 
-const MODEL_KEY = 'foundry.orchestrator.model';
-const REASONING_KEY = 'foundry.orchestrator.reasoning';
-
-export interface OrchestratorChoice {
-  model: string;
-  reasoningEffort: ReasoningEffort;
-}
+export type { OrchestratorChoice };
+export { loadOrchestratorChoice };
 
 interface OrchestratorControlsProps {
   choice: OrchestratorChoice;
   disabled?: boolean;
   onChange: (next: OrchestratorChoice) => void;
-}
-
-/**
- * The softly persisted appointment: localStorage, not `AppSettings`, because
- * which mind runs the planning is a preference of this machine's operator,
- * not of the install.
- */
-export function loadOrchestratorChoice(): OrchestratorChoice {
-  const reasoning = safeGetItem(REASONING_KEY);
-  return {
-    model: safeGetItem(MODEL_KEY) ?? 'inherit',
-    reasoningEffort: isReasoningEffort(reasoning) ? reasoning : 'medium',
-  };
 }
 
 /**
@@ -67,8 +52,7 @@ export function OrchestratorControls({
   );
   const change = (next: OrchestratorChoice): void => {
     // Persist on an operator change, not on read: first render stays soft.
-    safeSetItem(MODEL_KEY, next.model);
-    safeSetItem(REASONING_KEY, next.reasoningEffort);
+    persistOrchestratorChoice(next);
     onChange(next);
   };
 

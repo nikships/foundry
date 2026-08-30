@@ -16,7 +16,7 @@
 
 import type { ChildProcess } from 'node:child_process';
 import { join } from 'node:path';
-import { piStateDir } from '../pi/runtime.js';
+import { piStateDir } from '../pi/pi-paths.js';
 import {
   authenticatedProviders,
   cancelLogin,

@@ -112,11 +112,14 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
   }, [project?.id]);
 
   const refreshAll = useCallback(async (): Promise<void> => {
-    const [nextSettings, nextProjects, nextEnvelopes] = await Promise.all([
+    const storedScope = selectedProjectIdRef.current || undefined;
+    const [nextSettings, nextProjects, nextEnvelopes, scoped] = await Promise.all([
       api.settings.get(),
       api.projects.list(),
       api.envelopes.list(),
+      loadScoped(storedScope),
     ]);
+    const [nextAgents, nextPipelines] = scoped;
     setSettings(nextSettings);
     setProjects(nextProjects);
     setEnvelopes(nextEnvelopes);
@@ -126,6 +129,12 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
       scopeId = nextProjects[0]?.id ?? '';
       setSelectedProjectId(scopeId);
       safeSetItem(PROJECT_KEY, scopeId);
+      const [scopedAgents, scopedPipelines] = await loadScoped(scopeId || undefined);
+      setAgents(scopedAgents);
+      setPipelines(scopedPipelines);
+    } else {
+      setAgents(nextAgents);
+      setPipelines(nextPipelines);
     }
 
     const smithScope = resolveSmithProjectId(
@@ -137,9 +146,6 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
     if (smithScope !== smithProjectId) setSmithProjectId(smithScope);
     rememberSmithScope(smithScope);
 
-    const [nextAgents, nextPipelines] = await loadScoped(scopeId || undefined);
-    setAgents(nextAgents);
-    setPipelines(nextPipelines);
     setReady(true);
   }, [smithProjectId, rememberSmithScope]);
 

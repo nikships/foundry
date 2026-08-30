@@ -21,7 +21,7 @@ No separate setup for `src/main/` — it builds as part of `electron-vite build`
 
 ## Development Workflow
 
-- Entry: `src/main/main.ts` — creates the `BrowserWindow` (`hiddenInset`, `sandbox: true`, `contextIsolation: true`), calls `resolveEnv()` before any spawn, sweeps orphaned runs from a previous crash, and registers IPC.
+- Entry: `src/main/main.ts` — creates the `BrowserWindow` (`hiddenInset`, `sandbox: true`, `contextIsolation: true`), calls `resolveEnv()` before any spawn, sweeps orphaned runs from a previous crash, and registers IPC. The first window opens before Bridge `ensure()` and Companion restore; those continue in the background so spawn/health never sit on the path to first paint.
 - Single-instance lock (`app.requestSingleInstanceLock()`) — a second SQLite writer would corrupt the per-project trace.
 - Add a new capability via the IPC flow: `src/shared/types.ts` → `src/shared/ipc-contract.ts` → router in `src/main/ipc/` → `src/preload/bridge.ts` → `src/renderer/api.ts` through `plain()`. No generic `invoke(channel, ...)` passthrough.
 - Long work returns a handle and pushes progress; do not `await` an agent turn inside a click handler.

@@ -34,7 +34,7 @@ import {
 import { foundryResourceLoader, foundrySettings, openFoundrySession } from './open-session.js';
 import { smithExtension } from './policy-extension.js';
 import { modelRuntime } from './runtime.js';
-import { BUILTIN_TOOLS } from './tools.js';
+import { BUILTIN_TOOLS } from './tool-names.js';
 import { lastAssistantStop, VendorEventReader } from './vendor-events.js';
 import { ModelNotChosen } from './transport.js';
 import type {

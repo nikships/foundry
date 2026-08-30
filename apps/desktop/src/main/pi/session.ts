@@ -14,7 +14,7 @@ import type { AgentDef, ContextBreakdown, ReasoningEffort, UsageBreakdown } from
 import type { Tracer } from '../trace/tracer.js';
 import { EventFolder, toUsageBreakdown } from './events.js';
 import { evaluate } from './policy.js';
-import { FOUNDRY_TOOL_NAMES } from './tools.js';
+import { FOUNDRY_TOOL_NAMES } from './tool-names.js';
 import type {
   AgentTransport,
   ContextStats,

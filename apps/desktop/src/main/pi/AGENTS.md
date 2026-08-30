@@ -23,7 +23,10 @@ Two session shapes live here. A **run** holds a session across many turns (`sess
 
 - `model.ts` — resolving a roster model string against what the install can actually reach, plus the thinking-level mapping. A miss is a warning and a fallback, never a failure.
 - `vendor-events.ts` — the pi event stream translated into neutral `TransportEvent`s, and per-turn usage summed across the turn's assistant messages.
-- `tools.ts` — Foundry's own tools (`report_progress`, `read_phase_context`, `git_diff`, `submit_envelope`, which replaced the MCP server), the two built-in lists (`BUILTIN_TOOLS` and the `READ_ONLY_TOOLS` a read-only session is confined to), and `runToolsFor(profile)`, the whole allowlist a run session opens with for an agent's `toolProfile`. `git_diff` is the read-only diff affordance: it runs `git diff` against the engine-supplied branch point and nothing else, takes no ref and no argv, and bounds its answer at `GIT_DIFF_MAX_CHARS` with a marker naming the files it dropped.
+- `tool-names.ts` — the allowlist strings (`FOUNDRY_TOOL_NAMES`, `BUILTIN_TOOLS`, `READ_ONLY_TOOLS`, `runToolsFor`) with no vendor import, so `session.ts` and `AppContext` can name tools without parsing the runtime.
+- `tools.ts` — Foundry's own tools (`report_progress`, `read_phase_context`, `git_diff`, `submit_envelope`, which replaced the MCP server). `git_diff` is the read-only diff affordance: it runs `git diff` against the engine-supplied branch point and nothing else, takes no ref and no argv, and bounds its answer at `GIT_DIFF_MAX_CHARS` with a marker naming the files it dropped.
+- `lazy-oneshot.ts` / `lazy-transport.ts` — wrappers that load `pi-oneshot.ts` / `PiTransport` / `SmithPiTransport` on the first turn. `AppContext` and `Executor` construct through these so launch does not parse the vendor package.
+- `pi-paths.ts` — `piStateDir()`, used by the Bridge at launch without constructing `ModelRuntime`.
 - `policy.ts` — the zero-interrupt write policy: pi tool name → category → allow/deny.
 - `policy-extension.ts` — the inline pi extension. `foundryExtension()` registers Foundry's tools, the `tool_call` hook, and `before_agent_start` (the roster role); `policyOnlyExtension()` is the same hook pair with no tools, which is what a one-shot needs.
 - `open-session.ts` — shared `createAgentSession` setup (discovery flags, Foundry harness, bind). Both session shapes call it so the flags cannot drift.
@@ -86,7 +89,7 @@ npx vitest run apps/desktop/tests/main/engine/executor.test.ts
 
 ## Code Style
 
-- `@earendil-works/pi-*` imports live in this directory only (ESLint `no-restricted-imports`); `pi-transport.ts` and `pi-oneshot.ts` are where they concentrate. `transport.ts`, `oneshot.ts`, `session.ts`, `policy.ts`, `transcript.ts`, and `events.ts` are deliberately vendor-free.
+- `@earendil-works/pi-*` imports live in this directory only (ESLint `no-restricted-imports`); `pi-transport.ts` and `pi-oneshot.ts` are where they concentrate. `transport.ts`, `oneshot.ts`, `session.ts`, `policy.ts`, `transcript.ts`, `events.ts`, `tool-names.ts`, `lazy-oneshot.ts`, `lazy-transport.ts`, and `pi-paths.ts` are deliberately vendor-free.
 - Pi's transitive packages (`pi-agent-core`, `pi-ai`) are **not** Foundry dependencies. Derive the types you need from `pi-coding-agent`'s own surface rather than importing them.
 - No `eslint-disable`; use `@main/*` / `@shared/*` aliases.
 

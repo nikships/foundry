@@ -1,19 +1,14 @@
 import React, { useState } from 'react';
-import { FoundryGlyph } from '../../components/media/BrandIcon.js';
+import { FoundryGlyph } from '../../components/media/FoundryGlyph.js';
 import { OnboardingProvider, useOnboarding } from './OnboardingContext.js';
 import { Stepper, type StepId } from './shared.js';
 import './onboarding.css';
 
-import WelcomeScreen from './WelcomeScreen.js';
-import ProvidersScreen from './ProvidersScreen.js';
-import DoctorScreen from './DoctorScreen.js';
-import ProjectScreen from './ProjectScreen.js';
-
-const STEP_COMPONENTS: Record<StepId, React.ComponentType> = {
-  welcome: WelcomeScreen,
-  providers: ProvidersScreen,
-  doctor: DoctorScreen,
-  project: ProjectScreen,
+const STEP_COMPONENTS: Record<StepId, React.LazyExoticComponent<React.ComponentType>> = {
+  welcome: React.lazy(() => import('./WelcomeScreen.js')),
+  providers: React.lazy(() => import('./ProvidersScreen.js')),
+  doctor: React.lazy(() => import('./DoctorScreen.js')),
+  project: React.lazy(() => import('./ProjectScreen.js')),
 };
 
 function OnboardingShellInner(): React.JSX.Element {
@@ -37,7 +32,9 @@ function OnboardingShellInner(): React.JSX.Element {
         />
       </header>
       <div className="ob-page" key={step}>
-        <Active />
+        <React.Suspense fallback={null}>
+          <Active />
+        </React.Suspense>
       </div>
     </div>
   );

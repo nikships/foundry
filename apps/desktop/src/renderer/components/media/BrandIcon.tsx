@@ -20,7 +20,8 @@
  * needs none of them. tests/brand-icons.test.ts fails if one of these paths moves.
  */
 
-import type { ComponentType, CSSProperties } from 'react';
+import type { ComponentType } from 'react';
+import type { MarkProps } from './FoundryGlyph.js';
 import Ai21Mono from '@lobehub/icons/es/Ai21/components/Mono.js';
 import AlibabaCloudColor from '@lobehub/icons/es/AlibabaCloud/components/Color.js';
 import AlibabaColor from '@lobehub/icons/es/Alibaba/components/Color.js';
@@ -86,41 +87,10 @@ import ZeroOneColor from '@lobehub/icons/es/ZeroOne/components/Color.js';
 import ZhipuColor from '@lobehub/icons/es/Zhipu/components/Color.js';
 import styles from './BrandIcon.module.css';
 
-export interface MarkProps {
-  size?: number;
-  className?: string;
-  style?: CSSProperties;
-}
+export type { MarkProps } from './FoundryGlyph.js';
+export { FoundryGlyph } from './FoundryGlyph.js';
 
 export type Mark = ComponentType<MarkProps>;
-
-/**
- * Foundry's own mark: three interlocked rings. currentColor so it inherits
- * the chrome palette (light on the dark titlebar, not the black-on-orange
- * Dock icon).
- */
-function FoundryMark({ size = 16, className, style }: MarkProps): React.JSX.Element {
-  return (
-    <svg
-      className={className}
-      fill="none"
-      height={size}
-      style={style}
-      viewBox="0 0 64 64"
-      width={size}
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <g stroke="currentColor" strokeWidth="7.2">
-        <circle cx="32" cy="22" r="13.2" />
-        <circle cx="22.57" cy="38.2" r="13.2" />
-        <circle cx="41.43" cy="38.2" r="13.2" />
-      </g>
-    </svg>
-  );
-}
-
-/** Foundry mark for app chrome (titlebar, empty states, onboarding). */
-export const FoundryGlyph: Mark = FoundryMark;
 
 /**
  * pi's mark: the letter it is named after, drawn rather than typeset so it does

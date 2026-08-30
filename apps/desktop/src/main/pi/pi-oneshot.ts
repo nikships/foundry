@@ -25,7 +25,7 @@ import { evaluate } from './policy.js';
 import { policyOnlyExtension } from './policy-extension.js';
 import { modelRuntime } from './runtime.js';
 import { FOUNDRY_ONESHOT_HARNESS } from './system-prompt.js';
-import { BUILTIN_TOOLS, READ_ONLY_TOOLS } from './tools.js';
+import { BUILTIN_TOOLS, READ_ONLY_TOOLS } from './tool-names.js';
 import { lastAssistantStop, VendorEventReader } from './vendor-events.js';
 import type { OneShotFactory, OneShotOptions, OneShotResult, OneShotSession } from './oneshot.js';
 import type { PermissionAsk, PermissionDecision } from './transport.js';
